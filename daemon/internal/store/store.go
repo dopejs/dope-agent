@@ -13,10 +13,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	_ "modernc.org/sqlite"
@@ -167,6 +169,311 @@ func (s *SQLiteStore) UpsertSession(ctx context.Context, session router.Session)
 	}
 
 	return nil
+}
+
+func (s *SQLiteStore) UpsertPairing(ctx context.Context, pairing auth.Pairing) error {
+	if s == nil {
+		return nil
+	}
+
+	var completedAt sql.NullString
+	if pairing.CompletedAt != nil {
+		completedAt = sql.NullString{String: pairing.CompletedAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO auth_pairings (
+			pairing_id,
+			mode,
+			label,
+			status,
+			code_hash,
+			code_preview,
+			created_at,
+			updated_at,
+			expires_at,
+			completed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(pairing_id) DO UPDATE SET
+			mode = excluded.mode,
+			label = excluded.label,
+			status = excluded.status,
+			code_hash = excluded.code_hash,
+			code_preview = excluded.code_preview,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			expires_at = excluded.expires_at,
+			completed_at = excluded.completed_at
+	`,
+		pairing.PairingID,
+		string(pairing.Mode),
+		pairing.Label,
+		string(pairing.Status),
+		pairing.CodeHash,
+		nullString(pairing.CodePreview),
+		pairing.CreatedAt.UTC().Format(time.RFC3339Nano),
+		pairing.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		pairing.ExpiresAt.UTC().Format(time.RFC3339Nano),
+		completedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert pairing %s: %w", pairing.PairingID, err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) ListPairings(ctx context.Context) ([]auth.Pairing, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT pairing_id, mode, label, status, code_hash, code_preview, created_at, updated_at, expires_at, completed_at
+		FROM auth_pairings
+		ORDER BY created_at ASC, pairing_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list pairings: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]auth.Pairing, 0)
+	for rows.Next() {
+		pairing, err := scanPairing(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, pairing)
+	}
+
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertAccessToken(ctx context.Context, token auth.AccessToken) error {
+	if s == nil {
+		return nil
+	}
+
+	var lastUsedAt sql.NullString
+	if token.LastUsedAt != nil {
+		lastUsedAt = sql.NullString{String: token.LastUsedAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO auth_tokens (
+			token_id,
+			label,
+			mode,
+			token_hash,
+			token_preview,
+			created_at,
+			updated_at,
+			last_used_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(token_id) DO UPDATE SET
+			label = excluded.label,
+			mode = excluded.mode,
+			token_hash = excluded.token_hash,
+			token_preview = excluded.token_preview,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			last_used_at = excluded.last_used_at
+	`,
+		token.TokenID,
+		token.Label,
+		string(token.Mode),
+		token.TokenHash,
+		token.TokenPreview,
+		token.CreatedAt.UTC().Format(time.RFC3339Nano),
+		token.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		lastUsedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert access token %s: %w", token.TokenID, err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) ListAccessTokens(ctx context.Context) ([]auth.AccessToken, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT token_id, label, mode, token_hash, token_preview, created_at, updated_at, last_used_at
+		FROM auth_tokens
+		ORDER BY created_at ASC, token_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list access tokens: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]auth.AccessToken, 0)
+	for rows.Next() {
+		token, err := scanAccessToken(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, token)
+	}
+
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertApproval(ctx context.Context, approval policy.Approval) error {
+	if s == nil {
+		return nil
+	}
+
+	var resolvedAt sql.NullString
+	if approval.ResolvedAt != nil {
+		resolvedAt = sql.NullString{String: approval.ResolvedAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO approvals (
+			approval_id,
+			action,
+			resource_kind,
+			resource_id,
+			reason,
+			requested_by,
+			status,
+			created_at,
+			updated_at,
+			resolved_at,
+			resolution,
+			comment
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(approval_id) DO UPDATE SET
+			action = excluded.action,
+			resource_kind = excluded.resource_kind,
+			resource_id = excluded.resource_id,
+			reason = excluded.reason,
+			requested_by = excluded.requested_by,
+			status = excluded.status,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			resolved_at = excluded.resolved_at,
+			resolution = excluded.resolution,
+			comment = excluded.comment
+	`,
+		approval.ApprovalID,
+		approval.Action,
+		nullString(approval.ResourceKind),
+		nullString(approval.ResourceID),
+		approval.Reason,
+		nullString(approval.RequestedBy),
+		string(approval.Status),
+		approval.CreatedAt.UTC().Format(time.RFC3339Nano),
+		approval.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		resolvedAt,
+		nullString(approval.Resolution),
+		nullString(approval.Comment),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert approval %s: %w", approval.ApprovalID, err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) ListApprovals(ctx context.Context) ([]policy.Approval, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT approval_id, action, resource_kind, resource_id, reason, requested_by, status, created_at, updated_at, resolved_at, resolution, comment
+		FROM approvals
+		ORDER BY created_at ASC, approval_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list approvals: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]policy.Approval, 0)
+	for rows.Next() {
+		approval, err := scanApproval(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, approval)
+	}
+
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertDecision(ctx context.Context, decision policy.Decision) error {
+	if s == nil {
+		return nil
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO decisions (
+			decision_id,
+			action,
+			resource_kind,
+			resource_id,
+			outcome,
+			reason,
+			approval_id,
+			created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(decision_id) DO UPDATE SET
+			action = excluded.action,
+			resource_kind = excluded.resource_kind,
+			resource_id = excluded.resource_id,
+			outcome = excluded.outcome,
+			reason = excluded.reason,
+			approval_id = excluded.approval_id,
+			created_at = excluded.created_at
+	`,
+		decision.DecisionID,
+		decision.Action,
+		nullString(decision.ResourceKind),
+		nullString(decision.ResourceID),
+		string(decision.Outcome),
+		decision.Reason,
+		nullString(decision.ApprovalID),
+		decision.CreatedAt.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert decision %s: %w", decision.DecisionID, err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) ListDecisions(ctx context.Context) ([]policy.Decision, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT decision_id, action, resource_kind, resource_id, outcome, reason, approval_id, created_at
+		FROM decisions
+		ORDER BY created_at ASC, decision_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list decisions: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]policy.Decision, 0)
+	for rows.Next() {
+		decision, err := scanDecision(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, decision)
+	}
+
+	return items, rows.Err()
 }
 
 func (s *SQLiteStore) UpsertConnector(ctx context.Context, connector connectors.Connector) error {
@@ -921,6 +1228,61 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 		);
 		`,
 		`
+		CREATE TABLE IF NOT EXISTS auth_pairings (
+			pairing_id TEXT PRIMARY KEY,
+			mode TEXT NOT NULL,
+			label TEXT NOT NULL,
+			status TEXT NOT NULL,
+			code_hash TEXT NOT NULL,
+			code_preview TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			expires_at TEXT NOT NULL,
+			completed_at TEXT
+		);
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS auth_tokens (
+			token_id TEXT PRIMARY KEY,
+			label TEXT NOT NULL,
+			mode TEXT NOT NULL,
+			token_hash TEXT NOT NULL,
+			token_preview TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			last_used_at TEXT
+		);
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS approvals (
+			approval_id TEXT PRIMARY KEY,
+			action TEXT NOT NULL,
+			resource_kind TEXT,
+			resource_id TEXT,
+			reason TEXT NOT NULL,
+			requested_by TEXT,
+			status TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			resolved_at TEXT,
+			resolution TEXT,
+			comment TEXT
+		);
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS decisions (
+			decision_id TEXT PRIMARY KEY,
+			action TEXT NOT NULL,
+			resource_kind TEXT,
+			resource_id TEXT,
+			outcome TEXT NOT NULL,
+			reason TEXT NOT NULL,
+			approval_id TEXT,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY(approval_id) REFERENCES approvals(approval_id) ON DELETE SET NULL
+		);
+		`,
+		`
 		CREATE TABLE IF NOT EXISTS runs (
 			run_id TEXT PRIMARY KEY,
 			session_id TEXT,
@@ -1049,6 +1411,7 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_capabilities_kind_status ON capabilities(kind, status);`,
 		`CREATE INDEX IF NOT EXISTS idx_tool_calls_run_step ON tool_calls(run_id, step_id, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_llm_dispatches_provider_status ON llm_dispatches(provider, status, created_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_approvals_status_created ON approvals(status, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_channel_peer ON sessions(channel, peer_id, thread_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id, occurred_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_events_session_id ON events(session_id, occurred_at);`,
@@ -1187,6 +1550,180 @@ func scanSession(scanner interface {
 	}
 
 	return session, nil
+}
+
+func scanPairing(scanner interface {
+	Scan(dest ...any) error
+}) (auth.Pairing, error) {
+	var (
+		pairing     auth.Pairing
+		mode        string
+		status      string
+		codePreview sql.NullString
+		createdAt   string
+		updatedAt   string
+		expiresAt   string
+		completedAt sql.NullString
+	)
+
+	if err := scanner.Scan(
+		&pairing.PairingID,
+		&mode,
+		&pairing.Label,
+		&status,
+		&pairing.CodeHash,
+		&codePreview,
+		&createdAt,
+		&updatedAt,
+		&expiresAt,
+		&completedAt,
+	); err != nil {
+		return auth.Pairing{}, fmt.Errorf("scan pairing: %w", err)
+	}
+
+	pairing.Mode = auth.PairingMode(mode)
+	pairing.Status = auth.PairingStatus(status)
+	pairing.CodePreview = codePreview.String
+	if err := assignRequiredTime(&pairing.CreatedAt, createdAt); err != nil {
+		return auth.Pairing{}, err
+	}
+	if err := assignRequiredTime(&pairing.UpdatedAt, updatedAt); err != nil {
+		return auth.Pairing{}, err
+	}
+	if err := assignRequiredTime(&pairing.ExpiresAt, expiresAt); err != nil {
+		return auth.Pairing{}, err
+	}
+	if err := assignOptionalTime(&pairing.CompletedAt, completedAt); err != nil {
+		return auth.Pairing{}, err
+	}
+
+	return pairing, nil
+}
+
+func scanAccessToken(scanner interface {
+	Scan(dest ...any) error
+}) (auth.AccessToken, error) {
+	var (
+		token      auth.AccessToken
+		mode       string
+		createdAt  string
+		updatedAt  string
+		lastUsedAt sql.NullString
+	)
+
+	if err := scanner.Scan(
+		&token.TokenID,
+		&token.Label,
+		&mode,
+		&token.TokenHash,
+		&token.TokenPreview,
+		&createdAt,
+		&updatedAt,
+		&lastUsedAt,
+	); err != nil {
+		return auth.AccessToken{}, fmt.Errorf("scan access token: %w", err)
+	}
+
+	token.Mode = auth.PairingMode(mode)
+	if err := assignRequiredTime(&token.CreatedAt, createdAt); err != nil {
+		return auth.AccessToken{}, err
+	}
+	if err := assignRequiredTime(&token.UpdatedAt, updatedAt); err != nil {
+		return auth.AccessToken{}, err
+	}
+	if err := assignOptionalTime(&token.LastUsedAt, lastUsedAt); err != nil {
+		return auth.AccessToken{}, err
+	}
+
+	return token, nil
+}
+
+func scanApproval(scanner interface {
+	Scan(dest ...any) error
+}) (policy.Approval, error) {
+	var (
+		approval     policy.Approval
+		resourceKind sql.NullString
+		resourceID   sql.NullString
+		requestedBy  sql.NullString
+		status       string
+		createdAt    string
+		updatedAt    string
+		resolvedAt   sql.NullString
+		resolution   sql.NullString
+		comment      sql.NullString
+	)
+
+	if err := scanner.Scan(
+		&approval.ApprovalID,
+		&approval.Action,
+		&resourceKind,
+		&resourceID,
+		&approval.Reason,
+		&requestedBy,
+		&status,
+		&createdAt,
+		&updatedAt,
+		&resolvedAt,
+		&resolution,
+		&comment,
+	); err != nil {
+		return policy.Approval{}, fmt.Errorf("scan approval: %w", err)
+	}
+
+	approval.ResourceKind = resourceKind.String
+	approval.ResourceID = resourceID.String
+	approval.RequestedBy = requestedBy.String
+	approval.Status = policy.ApprovalStatus(status)
+	approval.Resolution = resolution.String
+	approval.Comment = comment.String
+	if err := assignRequiredTime(&approval.CreatedAt, createdAt); err != nil {
+		return policy.Approval{}, err
+	}
+	if err := assignRequiredTime(&approval.UpdatedAt, updatedAt); err != nil {
+		return policy.Approval{}, err
+	}
+	if err := assignOptionalTime(&approval.ResolvedAt, resolvedAt); err != nil {
+		return policy.Approval{}, err
+	}
+
+	return approval, nil
+}
+
+func scanDecision(scanner interface {
+	Scan(dest ...any) error
+}) (policy.Decision, error) {
+	var (
+		decision     policy.Decision
+		resourceKind sql.NullString
+		resourceID   sql.NullString
+		outcome      string
+		approvalID   sql.NullString
+		createdAt    string
+	)
+
+	if err := scanner.Scan(
+		&decision.DecisionID,
+		&decision.Action,
+		&resourceKind,
+		&resourceID,
+		&outcome,
+		&decision.Reason,
+		&approvalID,
+		&createdAt,
+	); err != nil {
+		return policy.Decision{}, fmt.Errorf("scan decision: %w", err)
+	}
+
+	decision.ResourceKind = resourceKind.String
+	decision.ResourceID = resourceID.String
+	decision.Outcome = policy.DecisionOutcome(outcome)
+	decision.ApprovalID = approvalID.String
+	if err := assignRequiredTime(&decision.CreatedAt, createdAt); err != nil {
+		return policy.Decision{}, err
+	}
+
+	return decision, nil
 }
 
 func scanConnector(scanner interface {

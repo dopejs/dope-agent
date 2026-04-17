@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/auth-pairing-resource.schema.json",
+  "title": "AuthPairingResource",
+  "type": "object",
+  "required": [
+    "pairingId",
+    "mode",
+    "label",
+    "status",
+    "createdAt",
+    "updatedAt",
+    "expiresAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "pairingId": { "type": "string" },
+    "mode": { "type": "string", "enum": ["local", "token"] },
+    "label": { "type": "string" },
+    "status": { "type": "string", "enum": ["pending", "completed", "expired"] },
+    "codePreview": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" }
+  }
+}

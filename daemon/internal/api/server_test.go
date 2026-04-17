@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
@@ -54,6 +55,23 @@ func (p *testLLMProvider) Complete(ctx context.Context, request llm.ProviderRequ
 
 func (p *testLLMProvider) Stream(ctx context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
 	return p.streamFn(ctx, request, emit)
+}
+
+func issueAuthHeaderForTest(t *testing.T, manager *auth.Manager, label string) string {
+	t.Helper()
+
+	pairing, code, err := manager.StartPairing(auth.StartPairingInput{
+		Mode:  auth.PairingModeLocal,
+		Label: label,
+	})
+	if err != nil {
+		t.Fatalf("StartPairing returned error: %v", err)
+	}
+	_, _, tokenSecret, err := manager.CompletePairing(pairing.PairingID, auth.CompletePairingInput{Code: code})
+	if err != nil {
+		t.Fatalf("CompletePairing returned error: %v", err)
+	}
+	return "Bearer " + tokenSecret
 }
 
 func TestRunsLifecycleRoutes(t *testing.T) {
@@ -1010,6 +1028,241 @@ func TestConfigRouteUsesStrictResponseShape(t *testing.T) {
 	}
 	if len(response.RedactedFields) != 0 {
 		t.Fatalf("expected no redacted fields, got %+v", response.RedactedFields)
+	}
+}
+
+func TestAuthPairingAndProtectedRoutes(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	authManager := auth.NewManager()
+	logger := telemetry.New("error")
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:   logger.Slog(),
+		EventBus: events.NewBus(),
+		Auth:     authManager,
+		Router:   router.NewSessionRouter(),
+		Runtime:  runtime.NewManager(),
+		Store:    sqliteStore,
+	})
+
+	unauthorizedRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(unauthorizedRec, httptest.NewRequest(http.MethodGet, "/v1/config", nil))
+	if unauthorizedRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for missing auth, got %d", unauthorizedRec.Code)
+	}
+
+	startRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(startRec, httptest.NewRequest(http.MethodPost, "/v1/auth/pairings/start", strings.NewReader(`{"mode":"local","label":"web-ui"}`)))
+	if startRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for pairing start, got %d body=%s", startRec.Code, startRec.Body.String())
+	}
+	var pairingStart struct {
+		Pairing     auth.Pairing `json:"pairing"`
+		PairingCode string       `json:"pairingCode"`
+	}
+	if err := json.Unmarshal(startRec.Body.Bytes(), &pairingStart); err != nil {
+		t.Fatalf("failed to decode pairing start response: %v", err)
+	}
+	if pairingStart.Pairing.PairingID == "" || pairingStart.PairingCode == "" {
+		t.Fatal("expected pairing id and pairing code")
+	}
+
+	completeRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(completeRec, httptest.NewRequest(http.MethodPost, "/v1/auth/pairings/"+pairingStart.Pairing.PairingID+"/complete", strings.NewReader(`{"code":"`+pairingStart.PairingCode+`"}`)))
+	if completeRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for pairing complete, got %d body=%s", completeRec.Code, completeRec.Body.String())
+	}
+	var pairingComplete struct {
+		Pairing     auth.Pairing     `json:"pairing"`
+		Token       auth.AccessToken `json:"token"`
+		AccessToken string           `json:"accessToken"`
+	}
+	if err := json.Unmarshal(completeRec.Body.Bytes(), &pairingComplete); err != nil {
+		t.Fatalf("failed to decode pairing complete response: %v", err)
+	}
+	if pairingComplete.AccessToken == "" {
+		t.Fatal("expected access token")
+	}
+
+	meReq := httptest.NewRequest(http.MethodGet, "/v1/auth/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+pairingComplete.AccessToken)
+	meRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(meRec, meReq)
+	if meRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for auth me, got %d body=%s", meRec.Code, meRec.Body.String())
+	}
+	me := decodeStrictResponse[auth.AccessToken](t, meRec.Body.Bytes())
+	if me.TokenID != pairingComplete.Token.TokenID {
+		t.Fatalf("expected token ID %s, got %s", pairingComplete.Token.TokenID, me.TokenID)
+	}
+
+	pairings, err := sqliteStore.ListPairings(context.Background())
+	if err != nil {
+		t.Fatalf("ListPairings returned error: %v", err)
+	}
+	if len(pairings) != 1 || pairings[0].Status != auth.PairingStatusCompleted {
+		t.Fatalf("expected one completed persisted pairing, got %+v", pairings)
+	}
+	tokens, err := sqliteStore.ListAccessTokens(context.Background())
+	if err != nil {
+		t.Fatalf("ListAccessTokens returned error: %v", err)
+	}
+	if len(tokens) != 1 || tokens[0].TokenID != pairingComplete.Token.TokenID {
+		t.Fatalf("expected one persisted token, got %+v", tokens)
+	}
+}
+
+func TestToolCallApprovalEnforcement(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	eventBus := events.NewBus()
+	manager := runtime.NewManager()
+	authManager := auth.NewManager()
+	policyEngine := policy.NewEngine()
+	capabilitySupervisor := capabilities.NewSupervisor()
+	checkpointManager := checkpoints.NewManager(sqliteStore, manager)
+	logger := telemetry.New("error")
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:       logger.Slog(),
+		EventBus:     eventBus,
+		Auth:         authManager,
+		Policy:       policyEngine,
+		Router:       router.NewSessionRouter(),
+		Runtime:      manager,
+		Capabilities: capabilitySupervisor,
+		Store:        sqliteStore,
+		Checkpoints:  checkpointManager,
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "web-ui")
+
+	if _, _, err := capabilitySupervisor.Register(capabilities.RegisterInput{
+		CapabilityID: "shell",
+		Kind:         "exec",
+		DisplayName:  "Shell",
+	}); err != nil {
+		t.Fatalf("Register shell capability returned error: %v", err)
+	}
+	if _, _, err := capabilitySupervisor.Register(capabilities.RegisterInput{
+		CapabilityID: "search",
+		Kind:         "knowledge",
+		DisplayName:  "Search",
+	}); err != nil {
+		t.Fatalf("Register search capability returned error: %v", err)
+	}
+
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "run guarded tool"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	pendingReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"pwd"}}`))
+	pendingReq.Header.Set("Authorization", authHeader)
+	pendingRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(pendingRec, pendingReq)
+	if pendingRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for pending approval, got %d body=%s", pendingRec.Code, pendingRec.Body.String())
+	}
+	var pending struct {
+		Approval policy.Approval `json:"approval"`
+		Decision policy.Decision `json:"decision"`
+	}
+	if err := json.Unmarshal(pendingRec.Body.Bytes(), &pending); err != nil {
+		t.Fatalf("failed to decode pending approval response: %v", err)
+	}
+	if pending.Approval.Status != policy.ApprovalStatusPending {
+		t.Fatalf("expected pending approval, got %s", pending.Approval.Status)
+	}
+
+	_, _, err = policyEngine.ResolveApproval(pending.Approval.ApprovalID, policy.ResolveApprovalInput{
+		Resolution: string(policy.ApprovalStatusRejected),
+		Comment:    "rejected for test",
+	})
+	if err != nil {
+		t.Fatalf("ResolveApproval rejected returned error: %v", err)
+	}
+	rejectedApproval, ok := policyEngine.GetApproval(pending.Approval.ApprovalID)
+	if !ok {
+		t.Fatal("expected rejected approval")
+	}
+	if err := sqliteStore.UpsertApproval(context.Background(), rejectedApproval); err != nil {
+		t.Fatalf("UpsertApproval returned error: %v", err)
+	}
+
+	rejectedReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","approvalId":"`+pending.Approval.ApprovalID+`"}`))
+	rejectedReq.Header.Set("Authorization", authHeader)
+	rejectedRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rejectedRec, rejectedReq)
+	if rejectedRec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for rejected approval, got %d body=%s", rejectedRec.Code, rejectedRec.Body.String())
+	}
+
+	approvedApproval, _, err := policyEngine.RequestApproval(policy.RequestApprovalInput{
+		Action:       "tool_call.execute",
+		ResourceKind: "capability",
+		ResourceID:   "shell",
+		Reason:       "approve shell",
+		RequestedBy:  "web-ui",
+	})
+	if err != nil {
+		t.Fatalf("RequestApproval returned error: %v", err)
+	}
+	approvedApproval, _, err = policyEngine.ResolveApproval(approvedApproval.ApprovalID, policy.ResolveApprovalInput{
+		Resolution: string(policy.ApprovalStatusApproved),
+		Comment:    "approved for test",
+	})
+	if err != nil {
+		t.Fatalf("ResolveApproval approved returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertApproval(context.Background(), approvedApproval); err != nil {
+		t.Fatalf("UpsertApproval returned error: %v", err)
+	}
+
+	approvedReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","approvalId":"`+approvedApproval.ApprovalID+`"}`))
+	approvedReq.Header.Set("Authorization", authHeader)
+	approvedRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(approvedRec, approvedReq)
+	if approvedRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for approved tool call, got %d body=%s", approvedRec.Code, approvedRec.Body.String())
+	}
+
+	allowedReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"search","toolName":"lookup","input":{"q":"hi"}}`))
+	allowedReq.Header.Set("Authorization", authHeader)
+	allowedRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(allowedRec, allowedReq)
+	if allowedRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for low-risk tool call, got %d body=%s", allowedRec.Code, allowedRec.Body.String())
 	}
 }
 

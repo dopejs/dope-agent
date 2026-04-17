@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/start-pairing.request.schema.json",
+  "title": "StartPairingRequest",
+  "type": "object",
+  "required": ["mode", "label"],
+  "additionalProperties": false,
+  "properties": {
+    "mode": { "type": "string", "enum": ["local", "token"] },
+    "label": { "type": "string" },
+    "ttlSeconds": { "type": "integer", "minimum": 1 }
+  }
+}

@@ -5,10 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 )
@@ -325,6 +327,116 @@ func TestSQLiteStorePersistsLLMDispatches(t *testing.T) {
 	}
 	if got.Status != llm.DispatchStatusCompleted {
 		t.Fatalf("expected completed llm dispatch, got %s", got.Status)
+	}
+}
+
+func TestSQLiteStorePersistsAuthAndPolicyState(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	completedAt := time.Now().UTC().Add(-2 * time.Minute)
+	pairing := auth.Pairing{
+		PairingID:   "pair_1",
+		Mode:        auth.PairingModeLocal,
+		Label:       "web-ui",
+		Status:      auth.PairingStatusCompleted,
+		CodeHash:    "hash",
+		CodePreview: "",
+		CreatedAt:   time.Now().UTC().Add(-10 * time.Minute),
+		UpdatedAt:   time.Now().UTC().Add(-5 * time.Minute),
+		ExpiresAt:   time.Now().UTC().Add(10 * time.Minute),
+		CompletedAt: &completedAt,
+	}
+	if err := store.UpsertPairing(context.Background(), pairing); err != nil {
+		t.Fatalf("UpsertPairing returned error: %v", err)
+	}
+
+	lastUsedAt := time.Now().UTC().Add(-time.Minute)
+	token := auth.AccessToken{
+		TokenID:      "tok_1",
+		Label:        "web-ui",
+		Mode:         auth.PairingModeLocal,
+		TokenHash:    "token-hash",
+		TokenPreview: "dope_preview",
+		CreatedAt:    time.Now().UTC().Add(-9 * time.Minute),
+		UpdatedAt:    time.Now().UTC().Add(-time.Minute),
+		LastUsedAt:   &lastUsedAt,
+	}
+	if err := store.UpsertAccessToken(context.Background(), token); err != nil {
+		t.Fatalf("UpsertAccessToken returned error: %v", err)
+	}
+
+	approval := policy.Approval{
+		ApprovalID:   "approval_1",
+		Action:       "tool_call.execute",
+		ResourceKind: "capability",
+		ResourceID:   "shell",
+		Reason:       "needs approval",
+		RequestedBy:  "web-ui",
+		Status:       policy.ApprovalStatusApproved,
+		CreatedAt:    time.Now().UTC().Add(-8 * time.Minute),
+		UpdatedAt:    time.Now().UTC().Add(-7 * time.Minute),
+		ResolvedAt:   &completedAt,
+		Resolution:   string(policy.ApprovalStatusApproved),
+		Comment:      "approved",
+	}
+	if err := store.UpsertApproval(context.Background(), approval); err != nil {
+		t.Fatalf("UpsertApproval returned error: %v", err)
+	}
+
+	decision := policy.Decision{
+		DecisionID:   "decision_1",
+		Action:       "tool_call.execute",
+		ResourceKind: "capability",
+		ResourceID:   "shell",
+		Outcome:      policy.DecisionOutcomeApproved,
+		Reason:       "needs approval",
+		ApprovalID:   approval.ApprovalID,
+		CreatedAt:    time.Now().UTC().Add(-7 * time.Minute),
+	}
+	if err := store.UpsertDecision(context.Background(), decision); err != nil {
+		t.Fatalf("UpsertDecision returned error: %v", err)
+	}
+
+	pairings, err := store.ListPairings(context.Background())
+	if err != nil {
+		t.Fatalf("ListPairings returned error: %v", err)
+	}
+	if len(pairings) != 1 || pairings[0].PairingID != pairing.PairingID {
+		t.Fatalf("expected persisted pairing, got %+v", pairings)
+	}
+
+	tokens, err := store.ListAccessTokens(context.Background())
+	if err != nil {
+		t.Fatalf("ListAccessTokens returned error: %v", err)
+	}
+	if len(tokens) != 1 || tokens[0].TokenID != token.TokenID {
+		t.Fatalf("expected persisted token, got %+v", tokens)
+	}
+
+	approvals, err := store.ListApprovals(context.Background())
+	if err != nil {
+		t.Fatalf("ListApprovals returned error: %v", err)
+	}
+	if len(approvals) != 1 || approvals[0].ApprovalID != approval.ApprovalID {
+		t.Fatalf("expected persisted approval, got %+v", approvals)
+	}
+
+	decisions, err := store.ListDecisions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDecisions returned error: %v", err)
+	}
+	if len(decisions) != 1 || decisions[0].DecisionID != decision.DecisionID {
+		t.Fatalf("expected persisted decision, got %+v", decisions)
 	}
 }
 

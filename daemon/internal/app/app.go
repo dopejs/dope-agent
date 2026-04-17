@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/api"
+	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
@@ -31,6 +32,7 @@ type App struct {
 	Router               *router.SessionRouter
 	Runtime              *runtime.Manager
 	Policy               *policy.Engine
+	Auth                 *auth.Manager
 	LLM                  *llm.Dispatcher
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
@@ -54,11 +56,12 @@ func New() (*App, error) {
 	runtimeManager := runtime.NewManager()
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
 	policyEngine := policy.NewEngine()
+	authManager := auth.NewManager()
 	llmDispatcher := llm.NewDispatcher()
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 
-	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor); err != nil {
+	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager); err != nil {
 		return nil, err
 	}
 
@@ -67,6 +70,7 @@ func New() (*App, error) {
 		Logger:       logger.Slog(),
 		EventBus:     eventBus,
 		Policy:       policyEngine,
+		Auth:         authManager,
 		Router:       sessionRouter,
 		Runtime:      runtimeManager,
 		LLM:          llmDispatcher,
@@ -85,6 +89,7 @@ func New() (*App, error) {
 		Router:               sessionRouter,
 		Runtime:              runtimeManager,
 		Policy:               policyEngine,
+		Auth:                 authManager,
 		LLM:                  llmDispatcher,
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,
@@ -198,7 +203,7 @@ func newEventID() string {
 	return "evt_" + hex.EncodeToString(buf)
 }
 
-func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor) error {
+func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager) error {
 	if sqliteStore == nil {
 		return nil
 	}
@@ -227,6 +232,30 @@ func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, 
 	}
 	if capabilitySupervisor != nil {
 		capabilitySupervisor.Restore(persistedCapabilities)
+	}
+
+	persistedApprovals, err := sqliteStore.ListApprovals(ctx)
+	if err != nil {
+		return fmt.Errorf("load persisted approvals: %w", err)
+	}
+	persistedDecisions, err := sqliteStore.ListDecisions(ctx)
+	if err != nil {
+		return fmt.Errorf("load persisted decisions: %w", err)
+	}
+	if policyEngine != nil {
+		policyEngine.Restore(persistedApprovals, persistedDecisions)
+	}
+
+	persistedPairings, err := sqliteStore.ListPairings(ctx)
+	if err != nil {
+		return fmt.Errorf("load persisted pairings: %w", err)
+	}
+	persistedTokens, err := sqliteStore.ListAccessTokens(ctx)
+	if err != nil {
+		return fmt.Errorf("load persisted access tokens: %w", err)
+	}
+	if authManager != nil {
+		authManager.Restore(persistedPairings, persistedTokens)
 	}
 
 	persistedEvents, err := sqliteStore.ListEvents(ctx, events.Filter{})

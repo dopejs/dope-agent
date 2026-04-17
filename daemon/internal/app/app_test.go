@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
@@ -113,8 +115,10 @@ func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 	restoreCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
 	restoredConnectors := connectors.NewSupervisor()
 	restoredCapabilities := capabilities.NewSupervisor()
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities); err != nil {
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -200,8 +204,10 @@ func TestRecoverPersistedStateRestoresSupervisionState(t *testing.T) {
 	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
 	restoredConnectors := connectors.NewSupervisor()
 	restoredCapabilities := capabilities.NewSupervisor()
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities); err != nil {
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -225,6 +231,107 @@ func TestRecoverPersistedStateRestoresSupervisionState(t *testing.T) {
 	}
 	if gotCapability.BackoffSeconds != 20 {
 		t.Fatalf("expected restored capability backoff 20, got %d", gotCapability.BackoffSeconds)
+	}
+}
+
+func TestRecoverPersistedStateRestoresAuthAndPolicyState(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	completedAt := time.Now().UTC().Add(-2 * time.Minute)
+	pairing := auth.Pairing{
+		PairingID:   "pair_restore",
+		Mode:        auth.PairingModeLocal,
+		Label:       "web-ui",
+		Status:      auth.PairingStatusCompleted,
+		CodeHash:    "hash",
+		CreatedAt:   time.Now().UTC().Add(-10 * time.Minute),
+		UpdatedAt:   time.Now().UTC().Add(-5 * time.Minute),
+		ExpiresAt:   time.Now().UTC().Add(10 * time.Minute),
+		CompletedAt: &completedAt,
+	}
+	if err := sqliteStore.UpsertPairing(ctx, pairing); err != nil {
+		t.Fatalf("UpsertPairing returned error: %v", err)
+	}
+
+	token := auth.AccessToken{
+		TokenID:      "tok_restore",
+		Label:        "web-ui",
+		Mode:         auth.PairingModeLocal,
+		TokenHash:    "token-hash",
+		TokenPreview: "dope_preview",
+		CreatedAt:    time.Now().UTC().Add(-9 * time.Minute),
+		UpdatedAt:    time.Now().UTC().Add(-time.Minute),
+	}
+	if err := sqliteStore.UpsertAccessToken(ctx, token); err != nil {
+		t.Fatalf("UpsertAccessToken returned error: %v", err)
+	}
+
+	approval := policy.Approval{
+		ApprovalID:   "approval_restore",
+		Action:       "tool_call.execute",
+		ResourceKind: "capability",
+		ResourceID:   "shell",
+		Reason:       "needs approval",
+		RequestedBy:  "web-ui",
+		Status:       policy.ApprovalStatusApproved,
+		CreatedAt:    time.Now().UTC().Add(-8 * time.Minute),
+		UpdatedAt:    time.Now().UTC().Add(-7 * time.Minute),
+		ResolvedAt:   &completedAt,
+		Resolution:   string(policy.ApprovalStatusApproved),
+	}
+	if err := sqliteStore.UpsertApproval(ctx, approval); err != nil {
+		t.Fatalf("UpsertApproval returned error: %v", err)
+	}
+
+	decision := policy.Decision{
+		DecisionID:   "decision_restore",
+		Action:       "tool_call.execute",
+		ResourceKind: "capability",
+		ResourceID:   "shell",
+		Outcome:      policy.DecisionOutcomeApproved,
+		Reason:       "needs approval",
+		ApprovalID:   approval.ApprovalID,
+		CreatedAt:    time.Now().UTC().Add(-7 * time.Minute),
+	}
+	if err := sqliteStore.UpsertDecision(ctx, decision); err != nil {
+		t.Fatalf("UpsertDecision returned error: %v", err)
+	}
+
+	restoredRouter := router.NewSessionRouter()
+	restoredRuntime := runtime.NewManager()
+	restoredEventBus := events.NewBus()
+	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredConnectors := connectors.NewSupervisor()
+	restoredCapabilities := capabilities.NewSupervisor()
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+
+	if got, ok := restoredAuth.GetPairing(pairing.PairingID); !ok || got.Status != auth.PairingStatusCompleted {
+		t.Fatalf("expected restored completed pairing, got %+v ok=%v", got, ok)
+	}
+	if got, ok := restoredAuth.GetToken(token.TokenID); !ok || got.TokenPreview != token.TokenPreview {
+		t.Fatalf("expected restored token, got %+v ok=%v", got, ok)
+	}
+	if got, ok := restoredPolicy.GetApproval(approval.ApprovalID); !ok || got.Status != policy.ApprovalStatusApproved {
+		t.Fatalf("expected restored approved approval, got %+v ok=%v", got, ok)
+	}
+	if len(restoredPolicy.ListDecisions()) != 1 {
+		t.Fatalf("expected 1 restored decision, got %d", len(restoredPolicy.ListDecisions()))
 	}
 }
 
@@ -293,8 +400,12 @@ func TestAppRestartRestoresRuntimeBoundary(t *testing.T) {
 		t.Fatalf("first New returned error: %v", err)
 	}
 
+	authHeader := testAuthHeader(t, first.Auth)
+
 	createRunRec := httptest.NewRecorder()
-	first.Server.Handler().ServeHTTP(createRunRec, httptest.NewRequest(http.MethodPost, "/v1/runs", strings.NewReader(`{"entrypoint":"chat","goal":"restart-safe"}`)))
+	createRunReq := httptest.NewRequest(http.MethodPost, "/v1/runs", strings.NewReader(`{"entrypoint":"chat","goal":"restart-safe"}`))
+	createRunReq.Header.Set("Authorization", authHeader)
+	first.Server.Handler().ServeHTTP(createRunRec, createRunReq)
 	if createRunRec.Code != http.StatusCreated {
 		t.Fatalf("expected 201 for run create, got %d", createRunRec.Code)
 	}
@@ -304,7 +415,9 @@ func TestAppRestartRestoresRuntimeBoundary(t *testing.T) {
 	}
 
 	createStepRec := httptest.NewRecorder()
-	first.Server.Handler().ServeHTTP(createStepRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+createdRun.RunID+"/steps", strings.NewReader(`{"title":"recover me","kind":"task"}`)))
+	createStepReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+createdRun.RunID+"/steps", strings.NewReader(`{"title":"recover me","kind":"task"}`))
+	createStepReq.Header.Set("Authorization", authHeader)
+	first.Server.Handler().ServeHTTP(createStepRec, createStepReq)
 	if createStepRec.Code != http.StatusCreated {
 		t.Fatalf("expected 201 for step create, got %d", createStepRec.Code)
 	}
@@ -314,7 +427,9 @@ func TestAppRestartRestoresRuntimeBoundary(t *testing.T) {
 	}
 
 	updateStepRec := httptest.NewRecorder()
-	first.Server.Handler().ServeHTTP(updateStepRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+createdRun.RunID+"/steps/"+createdStep.StepID+"/status", strings.NewReader(`{"status":"planning"}`)))
+	updateStepReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+createdRun.RunID+"/steps/"+createdStep.StepID+"/status", strings.NewReader(`{"status":"planning"}`))
+	updateStepReq.Header.Set("Authorization", authHeader)
+	first.Server.Handler().ServeHTTP(updateStepRec, updateStepReq)
 	if updateStepRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for step status update, got %d", updateStepRec.Code)
 	}
@@ -350,7 +465,9 @@ func TestAppRestartRestoresRuntimeBoundary(t *testing.T) {
 	}
 
 	eventsRec := httptest.NewRecorder()
-	second.Server.Handler().ServeHTTP(eventsRec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+createdRun.RunID+"/events", nil))
+	eventsReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+createdRun.RunID+"/events", nil)
+	eventsReq.Header.Set("Authorization", testAuthHeader(t, second.Auth))
+	second.Server.Handler().ServeHTTP(eventsRec, eventsReq)
 	if eventsRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for run events after restart, got %d", eventsRec.Code)
 	}
@@ -367,4 +484,111 @@ func TestAppRestartRestoresRuntimeBoundary(t *testing.T) {
 	if eventList.NextCursor == 0 {
 		t.Fatal("expected next cursor after restart")
 	}
+}
+
+func TestAppRestartRestoresAuthAndApprovalAPIState(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	t.Setenv("DOPE_DATA_DIR", dataDir)
+	t.Setenv("DOPE_BIND_ADDR", "127.0.0.1:0")
+	t.Setenv("DOPE_LOG_LEVEL", "error")
+	t.Setenv("DOPE_VERSION", "test")
+
+	first, err := New()
+	if err != nil {
+		t.Fatalf("first New returned error: %v", err)
+	}
+
+	startRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(startRec, httptest.NewRequest(http.MethodPost, "/v1/auth/pairings/start", strings.NewReader(`{"mode":"local","label":"web-ui"}`)))
+	if startRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for pairing start, got %d", startRec.Code)
+	}
+	var pairingStart struct {
+		Pairing     auth.Pairing `json:"pairing"`
+		PairingCode string       `json:"pairingCode"`
+	}
+	if err := json.Unmarshal(startRec.Body.Bytes(), &pairingStart); err != nil {
+		t.Fatalf("failed to decode pairing start response: %v", err)
+	}
+
+	completeRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(completeRec, httptest.NewRequest(http.MethodPost, "/v1/auth/pairings/"+pairingStart.Pairing.PairingID+"/complete", strings.NewReader(`{"code":"`+pairingStart.PairingCode+`"}`)))
+	if completeRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for pairing complete, got %d", completeRec.Code)
+	}
+	var pairingComplete struct {
+		AccessToken string `json:"accessToken"`
+	}
+	if err := json.Unmarshal(completeRec.Body.Bytes(), &pairingComplete); err != nil {
+		t.Fatalf("failed to decode pairing complete response: %v", err)
+	}
+	authHeader := "Bearer " + pairingComplete.AccessToken
+
+	createApprovalReq := httptest.NewRequest(http.MethodPost, "/v1/policy/approvals", strings.NewReader(`{"action":"tool_call.execute","resourceKind":"capability","resourceId":"shell","reason":"restart persistence"}`))
+	createApprovalReq.Header.Set("Authorization", authHeader)
+	createApprovalRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(createApprovalRec, createApprovalReq)
+	if createApprovalRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for approval create, got %d body=%s", createApprovalRec.Code, createApprovalRec.Body.String())
+	}
+	var created struct {
+		Approval policy.Approval `json:"approval"`
+	}
+	if err := json.Unmarshal(createApprovalRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("failed to decode approval create response: %v", err)
+	}
+
+	if err := first.Close(context.Background()); err != nil {
+		t.Fatalf("first Close returned error: %v", err)
+	}
+
+	second, err := New()
+	if err != nil {
+		t.Fatalf("second New returned error: %v", err)
+	}
+	defer func() {
+		if err := second.Close(context.Background()); err != nil {
+			t.Fatalf("second Close returned error: %v", err)
+		}
+	}()
+
+	meReq := httptest.NewRequest(http.MethodGet, "/v1/auth/me", nil)
+	meReq.Header.Set("Authorization", authHeader)
+	meRec := httptest.NewRecorder()
+	second.Server.Handler().ServeHTTP(meRec, meReq)
+	if meRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for auth me after restart, got %d body=%s", meRec.Code, meRec.Body.String())
+	}
+
+	approvalReq := httptest.NewRequest(http.MethodGet, "/v1/policy/approvals/"+created.Approval.ApprovalID, nil)
+	approvalReq.Header.Set("Authorization", authHeader)
+	approvalRec := httptest.NewRecorder()
+	second.Server.Handler().ServeHTTP(approvalRec, approvalReq)
+	if approvalRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for approval get after restart, got %d body=%s", approvalRec.Code, approvalRec.Body.String())
+	}
+	var restored policy.Approval
+	if err := json.Unmarshal(approvalRec.Body.Bytes(), &restored); err != nil {
+		t.Fatalf("failed to decode approval get response: %v", err)
+	}
+	if restored.ApprovalID != created.Approval.ApprovalID {
+		t.Fatalf("expected approval ID %s, got %s", created.Approval.ApprovalID, restored.ApprovalID)
+	}
+}
+
+func testAuthHeader(t *testing.T, manager *auth.Manager) string {
+	t.Helper()
+
+	pairing, code, err := manager.StartPairing(auth.StartPairingInput{
+		Mode:  auth.PairingModeLocal,
+		Label: "test-client",
+	})
+	if err != nil {
+		t.Fatalf("StartPairing returned error: %v", err)
+	}
+	_, _, tokenSecret, err := manager.CompletePairing(pairing.PairingID, auth.CompletePairingInput{Code: code})
+	if err != nil {
+		t.Fatalf("CompletePairing returned error: %v", err)
+	}
+	return "Bearer " + tokenSecret
 }

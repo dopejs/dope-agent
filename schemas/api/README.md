@@ -11,6 +11,8 @@ The first P0 schemas should define:
 - connector list response
 - capability resource
 - capability list response
+- auth pairing resource
+- auth access token resource
 - llm dispatch resource
 - llm dispatch list response
 - approval resource
@@ -24,6 +26,8 @@ The first P0 schemas should define:
 - create run request
 - create connector request
 - create capability request
+- start pairing request
+- complete pairing request
 - create llm dispatch request
 - request approval request
 - resolve approval request

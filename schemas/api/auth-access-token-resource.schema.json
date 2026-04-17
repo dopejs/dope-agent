@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/auth-access-token-resource.schema.json",
+  "title": "AuthAccessTokenResource",
+  "type": "object",
+  "required": [
+    "tokenId",
+    "label",
+    "mode",
+    "tokenPreview",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tokenId": { "type": "string" },
+    "label": { "type": "string" },
+    "mode": { "type": "string", "enum": ["local", "token"] },
+    "tokenPreview": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "lastUsedAt": { "type": "string", "format": "date-time" }
+  }
+}

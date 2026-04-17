@@ -56,9 +56,9 @@ Current completion should be read as:
 
 ## Roadmap 4: Operator Trust And Security
 
-- [ ] Local-first auth and pairing
-- [ ] Approval enforcement integration
-- [ ] Approval durability
+- [x] Local-first auth and pairing
+- [x] Approval enforcement integration
+- [x] Approval durability
 
 ## Roadmap 5: Contract Hardening And Ship Readiness
 
@@ -175,6 +175,7 @@ These are implemented pieces that support later roadmaps. They are real progress
 - [x] Create session schemas
 - [x] Create policy and approval schemas
 - [x] Create connector and capability schemas
+- [x] Create auth and pairing schemas
 - [x] Create llm dispatch schemas
 - [ ] Add schema enforcement and generation pipeline
 - [x] Add runtime unit tests
@@ -184,6 +185,7 @@ These are implemented pieces that support later roadmaps. They are real progress
 - [x] Add checkpoint tests
 - [x] Add config loading tests
 - [x] Add integration tests across daemon restart
+- [x] Add auth and approval restart tests
 - [x] Add llm dispatch tests
 
 ## Working Rule

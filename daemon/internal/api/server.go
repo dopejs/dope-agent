@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
@@ -31,6 +32,7 @@ type Dependencies struct {
 	Logger       *slog.Logger
 	EventBus     *events.Bus
 	Policy       *policy.Engine
+	Auth         *auth.Manager
 	Router       *router.SessionRouter
 	Runtime      *runtime.Manager
 	LLM          *llm.Dispatcher
@@ -45,6 +47,7 @@ type Server struct {
 	logger       *slog.Logger
 	eventBus     *events.Bus
 	policy       *policy.Engine
+	auth         *auth.Manager
 	router       *router.SessionRouter
 	runtime      *runtime.Manager
 	llm          *llm.Dispatcher
@@ -57,6 +60,27 @@ type Server struct {
 
 func NewServer(deps Dependencies) *Server {
 	mux := http.NewServeMux()
+	protected := func(handler http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			token, ok, err := authenticateRequest(deps.Auth, r)
+			if err != nil {
+				writeError(w, http.StatusUnauthorized, err.Error())
+				return
+			}
+			if deps.Auth != nil && !ok {
+				writeError(w, http.StatusUnauthorized, auth.ErrAuthRequired.Error())
+				return
+			}
+			if ok {
+				if err := persistAccessToken(r.Context(), deps.Store, token); err != nil {
+					writeError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+				r = r.WithContext(withAuthenticatedToken(r.Context(), token))
+			}
+			handler(w, r)
+		}
+	}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":      true,
@@ -71,61 +95,71 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/system/info", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, buildSystemInfoResponse(deps.Config))
 	})
-	mux.HandleFunc("/v1/config", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/auth/pairings/start", func(w http.ResponseWriter, r *http.Request) {
+		handleAuthPairingStart(deps.Auth, deps.EventBus, deps.Store, w, r)
+	})
+	mux.HandleFunc("/v1/auth/pairings/", func(w http.ResponseWriter, r *http.Request) {
+		handleAuthPairingRoutes(deps.Auth, deps.EventBus, deps.Store, w, r)
+	})
+	mux.HandleFunc("/v1/auth/me", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleAuthMe(deps.Auth, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/config", protected(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		writeJSON(w, http.StatusOK, buildConfigResponse(deps.Config))
-	})
-	mux.HandleFunc("/v1/events/stream", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/events/stream", protected(func(w http.ResponseWriter, r *http.Request) {
 		streamEvents(deps.EventBus, deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/runs", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/runs", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleRuns(deps.Router, deps.Runtime, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
-	})
-	mux.HandleFunc("/v1/runs/", func(w http.ResponseWriter, r *http.Request) {
-		handleRunRoutes(deps.Runtime, deps.Capabilities, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
-	})
-	mux.HandleFunc("/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/runs/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleRunRoutes(deps.Runtime, deps.Policy, deps.Capabilities, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
+	}))
+	mux.HandleFunc("/v1/sessions", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSessions(deps.Router, deps.EventBus, deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/sessions/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/sessions/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSessionRoutes(deps.Router, deps.EventBus, deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/policy/approvals", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/policy/approvals", protected(func(w http.ResponseWriter, r *http.Request) {
 		handlePolicyApprovals(deps.Policy, deps.EventBus, deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/policy/approvals/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/policy/approvals/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handlePolicyApprovalRoutes(deps.Policy, deps.EventBus, deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/llm/dispatches/stream", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/llm/dispatches/stream", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleLLMDispatchStream(deps.LLM, deps.EventBus, deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/llm/dispatches", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/llm/dispatches", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleLLMDispatches(deps.LLM, deps.EventBus, deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/llm/dispatches/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/llm/dispatches/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleLLMDispatchRoutes(deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/connectors", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/connectors", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleConnectors(deps.Connectors, deps.EventBus, deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/connectors/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/connectors/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleConnectorRoutes(deps.Connectors, deps.EventBus, deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/capabilities", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleCapabilities(deps.Capabilities, deps.EventBus, deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/capabilities/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/capabilities/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleCapabilityRoutes(deps.Capabilities, deps.EventBus, deps.Store, w, r)
-	})
+	}))
 
 	return &Server{
 		cfg:          deps.Config,
 		logger:       deps.Logger,
 		eventBus:     deps.EventBus,
 		policy:       deps.Policy,
+		auth:         deps.Auth,
 		router:       deps.Router,
 		runtime:      deps.Runtime,
 		llm:          deps.LLM,
@@ -311,7 +345,7 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 	}
 }
 
-func handleRunRoutes(manager *runtime.Manager, capabilitySupervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
+func handleRunRoutes(manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
 	if path == "" {
 		http.NotFound(w, r)
@@ -360,7 +394,7 @@ func handleRunRoutes(manager *runtime.Manager, capabilitySupervisor *capabilitie
 	}
 
 	if len(parts) == 4 && parts[1] == "steps" && parts[3] == "tool-calls" {
-		handleRunStepToolCalls(manager, capabilitySupervisor, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
+		handleRunStepToolCalls(manager, policyEngine, capabilitySupervisor, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
 		return
 	}
 
@@ -645,10 +679,21 @@ func handlePolicyApprovals(policyEngine *policy.Engine, eventBus *events.Bus, sq
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if input.RequestedBy == "" {
+			input.RequestedBy = currentActor(r.Context())
+		}
 
 		approval, decision, err := policyEngine.RequestApproval(input)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := persistApproval(r.Context(), sqliteStore, approval); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := persistDecision(r.Context(), sqliteStore, decision); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
@@ -759,6 +804,14 @@ func handlePolicyApprovalResolve(policyEngine *policy.Engine, eventBus *events.B
 		}
 		return
 	}
+	if err := persistApproval(r.Context(), sqliteStore, approval); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := persistDecision(r.Context(), sqliteStore, decision); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
 		Category: "policy",
@@ -801,6 +854,139 @@ func handlePolicyApprovalResolve(policyEngine *policy.Engine, eventBus *events.B
 		"approval": approval,
 		"decision": decision,
 	})
+}
+
+func handleAuthPairingStart(authManager *auth.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if authManager == nil {
+		writeError(w, http.StatusInternalServerError, "auth manager is not configured")
+		return
+	}
+
+	var input auth.StartPairingInput
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	pairing, code, err := authManager.StartPairing(input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := persistPairing(r.Context(), sqliteStore, pairing); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+		Category: "system",
+		Name:     "auth.pairing_started",
+		Resource: events.Resource{Kind: "pairing", ID: pairing.PairingID},
+		Payload: map[string]any{
+			"mode":      pairing.Mode,
+			"status":    pairing.Status,
+			"expiresAt": pairing.ExpiresAt,
+			"label":     pairing.Label,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"pairing":     pairing,
+		"pairingCode": code,
+	})
+}
+
+func handleAuthPairingRoutes(authManager *auth.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if authManager == nil {
+		writeError(w, http.StatusInternalServerError, "auth manager is not configured")
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/v1/auth/pairings/")
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+	parts := strings.Split(path, "/")
+	if len(parts) == 2 && parts[1] == "complete" {
+		handleAuthPairingComplete(authManager, eventBus, sqliteStore, w, r, parts[0])
+		return
+	}
+	http.NotFound(w, r)
+}
+
+func handleAuthPairingComplete(authManager *auth.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, pairingID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var input auth.CompletePairingInput
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	pairing, token, tokenSecret, err := authManager.CompletePairing(pairingID, input)
+	if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrPairingNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	if err := persistPairing(r.Context(), sqliteStore, pairing); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := persistAccessToken(r.Context(), sqliteStore, token); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+		Category: "system",
+		Name:     "auth.pairing_completed",
+		Resource: events.Resource{Kind: "pairing", ID: pairing.PairingID},
+		Payload: map[string]any{
+			"mode":    pairing.Mode,
+			"status":  pairing.Status,
+			"tokenId": token.TokenID,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"pairing":     pairing,
+		"token":       token,
+		"accessToken": tokenSecret,
+	})
+}
+
+func handleAuthMe(authManager *auth.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	token, ok := authenticatedToken(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, auth.ErrAuthRequired.Error())
+		return
+	}
+	if err := persistAccessToken(r.Context(), sqliteStore, token); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, token)
 }
 
 func handleLLMDispatches(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
@@ -1595,7 +1781,7 @@ func handleRunStepStatus(manager *runtime.Manager, eventBus *events.Bus, sqliteS
 	writeJSON(w, http.StatusOK, step)
 }
 
-func handleRunStepToolCalls(manager *runtime.Manager, capabilitySupervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
+func handleRunStepToolCalls(manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
 	switch r.Method {
 	case http.MethodGet:
 		toolCalls, err := manager.ListToolCalls(runID, stepID)
@@ -1610,8 +1796,13 @@ func handleRunStepToolCalls(manager *runtime.Manager, capabilitySupervisor *capa
 		}
 		writeJSON(w, http.StatusOK, ListResponse[runtime.ToolCall]{Items: toolCalls})
 	case http.MethodPost:
-		var input runtime.CreateToolCallInput
-		if err := decodeJSONBody(r, &input); err != nil {
+		var request struct {
+			CapabilityID string `json:"capabilityId"`
+			ToolName     string `json:"toolName"`
+			Input        any    `json:"input"`
+			ApprovalID   string `json:"approvalId"`
+		}
+		if err := decodeJSONBody(r, &request); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -1619,9 +1810,26 @@ func handleRunStepToolCalls(manager *runtime.Manager, capabilitySupervisor *capa
 			writeError(w, http.StatusInternalServerError, "capability supervisor is not configured")
 			return
 		}
-		if _, ok := capabilitySupervisor.Get(input.CapabilityID); !ok {
+		capability, ok := capabilitySupervisor.Get(request.CapabilityID)
+		if !ok {
 			http.NotFound(w, r)
 			return
+		}
+		if policyEngine != nil && requiresApprovalForCapability(capability) {
+			approvalResponse, approved, err := authorizeHighRiskToolCall(r, policyEngine, sqliteStore, eventBus, request.ApprovalID, capability, currentActor(r.Context()))
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if !approved {
+				writeJSON(w, approvalResponse.StatusCode, approvalResponse.Body)
+				return
+			}
+		}
+		input := runtime.CreateToolCallInput{
+			CapabilityID: request.CapabilityID,
+			ToolName:     request.ToolName,
+			Input:        request.Input,
 		}
 		toolCall, err := manager.CreateToolCall(runID, stepID, input)
 		if err != nil {
@@ -1809,6 +2017,34 @@ func persistSession(ctx context.Context, sqliteStore *store.SQLiteStore, session
 	return sqliteStore.UpsertSession(ctx, session)
 }
 
+func persistPairing(ctx context.Context, sqliteStore *store.SQLiteStore, pairing auth.Pairing) error {
+	if sqliteStore == nil {
+		return nil
+	}
+	return sqliteStore.UpsertPairing(ctx, pairing)
+}
+
+func persistAccessToken(ctx context.Context, sqliteStore *store.SQLiteStore, token auth.AccessToken) error {
+	if sqliteStore == nil {
+		return nil
+	}
+	return sqliteStore.UpsertAccessToken(ctx, token)
+}
+
+func persistApproval(ctx context.Context, sqliteStore *store.SQLiteStore, approval policy.Approval) error {
+	if sqliteStore == nil {
+		return nil
+	}
+	return sqliteStore.UpsertApproval(ctx, approval)
+}
+
+func persistDecision(ctx context.Context, sqliteStore *store.SQLiteStore, decision policy.Decision) error {
+	if sqliteStore == nil {
+		return nil
+	}
+	return sqliteStore.UpsertDecision(ctx, decision)
+}
+
 func persistStep(ctx context.Context, sqliteStore *store.SQLiteStore, step runtime.Step) error {
 	if sqliteStore == nil {
 		return nil
@@ -1905,6 +2141,157 @@ func publishEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.
 	}
 
 	return eventBus.Publish(prepared), nil
+}
+
+type contextKey string
+
+const authenticatedTokenKey contextKey = "authenticated_token"
+
+func withAuthenticatedToken(ctx context.Context, token auth.AccessToken) context.Context {
+	return context.WithValue(ctx, authenticatedTokenKey, token)
+}
+
+func authenticatedToken(ctx context.Context) (auth.AccessToken, bool) {
+	token, ok := ctx.Value(authenticatedTokenKey).(auth.AccessToken)
+	return token, ok
+}
+
+func currentActor(ctx context.Context) string {
+	token, ok := authenticatedToken(ctx)
+	if !ok {
+		return ""
+	}
+	if token.Label != "" {
+		return token.Label
+	}
+	return token.TokenID
+}
+
+func authenticateRequest(authManager *auth.Manager, r *http.Request) (auth.AccessToken, bool, error) {
+	if authManager == nil {
+		return auth.AccessToken{}, false, nil
+	}
+	header := strings.TrimSpace(r.Header.Get("Authorization"))
+	if header == "" {
+		return auth.AccessToken{}, false, nil
+	}
+	tokenSecret, ok := strings.CutPrefix(header, "Bearer ")
+	if !ok || strings.TrimSpace(tokenSecret) == "" {
+		return auth.AccessToken{}, false, auth.ErrTokenInvalid
+	}
+	token, err := authManager.Authenticate(strings.TrimSpace(tokenSecret))
+	if err != nil {
+		return auth.AccessToken{}, false, err
+	}
+	return token, true, nil
+}
+
+type approvalGateResponse struct {
+	StatusCode int
+	Body       any
+}
+
+func requiresApprovalForCapability(capability capabilities.Capability) bool {
+	switch capability.Kind {
+	case "exec", "shell", "browser":
+		return true
+	default:
+		return false
+	}
+}
+
+func authorizeHighRiskToolCall(r *http.Request, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, approvalID string, capability capabilities.Capability, requestedBy string) (approvalGateResponse, bool, error) {
+	if policyEngine == nil {
+		return approvalGateResponse{}, false, errors.New("policy engine is not configured")
+	}
+
+	if approvalID == "" {
+		approval, decision, err := policyEngine.RequestApproval(policy.RequestApprovalInput{
+			Action:       "tool_call.execute",
+			ResourceKind: "capability",
+			ResourceID:   capability.CapabilityID,
+			Reason:       "high-risk capability execution requires approval",
+			RequestedBy:  requestedBy,
+		})
+		if err != nil {
+			return approvalGateResponse{}, false, err
+		}
+		if err := persistApproval(r.Context(), sqliteStore, approval); err != nil {
+			return approvalGateResponse{}, false, err
+		}
+		if err := persistDecision(r.Context(), sqliteStore, decision); err != nil {
+			return approvalGateResponse{}, false, err
+		}
+		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+			Category: "policy",
+			Name:     "policy.approval_requested",
+			Resource: events.Resource{Kind: "approval", ID: approval.ApprovalID},
+			Payload: map[string]any{
+				"action":       approval.Action,
+				"resourceKind": approval.ResourceKind,
+				"resourceId":   approval.ResourceID,
+				"status":       approval.Status,
+			},
+		}); err != nil {
+			return approvalGateResponse{}, false, err
+		}
+		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+			Category: "policy",
+			Name:     "policy.decision_recorded",
+			Resource: events.Resource{Kind: "decision", ID: decision.DecisionID},
+			Payload: map[string]any{
+				"action":       decision.Action,
+				"resourceKind": decision.ResourceKind,
+				"resourceId":   decision.ResourceID,
+				"outcome":      decision.Outcome,
+				"approvalId":   decision.ApprovalID,
+			},
+		}); err != nil {
+			return approvalGateResponse{}, false, err
+		}
+
+		return approvalGateResponse{
+			StatusCode: http.StatusConflict,
+			Body: map[string]any{
+				"approval": approval,
+				"decision": decision,
+			},
+		}, false, nil
+	}
+
+	approval, ok := policyEngine.GetApproval(approvalID)
+	if !ok {
+		return approvalGateResponse{
+			StatusCode: http.StatusNotFound,
+			Body:       map[string]any{"error": policy.ErrApprovalNotFound.Error()},
+		}, false, nil
+	}
+	if approval.Action != "tool_call.execute" || approval.ResourceKind != "capability" || approval.ResourceID != capability.CapabilityID {
+		return approvalGateResponse{
+			StatusCode: http.StatusBadRequest,
+			Body:       map[string]any{"error": "approval does not authorize this tool call"},
+		}, false, nil
+	}
+	switch approval.Status {
+	case policy.ApprovalStatusApproved:
+		return approvalGateResponse{}, true, nil
+	case policy.ApprovalStatusRejected:
+		return approvalGateResponse{
+			StatusCode: http.StatusForbidden,
+			Body: map[string]any{
+				"approval": approval,
+				"error":    "approval was rejected",
+			},
+		}, false, nil
+	default:
+		return approvalGateResponse{
+			StatusCode: http.StatusConflict,
+			Body: map[string]any{
+				"approval": approval,
+				"error":    "approval is still pending",
+			},
+		}, false, nil
+	}
 }
 
 func listLLMDispatches(ctx context.Context, sqliteStore *store.SQLiteStore) ([]llm.Dispatch, error) {

@@ -53,6 +53,7 @@ Execution is roadmap-driven:
 - `docs/13-daemon-api-and-event-model.md`
 - `docs/14-daemon-tasks.md`
 - `docs/15-daemon-roadmaps.md`
+- `docs/16-operator-trust-model.md`
 
 ## Working Assumptions
 

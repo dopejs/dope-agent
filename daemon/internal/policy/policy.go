@@ -153,6 +153,17 @@ func (e *Engine) GetApproval(approvalID string) (Approval, bool) {
 	return approval, ok
 }
 
+func (e *Engine) ListDecisions() []Decision {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	items := make([]Decision, 0, len(e.decisionIDs))
+	for _, decisionID := range e.decisionIDs {
+		items = append(items, e.decisionsByID[decisionID])
+	}
+	return items
+}
+
 func (e *Engine) ResolveApproval(approvalID string, input ResolveApprovalInput) (Approval, Decision, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -202,6 +213,25 @@ func (e *Engine) ResolveApproval(approvalID string, input ResolveApprovalInput) 
 	e.decisionIDs = append(e.decisionIDs, decision.DecisionID)
 
 	return approval, decision, nil
+}
+
+func (e *Engine) Restore(approvals []Approval, decisions []Decision) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.approvalsByID = make(map[string]Approval, len(approvals))
+	e.approvalIDs = make([]string, 0, len(approvals))
+	for _, approval := range approvals {
+		e.approvalsByID[approval.ApprovalID] = approval
+		e.approvalIDs = append(e.approvalIDs, approval.ApprovalID)
+	}
+
+	e.decisionsByID = make(map[string]Decision, len(decisions))
+	e.decisionIDs = make([]string, 0, len(decisions))
+	for _, decision := range decisions {
+		e.decisionsByID[decision.DecisionID] = decision
+		e.decisionIDs = append(e.decisionIDs, decision.DecisionID)
+	}
 }
 
 func newApprovalID() string {

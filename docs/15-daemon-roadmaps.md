@@ -328,7 +328,7 @@ Task definition of done:
 
 ## Roadmap 4: Operator Trust And Security
 
-Status: `[ ] not started`
+Status: `[x] complete`
 
 ### Goal
 
