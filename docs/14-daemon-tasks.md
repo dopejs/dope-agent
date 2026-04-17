@@ -49,10 +49,10 @@ Current completion should be read as:
 
 ## Roadmap 3: LLM Dispatch Plane
 
-- [ ] Provider abstraction
-- [ ] Usage accounting
-- [ ] Retry and timeout policy
-- [ ] Streaming integration
+- [x] Provider abstraction
+- [x] Usage accounting
+- [x] Retry and timeout policy
+- [x] Streaming integration
 
 ## Roadmap 4: Operator Trust And Security
 
@@ -175,6 +175,7 @@ These are implemented pieces that support later roadmaps. They are real progress
 - [x] Create session schemas
 - [x] Create policy and approval schemas
 - [x] Create connector and capability schemas
+- [x] Create llm dispatch schemas
 - [ ] Add schema enforcement and generation pipeline
 - [x] Add runtime unit tests
 - [x] Add API unit tests
@@ -183,6 +184,7 @@ These are implemented pieces that support later roadmaps. They are real progress
 - [x] Add checkpoint tests
 - [x] Add config loading tests
 - [x] Add integration tests across daemon restart
+- [x] Add llm dispatch tests
 
 ## Working Rule
 

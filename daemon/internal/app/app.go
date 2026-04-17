@@ -69,6 +69,7 @@ func New() (*App, error) {
 		Policy:       policyEngine,
 		Router:       sessionRouter,
 		Runtime:      runtimeManager,
+		LLM:          llmDispatcher,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
 		Store:        sqliteStore,

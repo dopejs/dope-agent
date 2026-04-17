@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/llm-dispatch-list.response.schema.json",
+  "title": "LLMDispatchListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "./llm-dispatch-resource.schema.json"
+      }
+    }
+  }
+}

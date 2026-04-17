@@ -8,6 +8,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 )
@@ -258,6 +259,72 @@ func TestSQLiteStorePersistsConnectorsAndCapabilities(t *testing.T) {
 	}
 	if capabilitiesList[0].BackoffSeconds != 10 {
 		t.Fatalf("expected capability backoff 10, got %d", capabilitiesList[0].BackoffSeconds)
+	}
+}
+
+func TestSQLiteStorePersistsLLMDispatches(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	startedAt := time.Now().UTC().Add(-5 * time.Second)
+	completedAt := time.Now().UTC().Add(-2 * time.Second)
+	dispatch := llm.Dispatch{
+		DispatchID:   "disp_1",
+		Provider:     "echo",
+		Model:        "test-model",
+		Messages:     []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+		Stream:       false,
+		Status:       llm.DispatchStatusCompleted,
+		Output:       "hello",
+		FinishReason: "stop",
+		Usage:        llm.Usage{InputTokens: 1, OutputTokens: 1, TotalTokens: 2},
+		TimeoutMs:    30000,
+		MaxRetries:   1,
+		AttemptCount: 1,
+		CreatedAt:    time.Now().UTC().Add(-10 * time.Second),
+		UpdatedAt:    time.Now().UTC().Add(-time.Second),
+		StartedAt:    &startedAt,
+		CompletedAt:  &completedAt,
+	}
+	if err := store.UpsertLLMDispatch(context.Background(), dispatch); err != nil {
+		t.Fatalf("UpsertLLMDispatch returned error: %v", err)
+	}
+
+	items, err := store.ListLLMDispatches(context.Background())
+	if err != nil {
+		t.Fatalf("ListLLMDispatches returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 llm dispatch, got %d", len(items))
+	}
+	if items[0].DispatchID != dispatch.DispatchID {
+		t.Fatalf("expected dispatch ID %s, got %s", dispatch.DispatchID, items[0].DispatchID)
+	}
+	if items[0].Usage.TotalTokens != 2 {
+		t.Fatalf("expected total tokens 2, got %d", items[0].Usage.TotalTokens)
+	}
+	if len(items[0].Messages) != 1 || items[0].Messages[0].Content != "hello" {
+		t.Fatalf("expected persisted llm messages, got %+v", items[0].Messages)
+	}
+
+	got, ok, err := store.GetLLMDispatch(context.Background(), dispatch.DispatchID)
+	if err != nil {
+		t.Fatalf("GetLLMDispatch returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected llm dispatch to exist")
+	}
+	if got.Status != llm.DispatchStatusCompleted {
+		t.Fatalf("expected completed llm dispatch, got %s", got.Status)
 	}
 }
 

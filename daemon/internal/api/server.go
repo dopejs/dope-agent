@@ -19,6 +19,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -32,6 +33,7 @@ type Dependencies struct {
 	Policy       *policy.Engine
 	Router       *router.SessionRouter
 	Runtime      *runtime.Manager
+	LLM          *llm.Dispatcher
 	Connectors   *connectors.Supervisor
 	Capabilities *capabilities.Supervisor
 	Store        *store.SQLiteStore
@@ -45,6 +47,7 @@ type Server struct {
 	policy       *policy.Engine
 	router       *router.SessionRouter
 	runtime      *runtime.Manager
+	llm          *llm.Dispatcher
 	connectors   *connectors.Supervisor
 	capabilities *capabilities.Supervisor
 	store        *store.SQLiteStore
@@ -96,6 +99,15 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/policy/approvals/", func(w http.ResponseWriter, r *http.Request) {
 		handlePolicyApprovalRoutes(deps.Policy, deps.EventBus, deps.Store, w, r)
 	})
+	mux.HandleFunc("/v1/llm/dispatches/stream", func(w http.ResponseWriter, r *http.Request) {
+		handleLLMDispatchStream(deps.LLM, deps.EventBus, deps.Store, w, r)
+	})
+	mux.HandleFunc("/v1/llm/dispatches", func(w http.ResponseWriter, r *http.Request) {
+		handleLLMDispatches(deps.LLM, deps.EventBus, deps.Store, w, r)
+	})
+	mux.HandleFunc("/v1/llm/dispatches/", func(w http.ResponseWriter, r *http.Request) {
+		handleLLMDispatchRoutes(deps.Store, w, r)
+	})
 	mux.HandleFunc("/v1/connectors", func(w http.ResponseWriter, r *http.Request) {
 		handleConnectors(deps.Connectors, deps.EventBus, deps.Store, w, r)
 	})
@@ -116,6 +128,7 @@ func NewServer(deps Dependencies) *Server {
 		policy:       deps.Policy,
 		router:       deps.Router,
 		runtime:      deps.Runtime,
+		llm:          deps.LLM,
 		connectors:   deps.Connectors,
 		capabilities: deps.Capabilities,
 		store:        deps.Store,
@@ -788,6 +801,148 @@ func handlePolicyApprovalResolve(policyEngine *policy.Engine, eventBus *events.B
 		"approval": approval,
 		"decision": decision,
 	})
+}
+
+func handleLLMDispatches(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if dispatcher == nil {
+		writeError(w, http.StatusInternalServerError, "llm dispatcher is not configured")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		items, err := listLLMDispatches(r.Context(), sqliteStore)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, ListResponse[llm.Dispatch]{Items: items})
+	case http.MethodPost:
+		var input llm.CreateDispatchInput
+		if err := decodeJSONBody(r, &input); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		dispatch, err := dispatcher.Prepare(input, false)
+		if err != nil {
+			writeError(w, llmPrepareStatusCode(err), err.Error())
+			return
+		}
+		if err := persistLLMDispatch(r.Context(), sqliteStore, dispatch); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if _, err := publishLLMDispatchRequested(r.Context(), eventBus, sqliteStore, dispatch); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		finalDispatch, execErr := dispatcher.Dispatch(r.Context(), dispatch)
+		if err := persistLLMDispatch(r.Context(), sqliteStore, finalDispatch); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if _, err := publishLLMDispatchTerminal(r.Context(), eventBus, sqliteStore, finalDispatch); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if execErr != nil {
+			writeJSON(w, llmDispatchStatusCode(finalDispatch), finalDispatch)
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, finalDispatch)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func handleLLMDispatchRoutes(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/v1/llm/dispatches/")
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	dispatch, ok, err := getLLMDispatch(r.Context(), sqliteStore, path)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, dispatch)
+}
+
+func handleLLMDispatchStream(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if dispatcher == nil {
+		writeError(w, http.StatusInternalServerError, "llm dispatcher is not configured")
+		return
+	}
+
+	var input llm.CreateDispatchInput
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	dispatch, err := dispatcher.Prepare(input, true)
+	if err != nil {
+		writeError(w, llmPrepareStatusCode(err), err.Error())
+		return
+	}
+	if err := persistLLMDispatch(r.Context(), sqliteStore, dispatch); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishLLMDispatchRequested(r.Context(), eventBus, sqliteStore, dispatch); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming is not supported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	writeSSEEvent(w, "llm.dispatch.started", dispatch.DispatchID, dispatch)
+	flusher.Flush()
+
+	finalDispatch, execErr := dispatcher.DispatchStream(r.Context(), dispatch, func(chunk llm.StreamChunk) error {
+		writeSSEEvent(w, "llm.dispatch.delta", "", chunk)
+		flusher.Flush()
+		return nil
+	})
+
+	if err := persistLLMDispatch(context.Background(), sqliteStore, finalDispatch); err != nil {
+		return
+	}
+	if _, err := publishLLMDispatchTerminal(context.Background(), eventBus, sqliteStore, finalDispatch); err != nil {
+		return
+	}
+
+	if execErr == nil || finalDispatch.Status != llm.DispatchStatusCancelled {
+		writeSSEEvent(w, llmDispatchTerminalEventName(finalDispatch), dispatch.DispatchID, finalDispatch)
+		flusher.Flush()
+	}
 }
 
 func handleConnectors(supervisor *connectors.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
@@ -1675,6 +1830,13 @@ func persistCapability(ctx context.Context, sqliteStore *store.SQLiteStore, capa
 	return sqliteStore.UpsertCapability(ctx, capability)
 }
 
+func persistLLMDispatch(ctx context.Context, sqliteStore *store.SQLiteStore, dispatch llm.Dispatch) error {
+	if sqliteStore == nil {
+		return nil
+	}
+	return sqliteStore.UpsertLLMDispatch(ctx, dispatch)
+}
+
 func persistToolCall(ctx context.Context, sqliteStore *store.SQLiteStore, manager *runtime.Manager, toolCall runtime.ToolCall) error {
 	if sqliteStore == nil {
 		return nil
@@ -1743,6 +1905,101 @@ func publishEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.
 	}
 
 	return eventBus.Publish(prepared), nil
+}
+
+func listLLMDispatches(ctx context.Context, sqliteStore *store.SQLiteStore) ([]llm.Dispatch, error) {
+	if sqliteStore == nil {
+		return []llm.Dispatch{}, nil
+	}
+	return sqliteStore.ListLLMDispatches(ctx)
+}
+
+func getLLMDispatch(ctx context.Context, sqliteStore *store.SQLiteStore, dispatchID string) (llm.Dispatch, bool, error) {
+	if sqliteStore == nil {
+		return llm.Dispatch{}, false, nil
+	}
+	return sqliteStore.GetLLMDispatch(ctx, dispatchID)
+}
+
+func llmPrepareStatusCode(err error) int {
+	switch {
+	case errors.Is(err, llm.ErrProviderRequired), errors.Is(err, llm.ErrProviderNotFound), errors.Is(err, llm.ErrModelRequired), errors.Is(err, llm.ErrMessagesRequired):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func llmDispatchStatusCode(dispatch llm.Dispatch) int {
+	switch dispatch.ErrorCode {
+	case "timeout":
+		return http.StatusGatewayTimeout
+	case "provider_not_found":
+		return http.StatusBadRequest
+	case "cancelled":
+		return http.StatusRequestTimeout
+	default:
+		return http.StatusBadGateway
+	}
+}
+
+func llmDispatchTerminalEventName(dispatch llm.Dispatch) string {
+	switch dispatch.Status {
+	case llm.DispatchStatusFailed:
+		return "llm.dispatch.failed"
+	case llm.DispatchStatusCancelled:
+		return "llm.dispatch.cancelled"
+	default:
+		return "llm.dispatch.completed"
+	}
+}
+
+func publishLLMDispatchRequested(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, dispatch llm.Dispatch) (events.Event, error) {
+	return publishEvent(ctx, eventBus, sqliteStore, events.Event{
+		Category: "llm",
+		Name:     "llm.dispatch.requested",
+		Resource: events.Resource{Kind: "llm_dispatch", ID: dispatch.DispatchID},
+		Payload: map[string]any{
+			"provider":   dispatch.Provider,
+			"model":      dispatch.Model,
+			"stream":     dispatch.Stream,
+			"timeoutMs":  dispatch.TimeoutMs,
+			"maxRetries": dispatch.MaxRetries,
+			"status":     dispatch.Status,
+		},
+	})
+}
+
+func publishLLMDispatchTerminal(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, dispatch llm.Dispatch) (events.Event, error) {
+	return publishEvent(ctx, eventBus, sqliteStore, events.Event{
+		Category: "llm",
+		Name:     llmDispatchTerminalEventName(dispatch),
+		Resource: events.Resource{Kind: "llm_dispatch", ID: dispatch.DispatchID},
+		Payload: map[string]any{
+			"provider":     dispatch.Provider,
+			"model":        dispatch.Model,
+			"status":       dispatch.Status,
+			"attemptCount": dispatch.AttemptCount,
+			"finishReason": dispatch.FinishReason,
+			"usage":        dispatch.Usage,
+			"errorCode":    dispatch.ErrorCode,
+			"error":        dispatch.Error,
+		},
+	})
+}
+
+func writeSSEEvent(w io.Writer, eventName, eventID string, payload any) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	if eventID != "" {
+		_, _ = fmt.Fprintf(w, "id: %s\n", eventID)
+	}
+	if eventName != "" {
+		_, _ = fmt.Fprintf(w, "event: %s\n", eventName)
+	}
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", string(data))
 }
 
 func resolveRunSession(sessionRouter *router.SessionRouter, input runtime.CreateRunInput) (router.Session, bool, error) {
@@ -1889,7 +2146,7 @@ func streamEvents(eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.R
 	flusher.Flush()
 
 	for _, event := range history {
-		writeSSEEvent(w, flusher, event)
+		writeRuntimeSSEEvent(w, flusher, event)
 	}
 
 	ch, unsubscribe := eventBus.Subscribe(filter)
@@ -1906,7 +2163,7 @@ func streamEvents(eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.R
 			if !ok {
 				return
 			}
-			writeSSEEvent(w, flusher, event)
+			writeRuntimeSSEEvent(w, flusher, event)
 		case <-ticker.C:
 			_, _ = fmt.Fprint(w, ": keep-alive\n\n")
 			flusher.Flush()
@@ -1914,7 +2171,7 @@ func streamEvents(eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.R
 	}
 }
 
-func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, event events.Event) {
+func writeRuntimeSSEEvent(w http.ResponseWriter, flusher http.Flusher, event events.Event) {
 	payload, _ := json.Marshal(event)
 	if event.Sequence > 0 {
 		_, _ = fmt.Fprintf(w, "id: %d\n", event.Sequence)

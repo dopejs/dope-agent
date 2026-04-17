@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/llm-dispatch-requested.event.schema.json",
+  "title": "LLMDispatchRequestedEvent",
+  "allOf": [
+    {
+      "$ref": "./runtime-event.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "category": {
+          "const": "llm"
+        },
+        "name": {
+          "const": "llm.dispatch.requested"
+        },
+        "payload": {
+          "type": "object",
+          "required": ["provider", "model", "stream", "timeoutMs", "maxRetries", "status"],
+          "additionalProperties": false,
+          "properties": {
+            "provider": { "type": "string" },
+            "model": { "type": "string" },
+            "stream": { "type": "boolean" },
+            "timeoutMs": { "type": "integer", "minimum": 1 },
+            "maxRetries": { "type": "integer", "minimum": 0 },
+            "status": { "type": "string", "enum": ["queued"] }
+          }
+        }
+      }
+    }
+  ]
+}

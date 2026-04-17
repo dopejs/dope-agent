@@ -16,6 +16,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	_ "modernc.org/sqlite"
@@ -331,6 +332,144 @@ func (s *SQLiteStore) UpsertCapability(ctx context.Context, capability capabilit
 	}
 
 	return nil
+}
+
+func (s *SQLiteStore) UpsertLLMDispatch(ctx context.Context, dispatch llm.Dispatch) error {
+	if s == nil {
+		return nil
+	}
+
+	messagesJSON, err := marshalJSON(dispatch.Messages)
+	if err != nil {
+		return fmt.Errorf("marshal llm dispatch messages: %w", err)
+	}
+	usageJSON, err := marshalJSON(dispatch.Usage)
+	if err != nil {
+		return fmt.Errorf("marshal llm dispatch usage: %w", err)
+	}
+
+	var startedAt sql.NullString
+	if dispatch.StartedAt != nil {
+		startedAt = sql.NullString{String: dispatch.StartedAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+	var completedAt sql.NullString
+	if dispatch.CompletedAt != nil {
+		completedAt = sql.NullString{String: dispatch.CompletedAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO llm_dispatches (
+			dispatch_id,
+			provider,
+			model,
+			messages_json,
+			stream,
+			status,
+			output_text,
+			finish_reason,
+			usage_json,
+			error_code,
+			error_text,
+			timeout_ms,
+			max_retries,
+			attempt_count,
+			created_at,
+			updated_at,
+			started_at,
+			completed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(dispatch_id) DO UPDATE SET
+			provider = excluded.provider,
+			model = excluded.model,
+			messages_json = excluded.messages_json,
+			stream = excluded.stream,
+			status = excluded.status,
+			output_text = excluded.output_text,
+			finish_reason = excluded.finish_reason,
+			usage_json = excluded.usage_json,
+			error_code = excluded.error_code,
+			error_text = excluded.error_text,
+			timeout_ms = excluded.timeout_ms,
+			max_retries = excluded.max_retries,
+			attempt_count = excluded.attempt_count,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			started_at = excluded.started_at,
+			completed_at = excluded.completed_at
+	`,
+		dispatch.DispatchID,
+		dispatch.Provider,
+		dispatch.Model,
+		messagesJSON,
+		dispatch.Stream,
+		string(dispatch.Status),
+		dispatch.Output,
+		nullString(dispatch.FinishReason),
+		usageJSON,
+		nullString(dispatch.ErrorCode),
+		nullString(dispatch.Error),
+		dispatch.TimeoutMs,
+		dispatch.MaxRetries,
+		dispatch.AttemptCount,
+		dispatch.CreatedAt.UTC().Format(time.RFC3339Nano),
+		dispatch.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		startedAt,
+		completedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert llm dispatch %s: %w", dispatch.DispatchID, err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) ListLLMDispatches(ctx context.Context) ([]llm.Dispatch, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT dispatch_id, provider, model, messages_json, stream, status, output_text, finish_reason, usage_json, error_code, error_text, timeout_ms, max_retries, attempt_count, created_at, updated_at, started_at, completed_at
+		FROM llm_dispatches
+		ORDER BY created_at ASC, dispatch_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list llm dispatches: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]llm.Dispatch, 0)
+	for rows.Next() {
+		dispatch, err := scanLLMDispatch(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, dispatch)
+	}
+
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetLLMDispatch(ctx context.Context, dispatchID string) (llm.Dispatch, bool, error) {
+	if s == nil {
+		return llm.Dispatch{}, false, nil
+	}
+
+	row := s.db.QueryRowContext(ctx, `
+		SELECT dispatch_id, provider, model, messages_json, stream, status, output_text, finish_reason, usage_json, error_code, error_text, timeout_ms, max_retries, attempt_count, created_at, updated_at, started_at, completed_at
+		FROM llm_dispatches
+		WHERE dispatch_id = ?
+	`, dispatchID)
+
+	dispatch, err := scanLLMDispatch(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return llm.Dispatch{}, false, nil
+		}
+		return llm.Dispatch{}, false, err
+	}
+
+	return dispatch, true, nil
 }
 
 func (s *SQLiteStore) ListCapabilities(ctx context.Context) ([]capabilities.Capability, error) {
@@ -859,6 +998,28 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 		);
 		`,
 		`
+		CREATE TABLE IF NOT EXISTS llm_dispatches (
+			dispatch_id TEXT PRIMARY KEY,
+			provider TEXT NOT NULL,
+			model TEXT NOT NULL,
+			messages_json TEXT NOT NULL,
+			stream INTEGER NOT NULL,
+			status TEXT NOT NULL,
+			output_text TEXT NOT NULL,
+			finish_reason TEXT,
+			usage_json TEXT NOT NULL,
+			error_code TEXT,
+			error_text TEXT,
+			timeout_ms INTEGER NOT NULL,
+			max_retries INTEGER NOT NULL,
+			attempt_count INTEGER NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			started_at TEXT,
+			completed_at TEXT
+		);
+		`,
+		`
 		CREATE TABLE IF NOT EXISTS events (
 			event_id TEXT PRIMARY KEY,
 			category TEXT NOT NULL,
@@ -887,6 +1048,7 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_connectors_kind_status ON connectors(kind, status);`,
 		`CREATE INDEX IF NOT EXISTS idx_capabilities_kind_status ON capabilities(kind, status);`,
 		`CREATE INDEX IF NOT EXISTS idx_tool_calls_run_step ON tool_calls(run_id, step_id, created_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_llm_dispatches_provider_status ON llm_dispatches(provider, status, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_channel_peer ON sessions(channel, peer_id, thread_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id, occurred_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_events_session_id ON events(session_id, occurred_at);`,
@@ -1133,6 +1295,75 @@ func scanCapability(scanner interface {
 	}
 
 	return item, nil
+}
+
+func scanLLMDispatch(scanner interface {
+	Scan(dest ...any) error
+}) (llm.Dispatch, error) {
+	var (
+		dispatch     llm.Dispatch
+		messagesRaw  string
+		stream       bool
+		status       string
+		finishReason sql.NullString
+		usageRaw     string
+		errorCode    sql.NullString
+		errorText    sql.NullString
+		createdAt    string
+		updatedAt    string
+		startedAt    sql.NullString
+		completedAt  sql.NullString
+	)
+
+	if err := scanner.Scan(
+		&dispatch.DispatchID,
+		&dispatch.Provider,
+		&dispatch.Model,
+		&messagesRaw,
+		&stream,
+		&status,
+		&dispatch.Output,
+		&finishReason,
+		&usageRaw,
+		&errorCode,
+		&errorText,
+		&dispatch.TimeoutMs,
+		&dispatch.MaxRetries,
+		&dispatch.AttemptCount,
+		&createdAt,
+		&updatedAt,
+		&startedAt,
+		&completedAt,
+	); err != nil {
+		return llm.Dispatch{}, err
+	}
+
+	dispatch.Stream = stream
+	dispatch.Status = llm.DispatchStatus(status)
+	dispatch.FinishReason = finishReason.String
+	dispatch.ErrorCode = errorCode.String
+	dispatch.Error = errorText.String
+
+	if err := json.Unmarshal([]byte(messagesRaw), &dispatch.Messages); err != nil {
+		return llm.Dispatch{}, fmt.Errorf("decode llm dispatch messages: %w", err)
+	}
+	if err := json.Unmarshal([]byte(usageRaw), &dispatch.Usage); err != nil {
+		return llm.Dispatch{}, fmt.Errorf("decode llm dispatch usage: %w", err)
+	}
+	if err := assignRequiredTime(&dispatch.CreatedAt, createdAt); err != nil {
+		return llm.Dispatch{}, fmt.Errorf("parse llm dispatch created_at: %w", err)
+	}
+	if err := assignRequiredTime(&dispatch.UpdatedAt, updatedAt); err != nil {
+		return llm.Dispatch{}, fmt.Errorf("parse llm dispatch updated_at: %w", err)
+	}
+	if err := assignOptionalTime(&dispatch.StartedAt, startedAt); err != nil {
+		return llm.Dispatch{}, fmt.Errorf("parse llm dispatch started_at: %w", err)
+	}
+	if err := assignOptionalTime(&dispatch.CompletedAt, completedAt); err != nil {
+		return llm.Dispatch{}, fmt.Errorf("parse llm dispatch completed_at: %w", err)
+	}
+
+	return dispatch, nil
 }
 
 func scanStep(scanner interface {

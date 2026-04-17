@@ -24,6 +24,7 @@
         "policy",
         "connector",
         "capability",
+        "llm",
         "artifact"
       ]
     },

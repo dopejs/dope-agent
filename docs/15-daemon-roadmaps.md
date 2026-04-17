@@ -256,7 +256,7 @@ Task definition of done:
 
 ## Roadmap 3: LLM Dispatch Plane
 
-Status: `[ ] not started`
+Status: `[x] complete`
 
 ### Goal
 

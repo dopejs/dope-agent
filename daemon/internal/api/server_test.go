@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -36,6 +38,22 @@ func decodeStrictResponse[T any](t *testing.T, body []byte) T {
 	}
 
 	return value
+}
+
+type testLLMProvider struct {
+	name       string
+	completeFn func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error)
+	streamFn   func(ctx context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error)
+}
+
+func (p *testLLMProvider) Name() string { return p.name }
+
+func (p *testLLMProvider) Complete(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+	return p.completeFn(ctx, request)
+}
+
+func (p *testLLMProvider) Stream(ctx context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+	return p.streamFn(ctx, request, emit)
 }
 
 func TestRunsLifecycleRoutes(t *testing.T) {
@@ -992,6 +1010,273 @@ func TestConfigRouteUsesStrictResponseShape(t *testing.T) {
 	}
 	if len(response.RedactedFields) != 0 {
 		t.Fatalf("expected no redacted fields, got %+v", response.RedactedFields)
+	}
+}
+
+func TestLLMDispatchRoutes(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	eventBus := events.NewBus()
+	dispatcher := llm.NewDispatcher()
+	logger := telemetry.New("error")
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:   logger.Slog(),
+		EventBus: eventBus,
+		Router:   router.NewSessionRouter(),
+		Runtime:  runtime.NewManager(),
+		LLM:      dispatcher,
+		Store:    sqliteStore,
+	})
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/llm/dispatches", strings.NewReader(`{"provider":"echo","model":"test-model","messages":[{"role":"user","content":"hello world"}]}`))
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for llm dispatch create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	created := decodeStrictResponse[llm.Dispatch](t, createRec.Body.Bytes())
+	if created.Status != llm.DispatchStatusCompleted {
+		t.Fatalf("expected completed dispatch, got %s", created.Status)
+	}
+	if created.Provider != "echo" {
+		t.Fatalf("expected provider echo, got %s", created.Provider)
+	}
+	if created.Usage.TotalTokens == 0 {
+		t.Fatal("expected usage accounting to be recorded")
+	}
+
+	listRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(listRec, httptest.NewRequest(http.MethodGet, "/v1/llm/dispatches", nil))
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for llm dispatch list, got %d", listRec.Code)
+	}
+	list := decodeStrictResponse[ListResponse[llm.Dispatch]](t, listRec.Body.Bytes())
+	if len(list.Items) != 1 {
+		t.Fatalf("expected 1 llm dispatch, got %d", len(list.Items))
+	}
+
+	getRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/v1/llm/dispatches/"+created.DispatchID, nil))
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for llm dispatch get, got %d", getRec.Code)
+	}
+	got := decodeStrictResponse[llm.Dispatch](t, getRec.Body.Bytes())
+	if got.DispatchID != created.DispatchID {
+		t.Fatalf("expected dispatch ID %s, got %s", created.DispatchID, got.DispatchID)
+	}
+
+	persisted, ok, err := sqliteStore.GetLLMDispatch(context.Background(), created.DispatchID)
+	if err != nil {
+		t.Fatalf("GetLLMDispatch returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected persisted llm dispatch")
+	}
+	if persisted.Status != llm.DispatchStatusCompleted {
+		t.Fatalf("expected persisted completed dispatch, got %s", persisted.Status)
+	}
+
+	llmEvents := eventBus.List(events.Filter{Category: "llm"})
+	if len(llmEvents) != 2 {
+		t.Fatalf("expected 2 llm events, got %d", len(llmEvents))
+	}
+	if llmEvents[0].Name != "llm.dispatch.requested" {
+		t.Fatalf("expected llm.dispatch.requested, got %s", llmEvents[0].Name)
+	}
+	if llmEvents[1].Name != "llm.dispatch.completed" {
+		t.Fatalf("expected llm.dispatch.completed, got %s", llmEvents[1].Name)
+	}
+}
+
+func TestLLMDispatchRetryAndTimeoutRoutes(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&testLLMProvider{
+		name: "retryable",
+		completeFn: func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+			if request.Attempt == 1 {
+				return llm.ProviderResponse{}, &llm.ProviderError{Code: "upstream_unavailable", Message: "upstream unavailable", Retryable: true}
+			}
+			return llm.ProviderResponse{
+				Output:       "recovered",
+				FinishReason: "stop",
+				Usage:        llm.Usage{InputTokens: 1, OutputTokens: 1},
+			}, nil
+		},
+		streamFn: func(ctx context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{}, errors.New("not used")
+		},
+	})
+	dispatcher.RegisterProvider(&testLLMProvider{
+		name: "slow",
+		completeFn: func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+			select {
+			case <-ctx.Done():
+				return llm.ProviderResponse{}, ctx.Err()
+			case <-time.After(200 * time.Millisecond):
+				return llm.ProviderResponse{Output: "slow"}, nil
+			}
+		},
+		streamFn: func(ctx context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{}, errors.New("not used")
+		},
+	})
+
+	logger := telemetry.New("error")
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:   logger.Slog(),
+		EventBus: events.NewBus(),
+		Router:   router.NewSessionRouter(),
+		Runtime:  runtime.NewManager(),
+		LLM:      dispatcher,
+		Store:    sqliteStore,
+	})
+
+	retryRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(retryRec, httptest.NewRequest(http.MethodPost, "/v1/llm/dispatches", strings.NewReader(`{"provider":"retryable","model":"test-model","messages":[{"role":"user","content":"retry"}],"maxRetries":2}`)))
+	if retryRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for retry dispatch, got %d body=%s", retryRec.Code, retryRec.Body.String())
+	}
+	retryDispatch := decodeStrictResponse[llm.Dispatch](t, retryRec.Body.Bytes())
+	if retryDispatch.AttemptCount != 2 {
+		t.Fatalf("expected retry dispatch attempt count 2, got %d", retryDispatch.AttemptCount)
+	}
+
+	timeoutRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(timeoutRec, httptest.NewRequest(http.MethodPost, "/v1/llm/dispatches", strings.NewReader(`{"provider":"slow","model":"test-model","messages":[{"role":"user","content":"timeout"}],"timeoutMs":20}`)))
+	if timeoutRec.Code != http.StatusGatewayTimeout {
+		t.Fatalf("expected 504 for timeout dispatch, got %d body=%s", timeoutRec.Code, timeoutRec.Body.String())
+	}
+	timeoutDispatch := decodeStrictResponse[llm.Dispatch](t, timeoutRec.Body.Bytes())
+	if timeoutDispatch.ErrorCode != "timeout" {
+		t.Fatalf("expected timeout error code, got %s", timeoutDispatch.ErrorCode)
+	}
+}
+
+func TestLLMDispatchStreamRoute(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&testLLMProvider{
+		name: "stream-provider",
+		completeFn: func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{}, errors.New("not used")
+		},
+		streamFn: func(ctx context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+			if err := emit(llm.StreamChunk{Delta: "hello"}); err != nil {
+				return llm.ProviderResponse{}, err
+			}
+			if err := emit(llm.StreamChunk{Delta: " world"}); err != nil {
+				return llm.ProviderResponse{}, err
+			}
+			return llm.ProviderResponse{
+				Output:       "hello world",
+				FinishReason: "stop",
+				Usage:        llm.Usage{InputTokens: 1, OutputTokens: 2},
+			}, nil
+		},
+	})
+
+	logger := telemetry.New("error")
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:   logger.Slog(),
+		EventBus: events.NewBus(),
+		Router:   router.NewSessionRouter(),
+		Runtime:  runtime.NewManager(),
+		LLM:      dispatcher,
+		Store:    sqliteStore,
+	})
+
+	testServer := httptest.NewServer(server.Handler())
+	defer testServer.Close()
+
+	req, err := http.NewRequest(http.MethodPost, testServer.URL+"/v1/llm/dispatches/stream", strings.NewReader(`{"provider":"stream-provider","model":"test-model","messages":[{"role":"user","content":"stream"}]}`))
+	if err != nil {
+		t.Fatalf("failed to create stream request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("failed to execute stream request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	reader := bufio.NewReader(resp.Body)
+	var chunks []string
+	for range 12 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			break
+		}
+		chunks = append(chunks, line)
+		if strings.Contains(strings.Join(chunks, ""), "llm.dispatch.completed") {
+			break
+		}
+	}
+
+	joined := strings.Join(chunks, "")
+	if !strings.Contains(joined, "event: llm.dispatch.started") {
+		t.Fatalf("expected stream start event, got %q", joined)
+	}
+	if !strings.Contains(joined, "event: llm.dispatch.delta") {
+		t.Fatalf("expected stream delta event, got %q", joined)
+	}
+	if !strings.Contains(joined, "event: llm.dispatch.completed") {
+		t.Fatalf("expected stream completed event, got %q", joined)
+	}
+
+	dispatches, err := sqliteStore.ListLLMDispatches(context.Background())
+	if err != nil {
+		t.Fatalf("ListLLMDispatches returned error: %v", err)
+	}
+	if len(dispatches) != 1 {
+		t.Fatalf("expected 1 persisted streamed dispatch, got %d", len(dispatches))
+	}
+	if dispatches[0].Status != llm.DispatchStatusCompleted {
+		t.Fatalf("expected persisted streamed dispatch completed, got %s", dispatches[0].Status)
 	}
 }
 

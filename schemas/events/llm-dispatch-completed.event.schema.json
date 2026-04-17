@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/llm-dispatch-completed.event.schema.json",
+  "title": "LLMDispatchCompletedEvent",
+  "allOf": [
+    {
+      "$ref": "./runtime-event.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "category": {
+          "const": "llm"
+        },
+        "name": {
+          "const": "llm.dispatch.completed"
+        },
+        "payload": {
+          "type": "object",
+          "required": ["provider", "model", "status", "attemptCount", "finishReason", "usage", "errorCode", "error"],
+          "additionalProperties": false,
+          "properties": {
+            "provider": { "type": "string" },
+            "model": { "type": "string" },
+            "status": { "type": "string", "enum": ["completed"] },
+            "attemptCount": { "type": "integer", "minimum": 1 },
+            "finishReason": { "type": "string" },
+            "usage": {
+              "type": "object",
+              "required": ["inputTokens", "outputTokens", "totalTokens"],
+              "additionalProperties": false,
+              "properties": {
+                "inputTokens": { "type": "integer", "minimum": 0 },
+                "outputTokens": { "type": "integer", "minimum": 0 },
+                "totalTokens": { "type": "integer", "minimum": 0 }
+              }
+            },
+            "errorCode": { "type": "string" },
+            "error": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}
