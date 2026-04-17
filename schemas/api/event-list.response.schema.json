@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/event-list.response.schema.json",
+  "title": "EventListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "../events/runtime-event.schema.json"
+      }
+    },
+    "nextCursor": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

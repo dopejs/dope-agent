@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/tool-call-resource.schema.json",
+  "title": "ToolCallResource",
+  "type": "object",
+  "required": [
+    "toolCallId",
+    "runId",
+    "stepId",
+    "toolName",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "toolCallId": {
+      "type": "string"
+    },
+    "runId": {
+      "type": "string"
+    },
+    "stepId": {
+      "type": "string"
+    },
+    "toolName": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["requested", "completed", "failed"]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "input": {
+      "type": ["object", "array", "string", "number", "boolean", "null"]
+    },
+    "output": {
+      "type": ["object", "array", "string", "number", "boolean", "null"]
+    },
+    "error": {
+      "type": "string"
+    }
+  }
+}

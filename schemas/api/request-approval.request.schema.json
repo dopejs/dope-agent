@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/request-approval.request.schema.json",
+  "title": "RequestApprovalRequest",
+  "type": "object",
+  "required": ["action", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "action": { "type": "string" },
+    "resourceKind": { "type": "string" },
+    "resourceId": { "type": "string" },
+    "reason": { "type": "string" },
+    "requestedBy": { "type": "string" }
+  }
+}

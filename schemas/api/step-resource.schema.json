@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/step-resource.schema.json",
+  "title": "StepResource",
+  "type": "object",
+  "required": [
+    "stepId",
+    "runId",
+    "title",
+    "kind",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "stepId": {
+      "type": "string"
+    },
+    "runId": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "planning",
+        "calling_model",
+        "executing_tool",
+        "waiting_input",
+        "blocked",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "input": {
+      "type": ["object", "array", "string", "number", "boolean", "null"]
+    },
+    "output": {
+      "type": ["object", "array", "string", "number", "boolean", "null"]
+    }
+  }
+}

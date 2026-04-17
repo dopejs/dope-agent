@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/tool-call-completed.event.schema.json",
+  "title": "ToolCallCompletedEvent",
+  "allOf": [
+    {
+      "$ref": "./runtime-event.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "category": {
+          "const": "tool_call"
+        },
+        "name": {
+          "const": "tool_call.completed"
+        },
+        "payload": {
+          "type": "object",
+          "required": ["toolName", "status"],
+          "additionalProperties": false,
+          "properties": {
+            "toolName": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": ["completed"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

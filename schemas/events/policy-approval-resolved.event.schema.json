@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/policy-approval-resolved.event.schema.json",
+  "title": "PolicyApprovalResolvedEvent",
+  "type": "object",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "properties": {
+        "category": { "const": "policy" },
+        "name": { "const": "policy.approval_resolved" }
+      }
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/approval-resource.schema.json",
+  "title": "ApprovalResource",
+  "type": "object",
+  "required": [
+    "approvalId",
+    "action",
+    "reason",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "approvalId": { "type": "string" },
+    "action": { "type": "string" },
+    "resourceKind": { "type": "string" },
+    "resourceId": { "type": "string" },
+    "reason": { "type": "string" },
+    "requestedBy": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "approved", "rejected"]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolvedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolution": { "type": "string" },
+    "comment": { "type": "string" }
+  }
+}

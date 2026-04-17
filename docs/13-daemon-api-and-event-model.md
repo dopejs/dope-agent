@@ -1,0 +1,361 @@
+# P0 Daemon API And Event Model
+
+## Purpose
+
+This document defines the first contract shape for the Dope daemon.
+
+It focuses on:
+
+- control-plane API style
+- transport choices
+- endpoint categories
+- event envelope shape
+- event taxonomy for P0
+
+This is not a full route reference yet. It is the contract model that should guide the first daemon API implementation.
+
+## Primary Recommendation
+
+For P0, the daemon should expose:
+
+- HTTP JSON APIs for commands and queries
+- SSE for server-to-client event streaming
+
+This means:
+
+- request and response flows are plain HTTP
+- client subscriptions are one-way event streams
+- no WebSocket dependency is required for P0 operator surfaces
+
+## Why SSE Instead Of WebSocket For P0
+
+SSE is the better default for the first milestone because:
+
+- the operator clients mostly need server-to-client updates
+- it is simpler to debug than a bidirectional socket protocol
+- it works well for dashboards, TUI subscriptions, and automation watchers
+- it keeps the daemon control plane easier to reason about
+
+WebSocket can still be added later if:
+
+- we need richer live collaborative control
+- we need browser-driven duplex workflows
+- we want a single long-lived transport for advanced operator tooling
+
+For P0, that extra protocol complexity is not justified yet.
+
+## API Design Principles
+
+- the daemon is the system of record
+- all mutable state changes go through daemon APIs
+- clients never mutate runtime truth locally
+- events are append-oriented, not synthetic UI patches
+- contracts should be schema-defined and versionable
+
+## API Surface Categories
+
+P0 should define the daemon API in six categories.
+
+## 1. System API
+
+Purpose:
+
+- daemon liveness and metadata
+- version
+- health
+- configuration summary
+
+Examples:
+
+- `GET /healthz`
+- `GET /version`
+- `GET /v1/system/info`
+
+## 2. Session API
+
+Purpose:
+
+- inspect session state
+- inspect routing and channel identity
+- create or reset sessions when needed
+
+Examples:
+
+- `GET /v1/sessions`
+- `GET /v1/sessions/{sessionId}`
+- `POST /v1/sessions/{sessionId}/reset`
+
+## 3. Run API
+
+Purpose:
+
+- create and inspect runs
+- drive the runtime
+- cancel and resume work
+
+Examples:
+
+- `POST /v1/runs`
+- `GET /v1/runs`
+- `GET /v1/runs/{runId}`
+- `POST /v1/runs/{runId}/cancel`
+- `POST /v1/runs/{runId}/resume`
+
+## 4. Connector And Capability API
+
+Purpose:
+
+- inspect connector state
+- inspect capability state
+- start, stop, or reload managed units when policy allows
+
+Examples:
+
+- `GET /v1/connectors`
+- `GET /v1/connectors/{connectorId}`
+- `POST /v1/connectors/{connectorId}/restart`
+- `GET /v1/capabilities`
+- `GET /v1/capabilities/{capabilityId}`
+
+## 5. Config And Policy API
+
+Purpose:
+
+- inspect active config
+- inspect policy decisions and pending approvals
+- apply narrow config changes later
+
+Examples:
+
+- `GET /v1/config`
+- `GET /v1/policy/approvals`
+- `POST /v1/policy/approvals/{approvalId}/resolve`
+
+## 6. Event Stream API
+
+Purpose:
+
+- stream daemon events to operator clients and automation
+
+Examples:
+
+- `GET /v1/events/stream`
+- `GET /v1/runs/{runId}/events`
+- `GET /v1/sessions/{sessionId}/events`
+
+## API Shape Recommendation
+
+Command endpoints should use explicit action routes when the action changes state meaningfully.
+
+Examples:
+
+- `POST /v1/runs/{runId}/cancel`
+- `POST /v1/sessions/{sessionId}/reset`
+- `POST /v1/connectors/{connectorId}/restart`
+
+This is preferable to pretending these are plain resource updates when they are operational commands.
+
+## Event Model Principles
+
+- events should describe system facts, not UI rendering hints
+- each event should be attributable to a system area
+- event streams should support filtering by scope
+- events should be safe to persist and replay
+
+## Event Envelope
+
+Every event should follow a common envelope shape.
+
+Suggested fields:
+
+- `eventId`
+- `category`
+- `name`
+- `occurredAt`
+- `scope`
+- `resource`
+- `payload`
+
+Suggested example:
+
+```json
+{
+  "eventId": "evt_01",
+  "category": "run",
+  "name": "run.created",
+  "occurredAt": "2026-04-17T12:00:00Z",
+  "scope": {
+    "runId": "run_01",
+    "sessionId": "sess_01"
+  },
+  "resource": {
+    "kind": "run",
+    "id": "run_01"
+  },
+  "payload": {
+    "entrypoint": "chat",
+    "goal": "help the user ship a task"
+  }
+}
+```
+
+## Event Categories
+
+P0 should define at least these event categories.
+
+## 1. System Events
+
+Examples:
+
+- `system.started`
+- `system.stopping`
+- `system.config_reloaded`
+- `system.health_changed`
+
+## 2. Session Events
+
+Examples:
+
+- `session.created`
+- `session.routed`
+- `session.reset`
+- `session.archived`
+
+## 3. Run Events
+
+Examples:
+
+- `run.created`
+- `run.started`
+- `run.cancel_requested`
+- `run.cancelled`
+- `run.completed`
+- `run.failed`
+
+## 4. Step Events
+
+Examples:
+
+- `step.created`
+- `step.status_changed`
+- `step.blocked`
+- `step.completed`
+- `step.failed`
+
+## 5. Policy Events
+
+Examples:
+
+- `policy.decision_recorded`
+- `policy.approval_requested`
+- `policy.approval_resolved`
+
+## 6. Connector Events
+
+Examples:
+
+- `connector.started`
+- `connector.disconnected`
+- `connector.restart_scheduled`
+- `connector.failed`
+
+## 7. Capability Events
+
+Examples:
+
+- `capability.registered`
+- `capability.unhealthy`
+- `capability.restarted`
+
+## 8. Artifact Events
+
+Examples:
+
+- `artifact.created`
+- `artifact.updated`
+- `artifact.attached`
+
+## Event Stream Filtering
+
+The event stream should support simple server-side filters such as:
+
+- `category`
+- `runId`
+- `sessionId`
+- `resourceKind`
+
+This avoids forcing every client to subscribe to the full daemon event firehose.
+
+## Transport Recommendation For P0
+
+The recommended event transport is:
+
+- `text/event-stream`
+
+Suggested event format:
+
+```text
+event: run.created
+data: {"eventId":"evt_01","category":"run","name":"run.created", ...}
+```
+
+This is enough for:
+
+- Web UI live dashboards
+- TUI tailing
+- simple local automation
+
+## Auth Recommendation For P0
+
+P0 auth should remain simple and local-first.
+
+Recommended starting point:
+
+- local loopback bind by default
+- token or pairing-based operator access
+- no public-by-default exposure
+
+This keeps the daemon easier to reason about while the API is still evolving.
+
+## What We Are Not Doing Yet
+
+P0 should not attempt:
+
+- a large RPC framework
+- GraphQL
+- bidirectional WebSocket control as the primary protocol
+- public remote multi-tenant API design
+- connector-specific custom operator APIs outside the shared control surface
+
+## How This Connects To The Repo
+
+This document should directly guide:
+
+- `schemas/api/`
+- `schemas/events/`
+- `daemon/internal/api/`
+- `daemon/internal/events/`
+
+It should also constrain:
+
+- Web client API usage
+- future TUI client contract design
+- connector and capability supervision UX
+
+## Immediate Next Steps
+
+1. define the first API schemas for system and run routes
+2. define the first event schemas for system, run, and step events
+3. update the Go daemon server scaffold to reflect `/v1/...` route groups
+4. define the run resource and step resource response shapes
+
+## Short Version
+
+P0 should use:
+
+- HTTP JSON for commands and queries
+- SSE for event streaming
+
+The daemon API should be resource-oriented where possible and command-oriented where necessary.
+
+The event model should be scoped, replayable, and stable enough for Web UI, TUI, and automation clients to share.

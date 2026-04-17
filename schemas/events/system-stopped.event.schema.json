@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/system-stopped.event.schema.json",
+  "title": "SystemStoppedEvent",
+  "allOf": [
+    {
+      "$ref": "./runtime-event.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "category": {
+          "const": "system"
+        },
+        "name": {
+          "const": "system.stopped"
+        },
+        "resource": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "system"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

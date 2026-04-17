@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/step-cancelled.event.schema.json",
+  "title": "StepCancelledEvent",
+  "allOf": [
+    {
+      "$ref": "./runtime-event.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "category": {
+          "const": "step"
+        },
+        "name": {
+          "const": "step.cancelled"
+        }
+      }
+    }
+  ]
+}

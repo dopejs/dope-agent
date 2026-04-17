@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/session-resource.schema.json",
+  "title": "SessionResource",
+  "type": "object",
+  "required": [
+    "sessionId",
+    "kind",
+    "status",
+    "channel",
+    "peerId",
+    "routingKey",
+    "generation",
+    "createdAt",
+    "updatedAt",
+    "lastActiveAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "sessionId": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["direct", "group"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active"]
+    },
+    "channel": {
+      "type": "string"
+    },
+    "accountId": {
+      "type": "string"
+    },
+    "peerId": {
+      "type": "string"
+    },
+    "threadId": {
+      "type": "string"
+    },
+    "routingKey": {
+      "type": "string"
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lastActiveAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lastResetAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

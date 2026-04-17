@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/step-created.event.schema.json",
+  "title": "StepCreatedEvent",
+  "allOf": [
+    {
+      "$ref": "./runtime-event.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "category": {
+          "const": "step"
+        },
+        "name": {
+          "const": "step.created"
+        },
+        "payload": {
+          "type": "object",
+          "required": ["title", "kind", "status"],
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "planning",
+                "calling_model",
+                "executing_tool",
+                "waiting_input",
+                "blocked",
+                "completed",
+                "failed",
+                "cancelled"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

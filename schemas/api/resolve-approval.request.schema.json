@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/resolve-approval.request.schema.json",
+  "title": "ResolveApprovalRequest",
+  "type": "object",
+  "required": ["resolution"],
+  "additionalProperties": false,
+  "properties": {
+    "resolution": {
+      "type": "string",
+      "enum": ["approved", "rejected"]
+    },
+    "comment": { "type": "string" }
+  }
+}

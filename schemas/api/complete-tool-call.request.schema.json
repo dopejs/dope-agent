@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/complete-tool-call.request.schema.json",
+  "title": "CompleteToolCallRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "output": {
+      "type": ["object", "array", "string", "number", "boolean", "null"]
+    }
+  }
+}

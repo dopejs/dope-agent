@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/config/daemon-config.schema.json",
+  "title": "DaemonConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "bindAddr": {
+      "type": "string",
+      "default": "127.0.0.1:18789"
+    },
+    "dataDir": {
+      "type": "string",
+      "default": "~/.dope"
+    },
+    "logLevel": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error"],
+      "default": "info"
+    }
+  }
+}

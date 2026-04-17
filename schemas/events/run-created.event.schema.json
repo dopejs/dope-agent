@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/run-created.event.schema.json",
+  "title": "RunCreatedEvent",
+  "allOf": [
+    {
+      "$ref": "./runtime-event.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "category": {
+          "const": "run"
+        },
+        "name": {
+          "const": "run.created"
+        },
+        "payload": {
+          "type": "object",
+          "required": ["entrypoint", "goal"],
+          "additionalProperties": false,
+          "properties": {
+            "entrypoint": {
+              "type": "string"
+            },
+            "goal": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

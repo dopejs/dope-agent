@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/step-status-changed.event.schema.json",
+  "title": "StepStatusChangedEvent",
+  "allOf": [
+    {
+      "$ref": "./runtime-event.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "category": {
+          "const": "step"
+        },
+        "name": {
+          "const": "step.status_changed"
+        },
+        "payload": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": true,
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "planning",
+                "calling_model",
+                "executing_tool",
+                "waiting_input",
+                "blocked",
+                "completed",
+                "failed",
+                "cancelled"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

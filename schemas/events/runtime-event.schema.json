@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/runtime-event.schema.json",
+  "title": "RuntimeEvent",
+  "type": "object",
+  "required": ["eventId", "sequence", "category", "name", "occurredAt", "resource", "scope"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": {
+      "type": "string"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "system",
+        "session",
+        "run",
+        "step",
+        "tool_call",
+        "policy",
+        "connector",
+        "capability",
+        "artifact"
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "resource": {
+      "$ref": "#/$defs/resource"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "connectorId": {
+          "type": "string"
+        },
+        "capabilityId": {
+          "type": "string"
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

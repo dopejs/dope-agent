@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-tool-call.request.schema.json",
+  "title": "CreateToolCallRequest",
+  "type": "object",
+  "required": ["toolName"],
+  "additionalProperties": false,
+  "properties": {
+    "toolName": {
+      "type": "string"
+    },
+    "input": {
+      "type": ["object", "array", "string", "number", "boolean", "null"]
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/run-status-changed.event.schema.json",
+  "title": "RunStatusChangedEvent",
+  "allOf": [
+    {
+      "$ref": "./runtime-event.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "category": {
+          "const": "run"
+        },
+        "name": {
+          "const": "run.status_changed"
+        },
+        "payload": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "waiting_input",
+                "blocked",
+                "completed",
+                "failed",
+                "cancelled"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

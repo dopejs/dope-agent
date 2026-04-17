@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-run.request.schema.json",
+  "title": "CreateRunRequest",
+  "type": "object",
+  "required": ["entrypoint"],
+  "additionalProperties": false,
+  "properties": {
+    "sessionId": {
+      "type": "string"
+    },
+    "entrypoint": {
+      "type": "string"
+    },
+    "goal": {
+      "type": "string"
+    },
+    "input": {
+      "type": ["object", "array", "string", "number", "boolean", "null"]
+    }
+  }
+}

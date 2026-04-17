@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/update-step-status.request.schema.json",
+  "title": "UpdateStepStatusRequest",
+  "type": "object",
+  "required": ["status"],
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "planning",
+        "calling_model",
+        "executing_tool",
+        "waiting_input",
+        "blocked",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "output": {
+      "type": ["object", "array", "string", "number", "boolean", "null"]
+    }
+  }
+}
