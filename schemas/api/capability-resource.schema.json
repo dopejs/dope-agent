@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/capability-resource.schema.json",
+  "title": "CapabilityResource",
+  "type": "object",
+  "required": [
+    "capabilityId",
+    "kind",
+    "displayName",
+    "status",
+    "failureCount",
+    "restartCount",
+    "backoffSeconds",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "capabilityId": { "type": "string" },
+    "kind": { "type": "string" },
+    "displayName": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["registered", "healthy", "degraded", "backing_off", "failed"]
+    },
+    "failureCount": { "type": "integer", "minimum": 0 },
+    "restartCount": { "type": "integer", "minimum": 0 },
+    "backoffSeconds": { "type": "integer", "minimum": 0 },
+    "nextRestartAt": { "type": "string", "format": "date-time" },
+    "lastRestartAt": { "type": "string", "format": "date-time" },
+    "lastHeartbeatAt": { "type": "string", "format": "date-time" },
+    "lastFailureReason": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

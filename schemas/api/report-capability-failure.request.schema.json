@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/report-capability-failure.request.schema.json",
+  "title": "ReportCapabilityFailureRequest",
+  "type": "object",
+  "required": ["reason"],
+  "additionalProperties": false,
+  "properties": {
+    "reason": { "type": "string" }
+  }
+}

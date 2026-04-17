@@ -13,8 +13,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
+	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -39,6 +41,7 @@ func decodeStrictResponse[T any](t *testing.T, body []byte) T {
 func TestRunsLifecycleRoutes(t *testing.T) {
 	eventBus := events.NewBus()
 	manager := runtime.NewManager()
+	capabilitySupervisor := capabilities.NewSupervisor()
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
@@ -47,10 +50,11 @@ func TestRunsLifecycleRoutes(t *testing.T) {
 			LogLevel: "info",
 			Version:  "test",
 		},
-		Logger:   logger.Slog(),
-		EventBus: eventBus,
-		Router:   router.NewSessionRouter(),
-		Runtime:  manager,
+		Logger:       logger.Slog(),
+		EventBus:     eventBus,
+		Router:       router.NewSessionRouter(),
+		Runtime:      manager,
+		Capabilities: capabilitySupervisor,
 	})
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs", strings.NewReader(`{"entrypoint":"chat","goal":"ship a task"}`))
@@ -286,8 +290,20 @@ func TestUpdateStepStatusRejectsInvalidTransition(t *testing.T) {
 }
 
 func TestToolCallLifecycleRoutes(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
 	eventBus := events.NewBus()
 	manager := runtime.NewManager()
+	capabilitySupervisor := capabilities.NewSupervisor()
+	checkpointManager := checkpoints.NewManager(sqliteStore, manager)
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
@@ -296,11 +312,22 @@ func TestToolCallLifecycleRoutes(t *testing.T) {
 			LogLevel: "info",
 			Version:  "test",
 		},
-		Logger:   logger.Slog(),
-		EventBus: eventBus,
-		Router:   router.NewSessionRouter(),
-		Runtime:  manager,
+		Logger:       logger.Slog(),
+		EventBus:     eventBus,
+		Router:       router.NewSessionRouter(),
+		Runtime:      manager,
+		Capabilities: capabilitySupervisor,
+		Store:        sqliteStore,
+		Checkpoints:  checkpointManager,
 	})
+
+	if _, _, err := capabilitySupervisor.Register(capabilities.RegisterInput{
+		CapabilityID: "shell",
+		Kind:         "exec",
+		DisplayName:  "Shell",
+	}); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
 
 	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
 	if err != nil {
@@ -313,7 +340,7 @@ func TestToolCallLifecycleRoutes(t *testing.T) {
 		t.Fatalf("CreateStep returned error: %v", err)
 	}
 
-	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"toolName":"shell","input":{"cmd":"pwd"}}`))
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"pwd"}}`))
 	createRec := httptest.NewRecorder()
 	server.server.Handler.ServeHTTP(createRec, createReq)
 
@@ -324,6 +351,9 @@ func TestToolCallLifecycleRoutes(t *testing.T) {
 	created := decodeStrictResponse[runtime.ToolCall](t, createRec.Body.Bytes())
 	if created.ToolCallID == "" {
 		t.Fatal("expected tool call ID")
+	}
+	if created.CapabilityID != "shell" {
+		t.Fatalf("expected capability id shell, got %s", created.CapabilityID)
 	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", nil)
@@ -369,11 +399,23 @@ func TestToolCallLifecycleRoutes(t *testing.T) {
 	if eventList.Items[1].Name != "tool_call.completed" {
 		t.Fatalf("expected tool_call.completed, got %s", eventList.Items[1].Name)
 	}
+
+	persistedToolCalls, err := sqliteStore.ListToolCalls(context.Background(), run.RunID, step.StepID)
+	if err != nil {
+		t.Fatalf("ListToolCalls returned error: %v", err)
+	}
+	if len(persistedToolCalls) != 1 {
+		t.Fatalf("expected 1 persisted tool call, got %d", len(persistedToolCalls))
+	}
+	if persistedToolCalls[0].CapabilityID != "shell" {
+		t.Fatalf("expected persisted capability id shell, got %s", persistedToolCalls[0].CapabilityID)
+	}
 }
 
 func TestToolCallFailRoute(t *testing.T) {
 	eventBus := events.NewBus()
 	manager := runtime.NewManager()
+	capabilitySupervisor := capabilities.NewSupervisor()
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
@@ -382,11 +424,19 @@ func TestToolCallFailRoute(t *testing.T) {
 			LogLevel: "info",
 			Version:  "test",
 		},
-		Logger:   logger.Slog(),
-		EventBus: eventBus,
-		Router:   router.NewSessionRouter(),
-		Runtime:  manager,
+		Logger:       logger.Slog(),
+		EventBus:     eventBus,
+		Router:       router.NewSessionRouter(),
+		Runtime:      manager,
+		Capabilities: capabilitySupervisor,
 	})
+
+	if _, _, err := capabilitySupervisor.Register(capabilities.RegisterInput{
+		CapabilityID: "shell",
+		Kind:         "exec",
+	}); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
 
 	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
 	if err != nil {
@@ -399,7 +449,8 @@ func TestToolCallFailRoute(t *testing.T) {
 		t.Fatalf("CreateStep returned error: %v", err)
 	}
 	toolCall, err := manager.CreateToolCall(run.RunID, step.StepID, runtime.CreateToolCallInput{
-		ToolName: "shell",
+		CapabilityID: "shell",
+		ToolName:     "shell",
 	})
 	if err != nil {
 		t.Fatalf("CreateToolCall returned error: %v", err)
@@ -514,6 +565,126 @@ func TestRunLifecyclePersistsToSQLiteStore(t *testing.T) {
 	}
 	if len(items) != 4 {
 		t.Fatalf("expected 4 persisted run-scoped events, got %d", len(items))
+	}
+}
+
+func TestConnectorAndCapabilitySupervisionRoutes(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	eventBus := events.NewBus()
+	logger := telemetry.New("error")
+	connectorSupervisor := connectors.NewSupervisor()
+	capabilitySupervisor := capabilities.NewSupervisor()
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:       logger.Slog(),
+		EventBus:     eventBus,
+		Router:       router.NewSessionRouter(),
+		Runtime:      runtime.NewManager(),
+		Connectors:   connectorSupervisor,
+		Capabilities: capabilitySupervisor,
+		Store:        sqliteStore,
+	})
+
+	connectorCreateRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(connectorCreateRec, httptest.NewRequest(http.MethodPost, "/v1/connectors", strings.NewReader(`{"connectorId":"slack-main","kind":"slack","displayName":"Slack Main"}`)))
+	if connectorCreateRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for connector create, got %d", connectorCreateRec.Code)
+	}
+	connector := decodeStrictResponse[connectors.Connector](t, connectorCreateRec.Body.Bytes())
+	if connector.Status != connectors.StatusRegistered {
+		t.Fatalf("expected registered connector, got %s", connector.Status)
+	}
+
+	connectorFailRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(connectorFailRec, httptest.NewRequest(http.MethodPost, "/v1/connectors/"+connector.ConnectorID+"/fail", strings.NewReader(`{"reason":"socket disconnected"}`)))
+	if connectorFailRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for connector fail, got %d", connectorFailRec.Code)
+	}
+	connector = decodeStrictResponse[connectors.Connector](t, connectorFailRec.Body.Bytes())
+	if connector.Status != connectors.StatusBackingOff {
+		t.Fatalf("expected backing_off connector, got %s", connector.Status)
+	}
+
+	connectorRestartRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(connectorRestartRec, httptest.NewRequest(http.MethodPost, "/v1/connectors/"+connector.ConnectorID+"/restart", nil))
+	if connectorRestartRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for connector restart, got %d", connectorRestartRec.Code)
+	}
+	connector = decodeStrictResponse[connectors.Connector](t, connectorRestartRec.Body.Bytes())
+	if connector.RestartCount != 1 {
+		t.Fatalf("expected connector restart count 1, got %d", connector.RestartCount)
+	}
+
+	capabilityCreateRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(capabilityCreateRec, httptest.NewRequest(http.MethodPost, "/v1/capabilities", strings.NewReader(`{"capabilityId":"shell","kind":"exec","displayName":"Shell"}`)))
+	if capabilityCreateRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for capability create, got %d", capabilityCreateRec.Code)
+	}
+	capability := decodeStrictResponse[capabilities.Capability](t, capabilityCreateRec.Body.Bytes())
+
+	capabilityHealthRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(capabilityHealthRec, httptest.NewRequest(http.MethodPost, "/v1/capabilities/"+capability.CapabilityID+"/health", strings.NewReader(`{"status":"healthy"}`)))
+	if capabilityHealthRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for capability health, got %d", capabilityHealthRec.Code)
+	}
+	capability = decodeStrictResponse[capabilities.Capability](t, capabilityHealthRec.Body.Bytes())
+	if capability.Status != capabilities.StatusHealthy {
+		t.Fatalf("expected healthy capability, got %s", capability.Status)
+	}
+
+	capabilityListRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(capabilityListRec, httptest.NewRequest(http.MethodGet, "/v1/capabilities", nil))
+	if capabilityListRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for capability list, got %d", capabilityListRec.Code)
+	}
+	capabilityList := decodeStrictResponse[ListResponse[capabilities.Capability]](t, capabilityListRec.Body.Bytes())
+	if len(capabilityList.Items) != 1 {
+		t.Fatalf("expected 1 capability, got %d", len(capabilityList.Items))
+	}
+
+	connectorEvents := eventBus.List(events.Filter{Category: "connector"})
+	if len(connectorEvents) < 3 {
+		t.Fatalf("expected connector events, got %d", len(connectorEvents))
+	}
+	capabilityEvents := eventBus.List(events.Filter{Category: "capability"})
+	if len(capabilityEvents) < 2 {
+		t.Fatalf("expected capability events, got %d", len(capabilityEvents))
+	}
+
+	persistedConnectors, err := sqliteStore.ListConnectors(context.Background())
+	if err != nil {
+		t.Fatalf("ListConnectors returned error: %v", err)
+	}
+	if len(persistedConnectors) != 1 {
+		t.Fatalf("expected 1 persisted connector, got %d", len(persistedConnectors))
+	}
+	if persistedConnectors[0].RestartCount != 1 {
+		t.Fatalf("expected persisted connector restart count 1, got %d", persistedConnectors[0].RestartCount)
+	}
+
+	persistedCapabilities, err := sqliteStore.ListCapabilities(context.Background())
+	if err != nil {
+		t.Fatalf("ListCapabilities returned error: %v", err)
+	}
+	if len(persistedCapabilities) != 1 {
+		t.Fatalf("expected 1 persisted capability, got %d", len(persistedCapabilities))
+	}
+	if persistedCapabilities[0].Status != capabilities.StatusHealthy {
+		t.Fatalf("expected persisted capability healthy, got %s", persistedCapabilities[0].Status)
 	}
 }
 

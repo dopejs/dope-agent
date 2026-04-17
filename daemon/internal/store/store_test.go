@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
+	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -182,6 +184,83 @@ func TestSQLiteStorePersistsSessions(t *testing.T) {
 	}
 }
 
+func TestSQLiteStorePersistsConnectorsAndCapabilities(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	connectorHeartbeat := time.Now().UTC().Add(-15 * time.Second)
+	connector := connectors.Connector{
+		ConnectorID:     "telegram-main",
+		Kind:            "telegram",
+		DisplayName:     "Telegram Main",
+		Status:          connectors.StatusHealthy,
+		FailureCount:    1,
+		RestartCount:    2,
+		BackoffSeconds:  0,
+		LastHeartbeatAt: &connectorHeartbeat,
+		CreatedAt:       time.Now().UTC().Add(-time.Hour),
+		UpdatedAt:       time.Now().UTC(),
+	}
+	if err := store.UpsertConnector(ctx, connector); err != nil {
+		t.Fatalf("UpsertConnector returned error: %v", err)
+	}
+
+	capabilityRestart := time.Now().UTC().Add(-10 * time.Second)
+	capability := capabilities.Capability{
+		CapabilityID:   "browser",
+		Kind:           "browser",
+		DisplayName:    "Browser",
+		Status:         capabilities.StatusBackingOff,
+		FailureCount:   2,
+		RestartCount:   1,
+		BackoffSeconds: 10,
+		LastRestartAt:  &capabilityRestart,
+		CreatedAt:      time.Now().UTC().Add(-time.Hour),
+		UpdatedAt:      time.Now().UTC(),
+	}
+	if err := store.UpsertCapability(ctx, capability); err != nil {
+		t.Fatalf("UpsertCapability returned error: %v", err)
+	}
+
+	connectorsList, err := store.ListConnectors(ctx)
+	if err != nil {
+		t.Fatalf("ListConnectors returned error: %v", err)
+	}
+	if len(connectorsList) != 1 {
+		t.Fatalf("expected 1 connector, got %d", len(connectorsList))
+	}
+	if connectorsList[0].ConnectorID != connector.ConnectorID {
+		t.Fatalf("expected connector ID %s, got %s", connector.ConnectorID, connectorsList[0].ConnectorID)
+	}
+	if connectorsList[0].Status != connectors.StatusHealthy {
+		t.Fatalf("expected connector status healthy, got %s", connectorsList[0].Status)
+	}
+
+	capabilitiesList, err := store.ListCapabilities(ctx)
+	if err != nil {
+		t.Fatalf("ListCapabilities returned error: %v", err)
+	}
+	if len(capabilitiesList) != 1 {
+		t.Fatalf("expected 1 capability, got %d", len(capabilitiesList))
+	}
+	if capabilitiesList[0].CapabilityID != capability.CapabilityID {
+		t.Fatalf("expected capability ID %s, got %s", capability.CapabilityID, capabilitiesList[0].CapabilityID)
+	}
+	if capabilitiesList[0].BackoffSeconds != 10 {
+		t.Fatalf("expected capability backoff 10, got %d", capabilitiesList[0].BackoffSeconds)
+	}
+}
+
 func TestSQLiteStorePersistsLatestCheckpointPerRun(t *testing.T) {
 	t.Parallel()
 
@@ -228,7 +307,7 @@ func TestSQLiteStorePersistsLatestCheckpointPerRun(t *testing.T) {
 			{StepID: "step_b", RunID: run.RunID, Title: "second", Kind: "task", Status: runtime.StepStatusPlanning, CreatedAt: time.Now().UTC().Add(-20 * time.Second), UpdatedAt: time.Now().UTC()},
 		},
 		ToolCalls: []runtime.ToolCall{
-			{ToolCallID: "tool_a", RunID: run.RunID, StepID: "step_b", ToolName: "shell", Status: runtime.ToolCallStatusRequested, CreatedAt: time.Now().UTC().Add(-10 * time.Second), UpdatedAt: time.Now().UTC().Add(-10 * time.Second)},
+			{ToolCallID: "tool_a", RunID: run.RunID, StepID: "step_b", CapabilityID: "shell", ToolName: "shell", Status: runtime.ToolCallStatusRequested, CreatedAt: time.Now().UTC().Add(-10 * time.Second), UpdatedAt: time.Now().UTC().Add(-10 * time.Second)},
 		},
 		CapturedAt: time.Now().UTC(),
 	}
@@ -255,6 +334,71 @@ func TestSQLiteStorePersistsLatestCheckpointPerRun(t *testing.T) {
 	}
 	if len(checkpoints[0].ToolCalls) != 1 || checkpoints[0].ToolCalls[0].ToolCallID != "tool_a" {
 		t.Fatalf("expected latest checkpoint tool call tool_a, got %+v", checkpoints[0].ToolCalls)
+	}
+}
+
+func TestSQLiteStorePersistsToolCalls(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	run := runtime.Run{
+		RunID:      "run_tool",
+		Entrypoint: "chat",
+		Status:     runtime.RunStatusRunning,
+		Goal:       "persist tool calls",
+		CreatedAt:  time.Now().UTC().Add(-time.Minute),
+		UpdatedAt:  time.Now().UTC(),
+	}
+	if err := store.UpsertRun(ctx, run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+	step := runtime.Step{
+		StepID:    "step_tool",
+		RunID:     run.RunID,
+		Title:     "tool step",
+		Kind:      "task",
+		Status:    runtime.StepStatusExecutingTool,
+		CreatedAt: time.Now().UTC().Add(-30 * time.Second),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := store.UpsertStep(ctx, step); err != nil {
+		t.Fatalf("UpsertStep returned error: %v", err)
+	}
+
+	toolCall := runtime.ToolCall{
+		ToolCallID:   "tool_call_1",
+		RunID:        run.RunID,
+		StepID:       step.StepID,
+		CapabilityID: "shell",
+		ToolName:     "shell.exec",
+		Status:       runtime.ToolCallStatusRequested,
+		Input:        map[string]any{"cmd": "pwd"},
+		CreatedAt:    time.Now().UTC().Add(-20 * time.Second),
+		UpdatedAt:    time.Now().UTC().Add(-20 * time.Second),
+	}
+	if err := store.UpsertToolCall(ctx, toolCall); err != nil {
+		t.Fatalf("UpsertToolCall returned error: %v", err)
+	}
+
+	items, err := store.ListToolCalls(ctx, run.RunID, step.StepID)
+	if err != nil {
+		t.Fatalf("ListToolCalls returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(items))
+	}
+	if items[0].CapabilityID != "shell" {
+		t.Fatalf("expected capability id shell, got %s", items[0].CapabilityID)
 	}
 }
 

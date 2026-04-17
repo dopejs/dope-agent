@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-connector.request.schema.json",
+  "title": "CreateConnectorRequest",
+  "type": "object",
+  "required": ["connectorId", "kind"],
+  "additionalProperties": false,
+  "properties": {
+    "connectorId": { "type": "string" },
+    "kind": { "type": "string" },
+    "displayName": { "type": "string" }
+  }
+}

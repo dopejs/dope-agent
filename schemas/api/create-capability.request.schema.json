@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-capability.request.schema.json",
+  "title": "CreateCapabilityRequest",
+  "type": "object",
+  "required": ["capabilityId", "kind"],
+  "additionalProperties": false,
+  "properties": {
+    "capabilityId": { "type": "string" },
+    "kind": { "type": "string" },
+    "displayName": { "type": "string" }
+  }
+}

@@ -3,9 +3,12 @@
   "$id": "https://dope.local/schemas/api/create-tool-call.request.schema.json",
   "title": "CreateToolCallRequest",
   "type": "object",
-  "required": ["toolName"],
+  "required": ["capabilityId", "toolName"],
   "additionalProperties": false,
   "properties": {
+    "capabilityId": {
+      "type": "string"
+    },
     "toolName": {
       "type": "string"
     },

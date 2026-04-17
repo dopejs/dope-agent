@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
+	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -109,8 +111,10 @@ func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 	restoredRouter := router.NewSessionRouter()
 	restoredEventBus := events.NewBus()
 	restoreCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredConnectors := connectors.NewSupervisor()
+	restoredCapabilities := capabilities.NewSupervisor()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus); err != nil {
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -140,6 +144,87 @@ func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 
 	if _, ok := restoredRouter.GetSession(run.SessionID); !ok {
 		t.Fatal("expected restored session")
+	}
+}
+
+func TestRecoverPersistedStateRestoresSupervisionState(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	connectorHeartbeat := time.Now().UTC().Add(-30 * time.Second)
+	connector := connectors.Connector{
+		ConnectorID:     "slack-main",
+		Kind:            "slack",
+		DisplayName:     "Slack Main",
+		Status:          connectors.StatusHealthy,
+		FailureCount:    0,
+		RestartCount:    2,
+		LastHeartbeatAt: &connectorHeartbeat,
+		CreatedAt:       time.Now().UTC().Add(-time.Hour),
+		UpdatedAt:       time.Now().UTC().Add(-time.Minute),
+	}
+	if err := sqliteStore.UpsertConnector(ctx, connector); err != nil {
+		t.Fatalf("UpsertConnector returned error: %v", err)
+	}
+
+	capabilityRestart := time.Now().UTC().Add(-20 * time.Second)
+	capability := capabilities.Capability{
+		CapabilityID:   "shell",
+		Kind:           "exec",
+		DisplayName:    "Shell",
+		Status:         capabilities.StatusBackingOff,
+		FailureCount:   3,
+		RestartCount:   1,
+		BackoffSeconds: 20,
+		LastRestartAt:  &capabilityRestart,
+		CreatedAt:      time.Now().UTC().Add(-time.Hour),
+		UpdatedAt:      time.Now().UTC().Add(-time.Minute),
+	}
+	if err := sqliteStore.UpsertCapability(ctx, capability); err != nil {
+		t.Fatalf("UpsertCapability returned error: %v", err)
+	}
+
+	restoredRouter := router.NewSessionRouter()
+	restoredRuntime := runtime.NewManager()
+	restoredEventBus := events.NewBus()
+	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredConnectors := connectors.NewSupervisor()
+	restoredCapabilities := capabilities.NewSupervisor()
+
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+
+	gotConnector, ok := restoredConnectors.Get(connector.ConnectorID)
+	if !ok {
+		t.Fatal("expected restored connector")
+	}
+	if gotConnector.Status != connectors.StatusHealthy {
+		t.Fatalf("expected restored connector status healthy, got %s", gotConnector.Status)
+	}
+	if gotConnector.RestartCount != 2 {
+		t.Fatalf("expected restored connector restart count 2, got %d", gotConnector.RestartCount)
+	}
+
+	gotCapability, ok := restoredCapabilities.Get(capability.CapabilityID)
+	if !ok {
+		t.Fatal("expected restored capability")
+	}
+	if gotCapability.Status != capabilities.StatusBackingOff {
+		t.Fatalf("expected restored capability status backing_off, got %s", gotCapability.Status)
+	}
+	if gotCapability.BackoffSeconds != 20 {
+		t.Fatalf("expected restored capability backoff 20, got %d", gotCapability.BackoffSeconds)
 	}
 }
 

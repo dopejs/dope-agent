@@ -53,6 +53,11 @@ func (m *Manager) persistSnapshotState(ctx context.Context, checkpoint runtime.R
 			return fmt.Errorf("upsert checkpoint step %s: %w", step.StepID, err)
 		}
 	}
+	for _, toolCall := range checkpoint.ToolCalls {
+		if err := m.store.UpsertToolCall(ctx, toolCall); err != nil {
+			return fmt.Errorf("upsert checkpoint tool call %s: %w", toolCall.ToolCallID, err)
+		}
+	}
 	return nil
 }
 

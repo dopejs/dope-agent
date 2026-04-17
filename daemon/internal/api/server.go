@@ -14,8 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
+	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -24,26 +26,30 @@ import (
 )
 
 type Dependencies struct {
-	Config      config.Config
-	Logger      *slog.Logger
-	EventBus    *events.Bus
-	Policy      *policy.Engine
-	Router      *router.SessionRouter
-	Runtime     *runtime.Manager
-	Store       *store.SQLiteStore
-	Checkpoints *checkpoints.Manager
+	Config       config.Config
+	Logger       *slog.Logger
+	EventBus     *events.Bus
+	Policy       *policy.Engine
+	Router       *router.SessionRouter
+	Runtime      *runtime.Manager
+	Connectors   *connectors.Supervisor
+	Capabilities *capabilities.Supervisor
+	Store        *store.SQLiteStore
+	Checkpoints  *checkpoints.Manager
 }
 
 type Server struct {
-	cfg         config.Config
-	logger      *slog.Logger
-	eventBus    *events.Bus
-	policy      *policy.Engine
-	router      *router.SessionRouter
-	runtime     *runtime.Manager
-	store       *store.SQLiteStore
-	checkpoints *checkpoints.Manager
-	server      *http.Server
+	cfg          config.Config
+	logger       *slog.Logger
+	eventBus     *events.Bus
+	policy       *policy.Engine
+	router       *router.SessionRouter
+	runtime      *runtime.Manager
+	connectors   *connectors.Supervisor
+	capabilities *capabilities.Supervisor
+	store        *store.SQLiteStore
+	checkpoints  *checkpoints.Manager
+	server       *http.Server
 }
 
 func NewServer(deps Dependencies) *Server {
@@ -76,7 +82,7 @@ func NewServer(deps Dependencies) *Server {
 		handleRuns(deps.Router, deps.Runtime, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
 	})
 	mux.HandleFunc("/v1/runs/", func(w http.ResponseWriter, r *http.Request) {
-		handleRunRoutes(deps.Runtime, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
+		handleRunRoutes(deps.Runtime, deps.Capabilities, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
 	})
 	mux.HandleFunc("/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		handleSessions(deps.Router, deps.EventBus, deps.Store, w, r)
@@ -90,16 +96,30 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/policy/approvals/", func(w http.ResponseWriter, r *http.Request) {
 		handlePolicyApprovalRoutes(deps.Policy, deps.EventBus, deps.Store, w, r)
 	})
+	mux.HandleFunc("/v1/connectors", func(w http.ResponseWriter, r *http.Request) {
+		handleConnectors(deps.Connectors, deps.EventBus, deps.Store, w, r)
+	})
+	mux.HandleFunc("/v1/connectors/", func(w http.ResponseWriter, r *http.Request) {
+		handleConnectorRoutes(deps.Connectors, deps.EventBus, deps.Store, w, r)
+	})
+	mux.HandleFunc("/v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
+		handleCapabilities(deps.Capabilities, deps.EventBus, deps.Store, w, r)
+	})
+	mux.HandleFunc("/v1/capabilities/", func(w http.ResponseWriter, r *http.Request) {
+		handleCapabilityRoutes(deps.Capabilities, deps.EventBus, deps.Store, w, r)
+	})
 
 	return &Server{
-		cfg:         deps.Config,
-		logger:      deps.Logger,
-		eventBus:    deps.EventBus,
-		policy:      deps.Policy,
-		router:      deps.Router,
-		runtime:     deps.Runtime,
-		store:       deps.Store,
-		checkpoints: deps.Checkpoints,
+		cfg:          deps.Config,
+		logger:       deps.Logger,
+		eventBus:     deps.EventBus,
+		policy:       deps.Policy,
+		router:       deps.Router,
+		runtime:      deps.Runtime,
+		connectors:   deps.Connectors,
+		capabilities: deps.Capabilities,
+		store:        deps.Store,
+		checkpoints:  deps.Checkpoints,
 		server: &http.Server{
 			Addr:              deps.Config.BindAddr,
 			Handler:           mux,
@@ -278,7 +298,7 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 	}
 }
 
-func handleRunRoutes(manager *runtime.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
+func handleRunRoutes(manager *runtime.Manager, capabilitySupervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
 	if path == "" {
 		http.NotFound(w, r)
@@ -327,7 +347,7 @@ func handleRunRoutes(manager *runtime.Manager, eventBus *events.Bus, sqliteStore
 	}
 
 	if len(parts) == 4 && parts[1] == "steps" && parts[3] == "tool-calls" {
-		handleRunStepToolCalls(manager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
+		handleRunStepToolCalls(manager, capabilitySupervisor, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
 		return
 	}
 
@@ -770,6 +790,416 @@ func handlePolicyApprovalResolve(policyEngine *policy.Engine, eventBus *events.B
 	})
 }
 
+func handleConnectors(supervisor *connectors.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if supervisor == nil {
+		writeError(w, http.StatusInternalServerError, "connector supervisor is not configured")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, ListResponse[connectors.Connector]{Items: supervisor.List()})
+	case http.MethodPost:
+		var input connectors.RegisterInput
+		if err := decodeJSONBody(r, &input); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		connector, created, err := supervisor.Register(input)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := persistConnector(r.Context(), sqliteStore, connector); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+			Category: "connector",
+			Name:     "connector.registered",
+			Scope:    events.Scope{ConnectorID: connector.ConnectorID},
+			Resource: events.Resource{Kind: "connector", ID: connector.ConnectorID},
+			Payload: map[string]any{
+				"kind":        connector.Kind,
+				"status":      connector.Status,
+				"created":     created,
+				"displayName": connector.DisplayName,
+			},
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		status := http.StatusOK
+		if created {
+			status = http.StatusCreated
+		}
+		writeJSON(w, status, connector)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func handleConnectorRoutes(supervisor *connectors.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/v1/connectors/")
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	parts := strings.Split(path, "/")
+	if len(parts) == 1 {
+		handleConnectorByID(supervisor, w, r, parts[0])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "health" {
+		handleConnectorHealth(supervisor, eventBus, sqliteStore, w, r, parts[0])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "fail" {
+		handleConnectorFail(supervisor, eventBus, sqliteStore, w, r, parts[0])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "restart" {
+		handleConnectorRestart(supervisor, eventBus, sqliteStore, w, r, parts[0])
+		return
+	}
+
+	http.NotFound(w, r)
+}
+
+func handleConnectorByID(supervisor *connectors.Supervisor, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	connector, ok := supervisor.Get(connectorID)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, connector)
+}
+
+func handleConnectorHealth(supervisor *connectors.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var input connectors.ReportHealthInput
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	connector, err := supervisor.ReportHealth(connectorID, input)
+	if err != nil {
+		switch {
+		case errors.Is(err, connectors.ErrConnectorNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	if err := persistConnector(r.Context(), sqliteStore, connector); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+		Category: "connector",
+		Name:     "connector.health_changed",
+		Scope:    events.Scope{ConnectorID: connector.ConnectorID},
+		Resource: events.Resource{Kind: "connector", ID: connector.ConnectorID},
+		Payload: map[string]any{
+			"status": connector.Status,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, connector)
+}
+
+func handleConnectorFail(supervisor *connectors.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var input connectors.ReportFailureInput
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	connector, err := supervisor.ReportFailure(connectorID, input)
+	if err != nil {
+		switch {
+		case errors.Is(err, connectors.ErrConnectorNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	if err := persistConnector(r.Context(), sqliteStore, connector); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+		Category: "connector",
+		Name:     "connector.failure_reported",
+		Scope:    events.Scope{ConnectorID: connector.ConnectorID},
+		Resource: events.Resource{Kind: "connector", ID: connector.ConnectorID},
+		Payload: map[string]any{
+			"status":         connector.Status,
+			"failureCount":   connector.FailureCount,
+			"backoffSeconds": connector.BackoffSeconds,
+			"reason":         connector.LastFailureReason,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, connector)
+}
+
+func handleConnectorRestart(supervisor *connectors.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	connector, err := supervisor.Restart(connectorID)
+	if err != nil {
+		if errors.Is(err, connectors.ErrConnectorNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := persistConnector(r.Context(), sqliteStore, connector); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+		Category: "connector",
+		Name:     "connector.restart_scheduled",
+		Scope:    events.Scope{ConnectorID: connector.ConnectorID},
+		Resource: events.Resource{Kind: "connector", ID: connector.ConnectorID},
+		Payload: map[string]any{
+			"status":       connector.Status,
+			"restartCount": connector.RestartCount,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, connector)
+}
+
+func handleCapabilities(supervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if supervisor == nil {
+		writeError(w, http.StatusInternalServerError, "capability supervisor is not configured")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, ListResponse[capabilities.Capability]{Items: supervisor.List()})
+	case http.MethodPost:
+		var input capabilities.RegisterInput
+		if err := decodeJSONBody(r, &input); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		capability, created, err := supervisor.Register(input)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := persistCapability(r.Context(), sqliteStore, capability); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+			Category: "capability",
+			Name:     "capability.registered",
+			Scope:    events.Scope{CapabilityID: capability.CapabilityID},
+			Resource: events.Resource{Kind: "capability", ID: capability.CapabilityID},
+			Payload: map[string]any{
+				"kind":        capability.Kind,
+				"status":      capability.Status,
+				"created":     created,
+				"displayName": capability.DisplayName,
+			},
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		status := http.StatusOK
+		if created {
+			status = http.StatusCreated
+		}
+		writeJSON(w, status, capability)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func handleCapabilityRoutes(supervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/v1/capabilities/")
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	parts := strings.Split(path, "/")
+	if len(parts) == 1 {
+		handleCapabilityByID(supervisor, w, r, parts[0])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "health" {
+		handleCapabilityHealth(supervisor, eventBus, sqliteStore, w, r, parts[0])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "fail" {
+		handleCapabilityFail(supervisor, eventBus, sqliteStore, w, r, parts[0])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "restart" {
+		handleCapabilityRestart(supervisor, eventBus, sqliteStore, w, r, parts[0])
+		return
+	}
+
+	http.NotFound(w, r)
+}
+
+func handleCapabilityByID(supervisor *capabilities.Supervisor, w http.ResponseWriter, r *http.Request, capabilityID string) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	capability, ok := supervisor.Get(capabilityID)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, capability)
+}
+
+func handleCapabilityHealth(supervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, capabilityID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var input capabilities.ReportHealthInput
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	capability, err := supervisor.ReportHealth(capabilityID, input)
+	if err != nil {
+		switch {
+		case errors.Is(err, capabilities.ErrCapabilityNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	if err := persistCapability(r.Context(), sqliteStore, capability); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+		Category: "capability",
+		Name:     "capability.health_changed",
+		Scope:    events.Scope{CapabilityID: capability.CapabilityID},
+		Resource: events.Resource{Kind: "capability", ID: capability.CapabilityID},
+		Payload: map[string]any{
+			"status": capability.Status,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, capability)
+}
+
+func handleCapabilityFail(supervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, capabilityID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var input capabilities.ReportFailureInput
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	capability, err := supervisor.ReportFailure(capabilityID, input)
+	if err != nil {
+		switch {
+		case errors.Is(err, capabilities.ErrCapabilityNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	if err := persistCapability(r.Context(), sqliteStore, capability); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+		Category: "capability",
+		Name:     "capability.failure_reported",
+		Scope:    events.Scope{CapabilityID: capability.CapabilityID},
+		Resource: events.Resource{Kind: "capability", ID: capability.CapabilityID},
+		Payload: map[string]any{
+			"status":         capability.Status,
+			"failureCount":   capability.FailureCount,
+			"backoffSeconds": capability.BackoffSeconds,
+			"reason":         capability.LastFailureReason,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, capability)
+}
+
+func handleCapabilityRestart(supervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, capabilityID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	capability, err := supervisor.Restart(capabilityID)
+	if err != nil {
+		if errors.Is(err, capabilities.ErrCapabilityNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := persistCapability(r.Context(), sqliteStore, capability); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+		Category: "capability",
+		Name:     "capability.restart_scheduled",
+		Scope:    events.Scope{CapabilityID: capability.CapabilityID},
+		Resource: events.Resource{Kind: "capability", ID: capability.CapabilityID},
+		Payload: map[string]any{
+			"status":       capability.Status,
+			"restartCount": capability.RestartCount,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, capability)
+}
+
 func handleRunEvents(eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, runID string) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -1010,7 +1440,7 @@ func handleRunStepStatus(manager *runtime.Manager, eventBus *events.Bus, sqliteS
 	writeJSON(w, http.StatusOK, step)
 }
 
-func handleRunStepToolCalls(manager *runtime.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
+func handleRunStepToolCalls(manager *runtime.Manager, capabilitySupervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
 	switch r.Method {
 	case http.MethodGet:
 		toolCalls, err := manager.ListToolCalls(runID, stepID)
@@ -1030,6 +1460,14 @@ func handleRunStepToolCalls(manager *runtime.Manager, eventBus *events.Bus, sqli
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if capabilitySupervisor == nil {
+			writeError(w, http.StatusInternalServerError, "capability supervisor is not configured")
+			return
+		}
+		if _, ok := capabilitySupervisor.Get(input.CapabilityID); !ok {
+			http.NotFound(w, r)
+			return
+		}
 		toolCall, err := manager.CreateToolCall(runID, stepID, input)
 		if err != nil {
 			switch {
@@ -1038,6 +1476,10 @@ func handleRunStepToolCalls(manager *runtime.Manager, eventBus *events.Bus, sqli
 			default:
 				writeError(w, http.StatusBadRequest, err.Error())
 			}
+			return
+		}
+		if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		if err := persistCheckpoint(r.Context(), checkpointManager, runID); err != nil {
@@ -1057,8 +1499,9 @@ func handleRunStepToolCalls(manager *runtime.Manager, eventBus *events.Bus, sqli
 				ID:   toolCall.ToolCallID,
 			},
 			Payload: map[string]any{
-				"toolName": toolCall.ToolName,
-				"status":   toolCall.Status,
+				"capabilityId": toolCall.CapabilityID,
+				"toolName":     toolCall.ToolName,
+				"status":       toolCall.Status,
 			},
 		}); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -1108,6 +1551,10 @@ func handleRunStepToolCallComplete(manager *runtime.Manager, eventBus *events.Bu
 		}
 		return
 	}
+	if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if err := persistCheckpoint(r.Context(), checkpointManager, runID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1125,8 +1572,9 @@ func handleRunStepToolCallComplete(manager *runtime.Manager, eventBus *events.Bu
 			ID:   toolCall.ToolCallID,
 		},
 		Payload: map[string]any{
-			"toolName": toolCall.ToolName,
-			"status":   toolCall.Status,
+			"capabilityId": toolCall.CapabilityID,
+			"toolName":     toolCall.ToolName,
+			"status":       toolCall.Status,
 		},
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1158,6 +1606,10 @@ func handleRunStepToolCallFail(manager *runtime.Manager, eventBus *events.Bus, s
 		}
 		return
 	}
+	if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if err := persistCheckpoint(r.Context(), checkpointManager, runID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1175,9 +1627,10 @@ func handleRunStepToolCallFail(manager *runtime.Manager, eventBus *events.Bus, s
 			ID:   toolCall.ToolCallID,
 		},
 		Payload: map[string]any{
-			"toolName": toolCall.ToolName,
-			"status":   toolCall.Status,
-			"error":    toolCall.Error,
+			"capabilityId": toolCall.CapabilityID,
+			"toolName":     toolCall.ToolName,
+			"status":       toolCall.Status,
+			"error":        toolCall.Error,
 		},
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1206,6 +1659,43 @@ func persistStep(ctx context.Context, sqliteStore *store.SQLiteStore, step runti
 		return nil
 	}
 	return sqliteStore.UpsertStep(ctx, step)
+}
+
+func persistConnector(ctx context.Context, sqliteStore *store.SQLiteStore, connector connectors.Connector) error {
+	if sqliteStore == nil {
+		return nil
+	}
+	return sqliteStore.UpsertConnector(ctx, connector)
+}
+
+func persistCapability(ctx context.Context, sqliteStore *store.SQLiteStore, capability capabilities.Capability) error {
+	if sqliteStore == nil {
+		return nil
+	}
+	return sqliteStore.UpsertCapability(ctx, capability)
+}
+
+func persistToolCall(ctx context.Context, sqliteStore *store.SQLiteStore, manager *runtime.Manager, toolCall runtime.ToolCall) error {
+	if sqliteStore == nil {
+		return nil
+	}
+	if manager != nil {
+		run, ok := manager.GetRun(toolCall.RunID)
+		if !ok {
+			return runtime.ErrRunNotFound
+		}
+		if err := persistRun(ctx, sqliteStore, run); err != nil {
+			return err
+		}
+		step, ok := manager.GetStep(toolCall.RunID, toolCall.StepID)
+		if !ok {
+			return runtime.ErrStepNotFound
+		}
+		if err := persistStep(ctx, sqliteStore, step); err != nil {
+			return err
+		}
+	}
+	return sqliteStore.UpsertToolCall(ctx, toolCall)
 }
 
 func persistRunCommandMutation(ctx context.Context, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, run runtime.Run, steps []runtime.Step) error {

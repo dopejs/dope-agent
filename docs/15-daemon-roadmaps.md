@@ -164,7 +164,7 @@ Task definition of done:
 
 ## Roadmap 2: Supervision Plane
 
-Status: `[ ] not started`
+Status: `[x] complete`
 
 ### Goal
 

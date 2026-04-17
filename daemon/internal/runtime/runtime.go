@@ -17,6 +17,7 @@ var (
 	ErrRunTerminal           = errors.New("run is in a terminal state")
 	ErrStepTerminal          = errors.New("step is in a terminal state")
 	ErrToolNameRequired      = errors.New("tool name is required")
+	ErrCapabilityIDRequired  = errors.New("capability id is required")
 	ErrToolCallNotFound      = errors.New("tool call not found")
 	ErrInvalidToolCallStatus = errors.New("invalid tool call status transition")
 )
@@ -98,6 +99,7 @@ type ToolCall struct {
 	ToolCallID string         `json:"toolCallId"`
 	RunID      string         `json:"runId"`
 	StepID     string         `json:"stepId"`
+	CapabilityID string       `json:"capabilityId"`
 	ToolName   string         `json:"toolName"`
 	Status     ToolCallStatus `json:"status"`
 	CreatedAt  time.Time      `json:"createdAt"`
@@ -115,6 +117,7 @@ type RunCheckpoint struct {
 }
 
 type CreateToolCallInput struct {
+	CapabilityID string `json:"capabilityId"`
 	ToolName string `json:"toolName"`
 	Input    any    `json:"input"`
 }
@@ -496,6 +499,9 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 	if input.ToolName == "" {
 		return ToolCall{}, ErrToolNameRequired
 	}
+	if input.CapabilityID == "" {
+		return ToolCall{}, ErrCapabilityIDRequired
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -513,6 +519,7 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 		ToolCallID: newToolCallID(),
 		RunID:      runID,
 		StepID:     stepID,
+		CapabilityID: input.CapabilityID,
 		ToolName:   input.ToolName,
 		Status:     ToolCallStatusRequested,
 		CreatedAt:  now,

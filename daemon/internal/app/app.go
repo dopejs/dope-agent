@@ -58,19 +58,21 @@ func New() (*App, error) {
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 
-	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus); err != nil {
+	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor); err != nil {
 		return nil, err
 	}
 
 	server := api.NewServer(api.Dependencies{
-		Config:      cfg,
-		Logger:      logger.Slog(),
-		EventBus:    eventBus,
-		Policy:      policyEngine,
-		Router:      sessionRouter,
-		Runtime:     runtimeManager,
-		Store:       sqliteStore,
-		Checkpoints: checkpointManager,
+		Config:       cfg,
+		Logger:       logger.Slog(),
+		EventBus:     eventBus,
+		Policy:       policyEngine,
+		Router:       sessionRouter,
+		Runtime:      runtimeManager,
+		Connectors:   connectorSupervisor,
+		Capabilities: capabilitySupervisor,
+		Store:        sqliteStore,
+		Checkpoints:  checkpointManager,
 	})
 
 	return &App{
@@ -195,7 +197,7 @@ func newEventID() string {
 	return "evt_" + hex.EncodeToString(buf)
 }
 
-func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus) error {
+func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor) error {
 	if sqliteStore == nil {
 		return nil
 	}
@@ -208,6 +210,22 @@ func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, 
 
 	if _, err := checkpointManager.Restore(ctx); err != nil {
 		return fmt.Errorf("restore runtime checkpoints: %w", err)
+	}
+
+	persistedConnectors, err := sqliteStore.ListConnectors(ctx)
+	if err != nil {
+		return fmt.Errorf("load persisted connectors: %w", err)
+	}
+	if connectorSupervisor != nil {
+		connectorSupervisor.Restore(persistedConnectors)
+	}
+
+	persistedCapabilities, err := sqliteStore.ListCapabilities(ctx)
+	if err != nil {
+		return fmt.Errorf("load persisted capabilities: %w", err)
+	}
+	if capabilitySupervisor != nil {
+		capabilitySupervisor.Restore(persistedCapabilities)
 	}
 
 	persistedEvents, err := sqliteStore.ListEvents(ctx, events.Filter{})

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
+	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -166,6 +168,198 @@ func (s *SQLiteStore) UpsertSession(ctx context.Context, session router.Session)
 	return nil
 }
 
+func (s *SQLiteStore) UpsertConnector(ctx context.Context, connector connectors.Connector) error {
+	if s == nil {
+		return nil
+	}
+
+	var nextRestartAt sql.NullString
+	if connector.NextRestartAt != nil {
+		nextRestartAt = sql.NullString{String: connector.NextRestartAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+	var lastRestartAt sql.NullString
+	if connector.LastRestartAt != nil {
+		lastRestartAt = sql.NullString{String: connector.LastRestartAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+	var lastHeartbeatAt sql.NullString
+	if connector.LastHeartbeatAt != nil {
+		lastHeartbeatAt = sql.NullString{String: connector.LastHeartbeatAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO connectors (
+			connector_id,
+			kind,
+			display_name,
+			status,
+			failure_count,
+			restart_count,
+			backoff_seconds,
+			next_restart_at,
+			last_restart_at,
+			last_heartbeat_at,
+			last_failure_reason,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(connector_id) DO UPDATE SET
+			kind = excluded.kind,
+			display_name = excluded.display_name,
+			status = excluded.status,
+			failure_count = excluded.failure_count,
+			restart_count = excluded.restart_count,
+			backoff_seconds = excluded.backoff_seconds,
+			next_restart_at = excluded.next_restart_at,
+			last_restart_at = excluded.last_restart_at,
+			last_heartbeat_at = excluded.last_heartbeat_at,
+			last_failure_reason = excluded.last_failure_reason,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at
+	`,
+		connector.ConnectorID,
+		connector.Kind,
+		connector.DisplayName,
+		string(connector.Status),
+		connector.FailureCount,
+		connector.RestartCount,
+		connector.BackoffSeconds,
+		nextRestartAt,
+		lastRestartAt,
+		lastHeartbeatAt,
+		nullString(connector.LastFailureReason),
+		connector.CreatedAt.UTC().Format(time.RFC3339Nano),
+		connector.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert connector %s: %w", connector.ConnectorID, err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) ListConnectors(ctx context.Context) ([]connectors.Connector, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT connector_id, kind, display_name, status, failure_count, restart_count, backoff_seconds, next_restart_at, last_restart_at, last_heartbeat_at, last_failure_reason, created_at, updated_at
+		FROM connectors
+		ORDER BY created_at ASC, connector_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list connectors: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]connectors.Connector, 0)
+	for rows.Next() {
+		connector, err := scanConnector(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, connector)
+	}
+
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertCapability(ctx context.Context, capability capabilities.Capability) error {
+	if s == nil {
+		return nil
+	}
+
+	var nextRestartAt sql.NullString
+	if capability.NextRestartAt != nil {
+		nextRestartAt = sql.NullString{String: capability.NextRestartAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+	var lastRestartAt sql.NullString
+	if capability.LastRestartAt != nil {
+		lastRestartAt = sql.NullString{String: capability.LastRestartAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+	var lastHeartbeatAt sql.NullString
+	if capability.LastHeartbeatAt != nil {
+		lastHeartbeatAt = sql.NullString{String: capability.LastHeartbeatAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO capabilities (
+			capability_id,
+			kind,
+			display_name,
+			status,
+			failure_count,
+			restart_count,
+			backoff_seconds,
+			next_restart_at,
+			last_restart_at,
+			last_heartbeat_at,
+			last_failure_reason,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(capability_id) DO UPDATE SET
+			kind = excluded.kind,
+			display_name = excluded.display_name,
+			status = excluded.status,
+			failure_count = excluded.failure_count,
+			restart_count = excluded.restart_count,
+			backoff_seconds = excluded.backoff_seconds,
+			next_restart_at = excluded.next_restart_at,
+			last_restart_at = excluded.last_restart_at,
+			last_heartbeat_at = excluded.last_heartbeat_at,
+			last_failure_reason = excluded.last_failure_reason,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at
+	`,
+		capability.CapabilityID,
+		capability.Kind,
+		capability.DisplayName,
+		string(capability.Status),
+		capability.FailureCount,
+		capability.RestartCount,
+		capability.BackoffSeconds,
+		nextRestartAt,
+		lastRestartAt,
+		lastHeartbeatAt,
+		nullString(capability.LastFailureReason),
+		capability.CreatedAt.UTC().Format(time.RFC3339Nano),
+		capability.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert capability %s: %w", capability.CapabilityID, err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) ListCapabilities(ctx context.Context) ([]capabilities.Capability, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT capability_id, kind, display_name, status, failure_count, restart_count, backoff_seconds, next_restart_at, last_restart_at, last_heartbeat_at, last_failure_reason, created_at, updated_at
+		FROM capabilities
+		ORDER BY created_at ASC, capability_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list capabilities: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]capabilities.Capability, 0)
+	for rows.Next() {
+		capability, err := scanCapability(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, capability)
+	}
+
+	return items, rows.Err()
+}
+
 func (s *SQLiteStore) ListSessions(ctx context.Context) ([]router.Session, error) {
 	if s == nil {
 		return nil, nil
@@ -271,6 +465,93 @@ func (s *SQLiteStore) UpsertStep(ctx context.Context, step runtime.Step) error {
 	}
 
 	return nil
+}
+
+func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolCall) error {
+	if s == nil {
+		return nil
+	}
+
+	inputJSON, err := marshalJSON(toolCall.Input)
+	if err != nil {
+		return fmt.Errorf("marshal tool call input: %w", err)
+	}
+	outputJSON, err := marshalJSON(toolCall.Output)
+	if err != nil {
+		return fmt.Errorf("marshal tool call output: %w", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO tool_calls (
+			tool_call_id,
+			run_id,
+			step_id,
+			capability_id,
+			tool_name,
+			status,
+			input_json,
+			output_json,
+			error_text,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(tool_call_id) DO UPDATE SET
+			run_id = excluded.run_id,
+			step_id = excluded.step_id,
+			capability_id = excluded.capability_id,
+			tool_name = excluded.tool_name,
+			status = excluded.status,
+			input_json = excluded.input_json,
+			output_json = excluded.output_json,
+			error_text = excluded.error_text,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at
+	`,
+		toolCall.ToolCallID,
+		toolCall.RunID,
+		toolCall.StepID,
+		toolCall.CapabilityID,
+		toolCall.ToolName,
+		string(toolCall.Status),
+		inputJSON,
+		outputJSON,
+		nullString(toolCall.Error),
+		toolCall.CreatedAt.UTC().Format(time.RFC3339Nano),
+		toolCall.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert tool call %s: %w", toolCall.ToolCallID, err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) ListToolCalls(ctx context.Context, runID, stepID string) ([]runtime.ToolCall, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT tool_call_id, run_id, step_id, capability_id, tool_name, status, input_json, output_json, error_text, created_at, updated_at
+		FROM tool_calls
+		WHERE run_id = ? AND step_id = ?
+		ORDER BY created_at ASC, tool_call_id ASC
+	`, runID, stepID)
+	if err != nil {
+		return nil, fmt.Errorf("list tool calls for run %s step %s: %w", runID, stepID, err)
+	}
+	defer rows.Close()
+
+	items := make([]runtime.ToolCall, 0)
+	for rows.Next() {
+		toolCall, err := scanToolCall(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, toolCall)
+	}
+
+	return items, rows.Err()
 }
 
 func (s *SQLiteStore) ListSteps(ctx context.Context, runID string) ([]runtime.Step, error) {
@@ -513,6 +794,40 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 		);
 		`,
 		`
+		CREATE TABLE IF NOT EXISTS connectors (
+			connector_id TEXT PRIMARY KEY,
+			kind TEXT NOT NULL,
+			display_name TEXT NOT NULL,
+			status TEXT NOT NULL,
+			failure_count INTEGER NOT NULL,
+			restart_count INTEGER NOT NULL,
+			backoff_seconds INTEGER NOT NULL,
+			next_restart_at TEXT,
+			last_restart_at TEXT,
+			last_heartbeat_at TEXT,
+			last_failure_reason TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS capabilities (
+			capability_id TEXT PRIMARY KEY,
+			kind TEXT NOT NULL,
+			display_name TEXT NOT NULL,
+			status TEXT NOT NULL,
+			failure_count INTEGER NOT NULL,
+			restart_count INTEGER NOT NULL,
+			backoff_seconds INTEGER NOT NULL,
+			next_restart_at TEXT,
+			last_restart_at TEXT,
+			last_heartbeat_at TEXT,
+			last_failure_reason TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+		`,
+		`
 		CREATE TABLE IF NOT EXISTS steps (
 			step_id TEXT PRIMARY KEY,
 			run_id TEXT NOT NULL,
@@ -524,6 +839,23 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
 			FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+		);
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS tool_calls (
+			tool_call_id TEXT PRIMARY KEY,
+			run_id TEXT NOT NULL,
+			step_id TEXT NOT NULL,
+			capability_id TEXT NOT NULL,
+			tool_name TEXT NOT NULL,
+			status TEXT NOT NULL,
+			input_json TEXT,
+			output_json TEXT,
+			error_text TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE,
+			FOREIGN KEY(step_id) REFERENCES steps(step_id) ON DELETE CASCADE
 		);
 		`,
 		`
@@ -552,6 +884,9 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 		);
 		`,
 		`CREATE INDEX IF NOT EXISTS idx_steps_run_id ON steps(run_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_connectors_kind_status ON connectors(kind, status);`,
+		`CREATE INDEX IF NOT EXISTS idx_capabilities_kind_status ON capabilities(kind, status);`,
+		`CREATE INDEX IF NOT EXISTS idx_tool_calls_run_step ON tool_calls(run_id, step_id, created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_channel_peer ON sessions(channel, peer_id, thread_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id, occurred_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_events_session_id ON events(session_id, occurred_at);`,
@@ -692,6 +1027,114 @@ func scanSession(scanner interface {
 	return session, nil
 }
 
+func scanConnector(scanner interface {
+	Scan(dest ...any) error
+}) (connectors.Connector, error) {
+	var (
+		item            connectors.Connector
+		status          string
+		nextRestartAt   sql.NullString
+		lastRestartAt   sql.NullString
+		lastHeartbeatAt sql.NullString
+		lastFailure     sql.NullString
+		createdAt       string
+		updatedAt       string
+	)
+
+	if err := scanner.Scan(
+		&item.ConnectorID,
+		&item.Kind,
+		&item.DisplayName,
+		&status,
+		&item.FailureCount,
+		&item.RestartCount,
+		&item.BackoffSeconds,
+		&nextRestartAt,
+		&lastRestartAt,
+		&lastHeartbeatAt,
+		&lastFailure,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return connectors.Connector{}, fmt.Errorf("scan connector: %w", err)
+	}
+
+	item.Status = connectors.Status(status)
+	item.LastFailureReason = lastFailure.String
+
+	if err := assignOptionalTime(&item.NextRestartAt, nextRestartAt); err != nil {
+		return connectors.Connector{}, fmt.Errorf("parse connector next_restart_at: %w", err)
+	}
+	if err := assignOptionalTime(&item.LastRestartAt, lastRestartAt); err != nil {
+		return connectors.Connector{}, fmt.Errorf("parse connector last_restart_at: %w", err)
+	}
+	if err := assignOptionalTime(&item.LastHeartbeatAt, lastHeartbeatAt); err != nil {
+		return connectors.Connector{}, fmt.Errorf("parse connector last_heartbeat_at: %w", err)
+	}
+	if err := assignRequiredTime(&item.CreatedAt, createdAt); err != nil {
+		return connectors.Connector{}, fmt.Errorf("parse connector created_at: %w", err)
+	}
+	if err := assignRequiredTime(&item.UpdatedAt, updatedAt); err != nil {
+		return connectors.Connector{}, fmt.Errorf("parse connector updated_at: %w", err)
+	}
+
+	return item, nil
+}
+
+func scanCapability(scanner interface {
+	Scan(dest ...any) error
+}) (capabilities.Capability, error) {
+	var (
+		item            capabilities.Capability
+		status          string
+		nextRestartAt   sql.NullString
+		lastRestartAt   sql.NullString
+		lastHeartbeatAt sql.NullString
+		lastFailure     sql.NullString
+		createdAt       string
+		updatedAt       string
+	)
+
+	if err := scanner.Scan(
+		&item.CapabilityID,
+		&item.Kind,
+		&item.DisplayName,
+		&status,
+		&item.FailureCount,
+		&item.RestartCount,
+		&item.BackoffSeconds,
+		&nextRestartAt,
+		&lastRestartAt,
+		&lastHeartbeatAt,
+		&lastFailure,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return capabilities.Capability{}, fmt.Errorf("scan capability: %w", err)
+	}
+
+	item.Status = capabilities.Status(status)
+	item.LastFailureReason = lastFailure.String
+
+	if err := assignOptionalTime(&item.NextRestartAt, nextRestartAt); err != nil {
+		return capabilities.Capability{}, fmt.Errorf("parse capability next_restart_at: %w", err)
+	}
+	if err := assignOptionalTime(&item.LastRestartAt, lastRestartAt); err != nil {
+		return capabilities.Capability{}, fmt.Errorf("parse capability last_restart_at: %w", err)
+	}
+	if err := assignOptionalTime(&item.LastHeartbeatAt, lastHeartbeatAt); err != nil {
+		return capabilities.Capability{}, fmt.Errorf("parse capability last_heartbeat_at: %w", err)
+	}
+	if err := assignRequiredTime(&item.CreatedAt, createdAt); err != nil {
+		return capabilities.Capability{}, fmt.Errorf("parse capability created_at: %w", err)
+	}
+	if err := assignRequiredTime(&item.UpdatedAt, updatedAt); err != nil {
+		return capabilities.Capability{}, fmt.Errorf("parse capability updated_at: %w", err)
+	}
+
+	return item, nil
+}
+
 func scanStep(scanner interface {
 	Scan(dest ...any) error
 }) (runtime.Step, error) {
@@ -740,6 +1183,82 @@ func scanStep(scanner interface {
 	step.UpdatedAt = parsedUpdatedAt
 
 	return step, nil
+}
+
+func scanToolCall(scanner interface {
+	Scan(dest ...any) error
+}) (runtime.ToolCall, error) {
+	var (
+		toolCall   runtime.ToolCall
+		status     string
+		inputJSON  sql.NullString
+		outputJSON sql.NullString
+		errorText  sql.NullString
+		createdAt  string
+		updatedAt  string
+	)
+
+	if err := scanner.Scan(
+		&toolCall.ToolCallID,
+		&toolCall.RunID,
+		&toolCall.StepID,
+		&toolCall.CapabilityID,
+		&toolCall.ToolName,
+		&status,
+		&inputJSON,
+		&outputJSON,
+		&errorText,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return runtime.ToolCall{}, fmt.Errorf("scan tool call: %w", err)
+	}
+
+	toolCall.Status = runtime.ToolCallStatus(status)
+	toolCall.Error = errorText.String
+
+	if err := unmarshalNullableJSON(inputJSON, &toolCall.Input); err != nil {
+		return runtime.ToolCall{}, fmt.Errorf("decode tool call input: %w", err)
+	}
+	if err := unmarshalNullableJSON(outputJSON, &toolCall.Output); err != nil {
+		return runtime.ToolCall{}, fmt.Errorf("decode tool call output: %w", err)
+	}
+
+	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		return runtime.ToolCall{}, fmt.Errorf("parse tool call created_at: %w", err)
+	}
+	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return runtime.ToolCall{}, fmt.Errorf("parse tool call updated_at: %w", err)
+	}
+
+	toolCall.CreatedAt = parsedCreatedAt
+	toolCall.UpdatedAt = parsedUpdatedAt
+
+	return toolCall, nil
+}
+
+func assignRequiredTime(target *time.Time, value string) error {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return err
+	}
+	*target = parsed
+	return nil
+}
+
+func assignOptionalTime(target **time.Time, value sql.NullString) error {
+	if !value.Valid || value.String == "" {
+		*target = nil
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value.String)
+	if err != nil {
+		return err
+	}
+	*target = &parsed
+	return nil
 }
 
 func scanEvent(scanner interface {

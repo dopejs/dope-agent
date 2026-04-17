@@ -368,8 +368,9 @@ func TestToolCallLifecycle(t *testing.T) {
 	}
 
 	toolCall, err := manager.CreateToolCall(run.RunID, step.StepID, CreateToolCallInput{
-		ToolName: "shell",
-		Input:    map[string]any{"cmd": "pwd"},
+		CapabilityID: "shell",
+		ToolName:     "shell",
+		Input:        map[string]any{"cmd": "pwd"},
 	})
 	if err != nil {
 		t.Fatalf("CreateToolCall returned error: %v", err)
@@ -392,6 +393,9 @@ func TestToolCallLifecycle(t *testing.T) {
 	}
 	if got.ToolName != "shell" {
 		t.Fatalf("expected tool name shell, got %s", got.ToolName)
+	}
+	if got.CapabilityID != "shell" {
+		t.Fatalf("expected capability id shell, got %s", got.CapabilityID)
 	}
 
 	toolCall, err = manager.CompleteToolCall(run.RunID, step.StepID, toolCall.ToolCallID, CompleteToolCallInput{
@@ -419,7 +423,8 @@ func TestToolCallFailAndInvalidTransition(t *testing.T) {
 		t.Fatalf("CreateStep returned error: %v", err)
 	}
 	toolCall, err := manager.CreateToolCall(run.RunID, step.StepID, CreateToolCallInput{
-		ToolName: "shell",
+		CapabilityID: "shell",
+		ToolName:     "shell",
 	})
 	if err != nil {
 		t.Fatalf("CreateToolCall returned error: %v", err)
@@ -469,8 +474,9 @@ func TestSnapshotAndRestoreCheckpoint(t *testing.T) {
 		t.Fatalf("UpdateStepStatusAndReconcileRun returned error: %v", err)
 	}
 	toolCall, err := manager.CreateToolCall(run.RunID, step.StepID, CreateToolCallInput{
-		ToolName: "shell",
-		Input:    map[string]any{"cmd": "pwd"},
+		CapabilityID: "shell",
+		ToolName:     "shell",
+		Input:        map[string]any{"cmd": "pwd"},
 	})
 	if err != nil {
 		t.Fatalf("CreateToolCall returned error: %v", err)

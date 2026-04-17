@@ -42,7 +42,8 @@ func TestManagerSavesAndRestoresRunCheckpoint(t *testing.T) {
 		t.Fatalf("UpdateStepStatusAndReconcileRun returned error: %v", err)
 	}
 	toolCall, err := original.CreateToolCall(run.RunID, step.StepID, runtime.CreateToolCallInput{
-		ToolName: "shell",
+		CapabilityID: "shell",
+		ToolName:     "shell",
 	})
 	if err != nil {
 		t.Fatalf("CreateToolCall returned error: %v", err)

@@ -41,11 +41,11 @@ Current completion should be read as:
 
 ## Roadmap 2: Supervision Plane
 
-- [ ] Connector supervisor contract
-- [ ] Capability supervisor contract
-- [ ] Restart and backoff policy
-- [ ] Connector and capability APIs
-- [ ] Tool-call dispatch boundary and durable execution history
+- [x] Connector supervisor contract
+- [x] Capability supervisor contract
+- [x] Restart and backoff policy
+- [x] Connector and capability APIs
+- [x] Tool-call dispatch boundary and durable execution history
 
 ## Roadmap 3: LLM Dispatch Plane
 
@@ -131,8 +131,8 @@ These are implemented pieces that support later roadmaps. They are real progress
 - [x] Add `tool_call.requested` event
 - [x] Add `tool_call.completed` event
 - [x] Add `tool_call.failed` event
-- [ ] Attach tool calls to step execution history `(partial: runtime attachment exists, but not yet a closed durable dispatch model)`
-- [ ] Define capability dispatch boundary for tool calls
+- [x] Attach tool calls to step execution history
+- [x] Define capability dispatch boundary for tool calls
 
 ### Persistence And Recovery Foundation
 
@@ -174,7 +174,7 @@ These are implemented pieces that support later roadmaps. They are real progress
 - [x] Create tool call schemas
 - [x] Create session schemas
 - [x] Create policy and approval schemas
-- [ ] Create connector and capability schemas
+- [x] Create connector and capability schemas
 - [ ] Add schema enforcement and generation pipeline
 - [x] Add runtime unit tests
 - [x] Add API unit tests
