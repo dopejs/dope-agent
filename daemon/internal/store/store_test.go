@@ -2,6 +2,9 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -625,5 +628,99 @@ func TestSQLiteStoreListsEventsAfterCursor(t *testing.T) {
 	}
 	if items[0].Sequence != second.Sequence {
 		t.Fatalf("expected sequence %d, got %d", second.Sequence, items[0].Sequence)
+	}
+}
+
+func TestSQLiteStoreUsesCurrentSchemaVersion(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	version, err := store.SchemaVersion(context.Background())
+	if err != nil {
+		t.Fatalf("SchemaVersion returned error: %v", err)
+	}
+	if version != CurrentSchemaVersion {
+		t.Fatalf("expected schema version %d, got %d", CurrentSchemaVersion, version)
+	}
+}
+
+func TestSQLiteStoreUpgradesLegacyBaselineSchema(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	dbPath := filepath.Join(dataDir, defaultDatabaseFile)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open returned error: %v", err)
+	}
+
+	for _, stmt := range schemaMigrations[0].Statements {
+		if strings.Contains(stmt, "schema_migrations") {
+			continue
+		}
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("db.Exec legacy baseline statement returned error: %v", err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+
+	store, err := NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	version, err := store.SchemaVersion(context.Background())
+	if err != nil {
+		t.Fatalf("SchemaVersion returned error: %v", err)
+	}
+	if version != CurrentSchemaVersion {
+		t.Fatalf("expected upgraded schema version %d, got %d", CurrentSchemaVersion, version)
+	}
+}
+
+func TestSQLiteStoreRejectsFutureSchemaVersion(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	dbPath := filepath.Join(dataDir, defaultDatabaseFile)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open returned error: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			applied_at TEXT NOT NULL
+		);
+	`); err != nil {
+		t.Fatalf("db.Exec create schema_migrations returned error: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)`, CurrentSchemaVersion+1, "future", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("db.Exec insert future schema version returned error: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+
+	if _, err := NewSQLiteStore(dataDir); err == nil {
+		t.Fatal("expected NewSQLiteStore to reject future schema version")
 	}
 }

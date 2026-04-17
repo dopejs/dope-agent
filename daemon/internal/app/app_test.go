@@ -15,6 +15,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -573,6 +574,151 @@ func TestAppRestartRestoresAuthAndApprovalAPIState(t *testing.T) {
 	}
 	if restored.ApprovalID != created.Approval.ApprovalID {
 		t.Fatalf("expected approval ID %s, got %s", created.Approval.ApprovalID, restored.ApprovalID)
+	}
+}
+
+func TestAppRestartRestoresOperatorStateAcrossSubsystems(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	t.Setenv("DOPE_DATA_DIR", dataDir)
+	t.Setenv("DOPE_BIND_ADDR", "127.0.0.1:0")
+	t.Setenv("DOPE_LOG_LEVEL", "error")
+	t.Setenv("DOPE_VERSION", "test")
+
+	first, err := New()
+	if err != nil {
+		t.Fatalf("first New returned error: %v", err)
+	}
+
+	authHeader := testAuthHeader(t, first.Auth)
+
+	createConnectorReq := httptest.NewRequest(http.MethodPost, "/v1/connectors", strings.NewReader(`{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`))
+	createConnectorReq.Header.Set("Authorization", authHeader)
+	createConnectorRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(createConnectorRec, createConnectorReq)
+	if createConnectorRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for connector create, got %d body=%s", createConnectorRec.Code, createConnectorRec.Body.String())
+	}
+
+	createCapabilityReq := httptest.NewRequest(http.MethodPost, "/v1/capabilities", strings.NewReader(`{"capabilityId":"docs","kind":"docs","displayName":"Docs"}`))
+	createCapabilityReq.Header.Set("Authorization", authHeader)
+	createCapabilityRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(createCapabilityRec, createCapabilityReq)
+	if createCapabilityRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for capability create, got %d body=%s", createCapabilityRec.Code, createCapabilityRec.Body.String())
+	}
+
+	createDispatchReq := httptest.NewRequest(http.MethodPost, "/v1/llm/dispatches", strings.NewReader(`{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"hello restart"}]}`))
+	createDispatchReq.Header.Set("Authorization", authHeader)
+	createDispatchRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(createDispatchRec, createDispatchReq)
+	if createDispatchRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for llm dispatch create, got %d body=%s", createDispatchRec.Code, createDispatchRec.Body.String())
+	}
+	var createdDispatch llm.Dispatch
+	if err := json.Unmarshal(createDispatchRec.Body.Bytes(), &createdDispatch); err != nil {
+		t.Fatalf("failed to decode llm dispatch create response: %v", err)
+	}
+
+	createApprovalReq := httptest.NewRequest(http.MethodPost, "/v1/policy/approvals", strings.NewReader(`{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"restart coverage"}`))
+	createApprovalReq.Header.Set("Authorization", authHeader)
+	createApprovalRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(createApprovalRec, createApprovalReq)
+	if createApprovalRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for approval create, got %d body=%s", createApprovalRec.Code, createApprovalRec.Body.String())
+	}
+	var created struct {
+		Approval policy.Approval `json:"approval"`
+	}
+	if err := json.Unmarshal(createApprovalRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("failed to decode approval create response: %v", err)
+	}
+
+	if err := first.Close(context.Background()); err != nil {
+		t.Fatalf("first Close returned error: %v", err)
+	}
+
+	second, err := New()
+	if err != nil {
+		t.Fatalf("second New returned error: %v", err)
+	}
+	defer func() {
+		if err := second.Close(context.Background()); err != nil {
+			t.Fatalf("second Close returned error: %v", err)
+		}
+	}()
+
+	connectorsReq := httptest.NewRequest(http.MethodGet, "/v1/connectors", nil)
+	connectorsReq.Header.Set("Authorization", authHeader)
+	connectorsRec := httptest.NewRecorder()
+	second.Server.Handler().ServeHTTP(connectorsRec, connectorsReq)
+	if connectorsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for connector list after restart, got %d body=%s", connectorsRec.Code, connectorsRec.Body.String())
+	}
+	var connectorList struct {
+		Items []connectors.Connector `json:"items"`
+	}
+	if err := json.Unmarshal(connectorsRec.Body.Bytes(), &connectorList); err != nil {
+		t.Fatalf("failed to decode connector list response: %v", err)
+	}
+	if len(connectorList.Items) != 1 || connectorList.Items[0].ConnectorID != "telegram-main" {
+		t.Fatalf("expected restored connector telegram-main, got %+v", connectorList.Items)
+	}
+
+	capabilitiesReq := httptest.NewRequest(http.MethodGet, "/v1/capabilities", nil)
+	capabilitiesReq.Header.Set("Authorization", authHeader)
+	capabilitiesRec := httptest.NewRecorder()
+	second.Server.Handler().ServeHTTP(capabilitiesRec, capabilitiesReq)
+	if capabilitiesRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for capability list after restart, got %d body=%s", capabilitiesRec.Code, capabilitiesRec.Body.String())
+	}
+	var capabilityList struct {
+		Items []capabilities.Capability `json:"items"`
+	}
+	if err := json.Unmarshal(capabilitiesRec.Body.Bytes(), &capabilityList); err != nil {
+		t.Fatalf("failed to decode capability list response: %v", err)
+	}
+	if len(capabilityList.Items) != 1 || capabilityList.Items[0].CapabilityID != "docs" {
+		t.Fatalf("expected restored capability docs, got %+v", capabilityList.Items)
+	}
+
+	dispatchesReq := httptest.NewRequest(http.MethodGet, "/v1/llm/dispatches", nil)
+	dispatchesReq.Header.Set("Authorization", authHeader)
+	dispatchesRec := httptest.NewRecorder()
+	second.Server.Handler().ServeHTTP(dispatchesRec, dispatchesReq)
+	if dispatchesRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for llm dispatch list after restart, got %d body=%s", dispatchesRec.Code, dispatchesRec.Body.String())
+	}
+	var dispatchList struct {
+		Items []llm.Dispatch `json:"items"`
+	}
+	if err := json.Unmarshal(dispatchesRec.Body.Bytes(), &dispatchList); err != nil {
+		t.Fatalf("failed to decode llm dispatch list response: %v", err)
+	}
+	if len(dispatchList.Items) != 1 || dispatchList.Items[0].DispatchID != createdDispatch.DispatchID {
+		t.Fatalf("expected restored llm dispatch %s, got %+v", createdDispatch.DispatchID, dispatchList.Items)
+	}
+
+	approvalReq := httptest.NewRequest(http.MethodGet, "/v1/policy/approvals/"+created.Approval.ApprovalID, nil)
+	approvalReq.Header.Set("Authorization", authHeader)
+	approvalRec := httptest.NewRecorder()
+	second.Server.Handler().ServeHTTP(approvalRec, approvalReq)
+	if approvalRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for approval get after restart, got %d body=%s", approvalRec.Code, approvalRec.Body.String())
+	}
+	var restoredApproval policy.Approval
+	if err := json.Unmarshal(approvalRec.Body.Bytes(), &restoredApproval); err != nil {
+		t.Fatalf("failed to decode approval get response: %v", err)
+	}
+	if restoredApproval.ApprovalID != created.Approval.ApprovalID {
+		t.Fatalf("expected restored approval ID %s, got %s", created.Approval.ApprovalID, restoredApproval.ApprovalID)
+	}
+
+	meReq := httptest.NewRequest(http.MethodGet, "/v1/auth/me", nil)
+	meReq.Header.Set("Authorization", authHeader)
+	meRec := httptest.NewRecorder()
+	second.Server.Handler().ServeHTTP(meRec, meReq)
+	if meRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for auth me after restart, got %d body=%s", meRec.Code, meRec.Body.String())
 	}
 }
 

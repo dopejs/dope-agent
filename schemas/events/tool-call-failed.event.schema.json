@@ -17,9 +17,12 @@
         },
         "payload": {
           "type": "object",
-          "required": ["toolName", "status", "error"],
+          "required": ["capabilityId", "toolName", "status", "error"],
           "additionalProperties": false,
           "properties": {
+            "capabilityId": {
+              "type": "string"
+            },
             "toolName": {
               "type": "string"
             },

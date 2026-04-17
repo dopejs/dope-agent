@@ -21,13 +21,12 @@ This file exists to:
 
 ## Current Overall Read
 
-The daemon has a closed runtime foundation, but it does not yet have a supervision plane, model plane, or operator trust boundary.
+The daemon now has a closed P0 daemon foundation across runtime, supervision, model dispatch, trust boundary, and ship-readiness contracts.
 
 Current completion should be read as:
 
-- foundation exists
-- several subsystems are usable
-- many tasks are still partial against their real boundary
+- the five planned daemon roadmaps are closed
+- remaining work is beyond the original P0 daemon boundary, not hidden partials inside it
 
 ## Roadmap 1: Runtime Closure
 
@@ -62,10 +61,10 @@ Current completion should be read as:
 
 ## Roadmap 5: Contract Hardening And Ship Readiness
 
-- [ ] Schema enforcement pipeline
-- [ ] Migration and versioning plan
-- [ ] Restart and recovery coverage expansion
-- [ ] Release contract review
+- [x] Schema enforcement pipeline
+- [x] Migration and versioning plan
+- [x] Restart and recovery coverage expansion
+- [x] Release contract review
 
 ## Completed Foundational Work
 
@@ -144,7 +143,7 @@ These are implemented pieces that support later roadmaps. They are real progress
 - [x] Add checkpoint model
 - [x] Add checkpoint persistence
 - [x] Add restart recovery flow
-- [ ] Add data migration and versioning plan
+- [x] Add data migration and versioning plan
 
 ### Sessions And Routing Foundation
 
@@ -159,9 +158,9 @@ These are implemented pieces that support later roadmaps. They are real progress
 - [x] Define policy engine contract
 - [x] Add approval model
 - [x] Add policy decision events
-- [ ] Add local-first auth and pairing model
-- [ ] Approval durability
-- [ ] Approval enforcement integration
+- [x] Add local-first auth and pairing model
+- [x] Approval durability
+- [x] Approval enforcement integration
 
 ### Contracts And Testing Foundation
 
@@ -177,7 +176,7 @@ These are implemented pieces that support later roadmaps. They are real progress
 - [x] Create connector and capability schemas
 - [x] Create auth and pairing schemas
 - [x] Create llm dispatch schemas
-- [ ] Add schema enforcement and generation pipeline
+- [x] Add schema enforcement and generation pipeline
 - [x] Add runtime unit tests
 - [x] Add API unit tests
 - [x] Add event bus unit tests

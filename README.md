@@ -54,6 +54,9 @@ Execution is roadmap-driven:
 - `docs/14-daemon-tasks.md`
 - `docs/15-daemon-roadmaps.md`
 - `docs/16-operator-trust-model.md`
+- `docs/17-schema-contract-pipeline.md`
+- `docs/18-migration-versioning.md`
+- `docs/19-p0-release-review.md`
 
 ## Working Assumptions
 

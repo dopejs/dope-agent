@@ -26,17 +26,19 @@ Each implementation round should finish **one whole roadmap**.
 
 ## Current State
 
-The daemon already has usable pieces of the control plane:
+The daemon now has a closed P0 control plane slice:
 
 - system routes
 - run and step resources
 - event bus and SSE
 - SQLite persistence
 - checkpoint and restart recovery
-- basic session routing
-- basic policy approval resources
-
-What it still does not have is a supervision plane, a real model plane, or an operator trust boundary.
+- session routing
+- supervision state
+- LLM dispatch
+- auth and approval gating
+- contract tests
+- versioned migrations
 
 ## Roadmap 1: Runtime Closure
 
@@ -387,7 +389,7 @@ Task definition of done:
 
 ## Roadmap 5: Contract Hardening And Ship Readiness
 
-Status: `[ ] not started`
+Status: `[x] complete`
 
 ### Goal
 

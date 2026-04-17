@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/decision-resource.schema.json",
+  "title": "DecisionResource",
+  "type": "object",
+  "required": [
+    "decisionId",
+    "action",
+    "outcome",
+    "reason",
+    "createdAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "decisionId": { "type": "string" },
+    "action": { "type": "string" },
+    "resourceKind": { "type": "string" },
+    "resourceId": { "type": "string" },
+    "outcome": {
+      "type": "string",
+      "enum": ["allowed", "requires_approval", "approved", "rejected"]
+    },
+    "reason": { "type": "string" },
+    "approvalId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

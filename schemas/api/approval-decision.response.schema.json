@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/approval-decision.response.schema.json",
+  "title": "ApprovalDecisionResponse",
+  "type": "object",
+  "required": ["approval", "decision"],
+  "additionalProperties": false,
+  "properties": {
+    "approval": {
+      "$ref": "./approval-resource.schema.json"
+    },
+    "decision": {
+      "$ref": "./decision-resource.schema.json"
+    }
+  }
+}

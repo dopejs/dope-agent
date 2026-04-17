@@ -2,6 +2,20 @@
 
 This directory holds daemon HTTP API schemas.
 
+Contract conformance is enforced by the Go contract suite in:
+
+- `daemon/internal/contracts`
+
+Run it with:
+
+- `make daemon-contract-test`
+
+Schema updates should ship together with:
+
+- implementation changes
+- contract test fixture updates
+- release-note or migration-note updates when the wire contract changes
+
 The first P0 schemas should define:
 
 - system info response
@@ -13,9 +27,12 @@ The first P0 schemas should define:
 - capability list response
 - auth pairing resource
 - auth access token resource
+- decision resource
 - llm dispatch resource
 - llm dispatch list response
 - approval resource
+- approval list response
+- approval decision response
 - session resource
 - session list response
 - run resource
@@ -23,11 +40,14 @@ The first P0 schemas should define:
 - step resource
 - step list response
 - tool call resource
+- tool call list response
 - create run request
 - create connector request
 - create capability request
 - start pairing request
+- start pairing response
 - complete pairing request
+- complete pairing response
 - create llm dispatch request
 - request approval request
 - resolve approval request

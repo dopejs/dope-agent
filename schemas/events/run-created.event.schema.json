@@ -17,7 +17,7 @@
         },
         "payload": {
           "type": "object",
-          "required": ["entrypoint", "goal"],
+          "required": ["entrypoint", "goal", "status"],
           "additionalProperties": false,
           "properties": {
             "entrypoint": {
@@ -25,6 +25,18 @@
             },
             "goal": {
               "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "waiting_input",
+                "blocked",
+                "completed",
+                "failed",
+                "cancelled"
+              ]
             }
           }
         }

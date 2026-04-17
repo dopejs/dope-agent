@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/complete-pairing.response.schema.json",
+  "title": "CompletePairingResponse",
+  "type": "object",
+  "required": ["pairing", "token", "accessToken"],
+  "additionalProperties": false,
+  "properties": {
+    "pairing": {
+      "$ref": "./auth-pairing-resource.schema.json"
+    },
+    "token": {
+      "$ref": "./auth-access-token-resource.schema.json"
+    },
+    "accessToken": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

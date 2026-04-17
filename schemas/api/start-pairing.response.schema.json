@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/start-pairing.response.schema.json",
+  "title": "StartPairingResponse",
+  "type": "object",
+  "required": ["pairing", "pairingCode"],
+  "additionalProperties": false,
+  "properties": {
+    "pairing": {
+      "$ref": "./auth-pairing-resource.schema.json"
+    },
+    "pairingCode": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}
