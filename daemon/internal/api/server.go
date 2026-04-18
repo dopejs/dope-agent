@@ -151,7 +151,7 @@ func NewServer(deps Dependencies) *Server {
 		handleConnectors(deps.Connectors, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/connectors/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleConnectorRoutes(deps.Connectors, deps.EventBus, deps.Store, w, r)
+		handleConnectorRoutes(deps.Connectors, deps.Router, deps.Runtime, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
 	}))
 	mux.HandleFunc("/v1/capabilities", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleCapabilities(deps.Capabilities, deps.EventBus, deps.Store, w, r)
@@ -243,13 +243,13 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, ListResponse[runtime.Run]{Items: manager.ListRuns()})
 	case http.MethodPost:
-		var input runtime.CreateRunInput
-		if err := decodeJSONBody(r, &input); err != nil {
+		var request CreateRunRequest
+		if err := decodeJSONBody(r, &request); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
-		session, createdSession, err := resolveRunSession(sessionRouter, input)
+		session, createdSession, err := resolveRunSession(sessionRouter, request)
 		if err != nil {
 			switch {
 			case errors.Is(err, router.ErrSessionNotFound):
@@ -259,7 +259,11 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 			}
 			return
 		}
-		input.SessionID = session.SessionID
+		input := runtime.CreateRunInput{
+			SessionID:  session.SessionID,
+			Entrypoint: request.Entrypoint,
+			Goal:       request.Goal,
+		}
 
 		run, err := manager.CreateRun(input)
 		if err != nil {
@@ -280,45 +284,8 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 			return
 		}
 
-		if createdSession {
-			if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
-				Category: "session",
-				Name:     "session.created",
-				Scope: events.Scope{
-					SessionID: session.SessionID,
-				},
-				Resource: events.Resource{
-					Kind: "session",
-					ID:   session.SessionID,
-				},
-				Payload: map[string]any{
-					"kind":       session.Kind,
-					"channel":    session.Channel,
-					"routingKey": session.RoutingKey,
-					"generation": session.Generation,
-				},
-			}); err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-		}
-
-		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
-			Category: "session",
-			Name:     "session.routed",
-			Scope: events.Scope{
-				SessionID: session.SessionID,
-			},
-			Resource: events.Resource{
-				Kind: "session",
-				ID:   session.SessionID,
-			},
-			Payload: map[string]any{
-				"kind":       session.Kind,
-				"channel":    session.Channel,
-				"routingKey": session.RoutingKey,
-				"generation": session.Generation,
-			},
+		if err := publishSessionRouteEvents(r.Context(), eventBus, sqliteStore, session, createdSession, map[string]any{
+			"source": "run.create",
 		}); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -1361,7 +1328,7 @@ func handleConnectors(supervisor *connectors.Supervisor, eventBus *events.Bus, s
 	}
 }
 
-func handleConnectorRoutes(supervisor *connectors.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleConnectorRoutes(supervisor *connectors.Supervisor, sessionRouter *router.SessionRouter, manager *runtime.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/connectors/")
 	if path == "" {
 		http.NotFound(w, r)
@@ -1383,6 +1350,10 @@ func handleConnectorRoutes(supervisor *connectors.Supervisor, eventBus *events.B
 	}
 	if len(parts) == 2 && parts[1] == "restart" {
 		handleConnectorRestart(supervisor, eventBus, sqliteStore, w, r, parts[0])
+		return
+	}
+	if len(parts) == 3 && parts[1] == "ingress" && parts[2] == "messages" {
+		handleConnectorIngressMessages(supervisor, sessionRouter, manager, eventBus, sqliteStore, checkpointManager, w, r, parts[0])
 		return
 	}
 
@@ -1515,6 +1486,147 @@ func handleConnectorRestart(supervisor *connectors.Supervisor, eventBus *events.
 		return
 	}
 	writeJSON(w, http.StatusOK, connector)
+}
+
+func handleConnectorIngressMessages(supervisor *connectors.Supervisor, sessionRouter *router.SessionRouter, manager *runtime.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	connector, ok := supervisor.Get(connectorID)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if connector.Status == connectors.StatusFailed || connector.Status == connectors.StatusBackingOff {
+		writeError(w, http.StatusConflict, "connector is not accepting ingress")
+		return
+	}
+
+	var request ConnectorIngressMessageRequest
+	if err := decodeJSONBody(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if request.Message.MessageID == "" {
+		writeError(w, http.StatusBadRequest, "messageId is required")
+		return
+	}
+	if request.Run != nil && request.Run.Entrypoint == "" {
+		writeError(w, http.StatusBadRequest, "run entrypoint is required")
+		return
+	}
+
+	routeInput, err := resolveConnectorRouteInput(connector, request.Route)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	session, createdSession, err := sessionRouter.Route(routeInput)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := persistSession(r.Context(), sqliteStore, session); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := publishSessionRouteEvents(r.Context(), eventBus, sqliteStore, session, createdSession, map[string]any{
+		"source":      "connector.ingress",
+		"connectorId": connector.ConnectorID,
+		"messageId":   request.Message.MessageID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var (
+		run        *runtime.Run
+		runCreated bool
+	)
+	if request.Run != nil {
+		createdRun, err := manager.CreateRun(runtime.CreateRunInput{
+			SessionID:  session.SessionID,
+			Entrypoint: request.Run.Entrypoint,
+			Goal:       request.Run.Goal,
+		})
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := persistRun(r.Context(), sqliteStore, createdRun); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := persistCheckpoint(r.Context(), checkpointManager, createdRun.RunID); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+			Category: "run",
+			Name:     "run.created",
+			Scope: events.Scope{
+				SessionID:   createdRun.SessionID,
+				RunID:       createdRun.RunID,
+				ConnectorID: connector.ConnectorID,
+			},
+			Resource: events.Resource{
+				Kind: "run",
+				ID:   createdRun.RunID,
+			},
+			Payload: map[string]any{
+				"entrypoint": createdRun.Entrypoint,
+				"goal":       createdRun.Goal,
+				"status":     createdRun.Status,
+				"source":     "connector.ingress",
+				"messageId":  request.Message.MessageID,
+			},
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		run = &createdRun
+		runCreated = true
+	}
+
+	acceptedAt := time.Now().UTC()
+	response := ConnectorIngressMessageResponse{
+		IngressID:      newIngressID(),
+		ConnectorID:    connector.ConnectorID,
+		AcceptedAt:     acceptedAt,
+		Session:        session,
+		SessionCreated: createdSession,
+		Run:            run,
+		RunCreated:     runCreated,
+	}
+	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+		Category: "connector",
+		Name:     "connector.ingress_accepted",
+		Scope: events.Scope{
+			SessionID:   session.SessionID,
+			ConnectorID: connector.ConnectorID,
+			RunID:       optionalRunID(run),
+		},
+		Resource: events.Resource{
+			Kind: "connector",
+			ID:   connector.ConnectorID,
+		},
+		Payload: map[string]any{
+			"ingressId":      response.IngressID,
+			"kind":           session.Kind,
+			"channel":        session.Channel,
+			"messageId":      request.Message.MessageID,
+			"sessionCreated": createdSession,
+			"runCreated":     runCreated,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, response)
 }
 
 func handleCapabilities(supervisor *capabilities.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
@@ -2570,25 +2682,41 @@ func writeSSEEvent(w io.Writer, eventName, eventID string, payload any) {
 	_, _ = fmt.Fprintf(w, "data: %s\n\n", string(data))
 }
 
-func resolveRunSession(sessionRouter *router.SessionRouter, input runtime.CreateRunInput) (router.Session, bool, error) {
+func resolveRunSession(sessionRouter *router.SessionRouter, request CreateRunRequest) (router.Session, bool, error) {
 	if sessionRouter == nil {
 		return router.Session{}, false, errors.New("session router is required")
 	}
 
-	if input.SessionID != "" {
-		session, ok := sessionRouter.GetSession(input.SessionID)
+	if request.SessionID != "" && request.Route != nil {
+		return router.Session{}, false, errors.New("sessionId and route cannot be provided together")
+	}
+
+	if request.SessionID != "" {
+		session, ok := sessionRouter.GetSession(request.SessionID)
 		if !ok {
 			return router.Session{}, false, router.ErrSessionNotFound
 		}
-		session, err := sessionRouter.TouchSession(input.SessionID)
+		session, err := sessionRouter.TouchSession(request.SessionID)
 		if err != nil {
 			return router.Session{}, false, err
 		}
 		return session, false, nil
 	}
 
+	if request.Route != nil {
+		routeInput, err := toRouteInput(*request.Route)
+		if err != nil {
+			return router.Session{}, false, err
+		}
+		session, created, err := sessionRouter.Route(routeInput)
+		if err != nil {
+			return router.Session{}, false, err
+		}
+		return session, created, nil
+	}
+
 	channel := "local"
-	peerID := input.Entrypoint
+	peerID := request.Entrypoint
 	if peerID == "" {
 		peerID = "chat"
 	}
@@ -2604,6 +2732,82 @@ func resolveRunSession(sessionRouter *router.SessionRouter, input runtime.Create
 	}
 
 	return session, created, nil
+}
+
+func toRouteInput(request SessionRouteRequest) (router.RouteInput, error) {
+	return router.RouteInput{
+		Kind:      request.Kind,
+		Channel:   request.Channel,
+		AccountID: request.AccountID,
+		PeerID:    request.PeerID,
+		ThreadID:  request.ThreadID,
+	}, nil
+}
+
+func resolveConnectorRouteInput(connector connectors.Connector, request SessionRouteRequest) (router.RouteInput, error) {
+	channel := connector.Kind
+	if request.Channel != "" && request.Channel != connector.Kind {
+		return router.RouteInput{}, errors.New("route channel must match connector kind")
+	}
+
+	return router.RouteInput{
+		Kind:      request.Kind,
+		Channel:   channel,
+		AccountID: request.AccountID,
+		PeerID:    request.PeerID,
+		ThreadID:  request.ThreadID,
+	}, nil
+}
+
+func publishSessionRouteEvents(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, session router.Session, createdSession bool, extraPayload map[string]any) error {
+	if createdSession {
+		payload := map[string]any{
+			"kind":       session.Kind,
+			"channel":    session.Channel,
+			"routingKey": session.RoutingKey,
+			"generation": session.Generation,
+		}
+		for key, value := range extraPayload {
+			payload[key] = value
+		}
+		if _, err := publishEvent(ctx, eventBus, sqliteStore, events.Event{
+			Category: "session",
+			Name:     "session.created",
+			Scope: events.Scope{
+				SessionID: session.SessionID,
+			},
+			Resource: events.Resource{
+				Kind: "session",
+				ID:   session.SessionID,
+			},
+			Payload: payload,
+		}); err != nil {
+			return err
+		}
+	}
+
+	payload := map[string]any{
+		"kind":       session.Kind,
+		"channel":    session.Channel,
+		"routingKey": session.RoutingKey,
+		"generation": session.Generation,
+	}
+	for key, value := range extraPayload {
+		payload[key] = value
+	}
+	_, err := publishEvent(ctx, eventBus, sqliteStore, events.Event{
+		Category: "session",
+		Name:     "session.routed",
+		Scope: events.Scope{
+			SessionID: session.SessionID,
+		},
+		Resource: events.Resource{
+			Kind: "session",
+			ID:   session.SessionID,
+		},
+		Payload: payload,
+	})
+	return err
 }
 
 func ensureEventDefaults(event events.Event) events.Event {
@@ -2667,6 +2871,22 @@ func stepIDs(steps []runtime.Step) []string {
 		ids = append(ids, step.StepID)
 	}
 	return ids
+}
+
+func optionalRunID(run *runtime.Run) string {
+	if run == nil {
+		return ""
+	}
+	return run.RunID
+}
+
+func newIngressID() string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return "ingress_fallback"
+	}
+
+	return "ingress_" + hex.EncodeToString(buf)
 }
 
 func newEventID() string {

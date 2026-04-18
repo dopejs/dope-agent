@@ -37,6 +37,12 @@
                 "failed",
                 "cancelled"
               ]
+            },
+            "source": {
+              "type": "string"
+            },
+            "messageId": {
+              "type": "string"
             }
           }
         }

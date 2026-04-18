@@ -39,6 +39,7 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 	validator := contracts.NewValidator(schemaRootDir(t))
 	fixtures := map[string]string{
 		"schemas/api/create-run.request.schema.json":                `{"entrypoint":"chat","goal":"ship daemon"}`,
+		"schemas/api/connector-ingress-message.request.schema.json": `{"route":{"kind":"group","accountId":"bot-main","peerId":"channel-1","threadId":"thread-1"},"message":{"messageId":"msg_1","text":"hello"},"run":{"entrypoint":"connector.message","goal":"handle inbound"}}`,
 		"schemas/api/create-step.request.schema.json":               `{"title":"plan","kind":"task","input":{"phase":"draft"}}`,
 		"schemas/api/update-step-status.request.schema.json":        `{"status":"planning","output":{"phase":"ok"}}`,
 		"schemas/api/create-tool-call.request.schema.json":          `{"capabilityId":"docs","toolName":"lookup","approvalId":"approval_1","input":{"query":"hello"}}`,
@@ -64,6 +65,10 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 				t.Fatalf("ValidateRelative returned error: %v", err)
 			}
 		})
+	}
+
+	if err := validator.ValidateRelative("schemas/api/create-run.request.schema.json", []byte(`{"entrypoint":"chat","route":{"kind":"direct","channel":"telegram","accountId":"bot-main","peerId":"dm-1"}}`)); err != nil {
+		t.Fatalf("ValidateRelative(create-run route fixture) returned error: %v", err)
 	}
 }
 
@@ -118,6 +123,7 @@ func TestAPISchemasMatchCanonicalResponses(t *testing.T) {
 
 	h.mustValidateResponse(t, http.MethodPost, "/v1/connectors", `{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`, h.authHeader, "schemas/api/connector-resource.schema.json")
 	h.mustValidateResponse(t, http.MethodGet, "/v1/connectors", "", h.authHeader, "schemas/api/connector-list.response.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/connectors/telegram-main/ingress/messages", `{"route":{"kind":"direct","accountId":"bot-main","peerId":"dm-1"},"message":{"messageId":"msg_1","text":"hello"},"run":{"entrypoint":"connector.message","goal":"contract ingress"}}`, h.authHeader, "schemas/api/connector-ingress-message.response.schema.json")
 
 	h.mustValidateResponse(t, http.MethodPost, "/v1/capabilities", `{"capabilityId":"docs","kind":"docs","displayName":"Docs"}`, h.authHeader, "schemas/api/capability-resource.schema.json")
 	h.mustValidateResponse(t, http.MethodGet, "/v1/capabilities", "", h.authHeader, "schemas/api/capability-list.response.schema.json")
@@ -171,6 +177,8 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 	h.authHeader = "Bearer " + decodeJSONMap(t, completePairingBody)["accessToken"].(string)
 
 	h.request(t, http.MethodPost, "/v1/capabilities", `{"capabilityId":"docs","kind":"docs","displayName":"Docs"}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/connectors", `{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/connectors/telegram-main/ingress/messages", `{"route":{"kind":"direct","accountId":"bot-main","peerId":"dm-1"},"message":{"messageId":"msg_1","text":"hello"},"run":{"entrypoint":"connector.message","goal":"validate ingress events"}}`, h.authHeader)
 
 	runBody := h.request(t, http.MethodPost, "/v1/runs", `{"entrypoint":"chat","goal":"validate events"}`, h.authHeader)
 	runID := decodeJSONMap(t, runBody)["runId"].(string)
@@ -191,17 +199,18 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 	}
 
 	expectedSchemas := map[string]string{
-		"run.created":               "schemas/events/run-created.event.schema.json",
-		"step.created":              "schemas/events/step-created.event.schema.json",
-		"step.status_changed":       "schemas/events/step-status-changed.event.schema.json",
-		"run.status_changed":        "schemas/events/run-status-changed.event.schema.json",
-		"tool_call.requested":       "schemas/events/tool-call-requested.event.schema.json",
-		"tool_call.completed":       "schemas/events/tool-call-completed.event.schema.json",
-		"llm.dispatch.requested":    "schemas/events/llm-dispatch-requested.event.schema.json",
-		"llm.dispatch.completed":    "schemas/events/llm-dispatch-completed.event.schema.json",
-		"policy.approval_requested": "schemas/events/policy-approval-requested.event.schema.json",
-		"policy.approval_resolved":  "schemas/events/policy-approval-resolved.event.schema.json",
-		"policy.decision_recorded":  "schemas/events/policy-decision-recorded.event.schema.json",
+		"run.created":                "schemas/events/run-created.event.schema.json",
+		"step.created":               "schemas/events/step-created.event.schema.json",
+		"step.status_changed":        "schemas/events/step-status-changed.event.schema.json",
+		"run.status_changed":         "schemas/events/run-status-changed.event.schema.json",
+		"tool_call.requested":        "schemas/events/tool-call-requested.event.schema.json",
+		"tool_call.completed":        "schemas/events/tool-call-completed.event.schema.json",
+		"llm.dispatch.requested":     "schemas/events/llm-dispatch-requested.event.schema.json",
+		"llm.dispatch.completed":     "schemas/events/llm-dispatch-completed.event.schema.json",
+		"connector.ingress_accepted": "schemas/events/connector-ingress-accepted.event.schema.json",
+		"policy.approval_requested":  "schemas/events/policy-approval-requested.event.schema.json",
+		"policy.approval_resolved":   "schemas/events/policy-approval-resolved.event.schema.json",
+		"policy.decision_recorded":   "schemas/events/policy-decision-recorded.event.schema.json",
 	}
 
 	found := make(map[string]bool, len(expectedSchemas))

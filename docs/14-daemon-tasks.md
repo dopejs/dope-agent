@@ -30,6 +30,7 @@ Current completion should be read as:
 - the original five daemon roadmaps are closed
 - `Roadmap 6: Real Conversation Core` is now closed
 - `Roadmap 7: Minimal Chat Clients` is now closed
+- `Roadmap 8: Ingress Routing Closure` is now closed
 
 ## Roadmap 1: Runtime Closure
 
@@ -82,6 +83,13 @@ Current completion should be read as:
 - [x] Web chat surface
 - [x] TUI chat surface
 - [x] Cross-client verification
+
+## Roadmap 8: Ingress Routing Closure
+
+- [x] Route-aware run creation
+- [x] Connector ingress contract
+- [x] Ingress event and recovery closure
+- [x] Contract and documentation closure
 
 ## Completed Foundational Work
 
@@ -167,8 +175,8 @@ These are implemented pieces that support later roadmaps. They are real progress
 - [x] Define session resource model
 - [x] Implement direct and group session isolation
 - [x] Implement session list/get/reset routes
-- [ ] Implement inbound routing model `(partial: router model exists, connector ingress is not wired)`
-- [ ] Bind runs to sessions where needed `(partial: minimal default binding exists, but not full ingress-aware binding)`
+- [x] Implement inbound routing model
+- [x] Bind runs to sessions where needed
 
 ### Policy Foundation
 

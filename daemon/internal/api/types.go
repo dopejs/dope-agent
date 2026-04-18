@@ -1,9 +1,13 @@
 package api
 
 import (
+	"time"
+
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/router"
+	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 )
 
 type SystemInfoResponse struct {
@@ -65,6 +69,49 @@ type ChatQueryStreamDelta struct {
 	DispatchID string `json:"dispatchId"`
 	Delta      string `json:"delta"`
 	Reply      string `json:"reply"`
+}
+
+type SessionRouteRequest struct {
+	Kind      router.SessionKind `json:"kind,omitempty"`
+	Channel   string             `json:"channel,omitempty"`
+	AccountID string             `json:"accountId,omitempty"`
+	PeerID    string             `json:"peerId,omitempty"`
+	ThreadID  string             `json:"threadId,omitempty"`
+}
+
+type CreateRunRequest struct {
+	SessionID  string               `json:"sessionId,omitempty"`
+	Route      *SessionRouteRequest `json:"route,omitempty"`
+	Entrypoint string               `json:"entrypoint"`
+	Goal       string               `json:"goal,omitempty"`
+	Input      any                  `json:"input,omitempty"`
+}
+
+type ConnectorIngressMessage struct {
+	MessageID string `json:"messageId"`
+	Text      string `json:"text,omitempty"`
+	Payload   any    `json:"payload,omitempty"`
+}
+
+type ConnectorIngressRunRequest struct {
+	Entrypoint string `json:"entrypoint"`
+	Goal       string `json:"goal,omitempty"`
+}
+
+type ConnectorIngressMessageRequest struct {
+	Route   SessionRouteRequest         `json:"route"`
+	Message ConnectorIngressMessage     `json:"message"`
+	Run     *ConnectorIngressRunRequest `json:"run,omitempty"`
+}
+
+type ConnectorIngressMessageResponse struct {
+	IngressID      string         `json:"ingressId"`
+	ConnectorID    string         `json:"connectorId"`
+	AcceptedAt     time.Time      `json:"acceptedAt"`
+	Session        router.Session `json:"session"`
+	SessionCreated bool           `json:"sessionCreated"`
+	Run            *runtime.Run   `json:"run,omitempty"`
+	RunCreated     bool           `json:"runCreated"`
 }
 
 type EventListResponse struct {

@@ -1,24 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/create-run.request.schema.json",
-  "title": "CreateRunRequest",
+  "$id": "https://dope.local/schemas/api/connector-ingress-message.request.schema.json",
+  "title": "ConnectorIngressMessageRequest",
   "type": "object",
-  "required": ["entrypoint"],
+  "required": ["route", "message"],
   "additionalProperties": false,
   "properties": {
-    "sessionId": {
-      "type": "string"
-    },
     "route": {
       "type": "object",
+      "required": ["peerId"],
       "additionalProperties": false,
       "properties": {
         "kind": {
           "type": "string",
           "enum": ["direct", "group"]
-        },
-        "channel": {
-          "type": "string"
         },
         "accountId": {
           "type": "string"
@@ -30,7 +25,6 @@
           "type": "string"
         }
       },
-      "required": ["channel", "peerId"],
       "allOf": [
         {
           "if": {
@@ -47,17 +41,34 @@
         }
       ]
     },
-    "entrypoint": {
-      "type": "string"
+    "message": {
+      "type": "object",
+      "required": ["messageId"],
+      "additionalProperties": false,
+      "properties": {
+        "messageId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "payload": {
+          "type": ["object", "array", "string", "number", "boolean", "null"]
+        }
+      }
     },
-    "goal": {
-      "type": "string"
-    },
-    "input": {
-      "type": ["object", "array", "string", "number", "boolean", "null"]
+    "run": {
+      "type": "object",
+      "required": ["entrypoint"],
+      "additionalProperties": false,
+      "properties": {
+        "entrypoint": {
+          "type": "string"
+        },
+        "goal": {
+          "type": "string"
+        }
+      }
     }
-  },
-  "not": {
-    "required": ["sessionId", "route"]
   }
 }

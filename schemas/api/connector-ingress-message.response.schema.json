@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/connector-ingress-message.response.schema.json",
+  "title": "ConnectorIngressMessageResponse",
+  "type": "object",
+  "required": ["ingressId", "connectorId", "acceptedAt", "session", "sessionCreated", "runCreated"],
+  "additionalProperties": false,
+  "properties": {
+    "ingressId": {
+      "type": "string"
+    },
+    "connectorId": {
+      "type": "string"
+    },
+    "acceptedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "session": {
+      "$ref": "./session-resource.schema.json"
+    },
+    "sessionCreated": {
+      "type": "boolean"
+    },
+    "run": {
+      "$ref": "./run-resource.schema.json"
+    },
+    "runCreated": {
+      "type": "boolean"
+    }
+  }
+}

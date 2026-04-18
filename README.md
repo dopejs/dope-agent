@@ -32,6 +32,7 @@ That daemon foundation is now closed through:
 
 - Roadmap 6: `Real Conversation Core`
 - Roadmap 7: `Minimal Chat Clients`
+- Roadmap 8: `Ingress Routing Closure`
 
 Execution is roadmap-driven:
 
@@ -65,6 +66,7 @@ Execution is roadmap-driven:
 - `docs/19-p0-release-review.md`
 - `docs/20-minimal-conversation-path.md`
 - `docs/21-minimal-chat-clients.md`
+- `docs/22-ingress-routing-closure.md`
 
 ## Working Assumptions
 

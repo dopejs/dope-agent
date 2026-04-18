@@ -630,6 +630,82 @@ Task definition of done:
 - tool use orchestration during chat
 - rich conversation UX beyond minimal operator flow
 
+## Roadmap 8: Ingress Routing Closure
+
+Status: `[x] complete`
+
+### Goal
+
+Close the remaining ingress and routing gap so external connector input can route into sessions and create session-bound runs without relying on local-only fallback semantics.
+
+### Tasks
+
+#### 1. Route-Aware Run Creation
+
+Scope:
+
+- allow `POST /v1/runs` to resolve a session from explicit route input
+
+Task definition of done:
+
+- `POST /v1/runs` accepts either `sessionId`, explicit `route`, or the existing local fallback
+- ambiguous requests are rejected consistently
+- route-driven runs bind to the resolved session and persist correctly
+- API and contract tests cover explicit route-based run creation
+
+#### 2. Connector Ingress Contract
+
+Scope:
+
+- add an explicit connector ingress API for inbound messages
+
+Task definition of done:
+
+- daemon exposes a connector ingress route for inbound messages
+- ingress resolves or creates the correct session from connector/channel identity
+- ingress can optionally create a run bound to that session
+- connector status gating is explicit and tested
+- request and response shapes are schema-backed
+
+#### 3. Ingress Event And Recovery Closure
+
+Scope:
+
+- make ingress behavior durable and restart-safe
+
+Task definition of done:
+
+- session and run state created through ingress are persisted
+- ingress emits explicit connector/session/run events
+- restart recovery restores ingress-created session and run state
+- tests cover persistence and restart behavior for ingress-created state
+
+#### 4. Contract And Documentation Closure
+
+Scope:
+
+- close schema, event, and operator documentation for ingress routing
+
+Task definition of done:
+
+- request/response schemas exist for ingress routes
+- event schemas exist for ingress-specific events
+- contract tests validate ingress responses and events
+- operator docs explain how connector ingress maps to session/run state
+
+### Roadmap Definition Of Done
+
+- inbound connector traffic has a first-class daemon API
+- runs can be bound to sessions from explicit route data, not only local fallback
+- ingress-created session and run state are durable and restart-safe
+- routing behavior is documented, schema-backed, and fully tested
+
+### Explicitly Out Of Scope
+
+- real external connector transport implementations
+- message queueing or async ingress buffering
+- automatic reply generation from inbound connector traffic
+
 ## Recommended Order
 
 1. Roadmap 1: Runtime Closure
@@ -639,3 +715,4 @@ Task definition of done:
 5. Roadmap 5: Contract Hardening And Ship Readiness
 6. Roadmap 6: Real Conversation Core
 7. Roadmap 7: Minimal Chat Clients
+8. Roadmap 8: Ingress Routing Closure

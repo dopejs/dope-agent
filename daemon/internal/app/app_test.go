@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/api"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
@@ -487,6 +488,69 @@ func TestAppRestartRestoresRuntimeBoundary(t *testing.T) {
 	}
 	if eventList.NextCursor == 0 {
 		t.Fatal("expected next cursor after restart")
+	}
+}
+
+func TestAppRestartRestoresConnectorIngressBoundRuns(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	t.Setenv("DOPE_DATA_DIR", dataDir)
+	t.Setenv("DOPE_BIND_ADDR", "127.0.0.1:0")
+	t.Setenv("DOPE_LOG_LEVEL", "error")
+	t.Setenv("DOPE_VERSION", "test")
+
+	first, err := New()
+	if err != nil {
+		t.Fatalf("first New returned error: %v", err)
+	}
+
+	authHeader := testAuthHeader(t, first.Auth)
+
+	registerConnectorRec := httptest.NewRecorder()
+	registerConnectorReq := httptest.NewRequest(http.MethodPost, "/v1/connectors", strings.NewReader(`{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`))
+	registerConnectorReq.Header.Set("Authorization", authHeader)
+	first.Server.Handler().ServeHTTP(registerConnectorRec, registerConnectorReq)
+	if registerConnectorRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for connector create, got %d body=%s", registerConnectorRec.Code, registerConnectorRec.Body.String())
+	}
+
+	ingressRec := httptest.NewRecorder()
+	ingressReq := httptest.NewRequest(http.MethodPost, "/v1/connectors/telegram-main/ingress/messages", strings.NewReader(`{
+		"route":{"kind":"group","accountId":"bot-main","peerId":"chat-1","threadId":"thread-1"},
+		"message":{"messageId":"msg_1","text":"hello"},
+		"run":{"entrypoint":"connector.message","goal":"restart ingress"}
+	}`))
+	ingressReq.Header.Set("Authorization", authHeader)
+	first.Server.Handler().ServeHTTP(ingressRec, ingressReq)
+	if ingressRec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 for ingress, got %d body=%s", ingressRec.Code, ingressRec.Body.String())
+	}
+
+	var ingressResponse api.ConnectorIngressMessageResponse
+	if err := json.Unmarshal(ingressRec.Body.Bytes(), &ingressResponse); err != nil {
+		t.Fatalf("failed to decode ingress response: %v", err)
+	}
+	if ingressResponse.Run == nil {
+		t.Fatal("expected ingress-created run")
+	}
+
+	second, err := New()
+	if err != nil {
+		t.Fatalf("second New returned error: %v", err)
+	}
+
+	restoredRun, ok := second.Runtime.GetRun(ingressResponse.Run.RunID)
+	if !ok {
+		t.Fatal("expected ingress-created run to be restored")
+	}
+	if restoredRun.SessionID != ingressResponse.Session.SessionID {
+		t.Fatalf("expected restored run session %s, got %s", ingressResponse.Session.SessionID, restoredRun.SessionID)
+	}
+	restoredSession, ok := second.Router.GetSession(ingressResponse.Session.SessionID)
+	if !ok {
+		t.Fatal("expected ingress-created session to be restored")
+	}
+	if restoredSession.Channel != "telegram" {
+		t.Fatalf("expected restored session channel telegram, got %s", restoredSession.Channel)
 	}
 }
 

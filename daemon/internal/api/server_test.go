@@ -807,6 +807,197 @@ func TestSessionRoutesAndReset(t *testing.T) {
 	}
 }
 
+func TestCreateRunWithExplicitRoute(t *testing.T) {
+	eventBus := events.NewBus()
+	sessionRouter := router.NewSessionRouter()
+	manager := runtime.NewManager()
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+	checkpointManager := checkpoints.NewManager(sqliteStore, manager)
+	defer func() {
+		if err := checkpointManager.Close(); err != nil {
+			t.Fatalf("Close checkpoint manager returned error: %v", err)
+		}
+	}()
+
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:      telemetry.New("error").Slog(),
+		EventBus:    eventBus,
+		Router:      sessionRouter,
+		Runtime:     manager,
+		Store:       sqliteStore,
+		Checkpoints: checkpointManager,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs", strings.NewReader(`{
+		"entrypoint":"connector.message",
+		"goal":"route-aware run",
+		"route":{
+			"kind":"group",
+			"channel":"telegram",
+			"accountId":"bot-main",
+			"peerId":"chat-1",
+			"threadId":"thread-1"
+		}
+	}`))
+	rec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for route-based run create, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	createdRun := decodeStrictResponse[runtime.Run](t, rec.Body.Bytes())
+	if createdRun.SessionID == "" {
+		t.Fatal("expected created run to be bound to a routed session")
+	}
+
+	session, ok := sessionRouter.GetSession(createdRun.SessionID)
+	if !ok {
+		t.Fatal("expected routed session to exist")
+	}
+	if session.Kind != router.SessionKindGroup {
+		t.Fatalf("expected group session, got %s", session.Kind)
+	}
+	if session.Channel != "telegram" {
+		t.Fatalf("expected telegram channel, got %s", session.Channel)
+	}
+
+	persistedRuns, err := sqliteStore.ListRuns(context.Background())
+	if err != nil {
+		t.Fatalf("ListRuns returned error: %v", err)
+	}
+	if len(persistedRuns) != 1 || persistedRuns[0].SessionID != createdRun.SessionID {
+		t.Fatalf("expected persisted run bound to session %s, got %+v", createdRun.SessionID, persistedRuns)
+	}
+}
+
+func TestConnectorIngressRoutesSessionAndCreatesRun(t *testing.T) {
+	eventBus := events.NewBus()
+	sessionRouter := router.NewSessionRouter()
+	manager := runtime.NewManager()
+	connectorSupervisor := connectors.NewSupervisor()
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+	checkpointManager := checkpoints.NewManager(sqliteStore, manager)
+	defer func() {
+		if err := checkpointManager.Close(); err != nil {
+			t.Fatalf("Close checkpoint manager returned error: %v", err)
+		}
+	}()
+
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:      telemetry.New("error").Slog(),
+		EventBus:    eventBus,
+		Router:      sessionRouter,
+		Runtime:     manager,
+		Connectors:  connectorSupervisor,
+		Store:       sqliteStore,
+		Checkpoints: checkpointManager,
+	})
+
+	registerReq := httptest.NewRequest(http.MethodPost, "/v1/connectors", strings.NewReader(`{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`))
+	registerRec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(registerRec, registerReq)
+	if registerRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for connector register, got %d", registerRec.Code)
+	}
+
+	ingressReq := httptest.NewRequest(http.MethodPost, "/v1/connectors/telegram-main/ingress/messages", strings.NewReader(`{
+		"route":{
+			"kind":"direct",
+			"accountId":"bot-main",
+			"peerId":"dm-1"
+		},
+		"message":{
+			"messageId":"msg_1",
+			"text":"hello"
+		},
+		"run":{
+			"entrypoint":"connector.message",
+			"goal":"handle inbound message"
+		}
+	}`))
+	ingressRec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(ingressRec, ingressReq)
+	if ingressRec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 for connector ingress, got %d body=%s", ingressRec.Code, ingressRec.Body.String())
+	}
+
+	response := decodeStrictResponse[ConnectorIngressMessageResponse](t, ingressRec.Body.Bytes())
+	if response.ConnectorID != "telegram-main" {
+		t.Fatalf("expected connector telegram-main, got %s", response.ConnectorID)
+	}
+	if !response.SessionCreated {
+		t.Fatal("expected ingress to create a new session")
+	}
+	if !response.RunCreated || response.Run == nil {
+		t.Fatal("expected ingress to create a run")
+	}
+	if response.Session.Channel != "telegram" {
+		t.Fatalf("expected ingress session channel telegram, got %s", response.Session.Channel)
+	}
+	if response.Run.SessionID != response.Session.SessionID {
+		t.Fatalf("expected ingress run to bind to session %s, got %s", response.Session.SessionID, response.Run.SessionID)
+	}
+
+	persistedSessions, err := sqliteStore.ListSessions(context.Background())
+	if err != nil {
+		t.Fatalf("ListSessions returned error: %v", err)
+	}
+	if len(persistedSessions) != 1 {
+		t.Fatalf("expected 1 persisted session, got %d", len(persistedSessions))
+	}
+	persistedRuns, err := sqliteStore.ListRuns(context.Background())
+	if err != nil {
+		t.Fatalf("ListRuns returned error: %v", err)
+	}
+	if len(persistedRuns) != 1 {
+		t.Fatalf("expected 1 persisted run, got %d", len(persistedRuns))
+	}
+	if persistedRuns[0].SessionID != response.Session.SessionID {
+		t.Fatalf("expected persisted run session %s, got %s", response.Session.SessionID, persistedRuns[0].SessionID)
+	}
+
+	connectorEvents := eventBus.List(events.Filter{Category: "connector"})
+	if len(connectorEvents) != 2 {
+		t.Fatalf("expected 2 connector events, got %d", len(connectorEvents))
+	}
+	if connectorEvents[1].Name != "connector.ingress_accepted" {
+		t.Fatalf("expected connector.ingress_accepted, got %s", connectorEvents[1].Name)
+	}
+
+	sessionEvents := eventBus.List(events.Filter{SessionID: response.Session.SessionID})
+	if len(sessionEvents) < 3 {
+		t.Fatalf("expected session-scoped routing and run events, got %d", len(sessionEvents))
+	}
+}
+
 func TestPolicyApprovalLifecycleRoutes(t *testing.T) {
 	eventBus := events.NewBus()
 	sessionRouter := router.NewSessionRouter()
