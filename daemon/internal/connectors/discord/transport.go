@@ -24,8 +24,14 @@ var (
 	openDiscordSession = func(session *discordgo.Session) error {
 		return session.Open()
 	}
+	sendDiscordTyping = func(session *discordgo.Session, channelID string, options ...discordgo.RequestOption) error {
+		return session.ChannelTyping(channelID, options...)
+	}
 	sendDiscordMessage = func(session *discordgo.Session, channelID string, message *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Message, error) {
 		return session.ChannelMessageSendComplex(channelID, message, options...)
+	}
+	editDiscordMessage = func(session *discordgo.Session, edit *discordgo.MessageEdit, options ...discordgo.RequestOption) (*discordgo.Message, error) {
+		return session.ChannelMessageEditComplex(edit, options...)
 	}
 )
 
@@ -121,6 +127,35 @@ func (t *GatewayTransport) SendReply(ctx context.Context, reply imtypes.Outbound
 		return imtypes.SentReply{}, wrapDiscordError("send discord reply", err)
 	}
 	return imtypes.SentReply{ExternalMessageID: message.ID}, nil
+}
+
+func (t *GatewayTransport) ReplyCapabilities() imtypes.ReplyCapabilities {
+	return imtypes.ReplyCapabilities{
+		SupportsThinking:  true,
+		SupportsStreaming: true,
+	}
+}
+
+func (t *GatewayTransport) SendThinking(ctx context.Context, signal imtypes.ThinkingSignal) error {
+	if t.session == nil {
+		return fmt.Errorf("discord session is not configured")
+	}
+	return wrapDiscordError("send discord typing", sendDiscordTyping(t.session, signal.ChannelID, discordgo.WithContext(ctx)))
+}
+
+func (t *GatewayTransport) EditReply(ctx context.Context, edit imtypes.ReplyEdit) error {
+	if t.session == nil {
+		return fmt.Errorf("discord session is not configured")
+	}
+	_, err := editDiscordMessage(t.session, &discordgo.MessageEdit{
+		ID:      edit.ExternalMessageID,
+		Channel: edit.ChannelID,
+		Content: &edit.Content,
+	}, discordgo.WithContext(ctx))
+	if err != nil {
+		return wrapDiscordError("edit discord reply", err)
+	}
+	return nil
 }
 
 func (t *GatewayTransport) Close(_ context.Context) error {

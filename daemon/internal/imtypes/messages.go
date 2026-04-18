@@ -17,10 +17,17 @@ type DeliveryStatus string
 
 const (
 	DeliveryStatusReceived   DeliveryStatus = "received"
+	DeliveryStatusThinking   DeliveryStatus = "thinking"
 	DeliveryStatusProcessing DeliveryStatus = "processing"
+	DeliveryStatusStreaming  DeliveryStatus = "streaming"
 	DeliveryStatusReplied    DeliveryStatus = "replied"
 	DeliveryStatusFailed     DeliveryStatus = "failed"
 )
+
+type ReplyCapabilities struct {
+	SupportsThinking  bool `json:"supportsThinking"`
+	SupportsStreaming bool `json:"supportsStreaming"`
+}
 
 type MessageRecord struct {
 	DeliveryID               string            `json:"deliveryId"`
@@ -65,6 +72,18 @@ type OutboundReply struct {
 	ChannelID                string
 	Content                  string
 	ReplyToExternalMessageID string
+}
+
+type ReplyEdit struct {
+	ConnectorID       string
+	ChannelID         string
+	ExternalMessageID string
+	Content           string
+}
+
+type ThinkingSignal struct {
+	ConnectorID string
+	ChannelID   string
 }
 
 type SentReply struct {

@@ -30,6 +30,9 @@ type Config struct {
 type Transport interface {
 	Start(ctx context.Context, handle func(context.Context, imtypes.InboundMessage)) error
 	SendReply(ctx context.Context, reply imtypes.OutboundReply) (imtypes.SentReply, error)
+	ReplyCapabilities() imtypes.ReplyCapabilities
+	SendThinking(ctx context.Context, signal imtypes.ThinkingSignal) error
+	EditReply(ctx context.Context, edit imtypes.ReplyEdit) error
 	Close(ctx context.Context) error
 }
 

@@ -36,6 +36,7 @@ That daemon foundation is now closed through:
 - Roadmap 9: `Provider Identity And Profiles`
 - Roadmap 10: `Managed Coding Providers`
 - Roadmap 11: `First IM Channel Loop`
+- Roadmap 12: `Channel Reply Progression`
 
 Execution is roadmap-driven:
 
@@ -75,6 +76,7 @@ Execution is roadmap-driven:
 - `docs/25-managed-coding-providers.md`
 - `docs/26-first-im-channel-loop.md`
 - `docs/27-discord-channel-loop.md`
+- `docs/28-channel-reply-progression.md`
 
 ## Working Assumptions
 

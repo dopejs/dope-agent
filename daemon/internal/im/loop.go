@@ -22,6 +22,13 @@ type ReplySender interface {
 	SendReply(ctx context.Context, reply imtypes.OutboundReply) (imtypes.SentReply, error)
 }
 
+type ReplyProgressor interface {
+	ReplySender
+	ReplyCapabilities() imtypes.ReplyCapabilities
+	SendThinking(ctx context.Context, signal imtypes.ThinkingSignal) error
+	EditReply(ctx context.Context, edit imtypes.ReplyEdit) error
+}
+
 type classifiedError interface {
 	ErrorClass() string
 }
@@ -149,64 +156,29 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		return ProcessResult{}, err
 	}
 
-	queryResult, queryErr := l.chat.Query(ctx, chat.QueryInput{
-		Query: inbound.Content,
-		Scope: events.Scope{
-			SessionID:   session.SessionID,
-			RunID:       run.RunID,
-			StepID:      step.StepID,
-			ConnectorID: connector.ConnectorID,
-		},
-	})
-	if queryErr != nil {
-		_, _ = l.updateStepStatus(ctx, run.RunID, step.StepID, runtime.UpdateStepStatusInput{
-			Status: runtime.StepStatusFailed,
-			Output: map[string]any{
-				"error": queryErr.Error(),
-			},
-		})
-		persistedInbound.Status = imtypes.DeliveryStatusFailed
-		persistedInbound.Error = queryErr.Error()
-		persistedInbound.UpdatedAt = time.Now().UTC()
-		_ = l.store.UpsertConnectorMessage(ctx, persistedInbound)
-		return ProcessResult{Session: session, Run: run, Step: step}, queryErr
+	scope := events.Scope{
+		SessionID:   session.SessionID,
+		RunID:       run.RunID,
+		StepID:      step.StepID,
+		ConnectorID: connector.ConnectorID,
 	}
+	progressor, _ := replies.(ReplyProgressor)
+	capabilities := imtypes.ReplyCapabilities{}
+	if progressor != nil {
+		capabilities = progressor.ReplyCapabilities()
+	}
+	stopThinking := l.startThinkingProgress(ctx, connector, session, run.RunID, step.StepID, inbound, progressor, capabilities)
+	defer stopThinking()
 
-	if _, err := l.updateStepStatus(ctx, run.RunID, step.StepID, runtime.UpdateStepStatusInput{Status: runtime.StepStatusExecutingTool}); err != nil {
-		return ProcessResult{}, err
-	}
-
-	outboundRecord := imtypes.MessageRecord{
-		DeliveryID:               newDeliveryID(),
-		ConnectorID:              connector.ConnectorID,
-		Direction:                imtypes.DeliveryDirectionOutbound,
-		SessionID:                session.SessionID,
-		RunID:                    run.RunID,
-		ChannelID:                inbound.ChannelID,
-		PeerID:                   inbound.PeerID,
-		ThreadID:                 inbound.ThreadID,
-		Content:                  queryResult.Dispatch.Output,
-		Status:                   imtypes.DeliveryStatusProcessing,
-		ResponseToDeliveryID:     persistedInbound.DeliveryID,
-		ReplyToExternalMessageID: inbound.ExternalMessageID,
-		CreatedAt:                time.Now().UTC(),
-		UpdatedAt:                time.Now().UTC(),
-	}
-	if err := l.store.UpsertConnectorMessage(ctx, outboundRecord); err != nil {
-		return ProcessResult{}, err
-	}
-
-	sentReply, sendErr := replies.SendReply(ctx, imtypes.OutboundReply{
-		ConnectorID:              connector.ConnectorID,
-		ChannelID:                inbound.ChannelID,
-		Content:                  queryResult.Dispatch.Output,
-		ReplyToExternalMessageID: inbound.ExternalMessageID,
-	})
+	queryResult, outboundRecord, sendErr := l.executeReplyPath(ctx, connector, session, run, step, inbound, persistedInbound, replies, progressor, capabilities, scope)
 	if sendErr != nil {
-		outboundRecord.Status = imtypes.DeliveryStatusFailed
-		outboundRecord.Error = sendErr.Error()
-		outboundRecord.UpdatedAt = time.Now().UTC()
-		_ = l.store.UpsertConnectorMessage(ctx, outboundRecord)
+		stopThinking()
+		if outboundRecord.DeliveryID != "" {
+			outboundRecord.Status = imtypes.DeliveryStatusFailed
+			outboundRecord.Error = sendErr.Error()
+			outboundRecord.UpdatedAt = time.Now().UTC()
+			_ = l.store.UpsertConnectorMessage(ctx, outboundRecord)
+		}
 		_, _ = l.updateStepStatus(ctx, run.RunID, step.StepID, runtime.UpdateStepStatusInput{
 			Status: runtime.StepStatusFailed,
 			Output: map[string]any{
@@ -214,26 +186,26 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 				"error": sendErr.Error(),
 			},
 		})
+		persistedInbound.Status = imtypes.DeliveryStatusFailed
+		persistedInbound.Error = sendErr.Error()
+		persistedInbound.UpdatedAt = time.Now().UTC()
+		_ = l.store.UpsertConnectorMessage(ctx, persistedInbound)
 		_, _ = l.publishConnectorEvent(ctx, "connector.reply_failed", connector, session, run.RunID, step.StepID, map[string]any{
-			"messageId":  inbound.ExternalMessageID,
-			"error":      sendErr.Error(),
-			"errorClass": classifyError(sendErr),
+			"messageId":      inbound.ExternalMessageID,
+			"replyMessageId": outboundRecord.ExternalMessageID,
+			"error":          sendErr.Error(),
+			"errorClass":     classifyError(sendErr),
 		})
 		return ProcessResult{Session: session, Run: run, Step: step, Reply: queryResult.Dispatch.Output}, sendErr
 	}
 
-	outboundRecord.ExternalMessageID = sentReply.ExternalMessageID
-	outboundRecord.Status = imtypes.DeliveryStatusReplied
-	outboundRecord.UpdatedAt = time.Now().UTC()
-	if err := l.store.UpsertConnectorMessage(ctx, outboundRecord); err != nil {
-		return ProcessResult{}, err
-	}
+	stopThinking()
 
 	finalStep, err := l.updateStepStatus(ctx, run.RunID, step.StepID, runtime.UpdateStepStatusInput{
 		Status: runtime.StepStatusCompleted,
 		Output: map[string]any{
 			"reply":                    queryResult.Dispatch.Output,
-			"replyMessageId":           sentReply.ExternalMessageID,
+			"replyMessageId":           outboundRecord.ExternalMessageID,
 			"llmDispatchId":            queryResult.Dispatch.DispatchID,
 			"llmProvider":              queryResult.Dispatch.Provider,
 			"llmModel":                 queryResult.Dispatch.Model,
@@ -246,7 +218,7 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 	}
 	_, _ = l.publishConnectorEvent(ctx, "connector.reply_sent", connector, session, run.RunID, finalStep.StepID, map[string]any{
 		"messageId":      inbound.ExternalMessageID,
-		"replyMessageId": sentReply.ExternalMessageID,
+		"replyMessageId": outboundRecord.ExternalMessageID,
 	})
 
 	run, _ = l.runtime.GetRun(run.RunID)
@@ -256,6 +228,152 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		Step:    finalStep,
 		Reply:   queryResult.Dispatch.Output,
 	}, nil
+}
+
+func (l *MessageLoop) executeReplyPath(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, replies ReplySender, progressor ReplyProgressor, capabilities imtypes.ReplyCapabilities, scope events.Scope) (chat.QueryResult, imtypes.MessageRecord, error) {
+	if capabilities.SupportsStreaming && progressor != nil {
+		return l.executeStreamingReply(ctx, connector, session, run, step, inbound, persistedInbound, progressor, scope)
+	}
+	return l.executeFinalReply(ctx, connector, session, run, step, inbound, persistedInbound, replies, scope)
+}
+
+func (l *MessageLoop) executeFinalReply(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, replies ReplySender, scope events.Scope) (chat.QueryResult, imtypes.MessageRecord, error) {
+	queryResult, queryErr := l.chat.Query(ctx, chat.QueryInput{
+		Query: inbound.Content,
+		Scope: scope,
+	})
+	if queryErr != nil {
+		return queryResult, imtypes.MessageRecord{}, queryErr
+	}
+
+	if _, err := l.updateStepStatus(ctx, run.RunID, step.StepID, runtime.UpdateStepStatusInput{Status: runtime.StepStatusExecutingTool}); err != nil {
+		return chat.QueryResult{}, imtypes.MessageRecord{}, err
+	}
+
+	outboundRecord := l.newOutboundRecord(connector, session, run, inbound, persistedInbound.DeliveryID, queryResult.Dispatch.Output)
+	if err := l.store.UpsertConnectorMessage(ctx, outboundRecord); err != nil {
+		return chat.QueryResult{}, imtypes.MessageRecord{}, err
+	}
+
+	sentReply, sendErr := replies.SendReply(ctx, imtypes.OutboundReply{
+		ConnectorID:              connector.ConnectorID,
+		ChannelID:                inbound.ChannelID,
+		Content:                  queryResult.Dispatch.Output,
+		ReplyToExternalMessageID: inbound.ExternalMessageID,
+	})
+	if sendErr != nil {
+		return queryResult, outboundRecord, sendErr
+	}
+
+	outboundRecord.ExternalMessageID = sentReply.ExternalMessageID
+	outboundRecord.Status = imtypes.DeliveryStatusReplied
+	outboundRecord.UpdatedAt = time.Now().UTC()
+	if err := l.store.UpsertConnectorMessage(ctx, outboundRecord); err != nil {
+		return chat.QueryResult{}, imtypes.MessageRecord{}, err
+	}
+	return queryResult, outboundRecord, nil
+}
+
+func (l *MessageLoop) executeStreamingReply(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, progressor ReplyProgressor, scope events.Scope) (chat.QueryResult, imtypes.MessageRecord, error) {
+	progress := streamReplyProgress{
+		loop:          l,
+		progressor:    progressor,
+		connector:     connector,
+		session:       session,
+		runID:         run.RunID,
+		stepID:        step.StepID,
+		inbound:       inbound,
+		responseToID:  persistedInbound.DeliveryID,
+		flushInterval: 500 * time.Millisecond,
+	}
+
+	queryResult, queryErr := l.chat.Stream(ctx, chat.QueryInput{
+		Query: inbound.Content,
+		Scope: scope,
+	}, func(chunk chat.StreamChunk) error {
+		return progress.OnChunk(ctx, chunk.Reply)
+	})
+	if queryErr != nil {
+		return queryResult, progress.record, queryErr
+	}
+
+	if _, err := l.updateStepStatus(ctx, run.RunID, step.StepID, runtime.UpdateStepStatusInput{Status: runtime.StepStatusExecutingTool}); err != nil {
+		return chat.QueryResult{}, imtypes.MessageRecord{}, err
+	}
+	if err := progress.Complete(ctx, queryResult.Dispatch.Output); err != nil {
+		return queryResult, progress.record, err
+	}
+	return queryResult, progress.record, nil
+}
+
+func (l *MessageLoop) newOutboundRecord(connector connectors.Connector, session router.Session, run runtime.Run, inbound imtypes.InboundMessage, responseToDeliveryID, content string) imtypes.MessageRecord {
+	now := time.Now().UTC()
+	return imtypes.MessageRecord{
+		DeliveryID:               newDeliveryID(),
+		ConnectorID:              connector.ConnectorID,
+		Direction:                imtypes.DeliveryDirectionOutbound,
+		SessionID:                session.SessionID,
+		RunID:                    run.RunID,
+		ChannelID:                inbound.ChannelID,
+		PeerID:                   inbound.PeerID,
+		ThreadID:                 inbound.ThreadID,
+		Content:                  content,
+		Status:                   imtypes.DeliveryStatusProcessing,
+		ResponseToDeliveryID:     responseToDeliveryID,
+		ReplyToExternalMessageID: inbound.ExternalMessageID,
+		CreatedAt:                now,
+		UpdatedAt:                now,
+	}
+}
+
+func (l *MessageLoop) startThinkingProgress(ctx context.Context, connector connectors.Connector, session router.Session, runID, stepID string, inbound imtypes.InboundMessage, progressor ReplyProgressor, capabilities imtypes.ReplyCapabilities) func() {
+	if progressor == nil || !capabilities.SupportsThinking {
+		return func() {}
+	}
+
+	thinkingPayload := map[string]any{
+		"messageId": inbound.ExternalMessageID,
+		"channelId": inbound.ChannelID,
+	}
+	signal := imtypes.ThinkingSignal{
+		ConnectorID: connector.ConnectorID,
+		ChannelID:   inbound.ChannelID,
+	}
+	if err := progressor.SendThinking(ctx, signal); err != nil {
+		_, _ = l.publishConnectorEvent(ctx, "connector.thinking_failed", connector, session, runID, stepID, map[string]any{
+			"messageId":  inbound.ExternalMessageID,
+			"channelId":  inbound.ChannelID,
+			"error":      err.Error(),
+			"errorClass": classifyError(err),
+		})
+		return func() {}
+	}
+	_, _ = l.publishConnectorEvent(ctx, "connector.thinking_started", connector, session, runID, stepID, thinkingPayload)
+
+	thinkingCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-thinkingCtx.Done():
+				return
+			case <-ticker.C:
+			}
+
+			err := progressor.SendThinking(thinkingCtx, signal)
+			if err != nil {
+				_, _ = l.publishConnectorEvent(ctx, "connector.thinking_failed", connector, session, runID, stepID, map[string]any{
+					"messageId":  inbound.ExternalMessageID,
+					"channelId":  inbound.ChannelID,
+					"error":      err.Error(),
+					"errorClass": classifyError(err),
+				})
+				return
+			}
+		}
+	}()
+	return cancel
 }
 
 func (l *MessageLoop) routeSession(inbound imtypes.InboundMessage) (router.Session, bool, error) {
@@ -478,4 +596,109 @@ func classifyError(err error) string {
 		return ""
 	}
 	return strings.TrimSpace(classified.ErrorClass())
+}
+
+type streamReplyProgress struct {
+	loop          *MessageLoop
+	progressor    ReplyProgressor
+	connector     connectors.Connector
+	session       router.Session
+	runID         string
+	stepID        string
+	inbound       imtypes.InboundMessage
+	responseToID  string
+	record        imtypes.MessageRecord
+	lastFlushed   string
+	lastFlushAt   time.Time
+	flushInterval time.Duration
+}
+
+func (p *streamReplyProgress) OnChunk(ctx context.Context, reply string) error {
+	return p.flush(ctx, reply, false)
+}
+
+func (p *streamReplyProgress) Complete(ctx context.Context, reply string) error {
+	return p.flush(ctx, reply, true)
+}
+
+func (p *streamReplyProgress) flush(ctx context.Context, reply string, force bool) error {
+	reply = strings.TrimSpace(reply)
+	if reply == "" {
+		return nil
+	}
+	if reply == p.lastFlushed {
+		if force && p.record.DeliveryID != "" {
+			p.record.Status = imtypes.DeliveryStatusReplied
+			p.record.UpdatedAt = time.Now().UTC()
+			return p.loop.store.UpsertConnectorMessage(ctx, p.record)
+		}
+		return nil
+	}
+	if !force && !p.lastFlushAt.IsZero() && time.Since(p.lastFlushAt) < p.flushInterval {
+		return nil
+	}
+
+	now := time.Now().UTC()
+	if p.record.DeliveryID == "" {
+		p.record = p.loop.newOutboundRecord(p.connector, p.session, runtime.Run{RunID: p.runID}, p.inbound, p.responseToID, reply)
+		p.record.Status = imtypes.DeliveryStatusStreaming
+		if err := p.loop.store.UpsertConnectorMessage(ctx, p.record); err != nil {
+			return err
+		}
+
+		sentReply, err := p.progressor.SendReply(ctx, imtypes.OutboundReply{
+			ConnectorID:              p.connector.ConnectorID,
+			ChannelID:                p.inbound.ChannelID,
+			Content:                  reply,
+			ReplyToExternalMessageID: p.inbound.ExternalMessageID,
+		})
+		if err != nil {
+			return err
+		}
+		p.record.ExternalMessageID = sentReply.ExternalMessageID
+		p.record.Status = imtypes.DeliveryStatusStreaming
+		p.record.Content = reply
+		p.record.UpdatedAt = now
+		if err := p.loop.store.UpsertConnectorMessage(ctx, p.record); err != nil {
+			return err
+		}
+		_, _ = p.loop.publishConnectorEvent(ctx, "connector.reply_stream_started", p.connector, p.session, p.runID, p.stepID, map[string]any{
+			"messageId":      p.inbound.ExternalMessageID,
+			"replyMessageId": p.record.ExternalMessageID,
+			"contentLength":  len(reply),
+		})
+		p.lastFlushed = reply
+		p.lastFlushAt = now
+		return nil
+	}
+
+	if err := p.progressor.EditReply(ctx, imtypes.ReplyEdit{
+		ConnectorID:       p.connector.ConnectorID,
+		ChannelID:         p.inbound.ChannelID,
+		ExternalMessageID: p.record.ExternalMessageID,
+		Content:           reply,
+	}); err != nil {
+		return err
+	}
+	p.record.Status = imtypes.DeliveryStatusStreaming
+	p.record.Content = reply
+	p.record.UpdatedAt = now
+	if force {
+		p.record.Status = imtypes.DeliveryStatusReplied
+	}
+	if err := p.loop.store.UpsertConnectorMessage(ctx, p.record); err != nil {
+		return err
+	}
+	eventName := "connector.reply_stream_updated"
+	if force {
+		eventName = "connector.reply_sent"
+	}
+	_, _ = p.loop.publishConnectorEvent(ctx, eventName, p.connector, p.session, p.runID, p.stepID, map[string]any{
+		"messageId":      p.inbound.ExternalMessageID,
+		"replyMessageId": p.record.ExternalMessageID,
+		"contentLength":  len(reply),
+	})
+	p.lastFlushed = reply
+	p.lastFlushAt = now
+	return nil
 }

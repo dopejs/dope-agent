@@ -164,3 +164,73 @@ func TestGatewayTransportWrapsAuthFailure(t *testing.T) {
 		t.Fatalf("expected auth_error classification, got %q", classified.ErrorClass())
 	}
 }
+
+func TestGatewayTransportSendThinkingUsesChannelTyping(t *testing.T) {
+	t.Parallel()
+
+	originalTyping := sendDiscordTyping
+	defer func() {
+		sendDiscordTyping = originalTyping
+	}()
+
+	var capturedChannelID string
+	sendDiscordTyping = func(_ *discordgo.Session, channelID string, _ ...discordgo.RequestOption) error {
+		capturedChannelID = channelID
+		return nil
+	}
+
+	transport := &GatewayTransport{
+		cfg:       Config{ConnectorID: "discord-main"},
+		session:   &discordgo.Session{},
+		botUserID: "bot_1",
+	}
+
+	if err := transport.SendThinking(context.Background(), imtypes.ThinkingSignal{
+		ConnectorID: "discord-main",
+		ChannelID:   "channel_1",
+	}); err != nil {
+		t.Fatalf("SendThinking returned error: %v", err)
+	}
+	if capturedChannelID != "channel_1" {
+		t.Fatalf("expected typing signal for channel_1, got %q", capturedChannelID)
+	}
+}
+
+func TestGatewayTransportEditReplyShapesDiscordRequest(t *testing.T) {
+	t.Parallel()
+
+	originalEdit := editDiscordMessage
+	defer func() {
+		editDiscordMessage = originalEdit
+	}()
+
+	var capturedEdit *discordgo.MessageEdit
+	editDiscordMessage = func(_ *discordgo.Session, edit *discordgo.MessageEdit, _ ...discordgo.RequestOption) (*discordgo.Message, error) {
+		capturedEdit = edit
+		return &discordgo.Message{ID: edit.ID}, nil
+	}
+
+	transport := &GatewayTransport{
+		cfg:       Config{ConnectorID: "discord-main"},
+		session:   &discordgo.Session{},
+		botUserID: "bot_1",
+	}
+
+	if err := transport.EditReply(context.Background(), imtypes.ReplyEdit{
+		ConnectorID:       "discord-main",
+		ChannelID:         "channel_1",
+		ExternalMessageID: "reply_1",
+		Content:           "updated reply",
+	}); err != nil {
+		t.Fatalf("EditReply returned error: %v", err)
+	}
+	if capturedEdit == nil {
+		t.Fatal("expected edit request to be issued")
+	}
+	if capturedEdit.ID != "reply_1" || capturedEdit.Channel != "channel_1" {
+		t.Fatalf("expected reply edit target reply_1/channel_1, got %#v", capturedEdit)
+	}
+	if capturedEdit.Content == nil || *capturedEdit.Content != "updated reply" {
+		t.Fatalf("expected updated content, got %#v", capturedEdit.Content)
+	}
+}

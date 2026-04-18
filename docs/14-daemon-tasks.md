@@ -33,8 +33,8 @@ Current completion should be read as:
 - `Roadmap 8: Ingress Routing Closure` is now closed
 - `Roadmap 9: Provider Identity And Profiles` is now closed
 - `Roadmap 10: Managed Coding Providers` is now closed
-- `Roadmap 11: First IM Channel Loop`
 - `Roadmap 11: First IM Channel Loop` is now closed
+- `Roadmap 12: Channel Reply Progression` is now closed
 
 ## Roadmap 1: Runtime Closure
 
@@ -116,6 +116,13 @@ Current completion should be read as:
 - [x] Discord connector implementation
 - [x] Inbound-to-reply execution loop
 - [x] IM operator docs and end-to-end verification
+
+## Roadmap 12: Channel Reply Progression
+
+- [x] Channel capability and degradation model
+- [x] Streaming-capable reply progression in daemon runtime
+- [x] Discord thinking and streaming UX
+- [x] Operator docs and contract closure
 
 ## Completed Foundational Work
 

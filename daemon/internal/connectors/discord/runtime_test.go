@@ -47,8 +47,11 @@ func (p *testProvider) Stream(_ context.Context, request llm.ProviderRequest, em
 type fakeTransport struct {
 	handler  func(context.Context, imtypes.InboundMessage)
 	sent     []imtypes.OutboundReply
+	edited   []imtypes.ReplyEdit
+	thinking []imtypes.ThinkingSignal
 	closed   bool
 	startErr error
+	caps     imtypes.ReplyCapabilities
 }
 
 func (t *fakeTransport) Start(_ context.Context, handle func(context.Context, imtypes.InboundMessage)) error {
@@ -62,6 +65,20 @@ func (t *fakeTransport) Start(_ context.Context, handle func(context.Context, im
 func (t *fakeTransport) SendReply(_ context.Context, reply imtypes.OutboundReply) (imtypes.SentReply, error) {
 	t.sent = append(t.sent, reply)
 	return imtypes.SentReply{ExternalMessageID: "discord_reply_1"}, nil
+}
+
+func (t *fakeTransport) ReplyCapabilities() imtypes.ReplyCapabilities {
+	return t.caps
+}
+
+func (t *fakeTransport) SendThinking(_ context.Context, signal imtypes.ThinkingSignal) error {
+	t.thinking = append(t.thinking, signal)
+	return nil
+}
+
+func (t *fakeTransport) EditReply(_ context.Context, edit imtypes.ReplyEdit) error {
+	t.edited = append(t.edited, edit)
+	return nil
 }
 
 func (t *fakeTransport) Close(context.Context) error {
@@ -103,7 +120,7 @@ func TestRuntimeProcessesDirectMessageEndToEnd(t *testing.T) {
 		sqliteStore,
 		chatService,
 	)
-	transport := &fakeTransport{}
+	transport := &fakeTransport{caps: imtypes.ReplyCapabilities{SupportsThinking: true, SupportsStreaming: true}}
 
 	connectorRuntime, err := NewRuntime(Config{
 		Enabled:        true,
@@ -134,11 +151,17 @@ func TestRuntimeProcessesDirectMessageEndToEnd(t *testing.T) {
 		ReceivedAt:        time.Now().UTC(),
 	})
 
+	if len(transport.thinking) == 0 {
+		t.Fatal("expected at least one thinking signal")
+	}
 	if len(transport.sent) != 1 {
-		t.Fatalf("expected 1 reply to be sent, got %d", len(transport.sent))
+		t.Fatalf("expected 1 initial reply to be sent, got %d", len(transport.sent))
 	}
 	if transport.sent[0].Content != "reply:hello" {
 		t.Fatalf("expected reply content, got %q", transport.sent[0].Content)
+	}
+	if len(transport.edited) != 0 {
+		t.Fatalf("expected no edit for single-chunk stream, got %d edits", len(transport.edited))
 	}
 
 	items, err := sqliteStore.ListConnectors(context.Background())
@@ -183,7 +206,7 @@ func TestRuntimeIgnoresGuildMessageWithoutMentionWhenRequired(t *testing.T) {
 		sqliteStore,
 		chatService,
 	)
-	transport := &fakeTransport{}
+	transport := &fakeTransport{caps: imtypes.ReplyCapabilities{SupportsThinking: true, SupportsStreaming: true}}
 
 	connectorRuntime, err := NewRuntime(Config{
 		Enabled:        true,
@@ -255,7 +278,7 @@ func TestRuntimePublishesClassifiedFailureWhenTransportStartFails(t *testing.T) 
 		sqliteStore,
 		nil,
 	)
-	transport := &fakeTransport{startErr: errors.New("401 Unauthorized")}
+	transport := &fakeTransport{startErr: errors.New("401 Unauthorized"), caps: imtypes.ReplyCapabilities{SupportsThinking: true, SupportsStreaming: true}}
 
 	connectorRuntime, err := NewRuntime(Config{
 		Enabled:        true,

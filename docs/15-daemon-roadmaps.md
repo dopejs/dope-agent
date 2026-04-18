@@ -968,6 +968,84 @@ Task definition of done:
 - long-term memory or context assembly for IM
 - rich media, files, reactions, voice, or typing indicators
 
+## Roadmap 12: Channel Reply Progression
+
+Status: `[x] complete`
+
+### Goal
+
+Define a channel capability model for reply progression and close the first enhanced UX slice where a real IM channel can show thinking state and incremental output when the channel supports it.
+
+### Tasks
+
+#### 1. Channel Capability And Degradation Model
+
+Scope:
+
+- define how channels declare support for thinking and incremental output
+- define fallback behavior for channels that do not support those capabilities
+
+Task definition of done:
+
+- a channel capability model exists in committed docs
+- the model explicitly separates `thinking` support from incremental output support
+- fallback behavior is defined for `thinking + streaming`, `thinking + final`, and `final_only`
+- implementation boundary matches the documented model
+
+#### 2. Streaming-Capable Reply Progression In Daemon Runtime
+
+Scope:
+
+- add a daemon-owned reply progression path that can consume provider stream output and drive channel updates
+
+Task definition of done:
+
+- daemon can keep final-only behavior for channels without progression support
+- daemon can use a streaming-capable path when the channel declares incremental output support
+- progression remains inside daemon routing, runtime, and persistence truth
+- tests cover the progression path
+
+#### 3. Discord Thinking And Streaming UX
+
+Scope:
+
+- implement Discord-specific thinking display and incremental reply updates
+
+Task definition of done:
+
+- Discord can emit thinking state through its supported mechanism
+- Discord can send an initial reply and update the same reply incrementally
+- update frequency is throttled enough to avoid obviously unsafe edit spam
+- transport/auth failures are still classified explicitly
+- tests cover thinking, initial reply send, and reply edit behavior
+
+#### 4. Operator Docs And Contract Closure
+
+Scope:
+
+- document the channel reply progression model and the Discord-specific behavior
+
+Task definition of done:
+
+- docs explain capability analysis per channel
+- docs explain Discord thinking and streaming behavior
+- roadmap and task state reflect the real implementation boundary
+- full daemon test suite and contract tests pass
+
+### Roadmap Definition Of Done
+
+- reply progression is modeled as channel capabilities, not as a universal requirement
+- channels that support thinking and incremental output can expose those phases through daemon-owned logic
+- channels that do not support those phases still fall back cleanly to final-only replies
+- Discord has a production-shaped implementation for thinking and incremental output
+
+### Explicitly Out Of Scope
+
+- making every channel support streaming
+- token-level real-time updates without throttling
+- multi-turn chat memory or context engineering
+- rich media progression behavior
+
 ## Recommended Order
 
 1. Roadmap 1: Runtime Closure
@@ -981,3 +1059,4 @@ Task definition of done:
 9. Roadmap 9: Provider Identity And Profiles
 10. Roadmap 10: Managed Coding Providers
 11. Roadmap 11: First IM Channel Loop
+12. Roadmap 12: Channel Reply Progression

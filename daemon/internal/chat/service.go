@@ -28,6 +28,13 @@ type QueryResult struct {
 	Dispatch llm.Dispatch
 }
 
+type StreamChunk struct {
+	Delta        string
+	Reply        string
+	FinishReason string
+	Usage        *llm.Usage
+}
+
 type Service struct {
 	dispatcher *llm.Dispatcher
 	providers  *providers.Manager
@@ -72,6 +79,61 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	}
 
 	finalDispatch, execErr := s.dispatcher.Dispatch(ctx, dispatch)
+	if err := persistDispatch(ctx, s.store, finalDispatch); err != nil {
+		return QueryResult{}, err
+	}
+	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, finalDispatch, terminalDispatchEvent(finalDispatch)); err != nil {
+		return QueryResult{}, err
+	}
+
+	result := QueryResult{
+		Query:    input.Query,
+		Dispatch: finalDispatch,
+	}
+	if execErr != nil {
+		return result, execErr
+	}
+	return result, nil
+}
+
+func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(StreamChunk) error) (QueryResult, error) {
+	if s == nil || s.dispatcher == nil {
+		return QueryResult{}, errors.New("chat service is not configured")
+	}
+
+	dispatchInput, err := buildDispatchInput(input)
+	if err != nil {
+		return QueryResult{}, err
+	}
+	if s.providers != nil {
+		_, dispatchInput, err = s.providers.ResolveDispatchInput(dispatchInput)
+		if err != nil {
+			return QueryResult{}, err
+		}
+	}
+
+	dispatch, err := s.dispatcher.Prepare(dispatchInput, true)
+	if err != nil {
+		return QueryResult{}, err
+	}
+	if err := persistDispatch(ctx, s.store, dispatch); err != nil {
+		return QueryResult{}, err
+	}
+	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, dispatch, "llm.dispatch.requested"); err != nil {
+		return QueryResult{}, err
+	}
+
+	finalDispatch, execErr := s.dispatcher.DispatchStream(ctx, dispatch, func(chunk llm.StreamChunk) error {
+		if emit == nil {
+			return nil
+		}
+		return emit(StreamChunk{
+			Delta:        chunk.Delta,
+			Reply:        chunk.Output,
+			FinishReason: chunk.FinishReason,
+			Usage:        chunk.Usage,
+		})
+	})
 	if err := persistDispatch(ctx, s.store, finalDispatch); err != nil {
 		return QueryResult{}, err
 	}

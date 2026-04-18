@@ -12,6 +12,10 @@ The current supported delivery mode is:
 
 - `gateway`
 
+Current reply progression level:
+
+- `thinking + streaming`
+
 ## What The Daemon Does
 
 For an accepted Discord inbound message, the daemon now performs one closed single-turn loop:
@@ -29,6 +33,15 @@ This path is intentionally single-turn:
 - no memory assembly
 - no context compaction
 - no multi-turn daemon-owned conversation state
+
+The current Discord reply progression is:
+
+1. emit a Discord typing indicator immediately
+2. keep refreshing typing while generation is still underway
+3. stream provider output inside daemon-owned progression logic
+4. send the first visible reply message when enough output exists
+5. edit the same Discord message with throttled updates
+6. finalize that same message when generation completes
 
 ## Discord Bot Requirements
 
@@ -80,6 +93,11 @@ Current `deliveryMode` support:
 
 - only `gateway`
 
+Reply progression support:
+
+- `thinking`: supported
+- `incremental output`: supported
+
 ## Behavior Rules
 
 Direct messages:
@@ -95,6 +113,14 @@ Guild messages:
 Mention normalization:
 
 - when a guild message mentions the bot, the bot mention is stripped before the query is sent to the provider
+
+Reply progression rules:
+
+- Discord uses typing indicator for `thinking`
+- Discord uses message edit for incremental output
+- the daemon sends an initial reply and then edits the same message
+- edits are throttled rather than emitted for every token
+- if progression is not available, the daemon falls back to final-only reply behavior
 
 ## Observability
 
@@ -113,6 +139,10 @@ Important event names:
 - `connector.healthy`
 - `connector.failed`
 - `connector.ingress_accepted`
+- `connector.thinking_started`
+- `connector.thinking_failed`
+- `connector.reply_stream_started`
+- `connector.reply_stream_updated`
 - `connector.reply_sent`
 - `connector.reply_failed`
 - `session.created`
@@ -145,6 +175,11 @@ When reply sending fails:
 - the step is marked failed
 - a `connector.reply_failed` event is emitted
 
+When thinking fails:
+
+- the daemon emits `connector.thinking_failed`
+- the daemon still continues toward a final reply if the rest of the path remains healthy
+
 ## Current Boundaries
 
 This roadmap intentionally does not include:
@@ -162,8 +197,11 @@ This channel loop is currently verified through:
 - config parsing tests
 - API and contract tests
 - Discord transport normalization tests
+- Discord typing indicator tests
 - Discord outbound request shaping tests
+- Discord reply edit tests
 - Discord auth failure classification tests
 - IM loop success and failure tests
+- IM loop thinking and streaming progression tests
 - Discord runtime end-to-end tests using the real connector runtime boundary with a test transport
 - full `go test ./...` on the daemon module
