@@ -138,7 +138,7 @@ Today, the implicit ready configured provider path preserves the existing `opena
 
 Current operator loop is:
 
-1. configure provider in `~/.dope/config.json` or `DOPE_*`
+1. configure provider in the active environment config file or `DOPE_*`
 2. inspect effective provider state with `GET /v1/providers`
 3. run `POST /v1/providers/{providerId}/checks`
 4. inspect the durable result and failure class

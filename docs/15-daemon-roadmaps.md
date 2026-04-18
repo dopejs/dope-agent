@@ -45,6 +45,8 @@ The daemon now has a closed P0 control plane slice:
 
 The next execution focus is provider-stream hardening for SSE-style upstreams.
 
+The current execution focus after that is repository-safe local development workflow, so agents default to the test environment instead of production state.
+
 ## Roadmap 1: Runtime Closure
 
 Status: `[x] complete`
@@ -258,6 +260,81 @@ Task definition of done:
 ### Explicitly Out Of Scope
 
 - real external IM integrations beyond supervised contract surface
+
+## Roadmap 14: Test Environment Workflow
+
+Status: `[x] complete`
+
+### Goal
+
+Make local daemon debugging default to a repository-safe test environment with explicit startup entrypoints and a project-level skill.
+
+### Tasks
+
+#### 1. Test-vs-Production Environment Defaults
+
+Scope:
+
+- separate test and production defaults
+- make development default to test environment
+
+Task definition of done:
+
+- test environment defaults are explicit for data dir, config file, and bind addr
+- production defaults remain explicit and opt-in
+- API-visible config/system responses expose the active environment
+- tests cover environment resolution
+
+#### 2. Quick-Start Repository Entry Points
+
+Scope:
+
+- add standard startup and health commands for test and production
+
+Task definition of done:
+
+- repository-level commands exist for starting test and production daemon instances
+- repository-level commands exist for checking test and production daemon health
+- commands are documented and match actual runtime behavior
+- operators do not need to remember ad hoc shell commands
+
+#### 3. Project-Level Test Environment Skill
+
+Scope:
+
+- add a repository skill for local daemon debugging
+- add repository-specific agent instructions
+
+Task definition of done:
+
+- the repository contains a project skill that tells future agents to use the test environment by default
+- the repository contains repo-level agent instructions aligned with the skill
+- production usage is clearly treated as explicit opt-in
+
+#### 4. Documentation Closure
+
+Scope:
+
+- document the environment split and startup workflow
+
+Task definition of done:
+
+- README documents test and production defaults
+- the dedicated design note exists for test-environment workflow
+- docs, scripts, and commands all refer to the same ports and paths
+
+### Roadmap Definition Of Done
+
+- local development defaults to the test environment
+- standard commands exist to run and inspect test and production daemon instances
+- project-level agent instructions and skill both push debugging toward the test environment
+- the startup and environment model is documented and verified
+
+### Explicitly Out Of Scope
+
+- containerized dev environments
+- multiple named test profiles
+- environment-specific database migrations beyond the existing data-dir split
 - full browser or media capability implementations
 - auth and pairing
 

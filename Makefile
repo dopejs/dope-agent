@@ -1,9 +1,23 @@
 GO_DAEMON_DIR := ./daemon
 
-.PHONY: daemon-run daemon-build daemon-test daemon-contract-test
+.PHONY: daemon-run daemon-run-test daemon-run-test-live daemon-run-prod daemon-test-status daemon-prod-status daemon-build daemon-test daemon-contract-test
 
-daemon-run:
-	cd $(GO_DAEMON_DIR) && go run ./cmd/dope
+daemon-run: daemon-run-test
+
+daemon-run-test:
+	./scripts/run-daemon.sh test
+
+daemon-run-test-live:
+	DOPE_CONNECTORS_DISCORD_ENABLED=true ./scripts/run-daemon.sh test
+
+daemon-run-prod:
+	./scripts/run-daemon.sh prod
+
+daemon-test-status:
+	./scripts/check-daemon-health.sh http://127.0.0.1:19192/healthz
+
+daemon-prod-status:
+	./scripts/check-daemon-health.sh http://127.0.0.1:19191/healthz
 
 daemon-build:
 	cd $(GO_DAEMON_DIR) && go build ./cmd/dope

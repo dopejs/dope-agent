@@ -54,7 +54,10 @@ Operator prerequisites:
 
 ## Configuration
 
-Configuration can come from `~/.dope/config.json` and `DOPE_*` environment variables.
+Configuration comes from the active environment config file and `DOPE_*` environment variables.
+
+- development/test default: `~/.dope-test/config.json`
+- production explicit env: `~/.dope/config.json`
 
 The Discord connector config shape is:
 

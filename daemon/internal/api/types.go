@@ -12,14 +12,16 @@ import (
 )
 
 type SystemInfoResponse struct {
-	Service  string `json:"service"`
-	Version  string `json:"version"`
-	BindAddr string `json:"bindAddr"`
-	DataDir  string `json:"dataDir"`
-	LogLevel string `json:"logLevel"`
+	Service     string `json:"service"`
+	Environment string `json:"environment"`
+	Version     string `json:"version"`
+	BindAddr    string `json:"bindAddr"`
+	DataDir     string `json:"dataDir"`
+	LogLevel    string `json:"logLevel"`
 }
 
 type ConfigResponse struct {
+	Environment    string                   `json:"environment"`
 	BindAddr       string                   `json:"bindAddr"`
 	DataDir        string                   `json:"dataDir"`
 	ConfigFilePath string                   `json:"configFilePath"`
@@ -184,11 +186,12 @@ type ListResponse[T any] struct {
 
 func buildSystemInfoResponse(cfg config.Config) SystemInfoResponse {
 	return SystemInfoResponse{
-		Service:  "dope",
-		Version:  cfg.Version,
-		BindAddr: cfg.BindAddr,
-		DataDir:  cfg.DataDir,
-		LogLevel: cfg.LogLevel,
+		Service:     "dope",
+		Environment: effectiveEnvironment(cfg),
+		Version:     cfg.Version,
+		BindAddr:    cfg.BindAddr,
+		DataDir:     cfg.DataDir,
+		LogLevel:    cfg.LogLevel,
 	}
 }
 
@@ -222,6 +225,7 @@ func buildConfigResponse(cfg config.Config) ConfigResponse {
 	}
 
 	return ConfigResponse{
+		Environment:    effectiveEnvironment(cfg),
 		BindAddr:       cfg.BindAddr,
 		DataDir:        cfg.DataDir,
 		ConfigFilePath: config.ConfigFilePath(cfg.DataDir),
@@ -272,6 +276,15 @@ func buildConfigResponse(cfg config.Config) ConfigResponse {
 			},
 		},
 		RedactedFields: redactedFields,
+	}
+}
+
+func effectiveEnvironment(cfg config.Config) string {
+	switch cfg.Environment {
+	case config.EnvironmentProd, config.EnvironmentTest:
+		return string(cfg.Environment)
+	default:
+		return string(config.EnvironmentTest)
 	}
 }
 

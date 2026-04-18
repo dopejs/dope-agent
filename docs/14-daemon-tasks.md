@@ -35,7 +35,8 @@ Current completion should be read as:
 - `Roadmap 10: Managed Coding Providers` is now closed
 - `Roadmap 11: First IM Channel Loop` is now closed
 - `Roadmap 12: Channel Reply Progression` is now closed
-- `Roadmap 13: Provider Streaming Timeout Semantics` is now planned
+- `Roadmap 13: Provider Streaming Timeout Semantics` is now closed
+- `Roadmap 14: Test Environment Workflow` is now closed
 
 ## Roadmap 1: Runtime Closure
 
@@ -131,6 +132,13 @@ Current completion should be read as:
 - [x] OpenAI-compatible SSE transport refactor
 - [x] Dispatch and partial-result semantics
 - [x] Channel fallback and operator visibility
+
+## Roadmap 14: Test Environment Workflow
+
+- [x] Test-vs-production environment defaults
+- [x] Quick-start repository entry points
+- [x] Project-level test environment skill
+- [x] Documentation closure
 
 ## Completed Foundational Work
 

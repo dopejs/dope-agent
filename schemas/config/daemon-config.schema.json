@@ -5,13 +5,18 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "environment": {
+      "type": "string",
+      "enum": ["prod", "test"],
+      "default": "test"
+    },
     "bindAddr": {
       "type": "string",
-      "default": "127.0.0.1:19191"
+      "default": "127.0.0.1:19192"
     },
     "dataDir": {
       "type": "string",
-      "default": "~/.dope"
+      "default": "~/.dope-test"
     },
     "logLevel": {
       "type": "string",

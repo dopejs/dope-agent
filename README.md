@@ -38,6 +38,7 @@ That daemon foundation is now closed through:
 - Roadmap 11: `First IM Channel Loop`
 - Roadmap 12: `Channel Reply Progression`
 - Roadmap 13: `Provider Streaming Timeout Semantics`
+- Roadmap 14: `Test Environment Workflow`
 
 Execution is roadmap-driven:
 
@@ -79,6 +80,35 @@ Execution is roadmap-driven:
 - `docs/27-discord-channel-loop.md`
 - `docs/28-channel-reply-progression.md`
 - `docs/29-provider-streaming-timeout-model.md`
+- `docs/30-test-environment-workflow.md`
+
+## Local Environment Modes
+
+Development defaults to the **test** environment:
+
+- `DOPE_ENV=test`
+- data dir: `~/.dope-test`
+- config file: `~/.dope-test/config.json`
+- daemon bind addr: `127.0.0.1:19192`
+
+Production is explicit:
+
+- `DOPE_ENV=prod`
+- data dir: `~/.dope`
+- config file: `~/.dope/config.json`
+- daemon bind addr: `127.0.0.1:19191`
+
+Repository entrypoints:
+
+- `make daemon-run-test`
+- `make daemon-run-test-live`
+- `make daemon-test-status`
+- `make daemon-run-prod`
+- `make daemon-prod-status`
+
+For local debugging, use the project skill at `.agents/skills/dope-test-env/SKILL.md`.
+
+`make daemon-run-test` is the safe default for debugging and keeps Discord disabled unless you explicitly opt in with `make daemon-run-test-live` or `DOPE_CONNECTORS_DISCORD_ENABLED=true`.
 
 ## Working Assumptions
 

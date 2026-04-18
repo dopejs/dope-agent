@@ -17,7 +17,7 @@ describe("DopeClient", () => {
     let authorization = "";
 
     const client = createDopeClient({
-      baseURL: "http://127.0.0.1:19191/",
+      baseURL: "http://127.0.0.1:19192/",
       accessToken: "token",
       fetchImpl: async (input: string | URL | Request, init?: RequestInit) => {
         url = String(input);
@@ -35,7 +35,7 @@ describe("DopeClient", () => {
     });
 
     const response = await client.queryChat({ query: "hello" });
-    expect(url).toBe("http://127.0.0.1:19191/v1/chat/query");
+    expect(url).toBe("http://127.0.0.1:19192/v1/chat/query");
     expect(authorization).toBe("Bearer token");
     expect(response.reply).toBe("world");
   });
@@ -54,7 +54,7 @@ describe("DopeClient", () => {
 
     const deltas: string[] = [];
     const client = createDopeClient({
-      baseURL: "http://127.0.0.1:19191",
+      baseURL: "http://127.0.0.1:19192",
       fetchImpl: async () =>
         new Response(body, {
           status: 200,
@@ -74,7 +74,7 @@ describe("DopeClient", () => {
 
   it("maps error responses into DopeClientError", async () => {
     const client = createDopeClient({
-      baseURL: "http://127.0.0.1:19191",
+      baseURL: "http://127.0.0.1:19192",
       fetchImpl: async () => mockJSONResponse(502, { error: "bad key", errorCode: "upstream_auth_failed" })
     });
 

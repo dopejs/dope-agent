@@ -117,13 +117,16 @@ The implementation uses the existing daemon LLM dispatch plane rather than creat
 
 ## Config Model
 
-Daemon config now includes an `llm` section in `~/.dope/config.json`.
+Daemon config now includes an `llm` section in the active environment config file.
+
+- development/test default: `~/.dope-test/config.json`
+- production explicit env: `~/.dope/config.json`
 
 Example:
 
 ```json
 {
-  "bindAddr": "127.0.0.1:19191",
+  "bindAddr": "127.0.0.1:19192",
   "logLevel": "info",
   "llm": {
     "defaultProvider": "openai_compatible",
@@ -161,7 +164,7 @@ Relevant overrides:
 
 ## First-Run Operator Flow
 
-1. Write `~/.dope/config.json` with an `llm.openaiCompatible` section.
+1. Write the active environment config file with an `llm.openaiCompatible` section.
 2. Export the provider secret if `apiKeyEnv` is used.
 3. Start the daemon.
 4. Pair or authenticate as usual.

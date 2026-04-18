@@ -12,13 +12,21 @@ import (
 
 const defaultConfigFileName = "config.json"
 
+type Environment string
+
+const (
+	EnvironmentProd Environment = "prod"
+	EnvironmentTest Environment = "test"
+)
+
 type Config struct {
-	BindAddr   string
-	DataDir    string
-	LogLevel   string
-	Version    string
-	LLM        LLMConfig
-	Connectors ConnectorConfig
+	Environment Environment
+	BindAddr    string
+	DataDir     string
+	LogLevel    string
+	Version     string
+	LLM         LLMConfig
+	Connectors  ConnectorConfig
 }
 
 type LLMConfig struct {
@@ -66,11 +74,12 @@ type DiscordConnectorConfig struct {
 }
 
 type fileConfig struct {
-	BindAddr   string               `json:"bindAddr"`
-	DataDir    string               `json:"dataDir"`
-	LogLevel   string               `json:"logLevel"`
-	LLM        *fileLLMConfig       `json:"llm"`
-	Connectors *fileConnectorConfig `json:"connectors"`
+	Environment string               `json:"environment"`
+	BindAddr    string               `json:"bindAddr"`
+	DataDir     string               `json:"dataDir"`
+	LogLevel    string               `json:"logLevel"`
+	LLM         *fileLLMConfig       `json:"llm"`
+	Connectors  *fileConnectorConfig `json:"connectors"`
 }
 
 type fileLLMConfig struct {
@@ -118,7 +127,10 @@ type fileDiscordConnectorConfig struct {
 }
 
 func Load() (Config, error) {
-	bootstrapDir, err := ResolveDir(getenv("DOPE_DATA_DIR", "~/.dope"))
+	version := getenv("DOPE_VERSION", "dev")
+	envName := resolveEnvironment(getenv("DOPE_ENV", ""), version)
+
+	bootstrapDir, err := ResolveDir(getenv("DOPE_DATA_DIR", defaultDataDir(envName)))
 	if err != nil {
 		return Config{}, fmt.Errorf("resolve bootstrap data dir: %w", err)
 	}
@@ -127,10 +139,11 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		BindAddr: "127.0.0.1:19191",
-		DataDir:  bootstrapDir,
-		LogLevel: "info",
-		Version:  getenv("DOPE_VERSION", "dev"),
+		Environment: envName,
+		BindAddr:    defaultBindAddr(envName),
+		DataDir:     bootstrapDir,
+		LogLevel:    "info",
+		Version:     version,
 		LLM: LLMConfig{
 			DefaultTimeoutMs:  30000,
 			DefaultMaxRetries: 0,
@@ -198,6 +211,9 @@ func ConfigFilePath(dataDir string) string {
 }
 
 func applyFileConfig(cfg *Config, fileCfg fileConfig) {
+	if envName := normalizeEnvironment(fileCfg.Environment); envName != "" {
+		cfg.Environment = envName
+	}
 	if fileCfg.BindAddr != "" {
 		cfg.BindAddr = fileCfg.BindAddr
 	}
@@ -315,6 +331,9 @@ func applyFileDiscordConnectorConfig(cfg *DiscordConnectorConfig, fileCfg fileDi
 }
 
 func applyEnvOverrides(cfg *Config) {
+	if envName := resolveEnvironment(getenv("DOPE_ENV", ""), cfg.Version); envName != "" {
+		cfg.Environment = envName
+	}
 	cfg.BindAddr = getenv("DOPE_BIND_ADDR", cfg.BindAddr)
 	cfg.DataDir = getenv("DOPE_DATA_DIR", cfg.DataDir)
 	cfg.LogLevel = getenv("DOPE_LOG_LEVEL", cfg.LogLevel)
@@ -358,6 +377,45 @@ func resolveSecretRefs(cfg *Config) {
 	}
 	if cfg.Connectors.Discord.BotToken == "" && cfg.Connectors.Discord.BotTokenEnv != "" {
 		cfg.Connectors.Discord.BotToken = os.Getenv(cfg.Connectors.Discord.BotTokenEnv)
+	}
+}
+
+func resolveEnvironment(raw, version string) Environment {
+	if envName := normalizeEnvironment(raw); envName != "" {
+		return envName
+	}
+	if strings.EqualFold(strings.TrimSpace(version), "dev") {
+		return EnvironmentTest
+	}
+	return EnvironmentProd
+}
+
+func normalizeEnvironment(raw string) Environment {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "prod", "production":
+		return EnvironmentProd
+	case "test", "testing", "dev", "development":
+		return EnvironmentTest
+	default:
+		return ""
+	}
+}
+
+func defaultDataDir(env Environment) string {
+	switch env {
+	case EnvironmentTest:
+		return "~/.dope-test"
+	default:
+		return "~/.dope"
+	}
+}
+
+func defaultBindAddr(env Environment) string {
+	switch env {
+	case EnvironmentTest:
+		return "127.0.0.1:19192"
+	default:
+		return "127.0.0.1:19191"
 	}
 }
 

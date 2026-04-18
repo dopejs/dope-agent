@@ -84,8 +84,6 @@ func TestGatewayTransportNormalizeGuildMentionStripsBotMention(t *testing.T) {
 }
 
 func TestGatewayTransportSendReplyShapesDiscordRequest(t *testing.T) {
-	t.Parallel()
-
 	originalSend := sendDiscordMessage
 	defer func() {
 		sendDiscordMessage = originalSend
@@ -129,8 +127,6 @@ func TestGatewayTransportSendReplyShapesDiscordRequest(t *testing.T) {
 }
 
 func TestGatewayTransportWrapsAuthFailure(t *testing.T) {
-	t.Parallel()
-
 	originalSend := sendDiscordMessage
 	defer func() {
 		sendDiscordMessage = originalSend
@@ -166,8 +162,6 @@ func TestGatewayTransportWrapsAuthFailure(t *testing.T) {
 }
 
 func TestGatewayTransportSendThinkingUsesChannelTyping(t *testing.T) {
-	t.Parallel()
-
 	originalTyping := sendDiscordTyping
 	defer func() {
 		sendDiscordTyping = originalTyping
@@ -197,8 +191,6 @@ func TestGatewayTransportSendThinkingUsesChannelTyping(t *testing.T) {
 }
 
 func TestGatewayTransportEditReplyShapesDiscordRequest(t *testing.T) {
-	t.Parallel()
-
 	originalEdit := editDiscordMessage
 	defer func() {
 		editDiscordMessage = originalEdit

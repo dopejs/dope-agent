@@ -3,12 +3,16 @@
   "$id": "https://dope.local/schemas/api/system-info.response.schema.json",
   "title": "SystemInfoResponse",
   "type": "object",
-  "required": ["service", "version", "bindAddr", "dataDir", "logLevel"],
+  "required": ["service", "environment", "version", "bindAddr", "dataDir", "logLevel"],
   "additionalProperties": false,
   "properties": {
     "service": {
       "type": "string",
       "const": "dope"
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["prod", "test"]
     },
     "version": {
       "type": "string"

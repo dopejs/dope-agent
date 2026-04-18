@@ -15,9 +15,12 @@ func TestLoadInitializesDefaultDopeDir(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	expectedDataDir := filepath.Join(homeDir, ".dope")
+	expectedDataDir := filepath.Join(homeDir, ".dope-test")
 	if cfg.DataDir != expectedDataDir {
 		t.Fatalf("expected data dir %s, got %s", expectedDataDir, cfg.DataDir)
+	}
+	if cfg.Environment != EnvironmentTest {
+		t.Fatalf("expected test environment, got %s", cfg.Environment)
 	}
 	if _, err := os.Stat(expectedDataDir); err != nil {
 		t.Fatalf("expected data dir to exist: %v", err)
@@ -29,7 +32,7 @@ func TestLoadInitializesDefaultDopeDir(t *testing.T) {
 
 func TestLoadReadsConfigFileFromDopeDir(t *testing.T) {
 	homeDir := t.TempDir()
-	dataDir := filepath.Join(homeDir, ".dope")
+	dataDir := filepath.Join(homeDir, ".dope-test")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll returned error: %v", err)
 	}
@@ -80,7 +83,7 @@ func TestLoadReadsConfigFileFromDopeDir(t *testing.T) {
 
 func TestLoadEnvironmentOverridesConfigFile(t *testing.T) {
 	homeDir := t.TempDir()
-	dataDir := filepath.Join(homeDir, ".dope")
+	dataDir := filepath.Join(homeDir, ".dope-test")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll returned error: %v", err)
 	}
@@ -144,7 +147,7 @@ func TestLoadEnvironmentOverridesConfigFile(t *testing.T) {
 
 func TestLoadManagedCLIProviderConfig(t *testing.T) {
 	homeDir := t.TempDir()
-	dataDir := filepath.Join(homeDir, ".dope")
+	dataDir := filepath.Join(homeDir, ".dope-test")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll returned error: %v", err)
 	}
@@ -189,7 +192,7 @@ func TestLoadManagedCLIProviderConfig(t *testing.T) {
 
 func TestLoadDiscordConnectorConfig(t *testing.T) {
 	homeDir := t.TempDir()
-	dataDir := filepath.Join(homeDir, ".dope")
+	dataDir := filepath.Join(homeDir, ".dope-test")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll returned error: %v", err)
 	}
@@ -244,7 +247,7 @@ func TestLoadDiscordConnectorConfig(t *testing.T) {
 
 func TestLoadRejectsInvalidConfigFile(t *testing.T) {
 	homeDir := t.TempDir()
-	dataDir := filepath.Join(homeDir, ".dope")
+	dataDir := filepath.Join(homeDir, ".dope-test")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll returned error: %v", err)
 	}
@@ -259,9 +262,32 @@ func TestLoadRejectsInvalidConfigFile(t *testing.T) {
 	}
 }
 
+func TestLoadUsesProdDefaultsWhenEnvironmentIsProd(t *testing.T) {
+	homeDir := t.TempDir()
+	setBaseEnv(t, homeDir)
+	t.Setenv("DOPE_ENV", "prod")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	expectedDataDir := filepath.Join(homeDir, ".dope")
+	if cfg.Environment != EnvironmentProd {
+		t.Fatalf("expected prod environment, got %s", cfg.Environment)
+	}
+	if cfg.DataDir != expectedDataDir {
+		t.Fatalf("expected prod data dir %s, got %s", expectedDataDir, cfg.DataDir)
+	}
+	if cfg.BindAddr != "127.0.0.1:19191" {
+		t.Fatalf("expected prod bind addr 127.0.0.1:19191, got %s", cfg.BindAddr)
+	}
+}
+
 func setBaseEnv(t *testing.T, homeDir string) {
 	t.Helper()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("DOPE_ENV", "")
 	t.Setenv("DOPE_DATA_DIR", "")
 	t.Setenv("DOPE_BIND_ADDR", "")
 	t.Setenv("DOPE_LOG_LEVEL", "")
