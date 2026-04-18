@@ -31,6 +31,9 @@ Current completion should be read as:
 - `Roadmap 6: Real Conversation Core` is now closed
 - `Roadmap 7: Minimal Chat Clients` is now closed
 - `Roadmap 8: Ingress Routing Closure` is now closed
+- `Roadmap 9: Provider Identity And Profiles` is now closed
+- the next planned phase is:
+- `Roadmap 10: Managed Coding Providers`
 
 ## Roadmap 1: Runtime Closure
 
@@ -90,6 +93,21 @@ Current completion should be read as:
 - [x] Connector ingress contract
 - [x] Ingress event and recovery closure
 - [x] Contract and documentation closure
+
+## Roadmap 9: Provider Identity And Profiles
+
+- [x] Provider profile resource model
+- [x] Provider inventory and introspection
+- [x] Provider preflight and health checks
+- [x] Provider resolution and override policy
+- [x] Provider contracts and operator docs
+
+## Roadmap 10: Managed Coding Providers
+
+- [ ] Managed provider auth surface
+- [ ] Claude managed provider
+- [ ] Codex or ChatGPT managed provider
+- [ ] Model catalog and compatibility metadata
 
 ## Completed Foundational Work
 

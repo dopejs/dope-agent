@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/provider-resource.schema.json",
+  "title": "ProviderProfile",
+  "type": "object",
+  "required": [
+    "providerId",
+    "title",
+    "family",
+    "authMode",
+    "source",
+    "modelSelectionMode",
+    "registered",
+    "configured",
+    "ready",
+    "default",
+    "effectiveTimeoutMs",
+    "effectiveMaxRetries",
+    "secretConfigured",
+    "capabilities"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "providerId": { "type": "string" },
+    "title": { "type": "string" },
+    "family": { "type": "string", "enum": ["builtin_echo", "openai_compatible"] },
+    "authMode": { "type": "string", "enum": ["none", "api_key"] },
+    "source": { "type": "string", "enum": ["builtin", "config"] },
+    "modelSelectionMode": { "type": "string", "enum": ["fixed", "open"] },
+    "knownModels": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "registered": { "type": "boolean" },
+    "configured": { "type": "boolean" },
+    "ready": { "type": "boolean" },
+    "default": { "type": "boolean" },
+    "baseURL": { "type": "string" },
+    "requestURL": { "type": "string" },
+    "defaultModel": { "type": "string" },
+    "effectiveModel": { "type": "string" },
+    "effectiveTimeoutMs": { "type": "integer", "minimum": 1 },
+    "effectiveMaxRetries": { "type": "integer", "minimum": 0 },
+    "secretConfigured": { "type": "boolean" },
+    "secretRef": { "type": "string" },
+    "capabilities": {
+      "type": "object",
+      "required": ["chat", "stream"],
+      "additionalProperties": false,
+      "properties": {
+        "chat": { "type": "boolean" },
+        "stream": { "type": "boolean" }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

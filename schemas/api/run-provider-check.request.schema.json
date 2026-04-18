@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/run-provider-check.request.schema.json",
+  "title": "RunProviderCheckRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "model": { "type": "string" },
+    "prompt": { "type": "string" }
+  }
+}

@@ -19,6 +19,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	_ "modernc.org/sqlite"
@@ -26,7 +27,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 2
+	CurrentSchemaVersion = 3
 )
 
 type schemaMigration struct {
@@ -264,6 +265,30 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_tool_calls_capability_created ON tool_calls(capability_id, created_at);`,
 			`CREATE INDEX IF NOT EXISTS idx_auth_tokens_last_used_at ON auth_tokens(last_used_at);`,
 			`CREATE INDEX IF NOT EXISTS idx_decisions_approval_id ON decisions(approval_id, created_at);`,
+		},
+	},
+	{
+		Version: 3,
+		Name:    "provider_checks",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS provider_checks (
+				check_id TEXT PRIMARY KEY,
+				provider_id TEXT NOT NULL,
+				family TEXT NOT NULL,
+				auth_mode TEXT NOT NULL,
+				status TEXT NOT NULL,
+				model TEXT NOT NULL,
+				endpoint TEXT,
+				error_class TEXT,
+				error_code TEXT,
+				error_message TEXT,
+				usage_json TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				completed_at TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_provider_checks_provider_created ON provider_checks(provider_id, created_at DESC, check_id DESC);`,
 		},
 	},
 }
@@ -1033,6 +1058,115 @@ func (s *SQLiteStore) GetLLMDispatch(ctx context.Context, dispatchID string) (ll
 	return dispatch, true, nil
 }
 
+func (s *SQLiteStore) UpsertProviderCheck(ctx context.Context, check providers.Check) error {
+	if s == nil {
+		return nil
+	}
+
+	usageJSON, err := marshalJSON(check.Usage)
+	if err != nil {
+		return fmt.Errorf("marshal provider check usage: %w", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO provider_checks (
+			check_id,
+			provider_id,
+			family,
+			auth_mode,
+			status,
+			model,
+			endpoint,
+			error_class,
+			error_code,
+			error_message,
+			usage_json,
+			created_at,
+			completed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(check_id) DO UPDATE SET
+			provider_id = excluded.provider_id,
+			family = excluded.family,
+			auth_mode = excluded.auth_mode,
+			status = excluded.status,
+			model = excluded.model,
+			endpoint = excluded.endpoint,
+			error_class = excluded.error_class,
+			error_code = excluded.error_code,
+			error_message = excluded.error_message,
+			usage_json = excluded.usage_json,
+			created_at = excluded.created_at,
+			completed_at = excluded.completed_at
+	`,
+		check.CheckID,
+		check.ProviderID,
+		string(check.Family),
+		string(check.AuthMode),
+		string(check.Status),
+		check.Model,
+		nullString(check.Endpoint),
+		nullString(string(check.ErrorClass)),
+		nullString(check.ErrorCode),
+		nullString(check.ErrorMessage),
+		usageJSON,
+		check.CreatedAt.UTC().Format(time.RFC3339Nano),
+		check.CompletedAt.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert provider check %s: %w", check.CheckID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListProviderChecks(ctx context.Context, providerID string) ([]providers.Check, error) {
+	if s == nil {
+		return []providers.Check{}, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT check_id, provider_id, family, auth_mode, status, model, endpoint, error_class, error_code, error_message, usage_json, created_at, completed_at
+		FROM provider_checks
+		WHERE provider_id = ?
+		ORDER BY created_at DESC, check_id DESC
+	`, providerID)
+	if err != nil {
+		return nil, fmt.Errorf("list provider checks for %s: %w", providerID, err)
+	}
+	defer rows.Close()
+
+	items := make([]providers.Check, 0)
+	for rows.Next() {
+		item, err := scanProviderCheck(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetProviderCheck(ctx context.Context, providerID, checkID string) (providers.Check, bool, error) {
+	if s == nil {
+		return providers.Check{}, false, nil
+	}
+
+	row := s.db.QueryRowContext(ctx, `
+		SELECT check_id, provider_id, family, auth_mode, status, model, endpoint, error_class, error_code, error_message, usage_json, created_at, completed_at
+		FROM provider_checks
+		WHERE provider_id = ? AND check_id = ?
+	`, providerID, checkID)
+
+	item, err := scanProviderCheck(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return providers.Check{}, false, nil
+		}
+		return providers.Check{}, false, err
+	}
+	return item, true, nil
+}
+
 func (s *SQLiteStore) ListCapabilities(ctx context.Context) ([]capabilities.Capability, error) {
 	if s == nil {
 		return nil, nil
@@ -1545,7 +1679,7 @@ func hasLegacySchema(ctx context.Context, queryer interface {
 		SELECT COUNT(1)
 		FROM sqlite_master
 		WHERE type = 'table'
-		  AND name IN ('sessions', 'runs', 'steps', 'events', 'checkpoints', 'tool_calls', 'llm_dispatches', 'connectors', 'capabilities', 'auth_pairings', 'auth_tokens', 'approvals', 'decisions')
+		  AND name IN ('sessions', 'runs', 'steps', 'events', 'checkpoints', 'tool_calls', 'llm_dispatches', 'provider_checks', 'connectors', 'capabilities', 'auth_pairings', 'auth_tokens', 'approvals', 'decisions')
 	`).Scan(&count); err != nil {
 		return false, err
 	}
@@ -2038,6 +2172,62 @@ func scanLLMDispatch(scanner interface {
 	}
 
 	return dispatch, nil
+}
+
+func scanProviderCheck(scanner interface {
+	Scan(dest ...any) error
+}) (providers.Check, error) {
+	var (
+		item         providers.Check
+		family       string
+		authMode     string
+		status       string
+		endpoint     sql.NullString
+		errorClass   sql.NullString
+		errorCode    sql.NullString
+		errorMessage sql.NullString
+		usageRaw     string
+		createdAt    string
+		completedAt  string
+	)
+
+	if err := scanner.Scan(
+		&item.CheckID,
+		&item.ProviderID,
+		&family,
+		&authMode,
+		&status,
+		&item.Model,
+		&endpoint,
+		&errorClass,
+		&errorCode,
+		&errorMessage,
+		&usageRaw,
+		&createdAt,
+		&completedAt,
+	); err != nil {
+		return providers.Check{}, fmt.Errorf("scan provider check: %w", err)
+	}
+
+	item.Family = providers.Family(family)
+	item.AuthMode = providers.AuthMode(authMode)
+	item.Status = providers.CheckStatus(status)
+	item.Endpoint = endpoint.String
+	item.ErrorClass = providers.CheckErrorClass(errorClass.String)
+	item.ErrorCode = errorCode.String
+	item.ErrorMessage = errorMessage.String
+
+	if err := json.Unmarshal([]byte(usageRaw), &item.Usage); err != nil {
+		return providers.Check{}, fmt.Errorf("decode provider check usage: %w", err)
+	}
+	if err := assignRequiredTime(&item.CreatedAt, createdAt); err != nil {
+		return providers.Check{}, fmt.Errorf("parse provider check created_at: %w", err)
+	}
+	if err := assignRequiredTime(&item.CompletedAt, completedAt); err != nil {
+		return providers.Check{}, fmt.Errorf("parse provider check completed_at: %w", err)
+	}
+
+	return item, nil
 }
 
 func scanStep(scanner interface {

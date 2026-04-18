@@ -22,6 +22,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
@@ -1987,6 +1988,227 @@ func TestChatQueryStreamRoute(t *testing.T) {
 	}
 	if !strings.Contains(joined, "event: chat.query.completed") {
 		t.Fatalf("expected chat.query.completed, got %q", joined)
+	}
+}
+
+func TestProviderRoutesAndChecks(t *testing.T) {
+	eventBus := events.NewBus()
+	logger := telemetry.New("error")
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	dispatcher := llm.NewDispatcher()
+	providerManager := providers.NewManager(config.Config{
+		LLM: config.LLMConfig{
+			DefaultProvider: "echo",
+		},
+	}, dispatcher)
+	authManager := auth.NewManager()
+
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:    logger.Slog(),
+		EventBus:  eventBus,
+		Auth:      authManager,
+		Providers: providerManager,
+		Store:     sqliteStore,
+	})
+
+	authHeader := issueAuthHeaderForTest(t, authManager, "provider-web")
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/providers", nil)
+	listReq.Header.Set("Authorization", authHeader)
+	listRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", listRec.Code)
+	}
+	listResponse := decodeStrictResponse[ProviderListResponse](t, listRec.Body.Bytes())
+	if len(listResponse.Items) != 2 {
+		t.Fatalf("expected 2 providers, got %d", len(listResponse.Items))
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/providers/echo", nil)
+	getReq.Header.Set("Authorization", authHeader)
+	getRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", getRec.Code)
+	}
+	profile := decodeStrictResponse[providers.Profile](t, getRec.Body.Bytes())
+	if profile.ProviderID != "echo" {
+		t.Fatalf("expected echo profile, got %s", profile.ProviderID)
+	}
+
+	checkReq := httptest.NewRequest(http.MethodPost, "/v1/providers/echo/checks", strings.NewReader(`{"model":"echo-v1","prompt":"hello"}`))
+	checkReq.Header.Set("Authorization", authHeader)
+	checkReq.Header.Set("Content-Type", "application/json")
+	checkRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(checkRec, checkReq)
+	if checkRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", checkRec.Code)
+	}
+	check := decodeStrictResponse[providers.Check](t, checkRec.Body.Bytes())
+	if check.Status != providers.CheckStatusPassed {
+		t.Fatalf("expected passed check, got %s", check.Status)
+	}
+
+	getCheckReq := httptest.NewRequest(http.MethodGet, "/v1/providers/echo/checks/"+check.CheckID, nil)
+	getCheckReq.Header.Set("Authorization", authHeader)
+	getCheckRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(getCheckRec, getCheckReq)
+	if getCheckRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", getCheckRec.Code)
+	}
+
+	checks, err := sqliteStore.ListProviderChecks(context.Background(), "echo")
+	if err != nil {
+		t.Fatalf("ListProviderChecks returned error: %v", err)
+	}
+	if len(checks) != 1 {
+		t.Fatalf("expected 1 persisted provider check, got %d", len(checks))
+	}
+
+	failedCheckReq := httptest.NewRequest(http.MethodPost, "/v1/providers/openai_compatible/checks", strings.NewReader(`{}`))
+	failedCheckReq.Header.Set("Authorization", authHeader)
+	failedCheckReq.Header.Set("Content-Type", "application/json")
+	failedCheckRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(failedCheckRec, failedCheckReq)
+	if failedCheckRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for failed provider check, got %d", failedCheckRec.Code)
+	}
+	failedCheck := decodeStrictResponse[providers.Check](t, failedCheckRec.Body.Bytes())
+	if failedCheck.Status != providers.CheckStatusFailed {
+		t.Fatalf("expected failed check status, got %s", failedCheck.Status)
+	}
+	if failedCheck.ErrorClass != providers.CheckErrorClassConfig {
+		t.Fatalf("expected config_error classification, got %s", failedCheck.ErrorClass)
+	}
+
+	foundFailed := false
+	foundCompleted := false
+	for _, item := range eventBus.List(events.Filter{Category: "provider"}) {
+		switch item.Name {
+		case "provider.check_completed":
+			foundCompleted = true
+		case "provider.check_failed":
+			foundFailed = true
+		}
+	}
+	if !foundCompleted {
+		t.Fatal("expected provider.check_completed event")
+	}
+	if !foundFailed {
+		t.Fatal("expected provider.check_failed event")
+	}
+}
+
+func TestProviderResolutionAppliesProfilePolicyToChat(t *testing.T) {
+	eventBus := events.NewBus()
+	logger := telemetry.New("error")
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&testLLMProvider{
+		name: "openai_compatible",
+		completeFn: func(_ context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{
+				Output:       request.Model,
+				FinishReason: "stop",
+				Usage:        llm.Usage{InputTokens: 1, OutputTokens: 1, TotalTokens: 2},
+			}, nil
+		},
+		streamFn: func(_ context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{}, errors.New("not used")
+		},
+	})
+	authManager := auth.NewManager()
+	providerManager := providers.NewManager(config.Config{
+		LLM: config.LLMConfig{
+			DefaultProvider: "openai_compatible",
+			DefaultModel:    "gpt-5.4",
+			OpenAICompatible: config.OpenAICompatibleProviderConfig{
+				BaseURL: "https://example.com",
+				APIKey:  "secret",
+				Model:   "gpt-4.1-mini",
+			},
+		},
+	}, dispatcher)
+
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:    logger.Slog(),
+		EventBus:  eventBus,
+		Auth:      authManager,
+		LLM:       dispatcher,
+		Providers: providerManager,
+		Store:     sqliteStore,
+	})
+
+	authHeader := issueAuthHeaderForTest(t, authManager, "chat-web")
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"query":"hello"}`))
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	response := decodeStrictResponse[ChatQueryResponse](t, rec.Body.Bytes())
+	if response.Provider != "openai_compatible" {
+		t.Fatalf("expected default provider openai_compatible, got %s", response.Provider)
+	}
+	if response.Model != "gpt-5.4" {
+		t.Fatalf("expected configured default model gpt-5.4, got %s", response.Model)
+	}
+
+	invalidReq := httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"echo","query":"hello"}`))
+	invalidReq.Header.Set("Authorization", authHeader)
+	invalidReq.Header.Set("Content-Type", "application/json")
+	invalidRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(invalidRec, invalidReq)
+	if invalidRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for echo fallback model, got %d body=%s", invalidRec.Code, invalidRec.Body.String())
+	}
+	invalidResponse := decodeStrictResponse[ChatQueryResponse](t, invalidRec.Body.Bytes())
+	if invalidResponse.Model != "echo-v1" {
+		t.Fatalf("expected echo-v1 model, got %s", invalidResponse.Model)
+	}
+
+	rejectReq := httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"echo","model":"gpt-5.4","query":"hello"}`))
+	rejectReq.Header.Set("Authorization", authHeader)
+	rejectReq.Header.Set("Content-Type", "application/json")
+	rejectRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rejectRec, rejectReq)
+	if rejectRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for incompatible provider/model, got %d body=%s", rejectRec.Code, rejectRec.Body.String())
 	}
 }
 

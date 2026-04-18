@@ -35,7 +35,7 @@ func NewOpenAICompatibleProvider(cfg OpenAICompatibleProviderConfig) (*OpenAICom
 	if baseURL == "" {
 		return nil, fmt.Errorf("openai-compatible provider base URL is required")
 	}
-	chatURL, err := normalizeChatCompletionsURL(baseURL)
+	chatURL, err := NormalizeOpenAICompatibleRequestURL(baseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (p *OpenAICompatibleProvider) doChatCompletion(ctx context.Context, request
 	return decodeOpenAICompletionResponse(resp.Body)
 }
 
-func normalizeChatCompletionsURL(raw string) (string, error) {
+func NormalizeOpenAICompatibleRequestURL(raw string) (string, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return "", fmt.Errorf("parse openai-compatible base URL: %w", err)

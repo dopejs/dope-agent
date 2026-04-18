@@ -20,6 +20,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
@@ -53,6 +54,7 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 		"schemas/api/report-capability-failure.request.schema.json": `{"reason":"worker exited"}`,
 		"schemas/api/create-llm-dispatch.request.schema.json":       `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"hello"}],"timeoutMs":1000,"maxRetries":1}`,
 		"schemas/api/chat-query.request.schema.json":                `{"provider":"echo","model":"echo-v1","query":"hello","timeoutMs":1000,"maxRetries":1}`,
+		"schemas/api/run-provider-check.request.schema.json":        `{"model":"echo-v1","prompt":"hello"}`,
 		"schemas/api/request-approval.request.schema.json":          `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"needs approval","requestedBy":"web-ui"}`,
 		"schemas/api/resolve-approval.request.schema.json":          `{"resolution":"approved","comment":"allowed"}`,
 		"schemas/api/start-pairing.request.schema.json":             `{"mode":"local","label":"web-ui","ttlSeconds":120}`,
@@ -100,6 +102,26 @@ func TestChatStreamSchemasAcceptCanonicalFixtures(t *testing.T) {
 	}
 }
 
+func TestProviderSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	fixtures := map[string]string{
+		"schemas/api/provider-resource.schema.json":                 `{"providerId":"echo","title":"Echo","family":"builtin_echo","authMode":"none","source":"builtin","modelSelectionMode":"fixed","knownModels":["echo-v1"],"registered":true,"configured":true,"ready":true,"default":true,"defaultModel":"echo-v1","effectiveModel":"echo-v1","effectiveTimeoutMs":30000,"effectiveMaxRetries":0,"secretConfigured":false,"capabilities":{"chat":true,"stream":true}}`,
+		"schemas/api/provider-check-resource.schema.json":           `{"checkId":"provider_check_1","providerId":"echo","family":"builtin_echo","authMode":"none","status":"passed","model":"echo-v1","usage":{"inputTokens":1,"outputTokens":1,"totalTokens":2},"createdAt":"2026-04-18T12:00:00Z","completedAt":"2026-04-18T12:00:01Z"}`,
+		"schemas/events/provider-check-completed.event.schema.json": `{"eventId":"evt_1","sequence":1,"category":"provider","name":"provider.check_completed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_check","id":"provider_check_1"},"payload":{"providerId":"echo","family":"builtin_echo","authMode":"none","status":"passed","model":"echo-v1","endpoint":"","usage":{"inputTokens":1,"outputTokens":1,"totalTokens":2}}}`,
+		"schemas/events/provider-check-failed.event.schema.json":    `{"eventId":"evt_2","sequence":2,"category":"provider","name":"provider.check_failed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_check","id":"provider_check_2"},"payload":{"providerId":"openai_compatible","family":"openai_compatible","authMode":"api_key","status":"failed","model":"gpt-5.4","errorClass":"auth_error","errorCode":"upstream_auth_failed","errorMessage":"unauthorized","usage":{"inputTokens":0,"outputTokens":0,"totalTokens":0}}}`,
+	}
+
+	for schemaPath, fixture := range fixtures {
+		t.Run(filepath.Base(schemaPath), func(t *testing.T) {
+			if err := validator.ValidateRelative(schemaPath, []byte(fixture)); err != nil {
+				t.Fatalf("ValidateRelative returned error: %v", err)
+			}
+		})
+	}
+}
+
 func TestAPISchemasMatchCanonicalResponses(t *testing.T) {
 	t.Parallel()
 
@@ -120,6 +142,10 @@ func TestAPISchemasMatchCanonicalResponses(t *testing.T) {
 	h.mustValidateResponse(t, http.MethodGet, "/v1/system/info", "", "", "schemas/api/system-info.response.schema.json")
 	h.mustValidateResponse(t, http.MethodGet, "/v1/config", "", h.authHeader, "schemas/api/config.response.schema.json")
 	h.mustValidateResponse(t, http.MethodGet, "/v1/auth/me", "", h.authHeader, "schemas/api/auth-access-token-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/providers", "", h.authHeader, "schemas/api/provider-list.response.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/providers/echo", "", h.authHeader, "schemas/api/provider-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/providers/echo/checks", `{"model":"echo-v1","prompt":"hello"}`, h.authHeader, "schemas/api/provider-check-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/providers/echo/checks", "", h.authHeader, "schemas/api/provider-check-list.response.schema.json")
 
 	h.mustValidateResponse(t, http.MethodPost, "/v1/connectors", `{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`, h.authHeader, "schemas/api/connector-resource.schema.json")
 	h.mustValidateResponse(t, http.MethodGet, "/v1/connectors", "", h.authHeader, "schemas/api/connector-list.response.schema.json")
@@ -189,6 +215,7 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 	toolCallID := decodeJSONMap(t, toolCallBody)["toolCallId"].(string)
 	h.request(t, http.MethodPost, "/v1/runs/"+runID+"/steps/"+stepID+"/tool-calls/"+toolCallID+"/complete", `{"output":{"ok":true}}`, h.authHeader)
 	h.request(t, http.MethodPost, "/v1/llm/dispatches", `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"stream"}]}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/providers/echo/checks", `{"model":"echo-v1","prompt":"check"}`, h.authHeader)
 	approvalBody := h.request(t, http.MethodPost, "/v1/policy/approvals", `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"review","requestedBy":"events-suite"}`, h.authHeader)
 	approvalID := decodeJSONMap(t, approvalBody)["approval"].(map[string]any)["approvalId"].(string)
 	h.request(t, http.MethodPost, "/v1/policy/approvals/"+approvalID+"/resolve", `{"resolution":"approved","comment":"approved"}`, h.authHeader)
@@ -207,6 +234,7 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 		"tool_call.completed":        "schemas/events/tool-call-completed.event.schema.json",
 		"llm.dispatch.requested":     "schemas/events/llm-dispatch-requested.event.schema.json",
 		"llm.dispatch.completed":     "schemas/events/llm-dispatch-completed.event.schema.json",
+		"provider.check_completed":   "schemas/events/provider-check-completed.event.schema.json",
 		"connector.ingress_accepted": "schemas/events/connector-ingress-accepted.event.schema.json",
 		"policy.approval_requested":  "schemas/events/policy-approval-requested.event.schema.json",
 		"policy.approval_resolved":   "schemas/events/policy-approval-resolved.event.schema.json",
@@ -257,6 +285,11 @@ func newContractHarness(t *testing.T) *contractHarness {
 	policyEngine := policy.NewEngine()
 	authManager := auth.NewManager()
 	llmDispatcher := llm.NewDispatcher()
+	providerManager := providers.NewManager(config.Config{
+		LLM: config.LLMConfig{
+			DefaultProvider: "echo",
+		},
+	}, llmDispatcher)
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
@@ -280,6 +313,7 @@ func newContractHarness(t *testing.T) *contractHarness {
 		Router:       sessionRouter,
 		Runtime:      runtimeManager,
 		LLM:          llmDispatcher,
+		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
 		Store:        sqliteStore,

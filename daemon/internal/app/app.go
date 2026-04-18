@@ -18,6 +18,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
@@ -35,6 +36,7 @@ type App struct {
 	Policy               *policy.Engine
 	Auth                 *auth.Manager
 	LLM                  *llm.Dispatcher
+	Providers            *providers.Manager
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
 	Server               *api.Server
@@ -62,6 +64,7 @@ func New() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	providerManager := providers.NewManager(cfg, llmDispatcher)
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 
@@ -78,6 +81,7 @@ func New() (*App, error) {
 		Router:       sessionRouter,
 		Runtime:      runtimeManager,
 		LLM:          llmDispatcher,
+		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
 		Store:        sqliteStore,
@@ -95,6 +99,7 @@ func New() (*App, error) {
 		Policy:               policyEngine,
 		Auth:                 authManager,
 		LLM:                  llmDispatcher,
+		Providers:            providerManager,
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,
 		Server:               server,

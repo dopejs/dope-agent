@@ -22,6 +22,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
@@ -36,6 +37,7 @@ type Dependencies struct {
 	Router       *router.SessionRouter
 	Runtime      *runtime.Manager
 	LLM          *llm.Dispatcher
+	Providers    *providers.Manager
 	Connectors   *connectors.Supervisor
 	Capabilities *capabilities.Supervisor
 	Store        *store.SQLiteStore
@@ -51,6 +53,7 @@ type Server struct {
 	router       *router.SessionRouter
 	runtime      *runtime.Manager
 	llm          *llm.Dispatcher
+	providers    *providers.Manager
 	connectors   *connectors.Supervisor
 	capabilities *capabilities.Supervisor
 	store        *store.SQLiteStore
@@ -133,19 +136,25 @@ func NewServer(deps Dependencies) *Server {
 		handlePolicyApprovalRoutes(deps.Policy, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/llm/dispatches/stream", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleLLMDispatchStream(deps.LLM, deps.EventBus, deps.Store, w, r)
+		handleLLMDispatchStream(deps.LLM, deps.Providers, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/llm/dispatches", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleLLMDispatches(deps.LLM, deps.EventBus, deps.Store, w, r)
+		handleLLMDispatches(deps.LLM, deps.Providers, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/llm/dispatches/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleLLMDispatchRoutes(deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/chat/query/stream", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleChatQueryStream(deps.LLM, deps.EventBus, deps.Store, w, r)
+		handleChatQueryStream(deps.LLM, deps.Providers, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/chat/query", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleChatQuery(deps.LLM, deps.EventBus, deps.Store, w, r)
+		handleChatQuery(deps.LLM, deps.Providers, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/providers", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleProviders(deps.Providers, w, r)
+	}))
+	mux.HandleFunc("/v1/providers/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleProviderRoutes(deps.Providers, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/connectors", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleConnectors(deps.Connectors, deps.EventBus, deps.Store, w, r)
@@ -169,6 +178,7 @@ func NewServer(deps Dependencies) *Server {
 		router:       deps.Router,
 		runtime:      deps.Runtime,
 		llm:          deps.LLM,
+		providers:    deps.Providers,
 		connectors:   deps.Connectors,
 		capabilities: deps.Capabilities,
 		store:        deps.Store,
@@ -962,7 +972,121 @@ func handleAuthMe(authManager *auth.Manager, sqliteStore *store.SQLiteStore, w h
 	writeJSON(w, http.StatusOK, token)
 }
 
-func handleLLMDispatches(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleProviders(manager *providers.Manager, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "provider manager is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, ProviderListResponse{Items: manager.ListProfiles()})
+}
+
+func handleProviderRoutes(manager *providers.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "provider manager is not configured")
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/v1/providers/")
+	parts := splitPath(path)
+	if len(parts) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+
+	providerID := parts[0]
+	profile, ok := manager.GetProfile(providerID)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	if len(parts) == 1 {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		writeJSON(w, http.StatusOK, profile)
+		return
+	}
+
+	if parts[1] != "checks" {
+		http.NotFound(w, r)
+		return
+	}
+
+	switch {
+	case len(parts) == 2 && r.Method == http.MethodGet:
+		if sqliteStore == nil {
+			writeJSON(w, http.StatusOK, ProviderCheckListResponse{Items: []providers.Check{}})
+			return
+		}
+		items, err := sqliteStore.ListProviderChecks(r.Context(), providerID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, ProviderCheckListResponse{Items: items})
+		return
+	case len(parts) == 2 && r.Method == http.MethodPost:
+		if sqliteStore == nil {
+			writeError(w, http.StatusInternalServerError, "store is not configured")
+			return
+		}
+		var input providers.CheckInput
+		if err := decodeJSONBody(r, &input); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		checkID := providers.NewCheckID()
+		check, runErr := manager.RunCheck(r.Context(), providerID, checkID, input)
+		if err := sqliteStore.UpsertProviderCheck(r.Context(), check); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		if runErr != nil {
+			if _, err := publishProviderCheckEvent(r.Context(), eventBus, sqliteStore, check, "provider.check_failed"); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusCreated, check)
+			return
+		}
+
+		if _, err := publishProviderCheckEvent(r.Context(), eventBus, sqliteStore, check, "provider.check_completed"); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, check)
+		return
+	case len(parts) == 3 && r.Method == http.MethodGet:
+		if sqliteStore == nil {
+			http.NotFound(w, r)
+			return
+		}
+		item, found, err := sqliteStore.GetProviderCheck(r.Context(), providerID, parts[2])
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+}
+
+func handleLLMDispatches(dispatcher *llm.Dispatcher, providerManager *providers.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if dispatcher == nil {
 		writeError(w, http.StatusInternalServerError, "llm dispatcher is not configured")
 		return
@@ -983,7 +1107,13 @@ func handleLLMDispatches(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqlit
 			return
 		}
 
-		dispatch, err := dispatcher.Prepare(input, false)
+		resolvedInput, err := resolveProviderDispatchInput(providerManager, input)
+		if err != nil {
+			writeError(w, llmPrepareStatusCode(err), err.Error())
+			return
+		}
+
+		dispatch, err := dispatcher.Prepare(resolvedInput, false)
 		if err != nil {
 			writeError(w, llmPrepareStatusCode(err), err.Error())
 			return
@@ -1017,6 +1147,18 @@ func handleLLMDispatches(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqlit
 	}
 }
 
+func resolveProviderDispatchInput(manager *providers.Manager, input llm.CreateDispatchInput) (llm.CreateDispatchInput, error) {
+	if manager == nil {
+		return input, nil
+	}
+
+	_, effective, err := manager.ResolveDispatchInput(input)
+	if err != nil {
+		return llm.CreateDispatchInput{}, err
+	}
+	return effective, nil
+}
+
 func handleLLMDispatchRoutes(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/llm/dispatches/")
 	if path == "" {
@@ -1042,7 +1184,7 @@ func handleLLMDispatchRoutes(sqliteStore *store.SQLiteStore, w http.ResponseWrit
 	writeJSON(w, http.StatusOK, dispatch)
 }
 
-func handleLLMDispatchStream(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleLLMDispatchStream(dispatcher *llm.Dispatcher, providerManager *providers.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -1058,7 +1200,13 @@ func handleLLMDispatchStream(dispatcher *llm.Dispatcher, eventBus *events.Bus, s
 		return
 	}
 
-	dispatch, err := dispatcher.Prepare(input, true)
+	resolvedInput, err := resolveProviderDispatchInput(providerManager, input)
+	if err != nil {
+		writeError(w, llmPrepareStatusCode(err), err.Error())
+		return
+	}
+
+	dispatch, err := dispatcher.Prepare(resolvedInput, true)
 	if err != nil {
 		writeError(w, llmPrepareStatusCode(err), err.Error())
 		return
@@ -1112,7 +1260,7 @@ type chatQueryRequest struct {
 	MaxRetries int    `json:"maxRetries"`
 }
 
-func handleChatQuery(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleChatQuery(dispatcher *llm.Dispatcher, providerManager *providers.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -1134,7 +1282,13 @@ func handleChatQuery(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteSto
 		return
 	}
 
-	dispatch, err := dispatcher.Prepare(dispatchInput, false)
+	resolvedInput, err := resolveProviderDispatchInput(providerManager, dispatchInput)
+	if err != nil {
+		writeError(w, llmPrepareStatusCode(err), err.Error())
+		return
+	}
+
+	dispatch, err := dispatcher.Prepare(resolvedInput, false)
 	if err != nil {
 		writeError(w, llmPrepareStatusCode(err), err.Error())
 		return
@@ -1166,7 +1320,7 @@ func handleChatQuery(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteSto
 	writeJSON(w, http.StatusOK, response)
 }
 
-func handleChatQueryStream(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleChatQueryStream(dispatcher *llm.Dispatcher, providerManager *providers.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -1188,7 +1342,13 @@ func handleChatQueryStream(dispatcher *llm.Dispatcher, eventBus *events.Bus, sql
 		return
 	}
 
-	dispatch, err := dispatcher.Prepare(dispatchInput, true)
+	resolvedInput, err := resolveProviderDispatchInput(providerManager, dispatchInput)
+	if err != nil {
+		writeError(w, llmPrepareStatusCode(err), err.Error())
+		return
+	}
+
+	dispatch, err := dispatcher.Prepare(resolvedInput, true)
 	if err != nil {
 		writeError(w, llmPrepareStatusCode(err), err.Error())
 		return
@@ -2601,9 +2761,51 @@ func getLLMDispatch(ctx context.Context, sqliteStore *store.SQLiteStore, dispatc
 	return sqliteStore.GetLLMDispatch(ctx, dispatchID)
 }
 
+func publishProviderCheckEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, check providers.Check, eventName string) (events.Event, error) {
+	payload := map[string]any{
+		"providerId": check.ProviderID,
+		"family":     check.Family,
+		"authMode":   check.AuthMode,
+		"status":     check.Status,
+		"model":      check.Model,
+		"endpoint":   check.Endpoint,
+		"usage":      check.Usage,
+	}
+	if check.ErrorClass != "" {
+		payload["errorClass"] = check.ErrorClass
+	}
+	if check.ErrorCode != "" {
+		payload["errorCode"] = check.ErrorCode
+	}
+	if check.ErrorMessage != "" {
+		payload["errorMessage"] = check.ErrorMessage
+	}
+
+	return publishEvent(ctx, eventBus, sqliteStore, events.Event{
+		Category: "provider",
+		Name:     eventName,
+		Resource: events.Resource{Kind: "provider_check", ID: check.CheckID},
+		Payload:  payload,
+	})
+}
+
+func splitPath(path string) []string {
+	if path == "" {
+		return nil
+	}
+	parts := strings.Split(path, "/")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			items = append(items, trimmed)
+		}
+	}
+	return items
+}
+
 func llmPrepareStatusCode(err error) int {
 	switch {
-	case errors.Is(err, llm.ErrProviderRequired), errors.Is(err, llm.ErrProviderNotFound), errors.Is(err, llm.ErrModelRequired), errors.Is(err, llm.ErrMessagesRequired):
+	case errors.Is(err, llm.ErrProviderRequired), errors.Is(err, llm.ErrProviderNotFound), errors.Is(err, llm.ErrModelRequired), errors.Is(err, llm.ErrMessagesRequired), errors.Is(err, providers.ErrModelNotSupported):
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError

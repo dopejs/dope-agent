@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/provider-check-failed.event.schema.json",
+  "title": "ProviderCheckFailedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "provider" },
+        "name": { "const": "provider.check_failed" },
+        "payload": {
+          "type": "object",
+          "required": ["providerId", "family", "authMode", "status", "model", "errorClass", "errorCode", "errorMessage", "usage"],
+          "additionalProperties": false,
+          "properties": {
+            "providerId": { "type": "string" },
+            "family": { "type": "string", "enum": ["builtin_echo", "openai_compatible"] },
+            "authMode": { "type": "string", "enum": ["none", "api_key"] },
+            "status": { "type": "string", "enum": ["failed"] },
+            "model": { "type": "string" },
+            "endpoint": { "type": "string" },
+            "errorClass": { "type": "string", "enum": ["config_error", "auth_error", "transport_error", "upstream_error", "timeout"] },
+            "errorCode": { "type": "string" },
+            "errorMessage": { "type": "string" },
+            "usage": {
+              "type": "object",
+              "required": ["inputTokens", "outputTokens", "totalTokens"],
+              "additionalProperties": false,
+              "properties": {
+                "inputTokens": { "type": "integer", "minimum": 0 },
+                "outputTokens": { "type": "integer", "minimum": 0 },
+                "totalTokens": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

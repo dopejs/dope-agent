@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/provider-check-resource.schema.json",
+  "title": "ProviderCheck",
+  "type": "object",
+  "required": [
+    "checkId",
+    "providerId",
+    "family",
+    "authMode",
+    "status",
+    "model",
+    "usage",
+    "createdAt",
+    "completedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "checkId": { "type": "string" },
+    "providerId": { "type": "string" },
+    "family": { "type": "string", "enum": ["builtin_echo", "openai_compatible"] },
+    "authMode": { "type": "string", "enum": ["none", "api_key"] },
+    "status": { "type": "string", "enum": ["passed", "failed"] },
+    "model": { "type": "string" },
+    "endpoint": { "type": "string" },
+    "errorClass": { "type": "string", "enum": ["config_error", "auth_error", "transport_error", "upstream_error", "timeout"] },
+    "errorCode": { "type": "string" },
+    "errorMessage": { "type": "string" },
+    "usage": {
+      "type": "object",
+      "required": ["inputTokens", "outputTokens", "totalTokens"],
+      "additionalProperties": false,
+      "properties": {
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "totalTokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" }
+  }
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 )
@@ -628,6 +629,58 @@ func TestSQLiteStoreListsEventsAfterCursor(t *testing.T) {
 	}
 	if items[0].Sequence != second.Sequence {
 		t.Fatalf("expected sequence %d, got %d", second.Sequence, items[0].Sequence)
+	}
+}
+
+func TestSQLiteStorePersistsProviderChecks(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	check := providers.Check{
+		CheckID:     "provider_check_1",
+		ProviderID:  "echo",
+		Family:      providers.FamilyBuiltinEcho,
+		AuthMode:    providers.AuthModeNone,
+		Status:      providers.CheckStatusPassed,
+		Model:       "echo-v1",
+		Usage:       llm.Usage{InputTokens: 1, OutputTokens: 1, TotalTokens: 2},
+		CreatedAt:   time.Now().UTC().Add(-time.Second),
+		CompletedAt: time.Now().UTC(),
+	}
+	if err := store.UpsertProviderCheck(ctx, check); err != nil {
+		t.Fatalf("UpsertProviderCheck returned error: %v", err)
+	}
+
+	items, err := store.ListProviderChecks(ctx, "echo")
+	if err != nil {
+		t.Fatalf("ListProviderChecks returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 provider check, got %d", len(items))
+	}
+	if items[0].CheckID != check.CheckID {
+		t.Fatalf("expected check ID %s, got %s", check.CheckID, items[0].CheckID)
+	}
+
+	item, ok, err := store.GetProviderCheck(ctx, "echo", check.CheckID)
+	if err != nil {
+		t.Fatalf("GetProviderCheck returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected provider check to be found")
+	}
+	if item.Status != providers.CheckStatusPassed {
+		t.Fatalf("expected passed status, got %s", item.Status)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 )
@@ -117,6 +118,14 @@ type ConnectorIngressMessageResponse struct {
 type EventListResponse struct {
 	Items      []events.Event `json:"items"`
 	NextCursor int64          `json:"nextCursor,omitempty"`
+}
+
+type ProviderListResponse struct {
+	Items []providers.Profile `json:"items"`
+}
+
+type ProviderCheckListResponse struct {
+	Items []providers.Check `json:"items"`
 }
 
 type ListResponse[T any] struct {

@@ -706,6 +706,183 @@ Task definition of done:
 - message queueing or async ingress buffering
 - automatic reply generation from inbound connector traffic
 
+## Roadmap 9: Provider Identity And Profiles
+
+Status: `[x] complete`
+
+### Goal
+
+Turn provider handling from a hidden bootstrap detail into an operator-visible, testable, daemon-managed profile system.
+
+The daemon already has:
+
+- provider abstraction
+- one real `OpenAI-compatible` provider
+- query-first chat APIs
+
+What it does **not** have yet is a first-class provider profile surface. Today, providers are mostly implicit inside config and dispatch behavior.
+
+### Tasks
+
+#### 1. Provider Profile Resource Model
+
+Scope:
+
+- define provider profile resources
+- distinguish provider family, auth mode, and profile identity
+
+Task definition of done:
+
+- daemon has a provider profile resource with stable IDs
+- provider family and auth mode are explicit fields, not hidden conventions
+- at least API-key based provider profiles can be represented
+- responses expose effective metadata without leaking secrets
+- schemas and tests cover resource shape
+
+#### 2. Provider Inventory And Introspection
+
+Scope:
+
+- add provider list/get APIs
+
+Task definition of done:
+
+- daemon exposes list and get routes for provider profiles
+- responses include provider family, auth mode, effective base URL, default model, timeout, and capability flags
+- responses do not leak secrets
+- schemas and API tests cover list/get behavior
+
+#### 3. Provider Preflight And Health Checks
+
+Scope:
+
+- add explicit provider check routes
+
+Task definition of done:
+
+- operator can trigger a provider check through daemon API
+- check verifies config completeness and a real upstream request path
+- success and failure results are durable and queryable
+- failure taxonomy distinguishes config error, auth error, transport error, upstream error, and timeout
+- tests cover healthy and failing checks
+
+#### 4. Provider Resolution And Override Policy
+
+Scope:
+
+- define how daemon resolves provider/model/defaults for dispatch and chat
+
+Task definition of done:
+
+- resolution order is explicit for request override, configured defaults, profile defaults, and provider defaults
+- validation failures are consistent across dispatch and chat routes
+- incompatible provider/model requests fail early
+- docs and tests cover effective resolution behavior
+
+#### 5. Provider Contracts And Operator Docs
+
+Scope:
+
+- add schemas, event coverage, and operator-facing docs for the provider plane
+
+Task definition of done:
+
+- provider profile request/response schemas exist
+- provider check events exist and are validated
+- contract tests cover provider APIs and events
+- operator docs explain how to configure, inspect, and verify providers without ad hoc curl
+
+### Roadmap Definition Of Done
+
+- provider profiles are first-class daemon resources
+- providers are visible through daemon APIs
+- operators can inspect effective provider configuration safely
+- operators can run a daemon-managed provider check and understand the failure class
+- provider resolution behavior is explicit, tested, and documented
+
+### Explicitly Out Of Scope
+
+- Claude login flow
+- Codex / ChatGPT login flow
+- multi-provider routing or fallback policy
+- provider marketplace or remote profile registry
+
+## Roadmap 10: Managed Coding Providers
+
+Status: `[ ] planned`
+
+### Goal
+
+Add the first managed login providers so users can authenticate to coding plans without having to provide `baseURL + apiKey`.
+
+### Tasks
+
+#### 1. Managed Provider Auth Surface
+
+Scope:
+
+- define managed provider login/logout/refresh flows
+- support at least provider-owned session or token style auth
+
+Task definition of done:
+
+- daemon exposes login-state APIs for managed providers
+- operators can start, complete, inspect, and revoke managed-provider auth state
+- auth state is durable and restart-safe
+- tests cover success, invalid auth state, and expiry or refresh failure
+
+#### 2. Claude Managed Provider
+
+Scope:
+
+- add first-class Claude provider integration
+
+Task definition of done:
+
+- Claude can be configured through managed login rather than only raw API config
+- daemon can inspect Claude model availability through the provider profile system
+- daemon can dispatch single-turn requests through Claude with the same high-level contract
+- tests cover auth and dispatch behavior
+
+#### 3. Codex Or ChatGPT Managed Provider
+
+Scope:
+
+- add first-class Codex or ChatGPT-style managed provider if technically viable
+
+Task definition of done:
+
+- operator can authenticate without `baseURL + apiKey`
+- daemon can expose model selection and default model behavior
+- daemon can dispatch through the provider using the same high-level contract
+- tests cover auth and dispatch behavior
+
+#### 4. Model Catalog And Compatibility Metadata
+
+Scope:
+
+- expose provider model catalogs and capability metadata
+
+Task definition of done:
+
+- daemon can list models per provider profile
+- model metadata includes enough operator-facing compatibility information
+- operator can set profile default model and request overrides safely
+- docs and tests cover model selection behavior
+
+### Roadmap Definition Of Done
+
+- at least one managed coding provider can be logged into without `baseURL + apiKey`
+- daemon can dispatch through managed provider auth
+- model selection is visible and configurable for managed providers
+- operator flows for login, inspect, and verify are documented and tested
+
+### Explicitly Out Of Scope
+
+- every provider family in the market
+- automatic multi-provider fallback
+- billing optimization or smart routing
+
 ## Recommended Order
 
 1. Roadmap 1: Runtime Closure
@@ -716,3 +893,5 @@ Task definition of done:
 6. Roadmap 6: Real Conversation Core
 7. Roadmap 7: Minimal Chat Clients
 8. Roadmap 8: Ingress Routing Closure
+9. Roadmap 9: Provider Identity And Profiles
+10. Roadmap 10: Managed Coding Providers

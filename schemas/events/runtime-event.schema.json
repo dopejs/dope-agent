@@ -22,6 +22,7 @@
         "step",
         "tool_call",
         "policy",
+        "provider",
         "connector",
         "capability",
         "llm",

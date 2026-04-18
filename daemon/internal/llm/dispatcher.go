@@ -153,6 +153,14 @@ func (d *Dispatcher) RegisterProvider(provider Provider) {
 	d.providers[provider.Name()] = provider
 }
 
+func (d *Dispatcher) HasProvider(name string) bool {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	_, ok := d.providers[strings.TrimSpace(name)]
+	return ok
+}
+
 func (d *Dispatcher) SetDefaultProvider(name string) error {
 	if strings.TrimSpace(name) == "" {
 		d.mu.Lock()
