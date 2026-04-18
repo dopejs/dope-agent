@@ -17,12 +17,13 @@
         },
         "payload": {
           "type": "object",
-          "required": ["provider", "model", "status", "attemptCount", "finishReason", "usage", "errorCode", "error"],
+          "required": ["provider", "model", "status", "partial", "attemptCount", "finishReason", "usage", "errorCode", "error"],
           "additionalProperties": false,
           "properties": {
             "provider": { "type": "string" },
             "model": { "type": "string" },
             "status": { "type": "string", "enum": ["completed"] },
+            "partial": { "type": "boolean", "const": false },
             "attemptCount": { "type": "integer", "minimum": 1 },
             "finishReason": { "type": "string" },
             "usage": {

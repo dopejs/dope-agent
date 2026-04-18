@@ -41,12 +41,15 @@ type ConfigLLMResponse struct {
 }
 
 type ConfigOpenAICompatibleProviderResponse struct {
-	Configured       bool   `json:"configured"`
-	BaseURL          string `json:"baseURL"`
-	Model            string `json:"model"`
-	TimeoutMs        int    `json:"timeoutMs"`
-	APIKeyConfigured bool   `json:"apiKeyConfigured"`
-	APIKeyEnv        string `json:"apiKeyEnv,omitempty"`
+	Configured                bool   `json:"configured"`
+	BaseURL                   string `json:"baseURL"`
+	Model                     string `json:"model"`
+	TimeoutMs                 int    `json:"timeoutMs"`
+	StreamFirstChunkTimeoutMs int    `json:"streamFirstChunkTimeoutMs"`
+	StreamIdleTimeoutMs       int    `json:"streamIdleTimeoutMs"`
+	StreamMaxDurationMs       int    `json:"streamMaxDurationMs"`
+	APIKeyConfigured          bool   `json:"apiKeyConfigured"`
+	APIKeyEnv                 string `json:"apiKeyEnv,omitempty"`
 }
 
 type ConfigManagedCLIProviderResponse struct {
@@ -80,6 +83,7 @@ type ChatQueryResponse struct {
 	Model        string    `json:"model"`
 	Query        string    `json:"query"`
 	Status       string    `json:"status"`
+	Partial      bool      `json:"partial"`
 	Reply        string    `json:"reply"`
 	FinishReason string    `json:"finishReason,omitempty"`
 	Usage        llm.Usage `json:"usage"`
@@ -204,6 +208,14 @@ func buildConfigResponse(cfg config.Config) ConfigResponse {
 	if openAITimeoutMs <= 0 {
 		openAITimeoutMs = defaultTimeoutMs
 	}
+	firstChunkTimeoutMs := cfg.LLM.OpenAICompatible.StreamFirstChunkTimeoutMs
+	if firstChunkTimeoutMs <= 0 {
+		firstChunkTimeoutMs = openAITimeoutMs
+	}
+	idleTimeoutMs := cfg.LLM.OpenAICompatible.StreamIdleTimeoutMs
+	if idleTimeoutMs <= 0 {
+		idleTimeoutMs = firstChunkTimeoutMs
+	}
 	discordDeliveryMode := cfg.Connectors.Discord.DeliveryMode
 	if discordDeliveryMode == "" {
 		discordDeliveryMode = "gateway"
@@ -221,12 +233,15 @@ func buildConfigResponse(cfg config.Config) ConfigResponse {
 			DefaultTimeoutMs:  defaultTimeoutMs,
 			DefaultMaxRetries: cfg.LLM.DefaultMaxRetries,
 			OpenAICompatible: ConfigOpenAICompatibleProviderResponse{
-				Configured:       cfg.LLM.OpenAICompatible.BaseURL != "" || cfg.LLM.OpenAICompatible.APIKey != "" || cfg.LLM.OpenAICompatible.Model != "",
-				BaseURL:          cfg.LLM.OpenAICompatible.BaseURL,
-				Model:            cfg.LLM.OpenAICompatible.Model,
-				TimeoutMs:        openAITimeoutMs,
-				APIKeyConfigured: cfg.LLM.OpenAICompatible.APIKey != "",
-				APIKeyEnv:        cfg.LLM.OpenAICompatible.APIKeyEnv,
+				Configured:                cfg.LLM.OpenAICompatible.BaseURL != "" || cfg.LLM.OpenAICompatible.APIKey != "" || cfg.LLM.OpenAICompatible.Model != "",
+				BaseURL:                   cfg.LLM.OpenAICompatible.BaseURL,
+				Model:                     cfg.LLM.OpenAICompatible.Model,
+				TimeoutMs:                 openAITimeoutMs,
+				StreamFirstChunkTimeoutMs: firstChunkTimeoutMs,
+				StreamIdleTimeoutMs:       idleTimeoutMs,
+				StreamMaxDurationMs:       cfg.LLM.OpenAICompatible.StreamMaxDurationMs,
+				APIKeyConfigured:          cfg.LLM.OpenAICompatible.APIKey != "",
+				APIKeyEnv:                 cfg.LLM.OpenAICompatible.APIKeyEnv,
 			},
 			Claude: ConfigManagedCLIProviderResponse{
 				Configured:   cfg.LLM.Claude.CLIPath != "" || cfg.LLM.Claude.DefaultModel != "" || (cfg.LLM.Claude.WorkDir != "" && cfg.LLM.Claude.WorkDir != "~"),

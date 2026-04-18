@@ -32,11 +32,14 @@ type LLMConfig struct {
 }
 
 type OpenAICompatibleProviderConfig struct {
-	BaseURL   string
-	APIKey    string
-	APIKeyEnv string
-	Model     string
-	TimeoutMs int
+	BaseURL                   string
+	APIKey                    string
+	APIKeyEnv                 string
+	Model                     string
+	TimeoutMs                 int
+	StreamFirstChunkTimeoutMs int
+	StreamIdleTimeoutMs       int
+	StreamMaxDurationMs       int
 }
 
 type ManagedCLIProviderConfig struct {
@@ -81,11 +84,14 @@ type fileLLMConfig struct {
 }
 
 type fileOpenAICompatibleProviderConfig struct {
-	BaseURL   string `json:"baseURL"`
-	APIKey    string `json:"apiKey"`
-	APIKeyEnv string `json:"apiKeyEnv"`
-	Model     string `json:"model"`
-	TimeoutMs int    `json:"timeoutMs"`
+	BaseURL                   string `json:"baseURL"`
+	APIKey                    string `json:"apiKey"`
+	APIKeyEnv                 string `json:"apiKeyEnv"`
+	Model                     string `json:"model"`
+	TimeoutMs                 int    `json:"timeoutMs"`
+	StreamFirstChunkTimeoutMs int    `json:"streamFirstChunkTimeoutMs"`
+	StreamIdleTimeoutMs       int    `json:"streamIdleTimeoutMs"`
+	StreamMaxDurationMs       int    `json:"streamMaxDurationMs"`
 }
 
 type fileManagedCLIProviderConfig struct {
@@ -121,7 +127,7 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		BindAddr: "127.0.0.1:18789",
+		BindAddr: "127.0.0.1:19191",
 		DataDir:  bootstrapDir,
 		LogLevel: "info",
 		Version:  getenv("DOPE_VERSION", "dev"),
@@ -129,7 +135,9 @@ func Load() (Config, error) {
 			DefaultTimeoutMs:  30000,
 			DefaultMaxRetries: 0,
 			OpenAICompatible: OpenAICompatibleProviderConfig{
-				TimeoutMs: 30000,
+				TimeoutMs:                 30000,
+				StreamFirstChunkTimeoutMs: 30000,
+				StreamIdleTimeoutMs:       30000,
 			},
 			Claude: ManagedCLIProviderConfig{
 				WorkDir: "~",
@@ -236,6 +244,15 @@ func applyFileLLMConfig(cfg *LLMConfig, fileCfg fileLLMConfig) {
 		if fileCfg.OpenAICompatible.TimeoutMs > 0 {
 			cfg.OpenAICompatible.TimeoutMs = fileCfg.OpenAICompatible.TimeoutMs
 		}
+		if fileCfg.OpenAICompatible.StreamFirstChunkTimeoutMs > 0 {
+			cfg.OpenAICompatible.StreamFirstChunkTimeoutMs = fileCfg.OpenAICompatible.StreamFirstChunkTimeoutMs
+		}
+		if fileCfg.OpenAICompatible.StreamIdleTimeoutMs > 0 {
+			cfg.OpenAICompatible.StreamIdleTimeoutMs = fileCfg.OpenAICompatible.StreamIdleTimeoutMs
+		}
+		if fileCfg.OpenAICompatible.StreamMaxDurationMs > 0 {
+			cfg.OpenAICompatible.StreamMaxDurationMs = fileCfg.OpenAICompatible.StreamMaxDurationMs
+		}
 	}
 	if fileCfg.Claude != nil {
 		applyFileManagedCLIConfig(&cfg.Claude, *fileCfg.Claude)
@@ -313,6 +330,9 @@ func applyEnvOverrides(cfg *Config) {
 	cfg.LLM.OpenAICompatible.APIKeyEnv = getenv("DOPE_LLM_OPENAI_COMPATIBLE_API_KEY_ENV", cfg.LLM.OpenAICompatible.APIKeyEnv)
 	cfg.LLM.OpenAICompatible.Model = getenv("DOPE_LLM_OPENAI_COMPATIBLE_MODEL", cfg.LLM.OpenAICompatible.Model)
 	cfg.LLM.OpenAICompatible.TimeoutMs = getenvInt("DOPE_LLM_OPENAI_COMPATIBLE_TIMEOUT_MS", cfg.LLM.OpenAICompatible.TimeoutMs)
+	cfg.LLM.OpenAICompatible.StreamFirstChunkTimeoutMs = getenvInt("DOPE_LLM_OPENAI_COMPATIBLE_STREAM_FIRST_CHUNK_TIMEOUT_MS", cfg.LLM.OpenAICompatible.StreamFirstChunkTimeoutMs)
+	cfg.LLM.OpenAICompatible.StreamIdleTimeoutMs = getenvInt("DOPE_LLM_OPENAI_COMPATIBLE_STREAM_IDLE_TIMEOUT_MS", cfg.LLM.OpenAICompatible.StreamIdleTimeoutMs)
+	cfg.LLM.OpenAICompatible.StreamMaxDurationMs = getenvInt("DOPE_LLM_OPENAI_COMPATIBLE_STREAM_MAX_DURATION_MS", cfg.LLM.OpenAICompatible.StreamMaxDurationMs)
 	cfg.LLM.Claude.CLIPath = getenv("DOPE_LLM_CLAUDE_CLI_PATH", cfg.LLM.Claude.CLIPath)
 	cfg.LLM.Claude.DefaultModel = getenv("DOPE_LLM_CLAUDE_MODEL", cfg.LLM.Claude.DefaultModel)
 	cfg.LLM.Claude.WorkDir = getenv("DOPE_LLM_CLAUDE_WORKDIR", cfg.LLM.Claude.WorkDir)

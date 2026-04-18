@@ -10,6 +10,7 @@
     "messages",
     "stream",
     "status",
+    "partial",
     "usage",
     "timeoutMs",
     "maxRetries",
@@ -51,7 +52,10 @@
     },
     "status": {
       "type": "string",
-      "enum": ["queued", "running", "completed", "failed", "cancelled"]
+      "enum": ["queued", "running", "completed", "partial_failed", "failed", "cancelled"]
+    },
+    "partial": {
+      "type": "boolean"
     },
     "output": {
       "type": "string"

@@ -1470,6 +1470,9 @@ func handleChatQueryStream(dispatcher *llm.Dispatcher, providerManager *provider
 	if finalDispatch.Status == llm.DispatchStatusCancelled {
 		terminalName = "chat.query.cancelled"
 	}
+	if finalDispatch.Status == llm.DispatchStatusPartialFailed {
+		terminalName = "chat.query.partial_failed"
+	}
 	writeSSEEvent(w, terminalName, dispatch.DispatchID, buildChatQueryResponse(input.Query, finalDispatch))
 	flusher.Flush()
 }
@@ -1495,6 +1498,7 @@ func buildChatQueryResponse(query string, dispatch llm.Dispatch) ChatQueryRespon
 		Model:        dispatch.Model,
 		Query:        strings.TrimSpace(query),
 		Status:       string(dispatch.Status),
+		Partial:      dispatch.Partial,
 		Reply:        dispatch.Output,
 		FinishReason: dispatch.FinishReason,
 		Usage:        dispatch.Usage,
@@ -2921,7 +2925,7 @@ func llmPrepareStatusCode(err error) int {
 
 func llmDispatchStatusCode(dispatch llm.Dispatch) int {
 	switch dispatch.ErrorCode {
-	case "timeout":
+	case "timeout", "connect_timeout", "first_chunk_timeout", "idle_timeout", "max_duration_exceeded":
 		return http.StatusGatewayTimeout
 	case "provider_not_found":
 		return http.StatusBadRequest
@@ -2934,6 +2938,8 @@ func llmDispatchStatusCode(dispatch llm.Dispatch) int {
 
 func llmDispatchTerminalEventName(dispatch llm.Dispatch) string {
 	switch dispatch.Status {
+	case llm.DispatchStatusPartialFailed:
+		return "llm.dispatch.partial_failed"
 	case llm.DispatchStatusFailed:
 		return "llm.dispatch.failed"
 	case llm.DispatchStatusCancelled:
@@ -2968,6 +2974,7 @@ func publishLLMDispatchTerminal(ctx context.Context, eventBus *events.Bus, sqlit
 			"provider":     dispatch.Provider,
 			"model":        dispatch.Model,
 			"status":       dispatch.Status,
+			"partial":      dispatch.Partial,
 			"attemptCount": dispatch.AttemptCount,
 			"finishReason": dispatch.FinishReason,
 			"usage":        dispatch.Usage,

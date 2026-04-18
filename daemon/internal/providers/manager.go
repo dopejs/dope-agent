@@ -753,7 +753,7 @@ func classifyDispatchFailure(code string) CheckErrorClass {
 		return CheckErrorClassAuth
 	case "upstream_transport_error":
 		return CheckErrorClassTransport
-	case "timeout":
+	case "timeout", "connect_timeout", "first_chunk_timeout", "idle_timeout", "max_duration_exceeded":
 		return CheckErrorClassTimeout
 	case "upstream_invalid_request":
 		return CheckErrorClassConfig

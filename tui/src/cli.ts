@@ -79,7 +79,7 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
 
 export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env): TUIOptions {
   const options: TUIOptions = {
-    daemonURL: env.DOPE_DAEMON_URL?.trim() || "http://127.0.0.1:18789",
+    daemonURL: env.DOPE_DAEMON_URL?.trim() || "http://127.0.0.1:19191",
     accessToken: env.DOPE_ACCESS_TOKEN?.trim() || undefined,
     provider: env.DOPE_CHAT_PROVIDER?.trim() || undefined,
     model: env.DOPE_CHAT_MODEL?.trim() || undefined,

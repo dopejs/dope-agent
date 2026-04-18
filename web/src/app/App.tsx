@@ -4,7 +4,7 @@ import { createDopeClient } from "@dope/client";
 
 type ChatStatus = "idle" | "loading" | "streaming" | "completed" | "error";
 
-const DEFAULT_DAEMON_URL = "http://127.0.0.1:18789";
+const DEFAULT_DAEMON_URL = "http://127.0.0.1:19191";
 
 export function App() {
   const [daemonURL, setDaemonURL] = useState(DEFAULT_DAEMON_URL);

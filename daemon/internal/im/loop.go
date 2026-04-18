@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
+	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
@@ -170,10 +172,11 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 	stopThinking := l.startThinkingProgress(ctx, connector, session, run.RunID, step.StepID, inbound, progressor, capabilities)
 	defer stopThinking()
 
-	queryResult, outboundRecord, sendErr := l.executeReplyPath(ctx, connector, session, run, step, inbound, persistedInbound, replies, progressor, capabilities, scope)
+	queryResult, outboundRecord, sendErr := l.executeReplyPath(ctx, connector, session, run, step, inbound, persistedInbound, replies, progressor, capabilities, scope, stopThinking)
 	if sendErr != nil {
 		stopThinking()
-		if outboundRecord.DeliveryID != "" {
+		partialReply := queryResult.Dispatch.Partial || outboundRecord.Status == imtypes.DeliveryStatusPartial
+		if outboundRecord.DeliveryID != "" && !partialReply {
 			outboundRecord.Status = imtypes.DeliveryStatusFailed
 			outboundRecord.Error = sendErr.Error()
 			outboundRecord.UpdatedAt = time.Now().UTC()
@@ -182,20 +185,30 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		_, _ = l.updateStepStatus(ctx, run.RunID, step.StepID, runtime.UpdateStepStatusInput{
 			Status: runtime.StepStatusFailed,
 			Output: map[string]any{
-				"reply": queryResult.Dispatch.Output,
-				"error": sendErr.Error(),
+				"reply":       queryResult.Dispatch.Output,
+				"partial":     partialReply,
+				"replyStatus": outboundRecord.Status,
+				"error":       sendErr.Error(),
 			},
 		})
 		persistedInbound.Status = imtypes.DeliveryStatusFailed
+		if partialReply {
+			persistedInbound.Status = imtypes.DeliveryStatusPartial
+		}
 		persistedInbound.Error = sendErr.Error()
 		persistedInbound.UpdatedAt = time.Now().UTC()
 		_ = l.store.UpsertConnectorMessage(ctx, persistedInbound)
-		_, _ = l.publishConnectorEvent(ctx, "connector.reply_failed", connector, session, run.RunID, step.StepID, map[string]any{
-			"messageId":      inbound.ExternalMessageID,
-			"replyMessageId": outboundRecord.ExternalMessageID,
-			"error":          sendErr.Error(),
-			"errorClass":     classifyError(sendErr),
-		})
+		if !partialReply {
+			_, _ = l.publishConnectorEvent(ctx, "connector.reply_failed", connector, session, run.RunID, step.StepID, map[string]any{
+				"messageId":      inbound.ExternalMessageID,
+				"replyMessageId": outboundRecord.ExternalMessageID,
+				"error":          sendErr.Error(),
+				"errorClass":     classifyError(sendErr),
+			})
+		}
+		if refreshedRun, ok := l.runtime.GetRun(run.RunID); ok {
+			run = refreshedRun
+		}
 		return ProcessResult{Session: session, Run: run, Step: step, Reply: queryResult.Dispatch.Output}, sendErr
 	}
 
@@ -216,11 +229,6 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 	if err != nil {
 		return ProcessResult{}, err
 	}
-	_, _ = l.publishConnectorEvent(ctx, "connector.reply_sent", connector, session, run.RunID, finalStep.StepID, map[string]any{
-		"messageId":      inbound.ExternalMessageID,
-		"replyMessageId": outboundRecord.ExternalMessageID,
-	})
-
 	run, _ = l.runtime.GetRun(run.RunID)
 	return ProcessResult{
 		Session: session,
@@ -230,14 +238,14 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 	}, nil
 }
 
-func (l *MessageLoop) executeReplyPath(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, replies ReplySender, progressor ReplyProgressor, capabilities imtypes.ReplyCapabilities, scope events.Scope) (chat.QueryResult, imtypes.MessageRecord, error) {
+func (l *MessageLoop) executeReplyPath(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, replies ReplySender, progressor ReplyProgressor, capabilities imtypes.ReplyCapabilities, scope events.Scope, stopThinking func()) (chat.QueryResult, imtypes.MessageRecord, error) {
 	if capabilities.SupportsStreaming && progressor != nil {
-		return l.executeStreamingReply(ctx, connector, session, run, step, inbound, persistedInbound, progressor, scope)
+		return l.executeStreamingReply(ctx, connector, session, run, step, inbound, persistedInbound, progressor, capabilities, scope, stopThinking)
 	}
-	return l.executeFinalReply(ctx, connector, session, run, step, inbound, persistedInbound, replies, scope)
+	return l.executeFinalReply(ctx, connector, session, run, step, inbound, persistedInbound, replies, capabilities, scope, stopThinking)
 }
 
-func (l *MessageLoop) executeFinalReply(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, replies ReplySender, scope events.Scope) (chat.QueryResult, imtypes.MessageRecord, error) {
+func (l *MessageLoop) executeFinalReply(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, replies ReplySender, capabilities imtypes.ReplyCapabilities, scope events.Scope, stopThinking func()) (chat.QueryResult, imtypes.MessageRecord, error) {
 	queryResult, queryErr := l.chat.Query(ctx, chat.QueryInput{
 		Query: inbound.Content,
 		Scope: scope,
@@ -250,50 +258,91 @@ func (l *MessageLoop) executeFinalReply(ctx context.Context, connector connector
 		return chat.QueryResult{}, imtypes.MessageRecord{}, err
 	}
 
-	outboundRecord := l.newOutboundRecord(connector, session, run, inbound, persistedInbound.DeliveryID, queryResult.Dispatch.Output)
-	if err := l.store.UpsertConnectorMessage(ctx, outboundRecord); err != nil {
-		return chat.QueryResult{}, imtypes.MessageRecord{}, err
+	replyParts := splitReplyContent(queryResult.Dispatch.Output, capabilities.MaxMessageLength)
+	if len(replyParts) == 0 {
+		replyParts = []string{queryResult.Dispatch.Output}
 	}
 
-	sentReply, sendErr := replies.SendReply(ctx, imtypes.OutboundReply{
-		ConnectorID:              connector.ConnectorID,
-		ChannelID:                inbound.ChannelID,
-		Content:                  queryResult.Dispatch.Output,
-		ReplyToExternalMessageID: inbound.ExternalMessageID,
+	var (
+		outboundRecord  imtypes.MessageRecord
+		replyMessageIDs []string
+	)
+	for index, replyPart := range replyParts {
+		record := l.newOutboundRecord(connector, session, run, inbound, persistedInbound.DeliveryID, replyPart)
+		if err := l.store.UpsertConnectorMessage(ctx, record); err != nil {
+			return chat.QueryResult{}, imtypes.MessageRecord{}, err
+		}
+
+		sentReply, sendErr := replies.SendReply(ctx, imtypes.OutboundReply{
+			ConnectorID:              connector.ConnectorID,
+			ChannelID:                inbound.ChannelID,
+			Content:                  replyPart,
+			ReplyToExternalMessageID: inbound.ExternalMessageID,
+		})
+		if sendErr != nil {
+			return queryResult, record, sendErr
+		}
+
+		if stopThinking != nil {
+			stopThinking()
+			stopThinking = nil
+		}
+
+		record.ExternalMessageID = sentReply.ExternalMessageID
+		record.Status = imtypes.DeliveryStatusReplied
+		record.UpdatedAt = time.Now().UTC()
+		if err := l.store.UpsertConnectorMessage(ctx, record); err != nil {
+			return chat.QueryResult{}, imtypes.MessageRecord{}, err
+		}
+		if index == 0 {
+			outboundRecord = record
+		}
+		replyMessageIDs = append(replyMessageIDs, sentReply.ExternalMessageID)
+	}
+
+	_, _ = l.publishConnectorEvent(ctx, "connector.reply_sent", connector, session, run.RunID, step.StepID, map[string]any{
+		"messageId":       inbound.ExternalMessageID,
+		"replyMessageId":  outboundRecord.ExternalMessageID,
+		"replyMessageIds": replyMessageIDs,
+		"partCount":       len(replyMessageIDs),
 	})
-	if sendErr != nil {
-		return queryResult, outboundRecord, sendErr
-	}
-
-	outboundRecord.ExternalMessageID = sentReply.ExternalMessageID
-	outboundRecord.Status = imtypes.DeliveryStatusReplied
-	outboundRecord.UpdatedAt = time.Now().UTC()
-	if err := l.store.UpsertConnectorMessage(ctx, outboundRecord); err != nil {
-		return chat.QueryResult{}, imtypes.MessageRecord{}, err
-	}
 	return queryResult, outboundRecord, nil
 }
 
-func (l *MessageLoop) executeStreamingReply(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, progressor ReplyProgressor, scope events.Scope) (chat.QueryResult, imtypes.MessageRecord, error) {
+func (l *MessageLoop) executeStreamingReply(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, progressor ReplyProgressor, capabilities imtypes.ReplyCapabilities, scope events.Scope, stopThinking func()) (chat.QueryResult, imtypes.MessageRecord, error) {
 	progress := streamReplyProgress{
-		loop:          l,
-		progressor:    progressor,
-		connector:     connector,
-		session:       session,
-		runID:         run.RunID,
-		stepID:        step.StepID,
-		inbound:       inbound,
-		responseToID:  persistedInbound.DeliveryID,
-		flushInterval: 500 * time.Millisecond,
+		loop:           l,
+		progressor:     progressor,
+		connector:      connector,
+		session:        session,
+		runID:          run.RunID,
+		stepID:         step.StepID,
+		inbound:        inbound,
+		responseToID:   persistedInbound.DeliveryID,
+		flushInterval:  500 * time.Millisecond,
+		maxReplyLength: capabilities.MaxMessageLength,
+		stopThinking:   stopThinking,
 	}
 
+	var progressErr error
 	queryResult, queryErr := l.chat.Stream(ctx, chat.QueryInput{
 		Query: inbound.Content,
 		Scope: scope,
 	}, func(chunk chat.StreamChunk) error {
-		return progress.OnChunk(ctx, chunk.Reply)
+		if progressErr != nil {
+			return nil
+		}
+		if err := progress.OnChunk(ctx, chunk.Reply); err != nil {
+			progressErr = err
+		}
+		return nil
 	})
 	if queryErr != nil {
+		if queryResult.Dispatch.Partial && strings.TrimSpace(queryResult.Dispatch.Output) != "" {
+			if err := progress.CompletePartial(ctx, queryResult.Dispatch.Output, queryErr); err != nil {
+				return queryResult, progress.record, err
+			}
+		}
 		return queryResult, progress.record, queryErr
 	}
 
@@ -302,6 +351,9 @@ func (l *MessageLoop) executeStreamingReply(ctx context.Context, connector conne
 	}
 	if err := progress.Complete(ctx, queryResult.Dispatch.Output); err != nil {
 		return queryResult, progress.record, err
+	}
+	if progressErr != nil {
+		return queryResult, progress.record, progressErr
 	}
 	return queryResult, progress.record, nil
 }
@@ -599,39 +651,62 @@ func classifyError(err error) string {
 }
 
 type streamReplyProgress struct {
-	loop          *MessageLoop
-	progressor    ReplyProgressor
-	connector     connectors.Connector
-	session       router.Session
-	runID         string
-	stepID        string
-	inbound       imtypes.InboundMessage
-	responseToID  string
-	record        imtypes.MessageRecord
-	lastFlushed   string
-	lastFlushAt   time.Time
-	flushInterval time.Duration
+	loop           *MessageLoop
+	progressor     ReplyProgressor
+	connector      connectors.Connector
+	session        router.Session
+	runID          string
+	stepID         string
+	inbound        imtypes.InboundMessage
+	responseToID   string
+	record         imtypes.MessageRecord
+	records        []imtypes.MessageRecord
+	lastFlushed    string
+	lastFlushAt    time.Time
+	flushInterval  time.Duration
+	maxReplyLength int
+	stopThinking   func()
+	partialErr     error
+	err            error
 }
 
 func (p *streamReplyProgress) OnChunk(ctx context.Context, reply string) error {
-	return p.flush(ctx, reply, false)
+	if p.err != nil {
+		return nil
+	}
+	return p.flush(ctx, reply, streamReplyModeProgress)
 }
 
 func (p *streamReplyProgress) Complete(ctx context.Context, reply string) error {
-	return p.flush(ctx, reply, true)
+	if p.err != nil {
+		return p.err
+	}
+	return p.flush(ctx, reply, streamReplyModeComplete)
 }
 
-func (p *streamReplyProgress) flush(ctx context.Context, reply string, force bool) error {
+func (p *streamReplyProgress) CompletePartial(ctx context.Context, reply string, cause error) error {
+	if p.err != nil {
+		return p.err
+	}
+	p.partialErr = cause
+	return p.flush(ctx, appendPartialMarker(reply), streamReplyModePartial)
+}
+
+type streamReplyMode string
+
+const (
+	streamReplyModeProgress streamReplyMode = "progress"
+	streamReplyModeComplete streamReplyMode = "complete"
+	streamReplyModePartial  streamReplyMode = "partial"
+)
+
+func (p *streamReplyProgress) flush(ctx context.Context, reply string, mode streamReplyMode) error {
 	reply = strings.TrimSpace(reply)
 	if reply == "" {
 		return nil
 	}
-	if reply == p.lastFlushed {
-		if force && p.record.DeliveryID != "" {
-			p.record.Status = imtypes.DeliveryStatusReplied
-			p.record.UpdatedAt = time.Now().UTC()
-			return p.loop.store.UpsertConnectorMessage(ctx, p.record)
-		}
+	force := mode != streamReplyModeProgress
+	if reply == p.lastFlushed && !force {
 		return nil
 	}
 	if !force && !p.lastFlushAt.IsZero() && time.Since(p.lastFlushAt) < p.flushInterval {
@@ -639,66 +714,153 @@ func (p *streamReplyProgress) flush(ctx context.Context, reply string, force boo
 	}
 
 	now := time.Now().UTC()
-	if p.record.DeliveryID == "" {
-		p.record = p.loop.newOutboundRecord(p.connector, p.session, runtime.Run{RunID: p.runID}, p.inbound, p.responseToID, reply)
-		p.record.Status = imtypes.DeliveryStatusStreaming
-		if err := p.loop.store.UpsertConnectorMessage(ctx, p.record); err != nil {
-			return err
+	replyParts := splitReplyContent(reply, p.maxReplyLength)
+	startedNow := len(p.records) == 0
+	replyMessageIDs := make([]string, 0, len(replyParts))
+	for index, replyPart := range replyParts {
+		if index >= len(p.records) {
+			record := p.loop.newOutboundRecord(p.connector, p.session, runtime.Run{RunID: p.runID}, p.inbound, p.responseToID, replyPart)
+			record.Status = imtypes.DeliveryStatusStreaming
+			if err := p.loop.store.UpsertConnectorMessage(ctx, record); err != nil {
+				p.err = err
+				return err
+			}
+
+			sentReply, err := p.progressor.SendReply(ctx, imtypes.OutboundReply{
+				ConnectorID:              p.connector.ConnectorID,
+				ChannelID:                p.inbound.ChannelID,
+				Content:                  replyPart,
+				ReplyToExternalMessageID: p.inbound.ExternalMessageID,
+			})
+			if err != nil {
+				p.err = err
+				return err
+			}
+			if p.stopThinking != nil {
+				p.stopThinking()
+				p.stopThinking = nil
+			}
+			record.ExternalMessageID = sentReply.ExternalMessageID
+			record.Content = replyPart
+			record.UpdatedAt = now
+			if mode == streamReplyModeComplete {
+				record.Status = imtypes.DeliveryStatusReplied
+			} else if mode == streamReplyModePartial {
+				record.Status = imtypes.DeliveryStatusPartial
+				record.Error = partialDeliveryError(p.partialErr)
+			}
+			if err := p.loop.store.UpsertConnectorMessage(ctx, record); err != nil {
+				p.err = err
+				return err
+			}
+			p.records = append(p.records, record)
+			if index == 0 {
+				p.record = record
+			}
+			replyMessageIDs = append(replyMessageIDs, record.ExternalMessageID)
+			continue
 		}
 
-		sentReply, err := p.progressor.SendReply(ctx, imtypes.OutboundReply{
-			ConnectorID:              p.connector.ConnectorID,
-			ChannelID:                p.inbound.ChannelID,
-			Content:                  reply,
-			ReplyToExternalMessageID: p.inbound.ExternalMessageID,
-		})
-		if err != nil {
+		record := p.records[index]
+		replyMessageIDs = append(replyMessageIDs, record.ExternalMessageID)
+		if replyPart != record.Content {
+			if err := p.progressor.EditReply(ctx, imtypes.ReplyEdit{
+				ConnectorID:       p.connector.ConnectorID,
+				ChannelID:         p.inbound.ChannelID,
+				ExternalMessageID: record.ExternalMessageID,
+				Content:           replyPart,
+			}); err != nil {
+				p.err = err
+				return err
+			}
+			record.Content = replyPart
+			record.UpdatedAt = now
+		}
+		record.Status = imtypes.DeliveryStatusStreaming
+		if mode == streamReplyModeComplete {
+			record.Status = imtypes.DeliveryStatusReplied
+			record.Error = ""
+		} else if mode == streamReplyModePartial {
+			record.Status = imtypes.DeliveryStatusPartial
+			record.Error = partialDeliveryError(p.partialErr)
+		}
+		if err := p.loop.store.UpsertConnectorMessage(ctx, record); err != nil {
+			p.err = err
 			return err
 		}
-		p.record.ExternalMessageID = sentReply.ExternalMessageID
-		p.record.Status = imtypes.DeliveryStatusStreaming
-		p.record.Content = reply
-		p.record.UpdatedAt = now
-		if err := p.loop.store.UpsertConnectorMessage(ctx, p.record); err != nil {
-			return err
+		p.records[index] = record
+		if index == 0 {
+			p.record = record
 		}
-		_, _ = p.loop.publishConnectorEvent(ctx, "connector.reply_stream_started", p.connector, p.session, p.runID, p.stepID, map[string]any{
-			"messageId":      p.inbound.ExternalMessageID,
-			"replyMessageId": p.record.ExternalMessageID,
-			"contentLength":  len(reply),
-		})
-		p.lastFlushed = reply
-		p.lastFlushAt = now
-		return nil
 	}
 
-	if err := p.progressor.EditReply(ctx, imtypes.ReplyEdit{
-		ConnectorID:       p.connector.ConnectorID,
-		ChannelID:         p.inbound.ChannelID,
-		ExternalMessageID: p.record.ExternalMessageID,
-		Content:           reply,
-	}); err != nil {
-		return err
-	}
-	p.record.Status = imtypes.DeliveryStatusStreaming
-	p.record.Content = reply
-	p.record.UpdatedAt = now
-	if force {
-		p.record.Status = imtypes.DeliveryStatusReplied
-	}
-	if err := p.loop.store.UpsertConnectorMessage(ctx, p.record); err != nil {
-		return err
-	}
 	eventName := "connector.reply_stream_updated"
-	if force {
+	if startedNow {
+		eventName = "connector.reply_stream_started"
+	} else if mode == streamReplyModeComplete {
 		eventName = "connector.reply_sent"
+	} else if mode == streamReplyModePartial {
+		eventName = "connector.reply_partial"
 	}
-	_, _ = p.loop.publishConnectorEvent(ctx, eventName, p.connector, p.session, p.runID, p.stepID, map[string]any{
-		"messageId":      p.inbound.ExternalMessageID,
-		"replyMessageId": p.record.ExternalMessageID,
-		"contentLength":  len(reply),
-	})
+	payload := map[string]any{
+		"messageId":       p.inbound.ExternalMessageID,
+		"replyMessageId":  p.record.ExternalMessageID,
+		"replyMessageIds": replyMessageIDs,
+		"partCount":       len(replyMessageIDs),
+		"contentLength":   len(reply),
+	}
+	if mode == streamReplyModePartial {
+		payload["error"] = partialDeliveryError(p.partialErr)
+		payload["errorClass"] = classifyError(p.partialErr)
+	}
+	_, _ = p.loop.publishConnectorEvent(ctx, eventName, p.connector, p.session, p.runID, p.stepID, payload)
 	p.lastFlushed = reply
 	p.lastFlushAt = now
 	return nil
+}
+
+func appendPartialMarker(reply string) string {
+	const suffix = "\n\n[response interrupted]"
+	reply = strings.TrimSpace(reply)
+	if reply == "" {
+		return reply
+	}
+	if strings.HasSuffix(reply, suffix) {
+		return reply
+	}
+	return reply + suffix
+}
+
+func partialDeliveryError(err error) string {
+	if err == nil {
+		return ""
+	}
+	var providerErr *llm.ProviderError
+	if errors.As(err, &providerErr) {
+		if strings.TrimSpace(providerErr.Message) != "" {
+			return providerErr.Message
+		}
+		return providerErr.Code
+	}
+	return err.Error()
+}
+
+func splitReplyContent(reply string, maxMessageLength int) []string {
+	if maxMessageLength <= 0 {
+		return []string{reply}
+	}
+	runes := []rune(reply)
+	if len(runes) <= maxMessageLength {
+		return []string{reply}
+	}
+
+	parts := make([]string, 0, (len(runes)+maxMessageLength-1)/maxMessageLength)
+	for start := 0; start < len(runes); start += maxMessageLength {
+		end := start + maxMessageLength
+		if end > len(runes) {
+			end = len(runes)
+		}
+		parts = append(parts, string(runes[start:end]))
+	}
+	return parts
 }

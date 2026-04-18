@@ -12,22 +12,31 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const OpenAICompatibleProviderName = "openai_compatible"
 
 type OpenAICompatibleProviderConfig struct {
-	BaseURL      string
-	APIKey       string
-	DefaultModel string
-	HTTPClient   *http.Client
+	BaseURL                   string
+	APIKey                    string
+	DefaultModel              string
+	RequestTimeoutMs          int
+	StreamFirstChunkTimeoutMs int
+	StreamIdleTimeoutMs       int
+	StreamMaxDurationMs       int
+	HTTPClient                *http.Client
 }
 
 type OpenAICompatibleProvider struct {
-	baseURL      string
-	apiKey       string
-	defaultModel string
-	httpClient   *http.Client
+	baseURL                   string
+	apiKey                    string
+	defaultModel              string
+	requestTimeoutMs          int
+	streamFirstChunkTimeoutMs int
+	streamIdleTimeoutMs       int
+	streamMaxDurationMs       int
+	httpClient                *http.Client
 }
 
 func NewOpenAICompatibleProvider(cfg OpenAICompatibleProviderConfig) (*OpenAICompatibleProvider, error) {
@@ -49,10 +58,14 @@ func NewOpenAICompatibleProvider(cfg OpenAICompatibleProviderConfig) (*OpenAICom
 	}
 
 	return &OpenAICompatibleProvider{
-		baseURL:      chatURL,
-		apiKey:       strings.TrimSpace(cfg.APIKey),
-		defaultModel: strings.TrimSpace(cfg.DefaultModel),
-		httpClient:   httpClient,
+		baseURL:                   chatURL,
+		apiKey:                    strings.TrimSpace(cfg.APIKey),
+		defaultModel:              strings.TrimSpace(cfg.DefaultModel),
+		requestTimeoutMs:          cfg.RequestTimeoutMs,
+		streamFirstChunkTimeoutMs: cfg.StreamFirstChunkTimeoutMs,
+		streamIdleTimeoutMs:       cfg.StreamIdleTimeoutMs,
+		streamMaxDurationMs:       cfg.StreamMaxDurationMs,
+		httpClient:                httpClient,
 	}, nil
 }
 
@@ -71,7 +84,7 @@ func (p *OpenAICompatibleProvider) Complete(ctx context.Context, request Provide
 func (p *OpenAICompatibleProvider) Stream(ctx context.Context, request ProviderRequest, emit StreamEmitter) (ProviderResponse, error) {
 	response, err := p.doChatCompletion(ctx, request, true, emit)
 	if err != nil {
-		return ProviderResponse{}, err
+		return response, err
 	}
 	return response, nil
 }
@@ -109,7 +122,23 @@ func (p *OpenAICompatibleProvider) doChatCompletion(ctx context.Context, request
 		return ProviderResponse{}, fmt.Errorf("marshal openai-compatible request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL, bytes.NewReader(payload))
+	requestCtx := ctx
+	cancelCause := func(error) {}
+	stopRequestTimeout := func() {}
+	if stream {
+		var streamCancel context.CancelCauseFunc
+		requestCtx, streamCancel = context.WithCancelCause(ctx)
+		cancelCause = streamCancel
+		stopRequestTimeout = startStreamTimer(
+			p.effectiveRequestTimeoutMs(request),
+			func() error {
+				return &ProviderError{Code: "connect_timeout", Message: "openai-compatible request timed out before stream started", Retryable: true}
+			},
+			cancelCause,
+		)
+	}
+
+	httpReq, err := http.NewRequestWithContext(requestCtx, http.MethodPost, p.baseURL, bytes.NewReader(payload))
 	if err != nil {
 		return ProviderResponse{}, fmt.Errorf("build openai-compatible request: %w", err)
 	}
@@ -118,18 +147,67 @@ func (p *OpenAICompatibleProvider) doChatCompletion(ctx context.Context, request
 
 	resp, err := p.httpClient.Do(httpReq)
 	if err != nil {
+		stopRequestTimeout()
+		if causeErr := classifyOpenAIContextCause(requestCtx); causeErr != nil {
+			return ProviderResponse{}, causeErr
+		}
 		return ProviderResponse{}, classifyOpenAITransportError(err)
 	}
 	defer resp.Body.Close()
+	stopRequestTimeout()
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		return ProviderResponse{}, decodeOpenAIErrorResponse(resp)
 	}
 
 	if stream {
-		return decodeOpenAIStreamResponse(resp.Body, emit)
+		return decodeOpenAIStreamResponse(requestCtx, cancelCause, resp.Body, emit, openAIStreamTimeouts{
+			firstChunkTimeoutMs: p.effectiveStreamFirstChunkTimeoutMs(request),
+			idleTimeoutMs:       p.effectiveStreamIdleTimeoutMs(request),
+			maxDurationMs:       p.effectiveStreamMaxDurationMs(request),
+		})
 	}
 	return decodeOpenAICompletionResponse(resp.Body)
+}
+
+func (p *OpenAICompatibleProvider) effectiveRequestTimeoutMs(request ProviderRequest) int {
+	if request.TimeoutMs > 0 {
+		return request.TimeoutMs
+	}
+	return p.requestTimeoutMs
+}
+
+func (p *OpenAICompatibleProvider) effectiveStreamFirstChunkTimeoutMs(request ProviderRequest) int {
+	if request.StreamFirstChunkTimeoutMs > 0 {
+		return request.StreamFirstChunkTimeoutMs
+	}
+	if p.streamFirstChunkTimeoutMs > 0 {
+		return p.streamFirstChunkTimeoutMs
+	}
+	return p.effectiveRequestTimeoutMs(request)
+}
+
+func (p *OpenAICompatibleProvider) effectiveStreamIdleTimeoutMs(request ProviderRequest) int {
+	if request.StreamIdleTimeoutMs > 0 {
+		return request.StreamIdleTimeoutMs
+	}
+	if p.streamIdleTimeoutMs > 0 {
+		return p.streamIdleTimeoutMs
+	}
+	return p.effectiveStreamFirstChunkTimeoutMs(request)
+}
+
+func (p *OpenAICompatibleProvider) effectiveStreamMaxDurationMs(request ProviderRequest) int {
+	if request.StreamMaxDurationMs > 0 {
+		return request.StreamMaxDurationMs
+	}
+	return p.streamMaxDurationMs
+}
+
+type openAIStreamTimeouts struct {
+	firstChunkTimeoutMs int
+	idleTimeoutMs       int
+	maxDurationMs       int
 }
 
 func NormalizeOpenAICompatibleRequestURL(raw string) (string, error) {
@@ -160,6 +238,8 @@ func classifyOpenAITransportError(err error) error {
 	switch {
 	case err == nil:
 		return nil
+	case isStreamTimeoutError(err):
+		return err
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
 		return err
 	case strings.Contains(err.Error(), "certificate"):
@@ -200,7 +280,7 @@ func decodeOpenAICompletionResponse(body io.Reader) (ProviderResponse, error) {
 	}, nil
 }
 
-func decodeOpenAIStreamResponse(body io.Reader, emit StreamEmitter) (ProviderResponse, error) {
+func decodeOpenAIStreamResponse(ctx context.Context, cancel context.CancelCauseFunc, body io.Reader, emit StreamEmitter, timeouts openAIStreamTimeouts) (ProviderResponse, error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 16*1024), 1024*1024)
 
@@ -208,6 +288,24 @@ func decodeOpenAIStreamResponse(body io.Reader, emit StreamEmitter) (ProviderRes
 	var finishReason string
 	usage := Usage{}
 	done := false
+	firstChunkSeen := false
+
+	stopIdleTimer := startStreamTimer(
+		timeouts.firstChunkTimeoutMs,
+		func() error {
+			return &ProviderError{Code: "first_chunk_timeout", Message: "openai-compatible stream did not produce a first chunk in time", Retryable: true}
+		},
+		cancel,
+	)
+	defer stopIdleTimer()
+	stopHardCap := startStreamTimer(
+		timeouts.maxDurationMs,
+		func() error {
+			return &ProviderError{Code: "max_duration_exceeded", Message: "openai-compatible stream exceeded configured maximum duration", Retryable: false}
+		},
+		cancel,
+	)
+	defer stopHardCap()
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -223,6 +321,18 @@ func decodeOpenAIStreamResponse(body io.Reader, emit StreamEmitter) (ProviderRes
 			done = true
 			break
 		}
+
+		if !firstChunkSeen {
+			firstChunkSeen = true
+		}
+		stopIdleTimer()
+		stopIdleTimer = startStreamTimer(
+			timeouts.idleTimeoutMs,
+			func() error {
+				return &ProviderError{Code: "idle_timeout", Message: "openai-compatible stream stalled without progress", Retryable: true}
+			},
+			cancel,
+		)
 
 		var chunk openAICompatibleStreamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
@@ -252,22 +362,78 @@ func decodeOpenAIStreamResponse(body io.Reader, emit StreamEmitter) (ProviderRes
 			}
 		}
 	}
+	response := ProviderResponse{
+		Output:       aggregate.String(),
+		FinishReason: finishReason,
+		Usage:        usage,
+	}
 	if err := scanner.Err(); err != nil {
+		if causeErr := classifyOpenAIContextCause(ctx); causeErr != nil {
+			return response, causeErr
+		}
 		return ProviderResponse{}, fmt.Errorf("read openai-compatible stream: %w", err)
 	}
+	if causeErr := classifyOpenAIContextCause(ctx); causeErr != nil {
+		return response, causeErr
+	}
 	if !done {
-		return ProviderResponse{}, &ProviderError{
+		return response, &ProviderError{
 			Code:      "upstream_stream_incomplete",
 			Message:   "openai-compatible stream ended without [DONE]",
 			Retryable: true,
 		}
 	}
 
-	return ProviderResponse{
-		Output:       aggregate.String(),
-		FinishReason: finishReason,
-		Usage:        usage,
-	}, nil
+	return response, nil
+}
+
+func startStreamTimer(timeoutMs int, errFactory func() error, cancel context.CancelCauseFunc) func() {
+	if timeoutMs <= 0 || cancel == nil {
+		return func() {}
+	}
+	timer := time.AfterFunc(time.Duration(timeoutMs)*time.Millisecond, func() {
+		cancel(errFactory())
+	})
+	return func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}
+}
+
+func classifyOpenAIContextCause(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	cause := context.Cause(ctx)
+	if cause == nil {
+		return nil
+	}
+	if providerErr := asProviderError(cause); providerErr != nil {
+		return providerErr
+	}
+	return nil
+}
+
+func asProviderError(err error) *ProviderError {
+	var providerErr *ProviderError
+	if errors.As(err, &providerErr) {
+		return providerErr
+	}
+	return nil
+}
+
+func isStreamTimeoutError(err error) bool {
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) {
+		return false
+	}
+	switch providerErr.Code {
+	case "connect_timeout", "first_chunk_timeout", "idle_timeout", "max_duration_exceeded":
+		return true
+	default:
+		return false
+	}
 }
 
 func decodeOpenAIErrorResponse(resp *http.Response) error {

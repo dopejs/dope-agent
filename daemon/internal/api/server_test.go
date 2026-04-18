@@ -150,7 +150,7 @@ func TestRunsLifecycleRoutes(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -300,7 +300,7 @@ func TestCreateRunRequiresBodyAndEntrypoint(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -325,7 +325,7 @@ func TestCreateStepRequiresRunAndTitle(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -363,7 +363,7 @@ func TestUpdateStepStatusRejectsInvalidTransition(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -412,7 +412,7 @@ func TestToolCallLifecycleRoutes(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -524,7 +524,7 @@ func TestToolCallFailRoute(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -592,7 +592,7 @@ func TestRunLifecyclePersistsToSQLiteStore(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -690,7 +690,7 @@ func TestConnectorAndCapabilitySupervisionRoutes(t *testing.T) {
 	capabilitySupervisor := capabilities.NewSupervisor()
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -800,7 +800,7 @@ func TestSessionRoutesAndReset(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -898,7 +898,7 @@ func TestCreateRunWithExplicitRoute(t *testing.T) {
 
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -976,7 +976,7 @@ func TestConnectorIngressRoutesSessionAndCreatesRun(t *testing.T) {
 
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -1075,7 +1075,7 @@ func TestPolicyApprovalLifecycleRoutes(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -1186,7 +1186,7 @@ func TestEventStreamReplaysMatchingHistory(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -1263,7 +1263,7 @@ func TestConfigRouteUsesStrictResponseShape(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "/tmp/dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -1297,7 +1297,7 @@ func TestConfigRouteUsesStrictResponseShape(t *testing.T) {
 func TestConfigRouteRedactsProviderSecrets(t *testing.T) {
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "/tmp/dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -1353,7 +1353,7 @@ func TestAuthPairingAndProtectedRoutes(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -1453,7 +1453,7 @@ func TestToolCallApprovalEnforcement(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -1589,7 +1589,7 @@ func TestLLMDispatchRoutes(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -1709,7 +1709,7 @@ func TestLLMDispatchRetryAndTimeoutRoutes(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -1778,7 +1778,7 @@ func TestLLMDispatchStreamRoute(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -1869,7 +1869,7 @@ func TestChatQueryRoute(t *testing.T) {
 	authManager := auth.NewManager()
 	logger := telemetry.New("error")
 	testCfg := config.Config{
-		BindAddr: "127.0.0.1:18789",
+		BindAddr: "127.0.0.1:19191",
 		DataDir:  "~/.dope",
 		LogLevel: "info",
 		Version:  "test",
@@ -1948,7 +1948,7 @@ func TestChatQueryRouteReturnsProviderFailure(t *testing.T) {
 	})
 
 	testCfg := config.Config{
-		BindAddr: "127.0.0.1:18789",
+		BindAddr: "127.0.0.1:19191",
 		DataDir:  "~/.dope",
 		LogLevel: "info",
 		Version:  "test",
@@ -2014,7 +2014,7 @@ func TestChatQueryStreamRoute(t *testing.T) {
 	})
 
 	testCfg := config.Config{
-		BindAddr: "127.0.0.1:18789",
+		BindAddr: "127.0.0.1:19191",
 		DataDir:  "~/.dope",
 		LogLevel: "info",
 		Version:  "test",
@@ -2093,7 +2093,7 @@ func TestProviderRoutesAndChecks(t *testing.T) {
 
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -2237,7 +2237,7 @@ func TestProviderResolutionAppliesProfilePolicyToChat(t *testing.T) {
 
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -2414,7 +2414,7 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -2573,7 +2573,7 @@ func TestRunCommandRoutesAndEventCursor(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",
@@ -2672,7 +2672,7 @@ func TestEventStreamSupportsLastEventIDResume(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
+			BindAddr: "127.0.0.1:19191",
 			DataDir:  "~/.dope",
 			LogLevel: "info",
 			Version:  "test",

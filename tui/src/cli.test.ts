@@ -29,7 +29,7 @@ describe("tui cli", () => {
 
     const code = await runCLI(
       {
-        daemonURL: "http://127.0.0.1:18789",
+        daemonURL: "http://127.0.0.1:19191",
         accessToken: "token",
         query: "hello",
         stream: false
@@ -69,7 +69,7 @@ describe("tui cli", () => {
 
     const code = await runCLI(
       {
-        daemonURL: "http://127.0.0.1:18789",
+        daemonURL: "http://127.0.0.1:19191",
         query: "hello",
         stream: true
       },
@@ -94,7 +94,7 @@ describe("tui cli", () => {
 
     const code = await runCLI(
       {
-        daemonURL: "http://127.0.0.1:18789",
+        daemonURL: "http://127.0.0.1:19191",
         query: "hello",
         stream: false
       },

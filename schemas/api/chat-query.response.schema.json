@@ -9,6 +9,7 @@
     "model",
     "query",
     "status",
+    "partial",
     "reply",
     "usage"
   ],
@@ -28,7 +29,10 @@
     },
     "status": {
       "type": "string",
-      "enum": ["queued", "running", "completed", "failed", "cancelled"]
+      "enum": ["queued", "running", "completed", "partial_failed", "failed", "cancelled"]
+    },
+    "partial": {
+      "type": "boolean"
     },
     "reply": {
       "type": "string"

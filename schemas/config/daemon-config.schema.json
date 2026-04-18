@@ -7,7 +7,7 @@
   "properties": {
     "bindAddr": {
       "type": "string",
-      "default": "127.0.0.1:18789"
+      "default": "127.0.0.1:19191"
     },
     "dataDir": {
       "type": "string",
@@ -60,6 +60,21 @@
               "type": "integer",
               "minimum": 1,
               "default": 30000
+            },
+            "streamFirstChunkTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 30000
+            },
+            "streamIdleTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 30000
+            },
+            "streamMaxDurationMs": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
             }
           }
         },

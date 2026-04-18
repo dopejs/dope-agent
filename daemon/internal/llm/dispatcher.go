@@ -41,11 +41,12 @@ type Usage struct {
 type DispatchStatus string
 
 const (
-	DispatchStatusQueued    DispatchStatus = "queued"
-	DispatchStatusRunning   DispatchStatus = "running"
-	DispatchStatusCompleted DispatchStatus = "completed"
-	DispatchStatusFailed    DispatchStatus = "failed"
-	DispatchStatusCancelled DispatchStatus = "cancelled"
+	DispatchStatusQueued        DispatchStatus = "queued"
+	DispatchStatusRunning       DispatchStatus = "running"
+	DispatchStatusCompleted     DispatchStatus = "completed"
+	DispatchStatusPartialFailed DispatchStatus = "partial_failed"
+	DispatchStatusFailed        DispatchStatus = "failed"
+	DispatchStatusCancelled     DispatchStatus = "cancelled"
 )
 
 type Dispatch struct {
@@ -61,6 +62,7 @@ type Dispatch struct {
 	ErrorCode    string         `json:"errorCode,omitempty"`
 	Error        string         `json:"error,omitempty"`
 	TimeoutMs    int            `json:"timeoutMs"`
+	Partial      bool           `json:"partial"`
 	MaxRetries   int            `json:"maxRetries"`
 	AttemptCount int            `json:"attemptCount"`
 	CreatedAt    time.Time      `json:"createdAt"`
@@ -78,12 +80,15 @@ type CreateDispatchInput struct {
 }
 
 type ProviderRequest struct {
-	DispatchID string
-	Provider   string
-	Model      string
-	Messages   []Message
-	Attempt    int
-	TimeoutMs  int
+	DispatchID                string
+	Provider                  string
+	Model                     string
+	Messages                  []Message
+	Attempt                   int
+	TimeoutMs                 int
+	StreamFirstChunkTimeoutMs int
+	StreamIdleTimeoutMs       int
+	StreamMaxDurationMs       int
 }
 
 type ProviderResponse struct {
@@ -308,8 +313,13 @@ func (d *Dispatcher) execute(ctx context.Context, dispatch Dispatch, provider Pr
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		dispatch.AttemptCount = attempt
 		dispatch.UpdatedAt = time.Now().UTC()
+		dispatch.Partial = false
 
-		attemptCtx, cancel := context.WithTimeout(ctx, time.Duration(dispatch.TimeoutMs)*time.Millisecond)
+		attemptCtx := ctx
+		cancel := func() {}
+		if emit == nil {
+			attemptCtx, cancel = context.WithTimeout(ctx, time.Duration(dispatch.TimeoutMs)*time.Millisecond)
+		}
 		request := ProviderRequest{
 			DispatchID: dispatch.DispatchID,
 			Provider:   dispatch.Provider,
@@ -321,8 +331,8 @@ func (d *Dispatcher) execute(ctx context.Context, dispatch Dispatch, provider Pr
 
 		var response ProviderResponse
 		var err error
+		var aggregate strings.Builder
 		if emit != nil {
-			var aggregate strings.Builder
 			response, err = provider.Stream(attemptCtx, request, func(chunk StreamChunk) error {
 				aggregate.WriteString(chunk.Delta)
 				chunk.Output = aggregate.String()
@@ -336,10 +346,16 @@ func (d *Dispatcher) execute(ctx context.Context, dispatch Dispatch, provider Pr
 		}
 		cancel()
 
+		aggregateOutput := aggregate.String()
+		if response.Output == "" {
+			response.Output = aggregateOutput
+		}
+
 		if err == nil {
 			completedAt := time.Now().UTC()
 			dispatch.Status = DispatchStatusCompleted
 			dispatch.Output = response.Output
+			dispatch.Partial = false
 			dispatch.FinishReason = response.FinishReason
 			dispatch.Usage = normalizeUsage(response.Usage)
 			dispatch.Error = ""
@@ -351,14 +367,22 @@ func (d *Dispatcher) execute(ctx context.Context, dispatch Dispatch, provider Pr
 
 		lastErr = err
 		outcome := classifyDispatchError(ctx, err)
-		if outcome.retryable && attempt < maxAttempts {
+		partialOutput := emit != nil && strings.TrimSpace(aggregateOutput) != ""
+		if outcome.retryable && attempt < maxAttempts && !partialOutput {
 			continue
 		}
 
 		completedAt := time.Now().UTC()
 		dispatch.Status = outcome.status
+		if partialOutput && dispatch.Status == DispatchStatusFailed {
+			dispatch.Status = DispatchStatusPartialFailed
+			dispatch.Partial = true
+		}
+		dispatch.Output = response.Output
 		dispatch.ErrorCode = outcome.code
 		dispatch.Error = outcome.message
+		dispatch.FinishReason = response.FinishReason
+		dispatch.Usage = normalizeUsage(response.Usage)
 		dispatch.UpdatedAt = completedAt
 		dispatch.CompletedAt = &completedAt
 		return dispatch, err

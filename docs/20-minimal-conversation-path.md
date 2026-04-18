@@ -123,7 +123,7 @@ Example:
 
 ```json
 {
-  "bindAddr": "127.0.0.1:18789",
+  "bindAddr": "127.0.0.1:19191",
   "logLevel": "info",
   "llm": {
     "defaultProvider": "openai_compatible",

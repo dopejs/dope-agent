@@ -65,6 +65,9 @@
             "baseURL",
             "model",
             "timeoutMs",
+            "streamFirstChunkTimeoutMs",
+            "streamIdleTimeoutMs",
+            "streamMaxDurationMs",
             "apiKeyConfigured"
           ],
           "additionalProperties": false,
@@ -81,6 +84,18 @@
             "timeoutMs": {
               "type": "integer",
               "minimum": 1
+            },
+            "streamFirstChunkTimeoutMs": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "streamIdleTimeoutMs": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "streamMaxDurationMs": {
+              "type": "integer",
+              "minimum": 0
             },
             "apiKeyConfigured": {
               "type": "boolean"

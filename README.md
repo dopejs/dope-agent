@@ -37,6 +37,7 @@ That daemon foundation is now closed through:
 - Roadmap 10: `Managed Coding Providers`
 - Roadmap 11: `First IM Channel Loop`
 - Roadmap 12: `Channel Reply Progression`
+- Roadmap 13: `Provider Streaming Timeout Semantics`
 
 Execution is roadmap-driven:
 
@@ -77,6 +78,7 @@ Execution is roadmap-driven:
 - `docs/26-first-im-channel-loop.md`
 - `docs/27-discord-channel-loop.md`
 - `docs/28-channel-reply-progression.md`
+- `docs/29-provider-streaming-timeout-model.md`
 
 ## Working Assumptions
 

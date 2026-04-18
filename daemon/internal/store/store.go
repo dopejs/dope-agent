@@ -2726,6 +2726,7 @@ func scanLLMDispatch(scanner interface {
 
 	dispatch.Stream = stream
 	dispatch.Status = llm.DispatchStatus(status)
+	dispatch.Partial = dispatch.Status == llm.DispatchStatusPartialFailed
 	dispatch.FinishReason = finishReason.String
 	dispatch.ErrorCode = errorCode.String
 	dispatch.Error = errorText.String

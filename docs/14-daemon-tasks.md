@@ -35,6 +35,7 @@ Current completion should be read as:
 - `Roadmap 10: Managed Coding Providers` is now closed
 - `Roadmap 11: First IM Channel Loop` is now closed
 - `Roadmap 12: Channel Reply Progression` is now closed
+- `Roadmap 13: Provider Streaming Timeout Semantics` is now planned
 
 ## Roadmap 1: Runtime Closure
 
@@ -123,6 +124,13 @@ Current completion should be read as:
 - [x] Streaming-capable reply progression in daemon runtime
 - [x] Discord thinking and streaming UX
 - [x] Operator docs and contract closure
+
+## Roadmap 13: Provider Streaming Timeout Semantics
+
+- [x] Streaming timeout contract
+- [x] OpenAI-compatible SSE transport refactor
+- [x] Dispatch and partial-result semantics
+- [x] Channel fallback and operator visibility
 
 ## Completed Foundational Work
 

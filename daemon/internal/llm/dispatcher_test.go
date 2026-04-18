@@ -243,3 +243,49 @@ func TestDispatcherCancelsInterruptedStream(t *testing.T) {
 		t.Fatalf("expected cancelled error code, got %s", final.ErrorCode)
 	}
 }
+
+func TestDispatcherMarksPartialFailedAfterVisibleStreamOutput(t *testing.T) {
+	dispatcher := NewDispatcher()
+	provider := &testProvider{
+		name: "partial-timeout",
+		streamFunc: func(ctx context.Context, request ProviderRequest, emit StreamEmitter) (ProviderResponse, error) {
+			if err := emit(StreamChunk{Delta: "hello"}); err != nil {
+				return ProviderResponse{}, err
+			}
+			return ProviderResponse{Output: "hello"}, &ProviderError{
+				Code:      "idle_timeout",
+				Message:   "stream stalled",
+				Retryable: true,
+			}
+		},
+	}
+	dispatcher.RegisterProvider(provider)
+
+	dispatch, err := dispatcher.Prepare(CreateDispatchInput{
+		Provider: "partial-timeout",
+		Model:    "test-model",
+		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+	}, true)
+	if err != nil {
+		t.Fatalf("Prepare returned error: %v", err)
+	}
+
+	final, err := dispatcher.DispatchStream(context.Background(), dispatch, func(chunk StreamChunk) error {
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected partial stream failure")
+	}
+	if final.Status != DispatchStatusPartialFailed {
+		t.Fatalf("expected partial_failed, got %s", final.Status)
+	}
+	if !final.Partial {
+		t.Fatal("expected partial flag to be true")
+	}
+	if final.Output != "hello" {
+		t.Fatalf("expected partial output to be preserved, got %q", final.Output)
+	}
+	if final.ErrorCode != "idle_timeout" {
+		t.Fatalf("expected idle_timeout error code, got %s", final.ErrorCode)
+	}
+}

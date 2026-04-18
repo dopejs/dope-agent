@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/llm-dispatch-failed.event.schema.json",
-  "title": "LLMDispatchFailedEvent",
+  "$id": "https://dope.local/schemas/events/llm-dispatch-partial-failed.event.schema.json",
+  "title": "LLMDispatchPartialFailedEvent",
   "allOf": [
     {
       "$ref": "./runtime-event.schema.json"
@@ -13,7 +13,7 @@
           "const": "llm"
         },
         "name": {
-          "const": "llm.dispatch.failed"
+          "const": "llm.dispatch.partial_failed"
         },
         "payload": {
           "type": "object",
@@ -22,8 +22,8 @@
           "properties": {
             "provider": { "type": "string" },
             "model": { "type": "string" },
-            "status": { "type": "string", "enum": ["failed"] },
-            "partial": { "type": "boolean", "const": false },
+            "status": { "type": "string", "enum": ["partial_failed"] },
+            "partial": { "type": "boolean", "const": true },
             "attemptCount": { "type": "integer", "minimum": 1 },
             "finishReason": { "type": "string" },
             "usage": {

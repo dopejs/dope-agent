@@ -21,12 +21,14 @@ const (
 	DeliveryStatusProcessing DeliveryStatus = "processing"
 	DeliveryStatusStreaming  DeliveryStatus = "streaming"
 	DeliveryStatusReplied    DeliveryStatus = "replied"
+	DeliveryStatusPartial    DeliveryStatus = "partial"
 	DeliveryStatusFailed     DeliveryStatus = "failed"
 )
 
 type ReplyCapabilities struct {
 	SupportsThinking  bool `json:"supportsThinking"`
 	SupportsStreaming bool `json:"supportsStreaming"`
+	MaxMessageLength  int  `json:"maxMessageLength,omitempty"`
 }
 
 type MessageRecord struct {

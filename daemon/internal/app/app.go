@@ -149,9 +149,13 @@ func buildLLMDispatcher(cfg config.Config, registry providers.ManagedRegistry) (
 
 	if openAIConfigured(cfg.LLM.OpenAICompatible) {
 		provider, err := llm.NewOpenAICompatibleProvider(llm.OpenAICompatibleProviderConfig{
-			BaseURL:      cfg.LLM.OpenAICompatible.BaseURL,
-			APIKey:       cfg.LLM.OpenAICompatible.APIKey,
-			DefaultModel: firstNonEmpty(cfg.LLM.OpenAICompatible.Model, cfg.LLM.DefaultModel),
+			BaseURL:                   cfg.LLM.OpenAICompatible.BaseURL,
+			APIKey:                    cfg.LLM.OpenAICompatible.APIKey,
+			DefaultModel:              firstNonEmpty(cfg.LLM.OpenAICompatible.Model, cfg.LLM.DefaultModel),
+			RequestTimeoutMs:          cfg.LLM.OpenAICompatible.TimeoutMs,
+			StreamFirstChunkTimeoutMs: cfg.LLM.OpenAICompatible.StreamFirstChunkTimeoutMs,
+			StreamIdleTimeoutMs:       cfg.LLM.OpenAICompatible.StreamIdleTimeoutMs,
+			StreamMaxDurationMs:       cfg.LLM.OpenAICompatible.StreamMaxDurationMs,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("configure openai-compatible provider: %w", err)

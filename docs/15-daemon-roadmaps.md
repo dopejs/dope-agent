@@ -43,6 +43,8 @@ The daemon now has a closed P0 control plane slice:
 - contract tests
 - versioned migrations
 
+The next execution focus is provider-stream hardening for SSE-style upstreams.
+
 ## Roadmap 1: Runtime Closure
 
 Status: `[x] complete`
@@ -258,6 +260,94 @@ Task definition of done:
 - real external IM integrations beyond supervised contract surface
 - full browser or media capability implementations
 - auth and pairing
+
+## Roadmap 13: Provider Streaming Timeout Semantics
+
+Status: `[x] complete`
+
+### Goal
+
+Refactor streaming providers so SSE-style generation is governed by progress-aware timeout semantics instead of a single total-duration timeout.
+
+### Tasks
+
+#### 1. Streaming Timeout Contract
+
+Scope:
+
+- define provider timeout phases
+- define config and dispatch contract for streaming timeouts
+
+Task definition of done:
+
+- streaming timeout phases are explicit:
+  - connect timeout
+  - first-chunk timeout
+  - idle timeout
+  - optional hard cap
+- config and operator docs expose the final semantics
+- contract tests cover the shape and classification of timeout outcomes
+
+#### 2. OpenAI-Compatible SSE Transport Refactor
+
+Scope:
+
+- refactor the current openai-compatible SSE transport
+
+Task definition of done:
+
+- first chunk and idle timeout are enforced separately
+- progress refreshes the idle deadline
+- healthy long-running streams are not terminated only because of total duration
+- timeout failures are returned with correct phase-specific classification
+- tests cover:
+  - no-first-chunk timeout
+  - idle timeout
+  - long but healthy streaming success
+  - optional hard-cap termination if enabled
+
+#### 3. Dispatch And Partial-Result Semantics
+
+Scope:
+
+- represent partial streamed output explicitly in dispatch state
+
+Task definition of done:
+
+- dispatch differentiates:
+  - completed
+  - failed before output
+  - partial then failed
+- event payloads and persistence make partial output inspectable
+- downstream consumers do not need to infer partial completion from raw logs
+- tests cover partial streamed failure after visible output
+
+#### 4. Channel Fallback And Operator Visibility
+
+Scope:
+
+- make channel behavior correct when streamed generation ends after visible progress
+
+Task definition of done:
+
+- IM/channel loop preserves already emitted content
+- user-facing behavior is deterministic when the provider stalls or times out mid-stream
+- operator-facing events clearly show why the stream ended
+- Discord path has regression coverage for partial streamed termination
+
+### Roadmap Definition Of Done
+
+- streaming timeout logic is phase-aware rather than total-duration-only
+- openai-compatible SSE transport is safe for long-running healthy streams
+- dispatch and connector state correctly represent partial streamed failures
+- operator observability is sufficient to tell whether a stream never started, stalled, or was hard-capped
+- tests and docs fully describe the final behavior
+
+### Explicitly Out Of Scope
+
+- memory or context engineering
+- multi-provider failover
+- rich post-processing UX beyond minimal partial-reply correctness
 
 ## Roadmap 3: LLM Dispatch Plane
 

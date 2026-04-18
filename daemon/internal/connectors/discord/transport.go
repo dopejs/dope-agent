@@ -133,6 +133,7 @@ func (t *GatewayTransport) ReplyCapabilities() imtypes.ReplyCapabilities {
 	return imtypes.ReplyCapabilities{
 		SupportsThinking:  true,
 		SupportsStreaming: true,
+		MaxMessageLength:  2000,
 	}
 }
 

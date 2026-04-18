@@ -243,3 +243,176 @@ func TestOpenAICompatibleProviderRespectsContextTimeout(t *testing.T) {
 		t.Fatalf("expected deadline exceeded, got %v", err)
 	}
 }
+
+func TestOpenAICompatibleProviderStreamFirstChunkTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		if flusher != nil {
+			flusher.Flush()
+		}
+		time.Sleep(60 * time.Millisecond)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"late\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL:                   server.URL,
+		APIKey:                    "secret",
+		StreamFirstChunkTimeoutMs: 10,
+		StreamIdleTimeoutMs:       100,
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider returned error: %v", err)
+	}
+
+	response, err := provider.Stream(context.Background(), ProviderRequest{
+		Model:    "gpt-test",
+		Messages: []Message{{Role: RoleUser, Content: "hello"}},
+	}, nil)
+	if err == nil {
+		t.Fatal("expected first chunk timeout")
+	}
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) {
+		t.Fatalf("expected ProviderError, got %T", err)
+	}
+	if providerErr.Code != "first_chunk_timeout" {
+		t.Fatalf("expected first_chunk_timeout, got %s", providerErr.Code)
+	}
+	if response.Output != "" {
+		t.Fatalf("expected no partial output before first chunk timeout, got %q", response.Output)
+	}
+}
+
+func TestOpenAICompatibleProviderStreamIdleTimeoutPreservesPartialOutput(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n")
+		if flusher != nil {
+			flusher.Flush()
+		}
+		time.Sleep(60 * time.Millisecond)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL:                   server.URL,
+		APIKey:                    "secret",
+		StreamFirstChunkTimeoutMs: 50,
+		StreamIdleTimeoutMs:       10,
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider returned error: %v", err)
+	}
+
+	var deltas []string
+	response, err := provider.Stream(context.Background(), ProviderRequest{
+		Model:    "gpt-test",
+		Messages: []Message{{Role: RoleUser, Content: "hello"}},
+	}, func(chunk StreamChunk) error {
+		deltas = append(deltas, chunk.Delta)
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected idle timeout")
+	}
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) {
+		t.Fatalf("expected ProviderError, got %T", err)
+	}
+	if providerErr.Code != "idle_timeout" {
+		t.Fatalf("expected idle_timeout, got %s", providerErr.Code)
+	}
+	if strings.Join(deltas, "") != "hello" {
+		t.Fatalf("expected visible partial output, got %q", strings.Join(deltas, ""))
+	}
+	if response.Output != "hello" {
+		t.Fatalf("expected partial output to be preserved, got %q", response.Output)
+	}
+}
+
+func TestOpenAICompatibleProviderAllowsHealthyLongStreamBeyondRequestTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n")
+		if flusher != nil {
+			flusher.Flush()
+		}
+		time.Sleep(60 * time.Millisecond)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL:                   server.URL,
+		APIKey:                    "secret",
+		RequestTimeoutMs:          20,
+		StreamFirstChunkTimeoutMs: 20,
+		StreamIdleTimeoutMs:       120,
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider returned error: %v", err)
+	}
+
+	response, err := provider.Stream(context.Background(), ProviderRequest{
+		Model:    "gpt-test",
+		Messages: []Message{{Role: RoleUser, Content: "hello"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("expected healthy long stream to succeed, got %v", err)
+	}
+	if response.Output != "hello world" {
+		t.Fatalf("expected full output, got %q", response.Output)
+	}
+}
+
+func TestOpenAICompatibleProviderStreamMaxDurationExceeded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n")
+		if flusher != nil {
+			flusher.Flush()
+		}
+		time.Sleep(60 * time.Millisecond)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL:                   server.URL,
+		APIKey:                    "secret",
+		StreamFirstChunkTimeoutMs: 50,
+		StreamIdleTimeoutMs:       120,
+		StreamMaxDurationMs:       10,
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider returned error: %v", err)
+	}
+
+	response, err := provider.Stream(context.Background(), ProviderRequest{
+		Model:    "gpt-test",
+		Messages: []Message{{Role: RoleUser, Content: "hello"}},
+	}, nil)
+	if err == nil {
+		t.Fatal("expected max duration exceeded")
+	}
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) {
+		t.Fatalf("expected ProviderError, got %T", err)
+	}
+	if providerErr.Code != "max_duration_exceeded" {
+		t.Fatalf("expected max_duration_exceeded, got %s", providerErr.Code)
+	}
+	if response.Output != "hello" {
+		t.Fatalf("expected partial output to be preserved before hard cap, got %q", response.Output)
+	}
+}

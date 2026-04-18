@@ -182,6 +182,7 @@ func publishDispatchEvent(ctx context.Context, eventBus *events.Bus, sqliteStore
 		"model":        dispatch.Model,
 		"stream":       dispatch.Stream,
 		"status":       dispatch.Status,
+		"partial":      dispatch.Partial,
 		"timeoutMs":    dispatch.TimeoutMs,
 		"maxRetries":   dispatch.MaxRetries,
 		"attemptCount": dispatch.AttemptCount,
@@ -220,6 +221,8 @@ func publishDispatchEvent(ctx context.Context, eventBus *events.Bus, sqliteStore
 
 func terminalDispatchEvent(dispatch llm.Dispatch) string {
 	switch dispatch.Status {
+	case llm.DispatchStatusPartialFailed:
+		return "llm.dispatch.partial_failed"
 	case llm.DispatchStatusFailed:
 		return "llm.dispatch.failed"
 	case llm.DispatchStatusCancelled:
