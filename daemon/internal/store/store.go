@@ -17,6 +17,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
@@ -27,7 +28,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 4
+	CurrentSchemaVersion = 5
 )
 
 type schemaMigration struct {
@@ -340,6 +341,38 @@ var schemaMigrations = []schemaMigration{
 			);
 			`,
 			`CREATE INDEX IF NOT EXISTS idx_provider_models_provider ON provider_models(provider_id, model_id);`,
+		},
+	},
+	{
+		Version: 5,
+		Name:    "connector_messages",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS connector_messages (
+				delivery_id TEXT PRIMARY KEY,
+				connector_id TEXT NOT NULL,
+				direction TEXT NOT NULL,
+				external_message_id TEXT,
+				session_id TEXT,
+				run_id TEXT,
+				channel_id TEXT NOT NULL,
+				peer_id TEXT,
+				thread_id TEXT,
+				author_id TEXT,
+				content TEXT NOT NULL,
+				status TEXT NOT NULL,
+				error_text TEXT,
+				reply_to_external_message_id TEXT,
+				response_to_delivery_id TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE SET NULL,
+				FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE SET NULL
+			);
+			`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_messages_external ON connector_messages(connector_id, direction, external_message_id) WHERE external_message_id IS NOT NULL;`,
+			`CREATE INDEX IF NOT EXISTS idx_connector_messages_connector_created ON connector_messages(connector_id, created_at DESC, delivery_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_connector_messages_session_created ON connector_messages(session_id, created_at DESC, delivery_id DESC);`,
 		},
 	},
 }
@@ -900,6 +933,165 @@ func (s *SQLiteStore) ListConnectors(ctx context.Context) ([]connectors.Connecto
 	}
 
 	return items, rows.Err()
+}
+
+func (s *SQLiteStore) CreateConnectorMessageIfAbsent(ctx context.Context, message imtypes.MessageRecord) (imtypes.MessageRecord, bool, error) {
+	if s == nil {
+		return message, true, nil
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO connector_messages (
+			delivery_id,
+			connector_id,
+			direction,
+			external_message_id,
+			session_id,
+			run_id,
+			channel_id,
+			peer_id,
+			thread_id,
+			author_id,
+			content,
+			status,
+			error_text,
+			reply_to_external_message_id,
+			response_to_delivery_id,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		message.DeliveryID,
+		message.ConnectorID,
+		string(message.Direction),
+		nullString(message.ExternalMessageID),
+		nullString(message.SessionID),
+		nullString(message.RunID),
+		message.ChannelID,
+		nullString(message.PeerID),
+		nullString(message.ThreadID),
+		nullString(message.AuthorID),
+		message.Content,
+		string(message.Status),
+		nullString(message.Error),
+		nullString(message.ReplyToExternalMessageID),
+		nullString(message.ResponseToDeliveryID),
+		message.CreatedAt.UTC().Format(time.RFC3339Nano),
+		message.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		if strings.TrimSpace(message.ExternalMessageID) != "" && isUniqueConstraintError(err) {
+			existing, ok, lookupErr := s.GetConnectorMessageByExternalID(ctx, message.ConnectorID, message.Direction, message.ExternalMessageID)
+			if lookupErr != nil {
+				return imtypes.MessageRecord{}, false, lookupErr
+			}
+			if ok {
+				return existing, false, nil
+			}
+		}
+		return imtypes.MessageRecord{}, false, fmt.Errorf("insert connector message %s: %w", message.DeliveryID, err)
+	}
+
+	if existing, ok, err := s.GetConnectorMessageByExternalID(ctx, message.ConnectorID, message.Direction, message.ExternalMessageID); err != nil {
+		return imtypes.MessageRecord{}, false, err
+	} else if ok {
+		return existing, existing.DeliveryID == message.DeliveryID, nil
+	}
+
+	return imtypes.MessageRecord{}, false, fmt.Errorf("load connector message %s after insert", message.DeliveryID)
+}
+
+func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtypes.MessageRecord) error {
+	if s == nil {
+		return nil
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO connector_messages (
+			delivery_id,
+			connector_id,
+			direction,
+			external_message_id,
+			session_id,
+			run_id,
+			channel_id,
+			peer_id,
+			thread_id,
+			author_id,
+			content,
+			status,
+			error_text,
+			reply_to_external_message_id,
+			response_to_delivery_id,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(delivery_id) DO UPDATE SET
+			connector_id = excluded.connector_id,
+			direction = excluded.direction,
+			external_message_id = excluded.external_message_id,
+			session_id = excluded.session_id,
+			run_id = excluded.run_id,
+			channel_id = excluded.channel_id,
+			peer_id = excluded.peer_id,
+			thread_id = excluded.thread_id,
+			author_id = excluded.author_id,
+			content = excluded.content,
+			status = excluded.status,
+			error_text = excluded.error_text,
+			reply_to_external_message_id = excluded.reply_to_external_message_id,
+			response_to_delivery_id = excluded.response_to_delivery_id,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at
+	`,
+		message.DeliveryID,
+		message.ConnectorID,
+		string(message.Direction),
+		nullString(message.ExternalMessageID),
+		nullString(message.SessionID),
+		nullString(message.RunID),
+		message.ChannelID,
+		nullString(message.PeerID),
+		nullString(message.ThreadID),
+		nullString(message.AuthorID),
+		message.Content,
+		string(message.Status),
+		nullString(message.Error),
+		nullString(message.ReplyToExternalMessageID),
+		nullString(message.ResponseToDeliveryID),
+		message.CreatedAt.UTC().Format(time.RFC3339Nano),
+		message.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert connector message %s: %w", message.DeliveryID, err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) GetConnectorMessageByExternalID(ctx context.Context, connectorID string, direction imtypes.DeliveryDirection, externalMessageID string) (imtypes.MessageRecord, bool, error) {
+	if s == nil {
+		return imtypes.MessageRecord{}, false, nil
+	}
+
+	row := s.db.QueryRowContext(ctx, `
+		SELECT delivery_id, connector_id, direction, external_message_id, session_id, run_id, channel_id, peer_id, thread_id, author_id, content, status, error_text, reply_to_external_message_id, response_to_delivery_id, created_at, updated_at
+		FROM connector_messages
+		WHERE connector_id = ? AND direction = ? AND external_message_id = ?
+	`,
+		connectorID,
+		string(direction),
+		externalMessageID,
+	)
+
+	item, err := scanConnectorMessage(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return imtypes.MessageRecord{}, false, nil
+		}
+		return imtypes.MessageRecord{}, false, err
+	}
+	return item, true, nil
 }
 
 func (s *SQLiteStore) UpsertCapability(ctx context.Context, capability capabilities.Capability) error {
@@ -2373,6 +2565,70 @@ func scanConnector(scanner interface {
 	return item, nil
 }
 
+func scanConnectorMessage(scanner interface {
+	Scan(dest ...any) error
+}) (imtypes.MessageRecord, error) {
+	var (
+		item                     imtypes.MessageRecord
+		direction                string
+		status                   string
+		externalMessageID        sql.NullString
+		sessionID                sql.NullString
+		runID                    sql.NullString
+		peerID                   sql.NullString
+		threadID                 sql.NullString
+		authorID                 sql.NullString
+		errorText                sql.NullString
+		replyToExternalMessageID sql.NullString
+		responseToDeliveryID     sql.NullString
+		createdAt                string
+		updatedAt                string
+	)
+
+	if err := scanner.Scan(
+		&item.DeliveryID,
+		&item.ConnectorID,
+		&direction,
+		&externalMessageID,
+		&sessionID,
+		&runID,
+		&item.ChannelID,
+		&peerID,
+		&threadID,
+		&authorID,
+		&item.Content,
+		&status,
+		&errorText,
+		&replyToExternalMessageID,
+		&responseToDeliveryID,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return imtypes.MessageRecord{}, fmt.Errorf("scan connector message: %w", err)
+	}
+
+	item.Direction = imtypes.DeliveryDirection(direction)
+	item.ExternalMessageID = externalMessageID.String
+	item.SessionID = sessionID.String
+	item.RunID = runID.String
+	item.PeerID = peerID.String
+	item.ThreadID = threadID.String
+	item.AuthorID = authorID.String
+	item.Status = imtypes.DeliveryStatus(status)
+	item.Error = errorText.String
+	item.ReplyToExternalMessageID = replyToExternalMessageID.String
+	item.ResponseToDeliveryID = responseToDeliveryID.String
+
+	if err := assignRequiredTime(&item.CreatedAt, createdAt); err != nil {
+		return imtypes.MessageRecord{}, fmt.Errorf("parse connector message created_at: %w", err)
+	}
+	if err := assignRequiredTime(&item.UpdatedAt, updatedAt); err != nil {
+		return imtypes.MessageRecord{}, fmt.Errorf("parse connector message updated_at: %w", err)
+	}
+
+	return item, nil
+}
+
 func scanCapability(scanner interface {
 	Scan(dest ...any) error
 }) (capabilities.Capability, error) {
@@ -2948,6 +3204,14 @@ func nullString(value string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: value, Valid: true}
+}
+
+func isUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unique constraint") || strings.Contains(message, "constraint failed")
 }
 
 func newCheckpointID() string {

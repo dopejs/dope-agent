@@ -16,6 +16,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
+	"github.com/dopejs/dope-agent/daemon/internal/chat"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
@@ -135,6 +136,11 @@ func issueAuthHeaderForTest(t *testing.T, manager *auth.Manager, label string) s
 		t.Fatalf("CompletePairing returned error: %v", err)
 	}
 	return "Bearer " + tokenSecret
+}
+
+func newProviderManagerAndChatServiceForTests(cfg config.Config, dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteStore *store.SQLiteStore, registry providers.ManagedRegistry) (*providers.Manager, *chat.Service) {
+	manager := providers.NewManager(cfg, dispatcher, registry)
+	return manager, chat.NewService(dispatcher, manager, eventBus, sqliteStore)
 }
 
 func TestRunsLifecycleRoutes(t *testing.T) {
@@ -1847,7 +1853,7 @@ func TestChatQueryRoute(t *testing.T) {
 
 	dispatcher := llm.NewDispatcher()
 	dispatcher.RegisterProvider(&testLLMProvider{
-		name: "chat-provider",
+		name: "echo",
 		completeFn: func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
 			return llm.ProviderResponse{
 				Output:       "chat reply",
@@ -1862,34 +1868,39 @@ func TestChatQueryRoute(t *testing.T) {
 
 	authManager := auth.NewManager()
 	logger := telemetry.New("error")
-	server := NewServer(Dependencies{
-		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
-			DataDir:  "~/.dope",
-			LogLevel: "info",
-			Version:  "test",
-			LLM: config.LLMConfig{
-				DefaultTimeoutMs: 30000,
-			},
+	testCfg := config.Config{
+		BindAddr: "127.0.0.1:18789",
+		DataDir:  "~/.dope",
+		LogLevel: "info",
+		Version:  "test",
+		LLM: config.LLMConfig{
+			DefaultTimeoutMs: 30000,
 		},
-		Logger:   logger.Slog(),
-		EventBus: events.NewBus(),
-		Auth:     authManager,
-		Router:   router.NewSessionRouter(),
-		Runtime:  runtime.NewManager(),
-		LLM:      dispatcher,
-		Store:    sqliteStore,
+	}
+	eventBus := events.NewBus()
+	providerManager, chatService := newProviderManagerAndChatServiceForTests(testCfg, dispatcher, eventBus, sqliteStore, nil)
+	server := NewServer(Dependencies{
+		Config:    testCfg,
+		Logger:    logger.Slog(),
+		EventBus:  eventBus,
+		Auth:      authManager,
+		Router:    router.NewSessionRouter(),
+		Runtime:   runtime.NewManager(),
+		LLM:       dispatcher,
+		Chat:      chatService,
+		Providers: providerManager,
+		Store:     sqliteStore,
 	})
 
 	authHeader := issueAuthHeaderForTest(t, authManager, "chat-web")
 
 	unauthorizedRec := httptest.NewRecorder()
-	server.Handler().ServeHTTP(unauthorizedRec, httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"chat-provider","model":"test-model","query":"hello"}`)))
+	server.Handler().ServeHTTP(unauthorizedRec, httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"echo","model":"echo-v1","query":"hello"}`)))
 	if unauthorizedRec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 for unauthorized chat query, got %d", unauthorizedRec.Code)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"chat-provider","model":"test-model","query":"hello chat"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"echo","model":"echo-v1","query":"hello chat"}`))
 	req.Header.Set("Authorization", authHeader)
 	rec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(rec, req)
@@ -1927,7 +1938,7 @@ func TestChatQueryRouteReturnsProviderFailure(t *testing.T) {
 
 	dispatcher := llm.NewDispatcher()
 	dispatcher.RegisterProvider(&testLLMProvider{
-		name: "chat-provider",
+		name: "echo",
 		completeFn: func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
 			return llm.ProviderResponse{}, &llm.ProviderError{Code: "upstream_auth_failed", Message: "bad key"}
 		},
@@ -1936,26 +1947,31 @@ func TestChatQueryRouteReturnsProviderFailure(t *testing.T) {
 		},
 	})
 
-	server := NewServer(Dependencies{
-		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
-			DataDir:  "~/.dope",
-			LogLevel: "info",
-			Version:  "test",
-			LLM: config.LLMConfig{
-				DefaultTimeoutMs: 30000,
-			},
+	testCfg := config.Config{
+		BindAddr: "127.0.0.1:18789",
+		DataDir:  "~/.dope",
+		LogLevel: "info",
+		Version:  "test",
+		LLM: config.LLMConfig{
+			DefaultTimeoutMs: 30000,
 		},
-		Logger:   telemetry.New("error").Slog(),
-		EventBus: events.NewBus(),
-		Router:   router.NewSessionRouter(),
-		Runtime:  runtime.NewManager(),
-		LLM:      dispatcher,
-		Store:    sqliteStore,
+	}
+	eventBus := events.NewBus()
+	providerManager, chatService := newProviderManagerAndChatServiceForTests(testCfg, dispatcher, eventBus, sqliteStore, nil)
+	server := NewServer(Dependencies{
+		Config:    testCfg,
+		Logger:    telemetry.New("error").Slog(),
+		EventBus:  eventBus,
+		Router:    router.NewSessionRouter(),
+		Runtime:   runtime.NewManager(),
+		LLM:       dispatcher,
+		Chat:      chatService,
+		Providers: providerManager,
+		Store:     sqliteStore,
 	})
 
 	rec := httptest.NewRecorder()
-	server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"chat-provider","model":"test-model","query":"hello chat"}`)))
+	server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"echo","model":"echo-v1","query":"hello chat"}`)))
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502 for provider failure, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -1997,16 +2013,17 @@ func TestChatQueryStreamRoute(t *testing.T) {
 		},
 	})
 
-	server := NewServer(Dependencies{
-		Config: config.Config{
-			BindAddr: "127.0.0.1:18789",
-			DataDir:  "~/.dope",
-			LogLevel: "info",
-			Version:  "test",
-			LLM: config.LLMConfig{
-				DefaultTimeoutMs: 30000,
-			},
+	testCfg := config.Config{
+		BindAddr: "127.0.0.1:18789",
+		DataDir:  "~/.dope",
+		LogLevel: "info",
+		Version:  "test",
+		LLM: config.LLMConfig{
+			DefaultTimeoutMs: 30000,
 		},
+	}
+	server := NewServer(Dependencies{
+		Config:   testCfg,
 		Logger:   telemetry.New("error").Slog(),
 		EventBus: events.NewBus(),
 		Router:   router.NewSessionRouter(),
@@ -2216,6 +2233,7 @@ func TestProviderResolutionAppliesProfilePolicyToChat(t *testing.T) {
 			},
 		},
 	}, dispatcher)
+	chatService := chat.NewService(dispatcher, providerManager, eventBus, sqliteStore)
 
 	server := NewServer(Dependencies{
 		Config: config.Config{
@@ -2228,6 +2246,7 @@ func TestProviderResolutionAppliesProfilePolicyToChat(t *testing.T) {
 		EventBus:  eventBus,
 		Auth:      authManager,
 		LLM:       dispatcher,
+		Chat:      chatService,
 		Providers: providerManager,
 		Store:     sqliteStore,
 	})
@@ -2391,6 +2410,7 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 	}, dispatcher, registry)
 	providerManager.RestoreManagedAuthStates([]providers.AuthState{bridge.detectState})
 	providerManager.RestoreProviderModels(bridge.models)
+	chatService := chat.NewService(dispatcher, providerManager, eventBus, sqliteStore)
 
 	server := NewServer(Dependencies{
 		Config: config.Config{
@@ -2403,6 +2423,7 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 		EventBus:  eventBus,
 		Auth:      authManager,
 		LLM:       dispatcher,
+		Chat:      chatService,
 		Providers: providerManager,
 		Store:     sqliteStore,
 	})

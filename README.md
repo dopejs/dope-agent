@@ -35,6 +35,7 @@ That daemon foundation is now closed through:
 - Roadmap 8: `Ingress Routing Closure`
 - Roadmap 9: `Provider Identity And Profiles`
 - Roadmap 10: `Managed Coding Providers`
+- Roadmap 11: `First IM Channel Loop`
 
 Execution is roadmap-driven:
 
@@ -72,6 +73,8 @@ Execution is roadmap-driven:
 - `docs/23-provider-architecture.md`
 - `docs/24-provider-identity-and-profiles.md`
 - `docs/25-managed-coding-providers.md`
+- `docs/26-first-im-channel-loop.md`
+- `docs/27-discord-channel-loop.md`
 
 ## Working Assumptions
 

@@ -187,6 +187,61 @@ func TestLoadManagedCLIProviderConfig(t *testing.T) {
 	}
 }
 
+func TestLoadDiscordConnectorConfig(t *testing.T) {
+	homeDir := t.TempDir()
+	dataDir := filepath.Join(homeDir, ".dope")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte(`{
+		"connectors": {
+			"discord": {
+				"enabled": true,
+				"connectorId": "discord-bot",
+				"displayName": "Discord Bot",
+				"deliveryMode": "gateway",
+				"botTokenEnv": "DISCORD_TEST_TOKEN",
+				"requireMention": false,
+				"respondInDM": true,
+				"allowedGuildIds": ["guild_1"],
+				"allowedChannelIds": ["channel_1", "channel_2"]
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	setBaseEnv(t, homeDir)
+	t.Setenv("DISCORD_TEST_TOKEN", "discord-secret")
+	t.Setenv("DOPE_CONNECTORS_DISCORD_ALLOWED_CHANNEL_IDS", "channel_3,channel_4")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !cfg.Connectors.Discord.Enabled {
+		t.Fatal("expected discord connector enabled")
+	}
+	if cfg.Connectors.Discord.ConnectorID != "discord-bot" {
+		t.Fatalf("expected discord connector id discord-bot, got %s", cfg.Connectors.Discord.ConnectorID)
+	}
+	if cfg.Connectors.Discord.BotToken != "discord-secret" {
+		t.Fatalf("expected discord bot token from env ref, got %q", cfg.Connectors.Discord.BotToken)
+	}
+	if cfg.Connectors.Discord.DeliveryMode != "gateway" {
+		t.Fatalf("expected discord delivery mode gateway, got %q", cfg.Connectors.Discord.DeliveryMode)
+	}
+	if cfg.Connectors.Discord.RequireMention {
+		t.Fatal("expected requireMention=false from file config")
+	}
+	if got := cfg.Connectors.Discord.AllowedGuildIDs; len(got) != 1 || got[0] != "guild_1" {
+		t.Fatalf("expected allowed guild IDs from file config, got %#v", got)
+	}
+	if got := cfg.Connectors.Discord.AllowedChannelIDs; len(got) != 2 || got[0] != "channel_3" || got[1] != "channel_4" {
+		t.Fatalf("expected allowed channel IDs from env override, got %#v", got)
+	}
+}
+
 func TestLoadRejectsInvalidConfigFile(t *testing.T) {
 	homeDir := t.TempDir()
 	dataDir := filepath.Join(homeDir, ".dope")
@@ -226,5 +281,16 @@ func setBaseEnv(t *testing.T, homeDir string) {
 	t.Setenv("DOPE_LLM_CODEX_CLI_PATH", "")
 	t.Setenv("DOPE_LLM_CODEX_MODEL", "")
 	t.Setenv("DOPE_LLM_CODEX_WORKDIR", "")
+	t.Setenv("DOPE_CONNECTORS_DISCORD_ENABLED", "")
+	t.Setenv("DOPE_CONNECTORS_DISCORD_CONNECTOR_ID", "")
+	t.Setenv("DOPE_CONNECTORS_DISCORD_DISPLAY_NAME", "")
+	t.Setenv("DOPE_CONNECTORS_DISCORD_DELIVERY_MODE", "")
+	t.Setenv("DOPE_CONNECTORS_DISCORD_BOT_TOKEN", "")
+	t.Setenv("DOPE_CONNECTORS_DISCORD_BOT_TOKEN_ENV", "")
+	t.Setenv("DOPE_CONNECTORS_DISCORD_REQUIRE_MENTION", "")
+	t.Setenv("DOPE_CONNECTORS_DISCORD_RESPOND_IN_DM", "")
+	t.Setenv("DOPE_CONNECTORS_DISCORD_ALLOWED_GUILD_IDS", "")
+	t.Setenv("DOPE_CONNECTORS_DISCORD_ALLOWED_CHANNEL_IDS", "")
 	t.Setenv("OPENAI_TEST_KEY", "")
+	t.Setenv("DISCORD_TEST_TOKEN", "")
 }

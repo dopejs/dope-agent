@@ -883,6 +883,91 @@ Task definition of done:
 - automatic multi-provider fallback
 - billing optimization or smart routing
 
+## Roadmap 11: First IM Channel Loop
+
+Status: `[x] complete`
+
+### Goal
+
+Close one real IM channel end to end so DopeAgent can receive a user message, route it through daemon truth, invoke the configured provider, and send the reply back through the same channel.
+
+### Tasks
+
+#### 1. IM Connector Runtime Contract
+
+Scope:
+
+- define the daemon-facing contract for a real IM connector runtime
+- define inbound message normalization and outbound reply dispatch
+- define connector auth/config shape for the first IM channel
+
+Task definition of done:
+
+- connector config is explicit and schema-backed
+- connector readiness and failure state are supervised through daemon connector APIs
+- inbound and outbound connector message envelopes are explicit and durable
+- connector auth/config redaction is covered by config inspection rules
+- tests cover config parsing and connector contract behavior
+
+#### 2. Discord Connector Implementation
+
+Scope:
+
+- implement the first real IM connector using the official Discord bot API
+- support one operator-realistic delivery path
+
+Task definition of done:
+
+- daemon can configure Discord bot token and delivery mode
+- connector can receive inbound Discord messages through the chosen delivery path
+- connector can send outbound text replies back to Discord
+- auth and transport failures are classified explicitly
+- tests cover inbound normalization, outbound request shaping, and failure mapping
+
+#### 3. Inbound-To-Reply Execution Loop
+
+Scope:
+
+- close the runtime loop from inbound IM message to assistant reply
+- keep the first version single-turn and stateless on the model side
+
+Task definition of done:
+
+- an inbound Discord message resolves or creates the correct session
+- daemon creates the corresponding run and step execution path
+- daemon invokes the configured provider through the existing chat contract
+- daemon sends the reply back through the Discord connector
+- duplicate delivery handling prevents obvious double-reply bugs
+- tests cover at least one full success path and one failure path
+
+#### 4. IM Operator Docs And End-To-End Verification
+
+Scope:
+
+- document how to configure and operate the first IM channel
+- prove the loop works through the real connector boundary and daemon runtime
+
+Task definition of done:
+
+- operator docs explain token config, gateway mode, mention and DM behavior, and failure visibility
+- daemon APIs, schemas, and events are aligned for the new channel
+- verification covers connector runtime, transport shaping, and message-in to reply-out runtime behavior
+- roadmap notes clearly state what remains out of scope
+
+### Roadmap Definition Of Done
+
+- DopeAgent can carry one real IM conversation turn through a real connector
+- the connector is supervised, configurable, and observable through daemon APIs
+- inbound routing and outbound reply behavior are durable enough for operator use
+- docs, schemas, and tests are aligned with the actual IM loop
+
+### Explicitly Out Of Scope
+
+- multiple IM channels in the same roadmap
+- unofficial or reverse-engineered IM transports
+- long-term memory or context assembly for IM
+- rich media, files, reactions, voice, or typing indicators
+
 ## Recommended Order
 
 1. Roadmap 1: Runtime Closure
@@ -895,3 +980,4 @@ Task definition of done:
 8. Roadmap 8: Ingress Routing Closure
 9. Roadmap 9: Provider Identity And Profiles
 10. Roadmap 10: Managed Coding Providers
+11. Roadmap 11: First IM Channel Loop

@@ -33,6 +33,8 @@ Current completion should be read as:
 - `Roadmap 8: Ingress Routing Closure` is now closed
 - `Roadmap 9: Provider Identity And Profiles` is now closed
 - `Roadmap 10: Managed Coding Providers` is now closed
+- `Roadmap 11: First IM Channel Loop`
+- `Roadmap 11: First IM Channel Loop` is now closed
 
 ## Roadmap 1: Runtime Closure
 
@@ -107,6 +109,13 @@ Current completion should be read as:
 - [x] Claude managed provider
 - [x] Codex or ChatGPT managed provider
 - [x] Model catalog and compatibility metadata
+
+## Roadmap 11: First IM Channel Loop
+
+- [x] IM connector runtime contract
+- [x] Discord connector implementation
+- [x] Inbound-to-reply execution loop
+- [x] IM operator docs and end-to-end verification
 
 ## Completed Foundational Work
 

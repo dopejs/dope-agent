@@ -94,6 +94,61 @@
           }
         }
       }
+    },
+    "connectors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "discord": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "connectorId": {
+              "type": "string",
+              "default": "discord-main"
+            },
+            "displayName": {
+              "type": "string",
+              "default": "Discord Main"
+            },
+            "deliveryMode": {
+              "type": "string",
+              "enum": ["gateway"],
+              "default": "gateway"
+            },
+            "botToken": {
+              "type": "string"
+            },
+            "botTokenEnv": {
+              "type": "string"
+            },
+            "requireMention": {
+              "type": "boolean",
+              "default": true
+            },
+            "respondInDM": {
+              "type": "boolean",
+              "default": true
+            },
+            "allowedGuildIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "allowedChannelIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

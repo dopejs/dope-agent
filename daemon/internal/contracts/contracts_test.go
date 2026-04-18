@@ -14,6 +14,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/api"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
+	"github.com/dopejs/dope-agent/daemon/internal/chat"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
@@ -500,6 +501,7 @@ func newContractHarness(t *testing.T) *contractHarness {
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
+	chatService := chat.NewService(llmDispatcher, providerManager, eventBus, sqliteStore)
 	t.Cleanup(func() {
 		if err := checkpointManager.Close(); err != nil {
 			t.Fatalf("Close checkpoint manager returned error: %v", err)
@@ -520,6 +522,7 @@ func newContractHarness(t *testing.T) *contractHarness {
 		Router:       sessionRouter,
 		Runtime:      runtimeManager,
 		LLM:          llmDispatcher,
+		Chat:         chatService,
 		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,

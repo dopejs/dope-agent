@@ -16,6 +16,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
+	"github.com/dopejs/dope-agent/daemon/internal/chat"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
@@ -37,6 +38,7 @@ type Dependencies struct {
 	Router       *router.SessionRouter
 	Runtime      *runtime.Manager
 	LLM          *llm.Dispatcher
+	Chat         *chat.Service
 	Providers    *providers.Manager
 	Connectors   *connectors.Supervisor
 	Capabilities *capabilities.Supervisor
@@ -53,6 +55,7 @@ type Server struct {
 	router       *router.SessionRouter
 	runtime      *runtime.Manager
 	llm          *llm.Dispatcher
+	chat         *chat.Service
 	providers    *providers.Manager
 	connectors   *connectors.Supervisor
 	capabilities *capabilities.Supervisor
@@ -148,7 +151,7 @@ func NewServer(deps Dependencies) *Server {
 		handleChatQueryStream(deps.LLM, deps.Providers, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/chat/query", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleChatQuery(deps.LLM, deps.Providers, deps.EventBus, deps.Store, w, r)
+		handleChatQuery(deps.Chat, w, r)
 	}))
 	mux.HandleFunc("/v1/providers", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleProviders(deps.Providers, w, r)
@@ -178,6 +181,7 @@ func NewServer(deps Dependencies) *Server {
 		router:       deps.Router,
 		runtime:      deps.Runtime,
 		llm:          deps.LLM,
+		chat:         deps.Chat,
 		providers:    deps.Providers,
 		connectors:   deps.Connectors,
 		capabilities: deps.Capabilities,
@@ -1345,13 +1349,13 @@ type chatQueryRequest struct {
 	MaxRetries int    `json:"maxRetries"`
 }
 
-func handleChatQuery(dispatcher *llm.Dispatcher, providerManager *providers.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleChatQuery(chatService *chat.Service, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if dispatcher == nil {
-		writeError(w, http.StatusInternalServerError, "llm dispatcher is not configured")
+	if chatService == nil {
+		writeError(w, http.StatusInternalServerError, "chat service is not configured")
 		return
 	}
 
@@ -1361,48 +1365,23 @@ func handleChatQuery(dispatcher *llm.Dispatcher, providerManager *providers.Mana
 		return
 	}
 
-	dispatchInput, err := buildChatDispatchInput(input)
+	result, err := chatService.Query(r.Context(), chat.QueryInput{
+		Query:      strings.TrimSpace(input.Query),
+		Provider:   strings.TrimSpace(input.Provider),
+		Model:      strings.TrimSpace(input.Model),
+		TimeoutMs:  input.TimeoutMs,
+		MaxRetries: input.MaxRetries,
+	})
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		if result.Dispatch.DispatchID == "" {
+			writeError(w, llmPrepareStatusCode(err), err.Error())
+			return
+		}
+		response := buildChatQueryResponse(result.Query, result.Dispatch)
+		writeJSON(w, llmDispatchStatusCode(result.Dispatch), response)
 		return
 	}
-
-	resolvedInput, err := resolveProviderDispatchInput(providerManager, dispatchInput)
-	if err != nil {
-		writeError(w, llmPrepareStatusCode(err), err.Error())
-		return
-	}
-
-	dispatch, err := dispatcher.Prepare(resolvedInput, false)
-	if err != nil {
-		writeError(w, llmPrepareStatusCode(err), err.Error())
-		return
-	}
-	if err := persistLLMDispatch(r.Context(), sqliteStore, dispatch); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if _, err := publishLLMDispatchRequested(r.Context(), eventBus, sqliteStore, dispatch); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	finalDispatch, execErr := dispatcher.Dispatch(r.Context(), dispatch)
-	if err := persistLLMDispatch(r.Context(), sqliteStore, finalDispatch); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if _, err := publishLLMDispatchTerminal(r.Context(), eventBus, sqliteStore, finalDispatch); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	response := buildChatQueryResponse(input.Query, finalDispatch)
-	if execErr != nil {
-		writeJSON(w, llmDispatchStatusCode(finalDispatch), response)
-		return
-	}
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, buildChatQueryResponse(result.Query, result.Dispatch))
 }
 
 func handleChatQueryStream(dispatcher *llm.Dispatcher, providerManager *providers.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {

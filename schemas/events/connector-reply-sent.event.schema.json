@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/connector-reply-sent.event.schema.json",
+  "title": "ConnectorReplySentEvent",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "./runtime-event.schema.json"
+    },
+    {
+      "properties": {
+        "category": {
+          "const": "connector"
+        },
+        "name": {
+          "const": "connector.reply_sent"
+        }
+      }
+    }
+  ]
+}

@@ -20,13 +20,14 @@ type SystemInfoResponse struct {
 }
 
 type ConfigResponse struct {
-	BindAddr       string            `json:"bindAddr"`
-	DataDir        string            `json:"dataDir"`
-	ConfigFilePath string            `json:"configFilePath"`
-	LogLevel       string            `json:"logLevel"`
-	Version        string            `json:"version"`
-	LLM            ConfigLLMResponse `json:"llm"`
-	RedactedFields []string          `json:"redactedFields"`
+	BindAddr       string                   `json:"bindAddr"`
+	DataDir        string                   `json:"dataDir"`
+	ConfigFilePath string                   `json:"configFilePath"`
+	LogLevel       string                   `json:"logLevel"`
+	Version        string                   `json:"version"`
+	LLM            ConfigLLMResponse        `json:"llm"`
+	Connectors     ConfigConnectorsResponse `json:"connectors"`
+	RedactedFields []string                 `json:"redactedFields"`
 }
 
 type ConfigLLMResponse struct {
@@ -53,6 +54,24 @@ type ConfigManagedCLIProviderResponse struct {
 	CLIPath      string `json:"cliPath,omitempty"`
 	DefaultModel string `json:"defaultModel,omitempty"`
 	WorkDir      string `json:"workDir,omitempty"`
+}
+
+type ConfigConnectorsResponse struct {
+	Discord ConfigDiscordConnectorResponse `json:"discord"`
+}
+
+type ConfigDiscordConnectorResponse struct {
+	Enabled            bool     `json:"enabled"`
+	Configured         bool     `json:"configured"`
+	ConnectorID        string   `json:"connectorId"`
+	DisplayName        string   `json:"displayName"`
+	DeliveryMode       string   `json:"deliveryMode"`
+	RequireMention     bool     `json:"requireMention"`
+	RespondInDM        bool     `json:"respondInDM"`
+	AllowedGuildIDs    []string `json:"allowedGuildIds"`
+	AllowedChannelIDs  []string `json:"allowedChannelIds"`
+	BotTokenConfigured bool     `json:"botTokenConfigured"`
+	BotTokenEnv        string   `json:"botTokenEnv,omitempty"`
 }
 
 type ChatQueryResponse struct {
@@ -174,6 +193,9 @@ func buildConfigResponse(cfg config.Config) ConfigResponse {
 	if cfg.LLM.OpenAICompatible.APIKey != "" {
 		redactedFields = append(redactedFields, "llm.openaiCompatible.apiKey")
 	}
+	if cfg.Connectors.Discord.BotToken != "" {
+		redactedFields = append(redactedFields, "connectors.discord.botToken")
+	}
 	defaultTimeoutMs := cfg.LLM.DefaultTimeoutMs
 	if defaultTimeoutMs <= 0 {
 		defaultTimeoutMs = 30000
@@ -181,6 +203,10 @@ func buildConfigResponse(cfg config.Config) ConfigResponse {
 	openAITimeoutMs := cfg.LLM.OpenAICompatible.TimeoutMs
 	if openAITimeoutMs <= 0 {
 		openAITimeoutMs = defaultTimeoutMs
+	}
+	discordDeliveryMode := cfg.Connectors.Discord.DeliveryMode
+	if discordDeliveryMode == "" {
+		discordDeliveryMode = "gateway"
 	}
 
 	return ConfigResponse{
@@ -215,6 +241,21 @@ func buildConfigResponse(cfg config.Config) ConfigResponse {
 				WorkDir:      cfg.LLM.Codex.WorkDir,
 			},
 		},
+		Connectors: ConfigConnectorsResponse{
+			Discord: ConfigDiscordConnectorResponse{
+				Enabled:            cfg.Connectors.Discord.Enabled,
+				Configured:         cfg.Connectors.Discord.BotToken != "",
+				ConnectorID:        cfg.Connectors.Discord.ConnectorID,
+				DisplayName:        cfg.Connectors.Discord.DisplayName,
+				DeliveryMode:       discordDeliveryMode,
+				RequireMention:     cfg.Connectors.Discord.RequireMention,
+				RespondInDM:        cfg.Connectors.Discord.RespondInDM,
+				AllowedGuildIDs:    cloneStringSlice(cfg.Connectors.Discord.AllowedGuildIDs),
+				AllowedChannelIDs:  cloneStringSlice(cfg.Connectors.Discord.AllowedChannelIDs),
+				BotTokenConfigured: cfg.Connectors.Discord.BotToken != "",
+				BotTokenEnv:        cfg.Connectors.Discord.BotTokenEnv,
+			},
+		},
 		RedactedFields: redactedFields,
 	}
 }
@@ -227,4 +268,11 @@ func buildEventListResponse(items []events.Event) EventListResponse {
 		response.NextCursor = items[len(items)-1].Sequence
 	}
 	return response
+}
+
+func cloneStringSlice(items []string) []string {
+	if len(items) == 0 {
+		return []string{}
+	}
+	return append([]string(nil), items...)
 }

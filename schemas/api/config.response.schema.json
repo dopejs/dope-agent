@@ -10,6 +10,7 @@
     "logLevel",
     "version",
     "llm",
+    "connectors",
     "redactedFields"
   ],
   "additionalProperties": false,
@@ -109,6 +110,48 @@
             "cliPath": { "type": "string" },
             "defaultModel": { "type": "string" },
             "workDir": { "type": "string" }
+          }
+        }
+      }
+    },
+    "connectors": {
+      "type": "object",
+      "required": ["discord"],
+      "additionalProperties": false,
+      "properties": {
+        "discord": {
+          "type": "object",
+          "required": [
+            "enabled",
+            "configured",
+            "connectorId",
+            "displayName",
+            "deliveryMode",
+            "requireMention",
+            "respondInDM",
+            "allowedGuildIds",
+            "allowedChannelIds",
+            "botTokenConfigured"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "configured": { "type": "boolean" },
+            "connectorId": { "type": "string" },
+            "displayName": { "type": "string" },
+            "deliveryMode": { "type": "string", "enum": ["gateway"] },
+            "requireMention": { "type": "boolean" },
+            "respondInDM": { "type": "boolean" },
+            "allowedGuildIds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "allowedChannelIds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "botTokenConfigured": { "type": "boolean" },
+            "botTokenEnv": { "type": "string" }
           }
         }
       }

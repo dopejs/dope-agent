@@ -12,10 +12,13 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/api"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
+	"github.com/dopejs/dope-agent/daemon/internal/chat"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
+	discordconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/discord"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/im"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/managedproviders"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
@@ -37,12 +40,19 @@ type App struct {
 	Policy               *policy.Engine
 	Auth                 *auth.Manager
 	LLM                  *llm.Dispatcher
+	Chat                 *chat.Service
 	Providers            *providers.Manager
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
+	discordRuntime       managedConnectorRuntime
 	Server               *api.Server
 	mu                   sync.Mutex
 	closed               bool
+}
+
+type managedConnectorRuntime interface {
+	Start(context.Context) error
+	Close(context.Context) error
 }
 
 func New() (*App, error) {
@@ -69,11 +79,27 @@ func New() (*App, error) {
 	providerManager := providers.NewManager(cfg, llmDispatcher, managedRegistry)
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
+	chatService := chat.NewService(llmDispatcher, providerManager, eventBus, sqliteStore)
 
 	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager); err != nil {
 		return nil, err
 	}
 	if err := syncManagedProviderState(context.Background(), sqliteStore, providerManager); err != nil {
+		return nil, err
+	}
+
+	discordRuntime, err := discordconnector.NewRuntime(discordconnector.Config{
+		Enabled:           cfg.Connectors.Discord.Enabled,
+		ConnectorID:       cfg.Connectors.Discord.ConnectorID,
+		DisplayName:       cfg.Connectors.Discord.DisplayName,
+		DeliveryMode:      cfg.Connectors.Discord.DeliveryMode,
+		BotToken:          cfg.Connectors.Discord.BotToken,
+		RequireMention:    cfg.Connectors.Discord.RequireMention,
+		RespondInDM:       cfg.Connectors.Discord.RespondInDM,
+		AllowedGuildIDs:   append([]string(nil), cfg.Connectors.Discord.AllowedGuildIDs...),
+		AllowedChannelIDs: append([]string(nil), cfg.Connectors.Discord.AllowedChannelIDs...),
+	}, logger.Slog(), connectorSupervisor, im.NewMessageLoop(sessionRouter, runtimeManager, checkpointManager, eventBus, sqliteStore, chatService), sqliteStore, eventBus, nil)
+	if err != nil {
 		return nil, err
 	}
 
@@ -86,6 +112,7 @@ func New() (*App, error) {
 		Router:       sessionRouter,
 		Runtime:      runtimeManager,
 		LLM:          llmDispatcher,
+		Chat:         chatService,
 		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
@@ -104,9 +131,11 @@ func New() (*App, error) {
 		Policy:               policyEngine,
 		Auth:                 authManager,
 		LLM:                  llmDispatcher,
+		Chat:                 chatService,
 		Providers:            providerManager,
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,
+		discordRuntime:       discordRuntime,
 		Server:               server,
 	}, nil
 }
@@ -178,6 +207,16 @@ func firstNonEmpty(values ...string) string {
 func (a *App) Run(ctx context.Context) error {
 	a.Logger.Info("starting daemon", "bind_addr", a.Config.BindAddr)
 
+	if a.discordRuntime != nil {
+		starter, ok := a.discordRuntime.(interface{ Start(context.Context) error })
+		if !ok {
+			return fmt.Errorf("discord runtime is not startable")
+		}
+		if err := starter.Start(ctx); err != nil {
+			return err
+		}
+	}
+
 	if _, err := a.publishSystemEvent(context.Background(), "system.started", map[string]any{
 		"service": "dope",
 		"version": a.Config.Version,
@@ -224,6 +263,11 @@ func (a *App) Close(_ context.Context) error {
 
 	var firstErr error
 
+	if a.discordRuntime != nil {
+		if err := a.discordRuntime.Close(context.Background()); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
 	if a.Checkpoints != nil {
 		if err := a.Checkpoints.Close(); err != nil && firstErr == nil {
 			firstErr = err

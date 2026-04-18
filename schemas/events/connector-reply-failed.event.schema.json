@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/connector-reply-failed.event.schema.json",
+  "title": "ConnectorReplyFailedEvent",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "./runtime-event.schema.json"
+    },
+    {
+      "properties": {
+        "category": {
+          "const": "connector"
+        },
+        "name": {
+          "const": "connector.reply_failed"
+        }
+      }
+    }
+  ]
+}

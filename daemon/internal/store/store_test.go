@@ -12,6 +12,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
@@ -265,6 +266,65 @@ func TestSQLiteStorePersistsConnectorsAndCapabilities(t *testing.T) {
 	}
 	if capabilitiesList[0].BackoffSeconds != 10 {
 		t.Fatalf("expected capability backoff 10, got %d", capabilitiesList[0].BackoffSeconds)
+	}
+}
+
+func TestSQLiteStoreCreateConnectorMessageIfAbsentDeduplicatesByExternalID(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	first, created, err := store.CreateConnectorMessageIfAbsent(ctx, imtypes.MessageRecord{
+		DeliveryID:        "delivery_1",
+		ConnectorID:       "discord-main",
+		Direction:         imtypes.DeliveryDirectionInbound,
+		ExternalMessageID: "discord_msg_1",
+		ChannelID:         "channel_1",
+		PeerID:            "user_1",
+		AuthorID:          "user_1",
+		Content:           "hello",
+		Status:            imtypes.DeliveryStatusReceived,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	})
+	if err != nil {
+		t.Fatalf("CreateConnectorMessageIfAbsent(first) returned error: %v", err)
+	}
+	if !created {
+		t.Fatal("expected first connector message insert to be created")
+	}
+
+	second, created, err := store.CreateConnectorMessageIfAbsent(ctx, imtypes.MessageRecord{
+		DeliveryID:        "delivery_2",
+		ConnectorID:       "discord-main",
+		Direction:         imtypes.DeliveryDirectionInbound,
+		ExternalMessageID: "discord_msg_1",
+		ChannelID:         "channel_1",
+		PeerID:            "user_1",
+		AuthorID:          "user_1",
+		Content:           "hello again",
+		Status:            imtypes.DeliveryStatusReceived,
+		CreatedAt:         now.Add(time.Second),
+		UpdatedAt:         now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("CreateConnectorMessageIfAbsent(second) returned error: %v", err)
+	}
+	if created {
+		t.Fatal("expected duplicate connector message insert to be rejected")
+	}
+	if second.DeliveryID != first.DeliveryID {
+		t.Fatalf("expected duplicate lookup to return first delivery ID %s, got %s", first.DeliveryID, second.DeliveryID)
 	}
 }
 

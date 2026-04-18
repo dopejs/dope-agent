@@ -13,11 +13,12 @@ import (
 const defaultConfigFileName = "config.json"
 
 type Config struct {
-	BindAddr string
-	DataDir  string
-	LogLevel string
-	Version  string
-	LLM      LLMConfig
+	BindAddr   string
+	DataDir    string
+	LogLevel   string
+	Version    string
+	LLM        LLMConfig
+	Connectors ConnectorConfig
 }
 
 type LLMConfig struct {
@@ -44,11 +45,29 @@ type ManagedCLIProviderConfig struct {
 	WorkDir      string
 }
 
+type ConnectorConfig struct {
+	Discord DiscordConnectorConfig
+}
+
+type DiscordConnectorConfig struct {
+	Enabled           bool
+	ConnectorID       string
+	DisplayName       string
+	DeliveryMode      string
+	BotToken          string
+	BotTokenEnv       string
+	RequireMention    bool
+	RespondInDM       bool
+	AllowedGuildIDs   []string
+	AllowedChannelIDs []string
+}
+
 type fileConfig struct {
-	BindAddr string         `json:"bindAddr"`
-	DataDir  string         `json:"dataDir"`
-	LogLevel string         `json:"logLevel"`
-	LLM      *fileLLMConfig `json:"llm"`
+	BindAddr   string               `json:"bindAddr"`
+	DataDir    string               `json:"dataDir"`
+	LogLevel   string               `json:"logLevel"`
+	LLM        *fileLLMConfig       `json:"llm"`
+	Connectors *fileConnectorConfig `json:"connectors"`
 }
 
 type fileLLMConfig struct {
@@ -73,6 +92,23 @@ type fileManagedCLIProviderConfig struct {
 	CLIPath      string `json:"cliPath"`
 	DefaultModel string `json:"defaultModel"`
 	WorkDir      string `json:"workDir"`
+}
+
+type fileConnectorConfig struct {
+	Discord *fileDiscordConnectorConfig `json:"discord"`
+}
+
+type fileDiscordConnectorConfig struct {
+	Enabled           *bool    `json:"enabled"`
+	ConnectorID       string   `json:"connectorId"`
+	DisplayName       string   `json:"displayName"`
+	DeliveryMode      string   `json:"deliveryMode"`
+	BotToken          string   `json:"botToken"`
+	BotTokenEnv       string   `json:"botTokenEnv"`
+	RequireMention    *bool    `json:"requireMention"`
+	RespondInDM       *bool    `json:"respondInDM"`
+	AllowedGuildIDs   []string `json:"allowedGuildIds"`
+	AllowedChannelIDs []string `json:"allowedChannelIds"`
 }
 
 func Load() (Config, error) {
@@ -100,6 +136,15 @@ func Load() (Config, error) {
 			},
 			Codex: ManagedCLIProviderConfig{
 				WorkDir: "~",
+			},
+		},
+		Connectors: ConnectorConfig{
+			Discord: DiscordConnectorConfig{
+				ConnectorID:    "discord-main",
+				DisplayName:    "Discord Main",
+				DeliveryMode:   "gateway",
+				RequireMention: true,
+				RespondInDM:    true,
 			},
 		},
 	}
@@ -157,6 +202,9 @@ func applyFileConfig(cfg *Config, fileCfg fileConfig) {
 	if fileCfg.LLM != nil {
 		applyFileLLMConfig(&cfg.LLM, *fileCfg.LLM)
 	}
+	if fileCfg.Connectors != nil {
+		applyFileConnectorConfig(&cfg.Connectors, *fileCfg.Connectors)
+	}
 }
 
 func applyFileLLMConfig(cfg *LLMConfig, fileCfg fileLLMConfig) {
@@ -209,6 +257,46 @@ func applyFileManagedCLIConfig(cfg *ManagedCLIProviderConfig, fileCfg fileManage
 	}
 }
 
+func applyFileConnectorConfig(cfg *ConnectorConfig, fileCfg fileConnectorConfig) {
+	if fileCfg.Discord == nil {
+		return
+	}
+	applyFileDiscordConnectorConfig(&cfg.Discord, *fileCfg.Discord)
+}
+
+func applyFileDiscordConnectorConfig(cfg *DiscordConnectorConfig, fileCfg fileDiscordConnectorConfig) {
+	if fileCfg.Enabled != nil {
+		cfg.Enabled = *fileCfg.Enabled
+	}
+	if fileCfg.ConnectorID != "" {
+		cfg.ConnectorID = fileCfg.ConnectorID
+	}
+	if fileCfg.DisplayName != "" {
+		cfg.DisplayName = fileCfg.DisplayName
+	}
+	if fileCfg.DeliveryMode != "" {
+		cfg.DeliveryMode = fileCfg.DeliveryMode
+	}
+	if fileCfg.BotToken != "" {
+		cfg.BotToken = fileCfg.BotToken
+	}
+	if fileCfg.BotTokenEnv != "" {
+		cfg.BotTokenEnv = fileCfg.BotTokenEnv
+	}
+	if fileCfg.RequireMention != nil {
+		cfg.RequireMention = *fileCfg.RequireMention
+	}
+	if fileCfg.RespondInDM != nil {
+		cfg.RespondInDM = *fileCfg.RespondInDM
+	}
+	if fileCfg.AllowedGuildIDs != nil {
+		cfg.AllowedGuildIDs = append([]string(nil), fileCfg.AllowedGuildIDs...)
+	}
+	if fileCfg.AllowedChannelIDs != nil {
+		cfg.AllowedChannelIDs = append([]string(nil), fileCfg.AllowedChannelIDs...)
+	}
+}
+
 func applyEnvOverrides(cfg *Config) {
 	cfg.BindAddr = getenv("DOPE_BIND_ADDR", cfg.BindAddr)
 	cfg.DataDir = getenv("DOPE_DATA_DIR", cfg.DataDir)
@@ -231,11 +319,25 @@ func applyEnvOverrides(cfg *Config) {
 	cfg.LLM.Codex.CLIPath = getenv("DOPE_LLM_CODEX_CLI_PATH", cfg.LLM.Codex.CLIPath)
 	cfg.LLM.Codex.DefaultModel = getenv("DOPE_LLM_CODEX_MODEL", cfg.LLM.Codex.DefaultModel)
 	cfg.LLM.Codex.WorkDir = getenv("DOPE_LLM_CODEX_WORKDIR", cfg.LLM.Codex.WorkDir)
+
+	cfg.Connectors.Discord.Enabled = getenvBool("DOPE_CONNECTORS_DISCORD_ENABLED", cfg.Connectors.Discord.Enabled)
+	cfg.Connectors.Discord.ConnectorID = getenv("DOPE_CONNECTORS_DISCORD_CONNECTOR_ID", cfg.Connectors.Discord.ConnectorID)
+	cfg.Connectors.Discord.DisplayName = getenv("DOPE_CONNECTORS_DISCORD_DISPLAY_NAME", cfg.Connectors.Discord.DisplayName)
+	cfg.Connectors.Discord.DeliveryMode = getenv("DOPE_CONNECTORS_DISCORD_DELIVERY_MODE", cfg.Connectors.Discord.DeliveryMode)
+	cfg.Connectors.Discord.BotToken = getenv("DOPE_CONNECTORS_DISCORD_BOT_TOKEN", cfg.Connectors.Discord.BotToken)
+	cfg.Connectors.Discord.BotTokenEnv = getenv("DOPE_CONNECTORS_DISCORD_BOT_TOKEN_ENV", cfg.Connectors.Discord.BotTokenEnv)
+	cfg.Connectors.Discord.RequireMention = getenvBool("DOPE_CONNECTORS_DISCORD_REQUIRE_MENTION", cfg.Connectors.Discord.RequireMention)
+	cfg.Connectors.Discord.RespondInDM = getenvBool("DOPE_CONNECTORS_DISCORD_RESPOND_IN_DM", cfg.Connectors.Discord.RespondInDM)
+	cfg.Connectors.Discord.AllowedGuildIDs = getenvCSV("DOPE_CONNECTORS_DISCORD_ALLOWED_GUILD_IDS", cfg.Connectors.Discord.AllowedGuildIDs)
+	cfg.Connectors.Discord.AllowedChannelIDs = getenvCSV("DOPE_CONNECTORS_DISCORD_ALLOWED_CHANNEL_IDS", cfg.Connectors.Discord.AllowedChannelIDs)
 }
 
 func resolveSecretRefs(cfg *Config) {
 	if cfg.LLM.OpenAICompatible.APIKey == "" && cfg.LLM.OpenAICompatible.APIKeyEnv != "" {
 		cfg.LLM.OpenAICompatible.APIKey = os.Getenv(cfg.LLM.OpenAICompatible.APIKeyEnv)
+	}
+	if cfg.Connectors.Discord.BotToken == "" && cfg.Connectors.Discord.BotTokenEnv != "" {
+		cfg.Connectors.Discord.BotToken = os.Getenv(cfg.Connectors.Discord.BotTokenEnv)
 	}
 }
 
@@ -278,4 +380,31 @@ func getenvInt(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func getenvBool(key string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func getenvCSV(key string, fallback []string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return append([]string(nil), fallback...)
+	}
+	parts := strings.Split(value, ",")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			items = append(items, trimmed)
+		}
+	}
+	return items
 }
