@@ -17,6 +17,53 @@
       "type": "string",
       "enum": ["debug", "info", "warn", "error"],
       "default": "info"
+    },
+    "llm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultProvider": {
+          "type": "string",
+          "default": ""
+        },
+        "defaultModel": {
+          "type": "string",
+          "default": ""
+        },
+        "defaultTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30000
+        },
+        "defaultMaxRetries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "openaiCompatible": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "baseURL": {
+              "type": "string"
+            },
+            "apiKey": {
+              "type": "string"
+            },
+            "apiKeyEnv": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 30000
+            }
+          }
+        }
+      }
     }
   }
 }

@@ -51,6 +51,7 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 		"schemas/api/report-capability-health.request.schema.json":  `{"status":"degraded"}`,
 		"schemas/api/report-capability-failure.request.schema.json": `{"reason":"worker exited"}`,
 		"schemas/api/create-llm-dispatch.request.schema.json":       `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"hello"}],"timeoutMs":1000,"maxRetries":1}`,
+		"schemas/api/chat-query.request.schema.json":                `{"provider":"echo","model":"echo-v1","query":"hello","timeoutMs":1000,"maxRetries":1}`,
 		"schemas/api/request-approval.request.schema.json":          `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"needs approval","requestedBy":"web-ui"}`,
 		"schemas/api/resolve-approval.request.schema.json":          `{"resolution":"approved","comment":"allowed"}`,
 		"schemas/api/start-pairing.request.schema.json":             `{"mode":"local","label":"web-ui","ttlSeconds":120}`,
@@ -72,6 +73,25 @@ func TestValidatorRejectsInvalidRequestFixture(t *testing.T) {
 	validator := contracts.NewValidator(schemaRootDir(t))
 	if err := validator.ValidateRelative("schemas/api/create-run.request.schema.json", []byte(`{"goal":"missing entrypoint"}`)); err == nil {
 		t.Fatal("expected invalid create-run fixture to fail schema validation")
+	}
+}
+
+func TestChatStreamSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	fixtures := map[string]string{
+		"schemas/api/chat-query-stream-started.event.schema.json": `{"dispatchId":"dispatch_1","provider":"openai_compatible","model":"gpt-test","query":"hello"}`,
+		"schemas/api/chat-query-stream-delta.event.schema.json":   `{"dispatchId":"dispatch_1","delta":"hello","reply":"hello"}`,
+		"schemas/api/chat-query.response.schema.json":             `{"dispatchId":"dispatch_1","provider":"openai_compatible","model":"gpt-test","query":"hello","status":"completed","reply":"hello world","finishReason":"stop","usage":{"inputTokens":2,"outputTokens":3,"totalTokens":5}}`,
+	}
+
+	for schemaPath, fixture := range fixtures {
+		t.Run(filepath.Base(schemaPath), func(t *testing.T) {
+			if err := validator.ValidateRelative(schemaPath, []byte(fixture)); err != nil {
+				t.Fatalf("ValidateRelative returned error: %v", err)
+			}
+		})
 	}
 }
 
@@ -134,6 +154,7 @@ func TestAPISchemasMatchCanonicalResponses(t *testing.T) {
 	createDispatchBody := h.request(t, http.MethodPost, "/v1/llm/dispatches", `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"hello"}]}`, h.authHeader)
 	h.mustValidate(t, "schemas/api/llm-dispatch-resource.schema.json", createDispatchBody)
 	h.mustValidateResponse(t, http.MethodGet, "/v1/llm/dispatches", "", h.authHeader, "schemas/api/llm-dispatch-list.response.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/chat/query", `{"provider":"echo","model":"echo-v1","query":"hello chat"}`, h.authHeader, "schemas/api/chat-query.response.schema.json")
 
 	h.mustValidateResponse(t, http.MethodGet, "/v1/runs/"+runID+"/events", "", h.authHeader, "schemas/api/event-list.response.schema.json")
 }

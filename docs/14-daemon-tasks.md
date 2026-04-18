@@ -11,6 +11,7 @@ This file exists to:
 - track task status
 - make incomplete work visible
 - prevent narrow implementations from being counted as done
+- support mid-roadmap audit without weakening the roadmap completion standard
 
 ## Status Rules
 
@@ -18,6 +19,7 @@ This file exists to:
 - `[ ]` means the task is not complete
 - use a short suffix like `(partial)`, `(in_progress)`, or `(blocked)` when needed
 - a task stays `[ ] (partial)` if any required API, persistence, recovery, eventing, contract, or testing boundary is still open
+- task progress is informational only; a roadmap is still incomplete until every in-scope task is fully closed
 
 ## Current Overall Read
 
@@ -25,8 +27,9 @@ The daemon now has a closed P0 daemon foundation across runtime, supervision, mo
 
 Current completion should be read as:
 
-- the five planned daemon roadmaps are closed
-- remaining work is beyond the original P0 daemon boundary, not hidden partials inside it
+- the original five daemon roadmaps are closed
+- `Roadmap 6: Real Conversation Core` is now closed
+- `Roadmap 7: Minimal Chat Clients` is now closed
 
 ## Roadmap 1: Runtime Closure
 
@@ -65,6 +68,20 @@ Current completion should be read as:
 - [x] Migration and versioning plan
 - [x] Restart and recovery coverage expansion
 - [x] Release contract review
+
+## Roadmap 6: Real Conversation Core
+
+- [x] Real provider configuration model
+- [x] OpenAI-compatible provider integration
+- [x] Minimal conversation API contract
+- [x] End-to-end verification and operator docs
+
+## Roadmap 7: Minimal Chat Clients
+
+- [x] Shared client contract adoption
+- [x] Web chat surface
+- [x] TUI chat surface
+- [x] Cross-client verification
 
 ## Completed Foundational Work
 

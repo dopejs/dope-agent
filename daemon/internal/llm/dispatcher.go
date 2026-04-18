@@ -127,16 +127,16 @@ type Dispatcher struct {
 	mu              sync.RWMutex
 	providers       map[string]Provider
 	defaultProvider string
+	defaultModel    string
 	defaultTimeout  time.Duration
 	defaultRetries  int
 }
 
 func NewDispatcher() *Dispatcher {
 	dispatcher := &Dispatcher{
-		providers:       make(map[string]Provider),
-		defaultProvider: "echo",
-		defaultTimeout:  30 * time.Second,
-		defaultRetries:  0,
+		providers:      make(map[string]Provider),
+		defaultTimeout: 30 * time.Second,
+		defaultRetries: 0,
 	}
 	dispatcher.RegisterProvider(NewEchoProvider())
 	return dispatcher
@@ -153,6 +153,48 @@ func (d *Dispatcher) RegisterProvider(provider Provider) {
 	d.providers[provider.Name()] = provider
 }
 
+func (d *Dispatcher) SetDefaultProvider(name string) error {
+	if strings.TrimSpace(name) == "" {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		d.defaultProvider = ""
+		return nil
+	}
+
+	if _, err := d.provider(name); err != nil {
+		return err
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.defaultProvider = name
+	return nil
+}
+
+func (d *Dispatcher) SetDefaultModel(model string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.defaultModel = strings.TrimSpace(model)
+}
+
+func (d *Dispatcher) SetDefaultTimeout(timeout time.Duration) {
+	if timeout <= 0 {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.defaultTimeout = timeout
+}
+
+func (d *Dispatcher) SetDefaultRetries(retries int) {
+	if retries < 0 {
+		retries = 0
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.defaultRetries = retries
+}
+
 func (d *Dispatcher) Prepare(input CreateDispatchInput, stream bool) (Dispatch, error) {
 	providerName := strings.TrimSpace(input.Provider)
 	if providerName == "" {
@@ -161,7 +203,11 @@ func (d *Dispatcher) Prepare(input CreateDispatchInput, stream bool) (Dispatch, 
 	if providerName == "" {
 		return Dispatch{}, ErrProviderRequired
 	}
-	if strings.TrimSpace(input.Model) == "" {
+	modelName := strings.TrimSpace(input.Model)
+	if modelName == "" {
+		modelName = d.defaultModel
+	}
+	if modelName == "" {
 		return Dispatch{}, ErrModelRequired
 	}
 	if len(input.Messages) == 0 {
@@ -192,7 +238,7 @@ func (d *Dispatcher) Prepare(input CreateDispatchInput, stream bool) (Dispatch, 
 	return Dispatch{
 		DispatchID: uuid.NewString(),
 		Provider:   providerName,
-		Model:      input.Model,
+		Model:      modelName,
 		Messages:   cloneMessages(input.Messages),
 		Stream:     stream,
 		Status:     DispatchStatusQueued,

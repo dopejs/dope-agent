@@ -141,6 +141,12 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/llm/dispatches/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleLLMDispatchRoutes(deps.Store, w, r)
 	}))
+	mux.HandleFunc("/v1/chat/query/stream", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleChatQueryStream(deps.LLM, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/chat/query", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleChatQuery(deps.LLM, deps.EventBus, deps.Store, w, r)
+	}))
 	mux.HandleFunc("/v1/connectors", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleConnectors(deps.Connectors, deps.EventBus, deps.Store, w, r)
 	}))
@@ -1128,6 +1134,181 @@ func handleLLMDispatchStream(dispatcher *llm.Dispatcher, eventBus *events.Bus, s
 	if execErr == nil || finalDispatch.Status != llm.DispatchStatusCancelled {
 		writeSSEEvent(w, llmDispatchTerminalEventName(finalDispatch), dispatch.DispatchID, finalDispatch)
 		flusher.Flush()
+	}
+}
+
+type chatQueryRequest struct {
+	Provider   string `json:"provider"`
+	Model      string `json:"model"`
+	Query      string `json:"query"`
+	TimeoutMs  int    `json:"timeoutMs"`
+	MaxRetries int    `json:"maxRetries"`
+}
+
+func handleChatQuery(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if dispatcher == nil {
+		writeError(w, http.StatusInternalServerError, "llm dispatcher is not configured")
+		return
+	}
+
+	var input chatQueryRequest
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	dispatchInput, err := buildChatDispatchInput(input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	dispatch, err := dispatcher.Prepare(dispatchInput, false)
+	if err != nil {
+		writeError(w, llmPrepareStatusCode(err), err.Error())
+		return
+	}
+	if err := persistLLMDispatch(r.Context(), sqliteStore, dispatch); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishLLMDispatchRequested(r.Context(), eventBus, sqliteStore, dispatch); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	finalDispatch, execErr := dispatcher.Dispatch(r.Context(), dispatch)
+	if err := persistLLMDispatch(r.Context(), sqliteStore, finalDispatch); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishLLMDispatchTerminal(r.Context(), eventBus, sqliteStore, finalDispatch); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := buildChatQueryResponse(input.Query, finalDispatch)
+	if execErr != nil {
+		writeJSON(w, llmDispatchStatusCode(finalDispatch), response)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func handleChatQueryStream(dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if dispatcher == nil {
+		writeError(w, http.StatusInternalServerError, "llm dispatcher is not configured")
+		return
+	}
+
+	var input chatQueryRequest
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	dispatchInput, err := buildChatDispatchInput(input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	dispatch, err := dispatcher.Prepare(dispatchInput, true)
+	if err != nil {
+		writeError(w, llmPrepareStatusCode(err), err.Error())
+		return
+	}
+	if err := persistLLMDispatch(r.Context(), sqliteStore, dispatch); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishLLMDispatchRequested(r.Context(), eventBus, sqliteStore, dispatch); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming is not supported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	writeSSEEvent(w, "chat.query.started", dispatch.DispatchID, ChatQueryStreamStarted{
+		DispatchID: dispatch.DispatchID,
+		Provider:   dispatch.Provider,
+		Model:      dispatch.Model,
+		Query:      strings.TrimSpace(input.Query),
+	})
+	flusher.Flush()
+
+	var reply strings.Builder
+	finalDispatch, execErr := dispatcher.DispatchStream(r.Context(), dispatch, func(chunk llm.StreamChunk) error {
+		reply.WriteString(chunk.Delta)
+		writeSSEEvent(w, "chat.query.delta", "", ChatQueryStreamDelta{
+			DispatchID: dispatch.DispatchID,
+			Delta:      chunk.Delta,
+			Reply:      reply.String(),
+		})
+		flusher.Flush()
+		return nil
+	})
+
+	if err := persistLLMDispatch(context.Background(), sqliteStore, finalDispatch); err != nil {
+		return
+	}
+	if _, err := publishLLMDispatchTerminal(context.Background(), eventBus, sqliteStore, finalDispatch); err != nil {
+		return
+	}
+
+	terminalName := "chat.query.completed"
+	if execErr != nil || finalDispatch.Status == llm.DispatchStatusFailed {
+		terminalName = "chat.query.failed"
+	}
+	if finalDispatch.Status == llm.DispatchStatusCancelled {
+		terminalName = "chat.query.cancelled"
+	}
+	writeSSEEvent(w, terminalName, dispatch.DispatchID, buildChatQueryResponse(input.Query, finalDispatch))
+	flusher.Flush()
+}
+
+func buildChatDispatchInput(input chatQueryRequest) (llm.CreateDispatchInput, error) {
+	query := strings.TrimSpace(input.Query)
+	if query == "" {
+		return llm.CreateDispatchInput{}, errors.New("query is required")
+	}
+	return llm.CreateDispatchInput{
+		Provider:   strings.TrimSpace(input.Provider),
+		Model:      strings.TrimSpace(input.Model),
+		Messages:   []llm.Message{{Role: llm.RoleUser, Content: query}},
+		TimeoutMs:  input.TimeoutMs,
+		MaxRetries: input.MaxRetries,
+	}, nil
+}
+
+func buildChatQueryResponse(query string, dispatch llm.Dispatch) ChatQueryResponse {
+	return ChatQueryResponse{
+		DispatchID:   dispatch.DispatchID,
+		Provider:     dispatch.Provider,
+		Model:        dispatch.Model,
+		Query:        strings.TrimSpace(query),
+		Status:       string(dispatch.Status),
+		Reply:        dispatch.Output,
+		FinishReason: dispatch.FinishReason,
+		Usage:        dispatch.Usage,
+		ErrorCode:    dispatch.ErrorCode,
+		Error:        dispatch.Error,
 	}
 }
 

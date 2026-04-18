@@ -1,10 +1,13 @@
 package app
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -719,6 +722,151 @@ func TestAppRestartRestoresOperatorStateAcrossSubsystems(t *testing.T) {
 	second.Server.Handler().ServeHTTP(meRec, meReq)
 	if meRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for auth me after restart, got %d body=%s", meRec.Code, meRec.Body.String())
+	}
+}
+
+func TestNewConfiguresOpenAICompatibleProviderAndServesChat(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+				t.Fatalf("expected bearer auth header, got %q", r.Header.Get("Authorization"))
+			}
+			body, _ := io.ReadAll(r.Body)
+			if strings.Contains(string(body), `"stream":true`) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n"))
+				_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":2,\"total_tokens\":4}}\n\n"))
+				_, _ = w.Write([]byte("data: [DONE]\n\n"))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"hello world"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":2,"total_tokens":4}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte(`{
+		"llm": {
+			"defaultProvider": "openai_compatible",
+			"defaultModel": "gpt-test",
+			"defaultTimeoutMs": 30000,
+			"openaiCompatible": {
+				"baseURL": "`+upstream.URL+`/v1",
+				"apiKeyEnv": "OPENAI_TEST_KEY",
+				"model": "gpt-test"
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	t.Setenv("DOPE_DATA_DIR", dataDir)
+	t.Setenv("DOPE_BIND_ADDR", "127.0.0.1:0")
+	t.Setenv("DOPE_LOG_LEVEL", "error")
+	t.Setenv("DOPE_VERSION", "test")
+	t.Setenv("OPENAI_TEST_KEY", "secret")
+
+	application, err := New()
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer func() {
+		if err := application.Close(context.Background()); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	authHeader := testAuthHeader(t, application.Auth)
+
+	queryReq := httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"query":"hello"}`))
+	queryReq.Header.Set("Authorization", authHeader)
+	queryRec := httptest.NewRecorder()
+	application.Server.Handler().ServeHTTP(queryRec, queryReq)
+	if queryRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for chat query, got %d body=%s", queryRec.Code, queryRec.Body.String())
+	}
+	var response struct {
+		Reply    string `json:"reply"`
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+	}
+	if err := json.Unmarshal(queryRec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode chat response: %v", err)
+	}
+	if response.Reply != "hello world" {
+		t.Fatalf("expected hello world reply, got %q", response.Reply)
+	}
+	if response.Provider != llm.OpenAICompatibleProviderName {
+		t.Fatalf("expected provider %s, got %s", llm.OpenAICompatibleProviderName, response.Provider)
+	}
+	if response.Model != "gpt-test" {
+		t.Fatalf("expected model gpt-test, got %s", response.Model)
+	}
+
+	streamServer := httptest.NewServer(application.Server.Handler())
+	defer streamServer.Close()
+
+	streamReq, err := http.NewRequest(http.MethodPost, streamServer.URL+"/v1/chat/query/stream", strings.NewReader(`{"query":"hello"}`))
+	if err != nil {
+		t.Fatalf("NewRequest returned error: %v", err)
+	}
+	streamReq.Header.Set("Authorization", authHeader)
+	streamResp, err := http.DefaultClient.Do(streamReq)
+	if err != nil {
+		t.Fatalf("Do returned error: %v", err)
+	}
+	defer streamResp.Body.Close()
+
+	reader := bufio.NewReader(streamResp.Body)
+	var chunks []string
+	for range 16 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			break
+		}
+		chunks = append(chunks, line)
+		if strings.Contains(strings.Join(chunks, ""), "event: chat.query.completed") {
+			break
+		}
+	}
+	joined := strings.Join(chunks, "")
+	if !strings.Contains(joined, "event: chat.query.started") || !strings.Contains(joined, "event: chat.query.delta") || !strings.Contains(joined, "event: chat.query.completed") {
+		t.Fatalf("unexpected stream payload %q", joined)
+	}
+}
+
+func TestNewRejectsInvalidProviderConfig(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte(`{
+		"llm": {
+			"defaultProvider": "openai_compatible",
+			"openaiCompatible": {
+				"baseURL": "not-a-url",
+				"apiKey": "secret",
+				"model": "gpt-test"
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	t.Setenv("DOPE_DATA_DIR", dataDir)
+	t.Setenv("DOPE_BIND_ADDR", "127.0.0.1:0")
+	t.Setenv("DOPE_LOG_LEVEL", "error")
+	t.Setenv("DOPE_VERSION", "test")
+
+	if _, err := New(); err == nil {
+		t.Fatal("expected invalid provider config to fail startup")
 	}
 }
 

@@ -9,6 +9,7 @@
     "configFilePath",
     "logLevel",
     "version",
+    "llm",
     "redactedFields"
   ],
   "additionalProperties": false,
@@ -28,6 +29,65 @@
     },
     "version": {
       "type": "string"
+    },
+    "llm": {
+      "type": "object",
+      "required": [
+        "defaultProvider",
+        "defaultModel",
+        "defaultTimeoutMs",
+        "defaultMaxRetries",
+        "openaiCompatible"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "defaultProvider": {
+          "type": "string"
+        },
+        "defaultModel": {
+          "type": "string"
+        },
+        "defaultTimeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "defaultMaxRetries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "openaiCompatible": {
+          "type": "object",
+          "required": [
+            "configured",
+            "baseURL",
+            "model",
+            "timeoutMs",
+            "apiKeyConfigured"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "configured": {
+              "type": "boolean"
+            },
+            "baseURL": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "apiKeyConfigured": {
+              "type": "boolean"
+            },
+            "apiKeyEnv": {
+              "type": "string"
+            }
+          }
+        }
+      }
     },
     "redactedFields": {
       "type": "array",

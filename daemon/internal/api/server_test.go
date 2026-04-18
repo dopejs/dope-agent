@@ -1007,6 +1007,9 @@ func TestConfigRouteUsesStrictResponseShape(t *testing.T) {
 			DataDir:  "/tmp/dope",
 			LogLevel: "info",
 			Version:  "test",
+			LLM: config.LLMConfig{
+				DefaultTimeoutMs: 30000,
+			},
 		},
 		Logger:   logger.Slog(),
 		EventBus: events.NewBus(),
@@ -1028,6 +1031,50 @@ func TestConfigRouteUsesStrictResponseShape(t *testing.T) {
 	}
 	if len(response.RedactedFields) != 0 {
 		t.Fatalf("expected no redacted fields, got %+v", response.RedactedFields)
+	}
+}
+
+func TestConfigRouteRedactsProviderSecrets(t *testing.T) {
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "/tmp/dope",
+			LogLevel: "info",
+			Version:  "test",
+			LLM: config.LLMConfig{
+				DefaultProvider:  "openai_compatible",
+				DefaultModel:     "gpt-test",
+				DefaultTimeoutMs: 30000,
+				OpenAICompatible: config.OpenAICompatibleProviderConfig{
+					BaseURL:   "https://api.example.com/v1",
+					APIKey:    "secret",
+					APIKeyEnv: "OPENAI_API_KEY",
+					Model:     "gpt-test",
+					TimeoutMs: 30000,
+				},
+			},
+		},
+		Logger:   telemetry.New("error").Slog(),
+		EventBus: events.NewBus(),
+		Router:   router.NewSessionRouter(),
+		Runtime:  runtime.NewManager(),
+	})
+
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/config", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	response := decodeStrictResponse[ConfigResponse](t, rec.Body.Bytes())
+	if len(response.RedactedFields) != 1 || response.RedactedFields[0] != "llm.openaiCompatible.apiKey" {
+		t.Fatalf("expected redacted api key field, got %+v", response.RedactedFields)
+	}
+	if !response.LLM.OpenAICompatible.APIKeyConfigured {
+		t.Fatal("expected apiKeyConfigured true")
+	}
+	if strings.Contains(rec.Body.String(), "secret") {
+		t.Fatalf("response leaked secret: %s", rec.Body.String())
 	}
 }
 
@@ -1530,6 +1577,225 @@ func TestLLMDispatchStreamRoute(t *testing.T) {
 	}
 	if dispatches[0].Status != llm.DispatchStatusCompleted {
 		t.Fatalf("expected persisted streamed dispatch completed, got %s", dispatches[0].Status)
+	}
+}
+
+func TestChatQueryRoute(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&testLLMProvider{
+		name: "chat-provider",
+		completeFn: func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{
+				Output:       "chat reply",
+				FinishReason: "stop",
+				Usage:        llm.Usage{InputTokens: 2, OutputTokens: 2, TotalTokens: 4},
+			}, nil
+		},
+		streamFn: func(ctx context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{}, errors.New("not used")
+		},
+	})
+
+	authManager := auth.NewManager()
+	logger := telemetry.New("error")
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+			LLM: config.LLMConfig{
+				DefaultTimeoutMs: 30000,
+			},
+		},
+		Logger:   logger.Slog(),
+		EventBus: events.NewBus(),
+		Auth:     authManager,
+		Router:   router.NewSessionRouter(),
+		Runtime:  runtime.NewManager(),
+		LLM:      dispatcher,
+		Store:    sqliteStore,
+	})
+
+	authHeader := issueAuthHeaderForTest(t, authManager, "chat-web")
+
+	unauthorizedRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(unauthorizedRec, httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"chat-provider","model":"test-model","query":"hello"}`)))
+	if unauthorizedRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthorized chat query, got %d", unauthorizedRec.Code)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"chat-provider","model":"test-model","query":"hello chat"}`))
+	req.Header.Set("Authorization", authHeader)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for chat query, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	response := decodeStrictResponse[ChatQueryResponse](t, rec.Body.Bytes())
+	if response.Reply != "chat reply" {
+		t.Fatalf("expected chat reply, got %q", response.Reply)
+	}
+	if response.Status != string(llm.DispatchStatusCompleted) {
+		t.Fatalf("expected completed status, got %s", response.Status)
+	}
+
+	persisted, ok, err := sqliteStore.GetLLMDispatch(context.Background(), response.DispatchID)
+	if err != nil {
+		t.Fatalf("GetLLMDispatch returned error: %v", err)
+	}
+	if !ok || persisted.Output != "chat reply" {
+		t.Fatalf("expected persisted chat dispatch, got %+v ok=%v", persisted, ok)
+	}
+}
+
+func TestChatQueryRouteReturnsProviderFailure(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&testLLMProvider{
+		name: "chat-provider",
+		completeFn: func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{}, &llm.ProviderError{Code: "upstream_auth_failed", Message: "bad key"}
+		},
+		streamFn: func(ctx context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{}, errors.New("not used")
+		},
+	})
+
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+			LLM: config.LLMConfig{
+				DefaultTimeoutMs: 30000,
+			},
+		},
+		Logger:   telemetry.New("error").Slog(),
+		EventBus: events.NewBus(),
+		Router:   router.NewSessionRouter(),
+		Runtime:  runtime.NewManager(),
+		LLM:      dispatcher,
+		Store:    sqliteStore,
+	})
+
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"chat-provider","model":"test-model","query":"hello chat"}`)))
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 for provider failure, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	response := decodeStrictResponse[ChatQueryResponse](t, rec.Body.Bytes())
+	if response.ErrorCode != "upstream_auth_failed" {
+		t.Fatalf("expected upstream_auth_failed, got %s", response.ErrorCode)
+	}
+}
+
+func TestChatQueryStreamRoute(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&testLLMProvider{
+		name: "chat-stream",
+		completeFn: func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{}, errors.New("not used")
+		},
+		streamFn: func(ctx context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+			if err := emit(llm.StreamChunk{Delta: "hello"}); err != nil {
+				return llm.ProviderResponse{}, err
+			}
+			if err := emit(llm.StreamChunk{Delta: " world"}); err != nil {
+				return llm.ProviderResponse{}, err
+			}
+			return llm.ProviderResponse{
+				Output:       "hello world",
+				FinishReason: "stop",
+				Usage:        llm.Usage{InputTokens: 1, OutputTokens: 2, TotalTokens: 3},
+			}, nil
+		},
+	})
+
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+			LLM: config.LLMConfig{
+				DefaultTimeoutMs: 30000,
+			},
+		},
+		Logger:   telemetry.New("error").Slog(),
+		EventBus: events.NewBus(),
+		Router:   router.NewSessionRouter(),
+		Runtime:  runtime.NewManager(),
+		LLM:      dispatcher,
+		Store:    sqliteStore,
+	})
+
+	testServer := httptest.NewServer(server.Handler())
+	defer testServer.Close()
+
+	req, err := http.NewRequest(http.MethodPost, testServer.URL+"/v1/chat/query/stream", strings.NewReader(`{"provider":"chat-stream","model":"test-model","query":"hello stream"}`))
+	if err != nil {
+		t.Fatalf("failed to create stream request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("failed to execute stream request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	reader := bufio.NewReader(resp.Body)
+	var chunks []string
+	for range 16 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			break
+		}
+		chunks = append(chunks, line)
+		if strings.Contains(strings.Join(chunks, ""), "event: chat.query.completed") {
+			break
+		}
+	}
+
+	joined := strings.Join(chunks, "")
+	if !strings.Contains(joined, "event: chat.query.started") {
+		t.Fatalf("expected chat.query.started, got %q", joined)
+	}
+	if !strings.Contains(joined, "event: chat.query.delta") {
+		t.Fatalf("expected chat.query.delta, got %q", joined)
+	}
+	if !strings.Contains(joined, "event: chat.query.completed") {
+		t.Fatalf("expected chat.query.completed, got %q", joined)
 	}
 }
 

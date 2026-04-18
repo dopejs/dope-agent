@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,7 +58,10 @@ func New() (*App, error) {
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
 	policyEngine := policy.NewEngine()
 	authManager := auth.NewManager()
-	llmDispatcher := llm.NewDispatcher()
+	llmDispatcher, err := buildLLMDispatcher(cfg)
+	if err != nil {
+		return nil, err
+	}
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 
@@ -95,6 +99,60 @@ func New() (*App, error) {
 		CapabilitySupervisor: capabilitySupervisor,
 		Server:               server,
 	}, nil
+}
+
+func buildLLMDispatcher(cfg config.Config) (*llm.Dispatcher, error) {
+	dispatcher := llm.NewDispatcher()
+	dispatcher.SetDefaultTimeout(time.Duration(cfg.LLM.DefaultTimeoutMs) * time.Millisecond)
+	dispatcher.SetDefaultRetries(cfg.LLM.DefaultMaxRetries)
+	dispatcher.SetDefaultModel(cfg.LLM.DefaultModel)
+
+	if openAIConfigured(cfg.LLM.OpenAICompatible) {
+		provider, err := llm.NewOpenAICompatibleProvider(llm.OpenAICompatibleProviderConfig{
+			BaseURL:      cfg.LLM.OpenAICompatible.BaseURL,
+			APIKey:       cfg.LLM.OpenAICompatible.APIKey,
+			DefaultModel: firstNonEmpty(cfg.LLM.OpenAICompatible.Model, cfg.LLM.DefaultModel),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("configure openai-compatible provider: %w", err)
+		}
+		dispatcher.RegisterProvider(provider)
+		if cfg.LLM.DefaultProvider == "" {
+			if err := dispatcher.SetDefaultProvider(llm.OpenAICompatibleProviderName); err != nil {
+				return nil, fmt.Errorf("set default provider: %w", err)
+			}
+		}
+		if cfg.LLM.DefaultModel == "" && cfg.LLM.OpenAICompatible.Model != "" {
+			dispatcher.SetDefaultModel(cfg.LLM.OpenAICompatible.Model)
+		}
+		if cfg.LLM.DefaultTimeoutMs <= 0 && cfg.LLM.OpenAICompatible.TimeoutMs > 0 {
+			dispatcher.SetDefaultTimeout(time.Duration(cfg.LLM.OpenAICompatible.TimeoutMs) * time.Millisecond)
+		}
+	}
+
+	if cfg.LLM.DefaultProvider != "" {
+		if err := dispatcher.SetDefaultProvider(cfg.LLM.DefaultProvider); err != nil {
+			return nil, fmt.Errorf("set default provider: %w", err)
+		}
+	}
+
+	return dispatcher, nil
+}
+
+func openAIConfigured(cfg config.OpenAICompatibleProviderConfig) bool {
+	return strings.TrimSpace(cfg.BaseURL) != "" ||
+		strings.TrimSpace(cfg.APIKey) != "" ||
+		strings.TrimSpace(cfg.APIKeyEnv) != "" ||
+		strings.TrimSpace(cfg.Model) != ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func (a *App) Run(ctx context.Context) error {

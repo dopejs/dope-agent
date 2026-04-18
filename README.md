@@ -28,6 +28,11 @@ The immediate build priority is the daemon foundation:
 - policy gates
 - host-platform integration boundary
 
+That daemon foundation is now closed through:
+
+- Roadmap 6: `Real Conversation Core`
+- Roadmap 7: `Minimal Chat Clients`
+
 Execution is roadmap-driven:
 
 - a roadmap is the delivery unit
@@ -35,6 +40,7 @@ Execution is roadmap-driven:
 - every task has a completion boundary
 - a round is only considered complete when the whole roadmap is closed
 - partial or narrow implementations do not count as complete
+- if a target is too broad, it must be split into multiple closed roadmaps before implementation
 
 ## Planning Docs
 
@@ -57,6 +63,8 @@ Execution is roadmap-driven:
 - `docs/17-schema-contract-pipeline.md`
 - `docs/18-migration-versioning.md`
 - `docs/19-p0-release-review.md`
+- `docs/20-minimal-conversation-path.md`
+- `docs/21-minimal-chat-clients.md`
 
 ## Working Assumptions
 

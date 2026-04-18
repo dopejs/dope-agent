@@ -1,14 +1,26 @@
 # TUI Client
 
-This directory is reserved for the terminal operator client.
+This package is the terminal operator client for DopeAgent.
 
-Current status:
+Current role:
 
-- planned
-- implementation language intentionally undecided
+- daemon client only
+- consumes daemon chat APIs through `@dope/client`
+- does not import daemon internals directly
+- stays single-turn and stateless
 
-Architectural rule:
+Supported inputs:
 
-- the TUI is a daemon client
-- it must consume daemon contracts
-- it must not import daemon internals directly
+- `--daemon-url`
+- `--token`
+- `--provider`
+- `--model`
+- `--query`
+- `--stream`
+
+Environment fallbacks:
+
+- `DOPE_DAEMON_URL`
+- `DOPE_ACCESS_TOKEN`
+- `DOPE_CHAT_PROVIDER`
+- `DOPE_CHAT_MODEL`

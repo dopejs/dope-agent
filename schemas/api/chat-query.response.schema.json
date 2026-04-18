@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/chat-query.response.schema.json",
+  "title": "ChatQueryResponse",
+  "type": "object",
+  "required": [
+    "dispatchId",
+    "provider",
+    "model",
+    "query",
+    "status",
+    "reply",
+    "usage"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "dispatchId": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "query": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "running", "completed", "failed", "cancelled"]
+    },
+    "reply": {
+      "type": "string"
+    },
+    "finishReason": {
+      "type": "string"
+    },
+    "usage": {
+      "$ref": "./llm-dispatch-resource.schema.json#/properties/usage"
+    },
+    "errorCode": {
+      "type": "string"
+    },
+    "error": {
+      "type": "string"
+    }
+  }
+}

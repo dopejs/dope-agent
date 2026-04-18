@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -16,12 +17,46 @@ type Config struct {
 	DataDir  string
 	LogLevel string
 	Version  string
+	LLM      LLMConfig
+}
+
+type LLMConfig struct {
+	DefaultProvider   string
+	DefaultModel      string
+	DefaultTimeoutMs  int
+	DefaultMaxRetries int
+	OpenAICompatible  OpenAICompatibleProviderConfig
+}
+
+type OpenAICompatibleProviderConfig struct {
+	BaseURL   string
+	APIKey    string
+	APIKeyEnv string
+	Model     string
+	TimeoutMs int
 }
 
 type fileConfig struct {
-	BindAddr string `json:"bindAddr"`
-	DataDir  string `json:"dataDir"`
-	LogLevel string `json:"logLevel"`
+	BindAddr string         `json:"bindAddr"`
+	DataDir  string         `json:"dataDir"`
+	LogLevel string         `json:"logLevel"`
+	LLM      *fileLLMConfig `json:"llm"`
+}
+
+type fileLLMConfig struct {
+	DefaultProvider   string                              `json:"defaultProvider"`
+	DefaultModel      string                              `json:"defaultModel"`
+	DefaultTimeoutMs  int                                 `json:"defaultTimeoutMs"`
+	DefaultMaxRetries int                                 `json:"defaultMaxRetries"`
+	OpenAICompatible  *fileOpenAICompatibleProviderConfig `json:"openaiCompatible"`
+}
+
+type fileOpenAICompatibleProviderConfig struct {
+	BaseURL   string `json:"baseURL"`
+	APIKey    string `json:"apiKey"`
+	APIKeyEnv string `json:"apiKeyEnv"`
+	Model     string `json:"model"`
+	TimeoutMs int    `json:"timeoutMs"`
 }
 
 func Load() (Config, error) {
@@ -38,6 +73,13 @@ func Load() (Config, error) {
 		DataDir:  bootstrapDir,
 		LogLevel: "info",
 		Version:  getenv("DOPE_VERSION", "dev"),
+		LLM: LLMConfig{
+			DefaultTimeoutMs:  30000,
+			DefaultMaxRetries: 0,
+			OpenAICompatible: OpenAICompatibleProviderConfig{
+				TimeoutMs: 30000,
+			},
+		},
 	}
 
 	loadedFileConfig, err := loadFileConfig(filepath.Join(bootstrapDir, defaultConfigFileName))
@@ -46,6 +88,7 @@ func Load() (Config, error) {
 	}
 	applyFileConfig(&cfg, loadedFileConfig)
 	applyEnvOverrides(&cfg)
+	resolveSecretRefs(&cfg)
 
 	cfg.DataDir, err = ResolveDir(cfg.DataDir)
 	if err != nil {
@@ -89,6 +132,41 @@ func applyFileConfig(cfg *Config, fileCfg fileConfig) {
 	if fileCfg.LogLevel != "" {
 		cfg.LogLevel = fileCfg.LogLevel
 	}
+	if fileCfg.LLM != nil {
+		applyFileLLMConfig(&cfg.LLM, *fileCfg.LLM)
+	}
+}
+
+func applyFileLLMConfig(cfg *LLMConfig, fileCfg fileLLMConfig) {
+	if fileCfg.DefaultProvider != "" {
+		cfg.DefaultProvider = fileCfg.DefaultProvider
+	}
+	if fileCfg.DefaultModel != "" {
+		cfg.DefaultModel = fileCfg.DefaultModel
+	}
+	if fileCfg.DefaultTimeoutMs > 0 {
+		cfg.DefaultTimeoutMs = fileCfg.DefaultTimeoutMs
+	}
+	if fileCfg.DefaultMaxRetries >= 0 {
+		cfg.DefaultMaxRetries = fileCfg.DefaultMaxRetries
+	}
+	if fileCfg.OpenAICompatible != nil {
+		if fileCfg.OpenAICompatible.BaseURL != "" {
+			cfg.OpenAICompatible.BaseURL = fileCfg.OpenAICompatible.BaseURL
+		}
+		if fileCfg.OpenAICompatible.APIKey != "" {
+			cfg.OpenAICompatible.APIKey = fileCfg.OpenAICompatible.APIKey
+		}
+		if fileCfg.OpenAICompatible.APIKeyEnv != "" {
+			cfg.OpenAICompatible.APIKeyEnv = fileCfg.OpenAICompatible.APIKeyEnv
+		}
+		if fileCfg.OpenAICompatible.Model != "" {
+			cfg.OpenAICompatible.Model = fileCfg.OpenAICompatible.Model
+		}
+		if fileCfg.OpenAICompatible.TimeoutMs > 0 {
+			cfg.OpenAICompatible.TimeoutMs = fileCfg.OpenAICompatible.TimeoutMs
+		}
+	}
 }
 
 func applyEnvOverrides(cfg *Config) {
@@ -96,6 +174,23 @@ func applyEnvOverrides(cfg *Config) {
 	cfg.DataDir = getenv("DOPE_DATA_DIR", cfg.DataDir)
 	cfg.LogLevel = getenv("DOPE_LOG_LEVEL", cfg.LogLevel)
 	cfg.Version = getenv("DOPE_VERSION", cfg.Version)
+
+	cfg.LLM.DefaultProvider = getenv("DOPE_LLM_DEFAULT_PROVIDER", cfg.LLM.DefaultProvider)
+	cfg.LLM.DefaultModel = getenv("DOPE_LLM_DEFAULT_MODEL", cfg.LLM.DefaultModel)
+	cfg.LLM.DefaultTimeoutMs = getenvInt("DOPE_LLM_DEFAULT_TIMEOUT_MS", cfg.LLM.DefaultTimeoutMs)
+	cfg.LLM.DefaultMaxRetries = getenvInt("DOPE_LLM_DEFAULT_MAX_RETRIES", cfg.LLM.DefaultMaxRetries)
+
+	cfg.LLM.OpenAICompatible.BaseURL = getenv("DOPE_LLM_OPENAI_COMPATIBLE_BASE_URL", cfg.LLM.OpenAICompatible.BaseURL)
+	cfg.LLM.OpenAICompatible.APIKey = getenv("DOPE_LLM_OPENAI_COMPATIBLE_API_KEY", cfg.LLM.OpenAICompatible.APIKey)
+	cfg.LLM.OpenAICompatible.APIKeyEnv = getenv("DOPE_LLM_OPENAI_COMPATIBLE_API_KEY_ENV", cfg.LLM.OpenAICompatible.APIKeyEnv)
+	cfg.LLM.OpenAICompatible.Model = getenv("DOPE_LLM_OPENAI_COMPATIBLE_MODEL", cfg.LLM.OpenAICompatible.Model)
+	cfg.LLM.OpenAICompatible.TimeoutMs = getenvInt("DOPE_LLM_OPENAI_COMPATIBLE_TIMEOUT_MS", cfg.LLM.OpenAICompatible.TimeoutMs)
+}
+
+func resolveSecretRefs(cfg *Config) {
+	if cfg.LLM.OpenAICompatible.APIKey == "" && cfg.LLM.OpenAICompatible.APIKeyEnv != "" {
+		cfg.LLM.OpenAICompatible.APIKey = os.Getenv(cfg.LLM.OpenAICompatible.APIKeyEnv)
+	}
 }
 
 func loadFileConfig(path string) (fileConfig, error) {
@@ -125,4 +220,16 @@ func getenv(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func getenvInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }

@@ -18,11 +18,14 @@ Each implementation round should finish **one whole roadmap**.
 ## Execution Standard
 
 - A roadmap is the planning and delivery boundary.
+- A roadmap remains the only acceptable implementation delivery unit.
 - A task is an auditable work item inside a roadmap.
+- Tasks exist to make progress and gaps inspectable. They do not authorize shipping a partial roadmap.
 - A task can only be marked `[x]` when its task-level definition of done is fully satisfied.
 - A roadmap can only be marked `[x]` when every required task inside it is fully satisfied and the roadmap-level definition of done is met.
 - Partial, provisional, or narrow implementations stay `[ ]` with a note like `(partial)` or `(blocked)`.
-- If a roadmap is too large to finish in one round, it must be re-cut into smaller roadmaps. It should not be "partially completed and counted as done".
+- If a roadmap is too large to finish in one round, it must be re-cut into smaller roadmaps before implementation starts. It should not be "partially completed and counted as done".
+- Demo-grade shortcuts do not count as roadmap completion.
 
 ## Current State
 
@@ -455,6 +458,178 @@ Task definition of done:
 - rich workflow automation
 - broad ecosystem integrations
 
+## Roadmap 6: Real Conversation Core
+
+Status: `[x] complete`
+
+### Goal
+
+Make DopeAgent able to serve real single-turn AI replies over daemon APIs once a provider is configured.
+
+This roadmap closes the daemon-side slice only:
+
+- one user query in
+- one assistant reply out
+- one real configured provider
+- one stable chat contract
+- no client delivery in this roadmap
+
+### Tasks
+
+#### 1. Real Provider Configuration Model
+
+Scope:
+
+- extend daemon config with provider settings
+- define default provider and default model behavior
+- define redaction policy for secrets in config inspection
+
+Task definition of done:
+
+- config supports at least one real provider registration path
+- provider config can be loaded from file and env overrides
+- secrets are never exposed through config inspection APIs
+- invalid provider config fails clearly at startup
+- tests cover load, override, redaction, and invalid config behavior
+
+#### 2. OpenAI-Compatible Provider Integration
+
+Scope:
+
+- implement one real provider using an OpenAI-compatible chat/completions surface
+- use OpenClaw as a reference for provider behavior and request mapping where helpful
+
+Task definition of done:
+
+- daemon can issue real non-echo model requests to a configured upstream provider
+- auth, base URL, model, timeout, and error mapping are explicit
+- non-stream and stream execution both work through the existing dispatch plane
+- retry behavior remains compatible with current dispatcher rules
+- tests cover request mapping, auth failure, upstream failure, and streamed success
+
+#### 3. Minimal Conversation API Contract
+
+Scope:
+
+- add a single-turn conversation contract above raw LLM dispatch
+- keep daemon stateless with respect to conversation history
+
+Task definition of done:
+
+- daemon exposes a minimal chat query route and a streaming variant
+- request shape is query-first, not full runtime/run-step oriented
+- response shape is schema-backed and stable enough for UI clients
+- implementation is explicit that the daemon does not retain multi-turn conversation state
+- tests cover success, provider error, auth error, and streaming completion
+
+#### 4. End-To-End Verification And Operator Docs
+
+Scope:
+
+- add real-provider smoke coverage
+- document operator setup and failure modes
+
+Task definition of done:
+
+- there is a documented setup path from empty config to first successful reply
+- there is a documented failure path for bad key, bad endpoint, and missing model
+- end-to-end verification proves one real configured provider can serve both HTTP and streaming chat paths
+- rollback or disable path is documented if provider integration must be turned off
+
+### Roadmap Definition Of Done
+
+- daemon can talk to at least one real configured provider
+- the chat contract is explicit, schema-backed, and independent from future memory/context design
+- one operator can reach a successful single-turn reply through daemon HTTP APIs alone
+- operator setup, error handling, and verification are documented well enough to support client development
+
+### Explicitly Out Of Scope
+
+- Web UI delivery
+- TUI delivery
+- multi-turn conversation state in daemon
+- memory or context engineering
+- tool use orchestration during chat
+- provider marketplace or multi-provider routing policy
+
+## Roadmap 7: Minimal Chat Clients
+
+Status: `[x] complete`
+
+### Goal
+
+Make the configured daemon usable from both a minimal Web UI and a minimal TUI for single-turn chat.
+
+This roadmap depends on Roadmap 6 being complete first.
+
+### Tasks
+
+#### 1. Shared Client Contract Adoption
+
+Scope:
+
+- use the daemon chat contract as the only conversation surface for both clients
+
+Task definition of done:
+
+- Web and TUI both use the same daemon chat routes
+- neither client introduces hidden provider-specific request logic
+- neither client depends on daemon-side multi-turn state
+- smoke verification proves contract parity across both clients
+
+#### 2. Web Chat Surface
+
+Scope:
+
+- add a minimal Web UI for single-turn chat
+
+Task definition of done:
+
+- operator can enter a query and receive a real assistant response
+- loading, error, and retry states are visible
+- provider configuration assumptions are documented in the UI or operator docs
+- the Web UI does not depend on memory or context subsystems
+- tests or smoke verification cover the basic chat path
+
+#### 3. TUI Chat Surface
+
+Scope:
+
+- add a minimal TUI for single-turn chat
+
+Task definition of done:
+
+- operator can enter a query and receive a real assistant response from terminal
+- loading, error, and retry states are visible
+- TUI uses the same daemon chat contract as the Web UI
+- the TUI does not carry hidden multi-turn state in daemon
+- tests or smoke verification cover the basic TUI chat path
+
+#### 4. Cross-Client Verification
+
+Scope:
+
+- verify operator setup and failure behavior across both client surfaces
+
+Task definition of done:
+
+- one configured daemon can serve both Web and TUI without client-specific backend switches
+- auth failure, provider failure, and streaming failure are visible from both clients
+- operator docs cover how to start each client against the daemon
+
+### Roadmap Definition Of Done
+
+- Web UI and TUI can both issue a single-turn query and render the reply
+- both clients rely on the same daemon chat contract
+- client behavior is documented and smoke-verified
+
+### Explicitly Out Of Scope
+
+- multi-turn conversation state
+- memory or context engineering
+- tool use orchestration during chat
+- rich conversation UX beyond minimal operator flow
+
 ## Recommended Order
 
 1. Roadmap 1: Runtime Closure
@@ -462,3 +637,5 @@ Task definition of done:
 3. Roadmap 3: LLM Dispatch Plane
 4. Roadmap 4: Operator Trust And Security
 5. Roadmap 5: Contract Hardening And Ship Readiness
+6. Roadmap 6: Real Conversation Core
+7. Roadmap 7: Minimal Chat Clients

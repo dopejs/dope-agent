@@ -4,8 +4,15 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.0.0",
   "scripts": {
+    "build:sdk": "pnpm --dir sdk/ts build",
+    "test:sdk": "pnpm --dir sdk/ts test",
     "dev:web": "pnpm --dir web dev",
     "build:web": "pnpm --dir web build",
-    "typecheck:web": "pnpm --dir web exec tsc --noEmit"
+    "test:web": "pnpm --dir web test",
+    "typecheck:web": "pnpm --dir web exec tsc --noEmit",
+    "build:tui": "pnpm --dir tui build",
+    "test:tui": "pnpm --dir tui test",
+    "build:clients": "pnpm build:sdk && pnpm build:web && pnpm build:tui",
+    "test:clients": "pnpm build:clients && pnpm test:sdk && pnpm test:web && pnpm test:tui && node --test test/roadmap7.smoke.test.mjs"
   }
 }

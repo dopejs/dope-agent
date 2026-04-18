@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/chat-query-stream-started.event.schema.json",
+  "title": "ChatQueryStreamStarted",
+  "type": "object",
+  "required": ["dispatchId", "provider", "model", "query"],
+  "additionalProperties": false,
+  "properties": {
+    "dispatchId": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "query": {
+      "type": "string"
+    }
+  }
+}
