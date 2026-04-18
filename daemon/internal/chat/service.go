@@ -11,6 +11,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
+	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
 
@@ -18,6 +19,7 @@ type QueryInput struct {
 	Query      string
 	Provider   string
 	Model      string
+	Skills     []string
 	TimeoutMs  int
 	MaxRetries int
 	Scope      events.Scope
@@ -25,10 +27,15 @@ type QueryInput struct {
 
 type QueryResult struct {
 	Query    string
+	Skills   []string
 	Dispatch llm.Dispatch
 }
 
 type StreamChunk struct {
+	DispatchID   string
+	Provider     string
+	Model        string
+	Skills       []string
 	Delta        string
 	Reply        string
 	FinishReason string
@@ -38,14 +45,16 @@ type StreamChunk struct {
 type Service struct {
 	dispatcher *llm.Dispatcher
 	providers  *providers.Manager
+	skills     *skills.Registry
 	eventBus   *events.Bus
 	store      *store.SQLiteStore
 }
 
-func NewService(dispatcher *llm.Dispatcher, providerManager *providers.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore) *Service {
+func NewService(dispatcher *llm.Dispatcher, providerManager *providers.Manager, skillRegistry *skills.Registry, eventBus *events.Bus, sqliteStore *store.SQLiteStore) *Service {
 	return &Service{
 		dispatcher: dispatcher,
 		providers:  providerManager,
+		skills:     skillRegistry,
 		eventBus:   eventBus,
 		store:      sqliteStore,
 	}
@@ -56,7 +65,7 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 		return QueryResult{}, errors.New("chat service is not configured")
 	}
 
-	dispatchInput, err := buildDispatchInput(input)
+	dispatchInput, selectedSkills, err := s.buildDispatchInput(input)
 	if err != nil {
 		return QueryResult{}, err
 	}
@@ -87,7 +96,8 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	}
 
 	result := QueryResult{
-		Query:    input.Query,
+		Query:    strings.TrimSpace(input.Query),
+		Skills:   selectedSkillIDsFromSkills(selectedSkills),
 		Dispatch: finalDispatch,
 	}
 	if execErr != nil {
@@ -101,7 +111,7 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 		return QueryResult{}, errors.New("chat service is not configured")
 	}
 
-	dispatchInput, err := buildDispatchInput(input)
+	dispatchInput, selectedSkills, err := s.buildDispatchInput(input)
 	if err != nil {
 		return QueryResult{}, err
 	}
@@ -128,6 +138,10 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 			return nil
 		}
 		return emit(StreamChunk{
+			DispatchID:   dispatch.DispatchID,
+			Provider:     dispatch.Provider,
+			Model:        dispatch.Model,
+			Skills:       selectedSkillIDsFromSkills(selectedSkills),
 			Delta:        chunk.Delta,
 			Reply:        chunk.Output,
 			FinishReason: chunk.FinishReason,
@@ -142,7 +156,8 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 	}
 
 	result := QueryResult{
-		Query:    input.Query,
+		Query:    strings.TrimSpace(input.Query),
+		Skills:   selectedSkillIDsFromSkills(selectedSkills),
 		Dispatch: finalDispatch,
 	}
 	if execErr != nil {
@@ -151,18 +166,84 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 	return result, nil
 }
 
-func buildDispatchInput(input QueryInput) (llm.CreateDispatchInput, error) {
+func (s *Service) buildDispatchInput(input QueryInput) (llm.CreateDispatchInput, []skills.Skill, error) {
 	query := strings.TrimSpace(input.Query)
 	if query == "" {
-		return llm.CreateDispatchInput{}, errors.New("query is required")
+		return llm.CreateDispatchInput{}, nil, errors.New("query is required")
 	}
+
+	selectedSkills, err := resolveSelectedSkills(s.skills, input.Skills)
+	if err != nil {
+		return llm.CreateDispatchInput{}, nil, err
+	}
+	messages := compilePromptMessages(query, selectedSkills, availableOverlays(s.skills))
+
 	return llm.CreateDispatchInput{
 		Provider:   strings.TrimSpace(input.Provider),
 		Model:      strings.TrimSpace(input.Model),
-		Messages:   []llm.Message{{Role: llm.RoleUser, Content: query}},
+		Messages:   messages,
 		TimeoutMs:  input.TimeoutMs,
 		MaxRetries: input.MaxRetries,
-	}, nil
+	}, selectedSkills, nil
+}
+
+func resolveSelectedSkills(registry *skills.Registry, selected []string) ([]skills.Skill, error) {
+	if len(selected) == 0 {
+		return nil, nil
+	}
+	if registry == nil {
+		return nil, skills.ErrSkillsRegistryMissing
+	}
+	return registry.ResolveSelected(selected)
+}
+
+func availableOverlays(registry *skills.Registry) []skills.Overlay {
+	if registry == nil {
+		return nil
+	}
+	return registry.Overlays()
+}
+
+func compilePromptMessages(query string, selected []skills.Skill, overlays []skills.Overlay) []llm.Message {
+	messages := make([]llm.Message, 0, len(overlays)+len(selected)+1)
+	for _, overlay := range overlays {
+		if strings.TrimSpace(overlay.Body) == "" {
+			continue
+		}
+		messages = append(messages, llm.Message{
+			Role: llm.RoleSystem,
+			Content: strings.TrimSpace(
+				"Agent overlay (" + string(overlay.Source) + "):\n" + overlay.Body,
+			),
+		})
+	}
+	for _, skill := range selected {
+		builder := strings.Builder{}
+		builder.WriteString("Skill: ")
+		builder.WriteString(skill.Name)
+		if description := strings.TrimSpace(skill.Description); description != "" {
+			builder.WriteString("\nDescription: ")
+			builder.WriteString(description)
+		}
+		if body := strings.TrimSpace(skill.Body); body != "" {
+			builder.WriteString("\nInstructions:\n")
+			builder.WriteString(body)
+		}
+		messages = append(messages, llm.Message{
+			Role:    llm.RoleSystem,
+			Content: builder.String(),
+		})
+	}
+	messages = append(messages, llm.Message{Role: llm.RoleUser, Content: strings.TrimSpace(query)})
+	return messages
+}
+
+func selectedSkillIDsFromSkills(selected []skills.Skill) []string {
+	items := make([]string, 0, len(selected))
+	for _, skill := range selected {
+		items = append(items, skill.SkillID)
+	}
+	return items
 }
 
 func persistDispatch(ctx context.Context, sqliteStore *store.SQLiteStore, dispatch llm.Dispatch) error {

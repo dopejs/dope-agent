@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/skill-summary.schema.json",
+  "title": "SkillSummaryResponse",
+  "type": "object",
+  "required": [
+    "skillId",
+    "name",
+    "description",
+    "source",
+    "rootPath",
+    "skillPath",
+    "instructionPath",
+    "files",
+    "frontmatter"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "skillId": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "source": { "type": "string", "enum": ["home", "data_dir"] },
+    "rootPath": { "type": "string" },
+    "skillPath": { "type": "string" },
+    "instructionPath": { "type": "string" },
+    "files": {
+      "type": "array",
+      "items": { "$ref": "./skill-file.schema.json" }
+    },
+    "frontmatter": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

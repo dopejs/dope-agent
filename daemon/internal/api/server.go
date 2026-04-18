@@ -26,6 +26,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
 
@@ -40,6 +41,7 @@ type Dependencies struct {
 	LLM          *llm.Dispatcher
 	Chat         *chat.Service
 	Providers    *providers.Manager
+	Skills       *skills.Registry
 	Connectors   *connectors.Supervisor
 	Capabilities *capabilities.Supervisor
 	Store        *store.SQLiteStore
@@ -57,6 +59,7 @@ type Server struct {
 	llm          *llm.Dispatcher
 	chat         *chat.Service
 	providers    *providers.Manager
+	skills       *skills.Registry
 	connectors   *connectors.Supervisor
 	capabilities *capabilities.Supervisor
 	store        *store.SQLiteStore
@@ -148,10 +151,16 @@ func NewServer(deps Dependencies) *Server {
 		handleLLMDispatchRoutes(deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/chat/query/stream", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleChatQueryStream(deps.LLM, deps.Providers, deps.EventBus, deps.Store, w, r)
+		handleChatQueryStream(deps.Chat, w, r)
 	}))
 	mux.HandleFunc("/v1/chat/query", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleChatQuery(deps.Chat, w, r)
+	}))
+	mux.HandleFunc("/v1/skills", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleSkills(deps.Skills, w, r)
+	}))
+	mux.HandleFunc("/v1/skills/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleSkillRoutes(deps.Skills, w, r)
 	}))
 	mux.HandleFunc("/v1/providers", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleProviders(deps.Providers, w, r)
@@ -183,6 +192,7 @@ func NewServer(deps Dependencies) *Server {
 		llm:          deps.LLM,
 		chat:         deps.Chat,
 		providers:    deps.Providers,
+		skills:       deps.Skills,
 		connectors:   deps.Connectors,
 		capabilities: deps.Capabilities,
 		store:        deps.Store,
@@ -1342,11 +1352,12 @@ func handleLLMDispatchStream(dispatcher *llm.Dispatcher, providerManager *provid
 }
 
 type chatQueryRequest struct {
-	Provider   string `json:"provider"`
-	Model      string `json:"model"`
-	Query      string `json:"query"`
-	TimeoutMs  int    `json:"timeoutMs"`
-	MaxRetries int    `json:"maxRetries"`
+	Provider   string   `json:"provider"`
+	Model      string   `json:"model"`
+	Skills     []string `json:"skills"`
+	Query      string   `json:"query"`
+	TimeoutMs  int      `json:"timeoutMs"`
+	MaxRetries int      `json:"maxRetries"`
 }
 
 func handleChatQuery(chatService *chat.Service, w http.ResponseWriter, r *http.Request) {
@@ -1369,6 +1380,7 @@ func handleChatQuery(chatService *chat.Service, w http.ResponseWriter, r *http.R
 		Query:      strings.TrimSpace(input.Query),
 		Provider:   strings.TrimSpace(input.Provider),
 		Model:      strings.TrimSpace(input.Model),
+		Skills:     append([]string(nil), input.Skills...),
 		TimeoutMs:  input.TimeoutMs,
 		MaxRetries: input.MaxRetries,
 	})
@@ -1377,52 +1389,26 @@ func handleChatQuery(chatService *chat.Service, w http.ResponseWriter, r *http.R
 			writeError(w, llmPrepareStatusCode(err), err.Error())
 			return
 		}
-		response := buildChatQueryResponse(result.Query, result.Dispatch)
+		response := buildChatQueryResponse(result)
 		writeJSON(w, llmDispatchStatusCode(result.Dispatch), response)
 		return
 	}
-	writeJSON(w, http.StatusOK, buildChatQueryResponse(result.Query, result.Dispatch))
+	writeJSON(w, http.StatusOK, buildChatQueryResponse(result))
 }
 
-func handleChatQueryStream(dispatcher *llm.Dispatcher, providerManager *providers.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleChatQueryStream(chatService *chat.Service, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if dispatcher == nil {
-		writeError(w, http.StatusInternalServerError, "llm dispatcher is not configured")
+	if chatService == nil {
+		writeError(w, http.StatusInternalServerError, "chat service is not configured")
 		return
 	}
 
 	var input chatQueryRequest
 	if err := decodeJSONBody(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	dispatchInput, err := buildChatDispatchInput(input)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	resolvedInput, err := resolveProviderDispatchInput(providerManager, dispatchInput)
-	if err != nil {
-		writeError(w, llmPrepareStatusCode(err), err.Error())
-		return
-	}
-
-	dispatch, err := dispatcher.Prepare(resolvedInput, true)
-	if err != nil {
-		writeError(w, llmPrepareStatusCode(err), err.Error())
-		return
-	}
-	if err := persistLLMDispatch(r.Context(), sqliteStore, dispatch); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if _, err := publishLLMDispatchRequested(r.Context(), eventBus, sqliteStore, dispatch); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -1436,74 +1422,121 @@ func handleChatQueryStream(dispatcher *llm.Dispatcher, providerManager *provider
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
-	writeSSEEvent(w, "chat.query.started", dispatch.DispatchID, ChatQueryStreamStarted{
-		DispatchID: dispatch.DispatchID,
-		Provider:   dispatch.Provider,
-		Model:      dispatch.Model,
-		Query:      strings.TrimSpace(input.Query),
-	})
-	flusher.Flush()
-
 	var reply strings.Builder
-	finalDispatch, execErr := dispatcher.DispatchStream(r.Context(), dispatch, func(chunk llm.StreamChunk) error {
+	started := false
+	result, execErr := chatService.Stream(r.Context(), chat.QueryInput{
+		Query:      strings.TrimSpace(input.Query),
+		Provider:   strings.TrimSpace(input.Provider),
+		Model:      strings.TrimSpace(input.Model),
+		Skills:     append([]string(nil), input.Skills...),
+		TimeoutMs:  input.TimeoutMs,
+		MaxRetries: input.MaxRetries,
+	}, func(chunk chat.StreamChunk) error {
+		if !started {
+			started = true
+			writeSSEEvent(w, "chat.query.started", "", ChatQueryStreamStarted{
+				DispatchID: chunk.DispatchID,
+				Provider:   chunk.Provider,
+				Model:      chunk.Model,
+				Skills:     cloneStringSlice(chunk.Skills),
+				Query:      strings.TrimSpace(input.Query),
+			})
+			flusher.Flush()
+		}
 		reply.WriteString(chunk.Delta)
 		writeSSEEvent(w, "chat.query.delta", "", ChatQueryStreamDelta{
-			DispatchID: dispatch.DispatchID,
+			DispatchID: chunk.DispatchID,
 			Delta:      chunk.Delta,
 			Reply:      reply.String(),
 		})
 		flusher.Flush()
 		return nil
 	})
-
-	if err := persistLLMDispatch(context.Background(), sqliteStore, finalDispatch); err != nil {
-		return
-	}
-	if _, err := publishLLMDispatchTerminal(context.Background(), eventBus, sqliteStore, finalDispatch); err != nil {
-		return
+	if !started && result.Dispatch.DispatchID != "" {
+		writeSSEEvent(w, "chat.query.started", "", ChatQueryStreamStarted{
+			DispatchID: result.Dispatch.DispatchID,
+			Provider:   result.Dispatch.Provider,
+			Model:      result.Dispatch.Model,
+			Skills:     cloneStringSlice(result.Skills),
+			Query:      strings.TrimSpace(input.Query),
+		})
+		flusher.Flush()
 	}
 
 	terminalName := "chat.query.completed"
-	if execErr != nil || finalDispatch.Status == llm.DispatchStatusFailed {
+	if execErr != nil || result.Dispatch.Status == llm.DispatchStatusFailed {
 		terminalName = "chat.query.failed"
 	}
-	if finalDispatch.Status == llm.DispatchStatusCancelled {
+	if result.Dispatch.Status == llm.DispatchStatusCancelled {
 		terminalName = "chat.query.cancelled"
 	}
-	if finalDispatch.Status == llm.DispatchStatusPartialFailed {
+	if result.Dispatch.Status == llm.DispatchStatusPartialFailed {
 		terminalName = "chat.query.partial_failed"
 	}
-	writeSSEEvent(w, terminalName, dispatch.DispatchID, buildChatQueryResponse(input.Query, finalDispatch))
+	writeSSEEvent(w, terminalName, result.Dispatch.DispatchID, buildChatQueryResponse(result))
 	flusher.Flush()
 }
 
-func buildChatDispatchInput(input chatQueryRequest) (llm.CreateDispatchInput, error) {
-	query := strings.TrimSpace(input.Query)
-	if query == "" {
-		return llm.CreateDispatchInput{}, errors.New("query is required")
+func buildChatQueryResponse(result chat.QueryResult) ChatQueryResponse {
+	return ChatQueryResponse{
+		DispatchID:   result.Dispatch.DispatchID,
+		Provider:     result.Dispatch.Provider,
+		Model:        result.Dispatch.Model,
+		Skills:       cloneStringSlice(result.Skills),
+		Query:        strings.TrimSpace(result.Query),
+		Status:       string(result.Dispatch.Status),
+		Partial:      result.Dispatch.Partial,
+		Reply:        result.Dispatch.Output,
+		FinishReason: result.Dispatch.FinishReason,
+		Usage:        result.Dispatch.Usage,
+		ErrorCode:    result.Dispatch.ErrorCode,
+		Error:        result.Dispatch.Error,
 	}
-	return llm.CreateDispatchInput{
-		Provider:   strings.TrimSpace(input.Provider),
-		Model:      strings.TrimSpace(input.Model),
-		Messages:   []llm.Message{{Role: llm.RoleUser, Content: query}},
-		TimeoutMs:  input.TimeoutMs,
-		MaxRetries: input.MaxRetries,
-	}, nil
 }
 
-func buildChatQueryResponse(query string, dispatch llm.Dispatch) ChatQueryResponse {
-	return ChatQueryResponse{
-		DispatchID:   dispatch.DispatchID,
-		Provider:     dispatch.Provider,
-		Model:        dispatch.Model,
-		Query:        strings.TrimSpace(query),
-		Status:       string(dispatch.Status),
-		Partial:      dispatch.Partial,
-		Reply:        dispatch.Output,
-		FinishReason: dispatch.FinishReason,
-		Usage:        dispatch.Usage,
-		ErrorCode:    dispatch.ErrorCode,
-		Error:        dispatch.Error,
+func handleSkills(registry *skills.Registry, w http.ResponseWriter, r *http.Request) {
+	if registry == nil {
+		writeError(w, http.StatusInternalServerError, "skills registry is not configured")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, buildSkillRegistryResponse(registry.Snapshot()))
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func handleSkillRoutes(registry *skills.Registry, w http.ResponseWriter, r *http.Request) {
+	if registry == nil {
+		writeError(w, http.StatusInternalServerError, "skills registry is not configured")
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/v1/skills/")
+	switch {
+	case path == "reload":
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if err := registry.Reload(); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, buildSkillRegistryResponse(registry.Snapshot()))
+	case path != "":
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		skill, ok := registry.Get(path)
+		if !ok {
+			writeError(w, http.StatusNotFound, "skill not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, buildSkillDetailResponse(skill))
+	default:
+		w.WriteHeader(http.StatusNotFound)
 	}
 }
 
@@ -2916,8 +2949,16 @@ func splitPath(path string) []string {
 
 func llmPrepareStatusCode(err error) int {
 	switch {
-	case errors.Is(err, llm.ErrProviderRequired), errors.Is(err, llm.ErrProviderNotFound), errors.Is(err, llm.ErrModelRequired), errors.Is(err, llm.ErrMessagesRequired), errors.Is(err, providers.ErrModelNotSupported), errors.Is(err, providers.ErrManagedAuthUnsupported):
+	case errors.Is(err, llm.ErrProviderRequired),
+		errors.Is(err, llm.ErrProviderNotFound),
+		errors.Is(err, llm.ErrModelRequired),
+		errors.Is(err, llm.ErrMessagesRequired),
+		errors.Is(err, providers.ErrModelNotSupported),
+		errors.Is(err, providers.ErrManagedAuthUnsupported),
+		errors.Is(err, skills.ErrSkillNotFound):
 		return http.StatusBadRequest
+	case errors.Is(err, skills.ErrSkillsRegistryMissing):
+		return http.StatusInternalServerError
 	default:
 		return http.StatusInternalServerError
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/skills"
 )
 
 type SystemInfoResponse struct {
@@ -83,6 +84,7 @@ type ChatQueryResponse struct {
 	DispatchID   string    `json:"dispatchId"`
 	Provider     string    `json:"provider"`
 	Model        string    `json:"model"`
+	Skills       []string  `json:"skills"`
 	Query        string    `json:"query"`
 	Status       string    `json:"status"`
 	Partial      bool      `json:"partial"`
@@ -94,10 +96,11 @@ type ChatQueryResponse struct {
 }
 
 type ChatQueryStreamStarted struct {
-	DispatchID string `json:"dispatchId"`
-	Provider   string `json:"provider"`
-	Model      string `json:"model"`
-	Query      string `json:"query"`
+	DispatchID string   `json:"dispatchId"`
+	Provider   string   `json:"provider"`
+	Model      string   `json:"model"`
+	Skills     []string `json:"skills"`
+	Query      string   `json:"query"`
 }
 
 type ChatQueryStreamDelta struct {
@@ -178,6 +181,43 @@ type ProviderDefaultModelResponse struct {
 	ProviderID   string    `json:"providerId"`
 	DefaultModel string    `json:"defaultModel"`
 	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+type SkillFileResponse struct {
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"sizeBytes"`
+}
+
+type SkillSummaryResponse struct {
+	SkillID         string              `json:"skillId"`
+	Name            string              `json:"name"`
+	Description     string              `json:"description"`
+	Source          string              `json:"source"`
+	RootPath        string              `json:"rootPath"`
+	SkillPath       string              `json:"skillPath"`
+	InstructionPath string              `json:"instructionPath"`
+	Files           []SkillFileResponse `json:"files"`
+	Frontmatter     map[string]string   `json:"frontmatter"`
+}
+
+type SkillDetailResponse struct {
+	SkillSummaryResponse
+	FrontmatterRaw string `json:"frontmatterRaw,omitempty"`
+	Body           string `json:"body"`
+}
+
+type SkillOverlayResponse struct {
+	OverlayID  string    `json:"overlayId"`
+	Source     string    `json:"source"`
+	Path       string    `json:"path"`
+	SizeBytes  int64     `json:"sizeBytes"`
+	ModifiedAt time.Time `json:"modifiedAt"`
+}
+
+type SkillRegistryResponse struct {
+	LoadedAt time.Time              `json:"loadedAt"`
+	Items    []SkillSummaryResponse `json:"items"`
+	Overlays []SkillOverlayResponse `json:"overlays"`
 }
 
 type ListResponse[T any] struct {
@@ -276,6 +316,57 @@ func buildConfigResponse(cfg config.Config) ConfigResponse {
 			},
 		},
 		RedactedFields: redactedFields,
+	}
+}
+
+func buildSkillRegistryResponse(snapshot skills.Snapshot) SkillRegistryResponse {
+	items := make([]SkillSummaryResponse, 0, len(snapshot.Skills))
+	for _, skill := range snapshot.Skills {
+		items = append(items, buildSkillSummaryResponse(skill))
+	}
+	overlays := make([]SkillOverlayResponse, 0, len(snapshot.Overlays))
+	for _, overlay := range snapshot.Overlays {
+		overlays = append(overlays, SkillOverlayResponse{
+			OverlayID:  overlay.OverlayID,
+			Source:     string(overlay.Source),
+			Path:       overlay.Path,
+			SizeBytes:  overlay.SizeBytes,
+			ModifiedAt: overlay.ModifiedAt,
+		})
+	}
+	return SkillRegistryResponse{
+		LoadedAt: snapshot.LoadedAt,
+		Items:    items,
+		Overlays: overlays,
+	}
+}
+
+func buildSkillSummaryResponse(skill skills.Skill) SkillSummaryResponse {
+	files := make([]SkillFileResponse, 0, len(skill.Files))
+	for _, file := range skill.Files {
+		files = append(files, SkillFileResponse{
+			Path:      file.Path,
+			SizeBytes: file.SizeBytes,
+		})
+	}
+	return SkillSummaryResponse{
+		SkillID:         skill.SkillID,
+		Name:            skill.Name,
+		Description:     skill.Description,
+		Source:          string(skill.Source),
+		RootPath:        skill.RootPath,
+		SkillPath:       skill.SkillPath,
+		InstructionPath: skill.InstructionPath,
+		Files:           files,
+		Frontmatter:     skill.Frontmatter,
+	}
+}
+
+func buildSkillDetailResponse(skill skills.Skill) SkillDetailResponse {
+	return SkillDetailResponse{
+		SkillSummaryResponse: buildSkillSummaryResponse(skill),
+		FrontmatterRaw:       skill.FrontmatterRaw,
+		Body:                 skill.Body,
 	}
 }
 

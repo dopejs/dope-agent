@@ -7,6 +7,7 @@
     "dispatchId",
     "provider",
     "model",
+    "skills",
     "query",
     "status",
     "partial",
@@ -23,6 +24,10 @@
     },
     "model": {
       "type": "string"
+    },
+    "skills": {
+      "type": "array",
+      "items": { "type": "string" }
     },
     "query": {
       "type": "string"

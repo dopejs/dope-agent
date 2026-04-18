@@ -26,28 +26,31 @@ describe("DopeClient", () => {
           dispatchId: "dispatch_1",
           provider: "openai_compatible",
           model: "gpt-test",
+          skills: ["shared"],
           query: "hello",
           status: "completed",
+          partial: false,
           reply: "world",
           usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
         });
       }
     });
 
-    const response = await client.queryChat({ query: "hello" });
+    const response = await client.queryChat({ query: "hello", skills: [" shared ", ""] });
     expect(url).toBe("http://127.0.0.1:19192/v1/chat/query");
     expect(authorization).toBe("Bearer token");
     expect(response.reply).toBe("world");
+    expect(response.skills).toEqual(["shared"]);
   });
 
   it("streams chat events until terminal response", async () => {
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(encoder.encode("event: chat.query.started\ndata: {\"dispatchId\":\"dispatch_1\",\"provider\":\"openai_compatible\",\"model\":\"gpt-test\",\"query\":\"hello\"}\n\n"));
+        controller.enqueue(encoder.encode("event: chat.query.started\ndata: {\"dispatchId\":\"dispatch_1\",\"provider\":\"openai_compatible\",\"model\":\"gpt-test\",\"skills\":[\"shared\"],\"query\":\"hello\"}\n\n"));
         controller.enqueue(encoder.encode("event: chat.query.delta\ndata: {\"dispatchId\":\"dispatch_1\",\"delta\":\"hel\",\"reply\":\"hel\"}\n\n"));
         controller.enqueue(encoder.encode("event: chat.query.delta\ndata: {\"dispatchId\":\"dispatch_1\",\"delta\":\"lo\",\"reply\":\"hello\"}\n\n"));
-        controller.enqueue(encoder.encode("event: chat.query.completed\ndata: {\"dispatchId\":\"dispatch_1\",\"provider\":\"openai_compatible\",\"model\":\"gpt-test\",\"query\":\"hello\",\"status\":\"completed\",\"reply\":\"hello\",\"usage\":{\"inputTokens\":1,\"outputTokens\":1,\"totalTokens\":2}}\n\n"));
+        controller.enqueue(encoder.encode("event: chat.query.completed\ndata: {\"dispatchId\":\"dispatch_1\",\"provider\":\"openai_compatible\",\"model\":\"gpt-test\",\"skills\":[\"shared\"],\"query\":\"hello\",\"status\":\"completed\",\"partial\":false,\"reply\":\"hello\",\"usage\":{\"inputTokens\":1,\"outputTokens\":1,\"totalTokens\":2}}\n\n"));
         controller.close();
       }
     });

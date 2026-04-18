@@ -1,6 +1,7 @@
 export type ChatQueryInput = {
   provider?: string;
   model?: string;
+  skills?: string[];
   query: string;
   timeoutMs?: number;
   maxRetries?: number;
@@ -10,8 +11,10 @@ export type ChatQueryResponse = {
   dispatchId: string;
   provider: string;
   model: string;
+  skills: string[];
   query: string;
-  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  status: "queued" | "running" | "completed" | "partial_failed" | "failed" | "cancelled";
+  partial: boolean;
   reply: string;
   finishReason?: string;
   usage: {
@@ -27,6 +30,7 @@ export type ChatQueryStreamStarted = {
   dispatchId: string;
   provider: string;
   model: string;
+  skills: string[];
   query: string;
 };
 
@@ -163,6 +167,7 @@ function normalizeInput(input: ChatQueryInput): ChatQueryInput {
   return {
     provider: input.provider?.trim() || undefined,
     model: input.model?.trim() || undefined,
+    skills: input.skills?.map((item) => item.trim()).filter(Boolean),
     query: input.query.trim(),
     timeoutMs: input.timeoutMs,
     maxRetries: input.maxRetries

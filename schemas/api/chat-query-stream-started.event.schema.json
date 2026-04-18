@@ -3,7 +3,7 @@
   "$id": "https://dope.local/schemas/api/chat-query-stream-started.event.schema.json",
   "title": "ChatQueryStreamStarted",
   "type": "object",
-  "required": ["dispatchId", "provider", "model", "query"],
+  "required": ["dispatchId", "provider", "model", "skills", "query"],
   "additionalProperties": false,
   "properties": {
     "dispatchId": {
@@ -14,6 +14,10 @@
     },
     "model": {
       "type": "string"
+    },
+    "skills": {
+      "type": "array",
+      "items": { "type": "string" }
     },
     "query": {
       "type": "string"

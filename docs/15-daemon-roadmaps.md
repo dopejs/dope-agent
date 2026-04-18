@@ -47,6 +47,8 @@ The next execution focus is provider-stream hardening for SSE-style upstreams.
 
 The current execution focus after that is repository-safe local development workflow, so agents default to the test environment instead of production state.
 
+The next execution focus is first-class skill loading and prompt support, including support for user-level assets under `~/.agents`.
+
 ## Roadmap 1: Runtime Closure
 
 Status: `[x] complete`
@@ -335,6 +337,89 @@ Task definition of done:
 - containerized dev environments
 - multiple named test profiles
 - environment-specific database migrations beyond the existing data-dir split
+
+## Roadmap 15: Skill Registry And Prompt Support
+
+Status: `[x] complete`
+
+### Goal
+
+Add a first-class skill registry to the daemon, load skills from the active Dope data dir and `~/.agents`, and make explicit skill usage available through the chat plane.
+
+### Tasks
+
+#### 1. Skill Source And Overlay Discovery
+
+Scope:
+
+- discover data-dir and user-level agent roots
+- load skill directories from `<dataDir>/skills` and `~/.agents/skills`
+- load top-level agent overlays from `<dataDir>/AGENTS.md` and `~/.agents/AGENTS.md`
+
+Task definition of done:
+
+- daemon can discover skills from `<dataDir>/skills` and from `~/.agents/skills`
+- daemon can discover supported agent overlay files from `<dataDir>` and `~/.agents`
+- discovery precedence between `dataDir` and `~/.agents` is explicit
+- invalid skill roots fail safely without corrupting the registry
+- tests cover discovery, precedence, and missing-root behavior
+
+#### 2. Skill Registry And Inspection API
+
+Scope:
+
+- add in-memory skill registry
+- add skill list/get/reload APIs
+
+Task definition of done:
+
+- daemon exposes list/get/reload routes for skills
+- skill resources include source, path, metadata, and bundled file inventory
+- overlay metadata is inspectable through API
+- responses are schema-backed and covered by contract tests
+
+#### 3. Explicit Skill Support In Chat
+
+Scope:
+
+- extend chat contract with explicit skill selection
+- compile requested skills and overlays into prompt input
+
+Task definition of done:
+
+- `/v1/chat/query` and `/v1/chat/query/stream` accept explicit skill identifiers
+- requested skills are resolved deterministically from the registry
+- `~/.agents` and `dataDir` overlays are applied in documented order
+- skill-backed chat requests work in both non-stream and stream paths
+- tests prove the resulting LLM messages include overlays and selected skills
+
+#### 4. Operator Documentation And Verification
+
+Scope:
+
+- document skill roots, precedence, and supported file types
+- close roadmap-level verification
+
+Task definition of done:
+
+- README and dedicated design doc describe skill loading behavior
+- project-level docs explain `~/.agents` support and `dataDir` support
+- tests cover registry, API, and chat integration
+
+### Roadmap Definition Of Done
+
+- skills are loaded from both `<dataDir>/skills` and `~/.agents/skills`
+- agent overlay files are loaded from supported roots
+- operators can inspect the loaded registry through daemon API
+- chat can explicitly apply selected skills without bypassing the daemon
+- contracts, docs, and tests all reflect the final behavior
+
+### Explicitly Out Of Scope
+
+- automatic skill selection from natural-language intent
+- marketplace install/update flows
+- executing bundled skill scripts automatically
+- context-engine level reference-file loading heuristics
 - full browser or media capability implementations
 - auth and pairing
 

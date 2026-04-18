@@ -108,7 +108,7 @@ func TestRuntimeProcessesDirectMessageEndToEnd(t *testing.T) {
 			DefaultProvider: "echo",
 			DefaultModel:    "echo-v1",
 		},
-	}, dispatcher, nil), eventBus, sqliteStore)
+	}, dispatcher, nil), nil, eventBus, sqliteStore)
 
 	supervisor := baseconnectors.NewSupervisor()
 	runtimeManager := runtime.NewManager()
@@ -195,7 +195,7 @@ func TestRuntimeIgnoresGuildMessageWithoutMentionWhenRequired(t *testing.T) {
 			DefaultProvider: "echo",
 			DefaultModel:    "echo-v1",
 		},
-	}, dispatcher, nil), eventBus, sqliteStore)
+	}, dispatcher, nil), nil, eventBus, sqliteStore)
 	supervisor := baseconnectors.NewSupervisor()
 	runtimeManager := runtime.NewManager()
 	loop := im.NewMessageLoop(

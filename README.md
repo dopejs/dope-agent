@@ -39,6 +39,7 @@ That daemon foundation is now closed through:
 - Roadmap 12: `Channel Reply Progression`
 - Roadmap 13: `Provider Streaming Timeout Semantics`
 - Roadmap 14: `Test Environment Workflow`
+- Roadmap 15: `Skill Registry And Prompt Support`
 
 Execution is roadmap-driven:
 
@@ -81,6 +82,7 @@ Execution is roadmap-driven:
 - `docs/28-channel-reply-progression.md`
 - `docs/29-provider-streaming-timeout-model.md`
 - `docs/30-test-environment-workflow.md`
+- `docs/31-skill-registry-and-prompt-support.md`
 
 ## Local Environment Modes
 

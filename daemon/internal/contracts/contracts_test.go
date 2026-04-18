@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
 )
@@ -148,7 +150,7 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 		"schemas/api/report-capability-health.request.schema.json":  `{"status":"degraded"}`,
 		"schemas/api/report-capability-failure.request.schema.json": `{"reason":"worker exited"}`,
 		"schemas/api/create-llm-dispatch.request.schema.json":       `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"hello"}],"timeoutMs":1000,"maxRetries":1}`,
-		"schemas/api/chat-query.request.schema.json":                `{"provider":"echo","model":"echo-v1","query":"hello","timeoutMs":1000,"maxRetries":1}`,
+		"schemas/api/chat-query.request.schema.json":                `{"provider":"echo","model":"echo-v1","skills":["shared"],"query":"hello","timeoutMs":1000,"maxRetries":1}`,
 		"schemas/api/run-provider-check.request.schema.json":        `{"model":"echo-v1","prompt":"hello"}`,
 		"schemas/api/provider-default-model.request.schema.json":    `{"model":"gpt-5.4"}`,
 		"schemas/api/request-approval.request.schema.json":          `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"needs approval","requestedBy":"web-ui"}`,
@@ -184,9 +186,9 @@ func TestChatStreamSchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	fixtures := map[string]string{
-		"schemas/api/chat-query-stream-started.event.schema.json": `{"dispatchId":"dispatch_1","provider":"openai_compatible","model":"gpt-test","query":"hello"}`,
+		"schemas/api/chat-query-stream-started.event.schema.json": `{"dispatchId":"dispatch_1","provider":"openai_compatible","model":"gpt-test","skills":["shared"],"query":"hello"}`,
 		"schemas/api/chat-query-stream-delta.event.schema.json":   `{"dispatchId":"dispatch_1","delta":"hello","reply":"hello"}`,
-		"schemas/api/chat-query.response.schema.json":             `{"dispatchId":"dispatch_1","provider":"openai_compatible","model":"gpt-test","query":"hello","status":"completed","partial":false,"reply":"hello world","finishReason":"stop","usage":{"inputTokens":2,"outputTokens":3,"totalTokens":5}}`,
+		"schemas/api/chat-query.response.schema.json":             `{"dispatchId":"dispatch_1","provider":"openai_compatible","model":"gpt-test","skills":["shared"],"query":"hello","status":"completed","partial":false,"reply":"hello world","finishReason":"stop","usage":{"inputTokens":2,"outputTokens":3,"totalTokens":5}}`,
 	}
 
 	for schemaPath, fixture := range fixtures {
@@ -216,6 +218,27 @@ func TestProviderSchemasAcceptCanonicalFixtures(t *testing.T) {
 		"schemas/events/provider-auth-refreshed.event.schema.json":        `{"eventId":"evt_5","sequence":5,"category":"provider","name":"provider.auth_refreshed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"authenticated","cliAvailable":true,"accountLabel":"user@example.com","accountId":"acct_1","plan":"pro","authMethod":"chatgpt","lastError":""}}`,
 		"schemas/events/provider-auth-revoked.event.schema.json":          `{"eventId":"evt_6","sequence":6,"category":"provider","name":"provider.auth_revoked","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"revoked","cliAvailable":true,"accountLabel":"","accountId":"","plan":"","authMethod":"","lastError":""}}`,
 		"schemas/events/provider-default-model-updated.event.schema.json": `{"eventId":"evt_7","sequence":7,"category":"provider","name":"provider.default_model_updated","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider","id":"codex_managed"},"payload":{"providerId":"codex_managed","defaultModel":"gpt-5.4","updatedAt":"2026-04-18T12:00:01Z"}}`,
+	}
+
+	for schemaPath, fixture := range fixtures {
+		t.Run(filepath.Base(schemaPath), func(t *testing.T) {
+			if err := validator.ValidateRelative(schemaPath, []byte(fixture)); err != nil {
+				t.Fatalf("ValidateRelative returned error: %v", err)
+			}
+		})
+	}
+}
+
+func TestSkillSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	fixtures := map[string]string{
+		"schemas/api/skill-file.schema.json":              `{"path":"assets/guide.md","sizeBytes":42}`,
+		"schemas/api/skill-summary.schema.json":           `{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"}}`,
+		"schemas/api/skill-detail.response.schema.json":   `{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"},"frontmatterRaw":"name: shared","body":"data instructions"}`,
+		"schemas/api/skill-overlay.schema.json":           `{"overlayId":"data_dir_agents","source":"data_dir","path":"/tmp/dope/AGENTS.md","sizeBytes":12,"modifiedAt":"2026-04-18T12:00:00Z"}`,
+		"schemas/api/skill-registry.response.schema.json": `{"loadedAt":"2026-04-18T12:00:00Z","items":[{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"}}],"overlays":[{"overlayId":"home_agents","source":"home","path":"/tmp/home/.agents/AGENTS.md","sizeBytes":11,"modifiedAt":"2026-04-18T12:00:00Z"}]}`,
 	}
 
 	for schemaPath, fixture := range fixtures {
@@ -317,7 +340,10 @@ func TestAPISchemasMatchCanonicalResponses(t *testing.T) {
 	createDispatchBody := h.request(t, http.MethodPost, "/v1/llm/dispatches", `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"hello"}]}`, h.authHeader)
 	h.mustValidate(t, "schemas/api/llm-dispatch-resource.schema.json", createDispatchBody)
 	h.mustValidateResponse(t, http.MethodGet, "/v1/llm/dispatches", "", h.authHeader, "schemas/api/llm-dispatch-list.response.schema.json")
-	h.mustValidateResponse(t, http.MethodPost, "/v1/chat/query", `{"provider":"echo","model":"echo-v1","query":"hello chat"}`, h.authHeader, "schemas/api/chat-query.response.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/chat/query", `{"provider":"echo","model":"echo-v1","skills":["shared"],"query":"hello chat"}`, h.authHeader, "schemas/api/chat-query.response.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/skills", "", h.authHeader, "schemas/api/skill-registry.response.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/skills/shared", "", h.authHeader, "schemas/api/skill-detail.response.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/skills/reload", "", h.authHeader, "schemas/api/skill-registry.response.schema.json")
 
 	h.mustValidateResponse(t, http.MethodGet, "/v1/runs/"+runID+"/events", "", h.authHeader, "schemas/api/event-list.response.schema.json")
 }
@@ -516,10 +542,33 @@ func newContractHarness(t *testing.T) *contractHarness {
 	}, llmDispatcher, contractManagedRegistry{bridges: []providers.ManagedBridge{managedBridge}})
 	providerManager.RestoreManagedAuthStates([]providers.AuthState{managedBridge.detectState})
 	providerManager.RestoreProviderModels(managedBridge.models)
+	homeRoot := filepath.Join(t.TempDir(), ".agents")
+	dataRoot := filepath.Join(t.TempDir(), "dope-data")
+	writeContractSkillFile(t, filepath.Join(homeRoot, "AGENTS.md"), "home overlay")
+	writeContractSkillFile(t, filepath.Join(dataRoot, "AGENTS.md"), "data overlay")
+	writeContractSkillFile(t, filepath.Join(homeRoot, "skills", "shared", "SKILL.md"), strings.TrimSpace(`
+---
+name: shared
+description: home skill
+---
+home instructions
+`))
+	writeContractSkillFile(t, filepath.Join(dataRoot, "skills", "shared", "SKILL.md"), strings.TrimSpace(`
+---
+name: shared
+description: data skill
+---
+data instructions
+`))
+	writeContractSkillFile(t, filepath.Join(dataRoot, "skills", "shared", "assets", "guide.md"), "guide")
+	skillRegistry, err := skills.NewRegistryWithRoots(homeRoot, dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistryWithRoots returned error: %v", err)
+	}
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
-	chatService := chat.NewService(llmDispatcher, providerManager, eventBus, sqliteStore)
+	chatService := chat.NewService(llmDispatcher, providerManager, skillRegistry, eventBus, sqliteStore)
 	t.Cleanup(func() {
 		if err := checkpointManager.Close(); err != nil {
 			t.Fatalf("Close checkpoint manager returned error: %v", err)
@@ -529,7 +578,7 @@ func newContractHarness(t *testing.T) *contractHarness {
 	server := api.NewServer(api.Dependencies{
 		Config: config.Config{
 			BindAddr: "127.0.0.1:19191",
-			DataDir:  "~/.dope",
+			DataDir:  dataRoot,
 			LogLevel: "info",
 			Version:  "test",
 		},
@@ -542,6 +591,7 @@ func newContractHarness(t *testing.T) *contractHarness {
 		LLM:          llmDispatcher,
 		Chat:         chatService,
 		Providers:    providerManager,
+		Skills:       skillRegistry,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
 		Store:        sqliteStore,
@@ -552,6 +602,16 @@ func newContractHarness(t *testing.T) *contractHarness {
 		validator: contracts.NewValidator(schemaRootDir(t)),
 		server:    server,
 		store:     sqliteStore,
+	}
+}
+
+func writeContractSkillFile(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
 	}
 }
 

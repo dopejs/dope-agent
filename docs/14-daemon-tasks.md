@@ -37,6 +37,7 @@ Current completion should be read as:
 - `Roadmap 12: Channel Reply Progression` is now closed
 - `Roadmap 13: Provider Streaming Timeout Semantics` is now closed
 - `Roadmap 14: Test Environment Workflow` is now closed
+- `Roadmap 15: Skill Registry And Prompt Support` is now complete
 
 ## Roadmap 1: Runtime Closure
 
@@ -139,6 +140,13 @@ Current completion should be read as:
 - [x] Quick-start repository entry points
 - [x] Project-level test environment skill
 - [x] Documentation closure
+
+## Roadmap 15: Skill Registry And Prompt Support
+
+- [x] Skill source and overlay discovery
+- [x] Skill registry and inspection API
+- [x] Explicit skill support in chat
+- [x] Operator documentation and verification
 
 ## Completed Foundational Work
 

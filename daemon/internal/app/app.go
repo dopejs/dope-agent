@@ -25,6 +25,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
 )
@@ -41,6 +42,7 @@ type App struct {
 	Auth                 *auth.Manager
 	LLM                  *llm.Dispatcher
 	Chat                 *chat.Service
+	Skills               *skills.Registry
 	Providers            *providers.Manager
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
@@ -76,10 +78,14 @@ func New() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	skillRegistry, err := skills.NewRegistry(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	providerManager := providers.NewManager(cfg, llmDispatcher, managedRegistry)
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
-	chatService := chat.NewService(llmDispatcher, providerManager, eventBus, sqliteStore)
+	chatService := chat.NewService(llmDispatcher, providerManager, skillRegistry, eventBus, sqliteStore)
 
 	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager); err != nil {
 		return nil, err
@@ -113,6 +119,7 @@ func New() (*App, error) {
 		Runtime:      runtimeManager,
 		LLM:          llmDispatcher,
 		Chat:         chatService,
+		Skills:       skillRegistry,
 		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
@@ -132,6 +139,7 @@ func New() (*App, error) {
 		Auth:                 authManager,
 		LLM:                  llmDispatcher,
 		Chat:                 chatService,
+		Skills:               skillRegistry,
 		Providers:            providerManager,
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,

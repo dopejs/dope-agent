@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/skill-overlay.schema.json",
+  "title": "SkillOverlayResponse",
+  "type": "object",
+  "required": ["overlayId", "source", "path", "sizeBytes", "modifiedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "overlayId": { "type": "string" },
+    "source": { "type": "string", "enum": ["home", "data_dir"] },
+    "path": { "type": "string" },
+    "sizeBytes": { "type": "integer", "minimum": 0 },
+    "modifiedAt": { "type": "string", "format": "date-time" }
+  }
+}

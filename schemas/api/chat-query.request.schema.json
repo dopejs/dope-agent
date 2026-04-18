@@ -12,6 +12,10 @@
     "model": {
       "type": "string"
     },
+    "skills": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
     "query": {
       "type": "string",
       "minLength": 1

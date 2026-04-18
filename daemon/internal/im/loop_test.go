@@ -195,7 +195,7 @@ func TestMessageLoopProcessesSingleTurnAndDeduplicates(t *testing.T) {
 			DefaultModel:    "echo-v1",
 		},
 	}, dispatcher, nil)
-	chatService := chat.NewService(dispatcher, providerManager, eventBus, sqliteStore)
+	chatService := chat.NewService(dispatcher, providerManager, nil, eventBus, sqliteStore)
 	sessionRouter := router.NewSessionRouter()
 	runtimeManager := runtime.NewManager()
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
@@ -277,7 +277,7 @@ func TestMessageLoopMarksFailureWhenReplySendFails(t *testing.T) {
 			DefaultProvider: "echo",
 			DefaultModel:    "echo-v1",
 		},
-	}, dispatcher, nil), eventBus, sqliteStore)
+	}, dispatcher, nil), nil, eventBus, sqliteStore)
 
 	runtimeManager := runtime.NewManager()
 	loop := NewMessageLoop(router.NewSessionRouter(), runtimeManager, checkpoints.NewManager(sqliteStore, runtimeManager), eventBus, sqliteStore, chatService)
@@ -330,7 +330,7 @@ func TestMessageLoopStreamsReplyWhenProgressionIsSupported(t *testing.T) {
 			DefaultProvider: "echo",
 			DefaultModel:    "echo-v1",
 		},
-	}, dispatcher, nil), eventBus, sqliteStore)
+	}, dispatcher, nil), nil, eventBus, sqliteStore)
 
 	runtimeManager := runtime.NewManager()
 	loop := NewMessageLoop(router.NewSessionRouter(), runtimeManager, checkpoints.NewManager(sqliteStore, runtimeManager), eventBus, sqliteStore, chatService)
@@ -409,7 +409,7 @@ func TestMessageLoopSplitsLongStreamingReplyWithinChannelLimit(t *testing.T) {
 			DefaultProvider: "echo",
 			DefaultModel:    "echo-v1",
 		},
-	}, dispatcher, nil), eventBus, sqliteStore)
+	}, dispatcher, nil), nil, eventBus, sqliteStore)
 
 	runtimeManager := runtime.NewManager()
 	loop := NewMessageLoop(router.NewSessionRouter(), runtimeManager, checkpoints.NewManager(sqliteStore, runtimeManager), eventBus, sqliteStore, chatService)
@@ -474,7 +474,7 @@ func TestMessageLoopDoesNotMarkLLMDispatchFailedWhenConnectorStreamingFails(t *t
 			DefaultProvider: "echo",
 			DefaultModel:    "echo-v1",
 		},
-	}, dispatcher, nil), eventBus, sqliteStore)
+	}, dispatcher, nil), nil, eventBus, sqliteStore)
 
 	runtimeManager := runtime.NewManager()
 	loop := NewMessageLoop(router.NewSessionRouter(), runtimeManager, checkpoints.NewManager(sqliteStore, runtimeManager), eventBus, sqliteStore, chatService)
@@ -536,7 +536,7 @@ func TestMessageLoopPreservesPartialReplyWhenProviderStreamFailsAfterVisibleOutp
 			DefaultProvider: "echo",
 			DefaultModel:    "echo-v1",
 		},
-	}, dispatcher, nil), eventBus, sqliteStore)
+	}, dispatcher, nil), nil, eventBus, sqliteStore)
 
 	runtimeManager := runtime.NewManager()
 	loop := NewMessageLoop(router.NewSessionRouter(), runtimeManager, checkpoints.NewManager(sqliteStore, runtimeManager), eventBus, sqliteStore, chatService)

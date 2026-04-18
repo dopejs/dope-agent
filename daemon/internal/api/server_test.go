@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
 )
@@ -140,7 +142,48 @@ func issueAuthHeaderForTest(t *testing.T, manager *auth.Manager, label string) s
 
 func newProviderManagerAndChatServiceForTests(cfg config.Config, dispatcher *llm.Dispatcher, eventBus *events.Bus, sqliteStore *store.SQLiteStore, registry providers.ManagedRegistry) (*providers.Manager, *chat.Service) {
 	manager := providers.NewManager(cfg, dispatcher, registry)
-	return manager, chat.NewService(dispatcher, manager, eventBus, sqliteStore)
+	return manager, chat.NewService(dispatcher, manager, nil, eventBus, sqliteStore)
+}
+
+func newSkillRegistryForTest(t *testing.T) *skills.Registry {
+	t.Helper()
+
+	homeRoot := filepath.Join(t.TempDir(), ".agents")
+	dataRoot := filepath.Join(t.TempDir(), "dope-data")
+	writeSkillFileForTest(t, filepath.Join(homeRoot, "AGENTS.md"), "home overlay")
+	writeSkillFileForTest(t, filepath.Join(dataRoot, "AGENTS.md"), "data overlay")
+	writeSkillFileForTest(t, filepath.Join(homeRoot, "skills", "shared", "SKILL.md"), strings.TrimSpace(`
+---
+name: shared
+description: home skill
+---
+home instructions
+`))
+	writeSkillFileForTest(t, filepath.Join(homeRoot, "skills", "shared", "notes.txt"), "home notes")
+	writeSkillFileForTest(t, filepath.Join(dataRoot, "skills", "shared", "SKILL.md"), strings.TrimSpace(`
+---
+name: shared
+description: data skill
+---
+data instructions
+`))
+	writeSkillFileForTest(t, filepath.Join(dataRoot, "skills", "shared", "assets", "guide.md"), "data guide")
+
+	registry, err := skills.NewRegistryWithRoots(homeRoot, dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistryWithRoots returned error: %v", err)
+	}
+	return registry
+}
+
+func writeSkillFileForTest(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
 }
 
 func TestRunsLifecycleRoutes(t *testing.T) {
@@ -1994,7 +2037,7 @@ func TestChatQueryStreamRoute(t *testing.T) {
 
 	dispatcher := llm.NewDispatcher()
 	dispatcher.RegisterProvider(&testLLMProvider{
-		name: "chat-stream",
+		name: "echo",
 		completeFn: func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
 			return llm.ProviderResponse{}, errors.New("not used")
 		},
@@ -2022,20 +2065,24 @@ func TestChatQueryStreamRoute(t *testing.T) {
 			DefaultTimeoutMs: 30000,
 		},
 	}
+	eventBus := events.NewBus()
+	providerManager, chatService := newProviderManagerAndChatServiceForTests(testCfg, dispatcher, eventBus, sqliteStore, nil)
 	server := NewServer(Dependencies{
-		Config:   testCfg,
-		Logger:   telemetry.New("error").Slog(),
-		EventBus: events.NewBus(),
-		Router:   router.NewSessionRouter(),
-		Runtime:  runtime.NewManager(),
-		LLM:      dispatcher,
-		Store:    sqliteStore,
+		Config:    testCfg,
+		Logger:    telemetry.New("error").Slog(),
+		EventBus:  eventBus,
+		Router:    router.NewSessionRouter(),
+		Runtime:   runtime.NewManager(),
+		LLM:       dispatcher,
+		Chat:      chatService,
+		Providers: providerManager,
+		Store:     sqliteStore,
 	})
 
 	testServer := httptest.NewServer(server.Handler())
 	defer testServer.Close()
 
-	req, err := http.NewRequest(http.MethodPost, testServer.URL+"/v1/chat/query/stream", strings.NewReader(`{"provider":"chat-stream","model":"test-model","query":"hello stream"}`))
+	req, err := http.NewRequest(http.MethodPost, testServer.URL+"/v1/chat/query/stream", strings.NewReader(`{"provider":"echo","model":"echo-v1","query":"hello stream"}`))
 	if err != nil {
 		t.Fatalf("failed to create stream request: %v", err)
 	}
@@ -2067,6 +2114,176 @@ func TestChatQueryStreamRoute(t *testing.T) {
 	}
 	if !strings.Contains(joined, "event: chat.query.completed") {
 		t.Fatalf("expected chat.query.completed, got %q", joined)
+	}
+}
+
+func TestSkillRegistryRoutesAndChatQuerySkillSupport(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	registry := newSkillRegistryForTest(t)
+	eventBus := events.NewBus()
+	authManager := auth.NewManager()
+	var captured llm.ProviderRequest
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&testLLMProvider{
+		name: "echo",
+		completeFn: func(_ context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+			captured = request
+			return llm.ProviderResponse{
+				Output:       "ok",
+				FinishReason: "stop",
+				Usage:        llm.Usage{InputTokens: 3, OutputTokens: 1, TotalTokens: 4},
+			}, nil
+		},
+		streamFn: func(_ context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+			captured = request
+			if emit != nil {
+				if err := emit(llm.StreamChunk{Delta: "ok", Output: "ok"}); err != nil {
+					return llm.ProviderResponse{}, err
+				}
+			}
+			return llm.ProviderResponse{
+				Output:       "ok",
+				FinishReason: "stop",
+				Usage:        llm.Usage{InputTokens: 3, OutputTokens: 1, TotalTokens: 4},
+			}, nil
+		},
+	})
+	cfg := config.Config{
+		BindAddr: "127.0.0.1:19191",
+		DataDir:  filepath.Join(t.TempDir(), "dope-runtime"),
+		LogLevel: "info",
+		Version:  "test",
+		LLM: config.LLMConfig{
+			DefaultProvider: "echo",
+			DefaultModel:    "echo-v1",
+		},
+	}
+	providerManager := providers.NewManager(cfg, dispatcher, nil)
+	chatService := chat.NewService(dispatcher, providerManager, registry, eventBus, sqliteStore)
+	server := NewServer(Dependencies{
+		Config:    cfg,
+		Logger:    telemetry.New("error").Slog(),
+		EventBus:  eventBus,
+		Auth:      authManager,
+		Router:    router.NewSessionRouter(),
+		Runtime:   runtime.NewManager(),
+		LLM:       dispatcher,
+		Chat:      chatService,
+		Providers: providerManager,
+		Skills:    registry,
+		Store:     sqliteStore,
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "skills-web")
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/skills", nil)
+	listReq.Header.Set("Authorization", authHeader)
+	listRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for skills list, got %d body=%s", listRec.Code, listRec.Body.String())
+	}
+	listResponse := decodeStrictResponse[SkillRegistryResponse](t, listRec.Body.Bytes())
+	if len(listResponse.Items) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(listResponse.Items))
+	}
+	if len(listResponse.Overlays) != 2 {
+		t.Fatalf("expected 2 overlays, got %d", len(listResponse.Overlays))
+	}
+	if listResponse.Items[0].Description != "data skill" {
+		t.Fatalf("expected data-dir skill to win precedence, got %q", listResponse.Items[0].Description)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/skills/shared", nil)
+	getReq.Header.Set("Authorization", authHeader)
+	getRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for skill detail, got %d body=%s", getRec.Code, getRec.Body.String())
+	}
+	detail := decodeStrictResponse[SkillDetailResponse](t, getRec.Body.Bytes())
+	if !strings.Contains(detail.Body, "data instructions") {
+		t.Fatalf("expected data-dir skill body, got %q", detail.Body)
+	}
+	if len(detail.Files) != 1 || detail.Files[0].Path != "assets/guide.md" {
+		t.Fatalf("expected bundled data-dir file inventory, got %+v", detail.Files)
+	}
+
+	reloadReq := httptest.NewRequest(http.MethodPost, "/v1/skills/reload", nil)
+	reloadReq.Header.Set("Authorization", authHeader)
+	reloadRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(reloadRec, reloadReq)
+	if reloadRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for skill reload, got %d body=%s", reloadRec.Code, reloadRec.Body.String())
+	}
+
+	chatReq := httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"echo","model":"echo-v1","skills":["shared"],"query":"hello"}`))
+	chatReq.Header.Set("Authorization", authHeader)
+	chatReq.Header.Set("Content-Type", "application/json")
+	chatRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(chatRec, chatReq)
+	if chatRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for skill chat query, got %d body=%s", chatRec.Code, chatRec.Body.String())
+	}
+	chatResponse := decodeStrictResponse[ChatQueryResponse](t, chatRec.Body.Bytes())
+	if len(chatResponse.Skills) != 1 || chatResponse.Skills[0] != "shared" {
+		t.Fatalf("expected selected skill in response, got %+v", chatResponse.Skills)
+	}
+	if len(captured.Messages) != 4 {
+		t.Fatalf("expected 4 prompt messages, got %d", len(captured.Messages))
+	}
+	if !strings.Contains(captured.Messages[0].Content, "home overlay") {
+		t.Fatalf("expected home overlay first, got %q", captured.Messages[0].Content)
+	}
+	if !strings.Contains(captured.Messages[1].Content, "data overlay") {
+		t.Fatalf("expected data overlay second, got %q", captured.Messages[1].Content)
+	}
+	if !strings.Contains(captured.Messages[2].Content, "data instructions") || strings.Contains(captured.Messages[2].Content, "home instructions") {
+		t.Fatalf("expected data-dir skill instructions, got %q", captured.Messages[2].Content)
+	}
+	if captured.Messages[3].Role != llm.RoleUser || captured.Messages[3].Content != "hello" {
+		t.Fatalf("expected user query as final message, got %+v", captured.Messages[3])
+	}
+
+	missingReq := httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"echo","model":"echo-v1","skills":["missing"],"query":"hello"}`))
+	missingReq.Header.Set("Authorization", authHeader)
+	missingReq.Header.Set("Content-Type", "application/json")
+	missingRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(missingRec, missingReq)
+	if missingRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown skill, got %d body=%s", missingRec.Code, missingRec.Body.String())
+	}
+
+	streamServer := httptest.NewServer(server.Handler())
+	defer streamServer.Close()
+
+	streamReq, err := http.NewRequest(http.MethodPost, streamServer.URL+"/v1/chat/query/stream", strings.NewReader(`{"provider":"echo","model":"echo-v1","skills":["shared"],"query":"stream hello"}`))
+	if err != nil {
+		t.Fatalf("http.NewRequest returned error: %v", err)
+	}
+	streamReq.Header.Set("Authorization", authHeader)
+	streamReq.Header.Set("Content-Type", "application/json")
+	streamResp, err := http.DefaultClient.Do(streamReq)
+	if err != nil {
+		t.Fatalf("http.DefaultClient.Do returned error: %v", err)
+	}
+	defer streamResp.Body.Close()
+
+	body, err := io.ReadAll(streamResp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll returned error: %v", err)
+	}
+	joined := string(body)
+	if !strings.Contains(joined, `"skills":["shared"]`) {
+		t.Fatalf("expected stream started payload to include selected skills, got %q", joined)
 	}
 }
 
@@ -2233,7 +2450,7 @@ func TestProviderResolutionAppliesProfilePolicyToChat(t *testing.T) {
 			},
 		},
 	}, dispatcher)
-	chatService := chat.NewService(dispatcher, providerManager, eventBus, sqliteStore)
+	chatService := chat.NewService(dispatcher, providerManager, nil, eventBus, sqliteStore)
 
 	server := NewServer(Dependencies{
 		Config: config.Config{
@@ -2410,7 +2627,7 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 	}, dispatcher, registry)
 	providerManager.RestoreManagedAuthStates([]providers.AuthState{bridge.detectState})
 	providerManager.RestoreProviderModels(bridge.models)
-	chatService := chat.NewService(dispatcher, providerManager, eventBus, sqliteStore)
+	chatService := chat.NewService(dispatcher, providerManager, nil, eventBus, sqliteStore)
 
 	server := NewServer(Dependencies{
 		Config: config.Config{
