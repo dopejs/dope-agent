@@ -141,7 +141,14 @@ func normalizeChatCompletionsURL(raw string) (string, error) {
 		return "", fmt.Errorf("parse openai-compatible base URL: absolute URL is required")
 	}
 	trimmedPath := strings.TrimSuffix(parsed.Path, "/")
-	if !strings.HasSuffix(trimmedPath, "/chat/completions") {
+	switch {
+	case strings.HasSuffix(trimmedPath, "/chat/completions"):
+		// already fully qualified
+	case trimmedPath == "":
+		trimmedPath = "/v1/chat/completions"
+	case strings.HasSuffix(trimmedPath, "/v1"):
+		trimmedPath += "/chat/completions"
+	default:
 		trimmedPath = strings.TrimSuffix(trimmedPath, "/") + "/chat/completions"
 	}
 	parsed.Path = trimmedPath

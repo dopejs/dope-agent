@@ -103,6 +103,14 @@ Current implementation supports:
 - stream response
 - upstream auth and failure mapping
 
+For `OpenAI-compatible` endpoints, the daemon now accepts these `baseURL` forms:
+
+- provider root, for example `https://code.b886.top`
+- `/v1`, for example `https://code.b886.top/v1`
+- full chat completions path, for example `https://code.b886.top/v1/chat/completions`
+
+That normalization is intentionally limited to the `OpenAI-compatible` provider only. It is not treated as a cross-provider URL rule.
+
 The implementation uses the existing daemon LLM dispatch plane rather than creating a second hidden provider stack.
 
 `echo` still exists only as an explicit dev fallback. It is no longer the hidden default provider path.

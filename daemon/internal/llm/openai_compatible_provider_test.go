@@ -49,6 +49,70 @@ func TestOpenAICompatibleProviderComplete(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleProviderCompleteWithRootBaseURL(t *testing.T) {
+	var requestPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"hello from root base"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}`)
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL: server.URL,
+		APIKey:  "secret",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider returned error: %v", err)
+	}
+
+	response, err := provider.Complete(context.Background(), ProviderRequest{
+		Model:    "gpt-test",
+		Messages: []Message{{Role: RoleUser, Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Complete returned error: %v", err)
+	}
+	if requestPath != "/v1/chat/completions" {
+		t.Fatalf("expected normalized path /v1/chat/completions, got %s", requestPath)
+	}
+	if response.Output != "hello from root base" {
+		t.Fatalf("expected upstream output from root base, got %q", response.Output)
+	}
+}
+
+func TestOpenAICompatibleProviderCompleteWithExplicitChatCompletionsPath(t *testing.T) {
+	var requestPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"hello from explicit path"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}`)
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAICompatibleProvider(OpenAICompatibleProviderConfig{
+		BaseURL: server.URL + "/v1/chat/completions",
+		APIKey:  "secret",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleProvider returned error: %v", err)
+	}
+
+	response, err := provider.Complete(context.Background(), ProviderRequest{
+		Model:    "gpt-test",
+		Messages: []Message{{Role: RoleUser, Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Complete returned error: %v", err)
+	}
+	if requestPath != "/v1/chat/completions" {
+		t.Fatalf("expected explicit chat completions path to be preserved, got %s", requestPath)
+	}
+	if response.Output != "hello from explicit path" {
+		t.Fatalf("expected upstream output from explicit path, got %q", response.Output)
+	}
+}
+
 func TestOpenAICompatibleProviderAuthFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
