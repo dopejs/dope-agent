@@ -23,9 +23,9 @@
   "properties": {
     "providerId": { "type": "string" },
     "title": { "type": "string" },
-    "family": { "type": "string", "enum": ["builtin_echo", "openai_compatible"] },
-    "authMode": { "type": "string", "enum": ["none", "api_key"] },
-    "source": { "type": "string", "enum": ["builtin", "config"] },
+    "family": { "type": "string", "enum": ["builtin_echo", "openai_compatible", "claude_code_cli", "codex_cli"] },
+    "authMode": { "type": "string", "enum": ["none", "api_key", "local_cli_bridge"] },
+    "source": { "type": "string", "enum": ["builtin", "config", "managed"] },
     "modelSelectionMode": { "type": "string", "enum": ["fixed", "open"] },
     "knownModels": {
       "type": "array",
@@ -49,9 +49,29 @@
       "additionalProperties": false,
       "properties": {
         "chat": { "type": "boolean" },
-        "stream": { "type": "boolean" }
+        "stream": { "type": "boolean" },
+        "coding": { "type": "boolean" },
+        "toolUse": { "type": "boolean" }
       }
     },
+    "authStatus": {
+      "type": "string",
+      "enum": ["unknown", "login_required", "pending_login", "authenticated", "revoked", "error"]
+    },
+    "cliAvailable": { "type": "boolean" },
+    "accountLabel": { "type": "string" },
+    "accountId": { "type": "string" },
+    "plan": { "type": "string" },
+    "authMethod": { "type": "string" },
+    "loginCommand": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "logoutCommand": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "availableModelCount": { "type": "integer", "minimum": 0 },
     "issues": {
       "type": "array",
       "items": { "type": "string" }

@@ -34,9 +34,6 @@ That daemon foundation is now closed through:
 - Roadmap 7: `Minimal Chat Clients`
 - Roadmap 8: `Ingress Routing Closure`
 - Roadmap 9: `Provider Identity And Profiles`
-
-The next planned delivery slice is:
-
 - Roadmap 10: `Managed Coding Providers`
 
 Execution is roadmap-driven:
@@ -74,6 +71,7 @@ Execution is roadmap-driven:
 - `docs/22-ingress-routing-closure.md`
 - `docs/23-provider-architecture.md`
 - `docs/24-provider-identity-and-profiles.md`
+- `docs/25-managed-coding-providers.md`
 
 ## Working Assumptions
 

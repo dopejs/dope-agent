@@ -809,7 +809,7 @@ Task definition of done:
 
 ## Roadmap 10: Managed Coding Providers
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 ### Goal
 
@@ -872,7 +872,7 @@ Task definition of done:
 
 ### Roadmap Definition Of Done
 
-- at least one managed coding provider can be logged into without `baseURL + apiKey`
+- Claude and Codex managed providers can be inspected without `baseURL + apiKey`
 - daemon can dispatch through managed provider auth
 - model selection is visible and configurable for managed providers
 - operator flows for login, inspect, and verify are documented and tested

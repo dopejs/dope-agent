@@ -27,7 +27,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 3
+	CurrentSchemaVersion = 4
 )
 
 type schemaMigration struct {
@@ -289,6 +289,57 @@ var schemaMigrations = []schemaMigration{
 			);
 			`,
 			`CREATE INDEX IF NOT EXISTS idx_provider_checks_provider_created ON provider_checks(provider_id, created_at DESC, check_id DESC);`,
+		},
+	},
+	{
+		Version: 4,
+		Name:    "managed_provider_state",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS provider_auth_states (
+				provider_id TEXT PRIMARY KEY,
+				family TEXT NOT NULL,
+				auth_mode TEXT NOT NULL,
+				status TEXT NOT NULL,
+				cli_path TEXT,
+				cli_available INTEGER NOT NULL,
+				account_label TEXT,
+				account_id TEXT,
+				plan TEXT,
+				auth_method TEXT,
+				login_command_json TEXT NOT NULL,
+				logout_command_json TEXT NOT NULL,
+				last_checked_at TEXT NOT NULL,
+				last_authenticated_at TEXT,
+				last_error TEXT,
+				metadata_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS provider_models (
+				provider_id TEXT NOT NULL,
+				model_id TEXT NOT NULL,
+				display_name TEXT NOT NULL,
+				description TEXT,
+				default_flag INTEGER NOT NULL,
+				available_flag INTEGER NOT NULL,
+				source TEXT NOT NULL,
+				chat INTEGER NOT NULL,
+				stream INTEGER NOT NULL,
+				coding INTEGER NOT NULL,
+				tool_use INTEGER NOT NULL,
+				reasoning_levels_json TEXT NOT NULL,
+				PRIMARY KEY (provider_id, model_id)
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS provider_preferences (
+				provider_id TEXT PRIMARY KEY,
+				default_model TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_provider_models_provider ON provider_models(provider_id, model_id);`,
 		},
 	},
 }
@@ -1167,6 +1218,277 @@ func (s *SQLiteStore) GetProviderCheck(ctx context.Context, providerID, checkID 
 	return item, true, nil
 }
 
+func (s *SQLiteStore) UpsertProviderAuthState(ctx context.Context, state providers.AuthState) error {
+	if s == nil {
+		return nil
+	}
+
+	loginCommandJSON, err := marshalJSON(state.LoginCommand)
+	if err != nil {
+		return fmt.Errorf("marshal provider auth login command: %w", err)
+	}
+	logoutCommandJSON, err := marshalJSON(state.LogoutCommand)
+	if err != nil {
+		return fmt.Errorf("marshal provider auth logout command: %w", err)
+	}
+	metadataJSON, err := marshalJSON(defaultStringMap(state.Metadata))
+	if err != nil {
+		return fmt.Errorf("marshal provider auth metadata: %w", err)
+	}
+
+	lastCheckedAt := state.LastCheckedAt.UTC()
+	if lastCheckedAt.IsZero() {
+		lastCheckedAt = time.Now().UTC()
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO provider_auth_states (
+			provider_id,
+			family,
+			auth_mode,
+			status,
+			cli_path,
+			cli_available,
+			account_label,
+			account_id,
+			plan,
+			auth_method,
+			login_command_json,
+			logout_command_json,
+			last_checked_at,
+			last_authenticated_at,
+			last_error,
+			metadata_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(provider_id) DO UPDATE SET
+			family = excluded.family,
+			auth_mode = excluded.auth_mode,
+			status = excluded.status,
+			cli_path = excluded.cli_path,
+			cli_available = excluded.cli_available,
+			account_label = excluded.account_label,
+			account_id = excluded.account_id,
+			plan = excluded.plan,
+			auth_method = excluded.auth_method,
+			login_command_json = excluded.login_command_json,
+			logout_command_json = excluded.logout_command_json,
+			last_checked_at = excluded.last_checked_at,
+			last_authenticated_at = excluded.last_authenticated_at,
+			last_error = excluded.last_error,
+			metadata_json = excluded.metadata_json
+	`,
+		state.ProviderID,
+		string(state.Family),
+		string(state.AuthMode),
+		string(state.Status),
+		nullString(state.CLIPath),
+		boolToInt(state.CLIAvailable),
+		nullString(state.AccountLabel),
+		nullString(state.AccountID),
+		nullString(state.Plan),
+		nullString(state.AuthMethod),
+		loginCommandJSON,
+		logoutCommandJSON,
+		lastCheckedAt.Format(time.RFC3339Nano),
+		nullableTimeString(state.LastAuthenticatedAt),
+		nullString(state.LastError),
+		metadataJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert provider auth state %s: %w", state.ProviderID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListProviderAuthStates(ctx context.Context) ([]providers.AuthState, error) {
+	if s == nil {
+		return []providers.AuthState{}, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT provider_id, family, auth_mode, status, cli_path, cli_available, account_label, account_id, plan, auth_method, login_command_json, logout_command_json, last_checked_at, last_authenticated_at, last_error, metadata_json
+		FROM provider_auth_states
+		ORDER BY provider_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list provider auth states: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]providers.AuthState, 0)
+	for rows.Next() {
+		item, err := scanProviderAuthState(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) ReplaceProviderModels(ctx context.Context, providerID string, models []providers.Model) error {
+	if s == nil {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin provider model replace transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM provider_models WHERE provider_id = ?`, providerID); err != nil {
+		return fmt.Errorf("delete provider models for %s: %w", providerID, err)
+	}
+
+	for _, model := range models {
+		reasoningLevelsJSON, err := marshalJSON(model.ReasoningLevels)
+		if err != nil {
+			return fmt.Errorf("marshal reasoning levels for %s/%s: %w", providerID, model.ModelID, err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO provider_models (
+				provider_id,
+				model_id,
+				display_name,
+				description,
+				default_flag,
+				available_flag,
+				source,
+				chat,
+				stream,
+				coding,
+				tool_use,
+				reasoning_levels_json
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`,
+			model.ProviderID,
+			model.ModelID,
+			model.DisplayName,
+			nullString(model.Description),
+			boolToInt(model.Default),
+			boolToInt(model.Available),
+			model.Source,
+			boolToInt(model.Chat),
+			boolToInt(model.Stream),
+			boolToInt(model.Coding),
+			boolToInt(model.ToolUse),
+			reasoningLevelsJSON,
+		); err != nil {
+			return fmt.Errorf("insert provider model %s/%s: %w", providerID, model.ModelID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit provider model replace transaction: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListProviderModels(ctx context.Context) ([]providers.Model, error) {
+	if s == nil {
+		return []providers.Model{}, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT provider_id, model_id, display_name, description, default_flag, available_flag, source, chat, stream, coding, tool_use, reasoning_levels_json
+		FROM provider_models
+		ORDER BY provider_id ASC, model_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list provider models: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]providers.Model, 0)
+	for rows.Next() {
+		item, err := scanProviderModel(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) ListProviderModelsByProvider(ctx context.Context, providerID string) ([]providers.Model, error) {
+	if s == nil {
+		return []providers.Model{}, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT provider_id, model_id, display_name, description, default_flag, available_flag, source, chat, stream, coding, tool_use, reasoning_levels_json
+		FROM provider_models
+		WHERE provider_id = ?
+		ORDER BY model_id ASC
+	`, providerID)
+	if err != nil {
+		return nil, fmt.Errorf("list provider models for %s: %w", providerID, err)
+	}
+	defer rows.Close()
+
+	items := make([]providers.Model, 0)
+	for rows.Next() {
+		item, err := scanProviderModel(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertProviderPreference(ctx context.Context, preference providers.Preference) error {
+	if s == nil {
+		return nil
+	}
+
+	updatedAt := preference.UpdatedAt.UTC()
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO provider_preferences (provider_id, default_model, updated_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(provider_id) DO UPDATE SET
+			default_model = excluded.default_model,
+			updated_at = excluded.updated_at
+	`, preference.ProviderID, preference.DefaultModel, updatedAt.Format(time.RFC3339Nano))
+	if err != nil {
+		return fmt.Errorf("upsert provider preference %s: %w", preference.ProviderID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListProviderPreferences(ctx context.Context) ([]providers.Preference, error) {
+	if s == nil {
+		return []providers.Preference{}, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT provider_id, default_model, updated_at
+		FROM provider_preferences
+		ORDER BY provider_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list provider preferences: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]providers.Preference, 0)
+	for rows.Next() {
+		item, err := scanProviderPreference(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s *SQLiteStore) ListCapabilities(ctx context.Context) ([]capabilities.Capability, error) {
 	if s == nil {
 		return nil, nil
@@ -1679,7 +2001,7 @@ func hasLegacySchema(ctx context.Context, queryer interface {
 		SELECT COUNT(1)
 		FROM sqlite_master
 		WHERE type = 'table'
-		  AND name IN ('sessions', 'runs', 'steps', 'events', 'checkpoints', 'tool_calls', 'llm_dispatches', 'provider_checks', 'connectors', 'capabilities', 'auth_pairings', 'auth_tokens', 'approvals', 'decisions')
+		  AND name IN ('sessions', 'runs', 'steps', 'events', 'checkpoints', 'tool_calls', 'llm_dispatches', 'provider_checks', 'provider_auth_states', 'provider_models', 'provider_preferences', 'connectors', 'capabilities', 'auth_pairings', 'auth_tokens', 'approvals', 'decisions')
 	`).Scan(&count); err != nil {
 		return false, err
 	}
@@ -2230,6 +2552,138 @@ func scanProviderCheck(scanner interface {
 	return item, nil
 }
 
+func scanProviderAuthState(scanner interface {
+	Scan(dest ...any) error
+}) (providers.AuthState, error) {
+	var (
+		item                providers.AuthState
+		family              string
+		authMode            string
+		status              string
+		cliPath             sql.NullString
+		cliAvailable        int
+		accountLabel        sql.NullString
+		accountID           sql.NullString
+		plan                sql.NullString
+		authMethod          sql.NullString
+		loginCommandRaw     string
+		logoutCommandRaw    string
+		lastCheckedAt       string
+		lastAuthenticatedAt sql.NullString
+		lastError           sql.NullString
+		metadataRaw         string
+	)
+
+	if err := scanner.Scan(
+		&item.ProviderID,
+		&family,
+		&authMode,
+		&status,
+		&cliPath,
+		&cliAvailable,
+		&accountLabel,
+		&accountID,
+		&plan,
+		&authMethod,
+		&loginCommandRaw,
+		&logoutCommandRaw,
+		&lastCheckedAt,
+		&lastAuthenticatedAt,
+		&lastError,
+		&metadataRaw,
+	); err != nil {
+		return providers.AuthState{}, fmt.Errorf("scan provider auth state: %w", err)
+	}
+
+	item.Family = providers.Family(family)
+	item.AuthMode = providers.AuthMode(authMode)
+	item.Status = providers.AuthStatus(status)
+	item.CLIPath = cliPath.String
+	item.CLIAvailable = cliAvailable == 1
+	item.AccountLabel = accountLabel.String
+	item.AccountID = accountID.String
+	item.Plan = plan.String
+	item.AuthMethod = authMethod.String
+	item.LastError = lastError.String
+	if err := json.Unmarshal([]byte(loginCommandRaw), &item.LoginCommand); err != nil {
+		return providers.AuthState{}, fmt.Errorf("decode provider auth login command: %w", err)
+	}
+	if err := json.Unmarshal([]byte(logoutCommandRaw), &item.LogoutCommand); err != nil {
+		return providers.AuthState{}, fmt.Errorf("decode provider auth logout command: %w", err)
+	}
+	if err := json.Unmarshal([]byte(metadataRaw), &item.Metadata); err != nil {
+		return providers.AuthState{}, fmt.Errorf("decode provider auth metadata: %w", err)
+	}
+	if err := assignRequiredTime(&item.LastCheckedAt, lastCheckedAt); err != nil {
+		return providers.AuthState{}, fmt.Errorf("parse provider auth last_checked_at: %w", err)
+	}
+	if err := assignOptionalTimeString(&item.LastAuthenticatedAt, lastAuthenticatedAt); err != nil {
+		return providers.AuthState{}, fmt.Errorf("parse provider auth last_authenticated_at: %w", err)
+	}
+	return item, nil
+}
+
+func scanProviderModel(scanner interface {
+	Scan(dest ...any) error
+}) (providers.Model, error) {
+	var (
+		item                providers.Model
+		description         sql.NullString
+		defaultFlag         int
+		availableFlag       int
+		chat                int
+		stream              int
+		coding              int
+		toolUse             int
+		reasoningLevelsJSON string
+	)
+
+	if err := scanner.Scan(
+		&item.ProviderID,
+		&item.ModelID,
+		&item.DisplayName,
+		&description,
+		&defaultFlag,
+		&availableFlag,
+		&item.Source,
+		&chat,
+		&stream,
+		&coding,
+		&toolUse,
+		&reasoningLevelsJSON,
+	); err != nil {
+		return providers.Model{}, fmt.Errorf("scan provider model: %w", err)
+	}
+
+	item.Description = description.String
+	item.Default = defaultFlag == 1
+	item.Available = availableFlag == 1
+	item.Chat = chat == 1
+	item.Stream = stream == 1
+	item.Coding = coding == 1
+	item.ToolUse = toolUse == 1
+	if err := json.Unmarshal([]byte(reasoningLevelsJSON), &item.ReasoningLevels); err != nil {
+		return providers.Model{}, fmt.Errorf("decode provider model reasoning levels: %w", err)
+	}
+	return item, nil
+}
+
+func scanProviderPreference(scanner interface {
+	Scan(dest ...any) error
+}) (providers.Preference, error) {
+	var (
+		item      providers.Preference
+		updatedAt string
+	)
+	if err := scanner.Scan(&item.ProviderID, &item.DefaultModel, &updatedAt); err != nil {
+		return providers.Preference{}, fmt.Errorf("scan provider preference: %w", err)
+	}
+	if err := assignRequiredTime(&item.UpdatedAt, updatedAt); err != nil {
+		return providers.Preference{}, fmt.Errorf("parse provider preference updated_at: %w", err)
+	}
+	return item, nil
+}
+
 func scanStep(scanner interface {
 	Scan(dest ...any) error
 }) (runtime.Step, error) {
@@ -2354,6 +2808,31 @@ func assignOptionalTime(target **time.Time, value sql.NullString) error {
 	}
 	*target = &parsed
 	return nil
+}
+
+func assignOptionalTimeString(target **time.Time, value sql.NullString) error {
+	return assignOptionalTime(target, value)
+}
+
+func nullableTimeString(value *time.Time) sql.NullString {
+	if value == nil || value.IsZero() {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: value.UTC().Format(time.RFC3339Nano), Valid: true}
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func defaultStringMap(value map[string]string) map[string]string {
+	if value != nil {
+		return value
+	}
+	return map[string]string{}
 }
 
 func scanEvent(scanner interface {

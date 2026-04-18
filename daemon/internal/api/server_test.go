@@ -58,6 +58,68 @@ func (p *testLLMProvider) Stream(ctx context.Context, request llm.ProviderReques
 	return p.streamFn(ctx, request, emit)
 }
 
+type testManagedRegistry struct {
+	bridges []providers.ManagedBridge
+}
+
+func (r testManagedRegistry) List() []providers.ManagedBridge {
+	return append([]providers.ManagedBridge(nil), r.bridges...)
+}
+
+func (r testManagedRegistry) Get(providerID string) (providers.ManagedBridge, bool) {
+	for _, bridge := range r.bridges {
+		if bridge.ProviderID() == providerID {
+			return bridge, true
+		}
+	}
+	return nil, false
+}
+
+type testManagedBridge struct {
+	providerID    string
+	displayName   string
+	family        providers.Family
+	authMode      providers.AuthMode
+	detectState   providers.AuthState
+	startState    providers.AuthState
+	completeState providers.AuthState
+	refreshState  providers.AuthState
+	revokeState   providers.AuthState
+	models        []providers.Model
+	provider      llm.Provider
+}
+
+func (b testManagedBridge) ProviderID() string           { return b.providerID }
+func (b testManagedBridge) DisplayName() string          { return b.displayName }
+func (b testManagedBridge) Family() providers.Family     { return b.family }
+func (b testManagedBridge) AuthMode() providers.AuthMode { return b.authMode }
+func (b testManagedBridge) Detect(context.Context) (providers.AuthState, []providers.Model, error) {
+	return b.detectState, cloneProviderModels(b.models), nil
+}
+func (b testManagedBridge) Start(context.Context) (providers.AuthState, []providers.Model, error) {
+	return b.startState, cloneProviderModels(b.models), nil
+}
+func (b testManagedBridge) Complete(context.Context) (providers.AuthState, []providers.Model, error) {
+	return b.completeState, cloneProviderModels(b.models), nil
+}
+func (b testManagedBridge) Refresh(context.Context) (providers.AuthState, []providers.Model, error) {
+	return b.refreshState, cloneProviderModels(b.models), nil
+}
+func (b testManagedBridge) Revoke(context.Context) (providers.AuthState, []providers.Model, error) {
+	return b.revokeState, cloneProviderModels(b.models), nil
+}
+func (b testManagedBridge) Provider() llm.Provider { return b.provider }
+
+func cloneProviderModels(items []providers.Model) []providers.Model {
+	cloned := make([]providers.Model, 0, len(items))
+	for _, item := range items {
+		model := item
+		model.ReasoningLevels = append([]string(nil), item.ReasoningLevels...)
+		cloned = append(cloned, model)
+	}
+	return cloned
+}
+
 func issueAuthHeaderForTest(t *testing.T, manager *auth.Manager, label string) string {
 	t.Helper()
 
@@ -2209,6 +2271,267 @@ func TestProviderResolutionAppliesProfilePolicyToChat(t *testing.T) {
 	server.Handler().ServeHTTP(rejectRec, rejectReq)
 	if rejectRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for incompatible provider/model, got %d body=%s", rejectRec.Code, rejectRec.Body.String())
+	}
+}
+
+func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
+	eventBus := events.NewBus()
+	logger := telemetry.New("error")
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&testLLMProvider{
+		name: "codex_managed",
+		completeFn: func(_ context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{
+				Output:       request.Model,
+				FinishReason: "stop",
+				Usage:        llm.Usage{InputTokens: 1, OutputTokens: 1, TotalTokens: 2},
+			}, nil
+		},
+		streamFn: func(_ context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+			return llm.ProviderResponse{}, errors.New("not used")
+		},
+	})
+	authManager := auth.NewManager()
+	now := time.Now().UTC()
+	bridge := testManagedBridge{
+		providerID:  "codex_managed",
+		displayName: "Codex CLI",
+		family:      providers.FamilyCodexCLI,
+		authMode:    providers.AuthModeLocalCLIBridge,
+		detectState: providers.AuthState{
+			ProviderID:    "codex_managed",
+			Family:        providers.FamilyCodexCLI,
+			AuthMode:      providers.AuthModeLocalCLIBridge,
+			Status:        providers.AuthStatusLoginRequired,
+			CLIPath:       "/usr/bin/codex",
+			CLIAvailable:  true,
+			LoginCommand:  []string{"codex", "login"},
+			LogoutCommand: []string{"codex", "logout"},
+			LastCheckedAt: now,
+		},
+		startState: providers.AuthState{
+			ProviderID:    "codex_managed",
+			Family:        providers.FamilyCodexCLI,
+			AuthMode:      providers.AuthModeLocalCLIBridge,
+			Status:        providers.AuthStatusPendingLogin,
+			CLIPath:       "/usr/bin/codex",
+			CLIAvailable:  true,
+			LoginCommand:  []string{"codex", "login"},
+			LogoutCommand: []string{"codex", "logout"},
+			LastCheckedAt: now,
+		},
+		completeState: providers.AuthState{
+			ProviderID:    "codex_managed",
+			Family:        providers.FamilyCodexCLI,
+			AuthMode:      providers.AuthModeLocalCLIBridge,
+			Status:        providers.AuthStatusAuthenticated,
+			CLIPath:       "/usr/bin/codex",
+			CLIAvailable:  true,
+			AccountLabel:  "user@example.com",
+			Plan:          "pro",
+			AuthMethod:    "chatgpt",
+			LoginCommand:  []string{"codex", "login"},
+			LogoutCommand: []string{"codex", "logout"},
+			LastCheckedAt: now,
+		},
+		refreshState: providers.AuthState{
+			ProviderID:    "codex_managed",
+			Family:        providers.FamilyCodexCLI,
+			AuthMode:      providers.AuthModeLocalCLIBridge,
+			Status:        providers.AuthStatusAuthenticated,
+			CLIPath:       "/usr/bin/codex",
+			CLIAvailable:  true,
+			AccountLabel:  "user@example.com",
+			Plan:          "pro",
+			AuthMethod:    "chatgpt",
+			LoginCommand:  []string{"codex", "login"},
+			LogoutCommand: []string{"codex", "logout"},
+			LastCheckedAt: now.Add(time.Minute),
+		},
+		revokeState: providers.AuthState{
+			ProviderID:    "codex_managed",
+			Family:        providers.FamilyCodexCLI,
+			AuthMode:      providers.AuthModeLocalCLIBridge,
+			Status:        providers.AuthStatusRevoked,
+			CLIPath:       "/usr/bin/codex",
+			CLIAvailable:  true,
+			LoginCommand:  []string{"codex", "login"},
+			LogoutCommand: []string{"codex", "logout"},
+			LastCheckedAt: now.Add(2 * time.Minute),
+		},
+		models: []providers.Model{
+			{ProviderID: "codex_managed", ModelID: "gpt-5.4", DisplayName: "GPT-5.4", Default: true, Available: true, Source: "cache", Chat: true, Stream: true, Coding: true, ReasoningLevels: []string{"medium", "high"}},
+			{ProviderID: "codex_managed", ModelID: "gpt-5.4-mini", DisplayName: "GPT-5.4 mini", Available: true, Source: "cache", Chat: true, Stream: true, Coding: true},
+		},
+		provider: &testLLMProvider{
+			name: "codex_managed",
+			completeFn: func(_ context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+				return llm.ProviderResponse{Output: request.Model, FinishReason: "stop", Usage: llm.Usage{InputTokens: 1, OutputTokens: 1, TotalTokens: 2}}, nil
+			},
+			streamFn: func(_ context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+				return llm.ProviderResponse{}, errors.New("not used")
+			},
+		},
+	}
+	registry := testManagedRegistry{bridges: []providers.ManagedBridge{bridge}}
+	providerManager := providers.NewManager(config.Config{
+		LLM: config.LLMConfig{
+			DefaultProvider: "codex_managed",
+		},
+	}, dispatcher, registry)
+	providerManager.RestoreManagedAuthStates([]providers.AuthState{bridge.detectState})
+	providerManager.RestoreProviderModels(bridge.models)
+
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:18789",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:    logger.Slog(),
+		EventBus:  eventBus,
+		Auth:      authManager,
+		LLM:       dispatcher,
+		Providers: providerManager,
+		Store:     sqliteStore,
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "managed-provider-web")
+
+	getAuthReq := httptest.NewRequest(http.MethodGet, "/v1/providers/codex_managed/auth", nil)
+	getAuthReq.Header.Set("Authorization", authHeader)
+	getAuthRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(getAuthRec, getAuthReq)
+	if getAuthRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for auth get, got %d", getAuthRec.Code)
+	}
+	authResponse := decodeStrictResponse[ProviderAuthStateResponse](t, getAuthRec.Body.Bytes())
+	if authResponse.Auth.Status != providers.AuthStatusLoginRequired {
+		t.Fatalf("expected login_required auth state, got %s", authResponse.Auth.Status)
+	}
+
+	startReq := httptest.NewRequest(http.MethodPost, "/v1/providers/codex_managed/auth/start", strings.NewReader(`{}`))
+	startReq.Header.Set("Authorization", authHeader)
+	startRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(startRec, startReq)
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for auth start, got %d body=%s", startRec.Code, startRec.Body.String())
+	}
+	startResponse := decodeStrictResponse[ProviderAuthStateResponse](t, startRec.Body.Bytes())
+	if startResponse.Auth.Status != providers.AuthStatusPendingLogin {
+		t.Fatalf("expected pending auth state, got %s", startResponse.Auth.Status)
+	}
+
+	completeReq := httptest.NewRequest(http.MethodPost, "/v1/providers/codex_managed/auth/complete", strings.NewReader(`{}`))
+	completeReq.Header.Set("Authorization", authHeader)
+	completeRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(completeRec, completeReq)
+	if completeRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for auth complete, got %d body=%s", completeRec.Code, completeRec.Body.String())
+	}
+	completeResponse := decodeStrictResponse[ProviderAuthStateResponse](t, completeRec.Body.Bytes())
+	if completeResponse.Auth.Status != providers.AuthStatusAuthenticated {
+		t.Fatalf("expected authenticated state, got %s", completeResponse.Auth.Status)
+	}
+
+	modelsReq := httptest.NewRequest(http.MethodGet, "/v1/providers/codex_managed/models", nil)
+	modelsReq.Header.Set("Authorization", authHeader)
+	modelsRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(modelsRec, modelsReq)
+	if modelsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for models, got %d", modelsRec.Code)
+	}
+	modelList := decodeStrictResponse[ProviderModelListResponse](t, modelsRec.Body.Bytes())
+	if len(modelList.Items) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(modelList.Items))
+	}
+
+	defaultModelReq := httptest.NewRequest(http.MethodPost, "/v1/providers/codex_managed/default-model", strings.NewReader(`{"model":"gpt-5.4-mini"}`))
+	defaultModelReq.Header.Set("Authorization", authHeader)
+	defaultModelReq.Header.Set("Content-Type", "application/json")
+	defaultModelRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(defaultModelRec, defaultModelReq)
+	if defaultModelRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for default model update, got %d body=%s", defaultModelRec.Code, defaultModelRec.Body.String())
+	}
+	defaultModelResponse := decodeStrictResponse[ProviderDefaultModelResponse](t, defaultModelRec.Body.Bytes())
+	if defaultModelResponse.DefaultModel != "gpt-5.4-mini" {
+		t.Fatalf("expected updated model gpt-5.4-mini, got %s", defaultModelResponse.DefaultModel)
+	}
+
+	chatReq := httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"codex_managed","query":"hello"}`))
+	chatReq.Header.Set("Authorization", authHeader)
+	chatReq.Header.Set("Content-Type", "application/json")
+	chatRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(chatRec, chatReq)
+	if chatRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for managed provider chat, got %d body=%s", chatRec.Code, chatRec.Body.String())
+	}
+	chatResponse := decodeStrictResponse[ChatQueryResponse](t, chatRec.Body.Bytes())
+	if chatResponse.Model != "gpt-5.4-mini" {
+		t.Fatalf("expected managed provider default-model override to apply, got %s", chatResponse.Model)
+	}
+
+	refreshReq := httptest.NewRequest(http.MethodPost, "/v1/providers/codex_managed/auth/refresh", strings.NewReader(`{}`))
+	refreshReq.Header.Set("Authorization", authHeader)
+	refreshRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(refreshRec, refreshReq)
+	if refreshRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for auth refresh, got %d", refreshRec.Code)
+	}
+
+	revokeReq := httptest.NewRequest(http.MethodPost, "/v1/providers/codex_managed/auth/revoke", strings.NewReader(`{}`))
+	revokeReq.Header.Set("Authorization", authHeader)
+	revokeRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(revokeRec, revokeReq)
+	if revokeRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for auth revoke, got %d", revokeRec.Code)
+	}
+	revokeResponse := decodeStrictResponse[ProviderAuthStateResponse](t, revokeRec.Body.Bytes())
+	if revokeResponse.Auth.Status != providers.AuthStatusRevoked {
+		t.Fatalf("expected revoked state, got %s", revokeResponse.Auth.Status)
+	}
+
+	authStates, err := sqliteStore.ListProviderAuthStates(context.Background())
+	if err != nil {
+		t.Fatalf("ListProviderAuthStates returned error: %v", err)
+	}
+	if len(authStates) != 1 {
+		t.Fatalf("expected 1 persisted auth state, got %d", len(authStates))
+	}
+	preferences, err := sqliteStore.ListProviderPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("ListProviderPreferences returned error: %v", err)
+	}
+	if len(preferences) != 1 || preferences[0].DefaultModel != "gpt-5.4-mini" {
+		t.Fatalf("unexpected preferences: %+v", preferences)
+	}
+
+	foundStarted := false
+	foundDefaultModelUpdated := false
+	for _, item := range eventBus.List(events.Filter{Category: "provider"}) {
+		if item.Name == "provider.auth_started" {
+			foundStarted = true
+		}
+		if item.Name == "provider.default_model_updated" {
+			foundDefaultModelUpdated = true
+		}
+	}
+	if !foundStarted {
+		t.Fatal("expected provider.auth_started event")
+	}
+	if !foundDefaultModelUpdated {
+		t.Fatal("expected provider.default_model_updated event")
 	}
 }
 

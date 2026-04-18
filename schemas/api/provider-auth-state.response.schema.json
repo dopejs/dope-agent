@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/provider-auth-state.response.schema.json",
+  "title": "ProviderAuthStateResponse",
+  "type": "object",
+  "required": ["auth"],
+  "additionalProperties": false,
+  "properties": {
+    "auth": {
+      "type": "object",
+      "required": [
+        "providerId",
+        "family",
+        "authMode",
+        "status",
+        "cliAvailable",
+        "lastCheckedAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "providerId": { "type": "string" },
+        "family": { "type": "string", "enum": ["builtin_echo", "openai_compatible", "claude_code_cli", "codex_cli"] },
+        "authMode": { "type": "string", "enum": ["none", "api_key", "local_cli_bridge"] },
+        "status": { "type": "string", "enum": ["unknown", "login_required", "pending_login", "authenticated", "revoked", "error"] },
+        "cliPath": { "type": "string" },
+        "cliAvailable": { "type": "boolean" },
+        "accountLabel": { "type": "string" },
+        "accountId": { "type": "string" },
+        "plan": { "type": "string" },
+        "authMethod": { "type": "string" },
+        "loginCommand": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "logoutCommand": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "lastCheckedAt": { "type": "string", "format": "date-time" },
+        "lastAuthenticatedAt": { "type": "string", "format": "date-time" },
+        "lastError": { "type": "string" },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}

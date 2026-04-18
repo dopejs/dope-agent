@@ -62,6 +62,36 @@
               "default": 30000
             }
           }
+        },
+        "claude": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cliPath": {
+              "type": "string"
+            },
+            "defaultModel": {
+              "type": "string"
+            },
+            "workDir": {
+              "type": "string"
+            }
+          }
+        },
+        "codex": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cliPath": {
+              "type": "string"
+            },
+            "defaultModel": {
+              "type": "string"
+            },
+            "workDir": {
+              "type": "string"
+            }
+          }
         }
       }
     }

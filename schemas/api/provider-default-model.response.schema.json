@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/provider-default-model.response.schema.json",
+  "title": "ProviderDefaultModelResponse",
+  "type": "object",
+  "required": ["providerId", "defaultModel", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "providerId": { "type": "string" },
+    "defaultModel": { "type": "string" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

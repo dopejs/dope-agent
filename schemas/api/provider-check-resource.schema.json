@@ -18,8 +18,8 @@
   "properties": {
     "checkId": { "type": "string" },
     "providerId": { "type": "string" },
-    "family": { "type": "string", "enum": ["builtin_echo", "openai_compatible"] },
-    "authMode": { "type": "string", "enum": ["none", "api_key"] },
+    "family": { "type": "string", "enum": ["builtin_echo", "openai_compatible", "claude_code_cli", "codex_cli"] },
+    "authMode": { "type": "string", "enum": ["none", "api_key", "local_cli_bridge"] },
     "status": { "type": "string", "enum": ["passed", "failed"] },
     "model": { "type": "string" },
     "endpoint": { "type": "string" },

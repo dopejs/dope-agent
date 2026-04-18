@@ -684,6 +684,98 @@ func TestSQLiteStorePersistsProviderChecks(t *testing.T) {
 	}
 }
 
+func TestSQLiteStorePersistsManagedProviderState(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	authState := providers.AuthState{
+		ProviderID:          "codex_managed",
+		Family:              providers.FamilyCodexCLI,
+		AuthMode:            providers.AuthModeLocalCLIBridge,
+		Status:              providers.AuthStatusAuthenticated,
+		CLIPath:             "/usr/bin/codex",
+		CLIAvailable:        true,
+		AccountLabel:        "user@example.com",
+		AccountID:           "acct_1",
+		Plan:                "pro",
+		AuthMethod:          "chatgpt",
+		LoginCommand:        []string{"codex", "login"},
+		LogoutCommand:       []string{"codex", "logout"},
+		LastCheckedAt:       time.Now().UTC().Add(-time.Minute),
+		LastAuthenticatedAt: ptrTime(time.Now().UTC().Add(-2 * time.Minute)),
+		Metadata:            map[string]string{"source": "test"},
+	}
+	if err := store.UpsertProviderAuthState(ctx, authState); err != nil {
+		t.Fatalf("UpsertProviderAuthState returned error: %v", err)
+	}
+
+	models := []providers.Model{
+		{
+			ProviderID:      "codex_managed",
+			ModelID:         "gpt-5.4",
+			DisplayName:     "GPT-5.4",
+			Description:     "Primary coding model",
+			Default:         true,
+			Available:       true,
+			Source:          "cache",
+			Chat:            true,
+			Stream:          true,
+			Coding:          true,
+			ToolUse:         false,
+			ReasoningLevels: []string{"medium", "high"},
+		},
+	}
+	if err := store.ReplaceProviderModels(ctx, "codex_managed", models); err != nil {
+		t.Fatalf("ReplaceProviderModels returned error: %v", err)
+	}
+
+	preference := providers.Preference{
+		ProviderID:   "codex_managed",
+		DefaultModel: "gpt-5.4",
+		UpdatedAt:    time.Now().UTC(),
+	}
+	if err := store.UpsertProviderPreference(ctx, preference); err != nil {
+		t.Fatalf("UpsertProviderPreference returned error: %v", err)
+	}
+
+	authStates, err := store.ListProviderAuthStates(ctx)
+	if err != nil {
+		t.Fatalf("ListProviderAuthStates returned error: %v", err)
+	}
+	if len(authStates) != 1 || authStates[0].ProviderID != "codex_managed" {
+		t.Fatalf("unexpected auth states: %+v", authStates)
+	}
+
+	persistedModels, err := store.ListProviderModelsByProvider(ctx, "codex_managed")
+	if err != nil {
+		t.Fatalf("ListProviderModelsByProvider returned error: %v", err)
+	}
+	if len(persistedModels) != 1 || persistedModels[0].ModelID != "gpt-5.4" {
+		t.Fatalf("unexpected provider models: %+v", persistedModels)
+	}
+	if len(persistedModels[0].ReasoningLevels) != 2 {
+		t.Fatalf("expected reasoning levels to persist, got %+v", persistedModels[0].ReasoningLevels)
+	}
+
+	preferences, err := store.ListProviderPreferences(ctx)
+	if err != nil {
+		t.Fatalf("ListProviderPreferences returned error: %v", err)
+	}
+	if len(preferences) != 1 || preferences[0].DefaultModel != "gpt-5.4" {
+		t.Fatalf("unexpected provider preferences: %+v", preferences)
+	}
+}
+
 func TestSQLiteStoreUsesCurrentSchemaVersion(t *testing.T) {
 	t.Parallel()
 
@@ -776,4 +868,8 @@ func TestSQLiteStoreRejectsFutureSchemaVersion(t *testing.T) {
 	if _, err := NewSQLiteStore(dataDir); err == nil {
 		t.Fatal("expected NewSQLiteStore to reject future schema version")
 	}
+}
+
+func ptrTime(value time.Time) *time.Time {
+	return &value
 }

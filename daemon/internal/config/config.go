@@ -26,6 +26,8 @@ type LLMConfig struct {
 	DefaultTimeoutMs  int
 	DefaultMaxRetries int
 	OpenAICompatible  OpenAICompatibleProviderConfig
+	Claude            ManagedCLIProviderConfig
+	Codex             ManagedCLIProviderConfig
 }
 
 type OpenAICompatibleProviderConfig struct {
@@ -34,6 +36,12 @@ type OpenAICompatibleProviderConfig struct {
 	APIKeyEnv string
 	Model     string
 	TimeoutMs int
+}
+
+type ManagedCLIProviderConfig struct {
+	CLIPath      string
+	DefaultModel string
+	WorkDir      string
 }
 
 type fileConfig struct {
@@ -49,6 +57,8 @@ type fileLLMConfig struct {
 	DefaultTimeoutMs  int                                 `json:"defaultTimeoutMs"`
 	DefaultMaxRetries int                                 `json:"defaultMaxRetries"`
 	OpenAICompatible  *fileOpenAICompatibleProviderConfig `json:"openaiCompatible"`
+	Claude            *fileManagedCLIProviderConfig       `json:"claude"`
+	Codex             *fileManagedCLIProviderConfig       `json:"codex"`
 }
 
 type fileOpenAICompatibleProviderConfig struct {
@@ -57,6 +67,12 @@ type fileOpenAICompatibleProviderConfig struct {
 	APIKeyEnv string `json:"apiKeyEnv"`
 	Model     string `json:"model"`
 	TimeoutMs int    `json:"timeoutMs"`
+}
+
+type fileManagedCLIProviderConfig struct {
+	CLIPath      string `json:"cliPath"`
+	DefaultModel string `json:"defaultModel"`
+	WorkDir      string `json:"workDir"`
 }
 
 func Load() (Config, error) {
@@ -78,6 +94,12 @@ func Load() (Config, error) {
 			DefaultMaxRetries: 0,
 			OpenAICompatible: OpenAICompatibleProviderConfig{
 				TimeoutMs: 30000,
+			},
+			Claude: ManagedCLIProviderConfig{
+				WorkDir: "~",
+			},
+			Codex: ManagedCLIProviderConfig{
+				WorkDir: "~",
 			},
 		},
 	}
@@ -167,6 +189,24 @@ func applyFileLLMConfig(cfg *LLMConfig, fileCfg fileLLMConfig) {
 			cfg.OpenAICompatible.TimeoutMs = fileCfg.OpenAICompatible.TimeoutMs
 		}
 	}
+	if fileCfg.Claude != nil {
+		applyFileManagedCLIConfig(&cfg.Claude, *fileCfg.Claude)
+	}
+	if fileCfg.Codex != nil {
+		applyFileManagedCLIConfig(&cfg.Codex, *fileCfg.Codex)
+	}
+}
+
+func applyFileManagedCLIConfig(cfg *ManagedCLIProviderConfig, fileCfg fileManagedCLIProviderConfig) {
+	if fileCfg.CLIPath != "" {
+		cfg.CLIPath = fileCfg.CLIPath
+	}
+	if fileCfg.DefaultModel != "" {
+		cfg.DefaultModel = fileCfg.DefaultModel
+	}
+	if fileCfg.WorkDir != "" {
+		cfg.WorkDir = fileCfg.WorkDir
+	}
 }
 
 func applyEnvOverrides(cfg *Config) {
@@ -185,6 +225,12 @@ func applyEnvOverrides(cfg *Config) {
 	cfg.LLM.OpenAICompatible.APIKeyEnv = getenv("DOPE_LLM_OPENAI_COMPATIBLE_API_KEY_ENV", cfg.LLM.OpenAICompatible.APIKeyEnv)
 	cfg.LLM.OpenAICompatible.Model = getenv("DOPE_LLM_OPENAI_COMPATIBLE_MODEL", cfg.LLM.OpenAICompatible.Model)
 	cfg.LLM.OpenAICompatible.TimeoutMs = getenvInt("DOPE_LLM_OPENAI_COMPATIBLE_TIMEOUT_MS", cfg.LLM.OpenAICompatible.TimeoutMs)
+	cfg.LLM.Claude.CLIPath = getenv("DOPE_LLM_CLAUDE_CLI_PATH", cfg.LLM.Claude.CLIPath)
+	cfg.LLM.Claude.DefaultModel = getenv("DOPE_LLM_CLAUDE_MODEL", cfg.LLM.Claude.DefaultModel)
+	cfg.LLM.Claude.WorkDir = getenv("DOPE_LLM_CLAUDE_WORKDIR", cfg.LLM.Claude.WorkDir)
+	cfg.LLM.Codex.CLIPath = getenv("DOPE_LLM_CODEX_CLI_PATH", cfg.LLM.Codex.CLIPath)
+	cfg.LLM.Codex.DefaultModel = getenv("DOPE_LLM_CODEX_MODEL", cfg.LLM.Codex.DefaultModel)
+	cfg.LLM.Codex.WorkDir = getenv("DOPE_LLM_CODEX_WORKDIR", cfg.LLM.Codex.WorkDir)
 }
 
 func resolveSecretRefs(cfg *Config) {

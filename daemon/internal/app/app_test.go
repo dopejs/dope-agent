@@ -17,10 +17,12 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
+	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
@@ -123,7 +125,7 @@ func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth); err != nil {
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher())); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -212,7 +214,7 @@ func TestRecoverPersistedStateRestoresSupervisionState(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth); err != nil {
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher())); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -322,7 +324,7 @@ func TestRecoverPersistedStateRestoresAuthAndPolicyState(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth); err != nil {
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher())); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -903,6 +905,85 @@ func TestNewConfiguresOpenAICompatibleProviderAndServesChat(t *testing.T) {
 	joined := strings.Join(chunks, "")
 	if !strings.Contains(joined, "event: chat.query.started") || !strings.Contains(joined, "event: chat.query.delta") || !strings.Contains(joined, "event: chat.query.completed") {
 		t.Fatalf("unexpected stream payload %q", joined)
+	}
+}
+
+func TestRecoverPersistedStateRestoresManagedProviderState(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	authState := providers.AuthState{
+		ProviderID:    "codex_managed",
+		Family:        providers.FamilyCodexCLI,
+		AuthMode:      providers.AuthModeLocalCLIBridge,
+		Status:        providers.AuthStatusAuthenticated,
+		CLIPath:       "/usr/bin/codex",
+		CLIAvailable:  true,
+		AccountLabel:  "user@example.com",
+		Plan:          "pro",
+		AuthMethod:    "chatgpt",
+		LoginCommand:  []string{"codex", "login"},
+		LogoutCommand: []string{"codex", "logout"},
+		LastCheckedAt: time.Now().UTC(),
+	}
+	if err := sqliteStore.UpsertProviderAuthState(ctx, authState); err != nil {
+		t.Fatalf("UpsertProviderAuthState returned error: %v", err)
+	}
+	models := []providers.Model{
+		{ProviderID: "codex_managed", ModelID: "gpt-5.4", DisplayName: "GPT-5.4", Default: true, Available: true, Source: "cache", Chat: true, Stream: true, Coding: true},
+	}
+	if err := sqliteStore.ReplaceProviderModels(ctx, "codex_managed", models); err != nil {
+		t.Fatalf("ReplaceProviderModels returned error: %v", err)
+	}
+	preference := providers.Preference{
+		ProviderID:   "codex_managed",
+		DefaultModel: "gpt-5.4",
+		UpdatedAt:    time.Now().UTC(),
+	}
+	if err := sqliteStore.UpsertProviderPreference(ctx, preference); err != nil {
+		t.Fatalf("UpsertProviderPreference returned error: %v", err)
+	}
+
+	restoredRouter := router.NewSessionRouter()
+	restoredRuntime := runtime.NewManager()
+	restoredEventBus := events.NewBus()
+	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredConnectors := connectors.NewSupervisor()
+	restoredCapabilities := capabilities.NewSupervisor()
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+	providerManager := providers.NewManager(config.Config{}, llm.NewDispatcher())
+
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providerManager); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+
+	state, ok := providerManager.GetAuthState("codex_managed")
+	if !ok {
+		t.Fatal("expected restored provider auth state")
+	}
+	if state.Status != providers.AuthStatusAuthenticated {
+		t.Fatalf("expected restored authenticated state, got %s", state.Status)
+	}
+	persistedModels, ok := providerManager.ListModels("codex_managed")
+	if !ok || len(persistedModels) != 1 {
+		t.Fatalf("expected restored provider models, got %+v", persistedModels)
+	}
+	if persistedModels[0].ModelID != "gpt-5.4" {
+		t.Fatalf("expected restored model gpt-5.4, got %s", persistedModels[0].ModelID)
+	}
+	if pref, ok := providerManager.GetPreference("codex_managed"); !ok || pref.DefaultModel != "gpt-5.4" {
+		t.Fatalf("expected restored provider preference, got %+v ok=%v", pref, ok)
 	}
 }
 

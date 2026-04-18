@@ -37,7 +37,9 @@
         "defaultModel",
         "defaultTimeoutMs",
         "defaultMaxRetries",
-        "openaiCompatible"
+        "openaiCompatible",
+        "claude",
+        "codex"
       ],
       "additionalProperties": false,
       "properties": {
@@ -85,6 +87,28 @@
             "apiKeyEnv": {
               "type": "string"
             }
+          }
+        },
+        "claude": {
+          "type": "object",
+          "required": ["configured"],
+          "additionalProperties": false,
+          "properties": {
+            "configured": { "type": "boolean" },
+            "cliPath": { "type": "string" },
+            "defaultModel": { "type": "string" },
+            "workDir": { "type": "string" }
+          }
+        },
+        "codex": {
+          "type": "object",
+          "required": ["configured"],
+          "additionalProperties": false,
+          "properties": {
+            "configured": { "type": "boolean" },
+            "cliPath": { "type": "string" },
+            "defaultModel": { "type": "string" },
+            "workDir": { "type": "string" }
           }
         }
       }

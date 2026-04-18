@@ -9,6 +9,7 @@ import (
 	goruntime "runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/api"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
@@ -34,6 +35,99 @@ type contractHarness struct {
 	authHeader string
 }
 
+type contractManagedRegistry struct {
+	bridges []providers.ManagedBridge
+}
+
+func (r contractManagedRegistry) List() []providers.ManagedBridge {
+	return append([]providers.ManagedBridge(nil), r.bridges...)
+}
+
+func (r contractManagedRegistry) Get(providerID string) (providers.ManagedBridge, bool) {
+	for _, bridge := range r.bridges {
+		if bridge.ProviderID() == providerID {
+			return bridge, true
+		}
+	}
+	return nil, false
+}
+
+type contractManagedBridge struct {
+	providerID    string
+	displayName   string
+	family        providers.Family
+	authMode      providers.AuthMode
+	detectState   providers.AuthState
+	startState    providers.AuthState
+	completeState providers.AuthState
+	refreshState  providers.AuthState
+	revokeState   providers.AuthState
+	models        []providers.Model
+	provider      llm.Provider
+}
+
+func (b contractManagedBridge) ProviderID() string           { return b.providerID }
+func (b contractManagedBridge) DisplayName() string          { return b.displayName }
+func (b contractManagedBridge) Family() providers.Family     { return b.family }
+func (b contractManagedBridge) AuthMode() providers.AuthMode { return b.authMode }
+func (b contractManagedBridge) Provider() llm.Provider       { return b.provider }
+func (b contractManagedBridge) Detect(context.Context) (providers.AuthState, []providers.Model, error) {
+	return b.detectState, cloneContractProviderModels(b.models), nil
+}
+func (b contractManagedBridge) Start(context.Context) (providers.AuthState, []providers.Model, error) {
+	return b.startState, cloneContractProviderModels(b.models), nil
+}
+func (b contractManagedBridge) Complete(context.Context) (providers.AuthState, []providers.Model, error) {
+	return b.completeState, cloneContractProviderModels(b.models), nil
+}
+func (b contractManagedBridge) Refresh(context.Context) (providers.AuthState, []providers.Model, error) {
+	return b.refreshState, cloneContractProviderModels(b.models), nil
+}
+func (b contractManagedBridge) Revoke(context.Context) (providers.AuthState, []providers.Model, error) {
+	return b.revokeState, cloneContractProviderModels(b.models), nil
+}
+
+func cloneContractProviderModels(items []providers.Model) []providers.Model {
+	cloned := make([]providers.Model, 0, len(items))
+	for _, item := range items {
+		model := item
+		model.ReasoningLevels = append([]string(nil), item.ReasoningLevels...)
+		cloned = append(cloned, model)
+	}
+	return cloned
+}
+
+type contractManagedLLMProvider struct {
+	name string
+}
+
+func (p *contractManagedLLMProvider) Name() string { return p.name }
+
+func (p *contractManagedLLMProvider) Complete(_ context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
+	return llm.ProviderResponse{
+		Output:       request.Model,
+		FinishReason: "stop",
+		Usage:        llm.Usage{InputTokens: 1, OutputTokens: 1, TotalTokens: 2},
+	}, nil
+}
+
+func (p *contractManagedLLMProvider) Stream(_ context.Context, request llm.ProviderRequest, emit llm.StreamEmitter) (llm.ProviderResponse, error) {
+	if emit != nil {
+		if err := emit(llm.StreamChunk{Delta: request.Model, Output: request.Model}); err != nil {
+			return llm.ProviderResponse{}, err
+		}
+	}
+	return llm.ProviderResponse{
+		Output:       request.Model,
+		FinishReason: "stop",
+		Usage:        llm.Usage{InputTokens: 1, OutputTokens: 1, TotalTokens: 2},
+	}, nil
+}
+
+func ptrContractTime(value time.Time) *time.Time {
+	return &value
+}
+
 func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 	t.Parallel()
 
@@ -55,6 +149,7 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 		"schemas/api/create-llm-dispatch.request.schema.json":       `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"hello"}],"timeoutMs":1000,"maxRetries":1}`,
 		"schemas/api/chat-query.request.schema.json":                `{"provider":"echo","model":"echo-v1","query":"hello","timeoutMs":1000,"maxRetries":1}`,
 		"schemas/api/run-provider-check.request.schema.json":        `{"model":"echo-v1","prompt":"hello"}`,
+		"schemas/api/provider-default-model.request.schema.json":    `{"model":"gpt-5.4"}`,
 		"schemas/api/request-approval.request.schema.json":          `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"needs approval","requestedBy":"web-ui"}`,
 		"schemas/api/resolve-approval.request.schema.json":          `{"resolution":"approved","comment":"allowed"}`,
 		"schemas/api/start-pairing.request.schema.json":             `{"mode":"local","label":"web-ui","ttlSeconds":120}`,
@@ -107,10 +202,19 @@ func TestProviderSchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	fixtures := map[string]string{
-		"schemas/api/provider-resource.schema.json":                 `{"providerId":"echo","title":"Echo","family":"builtin_echo","authMode":"none","source":"builtin","modelSelectionMode":"fixed","knownModels":["echo-v1"],"registered":true,"configured":true,"ready":true,"default":true,"defaultModel":"echo-v1","effectiveModel":"echo-v1","effectiveTimeoutMs":30000,"effectiveMaxRetries":0,"secretConfigured":false,"capabilities":{"chat":true,"stream":true}}`,
-		"schemas/api/provider-check-resource.schema.json":           `{"checkId":"provider_check_1","providerId":"echo","family":"builtin_echo","authMode":"none","status":"passed","model":"echo-v1","usage":{"inputTokens":1,"outputTokens":1,"totalTokens":2},"createdAt":"2026-04-18T12:00:00Z","completedAt":"2026-04-18T12:00:01Z"}`,
-		"schemas/events/provider-check-completed.event.schema.json": `{"eventId":"evt_1","sequence":1,"category":"provider","name":"provider.check_completed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_check","id":"provider_check_1"},"payload":{"providerId":"echo","family":"builtin_echo","authMode":"none","status":"passed","model":"echo-v1","endpoint":"","usage":{"inputTokens":1,"outputTokens":1,"totalTokens":2}}}`,
-		"schemas/events/provider-check-failed.event.schema.json":    `{"eventId":"evt_2","sequence":2,"category":"provider","name":"provider.check_failed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_check","id":"provider_check_2"},"payload":{"providerId":"openai_compatible","family":"openai_compatible","authMode":"api_key","status":"failed","model":"gpt-5.4","errorClass":"auth_error","errorCode":"upstream_auth_failed","errorMessage":"unauthorized","usage":{"inputTokens":0,"outputTokens":0,"totalTokens":0}}}`,
+		"schemas/api/provider-resource.schema.json":                       `{"providerId":"echo","title":"Echo","family":"builtin_echo","authMode":"none","source":"builtin","modelSelectionMode":"fixed","knownModels":["echo-v1"],"registered":true,"configured":true,"ready":true,"default":true,"defaultModel":"echo-v1","effectiveModel":"echo-v1","effectiveTimeoutMs":30000,"effectiveMaxRetries":0,"secretConfigured":false,"capabilities":{"chat":true,"stream":true}}`,
+		"schemas/api/provider-check-resource.schema.json":                 `{"checkId":"provider_check_1","providerId":"echo","family":"builtin_echo","authMode":"none","status":"passed","model":"echo-v1","usage":{"inputTokens":1,"outputTokens":1,"totalTokens":2},"createdAt":"2026-04-18T12:00:00Z","completedAt":"2026-04-18T12:00:01Z"}`,
+		"schemas/api/provider-auth-state.response.schema.json":            `{"auth":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"authenticated","cliAvailable":true,"accountLabel":"user@example.com","accountId":"acct_1","plan":"pro","authMethod":"chatgpt","loginCommand":["codex","login"],"logoutCommand":["codex","logout"],"lastCheckedAt":"2026-04-18T12:00:00Z","lastAuthenticatedAt":"2026-04-18T11:59:00Z","metadata":{"source":"contract"}}}`,
+		"schemas/api/provider-model.schema.json":                          `{"providerId":"codex_managed","modelId":"gpt-5.4","displayName":"GPT-5.4","description":"Primary coding model","default":true,"available":true,"source":"cache","chat":true,"stream":true,"coding":true,"toolUse":false,"reasoningLevels":["medium","high"]}`,
+		"schemas/api/provider-model-list.response.schema.json":            `{"items":[{"providerId":"codex_managed","modelId":"gpt-5.4","displayName":"GPT-5.4","default":true,"available":true,"source":"cache","chat":true,"stream":true,"coding":true,"toolUse":false}]}`,
+		"schemas/api/provider-default-model.response.schema.json":         `{"providerId":"codex_managed","defaultModel":"gpt-5.4","updatedAt":"2026-04-18T12:00:00Z"}`,
+		"schemas/events/provider-check-completed.event.schema.json":       `{"eventId":"evt_1","sequence":1,"category":"provider","name":"provider.check_completed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_check","id":"provider_check_1"},"payload":{"providerId":"echo","family":"builtin_echo","authMode":"none","status":"passed","model":"echo-v1","endpoint":"","usage":{"inputTokens":1,"outputTokens":1,"totalTokens":2}}}`,
+		"schemas/events/provider-check-failed.event.schema.json":          `{"eventId":"evt_2","sequence":2,"category":"provider","name":"provider.check_failed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_check","id":"provider_check_2"},"payload":{"providerId":"openai_compatible","family":"openai_compatible","authMode":"api_key","status":"failed","model":"gpt-5.4","errorClass":"auth_error","errorCode":"upstream_auth_failed","errorMessage":"unauthorized","usage":{"inputTokens":0,"outputTokens":0,"totalTokens":0}}}`,
+		"schemas/events/provider-auth-started.event.schema.json":          `{"eventId":"evt_3","sequence":3,"category":"provider","name":"provider.auth_started","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"pending_login","cliAvailable":true,"accountLabel":"","accountId":"","plan":"","authMethod":"","lastError":""}}`,
+		"schemas/events/provider-auth-completed.event.schema.json":        `{"eventId":"evt_4","sequence":4,"category":"provider","name":"provider.auth_completed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"authenticated","cliAvailable":true,"accountLabel":"user@example.com","accountId":"acct_1","plan":"pro","authMethod":"chatgpt","lastError":""}}`,
+		"schemas/events/provider-auth-refreshed.event.schema.json":        `{"eventId":"evt_5","sequence":5,"category":"provider","name":"provider.auth_refreshed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"authenticated","cliAvailable":true,"accountLabel":"user@example.com","accountId":"acct_1","plan":"pro","authMethod":"chatgpt","lastError":""}}`,
+		"schemas/events/provider-auth-revoked.event.schema.json":          `{"eventId":"evt_6","sequence":6,"category":"provider","name":"provider.auth_revoked","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"revoked","cliAvailable":true,"accountLabel":"","accountId":"","plan":"","authMethod":"","lastError":""}}`,
+		"schemas/events/provider-default-model-updated.event.schema.json": `{"eventId":"evt_7","sequence":7,"category":"provider","name":"provider.default_model_updated","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider","id":"codex_managed"},"payload":{"providerId":"codex_managed","defaultModel":"gpt-5.4","updatedAt":"2026-04-18T12:00:01Z"}}`,
 	}
 
 	for schemaPath, fixture := range fixtures {
@@ -146,6 +250,14 @@ func TestAPISchemasMatchCanonicalResponses(t *testing.T) {
 	h.mustValidateResponse(t, http.MethodGet, "/v1/providers/echo", "", h.authHeader, "schemas/api/provider-resource.schema.json")
 	h.mustValidateResponse(t, http.MethodPost, "/v1/providers/echo/checks", `{"model":"echo-v1","prompt":"hello"}`, h.authHeader, "schemas/api/provider-check-resource.schema.json")
 	h.mustValidateResponse(t, http.MethodGet, "/v1/providers/echo/checks", "", h.authHeader, "schemas/api/provider-check-list.response.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/providers/codex_managed", "", h.authHeader, "schemas/api/provider-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/providers/codex_managed/auth", "", h.authHeader, "schemas/api/provider-auth-state.response.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/providers/codex_managed/auth/start", `{}`, h.authHeader, "schemas/api/provider-auth-state.response.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/providers/codex_managed/auth/complete", `{}`, h.authHeader, "schemas/api/provider-auth-state.response.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/providers/codex_managed/auth/refresh", `{}`, h.authHeader, "schemas/api/provider-auth-state.response.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/providers/codex_managed/models", "", h.authHeader, "schemas/api/provider-model-list.response.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/providers/codex_managed/default-model", `{"model":"gpt-5.4-mini"}`, h.authHeader, "schemas/api/provider-default-model.response.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/providers/codex_managed/auth/revoke", `{}`, h.authHeader, "schemas/api/provider-auth-state.response.schema.json")
 
 	h.mustValidateResponse(t, http.MethodPost, "/v1/connectors", `{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`, h.authHeader, "schemas/api/connector-resource.schema.json")
 	h.mustValidateResponse(t, http.MethodGet, "/v1/connectors", "", h.authHeader, "schemas/api/connector-list.response.schema.json")
@@ -216,6 +328,11 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 	h.request(t, http.MethodPost, "/v1/runs/"+runID+"/steps/"+stepID+"/tool-calls/"+toolCallID+"/complete", `{"output":{"ok":true}}`, h.authHeader)
 	h.request(t, http.MethodPost, "/v1/llm/dispatches", `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"stream"}]}`, h.authHeader)
 	h.request(t, http.MethodPost, "/v1/providers/echo/checks", `{"model":"echo-v1","prompt":"check"}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/providers/codex_managed/auth/start", `{}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/providers/codex_managed/auth/complete", `{}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/providers/codex_managed/auth/refresh", `{}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/providers/codex_managed/default-model", `{"model":"gpt-5.4-mini"}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/providers/codex_managed/auth/revoke", `{}`, h.authHeader)
 	approvalBody := h.request(t, http.MethodPost, "/v1/policy/approvals", `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"review","requestedBy":"events-suite"}`, h.authHeader)
 	approvalID := decodeJSONMap(t, approvalBody)["approval"].(map[string]any)["approvalId"].(string)
 	h.request(t, http.MethodPost, "/v1/policy/approvals/"+approvalID+"/resolve", `{"resolution":"approved","comment":"approved"}`, h.authHeader)
@@ -226,19 +343,24 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 	}
 
 	expectedSchemas := map[string]string{
-		"run.created":                "schemas/events/run-created.event.schema.json",
-		"step.created":               "schemas/events/step-created.event.schema.json",
-		"step.status_changed":        "schemas/events/step-status-changed.event.schema.json",
-		"run.status_changed":         "schemas/events/run-status-changed.event.schema.json",
-		"tool_call.requested":        "schemas/events/tool-call-requested.event.schema.json",
-		"tool_call.completed":        "schemas/events/tool-call-completed.event.schema.json",
-		"llm.dispatch.requested":     "schemas/events/llm-dispatch-requested.event.schema.json",
-		"llm.dispatch.completed":     "schemas/events/llm-dispatch-completed.event.schema.json",
-		"provider.check_completed":   "schemas/events/provider-check-completed.event.schema.json",
-		"connector.ingress_accepted": "schemas/events/connector-ingress-accepted.event.schema.json",
-		"policy.approval_requested":  "schemas/events/policy-approval-requested.event.schema.json",
-		"policy.approval_resolved":   "schemas/events/policy-approval-resolved.event.schema.json",
-		"policy.decision_recorded":   "schemas/events/policy-decision-recorded.event.schema.json",
+		"run.created":                    "schemas/events/run-created.event.schema.json",
+		"step.created":                   "schemas/events/step-created.event.schema.json",
+		"step.status_changed":            "schemas/events/step-status-changed.event.schema.json",
+		"run.status_changed":             "schemas/events/run-status-changed.event.schema.json",
+		"tool_call.requested":            "schemas/events/tool-call-requested.event.schema.json",
+		"tool_call.completed":            "schemas/events/tool-call-completed.event.schema.json",
+		"llm.dispatch.requested":         "schemas/events/llm-dispatch-requested.event.schema.json",
+		"llm.dispatch.completed":         "schemas/events/llm-dispatch-completed.event.schema.json",
+		"provider.check_completed":       "schemas/events/provider-check-completed.event.schema.json",
+		"provider.auth_started":          "schemas/events/provider-auth-started.event.schema.json",
+		"provider.auth_completed":        "schemas/events/provider-auth-completed.event.schema.json",
+		"provider.auth_refreshed":        "schemas/events/provider-auth-refreshed.event.schema.json",
+		"provider.auth_revoked":          "schemas/events/provider-auth-revoked.event.schema.json",
+		"provider.default_model_updated": "schemas/events/provider-default-model-updated.event.schema.json",
+		"connector.ingress_accepted":     "schemas/events/connector-ingress-accepted.event.schema.json",
+		"policy.approval_requested":      "schemas/events/policy-approval-requested.event.schema.json",
+		"policy.approval_resolved":       "schemas/events/policy-approval-resolved.event.schema.json",
+		"policy.decision_recorded":       "schemas/events/policy-decision-recorded.event.schema.json",
 	}
 
 	found := make(map[string]bool, len(expectedSchemas))
@@ -285,11 +407,96 @@ func newContractHarness(t *testing.T) *contractHarness {
 	policyEngine := policy.NewEngine()
 	authManager := auth.NewManager()
 	llmDispatcher := llm.NewDispatcher()
+	llmDispatcher.RegisterProvider(&contractManagedLLMProvider{name: "codex_managed"})
+	now := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)
+	managedBridge := contractManagedBridge{
+		providerID:  "codex_managed",
+		displayName: "Codex CLI",
+		family:      providers.FamilyCodexCLI,
+		authMode:    providers.AuthModeLocalCLIBridge,
+		detectState: providers.AuthState{
+			ProviderID:    "codex_managed",
+			Family:        providers.FamilyCodexCLI,
+			AuthMode:      providers.AuthModeLocalCLIBridge,
+			Status:        providers.AuthStatusLoginRequired,
+			CLIPath:       "/usr/bin/codex",
+			CLIAvailable:  true,
+			LoginCommand:  []string{"codex", "login"},
+			LogoutCommand: []string{"codex", "logout"},
+			LastCheckedAt: now,
+			Metadata:      map[string]string{"source": "contract"},
+		},
+		startState: providers.AuthState{
+			ProviderID:    "codex_managed",
+			Family:        providers.FamilyCodexCLI,
+			AuthMode:      providers.AuthModeLocalCLIBridge,
+			Status:        providers.AuthStatusPendingLogin,
+			CLIPath:       "/usr/bin/codex",
+			CLIAvailable:  true,
+			LoginCommand:  []string{"codex", "login"},
+			LogoutCommand: []string{"codex", "logout"},
+			LastCheckedAt: now,
+			Metadata:      map[string]string{"source": "contract"},
+		},
+		completeState: providers.AuthState{
+			ProviderID:          "codex_managed",
+			Family:              providers.FamilyCodexCLI,
+			AuthMode:            providers.AuthModeLocalCLIBridge,
+			Status:              providers.AuthStatusAuthenticated,
+			CLIPath:             "/usr/bin/codex",
+			CLIAvailable:        true,
+			AccountLabel:        "user@example.com",
+			AccountID:           "acct_1",
+			Plan:                "pro",
+			AuthMethod:          "chatgpt",
+			LoginCommand:        []string{"codex", "login"},
+			LogoutCommand:       []string{"codex", "logout"},
+			LastCheckedAt:       now,
+			LastAuthenticatedAt: ptrContractTime(now.Add(-time.Minute)),
+			Metadata:            map[string]string{"source": "contract"},
+		},
+		refreshState: providers.AuthState{
+			ProviderID:          "codex_managed",
+			Family:              providers.FamilyCodexCLI,
+			AuthMode:            providers.AuthModeLocalCLIBridge,
+			Status:              providers.AuthStatusAuthenticated,
+			CLIPath:             "/usr/bin/codex",
+			CLIAvailable:        true,
+			AccountLabel:        "user@example.com",
+			AccountID:           "acct_1",
+			Plan:                "pro",
+			AuthMethod:          "chatgpt",
+			LoginCommand:        []string{"codex", "login"},
+			LogoutCommand:       []string{"codex", "logout"},
+			LastCheckedAt:       now.Add(time.Minute),
+			LastAuthenticatedAt: ptrContractTime(now.Add(-time.Minute)),
+			Metadata:            map[string]string{"source": "contract"},
+		},
+		revokeState: providers.AuthState{
+			ProviderID:    "codex_managed",
+			Family:        providers.FamilyCodexCLI,
+			AuthMode:      providers.AuthModeLocalCLIBridge,
+			Status:        providers.AuthStatusRevoked,
+			CLIPath:       "/usr/bin/codex",
+			CLIAvailable:  true,
+			LoginCommand:  []string{"codex", "login"},
+			LogoutCommand: []string{"codex", "logout"},
+			LastCheckedAt: now.Add(2 * time.Minute),
+			Metadata:      map[string]string{"source": "contract"},
+		},
+		models: []providers.Model{
+			{ProviderID: "codex_managed", ModelID: "gpt-5.4", DisplayName: "GPT-5.4", Description: "Primary coding model", Default: true, Available: true, Source: "cache", Chat: true, Stream: true, Coding: true, ToolUse: false, ReasoningLevels: []string{"medium", "high"}},
+			{ProviderID: "codex_managed", ModelID: "gpt-5.4-mini", DisplayName: "GPT-5.4 mini", Available: true, Source: "cache", Chat: true, Stream: true, Coding: true, ToolUse: false},
+		},
+		provider: &contractManagedLLMProvider{name: "codex_managed"},
+	}
 	providerManager := providers.NewManager(config.Config{
 		LLM: config.LLMConfig{
 			DefaultProvider: "echo",
 		},
-	}, llmDispatcher)
+	}, llmDispatcher, contractManagedRegistry{bridges: []providers.ManagedBridge{managedBridge}})
+	providerManager.RestoreManagedAuthStates([]providers.AuthState{managedBridge.detectState})
+	providerManager.RestoreProviderModels(managedBridge.models)
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)

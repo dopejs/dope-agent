@@ -142,6 +142,51 @@ func TestLoadEnvironmentOverridesConfigFile(t *testing.T) {
 	}
 }
 
+func TestLoadManagedCLIProviderConfig(t *testing.T) {
+	homeDir := t.TempDir()
+	dataDir := filepath.Join(homeDir, ".dope")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte(`{
+		"llm": {
+			"claude": {
+				"cliPath": "/usr/local/bin/claude",
+				"defaultModel": "claude-opus-4-6",
+				"workDir": "~/workspaces/claude"
+			},
+			"codex": {
+				"cliPath": "/opt/homebrew/bin/codex",
+				"defaultModel": "gpt-5.4",
+				"workDir": "~/workspaces/codex"
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	setBaseEnv(t, homeDir)
+	t.Setenv("DOPE_LLM_CLAUDE_MODEL", "claude-sonnet-4-6")
+	t.Setenv("DOPE_LLM_CODEX_WORKDIR", "~/projects/codex")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.LLM.Claude.CLIPath != "/usr/local/bin/claude" {
+		t.Fatalf("expected claude cli path, got %s", cfg.LLM.Claude.CLIPath)
+	}
+	if cfg.LLM.Claude.DefaultModel != "claude-sonnet-4-6" {
+		t.Fatalf("expected env override for claude model, got %s", cfg.LLM.Claude.DefaultModel)
+	}
+	if cfg.LLM.Codex.CLIPath != "/opt/homebrew/bin/codex" {
+		t.Fatalf("expected codex cli path, got %s", cfg.LLM.Codex.CLIPath)
+	}
+	if cfg.LLM.Codex.WorkDir != "~/projects/codex" {
+		t.Fatalf("expected env override for codex workdir, got %s", cfg.LLM.Codex.WorkDir)
+	}
+}
+
 func TestLoadRejectsInvalidConfigFile(t *testing.T) {
 	homeDir := t.TempDir()
 	dataDir := filepath.Join(homeDir, ".dope")
@@ -175,5 +220,11 @@ func setBaseEnv(t *testing.T, homeDir string) {
 	t.Setenv("DOPE_LLM_OPENAI_COMPATIBLE_API_KEY_ENV", "")
 	t.Setenv("DOPE_LLM_OPENAI_COMPATIBLE_MODEL", "")
 	t.Setenv("DOPE_LLM_OPENAI_COMPATIBLE_TIMEOUT_MS", "")
+	t.Setenv("DOPE_LLM_CLAUDE_CLI_PATH", "")
+	t.Setenv("DOPE_LLM_CLAUDE_MODEL", "")
+	t.Setenv("DOPE_LLM_CLAUDE_WORKDIR", "")
+	t.Setenv("DOPE_LLM_CODEX_CLI_PATH", "")
+	t.Setenv("DOPE_LLM_CODEX_MODEL", "")
+	t.Setenv("DOPE_LLM_CODEX_WORKDIR", "")
 	t.Setenv("OPENAI_TEST_KEY", "")
 }

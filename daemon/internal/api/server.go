@@ -1013,12 +1013,97 @@ func handleProviderRoutes(manager *providers.Manager, eventBus *events.Bus, sqli
 		return
 	}
 
-	if parts[1] != "checks" {
+	switch {
+	case parts[1] == "auth" && len(parts) == 2 && r.Method == http.MethodGet:
+		state, ok := manager.GetAuthState(providerID)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, ProviderAuthStateResponse{Auth: state})
+		return
+	case parts[1] == "auth" && len(parts) == 3 && r.Method == http.MethodPost:
+		if sqliteStore == nil {
+			writeError(w, http.StatusInternalServerError, "store is not configured")
+			return
+		}
+		var (
+			state  providers.AuthState
+			models []providers.Model
+			err    error
+			event  string
+		)
+		switch parts[2] {
+		case "start":
+			state, models, err = manager.StartManagedAuth(r.Context(), providerID)
+			event = "provider.auth_started"
+		case "complete":
+			state, models, err = manager.CompleteManagedAuth(r.Context(), providerID)
+			event = "provider.auth_completed"
+		case "refresh":
+			state, models, err = manager.RefreshManagedAuth(r.Context(), providerID)
+			event = "provider.auth_refreshed"
+		case "revoke":
+			state, models, err = manager.RevokeManagedAuth(r.Context(), providerID)
+			event = "provider.auth_revoked"
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		if err != nil {
+			writeError(w, llmPrepareStatusCode(err), err.Error())
+			return
+		}
+		if err := persistManagedProviderState(r.Context(), sqliteStore, state, models); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if _, err := publishProviderAuthEvent(r.Context(), eventBus, sqliteStore, state, event); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, ProviderAuthStateResponse{Auth: state})
+		return
+	case parts[1] == "models" && len(parts) == 2 && r.Method == http.MethodGet:
+		items, ok := manager.ListModels(providerID)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, ProviderModelListResponse{Items: items})
+		return
+	case parts[1] == "default-model" && len(parts) == 2 && r.Method == http.MethodPost:
+		if sqliteStore == nil {
+			writeError(w, http.StatusInternalServerError, "store is not configured")
+			return
+		}
+		var input ProviderDefaultModelRequest
+		if err := decodeJSONBody(r, &input); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		preference, err := manager.SetDefaultModel(providerID, input.Model)
+		if err != nil {
+			writeError(w, llmPrepareStatusCode(err), err.Error())
+			return
+		}
+		if err := sqliteStore.UpsertProviderPreference(r.Context(), preference); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if _, err := publishProviderDefaultModelEvent(r.Context(), eventBus, sqliteStore, preference); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, ProviderDefaultModelResponse{
+			ProviderID:   preference.ProviderID,
+			DefaultModel: preference.DefaultModel,
+			UpdatedAt:    preference.UpdatedAt,
+		})
+		return
+	case parts[1] != "checks":
 		http.NotFound(w, r)
 		return
-	}
-
-	switch {
 	case len(parts) == 2 && r.Method == http.MethodGet:
 		if sqliteStore == nil {
 			writeJSON(w, http.StatusOK, ProviderCheckListResponse{Items: []providers.Check{}})
@@ -2789,6 +2874,49 @@ func publishProviderCheckEvent(ctx context.Context, eventBus *events.Bus, sqlite
 	})
 }
 
+func persistManagedProviderState(ctx context.Context, sqliteStore *store.SQLiteStore, state providers.AuthState, models []providers.Model) error {
+	if sqliteStore == nil {
+		return nil
+	}
+	if err := sqliteStore.UpsertProviderAuthState(ctx, state); err != nil {
+		return err
+	}
+	return sqliteStore.ReplaceProviderModels(ctx, state.ProviderID, models)
+}
+
+func publishProviderAuthEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, state providers.AuthState, eventName string) (events.Event, error) {
+	return publishEvent(ctx, eventBus, sqliteStore, events.Event{
+		Category: "provider",
+		Name:     eventName,
+		Resource: events.Resource{Kind: "provider_auth", ID: state.ProviderID},
+		Payload: map[string]any{
+			"providerId":   state.ProviderID,
+			"family":       state.Family,
+			"authMode":     state.AuthMode,
+			"status":       state.Status,
+			"cliAvailable": state.CLIAvailable,
+			"accountLabel": state.AccountLabel,
+			"accountId":    state.AccountID,
+			"plan":         state.Plan,
+			"authMethod":   state.AuthMethod,
+			"lastError":    state.LastError,
+		},
+	})
+}
+
+func publishProviderDefaultModelEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, preference providers.Preference) (events.Event, error) {
+	return publishEvent(ctx, eventBus, sqliteStore, events.Event{
+		Category: "provider",
+		Name:     "provider.default_model_updated",
+		Resource: events.Resource{Kind: "provider", ID: preference.ProviderID},
+		Payload: map[string]any{
+			"providerId":   preference.ProviderID,
+			"defaultModel": preference.DefaultModel,
+			"updatedAt":    preference.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		},
+	})
+}
+
 func splitPath(path string) []string {
 	if path == "" {
 		return nil
@@ -2805,7 +2933,7 @@ func splitPath(path string) []string {
 
 func llmPrepareStatusCode(err error) int {
 	switch {
-	case errors.Is(err, llm.ErrProviderRequired), errors.Is(err, llm.ErrProviderNotFound), errors.Is(err, llm.ErrModelRequired), errors.Is(err, llm.ErrMessagesRequired), errors.Is(err, providers.ErrModelNotSupported):
+	case errors.Is(err, llm.ErrProviderRequired), errors.Is(err, llm.ErrProviderNotFound), errors.Is(err, llm.ErrModelRequired), errors.Is(err, llm.ErrMessagesRequired), errors.Is(err, providers.ErrModelNotSupported), errors.Is(err, providers.ErrManagedAuthUnsupported):
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError

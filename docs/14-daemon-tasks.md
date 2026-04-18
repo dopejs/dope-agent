@@ -32,8 +32,7 @@ Current completion should be read as:
 - `Roadmap 7: Minimal Chat Clients` is now closed
 - `Roadmap 8: Ingress Routing Closure` is now closed
 - `Roadmap 9: Provider Identity And Profiles` is now closed
-- the next planned phase is:
-- `Roadmap 10: Managed Coding Providers`
+- `Roadmap 10: Managed Coding Providers` is now closed
 
 ## Roadmap 1: Runtime Closure
 
@@ -104,10 +103,10 @@ Current completion should be read as:
 
 ## Roadmap 10: Managed Coding Providers
 
-- [ ] Managed provider auth surface
-- [ ] Claude managed provider
-- [ ] Codex or ChatGPT managed provider
-- [ ] Model catalog and compatibility metadata
+- [x] Managed provider auth surface
+- [x] Claude managed provider
+- [x] Codex or ChatGPT managed provider
+- [x] Model catalog and compatibility metadata
 
 ## Completed Foundational Work
 

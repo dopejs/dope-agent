@@ -17,6 +17,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/managedproviders"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -60,15 +61,19 @@ func New() (*App, error) {
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
 	policyEngine := policy.NewEngine()
 	authManager := auth.NewManager()
-	llmDispatcher, err := buildLLMDispatcher(cfg)
+	managedRegistry := managedproviders.NewRegistry(cfg)
+	llmDispatcher, err := buildLLMDispatcher(cfg, managedRegistry)
 	if err != nil {
 		return nil, err
 	}
-	providerManager := providers.NewManager(cfg, llmDispatcher)
+	providerManager := providers.NewManager(cfg, llmDispatcher, managedRegistry)
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 
-	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager); err != nil {
+	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager); err != nil {
+		return nil, err
+	}
+	if err := syncManagedProviderState(context.Background(), sqliteStore, providerManager); err != nil {
 		return nil, err
 	}
 
@@ -106,11 +111,12 @@ func New() (*App, error) {
 	}, nil
 }
 
-func buildLLMDispatcher(cfg config.Config) (*llm.Dispatcher, error) {
+func buildLLMDispatcher(cfg config.Config, registry providers.ManagedRegistry) (*llm.Dispatcher, error) {
 	dispatcher := llm.NewDispatcher()
 	dispatcher.SetDefaultTimeout(time.Duration(cfg.LLM.DefaultTimeoutMs) * time.Millisecond)
 	dispatcher.SetDefaultRetries(cfg.LLM.DefaultMaxRetries)
 	dispatcher.SetDefaultModel(cfg.LLM.DefaultModel)
+	registerManagedProviders(dispatcher, registry)
 
 	if openAIConfigured(cfg.LLM.OpenAICompatible) {
 		provider, err := llm.NewOpenAICompatibleProvider(llm.OpenAICompatibleProviderConfig{
@@ -142,6 +148,15 @@ func buildLLMDispatcher(cfg config.Config) (*llm.Dispatcher, error) {
 	}
 
 	return dispatcher, nil
+}
+
+func registerManagedProviders(dispatcher *llm.Dispatcher, registry providers.ManagedRegistry) {
+	if dispatcher == nil || registry == nil {
+		return
+	}
+	for _, bridge := range registry.List() {
+		dispatcher.RegisterProvider(bridge.Provider())
+	}
 }
 
 func openAIConfigured(cfg config.OpenAICompatibleProviderConfig) bool {
@@ -266,7 +281,7 @@ func newEventID() string {
 	return "evt_" + hex.EncodeToString(buf)
 }
 
-func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager) error {
+func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager) error {
 	if sqliteStore == nil {
 		return nil
 	}
@@ -321,6 +336,24 @@ func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, 
 		authManager.Restore(persistedPairings, persistedTokens)
 	}
 
+	persistedProviderAuthStates, err := sqliteStore.ListProviderAuthStates(ctx)
+	if err != nil {
+		return fmt.Errorf("load persisted provider auth states: %w", err)
+	}
+	persistedProviderModels, err := sqliteStore.ListProviderModels(ctx)
+	if err != nil {
+		return fmt.Errorf("load persisted provider models: %w", err)
+	}
+	persistedProviderPreferences, err := sqliteStore.ListProviderPreferences(ctx)
+	if err != nil {
+		return fmt.Errorf("load persisted provider preferences: %w", err)
+	}
+	if providerManager != nil {
+		providerManager.RestoreManagedAuthStates(persistedProviderAuthStates)
+		providerManager.RestoreProviderModels(persistedProviderModels)
+		providerManager.RestoreProviderPreferences(persistedProviderPreferences)
+	}
+
 	persistedEvents, err := sqliteStore.ListEvents(ctx, events.Filter{})
 	if err != nil {
 		return fmt.Errorf("load persisted events: %w", err)
@@ -330,5 +363,25 @@ func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, 
 		eventBus.Publish(event)
 	}
 
+	return nil
+}
+
+func syncManagedProviderState(ctx context.Context, sqliteStore *store.SQLiteStore, providerManager *providers.Manager) error {
+	if sqliteStore == nil || providerManager == nil {
+		return nil
+	}
+
+	results, err := providerManager.SyncManagedProviders(ctx)
+	if err != nil {
+		return fmt.Errorf("sync managed provider state: %w", err)
+	}
+	for _, result := range results {
+		if err := sqliteStore.UpsertProviderAuthState(ctx, result.State); err != nil {
+			return fmt.Errorf("persist provider auth state %s: %w", result.State.ProviderID, err)
+		}
+		if err := sqliteStore.ReplaceProviderModels(ctx, result.State.ProviderID, result.Models); err != nil {
+			return fmt.Errorf("persist provider models %s: %w", result.State.ProviderID, err)
+		}
+	}
 	return nil
 }

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/provider-auth-completed.event.schema.json",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "provider" },
+        "name": { "const": "provider.auth_completed" },
+        "resource": {
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "provider_auth" },
+            "id": { "type": "string" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": ["providerId", "family", "authMode", "status", "cliAvailable", "accountLabel", "accountId", "plan", "authMethod", "lastError"],
+          "additionalProperties": false,
+          "properties": {
+            "providerId": { "type": "string" },
+            "family": { "type": "string", "enum": ["builtin_echo", "openai_compatible", "claude_code_cli", "codex_cli"] },
+            "authMode": { "type": "string", "enum": ["none", "api_key", "local_cli_bridge"] },
+            "status": { "type": "string", "enum": ["unknown", "login_required", "pending_login", "authenticated", "revoked", "error"] },
+            "cliAvailable": { "type": "boolean" },
+            "accountLabel": { "type": "string" },
+            "accountId": { "type": "string" },
+            "plan": { "type": "string" },
+            "authMethod": { "type": "string" },
+            "lastError": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

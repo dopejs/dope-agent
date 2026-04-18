@@ -12,20 +12,26 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 )
 
-var ErrModelNotSupported = errors.New("model is not supported by provider")
+var (
+	ErrModelNotSupported      = errors.New("model is not supported by provider")
+	ErrManagedAuthUnsupported = errors.New("managed auth is not supported by provider")
+)
 
 type Family string
 
 const (
 	FamilyBuiltinEcho      Family = "builtin_echo"
 	FamilyOpenAICompatible Family = "openai_compatible"
+	FamilyClaudeCodeCLI    Family = "claude_code_cli"
+	FamilyCodexCLI         Family = "codex_cli"
 )
 
 type AuthMode string
 
 const (
-	AuthModeNone   AuthMode = "none"
-	AuthModeAPIKey AuthMode = "api_key"
+	AuthModeNone           AuthMode = "none"
+	AuthModeAPIKey         AuthMode = "api_key"
+	AuthModeLocalCLIBridge AuthMode = "local_cli_bridge"
 )
 
 type Source string
@@ -33,6 +39,7 @@ type Source string
 const (
 	SourceBuiltin Source = "builtin"
 	SourceConfig  Source = "config"
+	SourceManaged Source = "managed"
 )
 
 type ModelSelectionMode string
@@ -43,8 +50,10 @@ const (
 )
 
 type CapabilityFlags struct {
-	Chat   bool `json:"chat"`
-	Stream bool `json:"stream"`
+	Chat    bool `json:"chat"`
+	Stream  bool `json:"stream"`
+	Coding  bool `json:"coding,omitempty"`
+	ToolUse bool `json:"toolUse,omitempty"`
 }
 
 type Profile struct {
@@ -68,6 +77,15 @@ type Profile struct {
 	SecretConfigured    bool               `json:"secretConfigured"`
 	SecretRef           string             `json:"secretRef,omitempty"`
 	Capabilities        CapabilityFlags    `json:"capabilities"`
+	AuthStatus          AuthStatus         `json:"authStatus,omitempty"`
+	CLIAvailable        bool               `json:"cliAvailable,omitempty"`
+	AccountLabel        string             `json:"accountLabel,omitempty"`
+	AccountID           string             `json:"accountId,omitempty"`
+	Plan                string             `json:"plan,omitempty"`
+	AuthMethod          string             `json:"authMethod,omitempty"`
+	LoginCommand        []string           `json:"loginCommand,omitempty"`
+	LogoutCommand       []string           `json:"logoutCommand,omitempty"`
+	AvailableModelCount int                `json:"availableModelCount,omitempty"`
 	Issues              []string           `json:"issues,omitempty"`
 }
 
@@ -118,18 +136,54 @@ type ResolvedDispatch struct {
 	Profile    Profile
 }
 
-type Manager struct {
-	cfg        config.Config
-	dispatcher *llm.Dispatcher
-	profiles   map[string]Profile
-	order      []string
+type ManagedBridge interface {
+	ProviderID() string
+	DisplayName() string
+	Family() Family
+	AuthMode() AuthMode
+	Detect(ctx context.Context) (AuthState, []Model, error)
+	Start(ctx context.Context) (AuthState, []Model, error)
+	Complete(ctx context.Context) (AuthState, []Model, error)
+	Refresh(ctx context.Context) (AuthState, []Model, error)
+	Revoke(ctx context.Context) (AuthState, []Model, error)
+	Provider() llm.Provider
 }
 
-func NewManager(cfg config.Config, dispatcher *llm.Dispatcher) *Manager {
+type ManagedRegistry interface {
+	List() []ManagedBridge
+	Get(providerID string) (ManagedBridge, bool)
+}
+
+type SyncResult struct {
+	State  AuthState
+	Models []Model
+}
+
+type Manager struct {
+	cfg         config.Config
+	dispatcher  *llm.Dispatcher
+	registry    ManagedRegistry
+	profiles    map[string]Profile
+	order       []string
+	authStates  map[string]AuthState
+	models      map[string][]Model
+	preferences map[string]Preference
+}
+
+func NewManager(cfg config.Config, dispatcher *llm.Dispatcher, registries ...ManagedRegistry) *Manager {
+	var registry ManagedRegistry
+	if len(registries) > 0 {
+		registry = registries[0]
+	}
+
 	manager := &Manager{
-		cfg:        cfg,
-		dispatcher: dispatcher,
-		profiles:   make(map[string]Profile),
+		cfg:         cfg,
+		dispatcher:  dispatcher,
+		registry:    registry,
+		profiles:    make(map[string]Profile),
+		authStates:  make(map[string]AuthState),
+		models:      make(map[string][]Model),
+		preferences: make(map[string]Preference),
 	}
 	manager.loadProfiles()
 	return manager
@@ -149,6 +203,158 @@ func (m *Manager) GetProfile(providerID string) (Profile, bool) {
 		return Profile{}, false
 	}
 	return cloneProfile(profile), true
+}
+
+func (m *Manager) GetAuthState(providerID string) (AuthState, bool) {
+	state, ok := m.authStates[strings.TrimSpace(providerID)]
+	if !ok {
+		return AuthState{}, false
+	}
+	return cloneAuthState(state), true
+}
+
+func (m *Manager) ListModels(providerID string) ([]Model, bool) {
+	trimmed := strings.TrimSpace(providerID)
+	if items, ok := m.models[trimmed]; ok {
+		return cloneModels(items), true
+	}
+	profile, ok := m.profiles[trimmed]
+	if !ok || len(profile.KnownModels) == 0 {
+		return nil, false
+	}
+	items := make([]Model, 0, len(profile.KnownModels))
+	for _, modelID := range profile.KnownModels {
+		items = append(items, Model{
+			ProviderID:  profile.ProviderID,
+			ModelID:     modelID,
+			DisplayName: modelID,
+			Default:     modelID == profile.DefaultModel || modelID == profile.EffectiveModel,
+			Available:   profile.Ready,
+			Source:      string(profile.Source),
+			Chat:        profile.Capabilities.Chat,
+			Stream:      profile.Capabilities.Stream,
+			Coding:      profile.Capabilities.Coding,
+			ToolUse:     profile.Capabilities.ToolUse,
+		})
+	}
+	return items, true
+}
+
+func (m *Manager) GetPreference(providerID string) (Preference, bool) {
+	preference, ok := m.preferences[strings.TrimSpace(providerID)]
+	if !ok {
+		return Preference{}, false
+	}
+	return preference, true
+}
+
+func (m *Manager) RestoreManagedAuthStates(states []AuthState) {
+	for _, state := range states {
+		if strings.TrimSpace(state.ProviderID) == "" {
+			continue
+		}
+		m.authStates[state.ProviderID] = cloneAuthState(state)
+	}
+	m.loadProfiles()
+}
+
+func (m *Manager) RestoreProviderModels(items []Model) {
+	grouped := make(map[string][]Model)
+	for _, item := range items {
+		providerID := strings.TrimSpace(item.ProviderID)
+		if providerID == "" {
+			continue
+		}
+		grouped[providerID] = append(grouped[providerID], item)
+	}
+	for providerID, models := range grouped {
+		m.models[providerID] = cloneModels(models)
+	}
+	m.loadProfiles()
+}
+
+func (m *Manager) RestoreProviderPreferences(items []Preference) {
+	for _, item := range items {
+		if strings.TrimSpace(item.ProviderID) == "" {
+			continue
+		}
+		m.preferences[item.ProviderID] = item
+	}
+	m.loadProfiles()
+}
+
+func (m *Manager) SyncManagedProviders(ctx context.Context) ([]SyncResult, error) {
+	if m.registry == nil {
+		return nil, nil
+	}
+
+	results := make([]SyncResult, 0, len(m.registry.List()))
+	for _, bridge := range m.registry.List() {
+		state, models, err := bridge.Detect(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("detect provider %s: %w", bridge.ProviderID(), err)
+		}
+		m.applyManagedState(state, models)
+		results = append(results, SyncResult{
+			State:  cloneAuthState(state),
+			Models: cloneModels(models),
+		})
+	}
+
+	m.loadProfiles()
+	return results, nil
+}
+
+func (m *Manager) StartManagedAuth(ctx context.Context, providerID string) (AuthState, []Model, error) {
+	return m.runManagedAction(ctx, providerID, func(ctx context.Context, bridge ManagedBridge) (AuthState, []Model, error) {
+		return bridge.Start(ctx)
+	})
+}
+
+func (m *Manager) CompleteManagedAuth(ctx context.Context, providerID string) (AuthState, []Model, error) {
+	return m.runManagedAction(ctx, providerID, func(ctx context.Context, bridge ManagedBridge) (AuthState, []Model, error) {
+		return bridge.Complete(ctx)
+	})
+}
+
+func (m *Manager) RefreshManagedAuth(ctx context.Context, providerID string) (AuthState, []Model, error) {
+	return m.runManagedAction(ctx, providerID, func(ctx context.Context, bridge ManagedBridge) (AuthState, []Model, error) {
+		return bridge.Refresh(ctx)
+	})
+}
+
+func (m *Manager) RevokeManagedAuth(ctx context.Context, providerID string) (AuthState, []Model, error) {
+	return m.runManagedAction(ctx, providerID, func(ctx context.Context, bridge ManagedBridge) (AuthState, []Model, error) {
+		return bridge.Revoke(ctx)
+	})
+}
+
+func (m *Manager) SetDefaultModel(providerID, model string) (Preference, error) {
+	trimmedProviderID := strings.TrimSpace(providerID)
+	trimmedModel := strings.TrimSpace(model)
+	if trimmedProviderID == "" {
+		return Preference{}, llm.ErrProviderRequired
+	}
+	if trimmedModel == "" {
+		return Preference{}, llm.ErrModelRequired
+	}
+
+	profile, ok := m.GetProfile(trimmedProviderID)
+	if !ok {
+		return Preference{}, fmt.Errorf("%w: %s", llm.ErrProviderNotFound, trimmedProviderID)
+	}
+	if err := validateModel(profile, trimmedModel); err != nil {
+		return Preference{}, err
+	}
+
+	preference := Preference{
+		ProviderID:   trimmedProviderID,
+		DefaultModel: trimmedModel,
+		UpdatedAt:    time.Now().UTC(),
+	}
+	m.preferences[trimmedProviderID] = preference
+	m.loadProfiles()
+	return preference, nil
 }
 
 func (m *Manager) Resolve(providerID, model string, timeoutMs, maxRetries int) (ResolvedDispatch, error) {
@@ -177,6 +383,11 @@ func (m *Manager) Resolve(providerID, model string, timeoutMs, maxRetries int) (
 		}
 	}
 	if effectiveModel == "" {
+		if preference, ok := m.GetPreference(profile.ProviderID); ok {
+			effectiveModel = strings.TrimSpace(preference.DefaultModel)
+		}
+	}
+	if effectiveModel == "" {
 		effectiveModel = strings.TrimSpace(profile.DefaultModel)
 	}
 	if effectiveModel == "" {
@@ -195,14 +406,7 @@ func (m *Manager) Resolve(providerID, model string, timeoutMs, maxRetries int) (
 		effectiveTimeoutMs = defaultPositive(profile.EffectiveTimeoutMs, 30000)
 	}
 
-	effectiveMaxRetries := maxRetries
-	if effectiveMaxRetries < 0 {
-		effectiveMaxRetries = 0
-	}
-	if effectiveMaxRetries == 0 {
-		effectiveMaxRetries = max(profile.EffectiveMaxRetries, 0)
-	}
-
+	effectiveMaxRetries := maxRetryValue(maxRetries, profile.EffectiveMaxRetries)
 	return ResolvedDispatch{
 		ProviderID: effectiveProvider,
 		Model:      effectiveModel,
@@ -285,10 +489,53 @@ func NewCheckID() string {
 	return "provider_check_" + strings.ReplaceAll(time.Now().UTC().Format("20060102150405.000000000"), ".", "")
 }
 
+func (m *Manager) runManagedAction(ctx context.Context, providerID string, action func(context.Context, ManagedBridge) (AuthState, []Model, error)) (AuthState, []Model, error) {
+	bridge, ok := m.managedBridge(providerID)
+	if !ok {
+		if _, exists := m.GetProfile(providerID); exists {
+			return AuthState{}, nil, ErrManagedAuthUnsupported
+		}
+		return AuthState{}, nil, fmt.Errorf("%w: %s", llm.ErrProviderNotFound, strings.TrimSpace(providerID))
+	}
+	state, models, err := action(ctx, bridge)
+	if err != nil {
+		return AuthState{}, nil, err
+	}
+	m.applyManagedState(state, models)
+	m.loadProfiles()
+	return cloneAuthState(state), cloneModels(models), nil
+}
+
+func (m *Manager) managedBridge(providerID string) (ManagedBridge, bool) {
+	if m.registry == nil {
+		return nil, false
+	}
+	return m.registry.Get(strings.TrimSpace(providerID))
+}
+
+func (m *Manager) isManagedProvider(providerID string) bool {
+	_, ok := m.managedBridge(providerID)
+	return ok
+}
+
+func (m *Manager) applyManagedState(state AuthState, models []Model) {
+	providerID := strings.TrimSpace(state.ProviderID)
+	if providerID == "" {
+		return
+	}
+	m.authStates[providerID] = cloneAuthState(state)
+	m.models[providerID] = cloneModels(models)
+}
+
 func (m *Manager) loadProfiles() {
 	items := []Profile{
 		m.buildEchoProfile(),
 		m.buildOpenAICompatibleProfile(),
+	}
+	if m.registry != nil {
+		for _, bridge := range m.registry.List() {
+			items = append(items, m.buildManagedProfile(bridge))
+		}
 	}
 
 	defaultProviderID := m.defaultProviderIDForItems(items)
@@ -300,6 +547,7 @@ func (m *Manager) loadProfiles() {
 		return items[i].ProviderID < items[j].ProviderID
 	})
 
+	m.profiles = make(map[string]Profile, len(items))
 	m.order = make([]string, 0, len(items))
 	for _, profile := range items {
 		m.profiles[profile.ProviderID] = profile
@@ -335,7 +583,7 @@ func (m *Manager) buildEchoProfile() Profile {
 		DefaultModel:        "echo-v1",
 		EffectiveModel:      effectiveModel,
 		EffectiveTimeoutMs:  defaultPositive(m.cfg.LLM.DefaultTimeoutMs, 30000),
-		EffectiveMaxRetries: max(m.cfg.LLM.DefaultMaxRetries, 0),
+		EffectiveMaxRetries: maxRetryValue(0, m.cfg.LLM.DefaultMaxRetries),
 		Capabilities:        CapabilityFlags{Chat: true, Stream: true},
 		Issues:              issues,
 	}
@@ -360,17 +608,20 @@ func (m *Manager) buildOpenAICompatibleProfile() Profile {
 	}
 
 	profileDefaultModel := strings.TrimSpace(m.cfg.LLM.OpenAICompatible.Model)
+	if preference, ok := m.GetPreference(providerID); ok && strings.TrimSpace(preference.DefaultModel) != "" {
+		profileDefaultModel = strings.TrimSpace(preference.DefaultModel)
+	}
 	effectiveModel := profileDefaultModel
 	configuredDefaultModel := strings.TrimSpace(m.cfg.LLM.DefaultModel)
 	if effectiveModel == "" && (strings.TrimSpace(m.cfg.LLM.DefaultProvider) == providerID || (strings.TrimSpace(m.cfg.LLM.DefaultProvider) == "" && configuredDefaultModel != "")) {
-		effectiveModel = strings.TrimSpace(m.cfg.LLM.DefaultModel)
+		effectiveModel = configuredDefaultModel
 	}
 	if effectiveModel == "" {
 		issues = append(issues, "default model is not configured")
 	}
 
 	timeoutMs := defaultPositive(m.cfg.LLM.OpenAICompatible.TimeoutMs, defaultPositive(m.cfg.LLM.DefaultTimeoutMs, 30000))
-	maxRetries := max(m.cfg.LLM.DefaultMaxRetries, 0)
+	maxRetries := maxRetryValue(0, m.cfg.LLM.DefaultMaxRetries)
 
 	return Profile{
 		ProviderID:          providerID,
@@ -395,6 +646,84 @@ func (m *Manager) buildOpenAICompatibleProfile() Profile {
 	}
 }
 
+func (m *Manager) buildManagedProfile(bridge ManagedBridge) Profile {
+	state, hasState := m.authStates[bridge.ProviderID()]
+	models := cloneModels(m.models[bridge.ProviderID()])
+	issues := []string{}
+	knownModels := make([]string, 0, len(models))
+	for _, model := range models {
+		knownModels = append(knownModels, model.ModelID)
+	}
+	if len(knownModels) == 0 {
+		issues = append(issues, "model catalog is not available")
+	}
+
+	defaultModel := ""
+	if preference, ok := m.GetPreference(bridge.ProviderID()); ok && strings.TrimSpace(preference.DefaultModel) != "" {
+		defaultModel = strings.TrimSpace(preference.DefaultModel)
+	} else {
+		defaultModel = defaultModelFromModels(models)
+	}
+	effectiveModel := defaultModel
+	if strings.TrimSpace(m.cfg.LLM.DefaultProvider) == bridge.ProviderID() && strings.TrimSpace(m.cfg.LLM.DefaultModel) != "" {
+		effectiveModel = strings.TrimSpace(m.cfg.LLM.DefaultModel)
+	}
+
+	if strings.TrimSpace(defaultModel) == "" {
+		issues = append(issues, "default model is not configured")
+	}
+
+	if !hasState {
+		state = AuthState{
+			ProviderID: bridge.ProviderID(),
+			Family:     bridge.Family(),
+			AuthMode:   bridge.AuthMode(),
+			Status:     AuthStatusUnknown,
+		}
+	}
+	if !state.CLIAvailable {
+		issues = append(issues, "provider CLI is not available")
+	}
+	switch state.Status {
+	case AuthStatusLoginRequired, AuthStatusPendingLogin, AuthStatusRevoked:
+		issues = append(issues, "provider login is required")
+	case AuthStatusError:
+		if strings.TrimSpace(state.LastError) != "" {
+			issues = append(issues, state.LastError)
+		} else {
+			issues = append(issues, "provider auth state is in error")
+		}
+	}
+
+	return Profile{
+		ProviderID:          bridge.ProviderID(),
+		Title:               bridge.DisplayName(),
+		Family:              bridge.Family(),
+		AuthMode:            bridge.AuthMode(),
+		Source:              SourceManaged,
+		ModelSelectionMode:  ModelSelectionFixed,
+		KnownModels:         knownModels,
+		Registered:          hasProvider(m.dispatcher, bridge.ProviderID()),
+		Configured:          state.CLIAvailable || hasState,
+		Ready:               hasProvider(m.dispatcher, bridge.ProviderID()) && state.Status == AuthStatusAuthenticated && strings.TrimSpace(effectiveModel) != "",
+		DefaultModel:        defaultModel,
+		EffectiveModel:      effectiveModel,
+		EffectiveTimeoutMs:  defaultPositive(m.cfg.LLM.DefaultTimeoutMs, 30000),
+		EffectiveMaxRetries: maxRetryValue(0, m.cfg.LLM.DefaultMaxRetries),
+		Capabilities:        capabilitiesFromModels(models),
+		AuthStatus:          state.Status,
+		CLIAvailable:        state.CLIAvailable,
+		AccountLabel:        state.AccountLabel,
+		AccountID:           state.AccountID,
+		Plan:                state.Plan,
+		AuthMethod:          state.AuthMethod,
+		LoginCommand:        append([]string(nil), state.LoginCommand...),
+		LogoutCommand:       append([]string(nil), state.LogoutCommand...),
+		AvailableModelCount: availableModelCount(models),
+		Issues:              issues,
+	}
+}
+
 func validateModel(profile Profile, model string) error {
 	switch profile.ModelSelectionMode {
 	case ModelSelectionFixed:
@@ -411,7 +740,7 @@ func validateModel(profile Profile, model string) error {
 
 func classifyPrepareError(err error) CheckErrorClass {
 	switch {
-	case errors.Is(err, llm.ErrProviderRequired), errors.Is(err, llm.ErrProviderNotFound), errors.Is(err, llm.ErrModelRequired), errors.Is(err, llm.ErrMessagesRequired):
+	case errors.Is(err, llm.ErrProviderRequired), errors.Is(err, llm.ErrProviderNotFound), errors.Is(err, llm.ErrModelRequired), errors.Is(err, llm.ErrMessagesRequired), errors.Is(err, ErrModelNotSupported):
 		return CheckErrorClassConfig
 	default:
 		return CheckErrorClassConfig
@@ -459,7 +788,32 @@ func failedCheck(checkID string, createdAt time.Time, profile Profile, model str
 func cloneProfile(profile Profile) Profile {
 	profile.Issues = append([]string(nil), profile.Issues...)
 	profile.KnownModels = append([]string(nil), profile.KnownModels...)
+	profile.LoginCommand = append([]string(nil), profile.LoginCommand...)
+	profile.LogoutCommand = append([]string(nil), profile.LogoutCommand...)
 	return profile
+}
+
+func cloneAuthState(state AuthState) AuthState {
+	state.LoginCommand = append([]string(nil), state.LoginCommand...)
+	state.LogoutCommand = append([]string(nil), state.LogoutCommand...)
+	if state.Metadata != nil {
+		metadata := make(map[string]string, len(state.Metadata))
+		for key, value := range state.Metadata {
+			metadata[key] = value
+		}
+		state.Metadata = metadata
+	}
+	return state
+}
+
+func cloneModels(items []Model) []Model {
+	cloned := make([]Model, 0, len(items))
+	for _, item := range items {
+		model := item
+		model.ReasoningLevels = append([]string(nil), item.ReasoningLevels...)
+		cloned = append(cloned, model)
+	}
+	return cloned
 }
 
 func cloneMessages(messages []llm.Message) []llm.Message {
@@ -488,6 +842,11 @@ func (m *Manager) defaultProviderIDForItems(items []Profile) string {
 			return item.ProviderID
 		}
 	}
+	for _, item := range items {
+		if item.Source == SourceManaged && item.Ready {
+			return item.ProviderID
+		}
+	}
 	return "echo"
 }
 
@@ -498,9 +857,48 @@ func defaultPositive(value, fallback int) int {
 	return fallback
 }
 
-func max(value, fallback int) int {
-	if value >= fallback {
+func maxRetryValue(value, fallback int) int {
+	if value < 0 {
+		value = 0
+	}
+	if value > 0 {
 		return value
 	}
+	if fallback < 0 {
+		return 0
+	}
 	return fallback
+}
+
+func defaultModelFromModels(items []Model) string {
+	for _, item := range items {
+		if item.Default && strings.TrimSpace(item.ModelID) != "" {
+			return item.ModelID
+		}
+	}
+	if len(items) > 0 {
+		return strings.TrimSpace(items[0].ModelID)
+	}
+	return ""
+}
+
+func availableModelCount(items []Model) int {
+	count := 0
+	for _, item := range items {
+		if item.Available {
+			count++
+		}
+	}
+	return count
+}
+
+func capabilitiesFromModels(items []Model) CapabilityFlags {
+	flags := CapabilityFlags{Chat: true, Stream: true}
+	for _, item := range items {
+		flags.Chat = flags.Chat || item.Chat
+		flags.Stream = flags.Stream || item.Stream
+		flags.Coding = flags.Coding || item.Coding
+		flags.ToolUse = flags.ToolUse || item.ToolUse
+	}
+	return flags
 }

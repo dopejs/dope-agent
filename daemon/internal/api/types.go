@@ -35,6 +35,8 @@ type ConfigLLMResponse struct {
 	DefaultTimeoutMs  int                                    `json:"defaultTimeoutMs"`
 	DefaultMaxRetries int                                    `json:"defaultMaxRetries"`
 	OpenAICompatible  ConfigOpenAICompatibleProviderResponse `json:"openaiCompatible"`
+	Claude            ConfigManagedCLIProviderResponse       `json:"claude"`
+	Codex             ConfigManagedCLIProviderResponse       `json:"codex"`
 }
 
 type ConfigOpenAICompatibleProviderResponse struct {
@@ -44,6 +46,13 @@ type ConfigOpenAICompatibleProviderResponse struct {
 	TimeoutMs        int    `json:"timeoutMs"`
 	APIKeyConfigured bool   `json:"apiKeyConfigured"`
 	APIKeyEnv        string `json:"apiKeyEnv,omitempty"`
+}
+
+type ConfigManagedCLIProviderResponse struct {
+	Configured   bool   `json:"configured"`
+	CLIPath      string `json:"cliPath,omitempty"`
+	DefaultModel string `json:"defaultModel,omitempty"`
+	WorkDir      string `json:"workDir,omitempty"`
 }
 
 type ChatQueryResponse struct {
@@ -128,6 +137,24 @@ type ProviderCheckListResponse struct {
 	Items []providers.Check `json:"items"`
 }
 
+type ProviderAuthStateResponse struct {
+	Auth providers.AuthState `json:"auth"`
+}
+
+type ProviderModelListResponse struct {
+	Items []providers.Model `json:"items"`
+}
+
+type ProviderDefaultModelRequest struct {
+	Model string `json:"model"`
+}
+
+type ProviderDefaultModelResponse struct {
+	ProviderID   string    `json:"providerId"`
+	DefaultModel string    `json:"defaultModel"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
 type ListResponse[T any] struct {
 	Items []T `json:"items"`
 }
@@ -174,6 +201,18 @@ func buildConfigResponse(cfg config.Config) ConfigResponse {
 				TimeoutMs:        openAITimeoutMs,
 				APIKeyConfigured: cfg.LLM.OpenAICompatible.APIKey != "",
 				APIKeyEnv:        cfg.LLM.OpenAICompatible.APIKeyEnv,
+			},
+			Claude: ConfigManagedCLIProviderResponse{
+				Configured:   cfg.LLM.Claude.CLIPath != "" || cfg.LLM.Claude.DefaultModel != "" || (cfg.LLM.Claude.WorkDir != "" && cfg.LLM.Claude.WorkDir != "~"),
+				CLIPath:      cfg.LLM.Claude.CLIPath,
+				DefaultModel: cfg.LLM.Claude.DefaultModel,
+				WorkDir:      cfg.LLM.Claude.WorkDir,
+			},
+			Codex: ConfigManagedCLIProviderResponse{
+				Configured:   cfg.LLM.Codex.CLIPath != "" || cfg.LLM.Codex.DefaultModel != "" || (cfg.LLM.Codex.WorkDir != "" && cfg.LLM.Codex.WorkDir != "~"),
+				CLIPath:      cfg.LLM.Codex.CLIPath,
+				DefaultModel: cfg.LLM.Codex.DefaultModel,
+				WorkDir:      cfg.LLM.Codex.WorkDir,
 			},
 		},
 		RedactedFields: redactedFields,

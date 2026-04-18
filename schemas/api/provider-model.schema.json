@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/provider-model.schema.json",
+  "title": "ProviderModel",
+  "type": "object",
+  "required": [
+    "providerId",
+    "modelId",
+    "displayName",
+    "default",
+    "available",
+    "source",
+    "chat",
+    "stream",
+    "coding",
+    "toolUse"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "providerId": { "type": "string" },
+    "modelId": { "type": "string" },
+    "displayName": { "type": "string" },
+    "description": { "type": "string" },
+    "default": { "type": "boolean" },
+    "available": { "type": "boolean" },
+    "source": { "type": "string" },
+    "chat": { "type": "boolean" },
+    "stream": { "type": "boolean" },
+    "coding": { "type": "boolean" },
+    "toolUse": { "type": "boolean" },
+    "reasoningLevels": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
