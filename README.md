@@ -63,6 +63,7 @@ High-signal entry points:
 - Provider architecture: [23-provider-architecture.md](/Users/John/Code/agent-os/docs/providers/provider-architecture.md)
 - Channel behavior: [28-channel-reply-progression.md](/Users/John/Code/agent-os/docs/channels/channel-reply-progression.md)
 - Harness architecture: [32-harness-architecture.md](/Users/John/Code/agent-os/docs/harness/harness-architecture.md)
+- Sandbox design: [sandbox-execution-plane.md](/Users/John/Code/agent-os/docs/harness/sandbox-execution-plane.md)
 - Test environment workflow: [30-test-environment-workflow.md](/Users/John/Code/agent-os/docs/dev/test-environment-workflow.md)
 
 ## Local Environment Modes

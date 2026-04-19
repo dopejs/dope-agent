@@ -56,6 +56,8 @@ The docs are organized by module instead of chronology. Numbered filenames are k
 - [02-memory-system.md](/Users/John/Code/agent-os/docs/harness/memory-system.md)
 - [31-skill-registry-and-prompt-support.md](/Users/John/Code/agent-os/docs/harness/skill-registry-and-prompt-support.md)
 - [32-harness-architecture.md](/Users/John/Code/agent-os/docs/harness/harness-architecture.md)
+- [sandbox-execution-plane.md](/Users/John/Code/agent-os/docs/harness/sandbox-execution-plane.md)
+- [sandbox-backend-comparison.md](/Users/John/Code/agent-os/docs/harness/sandbox-backend-comparison.md)
 
 ## Dev
 
