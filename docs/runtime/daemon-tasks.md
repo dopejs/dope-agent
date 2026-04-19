@@ -4,7 +4,7 @@
 
 This document is the audit registry for P0 daemon tasks.
 
-The execution unit is defined in [15-daemon-roadmaps.md](/Users/John/Code/agent-os/docs/15-daemon-roadmaps.md). A roadmap contains multiple tasks and is only complete when those tasks are fully complete.
+The execution unit is defined in [15-daemon-roadmaps.md](/Users/John/Code/agent-os/docs/runtime/daemon-roadmaps.md). A roadmap contains multiple tasks and is only complete when those tasks are fully complete.
 
 This file exists to:
 
@@ -38,6 +38,7 @@ Current completion should be read as:
 - `Roadmap 13: Provider Streaming Timeout Semantics` is now closed
 - `Roadmap 14: Test Environment Workflow` is now closed
 - `Roadmap 15: Skill Registry And Prompt Support` is now complete
+- `Roadmap 16: Sandbox Execution Plane` is now planned
 
 ## Roadmap 1: Runtime Closure
 
@@ -147,6 +148,13 @@ Current completion should be read as:
 - [x] Skill registry and inspection API
 - [x] Explicit skill support in chat
 - [x] Operator documentation and verification
+
+## Roadmap 16: Sandbox Execution Plane
+
+- [ ] Sandbox contract and policy model
+- [ ] Sandbox control plane APIs
+- [ ] Subprocess sandbox runner
+- [ ] Isolation controls and audit trail
 
 ## Completed Foundational Work
 
@@ -274,5 +282,5 @@ These are implemented pieces that support later roadmaps. They are real progress
 When work completes:
 
 - update the task in this registry
-- update the roadmap status in [15-daemon-roadmaps.md](/Users/John/Code/agent-os/docs/15-daemon-roadmaps.md) if the task affects roadmap closure
+- update the roadmap status in [15-daemon-roadmaps.md](/Users/John/Code/agent-os/docs/runtime/daemon-roadmaps.md) if the task affects roadmap closure
 - do not mark a task or roadmap complete until its full boundary is actually closed

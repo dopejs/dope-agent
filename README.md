@@ -52,37 +52,18 @@ Execution is roadmap-driven:
 
 ## Planning Docs
 
-- `docs/01-product-outline.md`
-- `docs/02-memory-system.md`
-- `docs/03-runtime-architecture.md`
-- `docs/04-openclaw-integration.md`
-- `docs/05-roadmap.md`
-- `docs/06-foundation-first.md`
-- `docs/07-feature-phasing.md`
-- `docs/08-openclaw-architecture-gaps.md`
-- `docs/09-tech-stack-recommendation.md`
-- `docs/10-module-map.md`
-- `docs/11-repo-layout.md`
-- `docs/12-daemon-scope.md`
-- `docs/13-daemon-api-and-event-model.md`
-- `docs/14-daemon-tasks.md`
-- `docs/15-daemon-roadmaps.md`
-- `docs/16-operator-trust-model.md`
-- `docs/17-schema-contract-pipeline.md`
-- `docs/18-migration-versioning.md`
-- `docs/19-p0-release-review.md`
-- `docs/20-minimal-conversation-path.md`
-- `docs/21-minimal-chat-clients.md`
-- `docs/22-ingress-routing-closure.md`
-- `docs/23-provider-architecture.md`
-- `docs/24-provider-identity-and-profiles.md`
-- `docs/25-managed-coding-providers.md`
-- `docs/26-first-im-channel-loop.md`
-- `docs/27-discord-channel-loop.md`
-- `docs/28-channel-reply-progression.md`
-- `docs/29-provider-streaming-timeout-model.md`
-- `docs/30-test-environment-workflow.md`
-- `docs/31-skill-registry-and-prompt-support.md`
+Docs are now grouped by module under [docs/README.md](/Users/John/Code/agent-os/docs/README.md).
+
+High-signal entry points:
+
+- Product scope: [01-product-outline.md](/Users/John/Code/agent-os/docs/product/product-outline.md)
+- Runtime roadmap and task registry:
+  - [15-daemon-roadmaps.md](/Users/John/Code/agent-os/docs/runtime/daemon-roadmaps.md)
+  - [14-daemon-tasks.md](/Users/John/Code/agent-os/docs/runtime/daemon-tasks.md)
+- Provider architecture: [23-provider-architecture.md](/Users/John/Code/agent-os/docs/providers/provider-architecture.md)
+- Channel behavior: [28-channel-reply-progression.md](/Users/John/Code/agent-os/docs/channels/channel-reply-progression.md)
+- Harness architecture: [32-harness-architecture.md](/Users/John/Code/agent-os/docs/harness/harness-architecture.md)
+- Test environment workflow: [30-test-environment-workflow.md](/Users/John/Code/agent-os/docs/dev/test-environment-workflow.md)
 
 ## Local Environment Modes
 

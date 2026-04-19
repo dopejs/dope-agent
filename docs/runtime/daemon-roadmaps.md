@@ -49,6 +49,8 @@ The current execution focus after that is repository-safe local development work
 
 The next execution focus is first-class skill loading and prompt support, including support for user-level assets under `~/.agents`.
 
+The next execution focus after skill support is the sandbox execution plane, which will become the harness control plane for future tools, MCP, provider bridges, and managed skills.
+
 ## Roadmap 1: Runtime Closure
 
 Status: `[x] complete`
@@ -422,6 +424,90 @@ Task definition of done:
 - context-engine level reference-file loading heuristics
 - full browser or media capability implementations
 - auth and pairing
+
+## Roadmap 16: Sandbox Execution Plane
+
+Status: `[ ] planned`
+
+### Goal
+
+Add a first-class sandbox control plane to the daemon and a multi-backend execution substrate for skills, provider bridges, MCP, and future tool orchestration.
+
+### Tasks
+
+#### 1. Sandbox Contract And Policy Model
+
+Scope:
+
+- define sandbox profile resource model
+- define execution request and execution result contracts
+- define filesystem, environment, network, and approval policy shape
+
+Task definition of done:
+
+- daemon has explicit sandbox profile and execution contracts
+- policy fields distinguish filesystem, env, network, timeout, and approval rules
+- contracts are designed for multiple backends, not only local subprocess execution
+- operator-facing docs explain capability model and degradation behavior
+- schemas and tests cover the in-scope contract surface
+
+#### 2. Sandbox Control Plane APIs
+
+Scope:
+
+- add sandbox inspection and lifecycle routes
+- add operator visibility for active sandboxes and profiles
+
+Task definition of done:
+
+- daemon exposes list/get style APIs for sandbox profiles and active executions
+- control plane can explain effective policy for a sandboxed execution
+- control plane supports reload or recreation semantics where needed
+- responses are schema-backed and covered by contract tests
+
+#### 3. Subprocess Sandbox Runner
+
+Scope:
+
+- implement the first execution backend as a managed subprocess runner
+- enforce cwd, env filtering, timeout, and cancellation semantics
+
+Task definition of done:
+
+- daemon can execute sandboxed subprocess work through a defined backend boundary
+- cwd, env injection, timeout, stdout/stderr capture, and cancellation are enforced
+- backend behavior is observable and restart-safe where required
+- tests cover success, timeout, cancellation, and rejection paths
+
+#### 4. Isolation Controls And Audit Trail
+
+Scope:
+
+- add filesystem and network policy enforcement for the first backend
+- add durable audit and failure visibility
+
+Task definition of done:
+
+- sandbox executions record allow/deny outcome, effective policy, and execution trace
+- audit trail distinguishes policy rejection from runtime failure
+- first backend enforces documented filesystem and network controls
+- operator APIs and docs make failures and policy decisions inspectable
+
+### Roadmap Definition Of Done
+
+- daemon has a sandbox control plane separate from individual tools
+- at least one backend executes through the sandbox substrate
+- sandbox policy covers filesystem, env, timeout, network, and approval concerns
+- executions are auditable and inspectable through daemon APIs
+- the design is ready to host skills, provider bridges, MCP, and future tool orchestration
+
+### Explicitly Out Of Scope
+
+- browser-grade or VM-grade isolation
+- multiple production backends in the same roadmap
+- full tool orchestration engine
+- context engineering
+- memory system
 
 ## Roadmap 13: Provider Streaming Timeout Semantics
 
