@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-result.schema.json",
+  "title": "SandboxExecutionResult",
+  "type": "object",
+  "required": ["status", "outputTruncated", "partial"],
+  "additionalProperties": false,
+  "properties": {
+    "executionId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "running", "completed", "failed", "cancelled", "denied"]
+    },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "exitCode": { "type": "integer" },
+    "signal": { "type": "string" },
+    "stdout": { "type": "string" },
+    "stderr": { "type": "string" },
+    "outputTruncated": { "type": "boolean" },
+    "errorClass": {
+      "type": "string",
+      "enum": [
+        "",
+        "policy_denied",
+        "approval_required",
+        "approval_rejected",
+        "invalid_profile",
+        "backend_unavailable",
+        "launch_failed",
+        "process_failed",
+        "timeout",
+        "cancelled",
+        "io_capture_failed"
+      ]
+    },
+    "errorCode": { "type": "string" },
+    "error": { "type": "string" },
+    "partial": { "type": "boolean" },
+    "backendMetadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

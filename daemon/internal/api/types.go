@@ -9,6 +9,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 )
 
@@ -218,6 +219,10 @@ type SkillRegistryResponse struct {
 	LoadedAt time.Time              `json:"loadedAt"`
 	Items    []SkillSummaryResponse `json:"items"`
 	Overlays []SkillOverlayResponse `json:"overlays"`
+}
+
+type SandboxExplainResponse struct {
+	Decision sandbox.Decision `json:"decision"`
 }
 
 type ListResponse[T any] struct {

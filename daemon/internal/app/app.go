@@ -25,6 +25,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
@@ -43,6 +44,7 @@ type App struct {
 	LLM                  *llm.Dispatcher
 	Chat                 *chat.Service
 	Skills               *skills.Registry
+	Sandboxes            *sandbox.Manager
 	Providers            *providers.Manager
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
@@ -82,12 +84,13 @@ func New() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
 	providerManager := providers.NewManager(cfg, llmDispatcher, managedRegistry)
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 	chatService := chat.NewService(llmDispatcher, providerManager, skillRegistry, eventBus, sqliteStore)
 
-	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager); err != nil {
+	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager); err != nil {
 		return nil, err
 	}
 	if err := syncManagedProviderState(context.Background(), sqliteStore, providerManager); err != nil {
@@ -120,6 +123,7 @@ func New() (*App, error) {
 		LLM:          llmDispatcher,
 		Chat:         chatService,
 		Skills:       skillRegistry,
+		Sandboxes:    sandboxManager,
 		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
@@ -140,6 +144,7 @@ func New() (*App, error) {
 		LLM:                  llmDispatcher,
 		Chat:                 chatService,
 		Skills:               skillRegistry,
+		Sandboxes:            sandboxManager,
 		Providers:            providerManager,
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,
@@ -280,6 +285,11 @@ func (a *App) Close(_ context.Context) error {
 			firstErr = err
 		}
 	}
+	if a.Sandboxes != nil {
+		if err := a.Sandboxes.Close(context.Background()); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
 	if a.Checkpoints != nil {
 		if err := a.Checkpoints.Close(); err != nil && firstErr == nil {
 			firstErr = err
@@ -337,7 +347,7 @@ func newEventID() string {
 	return "evt_" + hex.EncodeToString(buf)
 }
 
-func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager) error {
+func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager) error {
 	if sqliteStore == nil {
 		return nil
 	}
@@ -408,6 +418,11 @@ func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, 
 		providerManager.RestoreManagedAuthStates(persistedProviderAuthStates)
 		providerManager.RestoreProviderModels(persistedProviderModels)
 		providerManager.RestoreProviderPreferences(persistedProviderPreferences)
+	}
+	if sandboxManager != nil {
+		if err := sandboxManager.Restore(ctx); err != nil {
+			return fmt.Errorf("restore sandbox executions: %w", err)
+		}
 	}
 
 	persistedEvents, err := sqliteStore.ListEvents(ctx, events.Filter{})

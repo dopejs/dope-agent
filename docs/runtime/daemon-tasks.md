@@ -38,7 +38,7 @@ Current completion should be read as:
 - `Roadmap 13: Provider Streaming Timeout Semantics` is now closed
 - `Roadmap 14: Test Environment Workflow` is now closed
 - `Roadmap 15: Skill Registry And Prompt Support` is now complete
-- `Roadmap 16: Sandbox Execution Plane` is now planned
+- `Roadmap 16: Sandbox Execution Plane` is now complete
 
 ## Roadmap 1: Runtime Closure
 
@@ -151,10 +151,10 @@ Current completion should be read as:
 
 ## Roadmap 16: Sandbox Execution Plane
 
-- [ ] Sandbox contract and policy model
-- [ ] Sandbox control plane APIs
-- [ ] Subprocess sandbox runner
-- [ ] Isolation controls and audit trail
+- [x] Sandbox contract and policy model
+- [x] Sandbox control plane APIs
+- [x] Subprocess sandbox runner
+- [x] Isolation controls and audit trail
 
 ## Completed Foundational Work
 

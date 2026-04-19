@@ -28,13 +28,26 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 5
+	CurrentSchemaVersion = 6
 )
 
 type schemaMigration struct {
 	Version    int
 	Name       string
 	Statements []string
+}
+
+type SandboxExecutionRecord struct {
+	ExecutionID string
+	ProfileID   string
+	BackendKind string
+	Status      string
+	ApprovalID  string
+	RequestedAt time.Time
+	UpdatedAt   time.Time
+	StartedAt   *time.Time
+	CompletedAt *time.Time
+	Document    []byte
 }
 
 var schemaMigrations = []schemaMigration{
@@ -373,6 +386,29 @@ var schemaMigrations = []schemaMigration{
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_messages_external ON connector_messages(connector_id, direction, external_message_id) WHERE external_message_id IS NOT NULL;`,
 			`CREATE INDEX IF NOT EXISTS idx_connector_messages_connector_created ON connector_messages(connector_id, created_at DESC, delivery_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_connector_messages_session_created ON connector_messages(session_id, created_at DESC, delivery_id DESC);`,
+		},
+	},
+	{
+		Version: 6,
+		Name:    "sandbox_execution_plane",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS sandbox_executions (
+				execution_id TEXT PRIMARY KEY,
+				profile_id TEXT NOT NULL,
+				backend_kind TEXT NOT NULL,
+				status TEXT NOT NULL,
+				approval_id TEXT,
+				requested_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				started_at TEXT,
+				completed_at TEXT,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(approval_id) REFERENCES approvals(approval_id) ON DELETE SET NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_sandbox_executions_status_requested ON sandbox_executions(status, requested_at DESC, execution_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_sandbox_executions_profile_requested ON sandbox_executions(profile_id, requested_at DESC, execution_id DESC);`,
 		},
 	},
 }
@@ -2034,6 +2070,90 @@ func (s *SQLiteStore) ListEvents(ctx context.Context, filter events.Filter) ([]e
 	return items, rows.Err()
 }
 
+func (s *SQLiteStore) UpsertSandboxExecution(ctx context.Context, record SandboxExecutionRecord) error {
+	if s == nil {
+		return nil
+	}
+	var (
+		approvalID  sql.NullString
+		startedAt   sql.NullString
+		completedAt sql.NullString
+	)
+	if strings.TrimSpace(record.ApprovalID) != "" {
+		approvalID = sql.NullString{String: strings.TrimSpace(record.ApprovalID), Valid: true}
+	}
+	if record.StartedAt != nil {
+		startedAt = sql.NullString{String: record.StartedAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+	if record.CompletedAt != nil {
+		completedAt = sql.NullString{String: record.CompletedAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO sandbox_executions (
+			execution_id,
+			profile_id,
+			backend_kind,
+			status,
+			approval_id,
+			requested_at,
+			updated_at,
+			started_at,
+			completed_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(execution_id) DO UPDATE SET
+			profile_id = excluded.profile_id,
+			backend_kind = excluded.backend_kind,
+			status = excluded.status,
+			approval_id = excluded.approval_id,
+			requested_at = excluded.requested_at,
+			updated_at = excluded.updated_at,
+			started_at = excluded.started_at,
+			completed_at = excluded.completed_at,
+			document_json = excluded.document_json
+	`,
+		record.ExecutionID,
+		record.ProfileID,
+		record.BackendKind,
+		record.Status,
+		approvalID,
+		record.RequestedAt.UTC().Format(time.RFC3339Nano),
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		startedAt,
+		completedAt,
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert sandbox execution %s: %w", record.ExecutionID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListSandboxExecutions(ctx context.Context) ([]SandboxExecutionRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT execution_id, profile_id, backend_kind, status, approval_id, requested_at, updated_at, started_at, completed_at, document_json
+		FROM sandbox_executions
+		ORDER BY requested_at ASC, execution_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list sandbox executions: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]SandboxExecutionRecord, 0)
+	for rows.Next() {
+		record, err := scanSandboxExecution(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, record)
+	}
+	return items, rows.Err()
+}
+
 func (s *SQLiteStore) SaveCheckpoint(ctx context.Context, checkpoint runtime.RunCheckpoint) error {
 	if s == nil {
 		return nil
@@ -2193,7 +2313,7 @@ func hasLegacySchema(ctx context.Context, queryer interface {
 		SELECT COUNT(1)
 		FROM sqlite_master
 		WHERE type = 'table'
-		  AND name IN ('sessions', 'runs', 'steps', 'events', 'checkpoints', 'tool_calls', 'llm_dispatches', 'provider_checks', 'provider_auth_states', 'provider_models', 'provider_preferences', 'connectors', 'capabilities', 'auth_pairings', 'auth_tokens', 'approvals', 'decisions')
+		  AND name IN ('sessions', 'runs', 'steps', 'events', 'checkpoints', 'tool_calls', 'llm_dispatches', 'provider_checks', 'provider_auth_states', 'provider_models', 'provider_preferences', 'connectors', 'capabilities', 'auth_pairings', 'auth_tokens', 'approvals', 'decisions', 'sandbox_executions')
 	`).Scan(&count); err != nil {
 		return false, err
 	}
@@ -2939,6 +3059,49 @@ func scanProviderPreference(scanner interface {
 		return providers.Preference{}, fmt.Errorf("parse provider preference updated_at: %w", err)
 	}
 	return item, nil
+}
+
+func scanSandboxExecution(scanner interface {
+	Scan(dest ...any) error
+}) (SandboxExecutionRecord, error) {
+	var (
+		record      SandboxExecutionRecord
+		approvalID  sql.NullString
+		requestedAt string
+		updatedAt   string
+		startedAt   sql.NullString
+		completedAt sql.NullString
+		document    string
+	)
+	if err := scanner.Scan(
+		&record.ExecutionID,
+		&record.ProfileID,
+		&record.BackendKind,
+		&record.Status,
+		&approvalID,
+		&requestedAt,
+		&updatedAt,
+		&startedAt,
+		&completedAt,
+		&document,
+	); err != nil {
+		return SandboxExecutionRecord{}, fmt.Errorf("scan sandbox execution: %w", err)
+	}
+	record.ApprovalID = approvalID.String
+	record.Document = []byte(document)
+	if err := assignRequiredTime(&record.RequestedAt, requestedAt); err != nil {
+		return SandboxExecutionRecord{}, fmt.Errorf("parse sandbox execution requested_at: %w", err)
+	}
+	if err := assignRequiredTime(&record.UpdatedAt, updatedAt); err != nil {
+		return SandboxExecutionRecord{}, fmt.Errorf("parse sandbox execution updated_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.StartedAt, startedAt); err != nil {
+		return SandboxExecutionRecord{}, fmt.Errorf("parse sandbox execution started_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.CompletedAt, completedAt); err != nil {
+		return SandboxExecutionRecord{}, fmt.Errorf("parse sandbox execution completed_at: %w", err)
+	}
+	return record, nil
 }
 
 func scanStep(scanner interface {

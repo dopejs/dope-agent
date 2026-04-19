@@ -580,6 +580,47 @@ func TestSQLiteStorePersistsLatestCheckpointPerRun(t *testing.T) {
 	}
 }
 
+func TestSQLiteStorePersistsSandboxExecutions(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	now := time.Now().UTC()
+	record := SandboxExecutionRecord{
+		ExecutionID: "sandbox_exec_1",
+		ProfileID:   "subprocess_default",
+		BackendKind: "subprocess",
+		Status:      "completed",
+		RequestedAt: now.Add(-time.Second),
+		UpdatedAt:   now,
+		StartedAt:   ptrTime(now.Add(-500 * time.Millisecond)),
+		CompletedAt: ptrTime(now),
+		Document:    []byte(`{"executionId":"sandbox_exec_1","status":"completed"}`),
+	}
+	if err := store.UpsertSandboxExecution(context.Background(), record); err != nil {
+		t.Fatalf("UpsertSandboxExecution returned error: %v", err)
+	}
+
+	items, err := store.ListSandboxExecutions(context.Background())
+	if err != nil {
+		t.Fatalf("ListSandboxExecutions returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].ExecutionID != record.ExecutionID {
+		t.Fatalf("expected persisted sandbox execution, got %+v", items)
+	}
+	if string(items[0].Document) != string(record.Document) {
+		t.Fatalf("expected document %s, got %s", string(record.Document), string(items[0].Document))
+	}
+}
+
 func TestSQLiteStorePersistsToolCalls(t *testing.T) {
 	t.Parallel()
 

@@ -26,6 +26,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
@@ -155,6 +156,8 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 		"schemas/api/provider-default-model.request.schema.json":    `{"model":"gpt-5.4"}`,
 		"schemas/api/request-approval.request.schema.json":          `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"needs approval","requestedBy":"web-ui"}`,
 		"schemas/api/resolve-approval.request.schema.json":          `{"resolution":"approved","comment":"allowed"}`,
+		"schemas/api/sandbox-execution.request.schema.json":         `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","timeoutMs":1000,"requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","reason":"inspect profile","metadata":{"ticket":"sandbox-16"},"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true}}`,
+		"schemas/api/sandbox-explain.request.schema.json":           `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"allowedHosts":[],"allowedPorts":[]}}`,
 		"schemas/api/start-pairing.request.schema.json":             `{"mode":"local","label":"web-ui","ttlSeconds":120}`,
 		"schemas/api/complete-pairing.request.schema.json":          `{"code":"123456"}`,
 	}
@@ -234,11 +237,18 @@ func TestSkillSchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	fixtures := map[string]string{
-		"schemas/api/skill-file.schema.json":              `{"path":"assets/guide.md","sizeBytes":42}`,
-		"schemas/api/skill-summary.schema.json":           `{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"}}`,
-		"schemas/api/skill-detail.response.schema.json":   `{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"},"frontmatterRaw":"name: shared","body":"data instructions"}`,
-		"schemas/api/skill-overlay.schema.json":           `{"overlayId":"data_dir_agents","source":"data_dir","path":"/tmp/dope/AGENTS.md","sizeBytes":12,"modifiedAt":"2026-04-18T12:00:00Z"}`,
-		"schemas/api/skill-registry.response.schema.json": `{"loadedAt":"2026-04-18T12:00:00Z","items":[{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"}}],"overlays":[{"overlayId":"home_agents","source":"home","path":"/tmp/home/.agents/AGENTS.md","sizeBytes":11,"modifiedAt":"2026-04-18T12:00:00Z"}]}`,
+		"schemas/api/skill-file.schema.json":                      `{"path":"assets/guide.md","sizeBytes":42}`,
+		"schemas/api/skill-summary.schema.json":                   `{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"}}`,
+		"schemas/api/skill-detail.response.schema.json":           `{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"},"frontmatterRaw":"name: shared","body":"data instructions"}`,
+		"schemas/api/skill-overlay.schema.json":                   `{"overlayId":"data_dir_agents","source":"data_dir","path":"/tmp/dope/AGENTS.md","sizeBytes":12,"modifiedAt":"2026-04-18T12:00:00Z"}`,
+		"schemas/api/skill-registry.response.schema.json":         `{"loadedAt":"2026-04-18T12:00:00Z","items":[{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"}}],"overlays":[{"overlayId":"home_agents","source":"home","path":"/tmp/home/.agents/AGENTS.md","sizeBytes":11,"modifiedAt":"2026-04-18T12:00:00Z"}]}`,
+		"schemas/api/sandbox-profile.schema.json":                 `{"profileId":"subprocess_default","title":"Default Subprocess Sandbox","description":"Conservative local subprocess execution for the harness control plane.","backendKind":"subprocess","defaultWorkDir":"/tmp/dope-data","filesystemPolicy":{"mode":"scoped","readRoots":["/tmp/dope-data"],"writeRoots":["/tmp/dope-data"],"tempRoots":["/tmp"],"allowDataDir":true,"allowUserAgentsDir":true,"allowHomeRead":false,"allowHomeWrite":false},"networkPolicy":{"mode":"deny","allowedHosts":[],"allowedPorts":[],"allowLoopback":false,"enforcementMode":"declared_only"},"envPolicy":{"mode":"inherit_safe","allowedVars":["PATH"],"injectedVars":{"DOPE_DATA_DIR":"/tmp/dope-data"},"redactedVars":[]},"approvalPolicy":{"mode":"ask","requiredForCommands":["curl"],"requiredForWritesOutsideRoots":true,"requiredForNetwork":true,"requiredForUnknownBackends":true},"processPolicy":{"timeoutMs":30000,"maxTimeoutMs":300000,"killGraceMs":1000,"captureStdout":true,"captureStderr":true,"maxOutputBytes":65536,"allowStreaming":false,"restartOnFailure":false},"defaultTimeoutMs":30000,"maxTimeoutMs":300000,"restartable":false,"source":"builtin","active":true}`,
+		"schemas/api/sandbox-profile-list.response.schema.json":   `{"items":[{"profileId":"subprocess_default","title":"Default Subprocess Sandbox","description":"Conservative local subprocess execution for the harness control plane.","backendKind":"subprocess","defaultWorkDir":"/tmp/dope-data","filesystemPolicy":{"mode":"scoped","readRoots":["/tmp/dope-data"],"writeRoots":["/tmp/dope-data"],"tempRoots":["/tmp"],"allowDataDir":true,"allowUserAgentsDir":true,"allowHomeRead":false,"allowHomeWrite":false},"networkPolicy":{"mode":"deny","allowedHosts":[],"allowedPorts":[],"allowLoopback":false,"enforcementMode":"declared_only"},"envPolicy":{"mode":"inherit_safe","allowedVars":["PATH"],"injectedVars":{"DOPE_DATA_DIR":"/tmp/dope-data"},"redactedVars":[]},"approvalPolicy":{"mode":"ask","requiredForCommands":["curl"],"requiredForWritesOutsideRoots":true,"requiredForNetwork":true,"requiredForUnknownBackends":true},"processPolicy":{"timeoutMs":30000,"maxTimeoutMs":300000,"killGraceMs":1000,"captureStdout":true,"captureStderr":true,"maxOutputBytes":65536,"allowStreaming":false,"restartOnFailure":false},"defaultTimeoutMs":30000,"maxTimeoutMs":300000,"restartable":false,"source":"builtin","active":true}]}`,
+		"schemas/api/sandbox-decision.schema.json":                `{"decisionId":"sandbox_decision_1","executionId":"sandbox_exec_1","resolution":"ask","matchedRules":["profile:subprocess_default","network:approval_required"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"}`,
+		"schemas/api/sandbox-result.schema.json":                  `{"executionId":"sandbox_exec_1","status":"denied","outputTruncated":false,"partial":false,"errorClass":"approval_required","errorCode":"sandbox_approval_required","error":"sandbox execution requires approval"}`,
+		"schemas/api/sandbox-execution.resource.schema.json":      `{"executionId":"sandbox_exec_1","profileId":"subprocess_default","backendKind":"subprocess","command":"echo","args":["hello"],"cwd":"/tmp/dope","envKeys":["HOME"],"stdinProvided":false,"timeoutMs":1000,"requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","approvalId":"approval_1","reason":"inspect profile","metadata":{"ticket":"sandbox-16"},"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true},"status":"denied","decision":{"decisionId":"sandbox_decision_1","executionId":"sandbox_exec_1","resolution":"ask","matchedRules":["profile:subprocess_default","network:approval_required"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"},"result":{"executionId":"sandbox_exec_1","status":"denied","outputTruncated":false,"partial":false,"errorClass":"approval_required","errorCode":"sandbox_approval_required","error":"sandbox execution requires approval"},"requestedAt":"2026-04-18T12:00:00Z","updatedAt":"2026-04-18T12:00:00Z"}`,
+		"schemas/api/sandbox-execution-list.response.schema.json": `{"items":[{"executionId":"sandbox_exec_1","profileId":"subprocess_default","backendKind":"subprocess","command":"echo","args":["hello"],"cwd":"/tmp/dope","envKeys":["HOME"],"stdinProvided":false,"timeoutMs":1000,"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true},"status":"denied","decision":{"decisionId":"sandbox_decision_1","executionId":"sandbox_exec_1","resolution":"ask","matchedRules":["profile:subprocess_default","network:approval_required"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"},"result":{"executionId":"sandbox_exec_1","status":"denied","outputTruncated":false,"partial":false,"errorClass":"approval_required","errorCode":"sandbox_approval_required","error":"sandbox execution requires approval"},"requestedAt":"2026-04-18T12:00:00Z","updatedAt":"2026-04-18T12:00:00Z"}]}`,
+		"schemas/api/sandbox-explain.response.schema.json":        `{"decision":{"decisionId":"sandbox_decision_1","resolution":"ask","matchedRules":["profile:subprocess_default","network:approval_required"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"}}`,
 	}
 
 	for schemaPath, fixture := range fixtures {
@@ -257,6 +267,13 @@ func TestStreamingTimeoutSchemasAcceptCanonicalFixtures(t *testing.T) {
 	fixtures := map[string]string{
 		"schemas/events/llm-dispatch-partial-failed.event.schema.json": `{"eventId":"evt_partial_1","sequence":8,"category":"llm","name":"llm.dispatch.partial_failed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"llm_dispatch","id":"dispatch_1"},"payload":{"provider":"openai_compatible","model":"gpt-5.4","status":"partial_failed","partial":true,"attemptCount":1,"finishReason":"","usage":{"inputTokens":1,"outputTokens":2,"totalTokens":3},"errorCode":"idle_timeout","error":"stream stalled"}}`,
 		"schemas/events/connector-reply-partial.event.schema.json":     `{"eventId":"evt_partial_2","sequence":9,"category":"connector","name":"connector.reply_partial","occurredAt":"2026-04-18T12:00:01Z","scope":{"runId":"run_1","stepId":"step_1","connectorId":"discord-main"},"resource":{"kind":"connector","id":"discord-main"},"payload":{"messageId":"msg_1","replyMessageId":"reply_1","replyMessageIds":["reply_1"],"partCount":1,"contentLength":128,"error":"stream stalled","errorClass":""}}`,
+		"schemas/events/sandbox-execution-requested.event.schema.json": `{"eventId":"evt_sandbox_1","sequence":10,"category":"sandbox","name":"sandbox.execution_requested","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"sandbox_execution","id":"sandbox_exec_1"},"payload":{"profileId":"subprocess_default","backendKind":"subprocess","command":"echo","args":["hello"],"cwd":"/tmp/dope","requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","status":"denied"}}`,
+		"schemas/events/sandbox-decision-recorded.event.schema.json":   `{"eventId":"evt_sandbox_2","sequence":11,"category":"sandbox","name":"sandbox.decision_recorded","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"sandbox_execution","id":"sandbox_exec_1"},"payload":{"decisionId":"sandbox_decision_1","resolution":"ask","matchedRules":["profile:subprocess_default"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"}}`,
+		"schemas/events/sandbox-execution-started.event.schema.json":   `{"eventId":"evt_sandbox_3","sequence":12,"category":"sandbox","name":"sandbox.execution_started","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"sandbox_execution","id":"sandbox_exec_2"},"payload":{"profileId":"subprocess_default","backendKind":"subprocess","status":"running","startedAt":"2026-04-18T12:00:01Z"}}`,
+		"schemas/events/sandbox-execution-completed.event.schema.json": `{"eventId":"evt_sandbox_4","sequence":13,"category":"sandbox","name":"sandbox.execution_completed","occurredAt":"2026-04-18T12:00:02Z","scope":{},"resource":{"kind":"sandbox_execution","id":"sandbox_exec_2"},"payload":{"profileId":"subprocess_default","backendKind":"subprocess","status":"completed","exitCode":0,"completedAt":"2026-04-18T12:00:02Z","outputTruncated":false,"partial":false}}`,
+		"schemas/events/sandbox-execution-failed.event.schema.json":    `{"eventId":"evt_sandbox_5","sequence":14,"category":"sandbox","name":"sandbox.execution_failed","occurredAt":"2026-04-18T12:00:02Z","scope":{},"resource":{"kind":"sandbox_execution","id":"sandbox_exec_3"},"payload":{"profileId":"subprocess_default","backendKind":"subprocess","status":"failed","completedAt":"2026-04-18T12:00:02Z","outputTruncated":false,"partial":false,"errorClass":"process_failed","errorCode":"sandbox_process_failed","error":"exit status 1"}}`,
+		"schemas/events/sandbox-execution-cancelled.event.schema.json": `{"eventId":"evt_sandbox_6","sequence":15,"category":"sandbox","name":"sandbox.execution_cancelled","occurredAt":"2026-04-18T12:00:02Z","scope":{},"resource":{"kind":"sandbox_execution","id":"sandbox_exec_4"},"payload":{"profileId":"subprocess_default","backendKind":"subprocess","status":"cancelled","completedAt":"2026-04-18T12:00:02Z","outputTruncated":false,"partial":false,"errorClass":"cancelled","errorCode":"sandbox_cancelled","error":"execution was cancelled"}}`,
+		"schemas/events/sandbox-execution-denied.event.schema.json":    `{"eventId":"evt_sandbox_7","sequence":16,"category":"sandbox","name":"sandbox.execution_denied","occurredAt":"2026-04-18T12:00:02Z","scope":{},"resource":{"kind":"sandbox_execution","id":"sandbox_exec_1"},"payload":{"profileId":"subprocess_default","backendKind":"subprocess","status":"denied","completedAt":"2026-04-18T12:00:02Z","outputTruncated":false,"partial":false,"errorClass":"approval_required","errorCode":"sandbox_approval_required","error":"sandbox execution requires approval"}}`,
 	}
 
 	for schemaPath, fixture := range fixtures {
@@ -344,6 +361,12 @@ func TestAPISchemasMatchCanonicalResponses(t *testing.T) {
 	h.mustValidateResponse(t, http.MethodGet, "/v1/skills", "", h.authHeader, "schemas/api/skill-registry.response.schema.json")
 	h.mustValidateResponse(t, http.MethodGet, "/v1/skills/shared", "", h.authHeader, "schemas/api/skill-detail.response.schema.json")
 	h.mustValidateResponse(t, http.MethodPost, "/v1/skills/reload", "", h.authHeader, "schemas/api/skill-registry.response.schema.json")
+	sandboxCwd := filepath.Join(os.TempDir(), "dope-contract")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/sandboxes/profiles", "", h.authHeader, "schemas/api/sandbox-profile-list.response.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/sandboxes/profiles/subprocess_default", "", h.authHeader, "schemas/api/sandbox-profile.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/sandboxes/explain", `{"command":"echo","args":["hello"],"cwd":"`+sandboxCwd+`","access":{"readRoots":["`+sandboxCwd+`"],"writeRoots":["`+sandboxCwd+`"],"networkMode":"full"}}`, h.authHeader, "schemas/api/sandbox-explain.response.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/sandboxes/executions", `{"command":"echo","args":["hello"],"cwd":"`+sandboxCwd+`","access":{"readRoots":["`+sandboxCwd+`"],"writeRoots":["`+sandboxCwd+`"],"networkMode":"full"}}`, h.authHeader, "schemas/api/sandbox-execution.resource.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/sandboxes/executions", "", h.authHeader, "schemas/api/sandbox-execution-list.response.schema.json")
 
 	h.mustValidateResponse(t, http.MethodGet, "/v1/runs/"+runID+"/events", "", h.authHeader, "schemas/api/event-list.response.schema.json")
 }
@@ -381,6 +404,9 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 	approvalBody := h.request(t, http.MethodPost, "/v1/policy/approvals", `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"review","requestedBy":"events-suite"}`, h.authHeader)
 	approvalID := decodeJSONMap(t, approvalBody)["approval"].(map[string]any)["approvalId"].(string)
 	h.request(t, http.MethodPost, "/v1/policy/approvals/"+approvalID+"/resolve", `{"resolution":"approved","comment":"approved"}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/sandboxes/executions", `{"command":"`+contractSandboxCommand()+`","args":`+contractSandboxArgsJSON(`echo sandbox-ok`)+`}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/sandboxes/executions", `{"command":"echo","args":["sandbox-denied"],"access":{"networkMode":"full","allowedHosts":[],"allowedPorts":[]}}`, h.authHeader)
+	waitForContractEvent(t, h.store, "sandbox.execution_denied")
 
 	items, err := h.store.ListEvents(context.Background(), events.Filter{})
 	if err != nil {
@@ -406,6 +432,9 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 		"policy.approval_requested":      "schemas/events/policy-approval-requested.event.schema.json",
 		"policy.approval_resolved":       "schemas/events/policy-approval-resolved.event.schema.json",
 		"policy.decision_recorded":       "schemas/events/policy-decision-recorded.event.schema.json",
+		"sandbox.execution_requested":    "schemas/events/sandbox-execution-requested.event.schema.json",
+		"sandbox.decision_recorded":      "schemas/events/sandbox-decision-recorded.event.schema.json",
+		"sandbox.execution_denied":       "schemas/events/sandbox-execution-denied.event.schema.json",
 	}
 
 	found := make(map[string]bool, len(expectedSchemas))
@@ -569,6 +598,10 @@ data instructions
 	capabilitySupervisor := capabilities.NewSupervisor()
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
 	chatService := chat.NewService(llmDispatcher, providerManager, skillRegistry, eventBus, sqliteStore)
+	sandboxManager := sandbox.NewManager(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     dataRoot,
+	}, sqliteStore, eventBus, policyEngine)
 	t.Cleanup(func() {
 		if err := checkpointManager.Close(); err != nil {
 			t.Fatalf("Close checkpoint manager returned error: %v", err)
@@ -592,6 +625,7 @@ data instructions
 		Chat:         chatService,
 		Providers:    providerManager,
 		Skills:       skillRegistry,
+		Sandboxes:    sandboxManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
 		Store:        sqliteStore,
@@ -615,10 +649,44 @@ func writeContractSkillFile(t *testing.T, path string, content string) {
 	}
 }
 
+func contractSandboxCommand() string {
+	if goruntime.GOOS == "windows" {
+		return "cmd"
+	}
+	return "/bin/sh"
+}
+
+func contractSandboxArgsJSON(script string) string {
+	args := []string{"-c", script}
+	if goruntime.GOOS == "windows" {
+		args = []string{"/c", script}
+	}
+	payload, _ := json.Marshal(args)
+	return string(payload)
+}
+
 func (h *contractHarness) mustValidateResponse(t *testing.T, method, path, body, authHeader, schemaPath string) {
 	t.Helper()
 	responseBody := h.request(t, method, path, body, authHeader)
 	h.mustValidate(t, schemaPath, responseBody)
+}
+
+func waitForContractEvent(t *testing.T, sqliteStore *store.SQLiteStore, eventName string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		items, err := sqliteStore.ListEvents(context.Background(), events.Filter{})
+		if err != nil {
+			t.Fatalf("ListEvents returned error: %v", err)
+		}
+		for _, item := range items {
+			if item.Name == eventName {
+				return
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("expected event %s to be emitted", eventName)
 }
 
 func (h *contractHarness) mustValidate(t *testing.T, schemaPath string, body []byte) {

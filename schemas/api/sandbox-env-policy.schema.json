@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-env-policy.schema.json",
+  "title": "SandboxEnvironmentPolicy",
+  "type": "object",
+  "required": ["mode", "allowedVars", "injectedVars", "redactedVars"],
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["clean", "inherit_safe", "inherit_all"]
+    },
+    "allowedVars": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "injectedVars": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "redactedVars": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-decision.schema.json",
+  "title": "SandboxDecision",
+  "type": "object",
+  "required": [
+    "decisionId",
+    "resolution",
+    "matchedRules",
+    "approvalRequired",
+    "approvalStatus",
+    "effectiveProfileId",
+    "effectiveBackendKind",
+    "explanation"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "decisionId": { "type": "string" },
+    "executionId": { "type": "string" },
+    "resolution": {
+      "type": "string",
+      "enum": ["allow", "ask", "deny"]
+    },
+    "matchedRules": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "approvalRequired": { "type": "boolean" },
+    "approvalStatus": {
+      "type": "string",
+      "enum": ["not_applicable", "pending", "approved", "rejected"]
+    },
+    "effectiveProfileId": { "type": "string" },
+    "effectiveBackendKind": {
+      "type": "string",
+      "enum": ["subprocess", "docker", "ssh", "remote"]
+    },
+    "explanation": { "type": "string" }
+  }
+}

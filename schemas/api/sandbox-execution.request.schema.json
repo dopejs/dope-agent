@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-execution.request.schema.json",
+  "title": "SandboxExecutionRequest",
+  "type": "object",
+  "required": ["command"],
+  "additionalProperties": false,
+  "properties": {
+    "profileId": { "type": "string" },
+    "command": { "type": "string", "minLength": 1 },
+    "args": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "cwd": { "type": "string" },
+    "env": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "stdin": { "type": "string" },
+    "timeoutMs": { "type": "integer", "minimum": 1 },
+    "requestedBy": { "type": "string" },
+    "resourceKind": { "type": "string" },
+    "resourceId": { "type": "string" },
+    "scope": { "type": "string" },
+    "approvalId": { "type": "string" },
+    "reason": { "type": "string" },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "access": {
+      "$ref": "./sandbox-access-request.schema.json"
+    }
+  }
+}

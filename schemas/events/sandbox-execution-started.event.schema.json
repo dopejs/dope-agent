@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/sandbox-execution-started.event.schema.json",
+  "title": "SandboxExecutionStartedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "sandbox" },
+        "name": { "const": "sandbox.execution_started" },
+        "resource": {
+          "type": "object",
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": { "const": "sandbox_execution" },
+            "id": { "type": "string" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": ["profileId", "backendKind", "status", "startedAt"],
+          "additionalProperties": true,
+          "properties": {
+            "profileId": { "type": "string" },
+            "backendKind": { "type": "string" },
+            "status": { "type": "string" },
+            "startedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

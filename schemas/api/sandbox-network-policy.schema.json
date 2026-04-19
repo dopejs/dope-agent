@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-network-policy.schema.json",
+  "title": "SandboxNetworkPolicy",
+  "type": "object",
+  "required": ["mode", "allowedHosts", "allowedPorts", "allowLoopback", "enforcementMode"],
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["deny", "allow_list", "full"]
+    },
+    "allowedHosts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "allowedPorts": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "allowLoopback": { "type": "boolean" },
+    "enforcementMode": { "type": "string" }
+  }
+}

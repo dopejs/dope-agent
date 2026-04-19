@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/sandbox-decision-recorded.event.schema.json",
+  "title": "SandboxDecisionRecordedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "required": ["payload"],
+      "properties": {
+        "category": { "const": "sandbox" },
+        "name": { "const": "sandbox.decision_recorded" },
+        "resource": {
+          "type": "object",
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": { "const": "sandbox_execution" },
+            "id": { "type": "string" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "decisionId",
+            "resolution",
+            "matchedRules",
+            "approvalRequired",
+            "approvalStatus",
+            "effectiveProfileId",
+            "effectiveBackendKind",
+            "explanation"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "decisionId": { "type": "string" },
+            "resolution": { "type": "string" },
+            "matchedRules": { "type": "array", "items": { "type": "string" } },
+            "approvalRequired": { "type": "boolean" },
+            "approvalStatus": { "type": "string" },
+            "effectiveProfileId": { "type": "string" },
+            "effectiveBackendKind": { "type": "string" },
+            "explanation": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

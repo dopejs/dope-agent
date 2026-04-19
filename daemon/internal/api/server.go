@@ -26,6 +26,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
@@ -42,6 +43,7 @@ type Dependencies struct {
 	Chat         *chat.Service
 	Providers    *providers.Manager
 	Skills       *skills.Registry
+	Sandboxes    *sandbox.Manager
 	Connectors   *connectors.Supervisor
 	Capabilities *capabilities.Supervisor
 	Store        *store.SQLiteStore
@@ -60,6 +62,7 @@ type Server struct {
 	chat         *chat.Service
 	providers    *providers.Manager
 	skills       *skills.Registry
+	sandboxes    *sandbox.Manager
 	connectors   *connectors.Supervisor
 	capabilities *capabilities.Supervisor
 	store        *store.SQLiteStore
@@ -162,6 +165,21 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/skills/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSkillRoutes(deps.Skills, w, r)
 	}))
+	mux.HandleFunc("/v1/sandboxes/profiles", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleSandboxProfiles(deps.Sandboxes, w, r)
+	}))
+	mux.HandleFunc("/v1/sandboxes/profiles/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleSandboxProfileRoutes(deps.Sandboxes, w, r)
+	}))
+	mux.HandleFunc("/v1/sandboxes/executions", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleSandboxExecutions(deps.Sandboxes, w, r)
+	}))
+	mux.HandleFunc("/v1/sandboxes/executions/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleSandboxExecutionRoutes(deps.Sandboxes, w, r)
+	}))
+	mux.HandleFunc("/v1/sandboxes/explain", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleSandboxExplain(deps.Sandboxes, w, r)
+	}))
 	mux.HandleFunc("/v1/providers", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleProviders(deps.Providers, w, r)
 	}))
@@ -193,6 +211,7 @@ func NewServer(deps Dependencies) *Server {
 		chat:         deps.Chat,
 		providers:    deps.Providers,
 		skills:       deps.Skills,
+		sandboxes:    deps.Sandboxes,
 		connectors:   deps.Connectors,
 		capabilities: deps.Capabilities,
 		store:        deps.Store,
@@ -1538,6 +1557,149 @@ func handleSkillRoutes(registry *skills.Registry, w http.ResponseWriter, r *http
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
+}
+
+func handleSandboxProfiles(manager *sandbox.Manager, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "sandbox manager is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, ListResponse[sandbox.Profile]{Items: manager.ListProfiles()})
+}
+
+func handleSandboxProfileRoutes(manager *sandbox.Manager, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "sandbox manager is not configured")
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/v1/sandboxes/profiles/")
+	switch {
+	case path == "reload":
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		writeJSON(w, http.StatusOK, ListResponse[sandbox.Profile]{Items: manager.Reload()})
+	case path != "":
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		profile, ok := manager.GetProfile(path)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, profile)
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func handleSandboxExecutions(manager *sandbox.Manager, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "sandbox manager is not configured")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, ListResponse[sandbox.Execution]{Items: manager.ListExecutions()})
+	case http.MethodPost:
+		var request sandbox.ExecutionRequest
+		if err := decodeJSONBody(r, &request); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if strings.TrimSpace(request.RequestedBy) == "" {
+			request.RequestedBy = currentActor(r.Context())
+		}
+		execution, err := manager.StartExecution(r.Context(), request)
+		if err != nil {
+			switch {
+			case errors.Is(err, sandbox.ErrCommandRequired):
+				writeError(w, http.StatusBadRequest, err.Error())
+			default:
+				writeError(w, http.StatusInternalServerError, err.Error())
+			}
+			return
+		}
+		writeJSON(w, http.StatusCreated, execution)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func handleSandboxExecutionRoutes(manager *sandbox.Manager, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "sandbox manager is not configured")
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/v1/sandboxes/executions/")
+	switch {
+	case strings.HasSuffix(path, "/cancel"):
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		executionID := strings.TrimSuffix(path, "/cancel")
+		execution, _, err := manager.CancelExecution(executionID)
+		if err != nil {
+			if errors.Is(err, sandbox.ErrExecutionNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, execution)
+	case path != "":
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		execution, ok := manager.GetExecution(path)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, execution)
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func handleSandboxExplain(manager *sandbox.Manager, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "sandbox manager is not configured")
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var request sandbox.ExecutionRequest
+	if err := decodeJSONBody(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(request.RequestedBy) == "" {
+		request.RequestedBy = currentActor(r.Context())
+	}
+	decision, err := manager.Explain(r.Context(), request)
+	if err != nil {
+		switch {
+		case errors.Is(err, sandbox.ErrCommandRequired):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, SandboxExplainResponse{Decision: decision})
 }
 
 func handleConnectors(supervisor *connectors.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {

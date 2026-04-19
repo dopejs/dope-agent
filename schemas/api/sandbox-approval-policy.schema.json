@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-approval-policy.schema.json",
+  "title": "SandboxApprovalPolicy",
+  "type": "object",
+  "required": [
+    "mode",
+    "requiredForCommands",
+    "requiredForWritesOutsideRoots",
+    "requiredForNetwork",
+    "requiredForUnknownBackends"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["allow", "ask", "deny"]
+    },
+    "requiredForCommands": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "requiredForWritesOutsideRoots": { "type": "boolean" },
+    "requiredForNetwork": { "type": "boolean" },
+    "requiredForUnknownBackends": { "type": "boolean" }
+  }
+}

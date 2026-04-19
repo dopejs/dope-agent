@@ -40,6 +40,7 @@ That daemon foundation is now closed through:
 - Roadmap 13: `Provider Streaming Timeout Semantics`
 - Roadmap 14: `Test Environment Workflow`
 - Roadmap 15: `Skill Registry And Prompt Support`
+- Roadmap 16: `Sandbox Execution Plane`
 
 Execution is roadmap-driven:
 

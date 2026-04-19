@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-filesystem-policy.schema.json",
+  "title": "SandboxFilesystemPolicy",
+  "type": "object",
+  "required": [
+    "mode",
+    "readRoots",
+    "writeRoots",
+    "tempRoots",
+    "allowDataDir",
+    "allowUserAgentsDir",
+    "allowHomeRead",
+    "allowHomeWrite"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["none", "scoped", "full"]
+    },
+    "readRoots": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "writeRoots": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "tempRoots": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "allowDataDir": { "type": "boolean" },
+    "allowUserAgentsDir": { "type": "boolean" },
+    "allowHomeRead": { "type": "boolean" },
+    "allowHomeWrite": { "type": "boolean" }
+  }
+}

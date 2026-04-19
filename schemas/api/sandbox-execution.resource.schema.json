@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-execution.resource.schema.json",
+  "title": "SandboxExecution",
+  "type": "object",
+  "required": [
+    "executionId",
+    "profileId",
+    "backendKind",
+    "command",
+    "args",
+    "cwd",
+    "envKeys",
+    "stdinProvided",
+    "timeoutMs",
+    "access",
+    "status",
+    "decision",
+    "result",
+    "requestedAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "executionId": { "type": "string" },
+    "profileId": { "type": "string" },
+    "backendKind": {
+      "type": "string",
+      "enum": ["subprocess", "docker", "ssh", "remote"]
+    },
+    "command": { "type": "string" },
+    "args": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "cwd": { "type": "string" },
+    "envKeys": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "stdinProvided": { "type": "boolean" },
+    "timeoutMs": { "type": "integer", "minimum": 1 },
+    "requestedBy": { "type": "string" },
+    "resourceKind": { "type": "string" },
+    "resourceId": { "type": "string" },
+    "scope": { "type": "string" },
+    "approvalId": { "type": "string" },
+    "reason": { "type": "string" },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "access": {
+      "$ref": "./sandbox-access-request.schema.json"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "running", "completed", "failed", "cancelled", "denied"]
+    },
+    "decision": {
+      "$ref": "./sandbox-decision.schema.json"
+    },
+    "result": {
+      "$ref": "./sandbox-result.schema.json"
+    },
+    "requestedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" }
+  }
+}

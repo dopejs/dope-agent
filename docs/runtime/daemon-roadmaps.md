@@ -49,7 +49,7 @@ The current execution focus after that is repository-safe local development work
 
 The next execution focus is first-class skill loading and prompt support, including support for user-level assets under `~/.agents`.
 
-The next execution focus after skill support is the sandbox execution plane, which will become the harness control plane for future tools, MCP, provider bridges, and managed skills.
+The sandbox execution plane is now closed as the first harness control-plane slice. The next harness execution focus after sandbox is MCP integration on top of that execution boundary.
 
 ## Roadmap 1: Runtime Closure
 
@@ -427,7 +427,7 @@ Task definition of done:
 
 ## Roadmap 16: Sandbox Execution Plane
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 ### Goal
 

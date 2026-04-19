@@ -27,6 +27,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
@@ -1220,6 +1221,97 @@ func TestPolicyApprovalLifecycleRoutes(t *testing.T) {
 	}
 	if policyEvents[3].Name != "policy.decision_recorded" {
 		t.Fatalf("expected second policy.decision_recorded, got %s", policyEvents[3].Name)
+	}
+}
+
+func TestSandboxRoutes(t *testing.T) {
+	eventBus := events.NewBus()
+	policyEngine := policy.NewEngine()
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	sandboxManager := sandbox.NewManager(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     t.TempDir(),
+		BindAddr:    "127.0.0.1:19191",
+		LogLevel:    "info",
+		Version:     "test",
+	}, sqliteStore, eventBus, policyEngine)
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			Environment: config.EnvironmentTest,
+			BindAddr:    "127.0.0.1:19191",
+			DataDir:     t.TempDir(),
+			LogLevel:    "info",
+			Version:     "test",
+		},
+		Logger:    telemetry.New("error").Slog(),
+		EventBus:  eventBus,
+		Policy:    policyEngine,
+		Sandboxes: sandboxManager,
+	})
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/sandboxes/profiles", nil)
+	listRec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for profile list, got %d", listRec.Code)
+	}
+
+	explainReq := httptest.NewRequest(http.MethodPost, "/v1/sandboxes/explain", strings.NewReader(`{
+		"command":"echo",
+		"args":["hello"],
+		"cwd":"`+sqliteStore.DataDir+`",
+		"access":{"readRoots":["`+sqliteStore.DataDir+`"],"writeRoots":["`+sqliteStore.DataDir+`"],"networkMode":"full"}
+	}`))
+	explainRec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(explainRec, explainReq)
+	if explainRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for sandbox explain, got %d", explainRec.Code)
+	}
+	explain := decodeStrictResponse[SandboxExplainResponse](t, explainRec.Body.Bytes())
+	if explain.Decision.Resolution != sandbox.DecisionResolutionAsk {
+		t.Fatalf("expected ask explain resolution, got %s", explain.Decision.Resolution)
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/sandboxes/executions", strings.NewReader(`{
+		"command":"echo",
+		"args":["hello"],
+		"cwd":"`+sqliteStore.DataDir+`",
+		"access":{"readRoots":["`+sqliteStore.DataDir+`"],"writeRoots":["`+sqliteStore.DataDir+`"],"networkMode":"full"}
+	}`))
+	createRec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for sandbox create, got %d", createRec.Code)
+	}
+	created := decodeStrictResponse[sandbox.Execution](t, createRec.Body.Bytes())
+	if created.Status != sandbox.ExecutionStatusDenied {
+		t.Fatalf("expected denied execution, got %s", created.Status)
+	}
+	if created.ApprovalID == "" {
+		t.Fatal("expected approval id on denied execution")
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/sandboxes/executions/"+created.ExecutionID, nil)
+	getRec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for sandbox get, got %d", getRec.Code)
+	}
+
+	cancelReq := httptest.NewRequest(http.MethodPost, "/v1/sandboxes/executions/"+created.ExecutionID+"/cancel", nil)
+	cancelRec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(cancelRec, cancelReq)
+	if cancelRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for sandbox cancel, got %d", cancelRec.Code)
 	}
 }
 

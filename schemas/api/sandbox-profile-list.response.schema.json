@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-profile-list.response.schema.json",
+  "title": "SandboxProfileListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "./sandbox-profile.schema.json"
+      }
+    }
+  }
+}

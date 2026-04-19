@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-profile.schema.json",
+  "title": "SandboxProfile",
+  "type": "object",
+  "required": [
+    "profileId",
+    "title",
+    "description",
+    "backendKind",
+    "defaultWorkDir",
+    "filesystemPolicy",
+    "networkPolicy",
+    "envPolicy",
+    "approvalPolicy",
+    "processPolicy",
+    "defaultTimeoutMs",
+    "maxTimeoutMs",
+    "restartable",
+    "source",
+    "active"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "profileId": { "type": "string" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "backendKind": {
+      "type": "string",
+      "enum": ["subprocess", "docker", "ssh", "remote"]
+    },
+    "defaultWorkDir": { "type": "string" },
+    "filesystemPolicy": {
+      "$ref": "./sandbox-filesystem-policy.schema.json"
+    },
+    "networkPolicy": {
+      "$ref": "./sandbox-network-policy.schema.json"
+    },
+    "envPolicy": {
+      "$ref": "./sandbox-env-policy.schema.json"
+    },
+    "approvalPolicy": {
+      "$ref": "./sandbox-approval-policy.schema.json"
+    },
+    "processPolicy": {
+      "$ref": "./sandbox-process-policy.schema.json"
+    },
+    "defaultTimeoutMs": { "type": "integer", "minimum": 1 },
+    "maxTimeoutMs": { "type": "integer", "minimum": 1 },
+    "restartable": { "type": "boolean" },
+    "source": { "type": "string", "enum": ["builtin"] },
+    "active": { "type": "boolean" }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-process-policy.schema.json",
+  "title": "SandboxProcessPolicy",
+  "type": "object",
+  "required": [
+    "timeoutMs",
+    "maxTimeoutMs",
+    "killGraceMs",
+    "captureStdout",
+    "captureStderr",
+    "maxOutputBytes",
+    "allowStreaming",
+    "restartOnFailure"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "timeoutMs": { "type": "integer", "minimum": 1 },
+    "maxTimeoutMs": { "type": "integer", "minimum": 1 },
+    "killGraceMs": { "type": "integer", "minimum": 0 },
+    "captureStdout": { "type": "boolean" },
+    "captureStderr": { "type": "boolean" },
+    "maxOutputBytes": { "type": "integer", "minimum": 1 },
+    "allowStreaming": { "type": "boolean" },
+    "restartOnFailure": { "type": "boolean" }
+  }
+}

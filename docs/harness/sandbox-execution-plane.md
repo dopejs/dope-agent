@@ -490,6 +490,37 @@ That is acceptable for the roadmap as long as:
 5. Add durable events and execution history
 6. Add operator docs and contract tests
 
+## Roadmap 16 Implementation Notes
+
+The current daemon implementation now closes the first sandbox roadmap with:
+
+- a built-in `subprocess_default` sandbox profile
+- `GET /v1/sandboxes/profiles`
+- `GET /v1/sandboxes/profiles/{profileId}`
+- `POST /v1/sandboxes/profiles/reload`
+- `GET /v1/sandboxes/executions`
+- `GET /v1/sandboxes/executions/{executionId}`
+- `POST /v1/sandboxes/executions`
+- `POST /v1/sandboxes/executions/{executionId}/cancel`
+- `POST /v1/sandboxes/explain`
+
+The current subprocess backend enforces:
+
+- explicit cwd selection
+- safe env inheritance plus injected daemon vars
+- stdout and stderr capture with truncation limits
+- timeout and cancellation
+- preflight filesystem scope checks
+- policy-declared network access evaluation
+- durable execution history and sandbox events
+
+The current degradation and security boundary is intentionally explicit:
+
+- filesystem enforcement is preflight scope validation, not kernel-level mediation
+- network enforcement for subprocess is `declared_only`, not OS-hardened packet isolation
+- approval escalation is integrated with the daemon approval plane
+- in-flight executions are recovered as cancelled on daemon restart instead of being left in an indeterminate running state
+
 ## Roadmap 16 Completion Standard
 
 Roadmap 16 is only complete when:
