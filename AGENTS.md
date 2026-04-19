@@ -1,45 +1,31 @@
-# AGENTS.md
+# Repository Guidelines
 
-This file gives repository-specific instructions for Codex and other agents working in `dope-agent`.
+## Project Structure & Module Organization
 
-## Default Working Environment
+`daemon/` contains the Go control plane, runtime, providers, channels, and harness code. `web/` and `tui/` are the client surfaces. `sdk/ts/` holds the TypeScript client SDK used by both. `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providers/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
 
-- Default to the **test environment** for all local development, debugging, and manual validation.
-- Test environment settings:
-  - data dir: `~/.dope-test`
-  - config file: `~/.dope-test/config.json`
-  - bind addr: `127.0.0.1:19192`
-- Production is opt-in only:
-  - data dir: `~/.dope`
-  - config file: `~/.dope/config.json`
-  - bind addr: `127.0.0.1:19191`
+## Build, Test, and Development Commands
 
-Do not touch production config, tokens, or running processes unless the user explicitly asks for production validation.
+- `make daemon-run-test`: start the daemon in the default test environment (`~/.dope-test`, `127.0.0.1:19192`).
+- `make daemon-run-test-live`: start the test daemon with live connectors enabled.
+- `make daemon-test-status`: check the local test daemon health.
+- `go test ./...` (run in `daemon/`): execute all Go tests.
+- `make daemon-contract-test`: validate schema and contract fixtures.
+- `pnpm test:clients`: run SDK, web, and TUI client tests.
+- `pnpm build`: build client packages.
 
-## Required Workflow
+## Coding Style & Naming Conventions
 
-- Before local daemon debugging, use the project skill at `.agents/skills/dope-test-env/SKILL.md`.
-- Use the repository entrypoints instead of ad hoc shell commands:
-  - `make daemon-run-test`
-  - `make daemon-run-test-live`
-  - `make daemon-run-prod`
-  - `make daemon-test-status`
-  - `make daemon-prod-status`
-- If the expected daemon port is occupied:
-  - automatically stop the previous Dope daemon for that same environment
-  - do not automatically kill unrelated processes bound to the port
-- When changing defaults, startup workflow, ports, or config loading, update:
-  - `Makefile`
-  - `scripts/`
-  - `.agents/skills/dope-test-env/SKILL.md`
-  - relevant docs in `docs/`
+Use existing repository conventions before introducing new abstractions. Go code must be `gofmt`-clean and organized by package boundary, not by feature dumping. TypeScript code should follow the existing Vite/React structure and keep contracts explicit. Prefer clear, production-readable names such as `provider_manager.go`, `chat-service.ts`, and `discord-channel-loop.md`. Keep changes small and reversible.
 
-## Verification Expectations
+## Testing Guidelines
 
-- For daemon changes, run `go test ./...` in `daemon/`.
-- For client-facing changes, also run `pnpm test:clients`.
-- If startup workflow changes, verify at least:
-  - test env boot path
-  - health check against the expected port
-  - config path and environment reported by `/v1/system/info` or `/v1/config`
-  - the default test-start path does not require external connectors to succeed
+Every production change should include targeted tests in the affected layer and preserve contract coverage where applicable. Use Go unit and integration tests under `daemon/internal/...` and client tests in package-local test files. When changing API shape, schema, or event payloads, run `make daemon-contract-test` and update `schemas/` plus fixtures together.
+
+## Commit & Pull Request Guidelines
+
+Follow the existing imperative commit style: `Complete roadmap 15 skill registry and prompt support`, `Add test environment workflow and repo skill`, `Improve openai-compatible base URL handling`. Keep commits scoped and descriptive. Pull requests should explain the operator impact, verification performed, rollback path, and any config or schema changes. Include screenshots only when UI behavior changes.
+
+## Security & Configuration Tips
+
+Default development work must use the test environment, not `~/.dope`. Never assume live connectors or managed providers are safe to touch; make the environment explicit. Treat secrets in config as operator-owned material and avoid logging or echoing them in tests, scripts, or API output.
