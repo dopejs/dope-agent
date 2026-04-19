@@ -24,7 +24,10 @@ go test ./internal/sandbox ./internal/managedproviders ./internal/api ./internal
 During targeted verification, confirm that declaration evaluation, secret-scope resolution,
 and durable provenance persistence stay within the existing managed-provider and high-risk
 tool-call flows without adding more than `<=100 ms` daemon-side overhead to preflight
-checks, excluding upstream provider latency and operator approval wait time.
+checks, excluding upstream provider latency and operator approval wait time. This slice
+now has explicit timing coverage for managed-provider preflight in
+`daemon/internal/managedproviders/managedproviders_test.go` and for high-risk local-tool
+preflight in `daemon/internal/api/server_test.go`.
 
 ## Contract Verification
 
@@ -96,7 +99,7 @@ Recorded on `2026-04-19`:
 - `cd /Users/John/Code/dope-agent/daemon && go test ./internal/sandbox ./internal/managedproviders ./internal/api ./internal/store ./internal/runtime ./internal/skills ./internal/providers` passed
 - `cd /Users/John/Code/dope-agent && make daemon-contract-test` passed
 - `cd /Users/John/Code/dope-agent/daemon && go test ./...` passed
-- No dedicated benchmark was added for the `<=100 ms` preflight-overhead target in this slice; verification was functional and contract-focused
+- Dedicated timing coverage now verifies `<=100 ms` daemon-side preflight for managed-provider evaluation and the current high-risk local-tool approval gate
 
 ## Rollback And Readiness Notes
 

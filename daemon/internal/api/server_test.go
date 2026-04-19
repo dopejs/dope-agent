@@ -1969,6 +1969,71 @@ func TestToolCallApprovalUsesSharedDeclarationVocabulary(t *testing.T) {
 	assertSandboxDeclaration(t, response.Decision.Sandbox, "local_tool", "shell", "tool_call.execute")
 }
 
+func TestHighRiskToolPreflightStaysUnderHundredMilliseconds(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	manager := runtime.NewManager()
+	authManager := auth.NewManager()
+	capabilitySupervisor := capabilities.NewSupervisor()
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:19191",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:       telemetry.New("error").Slog(),
+		EventBus:     events.NewBus(),
+		Auth:         authManager,
+		Policy:       policy.NewEngine(),
+		Router:       router.NewSessionRouter(),
+		Runtime:      manager,
+		Capabilities: capabilitySupervisor,
+		Store:        sqliteStore,
+		Checkpoints:  checkpoints.NewManager(sqliteStore, manager),
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "tool-call-latency")
+
+	if _, _, err := capabilitySupervisor.Register(capabilities.RegisterInput{
+		CapabilityID: "shell",
+		Kind:         "exec",
+		DisplayName:  "Shell",
+	}); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "measure guarded tool"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"pwd"}}`))
+	req.Header.Set("Authorization", authHeader)
+
+	started := time.Now()
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	elapsed := time.Since(started)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for approval-gated preflight, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if elapsed > 100*time.Millisecond {
+		t.Fatalf("expected local-tool preflight <=100ms, got %s", elapsed)
+	}
+}
+
 func TestLLMDispatchRoutes(t *testing.T) {
 	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
 	if err != nil {

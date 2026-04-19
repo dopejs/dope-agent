@@ -165,7 +165,7 @@ Current completion should be read as:
 - [x] Execution requirement declaration contract
 - [x] Managed consumer convergence
 - [x] Secret scope and redaction foundation
-- [ ] Execution provenance and consumer visibility (partial)
+- [x] Execution provenance and consumer visibility
 
 ## Roadmap 18: MCP Execution Plane
 

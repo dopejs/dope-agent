@@ -520,7 +520,7 @@ Task definition of done:
 
 ## Roadmap 17: Sandbox Requirement Declarations And Consumer Convergence
 
-Status: `[ ] in_progress`
+Status: `[x] completed`
 
 ### Goal
 
@@ -561,7 +561,8 @@ Current note:
 - the managed-provider convergence slice under `specs/001-sandbox-managed-providers/` is now closed for the in-scope workflows `auth_status`, `logout`, and `prompt_execution`
 - provider-owned local state used by Claude and Codex is now declared, policy-shaped, redacted, and auditable for this slice
 - the shared declaration vocabulary now also covers the current skill registry and explicit skill-selection surfaces plus the current high-risk local tool-call path
-- the broader roadmap remains open only for the remaining approval and decision operator-surface closure work; MCP lifecycle and generic skill or local-tool subprocess migration stay out of scope for this roadmap
+- approval and decision operator surfaces now project durable sandbox provenance for current high-risk local-tool preflight paths, including restart-safe lookup
+- MCP lifecycle and generic skill or local-tool subprocess migration stay out of scope for this roadmap and remain follow-on work
 
 #### 3. Secret Scope And Redaction Foundation
 
@@ -599,8 +600,8 @@ Task definition of done:
 Current note:
 
 - current implementation persists consumer policy records for launched, denied, unsupported, preflight-only, and approval-pending paths
-- provenance is queryable today through sandbox execution resources, provider auth state and events, skill inspection surfaces, and high-risk tool-call records
-- generic policy approval and decision resources remain policy-first surfaces and are the only remaining operator-surface gap in this roadmap
+- provenance is queryable today through sandbox execution resources, provider auth state and events, skill inspection surfaces, high-risk tool-call records, and enriched policy approval and decision resources
+- restart coverage now verifies that preflight-only local-tool provenance remains inspectable after daemon restart
 
 ### Roadmap Definition Of Done
 
