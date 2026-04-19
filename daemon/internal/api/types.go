@@ -8,6 +8,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -33,6 +34,7 @@ type ConfigResponse struct {
 	Version        string                   `json:"version"`
 	LLM            ConfigLLMResponse        `json:"llm"`
 	Connectors     ConfigConnectorsResponse `json:"connectors"`
+	MCP            ConfigMCPResponse        `json:"mcp"`
 	RedactedFields []string                 `json:"redactedFields"`
 }
 
@@ -68,6 +70,10 @@ type ConfigManagedCLIProviderResponse struct {
 
 type ConfigConnectorsResponse struct {
 	Discord ConfigDiscordConnectorResponse `json:"discord"`
+}
+
+type ConfigMCPResponse struct {
+	Servers []mcp.ServerResource `json:"servers"`
 }
 
 type ConfigDiscordConnectorResponse struct {
@@ -246,7 +252,7 @@ func buildSystemInfoResponse(cfg config.Config) SystemInfoResponse {
 	}
 }
 
-func buildConfigResponse(cfg config.Config) ConfigResponse {
+func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager) ConfigResponse {
 	redactedFields := []string{}
 	if cfg.LLM.OpenAICompatible.APIKey != "" {
 		redactedFields = append(redactedFields, "llm.openaiCompatible.apiKey")
@@ -328,8 +334,18 @@ func buildConfigResponse(cfg config.Config) ConfigResponse {
 				BotTokenEnv:        cfg.Connectors.Discord.BotTokenEnv,
 			},
 		},
+		MCP: ConfigMCPResponse{
+			Servers: listMCPServersForConfig(mcpManager),
+		},
 		RedactedFields: redactedFields,
 	}
+}
+
+func listMCPServersForConfig(manager *mcp.Manager) []mcp.ServerResource {
+	if manager == nil {
+		return []mcp.ServerResource{}
+	}
+	return manager.ListServers()
 }
 
 func buildSkillRegistryResponse(snapshot skills.Snapshot) SkillRegistryResponse {

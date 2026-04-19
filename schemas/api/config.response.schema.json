@@ -12,6 +12,7 @@
     "version",
     "llm",
     "connectors",
+    "mcp",
     "redactedFields"
   ],
   "additionalProperties": false,
@@ -175,6 +176,17 @@
             "botTokenConfigured": { "type": "boolean" },
             "botTokenEnv": { "type": "string" }
           }
+        }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "required": ["servers"],
+      "additionalProperties": false,
+      "properties": {
+        "servers": {
+          "type": "array",
+          "items": { "$ref": "./mcp-server-resource.schema.json" }
         }
       }
     },

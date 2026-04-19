@@ -1,6 +1,9 @@
 package sandbox
 
-import "time"
+import (
+	"io"
+	"time"
+)
 
 type Source string
 
@@ -134,6 +137,7 @@ const (
 	ConsumerKindManagedProvider ConsumerKind = "managed_provider"
 	ConsumerKindSkill           ConsumerKind = "skill"
 	ConsumerKindLocalTool       ConsumerKind = "local_tool"
+	ConsumerKindMCPServer       ConsumerKind = "mcp_server"
 )
 
 type ExecutionMode string
@@ -455,6 +459,13 @@ type Execution struct {
 	StartedAt     *time.Time            `json:"startedAt,omitempty"`
 	CompletedAt   *time.Time            `json:"completedAt,omitempty"`
 	Consumer      *ConsumerContractView `json:"consumer,omitempty"`
+}
+
+type AttachedExecution struct {
+	Execution Execution
+	Stdin     io.WriteCloser
+	Stdout    io.ReadCloser
+	Stderr    io.ReadCloser
 }
 
 func IsTerminal(status ExecutionStatus) bool {

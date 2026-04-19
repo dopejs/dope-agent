@@ -137,6 +137,13 @@ After sandbox:
 
 MCP should ride on the sandbox and control plane, not bypass them.
 
+Current daemon status:
+
+- MCP servers are first-class daemon resources with explicit profile and declaration binding
+- MCP stdio transport lifecycle runs through sandbox-backed subprocess execution
+- tool exposure is explicit per tool and runtime surface instead of server-wide implicit enablement
+- restart recovery restores enabled MCP servers through persisted daemon state
+
 ### Phase 4: Tool-Call Orchestration
 
 After MCP:

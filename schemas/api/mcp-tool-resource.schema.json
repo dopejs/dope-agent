@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-tool-resource.schema.json",
+  "title": "MCPToolResource",
+  "type": "object",
+  "required": [
+    "serverId",
+    "toolName",
+    "discoveryStatus",
+    "updatedAt",
+    "effectiveAvailability",
+    "approvalRequired"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "serverId": { "type": "string" },
+    "toolName": { "type": "string" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "schemaFingerprint": { "type": "string" },
+    "discoveryStatus": { "type": "string", "enum": ["discovered", "stale", "unavailable"] },
+    "lastDiscoveredAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "exposure": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["serverId", "toolName", "runtimeSurface", "exposureMode", "active", "updatedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "serverId": { "type": "string" },
+          "toolName": { "type": "string" },
+          "runtimeSurface": { "type": "string" },
+          "exposureMode": { "type": "string", "enum": ["blocked", "allow", "approval_required"] },
+          "active": { "type": "boolean" },
+          "reason": { "type": "string" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "effectiveAvailability": { "type": "string", "enum": ["available", "blocked", "unavailable"] },
+    "approvalRequired": { "type": "boolean" },
+    "unavailableReason": { "type": "string" }
+  }
+}

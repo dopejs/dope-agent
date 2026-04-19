@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-server-resource.schema.json",
+  "title": "MCPServerResource",
+  "type": "object",
+  "required": [
+    "serverId",
+    "displayName",
+    "source",
+    "enabled",
+    "sandboxProfileId",
+    "declarationId",
+    "declaration",
+    "transportKind",
+    "command",
+    "args",
+    "autoRestart",
+    "createdAt",
+    "updatedAt",
+    "state",
+    "toolCount"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "serverId": { "type": "string" },
+    "displayName": { "type": "string" },
+    "source": { "type": "string", "enum": ["api", "config", "builtin"] },
+    "enabled": { "type": "boolean" },
+    "sandboxProfileId": { "type": "string" },
+    "declarationId": { "type": "string" },
+    "declaration": { "$ref": "./mcp-declaration.schema.json" },
+    "transportKind": { "type": "string", "enum": ["stdio"] },
+    "command": { "type": "string" },
+    "args": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "workingDir": { "type": "string" },
+    "secretRefs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "autoRestart": { "type": "boolean" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "state": {
+      "type": "object",
+      "required": ["serverId", "status", "failureCount", "restartCount", "updatedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "serverId": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["disabled", "stopped", "starting", "healthy", "degraded", "backing_off", "failed", "stopping", "denied", "unsupported"]
+        },
+        "healthReason": { "type": "string" },
+        "failureCount": { "type": "integer", "minimum": 0 },
+        "restartCount": { "type": "integer", "minimum": 0 },
+        "lastStartedAt": { "type": "string", "format": "date-time" },
+        "lastStoppedAt": { "type": "string", "format": "date-time" },
+        "lastHeartbeatAt": { "type": "string", "format": "date-time" },
+        "nextRestartAt": { "type": "string", "format": "date-time" },
+        "lastExecutionId": { "type": "string" },
+        "lastPolicyRecordId": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "secretSummary": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["consumerId", "secretRef", "environmentScope", "resolution"],
+        "additionalProperties": false,
+        "properties": {
+          "consumerId": { "type": "string" },
+          "secretRef": { "type": "string" },
+          "environmentScope": { "type": "string", "enum": ["test", "prod", "both"] },
+          "defaultRuleId": { "type": "string" },
+          "resolution": { "type": "string", "enum": ["resolved", "denied", "unavailable", "not_applicable"] },
+          "deliveryKind": { "type": "string" },
+          "redactionRule": { "type": "string" }
+        }
+      }
+    },
+    "toolCount": { "type": "integer", "minimum": 0 },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "./mcp-tool-resource.schema.json" }
+    }
+  }
+}

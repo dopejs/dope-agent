@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-tool-authorization.request.schema.json",
+  "title": "MCPToolAuthorizationRequest",
+  "type": "object",
+  "required": ["runtimeSurface"],
+  "additionalProperties": false,
+  "properties": {
+    "runtimeSurface": { "type": "string" },
+    "approvalId": { "type": "string" },
+    "requestedBy": { "type": "string" }
+  }
+}

@@ -22,6 +22,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -44,6 +45,7 @@ type Dependencies struct {
 	Providers    *providers.Manager
 	Skills       *skills.Registry
 	Sandboxes    *sandbox.Manager
+	MCP          *mcp.Manager
 	Connectors   *connectors.Supervisor
 	Capabilities *capabilities.Supervisor
 	Store        *store.SQLiteStore
@@ -63,6 +65,7 @@ type Server struct {
 	providers    *providers.Manager
 	skills       *skills.Registry
 	sandboxes    *sandbox.Manager
+	mcp          *mcp.Manager
 	connectors   *connectors.Supervisor
 	capabilities *capabilities.Supervisor
 	store        *store.SQLiteStore
@@ -121,10 +124,13 @@ func NewServer(deps Dependencies) *Server {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		writeJSON(w, http.StatusOK, buildConfigResponse(deps.Config))
+		writeJSON(w, http.StatusOK, buildConfigResponse(deps.Config, deps.MCP))
 	}))
 	mux.HandleFunc("/v1/events/stream", protected(func(w http.ResponseWriter, r *http.Request) {
 		streamEvents(deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/events", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleEvents(deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/runs", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleRuns(deps.Router, deps.Runtime, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
@@ -180,6 +186,12 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/sandboxes/explain", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSandboxExplain(deps.Sandboxes, w, r)
 	}))
+	mux.HandleFunc("/v1/mcp/servers", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMCPServers(deps.MCP, w, r)
+	}))
+	mux.HandleFunc("/v1/mcp/servers/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMCPServerRoutes(deps.MCP, w, r)
+	}))
 	mux.HandleFunc("/v1/providers", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleProviders(deps.Providers, w, r)
 	}))
@@ -212,6 +224,7 @@ func NewServer(deps Dependencies) *Server {
 		providers:    deps.Providers,
 		skills:       deps.Skills,
 		sandboxes:    deps.Sandboxes,
+		mcp:          deps.MCP,
 		connectors:   deps.Connectors,
 		capabilities: deps.Capabilities,
 		store:        deps.Store,
@@ -673,6 +686,31 @@ func handleSessionEvents(eventBus *events.Bus, sqliteStore *store.SQLiteStore, w
 		return
 	}
 
+	writeJSON(w, http.StatusOK, buildEventListResponse(items))
+}
+
+func handleEvents(eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	cursor, err := parseEventCursor(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	filter := events.Filter{
+		Category:     strings.TrimSpace(r.URL.Query().Get("category")),
+		SessionID:    strings.TrimSpace(r.URL.Query().Get("sessionId")),
+		RunID:        strings.TrimSpace(r.URL.Query().Get("runId")),
+		ResourceKind: strings.TrimSpace(r.URL.Query().Get("resourceKind")),
+		Cursor:       cursor,
+	}
+	items, err := listEvents(r.Context(), eventBus, sqliteStore, filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, buildEventListResponse(items))
 }
 
@@ -1755,6 +1793,256 @@ func handleSandboxExplain(manager *sandbox.Manager, w http.ResponseWriter, r *ht
 		return
 	}
 	writeJSON(w, http.StatusOK, SandboxExplainResponse{Decision: decision})
+}
+
+func handleMCPServers(manager *mcp.Manager, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "mcp manager is not configured")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, ListResponse[mcp.ServerResource]{Items: manager.ListServers()})
+	case http.MethodPost:
+		var request mcp.CreateServerInput
+		if err := decodeJSONBody(r, &request); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		resource, created, err := manager.CreateServer(r.Context(), request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		status := http.StatusOK
+		if created {
+			status = http.StatusCreated
+		}
+		writeJSON(w, status, resource)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func handleMCPServerRoutes(manager *mcp.Manager, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "mcp manager is not configured")
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/v1/mcp/servers/")
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+	parts := strings.Split(path, "/")
+	switch {
+	case len(parts) == 1:
+		handleMCPServerByID(manager, w, r, parts[0])
+	case len(parts) == 2 && parts[1] == "start":
+		handleMCPServerStart(manager, w, r, parts[0])
+	case len(parts) == 2 && parts[1] == "stop":
+		handleMCPServerStop(manager, w, r, parts[0])
+	case len(parts) == 2 && parts[1] == "restart":
+		handleMCPServerRestart(manager, w, r, parts[0])
+	case len(parts) == 2 && parts[1] == "cancel":
+		handleMCPServerCancel(manager, w, r, parts[0])
+	case len(parts) == 2 && parts[1] == "tools":
+		handleMCPServerTools(manager, w, r, parts[0])
+	case len(parts) == 3 && parts[1] == "tools":
+		handleMCPServerToolExposure(manager, w, r, parts[0], parts[1:])
+	case len(parts) == 4 && parts[1] == "tools" && parts[3] == "authorize":
+		handleMCPServerToolAuthorize(manager, w, r, parts[0], parts[2])
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func handleMCPServerByID(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
+	switch r.Method {
+	case http.MethodGet:
+		resource, ok := manager.GetServerResource(serverID)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, resource)
+	case http.MethodPatch:
+		var request mcp.UpdateServerInput
+		if err := decodeJSONBody(r, &request); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		resource, err := manager.UpdateServer(r.Context(), serverID, request)
+		if err != nil {
+			switch {
+			case errors.Is(err, mcp.ErrServerNotFound):
+				http.NotFound(w, r)
+			default:
+				writeError(w, http.StatusBadRequest, err.Error())
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, resource)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func handleMCPServerStart(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	response, err := manager.Start(r.Context(), serverID, currentActor(r.Context()))
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func handleMCPServerStop(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	response, err := manager.Stop(r.Context(), serverID)
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func handleMCPServerRestart(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	response, err := manager.Restart(r.Context(), serverID, currentActor(r.Context()))
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func handleMCPServerCancel(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	response, err := manager.Cancel(r.Context(), serverID)
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func handleMCPServerTools(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	items, err := manager.ListTools(serverID)
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, ListResponse[mcp.ToolResource]{Items: items})
+}
+
+func handleMCPServerToolExposure(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string, parts []string) {
+	if len(parts) != 2 || parts[1] == "" || parts[0] != "tools" {
+		http.NotFound(w, r)
+		return
+	}
+	toolName := parts[1]
+	if r.Method != http.MethodPatch {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var request mcp.UpdateExposureInput
+	if err := decodeJSONBody(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	resource, err := manager.UpdateToolExposure(r.Context(), serverID, toolName, request)
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, resource)
+}
+
+func handleMCPServerToolAuthorize(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID, toolName string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var request mcp.AuthorizeToolInput
+	if err := decodeJSONBody(r, &request); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(request.RequestedBy) == "" {
+		request.RequestedBy = currentActor(r.Context())
+	}
+	response, err := manager.AuthorizeTool(r.Context(), serverID, toolName, request)
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		case errors.Is(err, policy.ErrApprovalNotFound):
+			writeError(w, http.StatusNotFound, err.Error())
+		case errors.Is(err, mcp.ErrApprovalIDInvalid):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	switch response.Status {
+	case mcp.ToolAuthorizationStatusAllowed:
+		writeJSON(w, http.StatusOK, response)
+	case mcp.ToolAuthorizationStatusPending:
+		writeJSON(w, http.StatusConflict, response)
+	case mcp.ToolAuthorizationStatusRejected:
+		writeJSON(w, http.StatusForbidden, response)
+	default:
+		writeJSON(w, http.StatusConflict, response)
+	}
 }
 
 func handleConnectors(supervisor *connectors.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
@@ -3379,6 +3667,22 @@ func consumerViewFromPolicyRecord(record *sandbox.ConsumerPolicyRecord) *sandbox
 			OperationKind:               firstNonEmpty(strings.TrimSpace(record.OperationKind), "tool_call.execute"),
 			ProfileID:                   sandbox.ProfileIDSubprocessDefault,
 			ExecutionMode:               sandbox.ExecutionModeAccessOnly,
+			AllowedBackendKinds:         []sandbox.BackendKind{sandbox.BackendKindSubprocess},
+			NetworkMode:                 sandbox.NetworkModeDeny,
+			SecretRefs:                  []string{},
+			ApprovalMode:                sandbox.ApprovalModeAsk,
+			RequiredEnforcementStrength: firstNonEmpty(strings.TrimSpace(record.EnforcementStrength), "declared_only"),
+			Active:                      true,
+			Source:                      sandbox.SourceBuiltin,
+		}
+	case sandbox.ConsumerKindMCPServer:
+		view.Declaration = &sandbox.ConsumerRequirementDeclaration{
+			DeclarationID:               firstNonEmpty(strings.TrimSpace(record.DeclarationID), "mcp_server:"+strings.TrimSpace(record.ConsumerID)+":"+strings.TrimSpace(record.OperationKind)),
+			ConsumerKind:                sandbox.ConsumerKindMCPServer,
+			ConsumerID:                  strings.TrimSpace(record.ConsumerID),
+			OperationKind:               firstNonEmpty(strings.TrimSpace(record.OperationKind), "tool_call.execute"),
+			ProfileID:                   sandbox.ProfileIDSubprocessDefault,
+			ExecutionMode:               sandbox.ExecutionModeSubprocess,
 			AllowedBackendKinds:         []sandbox.BackendKind{sandbox.BackendKindSubprocess},
 			NetworkMode:                 sandbox.NetworkModeDeny,
 			SecretRefs:                  []string{},

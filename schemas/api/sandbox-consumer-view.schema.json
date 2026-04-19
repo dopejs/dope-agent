@@ -11,7 +11,7 @@
       "required": ["declarationId", "consumerKind", "consumerId", "operationKind", "executionMode", "active", "source"],
       "properties": {
         "declarationId": { "type": "string" },
-        "consumerKind": { "type": "string", "enum": ["managed_provider", "skill", "local_tool"] },
+        "consumerKind": { "type": "string", "enum": ["managed_provider", "skill", "local_tool", "mcp_server"] },
         "consumerId": { "type": "string" },
         "operationKind": { "type": "string" },
         "profileId": { "type": "string" },
@@ -55,7 +55,7 @@
         "additionalProperties": false,
         "required": ["consumerKind", "consumerId", "secretRef", "environmentScope", "resolution"],
         "properties": {
-          "consumerKind": { "type": "string", "enum": ["managed_provider", "skill", "local_tool"] },
+          "consumerKind": { "type": "string", "enum": ["managed_provider", "skill", "local_tool", "mcp_server"] },
           "consumerId": { "type": "string" },
           "secretRef": { "type": "string" },
           "environmentScope": { "type": "string", "enum": ["test", "prod", "both"] },
@@ -73,7 +73,7 @@
       "required": ["policyRecordId", "consumerKind", "consumerId", "operationKind", "decision", "approvalStatus", "secretResolution", "startedAt", "status"],
       "properties": {
         "policyRecordId": { "type": "string" },
-        "consumerKind": { "type": "string", "enum": ["managed_provider", "skill", "local_tool"] },
+        "consumerKind": { "type": "string", "enum": ["managed_provider", "skill", "local_tool", "mcp_server"] },
         "consumerId": { "type": "string" },
         "operationKind": { "type": "string" },
         "declarationId": { "type": "string" },

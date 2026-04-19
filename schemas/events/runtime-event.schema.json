@@ -27,7 +27,8 @@
         "capability",
         "llm",
         "artifact",
-        "sandbox"
+        "sandbox",
+        "mcp"
       ]
     },
     "name": {

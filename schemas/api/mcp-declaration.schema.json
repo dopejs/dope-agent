@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-declaration.schema.json",
+  "title": "MCPDeclaration",
+  "type": "object",
+  "required": ["executionMode", "active"],
+  "additionalProperties": false,
+  "properties": {
+    "executionMode": { "type": "string", "enum": ["subprocess", "access_only", "declaration_only"] },
+    "allowedBackendKinds": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["subprocess"] }
+    },
+    "readRoots": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "writeRoots": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "networkMode": { "type": "string", "enum": ["deny", "allow_all", "allow_list"] },
+    "allowedHosts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "allowedPorts": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1, "maximum": 65535 }
+    },
+    "allowLoopback": { "type": "boolean" },
+    "approvalMode": { "type": "string", "enum": ["allow", "ask", "deny"] },
+    "requiredEnforcementStrength": { "type": "string" },
+    "active": { "type": "boolean" }
+  }
+}

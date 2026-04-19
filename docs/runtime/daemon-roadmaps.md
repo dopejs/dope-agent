@@ -619,7 +619,7 @@ Current note:
 
 ## Roadmap 18: MCP Execution Plane
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 ### Goal
 
@@ -688,6 +688,14 @@ Task definition of done:
 - MCP servers run through sandbox-backed execution instead of unmanaged process launch
 - credential injection, tool exposure, and failure visibility are operator-auditable
 - restart and recovery behavior is explicit enough for production debugging
+
+Implementation notes:
+
+- daemon exposes `/v1/mcp/servers` registry, lifecycle, tools, and per-tool exposure routes
+- stdio MCP sessions are launched through sandbox-backed subprocess execution and recover from persisted enabled-server state on daemon restart
+- MCP tool exposure is deny-by-default, explicit per tool and runtime surface, and can be marked approval-required without turning normal server lifecycle into an approval flow
+- config inspection, event history, and sandbox consumer provenance now include MCP-visible state
+- rollback remains a single change-set revert of the MCP registry, lifecycle, exposure, and contract additions while keeping the underlying sandbox substrate intact
 
 ### Explicitly Out Of Scope
 

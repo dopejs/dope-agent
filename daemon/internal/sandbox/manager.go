@@ -192,6 +192,133 @@ func (m *Manager) StartExecution(ctx context.Context, request ExecutionRequest) 
 	return cloneExecution(execution), nil
 }
 
+func (m *Manager) StartAttachedExecution(ctx context.Context, request ExecutionRequest) (Execution, *AttachedExecution, error) {
+	execution, decision, launch, approval, createdDecision, err := m.prepare(ctx, request, true)
+	if err != nil {
+		return Execution{}, nil, err
+	}
+
+	execution.Decision = decision
+	execution.ApprovalID = approval
+	execution.Status = decisionToStatus(decision)
+	execution.Result.Status = execution.Status
+	synchronizeExecutionConsumerState(&execution)
+	if execution.Status == ExecutionStatusDenied {
+		execution.Result.ErrorClass = decisionErrorClass(decision)
+		execution.Result.ErrorCode = decisionErrorCode(decision)
+		execution.Result.Error = decision.Explanation
+	}
+
+	m.mu.Lock()
+	if _, exists := m.executions[execution.ExecutionID]; !exists {
+		m.executionIDs = append(m.executionIDs, execution.ExecutionID)
+	}
+	m.executions[execution.ExecutionID] = cloneExecution(execution)
+	m.mu.Unlock()
+
+	if createdDecision != nil {
+		if err := m.persistApprovalArtifacts(ctx, approval, *createdDecision); err != nil {
+			return Execution{}, nil, err
+		}
+		if err := m.publishApprovalRequested(ctx, approval, *createdDecision); err != nil {
+			return Execution{}, nil, err
+		}
+	}
+	if err := m.persistConsumerContract(ctx, execution.Consumer); err != nil {
+		return Execution{}, nil, err
+	}
+	if err := m.persistExecution(ctx, execution); err != nil {
+		return Execution{}, nil, err
+	}
+	if err := m.publishExecutionRequested(ctx, execution); err != nil {
+		return Execution{}, nil, err
+	}
+	if err := m.publishDecisionRecorded(ctx, execution); err != nil {
+		return Execution{}, nil, err
+	}
+	if execution.Status == ExecutionStatusDenied {
+		if err := m.publishExecutionTerminal(ctx, execution); err != nil {
+			return Execution{}, nil, err
+		}
+		return cloneExecution(execution), nil, nil
+	}
+
+	runCtx, cancel := context.WithTimeout(context.Background(), launch.Timeout)
+	command := exec.CommandContext(runCtx, launch.Command, launch.Args...)
+	command.Dir = launch.Cwd
+	command.Env = launch.Env
+	stdin, err := command.StdinPipe()
+	if err != nil {
+		cancel()
+		return Execution{}, nil, fmt.Errorf("open sandbox stdin pipe: %w", err)
+	}
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		cancel()
+		return Execution{}, nil, fmt.Errorf("open sandbox stdout pipe: %w", err)
+	}
+	stderrCapture := newCaptureBuffer(launch.MaxOutputBytes)
+	command.Stderr = stderrCapture
+
+	if err := command.Start(); err != nil {
+		cancel()
+		execution.Status = ExecutionStatusFailed
+		now := time.Now().UTC()
+		execution.UpdatedAt = now
+		execution.CompletedAt = &now
+		execution.Result = Result{
+			ExecutionID: execution.ExecutionID,
+			Status:      ExecutionStatusFailed,
+			CompletedAt: &now,
+			ErrorClass:  ErrorClassLaunchFailed,
+			ErrorCode:   "sandbox_launch_failed",
+			Error:       err.Error(),
+			Consumer:    cloneConsumerContractView(execution.Consumer),
+		}
+		synchronizeExecutionConsumerState(&execution)
+		m.storeExecution(execution)
+		if persistErr := m.persistConsumerContract(context.Background(), execution.Consumer); persistErr == nil {
+			if persistErr = m.persistExecution(context.Background(), execution); persistErr == nil {
+				_ = m.publishExecutionTerminal(context.Background(), execution)
+			}
+		}
+		return cloneExecution(execution), nil, nil
+	}
+
+	m.mu.Lock()
+	now := time.Now().UTC()
+	execution.Status = ExecutionStatusRunning
+	execution.StartedAt = &now
+	execution.UpdatedAt = now
+	execution.Result.Status = ExecutionStatusRunning
+	execution.Result.StartedAt = &now
+	execution.Result.BackendMetadata = mergeBackendMetadata(map[string]any{
+		"backend":               string(BackendKindSubprocess),
+		"networkEnforcement":    execution.Decision.EffectiveBackendKind == BackendKindSubprocess,
+		"networkPolicyStrength": "declared_only",
+		"processType":           backendMetaProcessKind,
+		"pid":                   command.Process.Pid,
+	}, execution)
+	synchronizeExecutionConsumerState(&execution)
+	m.executions[execution.ExecutionID] = cloneExecution(execution)
+	m.cancels[execution.ExecutionID] = cancel
+	m.mu.Unlock()
+
+	if err := m.persistConsumerContract(context.Background(), execution.Consumer); err == nil {
+		if err := m.persistExecution(context.Background(), execution); err == nil {
+			_ = m.publishExecutionStarted(context.Background(), execution)
+		}
+	}
+
+	go m.runAttachedExecution(runCtx, cancel, execution, command, stderrCapture)
+
+	return cloneExecution(execution), &AttachedExecution{
+		Execution: cloneExecution(execution),
+		Stdin:     stdin,
+		Stdout:    stdout,
+	}, nil
+}
+
 func (m *Manager) CancelExecution(executionID string) (Execution, bool, error) {
 	m.mu.RLock()
 	execution, ok := m.executions[strings.TrimSpace(executionID)]
@@ -763,6 +890,111 @@ func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, e
 		}
 	} else {
 		_ = err
+	}
+}
+
+func (m *Manager) runAttachedExecution(ctx context.Context, cancel context.CancelFunc, execution Execution, command *exec.Cmd, stderrCapture *captureBuffer) {
+	if command == nil {
+		return
+	}
+	defer cancel()
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- command.Wait()
+	}()
+
+	var result subprocessResult
+	select {
+	case err := <-waitCh:
+		completedAt := time.Now().UTC()
+		metadata := map[string]any{
+			"backend":      "subprocess",
+			"pid":          command.Process.Pid,
+			"completedAt":  completedAt.Format(time.RFC3339Nano),
+			"platform":     runtime.GOOS,
+			"architecture": runtime.GOARCH,
+		}
+		if err == nil {
+			exitCode := 0
+			result = subprocessResult{
+				Status:          ExecutionStatusCompleted,
+				ExitCode:        &exitCode,
+				Stderr:          stderrCapture.String(),
+				OutputTruncated: stderrCapture.Truncated(),
+				BackendMetadata: metadata,
+			}
+			break
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			exitCode := exitErr.ExitCode()
+			result = subprocessResult{
+				Status:          ExecutionStatusFailed,
+				ExitCode:        &exitCode,
+				Stderr:          stderrCapture.String(),
+				OutputTruncated: stderrCapture.Truncated(),
+				ErrorClass:      ErrorClassProcessFailed,
+				ErrorCode:       "sandbox_process_failed",
+				Error:           err.Error(),
+				BackendMetadata: metadata,
+			}
+			break
+		}
+		result = subprocessResult{
+			Status:          ExecutionStatusFailed,
+			Stderr:          stderrCapture.String(),
+			OutputTruncated: stderrCapture.Truncated(),
+			ErrorClass:      ErrorClassIOCaptureFailed,
+			ErrorCode:       "sandbox_wait_failed",
+			Error:           err.Error(),
+			BackendMetadata: metadata,
+		}
+	case <-ctx.Done():
+		result = subprocessResult{
+			Status:          ExecutionStatusCancelled,
+			Stderr:          stderrCapture.String(),
+			OutputTruncated: stderrCapture.Truncated(),
+			ErrorClass:      ErrorClassCancelled,
+			ErrorCode:       "sandbox_cancelled",
+			Error:           "execution was cancelled",
+			BackendMetadata: map[string]any{"backend": "subprocess"},
+		}
+	}
+
+	completedAt := time.Now().UTC()
+	execution.Status = result.Status
+	execution.UpdatedAt = completedAt
+	execution.CompletedAt = &completedAt
+	execution.Result = Result{
+		ExecutionID:     execution.ExecutionID,
+		Status:          result.Status,
+		StartedAt:       execution.StartedAt,
+		CompletedAt:     &completedAt,
+		ExitCode:        result.ExitCode,
+		Signal:          result.Signal,
+		Stdout:          result.Stdout,
+		Stderr:          result.Stderr,
+		OutputTruncated: result.OutputTruncated,
+		ErrorClass:      result.ErrorClass,
+		ErrorCode:       result.ErrorCode,
+		Error:           result.Error,
+		Partial:         false,
+		BackendMetadata: mergeBackendMetadata(result.BackendMetadata, execution),
+		Consumer:        cloneConsumerContractView(execution.Consumer),
+	}
+	execution.StartedAt = execution.Result.StartedAt
+	synchronizeExecutionConsumerState(&execution)
+
+	m.mu.Lock()
+	delete(m.cancels, execution.ExecutionID)
+	m.executions[execution.ExecutionID] = cloneExecution(execution)
+	m.mu.Unlock()
+
+	if err := m.persistConsumerContract(context.Background(), execution.Consumer); err == nil {
+		if err := m.persistExecution(context.Background(), execution); err == nil {
+			_ = m.publishExecutionTerminal(context.Background(), execution)
+		}
 	}
 }
 

@@ -49,6 +49,12 @@ The first real guarded action is high-risk tool execution:
 
 This keeps approvals attached to a real side-effecting action instead of existing only as standalone resources.
 
+For MCP:
+
+- MCP server register, start, stop, restart, and cancel stay daemon-managed and do not require routine approval
+- MCP tool exposure can be marked approval-required per tool and runtime surface
+- operator-visible MCP resources still project declaration-backed provenance and redacted secret-scope summaries
+
 ## Security Assumptions
 
 - this is a local-first daemon trust model, not multi-tenant auth

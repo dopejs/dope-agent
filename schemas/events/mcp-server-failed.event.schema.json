@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/mcp-server-failed.event.schema.json",
+  "title": "MCPServerFailedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "mcp" },
+        "name": { "const": "mcp.server_failed" },
+        "resource": {
+          "type": "object",
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": { "const": "mcp_server" },
+            "id": { "type": "string" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": ["serverId", "status", "reason", "failureClass"],
+          "additionalProperties": true,
+          "properties": {
+            "serverId": { "type": "string" },
+            "status": { "type": "string" },
+            "reason": { "type": "string" },
+            "failureClass": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

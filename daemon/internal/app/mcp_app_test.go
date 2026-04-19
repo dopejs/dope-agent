@@ -1,0 +1,154 @@
+package app
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/dopejs/dope-agent/daemon/internal/auth"
+	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
+	"github.com/dopejs/dope-agent/daemon/internal/config"
+	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mcp"
+	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/providers"
+	"github.com/dopejs/dope-agent/daemon/internal/router"
+	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
+	"github.com/dopejs/dope-agent/daemon/internal/store"
+)
+
+func TestAppMCPHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_APP_MCP_HELPER") != "1" {
+		return
+	}
+	reader := bufio.NewReader(os.Stdin)
+	toolsPayload := os.Getenv("APP_MCP_HELPER_TOOLS")
+	if strings.TrimSpace(toolsPayload) == "" {
+		toolsPayload = `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`
+	}
+	for {
+		payload, err := readAppHelperFrame(reader)
+		if err != nil {
+			return
+		}
+		var req struct {
+			ID     string `json:"id"`
+			Method string `json:"method"`
+		}
+		if err := json.Unmarshal(payload, &req); err != nil {
+			return
+		}
+		switch req.Method {
+		case "initialize":
+			writeAppHelperFrame(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"protocolVersion": "2024-11-05", "capabilities": map[string]any{}, "serverInfo": map[string]any{"name": "app-test-mcp", "version": "1.0.0"}}})
+		case "notifications/initialized":
+		case "tools/list":
+			var tools []map[string]any
+			_ = json.Unmarshal([]byte(toolsPayload), &tools)
+			writeAppHelperFrame(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"tools": tools}})
+		default:
+			writeAppHelperFrame(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"code": -32601, "message": "method not found"}})
+		}
+	}
+}
+
+func TestRecoverPersistedStateRestoresMCPServers(t *testing.T) {
+	t.Setenv("GO_WANT_APP_MCP_HELPER", "1")
+	t.Setenv("APP_MCP_HELPER_TOOLS", `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`)
+
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	eventBus := events.NewBus()
+	defer eventBus.Close()
+	policyEngine := policy.NewEngine()
+	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxes.Close(context.Background()) }()
+
+	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewStdioTransport())
+	if _, _, err := mcpManager.CreateServer(context.Background(), mcp.CreateServerInput{
+		ServerID:         "restored-mcp",
+		DisplayName:      "Restored MCP",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:restored-mcp:lifecycle.start",
+		TransportKind:    mcp.TransportKindStdio,
+		Command:          os.Args[0],
+		Args:             []string{"-test.run=TestAppMCPHelperProcess", "--"},
+		WorkingDir:       t.TempDir(),
+		SecretRefs:       []string{"GO_WANT_APP_MCP_HELPER", "APP_MCP_HELPER_TOOLS"},
+		AutoRestart:      true,
+	}); err != nil {
+		t.Fatalf("CreateServer returned error: %v", err)
+	}
+
+	restoredRouter := router.NewSessionRouter()
+	restoredRuntime := runtime.NewManager()
+	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredEventBus := events.NewBus()
+	defer restoredEventBus.Close()
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+	restoredProviders := providers.NewManager(config.Config{}, llm.NewDispatcher())
+	restoredSandboxes := sandbox.NewManager(cfg, sqliteStore, restoredEventBus, restoredPolicy)
+	defer func() { _ = restoredSandboxes.Close(context.Background()) }()
+	restoredMCP := mcp.NewManager(cfg, sqliteStore, restoredEventBus, restoredSandboxes, restoredPolicy, mcp.NewStdioTransport())
+
+	if err := recoverPersistedState(context.Background(), sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+	resource, ok := restoredMCP.GetServerResource("restored-mcp")
+	if !ok {
+		t.Fatal("expected restored mcp server resource")
+	}
+	if resource.State.Status != mcp.LifecycleStatusHealthy {
+		t.Fatalf("expected restored mcp server to be healthy, got %+v", resource)
+	}
+}
+
+func readAppHelperFrame(reader *bufio.Reader) ([]byte, error) {
+	length := -1
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			break
+		}
+		if !strings.HasPrefix(strings.ToLower(line), "content-length:") {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "Content-Length:"), "content-length:"))
+		if _, err := fmt.Sscanf(value, "%d", &length); err != nil {
+			return nil, err
+		}
+	}
+	if length < 0 {
+		return nil, io.EOF
+	}
+	payload := make([]byte, length)
+	if _, err := io.ReadFull(reader, payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func writeAppHelperFrame(value any) {
+	payload, _ := json.Marshal(value)
+	_, _ = fmt.Fprintf(os.Stdout, "Content-Length: %d\r\n\r\n%s", len(payload), payload)
+}

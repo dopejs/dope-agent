@@ -28,7 +28,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 7
+	CurrentSchemaVersion = 8
 )
 
 type schemaMigration struct {
@@ -79,6 +79,39 @@ type SecretScopeBindingRecord struct {
 	DeliveryKind     string
 	Active           bool
 	Document         []byte
+}
+
+type MCPServerRecord struct {
+	ServerID  string
+	Enabled   bool
+	UpdatedAt time.Time
+	Document  []byte
+}
+
+type MCPServerStateRecord struct {
+	ServerID  string
+	Status    string
+	UpdatedAt time.Time
+	Document  []byte
+}
+
+type MCPToolRecord struct {
+	ServerID         string
+	ToolName         string
+	DiscoveryStatus  string
+	UpdatedAt        time.Time
+	LastDiscoveredAt *time.Time
+	Document         []byte
+}
+
+type MCPToolExposureRuleRecord struct {
+	ServerID       string
+	ToolName       string
+	RuntimeSurface string
+	ExposureMode   string
+	Active         bool
+	UpdatedAt      time.Time
+	Document       []byte
 }
 
 var schemaMigrations = []schemaMigration{
@@ -484,6 +517,58 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_policy_records_consumer_started ON consumer_policy_records(consumer_kind, consumer_id, started_at DESC, policy_record_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_policy_records_status_started ON consumer_policy_records(status, started_at DESC, policy_record_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_secret_scope_bindings_consumer_secret ON secret_scope_bindings(consumer_kind, consumer_id, secret_ref);`,
+		},
+	},
+	{
+		Version: 8,
+		Name:    "mcp_execution_plane",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS mcp_servers (
+				server_id TEXT PRIMARY KEY,
+				enabled INTEGER NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS mcp_server_states (
+				server_id TEXT PRIMARY KEY,
+				status TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(server_id) REFERENCES mcp_servers(server_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS mcp_tools (
+				server_id TEXT NOT NULL,
+				tool_name TEXT NOT NULL,
+				discovery_status TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				last_discovered_at TEXT,
+				document_json TEXT NOT NULL,
+				PRIMARY KEY (server_id, tool_name),
+				FOREIGN KEY(server_id) REFERENCES mcp_servers(server_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS mcp_tool_exposure_rules (
+				server_id TEXT NOT NULL,
+				tool_name TEXT NOT NULL,
+				runtime_surface TEXT NOT NULL,
+				exposure_mode TEXT NOT NULL,
+				active INTEGER NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				PRIMARY KEY (server_id, tool_name, runtime_surface),
+				FOREIGN KEY(server_id, tool_name) REFERENCES mcp_tools(server_id, tool_name) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled ON mcp_servers(enabled, updated_at DESC, server_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mcp_server_states_status ON mcp_server_states(status, updated_at DESC, server_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mcp_tools_server_status ON mcp_tools(server_id, discovery_status, tool_name);`,
+			`CREATE INDEX IF NOT EXISTS idx_mcp_tool_exposure_surface ON mcp_tool_exposure_rules(runtime_surface, exposure_mode, server_id, tool_name);`,
 		},
 	},
 }
@@ -2211,6 +2296,271 @@ func (s *SQLiteStore) ListSecretScopeBindings(ctx context.Context, consumerKind,
 	return items, rows.Err()
 }
 
+func (s *SQLiteStore) UpsertMCPServer(ctx context.Context, record MCPServerRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO mcp_servers (
+			server_id,
+			enabled,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?)
+		ON CONFLICT(server_id) DO UPDATE SET
+			enabled = excluded.enabled,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		record.ServerID,
+		boolToInt(record.Enabled),
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert mcp server %s: %w", record.ServerID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListMCPServers(ctx context.Context) ([]MCPServerRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT server_id, enabled, updated_at, document_json
+		FROM mcp_servers
+		ORDER BY updated_at ASC, server_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list mcp servers: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]MCPServerRecord, 0)
+	for rows.Next() {
+		record, err := scanMCPServer(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, record)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertMCPServerState(ctx context.Context, record MCPServerStateRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO mcp_server_states (
+			server_id,
+			status,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?)
+		ON CONFLICT(server_id) DO UPDATE SET
+			status = excluded.status,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		record.ServerID,
+		record.Status,
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert mcp server state %s: %w", record.ServerID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListMCPServerStates(ctx context.Context) ([]MCPServerStateRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT server_id, status, updated_at, document_json
+		FROM mcp_server_states
+		ORDER BY updated_at ASC, server_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list mcp server states: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]MCPServerStateRecord, 0)
+	for rows.Next() {
+		record, err := scanMCPServerState(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, record)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertMCPTool(ctx context.Context, record MCPToolRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO mcp_tools (
+			server_id,
+			tool_name,
+			discovery_status,
+			updated_at,
+			last_discovered_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(server_id, tool_name) DO UPDATE SET
+			discovery_status = excluded.discovery_status,
+			updated_at = excluded.updated_at,
+			last_discovered_at = excluded.last_discovered_at,
+			document_json = excluded.document_json
+	`,
+		record.ServerID,
+		record.ToolName,
+		record.DiscoveryStatus,
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTimeString(record.LastDiscoveredAt),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert mcp tool %s/%s: %w", record.ServerID, record.ToolName, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ReplaceMCPTools(ctx context.Context, serverID string, records []MCPToolRecord) error {
+	if s == nil {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace mcp tools: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM mcp_tools WHERE server_id = ?`, serverID); err != nil {
+		return fmt.Errorf("clear mcp tools for %s: %w", serverID, err)
+	}
+	for _, record := range records {
+		if _, err = tx.ExecContext(ctx, `
+			INSERT INTO mcp_tools (
+				server_id,
+				tool_name,
+				discovery_status,
+				updated_at,
+				last_discovered_at,
+				document_json
+			) VALUES (?, ?, ?, ?, ?, ?)
+		`,
+			record.ServerID,
+			record.ToolName,
+			record.DiscoveryStatus,
+			record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			nullableTimeString(record.LastDiscoveredAt),
+			string(record.Document),
+		); err != nil {
+			return fmt.Errorf("insert mcp tool %s/%s: %w", record.ServerID, record.ToolName, err)
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit replace mcp tools: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListMCPTools(ctx context.Context, serverID string) ([]MCPToolRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT server_id, tool_name, discovery_status, updated_at, last_discovered_at, document_json
+		FROM mcp_tools
+		WHERE (? = '' OR server_id = ?)
+		ORDER BY server_id ASC, tool_name ASC
+	`, serverID, serverID)
+	if err != nil {
+		return nil, fmt.Errorf("list mcp tools for %s: %w", serverID, err)
+	}
+	defer rows.Close()
+
+	items := make([]MCPToolRecord, 0)
+	for rows.Next() {
+		record, err := scanMCPTool(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, record)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertMCPToolExposureRule(ctx context.Context, record MCPToolExposureRuleRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO mcp_tool_exposure_rules (
+			server_id,
+			tool_name,
+			runtime_surface,
+			exposure_mode,
+			active,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(server_id, tool_name, runtime_surface) DO UPDATE SET
+			exposure_mode = excluded.exposure_mode,
+			active = excluded.active,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		record.ServerID,
+		record.ToolName,
+		record.RuntimeSurface,
+		record.ExposureMode,
+		boolToInt(record.Active),
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert mcp tool exposure rule %s/%s/%s: %w", record.ServerID, record.ToolName, record.RuntimeSurface, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListMCPToolExposureRules(ctx context.Context, serverID string) ([]MCPToolExposureRuleRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT server_id, tool_name, runtime_surface, exposure_mode, active, updated_at, document_json
+		FROM mcp_tool_exposure_rules
+		WHERE (? = '' OR server_id = ?)
+		ORDER BY server_id ASC, tool_name ASC, runtime_surface ASC
+	`, serverID, serverID)
+	if err != nil {
+		return nil, fmt.Errorf("list mcp tool exposure rules for %s: %w", serverID, err)
+	}
+	defer rows.Close()
+
+	items := make([]MCPToolExposureRuleRecord, 0)
+	for rows.Next() {
+		record, err := scanMCPToolExposureRule(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, record)
+	}
+	return items, rows.Err()
+}
+
 func (s *SQLiteStore) AppendEvent(ctx context.Context, event events.Event) (events.Event, error) {
 	if s == nil {
 		return event, nil
@@ -3508,6 +3858,86 @@ func scanConsumerPolicyRecord(scanner interface {
 	}
 	if err := assignOptionalTime(&record.CompletedAt, completedAt); err != nil {
 		return ConsumerPolicyRecordRecord{}, fmt.Errorf("parse consumer policy record completed_at: %w", err)
+	}
+	return record, nil
+}
+
+func scanMCPServer(scanner interface {
+	Scan(dest ...any) error
+}) (MCPServerRecord, error) {
+	var (
+		record   MCPServerRecord
+		enabled  int
+		updated  string
+		document string
+	)
+	if err := scanner.Scan(&record.ServerID, &enabled, &updated, &document); err != nil {
+		return MCPServerRecord{}, fmt.Errorf("scan mcp server: %w", err)
+	}
+	record.Enabled = enabled == 1
+	record.Document = []byte(document)
+	if err := assignRequiredTime(&record.UpdatedAt, updated); err != nil {
+		return MCPServerRecord{}, fmt.Errorf("parse mcp server updated_at: %w", err)
+	}
+	return record, nil
+}
+
+func scanMCPServerState(scanner interface {
+	Scan(dest ...any) error
+}) (MCPServerStateRecord, error) {
+	var (
+		record   MCPServerStateRecord
+		updated  string
+		document string
+	)
+	if err := scanner.Scan(&record.ServerID, &record.Status, &updated, &document); err != nil {
+		return MCPServerStateRecord{}, fmt.Errorf("scan mcp server state: %w", err)
+	}
+	record.Document = []byte(document)
+	if err := assignRequiredTime(&record.UpdatedAt, updated); err != nil {
+		return MCPServerStateRecord{}, fmt.Errorf("parse mcp server state updated_at: %w", err)
+	}
+	return record, nil
+}
+
+func scanMCPTool(scanner interface {
+	Scan(dest ...any) error
+}) (MCPToolRecord, error) {
+	var (
+		record           MCPToolRecord
+		updated          string
+		lastDiscoveredAt sql.NullString
+		document         string
+	)
+	if err := scanner.Scan(&record.ServerID, &record.ToolName, &record.DiscoveryStatus, &updated, &lastDiscoveredAt, &document); err != nil {
+		return MCPToolRecord{}, fmt.Errorf("scan mcp tool: %w", err)
+	}
+	record.Document = []byte(document)
+	if err := assignRequiredTime(&record.UpdatedAt, updated); err != nil {
+		return MCPToolRecord{}, fmt.Errorf("parse mcp tool updated_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.LastDiscoveredAt, lastDiscoveredAt); err != nil {
+		return MCPToolRecord{}, fmt.Errorf("parse mcp tool last_discovered_at: %w", err)
+	}
+	return record, nil
+}
+
+func scanMCPToolExposureRule(scanner interface {
+	Scan(dest ...any) error
+}) (MCPToolExposureRuleRecord, error) {
+	var (
+		record   MCPToolExposureRuleRecord
+		active   int
+		updated  string
+		document string
+	)
+	if err := scanner.Scan(&record.ServerID, &record.ToolName, &record.RuntimeSurface, &record.ExposureMode, &active, &updated, &document); err != nil {
+		return MCPToolExposureRuleRecord{}, fmt.Errorf("scan mcp tool exposure rule: %w", err)
+	}
+	record.Active = active == 1
+	record.Document = []byte(document)
+	if err := assignRequiredTime(&record.UpdatedAt, updated); err != nil {
+		return MCPToolExposureRuleRecord{}, fmt.Errorf("parse mcp tool exposure rule updated_at: %w", err)
 	}
 	return record, nil
 }

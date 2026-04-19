@@ -579,6 +579,13 @@ This slice should close:
 
 MCP should not introduce a parallel unmanaged execution path.
 
+Current daemon behavior now matches that closure:
+
+- MCP server lifecycle is daemon-managed and sandbox-backed
+- MCP transport startup, cancellation, restart, and failure state are operator-visible
+- tool exposure is deny-by-default and explicit per tool plus runtime surface
+- enabled MCP servers recover from persisted daemon state on restart when current policy and config still allow them
+
 ### 3. Skill And Tool Execution Through Sandbox
 
 After MCP, the harness still needs to move actual skill and local tool execution onto the same substrate.

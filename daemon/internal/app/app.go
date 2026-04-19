@@ -21,6 +21,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/im"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/managedproviders"
+	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -45,6 +46,7 @@ type App struct {
 	Chat                 *chat.Service
 	Skills               *skills.Registry
 	Sandboxes            *sandbox.Manager
+	MCP                  *mcp.Manager
 	Providers            *providers.Manager
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
@@ -76,6 +78,7 @@ func New() (*App, error) {
 	policyEngine := policy.NewEngine()
 	authManager := auth.NewManager()
 	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxManager, policyEngine, nil)
 	managedRegistry := managedproviders.NewRegistry(cfg, sandboxManager)
 	llmDispatcher, err := buildLLMDispatcher(cfg, managedRegistry)
 	if err != nil {
@@ -90,7 +93,7 @@ func New() (*App, error) {
 	capabilitySupervisor := capabilities.NewSupervisor()
 	chatService := chat.NewService(llmDispatcher, providerManager, skillRegistry, eventBus, sqliteStore)
 
-	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager); err != nil {
+	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager); err != nil {
 		return nil, err
 	}
 	if err := syncManagedProviderState(context.Background(), sqliteStore, providerManager); err != nil {
@@ -124,6 +127,7 @@ func New() (*App, error) {
 		Chat:         chatService,
 		Skills:       skillRegistry,
 		Sandboxes:    sandboxManager,
+		MCP:          mcpManager,
 		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
@@ -145,6 +149,7 @@ func New() (*App, error) {
 		Chat:                 chatService,
 		Skills:               skillRegistry,
 		Sandboxes:            sandboxManager,
+		MCP:                  mcpManager,
 		Providers:            providerManager,
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,
@@ -347,7 +352,7 @@ func newEventID() string {
 	return "evt_" + hex.EncodeToString(buf)
 }
 
-func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager) error {
+func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager) error {
 	if sqliteStore == nil {
 		return nil
 	}
@@ -422,6 +427,11 @@ func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, 
 	if sandboxManager != nil {
 		if err := sandboxManager.Restore(ctx); err != nil {
 			return fmt.Errorf("restore sandbox executions: %w", err)
+		}
+	}
+	if mcpManager != nil {
+		if err := mcpManager.Restore(ctx); err != nil {
+			return fmt.Errorf("restore mcp state: %w", err)
 		}
 	}
 

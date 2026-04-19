@@ -31,6 +31,6 @@ Follow the existing imperative commit style: `Complete roadmap 15 skill registry
 Default development work must use the test environment, not `~/.dope`. Never assume live connectors or managed providers are safe to touch; make the environment explicit. Treat secrets in config as operator-owned material and avoid logging or echoing them in tests, scripts, or API output.
 
 <!-- SPECKIT START -->
-Current active speckit plan: `specs/002-sandbox-requirement-contract/plan.md`
+Current active speckit plan: `specs/003-mcp-execution-plane/plan.md`
 Use it for feature-specific scope, contracts, verification, and repo paths.
 <!-- SPECKIT END -->

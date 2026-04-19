@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-tool-exposure-update.request.schema.json",
+  "title": "MCPToolExposureUpdateRequest",
+  "type": "object",
+  "required": ["runtimeSurface", "exposureMode", "active"],
+  "additionalProperties": false,
+  "properties": {
+    "runtimeSurface": { "type": "string" },
+    "exposureMode": { "type": "string", "enum": ["blocked", "allow", "approval_required"] },
+    "active": { "type": "boolean" },
+    "reason": { "type": "string" }
+  }
+}

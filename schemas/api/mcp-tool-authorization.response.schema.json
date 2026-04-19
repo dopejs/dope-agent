@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-tool-authorization.response.schema.json",
+  "title": "MCPToolAuthorizationResponse",
+  "type": "object",
+  "required": ["status", "tool"],
+  "additionalProperties": false,
+  "properties": {
+    "status": { "type": "string", "enum": ["allowed", "pending", "rejected", "blocked"] },
+    "tool": { "$ref": "./mcp-tool-resource.schema.json" },
+    "message": { "type": "string" },
+    "approval": { "$ref": "./approval-resource.schema.json" },
+    "decision": { "$ref": "./decision-resource.schema.json" },
+    "sandbox": { "$ref": "./sandbox-consumer-view.schema.json" }
+  }
+}

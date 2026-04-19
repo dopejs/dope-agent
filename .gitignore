@@ -1,8 +1,14 @@
 node_modules/
 dist/
+build/
 .DS_Store
 *.test
 *.out
+*.log
+*.exe
+.env
+.env.*
+vendor/
 
 sdk/ts/dist/
 sdk/ts/node_modules/

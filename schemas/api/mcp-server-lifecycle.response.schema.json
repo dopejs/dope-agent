@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-server-lifecycle.response.schema.json",
+  "title": "MCPServerLifecycleResponse",
+  "type": "object",
+  "required": ["action", "server", "idempotent", "blocked", "preflightMs"],
+  "additionalProperties": false,
+  "properties": {
+    "action": { "type": "string", "enum": ["start", "stop", "restart", "cancel"] },
+    "server": { "$ref": "./mcp-server-resource.schema.json" },
+    "idempotent": { "type": "boolean" },
+    "executionId": { "type": "string" },
+    "failureClass": { "type": "string" },
+    "blocked": { "type": "boolean" },
+    "blockedReason": { "type": "string" },
+    "preflightMs": { "type": "integer", "minimum": 0 }
+  }
+}

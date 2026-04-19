@@ -125,7 +125,7 @@ func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil); err != nil {
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -214,7 +214,7 @@ func TestRecoverPersistedStateRestoresSupervisionState(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil); err != nil {
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -324,7 +324,7 @@ func TestRecoverPersistedStateRestoresAuthAndPolicyState(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil); err != nil {
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -1091,7 +1091,7 @@ func TestRecoverPersistedStateRestoresManagedProviderState(t *testing.T) {
 	restoredAuth := auth.NewManager()
 	providerManager := providers.NewManager(config.Config{}, llm.NewDispatcher())
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providerManager, nil); err != nil {
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providerManager, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 

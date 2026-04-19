@@ -169,10 +169,10 @@ Current completion should be read as:
 
 ## Roadmap 18: MCP Execution Plane
 
-- [ ] MCP server registry and profile binding
-- [ ] MCP transport and lifecycle through sandbox
-- [ ] MCP credential isolation and tool exposure policy
-- [ ] MCP audit and operator verification
+- [x] MCP server registry and profile binding
+- [x] MCP transport and lifecycle through sandbox
+- [x] MCP credential isolation and tool exposure policy
+- [x] MCP audit and operator verification
 
 ## Roadmap 19: Skill And Local Tool Sandbox Execution
 
