@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,18 +34,45 @@ type File struct {
 }
 
 type Skill struct {
-	SkillID         string            `json:"skillId"`
-	Name            string            `json:"name"`
-	Description     string            `json:"description"`
-	Source          Source            `json:"source"`
-	RootPath        string            `json:"rootPath"`
-	SkillPath       string            `json:"skillPath"`
-	InstructionPath string            `json:"instructionPath"`
-	Frontmatter     map[string]string `json:"frontmatter"`
-	FrontmatterRaw  string            `json:"frontmatterRaw,omitempty"`
-	Body            string            `json:"body,omitempty"`
-	Files           []File            `json:"files"`
-	Sandbox         map[string]any    `json:"sandbox,omitempty"`
+	SkillID            string                  `json:"skillId"`
+	Name               string                  `json:"name"`
+	Description        string                  `json:"description"`
+	Source             Source                  `json:"source"`
+	RootPath           string                  `json:"rootPath"`
+	SkillPath          string                  `json:"skillPath"`
+	InstructionPath    string                  `json:"instructionPath"`
+	Frontmatter        map[string]string       `json:"frontmatter"`
+	FrontmatterRaw     string                  `json:"frontmatterRaw,omitempty"`
+	Body               string                  `json:"body,omitempty"`
+	Files              []File                  `json:"files"`
+	ExecutionManifest  *ExecutableManifest     `json:"executionManifest,omitempty"`
+	AvailabilityStatus SkillAvailabilityStatus `json:"availabilityStatus,omitempty"`
+	AvailabilityReason string                  `json:"availabilityReason,omitempty"`
+	Sandbox            map[string]any          `json:"sandbox,omitempty"`
+}
+
+type SkillAvailabilityStatus string
+
+const (
+	SkillAvailabilityStatusNotExecutable SkillAvailabilityStatus = "not_executable"
+	SkillAvailabilityStatusAvailable     SkillAvailabilityStatus = "available"
+	SkillAvailabilityStatusUnavailable   SkillAvailabilityStatus = "unavailable"
+)
+
+type ExecutableManifest struct {
+	Entrypoint                  string               `json:"entrypoint"`
+	Args                        []string             `json:"args,omitempty"`
+	WorkingDir                  string               `json:"workingDir,omitempty"`
+	ProfileID                   string               `json:"profileId"`
+	ReadRoots                   []string             `json:"readRoots,omitempty"`
+	WriteRoots                  []string             `json:"writeRoots,omitempty"`
+	NetworkMode                 sandbox.NetworkMode  `json:"networkMode,omitempty"`
+	AllowedHosts                []string             `json:"allowedHosts,omitempty"`
+	AllowedPorts                []int                `json:"allowedPorts,omitempty"`
+	SecretRefs                  []string             `json:"secretRefs,omitempty"`
+	ApprovalMode                sandbox.ApprovalMode `json:"approvalMode"`
+	TimeoutMs                   int                  `json:"timeoutMs,omitempty"`
+	RequiredEnforcementStrength string               `json:"requiredEnforcementStrength,omitempty"`
 }
 
 type Overlay struct {
@@ -71,6 +99,8 @@ type Registry struct {
 	index    map[string]Skill
 }
 
+const executableSkillSecretsFileName = "skill-secrets.json"
+
 func NewRegistry(dataRoot string) (*Registry, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -96,11 +126,11 @@ func (r *Registry) Reload() error {
 		return ErrSkillsRegistryMissing
 	}
 
-	homeSkills, err := scanSkills(filepath.Join(r.homeRoot, "skills"), SourceHome)
+	homeSkills, err := scanSkills(filepath.Join(r.homeRoot, "skills"), SourceHome, r.dataRoot)
 	if err != nil {
 		return err
 	}
-	dataSkills, err := scanSkills(filepath.Join(r.dataRoot, "skills"), SourceDataDir)
+	dataSkills, err := scanSkills(filepath.Join(r.dataRoot, "skills"), SourceDataDir, r.dataRoot)
 	if err != nil {
 		return err
 	}
@@ -208,7 +238,7 @@ func (r *Registry) ResolveSelected(skillIDs []string) ([]Skill, error) {
 	return selected, nil
 }
 
-func scanSkills(root string, source Source) ([]Skill, error) {
+func scanSkills(root string, source Source, secretRoot string) ([]Skill, error) {
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -222,7 +252,7 @@ func scanSkills(root string, source Source) ([]Skill, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		skill, err := loadSkill(filepath.Join(root, entry.Name()), source)
+		skill, err := loadSkill(filepath.Join(root, entry.Name()), source, secretRoot)
 		if err != nil {
 			return nil, err
 		}
@@ -234,7 +264,7 @@ func scanSkills(root string, source Source) ([]Skill, error) {
 	return skillsList, nil
 }
 
-func loadSkill(skillRoot string, source Source) (Skill, error) {
+func loadSkill(skillRoot string, source Source, secretRoot string) (Skill, error) {
 	instructionPath := filepath.Join(skillRoot, "SKILL.md")
 	content, _, err := readFileWithStat(instructionPath)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -258,21 +288,242 @@ func loadSkill(skillRoot string, source Source) (Skill, error) {
 	if err != nil {
 		return Skill{}, err
 	}
+	executionManifest, availabilityStatus, availabilityReason := parseExecutableManifest(skillRoot, secretRoot, frontmatter)
 
 	return Skill{
-		SkillID:         skillID,
-		Name:            strings.TrimSpace(skillName),
-		Description:     strings.TrimSpace(frontmatter["description"]),
-		Source:          source,
-		RootPath:        filepath.Dir(skillRoot),
-		SkillPath:       skillRoot,
-		InstructionPath: instructionPath,
-		Frontmatter:     frontmatter,
-		FrontmatterRaw:  frontmatterRaw,
-		Body:            strings.TrimSpace(body),
-		Files:           files,
-		Sandbox:         buildSkillSandboxView(skillID, skillRoot),
+		SkillID:            skillID,
+		Name:               strings.TrimSpace(skillName),
+		Description:        strings.TrimSpace(frontmatter["description"]),
+		Source:             source,
+		RootPath:           filepath.Dir(skillRoot),
+		SkillPath:          skillRoot,
+		InstructionPath:    instructionPath,
+		Frontmatter:        frontmatter,
+		FrontmatterRaw:     frontmatterRaw,
+		Body:               strings.TrimSpace(body),
+		Files:              files,
+		ExecutionManifest:  executionManifest,
+		AvailabilityStatus: availabilityStatus,
+		AvailabilityReason: availabilityReason,
+		Sandbox:            buildSkillSandboxView(skillID, skillRoot),
 	}, nil
+}
+
+func parseExecutableManifest(skillRoot, secretRoot string, frontmatter map[string]string) (*ExecutableManifest, SkillAvailabilityStatus, string) {
+	const prefix = "execution."
+	hasExecutionKeys := false
+	for key := range frontmatter {
+		if strings.HasPrefix(strings.TrimSpace(key), prefix) {
+			hasExecutionKeys = true
+			break
+		}
+	}
+	if !hasExecutionKeys {
+		return nil, SkillAvailabilityStatusNotExecutable, ""
+	}
+
+	manifest := &ExecutableManifest{
+		Entrypoint:                  strings.TrimSpace(frontmatter["execution.entrypoint"]),
+		Args:                        splitCSV(frontmatter["execution.args"]),
+		ProfileID:                   strings.TrimSpace(frontmatter["execution.profile_id"]),
+		ReadRoots:                   resolveSkillPaths(skillRoot, splitCSV(frontmatter["execution.read_roots"])),
+		WriteRoots:                  resolveSkillPaths(skillRoot, splitCSV(frontmatter["execution.write_roots"])),
+		NetworkMode:                 sandbox.NetworkMode(firstNonEmpty(frontmatter["execution.network_mode"], string(sandbox.NetworkModeDeny))),
+		AllowedHosts:                splitCSV(frontmatter["execution.allowed_hosts"]),
+		AllowedPorts:                splitCSVInts(frontmatter["execution.allowed_ports"]),
+		SecretRefs:                  splitCSV(frontmatter["execution.secret_refs"]),
+		ApprovalMode:                sandbox.ApprovalMode(firstNonEmpty(frontmatter["execution.approval_mode"], string(sandbox.ApprovalModeAsk))),
+		RequiredEnforcementStrength: firstNonEmpty(strings.TrimSpace(frontmatter["execution.required_enforcement_strength"]), "declared_only"),
+	}
+	if workingDir := strings.TrimSpace(frontmatter["execution.working_dir"]); workingDir != "" {
+		manifest.WorkingDir = resolveSkillPath(skillRoot, workingDir)
+	}
+	if timeoutValue := strings.TrimSpace(frontmatter["execution.timeout_ms"]); timeoutValue != "" {
+		timeoutMs, err := strconv.Atoi(timeoutValue)
+		if err != nil || timeoutMs <= 0 {
+			return manifest, SkillAvailabilityStatusUnavailable, "execution.timeout_ms must be a positive integer"
+		}
+		manifest.TimeoutMs = timeoutMs
+	}
+
+	switch manifest.NetworkMode {
+	case sandbox.NetworkModeDeny, sandbox.NetworkModeAllowList, sandbox.NetworkModeFull:
+	default:
+		return manifest, SkillAvailabilityStatusUnavailable, "execution.network_mode is invalid"
+	}
+	switch manifest.ApprovalMode {
+	case sandbox.ApprovalModeAllow, sandbox.ApprovalModeAsk, sandbox.ApprovalModeDeny:
+	default:
+		return manifest, SkillAvailabilityStatusUnavailable, "execution.approval_mode is invalid"
+	}
+	if manifest.Entrypoint == "" {
+		return manifest, SkillAvailabilityStatusUnavailable, "execution.entrypoint is required"
+	}
+	if manifest.ProfileID == "" {
+		return manifest, SkillAvailabilityStatusUnavailable, "execution.profile_id is required"
+	}
+	if !supportsRequiredStrength(manifest.RequiredEnforcementStrength) {
+		return manifest, SkillAvailabilityStatusUnavailable, "execution.required_enforcement_strength exceeds current backend support"
+	}
+	if entrypoint, ok := resolveManifestEntrypoint(skillRoot, manifest.Entrypoint); ok {
+		manifest.Entrypoint = entrypoint
+	} else {
+		return manifest, SkillAvailabilityStatusUnavailable, "execution.entrypoint does not resolve to an executable target"
+	}
+	if manifest.WorkingDir != "" {
+		if info, err := os.Stat(manifest.WorkingDir); err != nil || !info.IsDir() {
+			return manifest, SkillAvailabilityStatusUnavailable, "execution.working_dir does not exist"
+		}
+	}
+	resolvedSecrets, err := ResolveExecutableSkillSecrets(secretRoot, manifest.SecretRefs)
+	if err != nil {
+		return manifest, SkillAvailabilityStatusUnavailable, fmt.Sprintf("executable skill secrets are unavailable: %v", err)
+	}
+	for _, secretRef := range manifest.SecretRefs {
+		if strings.TrimSpace(secretRef) == "" {
+			return manifest, SkillAvailabilityStatusUnavailable, "execution.secret_refs contains an empty entry"
+		}
+		if _, ok := resolvedSecrets[secretRef]; !ok {
+			return manifest, SkillAvailabilityStatusUnavailable, fmt.Sprintf("secret ref %s is unavailable in %s", secretRef, effectiveEnvironment())
+		}
+	}
+	return manifest, SkillAvailabilityStatusAvailable, ""
+}
+
+func ResolveExecutableSkillSecrets(secretRoot string, secretRefs []string) (map[string]string, error) {
+	items := make(map[string]string, len(secretRefs))
+	if len(secretRefs) == 0 {
+		return items, nil
+	}
+	values, err := loadExecutableSkillSecretFile(secretRoot)
+	if err != nil {
+		return nil, err
+	}
+	for _, secretRef := range secretRefs {
+		trimmed := strings.TrimSpace(secretRef)
+		if trimmed == "" {
+			continue
+		}
+		if value, ok := values[trimmed]; ok && strings.TrimSpace(value) != "" {
+			items[trimmed] = value
+		}
+	}
+	return items, nil
+}
+
+func loadExecutableSkillSecretFile(secretRoot string) (map[string]string, error) {
+	path := executableSkillSecretsPath(secretRoot)
+	content, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return map[string]string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	values := map[string]string{}
+	if err := json.Unmarshal(content, &values); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", path, err)
+	}
+	for key, value := range values {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			delete(values, key)
+			continue
+		}
+		if trimmedKey != key {
+			delete(values, key)
+			values[trimmedKey] = value
+		}
+	}
+	return values, nil
+}
+
+func executableSkillSecretsPath(secretRoot string) string {
+	return filepath.Join(strings.TrimSpace(secretRoot), executableSkillSecretsFileName)
+}
+
+func resolveManifestEntrypoint(skillRoot, value string) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", false
+	}
+	if filepath.IsAbs(trimmed) {
+		_, err := os.Stat(trimmed)
+		return trimmed, err == nil
+	}
+	if strings.Contains(trimmed, "/") || strings.HasPrefix(trimmed, ".") {
+		resolved := resolveSkillPath(skillRoot, trimmed)
+		_, err := os.Stat(resolved)
+		return resolved, err == nil
+	}
+	return trimmed, true
+}
+
+func supportsRequiredStrength(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "", "declared_only", "subprocess":
+		return true
+	default:
+		return false
+	}
+}
+
+func resolveSkillPath(skillRoot, value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	if filepath.IsAbs(trimmed) {
+		return filepath.Clean(trimmed)
+	}
+	return filepath.Clean(filepath.Join(skillRoot, trimmed))
+}
+
+func resolveSkillPaths(skillRoot string, values []string) []string {
+	resolved := make([]string, 0, len(values))
+	for _, value := range values {
+		if item := resolveSkillPath(skillRoot, value); item != "" {
+			resolved = append(resolved, item)
+		}
+	}
+	return resolved
+}
+
+func splitCSV(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	parts := strings.Split(trimmed, ",")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if item := strings.TrimSpace(part); item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func splitCSVInts(value string) []int {
+	items := splitCSV(value)
+	ports := make([]int, 0, len(items))
+	for _, item := range items {
+		parsed, err := strconv.Atoi(item)
+		if err != nil {
+			return nil
+		}
+		ports = append(ports, parsed)
+	}
+	return ports
+}
+
+func effectiveEnvironment() string {
+	switch strings.TrimSpace(os.Getenv("DOPE_ENV")) {
+	case "prod":
+		return "prod"
+	default:
+		return "test"
+	}
 }
 
 func loadOverlay(path string, source Source) (*Overlay, error) {
@@ -415,6 +666,15 @@ func normalizeSkillID(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
 func cloneSnapshot(snapshot Snapshot) Snapshot {
 	cloned := Snapshot{
 		LoadedAt: snapshot.LoadedAt,
@@ -437,6 +697,16 @@ func cloneSkill(skill Skill) Skill {
 		cloned.Frontmatter[key] = value
 	}
 	cloned.Files = append([]File(nil), skill.Files...)
+	if skill.ExecutionManifest != nil {
+		manifest := *skill.ExecutionManifest
+		manifest.Args = append([]string(nil), skill.ExecutionManifest.Args...)
+		manifest.ReadRoots = append([]string(nil), skill.ExecutionManifest.ReadRoots...)
+		manifest.WriteRoots = append([]string(nil), skill.ExecutionManifest.WriteRoots...)
+		manifest.AllowedHosts = append([]string(nil), skill.ExecutionManifest.AllowedHosts...)
+		manifest.AllowedPorts = append([]int(nil), skill.ExecutionManifest.AllowedPorts...)
+		manifest.SecretRefs = append([]string(nil), skill.ExecutionManifest.SecretRefs...)
+		cloned.ExecutionManifest = &manifest
+	}
 	if skill.Sandbox != nil {
 		payload, err := json.Marshal(skill.Sandbox)
 		if err == nil {

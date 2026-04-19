@@ -17,10 +17,21 @@
         },
         "payload": {
           "type": "object",
-          "required": ["capabilityId", "toolName", "status", "error"],
+          "required": ["toolName", "status", "error"],
           "additionalProperties": false,
+          "anyOf": [
+            { "required": ["capabilityId"] },
+            { "required": ["skillId"] }
+          ],
           "properties": {
+            "invocationKind": {
+              "type": "string",
+              "enum": ["local_tool", "skill"]
+            },
             "capabilityId": {
+              "type": "string"
+            },
+            "skillId": {
               "type": "string"
             },
             "toolName": {
@@ -28,9 +39,15 @@
             },
             "status": {
               "type": "string",
-              "enum": ["failed"]
+              "enum": ["failed", "cancelled", "denied"]
             },
             "error": {
+              "type": "string"
+            },
+            "sandboxExecutionId": {
+              "type": "string"
+            },
+            "failureClass": {
               "type": "string"
             }
           }

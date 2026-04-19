@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,7 +19,7 @@ var (
 	ErrRunTerminal           = errors.New("run is in a terminal state")
 	ErrStepTerminal          = errors.New("step is in a terminal state")
 	ErrToolNameRequired      = errors.New("tool name is required")
-	ErrCapabilityIDRequired  = errors.New("capability id is required")
+	ErrToolTargetRequired    = errors.New("capability id or skill id is required")
 	ErrToolCallNotFound      = errors.New("tool call not found")
 	ErrInvalidToolCallStatus = errors.New("invalid tool call status transition")
 )
@@ -92,23 +93,37 @@ type ToolCallStatus string
 
 const (
 	ToolCallStatusRequested ToolCallStatus = "requested"
+	ToolCallStatusRunning   ToolCallStatus = "running"
 	ToolCallStatusCompleted ToolCallStatus = "completed"
 	ToolCallStatusFailed    ToolCallStatus = "failed"
+	ToolCallStatusCancelled ToolCallStatus = "cancelled"
+	ToolCallStatusDenied    ToolCallStatus = "denied"
+)
+
+type ToolCallInvocationKind string
+
+const (
+	ToolCallInvocationKindLocalTool ToolCallInvocationKind = "local_tool"
+	ToolCallInvocationKindSkill     ToolCallInvocationKind = "skill"
 )
 
 type ToolCall struct {
-	ToolCallID   string         `json:"toolCallId"`
-	RunID        string         `json:"runId"`
-	StepID       string         `json:"stepId"`
-	CapabilityID string         `json:"capabilityId"`
-	ToolName     string         `json:"toolName"`
-	Status       ToolCallStatus `json:"status"`
-	CreatedAt    time.Time      `json:"createdAt"`
-	UpdatedAt    time.Time      `json:"updatedAt"`
-	Input        any            `json:"input,omitempty"`
-	Output       any            `json:"output,omitempty"`
-	Error        string         `json:"error,omitempty"`
-	Sandbox      map[string]any `json:"sandbox,omitempty"`
+	ToolCallID         string                 `json:"toolCallId"`
+	RunID              string                 `json:"runId"`
+	StepID             string                 `json:"stepId"`
+	InvocationKind     ToolCallInvocationKind `json:"invocationKind,omitempty"`
+	CapabilityID       string                 `json:"capabilityId,omitempty"`
+	SkillID            string                 `json:"skillId,omitempty"`
+	ToolName           string                 `json:"toolName"`
+	Status             ToolCallStatus         `json:"status"`
+	SandboxExecutionID string                 `json:"sandboxExecutionId,omitempty"`
+	FailureClass       string                 `json:"failureClass,omitempty"`
+	CreatedAt          time.Time              `json:"createdAt"`
+	UpdatedAt          time.Time              `json:"updatedAt"`
+	Input              any                    `json:"input,omitempty"`
+	Output             any                    `json:"output,omitempty"`
+	Error              string                 `json:"error,omitempty"`
+	Sandbox            map[string]any         `json:"sandbox,omitempty"`
 }
 
 type RunCheckpoint struct {
@@ -119,10 +134,14 @@ type RunCheckpoint struct {
 }
 
 type CreateToolCallInput struct {
-	CapabilityID string         `json:"capabilityId"`
-	ToolName     string         `json:"toolName"`
-	Input        any            `json:"input"`
-	Sandbox      map[string]any `json:"sandbox,omitempty"`
+	InvocationKind     ToolCallInvocationKind `json:"invocationKind,omitempty"`
+	CapabilityID       string                 `json:"capabilityId"`
+	SkillID            string                 `json:"skillId"`
+	ToolName           string                 `json:"toolName"`
+	Input              any                    `json:"input"`
+	SandboxExecutionID string                 `json:"sandboxExecutionId,omitempty"`
+	FailureClass       string                 `json:"failureClass,omitempty"`
+	Sandbox            map[string]any         `json:"sandbox,omitempty"`
 }
 
 type CompleteToolCallInput struct {
@@ -130,7 +149,21 @@ type CompleteToolCallInput struct {
 }
 
 type FailToolCallInput struct {
-	Error string `json:"error"`
+	Output       any    `json:"output"`
+	Error        string `json:"error"`
+	FailureClass string `json:"failureClass"`
+}
+
+type DenyToolCallInput struct {
+	Output       any    `json:"output"`
+	Error        string `json:"error"`
+	FailureClass string `json:"failureClass"`
+}
+
+type CancelToolCallInput struct {
+	Output       any    `json:"output"`
+	Error        string `json:"error"`
+	FailureClass string `json:"failureClass"`
 }
 
 type Manager struct {
@@ -502,8 +535,8 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 	if input.ToolName == "" {
 		return ToolCall{}, ErrToolNameRequired
 	}
-	if input.CapabilityID == "" {
-		return ToolCall{}, ErrCapabilityIDRequired
+	if strings.TrimSpace(input.CapabilityID) == "" && strings.TrimSpace(input.SkillID) == "" {
+		return ToolCall{}, ErrToolTargetRequired
 	}
 
 	m.mu.Lock()
@@ -518,17 +551,29 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 	}
 
 	now := time.Now().UTC()
+	invocationKind := input.InvocationKind
+	switch {
+	case invocationKind != "":
+	case strings.TrimSpace(input.SkillID) != "":
+		invocationKind = ToolCallInvocationKindSkill
+	default:
+		invocationKind = ToolCallInvocationKindLocalTool
+	}
 	toolCall := ToolCall{
-		ToolCallID:   newToolCallID(),
-		RunID:        runID,
-		StepID:       stepID,
-		CapabilityID: input.CapabilityID,
-		ToolName:     input.ToolName,
-		Status:       ToolCallStatusRequested,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		Input:        input.Input,
-		Sandbox:      cloneAnyMap(input.Sandbox),
+		ToolCallID:         newToolCallID(),
+		RunID:              runID,
+		StepID:             stepID,
+		InvocationKind:     invocationKind,
+		CapabilityID:       strings.TrimSpace(input.CapabilityID),
+		SkillID:            strings.TrimSpace(input.SkillID),
+		ToolName:           input.ToolName,
+		Status:             ToolCallStatusRequested,
+		SandboxExecutionID: strings.TrimSpace(input.SandboxExecutionID),
+		FailureClass:       strings.TrimSpace(input.FailureClass),
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		Input:              input.Input,
+		Sandbox:            cloneAnyMap(input.Sandbox),
 	}
 
 	m.toolCallsByID[toolCall.ToolCallID] = toolCall
@@ -596,7 +641,7 @@ func (m *Manager) CompleteToolCall(runID, stepID, toolCallID string, input Compl
 	if err != nil {
 		return ToolCall{}, err
 	}
-	if toolCall.Status != ToolCallStatusRequested {
+	if toolCall.Status != ToolCallStatusRequested && toolCall.Status != ToolCallStatusRunning {
 		return ToolCall{}, ErrInvalidToolCallStatus
 	}
 
@@ -616,13 +661,84 @@ func (m *Manager) FailToolCall(runID, stepID, toolCallID string, input FailToolC
 	if err != nil {
 		return ToolCall{}, err
 	}
-	if toolCall.Status != ToolCallStatusRequested {
+	if toolCall.Status != ToolCallStatusRequested && toolCall.Status != ToolCallStatusRunning {
 		return ToolCall{}, ErrInvalidToolCallStatus
 	}
 
 	toolCall.Status = ToolCallStatusFailed
 	toolCall.UpdatedAt = time.Now().UTC()
+	toolCall.Output = input.Output
 	toolCall.Error = input.Error
+	toolCall.FailureClass = strings.TrimSpace(input.FailureClass)
+	m.toolCallsByID[toolCallID] = toolCall
+
+	return toolCall, nil
+}
+
+func (m *Manager) DenyToolCall(runID, stepID, toolCallID string, input DenyToolCallInput) (ToolCall, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	toolCall, err := m.requireMutableToolCall(runID, stepID, toolCallID)
+	if err != nil {
+		return ToolCall{}, err
+	}
+	if toolCall.Status != ToolCallStatusRequested && toolCall.Status != ToolCallStatusRunning {
+		return ToolCall{}, ErrInvalidToolCallStatus
+	}
+
+	toolCall.Status = ToolCallStatusDenied
+	toolCall.UpdatedAt = time.Now().UTC()
+	toolCall.Output = input.Output
+	toolCall.Error = input.Error
+	toolCall.FailureClass = strings.TrimSpace(input.FailureClass)
+	m.toolCallsByID[toolCallID] = toolCall
+
+	return toolCall, nil
+}
+
+func (m *Manager) CancelToolCall(runID, stepID, toolCallID string, input CancelToolCallInput) (ToolCall, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	toolCall, err := m.requireMutableToolCall(runID, stepID, toolCallID)
+	if err != nil {
+		return ToolCall{}, err
+	}
+	if toolCall.Status != ToolCallStatusRequested && toolCall.Status != ToolCallStatusRunning {
+		return ToolCall{}, ErrInvalidToolCallStatus
+	}
+
+	toolCall.Status = ToolCallStatusCancelled
+	toolCall.UpdatedAt = time.Now().UTC()
+	toolCall.Output = input.Output
+	toolCall.Error = input.Error
+	toolCall.FailureClass = strings.TrimSpace(input.FailureClass)
+	m.toolCallsByID[toolCallID] = toolCall
+
+	return toolCall, nil
+}
+
+func (m *Manager) MarkToolCallRunning(runID, stepID, toolCallID, sandboxExecutionID string, sandboxView map[string]any) (ToolCall, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	toolCall, err := m.requireMutableToolCall(runID, stepID, toolCallID)
+	if err != nil {
+		return ToolCall{}, err
+	}
+	if toolCall.Status != ToolCallStatusRequested {
+		return ToolCall{}, ErrInvalidToolCallStatus
+	}
+
+	toolCall.Status = ToolCallStatusRunning
+	toolCall.UpdatedAt = time.Now().UTC()
+	if trimmed := strings.TrimSpace(sandboxExecutionID); trimmed != "" {
+		toolCall.SandboxExecutionID = trimmed
+	}
+	if sandboxView != nil {
+		toolCall.Sandbox = cloneAnyMap(sandboxView)
+	}
 	m.toolCallsByID[toolCallID] = toolCall
 
 	return toolCall, nil

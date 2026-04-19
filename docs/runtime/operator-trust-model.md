@@ -38,14 +38,21 @@ Health and pairing bootstrap stay outside the protected surface.
 
 ## Approval Boundary
 
-The first real guarded action is high-risk tool execution:
+The first real guarded action is executable-skill and high-risk local-tool execution:
 
+- executable skills default to approval mode `ask` unless the manifest declares `allow` or `deny`
 - capability kinds `exec`, `shell`, and `browser` require approval
 - if no approval is supplied, daemon creates a pending approval and denies execution
 - approved approval IDs allow execution
 - rejected approval IDs block execution
-- the approval gate now records declaration-backed consumer provenance and redacted secret-resolution metadata for the current high-risk tool-call path
-- this remains a policy and provenance boundary for the existing tool-call surface, not generic sandbox subprocess routing for all local tools
+- the approval gate records declaration-backed consumer provenance and redacted
+  secret-resolution metadata for executable skills and the current high-risk tool-call path
+- launched in-scope work now crosses the sandbox execution boundary instead of an unmanaged
+  subprocess path
+- daemon restart recovers interrupted in-flight executable-skill and high-risk local-tool
+  executions as `cancelled`
+- this remains a policy and provenance boundary for the existing tool-call surface, not a
+  blanket migration of every local capability
 
 This keeps approvals attached to a real side-effecting action instead of existing only as standalone resources.
 

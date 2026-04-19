@@ -41,7 +41,7 @@ Current completion should be read as:
 - `Roadmap 16: Sandbox Execution Plane` is now complete
 - `Roadmap 17: Sandbox Requirement Declarations And Consumer Convergence` is now in progress with the shared declaration, secret-scope, and core provenance work landed for current consumers
 - `Roadmap 18: MCP Execution Plane` remains planned on top of that prerequisite work
-- `Roadmap 19: Skill And Local Tool Sandbox Execution` remains planned after MCP
+- `Roadmap 19: Skill And Local Tool Sandbox Execution` is complete after the executable-skill and high-risk local-tool migration onto sandbox-backed execution
 - `Roadmap 20: Stronger Isolation And Additional Sandbox Backends` remains planned after the first consumer migrations
 
 ## Roadmap 1: Runtime Closure
@@ -176,10 +176,10 @@ Current completion should be read as:
 
 ## Roadmap 19: Skill And Local Tool Sandbox Execution
 
-- [ ] Skill requirement manifest
-- [ ] Local tool execution through sandbox
-- [ ] Runtime integration and provenance
-- [ ] Operator docs and verification
+- [x] Skill requirement manifest
+- [x] Local tool execution through sandbox
+- [x] Runtime integration and provenance
+- [x] Operator docs and verification
 
 ## Roadmap 20: Stronger Isolation And Additional Sandbox Backends
 

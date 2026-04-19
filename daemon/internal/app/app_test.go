@@ -25,6 +25,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
 
@@ -155,6 +156,168 @@ func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 
 	if _, ok := restoredRouter.GetSession(run.SessionID); !ok {
 		t.Fatal("expected restored session")
+	}
+}
+
+func TestRecoverPersistedStateCancelsInFlightSandboxToolCalls(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	seedRuntime := runtime.NewManager()
+	run, err := seedRuntime.CreateRun(runtime.CreateRunInput{
+		SessionID:  "session_recovery_cancelled",
+		Entrypoint: "chat",
+		Goal:       "cancel in-flight tool call on restart",
+	})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := seedRuntime.CreateStep(run.RunID, runtime.CreateStepInput{Title: "execute tool"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+	toolCall, err := seedRuntime.CreateToolCall(run.RunID, step.StepID, runtime.CreateToolCallInput{
+		CapabilityID:       "shell",
+		ToolName:           "shell",
+		Input:              map[string]any{"cmd": "pwd"},
+		SandboxExecutionID: "sandbox_exec_restore_1",
+	})
+	if err != nil {
+		t.Fatalf("CreateToolCall returned error: %v", err)
+	}
+	toolCall, err = seedRuntime.MarkToolCallRunning(run.RunID, step.StepID, toolCall.ToolCallID, "sandbox_exec_restore_1", map[string]any{
+		"policyRecord": map[string]any{"policyRecordId": "policy_restore_1"},
+	})
+	if err != nil {
+		t.Fatalf("MarkToolCallRunning returned error: %v", err)
+	}
+
+	session := router.Session{
+		SessionID:    run.SessionID,
+		Kind:         router.SessionKindDirect,
+		Status:       router.SessionStatusActive,
+		Channel:      "local",
+		AccountID:    "local",
+		PeerID:       "chat",
+		RoutingKey:   "direct:local:local:chat",
+		Generation:   1,
+		CreatedAt:    time.Now().UTC().Add(-time.Minute),
+		UpdatedAt:    time.Now().UTC().Add(-time.Minute),
+		LastActiveAt: time.Now().UTC().Add(-time.Minute),
+	}
+	if err := sqliteStore.UpsertSession(ctx, session); err != nil {
+		t.Fatalf("UpsertSession returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(ctx, run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertStep(ctx, step); err != nil {
+		t.Fatalf("UpsertStep returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertToolCall(ctx, toolCall); err != nil {
+		t.Fatalf("UpsertToolCall returned error: %v", err)
+	}
+	checkpointManager := checkpoints.NewManager(sqliteStore, seedRuntime)
+	if err := checkpointManager.SaveRunCheckpoint(ctx, run.RunID); err != nil {
+		t.Fatalf("SaveRunCheckpoint returned error: %v", err)
+	}
+
+	startedAt := time.Now().UTC().Add(-time.Minute)
+	execution := sandbox.Execution{
+		ExecutionID:  "sandbox_exec_restore_1",
+		ProfileID:    sandbox.ProfileIDSubprocessDefault,
+		BackendKind:  sandbox.BackendKindSubprocess,
+		Command:      "/bin/sh",
+		Cwd:          t.TempDir(),
+		RequestedBy:  "test",
+		ResourceKind: "capability",
+		ResourceID:   "shell",
+		Scope:        "tool_call",
+		Status:       sandbox.ExecutionStatusRunning,
+		RequestedAt:  startedAt,
+		UpdatedAt:    startedAt,
+		Result: sandbox.Result{
+			Status: sandbox.ExecutionStatusRunning,
+		},
+		Consumer: &sandbox.ConsumerContractView{
+			PolicyRecord: &sandbox.ConsumerPolicyRecord{
+				PolicyRecordID:     "policy_restore_1",
+				ConsumerKind:       sandbox.ConsumerKindLocalTool,
+				ConsumerID:         "shell",
+				OperationKind:      "tool_call.execute",
+				ToolCallID:         toolCall.ToolCallID,
+				SandboxExecutionID: "sandbox_exec_restore_1",
+				StartedAt:          startedAt,
+				Status:             sandbox.PolicyRecordStatusRunning,
+			},
+		},
+	}
+	document, err := json.Marshal(execution)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertSandboxExecution(ctx, store.SandboxExecutionRecord{
+		ExecutionID: execution.ExecutionID,
+		Status:      string(execution.Status),
+		ApprovalID:  "",
+		StartedAt:   &startedAt,
+		CompletedAt: nil,
+		Document:    document,
+	}); err != nil {
+		t.Fatalf("UpsertSandboxExecution returned error: %v", err)
+	}
+
+	restoredRuntime := runtime.NewManager()
+	restoredRouter := router.NewSessionRouter()
+	restoredEventBus := events.NewBus()
+	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+	restoredProviders := providers.NewManager(config.Config{}, llm.NewDispatcher())
+	restoredSandboxes := sandbox.NewManager(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     t.TempDir(),
+	}, sqliteStore, restoredEventBus, restoredPolicy)
+	defer func() {
+		if err := restoredSandboxes.Close(context.Background()); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, nil); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+
+	gotToolCall, ok := restoredRuntime.GetToolCall(run.RunID, step.StepID, toolCall.ToolCallID)
+	if !ok {
+		t.Fatal("expected restored tool call")
+	}
+	if gotToolCall.Status != runtime.ToolCallStatusCancelled {
+		t.Fatalf("expected cancelled restored tool call, got %+v", gotToolCall)
+	}
+	if gotToolCall.FailureClass != string(sandbox.ErrorClassCancelled) {
+		t.Fatalf("expected cancelled failure class, got %+v", gotToolCall)
+	}
+	restoredExecution, ok := restoredSandboxes.GetExecution(execution.ExecutionID)
+	if !ok || restoredExecution.Status != sandbox.ExecutionStatusCancelled {
+		t.Fatalf("expected cancelled restored sandbox execution, got %+v", restoredExecution)
+	}
+	persistedToolCalls, err := sqliteStore.ListToolCalls(ctx, run.RunID, step.StepID)
+	if err != nil {
+		t.Fatalf("ListToolCalls returned error: %v", err)
+	}
+	if len(persistedToolCalls) != 1 || persistedToolCalls[0].Status != runtime.ToolCallStatusCancelled {
+		t.Fatalf("expected persisted cancelled tool call, got %+v", persistedToolCalls)
 	}
 }
 
@@ -763,6 +926,123 @@ func TestAppRestartRestoresHighRiskApprovalSandboxProvenance(t *testing.T) {
 	}
 	if resolved.Approval.Sandbox == nil || resolved.Decision.Sandbox == nil {
 		t.Fatalf("expected resolved approval response sandbox provenance after restart, got approval=%+v decision=%+v", resolved.Approval.Sandbox, resolved.Decision.Sandbox)
+	}
+}
+
+func TestAppRestartPreservesOperatorVisibleSandboxLinkageForCancelledToolCall(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	t.Setenv("DOPE_DATA_DIR", dataDir)
+	t.Setenv("DOPE_BIND_ADDR", "127.0.0.1:0")
+	t.Setenv("DOPE_LOG_LEVEL", "error")
+	t.Setenv("DOPE_VERSION", "test")
+
+	first, err := New()
+	if err != nil {
+		t.Fatalf("first New returned error: %v", err)
+	}
+
+	authHeader := testAuthHeader(t, first.Auth)
+	if _, _, err := first.CapabilitySupervisor.Register(capabilities.RegisterInput{
+		CapabilityID: "shell",
+		Kind:         "shell",
+		DisplayName:  "Shell",
+	}); err != nil {
+		t.Fatalf("Register shell capability returned error: %v", err)
+	}
+	run, err := first.Runtime.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := first.Runtime.CreateStep(run.RunID, runtime.CreateStepInput{Title: "restart sandbox linkage"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"sleep 5"}}`))
+	createReq.Header.Set("Authorization", authHeader)
+	createRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for pending shell approval, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	var pending struct {
+		Approval policy.Approval `json:"approval"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &pending); err != nil {
+		t.Fatalf("failed to decode pending shell approval: %v", err)
+	}
+
+	resolveReq := httptest.NewRequest(http.MethodPost, "/v1/policy/approvals/"+pending.Approval.ApprovalID+"/resolve", strings.NewReader(`{"resolution":"approved","comment":"restart coverage"}`))
+	resolveReq.Header.Set("Authorization", authHeader)
+	resolveRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(resolveRec, resolveReq)
+	if resolveRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for shell approval resolve, got %d body=%s", resolveRec.Code, resolveRec.Body.String())
+	}
+
+	launchReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","approvalId":"`+pending.Approval.ApprovalID+`","input":{"cmd":"sleep 5"}}`))
+	launchReq.Header.Set("Authorization", authHeader)
+	launchRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(launchRec, launchReq)
+	if launchRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for approved shell launch, got %d body=%s", launchRec.Code, launchRec.Body.String())
+	}
+	var created runtime.ToolCall
+	if err := json.Unmarshal(launchRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("failed to decode created tool call: %v", err)
+	}
+	if created.SandboxExecutionID == "" {
+		t.Fatalf("expected sandbox execution linkage before restart, got %+v", created)
+	}
+
+	if err := first.Close(context.Background()); err != nil {
+		t.Fatalf("first Close returned error: %v", err)
+	}
+
+	second, err := New()
+	if err != nil {
+		t.Fatalf("second New returned error: %v", err)
+	}
+	defer func() {
+		if err := second.Close(context.Background()); err != nil {
+			t.Fatalf("second Close returned error: %v", err)
+		}
+	}()
+
+	toolCallReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls/"+created.ToolCallID, nil)
+	toolCallReq.Header.Set("Authorization", authHeader)
+	toolCallRec := httptest.NewRecorder()
+	second.Server.Handler().ServeHTTP(toolCallRec, toolCallReq)
+	if toolCallRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for restored tool call get, got %d body=%s", toolCallRec.Code, toolCallRec.Body.String())
+	}
+	var restoredToolCall runtime.ToolCall
+	if err := json.Unmarshal(toolCallRec.Body.Bytes(), &restoredToolCall); err != nil {
+		t.Fatalf("failed to decode restored tool call: %v", err)
+	}
+	if restoredToolCall.Status != runtime.ToolCallStatusCancelled || restoredToolCall.SandboxExecutionID != created.SandboxExecutionID {
+		t.Fatalf("expected cancelled restored tool call with sandbox linkage, got %+v", restoredToolCall)
+	}
+	if restoredToolCall.Sandbox == nil {
+		t.Fatalf("expected sandbox provenance on restored tool call, got %+v", restoredToolCall)
+	}
+
+	executionReq := httptest.NewRequest(http.MethodGet, "/v1/sandboxes/executions/"+created.SandboxExecutionID, nil)
+	executionReq.Header.Set("Authorization", authHeader)
+	executionRec := httptest.NewRecorder()
+	second.Server.Handler().ServeHTTP(executionRec, executionReq)
+	if executionRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for restored sandbox execution get, got %d body=%s", executionRec.Code, executionRec.Body.String())
+	}
+	var execution sandbox.Execution
+	if err := json.Unmarshal(executionRec.Body.Bytes(), &execution); err != nil {
+		t.Fatalf("failed to decode restored sandbox execution: %v", err)
+	}
+	if execution.Status != sandbox.ExecutionStatusCancelled || execution.Consumer == nil || execution.Consumer.PolicyRecord == nil {
+		t.Fatalf("expected cancelled restored sandbox execution with consumer view, got %+v", execution)
+	}
+	if execution.Consumer.PolicyRecord.ToolCallID != created.ToolCallID || execution.Consumer.PolicyRecord.SandboxExecutionID != created.SandboxExecutionID {
+		t.Fatalf("expected restored sandbox execution to preserve tool-call linkage, got %+v", execution.Consumer.PolicyRecord)
 	}
 }
 

@@ -111,6 +111,25 @@ func assertSandboxSecretScope(t *testing.T, view map[string]any, consumerID, sec
 	}
 }
 
+func waitForToolCallTerminalState(t *testing.T, manager *runtime.Manager, runID, stepID, toolCallID string) runtime.ToolCall {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		got, ok := manager.GetToolCall(runID, stepID, toolCallID)
+		if !ok {
+			t.Fatalf("expected tool call %s", toolCallID)
+		}
+		switch got.Status {
+		case runtime.ToolCallStatusCompleted, runtime.ToolCallStatusFailed, runtime.ToolCallStatusDenied, runtime.ToolCallStatusCancelled:
+			return got
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("tool call %s did not reach terminal state", toolCallID)
+	return runtime.ToolCall{}
+}
+
 type testLLMProvider struct {
 	name       string
 	completeFn func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error)
@@ -250,6 +269,25 @@ func writeSkillFileForTest(t *testing.T, path string, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
+}
+
+func writeExecutableSkillForTest(t *testing.T, skillRoot, skillBody, scriptBody string) {
+	t.Helper()
+	writeSkillFileForTest(t, filepath.Join(skillRoot, "SKILL.md"), strings.TrimSpace(skillBody))
+	scriptPath := filepath.Join(skillRoot, "scripts", "run.sh")
+	writeSkillFileForTest(t, scriptPath, strings.TrimSpace(scriptBody))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("Chmod returned error: %v", err)
+	}
+}
+
+func writeExecutableSkillSecretsForTest(t *testing.T, dataRoot string, values map[string]string) {
+	t.Helper()
+	payload, err := json.Marshal(values)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	writeSkillFileForTest(t, filepath.Join(dataRoot, "skill-secrets.json"), string(payload))
 }
 
 func TestRunsLifecycleRoutes(t *testing.T) {
@@ -536,9 +574,9 @@ func TestToolCallLifecycleRoutes(t *testing.T) {
 	})
 
 	if _, _, err := capabilitySupervisor.Register(capabilities.RegisterInput{
-		CapabilityID: "shell",
-		Kind:         "exec",
-		DisplayName:  "Shell",
+		CapabilityID: "search",
+		Kind:         "knowledge",
+		DisplayName:  "Search",
 	}); err != nil {
 		t.Fatalf("Register returned error: %v", err)
 	}
@@ -554,7 +592,7 @@ func TestToolCallLifecycleRoutes(t *testing.T) {
 		t.Fatalf("CreateStep returned error: %v", err)
 	}
 
-	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"pwd"}}`))
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"search","toolName":"search","input":{"q":"pwd"}}`))
 	createRec := httptest.NewRecorder()
 	server.server.Handler.ServeHTTP(createRec, createReq)
 
@@ -566,8 +604,8 @@ func TestToolCallLifecycleRoutes(t *testing.T) {
 	if created.ToolCallID == "" {
 		t.Fatal("expected tool call ID")
 	}
-	if created.CapabilityID != "shell" {
-		t.Fatalf("expected capability id shell, got %s", created.CapabilityID)
+	if created.CapabilityID != "search" {
+		t.Fatalf("expected capability id search, got %s", created.CapabilityID)
 	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", nil)
@@ -621,8 +659,8 @@ func TestToolCallLifecycleRoutes(t *testing.T) {
 	if len(persistedToolCalls) != 1 {
 		t.Fatalf("expected 1 persisted tool call, got %d", len(persistedToolCalls))
 	}
-	if persistedToolCalls[0].CapabilityID != "shell" {
-		t.Fatalf("expected persisted capability id shell, got %s", persistedToolCalls[0].CapabilityID)
+	if persistedToolCalls[0].CapabilityID != "search" {
+		t.Fatalf("expected persisted capability id search, got %s", persistedToolCalls[0].CapabilityID)
 	}
 }
 
@@ -1709,13 +1747,23 @@ func TestToolCallApprovalEnforcement(t *testing.T) {
 	policyEngine := policy.NewEngine()
 	capabilitySupervisor := capabilities.NewSupervisor()
 	checkpointManager := checkpoints.NewManager(sqliteStore, manager)
+	sandboxDataDir := filepath.Join(t.TempDir(), "sandbox-runtime")
+	sandboxManager := sandbox.NewManager(config.Config{
+		Environment: config.EnvironmentTest,
+		BindAddr:    "127.0.0.1:19191",
+		DataDir:     sandboxDataDir,
+		LogLevel:    "info",
+		Version:     "test",
+	}, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxManager.Close(context.Background()) }()
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:19191",
-			DataDir:  "~/.dope",
-			LogLevel: "info",
-			Version:  "test",
+			Environment: config.EnvironmentTest,
+			BindAddr:    "127.0.0.1:19191",
+			DataDir:     sandboxDataDir,
+			LogLevel:    "info",
+			Version:     "test",
 		},
 		Logger:       logger.Slog(),
 		EventBus:     eventBus,
@@ -1724,6 +1772,7 @@ func TestToolCallApprovalEnforcement(t *testing.T) {
 		Router:       router.NewSessionRouter(),
 		Runtime:      manager,
 		Capabilities: capabilitySupervisor,
+		Sandboxes:    sandboxManager,
 		Store:        sqliteStore,
 		Checkpoints:  checkpointManager,
 	})
@@ -1753,7 +1802,7 @@ func TestToolCallApprovalEnforcement(t *testing.T) {
 		t.Fatalf("CreateStep returned error: %v", err)
 	}
 
-	pendingReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"pwd"}}`))
+	pendingReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"pwd","cwd":"`+sandboxDataDir+`"}}`))
 	pendingReq.Header.Set("Authorization", authHeader)
 	pendingRec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(pendingRec, pendingReq)
@@ -1813,7 +1862,7 @@ func TestToolCallApprovalEnforcement(t *testing.T) {
 		t.Fatalf("expected rejected tool call body to include sandbox provenance, got %s", rejectedRec.Body.String())
 	}
 
-	approvedPendingReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"pwd"}}`))
+	approvedPendingReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"pwd","cwd":"`+sandboxDataDir+`"}}`))
 	approvedPendingReq.Header.Set("Authorization", authHeader)
 	approvedPendingRec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(approvedPendingRec, approvedPendingReq)
@@ -1848,7 +1897,7 @@ func TestToolCallApprovalEnforcement(t *testing.T) {
 		t.Fatalf("expected approved approval resolve response to include sandbox provenance, got approval=%+v decision=%+v", approvedResolved.Approval.Sandbox, approvedResolved.Decision.Sandbox)
 	}
 
-	approvedReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","approvalId":"`+approvedPending.Approval.ApprovalID+`"}`))
+	approvedReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","approvalId":"`+approvedPending.Approval.ApprovalID+`","input":{"cmd":"pwd","cwd":"`+sandboxDataDir+`"}}`))
 	approvedReq.Header.Set("Authorization", authHeader)
 	approvedRec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(approvedRec, approvedReq)
@@ -1858,6 +1907,9 @@ func TestToolCallApprovalEnforcement(t *testing.T) {
 	approvedToolCall := decodeStrictResponse[runtime.ToolCall](t, approvedRec.Body.Bytes())
 	if approvedToolCall.Sandbox == nil {
 		t.Fatalf("expected approved tool call resource to include sandbox provenance, got %+v", approvedToolCall)
+	}
+	if approvedToolCall.SandboxExecutionID == "" {
+		t.Fatalf("expected approved tool call to link sandbox execution, got %+v", approvedToolCall)
 	}
 
 	approvalGetReq := httptest.NewRequest(http.MethodGet, "/v1/policy/approvals/"+pending.Approval.ApprovalID, nil)
@@ -2734,6 +2786,710 @@ func TestSkillRegistryRoutesAndChatQuerySkillSupport(t *testing.T) {
 	joined := string(body)
 	if !strings.Contains(joined, `"skills":["shared"]`) {
 		t.Fatalf("expected stream started payload to include selected skills, got %q", joined)
+	}
+}
+
+func TestSkillRoutesExposeExecutableManifestAndUnavailableState(t *testing.T) {
+	cfg := config.Config{
+		BindAddr:    "127.0.0.1:19191",
+		DataDir:     filepath.Join(t.TempDir(), "dope-runtime"),
+		LogLevel:    "info",
+		Version:     "test",
+		Environment: config.EnvironmentTest,
+	}
+	authManager := auth.NewManager()
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	homeRoot := filepath.Join(t.TempDir(), ".agents")
+	dataRoot := cfg.DataDir
+	writeSkillFileForTest(t, filepath.Join(homeRoot, "AGENTS.md"), "home overlay")
+	writeSkillFileForTest(t, filepath.Join(dataRoot, "AGENTS.md"), "data overlay")
+	writeExecutableSkillForTest(t, filepath.Join(dataRoot, "skills", "exec-skill"), `
+---
+name: exec-skill
+description: executable skill
+execution.entrypoint: scripts/run.sh
+execution.args: static-arg
+execution.working_dir: .
+execution.profile_id: subprocess_default
+execution.read_roots: .
+execution.write_roots: .
+execution.network_mode: deny
+execution.timeout_ms: 1000
+---
+instructions
+`, "#!/bin/sh\nprintf 'ok %s' \"$1\"")
+	writeSkillFileForTest(t, filepath.Join(dataRoot, "skills", "invalid-skill", "SKILL.md"), strings.TrimSpace(`
+---
+name: invalid-skill
+description: invalid executable skill
+execution.entrypoint: scripts/missing.sh
+---
+broken
+`))
+
+	registry, err := skills.NewRegistryWithRoots(homeRoot, dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistryWithRoots returned error: %v", err)
+	}
+
+	server := NewServer(Dependencies{
+		Config: cfg, Logger: telemetry.New("error").Slog(), EventBus: events.NewBus(),
+		Auth: authManager, Router: router.NewSessionRouter(), Runtime: runtime.NewManager(),
+		Skills: registry, Store: sqliteStore,
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "skills-web")
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/skills", nil)
+	listReq.Header.Set("Authorization", authHeader)
+	listRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for skills list, got %d body=%s", listRec.Code, listRec.Body.String())
+	}
+	listResponse := decodeStrictResponse[SkillRegistryResponse](t, listRec.Body.Bytes())
+	if len(listResponse.Items) != 2 {
+		t.Fatalf("expected 2 skills, got %d", len(listResponse.Items))
+	}
+
+	var execSkill, invalidSkill SkillSummaryResponse
+	for _, item := range listResponse.Items {
+		switch item.SkillID {
+		case "exec-skill":
+			execSkill = item
+		case "invalid-skill":
+			invalidSkill = item
+		}
+	}
+	if execSkill.ExecutionManifest == nil {
+		t.Fatalf("expected executable manifest, got %+v", execSkill)
+	}
+	if execSkill.ExecutionManifest.ApprovalMode != sandbox.ApprovalModeAsk {
+		t.Fatalf("expected default ask approval mode, got %+v", execSkill.ExecutionManifest)
+	}
+	if execSkill.AvailabilityStatus != "available" {
+		t.Fatalf("expected available executable skill, got %+v", execSkill)
+	}
+	if invalidSkill.AvailabilityStatus != "unavailable" || invalidSkill.AvailabilityReason == "" {
+		t.Fatalf("expected unavailable invalid skill with reason, got %+v", invalidSkill)
+	}
+}
+
+func TestSkillToolCallLaunchUsesSandboxExecution(t *testing.T) {
+	cfg := config.Config{
+		BindAddr:    "127.0.0.1:19191",
+		DataDir:     filepath.Join(t.TempDir(), "dope-runtime"),
+		LogLevel:    "info",
+		Version:     "test",
+		Environment: config.EnvironmentTest,
+	}
+	authManager := auth.NewManager()
+	eventBus := events.NewBus()
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	homeRoot := filepath.Join(t.TempDir(), ".agents")
+	dataRoot := cfg.DataDir
+	writeSkillFileForTest(t, filepath.Join(homeRoot, "AGENTS.md"), "home overlay")
+	writeSkillFileForTest(t, filepath.Join(dataRoot, "AGENTS.md"), "data overlay")
+	writeExecutableSkillForTest(t, filepath.Join(dataRoot, "skills", "exec-skill"), `
+---
+name: exec-skill
+description: executable skill
+execution.entrypoint: scripts/run.sh
+execution.args: static
+execution.working_dir: .
+execution.profile_id: subprocess_default
+execution.read_roots: .
+execution.write_roots: .
+execution.network_mode: deny
+execution.approval_mode: allow
+execution.timeout_ms: 1000
+---
+instructions
+`, "#!/bin/sh\nprintf 'skill:%s' \"$1\"")
+	registry, err := skills.NewRegistryWithRoots(homeRoot, dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistryWithRoots returned error: %v", err)
+	}
+
+	manager := runtime.NewManager()
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policy.NewEngine())
+	defer func() { _ = sandboxManager.Close(context.Background()) }()
+	checkpointManager := checkpoints.NewManager(sqliteStore, manager)
+	server := NewServer(Dependencies{
+		Config: cfg, Logger: telemetry.New("error").Slog(), EventBus: eventBus,
+		Auth: authManager, Router: router.NewSessionRouter(), Runtime: manager,
+		Skills: registry, Sandboxes: sandboxManager, Store: sqliteStore, Checkpoints: checkpointManager,
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "skills-exec")
+
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "run skill"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"skillId":"exec-skill","toolName":"exec-skill"}`))
+	createReq.Header.Set("Authorization", authHeader)
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for skill tool call create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	created := decodeStrictResponse[runtime.ToolCall](t, createRec.Body.Bytes())
+	if created.SkillID != "exec-skill" || created.InvocationKind != runtime.ToolCallInvocationKindSkill {
+		t.Fatalf("expected skill-backed tool call, got %+v", created)
+	}
+	if created.SandboxExecutionID == "" {
+		t.Fatalf("expected sandbox execution linkage, got %+v", created)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		got, ok := manager.GetToolCall(run.RunID, step.StepID, created.ToolCallID)
+		if ok && got.Status == runtime.ToolCallStatusCompleted {
+			output, ok := got.Output.(map[string]any)
+			if !ok {
+				t.Fatalf("expected structured tool call output, got %+v", got.Output)
+			}
+			stdout, _ := output["stdout"].(string)
+			if !strings.Contains(stdout, "skill:static") {
+				t.Fatalf("expected sandbox-backed stdout in tool call output, got %+v", got.Output)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("expected skill-backed tool call to complete, got %+v", manager.ListRuns())
+}
+
+func TestSkillToolCallRedactsSecretOutputAndSandboxProjection(t *testing.T) {
+	t.Setenv("DOPE_ENV", "test")
+
+	cfg := config.Config{
+		BindAddr:    "127.0.0.1:19191",
+		DataDir:     filepath.Join(t.TempDir(), "dope-runtime"),
+		LogLevel:    "info",
+		Version:     "test",
+		Environment: config.EnvironmentTest,
+	}
+	eventBus := events.NewBus()
+	policyEngine := policy.NewEngine()
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	homeRoot := filepath.Join(t.TempDir(), ".agents")
+	dataRoot := cfg.DataDir
+	writeExecutableSkillSecretsForTest(t, dataRoot, map[string]string{"EXEC_SKILL_TOKEN": "top-secret-token"})
+	writeSkillFileForTest(t, filepath.Join(homeRoot, "AGENTS.md"), "home overlay")
+	writeSkillFileForTest(t, filepath.Join(dataRoot, "AGENTS.md"), "data overlay")
+	writeExecutableSkillForTest(t, filepath.Join(dataRoot, "skills", "secret-skill"), `
+---
+name: secret-skill
+description: executable skill with env secret
+execution.entrypoint: scripts/run.sh
+execution.profile_id: subprocess_default
+execution.read_roots: .
+execution.write_roots: .
+execution.network_mode: deny
+execution.approval_mode: allow
+execution.secret_refs: EXEC_SKILL_TOKEN
+execution.timeout_ms: 1000
+---
+instructions
+`, "#!/bin/sh\nprintf '%s' \"$EXEC_SKILL_TOKEN\"")
+	registry, err := skills.NewRegistryWithRoots(homeRoot, dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistryWithRoots returned error: %v", err)
+	}
+
+	manager := runtime.NewManager()
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxManager.Close(context.Background()) }()
+	checkpointManager := checkpoints.NewManager(sqliteStore, manager)
+	server := NewServer(Dependencies{
+		Config: cfg, Logger: telemetry.New("error").Slog(), EventBus: eventBus,
+		Policy: policyEngine, Router: router.NewSessionRouter(), Runtime: manager,
+		Skills: registry, Sandboxes: sandboxManager, Store: sqliteStore, Checkpoints: checkpointManager,
+	})
+
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "run secret skill"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"skillId":"secret-skill","toolName":"secret-skill"}`))
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for skill tool call create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	created := decodeStrictResponse[runtime.ToolCall](t, createRec.Body.Bytes())
+	if created.SandboxExecutionID == "" {
+		t.Fatalf("expected sandbox execution linkage, got %+v", created)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var terminal runtime.ToolCall
+	for time.Now().Before(deadline) {
+		got, ok := manager.GetToolCall(run.RunID, step.StepID, created.ToolCallID)
+		if !ok {
+			t.Fatalf("expected tool call %s", created.ToolCallID)
+		}
+		if got.Status == runtime.ToolCallStatusCompleted {
+			terminal = got
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if terminal.ToolCallID == "" {
+		t.Fatalf("tool call %s did not complete", created.ToolCallID)
+	}
+	output, ok := terminal.Output.(map[string]any)
+	if !ok {
+		t.Fatalf("expected structured tool output, got %+v", terminal.Output)
+	}
+	if output["stdout"] != "[REDACTED]" {
+		t.Fatalf("expected redacted stdout, got %+v", output)
+	}
+	if strings.Contains(createRec.Body.String(), "top-secret-token") {
+		t.Fatalf("create response leaked secret: %s", createRec.Body.String())
+	}
+
+	toolCallReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls/"+created.ToolCallID, nil)
+	toolCallRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(toolCallRec, toolCallReq)
+	if toolCallRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for tool call get, got %d body=%s", toolCallRec.Code, toolCallRec.Body.String())
+	}
+	if strings.Contains(toolCallRec.Body.String(), "top-secret-token") {
+		t.Fatalf("tool call response leaked secret: %s", toolCallRec.Body.String())
+	}
+	gotToolCall := decodeStrictResponse[runtime.ToolCall](t, toolCallRec.Body.Bytes())
+	toolOutput, ok := gotToolCall.Output.(map[string]any)
+	if !ok || toolOutput["stdout"] != "[REDACTED]" {
+		t.Fatalf("expected redacted persisted tool output, got %+v", gotToolCall.Output)
+	}
+	toolSecretScope, ok := gotToolCall.Sandbox["secretScope"].([]any)
+	if !ok || len(toolSecretScope) != 1 {
+		t.Fatalf("expected secret scope on tool call sandbox view, got %+v", gotToolCall.Sandbox)
+	}
+
+	executionReq := httptest.NewRequest(http.MethodGet, "/v1/sandboxes/executions/"+created.SandboxExecutionID, nil)
+	executionRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(executionRec, executionReq)
+	if executionRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for sandbox execution get, got %d body=%s", executionRec.Code, executionRec.Body.String())
+	}
+	if strings.Contains(executionRec.Body.String(), "top-secret-token") {
+		t.Fatalf("sandbox execution response leaked secret: %s", executionRec.Body.String())
+	}
+	execution := decodeStrictResponse[sandbox.Execution](t, executionRec.Body.Bytes())
+	if execution.Result.Stdout != "[REDACTED]" {
+		t.Fatalf("expected redacted sandbox stdout, got %+v", execution.Result)
+	}
+	if execution.Consumer == nil || len(execution.Consumer.SecretScope) != 1 || execution.Consumer.SecretScope[0].Resolution != sandbox.SecretResolutionResolved {
+		t.Fatalf("expected resolved secret scope on sandbox execution, got %+v", execution.Consumer)
+	}
+}
+
+func TestApprovalRoutesPreserveExecutableSkillDeclarationProvenance(t *testing.T) {
+	t.Setenv("DOPE_ENV", "test")
+
+	cfg := config.Config{
+		BindAddr:    "127.0.0.1:19191",
+		DataDir:     filepath.Join(t.TempDir(), "dope-runtime"),
+		LogLevel:    "info",
+		Version:     "test",
+		Environment: config.EnvironmentTest,
+	}
+	eventBus := events.NewBus()
+	policyEngine := policy.NewEngine()
+	authManager := auth.NewManager()
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	homeRoot := filepath.Join(t.TempDir(), ".agents")
+	dataRoot := cfg.DataDir
+	writeExecutableSkillSecretsForTest(t, dataRoot, map[string]string{"EXEC_SKILL_TOKEN": "top-secret-token"})
+	writeExecutableSkillForTest(t, filepath.Join(dataRoot, "skills", "approval-skill"), `
+---
+name: approval-skill
+description: executable skill with approval
+execution.entrypoint: scripts/run.sh
+execution.profile_id: subprocess_default
+execution.read_roots: .
+execution.write_roots: .
+execution.network_mode: deny
+execution.approval_mode: ask
+execution.secret_refs: EXEC_SKILL_TOKEN
+execution.timeout_ms: 1000
+---
+instructions
+`, "#!/bin/sh\nprintf ok")
+	registry, err := skills.NewRegistryWithRoots(homeRoot, dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistryWithRoots returned error: %v", err)
+	}
+
+	manager := runtime.NewManager()
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxManager.Close(context.Background()) }()
+	checkpointManager := checkpoints.NewManager(sqliteStore, manager)
+	server := NewServer(Dependencies{
+		Config: cfg, Logger: telemetry.New("error").Slog(), EventBus: eventBus,
+		Policy: policyEngine, Auth: authManager, Router: router.NewSessionRouter(), Runtime: manager,
+		Skills: registry, Sandboxes: sandboxManager, Store: sqliteStore, Checkpoints: checkpointManager,
+	})
+
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "run approval skill"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+	authHeader := issueAuthHeaderForTest(t, authManager, "skills-approval")
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"skillId":"approval-skill","toolName":"approval-skill"}`))
+	createReq.Header.Set("Authorization", authHeader)
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for approval-gated skill call, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	var pending struct {
+		Approval policy.Approval `json:"approval"`
+		Decision policy.Decision `json:"decision"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &pending); err != nil {
+		t.Fatalf("failed to decode pending approval response: %v", err)
+	}
+	assertSandboxSecretScope(t, pending.Approval.Sandbox, "approval-skill", "EXEC_SKILL_TOKEN", "test", "resolved")
+	declaration, ok := pending.Approval.Sandbox["declaration"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected declaration payload, got %+v", pending.Approval.Sandbox)
+	}
+	if declaration["profileId"] != "subprocess_default" || declaration["approvalMode"] != "ask" {
+		t.Fatalf("expected persisted executable skill declaration, got %+v", declaration)
+	}
+	if secretRefs, ok := declaration["secretRefs"].([]any); !ok || len(secretRefs) != 1 || secretRefs[0] != "EXEC_SKILL_TOKEN" {
+		t.Fatalf("expected secret ref provenance, got %+v", declaration)
+	}
+
+	approvalGetReq := httptest.NewRequest(http.MethodGet, "/v1/policy/approvals/"+pending.Approval.ApprovalID, nil)
+	approvalGetReq.Header.Set("Authorization", authHeader)
+	approvalGetRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(approvalGetRec, approvalGetReq)
+	if approvalGetRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for approval get, got %d body=%s", approvalGetRec.Code, approvalGetRec.Body.String())
+	}
+	gotApproval := decodeStrictResponse[policy.Approval](t, approvalGetRec.Body.Bytes())
+	declaration, ok = gotApproval.Sandbox["declaration"].(map[string]any)
+	if !ok || declaration["profileId"] != "subprocess_default" || declaration["approvalMode"] != "ask" {
+		t.Fatalf("expected approval get to preserve executable declaration, got %+v", gotApproval.Sandbox)
+	}
+}
+
+func TestExecCapabilityApprovalAlsoAuthorizesSandboxCommandEscalation(t *testing.T) {
+	eventBus := events.NewBus()
+	authManager := auth.NewManager()
+	manager := runtime.NewManager()
+	capabilitySupervisor := capabilities.NewSupervisor()
+	logger := telemetry.New("error")
+	policyEngine := policy.NewEngine()
+	cfg := config.Config{
+		BindAddr: "127.0.0.1:19191",
+		DataDir:  filepath.Join(t.TempDir(), "dope"),
+		LogLevel: "info",
+		Version:  "test",
+	}
+	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxManager.Close(context.Background()) }()
+	checkpointManager := checkpoints.NewManager(sqliteStore, manager)
+	server := NewServer(Dependencies{
+		Config: cfg, Logger: logger.Slog(), EventBus: eventBus, Policy: policyEngine, Auth: authManager,
+		Router: router.NewSessionRouter(), Runtime: manager, Capabilities: capabilitySupervisor,
+		Sandboxes: sandboxManager, Store: sqliteStore, Checkpoints: checkpointManager,
+	})
+
+	if _, _, err := capabilitySupervisor.Register(capabilities.RegisterInput{
+		CapabilityID: "exec",
+		Kind:         "exec",
+		DisplayName:  "Exec",
+	}); err != nil {
+		t.Fatalf("Register exec capability returned error: %v", err)
+	}
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "run exec tool"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+	targetDir := t.TempDir()
+	targetFile := filepath.Join(targetDir, "remove-me.txt")
+	writeSkillFileForTest(t, targetFile, "payload")
+	authHeader := issueAuthHeaderForTest(t, authManager, "exec-web")
+
+	pendingReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"exec","toolName":"exec","input":{"command":"rm","args":["`+targetFile+`"],"cwd":"`+targetDir+`"}}`))
+	pendingReq.Header.Set("Authorization", authHeader)
+	pendingRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(pendingRec, pendingReq)
+	if pendingRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for exec approval, got %d body=%s", pendingRec.Code, pendingRec.Body.String())
+	}
+	var pending struct {
+		Approval policy.Approval `json:"approval"`
+	}
+	if err := json.Unmarshal(pendingRec.Body.Bytes(), &pending); err != nil {
+		t.Fatalf("failed to decode pending approval: %v", err)
+	}
+
+	resolveReq := httptest.NewRequest(http.MethodPost, "/v1/policy/approvals/"+pending.Approval.ApprovalID+"/resolve", strings.NewReader(`{"resolution":"approved","comment":"approved for exec"}`))
+	resolveReq.Header.Set("Authorization", authHeader)
+	resolveRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resolveRec, resolveReq)
+	if resolveRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for approval resolve, got %d body=%s", resolveRec.Code, resolveRec.Body.String())
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"exec","toolName":"exec","approvalId":"`+pending.Approval.ApprovalID+`","input":{"command":"rm","args":["`+targetFile+`"],"cwd":"`+targetDir+`"}}`))
+	createReq.Header.Set("Authorization", authHeader)
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for approved exec tool call, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	created := decodeStrictResponse[runtime.ToolCall](t, createRec.Body.Bytes())
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		got, ok := manager.GetToolCall(run.RunID, step.StepID, created.ToolCallID)
+		if !ok {
+			t.Fatalf("expected tool call %s", created.ToolCallID)
+		}
+		if got.Status == runtime.ToolCallStatusCompleted {
+			break
+		}
+		if got.Status == runtime.ToolCallStatusFailed || got.Status == runtime.ToolCallStatusDenied || got.Status == runtime.ToolCallStatusCancelled {
+			t.Fatalf("expected single approved execution path, got %+v", got)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if _, err := os.Stat(targetFile); !os.IsNotExist(err) {
+		t.Fatalf("expected rm command to complete without second approval, stat err=%v", err)
+	}
+}
+
+func TestSupportedSkillAndLocalToolCallsStaySandboxAligned(t *testing.T) {
+	t.Setenv("DOPE_ENV", "test")
+
+	cfg := config.Config{
+		BindAddr:    "127.0.0.1:19191",
+		DataDir:     filepath.Join(t.TempDir(), "dope-runtime"),
+		LogLevel:    "info",
+		Version:     "test",
+		Environment: config.EnvironmentTest,
+	}
+	eventBus := events.NewBus()
+	authManager := auth.NewManager()
+	manager := runtime.NewManager()
+	capabilitySupervisor := capabilities.NewSupervisor()
+	logger := telemetry.New("error")
+	policyEngine := policy.NewEngine()
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	homeRoot := filepath.Join(t.TempDir(), ".agents")
+	dataRoot := cfg.DataDir
+	writeExecutableSkillSecretsForTest(t, dataRoot, map[string]string{"EXEC_SKILL_TOKEN": "test-secret"})
+	writeSkillFileForTest(t, filepath.Join(homeRoot, "AGENTS.md"), "home overlay")
+	writeSkillFileForTest(t, filepath.Join(dataRoot, "AGENTS.md"), "data overlay")
+	writeExecutableSkillForTest(t, filepath.Join(dataRoot, "skills", "exec-skill"), `
+---
+name: exec-skill
+description: executable skill
+execution.entrypoint: scripts/run.sh
+execution.profile_id: subprocess_default
+execution.read_roots: .
+execution.write_roots: .
+execution.network_mode: deny
+execution.approval_mode: allow
+execution.secret_refs: EXEC_SKILL_TOKEN
+execution.timeout_ms: 1000
+---
+instructions
+`, "#!/bin/sh\nprintf 'skill path'")
+	registry, err := skills.NewRegistryWithRoots(homeRoot, dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistryWithRoots returned error: %v", err)
+	}
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxManager.Close(context.Background()) }()
+	checkpointManager := checkpoints.NewManager(sqliteStore, manager)
+	server := NewServer(Dependencies{
+		Config: cfg, Logger: logger.Slog(), EventBus: eventBus, Policy: policyEngine, Auth: authManager,
+		Router: router.NewSessionRouter(), Runtime: manager, Skills: registry, Capabilities: capabilitySupervisor,
+		Sandboxes: sandboxManager, Store: sqliteStore, Checkpoints: checkpointManager,
+	})
+
+	if _, _, err := capabilitySupervisor.Register(capabilities.RegisterInput{
+		CapabilityID: "exec",
+		Kind:         "exec",
+		DisplayName:  "Exec",
+	}); err != nil {
+		t.Fatalf("Register exec capability returned error: %v", err)
+	}
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "sandbox alignment"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+	authHeader := issueAuthHeaderForTest(t, authManager, "sandbox-alignment")
+
+	skillReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"skillId":"exec-skill","toolName":"exec-skill"}`))
+	skillReq.Header.Set("Authorization", authHeader)
+	skillRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(skillRec, skillReq)
+	if skillRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for skill tool call create, got %d body=%s", skillRec.Code, skillRec.Body.String())
+	}
+	skillCreated := decodeStrictResponse[runtime.ToolCall](t, skillRec.Body.Bytes())
+	skillTerminal := waitForToolCallTerminalState(t, manager, run.RunID, step.StepID, skillCreated.ToolCallID)
+	if skillTerminal.Status != runtime.ToolCallStatusCompleted {
+		t.Fatalf("expected completed skill tool call, got %+v", skillTerminal)
+	}
+
+	skillGetReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls/"+skillCreated.ToolCallID, nil)
+	skillGetReq.Header.Set("Authorization", authHeader)
+	skillGetRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(skillGetRec, skillGetReq)
+	if skillGetRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for skill tool call get, got %d body=%s", skillGetRec.Code, skillGetRec.Body.String())
+	}
+	gotSkill := decodeStrictResponse[runtime.ToolCall](t, skillGetRec.Body.Bytes())
+	if gotSkill.InvocationKind != runtime.ToolCallInvocationKindSkill || gotSkill.SkillID != "exec-skill" || gotSkill.SandboxExecutionID == "" {
+		t.Fatalf("expected sandbox-linked skill tool call, got %+v", gotSkill)
+	}
+	assertSandboxDeclaration(t, gotSkill.Sandbox, "skill", "exec-skill", "tool_call.execute")
+	assertSandboxPolicyRecord(t, gotSkill.Sandbox, "", "resolved")
+	skillExecutionReq := httptest.NewRequest(http.MethodGet, "/v1/sandboxes/executions/"+gotSkill.SandboxExecutionID, nil)
+	skillExecutionReq.Header.Set("Authorization", authHeader)
+	skillExecutionRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(skillExecutionRec, skillExecutionReq)
+	if skillExecutionRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for skill sandbox execution get, got %d body=%s", skillExecutionRec.Code, skillExecutionRec.Body.String())
+	}
+	skillExecution := decodeStrictResponse[sandbox.Execution](t, skillExecutionRec.Body.Bytes())
+	if skillExecution.ResourceKind != "skill" || skillExecution.ResourceID != "exec-skill" || skillExecution.Consumer == nil || skillExecution.Consumer.PolicyRecord == nil {
+		t.Fatalf("expected skill sandbox execution provenance, got %+v", skillExecution)
+	}
+	if skillExecution.Consumer.PolicyRecord.ToolCallID != gotSkill.ToolCallID || skillExecution.Consumer.PolicyRecord.SandboxExecutionID != gotSkill.SandboxExecutionID {
+		t.Fatalf("expected skill execution linkage, got %+v", skillExecution.Consumer.PolicyRecord)
+	}
+
+	targetDir := t.TempDir()
+	targetFile := filepath.Join(targetDir, "remove-me.txt")
+	writeSkillFileForTest(t, targetFile, "payload")
+
+	pendingReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"exec","toolName":"exec","input":{"command":"rm","args":["`+targetFile+`"],"cwd":"`+targetDir+`"}}`))
+	pendingReq.Header.Set("Authorization", authHeader)
+	pendingRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(pendingRec, pendingReq)
+	if pendingRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for approval-gated exec call, got %d body=%s", pendingRec.Code, pendingRec.Body.String())
+	}
+	var pending struct {
+		Approval policy.Approval `json:"approval"`
+	}
+	if err := json.Unmarshal(pendingRec.Body.Bytes(), &pending); err != nil {
+		t.Fatalf("failed to decode pending approval response: %v", err)
+	}
+
+	resolveReq := httptest.NewRequest(http.MethodPost, "/v1/policy/approvals/"+pending.Approval.ApprovalID+"/resolve", strings.NewReader(`{"resolution":"approved","comment":"ok"}`))
+	resolveReq.Header.Set("Authorization", authHeader)
+	resolveRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resolveRec, resolveReq)
+	if resolveRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for exec approval resolve, got %d body=%s", resolveRec.Code, resolveRec.Body.String())
+	}
+
+	localReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"exec","toolName":"exec","approvalId":"`+pending.Approval.ApprovalID+`","input":{"command":"rm","args":["`+targetFile+`"],"cwd":"`+targetDir+`"}}`))
+	localReq.Header.Set("Authorization", authHeader)
+	localRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(localRec, localReq)
+	if localRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for approved exec tool call, got %d body=%s", localRec.Code, localRec.Body.String())
+	}
+	localCreated := decodeStrictResponse[runtime.ToolCall](t, localRec.Body.Bytes())
+	localTerminal := waitForToolCallTerminalState(t, manager, run.RunID, step.StepID, localCreated.ToolCallID)
+	if localTerminal.Status != runtime.ToolCallStatusCompleted {
+		t.Fatalf("expected completed local tool call, got %+v", localTerminal)
+	}
+
+	localGetReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls/"+localCreated.ToolCallID, nil)
+	localGetReq.Header.Set("Authorization", authHeader)
+	localGetRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(localGetRec, localGetReq)
+	if localGetRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for local tool call get, got %d body=%s", localGetRec.Code, localGetRec.Body.String())
+	}
+	gotLocal := decodeStrictResponse[runtime.ToolCall](t, localGetRec.Body.Bytes())
+	if gotLocal.InvocationKind != runtime.ToolCallInvocationKindLocalTool || gotLocal.CapabilityID != "exec" || gotLocal.SandboxExecutionID == "" {
+		t.Fatalf("expected sandbox-linked local tool call, got %+v", gotLocal)
+	}
+	assertSandboxDeclaration(t, gotLocal.Sandbox, "local_tool", "exec", "tool_call.execute")
+	assertSandboxPolicyRecord(t, gotLocal.Sandbox, "", "not_applicable")
+	localExecutionReq := httptest.NewRequest(http.MethodGet, "/v1/sandboxes/executions/"+gotLocal.SandboxExecutionID, nil)
+	localExecutionReq.Header.Set("Authorization", authHeader)
+	localExecutionRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(localExecutionRec, localExecutionReq)
+	if localExecutionRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for local-tool sandbox execution get, got %d body=%s", localExecutionRec.Code, localExecutionRec.Body.String())
+	}
+	localExecution := decodeStrictResponse[sandbox.Execution](t, localExecutionRec.Body.Bytes())
+	if localExecution.ResourceKind != "capability" || localExecution.ResourceID != "exec" || localExecution.Consumer == nil || localExecution.Consumer.PolicyRecord == nil {
+		t.Fatalf("expected local-tool sandbox execution provenance, got %+v", localExecution)
+	}
+	if localExecution.Consumer.PolicyRecord.ToolCallID != gotLocal.ToolCallID || localExecution.Consumer.PolicyRecord.SandboxExecutionID != gotLocal.SandboxExecutionID {
+		t.Fatalf("expected local-tool execution linkage, got %+v", localExecution.Consumer.PolicyRecord)
+	}
+	if _, err := os.Stat(targetFile); !os.IsNotExist(err) {
+		t.Fatalf("expected approved exec command to complete through sandbox, stat err=%v", err)
 	}
 }
 

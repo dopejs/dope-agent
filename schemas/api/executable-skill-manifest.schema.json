@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/executable-skill-manifest.schema.json",
+  "title": "ExecutableSkillManifest",
+  "type": "object",
+  "required": ["entrypoint", "profileId", "approvalMode"],
+  "additionalProperties": false,
+  "properties": {
+    "entrypoint": { "type": "string" },
+    "args": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "workingDir": { "type": "string" },
+    "profileId": { "type": "string" },
+    "readRoots": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "writeRoots": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "networkMode": {
+      "type": "string",
+      "enum": ["deny", "allow_list", "full"]
+    },
+    "allowedHosts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "allowedPorts": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "secretRefs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "approvalMode": {
+      "type": "string",
+      "enum": ["allow", "ask", "deny"]
+    },
+    "timeoutMs": { "type": "integer", "minimum": 1 },
+    "requiredEnforcementStrength": { "type": "string" }
+  }
+}

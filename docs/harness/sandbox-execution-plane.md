@@ -532,7 +532,8 @@ The current degradation and security boundary is intentionally explicit:
 
 - filesystem enforcement is preflight scope validation, not kernel-level mediation
 - network enforcement for subprocess is `declared_only`, not OS-hardened packet isolation
-- approval escalation is integrated with the daemon approval plane
+- approval escalation is integrated with the daemon approval plane and remains single-hop for
+  the current tool-call execution surface
 - in-flight executions are recovered as cancelled on daemon restart instead of being left in an indeterminate running state
 
 ## Roadmap 16 Completion Standard
@@ -561,6 +562,9 @@ It closed:
 
 - a common requirement declaration model shared by managed-provider bridges, the current skill registry and explicit skill-selection surfaces, and the current high-risk local tool-call path
 - explicit secret scope and redaction semantics for sandbox env injection and operator-visible projections
+- executable-skill env injection resolves from the active daemon data dir
+  (`~/.dope-test/skill-secrets.json` or `~/.dope/skill-secrets.json`) instead of shared
+  ambient process env
 - execution provenance that identifies which current consumer requested sandbox work or approval-gated preflight evaluation
 - the remaining non-converged current consumers beyond the initial managed-provider slice
 
@@ -588,14 +592,16 @@ Current daemon behavior now matches that closure:
 
 ### 3. Skill And Tool Execution Through Sandbox
 
-After MCP, the harness still needs to move actual skill and local tool execution onto the same substrate.
+This slice is now closed for executable skills and the current high-risk local-tool path
+(`exec`, `shell`, `browser`).
 
-This slice should close:
+It closes:
 
 - skill requirement manifests
 - tool subprocess execution through sandbox requests instead of ad hoc launch paths
 - runtime-visible cancellation, timeout, and failure classification for sandbox-backed tool execution
 - provenance linking output back to the skill, tool, and sandbox profile that produced it
+- redacted secret-scope projection for executable skills and sandbox-linked tool outputs
 
 This is the last step before a fuller orchestration layer can rely on sandbox as the default execution boundary.
 
@@ -623,7 +629,9 @@ The next roadmap should not be "MCP immediately" without these prerequisites bei
 
 Without those pieces, MCP would likely reintroduce unmanaged credential and process behavior under a new name.
 
-Those prerequisites are now in place for the current managed-provider, skill-inspection, and high-risk local-tool surfaces. What remains for later roadmaps is MCP lifecycle itself plus generic executable-skill and generic local-tool subprocess migration.
+Those prerequisites are now in place for the current managed-provider, skill-inspection,
+MCP, executable-skill, and high-risk local-tool surfaces. What remains for later roadmaps
+is broader local-capability migration plus stronger backends.
 
 ## Recommended Post-16 Order
 
@@ -632,4 +640,5 @@ Those prerequisites are now in place for the current managed-provider, skill-ins
 3. move executable skill and local tool subprocess execution onto sandbox
 4. add a stronger backend and backend capability negotiation
 
-Step 1 is now complete for the current consumers. The remaining order stays the same: MCP first, then real executable skill and local-tool subprocess migration, then stronger backends.
+Steps 1 through 3 are now complete for the current in-scope consumers. The remaining order
+is stronger backends next, then any broader migration of lower-risk local capability paths.

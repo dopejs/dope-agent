@@ -97,3 +97,10 @@ func (m *Manager) Restore(ctx context.Context) (RecoveryStats, error) {
 func (m *Manager) Close() error {
 	return nil
 }
+
+func (m *Manager) Runtime() *runtime.Manager {
+	if m == nil {
+		return nil
+	}
+	return m.runtime
+}

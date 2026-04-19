@@ -701,7 +701,7 @@ func TestSQLiteStorePersistsConsumerPolicyRecordsAndSecretScopeBindings(t *testi
 
 	ctx := context.Background()
 	startedAt := time.Now().UTC().Add(-time.Minute)
-	recordDoc := []byte(`{"policyRecordId":"policy_local_tool_shell_1","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","declarationId":"local_tool:shell:tool_call.execute","requestedBy":"web-ui","approvalId":"approval_1","decisionId":"decision_1","decision":"ask","approvalStatus":"pending","secretResolution":"not_applicable","enforcementStrength":"declared_only","startedAt":"` + startedAt.Format(time.RFC3339Nano) + `","status":"approval_pending"}`)
+	recordDoc := []byte(`{"declaration":{"declarationId":"local_tool:shell:tool_call.execute","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"access_only","allowedBackendKinds":["subprocess"],"networkMode":"deny","approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"policyRecord":{"policyRecordId":"policy_local_tool_shell_1","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","declarationId":"local_tool:shell:tool_call.execute","requestedBy":"web-ui","approvalId":"approval_1","decisionId":"decision_1","decision":"ask","approvalStatus":"pending","secretResolution":"not_applicable","enforcementStrength":"declared_only","startedAt":"` + startedAt.Format(time.RFC3339Nano) + `","status":"approval_pending"}}`)
 	if err := store.UpsertConsumerPolicyRecord(ctx, ConsumerPolicyRecordRecord{
 		PolicyRecordID:   "policy_local_tool_shell_1",
 		ConsumerKind:     "local_tool",
@@ -744,9 +744,9 @@ func TestSQLiteStorePersistsConsumerPolicyRecordsAndSecretScopeBindings(t *testi
 	if records[0].PolicyRecordID != "policy_local_tool_shell_1" {
 		t.Fatalf("expected policy_local_tool_shell_1, got %s", records[0].PolicyRecordID)
 	}
-	if records[0].Document == nil || !strings.Contains(string(records[0].Document), `"approvalId":"approval_1"`) {
-		t.Fatalf("expected persisted approval linkage in consumer policy record, got %s", string(records[0].Document))
-	}
+		if records[0].Document == nil || !strings.Contains(string(records[0].Document), `"approvalId":"approval_1"`) || !strings.Contains(string(records[0].Document), `"declarationId":"local_tool:shell:tool_call.execute"`) {
+			t.Fatalf("expected persisted approval linkage in consumer policy record, got %s", string(records[0].Document))
+		}
 
 	bindings, err := store.ListSecretScopeBindings(ctx, "managed_provider", "codex_managed")
 	if err != nil {

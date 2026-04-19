@@ -706,7 +706,7 @@ Implementation notes:
 
 ## Roadmap 19: Skill And Local Tool Sandbox Execution
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 ### Goal
 
@@ -725,8 +725,8 @@ Task definition of done:
 
 - executable skills can declare required sandbox profile, filesystem access, network access, and secret refs
 - skill inspection APIs expose execution requirements clearly
-- invalid or unsafe skill requirements are rejected consistently
-- tests cover manifest parsing and rejection behavior
+- invalid or unsafe skill requirements remain visible as `unavailable`
+- tests cover manifest parsing, approval defaulting, and rejection behavior
 
 #### 2. Local Tool Execution Through Sandbox
 
@@ -739,8 +739,8 @@ Task definition of done:
 
 - in-scope local tool execution goes through sandbox-backed execution
 - timeout, cancellation, stdout/stderr capture, and approval behavior are consistent across tools
-- failure classification distinguishes policy, launch, process, and cancellation outcomes
-- tests cover success, timeout, denial, and cancellation paths
+- failure classification distinguishes policy, launch, process, timeout, cancellation, and restart-recovery outcomes
+- tests cover success, timeout, denial, cancellation, redaction, and preflight latency paths
 
 #### 3. Runtime Integration And Provenance
 
@@ -774,6 +774,17 @@ Task definition of done:
 - executable skills and local tools run through sandbox-backed execution
 - operators can inspect tool provenance, policy, and failure state through daemon surfaces
 - the harness is ready for richer orchestration on top of a single execution boundary
+
+Implementation notes:
+
+- executable skills now project `executionManifest`, `availabilityStatus`, and
+  `availabilityReason` through the skill registry routes
+- runtime tool calls now carry `invocationKind`, `skillId`, `sandboxExecutionId`, and
+  `failureClass`
+- approvals, decisions, tool calls, and sandbox executions preserve linked consumer-policy
+  and secret-scope provenance
+- operator-visible stdout/stderr and sandbox results redact resolved secret values
+- daemon restart recovers interrupted in-flight tool executions as `cancelled`
 
 ### Explicitly Out Of Scope
 

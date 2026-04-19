@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -428,6 +429,9 @@ func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, 
 		if err := sandboxManager.Restore(ctx); err != nil {
 			return fmt.Errorf("restore sandbox executions: %w", err)
 		}
+		if err := reconcileRecoveredSandboxToolCalls(ctx, sqliteStore, checkpointManager, sandboxManager); err != nil {
+			return fmt.Errorf("reconcile recovered sandbox tool calls: %w", err)
+		}
 	}
 	if mcpManager != nil {
 		if err := mcpManager.Restore(ctx); err != nil {
@@ -445,6 +449,121 @@ func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, 
 	}
 
 	return nil
+}
+
+func reconcileRecoveredSandboxToolCalls(ctx context.Context, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, sandboxManager *sandbox.Manager) error {
+	if checkpointManager == nil || sandboxManager == nil {
+		return nil
+	}
+	runtimeManager := checkpointManager.Runtime()
+	if runtimeManager == nil {
+		return nil
+	}
+	changedRuns := map[string]struct{}{}
+	for _, run := range runtimeManager.ListRuns() {
+		steps, err := runtimeManager.ListSteps(run.RunID)
+		if err != nil {
+			return err
+		}
+		for _, step := range steps {
+			toolCalls, err := runtimeManager.ListToolCalls(run.RunID, step.StepID)
+			if err != nil {
+				return err
+			}
+			for _, toolCall := range toolCalls {
+				if strings.TrimSpace(toolCall.SandboxExecutionID) == "" {
+					continue
+				}
+				switch toolCall.Status {
+				case runtime.ToolCallStatusCompleted, runtime.ToolCallStatusFailed, runtime.ToolCallStatusCancelled, runtime.ToolCallStatusDenied:
+					continue
+				}
+				execution, ok := sandboxManager.GetExecution(toolCall.SandboxExecutionID)
+				if !ok {
+					continue
+				}
+				var updated runtime.ToolCall
+				switch execution.Status {
+				case sandbox.ExecutionStatusCompleted:
+					updated, err = runtimeManager.CompleteToolCall(run.RunID, step.StepID, toolCall.ToolCallID, runtime.CompleteToolCallInput{Output: recoveredSandboxToolCallOutput(execution)})
+				case sandbox.ExecutionStatusFailed:
+					updated, err = runtimeManager.FailToolCall(run.RunID, step.StepID, toolCall.ToolCallID, runtime.FailToolCallInput{
+						Output:       recoveredSandboxToolCallOutput(execution),
+						Error:        execution.Result.Error,
+						FailureClass: string(execution.Result.ErrorClass),
+					})
+				case sandbox.ExecutionStatusCancelled:
+					updated, err = runtimeManager.CancelToolCall(run.RunID, step.StepID, toolCall.ToolCallID, runtime.CancelToolCallInput{
+						Output:       recoveredSandboxToolCallOutput(execution),
+						Error:        execution.Result.Error,
+						FailureClass: string(execution.Result.ErrorClass),
+					})
+				case sandbox.ExecutionStatusDenied:
+					updated, err = runtimeManager.DenyToolCall(run.RunID, step.StepID, toolCall.ToolCallID, runtime.DenyToolCallInput{
+						Output:       recoveredSandboxToolCallOutput(execution),
+						Error:        execution.Result.Error,
+						FailureClass: string(execution.Result.ErrorClass),
+					})
+				default:
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				updated.SandboxExecutionID = execution.ExecutionID
+				updated.Sandbox = recoveredConsumerViewMap(execution.Consumer)
+				if sqliteStore != nil {
+					if err := sqliteStore.UpsertToolCall(ctx, updated); err != nil {
+						return err
+					}
+				}
+				changedRuns[run.RunID] = struct{}{}
+			}
+		}
+	}
+	for runID := range changedRuns {
+		if err := checkpointManager.SaveRunCheckpoint(ctx, runID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func recoveredSandboxToolCallOutput(execution sandbox.Execution) map[string]any {
+	output := map[string]any{
+		"executionId": execution.ExecutionID,
+		"status":      execution.Status,
+		"stdout":      execution.Result.Stdout,
+		"stderr":      execution.Result.Stderr,
+	}
+	if execution.Result.ExitCode != nil {
+		output["exitCode"] = *execution.Result.ExitCode
+	}
+	if execution.Result.ErrorCode != "" {
+		output["errorCode"] = execution.Result.ErrorCode
+	}
+	if execution.Result.Error != "" {
+		output["error"] = execution.Result.Error
+	}
+	if execution.Consumer != nil {
+		output["consumer"] = recoveredConsumerViewMap(execution.Consumer)
+	}
+	return output
+}
+
+func recoveredConsumerViewMap(view *sandbox.ConsumerContractView) map[string]any {
+	if view == nil {
+		return nil
+	}
+	payload, err := json.Marshal(view)
+	if err != nil {
+		return nil
+	}
+	var item map[string]any
+	if err := json.Unmarshal(payload, &item); err != nil {
+		return nil
+	}
+	return item
 }
 
 func syncManagedProviderState(ctx context.Context, sqliteStore *store.SQLiteStore, providerManager *providers.Manager) error {

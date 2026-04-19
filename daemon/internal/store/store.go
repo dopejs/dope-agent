@@ -28,7 +28,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 8
+	CurrentSchemaVersion = 9
 )
 
 type schemaMigration struct {
@@ -571,6 +571,19 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_mcp_tool_exposure_surface ON mcp_tool_exposure_rules(runtime_surface, exposure_mode, server_id, tool_name);`,
 		},
 	},
+	{
+		Version: 9,
+		Name:    "skill_tool_sandbox_execution",
+		Statements: []string{
+			`ALTER TABLE tool_calls ADD COLUMN invocation_kind TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN skill_id TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN sandbox_execution_id TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN failure_class TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_tool_calls_run_step_created ON tool_calls(run_id, step_id, created_at DESC, tool_call_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_tool_calls_skill_created ON tool_calls(skill_id, created_at DESC, tool_call_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_tool_calls_sandbox_execution ON tool_calls(sandbox_execution_id);`,
+		},
+	},
 }
 
 type SQLiteStore struct {
@@ -593,6 +606,8 @@ func NewSQLiteStore(dataDir string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite db: %w", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	store := &SQLiteStore{
 		DataDir: resolvedDir,
@@ -2041,22 +2056,30 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 			tool_call_id,
 			run_id,
 			step_id,
+			invocation_kind,
 			capability_id,
+			skill_id,
 			tool_name,
 			status,
+			sandbox_execution_id,
+			failure_class,
 			input_json,
 			output_json,
 			sandbox_json,
 			error_text,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(tool_call_id) DO UPDATE SET
 			run_id = excluded.run_id,
 			step_id = excluded.step_id,
+			invocation_kind = excluded.invocation_kind,
 			capability_id = excluded.capability_id,
+			skill_id = excluded.skill_id,
 			tool_name = excluded.tool_name,
 			status = excluded.status,
+			sandbox_execution_id = excluded.sandbox_execution_id,
+			failure_class = excluded.failure_class,
 			input_json = excluded.input_json,
 			output_json = excluded.output_json,
 			sandbox_json = excluded.sandbox_json,
@@ -2067,9 +2090,13 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 		toolCall.ToolCallID,
 		toolCall.RunID,
 		toolCall.StepID,
+		nullString(string(toolCall.InvocationKind)),
 		toolCall.CapabilityID,
+		nullString(toolCall.SkillID),
 		toolCall.ToolName,
 		string(toolCall.Status),
+		nullString(toolCall.SandboxExecutionID),
+		nullString(toolCall.FailureClass),
 		inputJSON,
 		outputJSON,
 		sandboxJSON,
@@ -2090,7 +2117,7 @@ func (s *SQLiteStore) ListToolCalls(ctx context.Context, runID, stepID string) (
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tool_call_id, run_id, step_id, capability_id, tool_name, status, input_json, output_json, sandbox_json, error_text, created_at, updated_at
+		SELECT tool_call_id, run_id, step_id, invocation_kind, capability_id, skill_id, tool_name, status, sandbox_execution_id, failure_class, input_json, output_json, sandbox_json, error_text, created_at, updated_at
 		FROM tool_calls
 		WHERE run_id = ? AND step_id = ?
 		ORDER BY created_at ASC, tool_call_id ASC
@@ -3758,23 +3785,31 @@ func scanToolCall(scanner interface {
 	Scan(dest ...any) error
 }) (runtime.ToolCall, error) {
 	var (
-		toolCall    runtime.ToolCall
-		status      string
-		inputJSON   sql.NullString
-		outputJSON  sql.NullString
-		sandboxJSON sql.NullString
-		errorText   sql.NullString
-		createdAt   string
-		updatedAt   string
+		toolCall           runtime.ToolCall
+		invocationKind     sql.NullString
+		skillID            sql.NullString
+		sandboxExecutionID sql.NullString
+		failureClass       sql.NullString
+		status             string
+		inputJSON          sql.NullString
+		outputJSON         sql.NullString
+		sandboxJSON        sql.NullString
+		errorText          sql.NullString
+		createdAt          string
+		updatedAt          string
 	)
 
 	if err := scanner.Scan(
 		&toolCall.ToolCallID,
 		&toolCall.RunID,
 		&toolCall.StepID,
+		&invocationKind,
 		&toolCall.CapabilityID,
+		&skillID,
 		&toolCall.ToolName,
 		&status,
+		&sandboxExecutionID,
+		&failureClass,
 		&inputJSON,
 		&outputJSON,
 		&sandboxJSON,
@@ -3786,6 +3821,10 @@ func scanToolCall(scanner interface {
 	}
 
 	toolCall.Status = runtime.ToolCallStatus(status)
+	toolCall.InvocationKind = runtime.ToolCallInvocationKind(invocationKind.String)
+	toolCall.SkillID = skillID.String
+	toolCall.SandboxExecutionID = sandboxExecutionID.String
+	toolCall.FailureClass = failureClass.String
 	toolCall.Error = errorText.String
 
 	if err := unmarshalNullableJSON(inputJSON, &toolCall.Input); err != nil {

@@ -277,10 +277,10 @@ func TestSkillSchemasAcceptCanonicalFixtures(t *testing.T) {
 	validator := contracts.NewValidator(schemaRootDir(t))
 	fixtures := map[string]string{
 		"schemas/api/skill-file.schema.json":                      `{"path":"assets/guide.md","sizeBytes":42}`,
-		"schemas/api/skill-summary.schema.json":                   `{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"}}`,
-		"schemas/api/skill-detail.response.schema.json":           `{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"},"frontmatterRaw":"name: shared","body":"data instructions"}`,
+		"schemas/api/skill-summary.schema.json":                   `{"skillId":"exec-skill","name":"exec-skill","description":"executable skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/exec-skill","instructionPath":"/tmp/dope/skills/exec-skill/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"exec-skill","description":"executable skill"},"executionManifest":{"entrypoint":"/tmp/dope/skills/exec-skill/scripts/run.sh","args":["alpha","beta"],"workingDir":"/tmp/dope/skills/exec-skill","profileId":"subprocess_default","readRoots":["/tmp/dope/skills/exec-skill"],"writeRoots":["/tmp/dope/skills/exec-skill"],"networkMode":"deny","secretRefs":["EXEC_SKILL_TOKEN"],"approvalMode":"ask","timeoutMs":1000,"requiredEnforcementStrength":"declared_only"},"availabilityStatus":"available","sandbox":{"declaration":{"declarationId":"skill:exec-skill:tool_call.execute","consumerKind":"skill","consumerId":"exec-skill","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"subprocess","allowedBackendKinds":["subprocess"],"readRoots":["/tmp/dope/skills/exec-skill"],"writeRoots":["/tmp/dope/skills/exec-skill"],"networkMode":"deny","secretRefs":["EXEC_SKILL_TOKEN"],"approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"secretScope":[{"consumerKind":"skill","consumerId":"exec-skill","secretRef":"EXEC_SKILL_TOKEN","environmentScope":"test","defaultSource":"kind_default","defaultRuleId":"skill:exec-skill","deliveryKind":"environment_variable","redactionRule":"value_redacted","resolution":"resolved"}]}}`,
+		"schemas/api/skill-detail.response.schema.json":           `{"skillId":"broken-skill","name":"broken-skill","description":"invalid executable skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/broken-skill","instructionPath":"/tmp/dope/skills/broken-skill/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"broken-skill","description":"invalid executable skill"},"frontmatterRaw":"name: broken-skill","body":"data instructions","executionManifest":{"entrypoint":"/tmp/dope/skills/broken-skill/scripts/run.sh","profileId":"subprocess_default","approvalMode":"ask"},"availabilityStatus":"unavailable","availabilityReason":"executable skill secret ref EXEC_SKILL_TOKEN is unavailable for test environment"}`,
 		"schemas/api/skill-overlay.schema.json":                   `{"overlayId":"data_dir_agents","source":"data_dir","path":"/tmp/dope/AGENTS.md","sizeBytes":12,"modifiedAt":"2026-04-18T12:00:00Z"}`,
-		"schemas/api/skill-registry.response.schema.json":         `{"loadedAt":"2026-04-18T12:00:00Z","items":[{"skillId":"shared","name":"shared","description":"data skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/shared","instructionPath":"/tmp/dope/skills/shared/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"shared","description":"data skill"}}],"overlays":[{"overlayId":"home_agents","source":"home","path":"/tmp/home/.agents/AGENTS.md","sizeBytes":11,"modifiedAt":"2026-04-18T12:00:00Z"}]}`,
+		"schemas/api/skill-registry.response.schema.json":         `{"loadedAt":"2026-04-18T12:00:00Z","items":[{"skillId":"exec-skill","name":"exec-skill","description":"executable skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/exec-skill","instructionPath":"/tmp/dope/skills/exec-skill/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"exec-skill","description":"executable skill"},"executionManifest":{"entrypoint":"/tmp/dope/skills/exec-skill/scripts/run.sh","profileId":"subprocess_default","approvalMode":"ask"},"availabilityStatus":"available"},{"skillId":"broken-skill","name":"broken-skill","description":"invalid executable skill","source":"data_dir","rootPath":"/tmp/dope/skills","skillPath":"/tmp/dope/skills/broken-skill","instructionPath":"/tmp/dope/skills/broken-skill/SKILL.md","files":[{"path":"assets/guide.md","sizeBytes":42}],"frontmatter":{"name":"broken-skill","description":"invalid executable skill"},"executionManifest":{"entrypoint":"/tmp/dope/skills/broken-skill/scripts/run.sh","profileId":"subprocess_default","approvalMode":"ask"},"availabilityStatus":"unavailable","availabilityReason":"executable skill secret ref EXEC_SKILL_TOKEN is unavailable for test environment"}],"overlays":[{"overlayId":"home_agents","source":"home","path":"/tmp/home/.agents/AGENTS.md","sizeBytes":11,"modifiedAt":"2026-04-18T12:00:00Z"}]}`,
 		"schemas/api/sandbox-profile.schema.json":                 `{"profileId":"subprocess_default","title":"Default Subprocess Sandbox","description":"Conservative local subprocess execution for the harness control plane.","backendKind":"subprocess","defaultWorkDir":"/tmp/dope-data","filesystemPolicy":{"mode":"scoped","readRoots":["/tmp/dope-data"],"writeRoots":["/tmp/dope-data"],"tempRoots":["/tmp"],"allowDataDir":true,"allowUserAgentsDir":true,"allowHomeRead":false,"allowHomeWrite":false},"networkPolicy":{"mode":"deny","allowedHosts":[],"allowedPorts":[],"allowLoopback":false,"enforcementMode":"declared_only"},"envPolicy":{"mode":"inherit_safe","allowedVars":["PATH"],"injectedVars":{"DOPE_DATA_DIR":"/tmp/dope-data"},"redactedVars":[]},"approvalPolicy":{"mode":"ask","requiredForCommands":["curl"],"requiredForWritesOutsideRoots":true,"requiredForNetwork":true,"requiredForUnknownBackends":true},"processPolicy":{"timeoutMs":30000,"maxTimeoutMs":300000,"killGraceMs":1000,"captureStdout":true,"captureStderr":true,"maxOutputBytes":65536,"allowStreaming":false,"restartOnFailure":false},"defaultTimeoutMs":30000,"maxTimeoutMs":300000,"restartable":false,"source":"builtin","active":true}`,
 		"schemas/api/sandbox-profile-list.response.schema.json":   `{"items":[{"profileId":"subprocess_default","title":"Default Subprocess Sandbox","description":"Conservative local subprocess execution for the harness control plane.","backendKind":"subprocess","defaultWorkDir":"/tmp/dope-data","filesystemPolicy":{"mode":"scoped","readRoots":["/tmp/dope-data"],"writeRoots":["/tmp/dope-data"],"tempRoots":["/tmp"],"allowDataDir":true,"allowUserAgentsDir":true,"allowHomeRead":false,"allowHomeWrite":false},"networkPolicy":{"mode":"deny","allowedHosts":[],"allowedPorts":[],"allowLoopback":false,"enforcementMode":"declared_only"},"envPolicy":{"mode":"inherit_safe","allowedVars":["PATH"],"injectedVars":{"DOPE_DATA_DIR":"/tmp/dope-data"},"redactedVars":[]},"approvalPolicy":{"mode":"ask","requiredForCommands":["curl"],"requiredForWritesOutsideRoots":true,"requiredForNetwork":true,"requiredForUnknownBackends":true},"processPolicy":{"timeoutMs":30000,"maxTimeoutMs":300000,"killGraceMs":1000,"captureStdout":true,"captureStderr":true,"maxOutputBytes":65536,"allowStreaming":false,"restartOnFailure":false},"defaultTimeoutMs":30000,"maxTimeoutMs":300000,"restartable":false,"source":"builtin","active":true}]}`,
 		"schemas/api/sandbox-decision.schema.json":                `{"decisionId":"sandbox_decision_1","executionId":"sandbox_exec_1","resolution":"ask","matchedRules":["profile:subprocess_default","network:approval_required"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"}`,
@@ -290,6 +290,8 @@ func TestSkillSchemasAcceptCanonicalFixtures(t *testing.T) {
 		"schemas/api/sandbox-explain.response.schema.json":        `{"decision":{"decisionId":"sandbox_decision_1","resolution":"ask","matchedRules":["profile:subprocess_default","network:approval_required"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"}}`,
 	}
 
+	assertFixtureExecutableSkillInspection(t, fixtures["schemas/api/skill-summary.schema.json"], "exec-skill", "available", "ask")
+	assertFixtureExecutableSkillInspection(t, fixtures["schemas/api/skill-detail.response.schema.json"], "broken-skill", "unavailable", "ask")
 	for schemaPath, fixture := range fixtures {
 		t.Run(filepath.Base(schemaPath), func(t *testing.T) {
 			if err := validator.ValidateRelative(schemaPath, []byte(fixture)); err != nil {
@@ -297,6 +299,25 @@ func TestSkillSchemasAcceptCanonicalFixtures(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSkillBackedExecutionSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	fixtures := map[string]string{
+		"schemas/api/tool-call-resource.schema.json":         `{"toolCallId":"tool_call_skill_1","runId":"run_1","stepId":"step_1","invocationKind":"skill","skillId":"exec-skill","toolName":"exec-skill","status":"completed","sandboxExecutionId":"sandbox_exec_skill_1","createdAt":"2026-04-18T12:00:00Z","updatedAt":"2026-04-18T12:00:02Z","output":{"stdout":"[REDACTED]"},"sandbox":{"declaration":{"declarationId":"skill:exec-skill:tool_call.execute","consumerKind":"skill","consumerId":"exec-skill","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"subprocess","allowedBackendKinds":["subprocess"],"readRoots":["/tmp/dope/skills/exec-skill"],"writeRoots":["/tmp/dope/skills/exec-skill"],"networkMode":"deny","secretRefs":["EXEC_SKILL_TOKEN"],"approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"secretScope":[{"consumerKind":"skill","consumerId":"exec-skill","secretRef":"EXEC_SKILL_TOKEN","environmentScope":"test","defaultSource":"kind_default","defaultRuleId":"skill:exec-skill","deliveryKind":"environment_variable","redactionRule":"value_redacted","resolution":"resolved"}],"policyRecord":{"policyRecordId":"policy_skill_1","consumerKind":"skill","consumerId":"exec-skill","operationKind":"tool_call.execute","declarationId":"skill:exec-skill:tool_call.execute","requestedBy":"web-ui","decision":"allow","approvalStatus":"approved","secretResolution":"resolved","enforcementStrength":"declared_only","sandboxExecutionId":"sandbox_exec_skill_1","toolCallId":"tool_call_skill_1","startedAt":"2026-04-18T12:00:00Z","completedAt":"2026-04-18T12:00:02Z","status":"completed"}}}`,
+		"schemas/api/tool-call-list.response.schema.json":    `{"items":[{"toolCallId":"tool_call_skill_1","runId":"run_1","stepId":"step_1","invocationKind":"skill","skillId":"exec-skill","toolName":"exec-skill","status":"completed","sandboxExecutionId":"sandbox_exec_skill_1","createdAt":"2026-04-18T12:00:00Z","updatedAt":"2026-04-18T12:00:02Z","sandbox":{"declaration":{"declarationId":"skill:exec-skill:tool_call.execute","consumerKind":"skill","consumerId":"exec-skill","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"subprocess","allowedBackendKinds":["subprocess"],"readRoots":["/tmp/dope/skills/exec-skill"],"writeRoots":["/tmp/dope/skills/exec-skill"],"networkMode":"deny","secretRefs":["EXEC_SKILL_TOKEN"],"approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"policyRecord":{"policyRecordId":"policy_skill_1","consumerKind":"skill","consumerId":"exec-skill","operationKind":"tool_call.execute","declarationId":"skill:exec-skill:tool_call.execute","requestedBy":"web-ui","decision":"allow","approvalStatus":"approved","secretResolution":"resolved","enforcementStrength":"declared_only","sandboxExecutionId":"sandbox_exec_skill_1","toolCallId":"tool_call_skill_1","startedAt":"2026-04-18T12:00:00Z","completedAt":"2026-04-18T12:00:02Z","status":"completed"}}}]}`,
+		"schemas/api/approval-resource.schema.json":          `{"approvalId":"approval_skill_1","action":"tool_call.execute","resourceKind":"skill","resourceId":"exec-skill","reason":"needs approval","status":"pending","createdAt":"2026-04-18T12:00:00Z","updatedAt":"2026-04-18T12:00:00Z","sandbox":{"declaration":{"declarationId":"skill:exec-skill:tool_call.execute","consumerKind":"skill","consumerId":"exec-skill","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"subprocess","allowedBackendKinds":["subprocess"],"readRoots":["/tmp/dope/skills/exec-skill"],"writeRoots":["/tmp/dope/skills/exec-skill"],"networkMode":"deny","secretRefs":["EXEC_SKILL_TOKEN"],"approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"secretScope":[{"consumerKind":"skill","consumerId":"exec-skill","secretRef":"EXEC_SKILL_TOKEN","environmentScope":"test","defaultSource":"kind_default","defaultRuleId":"skill:exec-skill","deliveryKind":"environment_variable","redactionRule":"value_redacted","resolution":"resolved"}],"policyRecord":{"policyRecordId":"policy_skill_approval_1","consumerKind":"skill","consumerId":"exec-skill","operationKind":"tool_call.execute","declarationId":"skill:exec-skill:tool_call.execute","requestedBy":"web-ui","approvalId":"approval_skill_1","decisionId":"decision_skill_1","decision":"ask","approvalStatus":"pending","secretResolution":"resolved","enforcementStrength":"declared_only","startedAt":"2026-04-18T12:00:00Z","status":"approval_pending"}}}`,
+		"schemas/api/decision-resource.schema.json":          `{"decisionId":"decision_skill_1","action":"tool_call.execute","resourceKind":"skill","resourceId":"exec-skill","outcome":"requires_approval","reason":"needs approval","approvalId":"approval_skill_1","createdAt":"2026-04-18T12:00:00Z","sandbox":{"declaration":{"declarationId":"skill:exec-skill:tool_call.execute","consumerKind":"skill","consumerId":"exec-skill","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"subprocess","allowedBackendKinds":["subprocess"],"readRoots":["/tmp/dope/skills/exec-skill"],"writeRoots":["/tmp/dope/skills/exec-skill"],"networkMode":"deny","secretRefs":["EXEC_SKILL_TOKEN"],"approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"secretScope":[{"consumerKind":"skill","consumerId":"exec-skill","secretRef":"EXEC_SKILL_TOKEN","environmentScope":"test","defaultSource":"kind_default","defaultRuleId":"skill:exec-skill","deliveryKind":"environment_variable","redactionRule":"value_redacted","resolution":"resolved"}],"policyRecord":{"policyRecordId":"policy_skill_approval_1","consumerKind":"skill","consumerId":"exec-skill","operationKind":"tool_call.execute","declarationId":"skill:exec-skill:tool_call.execute","requestedBy":"web-ui","approvalId":"approval_skill_1","decisionId":"decision_skill_1","decision":"ask","approvalStatus":"pending","secretResolution":"resolved","enforcementStrength":"declared_only","startedAt":"2026-04-18T12:00:00Z","status":"approval_pending"}}}`,
+		"schemas/api/sandbox-execution.resource.schema.json": `{"executionId":"sandbox_exec_skill_1","profileId":"subprocess_default","backendKind":"subprocess","command":"/tmp/dope/skills/exec-skill/scripts/run.sh","args":["alpha"],"cwd":"/tmp/dope/skills/exec-skill","envKeys":["EXEC_SKILL_TOKEN"],"stdinProvided":false,"timeoutMs":1000,"requestedBy":"web-ui","resourceKind":"skill","resourceId":"exec-skill","scope":"tool_call","approvalId":"approval_skill_1","access":{"readRoots":["/tmp/dope/skills/exec-skill"],"writeRoots":["/tmp/dope/skills/exec-skill"],"networkMode":"deny","allowedHosts":[],"allowedPorts":[]},"status":"completed","decision":{"decisionId":"sandbox_decision_skill_1","executionId":"sandbox_exec_skill_1","resolution":"allow","matchedRules":["profile:subprocess_default"],"approvalRequired":false,"approvalStatus":"approved","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution allowed"},"result":{"executionId":"sandbox_exec_skill_1","status":"completed","stdout":"[REDACTED]","stderr":"","exitCode":0,"outputTruncated":false,"partial":false},"requestedAt":"2026-04-18T12:00:00Z","updatedAt":"2026-04-18T12:00:02Z","startedAt":"2026-04-18T12:00:00Z","completedAt":"2026-04-18T12:00:02Z","consumer":{"declaration":{"declarationId":"skill:exec-skill:tool_call.execute","consumerKind":"skill","consumerId":"exec-skill","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"subprocess","allowedBackendKinds":["subprocess"],"readRoots":["/tmp/dope/skills/exec-skill"],"writeRoots":["/tmp/dope/skills/exec-skill"],"networkMode":"deny","secretRefs":["EXEC_SKILL_TOKEN"],"approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"secretScope":[{"consumerKind":"skill","consumerId":"exec-skill","secretRef":"EXEC_SKILL_TOKEN","environmentScope":"test","defaultSource":"kind_default","defaultRuleId":"skill:exec-skill","deliveryKind":"environment_variable","redactionRule":"value_redacted","resolution":"resolved"}],"policyRecord":{"policyRecordId":"policy_skill_1","consumerKind":"skill","consumerId":"exec-skill","operationKind":"tool_call.execute","declarationId":"skill:exec-skill:tool_call.execute","requestedBy":"web-ui","approvalId":"approval_skill_1","decisionId":"decision_skill_2","decision":"allow","approvalStatus":"approved","secretResolution":"resolved","enforcementStrength":"declared_only","sandboxExecutionId":"sandbox_exec_skill_1","toolCallId":"tool_call_skill_1","startedAt":"2026-04-18T12:00:00Z","completedAt":"2026-04-18T12:00:02Z","status":"completed"}}}`,
+	}
+
+	assertFixtureToolCallSandboxLinkage(t, fixtures["schemas/api/tool-call-resource.schema.json"], "skill", "exec-skill", "tool_call_skill_1", "sandbox_exec_skill_1")
+	assertFixtureSandboxDeclaration(t, fixtures["schemas/api/approval-resource.schema.json"], "skill", "exec-skill", "tool_call.execute")
+	assertFixtureSandboxPolicyRecord(t, fixtures["schemas/api/approval-resource.schema.json"], "approval_pending", "resolved")
+	assertFixtureSandboxExecutionConsumerLinkage(t, fixtures["schemas/api/sandbox-execution.resource.schema.json"], "skill", "exec-skill", "tool_call_skill_1", "sandbox_exec_skill_1")
+	mustValidateFixtures(t, validator, fixtures)
 }
 
 func TestSandboxResultSchemaAcceptsManagedProviderFailureClass(t *testing.T) {
@@ -824,30 +845,7 @@ func mustValidateFixtures(t *testing.T, validator *contracts.Validator, fixtures
 func assertFixtureSandboxDeclaration(t *testing.T, fixture string, consumerKind, consumerID, operationKind string) {
 	t.Helper()
 
-	body := decodeJSONMap(t, []byte(fixture))
-	var sandboxView map[string]any
-	switch {
-	case body["sandbox"] != nil:
-		sandboxView = body["sandbox"].(map[string]any)
-	case body["payload"] != nil:
-		payload := body["payload"].(map[string]any)
-		if payload["sandbox"] != nil {
-			sandboxView = payload["sandbox"].(map[string]any)
-		} else if payload["skillContracts"] != nil {
-			items := payload["skillContracts"].([]any)
-			if len(items) > 0 {
-				sandboxView = items[0].(map[string]any)
-			}
-		}
-	case body["skillContracts"] != nil:
-		items := body["skillContracts"].([]any)
-		if len(items) > 0 {
-			sandboxView = items[0].(map[string]any)
-		}
-	}
-	if sandboxView == nil {
-		t.Fatalf("expected sandbox view in fixture %s", fixture)
-	}
+	sandboxView := fixtureSandboxView(t, fixture)
 	declaration := sandboxView["declaration"].(map[string]any)
 	if declaration["consumerKind"] != consumerKind || declaration["consumerId"] != consumerID || declaration["operationKind"] != operationKind {
 		t.Fatalf("unexpected sandbox declaration %+v", declaration)
@@ -857,12 +855,95 @@ func assertFixtureSandboxDeclaration(t *testing.T, fixture string, consumerKind,
 func assertFixtureSandboxPolicyRecord(t *testing.T, fixture string, status, secretResolution string) {
 	t.Helper()
 
-	body := decodeJSONMap(t, []byte(fixture))
-	sandboxView := body["sandbox"].(map[string]any)
+	sandboxView := fixtureSandboxView(t, fixture)
 	record := sandboxView["policyRecord"].(map[string]any)
 	if record["status"] != status || record["secretResolution"] != secretResolution {
 		t.Fatalf("unexpected sandbox policy record %+v", record)
 	}
+}
+
+func assertFixtureExecutableSkillInspection(t *testing.T, fixture string, skillID, availabilityStatus, approvalMode string) {
+	t.Helper()
+
+	body := decodeJSONMap(t, []byte(fixture))
+	if body["skillId"] != skillID {
+		t.Fatalf("expected skillId %s, got %+v", skillID, body)
+	}
+	if body["availabilityStatus"] != availabilityStatus {
+		t.Fatalf("expected availability %s, got %+v", availabilityStatus, body)
+	}
+	manifest, ok := body["executionManifest"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected execution manifest, got %+v", body)
+	}
+	if manifest["approvalMode"] != approvalMode || manifest["profileId"] != "subprocess_default" {
+		t.Fatalf("unexpected execution manifest %+v", manifest)
+	}
+}
+
+func assertFixtureToolCallSandboxLinkage(t *testing.T, fixture string, invocationKind, consumerID, toolCallID, sandboxExecutionID string) {
+	t.Helper()
+
+	body := decodeJSONMap(t, []byte(fixture))
+	if body["invocationKind"] != invocationKind || body["toolCallId"] != toolCallID || body["sandboxExecutionId"] != sandboxExecutionID {
+		t.Fatalf("unexpected tool-call linkage %+v", body)
+	}
+	if body["skillId"] != consumerID && body["capabilityId"] != consumerID {
+		t.Fatalf("expected consumer id %s, got %+v", consumerID, body)
+	}
+	assertFixtureSandboxDeclaration(t, fixture, invocationKind, consumerID, "tool_call.execute")
+	assertFixtureSandboxPolicyRecord(t, fixture, "completed", "resolved")
+}
+
+func assertFixtureSandboxExecutionConsumerLinkage(t *testing.T, fixture string, consumerKind, consumerID, toolCallID, sandboxExecutionID string) {
+	t.Helper()
+
+	body := decodeJSONMap(t, []byte(fixture))
+	if body["executionId"] != sandboxExecutionID || body["resourceId"] != consumerID || body["resourceKind"] != consumerKind {
+		t.Fatalf("unexpected sandbox execution linkage %+v", body)
+	}
+	consumer, ok := body["consumer"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected consumer view, got %+v", body)
+	}
+	declaration := consumer["declaration"].(map[string]any)
+	if declaration["consumerKind"] != consumerKind || declaration["consumerId"] != consumerID {
+		t.Fatalf("unexpected consumer declaration %+v", declaration)
+	}
+	record := consumer["policyRecord"].(map[string]any)
+	if record["toolCallId"] != toolCallID || record["sandboxExecutionId"] != sandboxExecutionID {
+		t.Fatalf("unexpected consumer policy record %+v", record)
+	}
+}
+
+func fixtureSandboxView(t *testing.T, fixture string) map[string]any {
+	t.Helper()
+
+	body := decodeJSONMap(t, []byte(fixture))
+	switch {
+	case body["sandbox"] != nil:
+		return body["sandbox"].(map[string]any)
+	case body["consumer"] != nil:
+		return body["consumer"].(map[string]any)
+	case body["payload"] != nil:
+		payload := body["payload"].(map[string]any)
+		if payload["sandbox"] != nil {
+			return payload["sandbox"].(map[string]any)
+		}
+		if payload["skillContracts"] != nil {
+			items := payload["skillContracts"].([]any)
+			if len(items) > 0 {
+				return items[0].(map[string]any)
+			}
+		}
+	case body["skillContracts"] != nil:
+		items := body["skillContracts"].([]any)
+		if len(items) > 0 {
+			return items[0].(map[string]any)
+		}
+	}
+	t.Fatalf("expected sandbox view in fixture %s", fixture)
+	return nil
 }
 
 func schemaRootDir(t *testing.T) string {

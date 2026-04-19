@@ -448,6 +448,55 @@ func TestToolCallFailAndInvalidTransition(t *testing.T) {
 	}
 }
 
+func TestToolCallCancelAndDenyTransitions(t *testing.T) {
+	manager := NewManager()
+
+	run, err := manager.CreateRun(CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, CreateStepInput{Title: "execute a tool"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	cancelled, err := manager.CreateToolCall(run.RunID, step.StepID, CreateToolCallInput{
+		CapabilityID: "shell",
+		ToolName:     "shell",
+	})
+	if err != nil {
+		t.Fatalf("CreateToolCall returned error: %v", err)
+	}
+	cancelled, err = manager.CancelToolCall(run.RunID, step.StepID, cancelled.ToolCallID, CancelToolCallInput{
+		Error:        "daemon restarted",
+		FailureClass: "cancelled",
+	})
+	if err != nil {
+		t.Fatalf("CancelToolCall returned error: %v", err)
+	}
+	if cancelled.Status != ToolCallStatusCancelled {
+		t.Fatalf("expected cancelled status, got %+v", cancelled)
+	}
+
+	denied, err := manager.CreateToolCall(run.RunID, step.StepID, CreateToolCallInput{
+		CapabilityID: "exec",
+		ToolName:     "exec",
+	})
+	if err != nil {
+		t.Fatalf("CreateToolCall returned error: %v", err)
+	}
+	denied, err = manager.DenyToolCall(run.RunID, step.StepID, denied.ToolCallID, DenyToolCallInput{
+		Error:        "policy denied",
+		FailureClass: "policy_denied",
+	})
+	if err != nil {
+		t.Fatalf("DenyToolCall returned error: %v", err)
+	}
+	if denied.Status != ToolCallStatusDenied {
+		t.Fatalf("expected denied status, got %+v", denied)
+	}
+}
+
 func TestSnapshotAndRestoreCheckpoint(t *testing.T) {
 	manager := NewManager()
 

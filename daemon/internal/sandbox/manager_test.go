@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -265,6 +266,109 @@ func TestRestoreCancelsPendingManagedProviderFinalization(t *testing.T) {
 	}
 }
 
+func TestRestorePreservesToolCallLinkageForCancelledExecution(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	store1, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	startedAt := time.Now().UTC().Add(-time.Minute)
+	execution := Execution{
+		ExecutionID:  "sandbox_exec_linked_restore_1",
+		ProfileID:    ProfileIDSubprocessDefault,
+		BackendKind:  BackendKindSubprocess,
+		Command:      testShell(),
+		Args:         testShellArgs(testSleepScript()),
+		Cwd:          t.TempDir(),
+		RequestedBy:  "test",
+		ResourceKind: "capability",
+		ResourceID:   "shell",
+		Scope:        "tool_call",
+		Status:       ExecutionStatusRunning,
+		RequestedAt:  startedAt,
+		UpdatedAt:    startedAt,
+		Result: Result{
+			Status: ExecutionStatusRunning,
+		},
+		Consumer: &ConsumerContractView{
+			Declaration: &ConsumerRequirementDeclaration{
+				DeclarationID:               "local_tool:shell:tool_call.execute",
+				ConsumerKind:                ConsumerKindLocalTool,
+				ConsumerID:                  "shell",
+				OperationKind:               "tool_call.execute",
+				ProfileID:                   ProfileIDSubprocessDefault,
+				ExecutionMode:               ExecutionModeAccessOnly,
+				AllowedBackendKinds:         []BackendKind{BackendKindSubprocess},
+				NetworkMode:                 NetworkModeDeny,
+				ApprovalMode:                ApprovalModeAsk,
+				RequiredEnforcementStrength: "declared_only",
+				Active:                      true,
+				Source:                      "builtin",
+			},
+			PolicyRecord: &ConsumerPolicyRecord{
+				PolicyRecordID:     "policy_restore_linked_1",
+				ConsumerKind:       ConsumerKindLocalTool,
+				ConsumerID:         "shell",
+				OperationKind:      "tool_call.execute",
+				DeclarationID:      "local_tool:shell:tool_call.execute",
+				Decision:           DecisionResolutionAllow,
+				ApprovalStatus:     DecisionApprovalStatusApproved,
+				SecretResolution:   SecretResolutionNotApplicable,
+				SandboxExecutionID: "sandbox_exec_linked_restore_1",
+				ToolCallID:         "tool_call_linked_restore_1",
+				StartedAt:          startedAt,
+				Status:             PolicyRecordStatusRunning,
+			},
+		},
+	}
+	document, err := json.Marshal(execution)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	if err := store1.UpsertSandboxExecution(context.Background(), store.SandboxExecutionRecord{
+		ExecutionID: execution.ExecutionID,
+		Status:      string(execution.Status),
+		StartedAt:   &startedAt,
+		Document:    document,
+	}); err != nil {
+		t.Fatalf("UpsertSandboxExecution returned error: %v", err)
+	}
+	if err := store1.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+
+	store2, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("reopen SQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store2.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+	eventBus2 := events.NewBus()
+	manager2 := NewManager(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     dataDir,
+	}, store2, eventBus2, policy.NewEngine())
+	if err := manager2.Restore(context.Background()); err != nil {
+		t.Fatalf("Restore returned error: %v", err)
+	}
+
+	restored, ok := manager2.GetExecution(execution.ExecutionID)
+	if !ok {
+		t.Fatalf("expected restored execution %s", execution.ExecutionID)
+	}
+	if restored.Status != ExecutionStatusCancelled || restored.Consumer == nil || restored.Consumer.PolicyRecord == nil {
+		t.Fatalf("expected cancelled restored execution with consumer linkage, got %+v", restored)
+	}
+	if restored.Consumer.PolicyRecord.ToolCallID != "tool_call_linked_restore_1" || restored.Consumer.PolicyRecord.SandboxExecutionID != execution.ExecutionID {
+		t.Fatalf("expected restored consumer linkage, got %+v", restored.Consumer.PolicyRecord)
+	}
+}
+
 func TestCancelExecutionTransitionsToCancelled(t *testing.T) {
 	t.Parallel()
 
@@ -392,6 +496,97 @@ func TestStartExecutionPersistsEnvironmentScopedSecretScopeBindings(t *testing.T
 	}
 	if !foundTest || !foundProd {
 		t.Fatalf("expected test and prod environment bindings, got %+v", bindings)
+	}
+}
+
+func TestStartExecutionRedactsSecretValuesFromResults(t *testing.T) {
+	t.Parallel()
+
+	manager := newSandboxManagerForTest(t)
+	cwd := t.TempDir()
+	execution, err := manager.StartExecution(context.Background(), ExecutionRequest{
+		ProfileID: ProfileIDSubprocessDefault,
+		Command:   testShell(),
+		Args:      testShellArgs("encoded=$(printf '%s' \"$EXEC_SKILL_TOKEN\" | base64 | tr -d '\\n'); printf '%s\\n%s' \"$EXEC_SKILL_TOKEN\" \"$encoded\""),
+		Cwd:       cwd,
+		Env: map[string]string{
+			"EXEC_SKILL_TOKEN": "top-secret-token",
+		},
+		Access: AccessRequest{
+			ReadRoots:  []string{cwd},
+			WriteRoots: []string{cwd},
+		},
+		Consumer: &ConsumerContractView{
+			Declaration: &ConsumerRequirementDeclaration{
+				DeclarationID:               "skill:redaction-skill:tool_call.execute",
+				ConsumerKind:                ConsumerKindSkill,
+				ConsumerID:                  "redaction-skill",
+				OperationKind:               "tool_call.execute",
+				ProfileID:                   ProfileIDSubprocessDefault,
+				ExecutionMode:               ExecutionModeSubprocess,
+				AllowedBackendKinds:         []BackendKind{BackendKindSubprocess},
+				ApprovalMode:                ApprovalModeAllow,
+				RequiredEnforcementStrength: "declared_only",
+				Active:                      true,
+				Source:                      SourceBuiltin,
+			},
+			SecretScope: []SecretScopeOutcome{
+				{
+					ConsumerKind:     ConsumerKindSkill,
+					ConsumerID:       "redaction-skill",
+					SecretRef:        "EXEC_SKILL_TOKEN",
+					EnvironmentScope: SecretEnvironmentScopeTest,
+					DefaultSource:    SecretDefaultSourceInstanceOverride,
+					DefaultRuleID:    "skill:redaction-skill",
+					DeliveryKind:     "environment_variable",
+					RedactionRule:    "value_redacted",
+					Resolution:       SecretResolutionResolved,
+				},
+			},
+			PolicyRecord: &ConsumerPolicyRecord{
+				PolicyRecordID:   "policy_skill_redaction",
+				ConsumerKind:     ConsumerKindSkill,
+				ConsumerID:       "redaction-skill",
+				OperationKind:    "tool_call.execute",
+				Decision:         DecisionResolutionAllow,
+				ApprovalStatus:   DecisionApprovalStatusNotApplicable,
+				SecretResolution: SecretResolutionResolved,
+				StartedAt:        time.Now().UTC(),
+				Status:           PolicyRecordStatusPreflightAllowed,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartExecution returned error: %v", err)
+	}
+
+	execution = waitForTerminalExecution(t, manager, execution.ExecutionID)
+	if execution.Status != ExecutionStatusCompleted {
+		t.Fatalf("expected completed execution, got %+v", execution)
+	}
+	if strings.Contains(execution.Result.Stdout, "top-secret-token") {
+		t.Fatalf("expected raw secret to be redacted, got %+v", execution.Result)
+	}
+	encodedSecret := "dG9wLXNlY3JldC10b2tlbg=="
+	if strings.Contains(execution.Result.Stdout, encodedSecret) {
+		t.Fatalf("expected derived secret material to be redacted, got %+v", execution.Result)
+	}
+	if execution.Result.Stdout != "[REDACTED]\n[REDACTED]" {
+		t.Fatalf("expected redacted stdout, got %+v", execution.Result)
+	}
+	if strings.Contains(execution.Result.Stderr, "top-secret-token") || strings.Contains(execution.Result.Error, "top-secret-token") {
+		t.Fatalf("expected redacted error surfaces, got %+v", execution.Result)
+	}
+
+	records, err := manager.store.ListSandboxExecutions(context.Background())
+	if err != nil {
+		t.Fatalf("ListSandboxExecutions returned error: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 persisted execution, got %+v", records)
+	}
+	if strings.Contains(string(records[0].Document), "top-secret-token") {
+		t.Fatalf("persisted execution leaked secret: %s", string(records[0].Document))
 	}
 }
 

@@ -105,9 +105,32 @@ These APIs should let operators inspect:
 ## Explicitly Out Of Scope
 
 - automatic skill triggering
-- execution of bundled scripts
 - reference-file auto-loading based on task content
 - plugin marketplace behavior
+
+## Roadmap 19 Extension
+
+The registry now also supports executable skills.
+
+Executable skills remain regular registry entries, but may additionally declare an
+`execution.*` manifest in `SKILL.md` frontmatter. The daemon projects that manifest through
+`GET /v1/skills` and `GET /v1/skills/{skillId}` as:
+
+- `executionManifest` for the resolved sandbox requirements
+- `availabilityStatus` with `not_executable`, `available`, or `unavailable`
+- `availabilityReason` when an executable skill is present but cannot safely launch
+
+Operational rules:
+
+- undeclared executable-skill approval posture defaults to `ask`
+- invalid executable skills remain visible as `unavailable`; they do not silently disappear
+- executable-skill launches use the existing runtime tool-call route family instead of a
+  second public execution resource
+- executable-skill secret refs resolve from the active daemon `dataDir` via
+  `<dataDir>/skill-secrets.json`, so `test` and `prod` instances do not share ambient
+  process-env secrets
+- executable-skill secret refs are projected as redacted secret-scope metadata only; API
+  responses must not emit secret values
 
 ## Completion Standard
 

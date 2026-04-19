@@ -3,7 +3,12 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"crypto/rand"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -513,6 +518,7 @@ type launchSpec struct {
 	Args           []string
 	Cwd            string
 	Env            []string
+	SecretValues   []string
 	Stdin          string
 	Timeout        time.Duration
 	KillGrace      time.Duration
@@ -643,6 +649,7 @@ func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createA
 		Args:           cloneStrings(execution.Args),
 		Cwd:            execution.Cwd,
 		Env:            env,
+		SecretValues:   collectSecretRedactionValues(request.Env, execution.Consumer),
 		Stdin:          request.Stdin,
 		Timeout:        time.Duration(timeoutMs) * time.Millisecond,
 		KillGrace:      time.Duration(profile.ProcessPolicy.KillGraceMs) * time.Millisecond,
@@ -709,7 +716,7 @@ func (m *Manager) evaluate(ctx context.Context, profile Profile, execution Execu
 
 	if requestedApproval != "" {
 		approval, ok := m.policy.GetApproval(requestedApproval)
-		if ok && approval.Action == sandboxApprovalAction && approval.ResourceKind == sandboxResourceKind && approval.ResourceID == profile.ProfileID {
+		if ok && approvalMatchesExecution(approval, execution, profile) {
 			switch approval.Status {
 			case policy.ApprovalStatusApproved:
 				decision.Resolution = DecisionResolutionAllow
@@ -745,6 +752,15 @@ func (m *Manager) evaluate(ctx context.Context, profile Profile, execution Execu
 	}
 	decision.ApprovalStatus = DecisionApprovalStatusPending
 	return decision, approval.ApprovalID, &createdDecision, nil
+}
+
+func approvalMatchesExecution(approval policy.Approval, execution Execution, profile Profile) bool {
+	if approval.Action == sandboxApprovalAction && approval.ResourceKind == sandboxResourceKind && approval.ResourceID == profile.ProfileID {
+		return true
+	}
+	return approval.Action == "tool_call.execute" &&
+		approval.ResourceKind == strings.TrimSpace(execution.ResourceKind) &&
+		approval.ResourceID == strings.TrimSpace(execution.ResourceID)
 }
 
 func evaluateAccessDecision(profile Profile, cwd string, access AccessRequest) Decision {
@@ -841,7 +857,7 @@ func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, e
 		_ = err
 	}
 
-	result := executeSubprocess(ctx, *launch)
+	result := redactSubprocessResult(executeSubprocess(ctx, *launch), launch.SecretValues)
 
 	completedAt := time.Now().UTC()
 	execution.Status = result.Status
@@ -898,6 +914,7 @@ func (m *Manager) runAttachedExecution(ctx context.Context, cancel context.Cance
 		return
 	}
 	defer cancel()
+	secretValues := collectSecretRedactionValuesFromProcessEnv(execution.Consumer)
 
 	waitCh := make(chan error, 1)
 	go func() {
@@ -920,7 +937,7 @@ func (m *Manager) runAttachedExecution(ctx context.Context, cancel context.Cance
 			result = subprocessResult{
 				Status:          ExecutionStatusCompleted,
 				ExitCode:        &exitCode,
-				Stderr:          stderrCapture.String(),
+				Stderr:          redactSecretText(stderrCapture.String(), secretValues),
 				OutputTruncated: stderrCapture.Truncated(),
 				BackendMetadata: metadata,
 			}
@@ -932,28 +949,28 @@ func (m *Manager) runAttachedExecution(ctx context.Context, cancel context.Cance
 			result = subprocessResult{
 				Status:          ExecutionStatusFailed,
 				ExitCode:        &exitCode,
-				Stderr:          stderrCapture.String(),
+				Stderr:          redactSecretText(stderrCapture.String(), secretValues),
 				OutputTruncated: stderrCapture.Truncated(),
 				ErrorClass:      ErrorClassProcessFailed,
 				ErrorCode:       "sandbox_process_failed",
-				Error:           err.Error(),
+				Error:           redactSecretText(err.Error(), secretValues),
 				BackendMetadata: metadata,
 			}
 			break
 		}
 		result = subprocessResult{
 			Status:          ExecutionStatusFailed,
-			Stderr:          stderrCapture.String(),
+			Stderr:          redactSecretText(stderrCapture.String(), secretValues),
 			OutputTruncated: stderrCapture.Truncated(),
 			ErrorClass:      ErrorClassIOCaptureFailed,
 			ErrorCode:       "sandbox_wait_failed",
-			Error:           err.Error(),
+			Error:           redactSecretText(err.Error(), secretValues),
 			BackendMetadata: metadata,
 		}
 	case <-ctx.Done():
 		result = subprocessResult{
 			Status:          ExecutionStatusCancelled,
-			Stderr:          stderrCapture.String(),
+			Stderr:          redactSecretText(stderrCapture.String(), secretValues),
 			OutputTruncated: stderrCapture.Truncated(),
 			ErrorClass:      ErrorClassCancelled,
 			ErrorCode:       "sandbox_cancelled",
@@ -1129,6 +1146,98 @@ func executeSubprocess(ctx context.Context, launch launchSpec) subprocessResult 
 			BackendMetadata: map[string]any{"backend": "subprocess"},
 		}
 	}
+}
+
+func collectSecretRedactionValues(env map[string]string, consumer *ConsumerContractView) []string {
+	if len(env) == 0 || consumer == nil || len(consumer.SecretScope) == 0 {
+		return nil
+	}
+	values := make([]string, 0, len(consumer.SecretScope))
+	seen := map[string]struct{}{}
+	for _, item := range consumer.SecretScope {
+		if item.Resolution != SecretResolutionResolved {
+			continue
+		}
+		value := strings.TrimSpace(env[item.SecretRef])
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+		for _, derived := range derivedSecretVariants(value) {
+			if _, ok := seen[derived]; ok {
+				continue
+			}
+			seen[derived] = struct{}{}
+			values = append(values, derived)
+		}
+	}
+	return values
+}
+
+func collectSecretRedactionValuesFromProcessEnv(consumer *ConsumerContractView) []string {
+	if consumer == nil || len(consumer.SecretScope) == 0 {
+		return nil
+	}
+	env := map[string]string{}
+	for _, item := range consumer.SecretScope {
+		if value, ok := os.LookupEnv(item.SecretRef); ok {
+			env[item.SecretRef] = value
+		}
+	}
+	return collectSecretRedactionValues(env, consumer)
+}
+
+func redactSubprocessResult(result subprocessResult, secretValues []string) subprocessResult {
+	if len(secretValues) == 0 {
+		return result
+	}
+	result.Stdout = redactSecretText(result.Stdout, secretValues)
+	result.Stderr = redactSecretText(result.Stderr, secretValues)
+	result.Error = redactSecretText(result.Error, secretValues)
+	return result
+}
+
+func redactSecretText(text string, secretValues []string) string {
+	if strings.TrimSpace(text) == "" || len(secretValues) == 0 {
+		return text
+	}
+	redacted := text
+	for _, secretValue := range secretValues {
+		if secretValue == "" {
+			continue
+		}
+		redacted = strings.ReplaceAll(redacted, secretValue, "[REDACTED]")
+	}
+	return redacted
+}
+
+func derivedSecretVariants(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	items := []string{
+		hex.EncodeToString([]byte(trimmed)),
+		base64.StdEncoding.EncodeToString([]byte(trimmed)),
+		base64.RawStdEncoding.EncodeToString([]byte(trimmed)),
+		base64.URLEncoding.EncodeToString([]byte(trimmed)),
+		base64.RawURLEncoding.EncodeToString([]byte(trimmed)),
+		fmt.Sprintf("%x", md5.Sum([]byte(trimmed))),
+		fmt.Sprintf("%x", sha1.Sum([]byte(trimmed))),
+		fmt.Sprintf("%x", sha256.Sum256([]byte(trimmed))),
+		fmt.Sprintf("%x", sha512.Sum512([]byte(trimmed))),
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if strings.TrimSpace(item) != "" && item != trimmed {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func mergeBackendMetadata(metadata map[string]any, execution Execution) map[string]any {
@@ -2192,9 +2301,9 @@ func (m *Manager) persistConsumerContract(ctx context.Context, view *ConsumerCon
 		}
 	}
 	if view.PolicyRecord != nil {
-		document, err := json.Marshal(view.PolicyRecord)
+		document, err := json.Marshal(view)
 		if err != nil {
-			return fmt.Errorf("marshal consumer policy record %s: %w", view.PolicyRecord.PolicyRecordID, err)
+			return fmt.Errorf("marshal consumer policy view %s: %w", view.PolicyRecord.PolicyRecordID, err)
 		}
 		if err := m.store.UpsertConsumerPolicyRecord(ctx, store.ConsumerPolicyRecordRecord{
 			PolicyRecordID:      view.PolicyRecord.PolicyRecordID,

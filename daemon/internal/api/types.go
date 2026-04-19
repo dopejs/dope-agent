@@ -201,16 +201,19 @@ type SkillFileResponse struct {
 }
 
 type SkillSummaryResponse struct {
-	SkillID         string              `json:"skillId"`
-	Name            string              `json:"name"`
-	Description     string              `json:"description"`
-	Source          string              `json:"source"`
-	RootPath        string              `json:"rootPath"`
-	SkillPath       string              `json:"skillPath"`
-	InstructionPath string              `json:"instructionPath"`
-	Files           []SkillFileResponse `json:"files"`
-	Frontmatter     map[string]string   `json:"frontmatter"`
-	Sandbox         map[string]any      `json:"sandbox,omitempty"`
+	SkillID            string                    `json:"skillId"`
+	Name               string                    `json:"name"`
+	Description        string                    `json:"description"`
+	Source             string                    `json:"source"`
+	RootPath           string                    `json:"rootPath"`
+	SkillPath          string                    `json:"skillPath"`
+	InstructionPath    string                    `json:"instructionPath"`
+	Files              []SkillFileResponse       `json:"files"`
+	Frontmatter        map[string]string         `json:"frontmatter"`
+	ExecutionManifest  *skills.ExecutableManifest `json:"executionManifest,omitempty"`
+	AvailabilityStatus string                    `json:"availabilityStatus,omitempty"`
+	AvailabilityReason string                    `json:"availabilityReason,omitempty"`
+	Sandbox            map[string]any            `json:"sandbox,omitempty"`
 }
 
 type SkillDetailResponse struct {
@@ -379,16 +382,19 @@ func buildSkillSummaryResponse(skill skills.Skill) SkillSummaryResponse {
 		})
 	}
 	return SkillSummaryResponse{
-		SkillID:         skill.SkillID,
-		Name:            skill.Name,
-		Description:     skill.Description,
-		Source:          string(skill.Source),
-		RootPath:        skill.RootPath,
-		SkillPath:       skill.SkillPath,
-		InstructionPath: skill.InstructionPath,
-		Files:           files,
-		Frontmatter:     skill.Frontmatter,
-		Sandbox:         cloneSandboxConsumerView(skill.Sandbox),
+		SkillID:            skill.SkillID,
+		Name:               skill.Name,
+		Description:        skill.Description,
+		Source:             string(skill.Source),
+		RootPath:           skill.RootPath,
+		SkillPath:          skill.SkillPath,
+		InstructionPath:    skill.InstructionPath,
+		Files:              files,
+		Frontmatter:        skill.Frontmatter,
+		ExecutionManifest:  cloneExecutableManifest(skill.ExecutionManifest),
+		AvailabilityStatus: string(skill.AvailabilityStatus),
+		AvailabilityReason: skill.AvailabilityReason,
+		Sandbox:            cloneSandboxConsumerView(skill.Sandbox),
 	}
 }
 
@@ -459,6 +465,20 @@ func cloneSandboxConsumerViews(items []map[string]any) []map[string]any {
 		cloned = append(cloned, cloneSandboxConsumerView(item))
 	}
 	return cloned
+}
+
+func cloneExecutableManifest(manifest *skills.ExecutableManifest) *skills.ExecutableManifest {
+	if manifest == nil {
+		return nil
+	}
+	cloned := *manifest
+	cloned.Args = append([]string(nil), manifest.Args...)
+	cloned.ReadRoots = append([]string(nil), manifest.ReadRoots...)
+	cloned.WriteRoots = append([]string(nil), manifest.WriteRoots...)
+	cloned.AllowedHosts = append([]string(nil), manifest.AllowedHosts...)
+	cloned.AllowedPorts = append([]int(nil), manifest.AllowedPorts...)
+	cloned.SecretRefs = append([]string(nil), manifest.SecretRefs...)
+	return &cloned
 }
 
 func effectiveEnvironment(cfg config.Config) string {

@@ -32,6 +32,16 @@
       "type": "object",
       "additionalProperties": { "type": "string" }
     },
+    "executionManifest": {
+      "$ref": "./executable-skill-manifest.schema.json"
+    },
+    "availabilityStatus": {
+      "type": "string",
+      "enum": ["not_executable", "available", "unavailable"]
+    },
+    "availabilityReason": {
+      "type": "string"
+    },
     "sandbox": { "$ref": "./sandbox-consumer-view.schema.json" },
     "frontmatterRaw": { "type": "string" },
     "body": { "type": "string" }
