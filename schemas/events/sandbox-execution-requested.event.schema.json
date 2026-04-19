@@ -32,7 +32,15 @@
             "resourceKind": { "type": "string" },
             "resourceId": { "type": "string" },
             "scope": { "type": "string" },
-            "status": { "type": "string" }
+            "status": { "type": "string" },
+            "managedProviderId": { "type": "string" },
+            "managedProviderAction": { "type": "string" },
+            "managedProviderOperationId": { "type": "string" },
+            "sandboxProfileId": { "type": "string" },
+            "sandboxDecision": { "type": "string" },
+            "enforcementStrength": { "type": "string" },
+            "failureClass": { "type": "string" },
+            "sensitiveStateClasses": { "type": "string" }
           }
         }
       }

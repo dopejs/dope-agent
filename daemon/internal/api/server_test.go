@@ -46,6 +46,25 @@ func decodeStrictResponse[T any](t *testing.T, body []byte) T {
 	return value
 }
 
+func assertManagedProviderMetadata(t *testing.T, metadata map[string]string, action string) {
+	t.Helper()
+	if metadata["managedProviderId"] == "" {
+		t.Fatalf("expected managed provider id metadata, got %+v", metadata)
+	}
+	if metadata["managedProviderAction"] != action {
+		t.Fatalf("expected managed provider action %s, got %+v", action, metadata)
+	}
+	if metadata["sandboxProfileId"] == "" {
+		t.Fatalf("expected sandbox profile metadata, got %+v", metadata)
+	}
+	if metadata["sandboxDecision"] == "" {
+		t.Fatalf("expected sandbox decision metadata, got %+v", metadata)
+	}
+	if metadata["enforcementStrength"] == "" {
+		t.Fatalf("expected enforcement metadata, got %+v", metadata)
+	}
+}
+
 type testLLMProvider struct {
 	name       string
 	completeFn func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error)
@@ -1285,6 +1304,7 @@ func TestSandboxRoutes(t *testing.T) {
 		"command":"echo",
 		"args":["hello"],
 		"cwd":"`+sqliteStore.DataDir+`",
+		"metadata":{"managedProviderId":"codex_managed","managedProviderAction":"prompt_execution","sandboxProfileId":"managed_provider_codex","sandboxDecision":"ask","enforcementStrength":"declared_only"},
 		"access":{"readRoots":["`+sqliteStore.DataDir+`"],"writeRoots":["`+sqliteStore.DataDir+`"],"networkMode":"full"}
 	}`))
 	createRec := httptest.NewRecorder()
@@ -1298,6 +1318,9 @@ func TestSandboxRoutes(t *testing.T) {
 	}
 	if created.ApprovalID == "" {
 		t.Fatal("expected approval id on denied execution")
+	}
+	if created.Metadata["managedProviderAction"] != "prompt_execution" {
+		t.Fatalf("expected execution metadata, got %+v", created.Metadata)
 	}
 
 	getReq := httptest.NewRequest(http.MethodGet, "/v1/sandboxes/executions/"+created.ExecutionID, nil)
@@ -2646,6 +2669,13 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 			LoginCommand:  []string{"codex", "login"},
 			LogoutCommand: []string{"codex", "logout"},
 			LastCheckedAt: now,
+			Metadata: map[string]string{
+				"managedProviderId":     "codex_managed",
+				"managedProviderAction": "auth_status",
+				"sandboxProfileId":      "managed_provider_codex",
+				"sandboxDecision":       "allow",
+				"enforcementStrength":   "declared_only",
+			},
 		},
 		startState: providers.AuthState{
 			ProviderID:    "codex_managed",
@@ -2657,6 +2687,13 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 			LoginCommand:  []string{"codex", "login"},
 			LogoutCommand: []string{"codex", "logout"},
 			LastCheckedAt: now,
+			Metadata: map[string]string{
+				"managedProviderId":     "codex_managed",
+				"managedProviderAction": "auth_status",
+				"sandboxProfileId":      "managed_provider_codex",
+				"sandboxDecision":       "allow",
+				"enforcementStrength":   "declared_only",
+			},
 		},
 		completeState: providers.AuthState{
 			ProviderID:    "codex_managed",
@@ -2671,6 +2708,13 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 			LoginCommand:  []string{"codex", "login"},
 			LogoutCommand: []string{"codex", "logout"},
 			LastCheckedAt: now,
+			Metadata: map[string]string{
+				"managedProviderId":     "codex_managed",
+				"managedProviderAction": "auth_status",
+				"sandboxProfileId":      "managed_provider_codex",
+				"sandboxDecision":       "allow",
+				"enforcementStrength":   "declared_only",
+			},
 		},
 		refreshState: providers.AuthState{
 			ProviderID:    "codex_managed",
@@ -2685,6 +2729,13 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 			LoginCommand:  []string{"codex", "login"},
 			LogoutCommand: []string{"codex", "logout"},
 			LastCheckedAt: now.Add(time.Minute),
+			Metadata: map[string]string{
+				"managedProviderId":     "codex_managed",
+				"managedProviderAction": "auth_status",
+				"sandboxProfileId":      "managed_provider_codex",
+				"sandboxDecision":       "allow",
+				"enforcementStrength":   "declared_only",
+			},
 		},
 		revokeState: providers.AuthState{
 			ProviderID:    "codex_managed",
@@ -2696,6 +2747,13 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 			LoginCommand:  []string{"codex", "login"},
 			LogoutCommand: []string{"codex", "logout"},
 			LastCheckedAt: now.Add(2 * time.Minute),
+			Metadata: map[string]string{
+				"managedProviderId":     "codex_managed",
+				"managedProviderAction": "logout",
+				"sandboxProfileId":      "managed_provider_codex",
+				"sandboxDecision":       "allow",
+				"enforcementStrength":   "declared_only",
+			},
 		},
 		models: []providers.Model{
 			{ProviderID: "codex_managed", ModelID: "gpt-5.4", DisplayName: "GPT-5.4", Default: true, Available: true, Source: "cache", Chat: true, Stream: true, Coding: true, ReasoningLevels: []string{"medium", "high"}},
@@ -2749,6 +2807,7 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 	if authResponse.Auth.Status != providers.AuthStatusLoginRequired {
 		t.Fatalf("expected login_required auth state, got %s", authResponse.Auth.Status)
 	}
+	assertManagedProviderMetadata(t, authResponse.Auth.Metadata, "auth_status")
 
 	startReq := httptest.NewRequest(http.MethodPost, "/v1/providers/codex_managed/auth/start", strings.NewReader(`{}`))
 	startReq.Header.Set("Authorization", authHeader)
@@ -2761,6 +2820,7 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 	if startResponse.Auth.Status != providers.AuthStatusPendingLogin {
 		t.Fatalf("expected pending auth state, got %s", startResponse.Auth.Status)
 	}
+	assertManagedProviderMetadata(t, startResponse.Auth.Metadata, "auth_status")
 
 	completeReq := httptest.NewRequest(http.MethodPost, "/v1/providers/codex_managed/auth/complete", strings.NewReader(`{}`))
 	completeReq.Header.Set("Authorization", authHeader)
@@ -2773,6 +2833,7 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 	if completeResponse.Auth.Status != providers.AuthStatusAuthenticated {
 		t.Fatalf("expected authenticated state, got %s", completeResponse.Auth.Status)
 	}
+	assertManagedProviderMetadata(t, completeResponse.Auth.Metadata, "auth_status")
 
 	modelsReq := httptest.NewRequest(http.MethodGet, "/v1/providers/codex_managed/models", nil)
 	modelsReq.Header.Set("Authorization", authHeader)
@@ -2831,6 +2892,7 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 	if revokeResponse.Auth.Status != providers.AuthStatusRevoked {
 		t.Fatalf("expected revoked state, got %s", revokeResponse.Auth.Status)
 	}
+	assertManagedProviderMetadata(t, revokeResponse.Auth.Metadata, "logout")
 
 	authStates, err := sqliteStore.ListProviderAuthStates(context.Background())
 	if err != nil {
@@ -2849,9 +2911,20 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 
 	foundStarted := false
 	foundDefaultModelUpdated := false
+	foundAuthMetadata := false
 	for _, item := range eventBus.List(events.Filter{Category: "provider"}) {
 		if item.Name == "provider.auth_started" {
 			foundStarted = true
+			switch metadata := item.Payload["metadata"].(type) {
+			case map[string]any:
+				if metadata["managedProviderAction"] == "auth_status" {
+					foundAuthMetadata = true
+				}
+			case map[string]string:
+				if metadata["managedProviderAction"] == "auth_status" {
+					foundAuthMetadata = true
+				}
+			}
 		}
 		if item.Name == "provider.default_model_updated" {
 			foundDefaultModelUpdated = true
@@ -2862,6 +2935,9 @@ func TestManagedProviderAuthModelAndDefaultModelRoutes(t *testing.T) {
 	}
 	if !foundDefaultModelUpdated {
 		t.Fatal("expected provider.default_model_updated event")
+	}
+	if !foundAuthMetadata {
+		t.Fatal("expected provider auth metadata in emitted event")
 	}
 }
 

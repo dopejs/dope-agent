@@ -32,7 +32,18 @@
             "partial": { "type": "boolean" },
             "errorClass": { "type": "string" },
             "errorCode": { "type": "string" },
-            "error": { "type": "string" }
+            "error": { "type": "string" },
+            "managedProviderId": { "type": "string" },
+            "managedProviderAction": { "type": "string" },
+            "managedProviderOperationId": { "type": "string" },
+            "sandboxProfileId": { "type": "string" },
+            "sandboxDecision": { "type": "string" },
+            "enforcementStrength": { "type": "string" },
+            "failureClass": { "type": "string" },
+            "sensitiveStateClasses": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
           }
         }
       }

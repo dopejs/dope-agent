@@ -210,16 +210,16 @@ func TestProviderSchemasAcceptCanonicalFixtures(t *testing.T) {
 	fixtures := map[string]string{
 		"schemas/api/provider-resource.schema.json":                       `{"providerId":"echo","title":"Echo","family":"builtin_echo","authMode":"none","source":"builtin","modelSelectionMode":"fixed","knownModels":["echo-v1"],"registered":true,"configured":true,"ready":true,"default":true,"defaultModel":"echo-v1","effectiveModel":"echo-v1","effectiveTimeoutMs":30000,"effectiveMaxRetries":0,"secretConfigured":false,"capabilities":{"chat":true,"stream":true}}`,
 		"schemas/api/provider-check-resource.schema.json":                 `{"checkId":"provider_check_1","providerId":"echo","family":"builtin_echo","authMode":"none","status":"passed","model":"echo-v1","usage":{"inputTokens":1,"outputTokens":1,"totalTokens":2},"createdAt":"2026-04-18T12:00:00Z","completedAt":"2026-04-18T12:00:01Z"}`,
-		"schemas/api/provider-auth-state.response.schema.json":            `{"auth":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"authenticated","cliAvailable":true,"accountLabel":"user@example.com","accountId":"acct_1","plan":"pro","authMethod":"chatgpt","loginCommand":["codex","login"],"logoutCommand":["codex","logout"],"lastCheckedAt":"2026-04-18T12:00:00Z","lastAuthenticatedAt":"2026-04-18T11:59:00Z","metadata":{"source":"contract"}}}`,
+		"schemas/api/provider-auth-state.response.schema.json":            `{"auth":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"authenticated","cliAvailable":true,"accountLabel":"user@example.com","accountId":"acct_1","plan":"pro","authMethod":"chatgpt","loginCommand":["codex","login"],"logoutCommand":["codex","logout"],"lastCheckedAt":"2026-04-18T12:00:00Z","lastAuthenticatedAt":"2026-04-18T11:59:00Z","metadata":{"source":"contract","managedProviderId":"codex_managed","managedProviderAction":"auth_status","sandboxProfileId":"managed_provider_codex","sandboxDecision":"allow","enforcementStrength":"declared_only"}}}`,
 		"schemas/api/provider-model.schema.json":                          `{"providerId":"codex_managed","modelId":"gpt-5.4","displayName":"GPT-5.4","description":"Primary coding model","default":true,"available":true,"source":"cache","chat":true,"stream":true,"coding":true,"toolUse":false,"reasoningLevels":["medium","high"]}`,
 		"schemas/api/provider-model-list.response.schema.json":            `{"items":[{"providerId":"codex_managed","modelId":"gpt-5.4","displayName":"GPT-5.4","default":true,"available":true,"source":"cache","chat":true,"stream":true,"coding":true,"toolUse":false}]}`,
 		"schemas/api/provider-default-model.response.schema.json":         `{"providerId":"codex_managed","defaultModel":"gpt-5.4","updatedAt":"2026-04-18T12:00:00Z"}`,
 		"schemas/events/provider-check-completed.event.schema.json":       `{"eventId":"evt_1","sequence":1,"category":"provider","name":"provider.check_completed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_check","id":"provider_check_1"},"payload":{"providerId":"echo","family":"builtin_echo","authMode":"none","status":"passed","model":"echo-v1","endpoint":"","usage":{"inputTokens":1,"outputTokens":1,"totalTokens":2}}}`,
 		"schemas/events/provider-check-failed.event.schema.json":          `{"eventId":"evt_2","sequence":2,"category":"provider","name":"provider.check_failed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_check","id":"provider_check_2"},"payload":{"providerId":"openai_compatible","family":"openai_compatible","authMode":"api_key","status":"failed","model":"gpt-5.4","errorClass":"auth_error","errorCode":"upstream_auth_failed","errorMessage":"unauthorized","usage":{"inputTokens":0,"outputTokens":0,"totalTokens":0}}}`,
-		"schemas/events/provider-auth-started.event.schema.json":          `{"eventId":"evt_3","sequence":3,"category":"provider","name":"provider.auth_started","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"pending_login","cliAvailable":true,"accountLabel":"","accountId":"","plan":"","authMethod":"","lastError":""}}`,
-		"schemas/events/provider-auth-completed.event.schema.json":        `{"eventId":"evt_4","sequence":4,"category":"provider","name":"provider.auth_completed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"authenticated","cliAvailable":true,"accountLabel":"user@example.com","accountId":"acct_1","plan":"pro","authMethod":"chatgpt","lastError":""}}`,
-		"schemas/events/provider-auth-refreshed.event.schema.json":        `{"eventId":"evt_5","sequence":5,"category":"provider","name":"provider.auth_refreshed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"authenticated","cliAvailable":true,"accountLabel":"user@example.com","accountId":"acct_1","plan":"pro","authMethod":"chatgpt","lastError":""}}`,
-		"schemas/events/provider-auth-revoked.event.schema.json":          `{"eventId":"evt_6","sequence":6,"category":"provider","name":"provider.auth_revoked","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"revoked","cliAvailable":true,"accountLabel":"","accountId":"","plan":"","authMethod":"","lastError":""}}`,
+		"schemas/events/provider-auth-started.event.schema.json":          `{"eventId":"evt_3","sequence":3,"category":"provider","name":"provider.auth_started","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"pending_login","cliAvailable":true,"accountLabel":"","accountId":"","plan":"","authMethod":"","lastError":"","metadata":{"source":"contract","managedProviderId":"codex_managed","managedProviderAction":"auth_status","sandboxProfileId":"managed_provider_codex","sandboxDecision":"allow","enforcementStrength":"declared_only"}}}`,
+		"schemas/events/provider-auth-completed.event.schema.json":        `{"eventId":"evt_4","sequence":4,"category":"provider","name":"provider.auth_completed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"authenticated","cliAvailable":true,"accountLabel":"user@example.com","accountId":"acct_1","plan":"pro","authMethod":"chatgpt","lastError":"","metadata":{"source":"contract","managedProviderId":"codex_managed","managedProviderAction":"auth_status","sandboxProfileId":"managed_provider_codex","sandboxDecision":"allow","enforcementStrength":"declared_only"}}}`,
+		"schemas/events/provider-auth-refreshed.event.schema.json":        `{"eventId":"evt_5","sequence":5,"category":"provider","name":"provider.auth_refreshed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"authenticated","cliAvailable":true,"accountLabel":"user@example.com","accountId":"acct_1","plan":"pro","authMethod":"chatgpt","lastError":"","metadata":{"source":"contract","managedProviderId":"codex_managed","managedProviderAction":"auth_status","sandboxProfileId":"managed_provider_codex","sandboxDecision":"allow","enforcementStrength":"declared_only"}}}`,
+		"schemas/events/provider-auth-revoked.event.schema.json":          `{"eventId":"evt_6","sequence":6,"category":"provider","name":"provider.auth_revoked","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider_auth","id":"codex_managed"},"payload":{"providerId":"codex_managed","family":"codex_cli","authMode":"local_cli_bridge","status":"revoked","cliAvailable":true,"accountLabel":"","accountId":"","plan":"","authMethod":"","lastError":"","metadata":{"source":"contract","managedProviderId":"codex_managed","managedProviderAction":"logout","sandboxProfileId":"managed_provider_codex","sandboxDecision":"allow","enforcementStrength":"declared_only"}}}`,
 		"schemas/events/provider-default-model-updated.event.schema.json": `{"eventId":"evt_7","sequence":7,"category":"provider","name":"provider.default_model_updated","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"provider","id":"codex_managed"},"payload":{"providerId":"codex_managed","defaultModel":"gpt-5.4","updatedAt":"2026-04-18T12:00:01Z"}}`,
 	}
 
@@ -245,8 +245,8 @@ func TestSkillSchemasAcceptCanonicalFixtures(t *testing.T) {
 		"schemas/api/sandbox-profile.schema.json":                 `{"profileId":"subprocess_default","title":"Default Subprocess Sandbox","description":"Conservative local subprocess execution for the harness control plane.","backendKind":"subprocess","defaultWorkDir":"/tmp/dope-data","filesystemPolicy":{"mode":"scoped","readRoots":["/tmp/dope-data"],"writeRoots":["/tmp/dope-data"],"tempRoots":["/tmp"],"allowDataDir":true,"allowUserAgentsDir":true,"allowHomeRead":false,"allowHomeWrite":false},"networkPolicy":{"mode":"deny","allowedHosts":[],"allowedPorts":[],"allowLoopback":false,"enforcementMode":"declared_only"},"envPolicy":{"mode":"inherit_safe","allowedVars":["PATH"],"injectedVars":{"DOPE_DATA_DIR":"/tmp/dope-data"},"redactedVars":[]},"approvalPolicy":{"mode":"ask","requiredForCommands":["curl"],"requiredForWritesOutsideRoots":true,"requiredForNetwork":true,"requiredForUnknownBackends":true},"processPolicy":{"timeoutMs":30000,"maxTimeoutMs":300000,"killGraceMs":1000,"captureStdout":true,"captureStderr":true,"maxOutputBytes":65536,"allowStreaming":false,"restartOnFailure":false},"defaultTimeoutMs":30000,"maxTimeoutMs":300000,"restartable":false,"source":"builtin","active":true}`,
 		"schemas/api/sandbox-profile-list.response.schema.json":   `{"items":[{"profileId":"subprocess_default","title":"Default Subprocess Sandbox","description":"Conservative local subprocess execution for the harness control plane.","backendKind":"subprocess","defaultWorkDir":"/tmp/dope-data","filesystemPolicy":{"mode":"scoped","readRoots":["/tmp/dope-data"],"writeRoots":["/tmp/dope-data"],"tempRoots":["/tmp"],"allowDataDir":true,"allowUserAgentsDir":true,"allowHomeRead":false,"allowHomeWrite":false},"networkPolicy":{"mode":"deny","allowedHosts":[],"allowedPorts":[],"allowLoopback":false,"enforcementMode":"declared_only"},"envPolicy":{"mode":"inherit_safe","allowedVars":["PATH"],"injectedVars":{"DOPE_DATA_DIR":"/tmp/dope-data"},"redactedVars":[]},"approvalPolicy":{"mode":"ask","requiredForCommands":["curl"],"requiredForWritesOutsideRoots":true,"requiredForNetwork":true,"requiredForUnknownBackends":true},"processPolicy":{"timeoutMs":30000,"maxTimeoutMs":300000,"killGraceMs":1000,"captureStdout":true,"captureStderr":true,"maxOutputBytes":65536,"allowStreaming":false,"restartOnFailure":false},"defaultTimeoutMs":30000,"maxTimeoutMs":300000,"restartable":false,"source":"builtin","active":true}]}`,
 		"schemas/api/sandbox-decision.schema.json":                `{"decisionId":"sandbox_decision_1","executionId":"sandbox_exec_1","resolution":"ask","matchedRules":["profile:subprocess_default","network:approval_required"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"}`,
-		"schemas/api/sandbox-result.schema.json":                  `{"executionId":"sandbox_exec_1","status":"denied","outputTruncated":false,"partial":false,"errorClass":"approval_required","errorCode":"sandbox_approval_required","error":"sandbox execution requires approval"}`,
-		"schemas/api/sandbox-execution.resource.schema.json":      `{"executionId":"sandbox_exec_1","profileId":"subprocess_default","backendKind":"subprocess","command":"echo","args":["hello"],"cwd":"/tmp/dope","envKeys":["HOME"],"stdinProvided":false,"timeoutMs":1000,"requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","approvalId":"approval_1","reason":"inspect profile","metadata":{"ticket":"sandbox-16"},"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true},"status":"denied","decision":{"decisionId":"sandbox_decision_1","executionId":"sandbox_exec_1","resolution":"ask","matchedRules":["profile:subprocess_default","network:approval_required"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"},"result":{"executionId":"sandbox_exec_1","status":"denied","outputTruncated":false,"partial":false,"errorClass":"approval_required","errorCode":"sandbox_approval_required","error":"sandbox execution requires approval"},"requestedAt":"2026-04-18T12:00:00Z","updatedAt":"2026-04-18T12:00:00Z"}`,
+		"schemas/api/sandbox-result.schema.json":                  `{"executionId":"sandbox_exec_1","status":"denied","outputTruncated":false,"partial":false,"errorClass":"approval_required","errorCode":"sandbox_approval_required","error":"sandbox execution requires approval","backendMetadata":{"managedProviderId":"codex_managed","managedProviderAction":"prompt_execution","managedProviderOperationId":"managed_provider_op_1","enforcementStrength":"declared_only","sensitiveStateClasses":["config_file","temp_output"]}}`,
+		"schemas/api/sandbox-execution.resource.schema.json":      `{"executionId":"sandbox_exec_1","profileId":"subprocess_default","backendKind":"subprocess","command":"echo","args":["hello"],"cwd":"/tmp/dope","envKeys":["HOME"],"stdinProvided":false,"timeoutMs":1000,"requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","approvalId":"approval_1","reason":"inspect profile","metadata":{"ticket":"sandbox-16","managedProviderId":"codex_managed","managedProviderAction":"prompt_execution","managedProviderOperationId":"managed_provider_op_1","sandboxProfileId":"managed_provider_codex","sandboxDecision":"ask","enforcementStrength":"declared_only","sensitiveStateClasses":"config_file,temp_output"},"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true},"status":"denied","decision":{"decisionId":"sandbox_decision_1","executionId":"sandbox_exec_1","resolution":"ask","matchedRules":["profile:subprocess_default","network:approval_required"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"},"result":{"executionId":"sandbox_exec_1","status":"denied","outputTruncated":false,"partial":false,"errorClass":"approval_required","errorCode":"sandbox_approval_required","error":"sandbox execution requires approval","backendMetadata":{"managedProviderId":"codex_managed","managedProviderAction":"prompt_execution","managedProviderOperationId":"managed_provider_op_1","enforcementStrength":"declared_only","sensitiveStateClasses":["config_file","temp_output"]}},"requestedAt":"2026-04-18T12:00:00Z","updatedAt":"2026-04-18T12:00:00Z"}`,
 		"schemas/api/sandbox-execution-list.response.schema.json": `{"items":[{"executionId":"sandbox_exec_1","profileId":"subprocess_default","backendKind":"subprocess","command":"echo","args":["hello"],"cwd":"/tmp/dope","envKeys":["HOME"],"stdinProvided":false,"timeoutMs":1000,"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true},"status":"denied","decision":{"decisionId":"sandbox_decision_1","executionId":"sandbox_exec_1","resolution":"ask","matchedRules":["profile:subprocess_default","network:approval_required"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"},"result":{"executionId":"sandbox_exec_1","status":"denied","outputTruncated":false,"partial":false,"errorClass":"approval_required","errorCode":"sandbox_approval_required","error":"sandbox execution requires approval"},"requestedAt":"2026-04-18T12:00:00Z","updatedAt":"2026-04-18T12:00:00Z"}]}`,
 		"schemas/api/sandbox-explain.response.schema.json":        `{"decision":{"decisionId":"sandbox_decision_1","resolution":"ask","matchedRules":["profile:subprocess_default","network:approval_required"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"}}`,
 	}
@@ -257,6 +257,16 @@ func TestSkillSchemasAcceptCanonicalFixtures(t *testing.T) {
 				t.Fatalf("ValidateRelative returned error: %v", err)
 			}
 		})
+	}
+}
+
+func TestSandboxResultSchemaAcceptsManagedProviderFailureClass(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	fixture := `{"executionId":"sandbox_exec_provider_1","status":"failed","outputTruncated":false,"partial":false,"errorClass":"provider_auth_failed","errorCode":"upstream_auth_failed","error":"not logged in","backendMetadata":{"managedProviderId":"claude_managed","managedProviderAction":"prompt_execution","managedProviderOperationId":"managed_provider_op_1","enforcementStrength":"declared_only","sensitiveStateClasses":["settings_file"]}}`
+	if err := validator.ValidateRelative("schemas/api/sandbox-result.schema.json", []byte(fixture)); err != nil {
+		t.Fatalf("ValidateRelative returned error: %v", err)
 	}
 }
 
@@ -498,7 +508,14 @@ func newContractHarness(t *testing.T) *contractHarness {
 			LoginCommand:  []string{"codex", "login"},
 			LogoutCommand: []string{"codex", "logout"},
 			LastCheckedAt: now,
-			Metadata:      map[string]string{"source": "contract"},
+			Metadata: map[string]string{
+				"source":                "contract",
+				"managedProviderId":     "codex_managed",
+				"managedProviderAction": "auth_status",
+				"sandboxProfileId":      "managed_provider_codex",
+				"sandboxDecision":       "allow",
+				"enforcementStrength":   "declared_only",
+			},
 		},
 		startState: providers.AuthState{
 			ProviderID:    "codex_managed",
@@ -510,7 +527,14 @@ func newContractHarness(t *testing.T) *contractHarness {
 			LoginCommand:  []string{"codex", "login"},
 			LogoutCommand: []string{"codex", "logout"},
 			LastCheckedAt: now,
-			Metadata:      map[string]string{"source": "contract"},
+			Metadata: map[string]string{
+				"source":                "contract",
+				"managedProviderId":     "codex_managed",
+				"managedProviderAction": "auth_status",
+				"sandboxProfileId":      "managed_provider_codex",
+				"sandboxDecision":       "allow",
+				"enforcementStrength":   "declared_only",
+			},
 		},
 		completeState: providers.AuthState{
 			ProviderID:          "codex_managed",
@@ -527,7 +551,14 @@ func newContractHarness(t *testing.T) *contractHarness {
 			LogoutCommand:       []string{"codex", "logout"},
 			LastCheckedAt:       now,
 			LastAuthenticatedAt: ptrContractTime(now.Add(-time.Minute)),
-			Metadata:            map[string]string{"source": "contract"},
+			Metadata: map[string]string{
+				"source":                "contract",
+				"managedProviderId":     "codex_managed",
+				"managedProviderAction": "auth_status",
+				"sandboxProfileId":      "managed_provider_codex",
+				"sandboxDecision":       "allow",
+				"enforcementStrength":   "declared_only",
+			},
 		},
 		refreshState: providers.AuthState{
 			ProviderID:          "codex_managed",
@@ -544,7 +575,14 @@ func newContractHarness(t *testing.T) *contractHarness {
 			LogoutCommand:       []string{"codex", "logout"},
 			LastCheckedAt:       now.Add(time.Minute),
 			LastAuthenticatedAt: ptrContractTime(now.Add(-time.Minute)),
-			Metadata:            map[string]string{"source": "contract"},
+			Metadata: map[string]string{
+				"source":                "contract",
+				"managedProviderId":     "codex_managed",
+				"managedProviderAction": "auth_status",
+				"sandboxProfileId":      "managed_provider_codex",
+				"sandboxDecision":       "allow",
+				"enforcementStrength":   "declared_only",
+			},
 		},
 		revokeState: providers.AuthState{
 			ProviderID:    "codex_managed",
@@ -556,7 +594,14 @@ func newContractHarness(t *testing.T) *contractHarness {
 			LoginCommand:  []string{"codex", "login"},
 			LogoutCommand: []string{"codex", "logout"},
 			LastCheckedAt: now.Add(2 * time.Minute),
-			Metadata:      map[string]string{"source": "contract"},
+			Metadata: map[string]string{
+				"source":                "contract",
+				"managedProviderId":     "codex_managed",
+				"managedProviderAction": "logout",
+				"sandboxProfileId":      "managed_provider_codex",
+				"sandboxDecision":       "allow",
+				"enforcementStrength":   "declared_only",
+			},
 		},
 		models: []providers.Model{
 			{ProviderID: "codex_managed", ModelID: "gpt-5.4", DisplayName: "GPT-5.4", Description: "Primary coding model", Default: true, Available: true, Source: "cache", Chat: true, Stream: true, Coding: true, ToolUse: false, ReasoningLevels: []string{"medium", "high"}},

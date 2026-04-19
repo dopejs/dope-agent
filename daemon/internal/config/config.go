@@ -206,6 +206,17 @@ func ResolveDir(path string) (string, error) {
 	return path, nil
 }
 
+func ManagedProviderHomeDir(cfg Config) string {
+	if cfg.Environment == EnvironmentTest && strings.TrimSpace(cfg.DataDir) != "" {
+		return filepath.Join(strings.TrimSpace(cfg.DataDir), "managed-provider-home")
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(homeDir)
+}
+
 func ConfigFilePath(dataDir string) string {
 	return filepath.Join(dataDir, defaultConfigFileName)
 }

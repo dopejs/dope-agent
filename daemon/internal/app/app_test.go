@@ -935,6 +935,13 @@ func TestRecoverPersistedStateRestoresManagedProviderState(t *testing.T) {
 		LoginCommand:  []string{"codex", "login"},
 		LogoutCommand: []string{"codex", "logout"},
 		LastCheckedAt: time.Now().UTC(),
+		Metadata: map[string]string{
+			"managedProviderId":     "codex_managed",
+			"managedProviderAction": "auth_status",
+			"sandboxProfileId":      "managed_provider_codex",
+			"sandboxDecision":       "allow",
+			"enforcementStrength":   "declared_only",
+		},
 	}
 	if err := sqliteStore.UpsertProviderAuthState(ctx, authState); err != nil {
 		t.Fatalf("UpsertProviderAuthState returned error: %v", err)
@@ -974,6 +981,9 @@ func TestRecoverPersistedStateRestoresManagedProviderState(t *testing.T) {
 	}
 	if state.Status != providers.AuthStatusAuthenticated {
 		t.Fatalf("expected restored authenticated state, got %s", state.Status)
+	}
+	if state.Metadata["managedProviderAction"] != "auth_status" {
+		t.Fatalf("expected restored managed-provider metadata, got %+v", state.Metadata)
 	}
 	persistedModels, ok := providerManager.ListModels("codex_managed")
 	if !ok || len(persistedModels) != 1 {

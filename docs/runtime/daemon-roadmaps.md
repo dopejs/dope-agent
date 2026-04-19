@@ -520,7 +520,7 @@ Task definition of done:
 
 ## Roadmap 17: Sandbox Requirement Declarations And Consumer Convergence
 
-Status: `[ ] planned`
+Status: `[ ] in_progress`
 
 ### Goal
 
@@ -555,6 +555,12 @@ Task definition of done:
 - remaining home-directory reads and writes used by managed providers are documented, policy-shaped, and auditable
 - failure classification distinguishes sandbox denial from consumer-specific auth or local-state failure
 - tests cover success and rejection paths for the converged behavior
+
+Current note:
+
+- the managed-provider convergence slice under `specs/001-sandbox-managed-providers/` is now closed for the in-scope workflows `auth_status`, `logout`, and `prompt_execution`
+- provider-owned local state used by Claude and Codex is now declared, policy-shaped, redacted, and auditable for this slice
+- the broader roadmap stays open until the shared requirement-declaration contract, generic secret scope, and cross-consumer provenance model are closed for the remaining consumers
 
 #### 3. Secret Scope And Redaction Foundation
 

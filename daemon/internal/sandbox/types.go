@@ -94,10 +94,84 @@ const (
 	ErrorClassBackendMissing   ErrorClass = "backend_unavailable"
 	ErrorClassLaunchFailed     ErrorClass = "launch_failed"
 	ErrorClassProcessFailed    ErrorClass = "process_failed"
+	ErrorClassProviderFailed   ErrorClass = "provider_error"
+	ErrorClassProviderAuth     ErrorClass = "provider_auth_failed"
 	ErrorClassTimeout          ErrorClass = "timeout"
 	ErrorClassCancelled        ErrorClass = "cancelled"
 	ErrorClassIOCaptureFailed  ErrorClass = "io_capture_failed"
 )
+
+type ManagedProviderActionKind string
+
+const (
+	ManagedProviderActionAuthStatus      ManagedProviderActionKind = "auth_status"
+	ManagedProviderActionLogout          ManagedProviderActionKind = "logout"
+	ManagedProviderActionPromptExecution ManagedProviderActionKind = "prompt_execution"
+)
+
+type ManagedProviderOperationStatus string
+
+const (
+	ManagedProviderOperationStatusPending              ManagedProviderOperationStatus = "pending"
+	ManagedProviderOperationStatusDenied               ManagedProviderOperationStatus = "denied"
+	ManagedProviderOperationStatusLocalStateInspection ManagedProviderOperationStatus = "local_state_inspection"
+	ManagedProviderOperationStatusRunning              ManagedProviderOperationStatus = "running"
+	ManagedProviderOperationStatusCompleted            ManagedProviderOperationStatus = "completed"
+	ManagedProviderOperationStatusFailed               ManagedProviderOperationStatus = "failed"
+	ManagedProviderOperationStatusCancelled            ManagedProviderOperationStatus = "cancelled"
+)
+
+type LocalStateAccessMode string
+
+const (
+	LocalStateAccessModeRead  LocalStateAccessMode = "read"
+	LocalStateAccessModeWrite LocalStateAccessMode = "write"
+)
+
+type ManagedProviderRequirementDeclaration struct {
+	ProviderID            string                    `json:"providerId"`
+	ActionKind            ManagedProviderActionKind `json:"actionKind"`
+	ProfileID             string                    `json:"profileId"`
+	BackendKind           BackendKind               `json:"backendKind"`
+	ReadRoots             []string                  `json:"readRoots"`
+	WriteRoots            []string                  `json:"writeRoots"`
+	NetworkMode           NetworkMode               `json:"networkMode"`
+	AllowedHosts          []string                  `json:"allowedHosts"`
+	AllowedPorts          []int                     `json:"allowedPorts"`
+	ApprovalMode          ApprovalMode              `json:"approvalMode"`
+	SensitiveStateClasses []string                  `json:"sensitiveStateClasses"`
+	EnforcementStrength   string                    `json:"enforcementStrength"`
+	Active                bool                      `json:"active"`
+}
+
+type SensitiveLocalStateAccessSummary struct {
+	ProviderID    string                    `json:"providerId"`
+	ActionKind    ManagedProviderActionKind `json:"actionKind"`
+	StateClass    string                    `json:"stateClass"`
+	AccessMode    LocalStateAccessMode      `json:"accessMode"`
+	PathSummary   string                    `json:"pathSummary"`
+	Declared      bool                      `json:"declared"`
+	Sensitive     bool                      `json:"sensitive"`
+	RedactionRule string                    `json:"redactionRule"`
+}
+
+type ManagedProviderOperation struct {
+	OperationID               string                             `json:"operationId"`
+	ProviderID                string                             `json:"providerId"`
+	ActionKind                ManagedProviderActionKind          `json:"actionKind"`
+	RequestedBy               string                             `json:"requestedBy"`
+	RequirementProfileID      string                             `json:"requirementProfileId"`
+	Decision                  DecisionResolution                 `json:"decision"`
+	ApprovalStatus            DecisionApprovalStatus             `json:"approvalStatus"`
+	FailureClass              string                             `json:"failureClass,omitempty"`
+	EnforcementStrength       string                             `json:"enforcementStrength"`
+	SensitiveStateClasses     []string                           `json:"sensitiveStateClasses,omitempty"`
+	ExecutionID               string                             `json:"executionId,omitempty"`
+	StartedAt                 time.Time                          `json:"startedAt"`
+	CompletedAt               *time.Time                         `json:"completedAt,omitempty"`
+	Status                    ManagedProviderOperationStatus     `json:"status"`
+	LocalStateAccessSummaries []SensitiveLocalStateAccessSummary `json:"localStateAccessSummaries,omitempty"`
+}
 
 type FilesystemPolicy struct {
 	Mode               FilesystemMode `json:"mode"`
@@ -216,6 +290,13 @@ type Result struct {
 	Error           string          `json:"error,omitempty"`
 	Partial         bool            `json:"partial"`
 	BackendMetadata map[string]any  `json:"backendMetadata,omitempty"`
+}
+
+type ExecutionFinalization struct {
+	Status     ExecutionStatus `json:"status,omitempty"`
+	ErrorClass ErrorClass      `json:"errorClass,omitempty"`
+	ErrorCode  string          `json:"errorCode,omitempty"`
+	Error      string          `json:"error,omitempty"`
 }
 
 type Execution struct {

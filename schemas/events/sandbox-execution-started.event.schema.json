@@ -25,7 +25,15 @@
             "profileId": { "type": "string" },
             "backendKind": { "type": "string" },
             "status": { "type": "string" },
-            "startedAt": { "type": "string", "format": "date-time" }
+            "startedAt": { "type": "string", "format": "date-time" },
+            "managedProviderId": { "type": "string" },
+            "managedProviderAction": { "type": "string" },
+            "managedProviderOperationId": { "type": "string" },
+            "sandboxProfileId": { "type": "string" },
+            "sandboxDecision": { "type": "string" },
+            "enforcementStrength": { "type": "string" },
+            "failureClass": { "type": "string" },
+            "sensitiveStateClasses": { "type": "string" }
           }
         }
       }

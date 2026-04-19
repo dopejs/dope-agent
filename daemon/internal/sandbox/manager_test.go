@@ -2,6 +2,8 @@ package sandbox
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -113,6 +115,152 @@ func TestStartExecutionCreatesApprovalAndDeniesUntilApproved(t *testing.T) {
 	}
 	if len(approvals) != 1 || approvals[0].ApprovalID != execution.ApprovalID {
 		t.Fatalf("expected persisted approval, got %+v", approvals)
+	}
+}
+
+func TestEvaluateAccessDistinguishesDeclaredManagedProviderRoots(t *testing.T) {
+	t.Parallel()
+
+	manager := newSandboxManagerForTest(t)
+	homeDir := t.TempDir()
+	previousHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", homeDir); err != nil {
+		t.Fatalf("Setenv returned error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Setenv("HOME", previousHome)
+	})
+
+	manager.Reload()
+
+	allowedPath := filepath.Join(homeDir, ".codex", "auth.json")
+	deniedPath := filepath.Join(string(filepath.Separator), "etc", "passwd")
+
+	allowed, err := manager.EvaluateAccess(ProfileIDManagedProviderCodex, "", AccessRequest{
+		ReadRoots: []string{allowedPath},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAccess allowed returned error: %v", err)
+	}
+	if allowed.Resolution != DecisionResolutionAllow {
+		t.Fatalf("expected allowed managed-provider access, got %+v", allowed)
+	}
+
+	denied, err := manager.EvaluateAccess(ProfileIDManagedProviderCodex, "", AccessRequest{
+		ReadRoots: []string{deniedPath},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAccess denied returned error: %v", err)
+	}
+	if denied.Resolution != DecisionResolutionDeny {
+		t.Fatalf("expected denied managed-provider access, got %+v", denied)
+	}
+}
+
+func TestManagedProviderProfilesUseIsolatedHomeInTestEnvironment(t *testing.T) {
+	t.Parallel()
+
+	manager := newSandboxManagerForTest(t)
+	profile, ok := manager.GetProfile(ProfileIDManagedProviderClaude)
+	if !ok {
+		t.Fatal("expected claude managed-provider profile")
+	}
+	wantHome := filepath.Join(manager.cfg.DataDir, "managed-provider-home")
+	if profile.DefaultWorkDir != wantHome {
+		t.Fatalf("expected isolated managed-provider workdir %s, got %s", wantHome, profile.DefaultWorkDir)
+	}
+	if !withinAny(filepath.Join(wantHome, ".claude"), profile.FilesystemPolicy.ReadRoots) {
+		t.Fatalf("expected managed-provider home roots, got %+v", profile.FilesystemPolicy.ReadRoots)
+	}
+}
+
+func TestRestoreCancelsPendingManagedProviderFinalization(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	store1, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	manager1 := NewManager(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     dataDir,
+	}, store1, events.NewBus(), policy.NewEngine())
+
+	cwd := t.TempDir()
+	execution, err := manager1.StartExecution(context.Background(), ExecutionRequest{
+		Command: testShell(),
+		Args:    testShellArgs("printf 'hello managed provider'"),
+		Cwd:     cwd,
+		Metadata: map[string]string{
+			"managedProviderId":          "claude_managed",
+			"managedProviderAction":      "prompt_execution",
+			"managedProviderOperationId": "managed_provider_op_1",
+		},
+		Access: AccessRequest{
+			ReadRoots:  []string{cwd},
+			WriteRoots: []string{cwd},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartExecution returned error: %v", err)
+	}
+
+	execution = waitForTerminalExecution(t, manager1, execution.ExecutionID)
+	if execution.Status != ExecutionStatusCompleted {
+		t.Fatalf("expected subprocess completion before finalization, got %s", execution.Status)
+	}
+	if !awaitsManagedProviderFinalization(execution) {
+		t.Fatalf("expected pending managed-provider finalization metadata, got %+v", execution.Metadata)
+	}
+	for _, event := range manager1.eventBus.List(events.Filter{Category: "sandbox"}) {
+		if event.Name == "sandbox.execution_completed" {
+			t.Fatal("did not expect terminal completion event before provider finalization")
+		}
+	}
+	if err := store1.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+
+	store2, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("reopen SQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store2.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+	eventBus2 := events.NewBus()
+	manager2 := NewManager(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     dataDir,
+	}, store2, eventBus2, policy.NewEngine())
+	if err := manager2.Restore(context.Background()); err != nil {
+		t.Fatalf("Restore returned error: %v", err)
+	}
+
+	restored, ok := manager2.GetExecution(execution.ExecutionID)
+	if !ok {
+		t.Fatalf("expected restored execution %s", execution.ExecutionID)
+	}
+	if restored.Status != ExecutionStatusCancelled {
+		t.Fatalf("expected cancelled execution after recovery, got %s", restored.Status)
+	}
+	if restored.Result.ErrorCode != "daemon_restarted_before_consumer_finalization" {
+		t.Fatalf("expected finalization recovery code, got %+v", restored.Result)
+	}
+	if awaitsManagedProviderFinalization(restored) {
+		t.Fatalf("expected pending finalization marker cleared, got %+v", restored.Metadata)
+	}
+	foundCancelled := false
+	for _, event := range eventBus2.List(events.Filter{Category: "sandbox"}) {
+		if event.Name == "sandbox.execution_cancelled" {
+			foundCancelled = true
+		}
+	}
+	if !foundCancelled {
+		t.Fatal("expected sandbox.execution_cancelled event on recovery")
 	}
 }
 

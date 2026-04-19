@@ -81,6 +81,16 @@ func TestLoadReadsConfigFileFromDopeDir(t *testing.T) {
 	}
 }
 
+func TestManagedProviderHomeDirUsesIsolatedTestRoot(t *testing.T) {
+	cfg := Config{
+		Environment: EnvironmentTest,
+		DataDir:     "/tmp/dope-test",
+	}
+	if got, want := ManagedProviderHomeDir(cfg), filepath.Join("/tmp/dope-test", "managed-provider-home"); got != want {
+		t.Fatalf("expected managed provider test home %s, got %s", want, got)
+	}
+}
+
 func TestLoadEnvironmentOverridesConfigFile(t *testing.T) {
 	homeDir := t.TempDir()
 	dataDir := filepath.Join(homeDir, ".dope-test")

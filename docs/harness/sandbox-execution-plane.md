@@ -523,6 +523,9 @@ That means:
 
 - Claude managed auth status, logout, and prompt execution now run through sandbox profiles
 - Codex managed logout and prompt execution now run through sandbox profiles
+- Codex managed auth-state inspection now evaluates provider-owned local state through sandbox-owned requirement and policy checks before any file read proceeds
+- provider auth responses and auth events now carry managed-provider provenance, failure-class, and enforcement-strength metadata
+- sandbox execution resources and lifecycle events now carry managed-provider provenance and truthful enforcement-strength metadata
 - managed provider execution is no longer an ad hoc `exec.CommandContext` path
 
 The current degradation and security boundary is intentionally explicit:
@@ -559,7 +562,7 @@ It should close:
 - a common requirement declaration model for skills, provider bridges, MCP servers, and future tools
 - explicit secret scope and redaction semantics for sandbox env injection
 - execution provenance that identifies which consumer requested a sandbox run
-- the remaining managed-provider local state and credential access that still sits outside sandbox policy and audit boundaries
+- the remaining non-converged local consumers beyond the managed-provider slice
 
 This slice exists so MCP and future tool execution do not grow on top of ad hoc consumer-specific behavior.
 
