@@ -127,6 +127,9 @@ This phase makes execution boundaries explicit.
 
 After sandbox:
 
+- requirement declarations for filesystem, network, secrets, and execution mode
+- secret scope and redaction policy
+- execution provenance and remaining local-consumer convergence
 - MCP server registry
 - MCP transport lifecycle
 - MCP tool exposure policy
@@ -337,16 +340,20 @@ This is a later phase, but it should stay visible in the architecture.
 
 The right next step is:
 
-- close **Roadmap 16: Sandbox Execution Plane**
+- Roadmap 16 is now closed
+- close the post-sandbox prerequisite slice:
+  - requirement declarations
+  - secret scope and redaction
+  - execution provenance
+  - remaining local-consumer convergence
 
 Then continue in this order:
 
-1. sandbox
-2. MCP
-3. tool-call orchestration
-4. context engineering
-5. memory
-6. agent-managed skills
-7. dreaming / self-improve
+1. MCP
+2. tool-call orchestration
+3. context engineering
+4. memory
+5. agent-managed skills
+6. dreaming / self-improve
 
 This keeps the harness grounded in execution control before it grows into adaptive knowledge systems.

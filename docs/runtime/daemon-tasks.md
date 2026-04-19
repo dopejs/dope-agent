@@ -39,6 +39,10 @@ Current completion should be read as:
 - `Roadmap 14: Test Environment Workflow` is now closed
 - `Roadmap 15: Skill Registry And Prompt Support` is now complete
 - `Roadmap 16: Sandbox Execution Plane` is now complete
+- `Roadmap 17: Sandbox Requirement Declarations And Consumer Convergence` is the next planned prerequisite slice before MCP
+- `Roadmap 18: MCP Execution Plane` remains planned on top of that prerequisite work
+- `Roadmap 19: Skill And Local Tool Sandbox Execution` remains planned after MCP
+- `Roadmap 20: Stronger Isolation And Additional Sandbox Backends` remains planned after the first consumer migrations
 
 ## Roadmap 1: Runtime Closure
 
@@ -155,6 +159,34 @@ Current completion should be read as:
 - [x] Sandbox control plane APIs
 - [x] Subprocess sandbox runner
 - [x] Isolation controls and audit trail
+
+## Roadmap 17: Sandbox Requirement Declarations And Consumer Convergence
+
+- [ ] Execution requirement declaration contract
+- [ ] Managed consumer convergence
+- [ ] Secret scope and redaction foundation
+- [ ] Execution provenance and consumer visibility
+
+## Roadmap 18: MCP Execution Plane
+
+- [ ] MCP server registry and profile binding
+- [ ] MCP transport and lifecycle through sandbox
+- [ ] MCP credential isolation and tool exposure policy
+- [ ] MCP audit and operator verification
+
+## Roadmap 19: Skill And Local Tool Sandbox Execution
+
+- [ ] Skill requirement manifest
+- [ ] Local tool execution through sandbox
+- [ ] Runtime integration and provenance
+- [ ] Operator docs and verification
+
+## Roadmap 20: Stronger Isolation And Additional Sandbox Backends
+
+- [ ] Backend capability contract
+- [ ] Second backend implementation
+- [ ] Stronger filesystem and network enforcement
+- [ ] Backend selection and migration guidance
 
 ## Completed Foundational Work
 

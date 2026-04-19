@@ -31,7 +31,6 @@ var (
 )
 
 const (
-	defaultProfileID       = "subprocess_default"
 	sandboxApprovalAction  = "sandbox.execute"
 	sandboxResourceKind    = "sandbox_profile"
 	eventCategory          = "sandbox"
@@ -187,6 +186,26 @@ func (m *Manager) CancelExecution(executionID string) (Execution, bool, error) {
 	return cloneExecution(execution), false, nil
 }
 
+func (m *Manager) WaitExecution(ctx context.Context, executionID string) (Execution, error) {
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		execution, ok := m.GetExecution(executionID)
+		if !ok {
+			return Execution{}, ErrExecutionNotFound
+		}
+		if IsTerminal(execution.Status) {
+			return execution, nil
+		}
+		select {
+		case <-ctx.Done():
+			return Execution{}, ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
 func (m *Manager) Close(ctx context.Context) error {
 	m.mu.RLock()
 	executionIDs := append([]string(nil), m.executionIDs...)
@@ -285,7 +304,7 @@ type launchSpec struct {
 }
 
 func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createApproval bool) (Execution, Decision, *launchSpec, string, *policy.Decision, error) {
-	profile, ok := m.GetProfile(firstNonEmpty(request.ProfileID, defaultProfileID))
+	profile, ok := m.GetProfile(firstNonEmpty(request.ProfileID, ProfileIDSubprocessDefault))
 	if !ok {
 		now := time.Now().UTC()
 		executionID := newID("sandbox_exec")
@@ -372,7 +391,7 @@ func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createA
 			WriteRoots:    writeRoots,
 			NetworkMode:   request.Access.NetworkMode,
 			AllowedHosts:  cloneStrings(request.Access.AllowedHosts),
-			AllowedPorts:  append([]int(nil), request.Access.AllowedPorts...),
+			AllowedPorts:  cloneInts(request.Access.AllowedPorts),
 			AllowLoopback: request.Access.AllowLoopback,
 		},
 		Status:      ExecutionStatusPending,
@@ -995,7 +1014,7 @@ func builtinProfiles(cfg config.Config) []Profile {
 
 	return []Profile{
 		{
-			ProfileID:      defaultProfileID,
+			ProfileID:      ProfileIDSubprocessDefault,
 			Title:          "Default Subprocess Sandbox",
 			Description:    "Conservative local subprocess execution for the harness control plane.",
 			BackendKind:    BackendKindSubprocess,
@@ -1046,6 +1065,120 @@ func builtinProfiles(cfg config.Config) []Profile {
 				RestartOnFailure: false,
 			},
 			DefaultTimeoutMs: 30000,
+			MaxTimeoutMs:     300000,
+			Restartable:      false,
+			Source:           SourceBuiltin,
+			Active:           true,
+		},
+		{
+			ProfileID:      ProfileIDManagedProviderClaude,
+			Title:          "Claude Managed Provider",
+			Description:    "Sandbox policy for the Claude managed CLI bridge.",
+			BackendKind:    BackendKindSubprocess,
+			DefaultWorkDir: resolveManagedWorkDir(homeDir, cfg.LLM.Claude.WorkDir),
+			FilesystemPolicy: FilesystemPolicy{
+				Mode:               FilesystemModeScoped,
+				ReadRoots:          normalizeRootList([]string{resolveManagedWorkDir(homeDir, cfg.LLM.Claude.WorkDir), filepath.Join(homeDir, ".claude")}),
+				WriteRoots:         normalizeRootList([]string{resolveManagedWorkDir(homeDir, cfg.LLM.Claude.WorkDir), filepath.Join(homeDir, ".claude")}),
+				TempRoots:          []string{tempRoot},
+				AllowDataDir:       false,
+				AllowUserAgentsDir: false,
+				AllowHomeRead:      false,
+				AllowHomeWrite:     false,
+			},
+			NetworkPolicy: NetworkPolicy{
+				Mode:            NetworkModeFull,
+				AllowedHosts:    []string{},
+				AllowedPorts:    []int{},
+				AllowLoopback:   true,
+				EnforcementMode: "declared_only",
+			},
+			EnvPolicy: EnvironmentPolicy{
+				Mode: EnvironmentModeInheritSafe,
+				AllowedVars: []string{
+					"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "TERM", "LANG", "LC_ALL",
+				},
+				InjectedVars: map[string]string{
+					"HOME":     homeDir,
+					"DOPE_ENV": string(cfg.Environment),
+				},
+				RedactedVars: []string{},
+			},
+			ApprovalPolicy: ApprovalPolicy{
+				Mode:                          ApprovalModeAllow,
+				RequiredForCommands:           []string{},
+				RequiredForWritesOutsideRoots: false,
+				RequiredForNetwork:            false,
+				RequiredForUnknownBackends:    false,
+			},
+			ProcessPolicy: ProcessPolicy{
+				TimeoutMs:        120000,
+				MaxTimeoutMs:     300000,
+				KillGraceMs:      1000,
+				CaptureStdout:    true,
+				CaptureStderr:    true,
+				MaxOutputBytes:   262144,
+				AllowStreaming:   false,
+				RestartOnFailure: false,
+			},
+			DefaultTimeoutMs: 120000,
+			MaxTimeoutMs:     300000,
+			Restartable:      false,
+			Source:           SourceBuiltin,
+			Active:           true,
+		},
+		{
+			ProfileID:      ProfileIDManagedProviderCodex,
+			Title:          "Codex Managed Provider",
+			Description:    "Sandbox policy for the Codex managed CLI bridge.",
+			BackendKind:    BackendKindSubprocess,
+			DefaultWorkDir: resolveManagedWorkDir(homeDir, cfg.LLM.Codex.WorkDir),
+			FilesystemPolicy: FilesystemPolicy{
+				Mode:               FilesystemModeScoped,
+				ReadRoots:          normalizeRootList([]string{resolveManagedWorkDir(homeDir, cfg.LLM.Codex.WorkDir), filepath.Join(homeDir, ".codex")}),
+				WriteRoots:         normalizeRootList([]string{resolveManagedWorkDir(homeDir, cfg.LLM.Codex.WorkDir), filepath.Join(homeDir, ".codex")}),
+				TempRoots:          []string{tempRoot},
+				AllowDataDir:       false,
+				AllowUserAgentsDir: false,
+				AllowHomeRead:      false,
+				AllowHomeWrite:     false,
+			},
+			NetworkPolicy: NetworkPolicy{
+				Mode:            NetworkModeFull,
+				AllowedHosts:    []string{},
+				AllowedPorts:    []int{},
+				AllowLoopback:   true,
+				EnforcementMode: "declared_only",
+			},
+			EnvPolicy: EnvironmentPolicy{
+				Mode: EnvironmentModeInheritSafe,
+				AllowedVars: []string{
+					"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "TERM", "LANG", "LC_ALL",
+				},
+				InjectedVars: map[string]string{
+					"HOME":     homeDir,
+					"DOPE_ENV": string(cfg.Environment),
+				},
+				RedactedVars: []string{},
+			},
+			ApprovalPolicy: ApprovalPolicy{
+				Mode:                          ApprovalModeAllow,
+				RequiredForCommands:           []string{},
+				RequiredForWritesOutsideRoots: false,
+				RequiredForNetwork:            false,
+				RequiredForUnknownBackends:    false,
+			},
+			ProcessPolicy: ProcessPolicy{
+				TimeoutMs:        120000,
+				MaxTimeoutMs:     300000,
+				KillGraceMs:      1000,
+				CaptureStdout:    true,
+				CaptureStderr:    true,
+				MaxOutputBytes:   262144,
+				AllowStreaming:   false,
+				RestartOnFailure: false,
+			},
+			DefaultTimeoutMs: 120000,
 			MaxTimeoutMs:     300000,
 			Restartable:      false,
 			Source:           SourceBuiltin,
@@ -1242,6 +1375,24 @@ func normalizePaths(base string, values []string) ([]string, error) {
 		}
 	}
 	return normalizeRootList(items), nil
+}
+
+func resolveManagedWorkDir(homeDir, configured string) string {
+	trimmed := strings.TrimSpace(configured)
+	if trimmed == "" {
+		if strings.TrimSpace(homeDir) == "" {
+			return "."
+		}
+		return filepath.Clean(homeDir)
+	}
+	resolved, err := config.ResolveDir(trimmed)
+	if err != nil {
+		if strings.TrimSpace(homeDir) == "" {
+			return "."
+		}
+		return filepath.Clean(homeDir)
+	}
+	return filepath.Clean(resolved)
 }
 
 func normalizePath(base string, value string) (string, error) {

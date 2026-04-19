@@ -6,12 +6,17 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/config"
+	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
+	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
+	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
 
 func TestClaudeBridgeDetectLoginRequired(t *testing.T) {
@@ -138,6 +143,111 @@ func TestCodexProviderReadsCLIOutputFile(t *testing.T) {
 	}
 }
 
+func TestNewRegistryRoutesClaudeDetectThroughSandbox(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sandbox-backed managed provider script fixture is Unix-only")
+	}
+	homeDir := t.TempDir()
+	cliPath := writeManagedProviderScript(t, homeDir, "claude", managedProviderScript(`
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  printf '{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}'
+  exit 0
+fi
+printf 'unexpected args' >&2
+exit 1
+`))
+	sandboxes, cleanup := newSandboxManagerForManagedProviderTest(t, homeDir)
+	defer cleanup()
+
+	registry := NewRegistry(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(homeDir, "dope-data"),
+		LLM: config.LLMConfig{
+			Claude: config.ManagedCLIProviderConfig{
+				CLIPath: cliPath,
+			},
+		},
+	}, sandboxes)
+
+	bridge, ok := registry.Get(ClaudeProviderID)
+	if !ok {
+		t.Fatal("expected claude bridge")
+	}
+	state, _, err := bridge.Detect(context.Background())
+	if err != nil {
+		t.Fatalf("Detect returned error: %v", err)
+	}
+	if state.Status != providers.AuthStatusLoginRequired {
+		t.Fatalf("expected login_required, got %s", state.Status)
+	}
+
+	executions := sandboxes.ListExecutions()
+	if len(executions) != 1 {
+		t.Fatalf("expected 1 sandbox execution, got %d", len(executions))
+	}
+	if executions[0].ProfileID != sandbox.ProfileIDManagedProviderClaude {
+		t.Fatalf("expected claude sandbox profile, got %s", executions[0].ProfileID)
+	}
+}
+
+func TestNewRegistryRoutesCodexCompleteThroughSandbox(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sandbox-backed managed provider script fixture is Unix-only")
+	}
+	homeDir := t.TempDir()
+	cliPath := writeManagedProviderScript(t, homeDir, "codex", managedProviderScript(`
+output=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then
+    output="$arg"
+    break
+  fi
+  prev="$arg"
+done
+if [ -z "$output" ]; then
+  printf 'missing output path' >&2
+  exit 1
+fi
+printf 'sandbox codex reply' > "$output"
+`))
+	sandboxes, cleanup := newSandboxManagerForManagedProviderTest(t, homeDir)
+	defer cleanup()
+
+	registry := NewRegistry(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(homeDir, "dope-data"),
+		LLM: config.LLMConfig{
+			Codex: config.ManagedCLIProviderConfig{
+				CLIPath: cliPath,
+			},
+		},
+	}, sandboxes)
+
+	bridge, ok := registry.Get(CodexProviderID)
+	if !ok {
+		t.Fatal("expected codex bridge")
+	}
+	response, err := bridge.Provider().Complete(context.Background(), llm.ProviderRequest{
+		Model:    "gpt-5.4",
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Complete returned error: %v", err)
+	}
+	if response.Output != "sandbox codex reply" {
+		t.Fatalf("expected sandbox codex reply, got %q", response.Output)
+	}
+
+	executions := sandboxes.ListExecutions()
+	if len(executions) != 1 {
+		t.Fatalf("expected 1 sandbox execution, got %d", len(executions))
+	}
+	if executions[0].ProfileID != sandbox.ProfileIDManagedProviderCodex {
+		t.Fatalf("expected codex sandbox profile, got %s", executions[0].ProfileID)
+	}
+}
+
 type runnerStub struct {
 	run func(ctx context.Context, cmd string, args []string, workdir string) (RunResult, error)
 }
@@ -158,4 +268,51 @@ func writeJSONFile(t *testing.T, path string, value any) {
 	if err := os.WriteFile(path, encoded, 0o644); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
+}
+
+func newSandboxManagerForManagedProviderTest(t *testing.T, homeDir string) (*sandbox.Manager, func()) {
+	t.Helper()
+	dataDir := filepath.Join(homeDir, "dope-data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	previousHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", homeDir); err != nil {
+		t.Fatalf("Setenv returned error: %v", err)
+	}
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	manager := sandbox.NewManager(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     dataDir,
+		LLM:         config.LLMConfig{},
+	}, sqliteStore, events.NewBus(), policy.NewEngine())
+	cleanup := func() {
+		_ = os.Setenv("HOME", previousHome)
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}
+	return manager, cleanup
+}
+
+func writeManagedProviderScript(t *testing.T, dir string, name string, content string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if runtime.GOOS == "windows" {
+		path += ".cmd"
+	}
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	return path
+}
+
+func managedProviderScript(body string) string {
+	if runtime.GOOS == "windows" {
+		return "@echo off\r\n" + body + "\r\n"
+	}
+	return "#!/bin/sh\nset -eu\n" + body + "\n"
 }

@@ -503,6 +503,9 @@ The current daemon implementation now closes the first sandbox roadmap with:
 - `POST /v1/sandboxes/executions`
 - `POST /v1/sandboxes/executions/{executionId}/cancel`
 - `POST /v1/sandboxes/explain`
+- sandbox-backed managed provider bridge execution for:
+  - `claude_managed`
+  - `codex_managed`
 
 The current subprocess backend enforces:
 
@@ -513,6 +516,14 @@ The current subprocess backend enforces:
 - preflight filesystem scope checks
 - policy-declared network access evaluation
 - durable execution history and sandbox events
+
+The first real sandbox consumers are now the managed CLI provider bridges.
+
+That means:
+
+- Claude managed auth status, logout, and prompt execution now run through sandbox profiles
+- Codex managed logout and prompt execution now run through sandbox profiles
+- managed provider execution is no longer an ad hoc `exec.CommandContext` path
 
 The current degradation and security boundary is intentionally explicit:
 
@@ -530,3 +541,83 @@ Roadmap 16 is only complete when:
 - policy can explain allow, ask, or deny outcomes
 - executions are auditable and inspectable
 - the design is demonstrably ready to host skills, provider bridges, MCP, and future tool orchestration
+
+## Post-Roadmap 16 Remaining Work
+
+Roadmap 16 closes the sandbox control plane and first backend.
+
+It does **not** mean sandbox is already the finished execution substrate for the harness.
+
+The remaining work falls into four follow-on slices.
+
+### 1. Execution Requirement Declarations And Consumer Convergence
+
+This is the immediate prerequisite slice before MCP.
+
+It should close:
+
+- a common requirement declaration model for skills, provider bridges, MCP servers, and future tools
+- explicit secret scope and redaction semantics for sandbox env injection
+- execution provenance that identifies which consumer requested a sandbox run
+- the remaining managed-provider local state and credential access that still sits outside sandbox policy and audit boundaries
+
+This slice exists so MCP and future tool execution do not grow on top of ad hoc consumer-specific behavior.
+
+### 2. MCP On Top Of Sandbox
+
+Once requirement declarations, secret scope, and provenance are explicit, MCP can become a real sandbox consumer.
+
+This slice should close:
+
+- MCP server registry and profile binding
+- MCP process and transport lifecycle through sandbox execution
+- MCP credential injection through env policy and secret refs
+- tool exposure policy, approval visibility, and operator inspection
+
+MCP should not introduce a parallel unmanaged execution path.
+
+### 3. Skill And Tool Execution Through Sandbox
+
+After MCP, the harness still needs to move actual skill and local tool execution onto the same substrate.
+
+This slice should close:
+
+- skill requirement manifests
+- tool subprocess execution through sandbox requests instead of ad hoc launch paths
+- runtime-visible cancellation, timeout, and failure classification for sandbox-backed tool execution
+- provenance linking output back to the skill, tool, and sandbox profile that produced it
+
+This is the last step before a fuller orchestration layer can rely on sandbox as the default execution boundary.
+
+### 4. Stronger Isolation And Additional Backends
+
+The first backend is intentionally policy-rich but not OS-hardened.
+
+The hardening slice should close:
+
+- at least one stronger backend such as `docker`
+- backend capability negotiation so profiles can require stronger isolation
+- stronger filesystem and network enforcement than subprocess preflight checks alone
+- operator-visible comparison of backend guarantees and degradation behavior
+
+This is where sandbox stops being only a control plane plus subprocess runner and becomes a stronger execution substrate for higher-risk tools.
+
+## Explicit Prerequisites Before MCP
+
+The next roadmap should not be "MCP immediately" without these prerequisites being explicit:
+
+- requirement declarations for filesystem, network, secrets, and execution mode
+- secret scope and redaction policy that the daemon can enforce and explain
+- execution provenance identifying consumer kind and consumer instance
+- managed local consumers converged on sandbox enough that MCP does not become the first place where hidden access paths matter
+
+Without those pieces, MCP would likely reintroduce unmanaged credential and process behavior under a new name.
+
+## Recommended Post-16 Order
+
+1. close execution requirement declarations and consumer convergence
+2. add MCP on top of the sandbox plane
+3. move skill and local tool execution onto sandbox
+4. add a stronger backend and backend capability negotiation
+
+That order keeps sandbox honest as a control plane first, then expands the real consumers, then strengthens isolation where the risk justifies it.

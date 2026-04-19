@@ -306,6 +306,14 @@ func (p *codexCLIProvider) Stream(ctx context.Context, request llm.ProviderReque
 }
 
 func classifyCLIError(runErr error, output string) error {
+	var runCLIError *RunError
+	if errors.As(runErr, &runCLIError) {
+		return &llm.ProviderError{
+			Code:      firstNonEmpty(runCLIError.Code, "provider_error"),
+			Message:   firstNonEmpty(runCLIError.Message, runErr.Error()),
+			Retryable: runCLIError.Retryable,
+		}
+	}
 	message := strings.TrimSpace(output)
 	if message == "" {
 		message = runErr.Error()

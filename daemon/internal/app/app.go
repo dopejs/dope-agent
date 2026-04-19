@@ -75,7 +75,8 @@ func New() (*App, error) {
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
 	policyEngine := policy.NewEngine()
 	authManager := auth.NewManager()
-	managedRegistry := managedproviders.NewRegistry(cfg)
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	managedRegistry := managedproviders.NewRegistry(cfg, sandboxManager)
 	llmDispatcher, err := buildLLMDispatcher(cfg, managedRegistry)
 	if err != nil {
 		return nil, err
@@ -84,7 +85,6 @@ func New() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
 	providerManager := providers.NewManager(cfg, llmDispatcher, managedRegistry)
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()

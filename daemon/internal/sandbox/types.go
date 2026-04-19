@@ -8,6 +8,12 @@ const (
 	SourceBuiltin Source = "builtin"
 )
 
+const (
+	ProfileIDSubprocessDefault     = "subprocess_default"
+	ProfileIDManagedProviderClaude = "managed_provider_claude"
+	ProfileIDManagedProviderCodex  = "managed_provider_codex"
+)
+
 type BackendKind string
 
 const (

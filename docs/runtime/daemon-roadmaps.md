@@ -49,7 +49,16 @@ The current execution focus after that is repository-safe local development work
 
 The next execution focus is first-class skill loading and prompt support, including support for user-level assets under `~/.agents`.
 
-The sandbox execution plane is now closed as the first harness control-plane slice. The next harness execution focus after sandbox is MCP integration on top of that execution boundary.
+The sandbox execution plane is now closed as the first harness control-plane slice.
+
+The next harness execution focus is the prerequisite slice that makes sandbox safe to extend:
+
+- requirement declarations
+- secret scope and redaction policy
+- execution provenance
+- convergence of remaining local consumers on sandbox
+
+After that slice is closed, MCP should become the next sandbox-backed harness subsystem.
 
 ## Roadmap 1: Runtime Closure
 
@@ -508,6 +517,320 @@ Task definition of done:
 - full tool orchestration engine
 - context engineering
 - memory system
+
+## Roadmap 17: Sandbox Requirement Declarations And Consumer Convergence
+
+Status: `[ ] planned`
+
+### Goal
+
+Turn sandbox from an available execution substrate into the declared default boundary for local harness consumers, and close the prerequisite control-plane contracts needed before MCP.
+
+### Tasks
+
+#### 1. Execution Requirement Declaration Contract
+
+Scope:
+
+- define a common requirement model for skills, provider bridges, MCP servers, and future tools
+- express filesystem, network, secret, and execution-mode requirements explicitly
+
+Task definition of done:
+
+- daemon has a documented requirement declaration shape that multiple consumer types can share
+- requirement declarations can identify required sandbox profile, filesystem scope, network scope, and secret refs
+- the declaration model is explicit enough for policy explanation and audit surfaces
+- docs and tests cover the new contract boundary
+
+#### 2. Managed Consumer Convergence
+
+Scope:
+
+- close remaining managed-provider local state and credential access paths outside sandbox policy
+- remove ad hoc local execution or home-directory access assumptions where still present
+
+Task definition of done:
+
+- managed local consumers no longer rely on hidden subprocess or filesystem access paths outside sandbox truth
+- remaining home-directory reads and writes used by managed providers are documented, policy-shaped, and auditable
+- failure classification distinguishes sandbox denial from consumer-specific auth or local-state failure
+- tests cover success and rejection paths for the converged behavior
+
+#### 3. Secret Scope And Redaction Foundation
+
+Scope:
+
+- define sandbox secret refs and env-injection rules
+- define operator-visible redaction behavior for sandbox-backed consumers
+
+Task definition of done:
+
+- secret scope is explicit by consumer and environment
+- sandbox env policy can inject secrets by reference instead of uncontrolled inheritance
+- config inspection, execution history, and events redact sensitive material consistently
+- tests cover secret injection and redaction behavior
+
+#### 4. Execution Provenance And Consumer Visibility
+
+Scope:
+
+- add provenance fields that identify which consumer requested sandbox work
+- expose those fields through APIs, events, and history
+
+Task definition of done:
+
+- sandbox execution history identifies consumer kind and consumer id
+- operator inspection can explain which skill, provider bridge, MCP server, or tool initiated an execution
+- provenance survives restart and remains queryable through APIs
+- tests cover durable provenance behavior
+
+### Roadmap Definition Of Done
+
+- local harness consumers can declare sandbox requirements explicitly
+- managed providers and similar local consumers no longer bypass sandbox policy and audit boundaries in hidden ways
+- secret scope, redaction, and execution provenance are explicit enough to support MCP
+- the sandbox plane is ready for daemon-managed MCP lifecycle work
+
+### Explicitly Out Of Scope
+
+- full MCP registry and transport lifecycle
+- multi-step orchestration engine
+- stronger OS-level isolation backend
+- memory or context engineering
+
+## Roadmap 18: MCP Execution Plane
+
+Status: `[ ] planned`
+
+### Goal
+
+Make MCP a first-class daemon-managed subsystem that executes through sandbox profiles instead of introducing a parallel unmanaged process model.
+
+### Tasks
+
+#### 1. MCP Server Registry And Profile Binding
+
+Scope:
+
+- add MCP server resource model
+- bind MCP servers to sandbox profiles and requirement declarations
+
+Task definition of done:
+
+- daemon can register, inspect, and configure MCP servers as first-class resources
+- each MCP server resolves to an explicit sandbox profile and requirement declaration
+- operator APIs expose effective MCP execution policy and failure state
+- tests cover registration, inspection, and invalid configuration paths
+
+#### 2. MCP Transport And Lifecycle Through Sandbox
+
+Scope:
+
+- launch and supervise MCP server processes through sandbox execution
+- define restart, cancellation, and shutdown behavior
+
+Task definition of done:
+
+- MCP server startup, restart, and shutdown run through sandbox-managed execution paths
+- transport lifecycle failures are classified separately from sandbox denial and launch failure
+- daemon recovery behavior for in-flight or managed MCP servers is explicit and tested
+- operator APIs surface lifecycle and health state
+
+#### 3. MCP Credential Isolation And Tool Exposure Policy
+
+Scope:
+
+- inject MCP credentials through sandbox secret refs
+- define which MCP tools are exposed to which runtime surface
+
+Task definition of done:
+
+- MCP credentials are provided through explicit sandbox env policy rather than uncontrolled process inheritance
+- tool exposure policy is inspectable and approval-aware
+- operators can explain why an MCP tool is available, blocked, or approval-gated
+- tests cover credential isolation, exposure policy, and denial paths
+
+#### 4. MCP Audit And Operator Verification
+
+Scope:
+
+- add MCP-focused docs, events, and verification coverage
+- prove sandbox and MCP contracts stay aligned
+
+Task definition of done:
+
+- docs explain MCP server configuration, profile binding, credentials, and failure visibility
+- APIs, schemas, events, and tests are aligned for MCP lifecycle and tool exposure
+- verification proves MCP runs through sandbox rather than a side path
+
+### Roadmap Definition Of Done
+
+- MCP is a daemon-managed subsystem with explicit registry, policy, and lifecycle
+- MCP servers run through sandbox-backed execution instead of unmanaged process launch
+- credential injection, tool exposure, and failure visibility are operator-auditable
+- restart and recovery behavior is explicit enough for production debugging
+
+### Explicitly Out Of Scope
+
+- multi-backend MCP placement beyond the first backend profile support
+- full orchestration planner across multiple tools
+- browser or desktop isolation
+- long-term memory integration
+
+## Roadmap 19: Skill And Local Tool Sandbox Execution
+
+Status: `[ ] planned`
+
+### Goal
+
+Move real skill and local tool execution onto sandbox so the harness no longer depends on ad hoc local subprocess paths outside the control plane.
+
+### Tasks
+
+#### 1. Skill Requirement Manifest
+
+Scope:
+
+- define how executable skills declare sandbox requirements
+- connect skill metadata to sandbox requirement declarations
+
+Task definition of done:
+
+- executable skills can declare required sandbox profile, filesystem access, network access, and secret refs
+- skill inspection APIs expose execution requirements clearly
+- invalid or unsafe skill requirements are rejected consistently
+- tests cover manifest parsing and rejection behavior
+
+#### 2. Local Tool Execution Through Sandbox
+
+Scope:
+
+- route local tool and script execution through sandbox execution requests
+- remove remaining ad hoc subprocess launch paths in scope
+
+Task definition of done:
+
+- in-scope local tool execution goes through sandbox-backed execution
+- timeout, cancellation, stdout/stderr capture, and approval behavior are consistent across tools
+- failure classification distinguishes policy, launch, process, and cancellation outcomes
+- tests cover success, timeout, denial, and cancellation paths
+
+#### 3. Runtime Integration And Provenance
+
+Scope:
+
+- attach sandbox-backed tool execution to runtime truth
+- surface provenance and audit records through daemon APIs and events
+
+Task definition of done:
+
+- runtime can identify which skill and tool launched each sandbox execution
+- tool-call history links to sandbox executions where applicable
+- restart and recovery semantics remain explicit and tested
+- operator inspection can reconstruct the execution path without reading logs only
+
+#### 4. Operator Docs And Verification
+
+Scope:
+
+- document executable skill and tool behavior
+- verify the final sandbox-backed execution path
+
+Task definition of done:
+
+- docs explain how skill execution requirements are declared and enforced
+- docs explain tool execution failures, approvals, and audit visibility
+- verification proves the supported tool paths no longer bypass sandbox
+
+### Roadmap Definition Of Done
+
+- executable skills and local tools run through sandbox-backed execution
+- operators can inspect tool provenance, policy, and failure state through daemon surfaces
+- the harness is ready for richer orchestration on top of a single execution boundary
+
+### Explicitly Out Of Scope
+
+- graph planner or multi-step orchestration engine
+- additional hardened backends
+- memory, context packing, or self-improvement
+
+## Roadmap 20: Stronger Isolation And Additional Sandbox Backends
+
+Status: `[ ] planned`
+
+### Goal
+
+Strengthen the sandbox substrate beyond subprocess by adding at least one more isolation-capable backend and explicit backend capability negotiation.
+
+### Tasks
+
+#### 1. Backend Capability Contract
+
+Scope:
+
+- define backend capability metadata
+- define how profiles require or prefer stronger guarantees
+
+Task definition of done:
+
+- backend capability differences are explicit in contracts and docs
+- profiles can express when subprocess is insufficient
+- explain and inspection APIs surface capability mismatch clearly
+- tests cover capability selection and rejection paths
+
+#### 2. Second Backend Implementation
+
+Scope:
+
+- implement one stronger backend such as `docker`
+- keep the control-plane contract stable across backends
+
+Task definition of done:
+
+- daemon can execute sandbox work through a second backend without changing the common execution contract
+- backend-specific metadata stays isolated from shared execution fields
+- success, timeout, cancellation, and failure semantics are covered by tests
+- docs state the operational requirements and degradation behavior of the new backend
+
+#### 3. Stronger Filesystem And Network Enforcement
+
+Scope:
+
+- improve enforcement strength beyond subprocess preflight checks
+- make enforcement guarantees operator-visible
+
+Task definition of done:
+
+- at least one backend provides materially stronger filesystem or network isolation guarantees than subprocess
+- operator APIs and docs explain which guarantees are hard-enforced and which remain declarative
+- failure classification distinguishes policy mismatch from backend capability limits
+- tests cover enforcement and degradation behavior
+
+#### 4. Backend Selection And Migration Guidance
+
+Scope:
+
+- document when to use each backend
+- provide a migration path for higher-risk consumers
+
+Task definition of done:
+
+- operator docs compare backend guarantees, costs, and operational tradeoffs
+- consumer migration guidance exists for moving from subprocess to stronger backends
+- verification covers at least one real consumer running on the stronger backend
+
+### Roadmap Definition Of Done
+
+- sandbox supports more than one real backend with explicit capability semantics
+- higher-risk consumers can require stronger isolation without redesigning the control plane
+- backend differences are inspectable, testable, and documented for operators
+
+### Explicitly Out Of Scope
+
+- VM-grade isolation
+- fleet-scale remote execution control plane
+- full orchestration planner
+- memory and self-improvement systems
 
 ## Roadmap 13: Provider Streaming Timeout Semantics
 
@@ -1398,3 +1721,11 @@ Task definition of done:
 10. Roadmap 10: Managed Coding Providers
 11. Roadmap 11: First IM Channel Loop
 12. Roadmap 12: Channel Reply Progression
+13. Roadmap 13: Provider Streaming Timeout Semantics
+14. Roadmap 14: Test Environment Workflow
+15. Roadmap 15: Skill Registry And Prompt Support
+16. Roadmap 16: Sandbox Execution Plane
+17. Roadmap 17: Sandbox Requirement Declarations And Consumer Convergence
+18. Roadmap 18: MCP Execution Plane
+19. Roadmap 19: Skill And Local Tool Sandbox Execution
+20. Roadmap 20: Stronger Isolation And Additional Sandbox Backends
