@@ -29,6 +29,8 @@
         "backend_unavailable",
         "launch_failed",
         "process_failed",
+        "provider_error",
+        "provider_auth_failed",
         "timeout",
         "cancelled",
         "io_capture_failed"

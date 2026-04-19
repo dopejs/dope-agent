@@ -3063,22 +3063,30 @@ func persistManagedProviderState(ctx context.Context, sqliteStore *store.SQLiteS
 }
 
 func publishProviderAuthEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, state providers.AuthState, eventName string) (events.Event, error) {
+	payload := map[string]any{
+		"providerId":   state.ProviderID,
+		"family":       state.Family,
+		"authMode":     state.AuthMode,
+		"status":       state.Status,
+		"cliAvailable": state.CLIAvailable,
+		"accountLabel": state.AccountLabel,
+		"accountId":    state.AccountID,
+		"plan":         state.Plan,
+		"authMethod":   state.AuthMethod,
+		"lastError":    state.LastError,
+	}
+	if len(state.Metadata) > 0 {
+		metadata := make(map[string]string, len(state.Metadata))
+		for key, value := range state.Metadata {
+			metadata[key] = value
+		}
+		payload["metadata"] = metadata
+	}
 	return publishEvent(ctx, eventBus, sqliteStore, events.Event{
 		Category: "provider",
 		Name:     eventName,
 		Resource: events.Resource{Kind: "provider_auth", ID: state.ProviderID},
-		Payload: map[string]any{
-			"providerId":   state.ProviderID,
-			"family":       state.Family,
-			"authMode":     state.AuthMode,
-			"status":       state.Status,
-			"cliAvailable": state.CLIAvailable,
-			"accountLabel": state.AccountLabel,
-			"accountId":    state.AccountID,
-			"plan":         state.Plan,
-			"authMethod":   state.AuthMethod,
-			"lastError":    state.LastError,
-		},
+		Payload:  payload,
 	})
 }
 

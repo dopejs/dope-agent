@@ -31,7 +31,11 @@
             "accountId": { "type": "string" },
             "plan": { "type": "string" },
             "authMethod": { "type": "string" },
-            "lastError": { "type": "string" }
+            "lastError": { "type": "string" },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
           }
         }
       }

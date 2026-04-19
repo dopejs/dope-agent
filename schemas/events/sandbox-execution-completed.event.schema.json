@@ -29,7 +29,18 @@
             "signal": { "type": "string" },
             "completedAt": { "type": "string", "format": "date-time" },
             "outputTruncated": { "type": "boolean" },
-            "partial": { "type": "boolean" }
+            "partial": { "type": "boolean" },
+            "managedProviderId": { "type": "string" },
+            "managedProviderAction": { "type": "string" },
+            "managedProviderOperationId": { "type": "string" },
+            "sandboxProfileId": { "type": "string" },
+            "sandboxDecision": { "type": "string" },
+            "enforcementStrength": { "type": "string" },
+            "failureClass": { "type": "string" },
+            "sensitiveStateClasses": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
           }
         }
       }

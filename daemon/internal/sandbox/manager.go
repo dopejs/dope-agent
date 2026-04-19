@@ -31,11 +31,12 @@ var (
 )
 
 const (
-	sandboxApprovalAction  = "sandbox.execute"
-	sandboxResourceKind    = "sandbox_profile"
-	eventCategory          = "sandbox"
-	resourceKindExecution  = "sandbox_execution"
-	backendMetaProcessKind = "process"
+	sandboxApprovalAction                 = "sandbox.execute"
+	sandboxResourceKind                   = "sandbox_profile"
+	eventCategory                         = "sandbox"
+	resourceKindExecution                 = "sandbox_execution"
+	backendMetaProcessKind                = "process"
+	managedProviderPendingFinalizationKey = "managedProviderFinalizationPending"
 )
 
 type Manager struct {
@@ -50,17 +51,19 @@ type Manager struct {
 	executions   map[string]Execution
 	executionIDs []string
 	cancels      map[string]context.CancelFunc
+	pendingFinal map[string]struct{}
 }
 
 func NewManager(cfg config.Config, sqliteStore *store.SQLiteStore, eventBus *events.Bus, policyEngine *policy.Engine) *Manager {
 	manager := &Manager{
-		cfg:        cfg,
-		store:      sqliteStore,
-		eventBus:   eventBus,
-		policy:     policyEngine,
-		profiles:   map[string]Profile{},
-		executions: map[string]Execution{},
-		cancels:    map[string]context.CancelFunc{},
+		cfg:          cfg,
+		store:        sqliteStore,
+		eventBus:     eventBus,
+		policy:       policyEngine,
+		profiles:     map[string]Profile{},
+		executions:   map[string]Execution{},
+		cancels:      map[string]context.CancelFunc{},
+		pendingFinal: map[string]struct{}{},
 	}
 	manager.reloadBuiltins()
 	return manager
@@ -112,6 +115,22 @@ func (m *Manager) Explain(ctx context.Context, request ExecutionRequest) (Decisi
 		return Decision{}, err
 	}
 	return decision, nil
+}
+
+func (m *Manager) EvaluateAccess(profileID, cwd string, access AccessRequest) (Decision, error) {
+	profile, ok := m.GetProfile(firstNonEmpty(profileID, ProfileIDSubprocessDefault))
+	if !ok {
+		return Decision{
+			DecisionID:           newID("sandbox_decision"),
+			Resolution:           DecisionResolutionDeny,
+			MatchedRules:         []string{"profile:not_found"},
+			ApprovalStatus:       DecisionApprovalStatusNotApplicable,
+			EffectiveProfileID:   strings.TrimSpace(profileID),
+			EffectiveBackendKind: BackendKindSubprocess,
+			Explanation:          "sandbox profile was not found",
+		}, nil
+	}
+	return evaluateAccessDecision(profile, strings.TrimSpace(cwd), cloneAccess(access)), nil
 }
 
 func (m *Manager) StartExecution(ctx context.Context, request ExecutionRequest) (Execution, error) {
@@ -206,6 +225,56 @@ func (m *Manager) WaitExecution(ctx context.Context, executionID string) (Execut
 	}
 }
 
+func (m *Manager) FinalizeExecution(ctx context.Context, executionID string, finalization ExecutionFinalization) (Execution, error) {
+	m.mu.Lock()
+	execution, ok := m.executions[strings.TrimSpace(executionID)]
+	if !ok {
+		m.mu.Unlock()
+		return Execution{}, ErrExecutionNotFound
+	}
+	if _, pending := m.pendingFinal[strings.TrimSpace(executionID)]; !pending {
+		m.mu.Unlock()
+		return cloneExecution(execution), nil
+	}
+	delete(m.pendingFinal, strings.TrimSpace(executionID))
+
+	status := finalization.Status
+	if status == "" {
+		status = execution.Status
+	}
+	if status == "" {
+		status = ExecutionStatusCompleted
+	}
+	if status != ExecutionStatusCompleted && status != ExecutionStatusFailed {
+		status = ExecutionStatusFailed
+	}
+	now := time.Now().UTC()
+	execution.Status = status
+	execution.UpdatedAt = now
+	execution.CompletedAt = &now
+	execution.Result.Status = status
+	execution.Result.CompletedAt = &now
+	execution.Result.ErrorClass = finalization.ErrorClass
+	execution.Result.ErrorCode = strings.TrimSpace(finalization.ErrorCode)
+	execution.Result.Error = strings.TrimSpace(finalization.Error)
+	delete(execution.Metadata, managedProviderPendingFinalizationKey)
+	if status == ExecutionStatusCompleted {
+		execution.Result.ErrorClass = ErrorClassNone
+		execution.Result.ErrorCode = ""
+		execution.Result.Error = ""
+	}
+	m.executions[execution.ExecutionID] = cloneExecution(execution)
+	m.mu.Unlock()
+
+	if err := m.persistExecution(ctx, execution); err != nil {
+		return Execution{}, err
+	}
+	if err := m.publishExecutionTerminal(ctx, execution); err != nil {
+		return Execution{}, err
+	}
+	return cloneExecution(execution), nil
+}
+
 func (m *Manager) Close(ctx context.Context) error {
 	m.mu.RLock()
 	executionIDs := append([]string(nil), m.executionIDs...)
@@ -251,6 +320,7 @@ func (m *Manager) Restore(ctx context.Context) error {
 	m.executions = map[string]Execution{}
 	m.executionIDs = m.executionIDs[:0]
 	m.cancels = map[string]context.CancelFunc{}
+	m.pendingFinal = map[string]struct{}{}
 	for _, record := range records {
 		var execution Execution
 		if err := json.Unmarshal(record.Document, &execution); err != nil {
@@ -263,11 +333,11 @@ func (m *Manager) Restore(ctx context.Context) error {
 	m.mu.Unlock()
 
 	for _, record := range records {
-		if IsTerminal(ExecutionStatus(record.Status)) {
-			continue
-		}
 		execution, ok := m.GetExecution(record.ExecutionID)
 		if !ok {
+			continue
+		}
+		if IsTerminal(ExecutionStatus(record.Status)) && !awaitsManagedProviderFinalization(execution) {
 			continue
 		}
 		now := time.Now().UTC()
@@ -276,6 +346,11 @@ func (m *Manager) Restore(ctx context.Context) error {
 		execution.Result.ErrorClass = ErrorClassCancelled
 		execution.Result.ErrorCode = "daemon_restarted"
 		execution.Result.Error = "execution was interrupted by daemon restart recovery"
+		if awaitsManagedProviderFinalization(execution) {
+			execution.Result.ErrorCode = "daemon_restarted_before_consumer_finalization"
+			execution.Result.Error = "execution completed at subprocess layer but daemon restarted before managed-provider finalization"
+			delete(execution.Metadata, managedProviderPendingFinalizationKey)
+		}
 		execution.Result.CompletedAt = &now
 		execution.CompletedAt = &now
 		execution.UpdatedAt = now
@@ -427,62 +502,19 @@ func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createA
 }
 
 func (m *Manager) evaluate(ctx context.Context, profile Profile, execution Execution, createApproval bool) (Decision, string, *policy.Decision, error) {
-	decision := Decision{
-		DecisionID:           newID("sandbox_decision"),
-		Resolution:           DecisionResolutionAllow,
-		MatchedRules:         []string{"profile:" + profile.ProfileID},
-		ApprovalStatus:       DecisionApprovalStatusNotApplicable,
-		EffectiveProfileID:   profile.ProfileID,
-		EffectiveBackendKind: profile.BackendKind,
-		Explanation:          "execution is allowed by sandbox profile",
-	}
+	decision := evaluateAccessDecision(profile, execution.Cwd, execution.Access)
 
 	requestedApproval := strings.TrimSpace(execution.ApprovalID)
-	approvalRequired := false
-	reasons := make([]string, 0, 4)
-
-	if profile.BackendKind != BackendKindSubprocess {
-		if profile.ApprovalPolicy.RequiredForUnknownBackends {
-			approvalRequired = true
-			reasons = append(reasons, "backend:approval_required")
-		} else {
-			decision.Resolution = DecisionResolutionDeny
-			decision.MatchedRules = append(decision.MatchedRules, "backend:unsupported")
-			decision.Explanation = "sandbox backend is not available"
-			return decision, "", nil, nil
-		}
+	if decision.Resolution == DecisionResolutionDeny {
+		return decision, "", nil, nil
 	}
+
+	approvalRequired := decision.ApprovalRequired
+	reasons := append([]string(nil), decision.MatchedRules[1:]...)
 
 	if rule := commandApprovalRule(profile, execution.Command); rule != "" {
 		approvalRequired = true
 		reasons = append(reasons, rule)
-	}
-
-	fsDecision, fsRule, err := evaluateFilesystem(profile, execution.Cwd, execution.Access)
-	if err != nil {
-		return Decision{}, "", nil, err
-	}
-	if fsDecision == DecisionResolutionDeny {
-		decision.Resolution = DecisionResolutionDeny
-		decision.MatchedRules = append(decision.MatchedRules, fsRule)
-		decision.Explanation = "filesystem access is denied by sandbox profile"
-		return decision, "", nil, nil
-	}
-	if fsDecision == DecisionResolutionAsk {
-		approvalRequired = true
-		reasons = append(reasons, fsRule)
-	}
-
-	netDecision, netRule := evaluateNetwork(profile, execution.Access)
-	if netDecision == DecisionResolutionDeny {
-		decision.Resolution = DecisionResolutionDeny
-		decision.MatchedRules = append(decision.MatchedRules, netRule)
-		decision.Explanation = "network access is denied by sandbox profile"
-		return decision, "", nil, nil
-	}
-	if netDecision == DecisionResolutionAsk {
-		approvalRequired = true
-		reasons = append(reasons, netRule)
 	}
 
 	if profile.ApprovalPolicy.Mode == ApprovalModeDeny && approvalRequired {
@@ -545,6 +577,70 @@ func (m *Manager) evaluate(ctx context.Context, profile Profile, execution Execu
 	return decision, approval.ApprovalID, &createdDecision, nil
 }
 
+func evaluateAccessDecision(profile Profile, cwd string, access AccessRequest) Decision {
+	decision := Decision{
+		DecisionID:           newID("sandbox_decision"),
+		Resolution:           DecisionResolutionAllow,
+		MatchedRules:         []string{"profile:" + profile.ProfileID},
+		ApprovalStatus:       DecisionApprovalStatusNotApplicable,
+		EffectiveProfileID:   profile.ProfileID,
+		EffectiveBackendKind: profile.BackendKind,
+		Explanation:          "execution is allowed by sandbox profile",
+	}
+	approvalRequired := false
+	reasons := make([]string, 0, 4)
+
+	if profile.BackendKind != BackendKindSubprocess {
+		if profile.ApprovalPolicy.RequiredForUnknownBackends {
+			approvalRequired = true
+			reasons = append(reasons, "backend:approval_required")
+		} else {
+			decision.Resolution = DecisionResolutionDeny
+			decision.MatchedRules = append(decision.MatchedRules, "backend:unsupported")
+			decision.Explanation = "sandbox backend is not available"
+			return decision
+		}
+	}
+
+	fsDecision, fsRule, err := evaluateFilesystem(profile, cwd, access)
+	if err != nil {
+		decision.Resolution = DecisionResolutionDeny
+		decision.MatchedRules = append(decision.MatchedRules, "filesystem:invalid")
+		decision.Explanation = err.Error()
+		return decision
+	}
+	if fsDecision == DecisionResolutionDeny {
+		decision.Resolution = DecisionResolutionDeny
+		decision.MatchedRules = append(decision.MatchedRules, fsRule)
+		decision.Explanation = "filesystem access is denied by sandbox profile"
+		return decision
+	}
+	if fsDecision == DecisionResolutionAsk {
+		approvalRequired = true
+		reasons = append(reasons, fsRule)
+	}
+
+	netDecision, netRule := evaluateNetwork(profile, access)
+	if netDecision == DecisionResolutionDeny {
+		decision.Resolution = DecisionResolutionDeny
+		decision.MatchedRules = append(decision.MatchedRules, netRule)
+		decision.Explanation = "network access is denied by sandbox profile"
+		return decision
+	}
+	if netDecision == DecisionResolutionAsk {
+		approvalRequired = true
+		reasons = append(reasons, netRule)
+	}
+
+	if approvalRequired {
+		decision.ApprovalRequired = true
+		decision.Resolution = DecisionResolutionAsk
+		decision.MatchedRules = append(decision.MatchedRules, reasons...)
+		decision.Explanation = "sandbox execution requires approval"
+	}
+	return decision
+}
+
 func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, execution Execution, launch *launchSpec) {
 	if launch == nil {
 		return
@@ -558,12 +654,12 @@ func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, e
 	execution.UpdatedAt = now
 	execution.Result.Status = ExecutionStatusRunning
 	execution.Result.StartedAt = &now
-	execution.Result.BackendMetadata = map[string]any{
+	execution.Result.BackendMetadata = mergeBackendMetadata(map[string]any{
 		"backend":               string(BackendKindSubprocess),
 		"networkEnforcement":    execution.Decision.EffectiveBackendKind == BackendKindSubprocess,
 		"networkPolicyStrength": "declared_only",
 		"processType":           backendMetaProcessKind,
-	}
+	}, execution)
 	m.executions[execution.ExecutionID] = cloneExecution(execution)
 	m.mu.Unlock()
 	if err := m.persistExecution(context.Background(), execution); err == nil {
@@ -590,16 +686,28 @@ func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, e
 		ErrorCode:       result.ErrorCode,
 		Error:           result.Error,
 		Partial:         false,
-		BackendMetadata: result.BackendMetadata,
+		BackendMetadata: mergeBackendMetadata(result.BackendMetadata, execution),
 	}
 	execution.StartedAt = execution.Result.StartedAt
 
 	m.mu.Lock()
 	delete(m.cancels, execution.ExecutionID)
+	delayTerminal := requiresManagedProviderFinalization(execution) && execution.Status == ExecutionStatusCompleted
+	if delayTerminal {
+		execution.Metadata = cloneStringMap(execution.Metadata)
+		if execution.Metadata == nil {
+			execution.Metadata = map[string]string{}
+		}
+		execution.Metadata[managedProviderPendingFinalizationKey] = "true"
+		m.pendingFinal[execution.ExecutionID] = struct{}{}
+	}
 	m.executions[execution.ExecutionID] = cloneExecution(execution)
 	m.mu.Unlock()
 
 	if err := m.persistExecution(context.Background(), execution); err == nil {
+		if delayTerminal {
+			return
+		}
 		_ = m.publishExecutionTerminal(context.Background(), execution)
 	}
 }
@@ -737,6 +845,37 @@ func executeSubprocess(ctx context.Context, launch launchSpec) subprocessResult 
 	}
 }
 
+func mergeBackendMetadata(metadata map[string]any, execution Execution) map[string]any {
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	if providerID := strings.TrimSpace(execution.Metadata["managedProviderId"]); providerID != "" {
+		metadata["managedProviderId"] = providerID
+	}
+	if action := strings.TrimSpace(execution.Metadata["managedProviderAction"]); action != "" {
+		metadata["managedProviderAction"] = action
+	}
+	if operationID := strings.TrimSpace(execution.Metadata["managedProviderOperationId"]); operationID != "" {
+		metadata["managedProviderOperationId"] = operationID
+	}
+	if strength := strings.TrimSpace(execution.Metadata["enforcementStrength"]); strength != "" {
+		metadata["enforcementStrength"] = strength
+	}
+	if classes := strings.TrimSpace(execution.Metadata["sensitiveStateClasses"]); classes != "" {
+		metadata["sensitiveStateClasses"] = strings.Split(classes, ",")
+	}
+	return metadata
+}
+
+func requiresManagedProviderFinalization(execution Execution) bool {
+	return strings.TrimSpace(execution.Metadata["managedProviderId"]) != "" &&
+		strings.TrimSpace(execution.Metadata["managedProviderOperationId"]) != ""
+}
+
+func awaitsManagedProviderFinalization(execution Execution) bool {
+	return strings.EqualFold(strings.TrimSpace(execution.Metadata[managedProviderPendingFinalizationKey]), "true")
+}
+
 type captureBuffer struct {
 	limit     int
 	size      int
@@ -851,22 +990,24 @@ func (m *Manager) publishApprovalRequested(ctx context.Context, approvalID strin
 }
 
 func (m *Manager) publishExecutionRequested(ctx context.Context, execution Execution) error {
+	payload := map[string]any{
+		"profileId":    execution.ProfileID,
+		"backendKind":  execution.BackendKind,
+		"command":      execution.Command,
+		"args":         execution.Args,
+		"cwd":          execution.Cwd,
+		"requestedBy":  execution.RequestedBy,
+		"resourceKind": execution.ResourceKind,
+		"resourceId":   execution.ResourceID,
+		"scope":        execution.Scope,
+		"status":       execution.Status,
+	}
+	mergeExecutionPayloadMetadata(payload, execution.Metadata)
 	_, err := m.publishEvent(ctx, events.Event{
 		Category: eventCategory,
 		Name:     "sandbox.execution_requested",
 		Resource: events.Resource{Kind: resourceKindExecution, ID: execution.ExecutionID},
-		Payload: map[string]any{
-			"profileId":    execution.ProfileID,
-			"backendKind":  execution.BackendKind,
-			"command":      execution.Command,
-			"args":         execution.Args,
-			"cwd":          execution.Cwd,
-			"requestedBy":  execution.RequestedBy,
-			"resourceKind": execution.ResourceKind,
-			"resourceId":   execution.ResourceID,
-			"scope":        execution.Scope,
-			"status":       execution.Status,
-		},
+		Payload:  payload,
 	})
 	return err
 }
@@ -891,16 +1032,18 @@ func (m *Manager) publishDecisionRecorded(ctx context.Context, execution Executi
 }
 
 func (m *Manager) publishExecutionStarted(ctx context.Context, execution Execution) error {
+	payload := map[string]any{
+		"profileId":   execution.ProfileID,
+		"backendKind": execution.BackendKind,
+		"status":      execution.Status,
+		"startedAt":   execution.StartedAt,
+	}
+	mergeExecutionPayloadMetadata(payload, execution.Metadata)
 	_, err := m.publishEvent(ctx, events.Event{
 		Category: eventCategory,
 		Name:     "sandbox.execution_started",
 		Resource: events.Resource{Kind: resourceKindExecution, ID: execution.ExecutionID},
-		Payload: map[string]any{
-			"profileId":   execution.ProfileID,
-			"backendKind": execution.BackendKind,
-			"status":      execution.Status,
-			"startedAt":   execution.StartedAt,
-		},
+		Payload:  payload,
 	})
 	return err
 }
@@ -930,6 +1073,10 @@ func (m *Manager) publishExecutionTerminal(ctx context.Context, execution Execut
 	if execution.Result.CompletedAt != nil {
 		payload["completedAt"] = execution.Result.CompletedAt
 	}
+	mergeExecutionPayloadMetadata(payload, execution.Metadata)
+	for key, value := range execution.Result.BackendMetadata {
+		payload[key] = value
+	}
 	_, err := m.publishEvent(ctx, events.Event{
 		Category: eventCategory,
 		Name:     name,
@@ -937,6 +1084,23 @@ func (m *Manager) publishExecutionTerminal(ctx context.Context, execution Execut
 		Payload:  payload,
 	})
 	return err
+}
+
+func mergeExecutionPayloadMetadata(payload map[string]any, metadata map[string]string) {
+	for _, key := range []string{
+		"managedProviderId",
+		"managedProviderAction",
+		"managedProviderOperationId",
+		"sandboxProfileId",
+		"sandboxDecision",
+		"enforcementStrength",
+		"failureClass",
+		"sensitiveStateClasses",
+	} {
+		if value := strings.TrimSpace(metadata[key]); value != "" {
+			payload[key] = value
+		}
+	}
 }
 
 func (m *Manager) publishEvent(ctx context.Context, event events.Event) (events.Event, error) {
@@ -1009,6 +1173,7 @@ func (m *Manager) listProfilesLocked() []Profile {
 func builtinProfiles(cfg config.Config) []Profile {
 	dataDir := strings.TrimSpace(cfg.DataDir)
 	homeDir, _ := os.UserHomeDir()
+	managedHomeDir := firstNonEmpty(config.ManagedProviderHomeDir(cfg), homeDir)
 	agentsDir := filepath.Join(homeDir, ".agents")
 	tempRoot := os.TempDir()
 
@@ -1075,11 +1240,11 @@ func builtinProfiles(cfg config.Config) []Profile {
 			Title:          "Claude Managed Provider",
 			Description:    "Sandbox policy for the Claude managed CLI bridge.",
 			BackendKind:    BackendKindSubprocess,
-			DefaultWorkDir: resolveManagedWorkDir(homeDir, cfg.LLM.Claude.WorkDir),
+			DefaultWorkDir: resolveManagedWorkDir(managedHomeDir, cfg.LLM.Claude.WorkDir),
 			FilesystemPolicy: FilesystemPolicy{
 				Mode:               FilesystemModeScoped,
-				ReadRoots:          normalizeRootList([]string{resolveManagedWorkDir(homeDir, cfg.LLM.Claude.WorkDir), filepath.Join(homeDir, ".claude")}),
-				WriteRoots:         normalizeRootList([]string{resolveManagedWorkDir(homeDir, cfg.LLM.Claude.WorkDir), filepath.Join(homeDir, ".claude")}),
+				ReadRoots:          normalizeRootList([]string{resolveManagedWorkDir(managedHomeDir, cfg.LLM.Claude.WorkDir), filepath.Join(managedHomeDir, ".claude")}),
+				WriteRoots:         normalizeRootList([]string{resolveManagedWorkDir(managedHomeDir, cfg.LLM.Claude.WorkDir), filepath.Join(managedHomeDir, ".claude")}),
 				TempRoots:          []string{tempRoot},
 				AllowDataDir:       false,
 				AllowUserAgentsDir: false,
@@ -1099,7 +1264,7 @@ func builtinProfiles(cfg config.Config) []Profile {
 					"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "TERM", "LANG", "LC_ALL",
 				},
 				InjectedVars: map[string]string{
-					"HOME":     homeDir,
+					"HOME":     managedHomeDir,
 					"DOPE_ENV": string(cfg.Environment),
 				},
 				RedactedVars: []string{},
@@ -1132,11 +1297,11 @@ func builtinProfiles(cfg config.Config) []Profile {
 			Title:          "Codex Managed Provider",
 			Description:    "Sandbox policy for the Codex managed CLI bridge.",
 			BackendKind:    BackendKindSubprocess,
-			DefaultWorkDir: resolveManagedWorkDir(homeDir, cfg.LLM.Codex.WorkDir),
+			DefaultWorkDir: resolveManagedWorkDir(managedHomeDir, cfg.LLM.Codex.WorkDir),
 			FilesystemPolicy: FilesystemPolicy{
 				Mode:               FilesystemModeScoped,
-				ReadRoots:          normalizeRootList([]string{resolveManagedWorkDir(homeDir, cfg.LLM.Codex.WorkDir), filepath.Join(homeDir, ".codex")}),
-				WriteRoots:         normalizeRootList([]string{resolveManagedWorkDir(homeDir, cfg.LLM.Codex.WorkDir), filepath.Join(homeDir, ".codex")}),
+				ReadRoots:          normalizeRootList([]string{resolveManagedWorkDir(managedHomeDir, cfg.LLM.Codex.WorkDir), filepath.Join(managedHomeDir, ".codex")}),
+				WriteRoots:         normalizeRootList([]string{resolveManagedWorkDir(managedHomeDir, cfg.LLM.Codex.WorkDir), filepath.Join(managedHomeDir, ".codex")}),
 				TempRoots:          []string{tempRoot},
 				AllowDataDir:       false,
 				AllowUserAgentsDir: false,
@@ -1156,7 +1321,7 @@ func builtinProfiles(cfg config.Config) []Profile {
 					"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "TERM", "LANG", "LC_ALL",
 				},
 				InjectedVars: map[string]string{
-					"HOME":     homeDir,
+					"HOME":     managedHomeDir,
 					"DOPE_ENV": string(cfg.Environment),
 				},
 				RedactedVars: []string{},
@@ -1384,6 +1549,18 @@ func resolveManagedWorkDir(homeDir, configured string) string {
 			return "."
 		}
 		return filepath.Clean(homeDir)
+	}
+	if trimmed == "~" {
+		if strings.TrimSpace(homeDir) == "" {
+			return "."
+		}
+		return filepath.Clean(homeDir)
+	}
+	if strings.HasPrefix(trimmed, "~/") {
+		if strings.TrimSpace(homeDir) == "" {
+			return filepath.Clean(strings.TrimPrefix(trimmed, "~/"))
+		}
+		return filepath.Clean(filepath.Join(homeDir, strings.TrimPrefix(trimmed, "~/")))
 	}
 	resolved, err := config.ResolveDir(trimmed)
 	if err != nil {

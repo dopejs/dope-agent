@@ -17,6 +17,42 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 )
 
+const (
+	managedProviderMetadataProviderID      = "managedProviderId"
+	managedProviderMetadataAction          = "managedProviderAction"
+	managedProviderMetadataOperationID     = "managedProviderOperationId"
+	managedProviderMetadataProfileID       = "sandboxProfileId"
+	managedProviderMetadataDecision        = "sandboxDecision"
+	managedProviderMetadataFailureClass    = "failureClass"
+	managedProviderMetadataStrength        = "enforcementStrength"
+	managedProviderMetadataSensitiveStates = "sensitiveStateClasses"
+	managedProviderMetadataAccessSummary   = "localStateAccesses"
+	managedProviderRequestedByPrefix       = "managed_provider:"
+	managedProviderRedactionRule           = "class_summary_only"
+)
+
+type managedProviderOperationContextKey struct{}
+
+type managedProviderOperationPlan struct {
+	OperationID    string
+	ProviderID     string
+	Action         sandbox.ManagedProviderActionKind
+	ProfileID      string
+	RequestedBy    string
+	Reason         string
+	DeclaredRead   []string
+	DeclaredWrite  []string
+	Access         sandbox.AccessRequest
+	LocalState     []sandbox.SensitiveLocalStateAccessSummary
+	SensitiveKinds []string
+}
+
+type managedProviderOperationEvaluation struct {
+	Declaration sandbox.ManagedProviderRequirementDeclaration
+	Operation   sandbox.ManagedProviderOperation
+	Metadata    map[string]string
+}
+
 type Bridge interface {
 	ProviderID() string
 	DisplayName() string
@@ -35,9 +71,10 @@ type Runner interface {
 }
 
 type RunResult struct {
-	Stdout   string
-	Stderr   string
-	ExitCode int
+	ExecutionID string
+	Stdout      string
+	Stderr      string
+	ExitCode    int
 }
 
 type RunError struct {
@@ -90,24 +127,33 @@ func (r sandboxRunner) Run(ctx context.Context, cmd string, args []string, workd
 	if r.manager == nil {
 		return execRunner{}.Run(ctx, cmd, args, workdir)
 	}
+	requestedBy := managedProviderRequestedByPrefix + r.providerID
+	access := sandbox.AccessRequest{
+		ReadRoots:     cloneRoots(r.roots),
+		WriteRoots:    cloneRoots(r.roots),
+		NetworkMode:   sandbox.NetworkModeFull,
+		AllowedHosts:  []string{},
+		AllowedPorts:  []int{},
+		AllowLoopback: true,
+	}
+	metadata := map[string]string{}
+	if operation, ok := managedProviderOperationFromContext(ctx); ok {
+		requestedBy = firstNonEmpty(strings.TrimSpace(operation.RequestedBy), requestedBy)
+		access = cloneAccessRequest(operation.Access)
+		metadata = cloneStringMap(operationMetadataFromPlan(operation))
+	}
 	request := sandbox.ExecutionRequest{
 		ProfileID:    r.profileID,
 		Command:      cmd,
 		Args:         append([]string(nil), args...),
 		Cwd:          workdir,
-		RequestedBy:  "managed_provider:" + r.providerID,
+		RequestedBy:  requestedBy,
 		ResourceKind: "provider",
 		ResourceID:   r.providerID,
 		Scope:        "managed_provider",
 		Reason:       "managed provider bridge execution",
-		Access: sandbox.AccessRequest{
-			ReadRoots:     cloneRoots(r.roots),
-			WriteRoots:    cloneRoots(r.roots),
-			NetworkMode:   sandbox.NetworkModeFull,
-			AllowedHosts:  []string{},
-			AllowedPorts:  []int{},
-			AllowLoopback: true,
-		},
+		Metadata:     metadata,
+		Access:       access,
 	}
 	execution, err := r.manager.StartExecution(ctx, request)
 	if err != nil {
@@ -118,8 +164,9 @@ func (r sandboxRunner) Run(ctx context.Context, cmd string, args []string, workd
 		return RunResult{}, err
 	}
 	result := RunResult{
-		Stdout: strings.TrimSpace(execution.Result.Stdout),
-		Stderr: strings.TrimSpace(execution.Result.Stderr),
+		ExecutionID: execution.ExecutionID,
+		Stdout:      strings.TrimSpace(execution.Result.Stdout),
+		Stderr:      strings.TrimSpace(execution.Result.Stderr),
 	}
 	if execution.Result.ExitCode != nil {
 		result.ExitCode = *execution.Result.ExitCode
@@ -163,9 +210,15 @@ type Registry struct {
 }
 
 func NewRegistry(cfg config.Config, sandboxes *sandbox.Manager) *Registry {
-	homeDir, _ := os.UserHomeDir()
+	homeDir := strings.TrimSpace(config.ManagedProviderHomeDir(cfg))
+	if homeDir == "" {
+		homeDir, _ = os.UserHomeDir()
+	}
 	registry := &Registry{
 		bridges: make(map[string]providers.ManagedBridge),
+	}
+	if homeDir != "" {
+		_ = os.MkdirAll(homeDir, 0o755)
 	}
 
 	claudeWorkDir := firstNonEmpty(resolvePath(homeDir, cfg.LLM.Claude.WorkDir), homeFallbackWorkdir(homeDir))
@@ -189,8 +242,8 @@ func NewRegistry(cfg config.Config, sandboxes *sandbox.Manager) *Registry {
 	}
 
 	items := []providers.ManagedBridge{
-		newClaudeBridge(homeDir, cfg, claudeRunner),
-		newCodexBridge(homeDir, cfg, codexRunner),
+		newClaudeBridge(homeDir, cfg, claudeRunner, sandboxes),
+		newCodexBridge(homeDir, cfg, codexRunner, sandboxes),
 	}
 	for _, bridge := range items {
 		registry.bridges[bridge.ProviderID()] = bridge
@@ -281,4 +334,303 @@ func cloneRoots(values []string) []string {
 		items = append(items, trimmed)
 	}
 	return items
+}
+
+func cloneAccessRequest(access sandbox.AccessRequest) sandbox.AccessRequest {
+	return sandbox.AccessRequest{
+		ReadRoots:     cloneRoots(access.ReadRoots),
+		WriteRoots:    cloneRoots(access.WriteRoots),
+		NetworkMode:   access.NetworkMode,
+		AllowedHosts:  append([]string(nil), access.AllowedHosts...),
+		AllowedPorts:  append([]int(nil), access.AllowedPorts...),
+		AllowLoopback: access.AllowLoopback,
+	}
+}
+
+func managedProviderOperationFromContext(ctx context.Context) (managedProviderOperationPlan, bool) {
+	if ctx == nil {
+		return managedProviderOperationPlan{}, false
+	}
+	value, ok := ctx.Value(managedProviderOperationContextKey{}).(managedProviderOperationPlan)
+	return value, ok
+}
+
+func withManagedProviderOperation(ctx context.Context, operation managedProviderOperationPlan) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	operation.Access = cloneAccessRequest(operation.Access)
+	operation.LocalState = cloneLocalStateSummaries(operation.LocalState)
+	operation.SensitiveKinds = cloneStrings(operation.SensitiveKinds)
+	return context.WithValue(ctx, managedProviderOperationContextKey{}, operation)
+}
+
+func evaluateManagedProviderOperation(manager *sandbox.Manager, operation managedProviderOperationPlan) (managedProviderOperationEvaluation, error) {
+	now := time.Now().UTC()
+	evaluation := managedProviderOperationEvaluation{
+		Declaration: sandbox.ManagedProviderRequirementDeclaration{
+			ProviderID:            strings.TrimSpace(operation.ProviderID),
+			ActionKind:            operation.Action,
+			ProfileID:             strings.TrimSpace(operation.ProfileID),
+			BackendKind:           sandbox.BackendKindSubprocess,
+			ReadRoots:             cloneRoots(firstNonEmptyRoots(operation.DeclaredRead, operation.Access.ReadRoots)),
+			WriteRoots:            cloneRoots(firstNonEmptyRoots(operation.DeclaredWrite, operation.Access.WriteRoots)),
+			NetworkMode:           operation.Access.NetworkMode,
+			AllowedHosts:          cloneStrings(operation.Access.AllowedHosts),
+			AllowedPorts:          cloneInts(operation.Access.AllowedPorts),
+			ApprovalMode:          sandbox.ApprovalModeAllow,
+			SensitiveStateClasses: cloneStrings(operation.SensitiveKinds),
+			EnforcementStrength:   "declared_only",
+			Active:                true,
+		},
+		Operation: sandbox.ManagedProviderOperation{
+			OperationID:               newManagedProviderOperationID(),
+			ProviderID:                strings.TrimSpace(operation.ProviderID),
+			ActionKind:                operation.Action,
+			RequestedBy:               firstNonEmpty(strings.TrimSpace(operation.RequestedBy), managedProviderRequestedByPrefix+strings.TrimSpace(operation.ProviderID)),
+			RequirementProfileID:      strings.TrimSpace(operation.ProfileID),
+			Decision:                  sandbox.DecisionResolutionAllow,
+			ApprovalStatus:            sandbox.DecisionApprovalStatusNotApplicable,
+			EnforcementStrength:       "declared_only",
+			SensitiveStateClasses:     cloneStrings(operation.SensitiveKinds),
+			StartedAt:                 now,
+			Status:                    sandbox.ManagedProviderOperationStatusLocalStateInspection,
+			LocalStateAccessSummaries: cloneLocalStateSummaries(operation.LocalState),
+		},
+	}
+
+	if manager != nil {
+		decision, err := manager.EvaluateAccess(operation.ProfileID, "", operation.Access)
+		if err != nil {
+			return managedProviderOperationEvaluation{}, err
+		}
+		evaluation.Operation.Decision = decision.Resolution
+		evaluation.Operation.ApprovalStatus = decision.ApprovalStatus
+		if decision.Resolution == sandbox.DecisionResolutionDeny {
+			evaluation.Operation.Status = sandbox.ManagedProviderOperationStatusDenied
+			evaluation.Operation.FailureClass = string(sandbox.ErrorClassPolicyDenied)
+		}
+		if decision.Resolution == sandbox.DecisionResolutionAsk {
+			evaluation.Operation.Status = sandbox.ManagedProviderOperationStatusDenied
+			evaluation.Operation.FailureClass = string(sandbox.ErrorClassApprovalRequired)
+		}
+		if profile, ok := manager.GetProfile(operation.ProfileID); ok {
+			evaluation.Declaration.BackendKind = profile.BackendKind
+			evaluation.Declaration.ApprovalMode = profile.ApprovalPolicy.Mode
+			evaluation.Declaration.EnforcementStrength = firstNonEmpty(profile.NetworkPolicy.EnforcementMode, "declared_only")
+			evaluation.Operation.EnforcementStrength = evaluation.Declaration.EnforcementStrength
+		}
+	}
+	if evaluation.Operation.Decision == sandbox.DecisionResolutionAllow {
+		if !pathsWithinDeclared(operation.Access.ReadRoots, evaluation.Declaration.ReadRoots) || !pathsWithinDeclared(operation.Access.WriteRoots, evaluation.Declaration.WriteRoots) {
+			evaluation.Operation.Decision = sandbox.DecisionResolutionDeny
+			evaluation.Operation.Status = sandbox.ManagedProviderOperationStatusDenied
+			evaluation.Operation.FailureClass = string(sandbox.ErrorClassPolicyDenied)
+		}
+	}
+
+	evaluation.Metadata = operationMetadata(evaluation.Operation)
+	return evaluation, nil
+}
+
+func operationMetadata(operation sandbox.ManagedProviderOperation) map[string]string {
+	metadata := map[string]string{
+		managedProviderMetadataProviderID:  strings.TrimSpace(operation.ProviderID),
+		managedProviderMetadataAction:      string(operation.ActionKind),
+		managedProviderMetadataOperationID: strings.TrimSpace(operation.OperationID),
+		managedProviderMetadataProfileID:   strings.TrimSpace(operation.RequirementProfileID),
+		managedProviderMetadataDecision:    string(operation.Decision),
+		managedProviderMetadataStrength:    strings.TrimSpace(operation.EnforcementStrength),
+	}
+	if len(operation.SensitiveStateClasses) > 0 {
+		metadata[managedProviderMetadataSensitiveStates] = strings.Join(operation.SensitiveStateClasses, ",")
+	}
+	if operation.FailureClass != "" {
+		metadata[managedProviderMetadataFailureClass] = operation.FailureClass
+	}
+	if encoded, err := json.Marshal(operation.LocalStateAccessSummaries); err == nil && len(operation.LocalStateAccessSummaries) > 0 {
+		metadata[managedProviderMetadataAccessSummary] = string(encoded)
+	}
+	return metadata
+}
+
+func finalizeManagedProviderMetadata(metadata map[string]string, failureClass string) map[string]string {
+	updated := cloneStringMap(metadata)
+	if strings.TrimSpace(failureClass) == "" {
+		delete(updated, managedProviderMetadataFailureClass)
+		return updated
+	}
+	updated[managedProviderMetadataFailureClass] = strings.TrimSpace(failureClass)
+	return updated
+}
+
+func finalizeManagedProviderExecutionSuccess(manager *sandbox.Manager, result RunResult) {
+	if manager == nil || strings.TrimSpace(result.ExecutionID) == "" {
+		return
+	}
+	_, _ = manager.FinalizeExecution(context.Background(), result.ExecutionID, sandbox.ExecutionFinalization{
+		Status: sandbox.ExecutionStatusCompleted,
+	})
+}
+
+func finalizeManagedProviderExecutionFailure(manager *sandbox.Manager, result RunResult, err error) {
+	if manager == nil || strings.TrimSpace(result.ExecutionID) == "" || err == nil {
+		return
+	}
+	finalization := sandbox.ExecutionFinalization{
+		Status:     sandbox.ExecutionStatusFailed,
+		ErrorClass: sandbox.ErrorClassProviderFailed,
+		ErrorCode:  "provider_error",
+		Error:      strings.TrimSpace(err.Error()),
+	}
+	var providerErr *llm.ProviderError
+	if errors.As(err, &providerErr) {
+		finalization.ErrorCode = firstNonEmpty(strings.TrimSpace(providerErr.Code), finalization.ErrorCode)
+		finalization.Error = firstNonEmpty(strings.TrimSpace(providerErr.Message), finalization.Error)
+		if strings.TrimSpace(providerErr.Code) == "upstream_auth_failed" {
+			finalization.ErrorClass = sandbox.ErrorClassProviderAuth
+		}
+	}
+	_, _ = manager.FinalizeExecution(context.Background(), result.ExecutionID, finalization)
+}
+
+func newManagedProviderOperationID() string {
+	return "managed_provider_op_" + strings.ReplaceAll(time.Now().UTC().Format("20060102150405.000000000"), ".", "")
+}
+
+func cloneLocalStateSummaries(items []sandbox.SensitiveLocalStateAccessSummary) []sandbox.SensitiveLocalStateAccessSummary {
+	cloned := make([]sandbox.SensitiveLocalStateAccessSummary, 0, len(items))
+	for _, item := range items {
+		cloned = append(cloned, item)
+	}
+	return cloned
+}
+
+func cloneStrings(values []string) []string {
+	return append([]string(nil), values...)
+}
+
+func cloneInts(values []int) []int {
+	return append([]int(nil), values...)
+}
+
+func localStateSummary(providerID string, action sandbox.ManagedProviderActionKind, stateClass string, accessMode sandbox.LocalStateAccessMode, path string, sensitive bool) sandbox.SensitiveLocalStateAccessSummary {
+	return sandbox.SensitiveLocalStateAccessSummary{
+		ProviderID:    strings.TrimSpace(providerID),
+		ActionKind:    action,
+		StateClass:    strings.TrimSpace(stateClass),
+		AccessMode:    accessMode,
+		PathSummary:   redactedPathSummary(path),
+		Declared:      true,
+		Sensitive:     sensitive,
+		RedactionRule: managedProviderRedactionRule,
+	}
+}
+
+func redactedPathSummary(path string) string {
+	base := strings.TrimSpace(filepath.Base(strings.TrimSpace(path)))
+	if base == "" || base == "." || base == string(filepath.Separator) {
+		return "redacted"
+	}
+	return base
+}
+
+func firstNonEmptyRoots(preferred []string, fallback []string) []string {
+	if len(preferred) > 0 {
+		return preferred
+	}
+	return fallback
+}
+
+func pathsWithinDeclared(paths []string, declared []string) bool {
+	if len(paths) == 0 {
+		return true
+	}
+	if len(declared) == 0 {
+		return false
+	}
+	for _, path := range paths {
+		if !pathWithinAny(path, declared) {
+			return false
+		}
+	}
+	return true
+}
+
+func pathWithinAny(path string, roots []string) bool {
+	cleanPath := filepath.Clean(strings.TrimSpace(path))
+	if cleanPath == "" {
+		return false
+	}
+	for _, root := range roots {
+		cleanRoot := filepath.Clean(strings.TrimSpace(root))
+		if cleanRoot == "" {
+			continue
+		}
+		if cleanPath == cleanRoot {
+			return true
+		}
+		rel, err := filepath.Rel(cleanRoot, cleanPath)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+func localStateClassList(items []sandbox.SensitiveLocalStateAccessSummary) []string {
+	seen := map[string]struct{}{}
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		key := strings.TrimSpace(item.StateClass)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		values = append(values, key)
+	}
+	return values
+}
+
+func mergeStringMaps(base map[string]string, extra map[string]string) map[string]string {
+	if len(base) == 0 && len(extra) == 0 {
+		return nil
+	}
+	merged := cloneStringMap(base)
+	for key, value := range extra {
+		merged[key] = value
+	}
+	return merged
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func operationMetadataFromPlan(plan managedProviderOperationPlan) map[string]string {
+	operation := sandbox.ManagedProviderOperation{
+		OperationID:               firstNonEmpty(strings.TrimSpace(plan.OperationID), newManagedProviderOperationID()),
+		ProviderID:                plan.ProviderID,
+		ActionKind:                plan.Action,
+		RequestedBy:               plan.RequestedBy,
+		RequirementProfileID:      plan.ProfileID,
+		Decision:                  sandbox.DecisionResolutionAllow,
+		ApprovalStatus:            sandbox.DecisionApprovalStatusNotApplicable,
+		EnforcementStrength:       "declared_only",
+		SensitiveStateClasses:     cloneStrings(plan.SensitiveKinds),
+		StartedAt:                 time.Now().UTC(),
+		Status:                    sandbox.ManagedProviderOperationStatusRunning,
+		LocalStateAccessSummaries: cloneLocalStateSummaries(plan.LocalState),
+	}
+	return operationMetadata(operation)
 }

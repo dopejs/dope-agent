@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,7 +26,7 @@ func TestClaudeBridgeDetectLoginRequired(t *testing.T) {
 		run: func(_ context.Context, cmd string, args []string, workdir string) (RunResult, error) {
 			return RunResult{Stdout: `{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}`}, nil
 		},
-	})
+	}, nil)
 
 	state, models, err := bridge.Detect(context.Background())
 	if err != nil {
@@ -45,7 +46,7 @@ func TestClaudeProviderMapsAuthFailure(t *testing.T) {
 		run: func(_ context.Context, cmd string, args []string, workdir string) (RunResult, error) {
 			return RunResult{Stdout: `{"is_error":true,"result":"Not logged in · Please run /login"}`}, nil
 		},
-	})
+	}, nil)
 
 	_, err := bridge.Provider().Complete(context.Background(), llm.ProviderRequest{
 		Model:    "claude-opus-4-6",
@@ -92,7 +93,7 @@ func TestCodexBridgeDetectAndModelCatalog(t *testing.T) {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
 
-	bridge := newCodexBridge(homeDir, config.Config{LLM: config.LLMConfig{Codex: config.ManagedCLIProviderConfig{CLIPath: "/usr/bin/codex"}}}, runnerStub{})
+	bridge := newCodexBridge(homeDir, config.Config{LLM: config.LLMConfig{Codex: config.ManagedCLIProviderConfig{CLIPath: "/usr/bin/codex"}}}, runnerStub{}, nil)
 	state, models, err := bridge.Detect(context.Background())
 	if err != nil {
 		t.Fatalf("Detect returned error: %v", err)
@@ -129,7 +130,7 @@ func TestCodexProviderReadsCLIOutputFile(t *testing.T) {
 			}
 			return RunResult{Stdout: "ok"}, nil
 		},
-	})
+	}, nil)
 
 	response, err := bridge.Provider().Complete(context.Background(), llm.ProviderRequest{
 		Model:    "gpt-5.4",
@@ -187,6 +188,9 @@ exit 1
 	}
 	if executions[0].ProfileID != sandbox.ProfileIDManagedProviderClaude {
 		t.Fatalf("expected claude sandbox profile, got %s", executions[0].ProfileID)
+	}
+	if executions[0].Metadata[managedProviderMetadataAction] != string(sandbox.ManagedProviderActionAuthStatus) {
+		t.Fatalf("expected auth-status metadata, got %+v", executions[0].Metadata)
 	}
 }
 
@@ -246,6 +250,219 @@ printf 'sandbox codex reply' > "$output"
 	if executions[0].ProfileID != sandbox.ProfileIDManagedProviderCodex {
 		t.Fatalf("expected codex sandbox profile, got %s", executions[0].ProfileID)
 	}
+	if executions[0].Metadata[managedProviderMetadataAction] != string(sandbox.ManagedProviderActionPromptExecution) {
+		t.Fatalf("expected prompt-execution metadata, got %+v", executions[0].Metadata)
+	}
+	if got := executions[0].Result.BackendMetadata["managedProviderAction"]; got != string(sandbox.ManagedProviderActionPromptExecution) {
+		t.Fatalf("expected backend metadata action, got %+v", executions[0].Result.BackendMetadata)
+	}
+}
+
+func TestClaudeProviderPromptExecutionRoutesThroughSandboxWithLocalStateSummary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sandbox-backed managed provider script fixture is Unix-only")
+	}
+	homeDir := t.TempDir()
+	dataDir := filepath.Join(homeDir, "dope-data")
+	writeManagedProviderTextFile(t, filepath.Join(config.ManagedProviderHomeDir(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     dataDir,
+	}), ".claude", "settings.json"), `{"model":"claude-sonnet-4-6"}`)
+	cliPath := writeManagedProviderScript(t, homeDir, "claude", managedProviderScript(`
+printf '{"is_error":false,"result":"sandbox claude reply","usage":{"input_tokens":1,"output_tokens":1}}'
+	`))
+	sandboxes, cleanup := newSandboxManagerForManagedProviderTest(t, homeDir)
+	defer cleanup()
+
+	registry := NewRegistry(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     dataDir,
+		LLM: config.LLMConfig{
+			Claude: config.ManagedCLIProviderConfig{
+				CLIPath: cliPath,
+			},
+		},
+	}, sandboxes)
+
+	bridge, ok := registry.Get(ClaudeProviderID)
+	if !ok {
+		t.Fatal("expected claude bridge")
+	}
+	response, err := bridge.Provider().Complete(context.Background(), llm.ProviderRequest{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Complete returned error: %v", err)
+	}
+	if response.Output != "sandbox claude reply" {
+		t.Fatalf("expected sandbox claude reply, got %q", response.Output)
+	}
+
+	executions := sandboxes.ListExecutions()
+	if len(executions) != 1 {
+		t.Fatalf("expected 1 sandbox execution, got %d", len(executions))
+	}
+	if executions[0].Metadata[managedProviderMetadataAction] != string(sandbox.ManagedProviderActionPromptExecution) {
+		t.Fatalf("expected prompt execution metadata, got %+v", executions[0].Metadata)
+	}
+	if executions[0].Metadata[managedProviderMetadataSensitiveStates] != "settings_file" {
+		t.Fatalf("expected settings summary, got %+v", executions[0].Metadata)
+	}
+}
+
+func TestNewRegistryUsesManagedProviderHomeUnderDataDirInTestEnvironment(t *testing.T) {
+	homeDir := t.TempDir()
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(homeDir, "dope-data"),
+	}
+
+	registry := NewRegistry(cfg, nil)
+	bridge, ok := registry.Get(ClaudeProviderID)
+	if !ok {
+		t.Fatal("expected claude bridge")
+	}
+	claude, ok := bridge.(*claudeBridge)
+	if !ok {
+		t.Fatalf("expected claude bridge type, got %T", bridge)
+	}
+	if got, want := claude.homeDir, config.ManagedProviderHomeDir(cfg); got != want {
+		t.Fatalf("expected managed provider home %s, got %s", want, got)
+	}
+}
+
+func TestClaudeProviderAuthFailureProjectsToFailedSandboxExecution(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sandbox-backed managed provider script fixture is Unix-only")
+	}
+	homeDir := t.TempDir()
+	cliPath := writeManagedProviderScript(t, homeDir, "claude", managedProviderScript(`
+printf '{"is_error":true,"result":"Not logged in · Please run /login"}'
+	`))
+	sandboxes, cleanup := newSandboxManagerForManagedProviderTest(t, homeDir)
+	defer cleanup()
+
+	registry := NewRegistry(config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(homeDir, "dope-data"),
+		LLM: config.LLMConfig{
+			Claude: config.ManagedCLIProviderConfig{
+				CLIPath: cliPath,
+			},
+		},
+	}, sandboxes)
+
+	bridge, ok := registry.Get(ClaudeProviderID)
+	if !ok {
+		t.Fatal("expected claude bridge")
+	}
+	_, err := bridge.Provider().Complete(context.Background(), llm.ProviderRequest{
+		Model:    "claude-opus-4-6",
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+	})
+	var providerErr *llm.ProviderError
+	if err == nil || !errors.As(err, &providerErr) {
+		t.Fatalf("expected provider error, got %v", err)
+	}
+	if providerErr.Code != "upstream_auth_failed" {
+		t.Fatalf("expected upstream auth failure, got %s", providerErr.Code)
+	}
+
+	executions := sandboxes.ListExecutions()
+	if len(executions) != 1 {
+		t.Fatalf("expected 1 sandbox execution, got %d", len(executions))
+	}
+	if executions[0].Status != sandbox.ExecutionStatusFailed {
+		t.Fatalf("expected failed sandbox execution, got %s", executions[0].Status)
+	}
+	if executions[0].Result.ErrorClass != sandbox.ErrorClassProviderAuth {
+		t.Fatalf("expected provider auth failure class, got %+v", executions[0].Result)
+	}
+}
+
+func TestCodexDetectFailsClosedWhenLocalStateEscapesDeclaration(t *testing.T) {
+	homeDir := t.TempDir()
+	writeJSONFile(t, filepath.Join(homeDir, ".codex", "models_cache.json"), map[string]any{
+		"models": []map[string]any{{"slug": "gpt-5.4"}},
+	})
+	if err := os.WriteFile(filepath.Join(homeDir, ".codex", "config.toml"), []byte(`model = "gpt-5.4"`), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	outsideFile, err := os.CreateTemp("", "dope-outside-auth-*.json")
+	if err != nil {
+		t.Fatalf("CreateTemp returned error: %v", err)
+	}
+	outsideAuthPath := outsideFile.Name()
+	_ = outsideFile.Close()
+	t.Cleanup(func() { _ = os.Remove(outsideAuthPath) })
+	writeJSONFile(t, outsideAuthPath, map[string]any{
+		"auth_mode": "chatgpt",
+		"tokens": map[string]any{
+			"account_id":   "acct_1",
+			"access_token": "secret-token",
+		},
+	})
+	sandboxes, cleanup := newSandboxManagerForManagedProviderTest(t, homeDir)
+	defer cleanup()
+
+	bridge := newCodexBridge(homeDir, config.Config{LLM: config.LLMConfig{Codex: config.ManagedCLIProviderConfig{CLIPath: "/usr/bin/codex"}}}, runnerStub{}, sandboxes)
+	bridge.authPath = outsideAuthPath
+
+	state, _, err := bridge.Detect(context.Background())
+	if err != nil {
+		t.Fatalf("Detect returned error: %v", err)
+	}
+	if state.Status != providers.AuthStatusError {
+		t.Fatalf("expected error status, got %s", state.Status)
+	}
+	if state.Metadata[managedProviderMetadataFailureClass] != string(sandbox.ErrorClassPolicyDenied) {
+		t.Fatalf("expected policy denial metadata, got %+v", state.Metadata)
+	}
+	if strings.Contains(state.Metadata[managedProviderMetadataAccessSummary], "secret-token") {
+		t.Fatalf("expected redacted metadata, got %s", state.Metadata[managedProviderMetadataAccessSummary])
+	}
+}
+
+func TestManagedProviderPreflightEvaluationStaysUnderHundredMilliseconds(t *testing.T) {
+	homeDir := t.TempDir()
+	writeManagedProviderTextFile(t, filepath.Join(homeDir, ".claude", "settings.json"), `{"model":"claude-sonnet-4-6"}`)
+	writeJSONFile(t, filepath.Join(homeDir, ".codex", "models_cache.json"), map[string]any{
+		"models": []map[string]any{{"slug": "gpt-5.4"}},
+	})
+	writeJSONFile(t, filepath.Join(homeDir, ".codex", "auth.json"), map[string]any{
+		"auth_mode": "chatgpt",
+		"tokens":    map[string]any{"access_token": "header.payload.sig"},
+	})
+	writeManagedProviderTextFile(t, filepath.Join(homeDir, ".codex", "config.toml"), `model = "gpt-5.4"`)
+	sandboxes, cleanup := newSandboxManagerForManagedProviderTest(t, homeDir)
+	defer cleanup()
+
+	claude := newClaudeBridge(homeDir, config.Config{LLM: config.LLMConfig{Claude: config.ManagedCLIProviderConfig{CLIPath: "/usr/bin/claude"}}}, runnerStub{}, sandboxes)
+	codex := newCodexBridge(homeDir, config.Config{LLM: config.LLMConfig{Codex: config.ManagedCLIProviderConfig{CLIPath: "/usr/bin/codex"}}}, runnerStub{}, sandboxes)
+
+	started := time.Now()
+	if _, _, err := claude.settingsEvaluation(sandbox.ManagedProviderActionPromptExecution); err != nil {
+		t.Fatalf("settingsEvaluation returned error: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
+		t.Fatalf("expected claude preflight <=100ms, got %s", elapsed)
+	}
+
+	started = time.Now()
+	if _, err := codex.authStatusEvaluation(); err != nil {
+		t.Fatalf("authStatusEvaluation returned error: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
+		t.Fatalf("expected codex auth-status preflight <=100ms, got %s", elapsed)
+	}
+
+	started = time.Now()
+	if _, err := codex.promptExecutionEvaluation(true); err != nil {
+		t.Fatalf("promptExecutionEvaluation returned error: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
+		t.Fatalf("expected codex prompt preflight <=100ms, got %s", elapsed)
+	}
 }
 
 type runnerStub struct {
@@ -265,7 +482,20 @@ func writeJSONFile(t *testing.T, path string, value any) {
 	if err != nil {
 		t.Fatalf("json.Marshal returned error: %v", err)
 	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
 	if err := os.WriteFile(path, encoded, 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+}
+
+func writeManagedProviderTextFile(t *testing.T, path string, value string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(value), 0o644); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
 }

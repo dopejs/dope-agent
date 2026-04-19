@@ -12,6 +12,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
+	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 )
 
 const CodexProviderID = "codex_managed"
@@ -24,9 +25,10 @@ type codexBridge struct {
 	runner          Runner
 	authPath        string
 	modelsCachePath string
+	sandboxes       *sandbox.Manager
 }
 
-func newCodexBridge(homeDir string, cfg config.Config, runner Runner) *codexBridge {
+func newCodexBridge(homeDir string, cfg config.Config, runner Runner, sandboxes *sandbox.Manager) *codexBridge {
 	return &codexBridge{
 		homeDir:         homeDir,
 		cliPath:         firstAvailablePath(cfg.LLM.Codex.CLIPath, "codex"),
@@ -35,6 +37,7 @@ func newCodexBridge(homeDir string, cfg config.Config, runner Runner) *codexBrid
 		runner:          runner,
 		authPath:        filepath.Join(homeDir, ".codex", "auth.json"),
 		modelsCachePath: filepath.Join(homeDir, ".codex", "models_cache.json"),
+		sandboxes:       sandboxes,
 	}
 }
 
@@ -46,24 +49,36 @@ func (b *codexBridge) Provider() llm.Provider       { return &codexCLIProvider{b
 
 func (b *codexBridge) Detect(ctx context.Context) (providers.AuthState, []providers.Model, error) {
 	state := b.baseState()
-	models := b.models(false)
 	now := time.Now().UTC()
 	state.LastCheckedAt = now
 
 	if strings.TrimSpace(b.cliPath) == "" {
+		models := b.models(false)
 		state.Status = providers.AuthStatusError
 		state.LastError = "codex CLI is not installed"
 		return state, models, nil
 	}
 
+	evaluation, err := b.authStatusEvaluation()
+	if err != nil {
+		state.Status = providers.AuthStatusError
+		state.LastError = err.Error()
+		state.Metadata = evaluation.Metadata
+		return state, nil, nil
+	}
+	state.Metadata = evaluation.Metadata
+	models := b.models(false)
+
 	raw, err := os.ReadFile(b.authPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			state.Status = providers.AuthStatusLoginRequired
+			state.Metadata = finalizeManagedProviderMetadata(state.Metadata, "missing_local_state")
 			return state, models, nil
 		}
 		state.Status = providers.AuthStatusError
 		state.LastError = err.Error()
+		state.Metadata = finalizeManagedProviderMetadata(state.Metadata, "missing_local_state")
 		return state, models, nil
 	}
 
@@ -80,11 +95,13 @@ func (b *codexBridge) Detect(ctx context.Context) (providers.AuthState, []provid
 	if err := json.Unmarshal(raw, &authFile); err != nil {
 		state.Status = providers.AuthStatusError
 		state.LastError = err.Error()
+		state.Metadata = finalizeManagedProviderMetadata(state.Metadata, "provider_auth_failed")
 		return state, models, nil
 	}
 
 	if strings.TrimSpace(authFile.Tokens.AccessToken) == "" {
 		state.Status = providers.AuthStatusLoginRequired
+		state.Metadata = finalizeManagedProviderMetadata(state.Metadata, "provider_auth_failed")
 		return state, models, nil
 	}
 
@@ -136,6 +153,15 @@ func (b *codexBridge) Refresh(ctx context.Context) (providers.AuthState, []provi
 
 func (b *codexBridge) Revoke(ctx context.Context) (providers.AuthState, []providers.Model, error) {
 	state := b.baseState()
+	evaluation, err := b.logoutEvaluation()
+	if err != nil {
+		state.Status = providers.AuthStatusError
+		state.LastError = err.Error()
+		state.LastCheckedAt = time.Now().UTC()
+		state.Metadata = evaluation.Metadata
+		return state, nil, nil
+	}
+	state.Metadata = evaluation.Metadata
 	models := b.models(false)
 	if strings.TrimSpace(b.cliPath) == "" {
 		state.Status = providers.AuthStatusError
@@ -143,13 +169,17 @@ func (b *codexBridge) Revoke(ctx context.Context) (providers.AuthState, []provid
 		state.LastCheckedAt = time.Now().UTC()
 		return state, models, nil
 	}
-	_, err := b.runner.Run(ctx, b.cliPath, []string{"logout"}, b.workDir)
+	logoutOperation := b.cliOperationPlan(sandbox.ManagedProviderActionLogout, nil)
+	state.Metadata = mergeStringMaps(state.Metadata, operationMetadataFromPlan(logoutOperation))
+	result, err := b.runner.Run(withManagedProviderOperation(ctx, logoutOperation), b.cliPath, []string{"logout"}, b.workDir)
 	if err != nil {
 		state.Status = providers.AuthStatusError
 		state.LastError = err.Error()
+		state.Metadata = finalizeManagedProviderMetadata(state.Metadata, "process_failed")
 		state.LastCheckedAt = time.Now().UTC()
 		return state, models, nil
 	}
+	finalizeManagedProviderExecutionSuccess(b.sandboxes, result)
 	state.Status = providers.AuthStatusRevoked
 	state.LastCheckedAt = time.Now().UTC()
 	return state, models, nil
@@ -257,34 +287,53 @@ func (p *codexCLIProvider) Name() string { return p.bridge.ProviderID() }
 
 func (p *codexCLIProvider) Complete(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error) {
 	model := strings.TrimSpace(request.Model)
+	evaluation, err := p.bridge.promptExecutionEvaluation(model == "")
+	if err != nil {
+		return llm.ProviderResponse{}, classifyCLIError(&RunError{Code: "sandbox_policy_denied", Message: err.Error(), Retryable: false}, "")
+	}
+	localState := cloneLocalStateSummaries(evaluation.Operation.LocalStateAccessSummaries)
 	if model == "" {
 		model = p.bridge.resolveDefaultModel(nil)
 	}
+	operation := p.bridge.cliOperationPlan(sandbox.ManagedProviderActionPromptExecution, localState)
 	tmpFile, err := os.CreateTemp("", "dope-codex-output-*.txt")
 	if err != nil {
 		return llm.ProviderResponse{}, err
 	}
 	_ = tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
+	operation.Access.WriteRoots = cloneRoots(append(operation.Access.WriteRoots, os.TempDir(), tmpFile.Name()))
+	operation.LocalState = append(operation.LocalState, localStateSummary(p.bridge.ProviderID(), sandbox.ManagedProviderActionPromptExecution, "temp_output", sandbox.LocalStateAccessModeWrite, tmpFile.Name(), false))
+	operation.SensitiveKinds = localStateClassList(operation.LocalState)
 
 	args := []string{"exec", "--skip-git-repo-check", "--sandbox", "read-only", "--model", model, "-o", tmpFile.Name(), latestUserMessage(request.Messages)}
-	result, runErr := p.bridge.runner.Run(ctx, p.bridge.cliPath, args, p.bridge.workDir)
+	result, runErr := p.bridge.runner.Run(withManagedProviderOperation(ctx, operation), p.bridge.cliPath, args, p.bridge.workDir)
 	if runErr != nil {
-		return llm.ProviderResponse{}, classifyCLIError(runErr, result.Stdout)
+		err := classifyCLIError(runErr, result.Stdout)
+		finalizeManagedProviderExecutionFailure(p.bridge.sandboxes, result, err)
+		return llm.ProviderResponse{}, err
 	}
 
 	raw, err := os.ReadFile(tmpFile.Name())
 	if err != nil {
+		finalizeManagedProviderExecutionFailure(p.bridge.sandboxes, result, &llm.ProviderError{
+			Code:      "provider_error",
+			Message:   err.Error(),
+			Retryable: false,
+		})
 		return llm.ProviderResponse{}, err
 	}
 	output := strings.TrimSpace(string(raw))
 	if output == "" {
-		return llm.ProviderResponse{}, &llm.ProviderError{
+		err := &llm.ProviderError{
 			Code:      "upstream_invalid_response",
 			Message:   "codex CLI returned empty output",
 			Retryable: false,
 		}
+		finalizeManagedProviderExecutionFailure(p.bridge.sandboxes, result, err)
+		return llm.ProviderResponse{}, err
 	}
+	finalizeManagedProviderExecutionSuccess(p.bridge.sandboxes, result)
 	return llm.ProviderResponse{
 		Output:       output,
 		FinishReason: "stop",
@@ -328,6 +377,148 @@ func classifyCLIError(runErr error, output string) error {
 		return &llm.ProviderError{Code: "upstream_transport_error", Message: message, Retryable: true}
 	}
 	return &llm.ProviderError{Code: "provider_error", Message: message, Retryable: false}
+}
+
+func (b *codexBridge) authStatusEvaluation() (managedProviderOperationEvaluation, error) {
+	plan := managedProviderOperationPlan{
+		ProviderID:  b.ProviderID(),
+		Action:      sandbox.ManagedProviderActionAuthStatus,
+		ProfileID:   sandbox.ProfileIDManagedProviderCodex,
+		RequestedBy: managedProviderRequestedByPrefix + b.ProviderID(),
+		Reason:      "managed provider local state inspection",
+		DeclaredRead: []string{
+			filepath.Join(b.homeDir, ".codex", "auth.json"),
+			filepath.Join(b.homeDir, ".codex", "models_cache.json"),
+			filepath.Join(b.homeDir, ".codex", "config.toml"),
+		},
+		Access: sandbox.AccessRequest{
+			ReadRoots:     []string{b.authPath, b.modelsCachePath, filepath.Join(b.homeDir, ".codex", "config.toml")},
+			WriteRoots:    []string{},
+			NetworkMode:   sandbox.NetworkModeDeny,
+			AllowedHosts:  []string{},
+			AllowedPorts:  []int{},
+			AllowLoopback: false,
+		},
+		LocalState: []sandbox.SensitiveLocalStateAccessSummary{
+			localStateSummary(b.ProviderID(), sandbox.ManagedProviderActionAuthStatus, "auth_file", sandbox.LocalStateAccessModeRead, b.authPath, true),
+			localStateSummary(b.ProviderID(), sandbox.ManagedProviderActionAuthStatus, "models_cache", sandbox.LocalStateAccessModeRead, b.modelsCachePath, false),
+			localStateSummary(b.ProviderID(), sandbox.ManagedProviderActionAuthStatus, "config_file", sandbox.LocalStateAccessModeRead, filepath.Join(b.homeDir, ".codex", "config.toml"), false),
+		},
+		SensitiveKinds: []string{"auth_file", "models_cache", "config_file"},
+	}
+	evaluation, err := evaluateManagedProviderOperation(b.sandboxes, plan)
+	if err != nil {
+		return managedProviderOperationEvaluation{}, err
+	}
+	if evaluation.Operation.Decision != sandbox.DecisionResolutionAllow {
+		evaluation.Metadata = finalizeManagedProviderMetadata(evaluation.Metadata, string(sandbox.ErrorClassPolicyDenied))
+		return evaluation, errors.New("sandbox denied managed provider local state access")
+	}
+	return evaluation, nil
+}
+
+func (b *codexBridge) promptExecutionEvaluation(includeConfig bool) (managedProviderOperationEvaluation, error) {
+	readRoots := []string{os.TempDir()}
+	localState := []sandbox.SensitiveLocalStateAccessSummary{
+		localStateSummary(b.ProviderID(), sandbox.ManagedProviderActionPromptExecution, "temp_output", sandbox.LocalStateAccessModeWrite, os.TempDir(), false),
+	}
+	sensitiveKinds := []string{"temp_output"}
+	if includeConfig {
+		readRoots = append(readRoots, filepath.Join(b.homeDir, ".codex", "config.toml"))
+		localState = append(localState, localStateSummary(b.ProviderID(), sandbox.ManagedProviderActionPromptExecution, "config_file", sandbox.LocalStateAccessModeRead, filepath.Join(b.homeDir, ".codex", "config.toml"), false))
+		sensitiveKinds = append(sensitiveKinds, "config_file")
+	}
+	plan := managedProviderOperationPlan{
+		ProviderID:  b.ProviderID(),
+		Action:      sandbox.ManagedProviderActionPromptExecution,
+		ProfileID:   sandbox.ProfileIDManagedProviderCodex,
+		RequestedBy: managedProviderRequestedByPrefix + b.ProviderID(),
+		Reason:      "managed provider local state inspection",
+		DeclaredRead: func() []string {
+			items := []string{os.TempDir()}
+			if includeConfig {
+				items = append(items, filepath.Join(b.homeDir, ".codex", "config.toml"))
+			}
+			return items
+		}(),
+		DeclaredWrite: []string{os.TempDir()},
+		Access: sandbox.AccessRequest{
+			ReadRoots:     readRoots,
+			WriteRoots:    []string{os.TempDir()},
+			NetworkMode:   sandbox.NetworkModeDeny,
+			AllowedHosts:  []string{},
+			AllowedPorts:  []int{},
+			AllowLoopback: false,
+		},
+		LocalState:     localState,
+		SensitiveKinds: sensitiveKinds,
+	}
+	evaluation, err := evaluateManagedProviderOperation(b.sandboxes, plan)
+	if err != nil {
+		return managedProviderOperationEvaluation{}, err
+	}
+	if evaluation.Operation.Decision != sandbox.DecisionResolutionAllow {
+		evaluation.Metadata = finalizeManagedProviderMetadata(evaluation.Metadata, string(sandbox.ErrorClassPolicyDenied))
+		return evaluation, errors.New("sandbox denied managed provider local state access")
+	}
+	return evaluation, nil
+}
+
+func (b *codexBridge) logoutEvaluation() (managedProviderOperationEvaluation, error) {
+	plan := managedProviderOperationPlan{
+		ProviderID:  b.ProviderID(),
+		Action:      sandbox.ManagedProviderActionLogout,
+		ProfileID:   sandbox.ProfileIDManagedProviderCodex,
+		RequestedBy: managedProviderRequestedByPrefix + b.ProviderID(),
+		Reason:      "managed provider local state inspection",
+		DeclaredRead: []string{
+			filepath.Join(b.homeDir, ".codex", "models_cache.json"),
+			filepath.Join(b.homeDir, ".codex", "config.toml"),
+		},
+		Access: sandbox.AccessRequest{
+			ReadRoots:     []string{b.modelsCachePath, filepath.Join(b.homeDir, ".codex", "config.toml")},
+			WriteRoots:    []string{},
+			NetworkMode:   sandbox.NetworkModeDeny,
+			AllowedHosts:  []string{},
+			AllowedPorts:  []int{},
+			AllowLoopback: false,
+		},
+		LocalState: []sandbox.SensitiveLocalStateAccessSummary{
+			localStateSummary(b.ProviderID(), sandbox.ManagedProviderActionLogout, "models_cache", sandbox.LocalStateAccessModeRead, b.modelsCachePath, false),
+			localStateSummary(b.ProviderID(), sandbox.ManagedProviderActionLogout, "config_file", sandbox.LocalStateAccessModeRead, filepath.Join(b.homeDir, ".codex", "config.toml"), false),
+		},
+		SensitiveKinds: []string{"models_cache", "config_file"},
+	}
+	evaluation, err := evaluateManagedProviderOperation(b.sandboxes, plan)
+	if err != nil {
+		return managedProviderOperationEvaluation{}, err
+	}
+	if evaluation.Operation.Decision != sandbox.DecisionResolutionAllow {
+		evaluation.Metadata = finalizeManagedProviderMetadata(evaluation.Metadata, string(sandbox.ErrorClassPolicyDenied))
+		return evaluation, errors.New("sandbox denied managed provider local state access")
+	}
+	return evaluation, nil
+}
+
+func (b *codexBridge) cliOperationPlan(action sandbox.ManagedProviderActionKind, localState []sandbox.SensitiveLocalStateAccessSummary) managedProviderOperationPlan {
+	return managedProviderOperationPlan{
+		OperationID: newManagedProviderOperationID(),
+		ProviderID:  b.ProviderID(),
+		Action:      action,
+		ProfileID:   sandbox.ProfileIDManagedProviderCodex,
+		RequestedBy: managedProviderRequestedByPrefix + b.ProviderID(),
+		Reason:      "managed provider bridge execution",
+		Access: sandbox.AccessRequest{
+			ReadRoots:     cloneRoots([]string{b.workDir, filepath.Join(b.homeDir, ".codex"), os.TempDir()}),
+			WriteRoots:    cloneRoots([]string{b.workDir, filepath.Join(b.homeDir, ".codex"), os.TempDir()}),
+			NetworkMode:   sandbox.NetworkModeFull,
+			AllowedHosts:  []string{},
+			AllowedPorts:  []int{},
+			AllowLoopback: true,
+		},
+		LocalState:     cloneLocalStateSummaries(localState),
+		SensitiveKinds: localStateClassList(localState),
+	}
 }
 
 func firstNonEmpty(values ...string) string {
