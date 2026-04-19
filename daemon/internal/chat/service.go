@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -26,20 +27,22 @@ type QueryInput struct {
 }
 
 type QueryResult struct {
-	Query    string
-	Skills   []string
-	Dispatch llm.Dispatch
+	Query          string
+	Skills         []string
+	SkillContracts []map[string]any
+	Dispatch       llm.Dispatch
 }
 
 type StreamChunk struct {
-	DispatchID   string
-	Provider     string
-	Model        string
-	Skills       []string
-	Delta        string
-	Reply        string
-	FinishReason string
-	Usage        *llm.Usage
+	DispatchID     string
+	Provider       string
+	Model          string
+	Skills         []string
+	SkillContracts []map[string]any
+	Delta          string
+	Reply          string
+	FinishReason   string
+	Usage          *llm.Usage
 }
 
 type Service struct {
@@ -83,7 +86,7 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	if err := persistDispatch(ctx, s.store, dispatch); err != nil {
 		return QueryResult{}, err
 	}
-	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, dispatch, "llm.dispatch.requested"); err != nil {
+	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, dispatch, selectedSkills, "llm.dispatch.requested"); err != nil {
 		return QueryResult{}, err
 	}
 
@@ -91,14 +94,15 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	if err := persistDispatch(ctx, s.store, finalDispatch); err != nil {
 		return QueryResult{}, err
 	}
-	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, finalDispatch, terminalDispatchEvent(finalDispatch)); err != nil {
+	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, finalDispatch, selectedSkills, terminalDispatchEvent(finalDispatch)); err != nil {
 		return QueryResult{}, err
 	}
 
 	result := QueryResult{
-		Query:    strings.TrimSpace(input.Query),
-		Skills:   selectedSkillIDsFromSkills(selectedSkills),
-		Dispatch: finalDispatch,
+		Query:          strings.TrimSpace(input.Query),
+		Skills:         selectedSkillIDsFromSkills(selectedSkills),
+		SkillContracts: selectedSkillContracts(selectedSkills),
+		Dispatch:       finalDispatch,
 	}
 	if execErr != nil {
 		return result, execErr
@@ -129,7 +133,7 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 	if err := persistDispatch(ctx, s.store, dispatch); err != nil {
 		return QueryResult{}, err
 	}
-	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, dispatch, "llm.dispatch.requested"); err != nil {
+	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, dispatch, selectedSkills, "llm.dispatch.requested"); err != nil {
 		return QueryResult{}, err
 	}
 
@@ -138,27 +142,29 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 			return nil
 		}
 		return emit(StreamChunk{
-			DispatchID:   dispatch.DispatchID,
-			Provider:     dispatch.Provider,
-			Model:        dispatch.Model,
-			Skills:       selectedSkillIDsFromSkills(selectedSkills),
-			Delta:        chunk.Delta,
-			Reply:        chunk.Output,
-			FinishReason: chunk.FinishReason,
-			Usage:        chunk.Usage,
+			DispatchID:     dispatch.DispatchID,
+			Provider:       dispatch.Provider,
+			Model:          dispatch.Model,
+			Skills:         selectedSkillIDsFromSkills(selectedSkills),
+			SkillContracts: selectedSkillContracts(selectedSkills),
+			Delta:          chunk.Delta,
+			Reply:          chunk.Output,
+			FinishReason:   chunk.FinishReason,
+			Usage:          chunk.Usage,
 		})
 	})
 	if err := persistDispatch(ctx, s.store, finalDispatch); err != nil {
 		return QueryResult{}, err
 	}
-	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, finalDispatch, terminalDispatchEvent(finalDispatch)); err != nil {
+	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, finalDispatch, selectedSkills, terminalDispatchEvent(finalDispatch)); err != nil {
 		return QueryResult{}, err
 	}
 
 	result := QueryResult{
-		Query:    strings.TrimSpace(input.Query),
-		Skills:   selectedSkillIDsFromSkills(selectedSkills),
-		Dispatch: finalDispatch,
+		Query:          strings.TrimSpace(input.Query),
+		Skills:         selectedSkillIDsFromSkills(selectedSkills),
+		SkillContracts: selectedSkillContracts(selectedSkills),
+		Dispatch:       finalDispatch,
 	}
 	if execErr != nil {
 		return result, execErr
@@ -253,24 +259,37 @@ func persistDispatch(ctx context.Context, sqliteStore *store.SQLiteStore, dispat
 	return sqliteStore.UpsertLLMDispatch(ctx, dispatch)
 }
 
-func publishDispatchEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, scope events.Scope, dispatch llm.Dispatch, name string) (events.Event, error) {
+func publishDispatchEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, scope events.Scope, dispatch llm.Dispatch, selected []skills.Skill, name string) (events.Event, error) {
 	if eventBus == nil {
 		return events.Event{}, nil
 	}
 
 	payload := map[string]any{
-		"provider":     dispatch.Provider,
-		"model":        dispatch.Model,
-		"stream":       dispatch.Stream,
-		"status":       dispatch.Status,
-		"partial":      dispatch.Partial,
-		"timeoutMs":    dispatch.TimeoutMs,
-		"maxRetries":   dispatch.MaxRetries,
-		"attemptCount": dispatch.AttemptCount,
-		"finishReason": dispatch.FinishReason,
-		"usage":        dispatch.Usage,
-		"errorCode":    dispatch.ErrorCode,
-		"error":        dispatch.Error,
+		"provider": dispatch.Provider,
+		"model":    dispatch.Model,
+	}
+	switch name {
+	case "llm.dispatch.requested":
+		payload["stream"] = dispatch.Stream
+		payload["timeoutMs"] = dispatch.TimeoutMs
+		payload["maxRetries"] = dispatch.MaxRetries
+		payload["status"] = dispatch.Status
+	default:
+		payload["status"] = dispatch.Status
+		if name != "llm.dispatch.cancelled" {
+			payload["partial"] = dispatch.Partial
+		}
+		payload["attemptCount"] = dispatch.AttemptCount
+		payload["finishReason"] = dispatch.FinishReason
+		payload["usage"] = dispatch.Usage
+		payload["errorCode"] = dispatch.ErrorCode
+		payload["error"] = dispatch.Error
+	}
+	if skillIDs := selectedSkillIDsFromSkills(selected); len(skillIDs) > 0 {
+		payload["skills"] = skillIDs
+	}
+	if contracts := selectedSkillContracts(selected); len(contracts) > 0 {
+		payload["skillContracts"] = contracts
 	}
 
 	event := events.Event{
@@ -298,6 +317,30 @@ func publishDispatchEvent(ctx context.Context, eventBus *events.Bus, sqliteStore
 		event = persisted
 	}
 	return eventBus.Publish(event), nil
+}
+
+func selectedSkillContracts(selected []skills.Skill) []map[string]any {
+	if len(selected) == 0 {
+		return nil
+	}
+	items := make([]map[string]any, 0, len(selected))
+	for _, skill := range selected {
+		if skill.Sandbox == nil {
+			continue
+		}
+		payload, err := json.Marshal(skill.Sandbox)
+		if err != nil {
+			items = append(items, skill.Sandbox)
+			continue
+		}
+		var cloned map[string]any
+		if err := json.Unmarshal(payload, &cloned); err != nil {
+			items = append(items, skill.Sandbox)
+			continue
+		}
+		items = append(items, cloned)
+	}
+	return items
 }
 
 func terminalDispatchEvent(dispatch llm.Dispatch) string {

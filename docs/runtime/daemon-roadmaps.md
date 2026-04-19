@@ -51,14 +51,14 @@ The next execution focus is first-class skill loading and prompt support, includ
 
 The sandbox execution plane is now closed as the first harness control-plane slice.
 
-The next harness execution focus is the prerequisite slice that makes sandbox safe to extend:
+The sandbox prerequisite slice is now implemented for the current in-scope consumers:
 
-- requirement declarations
+- shared requirement declarations
 - secret scope and redaction policy
-- execution provenance
-- convergence of remaining local consumers on sandbox
+- durable execution provenance
+- convergence of managed providers, the current skill registry and explicit skill-selection surfaces, and the current high-risk local tool-call path
 
-After that slice is closed, MCP should become the next sandbox-backed harness subsystem.
+The remaining roadmap work is narrow operator-surface closure; the next major sandbox-backed harness subsystem is MCP.
 
 ## Roadmap 1: Runtime Closure
 
@@ -560,7 +560,8 @@ Current note:
 
 - the managed-provider convergence slice under `specs/001-sandbox-managed-providers/` is now closed for the in-scope workflows `auth_status`, `logout`, and `prompt_execution`
 - provider-owned local state used by Claude and Codex is now declared, policy-shaped, redacted, and auditable for this slice
-- the broader roadmap stays open until the shared requirement-declaration contract, generic secret scope, and cross-consumer provenance model are closed for the remaining consumers
+- the shared declaration vocabulary now also covers the current skill registry and explicit skill-selection surfaces plus the current high-risk local tool-call path
+- the broader roadmap remains open only for the remaining approval and decision operator-surface closure work; MCP lifecycle and generic skill or local-tool subprocess migration stay out of scope for this roadmap
 
 #### 3. Secret Scope And Redaction Foundation
 
@@ -576,6 +577,11 @@ Task definition of done:
 - config inspection, execution history, and events redact sensitive material consistently
 - tests cover secret injection and redaction behavior
 
+Current note:
+
+- secret scope is now persisted as environment-scoped consumer bindings with redacted operator-visible projections
+- current managed-provider auth state, config inspection, skill inspection, sandbox execution history, and local-tool approval-gate responses all use the same redaction model
+
 #### 4. Execution Provenance And Consumer Visibility
 
 Scope:
@@ -589,6 +595,12 @@ Task definition of done:
 - operator inspection can explain which skill, provider bridge, MCP server, or tool initiated an execution
 - provenance survives restart and remains queryable through APIs
 - tests cover durable provenance behavior
+
+Current note:
+
+- current implementation persists consumer policy records for launched, denied, unsupported, preflight-only, and approval-pending paths
+- provenance is queryable today through sandbox execution resources, provider auth state and events, skill inspection surfaces, and high-risk tool-call records
+- generic policy approval and decision resources remain policy-first surfaces and are the only remaining operator-surface gap in this roadmap
 
 ### Roadmap Definition Of Done
 

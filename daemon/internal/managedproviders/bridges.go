@@ -51,6 +51,7 @@ type managedProviderOperationEvaluation struct {
 	Declaration sandbox.ManagedProviderRequirementDeclaration
 	Operation   sandbox.ManagedProviderOperation
 	Metadata    map[string]string
+	Consumer    *sandbox.ConsumerContractView
 }
 
 type Bridge interface {
@@ -137,10 +138,12 @@ func (r sandboxRunner) Run(ctx context.Context, cmd string, args []string, workd
 		AllowLoopback: true,
 	}
 	metadata := map[string]string{}
+	var consumer *sandbox.ConsumerContractView
 	if operation, ok := managedProviderOperationFromContext(ctx); ok {
 		requestedBy = firstNonEmpty(strings.TrimSpace(operation.RequestedBy), requestedBy)
 		access = cloneAccessRequest(operation.Access)
 		metadata = cloneStringMap(operationMetadataFromPlan(operation))
+		consumer = buildManagedProviderConsumerView(operation, nil)
 	}
 	request := sandbox.ExecutionRequest{
 		ProfileID:    r.profileID,
@@ -154,6 +157,7 @@ func (r sandboxRunner) Run(ctx context.Context, cmd string, args []string, workd
 		Reason:       "managed provider bridge execution",
 		Metadata:     metadata,
 		Access:       access,
+		Consumer:     consumer,
 	}
 	execution, err := r.manager.StartExecution(ctx, request)
 	if err != nil {
@@ -398,6 +402,7 @@ func evaluateManagedProviderOperation(manager *sandbox.Manager, operation manage
 			LocalStateAccessSummaries: cloneLocalStateSummaries(operation.LocalState),
 		},
 	}
+	evaluation.Consumer = buildManagedProviderConsumerView(operation, &evaluation)
 
 	if manager != nil {
 		decision, err := manager.EvaluateAccess(operation.ProfileID, "", operation.Access)
@@ -430,6 +435,19 @@ func evaluateManagedProviderOperation(manager *sandbox.Manager, operation manage
 	}
 
 	evaluation.Metadata = operationMetadata(evaluation.Operation)
+	if evaluation.Consumer != nil {
+		evaluation.Consumer.PolicyRecord.Decision = evaluation.Operation.Decision
+		evaluation.Consumer.PolicyRecord.ApprovalStatus = evaluation.Operation.ApprovalStatus
+		if evaluation.Operation.Status == sandbox.ManagedProviderOperationStatusDenied {
+			evaluation.Consumer.PolicyRecord.Status = sandbox.PolicyRecordStatusDenied
+			evaluation.Consumer.PolicyRecord.FailureClass = evaluation.Operation.FailureClass
+			now := time.Now().UTC()
+			evaluation.Consumer.PolicyRecord.CompletedAt = &now
+		}
+	}
+	if manager != nil && evaluation.Consumer != nil {
+		_ = manager.PersistConsumerView(context.Background(), evaluation.Consumer)
+	}
 	return evaluation, nil
 }
 
@@ -452,6 +470,103 @@ func operationMetadata(operation sandbox.ManagedProviderOperation) map[string]st
 		metadata[managedProviderMetadataAccessSummary] = string(encoded)
 	}
 	return metadata
+}
+
+func buildManagedProviderConsumerView(operation managedProviderOperationPlan, evaluation *managedProviderOperationEvaluation) *sandbox.ConsumerContractView {
+	consumerID := strings.TrimSpace(operation.ProviderID)
+	operationKind := string(operation.Action)
+	declarationID := "managed_provider:" + consumerID + ":" + operationKind
+	readRoots := cloneRoots(firstNonEmptyRoots(operation.DeclaredRead, operation.Access.ReadRoots))
+	writeRoots := cloneRoots(firstNonEmptyRoots(operation.DeclaredWrite, operation.Access.WriteRoots))
+	secretScope := make([]sandbox.SecretScopeOutcome, 0, len(operation.LocalState))
+	for _, item := range operation.LocalState {
+		if !item.Sensitive {
+			continue
+		}
+		secretScope = append(secretScope, sandbox.SecretScopeOutcome{
+			ConsumerKind:     sandbox.ConsumerKindManagedProvider,
+			ConsumerID:       consumerID,
+			SecretRef:        strings.TrimSpace(item.StateClass),
+			EnvironmentScope: sandbox.SecretEnvironmentScopeBoth,
+			DefaultSource:    sandbox.SecretDefaultSourceInstanceOverride,
+			DefaultRuleID:    "managed_provider:" + consumerID,
+			DeliveryKind:     "local_state_access",
+			RedactionRule:    item.RedactionRule,
+			Resolution:       sandbox.SecretResolutionResolved,
+		})
+	}
+	approvalMode := sandbox.ApprovalModeAllow
+	requiredStrength := "declared_only"
+	if evaluation != nil {
+		approvalMode = evaluation.Declaration.ApprovalMode
+		requiredStrength = firstNonEmpty(evaluation.Declaration.EnforcementStrength, requiredStrength)
+	}
+	policyRecord := &sandbox.ConsumerPolicyRecord{
+		PolicyRecordID:      "policy_" + firstNonEmpty(strings.TrimSpace(operation.OperationID), newManagedProviderOperationID()),
+		ConsumerKind:        sandbox.ConsumerKindManagedProvider,
+		ConsumerID:          consumerID,
+		OperationKind:       operationKind,
+		DeclarationID:       declarationID,
+		RequestedBy:         firstNonEmpty(strings.TrimSpace(operation.RequestedBy), managedProviderRequestedByPrefix+consumerID),
+		Decision:            sandbox.DecisionResolutionAllow,
+		ApprovalStatus:      sandbox.DecisionApprovalStatusNotApplicable,
+		SecretResolution:    secretResolutionFromLocalState(secretScope),
+		EnforcementStrength: requiredStrength,
+		ProviderOperationID: strings.TrimSpace(operation.OperationID),
+		StartedAt:           time.Now().UTC(),
+		Status:              sandbox.PolicyRecordStatusPreflightAllowed,
+	}
+	if evaluation != nil {
+		policyRecord.Decision = evaluation.Operation.Decision
+		policyRecord.ApprovalStatus = evaluation.Operation.ApprovalStatus
+		policyRecord.FailureClass = evaluation.Operation.FailureClass
+	}
+	return &sandbox.ConsumerContractView{
+		Declaration: &sandbox.ConsumerRequirementDeclaration{
+			DeclarationID:               declarationID,
+			ConsumerKind:                sandbox.ConsumerKindManagedProvider,
+			ConsumerID:                  consumerID,
+			OperationKind:               operationKind,
+			ProfileID:                   strings.TrimSpace(operation.ProfileID),
+			ExecutionMode:               sandbox.ExecutionModeSubprocess,
+			AllowedBackendKinds:         []sandbox.BackendKind{sandbox.BackendKindSubprocess},
+			ReadRoots:                   readRoots,
+			WriteRoots:                  writeRoots,
+			NetworkMode:                 operation.Access.NetworkMode,
+			AllowedHosts:                cloneStrings(operation.Access.AllowedHosts),
+			AllowedPorts:                cloneInts(operation.Access.AllowedPorts),
+			AllowLoopback:               operation.Access.AllowLoopback,
+			SecretRefs:                  localStateClassList(operation.LocalState),
+			ApprovalMode:                approvalMode,
+			RequiredEnforcementStrength: requiredStrength,
+			Active:                      true,
+			Source:                      sandbox.SourceBuiltin,
+		},
+		SecretScope:  secretScope,
+		PolicyRecord: policyRecord,
+	}
+}
+
+func secretResolutionFromLocalState(items []sandbox.SecretScopeOutcome) sandbox.SecretResolution {
+	if len(items) == 0 {
+		return sandbox.SecretResolutionNotApplicable
+	}
+	return sandbox.SecretResolutionResolved
+}
+
+func consumerViewJSON(view *sandbox.ConsumerContractView) map[string]any {
+	if view == nil {
+		return nil
+	}
+	payload, err := json.Marshal(view)
+	if err != nil {
+		return nil
+	}
+	var item map[string]any
+	if err := json.Unmarshal(payload, &item); err != nil {
+		return nil
+	}
+	return item
 }
 
 func finalizeManagedProviderMetadata(metadata map[string]string, failureClass string) map[string]string {

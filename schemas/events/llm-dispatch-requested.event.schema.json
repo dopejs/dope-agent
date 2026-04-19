@@ -25,7 +25,17 @@
             "stream": { "type": "boolean" },
             "timeoutMs": { "type": "integer", "minimum": 1 },
             "maxRetries": { "type": "integer", "minimum": 0 },
-            "status": { "type": "string", "enum": ["queued"] }
+            "status": { "type": "string", "enum": ["queued"] },
+            "skills": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "skillContracts": {
+              "type": "array",
+              "items": {
+                "$ref": "../api/sandbox-consumer-view.schema.json"
+              }
+            }
           }
         }
       }

@@ -37,7 +37,17 @@
               }
             },
             "errorCode": { "type": "string" },
-            "error": { "type": "string" }
+            "error": { "type": "string" },
+            "skills": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "skillContracts": {
+              "type": "array",
+              "items": {
+                "$ref": "../api/sandbox-consumer-view.schema.json"
+              }
+            }
           }
         }
       }

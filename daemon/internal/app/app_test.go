@@ -646,6 +646,126 @@ func TestAppRestartRestoresAuthAndApprovalAPIState(t *testing.T) {
 	}
 }
 
+func TestAppRestartRestoresHighRiskApprovalSandboxProvenance(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	t.Setenv("DOPE_DATA_DIR", dataDir)
+	t.Setenv("DOPE_BIND_ADDR", "127.0.0.1:0")
+	t.Setenv("DOPE_LOG_LEVEL", "error")
+	t.Setenv("DOPE_VERSION", "test")
+
+	first, err := New()
+	if err != nil {
+		t.Fatalf("first New returned error: %v", err)
+	}
+
+	startRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(startRec, httptest.NewRequest(http.MethodPost, "/v1/auth/pairings/start", strings.NewReader(`{"mode":"local","label":"web-ui"}`)))
+	if startRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for pairing start, got %d", startRec.Code)
+	}
+	var pairingStart struct {
+		Pairing     auth.Pairing `json:"pairing"`
+		PairingCode string       `json:"pairingCode"`
+	}
+	if err := json.Unmarshal(startRec.Body.Bytes(), &pairingStart); err != nil {
+		t.Fatalf("failed to decode pairing start response: %v", err)
+	}
+
+	completeRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(completeRec, httptest.NewRequest(http.MethodPost, "/v1/auth/pairings/"+pairingStart.Pairing.PairingID+"/complete", strings.NewReader(`{"code":"`+pairingStart.PairingCode+`"}`)))
+	if completeRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for pairing complete, got %d", completeRec.Code)
+	}
+	var pairingComplete struct {
+		AccessToken string `json:"accessToken"`
+	}
+	if err := json.Unmarshal(completeRec.Body.Bytes(), &pairingComplete); err != nil {
+		t.Fatalf("failed to decode pairing complete response: %v", err)
+	}
+	authHeader := "Bearer " + pairingComplete.AccessToken
+
+	if _, _, err := first.CapabilitySupervisor.Register(capabilities.RegisterInput{
+		CapabilityID: "shell",
+		Kind:         "exec",
+		DisplayName:  "Shell",
+	}); err != nil {
+		t.Fatalf("Register shell capability returned error: %v", err)
+	}
+	run, err := first.Runtime.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := first.Runtime.CreateStep(run.RunID, runtime.CreateStepInput{Title: "approval restart"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"pwd"}}`))
+	createReq.Header.Set("Authorization", authHeader)
+	createRec := httptest.NewRecorder()
+	first.Server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for pending approval tool call, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	var pending struct {
+		Approval policy.Approval `json:"approval"`
+		Decision policy.Decision `json:"decision"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &pending); err != nil {
+		t.Fatalf("failed to decode pending approval response: %v", err)
+	}
+	if pending.Approval.Sandbox == nil || pending.Decision.Sandbox == nil {
+		t.Fatalf("expected pending approval response sandbox provenance, got approval=%+v decision=%+v", pending.Approval.Sandbox, pending.Decision.Sandbox)
+	}
+
+	if err := first.Close(context.Background()); err != nil {
+		t.Fatalf("first Close returned error: %v", err)
+	}
+
+	second, err := New()
+	if err != nil {
+		t.Fatalf("second New returned error: %v", err)
+	}
+	defer func() {
+		if err := second.Close(context.Background()); err != nil {
+			t.Fatalf("second Close returned error: %v", err)
+		}
+	}()
+
+	approvalReq := httptest.NewRequest(http.MethodGet, "/v1/policy/approvals/"+pending.Approval.ApprovalID, nil)
+	approvalReq.Header.Set("Authorization", authHeader)
+	approvalRec := httptest.NewRecorder()
+	second.Server.Handler().ServeHTTP(approvalRec, approvalReq)
+	if approvalRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for approval get after restart, got %d body=%s", approvalRec.Code, approvalRec.Body.String())
+	}
+	var restoredApproval policy.Approval
+	if err := json.Unmarshal(approvalRec.Body.Bytes(), &restoredApproval); err != nil {
+		t.Fatalf("failed to decode restored approval: %v", err)
+	}
+	if restoredApproval.Sandbox == nil {
+		t.Fatalf("expected restored approval sandbox provenance, got %+v", restoredApproval)
+	}
+
+	resolveReq := httptest.NewRequest(http.MethodPost, "/v1/policy/approvals/"+pending.Approval.ApprovalID+"/resolve", strings.NewReader(`{"resolution":"rejected","comment":"still denied"}`))
+	resolveReq.Header.Set("Authorization", authHeader)
+	resolveRec := httptest.NewRecorder()
+	second.Server.Handler().ServeHTTP(resolveRec, resolveReq)
+	if resolveRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for approval resolve after restart, got %d body=%s", resolveRec.Code, resolveRec.Body.String())
+	}
+	var resolved struct {
+		Approval policy.Approval `json:"approval"`
+		Decision policy.Decision `json:"decision"`
+	}
+	if err := json.Unmarshal(resolveRec.Body.Bytes(), &resolved); err != nil {
+		t.Fatalf("failed to decode resolved approval response: %v", err)
+	}
+	if resolved.Approval.Sandbox == nil || resolved.Decision.Sandbox == nil {
+		t.Fatalf("expected resolved approval response sandbox provenance after restart, got approval=%+v decision=%+v", resolved.Approval.Sandbox, resolved.Decision.Sandbox)
+	}
+}
+
 func TestAppRestartRestoresOperatorStateAcrossSubsystems(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "dope")
 	t.Setenv("DOPE_DATA_DIR", dataDir)

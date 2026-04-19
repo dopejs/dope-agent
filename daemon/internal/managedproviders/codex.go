@@ -64,9 +64,11 @@ func (b *codexBridge) Detect(ctx context.Context) (providers.AuthState, []provid
 		state.Status = providers.AuthStatusError
 		state.LastError = err.Error()
 		state.Metadata = evaluation.Metadata
+		state.Sandbox = consumerViewJSON(evaluation.Consumer)
 		return state, nil, nil
 	}
 	state.Metadata = evaluation.Metadata
+	state.Sandbox = consumerViewJSON(evaluation.Consumer)
 	models := b.models(false)
 
 	raw, err := os.ReadFile(b.authPath)
@@ -159,9 +161,11 @@ func (b *codexBridge) Revoke(ctx context.Context) (providers.AuthState, []provid
 		state.LastError = err.Error()
 		state.LastCheckedAt = time.Now().UTC()
 		state.Metadata = evaluation.Metadata
+		state.Sandbox = consumerViewJSON(evaluation.Consumer)
 		return state, nil, nil
 	}
 	state.Metadata = evaluation.Metadata
+	state.Sandbox = consumerViewJSON(evaluation.Consumer)
 	models := b.models(false)
 	if strings.TrimSpace(b.cliPath) == "" {
 		state.Status = providers.AuthStatusError

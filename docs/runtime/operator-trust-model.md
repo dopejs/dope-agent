@@ -44,6 +44,8 @@ The first real guarded action is high-risk tool execution:
 - if no approval is supplied, daemon creates a pending approval and denies execution
 - approved approval IDs allow execution
 - rejected approval IDs block execution
+- the approval gate now records declaration-backed consumer provenance and redacted secret-resolution metadata for the current high-risk tool-call path
+- this remains a policy and provenance boundary for the existing tool-call surface, not generic sandbox subprocess routing for all local tools
 
 This keeps approvals attached to a real side-effecting action instead of existing only as standalone resources.
 

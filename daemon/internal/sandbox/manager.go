@@ -143,6 +143,7 @@ func (m *Manager) StartExecution(ctx context.Context, request ExecutionRequest) 
 	execution.ApprovalID = approval
 	execution.Status = decisionToStatus(decision)
 	execution.Result.Status = execution.Status
+	synchronizeExecutionConsumerState(&execution)
 	if execution.Status == ExecutionStatusDenied {
 		execution.Result.ErrorClass = decisionErrorClass(decision)
 		execution.Result.ErrorCode = decisionErrorCode(decision)
@@ -163,6 +164,9 @@ func (m *Manager) StartExecution(ctx context.Context, request ExecutionRequest) 
 		if err := m.publishApprovalRequested(ctx, approval, *createdDecision); err != nil {
 			return Execution{}, err
 		}
+	}
+	if err := m.persistConsumerContract(ctx, execution.Consumer); err != nil {
+		return Execution{}, err
 	}
 	if err := m.persistExecution(ctx, execution); err != nil {
 		return Execution{}, err
@@ -225,6 +229,10 @@ func (m *Manager) WaitExecution(ctx context.Context, executionID string) (Execut
 	}
 }
 
+func (m *Manager) PersistConsumerView(ctx context.Context, view *ConsumerContractView) error {
+	return m.persistConsumerContract(ctx, cloneConsumerContractView(view))
+}
+
 func (m *Manager) FinalizeExecution(ctx context.Context, executionID string, finalization ExecutionFinalization) (Execution, error) {
 	m.mu.Lock()
 	execution, ok := m.executions[strings.TrimSpace(executionID)]
@@ -263,9 +271,13 @@ func (m *Manager) FinalizeExecution(ctx context.Context, executionID string, fin
 		execution.Result.ErrorCode = ""
 		execution.Result.Error = ""
 	}
+	synchronizeExecutionConsumerState(&execution)
 	m.executions[execution.ExecutionID] = cloneExecution(execution)
 	m.mu.Unlock()
 
+	if err := m.persistConsumerContract(ctx, execution.Consumer); err != nil {
+		return Execution{}, err
+	}
 	if err := m.persistExecution(ctx, execution); err != nil {
 		return Execution{}, err
 	}
@@ -354,7 +366,11 @@ func (m *Manager) Restore(ctx context.Context) error {
 		execution.Result.CompletedAt = &now
 		execution.CompletedAt = &now
 		execution.UpdatedAt = now
+		synchronizeExecutionConsumerState(&execution)
 		m.storeExecution(execution)
+		if err := m.persistConsumerContract(ctx, execution.Consumer); err != nil {
+			return err
+		}
 		if err := m.persistExecution(ctx, execution); err != nil {
 			return err
 		}
@@ -420,7 +436,10 @@ func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createA
 				Partial:         false,
 				OutputTruncated: false,
 			},
+			Consumer: cloneConsumerContractView(request.Consumer),
 		}
+		decision.Consumer = cloneConsumerContractView(request.Consumer)
+		execution.Result.Consumer = cloneConsumerContractView(request.Consumer)
 		return execution, decision, nil, "", nil, nil
 	}
 	if strings.TrimSpace(request.Command) == "" {
@@ -477,14 +496,20 @@ func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createA
 			OutputTruncated: false,
 			Partial:         false,
 		},
+		Consumer: cloneConsumerContractView(request.Consumer),
+	}
+	if execution.Consumer != nil && execution.Consumer.PolicyRecord != nil {
+		execution.Consumer.PolicyRecord.SandboxExecutionID = execution.ExecutionID
 	}
 	decision, approvalID, createdDecision, err := m.evaluate(ctx, profile, execution, createApproval)
 	if err != nil {
 		return Execution{}, Decision{}, nil, "", nil, err
 	}
 	decision.ExecutionID = executionID
+	decision.Consumer = cloneConsumerContractView(execution.Consumer)
 	execution.Decision = decision
 	execution.ApprovalID = approvalID
+	execution.Result.Consumer = cloneConsumerContractView(execution.Consumer)
 
 	launch := &launchSpec{
 		Command:        execution.Command,
@@ -503,6 +528,24 @@ func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createA
 
 func (m *Manager) evaluate(ctx context.Context, profile Profile, execution Execution, createApproval bool) (Decision, string, *policy.Decision, error) {
 	decision := evaluateAccessDecision(profile, execution.Cwd, execution.Access)
+	if execution.Consumer != nil && execution.Consumer.Declaration != nil {
+		requiredStrength := strings.TrimSpace(execution.Consumer.Declaration.RequiredEnforcementStrength)
+		if requiredStrength != "" && requiredStrength != "declared_only" && requiredStrength != "subprocess" {
+			decision.Resolution = DecisionResolutionDeny
+			decision.ApprovalRequired = false
+			decision.ApprovalStatus = DecisionApprovalStatusNotApplicable
+			decision.MatchedRules = append(decision.MatchedRules, "enforcement:unsupported")
+			decision.Explanation = "sandbox declaration requires stronger guarantees than the current backend can provide"
+			if execution.Consumer.PolicyRecord != nil {
+				execution.Consumer.PolicyRecord.Status = PolicyRecordStatusUnsupported
+				execution.Consumer.PolicyRecord.Decision = DecisionResolutionDeny
+				execution.Consumer.PolicyRecord.ApprovalStatus = DecisionApprovalStatusNotApplicable
+				execution.Consumer.PolicyRecord.FailureClass = "unsupported_backend_guarantee"
+				execution.Consumer.PolicyRecord.EnforcementStrength = requiredStrength
+			}
+			return decision, "", nil, nil
+		}
+	}
 
 	requestedApproval := strings.TrimSpace(execution.ApprovalID)
 	if decision.Resolution == DecisionResolutionDeny {
@@ -660,10 +703,15 @@ func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, e
 		"networkPolicyStrength": "declared_only",
 		"processType":           backendMetaProcessKind,
 	}, execution)
+	synchronizeExecutionConsumerState(&execution)
 	m.executions[execution.ExecutionID] = cloneExecution(execution)
 	m.mu.Unlock()
-	if err := m.persistExecution(context.Background(), execution); err == nil {
-		_ = m.publishExecutionStarted(context.Background(), execution)
+	if err := m.persistConsumerContract(context.Background(), execution.Consumer); err == nil {
+		if err := m.persistExecution(context.Background(), execution); err == nil {
+			_ = m.publishExecutionStarted(context.Background(), execution)
+		}
+	} else {
+		_ = err
 	}
 
 	result := executeSubprocess(ctx, *launch)
@@ -687,8 +735,10 @@ func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, e
 		Error:           result.Error,
 		Partial:         false,
 		BackendMetadata: mergeBackendMetadata(result.BackendMetadata, execution),
+		Consumer:        cloneConsumerContractView(execution.Consumer),
 	}
 	execution.StartedAt = execution.Result.StartedAt
+	synchronizeExecutionConsumerState(&execution)
 
 	m.mu.Lock()
 	delete(m.cancels, execution.ExecutionID)
@@ -704,11 +754,15 @@ func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, e
 	m.executions[execution.ExecutionID] = cloneExecution(execution)
 	m.mu.Unlock()
 
-	if err := m.persistExecution(context.Background(), execution); err == nil {
-		if delayTerminal {
-			return
+	if err := m.persistConsumerContract(context.Background(), execution.Consumer); err == nil {
+		if err := m.persistExecution(context.Background(), execution); err == nil {
+			if delayTerminal {
+				return
+			}
+			_ = m.publishExecutionTerminal(context.Background(), execution)
 		}
-		_ = m.publishExecutionTerminal(context.Background(), execution)
+	} else {
+		_ = err
 	}
 }
 
@@ -1003,6 +1057,7 @@ func (m *Manager) publishExecutionRequested(ctx context.Context, execution Execu
 		"status":       execution.Status,
 	}
 	mergeExecutionPayloadMetadata(payload, execution.Metadata)
+	mergeConsumerPayload(payload, execution.Consumer)
 	_, err := m.publishEvent(ctx, events.Event{
 		Category: eventCategory,
 		Name:     "sandbox.execution_requested",
@@ -1013,20 +1068,22 @@ func (m *Manager) publishExecutionRequested(ctx context.Context, execution Execu
 }
 
 func (m *Manager) publishDecisionRecorded(ctx context.Context, execution Execution) error {
+	payload := map[string]any{
+		"decisionId":           execution.Decision.DecisionID,
+		"resolution":           execution.Decision.Resolution,
+		"matchedRules":         execution.Decision.MatchedRules,
+		"approvalRequired":     execution.Decision.ApprovalRequired,
+		"approvalStatus":       execution.Decision.ApprovalStatus,
+		"effectiveProfileId":   execution.Decision.EffectiveProfileID,
+		"effectiveBackendKind": execution.Decision.EffectiveBackendKind,
+		"explanation":          execution.Decision.Explanation,
+	}
+	mergeConsumerPayload(payload, execution.Consumer)
 	_, err := m.publishEvent(ctx, events.Event{
 		Category: eventCategory,
 		Name:     "sandbox.decision_recorded",
 		Resource: events.Resource{Kind: resourceKindExecution, ID: execution.ExecutionID},
-		Payload: map[string]any{
-			"decisionId":           execution.Decision.DecisionID,
-			"resolution":           execution.Decision.Resolution,
-			"matchedRules":         execution.Decision.MatchedRules,
-			"approvalRequired":     execution.Decision.ApprovalRequired,
-			"approvalStatus":       execution.Decision.ApprovalStatus,
-			"effectiveProfileId":   execution.Decision.EffectiveProfileID,
-			"effectiveBackendKind": execution.Decision.EffectiveBackendKind,
-			"explanation":          execution.Decision.Explanation,
-		},
+		Payload:  payload,
 	})
 	return err
 }
@@ -1039,6 +1096,7 @@ func (m *Manager) publishExecutionStarted(ctx context.Context, execution Executi
 		"startedAt":   execution.StartedAt,
 	}
 	mergeExecutionPayloadMetadata(payload, execution.Metadata)
+	mergeConsumerPayload(payload, execution.Consumer)
 	_, err := m.publishEvent(ctx, events.Event{
 		Category: eventCategory,
 		Name:     "sandbox.execution_started",
@@ -1074,6 +1132,7 @@ func (m *Manager) publishExecutionTerminal(ctx context.Context, execution Execut
 		payload["completedAt"] = execution.Result.CompletedAt
 	}
 	mergeExecutionPayloadMetadata(payload, execution.Metadata)
+	mergeConsumerPayload(payload, execution.Consumer)
 	for key, value := range execution.Result.BackendMetadata {
 		payload[key] = value
 	}
@@ -1100,6 +1159,27 @@ func mergeExecutionPayloadMetadata(payload map[string]any, metadata map[string]s
 		if value := strings.TrimSpace(metadata[key]); value != "" {
 			payload[key] = value
 		}
+	}
+}
+
+func mergeConsumerPayload(payload map[string]any, view *ConsumerContractView) {
+	if payload == nil || view == nil {
+		return
+	}
+	if view.Declaration != nil {
+		payload["consumerKind"] = view.Declaration.ConsumerKind
+		payload["consumerId"] = view.Declaration.ConsumerID
+		payload["declarationId"] = view.Declaration.DeclarationID
+		payload["operationKind"] = view.Declaration.OperationKind
+		payload["requiredEnforcementStrength"] = view.Declaration.RequiredEnforcementStrength
+	}
+	if len(view.SecretScope) > 0 {
+		payload["secretScope"] = view.SecretScope
+	}
+	if view.PolicyRecord != nil {
+		payload["policyRecordId"] = view.PolicyRecord.PolicyRecordID
+		payload["policyStatus"] = view.PolicyRecord.Status
+		payload["secretResolution"] = view.PolicyRecord.SecretResolution
 	}
 }
 
@@ -1661,6 +1741,8 @@ func decisionToStatus(decision Decision) ExecutionStatus {
 
 func decisionErrorClass(decision Decision) ErrorClass {
 	switch {
+	case slices.Contains(decision.MatchedRules, "enforcement:unsupported"), slices.Contains(decision.MatchedRules, "backend:unsupported"):
+		return ErrorClassBackendMissing
 	case decision.ApprovalStatus == DecisionApprovalStatusRejected:
 		return ErrorClassApprovalRejected
 	case decision.ApprovalRequired:
@@ -1672,6 +1754,8 @@ func decisionErrorClass(decision Decision) ErrorClass {
 
 func decisionErrorCode(decision Decision) string {
 	switch {
+	case slices.Contains(decision.MatchedRules, "enforcement:unsupported"), slices.Contains(decision.MatchedRules, "backend:unsupported"):
+		return "sandbox_backend_unsupported"
 	case decision.ApprovalStatus == DecisionApprovalStatusRejected:
 		return "sandbox_approval_rejected"
 	case decision.ApprovalRequired:
@@ -1735,6 +1819,9 @@ func cloneExecution(execution Execution) Execution {
 	execution.Metadata = cloneStringMap(execution.Metadata)
 	execution.Access = cloneAccess(execution.Access)
 	execution.Decision.MatchedRules = cloneStrings(execution.Decision.MatchedRules)
+	execution.Decision.Consumer = cloneConsumerContractView(execution.Decision.Consumer)
+	execution.Result.Consumer = cloneConsumerContractView(execution.Result.Consumer)
+	execution.Consumer = cloneConsumerContractView(execution.Consumer)
 	if execution.Result.BackendMetadata != nil {
 		copyMap := make(map[string]any, len(execution.Result.BackendMetadata))
 		for key, value := range execution.Result.BackendMetadata {
@@ -1743,6 +1830,174 @@ func cloneExecution(execution Execution) Execution {
 		execution.Result.BackendMetadata = copyMap
 	}
 	return execution
+}
+
+func cloneConsumerContractView(view *ConsumerContractView) *ConsumerContractView {
+	if view == nil {
+		return nil
+	}
+	cloned := *view
+	if view.Declaration != nil {
+		declaration := *view.Declaration
+		declaration.AllowedBackendKinds = append([]BackendKind(nil), view.Declaration.AllowedBackendKinds...)
+		declaration.ReadRoots = cloneStrings(view.Declaration.ReadRoots)
+		declaration.WriteRoots = cloneStrings(view.Declaration.WriteRoots)
+		declaration.AllowedHosts = cloneStrings(view.Declaration.AllowedHosts)
+		declaration.AllowedPorts = cloneInts(view.Declaration.AllowedPorts)
+		declaration.SecretRefs = cloneStrings(view.Declaration.SecretRefs)
+		cloned.Declaration = &declaration
+	}
+	if len(view.SecretScope) > 0 {
+		cloned.SecretScope = append([]SecretScopeOutcome(nil), view.SecretScope...)
+	}
+	if view.PolicyRecord != nil {
+		record := *view.PolicyRecord
+		cloned.PolicyRecord = &record
+	}
+	return &cloned
+}
+
+func synchronizeExecutionConsumerState(execution *Execution) {
+	if execution == nil || execution.Consumer == nil || execution.Consumer.PolicyRecord == nil {
+		return
+	}
+	record := execution.Consumer.PolicyRecord
+	record.SandboxExecutionID = execution.ExecutionID
+	record.Decision = execution.Decision.Resolution
+	record.ApprovalStatus = execution.Decision.ApprovalStatus
+	record.SecretResolution = secretResolutionFromConsumer(execution.Consumer)
+	if record.EnforcementStrength == "" && execution.Consumer.Declaration != nil {
+		record.EnforcementStrength = strings.TrimSpace(execution.Consumer.Declaration.RequiredEnforcementStrength)
+	}
+	if record.EnforcementStrength == "" {
+		record.EnforcementStrength = "declared_only"
+	}
+	switch execution.Status {
+	case ExecutionStatusRunning:
+		record.Status = PolicyRecordStatusRunning
+	case ExecutionStatusCompleted:
+		record.Status = PolicyRecordStatusCompleted
+		now := time.Now().UTC()
+		record.CompletedAt = &now
+	case ExecutionStatusFailed:
+		record.Status = PolicyRecordStatusFailed
+		record.FailureClass = string(execution.Result.ErrorClass)
+		now := time.Now().UTC()
+		record.CompletedAt = &now
+	case ExecutionStatusCancelled:
+		record.Status = PolicyRecordStatusCancelled
+		record.FailureClass = string(execution.Result.ErrorClass)
+		now := time.Now().UTC()
+		record.CompletedAt = &now
+	case ExecutionStatusDenied:
+		if record.Status != PolicyRecordStatusUnsupported {
+			if execution.Decision.ApprovalStatus == DecisionApprovalStatusPending {
+				record.Status = PolicyRecordStatusApprovalPending
+			} else {
+				record.Status = PolicyRecordStatusDenied
+			}
+		}
+		record.FailureClass = string(execution.Result.ErrorClass)
+		now := time.Now().UTC()
+		record.CompletedAt = &now
+	default:
+		record.Status = PolicyRecordStatusPreflightAllowed
+	}
+	if execution.Result.Consumer == nil {
+		execution.Result.Consumer = cloneConsumerContractView(execution.Consumer)
+	} else {
+		execution.Result.Consumer.PolicyRecord = cloneConsumerContractView(execution.Consumer).PolicyRecord
+	}
+	if execution.Decision.Consumer == nil {
+		execution.Decision.Consumer = cloneConsumerContractView(execution.Consumer)
+	} else {
+		execution.Decision.Consumer.PolicyRecord = cloneConsumerContractView(execution.Consumer).PolicyRecord
+	}
+}
+
+func secretResolutionFromConsumer(view *ConsumerContractView) SecretResolution {
+	if view == nil || len(view.SecretScope) == 0 {
+		return SecretResolutionNotApplicable
+	}
+	resolution := SecretResolutionResolved
+	for _, item := range view.SecretScope {
+		switch item.Resolution {
+		case SecretResolutionUnavailable:
+			return SecretResolutionUnavailable
+		case SecretResolutionDenied:
+			resolution = SecretResolutionDenied
+		case SecretResolutionResolved:
+		default:
+			if resolution == SecretResolutionResolved {
+				resolution = item.Resolution
+			}
+		}
+	}
+	return resolution
+}
+
+func (m *Manager) persistConsumerContract(ctx context.Context, view *ConsumerContractView) error {
+	if m == nil || m.store == nil || view == nil {
+		return nil
+	}
+	for _, item := range view.SecretScope {
+		document, err := json.Marshal(item)
+		if err != nil {
+			return fmt.Errorf("marshal secret scope binding %s/%s: %w", item.ConsumerKind, item.SecretRef, err)
+		}
+		if err := m.store.UpsertSecretScopeBinding(ctx, store.SecretScopeBindingRecord{
+			BindingID:        secretScopeBindingRecordID(item),
+			ConsumerKind:     string(item.ConsumerKind),
+			ConsumerID:       item.ConsumerID,
+			EnvironmentScope: string(item.EnvironmentScope),
+			SecretRef:        item.SecretRef,
+			DefaultSource:    string(item.DefaultSource),
+			DeliveryKind:     item.DeliveryKind,
+			Active:           true,
+			Document:         document,
+		}); err != nil {
+			return err
+		}
+	}
+	if view.PolicyRecord != nil {
+		document, err := json.Marshal(view.PolicyRecord)
+		if err != nil {
+			return fmt.Errorf("marshal consumer policy record %s: %w", view.PolicyRecord.PolicyRecordID, err)
+		}
+		if err := m.store.UpsertConsumerPolicyRecord(ctx, store.ConsumerPolicyRecordRecord{
+			PolicyRecordID:      view.PolicyRecord.PolicyRecordID,
+			ConsumerKind:        string(view.PolicyRecord.ConsumerKind),
+			ConsumerID:          view.PolicyRecord.ConsumerID,
+			OperationKind:       view.PolicyRecord.OperationKind,
+			DeclarationID:       view.PolicyRecord.DeclarationID,
+			Status:              string(view.PolicyRecord.Status),
+			Decision:            string(view.PolicyRecord.Decision),
+			ApprovalStatus:      string(view.PolicyRecord.ApprovalStatus),
+			SecretResolution:    string(view.PolicyRecord.SecretResolution),
+			RequestedBy:         view.PolicyRecord.RequestedBy,
+			SandboxExecutionID:  view.PolicyRecord.SandboxExecutionID,
+			ToolCallID:          view.PolicyRecord.ToolCallID,
+			ProviderOperationID: view.PolicyRecord.ProviderOperationID,
+			StartedAt:           view.PolicyRecord.StartedAt,
+			CompletedAt:         view.PolicyRecord.CompletedAt,
+			Document:            document,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func secretScopeBindingRecordID(item SecretScopeOutcome) string {
+	base := firstNonEmpty(strings.TrimSpace(item.DefaultRuleID), newID("secret_binding"))
+	parts := []string{base}
+	if scope := strings.TrimSpace(string(item.EnvironmentScope)); scope != "" {
+		parts = append(parts, scope)
+	}
+	if secretRef := strings.TrimSpace(item.SecretRef); secretRef != "" {
+		parts = append(parts, secretRef)
+	}
+	return strings.Join(parts, ":")
 }
 
 func cloneAccess(access AccessRequest) AccessRequest {

@@ -35,6 +35,7 @@
       "type": "string",
       "enum": ["subprocess", "docker", "ssh", "remote"]
     },
-    "explanation": { "type": "string" }
+    "explanation": { "type": "string" },
+    "consumer": { "$ref": "./sandbox-consumer-view.schema.json" }
   }
 }

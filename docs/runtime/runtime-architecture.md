@@ -104,6 +104,8 @@ Provides structured recall and candidate-write access to the memory plane.
 
 Owns tool schemas, permissions, idempotency keys, execution envelopes, and structured output capture.
 
+For the current high-risk tool-call path, the gateway also carries declaration-backed consumer provenance and policy-record linkage even before generic local-tool subprocess execution is migrated onto sandbox.
+
 ### Planner
 
 Can use model output to propose plans, but execution should still be gated by runtime policy.
@@ -127,3 +129,4 @@ Provides event stream inspection, timeline reconstruction, failure triage, and d
 - A run can resume from the most recent checkpoint.
 - Model output alone is not treated as durable state.
 - Policy decisions are observable and attributable.
+- Current sandbox-backed and approval-gated local consumers preserve consumer kind, consumer instance, and redacted secret-resolution outcomes in durable records.

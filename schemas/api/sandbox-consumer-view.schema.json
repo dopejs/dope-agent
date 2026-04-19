@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-consumer-view.schema.json",
+  "title": "SandboxConsumerView",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["declarationId", "consumerKind", "consumerId", "operationKind", "executionMode", "active", "source"],
+      "properties": {
+        "declarationId": { "type": "string" },
+        "consumerKind": { "type": "string", "enum": ["managed_provider", "skill", "local_tool"] },
+        "consumerId": { "type": "string" },
+        "operationKind": { "type": "string" },
+        "profileId": { "type": "string" },
+        "executionMode": { "type": "string", "enum": ["subprocess", "access_only", "declaration_only"] },
+        "allowedBackendKinds": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["subprocess", "docker", "ssh", "remote"] }
+        },
+        "readRoots": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "writeRoots": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "networkMode": { "type": "string", "enum": ["deny", "allow_list", "full"] },
+        "allowedHosts": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "allowedPorts": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "allowLoopback": { "type": "boolean" },
+        "secretRefs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "approvalMode": { "type": "string", "enum": ["allow", "ask", "deny"] },
+        "requiredEnforcementStrength": { "type": "string" },
+        "active": { "type": "boolean" },
+        "source": { "type": "string" }
+      }
+    },
+    "secretScope": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["consumerKind", "consumerId", "secretRef", "environmentScope", "resolution"],
+        "properties": {
+          "consumerKind": { "type": "string", "enum": ["managed_provider", "skill", "local_tool"] },
+          "consumerId": { "type": "string" },
+          "secretRef": { "type": "string" },
+          "environmentScope": { "type": "string", "enum": ["test", "prod", "both"] },
+          "defaultSource": { "type": "string", "enum": ["kind_default", "instance_override"] },
+          "defaultRuleId": { "type": "string" },
+          "deliveryKind": { "type": "string" },
+          "redactionRule": { "type": "string" },
+          "resolution": { "type": "string", "enum": ["resolved", "denied", "unavailable", "not_applicable"] }
+        }
+      }
+    },
+    "policyRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyRecordId", "consumerKind", "consumerId", "operationKind", "decision", "approvalStatus", "secretResolution", "startedAt", "status"],
+      "properties": {
+        "policyRecordId": { "type": "string" },
+        "consumerKind": { "type": "string", "enum": ["managed_provider", "skill", "local_tool"] },
+        "consumerId": { "type": "string" },
+        "operationKind": { "type": "string" },
+        "declarationId": { "type": "string" },
+        "requestedBy": { "type": "string" },
+        "approvalId": { "type": "string" },
+        "decisionId": { "type": "string" },
+        "decision": { "type": "string", "enum": ["allow", "ask", "deny"] },
+        "approvalStatus": { "type": "string", "enum": ["not_applicable", "pending", "approved", "rejected"] },
+        "secretResolution": { "type": "string", "enum": ["resolved", "denied", "unavailable", "not_applicable"] },
+        "enforcementStrength": { "type": "string" },
+        "failureClass": { "type": "string" },
+        "sandboxExecutionId": { "type": "string" },
+        "toolCallId": { "type": "string" },
+        "providerOperationId": { "type": "string" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "status": {
+          "type": "string",
+          "enum": ["preflight_allowed", "approval_pending", "running", "completed", "failed", "cancelled", "denied", "unsupported"]
+        }
+      }
+    }
+  }
+}

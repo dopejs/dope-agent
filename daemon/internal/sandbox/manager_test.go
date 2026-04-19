@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -293,6 +294,107 @@ func TestCancelExecutionTransitionsToCancelled(t *testing.T) {
 	}
 }
 
+func TestExplainIncludesConsumerSecretScopeMetadata(t *testing.T) {
+	t.Parallel()
+
+	manager := newSandboxManagerForTest(t)
+	cwd := t.TempDir()
+	decision, err := manager.Explain(context.Background(), ExecutionRequest{
+		ProfileID: ProfileIDSubprocessDefault,
+		Command:   "echo",
+		Args:      []string{"hello"},
+		Cwd:       cwd,
+		Access: AccessRequest{
+			ReadRoots:  []string{cwd},
+			WriteRoots: []string{cwd},
+		},
+		Consumer: testManagedProviderConsumerView("codex_managed", ManagedProviderActionAuthStatus, []SecretScopeOutcome{
+			testSecretScopeOutcome(ConsumerKindManagedProvider, "codex_managed", "auth_file", SecretEnvironmentScopeTest, SecretResolutionUnavailable),
+			testSecretScopeOutcome(ConsumerKindManagedProvider, "codex_managed", "auth_file", SecretEnvironmentScopeProd, SecretResolutionResolved),
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Explain returned error: %v", err)
+	}
+	if decision.Consumer == nil {
+		t.Fatal("expected decision consumer metadata")
+	}
+	if decision.Consumer.Declaration == nil {
+		t.Fatalf("expected consumer declaration, got %+v", decision.Consumer)
+	}
+	if decision.Consumer.Declaration.ConsumerKind != ConsumerKindManagedProvider {
+		t.Fatalf("expected managed provider consumer kind, got %+v", decision.Consumer.Declaration)
+	}
+	if len(decision.Consumer.SecretScope) != 2 {
+		t.Fatalf("expected 2 secret scope outcomes, got %+v", decision.Consumer.SecretScope)
+	}
+	if decision.Consumer.SecretScope[0].EnvironmentScope != SecretEnvironmentScopeTest || decision.Consumer.SecretScope[0].Resolution != SecretResolutionUnavailable {
+		t.Fatalf("expected test unavailable secret outcome, got %+v", decision.Consumer.SecretScope[0])
+	}
+	if decision.Consumer.SecretScope[1].EnvironmentScope != SecretEnvironmentScopeProd || decision.Consumer.SecretScope[1].Resolution != SecretResolutionResolved {
+		t.Fatalf("expected prod resolved secret outcome, got %+v", decision.Consumer.SecretScope[1])
+	}
+}
+
+func TestStartExecutionPersistsEnvironmentScopedSecretScopeBindings(t *testing.T) {
+	t.Parallel()
+
+	manager := newSandboxManagerForTest(t)
+	cwd := t.TempDir()
+	execution, err := manager.StartExecution(context.Background(), ExecutionRequest{
+		ProfileID: ProfileIDSubprocessDefault,
+		Command:   testShell(),
+		Args:      testShellArgs("printf 'secret-scope-ok'"),
+		Cwd:       cwd,
+		Access: AccessRequest{
+			ReadRoots:  []string{cwd},
+			WriteRoots: []string{cwd},
+		},
+		Consumer: testManagedProviderConsumerView("claude_managed", ManagedProviderActionPromptExecution, []SecretScopeOutcome{
+			testSecretScopeOutcome(ConsumerKindManagedProvider, "claude_managed", "settings_file", SecretEnvironmentScopeTest, SecretResolutionUnavailable),
+			testSecretScopeOutcome(ConsumerKindManagedProvider, "claude_managed", "settings_file", SecretEnvironmentScopeProd, SecretResolutionResolved),
+		}),
+	})
+	if err != nil {
+		t.Fatalf("StartExecution returned error: %v", err)
+	}
+
+	execution = waitForTerminalExecution(t, manager, execution.ExecutionID)
+	if execution.Status != ExecutionStatusCompleted {
+		t.Fatalf("expected completed execution, got %+v", execution)
+	}
+	if execution.Result.Consumer == nil || execution.Result.Consumer.PolicyRecord == nil {
+		t.Fatalf("expected execution result consumer policy record, got %+v", execution.Result.Consumer)
+	}
+	if execution.Result.Consumer.PolicyRecord.SecretResolution != SecretResolutionUnavailable {
+		t.Fatalf("expected unavailable secret resolution, got %+v", execution.Result.Consumer.PolicyRecord)
+	}
+
+	bindings, err := manager.store.ListSecretScopeBindings(context.Background(), string(ConsumerKindManagedProvider), "claude_managed")
+	if err != nil {
+		t.Fatalf("ListSecretScopeBindings returned error: %v", err)
+	}
+	if len(bindings) != 2 {
+		t.Fatalf("expected 2 persisted secret scope bindings, got %+v", bindings)
+	}
+	foundTest := false
+	foundProd := false
+	for _, binding := range bindings {
+		switch binding.EnvironmentScope {
+		case string(SecretEnvironmentScopeTest):
+			foundTest = true
+		case string(SecretEnvironmentScopeProd):
+			foundProd = true
+		}
+		if string(binding.Document) == "" || strings.Contains(string(binding.Document), "secret-scope-ok") {
+			t.Fatalf("expected redacted binding document, got %s", string(binding.Document))
+		}
+	}
+	if !foundTest || !foundProd {
+		t.Fatalf("expected test and prod environment bindings, got %+v", bindings)
+	}
+}
+
 func newSandboxManagerForTest(t *testing.T) *Manager {
 	t.Helper()
 
@@ -350,4 +452,57 @@ func testSleepScript() string {
 		return "ping -n 6 127.0.0.1 >NUL"
 	}
 	return "sleep 5"
+}
+
+func testManagedProviderConsumerView(providerID string, action ManagedProviderActionKind, secretScope []SecretScopeOutcome) *ConsumerContractView {
+	consumerID := strings.TrimSpace(providerID)
+	operationKind := string(action)
+	return &ConsumerContractView{
+		Declaration: &ConsumerRequirementDeclaration{
+			DeclarationID:               "managed_provider:" + consumerID + ":" + operationKind,
+			ConsumerKind:                ConsumerKindManagedProvider,
+			ConsumerID:                  consumerID,
+			OperationKind:               operationKind,
+			ProfileID:                   ProfileIDManagedProviderCodex,
+			ExecutionMode:               ExecutionModeSubprocess,
+			AllowedBackendKinds:         []BackendKind{BackendKindSubprocess},
+			ReadRoots:                   []string{},
+			WriteRoots:                  []string{},
+			NetworkMode:                 NetworkModeDeny,
+			SecretRefs:                  []string{"auth_file"},
+			ApprovalMode:                ApprovalModeAllow,
+			RequiredEnforcementStrength: "declared_only",
+			Active:                      true,
+			Source:                      SourceBuiltin,
+		},
+		SecretScope: append([]SecretScopeOutcome(nil), secretScope...),
+		PolicyRecord: &ConsumerPolicyRecord{
+			PolicyRecordID:      "policy_" + consumerID + "_" + operationKind,
+			ConsumerKind:        ConsumerKindManagedProvider,
+			ConsumerID:          consumerID,
+			OperationKind:       operationKind,
+			DeclarationID:       "managed_provider:" + consumerID + ":" + operationKind,
+			RequestedBy:         "test",
+			Decision:            DecisionResolutionAllow,
+			ApprovalStatus:      DecisionApprovalStatusNotApplicable,
+			SecretResolution:    secretResolutionFromConsumer(&ConsumerContractView{SecretScope: secretScope}),
+			EnforcementStrength: "declared_only",
+			StartedAt:           time.Now().UTC(),
+			Status:              PolicyRecordStatusPreflightAllowed,
+		},
+	}
+}
+
+func testSecretScopeOutcome(kind ConsumerKind, consumerID, secretRef string, environment SecretEnvironmentScope, resolution SecretResolution) SecretScopeOutcome {
+	return SecretScopeOutcome{
+		ConsumerKind:     kind,
+		ConsumerID:       strings.TrimSpace(consumerID),
+		SecretRef:        strings.TrimSpace(secretRef),
+		EnvironmentScope: environment,
+		DefaultSource:    SecretDefaultSourceInstanceOverride,
+		DefaultRuleID:    string(kind) + ":" + strings.TrimSpace(consumerID),
+		DeliveryKind:     "local_state_access",
+		RedactionRule:    "class_summary_only",
+		Resolution:       resolution,
+	}
 }

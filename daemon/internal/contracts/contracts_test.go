@@ -189,18 +189,30 @@ func TestChatStreamSchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	fixtures := map[string]string{
-		"schemas/api/chat-query-stream-started.event.schema.json": `{"dispatchId":"dispatch_1","provider":"openai_compatible","model":"gpt-test","skills":["shared"],"query":"hello"}`,
+		"schemas/api/chat-query-stream-started.event.schema.json": `{"dispatchId":"dispatch_1","provider":"openai_compatible","model":"gpt-test","skills":["shared"],"skillContracts":[{"declaration":{"declarationId":"skill:shared:selection","consumerKind":"skill","consumerId":"shared","operationKind":"skill_selection","profileId":"subprocess_default","executionMode":"declaration_only","allowedBackendKinds":["subprocess"],"readRoots":["/tmp/dope/skills/shared"],"writeRoots":[],"networkMode":"deny","secretRefs":[],"approvalMode":"allow","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"}}],"query":"hello"}`,
 		"schemas/api/chat-query-stream-delta.event.schema.json":   `{"dispatchId":"dispatch_1","delta":"hello","reply":"hello"}`,
-		"schemas/api/chat-query.response.schema.json":             `{"dispatchId":"dispatch_1","provider":"openai_compatible","model":"gpt-test","skills":["shared"],"query":"hello","status":"completed","partial":false,"reply":"hello world","finishReason":"stop","usage":{"inputTokens":2,"outputTokens":3,"totalTokens":5}}`,
+		"schemas/api/chat-query.response.schema.json":             `{"dispatchId":"dispatch_1","provider":"openai_compatible","model":"gpt-test","skills":["shared"],"skillContracts":[{"declaration":{"declarationId":"skill:shared:selection","consumerKind":"skill","consumerId":"shared","operationKind":"skill_selection","profileId":"subprocess_default","executionMode":"declaration_only","allowedBackendKinds":["subprocess"],"readRoots":["/tmp/dope/skills/shared"],"writeRoots":[],"networkMode":"deny","secretRefs":[],"approvalMode":"allow","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"}}],"query":"hello","status":"completed","partial":false,"reply":"hello world","finishReason":"stop","usage":{"inputTokens":2,"outputTokens":3,"totalTokens":5}}`,
 	}
 
-	for schemaPath, fixture := range fixtures {
-		t.Run(filepath.Base(schemaPath), func(t *testing.T) {
-			if err := validator.ValidateRelative(schemaPath, []byte(fixture)); err != nil {
-				t.Fatalf("ValidateRelative returned error: %v", err)
-			}
-		})
+	assertFixtureSandboxDeclaration(t, fixtures["schemas/api/chat-query.response.schema.json"], "skill", "shared", "skill_selection")
+	mustValidateFixtures(t, validator, fixtures)
+}
+
+func TestPolicySchemasAcceptSandboxFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	fixtures := map[string]string{
+		"schemas/api/approval-resource.schema.json":                  `{"approvalId":"approval_1","action":"tool_call.execute","resourceKind":"capability","resourceId":"shell","reason":"need approval","status":"pending","createdAt":"2026-04-18T12:00:00Z","updatedAt":"2026-04-18T12:00:00Z","sandbox":{"declaration":{"declarationId":"local_tool:shell:tool_call.execute","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"access_only","allowedBackendKinds":["subprocess"],"networkMode":"deny","secretRefs":[],"approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"policyRecord":{"policyRecordId":"policy_local_tool_shell_1","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","declarationId":"local_tool:shell:tool_call.execute","requestedBy":"web-ui","approvalId":"approval_1","decisionId":"decision_1","decision":"ask","approvalStatus":"pending","secretResolution":"not_applicable","enforcementStrength":"declared_only","startedAt":"2026-04-18T12:00:00Z","status":"approval_pending"}}}`,
+		"schemas/api/decision-resource.schema.json":                  `{"decisionId":"decision_1","action":"tool_call.execute","resourceKind":"capability","resourceId":"shell","outcome":"requires_approval","reason":"need approval","approvalId":"approval_1","createdAt":"2026-04-18T12:00:00Z","sandbox":{"declaration":{"declarationId":"local_tool:shell:tool_call.execute","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"access_only","allowedBackendKinds":["subprocess"],"networkMode":"deny","secretRefs":[],"approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"policyRecord":{"policyRecordId":"policy_local_tool_shell_1","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","declarationId":"local_tool:shell:tool_call.execute","requestedBy":"web-ui","approvalId":"approval_1","decisionId":"decision_1","decision":"ask","approvalStatus":"pending","secretResolution":"not_applicable","enforcementStrength":"declared_only","startedAt":"2026-04-18T12:00:00Z","status":"approval_pending"}}}`,
+		"schemas/events/policy-approval-requested.event.schema.json": `{"eventId":"evt_policy_1","sequence":12,"category":"policy","name":"policy.approval_requested","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"approval","id":"approval_1"},"payload":{"action":"tool_call.execute","resourceKind":"capability","resourceId":"shell","status":"pending","sandbox":{"declaration":{"declarationId":"local_tool:shell:tool_call.execute","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"access_only","allowedBackendKinds":["subprocess"],"networkMode":"deny","secretRefs":[],"approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"policyRecord":{"policyRecordId":"policy_local_tool_shell_1","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","declarationId":"local_tool:shell:tool_call.execute","requestedBy":"web-ui","approvalId":"approval_1","decisionId":"decision_1","decision":"ask","approvalStatus":"pending","secretResolution":"not_applicable","enforcementStrength":"declared_only","startedAt":"2026-04-18T12:00:00Z","status":"approval_pending"}}}}`,
+		"schemas/events/policy-approval-resolved.event.schema.json":  `{"eventId":"evt_policy_2","sequence":13,"category":"policy","name":"policy.approval_resolved","occurredAt":"2026-04-18T12:00:02Z","scope":{},"resource":{"kind":"approval","id":"approval_1"},"payload":{"action":"tool_call.execute","resourceKind":"capability","resourceId":"shell","status":"approved","resolution":"approved","sandbox":{"declaration":{"declarationId":"local_tool:shell:tool_call.execute","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"access_only","allowedBackendKinds":["subprocess"],"networkMode":"deny","secretRefs":[],"approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"policyRecord":{"policyRecordId":"policy_local_tool_shell_1","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","declarationId":"local_tool:shell:tool_call.execute","requestedBy":"web-ui","approvalId":"approval_1","decisionId":"decision_2","decision":"allow","approvalStatus":"approved","secretResolution":"not_applicable","enforcementStrength":"declared_only","startedAt":"2026-04-18T12:00:00Z","completedAt":"2026-04-18T12:00:02Z","status":"preflight_allowed"}}}}`,
+		"schemas/events/policy-decision-recorded.event.schema.json":  `{"eventId":"evt_policy_3","sequence":14,"category":"policy","name":"policy.decision_recorded","occurredAt":"2026-04-18T12:00:02Z","scope":{},"resource":{"kind":"decision","id":"decision_2"},"payload":{"action":"tool_call.execute","resourceKind":"capability","resourceId":"shell","outcome":"approved","approvalId":"approval_1","sandbox":{"declaration":{"declarationId":"local_tool:shell:tool_call.execute","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","profileId":"subprocess_default","executionMode":"access_only","allowedBackendKinds":["subprocess"],"networkMode":"deny","secretRefs":[],"approvalMode":"ask","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"},"policyRecord":{"policyRecordId":"policy_local_tool_shell_1","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","declarationId":"local_tool:shell:tool_call.execute","requestedBy":"web-ui","approvalId":"approval_1","decisionId":"decision_2","decision":"allow","approvalStatus":"approved","secretResolution":"not_applicable","enforcementStrength":"declared_only","startedAt":"2026-04-18T12:00:00Z","completedAt":"2026-04-18T12:00:02Z","status":"preflight_allowed"}}}}`,
 	}
+
+	assertFixtureSandboxDeclaration(t, fixtures["schemas/api/approval-resource.schema.json"], "local_tool", "shell", "tool_call.execute")
+	assertFixtureSandboxPolicyRecord(t, fixtures["schemas/api/approval-resource.schema.json"], "approval_pending", "not_applicable")
+	mustValidateFixtures(t, validator, fixtures)
 }
 
 func TestProviderSchemasAcceptCanonicalFixtures(t *testing.T) {
@@ -275,7 +287,7 @@ func TestStreamingTimeoutSchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	fixtures := map[string]string{
-		"schemas/events/llm-dispatch-partial-failed.event.schema.json": `{"eventId":"evt_partial_1","sequence":8,"category":"llm","name":"llm.dispatch.partial_failed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"llm_dispatch","id":"dispatch_1"},"payload":{"provider":"openai_compatible","model":"gpt-5.4","status":"partial_failed","partial":true,"attemptCount":1,"finishReason":"","usage":{"inputTokens":1,"outputTokens":2,"totalTokens":3},"errorCode":"idle_timeout","error":"stream stalled"}}`,
+		"schemas/events/llm-dispatch-partial-failed.event.schema.json": `{"eventId":"evt_partial_1","sequence":8,"category":"llm","name":"llm.dispatch.partial_failed","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"llm_dispatch","id":"dispatch_1"},"payload":{"provider":"openai_compatible","model":"gpt-5.4","status":"partial_failed","partial":true,"attemptCount":1,"finishReason":"","usage":{"inputTokens":1,"outputTokens":2,"totalTokens":3},"errorCode":"idle_timeout","error":"stream stalled","skills":["shared"],"skillContracts":[{"declaration":{"declarationId":"skill:shared:selection","consumerKind":"skill","consumerId":"shared","operationKind":"skill_selection","profileId":"subprocess_default","executionMode":"declaration_only","allowedBackendKinds":["subprocess"],"readRoots":["/tmp/dope/skills/shared"],"writeRoots":[],"networkMode":"deny","secretRefs":[],"approvalMode":"allow","requiredEnforcementStrength":"declared_only","active":true,"source":"builtin"}}]}}`,
 		"schemas/events/connector-reply-partial.event.schema.json":     `{"eventId":"evt_partial_2","sequence":9,"category":"connector","name":"connector.reply_partial","occurredAt":"2026-04-18T12:00:01Z","scope":{"runId":"run_1","stepId":"step_1","connectorId":"discord-main"},"resource":{"kind":"connector","id":"discord-main"},"payload":{"messageId":"msg_1","replyMessageId":"reply_1","replyMessageIds":["reply_1"],"partCount":1,"contentLength":128,"error":"stream stalled","errorClass":""}}`,
 		"schemas/events/sandbox-execution-requested.event.schema.json": `{"eventId":"evt_sandbox_1","sequence":10,"category":"sandbox","name":"sandbox.execution_requested","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"sandbox_execution","id":"sandbox_exec_1"},"payload":{"profileId":"subprocess_default","backendKind":"subprocess","command":"echo","args":["hello"],"cwd":"/tmp/dope","requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","status":"denied"}}`,
 		"schemas/events/sandbox-decision-recorded.event.schema.json":   `{"eventId":"evt_sandbox_2","sequence":11,"category":"sandbox","name":"sandbox.decision_recorded","occurredAt":"2026-04-18T12:00:01Z","scope":{},"resource":{"kind":"sandbox_execution","id":"sandbox_exec_1"},"payload":{"decisionId":"sandbox_decision_1","resolution":"ask","matchedRules":["profile:subprocess_default"],"approvalRequired":true,"approvalStatus":"pending","effectiveProfileId":"subprocess_default","effectiveBackendKind":"subprocess","explanation":"sandbox execution requires approval"}}`,
@@ -768,6 +780,62 @@ func decodeJSONMap(t *testing.T, body []byte) map[string]any {
 		t.Fatalf("json.Unmarshal returned error: %v\nbody=%s", err, string(body))
 	}
 	return value
+}
+
+func mustValidateFixtures(t *testing.T, validator *contracts.Validator, fixtures map[string]string) {
+	t.Helper()
+
+	for schemaPath, fixture := range fixtures {
+		t.Run(filepath.Base(schemaPath), func(t *testing.T) {
+			if err := validator.ValidateRelative(schemaPath, []byte(fixture)); err != nil {
+				t.Fatalf("ValidateRelative returned error: %v", err)
+			}
+		})
+	}
+}
+
+func assertFixtureSandboxDeclaration(t *testing.T, fixture string, consumerKind, consumerID, operationKind string) {
+	t.Helper()
+
+	body := decodeJSONMap(t, []byte(fixture))
+	var sandboxView map[string]any
+	switch {
+	case body["sandbox"] != nil:
+		sandboxView = body["sandbox"].(map[string]any)
+	case body["payload"] != nil:
+		payload := body["payload"].(map[string]any)
+		if payload["sandbox"] != nil {
+			sandboxView = payload["sandbox"].(map[string]any)
+		} else if payload["skillContracts"] != nil {
+			items := payload["skillContracts"].([]any)
+			if len(items) > 0 {
+				sandboxView = items[0].(map[string]any)
+			}
+		}
+	case body["skillContracts"] != nil:
+		items := body["skillContracts"].([]any)
+		if len(items) > 0 {
+			sandboxView = items[0].(map[string]any)
+		}
+	}
+	if sandboxView == nil {
+		t.Fatalf("expected sandbox view in fixture %s", fixture)
+	}
+	declaration := sandboxView["declaration"].(map[string]any)
+	if declaration["consumerKind"] != consumerKind || declaration["consumerId"] != consumerID || declaration["operationKind"] != operationKind {
+		t.Fatalf("unexpected sandbox declaration %+v", declaration)
+	}
+}
+
+func assertFixtureSandboxPolicyRecord(t *testing.T, fixture string, status, secretResolution string) {
+	t.Helper()
+
+	body := decodeJSONMap(t, []byte(fixture))
+	sandboxView := body["sandbox"].(map[string]any)
+	record := sandboxView["policyRecord"].(map[string]any)
+	if record["status"] != status || record["secretResolution"] != secretResolution {
+		t.Fatalf("unexpected sandbox policy record %+v", record)
+	}
 }
 
 func schemaRootDir(t *testing.T) string {

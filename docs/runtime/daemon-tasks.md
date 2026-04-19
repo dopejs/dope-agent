@@ -39,7 +39,7 @@ Current completion should be read as:
 - `Roadmap 14: Test Environment Workflow` is now closed
 - `Roadmap 15: Skill Registry And Prompt Support` is now complete
 - `Roadmap 16: Sandbox Execution Plane` is now complete
-- `Roadmap 17: Sandbox Requirement Declarations And Consumer Convergence` is now in progress
+- `Roadmap 17: Sandbox Requirement Declarations And Consumer Convergence` is now in progress with the shared declaration, secret-scope, and core provenance work landed for current consumers
 - `Roadmap 18: MCP Execution Plane` remains planned on top of that prerequisite work
 - `Roadmap 19: Skill And Local Tool Sandbox Execution` remains planned after MCP
 - `Roadmap 20: Stronger Isolation And Additional Sandbox Backends` remains planned after the first consumer migrations
@@ -162,9 +162,9 @@ Current completion should be read as:
 
 ## Roadmap 17: Sandbox Requirement Declarations And Consumer Convergence
 
-- [ ] Execution requirement declaration contract
+- [x] Execution requirement declaration contract
 - [x] Managed consumer convergence
-- [ ] Secret scope and redaction foundation
+- [x] Secret scope and redaction foundation
 - [ ] Execution provenance and consumer visibility (partial)
 
 ## Roadmap 18: MCP Execution Plane

@@ -65,6 +65,52 @@ func assertManagedProviderMetadata(t *testing.T, metadata map[string]string, act
 	}
 }
 
+func assertSandboxDeclaration(t *testing.T, view map[string]any, consumerKind, consumerID, operationKind string) {
+	t.Helper()
+	declaration, ok := view["declaration"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected sandbox declaration, got %+v", view)
+	}
+	if declaration["consumerKind"] != consumerKind || declaration["consumerId"] != consumerID || declaration["operationKind"] != operationKind {
+		t.Fatalf("expected declaration %s/%s/%s, got %+v", consumerKind, consumerID, operationKind, declaration)
+	}
+	if declaration["requiredEnforcementStrength"] == "" {
+		t.Fatalf("expected required enforcement strength, got %+v", declaration)
+	}
+}
+
+func assertSandboxPolicyRecord(t *testing.T, view map[string]any, status, secretResolution string) {
+	t.Helper()
+	record, ok := view["policyRecord"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected sandbox policy record, got %+v", view)
+	}
+	if status != "" && record["status"] != status {
+		t.Fatalf("expected policy status %s, got %+v", status, record)
+	}
+	if secretResolution != "" && record["secretResolution"] != secretResolution {
+		t.Fatalf("expected secret resolution %s, got %+v", secretResolution, record)
+	}
+}
+
+func assertSandboxSecretScope(t *testing.T, view map[string]any, consumerID, secretRef, environment, resolution string) {
+	t.Helper()
+	items, ok := view["secretScope"].([]any)
+	if !ok || len(items) == 0 {
+		t.Fatalf("expected sandbox secret scope, got %+v", view)
+	}
+	item, ok := items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected secret scope item payload, got %+v", items[0])
+	}
+	if item["consumerId"] != consumerID || item["secretRef"] != secretRef || item["environmentScope"] != environment || item["resolution"] != resolution {
+		t.Fatalf("unexpected secret scope item %+v", item)
+	}
+	if item["defaultRuleId"] == "" {
+		t.Fatalf("expected default rule attribution, got %+v", item)
+	}
+}
+
 type testLLMProvider struct {
 	name       string
 	completeFn func(ctx context.Context, request llm.ProviderRequest) (llm.ProviderResponse, error)
@@ -1496,6 +1542,61 @@ func TestConfigRouteRedactsProviderSecrets(t *testing.T) {
 	}
 }
 
+func TestConfigRouteProjectsManagedProviderSandboxByEnvironment(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		environment config.Environment
+		workDir     string
+		expectedEnv string
+	}{
+		{name: "test", environment: config.EnvironmentTest, workDir: filepath.Join(t.TempDir(), "test-workdir"), expectedEnv: "test"},
+		{name: "prod", environment: config.EnvironmentProd, workDir: filepath.Join(t.TempDir(), "prod-workdir"), expectedEnv: "prod"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := NewServer(Dependencies{
+				Config: config.Config{
+					Environment: tc.environment,
+					BindAddr:    "127.0.0.1:19191",
+					DataDir:     "/tmp/dope",
+					LogLevel:    "info",
+					Version:     "test",
+					LLM: config.LLMConfig{
+						OpenAICompatible: config.OpenAICompatibleProviderConfig{
+							APIKey: "secret",
+						},
+						Codex: config.ManagedCLIProviderConfig{
+							CLIPath: "/usr/bin/codex",
+							WorkDir: tc.workDir,
+						},
+					},
+				},
+				Logger:   telemetry.New("error").Slog(),
+				EventBus: events.NewBus(),
+				Router:   router.NewSessionRouter(),
+				Runtime:  runtime.NewManager(),
+			})
+
+			rec := httptest.NewRecorder()
+			server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/config", nil))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d", rec.Code)
+			}
+
+			response := decodeStrictResponse[ConfigResponse](t, rec.Body.Bytes())
+			if response.Environment != tc.expectedEnv {
+				t.Fatalf("expected environment %s, got %+v", tc.expectedEnv, response)
+			}
+			if response.LLM.Codex.Sandbox == nil {
+				t.Fatalf("expected codex sandbox projection, got %+v", response.LLM.Codex)
+			}
+			assertSandboxDeclaration(t, response.LLM.Codex.Sandbox, "managed_provider", "codex_managed", "config_inspect")
+			if strings.Contains(rec.Body.String(), `"secret"`) {
+				t.Fatalf("config response leaked secret: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestAuthPairingAndProtectedRoutes(t *testing.T) {
 	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
 	if err != nil {
@@ -1669,20 +1770,29 @@ func TestToolCallApprovalEnforcement(t *testing.T) {
 	if pending.Approval.Status != policy.ApprovalStatusPending {
 		t.Fatalf("expected pending approval, got %s", pending.Approval.Status)
 	}
+	if pending.Approval.Sandbox == nil || pending.Decision.Sandbox == nil {
+		t.Fatalf("expected pending approval response to include sandbox provenance, got approval=%+v decision=%+v", pending.Approval.Sandbox, pending.Decision.Sandbox)
+	}
+	if policyRecord, ok := pending.Approval.Sandbox["policyRecord"].(map[string]any); !ok || policyRecord["policyRecordId"] == "" {
+		t.Fatalf("expected pending sandbox policy record id, got %+v", pending.Approval.Sandbox)
+	}
 
-	_, _, err = policyEngine.ResolveApproval(pending.Approval.ApprovalID, policy.ResolveApprovalInput{
-		Resolution: string(policy.ApprovalStatusRejected),
-		Comment:    "rejected for test",
-	})
-	if err != nil {
-		t.Fatalf("ResolveApproval rejected returned error: %v", err)
+	resolveRejectedReq := httptest.NewRequest(http.MethodPost, "/v1/policy/approvals/"+pending.Approval.ApprovalID+"/resolve", strings.NewReader(`{"resolution":"rejected","comment":"rejected for test"}`))
+	resolveRejectedReq.Header.Set("Authorization", authHeader)
+	resolveRejectedRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resolveRejectedRec, resolveRejectedReq)
+	if resolveRejectedRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for rejected approval resolve, got %d body=%s", resolveRejectedRec.Code, resolveRejectedRec.Body.String())
 	}
-	rejectedApproval, ok := policyEngine.GetApproval(pending.Approval.ApprovalID)
-	if !ok {
-		t.Fatal("expected rejected approval")
+	var rejectedResolved struct {
+		Approval policy.Approval `json:"approval"`
+		Decision policy.Decision `json:"decision"`
 	}
-	if err := sqliteStore.UpsertApproval(context.Background(), rejectedApproval); err != nil {
-		t.Fatalf("UpsertApproval returned error: %v", err)
+	if err := json.Unmarshal(resolveRejectedRec.Body.Bytes(), &rejectedResolved); err != nil {
+		t.Fatalf("failed to decode rejected approval resolve response: %v", err)
+	}
+	if rejectedResolved.Approval.Sandbox == nil || rejectedResolved.Decision.Sandbox == nil {
+		t.Fatalf("expected rejected approval resolve response to include sandbox provenance, got approval=%+v decision=%+v", rejectedResolved.Approval.Sandbox, rejectedResolved.Decision.Sandbox)
 	}
 
 	rejectedReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","approvalId":"`+pending.Approval.ApprovalID+`"}`))
@@ -1692,34 +1802,91 @@ func TestToolCallApprovalEnforcement(t *testing.T) {
 	if rejectedRec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for rejected approval, got %d body=%s", rejectedRec.Code, rejectedRec.Body.String())
 	}
-
-	approvedApproval, _, err := policyEngine.RequestApproval(policy.RequestApprovalInput{
-		Action:       "tool_call.execute",
-		ResourceKind: "capability",
-		ResourceID:   "shell",
-		Reason:       "approve shell",
-		RequestedBy:  "web-ui",
-	})
-	if err != nil {
-		t.Fatalf("RequestApproval returned error: %v", err)
+	var rejectedBody struct {
+		Approval policy.Approval `json:"approval"`
+		Sandbox  map[string]any  `json:"sandbox"`
 	}
-	approvedApproval, _, err = policyEngine.ResolveApproval(approvedApproval.ApprovalID, policy.ResolveApprovalInput{
-		Resolution: string(policy.ApprovalStatusApproved),
-		Comment:    "approved for test",
-	})
-	if err != nil {
-		t.Fatalf("ResolveApproval approved returned error: %v", err)
+	if err := json.Unmarshal(rejectedRec.Body.Bytes(), &rejectedBody); err != nil {
+		t.Fatalf("failed to decode rejected approval body: %v", err)
 	}
-	if err := sqliteStore.UpsertApproval(context.Background(), approvedApproval); err != nil {
-		t.Fatalf("UpsertApproval returned error: %v", err)
+	if rejectedBody.Sandbox == nil {
+		t.Fatalf("expected rejected tool call body to include sandbox provenance, got %s", rejectedRec.Body.String())
 	}
 
-	approvedReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","approvalId":"`+approvedApproval.ApprovalID+`"}`))
+	approvedPendingReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"pwd"}}`))
+	approvedPendingReq.Header.Set("Authorization", authHeader)
+	approvedPendingRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(approvedPendingRec, approvedPendingReq)
+	if approvedPendingRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for second pending approval, got %d body=%s", approvedPendingRec.Code, approvedPendingRec.Body.String())
+	}
+	var approvedPending struct {
+		Approval policy.Approval `json:"approval"`
+		Decision policy.Decision `json:"decision"`
+	}
+	if err := json.Unmarshal(approvedPendingRec.Body.Bytes(), &approvedPending); err != nil {
+		t.Fatalf("failed to decode second pending approval response: %v", err)
+	}
+	if approvedPending.Approval.Sandbox == nil || approvedPending.Decision.Sandbox == nil {
+		t.Fatalf("expected second pending approval response to include sandbox provenance, got approval=%+v decision=%+v", approvedPending.Approval.Sandbox, approvedPending.Decision.Sandbox)
+	}
+	resolveApprovedReq := httptest.NewRequest(http.MethodPost, "/v1/policy/approvals/"+approvedPending.Approval.ApprovalID+"/resolve", strings.NewReader(`{"resolution":"approved","comment":"approved for test"}`))
+	resolveApprovedReq.Header.Set("Authorization", authHeader)
+	resolveApprovedRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resolveApprovedRec, resolveApprovedReq)
+	if resolveApprovedRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for approved approval resolve, got %d body=%s", resolveApprovedRec.Code, resolveApprovedRec.Body.String())
+	}
+	var approvedResolved struct {
+		Approval policy.Approval `json:"approval"`
+		Decision policy.Decision `json:"decision"`
+	}
+	if err := json.Unmarshal(resolveApprovedRec.Body.Bytes(), &approvedResolved); err != nil {
+		t.Fatalf("failed to decode approved approval resolve response: %v", err)
+	}
+	if approvedResolved.Approval.Sandbox == nil || approvedResolved.Decision.Sandbox == nil {
+		t.Fatalf("expected approved approval resolve response to include sandbox provenance, got approval=%+v decision=%+v", approvedResolved.Approval.Sandbox, approvedResolved.Decision.Sandbox)
+	}
+
+	approvedReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","approvalId":"`+approvedPending.Approval.ApprovalID+`"}`))
 	approvedReq.Header.Set("Authorization", authHeader)
 	approvedRec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(approvedRec, approvedReq)
 	if approvedRec.Code != http.StatusCreated {
 		t.Fatalf("expected 201 for approved tool call, got %d body=%s", approvedRec.Code, approvedRec.Body.String())
+	}
+	approvedToolCall := decodeStrictResponse[runtime.ToolCall](t, approvedRec.Body.Bytes())
+	if approvedToolCall.Sandbox == nil {
+		t.Fatalf("expected approved tool call resource to include sandbox provenance, got %+v", approvedToolCall)
+	}
+
+	approvalGetReq := httptest.NewRequest(http.MethodGet, "/v1/policy/approvals/"+pending.Approval.ApprovalID, nil)
+	approvalGetReq.Header.Set("Authorization", authHeader)
+	approvalGetRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(approvalGetRec, approvalGetReq)
+	if approvalGetRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for approval get, got %d body=%s", approvalGetRec.Code, approvalGetRec.Body.String())
+	}
+	gotApproval := decodeStrictResponse[policy.Approval](t, approvalGetRec.Body.Bytes())
+	if gotApproval.Sandbox == nil {
+		t.Fatalf("expected approval get to include sandbox provenance, got %+v", gotApproval)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/policy/approvals?status=rejected", nil)
+	listReq.Header.Set("Authorization", authHeader)
+	listRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for approval list, got %d body=%s", listRec.Code, listRec.Body.String())
+	}
+	var listed struct {
+		Items []policy.Approval `json:"items"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("failed to decode approval list response: %v", err)
+	}
+	if len(listed.Items) != 1 || listed.Items[0].Sandbox == nil {
+		t.Fatalf("expected rejected approval list item with sandbox provenance, got %+v", listed.Items)
 	}
 
 	allowedReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"search","toolName":"lookup","input":{"q":"hi"}}`))
@@ -1729,6 +1896,77 @@ func TestToolCallApprovalEnforcement(t *testing.T) {
 	if allowedRec.Code != http.StatusCreated {
 		t.Fatalf("expected 201 for low-risk tool call, got %d body=%s", allowedRec.Code, allowedRec.Body.String())
 	}
+}
+
+func TestToolCallApprovalUsesSharedDeclarationVocabulary(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	manager := runtime.NewManager()
+	authManager := auth.NewManager()
+	capabilitySupervisor := capabilities.NewSupervisor()
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:19191",
+			DataDir:  "~/.dope",
+			LogLevel: "info",
+			Version:  "test",
+		},
+		Logger:       telemetry.New("error").Slog(),
+		EventBus:     events.NewBus(),
+		Auth:         authManager,
+		Policy:       policy.NewEngine(),
+		Router:       router.NewSessionRouter(),
+		Runtime:      manager,
+		Capabilities: capabilitySupervisor,
+		Store:        sqliteStore,
+		Checkpoints:  checkpoints.NewManager(sqliteStore, manager),
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "tool-call-vocabulary")
+
+	if _, _, err := capabilitySupervisor.Register(capabilities.RegisterInput{
+		CapabilityID: "shell",
+		Kind:         "shell",
+		DisplayName:  "Shell",
+	}); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "guard shell"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"capabilityId":"shell","toolName":"shell","input":{"cmd":"pwd"}}`))
+	req.Header.Set("Authorization", authHeader)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for approval-gated tool call, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Approval policy.Approval `json:"approval"`
+		Decision policy.Decision `json:"decision"`
+		Sandbox  map[string]any  `json:"sandbox"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	assertSandboxDeclaration(t, response.Sandbox, "local_tool", "shell", "tool_call.execute")
+	assertSandboxPolicyRecord(t, response.Sandbox, "approval_pending", "not_applicable")
+	assertSandboxDeclaration(t, response.Approval.Sandbox, "local_tool", "shell", "tool_call.execute")
+	assertSandboxDeclaration(t, response.Decision.Sandbox, "local_tool", "shell", "tool_call.execute")
 }
 
 func TestLLMDispatchRoutes(t *testing.T) {
@@ -2316,6 +2554,9 @@ func TestSkillRegistryRoutesAndChatQuerySkillSupport(t *testing.T) {
 	if listResponse.Items[0].Description != "data skill" {
 		t.Fatalf("expected data-dir skill to win precedence, got %q", listResponse.Items[0].Description)
 	}
+	if listResponse.Items[0].Sandbox == nil {
+		t.Fatalf("expected skill summary sandbox contract, got %+v", listResponse.Items[0])
+	}
 
 	getReq := httptest.NewRequest(http.MethodGet, "/v1/skills/shared", nil)
 	getReq.Header.Set("Authorization", authHeader)
@@ -2330,6 +2571,9 @@ func TestSkillRegistryRoutesAndChatQuerySkillSupport(t *testing.T) {
 	}
 	if len(detail.Files) != 1 || detail.Files[0].Path != "assets/guide.md" {
 		t.Fatalf("expected bundled data-dir file inventory, got %+v", detail.Files)
+	}
+	if detail.Sandbox == nil {
+		t.Fatalf("expected skill detail sandbox contract, got %+v", detail)
 	}
 
 	reloadReq := httptest.NewRequest(http.MethodPost, "/v1/skills/reload", nil)
@@ -2352,6 +2596,12 @@ func TestSkillRegistryRoutesAndChatQuerySkillSupport(t *testing.T) {
 	if len(chatResponse.Skills) != 1 || chatResponse.Skills[0] != "shared" {
 		t.Fatalf("expected selected skill in response, got %+v", chatResponse.Skills)
 	}
+	if len(chatResponse.SkillContracts) != 1 {
+		t.Fatalf("expected selected skill contract in response, got %+v", chatResponse.SkillContracts)
+	}
+	if declaration, ok := chatResponse.SkillContracts[0]["declaration"].(map[string]any); !ok || declaration["consumerKind"] != "skill" {
+		t.Fatalf("expected skill contract declaration in response, got %+v", chatResponse.SkillContracts)
+	}
 	if len(captured.Messages) != 4 {
 		t.Fatalf("expected 4 prompt messages, got %d", len(captured.Messages))
 	}
@@ -2366,6 +2616,26 @@ func TestSkillRegistryRoutesAndChatQuerySkillSupport(t *testing.T) {
 	}
 	if captured.Messages[3].Role != llm.RoleUser || captured.Messages[3].Content != "hello" {
 		t.Fatalf("expected user query as final message, got %+v", captured.Messages[3])
+	}
+	llmEvents := eventBus.List(events.Filter{Category: "llm"})
+	if len(llmEvents) < 2 {
+		t.Fatalf("expected llm events for chat query, got %d", len(llmEvents))
+	}
+	requestedPayload, ok := llmEvents[0].Payload["skillContracts"]
+	if !ok {
+		t.Fatalf("expected llm.dispatch.requested to include selected skill contracts, got %+v", llmEvents[0].Payload)
+	}
+	switch contracts := requestedPayload.(type) {
+	case []any:
+		if len(contracts) != 1 {
+			t.Fatalf("expected exactly one selected skill contract, got %+v", llmEvents[0].Payload)
+		}
+	case []map[string]any:
+		if len(contracts) != 1 {
+			t.Fatalf("expected exactly one selected skill contract, got %+v", llmEvents[0].Payload)
+		}
+	default:
+		t.Fatalf("expected selected skill contracts array, got %T payload=%+v", requestedPayload, llmEvents[0].Payload)
 	}
 
 	missingReq := httptest.NewRequest(http.MethodPost, "/v1/chat/query", strings.NewReader(`{"provider":"echo","model":"echo-v1","skills":["missing"],"query":"hello"}`))

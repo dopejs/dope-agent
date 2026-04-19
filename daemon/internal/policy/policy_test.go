@@ -70,3 +70,52 @@ func TestResolveApprovalRejectsInvalidState(t *testing.T) {
 		t.Fatalf("expected ErrInvalidResolution, got %v", err)
 	}
 }
+
+func TestApprovalsStayScopedToRequestedResourceInstance(t *testing.T) {
+	engine := NewEngine()
+
+	shellApproval, _, err := engine.RequestApproval(RequestApprovalInput{
+		Action:       "tool_call.execute",
+		ResourceKind: "capability",
+		ResourceID:   "shell",
+		Reason:       "shell requires approval",
+		RequestedBy:  "operator",
+	})
+	if err != nil {
+		t.Fatalf("RequestApproval(shell) returned error: %v", err)
+	}
+	browserApproval, _, err := engine.RequestApproval(RequestApprovalInput{
+		Action:       "tool_call.execute",
+		ResourceKind: "capability",
+		ResourceID:   "browser",
+		Reason:       "browser requires approval",
+		RequestedBy:  "operator",
+	})
+	if err != nil {
+		t.Fatalf("RequestApproval(browser) returned error: %v", err)
+	}
+
+	resolved, _, err := engine.ResolveApproval(shellApproval.ApprovalID, ResolveApprovalInput{
+		Resolution: string(ApprovalStatusApproved),
+		Comment:    "approve shell only",
+	})
+	if err != nil {
+		t.Fatalf("ResolveApproval(shell) returned error: %v", err)
+	}
+	if resolved.ResourceID != "shell" || resolved.Status != ApprovalStatusApproved {
+		t.Fatalf("expected resolved shell approval, got %+v", resolved)
+	}
+
+	browser, ok := engine.GetApproval(browserApproval.ApprovalID)
+	if !ok {
+		t.Fatalf("expected browser approval %s", browserApproval.ApprovalID)
+	}
+	if browser.ResourceID != "browser" || browser.Status != ApprovalStatusPending {
+		t.Fatalf("expected browser approval to remain pending and isolated, got %+v", browser)
+	}
+
+	pending := engine.ListApprovals(ApprovalStatusPending)
+	if len(pending) != 1 || pending[0].ApprovalID != browserApproval.ApprovalID {
+		t.Fatalf("expected only browser approval to remain pending, got %+v", pending)
+	}
+}

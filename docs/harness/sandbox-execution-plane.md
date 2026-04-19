@@ -555,20 +555,20 @@ The remaining work falls into four follow-on slices.
 
 ### 1. Execution Requirement Declarations And Consumer Convergence
 
-This is the immediate prerequisite slice before MCP.
+This was the immediate prerequisite slice before MCP, and its core behavior is now closed for the current in-scope consumers.
 
-It should close:
+It closed:
 
-- a common requirement declaration model for skills, provider bridges, MCP servers, and future tools
-- explicit secret scope and redaction semantics for sandbox env injection
-- execution provenance that identifies which consumer requested a sandbox run
-- the remaining non-converged local consumers beyond the managed-provider slice
+- a common requirement declaration model shared by managed-provider bridges, the current skill registry and explicit skill-selection surfaces, and the current high-risk local tool-call path
+- explicit secret scope and redaction semantics for sandbox env injection and operator-visible projections
+- execution provenance that identifies which current consumer requested sandbox work or approval-gated preflight evaluation
+- the remaining non-converged current consumers beyond the initial managed-provider slice
 
 This slice exists so MCP and future tool execution do not grow on top of ad hoc consumer-specific behavior.
 
 ### 2. MCP On Top Of Sandbox
 
-Once requirement declarations, secret scope, and provenance are explicit, MCP can become a real sandbox consumer.
+With requirement declarations, secret scope, and provenance now explicit for the current consumers, MCP can become a real sandbox consumer without becoming the first place where those contracts matter.
 
 This slice should close:
 
@@ -616,11 +616,13 @@ The next roadmap should not be "MCP immediately" without these prerequisites bei
 
 Without those pieces, MCP would likely reintroduce unmanaged credential and process behavior under a new name.
 
+Those prerequisites are now in place for the current managed-provider, skill-inspection, and high-risk local-tool surfaces. What remains for later roadmaps is MCP lifecycle itself plus generic executable-skill and generic local-tool subprocess migration.
+
 ## Recommended Post-16 Order
 
 1. close execution requirement declarations and consumer convergence
 2. add MCP on top of the sandbox plane
-3. move skill and local tool execution onto sandbox
+3. move executable skill and local tool subprocess execution onto sandbox
 4. add a stronger backend and backend capability negotiation
 
-That order keeps sandbox honest as a control plane first, then expands the real consumers, then strengthens isolation where the risk justifies it.
+Step 1 is now complete for the current consumers. The remaining order stays the same: MCP first, then real executable skill and local-tool subprocess migration, then stronger backends.

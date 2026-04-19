@@ -19,6 +19,12 @@
       "type": "array",
       "items": { "type": "string" }
     },
+    "skillContracts": {
+      "type": "array",
+      "items": {
+        "$ref": "./sandbox-consumer-view.schema.json"
+      }
+    },
     "query": {
       "type": "string"
     }

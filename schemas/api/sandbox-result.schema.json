@@ -42,6 +42,7 @@
     "backendMetadata": {
       "type": "object",
       "additionalProperties": true
-    }
+    },
+    "consumer": { "$ref": "./sandbox-consumer-view.schema.json" }
   }
 }

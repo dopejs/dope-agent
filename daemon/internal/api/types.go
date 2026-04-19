@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/config"
@@ -57,10 +59,11 @@ type ConfigOpenAICompatibleProviderResponse struct {
 }
 
 type ConfigManagedCLIProviderResponse struct {
-	Configured   bool   `json:"configured"`
-	CLIPath      string `json:"cliPath,omitempty"`
-	DefaultModel string `json:"defaultModel,omitempty"`
-	WorkDir      string `json:"workDir,omitempty"`
+	Configured   bool           `json:"configured"`
+	CLIPath      string         `json:"cliPath,omitempty"`
+	DefaultModel string         `json:"defaultModel,omitempty"`
+	WorkDir      string         `json:"workDir,omitempty"`
+	Sandbox      map[string]any `json:"sandbox,omitempty"`
 }
 
 type ConfigConnectorsResponse struct {
@@ -82,26 +85,28 @@ type ConfigDiscordConnectorResponse struct {
 }
 
 type ChatQueryResponse struct {
-	DispatchID   string    `json:"dispatchId"`
-	Provider     string    `json:"provider"`
-	Model        string    `json:"model"`
-	Skills       []string  `json:"skills"`
-	Query        string    `json:"query"`
-	Status       string    `json:"status"`
-	Partial      bool      `json:"partial"`
-	Reply        string    `json:"reply"`
-	FinishReason string    `json:"finishReason,omitempty"`
-	Usage        llm.Usage `json:"usage"`
-	ErrorCode    string    `json:"errorCode,omitempty"`
-	Error        string    `json:"error,omitempty"`
+	DispatchID     string           `json:"dispatchId"`
+	Provider       string           `json:"provider"`
+	Model          string           `json:"model"`
+	Skills         []string         `json:"skills"`
+	SkillContracts []map[string]any `json:"skillContracts,omitempty"`
+	Query          string           `json:"query"`
+	Status         string           `json:"status"`
+	Partial        bool             `json:"partial"`
+	Reply          string           `json:"reply"`
+	FinishReason   string           `json:"finishReason,omitempty"`
+	Usage          llm.Usage        `json:"usage"`
+	ErrorCode      string           `json:"errorCode,omitempty"`
+	Error          string           `json:"error,omitempty"`
 }
 
 type ChatQueryStreamStarted struct {
-	DispatchID string   `json:"dispatchId"`
-	Provider   string   `json:"provider"`
-	Model      string   `json:"model"`
-	Skills     []string `json:"skills"`
-	Query      string   `json:"query"`
+	DispatchID     string           `json:"dispatchId"`
+	Provider       string           `json:"provider"`
+	Model          string           `json:"model"`
+	Skills         []string         `json:"skills"`
+	SkillContracts []map[string]any `json:"skillContracts,omitempty"`
+	Query          string           `json:"query"`
 }
 
 type ChatQueryStreamDelta struct {
@@ -199,6 +204,7 @@ type SkillSummaryResponse struct {
 	InstructionPath string              `json:"instructionPath"`
 	Files           []SkillFileResponse `json:"files"`
 	Frontmatter     map[string]string   `json:"frontmatter"`
+	Sandbox         map[string]any      `json:"sandbox,omitempty"`
 }
 
 type SkillDetailResponse struct {
@@ -297,12 +303,14 @@ func buildConfigResponse(cfg config.Config) ConfigResponse {
 				CLIPath:      cfg.LLM.Claude.CLIPath,
 				DefaultModel: cfg.LLM.Claude.DefaultModel,
 				WorkDir:      cfg.LLM.Claude.WorkDir,
+				Sandbox:      buildManagedProviderConfigSandbox("claude_managed", cfg.LLM.Claude.WorkDir),
 			},
 			Codex: ConfigManagedCLIProviderResponse{
 				Configured:   cfg.LLM.Codex.CLIPath != "" || cfg.LLM.Codex.DefaultModel != "" || (cfg.LLM.Codex.WorkDir != "" && cfg.LLM.Codex.WorkDir != "~"),
 				CLIPath:      cfg.LLM.Codex.CLIPath,
 				DefaultModel: cfg.LLM.Codex.DefaultModel,
 				WorkDir:      cfg.LLM.Codex.WorkDir,
+				Sandbox:      buildManagedProviderConfigSandbox("codex_managed", cfg.LLM.Codex.WorkDir),
 			},
 		},
 		Connectors: ConfigConnectorsResponse{
@@ -364,6 +372,7 @@ func buildSkillSummaryResponse(skill skills.Skill) SkillSummaryResponse {
 		InstructionPath: skill.InstructionPath,
 		Files:           files,
 		Frontmatter:     skill.Frontmatter,
+		Sandbox:         cloneSandboxConsumerView(skill.Sandbox),
 	}
 }
 
@@ -373,6 +382,67 @@ func buildSkillDetailResponse(skill skills.Skill) SkillDetailResponse {
 		FrontmatterRaw:       skill.FrontmatterRaw,
 		Body:                 skill.Body,
 	}
+}
+
+func buildManagedProviderConfigSandbox(providerID, workDir string) map[string]any {
+	readRoots := []string{}
+	if strings.TrimSpace(workDir) != "" {
+		readRoots = []string{strings.TrimSpace(workDir)}
+	}
+	view := &sandbox.ConsumerContractView{
+		Declaration: &sandbox.ConsumerRequirementDeclaration{
+			DeclarationID:               "managed_provider:" + strings.TrimSpace(providerID) + ":config",
+			ConsumerKind:                sandbox.ConsumerKindManagedProvider,
+			ConsumerID:                  strings.TrimSpace(providerID),
+			OperationKind:               "config_inspect",
+			ProfileID:                   sandbox.ProfileIDSubprocessDefault,
+			ExecutionMode:               sandbox.ExecutionModeDeclarationOnly,
+			AllowedBackendKinds:         []sandbox.BackendKind{sandbox.BackendKindSubprocess},
+			ReadRoots:                   readRoots,
+			WriteRoots:                  []string{},
+			NetworkMode:                 sandbox.NetworkModeDeny,
+			SecretRefs:                  []string{},
+			ApprovalMode:                sandbox.ApprovalModeAllow,
+			RequiredEnforcementStrength: "declared_only",
+			Active:                      true,
+			Source:                      sandbox.SourceBuiltin,
+		},
+	}
+	payload, err := json.Marshal(view)
+	if err != nil {
+		return nil
+	}
+	var item map[string]any
+	if err := json.Unmarshal(payload, &item); err != nil {
+		return nil
+	}
+	return item
+}
+
+func cloneSandboxConsumerView(view map[string]any) map[string]any {
+	if view == nil {
+		return nil
+	}
+	payload, err := json.Marshal(view)
+	if err != nil {
+		return view
+	}
+	var cloned map[string]any
+	if err := json.Unmarshal(payload, &cloned); err != nil {
+		return view
+	}
+	return cloned
+}
+
+func cloneSandboxConsumerViews(items []map[string]any) []map[string]any {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		cloned = append(cloned, cloneSandboxConsumerView(item))
+	}
+	return cloned
 }
 
 func effectiveEnvironment(cfg config.Config) string {

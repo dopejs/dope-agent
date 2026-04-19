@@ -46,6 +46,7 @@ type Approval struct {
 	ResolvedAt   *time.Time     `json:"resolvedAt,omitempty"`
 	Resolution   string         `json:"resolution,omitempty"`
 	Comment      string         `json:"comment,omitempty"`
+	Sandbox      map[string]any `json:"sandbox,omitempty"`
 }
 
 type Decision struct {
@@ -57,6 +58,7 @@ type Decision struct {
 	Reason       string          `json:"reason"`
 	ApprovalID   string          `json:"approvalId,omitempty"`
 	CreatedAt    time.Time       `json:"createdAt"`
+	Sandbox      map[string]any  `json:"sandbox,omitempty"`
 }
 
 type RequestApprovalInput struct {

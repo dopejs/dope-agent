@@ -118,7 +118,8 @@
             "configured": { "type": "boolean" },
             "cliPath": { "type": "string" },
             "defaultModel": { "type": "string" },
-            "workDir": { "type": "string" }
+            "workDir": { "type": "string" },
+            "sandbox": { "$ref": "./sandbox-consumer-view.schema.json" }
           }
         },
         "codex": {
@@ -129,7 +130,8 @@
             "configured": { "type": "boolean" },
             "cliPath": { "type": "string" },
             "defaultModel": { "type": "string" },
-            "workDir": { "type": "string" }
+            "workDir": { "type": "string" },
+            "sandbox": { "$ref": "./sandbox-consumer-view.schema.json" }
           }
         }
       }

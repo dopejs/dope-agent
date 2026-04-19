@@ -6,9 +6,36 @@
   "allOf": [
     { "$ref": "./runtime-event.schema.json" },
     {
+      "type": "object",
       "properties": {
         "category": { "const": "policy" },
-        "name": { "const": "policy.decision_recorded" }
+        "name": { "const": "policy.decision_recorded" },
+        "resource": {
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "decision" },
+            "id": { "type": "string" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": ["action", "resourceKind", "resourceId", "outcome", "approvalId"],
+          "additionalProperties": false,
+          "properties": {
+            "action": { "type": "string" },
+            "resourceKind": { "type": "string" },
+            "resourceId": { "type": "string" },
+            "outcome": {
+              "type": "string",
+              "enum": ["allowed", "requires_approval", "approved", "rejected"]
+            },
+            "approvalId": { "type": "string" },
+            "reason": { "type": "string" },
+            "sandbox": { "$ref": "../api/sandbox-consumer-view.schema.json" }
+          }
+        }
       }
     }
   ]

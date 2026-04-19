@@ -67,5 +67,7 @@
     "updatedAt": { "type": "string", "format": "date-time" },
     "startedAt": { "type": "string", "format": "date-time" },
     "completedAt": { "type": "string", "format": "date-time" }
+    ,
+    "consumer": { "$ref": "./sandbox-consumer-view.schema.json" }
   }
 }

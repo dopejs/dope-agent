@@ -61,10 +61,12 @@ func (b *claudeBridge) Detect(ctx context.Context) (providers.AuthState, []provi
 		state.LastCheckedAt = time.Now().UTC()
 		if ok {
 			state.Metadata = evaluation.Metadata
+			state.Sandbox = consumerViewJSON(evaluation.Consumer)
 		}
 		return state, nil, nil
 	} else if ok {
 		state.Metadata = evaluation.Metadata
+		state.Sandbox = consumerViewJSON(evaluation.Consumer)
 		authOperation.LocalState = cloneLocalStateSummaries(evaluation.Operation.LocalStateAccessSummaries)
 		authOperation.SensitiveKinds = cloneStrings(evaluation.Operation.SensitiveStateClasses)
 		state.Metadata = mergeStringMaps(state.Metadata, operationMetadataFromPlan(authOperation))
@@ -141,10 +143,12 @@ func (b *claudeBridge) Revoke(ctx context.Context) (providers.AuthState, []provi
 		state.LastCheckedAt = time.Now().UTC()
 		if ok {
 			state.Metadata = evaluation.Metadata
+			state.Sandbox = consumerViewJSON(evaluation.Consumer)
 		}
 		return state, nil, nil
 	} else if ok {
 		state.Metadata = evaluation.Metadata
+		state.Sandbox = consumerViewJSON(evaluation.Consumer)
 	}
 	models := b.models(false)
 	if strings.TrimSpace(b.cliPath) == "" {

@@ -3,6 +3,7 @@ package runtime
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -96,17 +97,18 @@ const (
 )
 
 type ToolCall struct {
-	ToolCallID string         `json:"toolCallId"`
-	RunID      string         `json:"runId"`
-	StepID     string         `json:"stepId"`
-	CapabilityID string       `json:"capabilityId"`
-	ToolName   string         `json:"toolName"`
-	Status     ToolCallStatus `json:"status"`
-	CreatedAt  time.Time      `json:"createdAt"`
-	UpdatedAt  time.Time      `json:"updatedAt"`
-	Input      any            `json:"input,omitempty"`
-	Output     any            `json:"output,omitempty"`
-	Error      string         `json:"error,omitempty"`
+	ToolCallID   string         `json:"toolCallId"`
+	RunID        string         `json:"runId"`
+	StepID       string         `json:"stepId"`
+	CapabilityID string         `json:"capabilityId"`
+	ToolName     string         `json:"toolName"`
+	Status       ToolCallStatus `json:"status"`
+	CreatedAt    time.Time      `json:"createdAt"`
+	UpdatedAt    time.Time      `json:"updatedAt"`
+	Input        any            `json:"input,omitempty"`
+	Output       any            `json:"output,omitempty"`
+	Error        string         `json:"error,omitempty"`
+	Sandbox      map[string]any `json:"sandbox,omitempty"`
 }
 
 type RunCheckpoint struct {
@@ -117,9 +119,10 @@ type RunCheckpoint struct {
 }
 
 type CreateToolCallInput struct {
-	CapabilityID string `json:"capabilityId"`
-	ToolName string `json:"toolName"`
-	Input    any    `json:"input"`
+	CapabilityID string         `json:"capabilityId"`
+	ToolName     string         `json:"toolName"`
+	Input        any            `json:"input"`
+	Sandbox      map[string]any `json:"sandbox,omitempty"`
 }
 
 type CompleteToolCallInput struct {
@@ -516,21 +519,37 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 
 	now := time.Now().UTC()
 	toolCall := ToolCall{
-		ToolCallID: newToolCallID(),
-		RunID:      runID,
-		StepID:     stepID,
+		ToolCallID:   newToolCallID(),
+		RunID:        runID,
+		StepID:       stepID,
 		CapabilityID: input.CapabilityID,
-		ToolName:   input.ToolName,
-		Status:     ToolCallStatusRequested,
-		CreatedAt:  now,
-		UpdatedAt:  now,
-		Input:      input.Input,
+		ToolName:     input.ToolName,
+		Status:       ToolCallStatusRequested,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		Input:        input.Input,
+		Sandbox:      cloneAnyMap(input.Sandbox),
 	}
 
 	m.toolCallsByID[toolCall.ToolCallID] = toolCall
 	m.toolCallsByStep[stepID] = append(m.toolCallsByStep[stepID], toolCall.ToolCallID)
 
 	return toolCall, nil
+}
+
+func cloneAnyMap(view map[string]any) map[string]any {
+	if view == nil {
+		return nil
+	}
+	payload, err := json.Marshal(view)
+	if err != nil {
+		return view
+	}
+	var cloned map[string]any
+	if err := json.Unmarshal(payload, &cloned); err != nil {
+		return view
+	}
+	return cloned
 }
 
 func (m *Manager) ListToolCalls(runID, stepID string) ([]ToolCall, error) {

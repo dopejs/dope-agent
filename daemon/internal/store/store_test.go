@@ -686,6 +686,80 @@ func TestSQLiteStorePersistsToolCalls(t *testing.T) {
 	}
 }
 
+func TestSQLiteStorePersistsConsumerPolicyRecordsAndSecretScopeBindings(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	startedAt := time.Now().UTC().Add(-time.Minute)
+	recordDoc := []byte(`{"policyRecordId":"policy_local_tool_shell_1","consumerKind":"local_tool","consumerId":"shell","operationKind":"tool_call.execute","declarationId":"local_tool:shell:tool_call.execute","requestedBy":"web-ui","approvalId":"approval_1","decisionId":"decision_1","decision":"ask","approvalStatus":"pending","secretResolution":"not_applicable","enforcementStrength":"declared_only","startedAt":"` + startedAt.Format(time.RFC3339Nano) + `","status":"approval_pending"}`)
+	if err := store.UpsertConsumerPolicyRecord(ctx, ConsumerPolicyRecordRecord{
+		PolicyRecordID:   "policy_local_tool_shell_1",
+		ConsumerKind:     "local_tool",
+		ConsumerID:       "shell",
+		OperationKind:    "tool_call.execute",
+		DeclarationID:    "local_tool:shell:tool_call.execute",
+		Status:           "approval_pending",
+		Decision:         "ask",
+		ApprovalStatus:   "pending",
+		SecretResolution: "not_applicable",
+		RequestedBy:      "web-ui",
+		StartedAt:        startedAt,
+		Document:         recordDoc,
+	}); err != nil {
+		t.Fatalf("UpsertConsumerPolicyRecord returned error: %v", err)
+	}
+
+	bindingDoc := []byte(`{"bindingId":"managed_provider:codex_managed","consumerKind":"managed_provider","consumerId":"codex_managed","defaultSource":"instance_override","environmentScope":"test","secretRef":"auth_file","deliveryKind":"local_state_access","redactionRule":"class_summary_only","active":true}`)
+	if err := store.UpsertSecretScopeBinding(ctx, SecretScopeBindingRecord{
+		BindingID:        "managed_provider:codex_managed",
+		ConsumerKind:     "managed_provider",
+		ConsumerID:       "codex_managed",
+		EnvironmentScope: "test",
+		SecretRef:        "auth_file",
+		DefaultSource:    "instance_override",
+		DeliveryKind:     "local_state_access",
+		Active:           true,
+		Document:         bindingDoc,
+	}); err != nil {
+		t.Fatalf("UpsertSecretScopeBinding returned error: %v", err)
+	}
+
+	records, err := store.ListConsumerPolicyRecords(ctx)
+	if err != nil {
+		t.Fatalf("ListConsumerPolicyRecords returned error: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 consumer policy record, got %d", len(records))
+	}
+	if records[0].PolicyRecordID != "policy_local_tool_shell_1" {
+		t.Fatalf("expected policy_local_tool_shell_1, got %s", records[0].PolicyRecordID)
+	}
+	if records[0].Document == nil || !strings.Contains(string(records[0].Document), `"approvalId":"approval_1"`) {
+		t.Fatalf("expected persisted approval linkage in consumer policy record, got %s", string(records[0].Document))
+	}
+
+	bindings, err := store.ListSecretScopeBindings(ctx, "managed_provider", "codex_managed")
+	if err != nil {
+		t.Fatalf("ListSecretScopeBindings returned error: %v", err)
+	}
+	if len(bindings) != 1 {
+		t.Fatalf("expected 1 secret scope binding, got %d", len(bindings))
+	}
+	if bindings[0].EnvironmentScope != "test" {
+		t.Fatalf("expected test environment scope, got %s", bindings[0].EnvironmentScope)
+	}
+}
+
 func TestSQLiteStoreListsEventsAfterCursor(t *testing.T) {
 	t.Parallel()
 

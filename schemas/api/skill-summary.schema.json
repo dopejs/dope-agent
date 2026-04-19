@@ -30,6 +30,7 @@
     "frontmatter": {
       "type": "object",
       "additionalProperties": { "type": "string" }
-    }
+    },
+    "sandbox": { "$ref": "./sandbox-consumer-view.schema.json" }
   }
 }

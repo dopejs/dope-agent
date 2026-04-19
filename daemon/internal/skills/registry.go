@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 )
 
 var (
@@ -41,6 +44,7 @@ type Skill struct {
 	FrontmatterRaw  string            `json:"frontmatterRaw,omitempty"`
 	Body            string            `json:"body,omitempty"`
 	Files           []File            `json:"files"`
+	Sandbox         map[string]any    `json:"sandbox,omitempty"`
 }
 
 type Overlay struct {
@@ -267,6 +271,7 @@ func loadSkill(skillRoot string, source Source) (Skill, error) {
 		FrontmatterRaw:  frontmatterRaw,
 		Body:            strings.TrimSpace(body),
 		Files:           files,
+		Sandbox:         buildSkillSandboxView(skillID, skillRoot),
 	}, nil
 }
 
@@ -321,6 +326,37 @@ func bundledFiles(skillRoot string) ([]File, error) {
 		return files[i].Path < files[j].Path
 	})
 	return files, nil
+}
+
+func buildSkillSandboxView(skillID, skillRoot string) map[string]any {
+	view := &sandbox.ConsumerContractView{
+		Declaration: &sandbox.ConsumerRequirementDeclaration{
+			DeclarationID:               "skill:" + normalizeSkillID(skillID) + ":selection",
+			ConsumerKind:                sandbox.ConsumerKindSkill,
+			ConsumerID:                  normalizeSkillID(skillID),
+			OperationKind:               "skill_selection",
+			ProfileID:                   sandbox.ProfileIDSubprocessDefault,
+			ExecutionMode:               sandbox.ExecutionModeDeclarationOnly,
+			AllowedBackendKinds:         []sandbox.BackendKind{sandbox.BackendKindSubprocess},
+			ReadRoots:                   []string{skillRoot},
+			WriteRoots:                  []string{},
+			NetworkMode:                 sandbox.NetworkModeDeny,
+			SecretRefs:                  []string{},
+			ApprovalMode:                sandbox.ApprovalModeAllow,
+			RequiredEnforcementStrength: "declared_only",
+			Active:                      true,
+			Source:                      sandbox.SourceBuiltin,
+		},
+	}
+	payload, err := json.Marshal(view)
+	if err != nil {
+		return nil
+	}
+	var item map[string]any
+	if err := json.Unmarshal(payload, &item); err != nil {
+		return nil
+	}
+	return item
 }
 
 func readFileWithStat(path string) (string, fs.FileInfo, error) {
@@ -401,5 +437,18 @@ func cloneSkill(skill Skill) Skill {
 		cloned.Frontmatter[key] = value
 	}
 	cloned.Files = append([]File(nil), skill.Files...)
+	if skill.Sandbox != nil {
+		payload, err := json.Marshal(skill.Sandbox)
+		if err == nil {
+			var view map[string]any
+			if json.Unmarshal(payload, &view) == nil {
+				cloned.Sandbox = view
+			} else {
+				cloned.Sandbox = skill.Sandbox
+			}
+		} else {
+			cloned.Sandbox = skill.Sandbox
+		}
+	}
 	return cloned
 }

@@ -128,6 +128,133 @@ const (
 	LocalStateAccessModeWrite LocalStateAccessMode = "write"
 )
 
+type ConsumerKind string
+
+const (
+	ConsumerKindManagedProvider ConsumerKind = "managed_provider"
+	ConsumerKindSkill           ConsumerKind = "skill"
+	ConsumerKindLocalTool       ConsumerKind = "local_tool"
+)
+
+type ExecutionMode string
+
+const (
+	ExecutionModeSubprocess      ExecutionMode = "subprocess"
+	ExecutionModeAccessOnly      ExecutionMode = "access_only"
+	ExecutionModeDeclarationOnly ExecutionMode = "declaration_only"
+)
+
+type SecretDefaultSource string
+
+const (
+	SecretDefaultSourceKindDefault      SecretDefaultSource = "kind_default"
+	SecretDefaultSourceInstanceOverride SecretDefaultSource = "instance_override"
+)
+
+type SecretEnvironmentScope string
+
+const (
+	SecretEnvironmentScopeTest SecretEnvironmentScope = "test"
+	SecretEnvironmentScopeProd SecretEnvironmentScope = "prod"
+	SecretEnvironmentScopeBoth SecretEnvironmentScope = "both"
+)
+
+type SecretResolution string
+
+const (
+	SecretResolutionResolved      SecretResolution = "resolved"
+	SecretResolutionDenied        SecretResolution = "denied"
+	SecretResolutionUnavailable   SecretResolution = "unavailable"
+	SecretResolutionNotApplicable SecretResolution = "not_applicable"
+)
+
+type PolicyRecordStatus string
+
+const (
+	PolicyRecordStatusPreflightAllowed PolicyRecordStatus = "preflight_allowed"
+	PolicyRecordStatusApprovalPending  PolicyRecordStatus = "approval_pending"
+	PolicyRecordStatusRunning          PolicyRecordStatus = "running"
+	PolicyRecordStatusCompleted        PolicyRecordStatus = "completed"
+	PolicyRecordStatusFailed           PolicyRecordStatus = "failed"
+	PolicyRecordStatusCancelled        PolicyRecordStatus = "cancelled"
+	PolicyRecordStatusDenied           PolicyRecordStatus = "denied"
+	PolicyRecordStatusUnsupported      PolicyRecordStatus = "unsupported"
+)
+
+type ConsumerRequirementDeclaration struct {
+	DeclarationID               string        `json:"declarationId"`
+	ConsumerKind                ConsumerKind  `json:"consumerKind"`
+	ConsumerID                  string        `json:"consumerId"`
+	OperationKind               string        `json:"operationKind"`
+	ProfileID                   string        `json:"profileId,omitempty"`
+	ExecutionMode               ExecutionMode `json:"executionMode"`
+	AllowedBackendKinds         []BackendKind `json:"allowedBackendKinds,omitempty"`
+	ReadRoots                   []string      `json:"readRoots,omitempty"`
+	WriteRoots                  []string      `json:"writeRoots,omitempty"`
+	NetworkMode                 NetworkMode   `json:"networkMode,omitempty"`
+	AllowedHosts                []string      `json:"allowedHosts,omitempty"`
+	AllowedPorts                []int         `json:"allowedPorts,omitempty"`
+	AllowLoopback               bool          `json:"allowLoopback,omitempty"`
+	SecretRefs                  []string      `json:"secretRefs,omitempty"`
+	ApprovalMode                ApprovalMode  `json:"approvalMode,omitempty"`
+	RequiredEnforcementStrength string        `json:"requiredEnforcementStrength,omitempty"`
+	Active                      bool          `json:"active"`
+	Source                      Source        `json:"source"`
+}
+
+type SecretScopeBinding struct {
+	BindingID        string                 `json:"bindingId"`
+	ConsumerKind     ConsumerKind           `json:"consumerKind"`
+	ConsumerID       string                 `json:"consumerId"`
+	DefaultSource    SecretDefaultSource    `json:"defaultSource"`
+	EnvironmentScope SecretEnvironmentScope `json:"environmentScope"`
+	SecretRef        string                 `json:"secretRef"`
+	DeliveryKind     string                 `json:"deliveryKind"`
+	RedactionRule    string                 `json:"redactionRule"`
+	DefaultRuleID    string                 `json:"defaultRuleId,omitempty"`
+	Active           bool                   `json:"active"`
+}
+
+type SecretScopeOutcome struct {
+	ConsumerKind     ConsumerKind           `json:"consumerKind"`
+	ConsumerID       string                 `json:"consumerId"`
+	SecretRef        string                 `json:"secretRef"`
+	EnvironmentScope SecretEnvironmentScope `json:"environmentScope"`
+	DefaultSource    SecretDefaultSource    `json:"defaultSource,omitempty"`
+	DefaultRuleID    string                 `json:"defaultRuleId,omitempty"`
+	DeliveryKind     string                 `json:"deliveryKind,omitempty"`
+	RedactionRule    string                 `json:"redactionRule,omitempty"`
+	Resolution       SecretResolution       `json:"resolution"`
+}
+
+type ConsumerPolicyRecord struct {
+	PolicyRecordID      string                 `json:"policyRecordId"`
+	ConsumerKind        ConsumerKind           `json:"consumerKind"`
+	ConsumerID          string                 `json:"consumerId"`
+	OperationKind       string                 `json:"operationKind"`
+	DeclarationID       string                 `json:"declarationId,omitempty"`
+	RequestedBy         string                 `json:"requestedBy,omitempty"`
+	ApprovalID          string                 `json:"approvalId,omitempty"`
+	DecisionID          string                 `json:"decisionId,omitempty"`
+	Decision            DecisionResolution     `json:"decision"`
+	ApprovalStatus      DecisionApprovalStatus `json:"approvalStatus"`
+	SecretResolution    SecretResolution       `json:"secretResolution"`
+	EnforcementStrength string                 `json:"enforcementStrength,omitempty"`
+	FailureClass        string                 `json:"failureClass,omitempty"`
+	SandboxExecutionID  string                 `json:"sandboxExecutionId,omitempty"`
+	ToolCallID          string                 `json:"toolCallId,omitempty"`
+	ProviderOperationID string                 `json:"providerOperationId,omitempty"`
+	StartedAt           time.Time              `json:"startedAt"`
+	CompletedAt         *time.Time             `json:"completedAt,omitempty"`
+	Status              PolicyRecordStatus     `json:"status"`
+}
+
+type ConsumerContractView struct {
+	Declaration  *ConsumerRequirementDeclaration `json:"declaration,omitempty"`
+	SecretScope  []SecretScopeOutcome            `json:"secretScope,omitempty"`
+	PolicyRecord *ConsumerPolicyRecord           `json:"policyRecord,omitempty"`
+}
+
 type ManagedProviderRequirementDeclaration struct {
 	ProviderID            string                    `json:"providerId"`
 	ActionKind            ManagedProviderActionKind `json:"actionKind"`
@@ -246,21 +373,22 @@ type AccessRequest struct {
 }
 
 type ExecutionRequest struct {
-	ProfileID    string            `json:"profileId,omitempty"`
-	Command      string            `json:"command"`
-	Args         []string          `json:"args"`
-	Cwd          string            `json:"cwd,omitempty"`
-	Env          map[string]string `json:"env,omitempty"`
-	Stdin        string            `json:"stdin,omitempty"`
-	TimeoutMs    int               `json:"timeoutMs,omitempty"`
-	RequestedBy  string            `json:"requestedBy,omitempty"`
-	ResourceKind string            `json:"resourceKind,omitempty"`
-	ResourceID   string            `json:"resourceId,omitempty"`
-	Scope        string            `json:"scope,omitempty"`
-	ApprovalID   string            `json:"approvalId,omitempty"`
-	Reason       string            `json:"reason,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
-	Access       AccessRequest     `json:"access"`
+	ProfileID    string                `json:"profileId,omitempty"`
+	Command      string                `json:"command"`
+	Args         []string              `json:"args"`
+	Cwd          string                `json:"cwd,omitempty"`
+	Env          map[string]string     `json:"env,omitempty"`
+	Stdin        string                `json:"stdin,omitempty"`
+	TimeoutMs    int                   `json:"timeoutMs,omitempty"`
+	RequestedBy  string                `json:"requestedBy,omitempty"`
+	ResourceKind string                `json:"resourceKind,omitempty"`
+	ResourceID   string                `json:"resourceId,omitempty"`
+	Scope        string                `json:"scope,omitempty"`
+	ApprovalID   string                `json:"approvalId,omitempty"`
+	Reason       string                `json:"reason,omitempty"`
+	Metadata     map[string]string     `json:"metadata,omitempty"`
+	Access       AccessRequest         `json:"access"`
+	Consumer     *ConsumerContractView `json:"consumer,omitempty"`
 }
 
 type Decision struct {
@@ -273,23 +401,25 @@ type Decision struct {
 	EffectiveProfileID   string                 `json:"effectiveProfileId"`
 	EffectiveBackendKind BackendKind            `json:"effectiveBackendKind"`
 	Explanation          string                 `json:"explanation"`
+	Consumer             *ConsumerContractView  `json:"consumer,omitempty"`
 }
 
 type Result struct {
-	ExecutionID     string          `json:"executionId,omitempty"`
-	Status          ExecutionStatus `json:"status"`
-	StartedAt       *time.Time      `json:"startedAt,omitempty"`
-	CompletedAt     *time.Time      `json:"completedAt,omitempty"`
-	ExitCode        *int            `json:"exitCode,omitempty"`
-	Signal          string          `json:"signal,omitempty"`
-	Stdout          string          `json:"stdout,omitempty"`
-	Stderr          string          `json:"stderr,omitempty"`
-	OutputTruncated bool            `json:"outputTruncated"`
-	ErrorClass      ErrorClass      `json:"errorClass,omitempty"`
-	ErrorCode       string          `json:"errorCode,omitempty"`
-	Error           string          `json:"error,omitempty"`
-	Partial         bool            `json:"partial"`
-	BackendMetadata map[string]any  `json:"backendMetadata,omitempty"`
+	ExecutionID     string                `json:"executionId,omitempty"`
+	Status          ExecutionStatus       `json:"status"`
+	StartedAt       *time.Time            `json:"startedAt,omitempty"`
+	CompletedAt     *time.Time            `json:"completedAt,omitempty"`
+	ExitCode        *int                  `json:"exitCode,omitempty"`
+	Signal          string                `json:"signal,omitempty"`
+	Stdout          string                `json:"stdout,omitempty"`
+	Stderr          string                `json:"stderr,omitempty"`
+	OutputTruncated bool                  `json:"outputTruncated"`
+	ErrorClass      ErrorClass            `json:"errorClass,omitempty"`
+	ErrorCode       string                `json:"errorCode,omitempty"`
+	Error           string                `json:"error,omitempty"`
+	Partial         bool                  `json:"partial"`
+	BackendMetadata map[string]any        `json:"backendMetadata,omitempty"`
+	Consumer        *ConsumerContractView `json:"consumer,omitempty"`
 }
 
 type ExecutionFinalization struct {
@@ -300,30 +430,31 @@ type ExecutionFinalization struct {
 }
 
 type Execution struct {
-	ExecutionID   string            `json:"executionId"`
-	ProfileID     string            `json:"profileId"`
-	BackendKind   BackendKind       `json:"backendKind"`
-	Command       string            `json:"command"`
-	Args          []string          `json:"args"`
-	Cwd           string            `json:"cwd"`
-	EnvKeys       []string          `json:"envKeys"`
-	StdinProvided bool              `json:"stdinProvided"`
-	TimeoutMs     int               `json:"timeoutMs"`
-	RequestedBy   string            `json:"requestedBy,omitempty"`
-	ResourceKind  string            `json:"resourceKind,omitempty"`
-	ResourceID    string            `json:"resourceId,omitempty"`
-	Scope         string            `json:"scope,omitempty"`
-	ApprovalID    string            `json:"approvalId,omitempty"`
-	Reason        string            `json:"reason,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
-	Access        AccessRequest     `json:"access"`
-	Status        ExecutionStatus   `json:"status"`
-	Decision      Decision          `json:"decision"`
-	Result        Result            `json:"result"`
-	RequestedAt   time.Time         `json:"requestedAt"`
-	UpdatedAt     time.Time         `json:"updatedAt"`
-	StartedAt     *time.Time        `json:"startedAt,omitempty"`
-	CompletedAt   *time.Time        `json:"completedAt,omitempty"`
+	ExecutionID   string                `json:"executionId"`
+	ProfileID     string                `json:"profileId"`
+	BackendKind   BackendKind           `json:"backendKind"`
+	Command       string                `json:"command"`
+	Args          []string              `json:"args"`
+	Cwd           string                `json:"cwd"`
+	EnvKeys       []string              `json:"envKeys"`
+	StdinProvided bool                  `json:"stdinProvided"`
+	TimeoutMs     int                   `json:"timeoutMs"`
+	RequestedBy   string                `json:"requestedBy,omitempty"`
+	ResourceKind  string                `json:"resourceKind,omitempty"`
+	ResourceID    string                `json:"resourceId,omitempty"`
+	Scope         string                `json:"scope,omitempty"`
+	ApprovalID    string                `json:"approvalId,omitempty"`
+	Reason        string                `json:"reason,omitempty"`
+	Metadata      map[string]string     `json:"metadata,omitempty"`
+	Access        AccessRequest         `json:"access"`
+	Status        ExecutionStatus       `json:"status"`
+	Decision      Decision              `json:"decision"`
+	Result        Result                `json:"result"`
+	RequestedAt   time.Time             `json:"requestedAt"`
+	UpdatedAt     time.Time             `json:"updatedAt"`
+	StartedAt     *time.Time            `json:"startedAt,omitempty"`
+	CompletedAt   *time.Time            `json:"completedAt,omitempty"`
+	Consumer      *ConsumerContractView `json:"consumer,omitempty"`
 }
 
 func IsTerminal(status ExecutionStatus) bool {

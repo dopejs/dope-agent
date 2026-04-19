@@ -35,7 +35,8 @@
             "metadata": {
               "type": "object",
               "additionalProperties": { "type": "string" }
-            }
+            },
+            "sandbox": { "$ref": "../api/sandbox-consumer-view.schema.json" }
           }
         }
       }

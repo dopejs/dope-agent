@@ -28,7 +28,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 6
+	CurrentSchemaVersion = 7
 )
 
 type schemaMigration struct {
@@ -48,6 +48,37 @@ type SandboxExecutionRecord struct {
 	StartedAt   *time.Time
 	CompletedAt *time.Time
 	Document    []byte
+}
+
+type ConsumerPolicyRecordRecord struct {
+	PolicyRecordID      string
+	ConsumerKind        string
+	ConsumerID          string
+	OperationKind       string
+	DeclarationID       string
+	Status              string
+	Decision            string
+	ApprovalStatus      string
+	SecretResolution    string
+	RequestedBy         string
+	SandboxExecutionID  string
+	ToolCallID          string
+	ProviderOperationID string
+	StartedAt           time.Time
+	CompletedAt         *time.Time
+	Document            []byte
+}
+
+type SecretScopeBindingRecord struct {
+	BindingID        string
+	ConsumerKind     string
+	ConsumerID       string
+	EnvironmentScope string
+	SecretRef        string
+	DefaultSource    string
+	DeliveryKind     string
+	Active           bool
+	Document         []byte
 }
 
 var schemaMigrations = []schemaMigration{
@@ -409,6 +440,50 @@ var schemaMigrations = []schemaMigration{
 			`,
 			`CREATE INDEX IF NOT EXISTS idx_sandbox_executions_status_requested ON sandbox_executions(status, requested_at DESC, execution_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_sandbox_executions_profile_requested ON sandbox_executions(profile_id, requested_at DESC, execution_id DESC);`,
+		},
+	},
+	{
+		Version: 7,
+		Name:    "sandbox_requirement_contract",
+		Statements: []string{
+			`ALTER TABLE provider_auth_states ADD COLUMN sandbox_json TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN sandbox_json TEXT;`,
+			`
+			CREATE TABLE IF NOT EXISTS consumer_policy_records (
+				policy_record_id TEXT PRIMARY KEY,
+				consumer_kind TEXT NOT NULL,
+				consumer_id TEXT NOT NULL,
+				operation_kind TEXT NOT NULL,
+				declaration_id TEXT,
+				status TEXT NOT NULL,
+				decision TEXT NOT NULL,
+				approval_status TEXT NOT NULL,
+				secret_resolution TEXT NOT NULL,
+				requested_by TEXT,
+				sandbox_execution_id TEXT,
+				tool_call_id TEXT,
+				provider_operation_id TEXT,
+				started_at TEXT NOT NULL,
+				completed_at TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS secret_scope_bindings (
+				binding_id TEXT PRIMARY KEY,
+				consumer_kind TEXT NOT NULL,
+				consumer_id TEXT NOT NULL,
+				environment_scope TEXT NOT NULL,
+				secret_ref TEXT NOT NULL,
+				default_source TEXT NOT NULL,
+				delivery_kind TEXT NOT NULL,
+				active INTEGER NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_policy_records_consumer_started ON consumer_policy_records(consumer_kind, consumer_id, started_at DESC, policy_record_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_policy_records_status_started ON consumer_policy_records(status, started_at DESC, policy_record_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_secret_scope_bindings_consumer_secret ON secret_scope_bindings(consumer_kind, consumer_id, secret_ref);`,
 		},
 	},
 }
@@ -1463,6 +1538,10 @@ func (s *SQLiteStore) UpsertProviderAuthState(ctx context.Context, state provide
 	if err != nil {
 		return fmt.Errorf("marshal provider auth metadata: %w", err)
 	}
+	sandboxJSON, err := marshalJSON(state.Sandbox)
+	if err != nil {
+		return fmt.Errorf("marshal provider auth sandbox metadata: %w", err)
+	}
 
 	lastCheckedAt := state.LastCheckedAt.UTC()
 	if lastCheckedAt.IsZero() {
@@ -1486,8 +1565,9 @@ func (s *SQLiteStore) UpsertProviderAuthState(ctx context.Context, state provide
 			last_checked_at,
 			last_authenticated_at,
 			last_error,
-			metadata_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			metadata_json,
+			sandbox_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(provider_id) DO UPDATE SET
 			family = excluded.family,
 			auth_mode = excluded.auth_mode,
@@ -1503,7 +1583,8 @@ func (s *SQLiteStore) UpsertProviderAuthState(ctx context.Context, state provide
 			last_checked_at = excluded.last_checked_at,
 			last_authenticated_at = excluded.last_authenticated_at,
 			last_error = excluded.last_error,
-			metadata_json = excluded.metadata_json
+			metadata_json = excluded.metadata_json,
+			sandbox_json = excluded.sandbox_json
 	`,
 		state.ProviderID,
 		string(state.Family),
@@ -1521,6 +1602,7 @@ func (s *SQLiteStore) UpsertProviderAuthState(ctx context.Context, state provide
 		nullableTimeString(state.LastAuthenticatedAt),
 		nullString(state.LastError),
 		metadataJSON,
+		sandboxJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert provider auth state %s: %w", state.ProviderID, err)
@@ -1534,7 +1616,7 @@ func (s *SQLiteStore) ListProviderAuthStates(ctx context.Context) ([]providers.A
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT provider_id, family, auth_mode, status, cli_path, cli_available, account_label, account_id, plan, auth_method, login_command_json, logout_command_json, last_checked_at, last_authenticated_at, last_error, metadata_json
+		SELECT provider_id, family, auth_mode, status, cli_path, cli_available, account_label, account_id, plan, auth_method, login_command_json, logout_command_json, last_checked_at, last_authenticated_at, last_error, metadata_json, sandbox_json
 		FROM provider_auth_states
 		ORDER BY provider_id ASC
 	`)
@@ -1864,6 +1946,10 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 	if err != nil {
 		return fmt.Errorf("marshal tool call output: %w", err)
 	}
+	sandboxJSON, err := marshalJSON(toolCall.Sandbox)
+	if err != nil {
+		return fmt.Errorf("marshal tool call sandbox metadata: %w", err)
+	}
 
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO tool_calls (
@@ -1875,10 +1961,11 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 			status,
 			input_json,
 			output_json,
+			sandbox_json,
 			error_text,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(tool_call_id) DO UPDATE SET
 			run_id = excluded.run_id,
 			step_id = excluded.step_id,
@@ -1887,6 +1974,7 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 			status = excluded.status,
 			input_json = excluded.input_json,
 			output_json = excluded.output_json,
+			sandbox_json = excluded.sandbox_json,
 			error_text = excluded.error_text,
 			created_at = excluded.created_at,
 			updated_at = excluded.updated_at
@@ -1899,6 +1987,7 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 		string(toolCall.Status),
 		inputJSON,
 		outputJSON,
+		sandboxJSON,
 		nullString(toolCall.Error),
 		toolCall.CreatedAt.UTC().Format(time.RFC3339Nano),
 		toolCall.UpdatedAt.UTC().Format(time.RFC3339Nano),
@@ -1916,7 +2005,7 @@ func (s *SQLiteStore) ListToolCalls(ctx context.Context, runID, stepID string) (
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tool_call_id, run_id, step_id, capability_id, tool_name, status, input_json, output_json, error_text, created_at, updated_at
+		SELECT tool_call_id, run_id, step_id, capability_id, tool_name, status, input_json, output_json, sandbox_json, error_text, created_at, updated_at
 		FROM tool_calls
 		WHERE run_id = ? AND step_id = ?
 		ORDER BY created_at ASC, tool_call_id ASC
@@ -1964,6 +2053,162 @@ func (s *SQLiteStore) ListSteps(ctx context.Context, runID string) ([]runtime.St
 	}
 
 	return steps, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertConsumerPolicyRecord(ctx context.Context, record ConsumerPolicyRecordRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO consumer_policy_records (
+			policy_record_id,
+			consumer_kind,
+			consumer_id,
+			operation_kind,
+			declaration_id,
+			status,
+			decision,
+			approval_status,
+			secret_resolution,
+			requested_by,
+			sandbox_execution_id,
+			tool_call_id,
+			provider_operation_id,
+			started_at,
+			completed_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(policy_record_id) DO UPDATE SET
+			consumer_kind = excluded.consumer_kind,
+			consumer_id = excluded.consumer_id,
+			operation_kind = excluded.operation_kind,
+			declaration_id = excluded.declaration_id,
+			status = excluded.status,
+			decision = excluded.decision,
+			approval_status = excluded.approval_status,
+			secret_resolution = excluded.secret_resolution,
+			requested_by = excluded.requested_by,
+			sandbox_execution_id = excluded.sandbox_execution_id,
+			tool_call_id = excluded.tool_call_id,
+			provider_operation_id = excluded.provider_operation_id,
+			started_at = excluded.started_at,
+			completed_at = excluded.completed_at,
+			document_json = excluded.document_json
+	`,
+		record.PolicyRecordID,
+		record.ConsumerKind,
+		record.ConsumerID,
+		record.OperationKind,
+		nullString(record.DeclarationID),
+		record.Status,
+		record.Decision,
+		record.ApprovalStatus,
+		record.SecretResolution,
+		nullString(record.RequestedBy),
+		nullString(record.SandboxExecutionID),
+		nullString(record.ToolCallID),
+		nullString(record.ProviderOperationID),
+		record.StartedAt.UTC().Format(time.RFC3339Nano),
+		nullableTimeString(record.CompletedAt),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert consumer policy record %s: %w", record.PolicyRecordID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListConsumerPolicyRecords(ctx context.Context) ([]ConsumerPolicyRecordRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT policy_record_id, consumer_kind, consumer_id, operation_kind, declaration_id, status, decision, approval_status, secret_resolution, requested_by, sandbox_execution_id, tool_call_id, provider_operation_id, started_at, completed_at, document_json
+		FROM consumer_policy_records
+		ORDER BY started_at ASC, policy_record_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list consumer policy records: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]ConsumerPolicyRecordRecord, 0)
+	for rows.Next() {
+		item, err := scanConsumerPolicyRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertSecretScopeBinding(ctx context.Context, record SecretScopeBindingRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO secret_scope_bindings (
+			binding_id,
+			consumer_kind,
+			consumer_id,
+			environment_scope,
+			secret_ref,
+			default_source,
+			delivery_kind,
+			active,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(binding_id) DO UPDATE SET
+			consumer_kind = excluded.consumer_kind,
+			consumer_id = excluded.consumer_id,
+			environment_scope = excluded.environment_scope,
+			secret_ref = excluded.secret_ref,
+			default_source = excluded.default_source,
+			delivery_kind = excluded.delivery_kind,
+			active = excluded.active,
+			document_json = excluded.document_json
+	`,
+		record.BindingID,
+		record.ConsumerKind,
+		record.ConsumerID,
+		record.EnvironmentScope,
+		record.SecretRef,
+		record.DefaultSource,
+		record.DeliveryKind,
+		boolToInt(record.Active),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert secret scope binding %s: %w", record.BindingID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListSecretScopeBindings(ctx context.Context, consumerKind, consumerID string) ([]SecretScopeBindingRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT binding_id, consumer_kind, consumer_id, environment_scope, secret_ref, default_source, delivery_kind, active, document_json
+		FROM secret_scope_bindings
+		WHERE consumer_kind = ? AND consumer_id = ?
+		ORDER BY secret_ref ASC, binding_id ASC
+	`, consumerKind, consumerID)
+	if err != nil {
+		return nil, fmt.Errorf("list secret scope bindings for %s/%s: %w", consumerKind, consumerID, err)
+	}
+	defer rows.Close()
+
+	items := make([]SecretScopeBindingRecord, 0)
+	for rows.Next() {
+		item, err := scanSecretScopeBinding(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s *SQLiteStore) AppendEvent(ctx context.Context, event events.Event) (events.Event, error) {
@@ -2949,6 +3194,7 @@ func scanProviderAuthState(scanner interface {
 		lastAuthenticatedAt sql.NullString
 		lastError           sql.NullString
 		metadataRaw         string
+		sandboxRaw          sql.NullString
 	)
 
 	if err := scanner.Scan(
@@ -2968,6 +3214,7 @@ func scanProviderAuthState(scanner interface {
 		&lastAuthenticatedAt,
 		&lastError,
 		&metadataRaw,
+		&sandboxRaw,
 	); err != nil {
 		return providers.AuthState{}, fmt.Errorf("scan provider auth state: %w", err)
 	}
@@ -2990,6 +3237,9 @@ func scanProviderAuthState(scanner interface {
 	}
 	if err := json.Unmarshal([]byte(metadataRaw), &item.Metadata); err != nil {
 		return providers.AuthState{}, fmt.Errorf("decode provider auth metadata: %w", err)
+	}
+	if err := unmarshalNullableJSON(sandboxRaw, &item.Sandbox); err != nil {
+		return providers.AuthState{}, fmt.Errorf("decode provider auth sandbox metadata: %w", err)
 	}
 	if err := assignRequiredTime(&item.LastCheckedAt, lastCheckedAt); err != nil {
 		return providers.AuthState{}, fmt.Errorf("parse provider auth last_checked_at: %w", err)
@@ -3158,13 +3408,14 @@ func scanToolCall(scanner interface {
 	Scan(dest ...any) error
 }) (runtime.ToolCall, error) {
 	var (
-		toolCall   runtime.ToolCall
-		status     string
-		inputJSON  sql.NullString
-		outputJSON sql.NullString
-		errorText  sql.NullString
-		createdAt  string
-		updatedAt  string
+		toolCall    runtime.ToolCall
+		status      string
+		inputJSON   sql.NullString
+		outputJSON  sql.NullString
+		sandboxJSON sql.NullString
+		errorText   sql.NullString
+		createdAt   string
+		updatedAt   string
 	)
 
 	if err := scanner.Scan(
@@ -3176,6 +3427,7 @@ func scanToolCall(scanner interface {
 		&status,
 		&inputJSON,
 		&outputJSON,
+		&sandboxJSON,
 		&errorText,
 		&createdAt,
 		&updatedAt,
@@ -3192,6 +3444,9 @@ func scanToolCall(scanner interface {
 	if err := unmarshalNullableJSON(outputJSON, &toolCall.Output); err != nil {
 		return runtime.ToolCall{}, fmt.Errorf("decode tool call output: %w", err)
 	}
+	if err := unmarshalNullableJSON(sandboxJSON, &toolCall.Sandbox); err != nil {
+		return runtime.ToolCall{}, fmt.Errorf("decode tool call sandbox metadata: %w", err)
+	}
 
 	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
 	if err != nil {
@@ -3206,6 +3461,81 @@ func scanToolCall(scanner interface {
 	toolCall.UpdatedAt = parsedUpdatedAt
 
 	return toolCall, nil
+}
+
+func scanConsumerPolicyRecord(scanner interface {
+	Scan(dest ...any) error
+}) (ConsumerPolicyRecordRecord, error) {
+	var (
+		record              ConsumerPolicyRecordRecord
+		declarationID       sql.NullString
+		requestedBy         sql.NullString
+		sandboxExecutionID  sql.NullString
+		toolCallID          sql.NullString
+		providerOperationID sql.NullString
+		startedAt           string
+		completedAt         sql.NullString
+		document            string
+	)
+	if err := scanner.Scan(
+		&record.PolicyRecordID,
+		&record.ConsumerKind,
+		&record.ConsumerID,
+		&record.OperationKind,
+		&declarationID,
+		&record.Status,
+		&record.Decision,
+		&record.ApprovalStatus,
+		&record.SecretResolution,
+		&requestedBy,
+		&sandboxExecutionID,
+		&toolCallID,
+		&providerOperationID,
+		&startedAt,
+		&completedAt,
+		&document,
+	); err != nil {
+		return ConsumerPolicyRecordRecord{}, fmt.Errorf("scan consumer policy record: %w", err)
+	}
+	record.DeclarationID = declarationID.String
+	record.RequestedBy = requestedBy.String
+	record.SandboxExecutionID = sandboxExecutionID.String
+	record.ToolCallID = toolCallID.String
+	record.ProviderOperationID = providerOperationID.String
+	record.Document = []byte(document)
+	if err := assignRequiredTime(&record.StartedAt, startedAt); err != nil {
+		return ConsumerPolicyRecordRecord{}, fmt.Errorf("parse consumer policy record started_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.CompletedAt, completedAt); err != nil {
+		return ConsumerPolicyRecordRecord{}, fmt.Errorf("parse consumer policy record completed_at: %w", err)
+	}
+	return record, nil
+}
+
+func scanSecretScopeBinding(scanner interface {
+	Scan(dest ...any) error
+}) (SecretScopeBindingRecord, error) {
+	var (
+		record   SecretScopeBindingRecord
+		active   int
+		document string
+	)
+	if err := scanner.Scan(
+		&record.BindingID,
+		&record.ConsumerKind,
+		&record.ConsumerID,
+		&record.EnvironmentScope,
+		&record.SecretRef,
+		&record.DefaultSource,
+		&record.DeliveryKind,
+		&active,
+		&document,
+	); err != nil {
+		return SecretScopeBindingRecord{}, fmt.Errorf("scan secret scope binding: %w", err)
+	}
+	record.Active = active == 1
+	record.Document = []byte(document)
+	return record, nil
 }
 
 func assignRequiredTime(target *time.Time, value string) error {

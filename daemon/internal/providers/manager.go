@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -802,6 +803,19 @@ func cloneAuthState(state AuthState) AuthState {
 			metadata[key] = value
 		}
 		state.Metadata = metadata
+	}
+	if state.Sandbox != nil {
+		payload, err := json.Marshal(state.Sandbox)
+		if err == nil {
+			var cloned map[string]any
+			if json.Unmarshal(payload, &cloned) == nil {
+				state.Sandbox = cloned
+			} else {
+				state.Sandbox = state.Sandbox
+			}
+		} else {
+			state.Sandbox = state.Sandbox
+		}
 	}
 	return state
 }

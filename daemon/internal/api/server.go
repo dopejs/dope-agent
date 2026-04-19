@@ -688,7 +688,12 @@ func handlePolicyApprovals(policyEngine *policy.Engine, eventBus *events.Bus, sq
 		if raw := r.URL.Query().Get("status"); raw != "" {
 			status = policy.ApprovalStatus(raw)
 		}
-		writeJSON(w, http.StatusOK, ListResponse[policy.Approval]{Items: policyEngine.ListApprovals(status)})
+		approvals, err := enrichApprovalsWithSandbox(r.Context(), sqliteStore, policyEngine.ListApprovals(status))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, ListResponse[policy.Approval]{Items: approvals})
 	case http.MethodPost:
 		var input policy.RequestApprovalInput
 		if err := decodeJSONBody(r, &input); err != nil {
@@ -713,6 +718,15 @@ func handlePolicyApprovals(policyEngine *policy.Engine, eventBus *events.Bus, sq
 			return
 		}
 
+		approvalRequestedPayload := map[string]any{
+			"action":       approval.Action,
+			"resourceKind": approval.ResourceKind,
+			"resourceId":   approval.ResourceID,
+			"status":       approval.Status,
+		}
+		if approval.Sandbox != nil {
+			approvalRequestedPayload["sandbox"] = approval.Sandbox
+		}
 		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
 			Category: "policy",
 			Name:     "policy.approval_requested",
@@ -720,15 +734,20 @@ func handlePolicyApprovals(policyEngine *policy.Engine, eventBus *events.Bus, sq
 				Kind: "approval",
 				ID:   approval.ApprovalID,
 			},
-			Payload: map[string]any{
-				"action":       approval.Action,
-				"resourceKind": approval.ResourceKind,
-				"resourceId":   approval.ResourceID,
-				"status":       approval.Status,
-			},
+			Payload: approvalRequestedPayload,
 		}); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+		decisionRecordedPayload := map[string]any{
+			"action":       decision.Action,
+			"resourceKind": decision.ResourceKind,
+			"resourceId":   decision.ResourceID,
+			"outcome":      decision.Outcome,
+			"approvalId":   decision.ApprovalID,
+		}
+		if decision.Sandbox != nil {
+			decisionRecordedPayload["sandbox"] = decision.Sandbox
 		}
 		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
 			Category: "policy",
@@ -737,21 +756,25 @@ func handlePolicyApprovals(policyEngine *policy.Engine, eventBus *events.Bus, sq
 				Kind: "decision",
 				ID:   decision.DecisionID,
 			},
-			Payload: map[string]any{
-				"action":       decision.Action,
-				"resourceKind": decision.ResourceKind,
-				"resourceId":   decision.ResourceID,
-				"outcome":      decision.Outcome,
-				"approvalId":   decision.ApprovalID,
-			},
+			Payload: decisionRecordedPayload,
 		}); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
+		enrichedApprovals, err := enrichApprovalsWithSandbox(r.Context(), sqliteStore, []policy.Approval{approval})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		enrichedDecisions, err := enrichDecisionsWithSandbox(r.Context(), sqliteStore, []policy.Decision{decision})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusCreated, map[string]any{
-			"approval": approval,
-			"decision": decision,
+			"approval": enrichedApprovals[0],
+			"decision": enrichedDecisions[0],
 		})
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -772,7 +795,7 @@ func handlePolicyApprovalRoutes(policyEngine *policy.Engine, eventBus *events.Bu
 
 	parts := strings.Split(path, "/")
 	if len(parts) == 1 {
-		handlePolicyApprovalByID(policyEngine, w, r, parts[0])
+		handlePolicyApprovalByID(policyEngine, sqliteStore, w, r, parts[0])
 		return
 	}
 	if len(parts) == 2 && parts[1] == "resolve" {
@@ -783,7 +806,7 @@ func handlePolicyApprovalRoutes(policyEngine *policy.Engine, eventBus *events.Bu
 	http.NotFound(w, r)
 }
 
-func handlePolicyApprovalByID(policyEngine *policy.Engine, w http.ResponseWriter, r *http.Request, approvalID string) {
+func handlePolicyApprovalByID(policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, approvalID string) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -795,7 +818,12 @@ func handlePolicyApprovalByID(policyEngine *policy.Engine, w http.ResponseWriter
 		return
 	}
 
-	writeJSON(w, http.StatusOK, approval)
+	enriched, err := enrichApprovalsWithSandbox(r.Context(), sqliteStore, []policy.Approval{approval})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, enriched[0])
 }
 
 func handlePolicyApprovalResolve(policyEngine *policy.Engine, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, approvalID string) {
@@ -828,7 +856,33 @@ func handlePolicyApprovalResolve(policyEngine *policy.Engine, eventBus *events.B
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if err := syncConsumerPolicyRecordForApprovalResolution(r.Context(), sqliteStore, approval, decision); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	enrichedApprovals, err := enrichApprovalsWithSandbox(r.Context(), sqliteStore, []policy.Approval{approval})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	enrichedDecisions, err := enrichDecisionsWithSandbox(r.Context(), sqliteStore, []policy.Decision{decision})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	approval = enrichedApprovals[0]
+	decision = enrichedDecisions[0]
 
+	approvalResolvedPayload := map[string]any{
+		"action":       approval.Action,
+		"resourceKind": approval.ResourceKind,
+		"resourceId":   approval.ResourceID,
+		"status":       approval.Status,
+		"resolution":   approval.Resolution,
+	}
+	if approval.Sandbox != nil {
+		approvalResolvedPayload["sandbox"] = approval.Sandbox
+	}
 	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
 		Category: "policy",
 		Name:     "policy.approval_resolved",
@@ -836,16 +890,20 @@ func handlePolicyApprovalResolve(policyEngine *policy.Engine, eventBus *events.B
 			Kind: "approval",
 			ID:   approval.ApprovalID,
 		},
-		Payload: map[string]any{
-			"action":       approval.Action,
-			"resourceKind": approval.ResourceKind,
-			"resourceId":   approval.ResourceID,
-			"status":       approval.Status,
-			"resolution":   approval.Resolution,
-		},
+		Payload: approvalResolvedPayload,
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	decisionRecordedPayload := map[string]any{
+		"action":       decision.Action,
+		"resourceKind": decision.ResourceKind,
+		"resourceId":   decision.ResourceID,
+		"outcome":      decision.Outcome,
+		"approvalId":   decision.ApprovalID,
+	}
+	if decision.Sandbox != nil {
+		decisionRecordedPayload["sandbox"] = decision.Sandbox
 	}
 	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
 		Category: "policy",
@@ -854,13 +912,7 @@ func handlePolicyApprovalResolve(policyEngine *policy.Engine, eventBus *events.B
 			Kind: "decision",
 			ID:   decision.DecisionID,
 		},
-		Payload: map[string]any{
-			"action":       decision.Action,
-			"resourceKind": decision.ResourceKind,
-			"resourceId":   decision.ResourceID,
-			"outcome":      decision.Outcome,
-			"approvalId":   decision.ApprovalID,
-		},
+		Payload: decisionRecordedPayload,
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1454,11 +1506,12 @@ func handleChatQueryStream(chatService *chat.Service, w http.ResponseWriter, r *
 		if !started {
 			started = true
 			writeSSEEvent(w, "chat.query.started", "", ChatQueryStreamStarted{
-				DispatchID: chunk.DispatchID,
-				Provider:   chunk.Provider,
-				Model:      chunk.Model,
-				Skills:     cloneStringSlice(chunk.Skills),
-				Query:      strings.TrimSpace(input.Query),
+				DispatchID:     chunk.DispatchID,
+				Provider:       chunk.Provider,
+				Model:          chunk.Model,
+				Skills:         cloneStringSlice(chunk.Skills),
+				SkillContracts: cloneSandboxConsumerViews(chunk.SkillContracts),
+				Query:          strings.TrimSpace(input.Query),
 			})
 			flusher.Flush()
 		}
@@ -1473,11 +1526,12 @@ func handleChatQueryStream(chatService *chat.Service, w http.ResponseWriter, r *
 	})
 	if !started && result.Dispatch.DispatchID != "" {
 		writeSSEEvent(w, "chat.query.started", "", ChatQueryStreamStarted{
-			DispatchID: result.Dispatch.DispatchID,
-			Provider:   result.Dispatch.Provider,
-			Model:      result.Dispatch.Model,
-			Skills:     cloneStringSlice(result.Skills),
-			Query:      strings.TrimSpace(input.Query),
+			DispatchID:     result.Dispatch.DispatchID,
+			Provider:       result.Dispatch.Provider,
+			Model:          result.Dispatch.Model,
+			Skills:         cloneStringSlice(result.Skills),
+			SkillContracts: cloneSandboxConsumerViews(result.SkillContracts),
+			Query:          strings.TrimSpace(input.Query),
 		})
 		flusher.Flush()
 	}
@@ -1498,18 +1552,19 @@ func handleChatQueryStream(chatService *chat.Service, w http.ResponseWriter, r *
 
 func buildChatQueryResponse(result chat.QueryResult) ChatQueryResponse {
 	return ChatQueryResponse{
-		DispatchID:   result.Dispatch.DispatchID,
-		Provider:     result.Dispatch.Provider,
-		Model:        result.Dispatch.Model,
-		Skills:       cloneStringSlice(result.Skills),
-		Query:        strings.TrimSpace(result.Query),
-		Status:       string(result.Dispatch.Status),
-		Partial:      result.Dispatch.Partial,
-		Reply:        result.Dispatch.Output,
-		FinishReason: result.Dispatch.FinishReason,
-		Usage:        result.Dispatch.Usage,
-		ErrorCode:    result.Dispatch.ErrorCode,
-		Error:        result.Dispatch.Error,
+		DispatchID:     result.Dispatch.DispatchID,
+		Provider:       result.Dispatch.Provider,
+		Model:          result.Dispatch.Model,
+		Skills:         cloneStringSlice(result.Skills),
+		SkillContracts: cloneSandboxConsumerViews(result.SkillContracts),
+		Query:          strings.TrimSpace(result.Query),
+		Status:         string(result.Dispatch.Status),
+		Partial:        result.Dispatch.Partial,
+		Reply:          result.Dispatch.Output,
+		FinishReason:   result.Dispatch.FinishReason,
+		Usage:          result.Dispatch.Usage,
+		ErrorCode:      result.Dispatch.ErrorCode,
+		Error:          result.Dispatch.Error,
 	}
 }
 
@@ -2532,7 +2587,8 @@ func handleRunStepToolCalls(manager *runtime.Manager, policyEngine *policy.Engin
 			return
 		}
 		if policyEngine != nil && requiresApprovalForCapability(capability) {
-			approvalResponse, approved, err := authorizeHighRiskToolCall(r, policyEngine, sqliteStore, eventBus, request.ApprovalID, capability, currentActor(r.Context()))
+			consumer := buildLocalToolConsumerView(capability, currentActor(r.Context()))
+			approvalResponse, approved, err := authorizeHighRiskToolCall(r, policyEngine, sqliteStore, eventBus, request.ApprovalID, capability, consumer, currentActor(r.Context()))
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
@@ -2546,6 +2602,7 @@ func handleRunStepToolCalls(manager *runtime.Manager, policyEngine *policy.Engin
 			CapabilityID: request.CapabilityID,
 			ToolName:     request.ToolName,
 			Input:        request.Input,
+			Sandbox:      consumerViewMap(buildApprovedLocalToolConsumerView(capability, currentActor(r.Context()), request.ApprovalID)),
 		}
 		toolCall, err := manager.CreateToolCall(runID, stepID, input)
 		if err != nil {
@@ -2556,6 +2613,14 @@ func handleRunStepToolCalls(manager *runtime.Manager, policyEngine *policy.Engin
 				writeError(w, http.StatusBadRequest, err.Error())
 			}
 			return
+		}
+		if consumer := consumerViewFromMap(toolCall.Sandbox); consumer != nil && consumer.PolicyRecord != nil {
+			consumer.PolicyRecord.ToolCallID = toolCall.ToolCallID
+			toolCall.Sandbox = consumerViewMap(consumer)
+			if err := persistConsumerPolicyView(r.Context(), sqliteStore, consumer); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
 		}
 		if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -2630,6 +2695,16 @@ func handleRunStepToolCallComplete(manager *runtime.Manager, eventBus *events.Bu
 		}
 		return
 	}
+	if consumer := consumerViewFromMap(toolCall.Sandbox); consumer != nil && consumer.PolicyRecord != nil {
+		consumer.PolicyRecord.Status = sandbox.PolicyRecordStatusCompleted
+		now := time.Now().UTC()
+		consumer.PolicyRecord.CompletedAt = &now
+		toolCall.Sandbox = consumerViewMap(consumer)
+		if err := persistConsumerPolicyView(r.Context(), sqliteStore, consumer); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -2684,6 +2759,17 @@ func handleRunStepToolCallFail(manager *runtime.Manager, eventBus *events.Bus, s
 			writeError(w, http.StatusBadRequest, err.Error())
 		}
 		return
+	}
+	if consumer := consumerViewFromMap(toolCall.Sandbox); consumer != nil && consumer.PolicyRecord != nil {
+		consumer.PolicyRecord.Status = sandbox.PolicyRecordStatusFailed
+		consumer.PolicyRecord.FailureClass = string(sandbox.ErrorClassProcessFailed)
+		now := time.Now().UTC()
+		consumer.PolicyRecord.CompletedAt = &now
+		toolCall.Sandbox = consumerViewMap(consumer)
+		if err := persistConsumerPolicyView(r.Context(), sqliteStore, consumer); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -2916,11 +3002,12 @@ func requiresApprovalForCapability(capability capabilities.Capability) bool {
 	}
 }
 
-func authorizeHighRiskToolCall(r *http.Request, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, approvalID string, capability capabilities.Capability, requestedBy string) (approvalGateResponse, bool, error) {
+func authorizeHighRiskToolCall(r *http.Request, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, approvalID string, capability capabilities.Capability, consumer *sandbox.ConsumerContractView, requestedBy string) (approvalGateResponse, bool, error) {
 	if policyEngine == nil {
 		return approvalGateResponse{}, false, errors.New("policy engine is not configured")
 	}
 
+	consumerPayload := consumerViewMap(consumer)
 	if approvalID == "" {
 		approval, decision, err := policyEngine.RequestApproval(policy.RequestApprovalInput{
 			Action:       "tool_call.execute",
@@ -2938,6 +3025,17 @@ func authorizeHighRiskToolCall(r *http.Request, policyEngine *policy.Engine, sql
 		if err := persistDecision(r.Context(), sqliteStore, decision); err != nil {
 			return approvalGateResponse{}, false, err
 		}
+		if consumer != nil && consumer.PolicyRecord != nil {
+			consumer.PolicyRecord.ApprovalID = approval.ApprovalID
+			consumer.PolicyRecord.DecisionID = decision.DecisionID
+		}
+		updateLocalToolConsumerDecision(consumer, sandbox.DecisionResolutionAsk, sandbox.DecisionApprovalStatusPending, sandbox.PolicyRecordStatusApprovalPending, "")
+		if err := persistConsumerPolicyView(r.Context(), sqliteStore, consumer); err != nil {
+			return approvalGateResponse{}, false, err
+		}
+		consumerPayload = consumerViewMap(consumer)
+		approval.Sandbox = consumerPayload
+		decision.Sandbox = consumerPayload
 		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
 			Category: "policy",
 			Name:     "policy.approval_requested",
@@ -2947,6 +3045,7 @@ func authorizeHighRiskToolCall(r *http.Request, policyEngine *policy.Engine, sql
 				"resourceKind": approval.ResourceKind,
 				"resourceId":   approval.ResourceID,
 				"status":       approval.Status,
+				"sandbox":      consumerPayload,
 			},
 		}); err != nil {
 			return approvalGateResponse{}, false, err
@@ -2961,6 +3060,7 @@ func authorizeHighRiskToolCall(r *http.Request, policyEngine *policy.Engine, sql
 				"resourceId":   decision.ResourceID,
 				"outcome":      decision.Outcome,
 				"approvalId":   decision.ApprovalID,
+				"sandbox":      consumerPayload,
 			},
 		}); err != nil {
 			return approvalGateResponse{}, false, err
@@ -2971,6 +3071,7 @@ func authorizeHighRiskToolCall(r *http.Request, policyEngine *policy.Engine, sql
 			Body: map[string]any{
 				"approval": approval,
 				"decision": decision,
+				"sandbox":  consumerPayload,
 			},
 		}, false, nil
 	}
@@ -2988,26 +3089,355 @@ func authorizeHighRiskToolCall(r *http.Request, policyEngine *policy.Engine, sql
 			Body:       map[string]any{"error": "approval does not authorize this tool call"},
 		}, false, nil
 	}
+	if consumer != nil && consumer.PolicyRecord != nil {
+		consumer.PolicyRecord.ApprovalID = approval.ApprovalID
+		if index, err := loadConsumerPolicyRecordIndex(r.Context(), sqliteStore); err == nil {
+			if record := index.byApprovalID[strings.TrimSpace(approval.ApprovalID)]; record != nil {
+				consumer.PolicyRecord.DecisionID = record.DecisionID
+			}
+		}
+		consumerPayload = consumerViewMap(consumer)
+	}
 	switch approval.Status {
 	case policy.ApprovalStatusApproved:
+		updateLocalToolConsumerDecision(consumer, sandbox.DecisionResolutionAllow, sandbox.DecisionApprovalStatusApproved, sandbox.PolicyRecordStatusPreflightAllowed, "")
+		if err := persistConsumerPolicyView(r.Context(), sqliteStore, consumer); err != nil {
+			return approvalGateResponse{}, false, err
+		}
 		return approvalGateResponse{}, true, nil
 	case policy.ApprovalStatusRejected:
+		updateLocalToolConsumerDecision(consumer, sandbox.DecisionResolutionDeny, sandbox.DecisionApprovalStatusRejected, sandbox.PolicyRecordStatusDenied, string(sandbox.ErrorClassApprovalRejected))
+		if err := persistConsumerPolicyView(r.Context(), sqliteStore, consumer); err != nil {
+			return approvalGateResponse{}, false, err
+		}
+		consumerPayload = consumerViewMap(consumer)
+		approval.Sandbox = consumerPayload
 		return approvalGateResponse{
 			StatusCode: http.StatusForbidden,
 			Body: map[string]any{
 				"approval": approval,
 				"error":    "approval was rejected",
+				"sandbox":  consumerPayload,
 			},
 		}, false, nil
 	default:
+		updateLocalToolConsumerDecision(consumer, sandbox.DecisionResolutionAsk, sandbox.DecisionApprovalStatusPending, sandbox.PolicyRecordStatusApprovalPending, string(sandbox.ErrorClassApprovalRequired))
+		if err := persistConsumerPolicyView(r.Context(), sqliteStore, consumer); err != nil {
+			return approvalGateResponse{}, false, err
+		}
+		consumerPayload = consumerViewMap(consumer)
+		approval.Sandbox = consumerPayload
 		return approvalGateResponse{
 			StatusCode: http.StatusConflict,
 			Body: map[string]any{
 				"approval": approval,
 				"error":    "approval is still pending",
+				"sandbox":  consumerPayload,
 			},
 		}, false, nil
 	}
+}
+
+func buildLocalToolConsumerView(capability capabilities.Capability, requestedBy string) *sandbox.ConsumerContractView {
+	consumerID := strings.TrimSpace(capability.CapabilityID)
+	return &sandbox.ConsumerContractView{
+		Declaration: &sandbox.ConsumerRequirementDeclaration{
+			DeclarationID:               "local_tool:" + consumerID + ":tool_call.execute",
+			ConsumerKind:                sandbox.ConsumerKindLocalTool,
+			ConsumerID:                  consumerID,
+			OperationKind:               "tool_call.execute",
+			ProfileID:                   sandbox.ProfileIDSubprocessDefault,
+			ExecutionMode:               sandbox.ExecutionModeAccessOnly,
+			AllowedBackendKinds:         []sandbox.BackendKind{sandbox.BackendKindSubprocess},
+			NetworkMode:                 sandbox.NetworkModeDeny,
+			SecretRefs:                  []string{},
+			ApprovalMode:                sandbox.ApprovalModeAsk,
+			RequiredEnforcementStrength: "declared_only",
+			Active:                      true,
+			Source:                      sandbox.SourceBuiltin,
+		},
+		PolicyRecord: &sandbox.ConsumerPolicyRecord{
+			PolicyRecordID:      "policy_local_tool_" + consumerID + "_" + strings.ReplaceAll(time.Now().UTC().Format("20060102150405.000000000"), ".", ""),
+			ConsumerKind:        sandbox.ConsumerKindLocalTool,
+			ConsumerID:          consumerID,
+			OperationKind:       "tool_call.execute",
+			DeclarationID:       "local_tool:" + consumerID + ":tool_call.execute",
+			RequestedBy:         strings.TrimSpace(requestedBy),
+			Decision:            sandbox.DecisionResolutionAsk,
+			ApprovalStatus:      sandbox.DecisionApprovalStatusPending,
+			SecretResolution:    sandbox.SecretResolutionNotApplicable,
+			EnforcementStrength: "declared_only",
+			StartedAt:           time.Now().UTC(),
+			Status:              sandbox.PolicyRecordStatusApprovalPending,
+		},
+	}
+}
+
+func buildApprovedLocalToolConsumerView(capability capabilities.Capability, requestedBy, approvalID string) *sandbox.ConsumerContractView {
+	view := buildLocalToolConsumerView(capability, requestedBy)
+	if view.PolicyRecord != nil {
+		view.PolicyRecord.ApprovalID = strings.TrimSpace(approvalID)
+		view.PolicyRecord.ApprovalStatus = sandbox.DecisionApprovalStatusApproved
+		view.PolicyRecord.Decision = sandbox.DecisionResolutionAllow
+		view.PolicyRecord.Status = sandbox.PolicyRecordStatusPreflightAllowed
+		view.PolicyRecord.ToolCallID = ""
+	}
+	return view
+}
+
+func updateLocalToolConsumerDecision(view *sandbox.ConsumerContractView, decision sandbox.DecisionResolution, approvalStatus sandbox.DecisionApprovalStatus, status sandbox.PolicyRecordStatus, failureClass string) {
+	if view == nil || view.PolicyRecord == nil {
+		return
+	}
+	view.PolicyRecord.Decision = decision
+	view.PolicyRecord.ApprovalStatus = approvalStatus
+	view.PolicyRecord.Status = status
+	view.PolicyRecord.FailureClass = strings.TrimSpace(failureClass)
+	if status == sandbox.PolicyRecordStatusDenied || status == sandbox.PolicyRecordStatusUnsupported {
+		now := time.Now().UTC()
+		view.PolicyRecord.CompletedAt = &now
+	}
+}
+
+func persistConsumerPolicyView(ctx context.Context, sqliteStore *store.SQLiteStore, view *sandbox.ConsumerContractView) error {
+	if sqliteStore == nil || view == nil || view.PolicyRecord == nil {
+		return nil
+	}
+	document, err := json.Marshal(view.PolicyRecord)
+	if err != nil {
+		return fmt.Errorf("marshal consumer policy record %s: %w", view.PolicyRecord.PolicyRecordID, err)
+	}
+	return sqliteStore.UpsertConsumerPolicyRecord(ctx, store.ConsumerPolicyRecordRecord{
+		PolicyRecordID:      view.PolicyRecord.PolicyRecordID,
+		ConsumerKind:        string(view.PolicyRecord.ConsumerKind),
+		ConsumerID:          view.PolicyRecord.ConsumerID,
+		OperationKind:       view.PolicyRecord.OperationKind,
+		DeclarationID:       view.PolicyRecord.DeclarationID,
+		Status:              string(view.PolicyRecord.Status),
+		Decision:            string(view.PolicyRecord.Decision),
+		ApprovalStatus:      string(view.PolicyRecord.ApprovalStatus),
+		SecretResolution:    string(view.PolicyRecord.SecretResolution),
+		RequestedBy:         view.PolicyRecord.RequestedBy,
+		SandboxExecutionID:  view.PolicyRecord.SandboxExecutionID,
+		ToolCallID:          view.PolicyRecord.ToolCallID,
+		ProviderOperationID: view.PolicyRecord.ProviderOperationID,
+		StartedAt:           view.PolicyRecord.StartedAt,
+		CompletedAt:         view.PolicyRecord.CompletedAt,
+		Document:            document,
+	})
+}
+
+func consumerViewMap(view *sandbox.ConsumerContractView) map[string]any {
+	if view == nil {
+		return nil
+	}
+	payload, err := json.Marshal(view)
+	if err != nil {
+		return nil
+	}
+	var item map[string]any
+	if err := json.Unmarshal(payload, &item); err != nil {
+		return nil
+	}
+	return item
+}
+
+func consumerViewFromMap(value map[string]any) *sandbox.ConsumerContractView {
+	if value == nil {
+		return nil
+	}
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var view sandbox.ConsumerContractView
+	if err := json.Unmarshal(payload, &view); err != nil {
+		return nil
+	}
+	return &view
+}
+
+func enrichApprovalsWithSandbox(ctx context.Context, sqliteStore *store.SQLiteStore, approvals []policy.Approval) ([]policy.Approval, error) {
+	if len(approvals) == 0 {
+		return []policy.Approval{}, nil
+	}
+	index, err := loadConsumerPolicyRecordIndex(ctx, sqliteStore)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]policy.Approval, 0, len(approvals))
+	for _, approval := range approvals {
+		approval.Sandbox = nil
+		if record := index.byApprovalID[strings.TrimSpace(approval.ApprovalID)]; record != nil {
+			approval.Sandbox = consumerViewMap(consumerViewFromPolicyRecord(record))
+		}
+		items = append(items, approval)
+	}
+	return items, nil
+}
+
+func enrichDecisionsWithSandbox(ctx context.Context, sqliteStore *store.SQLiteStore, decisions []policy.Decision) ([]policy.Decision, error) {
+	if len(decisions) == 0 {
+		return []policy.Decision{}, nil
+	}
+	index, err := loadConsumerPolicyRecordIndex(ctx, sqliteStore)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]policy.Decision, 0, len(decisions))
+	for _, decision := range decisions {
+		decision.Sandbox = nil
+		if record := index.byDecisionID[strings.TrimSpace(decision.DecisionID)]; record != nil {
+			decision.Sandbox = consumerViewMap(consumerViewFromPolicyRecord(record))
+		}
+		items = append(items, decision)
+	}
+	return items, nil
+}
+
+type consumerPolicyRecordIndex struct {
+	byApprovalID map[string]*sandbox.ConsumerPolicyRecord
+	byDecisionID map[string]*sandbox.ConsumerPolicyRecord
+}
+
+func loadConsumerPolicyRecordIndex(ctx context.Context, sqliteStore *store.SQLiteStore) (consumerPolicyRecordIndex, error) {
+	index := consumerPolicyRecordIndex{
+		byApprovalID: map[string]*sandbox.ConsumerPolicyRecord{},
+		byDecisionID: map[string]*sandbox.ConsumerPolicyRecord{},
+	}
+	if sqliteStore == nil {
+		return index, nil
+	}
+	records, err := sqliteStore.ListConsumerPolicyRecords(ctx)
+	if err != nil {
+		return index, err
+	}
+	for _, item := range records {
+		var record sandbox.ConsumerPolicyRecord
+		if err := json.Unmarshal(item.Document, &record); err != nil {
+			return index, fmt.Errorf("decode consumer policy record %s: %w", item.PolicyRecordID, err)
+		}
+		if approvalID := strings.TrimSpace(record.ApprovalID); approvalID != "" {
+			index.byApprovalID[approvalID] = cloneConsumerPolicyRecord(&record)
+		}
+		if decisionID := strings.TrimSpace(record.DecisionID); decisionID != "" {
+			index.byDecisionID[decisionID] = cloneConsumerPolicyRecord(&record)
+		}
+	}
+	return index, nil
+}
+
+func syncConsumerPolicyRecordForApprovalResolution(ctx context.Context, sqliteStore *store.SQLiteStore, approval policy.Approval, decision policy.Decision) error {
+	if sqliteStore == nil {
+		return nil
+	}
+	index, err := loadConsumerPolicyRecordIndex(ctx, sqliteStore)
+	if err != nil {
+		return err
+	}
+	record := index.byApprovalID[strings.TrimSpace(approval.ApprovalID)]
+	if record == nil {
+		return nil
+	}
+	record.ApprovalID = approval.ApprovalID
+	record.DecisionID = decision.DecisionID
+	switch approval.Status {
+	case policy.ApprovalStatusApproved:
+		record.Decision = sandbox.DecisionResolutionAllow
+		record.ApprovalStatus = sandbox.DecisionApprovalStatusApproved
+		record.Status = sandbox.PolicyRecordStatusPreflightAllowed
+		record.FailureClass = ""
+	case policy.ApprovalStatusRejected:
+		record.Decision = sandbox.DecisionResolutionDeny
+		record.ApprovalStatus = sandbox.DecisionApprovalStatusRejected
+		record.Status = sandbox.PolicyRecordStatusDenied
+		record.FailureClass = string(sandbox.ErrorClassApprovalRejected)
+	default:
+		record.Decision = sandbox.DecisionResolutionAsk
+		record.ApprovalStatus = sandbox.DecisionApprovalStatusPending
+		record.Status = sandbox.PolicyRecordStatusApprovalPending
+		record.FailureClass = string(sandbox.ErrorClassApprovalRequired)
+	}
+	now := time.Now().UTC()
+	record.CompletedAt = &now
+	return persistConsumerPolicyRecord(ctx, sqliteStore, record)
+}
+
+func consumerViewFromPolicyRecord(record *sandbox.ConsumerPolicyRecord) *sandbox.ConsumerContractView {
+	if record == nil {
+		return nil
+	}
+	view := &sandbox.ConsumerContractView{
+		PolicyRecord: cloneConsumerPolicyRecord(record),
+	}
+	switch record.ConsumerKind {
+	case sandbox.ConsumerKindLocalTool:
+		view.Declaration = &sandbox.ConsumerRequirementDeclaration{
+			DeclarationID:               firstNonEmpty(strings.TrimSpace(record.DeclarationID), "local_tool:"+strings.TrimSpace(record.ConsumerID)+":"+strings.TrimSpace(record.OperationKind)),
+			ConsumerKind:                sandbox.ConsumerKindLocalTool,
+			ConsumerID:                  strings.TrimSpace(record.ConsumerID),
+			OperationKind:               firstNonEmpty(strings.TrimSpace(record.OperationKind), "tool_call.execute"),
+			ProfileID:                   sandbox.ProfileIDSubprocessDefault,
+			ExecutionMode:               sandbox.ExecutionModeAccessOnly,
+			AllowedBackendKinds:         []sandbox.BackendKind{sandbox.BackendKindSubprocess},
+			NetworkMode:                 sandbox.NetworkModeDeny,
+			SecretRefs:                  []string{},
+			ApprovalMode:                sandbox.ApprovalModeAsk,
+			RequiredEnforcementStrength: firstNonEmpty(strings.TrimSpace(record.EnforcementStrength), "declared_only"),
+			Active:                      true,
+			Source:                      sandbox.SourceBuiltin,
+		}
+	}
+	return view
+}
+
+func cloneConsumerPolicyRecord(record *sandbox.ConsumerPolicyRecord) *sandbox.ConsumerPolicyRecord {
+	if record == nil {
+		return nil
+	}
+	cloned := *record
+	if record.CompletedAt != nil {
+		completed := *record.CompletedAt
+		cloned.CompletedAt = &completed
+	}
+	return &cloned
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func persistConsumerPolicyRecord(ctx context.Context, sqliteStore *store.SQLiteStore, record *sandbox.ConsumerPolicyRecord) error {
+	if sqliteStore == nil || record == nil {
+		return nil
+	}
+	document, err := json.Marshal(record)
+	if err != nil {
+		return fmt.Errorf("marshal consumer policy record %s: %w", record.PolicyRecordID, err)
+	}
+	return sqliteStore.UpsertConsumerPolicyRecord(ctx, store.ConsumerPolicyRecordRecord{
+		PolicyRecordID:      record.PolicyRecordID,
+		ConsumerKind:        string(record.ConsumerKind),
+		ConsumerID:          record.ConsumerID,
+		OperationKind:       record.OperationKind,
+		DeclarationID:       record.DeclarationID,
+		Status:              string(record.Status),
+		Decision:            string(record.Decision),
+		ApprovalStatus:      string(record.ApprovalStatus),
+		SecretResolution:    string(record.SecretResolution),
+		RequestedBy:         record.RequestedBy,
+		SandboxExecutionID:  record.SandboxExecutionID,
+		ToolCallID:          record.ToolCallID,
+		ProviderOperationID: record.ProviderOperationID,
+		StartedAt:           record.StartedAt,
+		CompletedAt:         record.CompletedAt,
+		Document:            document,
+	})
 }
 
 func listLLMDispatches(ctx context.Context, sqliteStore *store.SQLiteStore) ([]llm.Dispatch, error) {
@@ -3081,6 +3511,9 @@ func publishProviderAuthEvent(ctx context.Context, eventBus *events.Bus, sqliteS
 			metadata[key] = value
 		}
 		payload["metadata"] = metadata
+	}
+	if state.Sandbox != nil {
+		payload["sandbox"] = state.Sandbox
 	}
 	return publishEvent(ctx, eventBus, sqliteStore, events.Event{
 		Category: "provider",

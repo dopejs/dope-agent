@@ -116,6 +116,43 @@ bundle body`)
 	}
 }
 
+func TestRegistryProjectsSandboxDeclarationForSkillSelection(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dataRoot := t.TempDir()
+	writeSkillFixture(t, filepath.Join(dataRoot, "skills", "shared-skill"), `---
+name: shared-skill
+description: "shared"
+---
+shared body`)
+
+	registry, err := NewRegistry(dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistry returned error: %v", err)
+	}
+
+	skill, ok := registry.Get("shared-skill")
+	if !ok {
+		t.Fatal("expected shared-skill")
+	}
+	if skill.Sandbox == nil {
+		t.Fatalf("expected sandbox declaration for skill, got %+v", skill)
+	}
+	declaration, ok := skill.Sandbox["declaration"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected declaration payload, got %+v", skill.Sandbox)
+	}
+	if declaration["consumerKind"] != "skill" || declaration["consumerId"] != "shared-skill" || declaration["operationKind"] != "skill_selection" {
+		t.Fatalf("expected shared declaration vocabulary, got %+v", declaration)
+	}
+	readRoots, ok := declaration["readRoots"].([]any)
+	if !ok || len(readRoots) != 1 {
+		t.Fatalf("expected declared skill root read access, got %+v", declaration)
+	}
+	if !strings.HasSuffix(readRoots[0].(string), filepath.Join("skills", "shared-skill")) {
+		t.Fatalf("expected read root to point at skill root, got %+v", readRoots)
+	}
+}
+
 func writeSkillFixture(t *testing.T, dir, body string) {
 	t.Helper()
 	writeFileFixture(t, filepath.Join(dir, "SKILL.md"), body)

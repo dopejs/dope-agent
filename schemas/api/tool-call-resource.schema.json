@@ -50,6 +50,7 @@
     },
     "error": {
       "type": "string"
-    }
+    },
+    "sandbox": { "$ref": "./sandbox-consumer-view.schema.json" }
   }
 }

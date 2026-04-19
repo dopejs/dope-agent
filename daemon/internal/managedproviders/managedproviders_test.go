@@ -144,6 +144,66 @@ func TestCodexProviderReadsCLIOutputFile(t *testing.T) {
 	}
 }
 
+func TestBuildManagedProviderConsumerViewScopesSecretsPerConsumerInstance(t *testing.T) {
+	t.Parallel()
+
+	evaluation := &managedProviderOperationEvaluation{
+		Declaration: sandbox.ManagedProviderRequirementDeclaration{
+			ApprovalMode:          sandbox.ApprovalModeAllow,
+			EnforcementStrength:   "declared_only",
+			SensitiveStateClasses: []string{"settings_file"},
+			Active:                true,
+		},
+	}
+	claudeConsumer := buildManagedProviderConsumerView(managedProviderOperationPlan{
+		OperationID: "operation_claude",
+		ProviderID:  ClaudeProviderID,
+		Action:      sandbox.ManagedProviderActionPromptExecution,
+		ProfileID:   sandbox.ProfileIDManagedProviderClaude,
+		RequestedBy: "test",
+		LocalState: []sandbox.SensitiveLocalStateAccessSummary{{
+			ProviderID:    ClaudeProviderID,
+			ActionKind:    sandbox.ManagedProviderActionPromptExecution,
+			StateClass:    "settings_file",
+			AccessMode:    sandbox.LocalStateAccessModeRead,
+			PathSummary:   "settings.json",
+			Declared:      true,
+			Sensitive:     true,
+			RedactionRule: "class_summary_only",
+		}},
+	}, evaluation)
+	codexConsumer := buildManagedProviderConsumerView(managedProviderOperationPlan{
+		OperationID: "operation_codex",
+		ProviderID:  CodexProviderID,
+		Action:      sandbox.ManagedProviderActionPromptExecution,
+		ProfileID:   sandbox.ProfileIDManagedProviderCodex,
+		RequestedBy: "test",
+		LocalState: []sandbox.SensitiveLocalStateAccessSummary{{
+			ProviderID:    CodexProviderID,
+			ActionKind:    sandbox.ManagedProviderActionPromptExecution,
+			StateClass:    "settings_file",
+			AccessMode:    sandbox.LocalStateAccessModeRead,
+			PathSummary:   "config.toml",
+			Declared:      true,
+			Sensitive:     true,
+			RedactionRule: "class_summary_only",
+		}},
+	}, evaluation)
+
+	if len(claudeConsumer.SecretScope) != 1 || len(codexConsumer.SecretScope) != 1 {
+		t.Fatalf("expected single secret scope outcome per consumer, got claude=%+v codex=%+v", claudeConsumer.SecretScope, codexConsumer.SecretScope)
+	}
+	if claudeConsumer.SecretScope[0].ConsumerID != ClaudeProviderID || codexConsumer.SecretScope[0].ConsumerID != CodexProviderID {
+		t.Fatalf("expected consumer-specific secret scope identity, got claude=%+v codex=%+v", claudeConsumer.SecretScope[0], codexConsumer.SecretScope[0])
+	}
+	if claudeConsumer.SecretScope[0].DefaultRuleID == codexConsumer.SecretScope[0].DefaultRuleID {
+		t.Fatalf("expected per-consumer-instance default rule ids, got claude=%+v codex=%+v", claudeConsumer.SecretScope[0], codexConsumer.SecretScope[0])
+	}
+	if claudeConsumer.PolicyRecord.SecretResolution != sandbox.SecretResolutionResolved || codexConsumer.PolicyRecord.SecretResolution != sandbox.SecretResolutionResolved {
+		t.Fatalf("expected resolved secret resolution for sensitive local state, got claude=%+v codex=%+v", claudeConsumer.PolicyRecord, codexConsumer.PolicyRecord)
+	}
+}
+
 func TestNewRegistryRoutesClaudeDetectThroughSandbox(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sandbox-backed managed provider script fixture is Unix-only")
@@ -191,6 +251,12 @@ exit 1
 	}
 	if executions[0].Metadata[managedProviderMetadataAction] != string(sandbox.ManagedProviderActionAuthStatus) {
 		t.Fatalf("expected auth-status metadata, got %+v", executions[0].Metadata)
+	}
+	if executions[0].Consumer == nil || executions[0].Consumer.Declaration == nil {
+		t.Fatalf("expected execution consumer declaration, got %+v", executions[0].Consumer)
+	}
+	if executions[0].Consumer.Declaration.ConsumerKind != sandbox.ConsumerKindManagedProvider || executions[0].Consumer.Declaration.ConsumerID != ClaudeProviderID {
+		t.Fatalf("expected managed-provider declaration identity, got %+v", executions[0].Consumer.Declaration)
 	}
 }
 
@@ -255,6 +321,15 @@ printf 'sandbox codex reply' > "$output"
 	}
 	if got := executions[0].Result.BackendMetadata["managedProviderAction"]; got != string(sandbox.ManagedProviderActionPromptExecution) {
 		t.Fatalf("expected backend metadata action, got %+v", executions[0].Result.BackendMetadata)
+	}
+	if executions[0].Consumer == nil || executions[0].Consumer.Declaration == nil {
+		t.Fatalf("expected execution consumer declaration, got %+v", executions[0].Consumer)
+	}
+	if executions[0].Consumer.Declaration.ConsumerKind != sandbox.ConsumerKindManagedProvider || executions[0].Consumer.Declaration.ConsumerID != CodexProviderID {
+		t.Fatalf("expected codex managed-provider declaration identity, got %+v", executions[0].Consumer.Declaration)
+	}
+	if executions[0].Consumer.PolicyRecord == nil || executions[0].Consumer.PolicyRecord.ConsumerID != CodexProviderID {
+		t.Fatalf("expected codex consumer policy record identity, got %+v", executions[0].Consumer)
 	}
 }
 
