@@ -28,7 +28,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 9
+	CurrentSchemaVersion = 10
 )
 
 type schemaMigration struct {
@@ -582,6 +582,19 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_tool_calls_run_step_created ON tool_calls(run_id, step_id, created_at DESC, tool_call_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_tool_calls_skill_created ON tool_calls(skill_id, created_at DESC, tool_call_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_tool_calls_sandbox_execution ON tool_calls(sandbox_execution_id);`,
+		},
+	},
+	{
+		Version: 10,
+		Name:    "mcp_runtime_catalog",
+		Statements: []string{
+			`ALTER TABLE tool_calls ADD COLUMN mcp_server_id TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN mcp_server_name TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN mcp_tool_name TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN mcp_transport_kind TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN mcp_session_id TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN authorization_result TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_tool_calls_mcp_server_created ON tool_calls(mcp_server_id, created_at DESC, tool_call_id DESC);`,
 		},
 	},
 }
@@ -2059,6 +2072,12 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 			invocation_kind,
 			capability_id,
 			skill_id,
+			mcp_server_id,
+			mcp_server_name,
+			mcp_tool_name,
+			mcp_transport_kind,
+			mcp_session_id,
+			authorization_result,
 			tool_name,
 			status,
 			sandbox_execution_id,
@@ -2069,13 +2088,19 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 			error_text,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(tool_call_id) DO UPDATE SET
 			run_id = excluded.run_id,
 			step_id = excluded.step_id,
 			invocation_kind = excluded.invocation_kind,
 			capability_id = excluded.capability_id,
 			skill_id = excluded.skill_id,
+			mcp_server_id = excluded.mcp_server_id,
+			mcp_server_name = excluded.mcp_server_name,
+			mcp_tool_name = excluded.mcp_tool_name,
+			mcp_transport_kind = excluded.mcp_transport_kind,
+			mcp_session_id = excluded.mcp_session_id,
+			authorization_result = excluded.authorization_result,
 			tool_name = excluded.tool_name,
 			status = excluded.status,
 			sandbox_execution_id = excluded.sandbox_execution_id,
@@ -2093,6 +2118,12 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 		nullString(string(toolCall.InvocationKind)),
 		toolCall.CapabilityID,
 		nullString(toolCall.SkillID),
+		nullString(toolCall.MCPServerID),
+		nullString(toolCall.MCPServerName),
+		nullString(toolCall.MCPToolName),
+		nullString(toolCall.MCPTransportKind),
+		nullString(toolCall.MCPSessionID),
+		nullString(toolCall.AuthorizationResult),
 		toolCall.ToolName,
 		string(toolCall.Status),
 		nullString(toolCall.SandboxExecutionID),
@@ -2117,7 +2148,7 @@ func (s *SQLiteStore) ListToolCalls(ctx context.Context, runID, stepID string) (
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tool_call_id, run_id, step_id, invocation_kind, capability_id, skill_id, tool_name, status, sandbox_execution_id, failure_class, input_json, output_json, sandbox_json, error_text, created_at, updated_at
+		SELECT tool_call_id, run_id, step_id, invocation_kind, capability_id, skill_id, mcp_server_id, mcp_server_name, mcp_tool_name, mcp_transport_kind, mcp_session_id, authorization_result, tool_name, status, sandbox_execution_id, failure_class, input_json, output_json, sandbox_json, error_text, created_at, updated_at
 		FROM tool_calls
 		WHERE run_id = ? AND step_id = ?
 		ORDER BY created_at ASC, tool_call_id ASC
@@ -3785,18 +3816,24 @@ func scanToolCall(scanner interface {
 	Scan(dest ...any) error
 }) (runtime.ToolCall, error) {
 	var (
-		toolCall           runtime.ToolCall
-		invocationKind     sql.NullString
-		skillID            sql.NullString
-		sandboxExecutionID sql.NullString
-		failureClass       sql.NullString
-		status             string
-		inputJSON          sql.NullString
-		outputJSON         sql.NullString
-		sandboxJSON        sql.NullString
-		errorText          sql.NullString
-		createdAt          string
-		updatedAt          string
+		toolCall            runtime.ToolCall
+		invocationKind      sql.NullString
+		skillID             sql.NullString
+		mcpServerID         sql.NullString
+		mcpServerName       sql.NullString
+		mcpToolName         sql.NullString
+		mcpTransportKind    sql.NullString
+		mcpSessionID        sql.NullString
+		authorizationResult sql.NullString
+		sandboxExecutionID  sql.NullString
+		failureClass        sql.NullString
+		status              string
+		inputJSON           sql.NullString
+		outputJSON          sql.NullString
+		sandboxJSON         sql.NullString
+		errorText           sql.NullString
+		createdAt           string
+		updatedAt           string
 	)
 
 	if err := scanner.Scan(
@@ -3806,6 +3843,12 @@ func scanToolCall(scanner interface {
 		&invocationKind,
 		&toolCall.CapabilityID,
 		&skillID,
+		&mcpServerID,
+		&mcpServerName,
+		&mcpToolName,
+		&mcpTransportKind,
+		&mcpSessionID,
+		&authorizationResult,
 		&toolCall.ToolName,
 		&status,
 		&sandboxExecutionID,
@@ -3823,6 +3866,12 @@ func scanToolCall(scanner interface {
 	toolCall.Status = runtime.ToolCallStatus(status)
 	toolCall.InvocationKind = runtime.ToolCallInvocationKind(invocationKind.String)
 	toolCall.SkillID = skillID.String
+	toolCall.MCPServerID = mcpServerID.String
+	toolCall.MCPServerName = mcpServerName.String
+	toolCall.MCPToolName = mcpToolName.String
+	toolCall.MCPTransportKind = mcpTransportKind.String
+	toolCall.MCPSessionID = mcpSessionID.String
+	toolCall.AuthorizationResult = authorizationResult.String
 	toolCall.SandboxExecutionID = sandboxExecutionID.String
 	toolCall.FailureClass = failureClass.String
 	toolCall.Error = errorText.String

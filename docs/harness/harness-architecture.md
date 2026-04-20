@@ -141,8 +141,18 @@ Current daemon status:
 
 - MCP servers are first-class daemon resources with explicit profile and declaration binding
 - MCP stdio transport lifecycle runs through sandbox-backed subprocess execution
+- MCP `streamable-http` is available as the first remote transport without creating a second
+  unmanaged execution plane
 - tool exposure is explicit per tool and runtime surface instead of server-wide implicit enablement
+- MCP tool invocation now reuses the existing `/v1/runs/.../tool-calls` runtime plane with
+  approval, provenance, and audit continuity
+- bundled MCP catalog entries can be installed through daemon API or the repo helper script,
+  and both paths converge on the same installed server resource model
+- catalog install, server inspection, and tool-call history all preserve origin, install
+  method, transport identity, and redacted operator-visible output
 - restart recovery restores enabled MCP servers through persisted daemon state
+- MCP session bootstrap now times out explicitly so daemon start and server restore do not
+  hang indefinitely on an unresponsive stdio or remote server
 
 ### Phase 4: Tool-Call Orchestration
 

@@ -137,7 +137,7 @@ func NewServer(deps Dependencies) *Server {
 		handleRuns(deps.Router, deps.Runtime, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
 	}))
 	mux.HandleFunc("/v1/runs/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.Sandboxes, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
+		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
 	}))
 	mux.HandleFunc("/v1/sessions", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSessions(deps.Router, deps.EventBus, deps.Store, w, r)
@@ -192,6 +192,12 @@ func NewServer(deps Dependencies) *Server {
 	}))
 	mux.HandleFunc("/v1/mcp/servers/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleMCPServerRoutes(deps.MCP, w, r)
+	}))
+	mux.HandleFunc("/v1/mcp/catalog", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMCPCatalog(deps.MCP, w, r)
+	}))
+	mux.HandleFunc("/v1/mcp/catalog/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMCPCatalogRoutes(deps.MCP, w, r)
 	}))
 	mux.HandleFunc("/v1/providers", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleProviders(deps.Providers, w, r)
@@ -375,7 +381,7 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 	}
 }
 
-func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
+func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
 	if path == "" {
 		http.NotFound(w, r)
@@ -424,7 +430,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	}
 
 	if len(parts) == 4 && parts[1] == "steps" && parts[3] == "tool-calls" {
-		handleRunStepToolCalls(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, sandboxManager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
+		handleRunStepToolCalls(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
 		return
 	}
 
@@ -1825,6 +1831,58 @@ func handleMCPServers(manager *mcp.Manager, w http.ResponseWriter, r *http.Reque
 	}
 }
 
+func handleMCPCatalog(manager *mcp.Manager, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "mcp manager is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, ListResponse[mcp.CatalogEntry]{Items: manager.ListCatalog()})
+}
+
+func handleMCPCatalogRoutes(manager *mcp.Manager, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "mcp manager is not configured")
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/v1/mcp/catalog/")
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+	parts := strings.Split(path, "/")
+	switch {
+	case len(parts) == 1 && r.Method == http.MethodGet:
+		entry, ok := manager.GetCatalogEntry(parts[0])
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, entry)
+	case len(parts) == 2 && parts[1] == "install" && r.Method == http.MethodPost:
+		var input mcp.CatalogInstallInput
+		if err := decodeJSONBody(r, &input); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		result, err := manager.InstallCatalogEntry(r.Context(), parts[0], input, mcp.InstallMethodAPI)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		status := http.StatusCreated
+		if result.Status != "installed" {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, result)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
 func handleMCPServerRoutes(manager *mcp.Manager, w http.ResponseWriter, r *http.Request) {
 	if manager == nil {
 		writeError(w, http.StatusInternalServerError, "mcp manager is not configured")
@@ -2841,7 +2899,17 @@ func handleRunStepStatus(manager *runtime.Manager, eventBus *events.Bus, sqliteS
 	writeJSON(w, http.StatusOK, step)
 }
 
-func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
+type createToolCallRequest struct {
+	CapabilityID   string `json:"capabilityId"`
+	SkillID        string `json:"skillId"`
+	MCPServerID    string `json:"mcpServerId"`
+	ToolName       string `json:"toolName"`
+	Input          any    `json:"input"`
+	ApprovalID     string `json:"approvalId"`
+	RuntimeSurface string `json:"runtimeSurface"`
+}
+
+func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
 	switch r.Method {
 	case http.MethodGet:
 		toolCalls, err := manager.ListToolCalls(runID, stepID)
@@ -2856,13 +2924,7 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 		}
 		writeJSON(w, http.StatusOK, ListResponse[runtime.ToolCall]{Items: toolCalls})
 	case http.MethodPost:
-		var request struct {
-			CapabilityID string `json:"capabilityId"`
-			SkillID      string `json:"skillId"`
-			ToolName     string `json:"toolName"`
-			Input        any    `json:"input"`
-			ApprovalID   string `json:"approvalId"`
-		}
+		var request createToolCallRequest
 		if err := decodeJSONBody(r, &request); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -2872,7 +2934,7 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 			writeError(w, http.StatusBadRequest, runtime.ErrToolNameRequired.Error())
 			return
 		}
-		if strings.TrimSpace(request.SkillID) == "" && capabilitySupervisor != nil {
+		if strings.TrimSpace(request.SkillID) == "" && strings.TrimSpace(request.MCPServerID) == "" && capabilitySupervisor != nil {
 			capability, ok := capabilitySupervisor.Get(request.CapabilityID)
 			if ok && !requiresApprovalForCapability(capability) {
 				toolCall, err := manager.CreateToolCall(runID, stepID, runtime.CreateToolCallInput{
@@ -2916,6 +2978,9 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 		)
 
 		switch {
+		case strings.TrimSpace(request.MCPServerID) != "":
+			handleMCPToolCallRequest(manager, mcpManager, eventBus, sqliteStore, checkpointManager, w, r, runID, stepID, request)
+			return
 		case strings.TrimSpace(request.SkillID) != "":
 			createInput, consumer, executionReq, approvalOutcome, err = prepareExecutableSkillToolCall(r.Context(), cfg, policyEngine, sqliteStore, eventBus, skillRegistry, request, currentActor(r.Context()))
 		default:
@@ -3014,6 +3079,153 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+func handleMCPToolCallRequest(manager *runtime.Manager, mcpManager *mcp.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string, request createToolCallRequest) {
+	if mcpManager == nil {
+		writeError(w, http.StatusInternalServerError, "mcp manager is not configured")
+		return
+	}
+	runtimeSurface := firstNonEmpty(strings.TrimSpace(request.RuntimeSurface), "chat")
+	authorization, err := mcpManager.AuthorizeTool(r.Context(), request.MCPServerID, request.ToolName, mcp.AuthorizeToolInput{
+		RuntimeSurface: runtimeSurface,
+		ApprovalID:     request.ApprovalID,
+		RequestedBy:    currentActor(r.Context()),
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		case errors.Is(err, policy.ErrApprovalNotFound):
+			writeError(w, http.StatusNotFound, err.Error())
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	switch authorization.Status {
+	case mcp.ToolAuthorizationStatusPending:
+		writeJSON(w, http.StatusConflict, authorization)
+		return
+	case mcp.ToolAuthorizationStatusRejected:
+		writeJSON(w, http.StatusForbidden, authorization)
+		return
+	case mcp.ToolAuthorizationStatusBlocked:
+		writeJSON(w, http.StatusConflict, authorization)
+		return
+	}
+
+	server, ok := mcpManager.GetServerResource(request.MCPServerID)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	createInput := runtime.CreateToolCallInput{
+		InvocationKind:      runtime.ToolCallInvocationKindMCPTool,
+		MCPServerID:         server.ServerID,
+		MCPServerName:       server.DisplayName,
+		MCPToolName:         request.ToolName,
+		MCPTransportKind:    string(server.TransportKind),
+		MCPSessionID:        authorization.SessionID,
+		AuthorizationResult: string(authorization.Status),
+		ToolName:            request.ToolName,
+		Input:               request.Input,
+		Sandbox:             consumerViewMap(authorization.Sandbox),
+	}
+	toolCall, err := manager.CreateToolCall(runID, stepID, createInput)
+	if err != nil {
+		switch {
+		case errors.Is(err, runtime.ErrRunNotFound), errors.Is(err, runtime.ErrStepNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	if authorization.Sandbox != nil && authorization.Sandbox.PolicyRecord != nil {
+		authorization.Sandbox.PolicyRecord.ToolCallID = toolCall.ToolCallID
+		toolCall.Sandbox = consumerViewMap(authorization.Sandbox)
+	}
+	if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := persistCheckpoint(r.Context(), checkpointManager, runID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishToolCallEvent(r.Context(), eventBus, sqliteStore, "tool_call.requested", runID, stepID, toolCall); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	result, err := mcpManager.CallTool(r.Context(), request.MCPServerID, request.ToolName, request.Input, authorization)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	output := map[string]any{
+		"transportKind": server.TransportKind,
+		"sessionId":     result.SessionID,
+	}
+	if result.Output != nil {
+		output["result"] = result.Output
+	}
+	switch strings.TrimSpace(result.FailureClass) {
+	case "":
+		toolCall, err = manager.CompleteToolCall(runID, stepID, toolCall.ToolCallID, runtime.CompleteToolCallInput{
+			Output:  output,
+			Sandbox: consumerViewMap(authorization.Sandbox),
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if _, err := publishToolCallEvent(r.Context(), eventBus, sqliteStore, "tool_call.completed", runID, stepID, toolCall); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	default:
+		toolCall, err = manager.FailToolCall(runID, stepID, toolCall.ToolCallID, runtime.FailToolCallInput{
+			Output:       output,
+			Error:        result.Error,
+			FailureClass: result.FailureClass,
+			Sandbox:      consumerViewMap(authorization.Sandbox),
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if _, err := publishToolCallEvent(r.Context(), eventBus, sqliteStore, "tool_call.failed", runID, stepID, toolCall); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	if consumer := consumerViewFromMap(toolCall.Sandbox); consumer != nil && consumer.PolicyRecord != nil {
+		now := time.Now().UTC()
+		consumer.PolicyRecord.CompletedAt = &now
+		if toolCall.Status == runtime.ToolCallStatusCompleted {
+			consumer.PolicyRecord.Status = sandbox.PolicyRecordStatusCompleted
+			consumer.PolicyRecord.FailureClass = ""
+		} else {
+			consumer.PolicyRecord.Status = sandbox.PolicyRecordStatusFailed
+			consumer.PolicyRecord.FailureClass = toolCall.FailureClass
+		}
+		toolCall.Sandbox = consumerViewMap(consumer)
+		if err := persistConsumerPolicyView(r.Context(), sqliteStore, consumer); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := persistCheckpoint(r.Context(), checkpointManager, runID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, toolCall)
 }
 
 func handleRunStepToolCallByID(manager *runtime.Manager, w http.ResponseWriter, r *http.Request, runID, stepID, toolCallID string) {
@@ -3163,13 +3375,7 @@ func handleRunStepToolCallFail(manager *runtime.Manager, eventBus *events.Bus, s
 	writeJSON(w, http.StatusOK, toolCall)
 }
 
-func prepareExecutableSkillToolCall(ctx context.Context, cfg config.Config, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, skillRegistry *skills.Registry, request struct {
-	CapabilityID string `json:"capabilityId"`
-	SkillID      string `json:"skillId"`
-	ToolName     string `json:"toolName"`
-	Input        any    `json:"input"`
-	ApprovalID   string `json:"approvalId"`
-}, requestedBy string) (runtime.CreateToolCallInput, *sandbox.ConsumerContractView, sandbox.ExecutionRequest, *approvalGateResponse, error) {
+func prepareExecutableSkillToolCall(ctx context.Context, cfg config.Config, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, skillRegistry *skills.Registry, request createToolCallRequest, requestedBy string) (runtime.CreateToolCallInput, *sandbox.ConsumerContractView, sandbox.ExecutionRequest, *approvalGateResponse, error) {
 	if skillRegistry == nil {
 		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, errors.New("skills registry is not configured")
 	}
@@ -3202,13 +3408,7 @@ func prepareExecutableSkillToolCall(ctx context.Context, cfg config.Config, poli
 	}, consumer, executionReq, nil, nil
 }
 
-func prepareCapabilityToolCall(ctx context.Context, cfg config.Config, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, capabilitySupervisor *capabilities.Supervisor, request struct {
-	CapabilityID string `json:"capabilityId"`
-	SkillID      string `json:"skillId"`
-	ToolName     string `json:"toolName"`
-	Input        any    `json:"input"`
-	ApprovalID   string `json:"approvalId"`
-}, requestedBy string) (runtime.CreateToolCallInput, *sandbox.ConsumerContractView, sandbox.ExecutionRequest, *approvalGateResponse, error) {
+func prepareCapabilityToolCall(ctx context.Context, cfg config.Config, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, capabilitySupervisor *capabilities.Supervisor, request createToolCallRequest, requestedBy string) (runtime.CreateToolCallInput, *sandbox.ConsumerContractView, sandbox.ExecutionRequest, *approvalGateResponse, error) {
 	if capabilitySupervisor == nil {
 		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, errors.New("capability supervisor is not configured")
 	}
@@ -3446,13 +3646,7 @@ func buildExecutableSkillConsumerView(cfg config.Config, skill skills.Skill, req
 	}
 }
 
-func buildExecutableSkillExecutionRequest(cfg config.Config, skill skills.Skill, request struct {
-	CapabilityID string `json:"capabilityId"`
-	SkillID      string `json:"skillId"`
-	ToolName     string `json:"toolName"`
-	Input        any    `json:"input"`
-	ApprovalID   string `json:"approvalId"`
-}, consumer *sandbox.ConsumerContractView, approvalID, requestedBy string) (sandbox.ExecutionRequest, error) {
+func buildExecutableSkillExecutionRequest(cfg config.Config, skill skills.Skill, request createToolCallRequest, consumer *sandbox.ConsumerContractView, approvalID, requestedBy string) (sandbox.ExecutionRequest, error) {
 	manifest := skill.ExecutionManifest
 	backendKind := manifest.BackendKind
 	if strings.TrimSpace(string(backendKind)) == "" {
@@ -3508,13 +3702,7 @@ func buildExecutableSkillExecutionRequest(cfg config.Config, skill skills.Skill,
 	}, nil
 }
 
-func buildCapabilityExecutionRequest(cfg config.Config, capability capabilities.Capability, request struct {
-	CapabilityID string `json:"capabilityId"`
-	SkillID      string `json:"skillId"`
-	ToolName     string `json:"toolName"`
-	Input        any    `json:"input"`
-	ApprovalID   string `json:"approvalId"`
-}, consumer *sandbox.ConsumerContractView, requestedBy string) (sandbox.ExecutionRequest, error) {
+func buildCapabilityExecutionRequest(cfg config.Config, capability capabilities.Capability, request createToolCallRequest, consumer *sandbox.ConsumerContractView, requestedBy string) (sandbox.ExecutionRequest, error) {
 	inputMap, _ := request.Input.(map[string]any)
 	command := ""
 	args := []string{}
@@ -3709,8 +3897,29 @@ func publishToolCallEvent(ctx context.Context, eventBus *events.Bus, sqliteStore
 	if toolCall.SkillID != "" {
 		payload["skillId"] = toolCall.SkillID
 	}
+	if toolCall.MCPServerID != "" {
+		payload["mcpServerId"] = toolCall.MCPServerID
+	}
+	if toolCall.MCPServerName != "" {
+		payload["mcpServerName"] = toolCall.MCPServerName
+	}
+	if toolCall.MCPToolName != "" {
+		payload["mcpToolName"] = toolCall.MCPToolName
+	}
+	if toolCall.MCPTransportKind != "" {
+		payload["mcpTransportKind"] = toolCall.MCPTransportKind
+	}
+	if toolCall.MCPSessionID != "" {
+		payload["mcpSessionId"] = toolCall.MCPSessionID
+	}
+	if toolCall.AuthorizationResult != "" {
+		payload["authorizationResult"] = toolCall.AuthorizationResult
+	}
 	if toolCall.Error != "" {
 		payload["error"] = toolCall.Error
+	}
+	if toolCall.Output != nil {
+		payload["output"] = toolCall.Output
 	}
 	if toolCall.SandboxExecutionID != "" {
 		payload["sandboxExecutionId"] = toolCall.SandboxExecutionID

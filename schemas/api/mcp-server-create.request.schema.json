@@ -10,8 +10,6 @@
     "sandboxProfileId",
     "declarationId",
     "transportKind",
-    "command",
-    "args",
     "autoRestart"
   ],
   "additionalProperties": false,
@@ -22,17 +20,28 @@
     "sandboxProfileId": { "type": "string" },
     "declarationId": { "type": "string" },
     "declaration": { "$ref": "./mcp-declaration.schema.json" },
-    "transportKind": { "type": "string", "enum": ["stdio"] },
+    "transportKind": { "type": "string", "enum": ["stdio", "streamable-http"] },
     "command": { "type": "string" },
     "args": {
       "type": "array",
       "items": { "type": "string" }
     },
+    "endpoint": { "type": "string" },
     "workingDir": { "type": "string" },
     "secretRefs": {
       "type": "array",
       "items": { "type": "string" }
     },
     "autoRestart": { "type": "boolean" }
-  }
+  },
+  "anyOf": [
+    {
+      "properties": { "transportKind": { "const": "stdio" } },
+      "required": ["command", "args"]
+    },
+    {
+      "properties": { "transportKind": { "const": "streamable-http" } },
+      "required": ["endpoint"]
+    }
+  ]
 }

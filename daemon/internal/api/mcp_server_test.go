@@ -14,10 +14,13 @@ import (
 	"testing"
 
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
+	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/router"
+	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
@@ -52,6 +55,8 @@ func TestAPIMCPHelperProcess(t *testing.T) {
 			var tools []map[string]any
 			_ = json.Unmarshal([]byte(toolsPayload), &tools)
 			writeAPIHelperFrame(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"tools": tools}})
+		case "tools/call":
+			writeAPIHelperFrame(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"content": []map[string]any{{"type": "text", "text": "lookup ok"}}}})
 		default:
 			writeAPIHelperFrame(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"code": -32601, "message": "method not found"}})
 		}
@@ -63,6 +68,10 @@ func TestMCPServerRoutes(t *testing.T) {
 	t.Setenv("API_MCP_HELPER_TOOLS", `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`)
 
 	dataDir := filepath.Join(t.TempDir(), "dope")
+	writeAPIMCPSecretsFileForTest(t, dataDir, map[string]string{
+		"GO_WANT_API_MCP_HELPER": "1",
+		"API_MCP_HELPER_TOOLS":   `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`,
+	})
 	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
 	sqliteStore, err := store.NewSQLiteStore(dataDir)
 	if err != nil {
@@ -78,7 +87,7 @@ func TestMCPServerRoutes(t *testing.T) {
 	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
 	defer func() { _ = sandboxes.Close(context.Background()) }()
 
-	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewStdioTransport())
+	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewTransportMux(mcp.NewStdioTransport(), nil))
 	server := NewServer(Dependencies{
 		Config:    cfg,
 		Logger:    telemetry.New("error").Slog(),
@@ -200,6 +209,123 @@ func TestMCPServerRoutes(t *testing.T) {
 	}
 }
 
+func TestMCPCatalogInstallAndRuntimeToolInvocation(t *testing.T) {
+	t.Setenv("GO_WANT_API_MCP_HELPER", "1")
+	t.Setenv("API_MCP_HELPER_TOOLS", `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`)
+
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	writeAPIMCPSecretsFileForTest(t, dataDir, map[string]string{
+		"GO_WANT_API_MCP_HELPER": "1",
+		"API_MCP_HELPER_TOOLS":   `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`,
+	})
+	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	eventBus := events.NewBus()
+	defer eventBus.Close()
+
+	authManager := auth.NewManager()
+	policyEngine := policy.NewEngine()
+	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxes.Close(context.Background()) }()
+
+	runtimeManager := runtime.NewManager()
+	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
+	sessionRouter := router.NewSessionRouter()
+	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewTransportMux(nil, nil))
+	server := NewServer(Dependencies{
+		Config:      cfg,
+		Logger:      telemetry.New("error").Slog(),
+		EventBus:    eventBus,
+		Auth:        authManager,
+		Policy:      policyEngine,
+		Router:      sessionRouter,
+		Runtime:     runtimeManager,
+		Checkpoints: checkpointManager,
+		Sandboxes:   sandboxes,
+		MCP:         mcpManager,
+		Store:       sqliteStore,
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "mcp-runtime")
+
+	catalogReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/catalog", nil)
+	catalogReq.Header.Set("Authorization", authHeader)
+	catalogRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(catalogRec, catalogReq)
+	if catalogRec.Code != http.StatusOK || !strings.Contains(catalogRec.Body.String(), `"filesystem"`) {
+		t.Fatalf("expected bundled catalog response, got %d body=%s", catalogRec.Code, catalogRec.Body.String())
+	}
+
+	workingDir := t.TempDir()
+	installReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/catalog/filesystem/install", strings.NewReader(`{"serverId":"filesystem-test","command":"`+os.Args[0]+`","args":["-test.run=TestAPIMCPHelperProcess","--"],"workingDir":"`+workingDir+`","secretRefs":["GO_WANT_API_MCP_HELPER","API_MCP_HELPER_TOOLS"]}`))
+	installReq.Header.Set("Authorization", authHeader)
+	installRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(installRec, installReq)
+	if installRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for catalog install, got %d body=%s", installRec.Code, installRec.Body.String())
+	}
+	var installResult mcp.CatalogInstallResult
+	if err := json.Unmarshal(installRec.Body.Bytes(), &installResult); err != nil {
+		t.Fatalf("decode install result: %v", err)
+	}
+	if installResult.Server == nil || installResult.Server.OriginKind != mcp.OriginKindCatalog || installResult.Server.CatalogEntryID != "filesystem" {
+		t.Fatalf("unexpected install result: %+v", installResult)
+	}
+
+	startReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/filesystem-test/start", nil)
+	startReq.Header.Set("Authorization", authHeader)
+	startRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(startRec, startReq)
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for installed mcp start, got %d body=%s", startRec.Code, startRec.Body.String())
+	}
+
+	exposureReq := httptest.NewRequest(http.MethodPatch, "/v1/mcp/servers/filesystem-test/tools/lookup", strings.NewReader(`{"runtimeSurface":"chat","exposureMode":"allow","active":true}`))
+	exposureReq.Header.Set("Authorization", authHeader)
+	exposureRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(exposureRec, exposureReq)
+	if exposureRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for exposure update, got %d body=%s", exposureRec.Code, exposureRec.Body.String())
+	}
+
+	run, err := runtimeManager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat", Goal: "invoke mcp"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+	step, err := runtimeManager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "invoke", Kind: "tool"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertStep(context.Background(), step); err != nil {
+		t.Fatalf("UpsertStep returned error: %v", err)
+	}
+
+	toolCallReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"mcpServerId":"filesystem-test","toolName":"lookup","runtimeSurface":"chat","input":{"query":"hello"}}`))
+	toolCallReq.Header.Set("Authorization", authHeader)
+	toolCallRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(toolCallRec, toolCallReq)
+	if toolCallRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for mcp tool call create, got %d body=%s", toolCallRec.Code, toolCallRec.Body.String())
+	}
+	var toolCall runtime.ToolCall
+	if err := json.Unmarshal(toolCallRec.Body.Bytes(), &toolCall); err != nil {
+		t.Fatalf("decode tool call: %v", err)
+	}
+	if toolCall.InvocationKind != runtime.ToolCallInvocationKindMCPTool || toolCall.MCPServerID != "filesystem-test" || toolCall.Status != runtime.ToolCallStatusCompleted {
+		t.Fatalf("unexpected mcp tool call response: %+v", toolCall)
+	}
+	if !strings.Contains(toolCallRec.Body.String(), `"mcpTransportKind":"stdio"`) {
+		t.Fatalf("expected mcp provenance in tool call response, got %s", toolCallRec.Body.String())
+	}
+}
+
 func readAPIHelperFrame(reader *bufio.Reader) ([]byte, error) {
 	length := -1
 	for {
@@ -232,4 +358,18 @@ func readAPIHelperFrame(reader *bufio.Reader) ([]byte, error) {
 func writeAPIHelperFrame(value any) {
 	payload, _ := json.Marshal(value)
 	_, _ = fmt.Fprintf(os.Stdout, "Content-Length: %d\r\n\r\n%s", len(payload), payload)
+}
+
+func writeAPIMCPSecretsFileForTest(t *testing.T, dataDir string, values map[string]string) {
+	t.Helper()
+	payload, err := json.Marshal(values)
+	if err != nil {
+		t.Fatalf("marshal mcp secrets: %v", err)
+	}
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("create data dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "mcp-secrets.json"), payload, 0o600); err != nil {
+		t.Fatalf("write mcp secrets: %v", err)
+	}
 }

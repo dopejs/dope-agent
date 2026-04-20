@@ -24,10 +24,15 @@
           "properties": {
             "serverId": { "type": "string" },
             "displayName": { "type": "string" },
+            "originKind": { "type": "string", "enum": ["manual", "catalog"] },
+            "catalogEntryId": { "type": "string" },
+            "installMethod": { "type": "string", "enum": ["api", "script"] },
             "enabled": { "type": "boolean" },
             "sandboxProfileId": { "type": "string" },
             "declarationId": { "type": "string" },
-            "transportKind": { "type": "string" },
+            "transportKind": { "type": "string", "enum": ["stdio", "streamable-http"] },
+            "availabilityStatus": { "type": "string", "enum": ["ready", "blocked", "unavailable", "unsupported"] },
+            "availabilityReason": { "type": "string" },
             "created": { "type": "boolean" }
           }
         }

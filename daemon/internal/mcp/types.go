@@ -18,7 +18,31 @@ const (
 type TransportKind string
 
 const (
-	TransportKindStdio TransportKind = "stdio"
+	TransportKindStdio          TransportKind = "stdio"
+	TransportKindStreamableHTTP TransportKind = "streamable-http"
+)
+
+type OriginKind string
+
+const (
+	OriginKindManual  OriginKind = "manual"
+	OriginKindCatalog OriginKind = "catalog"
+)
+
+type InstallMethod string
+
+const (
+	InstallMethodAPI    InstallMethod = "api"
+	InstallMethodScript InstallMethod = "script"
+)
+
+type AvailabilityStatus string
+
+const (
+	AvailabilityStatusReady       AvailabilityStatus = "ready"
+	AvailabilityStatusBlocked     AvailabilityStatus = "blocked"
+	AvailabilityStatusUnavailable AvailabilityStatus = "unavailable"
+	AvailabilityStatusUnsupported AvailabilityStatus = "unsupported"
 )
 
 type LifecycleStatus string
@@ -56,6 +80,10 @@ type Server struct {
 	ServerID         string        `json:"serverId"`
 	DisplayName      string        `json:"displayName"`
 	Source           Source        `json:"source"`
+	OriginKind       OriginKind    `json:"originKind,omitempty"`
+	CatalogEntryID   string        `json:"catalogEntryId,omitempty"`
+	InstallMethod    InstallMethod `json:"installMethod,omitempty"`
+	EnvironmentScope string        `json:"environmentScope,omitempty"`
 	Enabled          bool          `json:"enabled"`
 	SandboxProfileID string        `json:"sandboxProfileId"`
 	DeclarationID    string        `json:"declarationId"`
@@ -63,9 +91,11 @@ type Server struct {
 	TransportKind    TransportKind `json:"transportKind"`
 	Command          string        `json:"command"`
 	Args             []string      `json:"args"`
+	Endpoint         string        `json:"endpoint,omitempty"`
 	WorkingDir       string        `json:"workingDir,omitempty"`
 	SecretRefs       []string      `json:"secretRefs,omitempty"`
 	AutoRestart      bool          `json:"autoRestart"`
+	OperatorModified bool          `json:"operatorModified,omitempty"`
 	CreatedAt        time.Time     `json:"createdAt"`
 	UpdatedAt        time.Time     `json:"updatedAt"`
 }
@@ -132,10 +162,13 @@ type Declaration struct {
 
 type ServerResource struct {
 	Server
-	State         ServerState     `json:"state"`
-	SecretSummary []SecretSummary `json:"secretSummary,omitempty"`
-	ToolCount     int             `json:"toolCount"`
-	Tools         []ToolResource  `json:"tools,omitempty"`
+	State                  ServerState        `json:"state"`
+	SecretSummary          []SecretSummary    `json:"secretSummary,omitempty"`
+	ToolCount              int                `json:"toolCount"`
+	Tools                  []ToolResource     `json:"tools,omitempty"`
+	TransportConfigSummary string             `json:"transportConfigSummary,omitempty"`
+	AvailabilityStatus     AvailabilityStatus `json:"availabilityStatus,omitempty"`
+	AvailabilityReason     string             `json:"availabilityReason,omitempty"`
 }
 
 type ToolResource struct {
@@ -149,6 +182,10 @@ type ToolResource struct {
 type CreateServerInput struct {
 	ServerID         string        `json:"serverId"`
 	DisplayName      string        `json:"displayName"`
+	OriginKind       OriginKind    `json:"originKind,omitempty"`
+	CatalogEntryID   string        `json:"catalogEntryId,omitempty"`
+	InstallMethod    InstallMethod `json:"installMethod,omitempty"`
+	EnvironmentScope string        `json:"environmentScope,omitempty"`
 	Enabled          bool          `json:"enabled"`
 	SandboxProfileID string        `json:"sandboxProfileId"`
 	DeclarationID    string        `json:"declarationId"`
@@ -156,9 +193,11 @@ type CreateServerInput struct {
 	TransportKind    TransportKind `json:"transportKind"`
 	Command          string        `json:"command"`
 	Args             []string      `json:"args"`
+	Endpoint         string        `json:"endpoint,omitempty"`
 	WorkingDir       string        `json:"workingDir"`
 	SecretRefs       []string      `json:"secretRefs"`
 	AutoRestart      bool          `json:"autoRestart"`
+	OperatorModified bool          `json:"operatorModified,omitempty"`
 }
 
 type UpdateServerInput struct {
@@ -170,6 +209,7 @@ type UpdateServerInput struct {
 	TransportKind    *TransportKind `json:"transportKind,omitempty"`
 	Command          *string        `json:"command,omitempty"`
 	Args             []string       `json:"args,omitempty"`
+	Endpoint         *string        `json:"endpoint,omitempty"`
 	WorkingDir       *string        `json:"workingDir,omitempty"`
 	SecretRefs       []string       `json:"secretRefs,omitempty"`
 	AutoRestart      *bool          `json:"autoRestart,omitempty"`
@@ -218,12 +258,78 @@ const (
 )
 
 type ToolAuthorizationResponse struct {
-	Status   ToolAuthorizationStatus       `json:"status"`
-	Tool     ToolResource                  `json:"tool"`
-	Message  string                        `json:"message,omitempty"`
-	Approval *policy.Approval              `json:"approval,omitempty"`
-	Decision *policy.Decision              `json:"decision,omitempty"`
-	Sandbox  *sandbox.ConsumerContractView `json:"sandbox,omitempty"`
+	Status    ToolAuthorizationStatus       `json:"status"`
+	Tool      ToolResource                  `json:"tool"`
+	SessionID string                        `json:"sessionId,omitempty"`
+	Message   string                        `json:"message,omitempty"`
+	Approval  *policy.Approval              `json:"approval,omitempty"`
+	Decision  *policy.Decision              `json:"decision,omitempty"`
+	Sandbox   *sandbox.ConsumerContractView `json:"sandbox,omitempty"`
+}
+
+type CatalogInstallSupport struct {
+	ScriptSupported bool     `json:"scriptSupported"`
+	ScriptArgs      []string `json:"scriptArgs,omitempty"`
+}
+
+type CatalogPrerequisite struct {
+	Kind        string `json:"kind"`
+	Name        string `json:"name"`
+	Required    bool   `json:"required"`
+	Description string `json:"description,omitempty"`
+}
+
+type CatalogSecretRequirement struct {
+	SecretRef   string `json:"secretRef"`
+	Required    bool   `json:"required"`
+	Description string `json:"description,omitempty"`
+}
+
+type CatalogEntry struct {
+	ID                     string                     `json:"id"`
+	DisplayName            string                     `json:"displayName"`
+	Description            string                     `json:"description"`
+	TransportKind          TransportKind              `json:"transportKind"`
+	SourceKind             string                     `json:"sourceKind"`
+	Tags                   []string                   `json:"tags,omitempty"`
+	ImmediateUse           bool                       `json:"immediateUse"`
+	Prerequisites          []CatalogPrerequisite      `json:"prerequisites,omitempty"`
+	SecretRequirements     []CatalogSecretRequirement `json:"secretRequirements,omitempty"`
+	EnvironmentEligibility []string                   `json:"environmentEligibility,omitempty"`
+	AvailabilityStatus     AvailabilityStatus         `json:"availabilityStatus"`
+	AvailabilityReason     string                     `json:"availabilityReason,omitempty"`
+	InstallSupport         CatalogInstallSupport      `json:"installSupport"`
+	DefaultInstallSpec     CreateServerInput          `json:"defaultInstallSpec"`
+}
+
+type CatalogInstallInput struct {
+	ServerID         string   `json:"serverId,omitempty"`
+	DisplayName      string   `json:"displayName,omitempty"`
+	Enabled          *bool    `json:"enabled,omitempty"`
+	SandboxProfileID string   `json:"sandboxProfileId,omitempty"`
+	Command          string   `json:"command,omitempty"`
+	Args             []string `json:"args,omitempty"`
+	Endpoint         string   `json:"endpoint,omitempty"`
+	WorkingDir       string   `json:"workingDir,omitempty"`
+	SecretRefs       []string `json:"secretRefs,omitempty"`
+}
+
+type CatalogInstallResult struct {
+	InstallID          string             `json:"installId"`
+	Status             string             `json:"status"`
+	CatalogEntryID     string             `json:"catalogEntryId"`
+	ServerID           string             `json:"serverId,omitempty"`
+	AvailabilityStatus AvailabilityStatus `json:"availabilityStatus"`
+	AvailabilityReason string             `json:"availabilityReason,omitempty"`
+	AuditEventIDs      []string           `json:"auditEventIds,omitempty"`
+	Server             *ServerResource    `json:"server,omitempty"`
+}
+
+type ToolInvocationResult struct {
+	SessionID    string `json:"sessionId,omitempty"`
+	Output       any    `json:"output,omitempty"`
+	FailureClass string `json:"failureClass,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 func IsTerminalStatus(status LifecycleStatus) bool {

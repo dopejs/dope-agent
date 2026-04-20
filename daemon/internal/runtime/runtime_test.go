@@ -544,6 +544,46 @@ func TestToolCallPreservesSandboxLinkageAndFailureClass(t *testing.T) {
 	}
 }
 
+func TestMCPToolCallPreservesInvocationProvenance(t *testing.T) {
+	manager := NewManager()
+
+	run, err := manager.CreateRun(CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, CreateStepInput{Title: "invoke mcp tool"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	toolCall, err := manager.CreateToolCall(run.RunID, step.StepID, CreateToolCallInput{
+		InvocationKind:      ToolCallInvocationKindMCPTool,
+		MCPServerID:         "filesystem-test",
+		MCPServerName:       "Filesystem",
+		MCPToolName:         "lookup",
+		MCPTransportKind:    "stdio",
+		MCPSessionID:        "session_1",
+		AuthorizationResult: "allowed",
+		ToolName:            "lookup",
+		Input:               map[string]any{"query": "hello"},
+	})
+	if err != nil {
+		t.Fatalf("CreateToolCall returned error: %v", err)
+	}
+	if toolCall.InvocationKind != ToolCallInvocationKindMCPTool || toolCall.MCPServerID != "filesystem-test" || toolCall.MCPToolName != "lookup" {
+		t.Fatalf("expected mcp invocation provenance, got %+v", toolCall)
+	}
+	if _, err := manager.CompleteToolCall(run.RunID, step.StepID, toolCall.ToolCallID, CompleteToolCallInput{
+		Output: map[string]any{"result": map[string]any{"content": []map[string]any{{"type": "text", "text": "ok"}}}},
+	}); err != nil {
+		t.Fatalf("CompleteToolCall returned error: %v", err)
+	}
+	persisted, ok := manager.GetToolCall(run.RunID, step.StepID, toolCall.ToolCallID)
+	if !ok || persisted.AuthorizationResult != "allowed" || persisted.MCPSessionID != "session_1" {
+		t.Fatalf("expected persisted mcp tool call linkage, got %+v", persisted)
+	}
+}
+
 func TestSnapshotAndRestoreCheckpoint(t *testing.T) {
 	manager := NewManager()
 

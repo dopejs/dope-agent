@@ -7,7 +7,8 @@
   "additionalProperties": false,
   "anyOf": [
     { "required": ["capabilityId"] },
-    { "required": ["skillId"] }
+    { "required": ["skillId"] },
+    { "required": ["mcpServerId"] }
   ],
   "properties": {
     "capabilityId": {
@@ -16,10 +17,16 @@
     "skillId": {
       "type": "string"
     },
+    "mcpServerId": {
+      "type": "string"
+    },
     "toolName": {
       "type": "string"
     },
     "approvalId": {
+      "type": "string"
+    },
+    "runtimeSurface": {
       "type": "string"
     },
     "input": {

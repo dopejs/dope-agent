@@ -3,9 +3,14 @@ package mcp
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,6 +70,10 @@ func TestMCPHelperProcess(t *testing.T) {
 			var tools []map[string]any
 			_ = json.Unmarshal([]byte(toolsPayload), &tools)
 			writeHelperResponse(req.ID, map[string]any{"tools": tools})
+		case "tools/call":
+			writeHelperResponse(req.ID, map[string]any{
+				"content": []map[string]any{{"type": "text", "text": "lookup ok"}},
+			})
 		default:
 			writeHelperError(req.ID, -32601, "method not found")
 		}
@@ -175,9 +184,31 @@ func TestManagerStartDiscoversToolsAndSupportsStopCancel(t *testing.T) {
 	}
 }
 
+func TestFilesystemCatalogEntryIsUnavailableWithoutLocalOverride(t *testing.T) {
+	manager, _ := newTestManager(t)
+
+	entry, ok := manager.GetCatalogEntry("filesystem")
+	if !ok {
+		t.Fatal("expected bundled filesystem catalog entry")
+	}
+	if entry.ImmediateUse {
+		t.Fatalf("expected filesystem starter to stop advertising immediate use, got %+v", entry)
+	}
+	if entry.AvailabilityStatus != AvailabilityStatusUnavailable {
+		t.Fatalf("expected unavailable filesystem starter by default, got %+v", entry)
+	}
+	if entry.AvailabilityReason == "" {
+		t.Fatalf("expected local override availability reason, got %+v", entry)
+	}
+}
+
 func TestManagerRestoreAutoStartsEnabledServers(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "dope")
 	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
+	writeMCPSecretsFileForTest(t, dataDir, map[string]string{
+		"GO_WANT_MCP_HELPER": "1",
+		"MCP_HELPER_TOOLS":   `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`,
+	})
 	sqliteStore, err := store.NewSQLiteStore(dataDir)
 	if err != nil {
 		t.Fatalf("NewSQLiteStore returned error: %v", err)
@@ -191,14 +222,14 @@ func TestManagerRestoreAutoStartsEnabledServers(t *testing.T) {
 	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
 	defer func() { _ = sandboxes.Close(context.Background()) }()
 
-	manager := NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, NewStdioTransport())
+	manager := NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, NewTransportMux(NewStdioTransport(), nil))
 	input := testServerInput(t, true)
 	input.AutoRestart = false
 	if _, _, err := manager.CreateServer(context.Background(), input); err != nil {
 		t.Fatalf("CreateServer returned error: %v", err)
 	}
 
-	manager2 := NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, NewStdioTransport())
+	manager2 := NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, NewTransportMux(NewStdioTransport(), nil))
 	if err := manager2.Restore(context.Background()); err != nil {
 		t.Fatalf("Restore returned error: %v", err)
 	}
@@ -208,6 +239,46 @@ func TestManagerRestoreAutoStartsEnabledServers(t *testing.T) {
 	}
 	if resource.State.Status != LifecycleStatusHealthy {
 		t.Fatalf("expected restored server to auto-start healthy, got %+v", resource)
+	}
+}
+
+func TestManagerStartTimesOutOnUnresponsiveStdioServer(t *testing.T) {
+	manager, _ := newTestManager(t)
+	ctx := context.Background()
+
+	previousTimeout := mcpSessionStartTimeout
+	mcpSessionStartTimeout = 50 * time.Millisecond
+	t.Cleanup(func() {
+		mcpSessionStartTimeout = previousTimeout
+	})
+
+	if _, _, err := manager.CreateServer(ctx, CreateServerInput{
+		ServerID:         "hung-mcp",
+		DisplayName:      "Hung MCP",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:hung-mcp:lifecycle.start",
+		TransportKind:    TransportKindStdio,
+		Command:          "/bin/sh",
+		Args:             []string{"-c", "sleep 60"},
+		WorkingDir:       t.TempDir(),
+		AutoRestart:      false,
+	}); err != nil {
+		t.Fatalf("CreateServer returned error: %v", err)
+	}
+
+	started, err := manager.Start(ctx, "hung-mcp", "manager-test")
+	if err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	if started.FailureClass != "transport_runtime_failure" {
+		t.Fatalf("expected transport runtime failure for timed-out MCP start, got %+v", started)
+	}
+	if started.Server.State.Status != LifecycleStatusFailed {
+		t.Fatalf("expected failed lifecycle status after timeout, got %+v", started.Server.State)
+	}
+	if !strings.Contains(started.Server.State.HealthReason, "context deadline exceeded") {
+		t.Fatalf("expected timeout health reason, got %+v", started.Server.State)
 	}
 }
 
@@ -278,7 +349,10 @@ func TestManagerPersistsStaleToolsAcrossRediscovery(t *testing.T) {
 		t.Fatalf("Stop returned error: %v", err)
 	}
 	waitForServerStatus(t, manager, input.ServerID, LifecycleStatusStopped)
-	t.Setenv("MCP_HELPER_TOOLS", `[{"name":"search","title":"Search","description":"Search tool","inputSchema":{"type":"object"}}]`)
+	writeMCPSecretsFileForTest(t, manager.cfg.DataDir, map[string]string{
+		"GO_WANT_MCP_HELPER": "1",
+		"MCP_HELPER_TOOLS":   `[{"name":"search","title":"Search","description":"Search tool","inputSchema":{"type":"object"}}]`,
+	})
 	if _, err := manager.Start(ctx, input.ServerID, "manager-test"); err != nil {
 		t.Fatalf("Start(rediscovery) returned error: %v", err)
 	}
@@ -299,11 +373,163 @@ func TestManagerPersistsStaleToolsAcrossRediscovery(t *testing.T) {
 	}
 }
 
+func TestManagerSupportsStreamableHTTPLifecycleAndInvocation(t *testing.T) {
+	manager, _ := newTestManager(t)
+	ctx := context.Background()
+
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		acceptHeader := r.Header.Get("Accept")
+		if !strings.Contains(acceptHeader, "application/json") || !strings.Contains(acceptHeader, "text/event-stream") {
+			t.Fatalf("expected streamable-http accept header to include application/json and text/event-stream, got %q", acceptHeader)
+		}
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode remote mcp request: %v", err)
+		}
+		method, _ := req["method"].(string)
+		id := req["id"]
+		w.Header().Set("Content-Type", "application/json")
+		switch method {
+		case "initialize":
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"protocolVersion": "2024-11-05", "capabilities": map[string]any{}}})
+		case "notifications/initialized":
+			if _, hasID := req["id"]; hasID {
+				t.Fatalf("expected notifications/initialized to be sent without an id, got %+v", req)
+			}
+			w.WriteHeader(http.StatusAccepted)
+		case "tools/list":
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"tools": []map[string]any{{"name": "lookup", "title": "Lookup", "description": "Lookup tool", "inputSchema": map[string]any{"type": "object"}}}}})
+		case "tools/call":
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"content": []map[string]any{{"type": "text", "text": "remote ok"}}}})
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32601, "message": "method not found"}})
+		}
+	}))
+	defer remote.Close()
+
+	server, _, err := manager.CreateServer(ctx, CreateServerInput{
+		ServerID:         "remote-mcp",
+		DisplayName:      "Remote MCP",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:remote-mcp:lifecycle.start",
+		TransportKind:    TransportKindStreamableHTTP,
+		Endpoint:         remote.URL,
+		AutoRestart:      true,
+	})
+	if err != nil {
+		t.Fatalf("CreateServer returned error: %v", err)
+	}
+	if server.TransportKind != TransportKindStreamableHTTP {
+		t.Fatalf("expected streamable-http server, got %+v", server)
+	}
+
+	started, err := manager.Start(ctx, "remote-mcp", "manager-test")
+	if err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	if started.Server.State.Status != LifecycleStatusHealthy || started.ExecutionID != "" {
+		t.Fatalf("expected healthy remote server without sandbox execution, got %+v", started)
+	}
+
+	if _, err := manager.UpdateToolExposure(ctx, "remote-mcp", "lookup", UpdateExposureInput{RuntimeSurface: "chat", ExposureMode: ExposureModeAllow, Active: true}); err != nil {
+		t.Fatalf("UpdateToolExposure returned error: %v", err)
+	}
+	authz, err := manager.AuthorizeTool(ctx, "remote-mcp", "lookup", AuthorizeToolInput{RuntimeSurface: "chat", RequestedBy: "manager-test"})
+	if err != nil {
+		t.Fatalf("AuthorizeTool returned error: %v", err)
+	}
+	if authz.Status != ToolAuthorizationStatusAllowed {
+		t.Fatalf("expected allowed authorization, got %+v", authz)
+	}
+	result, err := manager.CallTool(ctx, "remote-mcp", "lookup", map[string]any{"query": "hello"}, authz)
+	if err != nil {
+		t.Fatalf("CallTool returned error: %v", err)
+	}
+	if result.FailureClass != "" || result.SessionID == "" {
+		t.Fatalf("unexpected remote call result: %+v", result)
+	}
+}
+
+func TestInstallCatalogEntryBlocksManualServerIDCollision(t *testing.T) {
+	manager, _ := newTestManager(t)
+	ctx := context.Background()
+
+	if _, _, err := manager.CreateServer(ctx, CreateServerInput{
+		ServerID:         "filesystem",
+		DisplayName:      "Manual Filesystem",
+		Enabled:          false,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:filesystem:lifecycle.start",
+		TransportKind:    TransportKindStdio,
+		Command:          os.Args[0],
+		Args:             []string{"-test.run=TestMCPHelperProcess", "--"},
+		WorkingDir:       t.TempDir(),
+	}); err != nil {
+		t.Fatalf("CreateServer returned error: %v", err)
+	}
+
+	result, err := manager.InstallCatalogEntry(ctx, "filesystem", CatalogInstallInput{
+		Command:    os.Args[0],
+		Args:       []string{"-test.run=TestMCPHelperProcess", "--"},
+		WorkingDir: t.TempDir(),
+	}, InstallMethodAPI)
+	if err != nil {
+		t.Fatalf("InstallCatalogEntry returned error: %v", err)
+	}
+	if result.Status != "blocked" || result.AvailabilityStatus != AvailabilityStatusBlocked {
+		t.Fatalf("expected blocked install on manual id collision, got %+v", result)
+	}
+	if !strings.Contains(result.AvailabilityReason, "manual MCP server") {
+		t.Fatalf("expected manual collision reason, got %+v", result)
+	}
+}
+
+func TestResolveMCPSecretsIgnoresProcessEnvironment(t *testing.T) {
+	t.Setenv("MCP_ENV_ONLY", "prod-secret")
+
+	resolved, err := ResolveMCPSecrets(t.TempDir(), []string{"MCP_ENV_ONLY"})
+	if err != nil {
+		t.Fatalf("ResolveMCPSecrets returned error: %v", err)
+	}
+	if _, ok := resolved["MCP_ENV_ONLY"]; ok {
+		t.Fatalf("expected process environment to be ignored, got %+v", resolved)
+	}
+}
+
+func TestRedactStringRedactsCommonDerivedSecretForms(t *testing.T) {
+	secret := "top/secret+value"
+	cases := []string{
+		"literal=" + secret,
+		"url=" + url.QueryEscape(secret),
+		"b64=" + base64.StdEncoding.EncodeToString([]byte(secret)),
+		"rawb64=" + base64.RawStdEncoding.EncodeToString([]byte(secret)),
+		"urlb64=" + base64.URLEncoding.EncodeToString([]byte(secret)),
+		"rawurlb64=" + base64.RawURLEncoding.EncodeToString([]byte(secret)),
+		"hex=" + hex.EncodeToString([]byte(secret)),
+		"hexupper=" + strings.ToUpper(hex.EncodeToString([]byte(secret))),
+	}
+	for _, input := range cases {
+		redacted := redactString(input, map[string]string{"SECRET": secret})
+		if strings.Contains(redacted, secret) || strings.Contains(redacted, url.QueryEscape(secret)) {
+			t.Fatalf("expected secret-derived value to be redacted, input=%q output=%q", input, redacted)
+		}
+		if !strings.Contains(redacted, "[REDACTED]") {
+			t.Fatalf("expected redaction marker, input=%q output=%q", input, redacted)
+		}
+	}
+}
+
 func newTestManager(t *testing.T) (*Manager, *sandbox.Manager) {
 	t.Helper()
 
 	dataDir := filepath.Join(t.TempDir(), "dope")
 	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
+	writeMCPSecretsFileForTest(t, dataDir, map[string]string{
+		"GO_WANT_MCP_HELPER": "1",
+		"MCP_HELPER_TOOLS":   `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`,
+	})
 	sqliteStore, err := store.NewSQLiteStore(dataDir)
 	if err != nil {
 		t.Fatalf("NewSQLiteStore returned error: %v", err)
@@ -321,7 +547,7 @@ func newTestManager(t *testing.T) (*Manager, *sandbox.Manager) {
 		_ = sandboxes.Close(context.Background())
 	})
 
-	return NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, NewStdioTransport()), sandboxes
+	return NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, NewTransportMux(NewStdioTransport(), nil)), sandboxes
 }
 
 func waitForServerStatus(t *testing.T, manager *Manager, serverID string, status LifecycleStatus) {
@@ -354,6 +580,20 @@ func testServerInput(t *testing.T, enabled bool) CreateServerInput {
 		WorkingDir:       t.TempDir(),
 		SecretRefs:       []string{"GO_WANT_MCP_HELPER", "MCP_HELPER_TOOLS"},
 		AutoRestart:      enabled,
+	}
+}
+
+func writeMCPSecretsFileForTest(t *testing.T, dataDir string, values map[string]string) {
+	t.Helper()
+	payload, err := json.Marshal(values)
+	if err != nil {
+		t.Fatalf("marshal mcp secrets: %v", err)
+	}
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("create data dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, mcpSecretsFileName), payload, 0o600); err != nil {
+		t.Fatalf("write mcp secrets: %v", err)
 	}
 }
 

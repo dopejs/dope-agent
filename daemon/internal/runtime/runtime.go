@@ -105,25 +105,32 @@ type ToolCallInvocationKind string
 const (
 	ToolCallInvocationKindLocalTool ToolCallInvocationKind = "local_tool"
 	ToolCallInvocationKindSkill     ToolCallInvocationKind = "skill"
+	ToolCallInvocationKindMCPTool   ToolCallInvocationKind = "mcp_tool"
 )
 
 type ToolCall struct {
-	ToolCallID         string                 `json:"toolCallId"`
-	RunID              string                 `json:"runId"`
-	StepID             string                 `json:"stepId"`
-	InvocationKind     ToolCallInvocationKind `json:"invocationKind,omitempty"`
-	CapabilityID       string                 `json:"capabilityId,omitempty"`
-	SkillID            string                 `json:"skillId,omitempty"`
-	ToolName           string                 `json:"toolName"`
-	Status             ToolCallStatus         `json:"status"`
-	SandboxExecutionID string                 `json:"sandboxExecutionId,omitempty"`
-	FailureClass       string                 `json:"failureClass,omitempty"`
-	CreatedAt          time.Time              `json:"createdAt"`
-	UpdatedAt          time.Time              `json:"updatedAt"`
-	Input              any                    `json:"input,omitempty"`
-	Output             any                    `json:"output,omitempty"`
-	Error              string                 `json:"error,omitempty"`
-	Sandbox            map[string]any         `json:"sandbox,omitempty"`
+	ToolCallID          string                 `json:"toolCallId"`
+	RunID               string                 `json:"runId"`
+	StepID              string                 `json:"stepId"`
+	InvocationKind      ToolCallInvocationKind `json:"invocationKind,omitempty"`
+	CapabilityID        string                 `json:"capabilityId,omitempty"`
+	SkillID             string                 `json:"skillId,omitempty"`
+	MCPServerID         string                 `json:"mcpServerId,omitempty"`
+	MCPServerName       string                 `json:"mcpServerName,omitempty"`
+	MCPToolName         string                 `json:"mcpToolName,omitempty"`
+	MCPTransportKind    string                 `json:"mcpTransportKind,omitempty"`
+	MCPSessionID        string                 `json:"mcpSessionId,omitempty"`
+	AuthorizationResult string                 `json:"authorizationResult,omitempty"`
+	ToolName            string                 `json:"toolName"`
+	Status              ToolCallStatus         `json:"status"`
+	SandboxExecutionID  string                 `json:"sandboxExecutionId,omitempty"`
+	FailureClass        string                 `json:"failureClass,omitempty"`
+	CreatedAt           time.Time              `json:"createdAt"`
+	UpdatedAt           time.Time              `json:"updatedAt"`
+	Input               any                    `json:"input,omitempty"`
+	Output              any                    `json:"output,omitempty"`
+	Error               string                 `json:"error,omitempty"`
+	Sandbox             map[string]any         `json:"sandbox,omitempty"`
 }
 
 type RunCheckpoint struct {
@@ -134,14 +141,20 @@ type RunCheckpoint struct {
 }
 
 type CreateToolCallInput struct {
-	InvocationKind     ToolCallInvocationKind `json:"invocationKind,omitempty"`
-	CapabilityID       string                 `json:"capabilityId"`
-	SkillID            string                 `json:"skillId"`
-	ToolName           string                 `json:"toolName"`
-	Input              any                    `json:"input"`
-	SandboxExecutionID string                 `json:"sandboxExecutionId,omitempty"`
-	FailureClass       string                 `json:"failureClass,omitempty"`
-	Sandbox            map[string]any         `json:"sandbox,omitempty"`
+	InvocationKind      ToolCallInvocationKind `json:"invocationKind,omitempty"`
+	CapabilityID        string                 `json:"capabilityId"`
+	SkillID             string                 `json:"skillId"`
+	MCPServerID         string                 `json:"mcpServerId"`
+	MCPServerName       string                 `json:"mcpServerName"`
+	MCPToolName         string                 `json:"mcpToolName"`
+	MCPTransportKind    string                 `json:"mcpTransportKind"`
+	MCPSessionID        string                 `json:"mcpSessionId"`
+	AuthorizationResult string                 `json:"authorizationResult"`
+	ToolName            string                 `json:"toolName"`
+	Input               any                    `json:"input"`
+	SandboxExecutionID  string                 `json:"sandboxExecutionId,omitempty"`
+	FailureClass        string                 `json:"failureClass,omitempty"`
+	Sandbox             map[string]any         `json:"sandbox,omitempty"`
 }
 
 type CompleteToolCallInput struct {
@@ -543,7 +556,7 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 	if input.ToolName == "" {
 		return ToolCall{}, ErrToolNameRequired
 	}
-	if strings.TrimSpace(input.CapabilityID) == "" && strings.TrimSpace(input.SkillID) == "" {
+	if strings.TrimSpace(input.CapabilityID) == "" && strings.TrimSpace(input.SkillID) == "" && strings.TrimSpace(input.MCPServerID) == "" {
 		return ToolCall{}, ErrToolTargetRequired
 	}
 
@@ -564,24 +577,32 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 	case invocationKind != "":
 	case strings.TrimSpace(input.SkillID) != "":
 		invocationKind = ToolCallInvocationKindSkill
+	case strings.TrimSpace(input.MCPServerID) != "":
+		invocationKind = ToolCallInvocationKindMCPTool
 	default:
 		invocationKind = ToolCallInvocationKindLocalTool
 	}
 	toolCall := ToolCall{
-		ToolCallID:         newToolCallID(),
-		RunID:              runID,
-		StepID:             stepID,
-		InvocationKind:     invocationKind,
-		CapabilityID:       strings.TrimSpace(input.CapabilityID),
-		SkillID:            strings.TrimSpace(input.SkillID),
-		ToolName:           input.ToolName,
-		Status:             ToolCallStatusRequested,
-		SandboxExecutionID: strings.TrimSpace(input.SandboxExecutionID),
-		FailureClass:       strings.TrimSpace(input.FailureClass),
-		CreatedAt:          now,
-		UpdatedAt:          now,
-		Input:              input.Input,
-		Sandbox:            cloneAnyMap(input.Sandbox),
+		ToolCallID:          newToolCallID(),
+		RunID:               runID,
+		StepID:              stepID,
+		InvocationKind:      invocationKind,
+		CapabilityID:        strings.TrimSpace(input.CapabilityID),
+		SkillID:             strings.TrimSpace(input.SkillID),
+		MCPServerID:         strings.TrimSpace(input.MCPServerID),
+		MCPServerName:       strings.TrimSpace(input.MCPServerName),
+		MCPToolName:         strings.TrimSpace(input.MCPToolName),
+		MCPTransportKind:    strings.TrimSpace(input.MCPTransportKind),
+		MCPSessionID:        strings.TrimSpace(input.MCPSessionID),
+		AuthorizationResult: strings.TrimSpace(input.AuthorizationResult),
+		ToolName:            input.ToolName,
+		Status:              ToolCallStatusRequested,
+		SandboxExecutionID:  strings.TrimSpace(input.SandboxExecutionID),
+		FailureClass:        strings.TrimSpace(input.FailureClass),
+		CreatedAt:           now,
+		UpdatedAt:           now,
+		Input:               input.Input,
+		Sandbox:             cloneAnyMap(input.Sandbox),
 	}
 
 	m.toolCallsByID[toolCall.ToolCallID] = toolCall

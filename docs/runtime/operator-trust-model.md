@@ -66,7 +66,15 @@ For MCP:
 
 - MCP server register, start, stop, restart, and cancel stay daemon-managed and do not require routine approval
 - MCP tool exposure can be marked approval-required per tool and runtime surface
+- MCP tool invocation now runs through the existing runtime tool-call plane rather than a
+  parallel MCP-only invoke API
+- bundled MCP catalog install can happen through daemon API or the repo helper script, but
+  both paths converge on the same daemon-managed MCP server resource and audit history
+- `streamable-http` transport health and failure state stay explicit beside existing stdio
+  subprocess lifecycle semantics
 - operator-visible MCP resources still project declaration-backed provenance and redacted secret-scope summaries
+- operator-visible MCP tool-call output, history, and event payloads remain redacted when
+  installed or invoked MCP servers touch secret-backed configuration
 
 ## Security Assumptions
 

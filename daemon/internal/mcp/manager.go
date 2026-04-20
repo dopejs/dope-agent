@@ -2,10 +2,12 @@ package mcp
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +39,16 @@ const (
 	resourceKindTool   = "mcp_tool"
 )
 
+var mcpSessionStartTimeout = 10 * time.Second
+
+func SetSessionStartTimeoutForTest(timeout time.Duration) func() {
+	previous := mcpSessionStartTimeout
+	mcpSessionStartTimeout = timeout
+	return func() {
+		mcpSessionStartTimeout = previous
+	}
+}
+
 type attachedExecutionStarter interface {
 	StartAttachedExecution(context.Context, sandbox.ExecutionRequest) (sandbox.Execution, *sandbox.AttachedExecution, error)
 	CancelExecution(executionID string) (sandbox.Execution, bool, error)
@@ -46,8 +58,10 @@ type attachedExecutionStarter interface {
 }
 
 type sessionState struct {
+	sessionID       string
 	executionID     string
 	session         Session
+	transportKind   TransportKind
 	stopRequested   bool
 	cancelRequested bool
 }
@@ -71,7 +85,7 @@ type Manager struct {
 
 func NewManager(cfg config.Config, sqliteStore *store.SQLiteStore, eventBus *events.Bus, sandboxManager attachedExecutionStarter, policyEngine *policy.Engine, transport Transport) *Manager {
 	if transport == nil {
-		transport = NewStdioTransport()
+		transport = NewTransportMux(nil, nil)
 	}
 	return &Manager{
 		cfg:       cfg,
@@ -86,6 +100,19 @@ func NewManager(cfg config.Config, sqliteStore *store.SQLiteStore, eventBus *eve
 		exposure:  map[string]map[string]map[string]ToolExposureRule{},
 		sessions:  map[string]*sessionState{},
 	}
+}
+
+func (m *Manager) ListCatalog() []CatalogEntry {
+	return bundledCatalogEntries(m.cfg)
+}
+
+func (m *Manager) GetCatalogEntry(entryID string) (CatalogEntry, bool) {
+	for _, entry := range bundledCatalogEntries(m.cfg) {
+		if entry.ID == strings.TrimSpace(entryID) {
+			return entry, true
+		}
+	}
+	return CatalogEntry{}, false
 }
 
 func (m *Manager) Restore(ctx context.Context) error {
@@ -369,6 +396,7 @@ func (m *Manager) AuthorizeTool(ctx context.Context, serverID, toolName string, 
 		m.mu.RUnlock()
 		return ToolAuthorizationResponse{}, ErrToolNameRequired
 	}
+	active := m.sessions[serverID]
 	rule, hasRule := m.exposure[serverID][toolName][runtimeSurface]
 	resource := m.buildToolResourceLocked(server, tool)
 	m.mu.RUnlock()
@@ -395,10 +423,11 @@ func (m *Manager) AuthorizeTool(ctx context.Context, serverID, toolName string, 
 			return ToolAuthorizationResponse{}, err
 		}
 		return ToolAuthorizationResponse{
-			Status:  ToolAuthorizationStatusAllowed,
-			Tool:    resource,
-			Sandbox: consumer,
-			Message: "tool use is allowed",
+			Status:    ToolAuthorizationStatusAllowed,
+			Tool:      resource,
+			SessionID: sessionID(active),
+			Sandbox:   consumer,
+			Message:   "tool use is allowed",
 		}, nil
 	}
 
@@ -456,12 +485,13 @@ func (m *Manager) AuthorizeTool(ctx context.Context, serverID, toolName string, 
 			return ToolAuthorizationResponse{}, err
 		}
 		return ToolAuthorizationResponse{
-			Status:   ToolAuthorizationStatusPending,
-			Tool:     resource,
-			Message:  "tool use requires approval",
-			Approval: &approval,
-			Decision: &decision,
-			Sandbox:  consumer,
+			Status:    ToolAuthorizationStatusPending,
+			Tool:      resource,
+			SessionID: sessionID(active),
+			Message:   "tool use requires approval",
+			Approval:  &approval,
+			Decision:  &decision,
+			Sandbox:   consumer,
 		}, nil
 	}
 
@@ -483,10 +513,11 @@ func (m *Manager) AuthorizeTool(ctx context.Context, serverID, toolName string, 
 			return ToolAuthorizationResponse{}, err
 		}
 		return ToolAuthorizationResponse{
-			Status:  ToolAuthorizationStatusAllowed,
-			Tool:    resource,
-			Message: "tool use is allowed by approval",
-			Sandbox: consumer,
+			Status:    ToolAuthorizationStatusAllowed,
+			Tool:      resource,
+			SessionID: sessionID(active),
+			Message:   "tool use is allowed by approval",
+			Sandbox:   consumer,
 		}, nil
 	case policy.ApprovalStatusRejected:
 		consumer.PolicyRecord.Decision = sandbox.DecisionResolutionDeny
@@ -497,11 +528,12 @@ func (m *Manager) AuthorizeTool(ctx context.Context, serverID, toolName string, 
 			return ToolAuthorizationResponse{}, err
 		}
 		return ToolAuthorizationResponse{
-			Status:   ToolAuthorizationStatusRejected,
-			Tool:     resource,
-			Message:  "approval was rejected",
-			Approval: &approval,
-			Sandbox:  consumer,
+			Status:    ToolAuthorizationStatusRejected,
+			Tool:      resource,
+			SessionID: sessionID(active),
+			Message:   "approval was rejected",
+			Approval:  &approval,
+			Sandbox:   consumer,
 		}, nil
 	default:
 		consumer.PolicyRecord.Decision = sandbox.DecisionResolutionAsk
@@ -512,13 +544,166 @@ func (m *Manager) AuthorizeTool(ctx context.Context, serverID, toolName string, 
 			return ToolAuthorizationResponse{}, err
 		}
 		return ToolAuthorizationResponse{
-			Status:   ToolAuthorizationStatusPending,
-			Tool:     resource,
-			Message:  "approval is still pending",
-			Approval: &approval,
-			Sandbox:  consumer,
+			Status:    ToolAuthorizationStatusPending,
+			Tool:      resource,
+			SessionID: sessionID(active),
+			Message:   "approval is still pending",
+			Approval:  &approval,
+			Sandbox:   consumer,
 		}, nil
 	}
+}
+
+func (m *Manager) InstallCatalogEntry(ctx context.Context, entryID string, input CatalogInstallInput, method InstallMethod) (CatalogInstallResult, error) {
+	entry, ok := m.GetCatalogEntry(entryID)
+	if !ok {
+		return CatalogInstallResult{}, ErrServerNotFound
+	}
+	installID := fmt.Sprintf("mcp_install_%d", time.Now().UTC().UnixNano())
+	requestedPayload := map[string]any{
+		"installId":      installID,
+		"catalogEntryId": entry.ID,
+		"method":         method,
+		"environment":    string(m.cfg.Environment),
+	}
+	requestedEvent, err := m.publishAuditEvent(ctx, "mcp.catalog_install_requested", events.Resource{Kind: "mcp_catalog_install", ID: installID}, requestedPayload)
+	if err != nil {
+		return CatalogInstallResult{}, err
+	}
+	createInput := mergeCatalogInstallInput(entry, input, method, m.cfg.Environment)
+	installAvailability, installReason := evaluateCatalogInstallSpecAvailability(m.cfg, createInput, entry.SecretRequirements)
+	if installAvailability != AvailabilityStatusReady {
+		result := CatalogInstallResult{
+			InstallID:          installID,
+			Status:             "blocked",
+			CatalogEntryID:     entry.ID,
+			ServerID:           createInput.ServerID,
+			AvailabilityStatus: installAvailability,
+			AvailabilityReason: installReason,
+			AuditEventIDs:      []string{requestedEvent.EventID},
+		}
+		failedEvent, failedErr := m.publishAuditEvent(ctx, "mcp.catalog_install_failed", events.Resource{Kind: "mcp_catalog_install", ID: installID}, map[string]any{
+			"installId":          installID,
+			"catalogEntryId":     entry.ID,
+			"method":             method,
+			"status":             result.Status,
+			"availabilityStatus": result.AvailabilityStatus,
+			"availabilityReason": result.AvailabilityReason,
+		})
+		if failedErr == nil {
+			result.AuditEventIDs = append(result.AuditEventIDs, failedEvent.EventID)
+		}
+		return result, nil
+	}
+	if existing, ok := m.GetServer(createInput.ServerID); ok {
+		if reason, blocked := catalogInstallConflictReason(existing, entry.ID); blocked {
+			result := CatalogInstallResult{
+				InstallID:          installID,
+				Status:             "blocked",
+				CatalogEntryID:     entry.ID,
+				ServerID:           existing.ServerID,
+				AvailabilityStatus: AvailabilityStatusBlocked,
+				AvailabilityReason: reason,
+				AuditEventIDs:      []string{requestedEvent.EventID},
+			}
+			failedEvent, failedErr := m.publishAuditEvent(ctx, "mcp.catalog_install_failed", events.Resource{Kind: "mcp_catalog_install", ID: installID}, map[string]any{
+				"installId":          installID,
+				"catalogEntryId":     entry.ID,
+				"serverId":           existing.ServerID,
+				"method":             method,
+				"status":             result.Status,
+				"availabilityStatus": result.AvailabilityStatus,
+				"availabilityReason": result.AvailabilityReason,
+			})
+			if failedErr == nil {
+				result.AuditEventIDs = append(result.AuditEventIDs, failedEvent.EventID)
+			}
+			return result, nil
+		}
+	}
+	resource, _, err := m.CreateServer(ctx, createInput)
+	if err != nil {
+		_, _ = m.publishAuditEvent(ctx, "mcp.catalog_install_failed", events.Resource{Kind: "mcp_catalog_install", ID: installID}, map[string]any{
+			"installId":      installID,
+			"catalogEntryId": entry.ID,
+			"method":         method,
+			"status":         "failed",
+			"reason":         err.Error(),
+		})
+		return CatalogInstallResult{}, err
+	}
+	result := CatalogInstallResult{
+		InstallID:          installID,
+		Status:             "installed",
+		CatalogEntryID:     entry.ID,
+		ServerID:           resource.ServerID,
+		AvailabilityStatus: resource.AvailabilityStatus,
+		AvailabilityReason: resource.AvailabilityReason,
+		AuditEventIDs:      []string{requestedEvent.EventID},
+		Server:             &resource,
+	}
+	completedEvent, err := m.publishAuditEvent(ctx, "mcp.catalog_install_completed", events.Resource{Kind: "mcp_catalog_install", ID: installID}, map[string]any{
+		"installId":          installID,
+		"catalogEntryId":     entry.ID,
+		"serverId":           resource.ServerID,
+		"method":             method,
+		"status":             result.Status,
+		"availabilityStatus": result.AvailabilityStatus,
+		"availabilityReason": result.AvailabilityReason,
+	})
+	if err == nil {
+		result.AuditEventIDs = append(result.AuditEventIDs, completedEvent.EventID)
+	}
+	return result, nil
+}
+
+func (m *Manager) CallTool(ctx context.Context, serverID, toolName string, input any, authorization ToolAuthorizationResponse) (ToolInvocationResult, error) {
+	serverID = strings.TrimSpace(serverID)
+	toolName = strings.TrimSpace(toolName)
+	if serverID == "" {
+		return ToolInvocationResult{FailureClass: "blocked", Error: ErrServerIDRequired.Error()}, ErrServerIDRequired
+	}
+	if toolName == "" {
+		return ToolInvocationResult{FailureClass: "blocked", Error: ErrToolNameRequired.Error()}, ErrToolNameRequired
+	}
+	if authorization.Status != ToolAuthorizationStatusAllowed {
+		return ToolInvocationResult{
+			FailureClass: "blocked",
+			Error:        firstNonEmpty(authorization.Message, "tool use is not allowed"),
+		}, nil
+	}
+
+	m.mu.RLock()
+	active := m.sessions[serverID]
+	server, ok := m.servers[serverID]
+	m.mu.RUnlock()
+	if !ok {
+		return ToolInvocationResult{FailureClass: "server_unhealthy", Error: ErrServerNotFound.Error()}, ErrServerNotFound
+	}
+	if active == nil || active.session == nil {
+		return ToolInvocationResult{FailureClass: "server_unhealthy", Error: "mcp server is not healthy"}, nil
+	}
+	output, err := active.session.CallTool(ctx, toolName, input)
+	if err != nil {
+		return ToolInvocationResult{
+			SessionID:    active.sessionID,
+			FailureClass: "transport_failed",
+			Error:        err.Error(),
+		}, nil
+	}
+	redacted := m.redactValue(server, output)
+	if flag, ok := output["isError"].(bool); ok && flag {
+		return ToolInvocationResult{
+			SessionID:    active.sessionID,
+			Output:       redacted,
+			FailureClass: "remote_tool_error",
+			Error:        firstNonEmpty(stringFromMap(output, "message"), "remote MCP tool returned an error"),
+		}, nil
+	}
+	return ToolInvocationResult{
+		SessionID: active.sessionID,
+		Output:    redacted,
+	}, nil
 }
 
 func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (LifecycleResponse, error) {
@@ -529,9 +714,6 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 	}
 	if m.transport == nil {
 		return LifecycleResponse{}, ErrTransportNotConfigured
-	}
-	if m.sandboxes == nil {
-		return LifecycleResponse{}, ErrSandboxManagerMissing
 	}
 
 	m.mu.Lock()
@@ -591,72 +773,93 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 			PreflightMs:   time.Since(startedAt).Milliseconds(),
 		}, nil
 	}
-	request, err := m.buildExecutionRequest(ctx, server, consumer, "")
-	if err != nil {
-		state = m.recordFailure(ctx, serverID, state, LifecycleStatusDenied, err.Error(), "invalid_configuration")
-		resource, _ = m.GetServerResource(serverID)
-		return LifecycleResponse{
-			Action:        LifecycleActionStart,
-			Server:        resource,
-			FailureClass:  "invalid_configuration",
-			Blocked:       true,
-			BlockedReason: err.Error(),
-			PreflightMs:   time.Since(startedAt).Milliseconds(),
-		}, nil
-	}
-	execution, attached, err := m.sandboxes.StartAttachedExecution(ctx, request)
-	if err != nil {
-		state = m.recordFailure(ctx, serverID, state, LifecycleStatusFailed, err.Error(), "launch_failed")
-		resource, _ = m.GetServerResource(serverID)
-		return LifecycleResponse{
-			Action:       LifecycleActionStart,
-			Server:       resource,
-			FailureClass: "launch_failed",
-			PreflightMs:  time.Since(startedAt).Milliseconds(),
-		}, nil
-	}
-	if attached == nil {
-		state = m.updateStateFromExecution(ctx, serverID, state, execution, false)
-		resource, _ = m.GetServerResource(serverID)
-		return LifecycleResponse{
-			Action:        LifecycleActionStart,
-			Server:        resource,
-			ExecutionID:   execution.ExecutionID,
-			FailureClass:  classifyExecutionFailure(execution),
-			Blocked:       true,
-			BlockedReason: firstNonEmpty(execution.Result.Error, execution.Decision.Explanation, state.HealthReason),
-			PreflightMs:   time.Since(startedAt).Milliseconds(),
-		}, nil
+	var (
+		execution   sandbox.Execution
+		executionID string
+		pipes       SessionPipes
+	)
+	if server.TransportKind == TransportKindStdio {
+		if m.sandboxes == nil {
+			return LifecycleResponse{}, ErrSandboxManagerMissing
+		}
+		request, err := m.buildExecutionRequest(ctx, server, consumer, "")
+		if err != nil {
+			state = m.recordFailure(ctx, serverID, state, LifecycleStatusDenied, err.Error(), "invalid_configuration")
+			resource, _ = m.GetServerResource(serverID)
+			return LifecycleResponse{
+				Action:        LifecycleActionStart,
+				Server:        resource,
+				FailureClass:  "invalid_configuration",
+				Blocked:       true,
+				BlockedReason: err.Error(),
+				PreflightMs:   time.Since(startedAt).Milliseconds(),
+			}, nil
+		}
+		attachedExecution, attached, err := m.sandboxes.StartAttachedExecution(ctx, request)
+		if err != nil {
+			state = m.recordFailure(ctx, serverID, state, LifecycleStatusFailed, err.Error(), "launch_failed")
+			resource, _ = m.GetServerResource(serverID)
+			return LifecycleResponse{
+				Action:       LifecycleActionStart,
+				Server:       resource,
+				FailureClass: "launch_failed",
+				PreflightMs:  time.Since(startedAt).Milliseconds(),
+			}, nil
+		}
+		execution = attachedExecution
+		executionID = attachedExecution.ExecutionID
+		if attached == nil {
+			state = m.updateStateFromExecution(ctx, serverID, state, execution, false)
+			resource, _ = m.GetServerResource(serverID)
+			return LifecycleResponse{
+				Action:        LifecycleActionStart,
+				Server:        resource,
+				ExecutionID:   execution.ExecutionID,
+				FailureClass:  classifyExecutionFailure(execution),
+				Blocked:       true,
+				BlockedReason: firstNonEmpty(execution.Result.Error, execution.Decision.Explanation, state.HealthReason),
+				PreflightMs:   time.Since(startedAt).Milliseconds(),
+			}, nil
+		}
+		pipes = SessionPipes{
+			Stdin:  attached.Stdin,
+			Stdout: attached.Stdout,
+			Stderr: attached.Stderr,
+		}
 	}
 
-	session, err := m.transport.Open(ctx, server, SessionPipes{
-		Stdin:  attached.Stdin,
-		Stdout: attached.Stdout,
-		Stderr: attached.Stderr,
-	})
+	openCtx, cancelOpen := context.WithTimeout(ctx, mcpSessionStartTimeout)
+	session, err := m.transport.Open(openCtx, server, pipes)
+	cancelOpen()
 	if err != nil {
-		_, _, _ = m.sandboxes.CancelExecution(execution.ExecutionID)
+		if executionID != "" && m.sandboxes != nil {
+			_, _, _ = m.sandboxes.CancelExecution(executionID)
+		}
 		state = m.recordFailure(ctx, serverID, state, LifecycleStatusFailed, err.Error(), "transport_runtime_failure")
 		resource, _ = m.GetServerResource(serverID)
 		return LifecycleResponse{
 			Action:       LifecycleActionStart,
 			Server:       resource,
-			ExecutionID:  execution.ExecutionID,
+			ExecutionID:  executionID,
 			FailureClass: "transport_runtime_failure",
 			PreflightMs:  time.Since(startedAt).Milliseconds(),
 		}, nil
 	}
 
-	tools, err := session.ListTools(ctx)
+	listCtx, cancelList := context.WithTimeout(ctx, mcpSessionStartTimeout)
+	tools, err := session.ListTools(listCtx)
+	cancelList()
 	if err != nil {
 		_ = session.Close()
-		_, _, _ = m.sandboxes.CancelExecution(execution.ExecutionID)
+		if executionID != "" && m.sandboxes != nil {
+			_, _, _ = m.sandboxes.CancelExecution(executionID)
+		}
 		state = m.recordFailure(ctx, serverID, state, LifecycleStatusFailed, err.Error(), "transport_runtime_failure")
 		resource, _ = m.GetServerResource(serverID)
 		return LifecycleResponse{
 			Action:       LifecycleActionStart,
 			Server:       resource,
-			ExecutionID:  execution.ExecutionID,
+			ExecutionID:  executionID,
 			FailureClass: "transport_runtime_failure",
 			PreflightMs:  time.Since(startedAt).Milliseconds(),
 		}, nil
@@ -667,7 +870,7 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 		state.RestartCount++
 	}
 	state.Status = LifecycleStatusHealthy
-	state.LastExecutionID = execution.ExecutionID
+	state.LastExecutionID = executionID
 	state.LastStartedAt = &now
 	state.LastHeartbeatAt = &now
 	state.HealthReason = ""
@@ -677,8 +880,10 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 	m.mu.Lock()
 	m.states[serverID] = state
 	m.sessions[serverID] = &sessionState{
-		executionID: execution.ExecutionID,
-		session:     session,
+		sessionID:     session.ID(),
+		executionID:   executionID,
+		session:       session,
+		transportKind: server.TransportKind,
 	}
 	if m.tools[serverID] == nil {
 		m.tools[serverID] = map[string]Tool{}
@@ -709,7 +914,8 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 	if err := m.publishEvent(ctx, "mcp", "mcp.server_started", events.Resource{Kind: resourceKindServer, ID: serverID}, map[string]any{
 		"serverId":      serverID,
 		"status":        state.Status,
-		"executionId":   execution.ExecutionID,
+		"executionId":   executionID,
+		"sessionId":     session.ID(),
 		"toolCount":     len(tools),
 		"transportKind": server.TransportKind,
 	}); err != nil {
@@ -719,13 +925,13 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 		return LifecycleResponse{}, err
 	}
 
-	go m.watchSession(serverID, execution.ExecutionID, session)
+	go m.watchSession(serverID, executionID, session)
 
 	resource, _ = m.GetServerResource(serverID)
 	return LifecycleResponse{
 		Action:       LifecycleActionStart,
 		Server:       resource,
-		ExecutionID:  execution.ExecutionID,
+		ExecutionID:  executionID,
 		PreflightMs:  time.Since(startedAt).Milliseconds(),
 		Idempotent:   false,
 		FailureClass: "",
@@ -777,16 +983,29 @@ func (m *Manager) upsertServer(ctx context.Context, createInput CreateServerInpu
 			created = false
 		} else {
 			server = Server{
-				ServerID:      serverID,
-				Source:        SourceAPI,
-				CreatedAt:     now,
-				TransportKind: TransportKindStdio,
-				Declaration:   defaultDeclaration(),
+				ServerID:         serverID,
+				Source:           SourceAPI,
+				OriginKind:       OriginKindManual,
+				InstallMethod:    InstallMethodAPI,
+				EnvironmentScope: string(m.cfg.Environment),
+				CreatedAt:        now,
+				TransportKind:    TransportKindStdio,
+				Declaration:      defaultDeclaration(),
 			}
 			created = true
 			m.serverIDs = append(m.serverIDs, serverID)
 		}
 		server.DisplayName = strings.TrimSpace(createInput.DisplayName)
+		if createInput.OriginKind != "" {
+			server.OriginKind = createInput.OriginKind
+		}
+		server.CatalogEntryID = strings.TrimSpace(createInput.CatalogEntryID)
+		if createInput.InstallMethod != "" {
+			server.InstallMethod = createInput.InstallMethod
+		}
+		if strings.TrimSpace(createInput.EnvironmentScope) != "" {
+			server.EnvironmentScope = strings.TrimSpace(createInput.EnvironmentScope)
+		}
 		server.Enabled = createInput.Enabled
 		server.SandboxProfileID = strings.TrimSpace(createInput.SandboxProfileID)
 		server.DeclarationID = strings.TrimSpace(createInput.DeclarationID)
@@ -800,9 +1019,11 @@ func (m *Manager) upsertServer(ctx context.Context, createInput CreateServerInpu
 		}
 		server.Command = strings.TrimSpace(createInput.Command)
 		server.Args = cloneStrings(createInput.Args)
+		server.Endpoint = strings.TrimSpace(createInput.Endpoint)
 		server.WorkingDir = strings.TrimSpace(createInput.WorkingDir)
 		server.SecretRefs = cleanStrings(createInput.SecretRefs)
 		server.AutoRestart = createInput.AutoRestart
+		server.OperatorModified = createInput.OperatorModified
 		server.Source = SourceAPI
 		server.UpdatedAt = now
 	} else {
@@ -814,36 +1035,51 @@ func (m *Manager) upsertServer(ctx context.Context, createInput CreateServerInpu
 		created = false
 		if update.input.DisplayName != nil {
 			server.DisplayName = strings.TrimSpace(*update.input.DisplayName)
+			server.OperatorModified = true
 		}
 		if update.input.Enabled != nil {
 			server.Enabled = *update.input.Enabled
+			server.OperatorModified = true
 		}
 		if update.input.SandboxProfileID != nil {
 			server.SandboxProfileID = strings.TrimSpace(*update.input.SandboxProfileID)
+			server.OperatorModified = true
 		}
 		if update.input.DeclarationID != nil {
 			server.DeclarationID = strings.TrimSpace(*update.input.DeclarationID)
+			server.OperatorModified = true
 		}
 		if update.input.Declaration != nil {
 			server.Declaration = normalizeDeclaration(*update.input.Declaration)
+			server.OperatorModified = true
 		}
 		if update.input.TransportKind != nil {
 			server.TransportKind = *update.input.TransportKind
+			server.OperatorModified = true
 		}
 		if update.input.Command != nil {
 			server.Command = strings.TrimSpace(*update.input.Command)
+			server.OperatorModified = true
 		}
 		if update.input.Args != nil {
 			server.Args = cloneStrings(update.input.Args)
+			server.OperatorModified = true
+		}
+		if update.input.Endpoint != nil {
+			server.Endpoint = strings.TrimSpace(*update.input.Endpoint)
+			server.OperatorModified = true
 		}
 		if update.input.WorkingDir != nil {
 			server.WorkingDir = strings.TrimSpace(*update.input.WorkingDir)
+			server.OperatorModified = true
 		}
 		if update.input.SecretRefs != nil {
 			server.SecretRefs = cleanStrings(update.input.SecretRefs)
+			server.OperatorModified = true
 		}
 		if update.input.AutoRestart != nil {
 			server.AutoRestart = *update.input.AutoRestart
+			server.OperatorModified = true
 		}
 		server.UpdatedAt = now
 	}
@@ -901,7 +1137,7 @@ func (m *Manager) stopOrCancel(ctx context.Context, serverID string, cancel bool
 	}
 	state := m.states[serverID]
 	active := m.sessions[serverID]
-	if active == nil || active.executionID == "" {
+	if active == nil {
 		resource := m.buildServerResourceLocked(server)
 		m.mu.Unlock()
 		action := LifecycleActionStop
@@ -931,6 +1167,44 @@ func (m *Manager) stopOrCancel(ctx context.Context, serverID string, cancel bool
 
 	if err := m.persistState(ctx, state); err != nil {
 		return LifecycleResponse{}, err
+	}
+	if active.executionID == "" {
+		_ = active.session.Close()
+		now := time.Now().UTC()
+		state.Status = LifecycleStatusStopped
+		state.LastStoppedAt = &now
+		state.UpdatedAt = now
+		m.mu.Lock()
+		delete(m.sessions, serverID)
+		m.states[serverID] = state
+		m.mu.Unlock()
+		if err := m.persistState(ctx, state); err != nil {
+			return LifecycleResponse{}, err
+		}
+		action := LifecycleActionStop
+		failureClass := ""
+		if cancel {
+			action = LifecycleActionCancel
+			failureClass = "cancelled"
+		}
+		resource, _ = m.GetServerResource(serverID)
+		if err := m.publishEvent(ctx, "mcp", "mcp.server_stopped", events.Resource{Kind: resourceKindServer, ID: serverID}, map[string]any{
+			"serverId":      serverID,
+			"status":        state.Status,
+			"executionId":   "",
+			"sessionId":     active.sessionID,
+			"cancelled":     cancel,
+			"transportKind": active.transportKind,
+		}); err != nil {
+			return LifecycleResponse{}, err
+		}
+		return LifecycleResponse{
+			Action:       action,
+			Server:       resource,
+			ExecutionID:  "",
+			FailureClass: failureClass,
+			PreflightMs:  time.Since(startedAt).Milliseconds(),
+		}, nil
 	}
 	execution, _, err := m.sandboxes.CancelExecution(executionID)
 	if err != nil {
@@ -971,7 +1245,33 @@ func (m *Manager) watchSession(serverID, executionID string, session Session) {
 	state := m.states[serverID]
 	stopRequested := active != nil && active.stopRequested
 	cancelRequested := active != nil && active.cancelRequested
+	transportKind := TransportKindStdio
+	if active != nil {
+		transportKind = active.transportKind
+	}
 	m.mu.Unlock()
+
+	if executionID == "" {
+		if stopRequested || cancelRequested {
+			now := time.Now().UTC()
+			state.Status = LifecycleStatusStopped
+			state.LastStoppedAt = &now
+			state.UpdatedAt = now
+			m.mu.Lock()
+			m.states[serverID] = state
+			m.mu.Unlock()
+			_ = m.persistState(context.Background(), state)
+			_ = m.publishHealthChanged(context.Background(), serverID, state.Status, state.HealthReason)
+			return
+		}
+		if err != nil {
+			state = m.recordFailure(context.Background(), serverID, state, LifecycleStatusFailed, err.Error(), "transport_runtime_failure")
+		}
+		if state.Status == LifecycleStatusFailed && server.Enabled && server.AutoRestart {
+			m.scheduleRestart(serverID, state)
+		}
+		return
+	}
 
 	execution, ok := m.sandboxes.GetExecution(executionID)
 	if ok {
@@ -983,6 +1283,7 @@ func (m *Manager) watchSession(serverID, executionID string, session Session) {
 	if state.Status == LifecycleStatusFailed && server.Enabled && server.AutoRestart {
 		m.scheduleRestart(serverID, state)
 	}
+	_ = transportKind
 }
 
 func (m *Manager) scheduleRestart(serverID string, state ServerState) {
@@ -1181,12 +1482,16 @@ func (m *Manager) buildServerResourceLocked(server Server) ServerResource {
 	for _, tool := range m.tools[server.ServerID] {
 		tools = append(tools, m.buildToolResourceLocked(server, tool))
 	}
+	availabilityStatus, availabilityReason := m.evaluateServerAvailabilityLocked(server)
 	return ServerResource{
-		Server:        cloneServer(server),
-		State:         state,
-		SecretSummary: m.buildSecretSummaries(server),
-		ToolCount:     toolCount,
-		Tools:         tools,
+		Server:                 cloneServer(server),
+		State:                  state,
+		SecretSummary:          m.buildSecretSummaries(server),
+		ToolCount:              toolCount,
+		Tools:                  tools,
+		TransportConfigSummary: m.transportConfigSummary(server),
+		AvailabilityStatus:     availabilityStatus,
+		AvailabilityReason:     availabilityReason,
 	}
 }
 
@@ -1268,12 +1573,16 @@ func (m *Manager) resolveSecretEnv(ctx context.Context, server Server) (map[stri
 	if err != nil {
 		return nil, err
 	}
+	resolvedSecrets, err := ResolveMCPSecrets(m.cfg.DataDir, server.SecretRefs)
+	if err != nil {
+		return nil, err
+	}
 	env := map[string]string{}
 	for _, item := range secretScope {
 		if item.Resolution != sandbox.SecretResolutionResolved {
 			continue
 		}
-		if value, ok := os.LookupEnv(item.SecretRef); ok {
+		if value, ok := resolvedSecrets[item.SecretRef]; ok {
 			env[item.SecretRef] = value
 		}
 	}
@@ -1291,10 +1600,14 @@ func (m *Manager) resolveSecretRef(secretRef string, envScope sandbox.SecretEnvi
 			return sandbox.SecretResolutionDenied
 		}
 	}
-	if _, ok := os.LookupEnv(secretRef); !ok {
+	resolved, err := ResolveMCPSecrets(m.cfg.DataDir, []string{secretRef})
+	if err != nil {
 		return sandbox.SecretResolutionUnavailable
 	}
-	return sandbox.SecretResolutionResolved
+	if _, ok := resolved[secretRef]; ok {
+		return sandbox.SecretResolutionResolved
+	}
+	return sandbox.SecretResolutionUnavailable
 }
 
 func (m *Manager) persistDeclarationView(ctx context.Context, server Server) error {
@@ -1445,10 +1758,16 @@ func (m *Manager) validateServer(server Server) error {
 	if strings.TrimSpace(server.SandboxProfileID) == "" {
 		return ErrProfileIDRequired
 	}
-	if strings.TrimSpace(server.Command) == "" {
-		return ErrCommandRequired
-	}
-	if server.TransportKind != TransportKindStdio {
+	switch server.TransportKind {
+	case TransportKindStdio:
+		if strings.TrimSpace(server.Command) == "" {
+			return ErrCommandRequired
+		}
+	case TransportKindStreamableHTTP:
+		if strings.TrimSpace(server.Endpoint) == "" {
+			return ErrTransportUnavailable
+		}
+	default:
 		return ErrUnsupportedTransport
 	}
 	if server.AutoRestart && !server.Enabled {
@@ -1467,6 +1786,52 @@ func (m *Manager) validateServer(server Server) error {
 		}
 	}
 	return nil
+}
+
+func (m *Manager) evaluateServerAvailabilityLocked(server Server) (AvailabilityStatus, string) {
+	switch server.TransportKind {
+	case TransportKindStdio:
+		if strings.TrimSpace(server.Command) == "" {
+			return AvailabilityStatusUnavailable, "stdio command is not configured"
+		}
+	case TransportKindStreamableHTTP:
+		if strings.TrimSpace(server.Endpoint) == "" {
+			return AvailabilityStatusUnsupported, "streamable-http endpoint is not configured"
+		}
+	default:
+		return AvailabilityStatusUnsupported, "transport kind is unsupported"
+	}
+	for _, summary := range m.buildSecretSummaries(server) {
+		if summary.Resolution != string(sandbox.SecretResolutionResolved) {
+			return AvailabilityStatusBlocked, fmt.Sprintf("%s is unavailable in %s", summary.SecretRef, summary.EnvironmentScope)
+		}
+	}
+	state := m.states[server.ServerID]
+	switch state.Status {
+	case LifecycleStatusUnsupported:
+		return AvailabilityStatusUnsupported, firstNonEmpty(state.HealthReason, "transport is unsupported")
+	case LifecycleStatusFailed, LifecycleStatusDenied, LifecycleStatusDegraded:
+		return AvailabilityStatusUnavailable, firstNonEmpty(state.HealthReason, "server is not healthy")
+	case LifecycleStatusDisabled:
+		return AvailabilityStatusBlocked, "server is disabled"
+	default:
+	}
+	return AvailabilityStatusReady, ""
+}
+
+func (m *Manager) transportConfigSummary(server Server) string {
+	switch server.TransportKind {
+	case TransportKindStreamableHTTP:
+		return strings.TrimSpace(server.Endpoint)
+	default:
+		if strings.TrimSpace(server.Command) == "" {
+			return ""
+		}
+		if len(server.Args) == 0 {
+			return strings.TrimSpace(server.Command)
+		}
+		return strings.TrimSpace(server.Command) + " " + strings.Join(cloneStrings(server.Args), " ")
+	}
 }
 
 func defaultStateForServer(server Server) ServerState {
@@ -1527,6 +1892,162 @@ func restartBackoffDelay(failureCount int) time.Duration {
 		return 5 * time.Minute
 	}
 	return delay
+}
+
+func mergeCatalogInstallInput(entry CatalogEntry, input CatalogInstallInput, method InstallMethod, environment config.Environment) CreateServerInput {
+	spec := entry.DefaultInstallSpec
+	serverID := strings.TrimSpace(input.ServerID)
+	if serverID == "" {
+		serverID = entry.ID
+	}
+	spec.ServerID = serverID
+	spec.OriginKind = OriginKindCatalog
+	spec.CatalogEntryID = entry.ID
+	spec.InstallMethod = method
+	spec.EnvironmentScope = string(environment)
+	if displayName := strings.TrimSpace(input.DisplayName); displayName != "" {
+		spec.DisplayName = displayName
+	}
+	if input.Enabled != nil {
+		spec.Enabled = *input.Enabled
+	}
+	if profileID := strings.TrimSpace(input.SandboxProfileID); profileID != "" {
+		spec.SandboxProfileID = profileID
+	}
+	if command := strings.TrimSpace(input.Command); command != "" {
+		spec.Command = command
+	}
+	if input.Args != nil {
+		spec.Args = cloneStrings(input.Args)
+	}
+	if endpoint := strings.TrimSpace(input.Endpoint); endpoint != "" {
+		spec.Endpoint = endpoint
+	}
+	if workingDir := strings.TrimSpace(input.WorkingDir); workingDir != "" {
+		spec.WorkingDir = workingDir
+	}
+	if input.SecretRefs != nil {
+		spec.SecretRefs = cleanStrings(input.SecretRefs)
+	}
+	return spec
+}
+
+func (m *Manager) publishAuditEvent(ctx context.Context, name string, resource events.Resource, payload map[string]any) (events.Event, error) {
+	if m.eventBus == nil && m.store == nil {
+		return events.Event{}, nil
+	}
+	event := events.Event{
+		EventID:    fmt.Sprintf("evt_%s_%d", strings.ReplaceAll(strings.ReplaceAll(name, ".", "_"), ":", "_"), time.Now().UTC().UnixNano()),
+		Category:   "mcp",
+		Name:       name,
+		OccurredAt: time.Now().UTC(),
+		Resource:   resource,
+		Payload:    payload,
+	}
+	if m.store != nil {
+		persisted, err := m.store.AppendEvent(ctx, event)
+		if err != nil {
+			return events.Event{}, err
+		}
+		event = persisted
+	}
+	if m.eventBus != nil {
+		m.eventBus.Publish(event)
+	}
+	return event, nil
+}
+
+func (m *Manager) redactValue(server Server, value any) any {
+	secrets, err := ResolveMCPSecrets(m.cfg.DataDir, server.SecretRefs)
+	if err != nil || len(secrets) == 0 {
+		return value
+	}
+	switch typed := value.(type) {
+	case string:
+		return redactString(typed, secrets)
+	case []any:
+		items := make([]any, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, m.redactValue(server, item))
+		}
+		return items
+	case map[string]any:
+		cloned := make(map[string]any, len(typed))
+		for key, item := range typed {
+			cloned[key] = m.redactValue(server, item)
+		}
+		return cloned
+	default:
+		return value
+	}
+}
+
+func redactString(input string, secrets map[string]string) string {
+	redacted := input
+	for _, value := range secrets {
+		for _, candidate := range redactionCandidates(value) {
+			redacted = strings.ReplaceAll(redacted, candidate, "[REDACTED]")
+		}
+	}
+	return redacted
+}
+
+func catalogInstallConflictReason(existing Server, entryID string) (string, bool) {
+	if existing.OriginKind != OriginKindCatalog {
+		return "server id is already owned by a manual MCP server", true
+	}
+	if existing.CatalogEntryID != entryID {
+		return fmt.Sprintf("server id is already owned by catalog entry %s", existing.CatalogEntryID), true
+	}
+	if existing.OperatorModified {
+		return "existing installed server has operator modifications", true
+	}
+	return "", false
+}
+
+func redactionCandidates(secret string) []string {
+	trimmed := strings.TrimSpace(secret)
+	if trimmed == "" {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	add := func(value string) {
+		if strings.TrimSpace(value) == "" {
+			return
+		}
+		seen[value] = struct{}{}
+	}
+	add(trimmed)
+	add(url.QueryEscape(trimmed))
+	add(base64.StdEncoding.EncodeToString([]byte(trimmed)))
+	add(base64.RawStdEncoding.EncodeToString([]byte(trimmed)))
+	add(base64.URLEncoding.EncodeToString([]byte(trimmed)))
+	add(base64.RawURLEncoding.EncodeToString([]byte(trimmed)))
+	add(hex.EncodeToString([]byte(trimmed)))
+	add(strings.ToUpper(hex.EncodeToString([]byte(trimmed))))
+
+	items := make([]string, 0, len(seen))
+	for value := range seen {
+		items = append(items, value)
+	}
+	return items
+}
+
+func stringFromMap(input map[string]any, key string) string {
+	if input == nil {
+		return ""
+	}
+	if value, ok := input[key].(string); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
+}
+
+func sessionID(active *sessionState) string {
+	if active == nil {
+		return ""
+	}
+	return strings.TrimSpace(active.sessionID)
 }
 
 func (m *Manager) buildSecretSummaries(server Server) []SecretSummary {

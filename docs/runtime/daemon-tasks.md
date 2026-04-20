@@ -188,6 +188,13 @@ Current completion should be read as:
 - [x] Stronger filesystem and network enforcement
 - [x] Backend selection and migration guidance
 
+## Roadmap 21: Complete MCP Runtime And Catalog
+
+- [x] MCP tool invocation through runtime tool calls
+- [x] Bundled MCP catalog and converged install flows
+- [x] Remote `streamable-http` MCP transport completion
+- [x] MCP docs, audit, and operator verification closure
+
 ## Completed Foundational Work
 
 These are implemented pieces that support later roadmaps. They are real progress, but they do not by themselves close the roadmap-level work above.

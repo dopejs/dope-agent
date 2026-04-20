@@ -697,6 +697,38 @@ func TestSQLiteStorePersistsToolCalls(t *testing.T) {
 	if items[0].SandboxExecutionID != "sandbox_exec_1" || items[0].FailureClass != "backend_unavailable" {
 		t.Fatalf("expected stronger-backend provenance fields, got %+v", items[0])
 	}
+
+	mcpToolCall := runtime.ToolCall{
+		ToolCallID:          "tool_call_2",
+		RunID:               run.RunID,
+		StepID:              step.StepID,
+		InvocationKind:      runtime.ToolCallInvocationKindMCPTool,
+		MCPServerID:         "filesystem-test",
+		MCPServerName:       "Filesystem",
+		MCPToolName:         "lookup",
+		MCPTransportKind:    "stdio",
+		MCPSessionID:        "session_1",
+		AuthorizationResult: "allowed",
+		ToolName:            "lookup",
+		Status:              runtime.ToolCallStatusCompleted,
+		Output:              map[string]any{"result": map[string]any{"content": []map[string]any{{"type": "text", "text": "ok"}}}},
+		CreatedAt:           time.Now().UTC().Add(-10 * time.Second),
+		UpdatedAt:           time.Now().UTC().Add(-10 * time.Second),
+	}
+	if err := store.UpsertToolCall(ctx, mcpToolCall); err != nil {
+		t.Fatalf("UpsertToolCall(mcp) returned error: %v", err)
+	}
+
+	items, err = store.ListToolCalls(ctx, run.RunID, step.StepID)
+	if err != nil {
+		t.Fatalf("ListToolCalls(second read) returned error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 tool calls after mcp insert, got %d", len(items))
+	}
+	if items[1].InvocationKind != runtime.ToolCallInvocationKindMCPTool || items[1].MCPServerID != "filesystem-test" || items[1].MCPSessionID != "session_1" {
+		t.Fatalf("expected persisted mcp tool call provenance, got %+v", items[1])
+	}
 }
 
 func TestSQLiteStorePersistsConsumerPolicyRecordsAndSecretScopeBindings(t *testing.T) {

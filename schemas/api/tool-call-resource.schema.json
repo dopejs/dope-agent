@@ -25,13 +25,33 @@
     },
     "invocationKind": {
       "type": "string",
-      "enum": ["local_tool", "skill"]
+      "enum": ["local_tool", "skill", "mcp_tool"]
     },
     "capabilityId": {
       "type": "string"
     },
     "skillId": {
       "type": "string"
+    },
+    "mcpServerId": {
+      "type": "string"
+    },
+    "mcpServerName": {
+      "type": "string"
+    },
+    "mcpToolName": {
+      "type": "string"
+    },
+    "mcpTransportKind": {
+      "type": "string",
+      "enum": ["stdio", "streamable-http"]
+    },
+    "mcpSessionId": {
+      "type": "string"
+    },
+    "authorizationResult": {
+      "type": "string",
+      "enum": ["allowed", "pending", "rejected", "blocked"]
     },
     "toolName": {
       "type": "string"

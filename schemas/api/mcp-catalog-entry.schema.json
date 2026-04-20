@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-catalog-entry.schema.json",
+  "title": "MCPCatalogEntry",
+  "type": "object",
+  "required": [
+    "id",
+    "displayName",
+    "description",
+    "transportKind",
+    "sourceKind",
+    "immediateUse",
+    "availabilityStatus",
+    "installSupport",
+    "defaultInstallSpec"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string" },
+    "displayName": { "type": "string" },
+    "description": { "type": "string" },
+    "transportKind": { "type": "string", "enum": ["stdio", "streamable-http"] },
+    "sourceKind": { "type": "string", "enum": ["bundled"] },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "immediateUse": { "type": "boolean" },
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "name", "required"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string" },
+          "name": { "type": "string" },
+          "required": { "type": "boolean" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "secretRequirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["secretRef", "required"],
+        "additionalProperties": false,
+        "properties": {
+          "secretRef": { "type": "string" },
+          "required": { "type": "boolean" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "environmentEligibility": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["test", "prod"] }
+    },
+    "availabilityStatus": { "type": "string", "enum": ["ready", "blocked", "unavailable", "unsupported"] },
+    "availabilityReason": { "type": "string" },
+    "installSupport": {
+      "type": "object",
+      "required": ["scriptSupported"],
+      "additionalProperties": false,
+      "properties": {
+        "scriptSupported": { "type": "boolean" },
+        "scriptArgs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "defaultInstallSpec": {
+      "type": "object",
+      "required": ["displayName", "enabled", "sandboxProfileId", "declarationId", "transportKind", "autoRestart"],
+      "additionalProperties": false,
+      "properties": {
+        "serverId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "originKind": { "type": "string", "enum": ["manual", "catalog"] },
+        "catalogEntryId": { "type": "string" },
+        "installMethod": { "type": "string", "enum": ["api", "script"] },
+        "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+        "enabled": { "type": "boolean" },
+        "sandboxProfileId": { "type": "string" },
+        "declarationId": { "type": "string" },
+        "declaration": { "$ref": "./mcp-declaration.schema.json" },
+        "transportKind": { "type": "string", "enum": ["stdio", "streamable-http"] },
+        "command": { "type": "string" },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "endpoint": { "type": "string" },
+        "workingDir": { "type": "string" },
+        "secretRefs": { "type": "array", "items": { "type": "string" } },
+        "autoRestart": { "type": "boolean" },
+        "operatorModified": { "type": "boolean" }
+      }
+    }
+  }
+}

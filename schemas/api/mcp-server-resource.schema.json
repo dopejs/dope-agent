@@ -12,8 +12,6 @@
     "declarationId",
     "declaration",
     "transportKind",
-    "command",
-    "args",
     "autoRestart",
     "createdAt",
     "updatedAt",
@@ -25,22 +23,28 @@
     "serverId": { "type": "string" },
     "displayName": { "type": "string" },
     "source": { "type": "string", "enum": ["api", "config", "builtin"] },
+    "originKind": { "type": "string", "enum": ["manual", "catalog"] },
+    "catalogEntryId": { "type": "string" },
+    "installMethod": { "type": "string", "enum": ["api", "script"] },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
     "enabled": { "type": "boolean" },
     "sandboxProfileId": { "type": "string" },
     "declarationId": { "type": "string" },
     "declaration": { "$ref": "./mcp-declaration.schema.json" },
-    "transportKind": { "type": "string", "enum": ["stdio"] },
+    "transportKind": { "type": "string", "enum": ["stdio", "streamable-http"] },
     "command": { "type": "string" },
     "args": {
       "type": "array",
       "items": { "type": "string" }
     },
+    "endpoint": { "type": "string" },
     "workingDir": { "type": "string" },
     "secretRefs": {
       "type": "array",
       "items": { "type": "string" }
     },
     "autoRestart": { "type": "boolean" },
+    "operatorModified": { "type": "boolean" },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" },
     "state": {
@@ -65,6 +69,9 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
+    "transportConfigSummary": { "type": "string" },
+    "availabilityStatus": { "type": "string", "enum": ["ready", "blocked", "unavailable", "unsupported"] },
+    "availabilityReason": { "type": "string" },
     "secretSummary": {
       "type": "array",
       "items": {
@@ -87,5 +94,15 @@
       "type": "array",
       "items": { "$ref": "./mcp-tool-resource.schema.json" }
     }
-  }
+  },
+  "anyOf": [
+    {
+      "properties": { "transportKind": { "const": "stdio" } },
+      "required": ["command", "args"]
+    },
+    {
+      "properties": { "transportKind": { "const": "streamable-http" } },
+      "required": ["endpoint"]
+    }
+  ]
 }

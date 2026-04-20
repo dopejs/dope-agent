@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-catalog-list.response.schema.json",
+  "title": "MCPCatalogListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": { "$ref": "./mcp-catalog-entry.schema.json" }
+    }
+  }
+}

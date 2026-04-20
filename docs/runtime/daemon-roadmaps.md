@@ -894,6 +894,111 @@ Task definition of done:
 - full orchestration planner
 - memory and self-improvement systems
 
+## Roadmap 21: Complete MCP Runtime And Catalog
+
+Status: `[x] complete`
+
+### Goal
+
+Close the remaining MCP product surface after Roadmap 18 by making MCP tools callable
+through the daemon runtime plane, shipping a curated installable catalog, and adding one
+real remote transport without creating a second unmanaged MCP control path.
+
+### Tasks
+
+#### 1. MCP Tool Invocation Through Runtime
+
+Scope:
+
+- invoke daemon-managed MCP tools through `/v1/runs/.../tool-calls`
+- preserve approval, provenance, failure truth, and history on the existing runtime plane
+
+Task definition of done:
+
+- MCP-originated tool calls project server identity, transport kind, session id, and
+  authorization result
+- blocked, approval-required, unhealthy-server, timeout, and remote tool errors remain
+  explicit
+- operator-visible outputs and history remain redacted
+
+#### 2. Bundled Catalog And Install Flows
+
+Scope:
+
+- ship a curated starter catalog
+- support daemon API install and repo helper install without diverging resource models
+
+Task definition of done:
+
+- bundled entries can be listed and inspected through daemon routes
+- daemon API and script install both converge on one installed MCP server resource shape
+- bundled entries surface truthful `ready`, `blocked`, `unavailable`, or `unsupported`
+  state with explicit reasons
+
+#### 3. Remote Transport Completion
+
+Scope:
+
+- add `streamable-http` beside stdio
+- keep transport health and failure semantics operator-visible
+
+Task definition of done:
+
+- remote MCP sessions initialize and discover tools through the same daemon-owned manager
+- session bootstrap has explicit timeout bounds so daemon startup and restore do not hang
+- transport-specific failures are distinguishable from local subprocess launch failures
+
+#### 4. Docs And Operator Verification
+
+Scope:
+
+- align docs, routes, schemas, events, and quickstart evidence
+- prove real catalog install and invocation behavior in `DOPE_ENV=test`
+
+Task definition of done:
+
+- docs explain starter catalog, transport coverage, blocked paths, and install workflows
+- contract and targeted regressions cover MCP invocation, catalog install, and remote
+  transport
+- manual verification records one real installed-catalog invocation plus one truthful
+  blocked or unavailable path
+
+### Roadmap Definition Of Done
+
+- MCP is complete as a daemon product surface: installable, inspectable, startable,
+  invocable, and auditable
+- MCP invocation remains on the existing runtime tool-call plane
+- bundled starter entries remain truthful about host prerequisites, credentials, and
+  transport support
+- daemon restart and MCP bootstrap stay bounded and debuggable under unresponsive servers
+
+### Implemented In This Slice
+
+- `/v1/mcp/catalog`, `/v1/mcp/catalog/{entryId}`, and
+  `/v1/mcp/catalog/{entryId}/install` now expose the bundled starter catalog
+- bundled starters include `filesystem`, `Context7`, `GitHub`, `Postgres`, and `Slack`
+- repo helper `scripts/install-mcp-catalog-entry.sh` defaults to `DOPE_ENV=test`,
+  performs local pairing bootstrap when needed, and writes through the daemon-owned
+  install path
+- MCP tool invocation now creates `mcp_tool` runtime tool calls with persisted MCP
+  provenance fields and redacted operator-visible output
+- `streamable-http` is the first remote MCP transport, with explicit `Accept` handling and
+  notification semantics compatible with the real Context7 endpoint
+- MCP session bootstrap and tool discovery use bounded timeouts so an unresponsive server
+  cannot stall daemon startup or restore indefinitely
+- manual verification in `DOPE_ENV=test` covered:
+  - truthful unavailable install for `filesystem` until a local stdio override is supplied
+  - truthful blocked install for `GitHub` without `GITHUB_TOKEN`
+  - successful real remote start and tool discovery for `Context7`
+  - successful real `Context7` invocation through `/v1/runs/.../tool-calls`
+
+### Explicitly Out Of Scope
+
+- additional MCP remote transports beyond `streamable-http`
+- marketplace-scale third-party catalog discovery
+- non-MCP integration catalogs
+- full multi-tool orchestration planner
+
 ## Roadmap 13: Provider Streaming Timeout Semantics
 
 Status: `[x] complete`
@@ -1791,3 +1896,4 @@ Task definition of done:
 18. Roadmap 18: MCP Execution Plane
 19. Roadmap 19: Skill And Local Tool Sandbox Execution
 20. Roadmap 20: Stronger Isolation And Additional Sandbox Backends
+21. Roadmap 21: Complete MCP Runtime And Catalog

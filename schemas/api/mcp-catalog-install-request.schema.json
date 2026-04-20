@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-catalog-install-request.schema.json",
+  "title": "MCPCatalogInstallRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "serverId": { "type": "string" },
+    "displayName": { "type": "string" },
+    "enabled": { "type": "boolean" },
+    "sandboxProfileId": { "type": "string" },
+    "command": { "type": "string" },
+    "args": { "type": "array", "items": { "type": "string" } },
+    "endpoint": { "type": "string" },
+    "workingDir": { "type": "string" },
+    "secretRefs": { "type": "array", "items": { "type": "string" } }
+  }
+}

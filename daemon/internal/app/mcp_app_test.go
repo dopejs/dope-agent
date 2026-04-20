@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
@@ -54,6 +55,8 @@ func TestAppMCPHelperProcess(t *testing.T) {
 			var tools []map[string]any
 			_ = json.Unmarshal([]byte(toolsPayload), &tools)
 			writeAppHelperFrame(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"tools": tools}})
+		case "tools/call":
+			writeAppHelperFrame(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"content": []map[string]any{{"type": "text", "text": "lookup ok"}}}})
 		default:
 			writeAppHelperFrame(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"code": -32601, "message": "method not found"}})
 		}
@@ -65,6 +68,10 @@ func TestRecoverPersistedStateRestoresMCPServers(t *testing.T) {
 	t.Setenv("APP_MCP_HELPER_TOOLS", `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`)
 
 	dataDir := filepath.Join(t.TempDir(), "dope")
+	writeAppMCPSecretsFileForTest(t, dataDir, map[string]string{
+		"GO_WANT_APP_MCP_HELPER": "1",
+		"APP_MCP_HELPER_TOOLS":   `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`,
+	})
 	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
 	sqliteStore, err := store.NewSQLiteStore(dataDir)
 	if err != nil {
@@ -78,7 +85,7 @@ func TestRecoverPersistedStateRestoresMCPServers(t *testing.T) {
 	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
 	defer func() { _ = sandboxes.Close(context.Background()) }()
 
-	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewStdioTransport())
+	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewTransportMux(mcp.NewStdioTransport(), nil))
 	if _, _, err := mcpManager.CreateServer(context.Background(), mcp.CreateServerInput{
 		ServerID:         "restored-mcp",
 		DisplayName:      "Restored MCP",
@@ -105,7 +112,7 @@ func TestRecoverPersistedStateRestoresMCPServers(t *testing.T) {
 	restoredProviders := providers.NewManager(config.Config{}, llm.NewDispatcher())
 	restoredSandboxes := sandbox.NewManager(cfg, sqliteStore, restoredEventBus, restoredPolicy)
 	defer func() { _ = restoredSandboxes.Close(context.Background()) }()
-	restoredMCP := mcp.NewManager(cfg, sqliteStore, restoredEventBus, restoredSandboxes, restoredPolicy, mcp.NewStdioTransport())
+	restoredMCP := mcp.NewManager(cfg, sqliteStore, restoredEventBus, restoredSandboxes, restoredPolicy, mcp.NewTransportMux(mcp.NewStdioTransport(), nil))
 
 	if err := recoverPersistedState(context.Background(), sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
@@ -116,6 +123,67 @@ func TestRecoverPersistedStateRestoresMCPServers(t *testing.T) {
 	}
 	if resource.State.Status != mcp.LifecycleStatusHealthy {
 		t.Fatalf("expected restored mcp server to be healthy, got %+v", resource)
+	}
+}
+
+func TestRecoverPersistedStateDoesNotHangOnUnresponsiveMCPServer(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	eventBus := events.NewBus()
+	defer eventBus.Close()
+	policyEngine := policy.NewEngine()
+	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxes.Close(context.Background()) }()
+
+	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewTransportMux(mcp.NewStdioTransport(), nil))
+	if _, _, err := mcpManager.CreateServer(context.Background(), mcp.CreateServerInput{
+		ServerID:         "hung-mcp",
+		DisplayName:      "Hung MCP",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:hung-mcp:lifecycle.start",
+		TransportKind:    mcp.TransportKindStdio,
+		Command:          "/bin/sh",
+		Args:             []string{"-c", "sleep 60"},
+		WorkingDir:       t.TempDir(),
+		AutoRestart:      true,
+	}); err != nil {
+		t.Fatalf("CreateServer returned error: %v", err)
+	}
+
+	t.Cleanup(mcp.SetSessionStartTimeoutForTest(50 * time.Millisecond))
+
+	restoredRouter := router.NewSessionRouter()
+	restoredRuntime := runtime.NewManager()
+	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredEventBus := events.NewBus()
+	defer restoredEventBus.Close()
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+	restoredProviders := providers.NewManager(config.Config{}, llm.NewDispatcher())
+	restoredSandboxes := sandbox.NewManager(cfg, sqliteStore, restoredEventBus, restoredPolicy)
+	defer func() { _ = restoredSandboxes.Close(context.Background()) }()
+	restoredMCP := mcp.NewManager(cfg, sqliteStore, restoredEventBus, restoredSandboxes, restoredPolicy, mcp.NewTransportMux(mcp.NewStdioTransport(), nil))
+
+	startedAt := time.Now()
+	if err := recoverPersistedState(context.Background(), sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+	if time.Since(startedAt) > time.Second {
+		t.Fatalf("expected restore to finish promptly after MCP timeout, took %s", time.Since(startedAt))
+	}
+	resource, ok := restoredMCP.GetServerResource("hung-mcp")
+	if !ok {
+		t.Fatal("expected restored hung mcp server resource")
+	}
+	if resource.State.Status != mcp.LifecycleStatusFailed {
+		t.Fatalf("expected failed state for hung restored mcp server, got %+v", resource.State)
 	}
 }
 
@@ -151,4 +219,18 @@ func readAppHelperFrame(reader *bufio.Reader) ([]byte, error) {
 func writeAppHelperFrame(value any) {
 	payload, _ := json.Marshal(value)
 	_, _ = fmt.Fprintf(os.Stdout, "Content-Length: %d\r\n\r\n%s", len(payload), payload)
+}
+
+func writeAppMCPSecretsFileForTest(t *testing.T, dataDir string, values map[string]string) {
+	t.Helper()
+	payload, err := json.Marshal(values)
+	if err != nil {
+		t.Fatalf("marshal mcp secrets: %v", err)
+	}
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("create data dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "mcp-secrets.json"), payload, 0o600); err != nil {
+		t.Fatalf("write mcp secrets: %v", err)
+	}
 }

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-catalog-install-result.schema.json",
+  "title": "MCPCatalogInstallResult",
+  "type": "object",
+  "required": ["installId", "status", "catalogEntryId", "availabilityStatus"],
+  "additionalProperties": false,
+  "properties": {
+    "installId": { "type": "string" },
+    "status": { "type": "string", "enum": ["pending", "installed", "blocked", "failed"] },
+    "catalogEntryId": { "type": "string" },
+    "serverId": { "type": "string" },
+    "availabilityStatus": { "type": "string", "enum": ["ready", "blocked", "unavailable", "unsupported"] },
+    "availabilityReason": { "type": "string" },
+    "auditEventIds": { "type": "array", "items": { "type": "string" } },
+    "server": { "$ref": "./mcp-server-resource.schema.json" }
+  }
+}

@@ -31,7 +31,9 @@ type Transport interface {
 }
 
 type Session interface {
+	ID() string
 	ListTools(ctx context.Context) ([]Tool, error)
+	CallTool(ctx context.Context, toolName string, input any) (map[string]any, error)
 	Close() error
 	Done() <-chan error
 }
@@ -40,6 +42,32 @@ type stdioTransport struct{}
 
 func NewStdioTransport() Transport {
 	return &stdioTransport{}
+}
+
+type transportMux struct {
+	stdio  Transport
+	remote Transport
+}
+
+func NewTransportMux(stdio Transport, remote Transport) Transport {
+	if stdio == nil {
+		stdio = NewStdioTransport()
+	}
+	if remote == nil {
+		remote = NewStreamableHTTPTransport(nil)
+	}
+	return &transportMux{stdio: stdio, remote: remote}
+}
+
+func (t *transportMux) Open(ctx context.Context, server Server, pipes SessionPipes) (Session, error) {
+	switch server.TransportKind {
+	case TransportKindStdio:
+		return t.stdio.Open(ctx, server, pipes)
+	case TransportKindStreamableHTTP:
+		return t.remote.Open(ctx, server, pipes)
+	default:
+		return nil, ErrTransportUnavailable
+	}
 }
 
 func (t *stdioTransport) Open(ctx context.Context, server Server, pipes SessionPipes) (Session, error) {
@@ -54,6 +82,7 @@ func (t *stdioTransport) Open(ctx context.Context, server Server, pipes SessionP
 		done:      make(chan error, 1),
 		pending:   map[string]chan rpcResponse{},
 		closeOnce: sync.Once{},
+		sessionID: fmt.Sprintf("%s-%d", server.ServerID, time.Now().UTC().UnixNano()),
 	}
 	go session.readLoop()
 	go session.consumeStderr()
@@ -77,6 +106,7 @@ type stdioSession struct {
 	requestID uint64
 	done      chan error
 	closeOnce sync.Once
+	sessionID string
 }
 
 type rpcRequest struct {
@@ -115,6 +145,10 @@ func (s *stdioSession) initialize(ctx context.Context) error {
 	return nil
 }
 
+func (s *stdioSession) ID() string {
+	return s.sessionID
+}
+
 func (s *stdioSession) ListTools(ctx context.Context) ([]Tool, error) {
 	raw, err := s.call(ctx, "tools/list", map[string]any{})
 	if err != nil {
@@ -146,6 +180,21 @@ func (s *stdioSession) ListTools(ctx context.Context) ([]Tool, error) {
 		})
 	}
 	return tools, nil
+}
+
+func (s *stdioSession) CallTool(ctx context.Context, toolName string, input any) (map[string]any, error) {
+	raw, err := s.call(ctx, "tools/call", map[string]any{
+		"name":      strings.TrimSpace(toolName),
+		"arguments": normalizeToolArguments(input),
+	})
+	if err != nil {
+		return nil, err
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, fmt.Errorf("decode tools/call response: %w", err)
+	}
+	return payload, nil
 }
 
 func (s *stdioSession) Done() <-chan error {
@@ -347,4 +396,11 @@ func schemaFingerprint(value map[string]any) string {
 	}
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
+}
+
+func normalizeToolArguments(input any) any {
+	if input == nil {
+		return map[string]any{}
+	}
+	return input
 }

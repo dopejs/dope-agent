@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/mcp-catalog-install-requested.event.schema.json",
+  "title": "MCPCatalogInstallRequestedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "mcp" },
+        "name": { "const": "mcp.catalog_install_requested" },
+        "payload": {
+          "type": "object",
+          "required": ["installId", "catalogEntryId", "method", "environment"],
+          "additionalProperties": false,
+          "properties": {
+            "installId": { "type": "string" },
+            "catalogEntryId": { "type": "string" },
+            "method": { "type": "string", "enum": ["api", "script"] },
+            "environment": { "type": "string", "enum": ["test", "prod"] }
+          }
+        }
+      }
+    }
+  ]
+}

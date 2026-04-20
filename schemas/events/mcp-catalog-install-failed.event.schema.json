@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/mcp-catalog-install-failed.event.schema.json",
+  "title": "MCPCatalogInstallFailedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "mcp" },
+        "name": { "const": "mcp.catalog_install_failed" },
+        "payload": {
+          "type": "object",
+          "required": ["installId", "catalogEntryId", "method", "status"],
+          "additionalProperties": false,
+          "properties": {
+            "installId": { "type": "string" },
+            "catalogEntryId": { "type": "string" },
+            "serverId": { "type": "string" },
+            "method": { "type": "string", "enum": ["api", "script"] },
+            "status": { "type": "string", "enum": ["blocked", "failed"] },
+            "availabilityStatus": { "type": "string", "enum": ["ready", "blocked", "unavailable", "unsupported"] },
+            "availabilityReason": { "type": "string" },
+            "reason": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}
