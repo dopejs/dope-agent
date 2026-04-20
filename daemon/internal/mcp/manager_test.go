@@ -20,6 +20,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
@@ -199,6 +200,322 @@ func TestFilesystemCatalogEntryIsUnavailableWithoutLocalOverride(t *testing.T) {
 	}
 	if entry.AvailabilityReason == "" {
 		t.Fatalf("expected local override availability reason, got %+v", entry)
+	}
+}
+
+func TestCatalogLifecycleActionsPersistProvenanceAndRemoval(t *testing.T) {
+	manager, sqliteStore, _ := newTestManagerWithStore(t)
+	ctx := context.Background()
+
+	workingDir := t.TempDir()
+	install, err := manager.InstallCatalogEntry(ctx, "filesystem", CatalogInstallInput{
+		ServerID:   "filesystem-phase22",
+		Command:    os.Args[0],
+		Args:       []string{"-test.run=TestMCPHelperProcess", "--"},
+		WorkingDir: workingDir,
+		SecretRefs: []string{"GO_WANT_MCP_HELPER", "MCP_HELPER_TOOLS"},
+	}, InstallMethodAPI)
+	if err != nil {
+		t.Fatalf("InstallCatalogEntry returned error: %v", err)
+	}
+	if install.Server == nil || install.Server.CatalogManagement == nil {
+		t.Fatalf("expected catalog management projection on install, got %+v", install)
+	}
+	if install.Server.CatalogManagement.InstalledRevision == "" || install.Server.CatalogManagement.DriftStatus != CatalogDriftStatusInSync {
+		t.Fatalf("expected installed revision + in_sync drift, got %+v", install.Server.CatalogManagement)
+	}
+
+	refreshed, err := manager.RefreshCatalogServer(ctx, "filesystem-phase22")
+	if err != nil {
+		t.Fatalf("RefreshCatalogServer returned error: %v", err)
+	}
+	if refreshed.Status != CatalogActionStatusCompleted || refreshed.Server == nil {
+		t.Fatalf("expected completed refresh with server projection, got %+v", refreshed)
+	}
+	if refreshed.PreflightMs > 100 {
+		t.Fatalf("expected refresh preflight <=100ms, got %d", refreshed.PreflightMs)
+	}
+	if refreshed.Server.CatalogManagement == nil || refreshed.Server.CatalogManagement.LastMaintainedAt == nil {
+		t.Fatalf("expected maintained timestamp after refresh, got %+v", refreshed.Server)
+	}
+
+	uninstalled, err := manager.UninstallCatalogServer(ctx, "filesystem-phase22")
+	if err != nil {
+		t.Fatalf("UninstallCatalogServer returned error: %v", err)
+	}
+	if uninstalled.Status != CatalogActionStatusCompleted || !uninstalled.Removed {
+		t.Fatalf("expected completed uninstall removal, got %+v", uninstalled)
+	}
+	if _, ok := manager.GetServerResource("filesystem-phase22"); ok {
+		t.Fatal("expected uninstalled server to be removed from active registry")
+	}
+	persistedServers, err := sqliteStore.ListMCPServers(ctx)
+	if err != nil {
+		t.Fatalf("ListMCPServers returned error: %v", err)
+	}
+	if len(persistedServers) != 0 {
+		t.Fatalf("expected uninstall to remove persisted server record, got %+v", persistedServers)
+	}
+	events := manager.eventBus.List(events.Filter{Category: "mcp", ResourceKind: resourceKindServer})
+	foundCompleted := false
+	for _, event := range events {
+		if event.Name == "mcp.catalog_lifecycle_completed" && event.Resource.ID == "filesystem-phase22" {
+			foundCompleted = true
+			break
+		}
+	}
+	if !foundCompleted {
+		t.Fatal("expected lifecycle completed audit event for uninstall")
+	}
+}
+
+func TestCatalogLifecycleFailsClosedForModifiedBusyMissingEntryAndEnvironmentMismatch(t *testing.T) {
+	manager, sqliteStore, _ := newTestManagerWithStore(t)
+	ctx := context.Background()
+
+	workingDir := t.TempDir()
+	install, err := manager.InstallCatalogEntry(ctx, "filesystem", CatalogInstallInput{
+		ServerID:   "filesystem-conflict",
+		Command:    os.Args[0],
+		Args:       []string{"-test.run=TestMCPHelperProcess", "--"},
+		WorkingDir: workingDir,
+		SecretRefs: []string{"GO_WANT_MCP_HELPER", "MCP_HELPER_TOOLS"},
+	}, InstallMethodAPI)
+	if err != nil {
+		t.Fatalf("InstallCatalogEntry returned error: %v", err)
+	}
+	if install.Server == nil {
+		t.Fatalf("expected installed server, got %+v", install)
+	}
+
+	updatedName := "Filesystem Modified"
+	if _, err := manager.UpdateServer(ctx, "filesystem-conflict", UpdateServerInput{DisplayName: &updatedName}); err != nil {
+		t.Fatalf("UpdateServer returned error: %v", err)
+	}
+	conflict, err := manager.RefreshCatalogServer(ctx, "filesystem-conflict")
+	if err != nil {
+		t.Fatalf("RefreshCatalogServer(conflict) returned error: %v", err)
+	}
+	if conflict.Status != CatalogActionStatusBlocked || conflict.FailureClass != "conflict" {
+		t.Fatalf("expected conflict refresh block, got %+v", conflict)
+	}
+
+	busyInput := testServerInput(t, true)
+	busyInput.ServerID = "filesystem-busy"
+	busyInput.DisplayName = "Filesystem Busy"
+	busyInput.OriginKind = OriginKindCatalog
+	busyInput.CatalogEntryID = "filesystem"
+	busyInput.InstallMethod = InstallMethodAPI
+	busyInput.EnvironmentScope = string(manager.cfg.Environment)
+	busyInput.CatalogManagement = catalogManagementForCreate(CatalogEntry{ID: "filesystem", SourceKind: "bundled"}, busyInput, nil, CatalogActionInstall, time.Now().UTC())
+	if _, _, err := manager.CreateServer(ctx, busyInput); err != nil {
+		t.Fatalf("CreateServer(busy) returned error: %v", err)
+	}
+	if _, err := manager.Start(ctx, "filesystem-busy", "manager-test"); err != nil {
+		t.Fatalf("Start(busy) returned error: %v", err)
+	}
+	busy, err := manager.UninstallCatalogServer(ctx, "filesystem-busy")
+	if err != nil {
+		t.Fatalf("UninstallCatalogServer(busy) returned error: %v", err)
+	}
+	if busy.Status != CatalogActionStatusBlocked || busy.FailureClass != "busy" {
+		t.Fatalf("expected busy uninstall block, got %+v", busy)
+	}
+
+	missingInput := testServerInput(t, false)
+	missingInput.ServerID = "filesystem-missing"
+	missingInput.DisplayName = "Filesystem Missing"
+	missingInput.OriginKind = OriginKindCatalog
+	missingInput.CatalogEntryID = "missing-entry"
+	missingInput.InstallMethod = InstallMethodAPI
+	missingInput.EnvironmentScope = string(manager.cfg.Environment)
+	missingInput.CatalogManagement = &CatalogManagement{
+		SourceKind: "bundled",
+		InstallInputSnapshot: CatalogInstallSnapshot{
+			ServerID:         "filesystem-missing",
+			DisplayName:      "Filesystem Missing",
+			Enabled:          boolPtr(false),
+			SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+			Command:          os.Args[0],
+			Args:             []string{"-test.run=TestMCPHelperProcess", "--"},
+			WorkingDir:       t.TempDir(),
+			InstallMethod:    InstallMethodAPI,
+		},
+	}
+	if _, _, err := manager.CreateServer(ctx, missingInput); err != nil {
+		t.Fatalf("CreateServer(missing) returned error: %v", err)
+	}
+	missing, err := manager.RefreshCatalogServer(ctx, "filesystem-missing")
+	if err != nil {
+		t.Fatalf("RefreshCatalogServer(missing) returned error: %v", err)
+	}
+	if missing.Status != CatalogActionStatusBlocked || missing.FailureClass != "missing_entry" {
+		t.Fatalf("expected missing-entry refresh block, got %+v", missing)
+	}
+
+	envInput := testServerInput(t, false)
+	envInput.ServerID = "filesystem-prod"
+	envInput.DisplayName = "Filesystem Prod"
+	envInput.OriginKind = OriginKindCatalog
+	envInput.CatalogEntryID = "filesystem"
+	envInput.InstallMethod = InstallMethodAPI
+	envInput.EnvironmentScope = "prod"
+	envInput.CatalogManagement = &CatalogManagement{
+		SourceKind: "bundled",
+		InstallInputSnapshot: CatalogInstallSnapshot{
+			ServerID:         "filesystem-prod",
+			DisplayName:      "Filesystem Prod",
+			Enabled:          boolPtr(false),
+			SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+			Command:          os.Args[0],
+			Args:             []string{"-test.run=TestMCPHelperProcess", "--"},
+			WorkingDir:       t.TempDir(),
+			InstallMethod:    InstallMethodAPI,
+		},
+	}
+	if _, _, err := manager.CreateServer(ctx, envInput); err != nil {
+		t.Fatalf("CreateServer(env mismatch) returned error: %v", err)
+	}
+	envMismatch, err := manager.RefreshCatalogServer(ctx, "filesystem-prod")
+	if err != nil {
+		t.Fatalf("RefreshCatalogServer(env mismatch) returned error: %v", err)
+	}
+	if envMismatch.Status != CatalogActionStatusBlocked || envMismatch.FailureClass != "environment_mismatch" {
+		t.Fatalf("expected environment mismatch block, got %+v", envMismatch)
+	}
+
+	run := runtime.Run{
+		RunID:      "run_busy",
+		Entrypoint: "chat",
+		Status:     runtime.RunStatusRunning,
+		Goal:       "busy tool call",
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
+	}
+	if err := sqliteStore.UpsertRun(ctx, run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+	step := runtime.Step{
+		StepID:    "step_busy",
+		RunID:     run.RunID,
+		Title:     "busy tool step",
+		Kind:      "tool",
+		Status:    runtime.StepStatusExecutingTool,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := sqliteStore.UpsertStep(ctx, step); err != nil {
+		t.Fatalf("UpsertStep returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertToolCall(ctx, runtime.ToolCall{
+		ToolCallID:     "tool_call_busy_1",
+		RunID:          "run_busy",
+		StepID:         "step_busy",
+		InvocationKind: runtime.ToolCallInvocationKindMCPTool,
+		MCPServerID:    "filesystem-conflict",
+		MCPToolName:    "lookup",
+		ToolName:       "lookup",
+		Status:         runtime.ToolCallStatusRunning,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("UpsertToolCall returned error: %v", err)
+	}
+	busyToolCall, err := manager.UninstallCatalogServer(ctx, "filesystem-conflict")
+	if err != nil {
+		t.Fatalf("UninstallCatalogServer(tool busy) returned error: %v", err)
+	}
+	if busyToolCall.Status != CatalogActionStatusBlocked || busyToolCall.FailureClass != "busy" {
+		t.Fatalf("expected busy tool-call uninstall block, got %+v", busyToolCall)
+	}
+}
+
+func TestCatalogRevalidationClassifiesPrerequisiteLossAndDrift(t *testing.T) {
+	manager, _, _ := newTestManagerWithStore(t)
+	ctx := context.Background()
+
+	writeMCPSecretsFileForTest(t, manager.cfg.DataDir, map[string]string{
+		"POSTGRES_DSN": "postgres://user:pass@localhost/db",
+	})
+	install, err := manager.InstallCatalogEntry(ctx, "postgres", CatalogInstallInput{
+		ServerID:   "postgres-phase22",
+		Command:    os.Args[0],
+		Args:       []string{"-test.run=TestMCPHelperProcess", "--"},
+		WorkingDir: t.TempDir(),
+		SecretRefs: []string{"POSTGRES_DSN"},
+	}, InstallMethodAPI)
+	if err != nil {
+		t.Fatalf("InstallCatalogEntry(postgres) returned error: %v", err)
+	}
+	if install.Server == nil {
+		t.Fatalf("expected installed postgres server, got %+v", install)
+	}
+
+	writeMCPSecretsFileForTest(t, manager.cfg.DataDir, map[string]string{})
+	revalidated, err := manager.RevalidateCatalogServer(ctx, "postgres-phase22")
+	if err != nil {
+		t.Fatalf("RevalidateCatalogServer returned error: %v", err)
+	}
+	if revalidated.Status != AvailabilityStatusBlocked || revalidated.Classification != RevalidationClassificationPrerequisiteLost {
+		t.Fatalf("expected prerequisite_lost blocked revalidation, got %+v", revalidated)
+	}
+	if len(revalidated.Issues) == 0 || revalidated.Issues[0].Kind != "secret" {
+		t.Fatalf("expected secret issue, got %+v", revalidated.Issues)
+	}
+	if revalidated.PreflightMs > 100 {
+		t.Fatalf("expected revalidation preflight <=100ms, got %d", revalidated.PreflightMs)
+	}
+
+	displayName := "Postgres Modified"
+	if _, err := manager.UpdateServer(ctx, "postgres-phase22", UpdateServerInput{DisplayName: &displayName}); err != nil {
+		t.Fatalf("UpdateServer returned error: %v", err)
+	}
+	writeMCPSecretsFileForTest(t, manager.cfg.DataDir, map[string]string{
+		"POSTGRES_DSN": "postgres://user:pass@localhost/db",
+	})
+	localDrift, err := manager.RevalidateCatalogServer(ctx, "postgres-phase22")
+	if err != nil {
+		t.Fatalf("RevalidateCatalogServer(local drift) returned error: %v", err)
+	}
+	if localDrift.Classification != RevalidationClassificationLocallyModified {
+		t.Fatalf("expected locally_modified classification, got %+v", localDrift)
+	}
+}
+
+func TestCatalogRevalidationSucceedsForHealthyRunningServer(t *testing.T) {
+	manager, _, _ := newTestManagerWithStore(t)
+	ctx := context.Background()
+
+	install, err := manager.InstallCatalogEntry(ctx, "filesystem", CatalogInstallInput{
+		ServerID:   "filesystem-running",
+		Command:    os.Args[0],
+		Args:       []string{"-test.run=TestMCPHelperProcess", "--"},
+		WorkingDir: t.TempDir(),
+		SecretRefs: []string{"GO_WANT_MCP_HELPER", "MCP_HELPER_TOOLS"},
+	}, InstallMethodAPI)
+	if err != nil {
+		t.Fatalf("InstallCatalogEntry(filesystem) returned error: %v", err)
+	}
+	if install.Server == nil {
+		t.Fatalf("expected installed filesystem server, got %+v", install)
+	}
+	if _, err := manager.Start(ctx, "filesystem-running", "manager-test"); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	waitForServerStatus(t, manager, "filesystem-running", LifecycleStatusHealthy)
+
+	revalidated, err := manager.RevalidateCatalogServer(ctx, "filesystem-running")
+	if err != nil {
+		t.Fatalf("RevalidateCatalogServer returned error: %v", err)
+	}
+	if revalidated.Status != AvailabilityStatusReady || revalidated.Classification != RevalidationClassificationHealthy {
+		t.Fatalf("expected healthy ready revalidation on running server, got %+v", revalidated)
+	}
+	if len(revalidated.Issues) != 0 {
+		t.Fatalf("expected no issues for healthy running server, got %+v", revalidated.Issues)
+	}
+	if revalidated.Server == nil || revalidated.Server.State.Status != LifecycleStatusHealthy {
+		t.Fatalf("expected healthy server projection after revalidation, got %+v", revalidated.Server)
 	}
 }
 
@@ -522,6 +839,11 @@ func TestRedactStringRedactsCommonDerivedSecretForms(t *testing.T) {
 }
 
 func newTestManager(t *testing.T) (*Manager, *sandbox.Manager) {
+	manager, _, sandboxes := newTestManagerWithStore(t)
+	return manager, sandboxes
+}
+
+func newTestManagerWithStore(t *testing.T) (*Manager, *store.SQLiteStore, *sandbox.Manager) {
 	t.Helper()
 
 	dataDir := filepath.Join(t.TempDir(), "dope")
@@ -547,7 +869,7 @@ func newTestManager(t *testing.T) (*Manager, *sandbox.Manager) {
 		_ = sandboxes.Close(context.Background())
 	})
 
-	return NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, NewTransportMux(NewStdioTransport(), nil)), sandboxes
+	return NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, NewTransportMux(NewStdioTransport(), nil)), sqliteStore, sandboxes
 }
 
 func waitForServerStatus(t *testing.T, manager *Manager, serverID string, status LifecycleStatus) {

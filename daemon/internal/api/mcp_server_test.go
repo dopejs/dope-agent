@@ -272,6 +272,14 @@ func TestMCPCatalogInstallAndRuntimeToolInvocation(t *testing.T) {
 	if err := json.Unmarshal(installRec.Body.Bytes(), &installResult); err != nil {
 		t.Fatalf("decode install result: %v", err)
 	}
+	if installResult.Server == nil || installResult.Server.CatalogManagement == nil {
+		t.Fatalf("expected catalog management projection on install, got %+v", installResult)
+	}
+	if installResult.Server.CatalogManagement.InstallInputSnapshot.Command != "" ||
+		len(installResult.Server.CatalogManagement.InstallInputSnapshot.Args) != 0 ||
+		installResult.Server.CatalogManagement.InstallInputSnapshot.WorkingDir != "" {
+		t.Fatalf("expected install snapshot transport fields to be redacted from operator projection, got %+v", installResult.Server.CatalogManagement.InstallInputSnapshot)
+	}
 	if installResult.Server == nil || installResult.Server.OriginKind != mcp.OriginKindCatalog || installResult.Server.CatalogEntryID != "filesystem" {
 		t.Fatalf("unexpected install result: %+v", installResult)
 	}
@@ -323,6 +331,184 @@ func TestMCPCatalogInstallAndRuntimeToolInvocation(t *testing.T) {
 	}
 	if !strings.Contains(toolCallRec.Body.String(), `"mcpTransportKind":"stdio"`) {
 		t.Fatalf("expected mcp provenance in tool call response, got %s", toolCallRec.Body.String())
+	}
+}
+
+func TestMCPCatalogMaintenanceRoutes(t *testing.T) {
+	t.Setenv("GO_WANT_API_MCP_HELPER", "1")
+	t.Setenv("API_MCP_HELPER_TOOLS", `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`)
+
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	writeAPIMCPSecretsFileForTest(t, dataDir, map[string]string{
+		"GO_WANT_API_MCP_HELPER": "1",
+		"API_MCP_HELPER_TOOLS":   `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`,
+		"POSTGRES_DSN":           "postgres://user:pass@localhost/db",
+	})
+	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	eventBus := events.NewBus()
+	defer eventBus.Close()
+
+	authManager := auth.NewManager()
+	policyEngine := policy.NewEngine()
+	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxes.Close(context.Background()) }()
+
+	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewTransportMux(mcp.NewStdioTransport(), nil))
+	server := NewServer(Dependencies{
+		Config:    cfg,
+		Logger:    telemetry.New("error").Slog(),
+		EventBus:  eventBus,
+		Auth:      authManager,
+		Policy:    policyEngine,
+		Sandboxes: sandboxes,
+		MCP:       mcpManager,
+		Store:     sqliteStore,
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "mcp-maintenance")
+
+	installReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/catalog/filesystem/install", strings.NewReader(`{"serverId":"filesystem-phase22","command":"`+os.Args[0]+`","args":["-test.run=TestAPIMCPHelperProcess","--"],"workingDir":"`+t.TempDir()+`","secretRefs":["GO_WANT_API_MCP_HELPER","API_MCP_HELPER_TOOLS"]}`))
+	installReq.Header.Set("Authorization", authHeader)
+	installRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(installRec, installReq)
+	if installRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for catalog install, got %d body=%s", installRec.Code, installRec.Body.String())
+	}
+
+	refreshReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/filesystem-phase22/refresh", nil)
+	refreshReq.Header.Set("Authorization", authHeader)
+	refreshRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(refreshRec, refreshReq)
+	if refreshRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for refresh, got %d body=%s", refreshRec.Code, refreshRec.Body.String())
+	}
+	var refreshResult mcp.CatalogLifecycleResult
+	if err := json.Unmarshal(refreshRec.Body.Bytes(), &refreshResult); err != nil {
+		t.Fatalf("decode refresh result: %v", err)
+	}
+	if refreshResult.Status != mcp.CatalogActionStatusCompleted || refreshResult.Server == nil || refreshResult.Server.CatalogManagement == nil {
+		t.Fatalf("unexpected refresh result: %+v", refreshResult)
+	}
+	if refreshResult.PreflightMs > 100 {
+		t.Fatalf("expected refresh preflight <=100ms, got %d", refreshResult.PreflightMs)
+	}
+
+	modifiedReq := httptest.NewRequest(http.MethodPatch, "/v1/mcp/servers/filesystem-phase22", strings.NewReader(`{"displayName":"Filesystem Modified"}`))
+	modifiedReq.Header.Set("Authorization", authHeader)
+	modifiedRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(modifiedRec, modifiedReq)
+	if modifiedRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for modification patch, got %d body=%s", modifiedRec.Code, modifiedRec.Body.String())
+	}
+
+	conflictReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/filesystem-phase22/refresh", nil)
+	conflictReq.Header.Set("Authorization", authHeader)
+	conflictRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(conflictRec, conflictReq)
+	if conflictRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for modified refresh, got %d body=%s", conflictRec.Code, conflictRec.Body.String())
+	}
+	var conflictResult mcp.CatalogLifecycleResult
+	if err := json.Unmarshal(conflictRec.Body.Bytes(), &conflictResult); err != nil {
+		t.Fatalf("decode conflict refresh result: %v", err)
+	}
+	if conflictResult.FailureClass != "conflict" {
+		t.Fatalf("expected conflict failure class, got %+v", conflictResult)
+	}
+
+	postgresInstallReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/catalog/postgres/install", strings.NewReader(`{"serverId":"postgres-phase22","command":"`+os.Args[0]+`","args":["-test.run=TestAPIMCPHelperProcess","--"],"workingDir":"`+t.TempDir()+`","secretRefs":["POSTGRES_DSN"]}`))
+	postgresInstallReq.Header.Set("Authorization", authHeader)
+	postgresInstallRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(postgresInstallRec, postgresInstallReq)
+	if postgresInstallRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for postgres install, got %d body=%s", postgresInstallRec.Code, postgresInstallRec.Body.String())
+	}
+	writeAPIMCPSecretsFileForTest(t, dataDir, map[string]string{})
+
+	revalidateReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/postgres-phase22/revalidate", nil)
+	revalidateReq.Header.Set("Authorization", authHeader)
+	revalidateRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(revalidateRec, revalidateReq)
+	if revalidateRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for blocked revalidation, got %d body=%s", revalidateRec.Code, revalidateRec.Body.String())
+	}
+	var revalidateResult mcp.CatalogRevalidationResult
+	if err := json.Unmarshal(revalidateRec.Body.Bytes(), &revalidateResult); err != nil {
+		t.Fatalf("decode revalidation result: %v", err)
+	}
+	if revalidateResult.Classification != mcp.RevalidationClassificationPrerequisiteLost || len(revalidateResult.Issues) == 0 {
+		t.Fatalf("unexpected revalidation result: %+v", revalidateResult)
+	}
+
+	writeAPIMCPSecretsFileForTest(t, dataDir, map[string]string{
+		"GO_WANT_API_MCP_HELPER": "1",
+		"API_MCP_HELPER_TOOLS":   `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`,
+	})
+	runningInstallReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/catalog/filesystem/install", strings.NewReader(`{"serverId":"filesystem-revalidate","command":"`+os.Args[0]+`","args":["-test.run=TestAPIMCPHelperProcess","--"],"workingDir":"`+t.TempDir()+`","secretRefs":["GO_WANT_API_MCP_HELPER","API_MCP_HELPER_TOOLS"]}`))
+	runningInstallReq.Header.Set("Authorization", authHeader)
+	runningInstallRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(runningInstallRec, runningInstallReq)
+	if runningInstallRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for running verification install, got %d body=%s", runningInstallRec.Code, runningInstallRec.Body.String())
+	}
+
+	runningReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/filesystem-revalidate/start", nil)
+	runningReq.Header.Set("Authorization", authHeader)
+	runningRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(runningRec, runningReq)
+	if runningRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for start before running revalidation, got %d body=%s", runningRec.Code, runningRec.Body.String())
+	}
+
+	revalidateHealthyReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/filesystem-revalidate/revalidate", nil)
+	revalidateHealthyReq.Header.Set("Authorization", authHeader)
+	revalidateHealthyRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(revalidateHealthyRec, revalidateHealthyReq)
+	if revalidateHealthyRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for healthy running revalidation, got %d body=%s", revalidateHealthyRec.Code, revalidateHealthyRec.Body.String())
+	}
+	var revalidateHealthyResult mcp.CatalogRevalidationResult
+	if err := json.Unmarshal(revalidateHealthyRec.Body.Bytes(), &revalidateHealthyResult); err != nil {
+		t.Fatalf("decode healthy revalidation result: %v", err)
+	}
+	if revalidateHealthyResult.Status != mcp.AvailabilityStatusReady || revalidateHealthyResult.Classification != mcp.RevalidationClassificationHealthy {
+		t.Fatalf("unexpected healthy revalidation result: %+v", revalidateHealthyResult)
+	}
+
+	stopReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/filesystem-revalidate/stop", nil)
+	stopReq.Header.Set("Authorization", authHeader)
+	stopRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(stopRec, stopReq)
+	if stopRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for stop before uninstall, got %d body=%s", stopRec.Code, stopRec.Body.String())
+	}
+
+	uninstallReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/filesystem-phase22/uninstall", nil)
+	uninstallReq.Header.Set("Authorization", authHeader)
+	uninstallRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(uninstallRec, uninstallReq)
+	if uninstallRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for uninstall, got %d body=%s", uninstallRec.Code, uninstallRec.Body.String())
+	}
+	var uninstallResult mcp.CatalogLifecycleResult
+	if err := json.Unmarshal(uninstallRec.Body.Bytes(), &uninstallResult); err != nil {
+		t.Fatalf("decode uninstall result: %v", err)
+	}
+	if uninstallResult.Status != mcp.CatalogActionStatusCompleted || !uninstallResult.Removed {
+		t.Fatalf("unexpected uninstall result: %+v", uninstallResult)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/servers/filesystem-phase22", nil)
+	getReq.Header.Set("Authorization", authHeader)
+	getRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 after uninstall, got %d body=%s", getRec.Code, getRec.Body.String())
 	}
 }
 

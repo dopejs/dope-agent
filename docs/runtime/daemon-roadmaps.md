@@ -999,6 +999,253 @@ Task definition of done:
 - non-MCP integration catalogs
 - full multi-tool orchestration planner
 
+## Roadmap 22: MCP Catalog Management And Distribution
+
+Status: `[x] complete`
+
+Detailed spec: [docs/specs/007-mcp-catalog-management-and-distribution.md](../specs/007-mcp-catalog-management-and-distribution.md)
+
+### Goal
+
+Turn the current curated bundled MCP catalog into a managed operator surface with explicit
+package lifecycle, source provenance, and post-install maintenance semantics.
+
+### Tasks
+
+#### 1. Catalog Lifecycle Management
+
+Scope:
+
+- add uninstall, reinstall, and explicit update flows for installed catalog entries
+- define how operators refresh or replace installed definitions without hand-editing JSON
+
+Task definition of done:
+
+- operators can remove, reinstall, or explicitly refresh installed catalog entries through daemon-owned workflows
+- update behavior is fail-closed when an installed resource has operator modifications or conflicting state
+- install provenance and rollback semantics remain explicit in API, events, and docs
+- implemented via `POST /v1/mcp/servers/{serverId}/refresh`, `/reinstall`, `/uninstall`
+  on the existing MCP server resource plane
+- active lifecycle or tool-call state now returns explicit `busy`, and locally modified or
+  otherwise conflicting resources return explicit `conflict`
+
+#### 2. Source And Version Provenance
+
+Scope:
+
+- persist catalog source identity, version metadata, and install provenance
+- prepare the catalog model for future non-bundled sources without introducing them yet
+
+Task definition of done:
+
+- installed MCP resources preserve source kind, source revision or version, and install/update timestamps
+- operator inspection can explain where a catalog entry came from and whether it is stale relative to the current catalog payload
+- contracts and persistence remain additive to the current MCP registry model
+- implemented through additive `catalogManagement` projection on MCP server resources,
+  including installed/current revision, drift summary, install snapshot, and last action
+
+#### 3. Health Revalidation And Drift Detection
+
+Scope:
+
+- re-check starter prerequisites after install
+- surface config drift or prerequisite drift without requiring a manual start attempt
+
+Task definition of done:
+
+- installed MCP resources can be revalidated on demand or at daemon-defined checkpoints
+- operator surfaces distinguish catalog drift, credential loss, binary loss, and transport health failure
+- docs explain the difference between catalog freshness, install success, and runtime health
+- phase 22 intentionally narrowed this to operator-triggered revalidation only; no daemon
+  startup sweep or background loop was introduced
+- explicit `POST /v1/mcp/servers/{serverId}/revalidate` now persists ordered issue
+  summaries plus a primary classification
+
+#### 4. Docs And Verification
+
+Scope:
+
+- align docs, routes, schemas, events, and quickstart for managed catalog lifecycle
+- prove at least one safe uninstall or reinstall path in `DOPE_ENV=test`
+
+Task definition of done:
+
+- docs explain install, update, reinstall, uninstall, and drift semantics
+- contract and targeted regressions cover lifecycle transitions and failure truth
+- manual verification records one full install-to-remove or install-to-refresh workflow
+- verified in `DOPE_ENV=test` on 2026-04-20 with:
+  - install -> inspect -> revalidate
+  - idle locally modified `refresh -> 409 conflict`
+  - idle `uninstall -> completed + removed`
+  - active resource `refresh/uninstall -> 409 busy`
+
+### Roadmap Definition Of Done
+
+- MCP catalog management is a first-class daemon product surface rather than a one-shot install helper
+- installed MCP resources preserve enough provenance to explain source, version, and drift
+- operators can maintain bundled MCP integrations without hand-editing resource definitions
+- environment scoping, redaction, and audit history remain additive and restart-safe
+
+### Explicitly Out Of Scope
+
+- third-party marketplace discovery
+- signed remote catalog distribution
+- non-MCP package ecosystems
+
+## Roadmap 23: Additional MCP Transports
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/008-additional-mcp-transports.md](../specs/008-additional-mcp-transports.md)
+
+### Goal
+
+Expand MCP transport support beyond `stdio` and `streamable-http` while preserving one
+daemon-owned MCP registry, lifecycle, authorization, and invocation plane.
+
+### Tasks
+
+#### 1. Transport Capability Contract
+
+Scope:
+
+- define transport-specific capability, prerequisite, and health metadata
+- make transport selection and unsupported states operator-visible
+
+Task definition of done:
+
+- each supported MCP transport has explicit capability and prerequisite metadata
+- operator inspection can explain why a transport is ready, degraded, unsupported, or blocked
+- contracts distinguish transport mismatch from server runtime failure
+
+#### 2. Additional Remote Or Session-Based Transport
+
+Scope:
+
+- implement at least one MCP transport beyond `stdio` and `streamable-http`
+- keep daemon lifecycle and invocation semantics stable
+
+Task definition of done:
+
+- the new transport initializes, discovers tools, and invokes through the same daemon-owned manager
+- session bootstrap and restore remain bounded
+- transport-specific failures are explicit and covered by tests
+
+#### 3. Transport Operations And Recovery
+
+Scope:
+
+- define reconnection, retry, cancellation, and restart behavior per transport family
+- preserve operator-visible truth during transient remote failures
+
+Task definition of done:
+
+- restart and reconnect semantics are explicit for every supported transport
+- daemon recovery does not silently lose MCP session truth across transport families
+- events and history distinguish lifecycle recovery from invocation failure
+
+#### 4. Docs And Verification
+
+Scope:
+
+- document supported transport families and host prerequisites
+- validate at least one real server on the newly added transport
+
+Task definition of done:
+
+- docs explain transport selection, tradeoffs, and failure modes
+- contract and targeted regressions cover transport capability and lifecycle truth
+- manual verification records one real end-to-end server on the new transport
+
+### Roadmap Definition Of Done
+
+- MCP supports more than two real transport families without splitting into multiple control planes
+- transport readiness, failure, and recovery semantics remain inspectable and auditable
+- remote MCP support can expand without weakening the current runtime or policy model
+
+### Explicitly Out Of Scope
+
+- marketplace catalog work
+- multi-tool orchestration planner
+- non-MCP remote execution control planes
+
+## Roadmap 24: Tool-Call Orchestration
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/009-tool-call-orchestration.md](../specs/009-tool-call-orchestration.md)
+
+### Goal
+
+Build a policy-aware orchestration layer on top of the unified runtime tool-call plane so
+skills, local tools, and MCP tools can participate in ordered or graph-shaped workflows.
+
+### Tasks
+
+#### 1. Planning And Selection Model
+
+Scope:
+
+- define how the daemon plans multi-step tool workflows
+- preserve operator-visible rationale, policy gates, and execution boundaries
+
+Task definition of done:
+
+- orchestration decisions are explicit, inspectable, and replayable
+- tool selection and ordering can be explained without reading raw logs
+- policy and approval requirements remain attached to each concrete execution step
+
+#### 2. Workflow Execution Semantics
+
+Scope:
+
+- execute ordered or graph-shaped tool workflows through the existing runtime plane
+- define retries, cancellation, and partial-failure behavior
+
+Task definition of done:
+
+- orchestrated workflows preserve per-step provenance and terminal truth
+- retries and cancellations do not hide already-visible side effects
+- partial workflow failure is represented explicitly in runtime history
+
+#### 3. Cross-Consumer Coordination
+
+Scope:
+
+- coordinate MCP tools, local tools, and executable skills in one execution story
+- preserve sandbox and approval guarantees across mixed workflows
+
+Task definition of done:
+
+- orchestration can combine at least two consumer families without bypassing existing policy or sandbox boundaries
+- cross-tool data flow and handoff remain operator-visible
+- docs explain mixed workflow guarantees and limits
+
+#### 4. Docs And Verification
+
+Scope:
+
+- align docs, schemas, events, and operator workflows for orchestration
+- prove at least one real mixed workflow end to end
+
+Task definition of done:
+
+- docs explain orchestration lifecycle, decision visibility, and failure handling
+- contract and targeted regressions cover ordered execution, retries, cancellation, and partial failure
+- manual verification records one mixed-tool workflow using the daemon-owned runtime plane
+
+### Roadmap Definition Of Done
+
+- the harness can run controlled multi-step tool workflows on one execution boundary
+- orchestration decisions are auditable and policy-aware
+- mixed MCP, skill, and local-tool workflows do not introduce bypass paths
+
+### Explicitly Out Of Scope
+
+- autonomous self-improvement loops
+- memory-driven planning systems
+- marketplace or ecosystem discovery surfaces
+
 ## Roadmap 13: Provider Streaming Timeout Semantics
 
 Status: `[x] complete`
@@ -1897,3 +2144,6 @@ Task definition of done:
 19. Roadmap 19: Skill And Local Tool Sandbox Execution
 20. Roadmap 20: Stronger Isolation And Additional Sandbox Backends
 21. Roadmap 21: Complete MCP Runtime And Catalog
+22. Roadmap 22: MCP Catalog Management And Distribution
+23. Roadmap 23: Additional MCP Transports
+24. Roadmap 24: Tool-Call Orchestration

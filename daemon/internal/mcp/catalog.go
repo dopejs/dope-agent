@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -324,4 +325,60 @@ func requiresOfflineVerifiedLocalCommand(spec CreateServerInput) bool {
 		return strings.Contains(arg, "@modelcontextprotocol/")
 	}
 	return false
+}
+
+func installSnapshotFromCreateSpec(spec CreateServerInput) CatalogInstallSnapshot {
+	return CatalogInstallSnapshot{
+		ServerID:         strings.TrimSpace(spec.ServerID),
+		DisplayName:      strings.TrimSpace(spec.DisplayName),
+		Enabled:          boolPtr(spec.Enabled),
+		SandboxProfileID: strings.TrimSpace(spec.SandboxProfileID),
+		Command:          strings.TrimSpace(spec.Command),
+		Args:             cloneStrings(spec.Args),
+		Endpoint:         strings.TrimSpace(spec.Endpoint),
+		WorkingDir:       strings.TrimSpace(spec.WorkingDir),
+		SecretRefs:       cleanStrings(spec.SecretRefs),
+		InstallMethod:    spec.InstallMethod,
+	}
+}
+
+func catalogInstallInputFromSnapshot(snapshot CatalogInstallSnapshot) CatalogInstallInput {
+	return CatalogInstallInput{
+		ServerID:         strings.TrimSpace(snapshot.ServerID),
+		DisplayName:      strings.TrimSpace(snapshot.DisplayName),
+		Enabled:          cloneBoolPtr(snapshot.Enabled),
+		SandboxProfileID: strings.TrimSpace(snapshot.SandboxProfileID),
+		Command:          strings.TrimSpace(snapshot.Command),
+		Args:             cloneStrings(snapshot.Args),
+		Endpoint:         strings.TrimSpace(snapshot.Endpoint),
+		WorkingDir:       strings.TrimSpace(snapshot.WorkingDir),
+		SecretRefs:       cleanStrings(snapshot.SecretRefs),
+	}
+}
+
+func fingerprintCreateServerSpec(spec CreateServerInput) string {
+	spec.Args = cloneStrings(spec.Args)
+	spec.SecretRefs = cleanStrings(spec.SecretRefs)
+	if spec.Declaration != nil {
+		declaration := normalizeDeclaration(*spec.Declaration)
+		spec.Declaration = &declaration
+	}
+	payload, err := json.Marshal(spec)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
+	return fmt.Sprintf("sha256:%x", sum)
+}
+
+func cloneBoolPtr(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }

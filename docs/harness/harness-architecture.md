@@ -154,9 +154,15 @@ Current daemon status:
 - MCP session bootstrap now times out explicitly so daemon start and server restore do not
   hang indefinitely on an unresponsive stdio or remote server
 
+Follow-on work should now split rather than extending the completed MCP slice:
+
+- Roadmap 22: MCP catalog management and distribution
+- Roadmap 23: additional MCP transports
+- Roadmap 24: tool-call orchestration
+
 ### Phase 4: Tool-Call Orchestration
 
-After MCP:
+After MCP catalog management and transport expansion:
 
 - policy-aware tool planning
 - execution graph or ordered orchestration
@@ -366,11 +372,12 @@ The right next step is:
 
 Then continue in this order:
 
-1. MCP
-2. tool-call orchestration
-3. context engineering
-4. memory
-5. agent-managed skills
-6. dreaming / self-improve
+1. MCP catalog management and distribution
+2. additional MCP transports
+3. tool-call orchestration
+4. context engineering
+5. memory
+6. agent-managed skills
+7. dreaming / self-improve
 
 This keeps the harness grounded in execution control before it grows into adaptive knowledge systems.

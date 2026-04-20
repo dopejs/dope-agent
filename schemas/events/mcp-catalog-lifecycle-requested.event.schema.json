@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/mcp-catalog-lifecycle-requested.event.schema.json",
+  "title": "MCPCatalogLifecycleRequestedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "mcp" },
+        "name": { "const": "mcp.catalog_lifecycle_requested" },
+        "resource": {
+          "type": "object",
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": { "const": "mcp_server" },
+            "id": { "type": "string" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": ["actionId", "action", "serverId", "catalogEntryId", "environment"],
+          "additionalProperties": false,
+          "properties": {
+            "actionId": { "type": "string" },
+            "action": { "type": "string", "enum": ["refresh", "reinstall", "uninstall", "revalidate"] },
+            "serverId": { "type": "string" },
+            "catalogEntryId": { "type": "string" },
+            "environment": { "type": "string", "enum": ["test", "prod"] }
+          }
+        }
+      }
+    }
+  ]
+}

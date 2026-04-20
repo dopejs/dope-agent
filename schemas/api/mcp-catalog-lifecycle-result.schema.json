@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-catalog-lifecycle-result.schema.json",
+  "title": "MCPCatalogLifecycleResult",
+  "type": "object",
+  "required": ["actionId", "action", "status", "serverId", "auditEventIds"],
+  "additionalProperties": false,
+  "properties": {
+    "actionId": { "type": "string" },
+    "action": { "type": "string", "enum": ["refresh", "reinstall", "uninstall"] },
+    "status": { "type": "string", "enum": ["completed", "blocked", "failed"] },
+    "serverId": { "type": "string" },
+    "catalogEntryId": { "type": "string" },
+    "failureClass": { "type": "string" },
+    "reason": { "type": "string" },
+    "auditEventIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "removed": { "type": "boolean" },
+    "server": { "$ref": "./mcp-server-resource.schema.json" },
+    "preflightMs": { "type": "integer", "minimum": 0 }
+  }
+}

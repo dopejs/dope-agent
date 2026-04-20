@@ -729,6 +729,25 @@ func TestSQLiteStorePersistsToolCalls(t *testing.T) {
 	if items[1].InvocationKind != runtime.ToolCallInvocationKindMCPTool || items[1].MCPServerID != "filesystem-test" || items[1].MCPSessionID != "session_1" {
 		t.Fatalf("expected persisted mcp tool call provenance, got %+v", items[1])
 	}
+	active, err := store.HasActiveMCPToolCalls(ctx, "filesystem-test")
+	if err != nil {
+		t.Fatalf("HasActiveMCPToolCalls(completed) returned error: %v", err)
+	}
+	if active {
+		t.Fatal("expected completed mcp tool call to not count as active")
+	}
+	mcpToolCall.Status = runtime.ToolCallStatusRunning
+	mcpToolCall.UpdatedAt = time.Now().UTC()
+	if err := store.UpsertToolCall(ctx, mcpToolCall); err != nil {
+		t.Fatalf("UpsertToolCall(mcp running) returned error: %v", err)
+	}
+	active, err = store.HasActiveMCPToolCalls(ctx, "filesystem-test")
+	if err != nil {
+		t.Fatalf("HasActiveMCPToolCalls(running) returned error: %v", err)
+	}
+	if !active {
+		t.Fatal("expected running mcp tool call to count as active")
+	}
 }
 
 func TestSQLiteStorePersistsConsumerPolicyRecordsAndSecretScopeBindings(t *testing.T) {

@@ -1899,6 +1899,14 @@ func handleMCPServerRoutes(manager *mcp.Manager, w http.ResponseWriter, r *http.
 		handleMCPServerByID(manager, w, r, parts[0])
 	case len(parts) == 2 && parts[1] == "start":
 		handleMCPServerStart(manager, w, r, parts[0])
+	case len(parts) == 2 && parts[1] == "refresh":
+		handleMCPServerRefresh(manager, w, r, parts[0])
+	case len(parts) == 2 && parts[1] == "reinstall":
+		handleMCPServerReinstall(manager, w, r, parts[0])
+	case len(parts) == 2 && parts[1] == "uninstall":
+		handleMCPServerUninstall(manager, w, r, parts[0])
+	case len(parts) == 2 && parts[1] == "revalidate":
+		handleMCPServerRevalidate(manager, w, r, parts[0])
 	case len(parts) == 2 && parts[1] == "stop":
 		handleMCPServerStop(manager, w, r, parts[0])
 	case len(parts) == 2 && parts[1] == "restart":
@@ -1963,6 +1971,94 @@ func handleMCPServerStart(manager *mcp.Manager, w http.ResponseWriter, r *http.R
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func handleMCPServerRefresh(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	response, err := manager.RefreshCatalogServer(r.Context(), serverID)
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	status := http.StatusOK
+	if response.Status != mcp.CatalogActionStatusCompleted {
+		status = http.StatusConflict
+	}
+	writeJSON(w, status, response)
+}
+
+func handleMCPServerReinstall(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	response, err := manager.ReinstallCatalogServer(r.Context(), serverID)
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	status := http.StatusOK
+	if response.Status != mcp.CatalogActionStatusCompleted {
+		status = http.StatusConflict
+	}
+	writeJSON(w, status, response)
+}
+
+func handleMCPServerUninstall(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	response, err := manager.UninstallCatalogServer(r.Context(), serverID)
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	status := http.StatusOK
+	if response.Status != mcp.CatalogActionStatusCompleted {
+		status = http.StatusConflict
+	}
+	writeJSON(w, status, response)
+}
+
+func handleMCPServerRevalidate(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	response, err := manager.RevalidateCatalogServer(r.Context(), serverID)
+	if err != nil {
+		switch {
+		case errors.Is(err, mcp.ErrServerNotFound):
+			http.NotFound(w, r)
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	status := http.StatusOK
+	if response.Status != mcp.AvailabilityStatusReady {
+		status = http.StatusConflict
+	}
+	writeJSON(w, status, response)
 }
 
 func handleMCPServerStop(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {

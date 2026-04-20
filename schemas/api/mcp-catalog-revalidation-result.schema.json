@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-catalog-revalidation-result.schema.json",
+  "title": "MCPCatalogRevalidationResult",
+  "type": "object",
+  "required": ["actionId", "action", "serverId", "status", "classification", "auditEventIds"],
+  "additionalProperties": false,
+  "properties": {
+    "actionId": { "type": "string" },
+    "action": { "const": "revalidate" },
+    "serverId": { "type": "string" },
+    "catalogEntryId": { "type": "string" },
+    "status": { "type": "string", "enum": ["ready", "blocked", "unavailable", "unsupported"] },
+    "classification": { "type": "string", "enum": ["healthy", "prerequisite_lost", "catalog_drift", "locally_modified", "runtime_unhealthy", "missing_entry"] },
+    "reason": { "type": "string" },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "name", "status", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string" },
+          "name": { "type": "string" },
+          "status": { "type": "string", "enum": ["blocked", "unavailable", "unsupported", "warning"] },
+          "reason": { "type": "string" },
+          "environmentScope": { "type": "string", "enum": ["test", "prod"] }
+        }
+      }
+    },
+    "auditEventIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "server": { "$ref": "./mcp-server-resource.schema.json" },
+    "preflightMs": { "type": "integer", "minimum": 0 }
+  }
+}

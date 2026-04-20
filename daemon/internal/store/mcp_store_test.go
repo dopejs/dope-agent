@@ -87,4 +87,15 @@ func TestSQLiteStorePersistsMCPRecords(t *testing.T) {
 	if len(rules) != 1 || rules[0].RuntimeSurface != "chat" || !rules[0].Active {
 		t.Fatalf("unexpected mcp tool exposure result: %+v", rules)
 	}
+
+	if err := sqliteStore.DeleteMCPServer(ctx, "mcp_test"); err != nil {
+		t.Fatalf("DeleteMCPServer returned error: %v", err)
+	}
+	servers, err = sqliteStore.ListMCPServers(ctx)
+	if err != nil {
+		t.Fatalf("ListMCPServers(after delete) returned error: %v", err)
+	}
+	if len(servers) != 0 {
+		t.Fatalf("expected deleted mcp server to be removed, got %+v", servers)
+	}
 }

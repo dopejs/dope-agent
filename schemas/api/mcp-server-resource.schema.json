@@ -27,6 +27,67 @@
     "catalogEntryId": { "type": "string" },
     "installMethod": { "type": "string", "enum": ["api", "script"] },
     "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "catalogManagement": {
+      "type": "object",
+      "required": ["sourceKind", "installedRevision", "currentRevision", "driftStatus"],
+      "additionalProperties": false,
+      "properties": {
+        "sourceKind": { "type": "string" },
+        "installedRevision": { "type": "string" },
+        "currentRevision": { "type": "string" },
+        "driftStatus": { "type": "string", "enum": ["in_sync", "catalog_updated", "locally_modified", "missing_entry", "conflicting"] },
+        "driftReason": { "type": "string" },
+        "installedAt": { "type": "string", "format": "date-time" },
+        "lastMaintainedAt": { "type": "string", "format": "date-time" },
+        "lastActionAt": { "type": "string", "format": "date-time" },
+        "lastAction": { "type": "string", "enum": ["install", "refresh", "reinstall", "uninstall", "revalidate"] },
+        "lastActionStatus": { "type": "string", "enum": ["completed", "blocked", "failed"] },
+        "lastActionFailureClass": { "type": "string" },
+        "lastActionReason": { "type": "string" },
+        "installInputSnapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "serverId": { "type": "string" },
+            "displayName": { "type": "string" },
+            "enabled": { "type": "boolean" },
+            "sandboxProfileId": { "type": "string" },
+            "command": { "type": "string" },
+            "args": { "type": "array", "items": { "type": "string" } },
+            "endpoint": { "type": "string" },
+            "workingDir": { "type": "string" },
+            "secretRefs": { "type": "array", "items": { "type": "string" } },
+            "installMethod": { "type": "string", "enum": ["api", "script"] }
+          }
+        },
+        "lastRevalidation": {
+          "type": "object",
+          "required": ["checkedAt", "status", "classification"],
+          "additionalProperties": false,
+          "properties": {
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "enum": ["ready", "blocked", "unavailable", "unsupported"] },
+            "classification": { "type": "string", "enum": ["healthy", "prerequisite_lost", "catalog_drift", "locally_modified", "runtime_unhealthy", "missing_entry"] },
+            "reason": { "type": "string" },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["kind", "name", "status", "reason"],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": { "type": "string" },
+                  "name": { "type": "string" },
+                  "status": { "type": "string", "enum": ["blocked", "unavailable", "unsupported", "warning"] },
+                  "reason": { "type": "string" },
+                  "environmentScope": { "type": "string", "enum": ["test", "prod"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "enabled": { "type": "boolean" },
     "sandboxProfileId": { "type": "string" },
     "declarationId": { "type": "string" },

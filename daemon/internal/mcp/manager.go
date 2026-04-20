@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -621,6 +622,7 @@ func (m *Manager) InstallCatalogEntry(ctx context.Context, entryID string, input
 			return result, nil
 		}
 	}
+	createInput.CatalogManagement = catalogManagementForCreate(entry, createInput, nil, CatalogActionInstall, time.Now().UTC())
 	resource, _, err := m.CreateServer(ctx, createInput)
 	if err != nil {
 		_, _ = m.publishAuditEvent(ctx, "mcp.catalog_install_failed", events.Resource{Kind: "mcp_catalog_install", ID: installID}, map[string]any{
@@ -655,6 +657,569 @@ func (m *Manager) InstallCatalogEntry(ctx context.Context, entryID string, input
 		result.AuditEventIDs = append(result.AuditEventIDs, completedEvent.EventID)
 	}
 	return result, nil
+}
+
+func (m *Manager) RefreshCatalogServer(ctx context.Context, serverID string) (CatalogLifecycleResult, error) {
+	return m.runCatalogLifecycleAction(ctx, strings.TrimSpace(serverID), CatalogActionRefresh)
+}
+
+func (m *Manager) ReinstallCatalogServer(ctx context.Context, serverID string) (CatalogLifecycleResult, error) {
+	return m.runCatalogLifecycleAction(ctx, strings.TrimSpace(serverID), CatalogActionReinstall)
+}
+
+func (m *Manager) UninstallCatalogServer(ctx context.Context, serverID string) (CatalogLifecycleResult, error) {
+	return m.runCatalogLifecycleAction(ctx, strings.TrimSpace(serverID), CatalogActionUninstall)
+}
+
+func (m *Manager) RevalidateCatalogServer(ctx context.Context, serverID string) (CatalogRevalidationResult, error) {
+	startedAt := time.Now()
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return CatalogRevalidationResult{}, ErrServerIDRequired
+	}
+	server, ok := m.GetServer(serverID)
+	if !ok {
+		return CatalogRevalidationResult{}, ErrServerNotFound
+	}
+	result := CatalogRevalidationResult{
+		ActionID:       fmt.Sprintf("mcp_revalidate_%d", startedAt.UTC().UnixNano()),
+		Action:         CatalogActionRevalidate,
+		ServerID:       server.ServerID,
+		CatalogEntryID: server.CatalogEntryID,
+	}
+	requestedEvent, err := m.publishAuditEvent(ctx, "mcp.catalog_lifecycle_requested", events.Resource{Kind: resourceKindServer, ID: server.ServerID}, map[string]any{
+		"actionId":       result.ActionID,
+		"action":         result.Action,
+		"serverId":       server.ServerID,
+		"catalogEntryId": server.CatalogEntryID,
+		"environment":    string(m.cfg.Environment),
+	})
+	if err != nil {
+		return CatalogRevalidationResult{}, err
+	}
+	result.AuditEventIDs = append(result.AuditEventIDs, requestedEvent.EventID)
+
+	if blocked, handled := m.catalogTargetBlockResult(server); handled {
+		return m.catalogRevalidationBlockedResult(ctx, server, result, blocked, startedAt), nil
+	}
+	if blocked, handled, err := m.catalogRevalidationBusyBlockResult(ctx, server); handled || err != nil {
+		if err != nil {
+			return CatalogRevalidationResult{}, err
+		}
+		return m.catalogRevalidationBlockedResult(ctx, server, result, blocked, startedAt), nil
+	}
+
+	management := m.buildCatalogManagementLocked(server)
+	issues, status, classification, reason := m.collectRevalidationIssues(server, management)
+	checkedAt := time.Now().UTC()
+	server.CatalogManagement = management
+	if server.CatalogManagement == nil {
+		server.CatalogManagement = &CatalogManagement{}
+	}
+	server.CatalogManagement.LastAction = CatalogActionRevalidate
+	server.CatalogManagement.LastActionStatus = CatalogActionStatusCompleted
+	server.CatalogManagement.LastActionFailureClass = ""
+	server.CatalogManagement.LastActionReason = reason
+	server.CatalogManagement.LastActionAt = &checkedAt
+	server.CatalogManagement.LastRevalidation = &RevalidationSnapshot{
+		CheckedAt:      checkedAt,
+		Status:         status,
+		Classification: classification,
+		Reason:         reason,
+		Issues:         append([]RevalidationIssue(nil), issues...),
+	}
+	m.setServer(server)
+	if err := m.persistServer(ctx, server); err != nil {
+		return CatalogRevalidationResult{}, err
+	}
+
+	result.Status = status
+	result.Classification = classification
+	result.Reason = reason
+	result.Issues = append([]RevalidationIssue(nil), issues...)
+	result.PreflightMs = time.Since(startedAt).Milliseconds()
+	if resource, ok := m.GetServerResource(server.ServerID); ok {
+		result.Server = &resource
+	}
+	completedEvent, err := m.publishAuditEvent(ctx, "mcp.catalog_revalidation_completed", events.Resource{Kind: resourceKindServer, ID: server.ServerID}, map[string]any{
+		"actionId":       result.ActionID,
+		"action":         result.Action,
+		"serverId":       server.ServerID,
+		"catalogEntryId": server.CatalogEntryID,
+		"status":         result.Status,
+		"classification": result.Classification,
+		"reason":         result.Reason,
+		"issues":         redactedIssues(issues),
+		"environment":    string(m.cfg.Environment),
+	})
+	if err != nil {
+		return CatalogRevalidationResult{}, err
+	}
+	result.AuditEventIDs = append(result.AuditEventIDs, completedEvent.EventID)
+	return result, nil
+}
+
+func (m *Manager) runCatalogLifecycleAction(ctx context.Context, serverID string, action CatalogAction) (CatalogLifecycleResult, error) {
+	startedAt := time.Now()
+	if serverID == "" {
+		return CatalogLifecycleResult{}, ErrServerIDRequired
+	}
+	server, ok := m.GetServer(serverID)
+	if !ok {
+		return CatalogLifecycleResult{}, ErrServerNotFound
+	}
+	result := CatalogLifecycleResult{
+		ActionID:       fmt.Sprintf("mcp_catalog_%s_%d", action, startedAt.UTC().UnixNano()),
+		Action:         action,
+		ServerID:       server.ServerID,
+		CatalogEntryID: server.CatalogEntryID,
+	}
+	requestedEvent, err := m.publishAuditEvent(ctx, "mcp.catalog_lifecycle_requested", events.Resource{Kind: resourceKindServer, ID: server.ServerID}, map[string]any{
+		"actionId":       result.ActionID,
+		"action":         action,
+		"serverId":       server.ServerID,
+		"catalogEntryId": server.CatalogEntryID,
+		"environment":    string(m.cfg.Environment),
+	})
+	if err != nil {
+		return CatalogLifecycleResult{}, err
+	}
+	result.AuditEventIDs = append(result.AuditEventIDs, requestedEvent.EventID)
+	if blocked, handled, err := m.catalogLifecycleBlockResult(ctx, server, action, action != CatalogActionUninstall); handled || err != nil {
+		if err != nil {
+			return CatalogLifecycleResult{}, err
+		}
+		return m.catalogLifecycleBlockedResult(ctx, server, result, blocked, startedAt)
+	}
+
+	switch action {
+	case CatalogActionUninstall:
+		if err := m.deleteCatalogServer(ctx, server.ServerID); err != nil {
+			return m.catalogLifecycleFailedResult(ctx, server, result, "failed", err.Error(), startedAt)
+		}
+		result.Status = CatalogActionStatusCompleted
+		result.Removed = true
+	case CatalogActionRefresh, CatalogActionReinstall:
+		entry, ok := m.GetCatalogEntry(server.CatalogEntryID)
+		if !ok {
+			return m.catalogLifecycleBlockedResult(ctx, server, result, CatalogLifecycleResult{
+				Status:       CatalogActionStatusBlocked,
+				FailureClass: "missing_entry",
+				Reason:       "catalog entry is no longer available",
+			}, startedAt)
+		}
+		createInput := mergeCatalogInstallInput(entry, catalogInstallInputFromSnapshot(server.CatalogManagement.InstallInputSnapshot), server.InstallMethod, m.cfg.Environment)
+		createInput.CatalogManagement = catalogManagementForCreate(entry, createInput, &server, action, time.Now().UTC())
+		previousInput := serverToCreateInput(server)
+		if action == CatalogActionReinstall {
+			if err := m.deleteCatalogServer(ctx, server.ServerID); err != nil {
+				return m.catalogLifecycleFailedResult(ctx, server, result, "failed", err.Error(), startedAt)
+			}
+		}
+		resource, _, err := m.CreateServer(ctx, createInput)
+		if err != nil {
+			if action == CatalogActionReinstall {
+				_, _, _ = m.CreateServer(ctx, previousInput)
+			}
+			return m.catalogLifecycleFailedResult(ctx, server, result, "failed", err.Error(), startedAt)
+		}
+		result.Status = CatalogActionStatusCompleted
+		result.Server = &resource
+	default:
+		return CatalogLifecycleResult{}, fmt.Errorf("unsupported catalog action %s", action)
+	}
+	result.PreflightMs = time.Since(startedAt).Milliseconds()
+	completedEvent, err := m.publishAuditEvent(ctx, "mcp.catalog_lifecycle_completed", events.Resource{Kind: resourceKindServer, ID: server.ServerID}, map[string]any{
+		"actionId":       result.ActionID,
+		"action":         action,
+		"serverId":       server.ServerID,
+		"catalogEntryId": server.CatalogEntryID,
+		"status":         result.Status,
+		"removed":        result.Removed,
+		"environment":    string(m.cfg.Environment),
+	})
+	if err != nil {
+		return CatalogLifecycleResult{}, err
+	}
+	result.AuditEventIDs = append(result.AuditEventIDs, completedEvent.EventID)
+	return result, nil
+}
+
+func (m *Manager) catalogLifecycleBlockResult(ctx context.Context, server Server, action CatalogAction, failOnModified bool) (CatalogLifecycleResult, bool, error) {
+	if blocked, handled := m.catalogTargetBlockResult(server); handled {
+		return blocked, true, nil
+	}
+	m.mu.RLock()
+	activeSession := m.sessions[server.ServerID] != nil
+	state := m.states[server.ServerID]
+	m.mu.RUnlock()
+	if activeSession || state.Status == LifecycleStatusStarting || state.Status == LifecycleStatusStopping || state.Status == LifecycleStatusBackingOff {
+		return CatalogLifecycleResult{
+			Status:       CatalogActionStatusBlocked,
+			FailureClass: "busy",
+			Reason:       "server has an active lifecycle or transport session",
+		}, true, nil
+	}
+	if m.store != nil {
+		activeToolCalls, err := m.store.HasActiveMCPToolCalls(ctx, server.ServerID)
+		if err != nil {
+			return CatalogLifecycleResult{}, false, err
+		}
+		if activeToolCalls {
+			return CatalogLifecycleResult{
+				Status:       CatalogActionStatusBlocked,
+				FailureClass: "busy",
+				Reason:       "server has an active tool invocation",
+			}, true, nil
+		}
+	}
+	if failOnModified && server.OperatorModified {
+		return CatalogLifecycleResult{
+			Status:       CatalogActionStatusBlocked,
+			FailureClass: "conflict",
+			Reason:       "server has local operator modifications",
+		}, true, nil
+	}
+	if (action == CatalogActionRefresh || action == CatalogActionReinstall) && server.CatalogManagement == nil {
+		return CatalogLifecycleResult{
+			Status:       CatalogActionStatusBlocked,
+			FailureClass: "conflict",
+			Reason:       "server is missing catalog install snapshot metadata",
+		}, true, nil
+	}
+	return CatalogLifecycleResult{}, false, nil
+}
+
+func (m *Manager) catalogTargetBlockResult(server Server) (CatalogLifecycleResult, bool) {
+	if server.OriginKind != OriginKindCatalog {
+		return CatalogLifecycleResult{
+			Status:       CatalogActionStatusBlocked,
+			FailureClass: "not_catalog_managed",
+			Reason:       "server is not catalog-managed",
+		}, true
+	}
+	if scope := strings.TrimSpace(server.EnvironmentScope); scope != "" && scope != string(m.cfg.Environment) {
+		return CatalogLifecycleResult{
+			Status:       CatalogActionStatusBlocked,
+			FailureClass: "environment_mismatch",
+			Reason:       fmt.Sprintf("server belongs to %s environment", scope),
+		}, true
+	}
+	return CatalogLifecycleResult{}, false
+}
+
+func (m *Manager) catalogRevalidationBusyBlockResult(ctx context.Context, server Server) (CatalogLifecycleResult, bool, error) {
+	if m.store == nil {
+		return CatalogLifecycleResult{}, false, nil
+	}
+	activeToolCalls, err := m.store.HasActiveMCPToolCalls(ctx, server.ServerID)
+	if err != nil {
+		return CatalogLifecycleResult{}, false, err
+	}
+	if activeToolCalls {
+		return CatalogLifecycleResult{
+			Status:       CatalogActionStatusBlocked,
+			FailureClass: "busy",
+			Reason:       "server has an active tool invocation",
+		}, true, nil
+	}
+	return CatalogLifecycleResult{}, false, nil
+}
+
+func (m *Manager) catalogLifecycleBlockedResult(ctx context.Context, server Server, result CatalogLifecycleResult, blocked CatalogLifecycleResult, startedAt time.Time) (CatalogLifecycleResult, error) {
+	result.Status = blocked.Status
+	result.FailureClass = blocked.FailureClass
+	result.Reason = blocked.Reason
+	result.PreflightMs = time.Since(startedAt).Milliseconds()
+	if err := m.persistCatalogActionOutcome(ctx, server, result.Action, result.Status, result.FailureClass, result.Reason); err != nil {
+		return CatalogLifecycleResult{}, err
+	}
+	failedEvent, err := m.publishAuditEvent(ctx, "mcp.catalog_lifecycle_failed", events.Resource{Kind: resourceKindServer, ID: server.ServerID}, map[string]any{
+		"actionId":       result.ActionID,
+		"action":         result.Action,
+		"serverId":       server.ServerID,
+		"catalogEntryId": server.CatalogEntryID,
+		"status":         result.Status,
+		"failureClass":   result.FailureClass,
+		"reason":         result.Reason,
+		"environment":    string(m.cfg.Environment),
+	})
+	if err != nil {
+		return CatalogLifecycleResult{}, err
+	}
+	result.AuditEventIDs = append(result.AuditEventIDs, failedEvent.EventID)
+	if resource, ok := m.GetServerResource(server.ServerID); ok {
+		result.Server = &resource
+	}
+	return result, nil
+}
+
+func (m *Manager) catalogLifecycleFailedResult(ctx context.Context, server Server, result CatalogLifecycleResult, failureClass, reason string, startedAt time.Time) (CatalogLifecycleResult, error) {
+	return m.catalogLifecycleBlockedResult(ctx, server, result, CatalogLifecycleResult{
+		Status:       CatalogActionStatusFailed,
+		FailureClass: failureClass,
+		Reason:       reason,
+	}, startedAt)
+}
+
+func (m *Manager) catalogRevalidationBlockedResult(ctx context.Context, server Server, result CatalogRevalidationResult, blocked CatalogLifecycleResult, startedAt time.Time) CatalogRevalidationResult {
+	result.Status = AvailabilityStatusBlocked
+	result.Classification = RevalidationClassificationPrerequisiteLost
+	result.Reason = blocked.Reason
+	result.Issues = []RevalidationIssue{{
+		Kind:             "configuration",
+		Name:             blocked.FailureClass,
+		Status:           RevalidationIssueStatusBlocked,
+		Reason:           blocked.Reason,
+		EnvironmentScope: string(m.cfg.Environment),
+	}}
+	result.PreflightMs = time.Since(startedAt).Milliseconds()
+	_ = m.persistCatalogActionOutcome(ctx, server, CatalogActionRevalidate, CatalogActionStatusBlocked, blocked.FailureClass, blocked.Reason)
+	if event, err := m.publishAuditEvent(ctx, "mcp.catalog_revalidation_completed", events.Resource{Kind: resourceKindServer, ID: server.ServerID}, map[string]any{
+		"actionId":       result.ActionID,
+		"action":         result.Action,
+		"serverId":       server.ServerID,
+		"catalogEntryId": server.CatalogEntryID,
+		"status":         result.Status,
+		"classification": result.Classification,
+		"reason":         result.Reason,
+		"issues":         redactedIssues(result.Issues),
+		"environment":    string(m.cfg.Environment),
+	}); err == nil {
+		result.AuditEventIDs = append(result.AuditEventIDs, event.EventID)
+	}
+	if resource, ok := m.GetServerResource(server.ServerID); ok {
+		result.Server = &resource
+	}
+	return result
+}
+
+func (m *Manager) persistCatalogActionOutcome(ctx context.Context, server Server, action CatalogAction, status CatalogActionStatus, failureClass, reason string) error {
+	now := time.Now().UTC()
+	server.CatalogManagement = m.buildCatalogManagementLocked(server)
+	if server.CatalogManagement == nil {
+		server.CatalogManagement = &CatalogManagement{}
+	}
+	server.CatalogManagement.LastAction = action
+	server.CatalogManagement.LastActionStatus = status
+	server.CatalogManagement.LastActionFailureClass = strings.TrimSpace(failureClass)
+	server.CatalogManagement.LastActionReason = strings.TrimSpace(reason)
+	server.CatalogManagement.LastActionAt = &now
+	m.setServer(server)
+	return m.persistServer(ctx, server)
+}
+
+func (m *Manager) deleteCatalogServer(ctx context.Context, serverID string) error {
+	if m.store != nil {
+		if err := m.store.DeleteMCPServer(ctx, serverID); err != nil {
+			return err
+		}
+	}
+	m.mu.Lock()
+	delete(m.servers, serverID)
+	delete(m.states, serverID)
+	delete(m.tools, serverID)
+	delete(m.exposure, serverID)
+	delete(m.sessions, serverID)
+	filtered := m.serverIDs[:0]
+	for _, item := range m.serverIDs {
+		if item != serverID {
+			filtered = append(filtered, item)
+		}
+	}
+	m.serverIDs = filtered
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Manager) setServer(server Server) {
+	m.mu.Lock()
+	if _, ok := m.servers[server.ServerID]; !ok {
+		m.serverIDs = append(m.serverIDs, server.ServerID)
+	}
+	m.servers[server.ServerID] = cloneServer(server)
+	m.mu.Unlock()
+}
+
+func catalogManagementForCreate(entry CatalogEntry, createInput CreateServerInput, previous *Server, action CatalogAction, now time.Time) *CatalogManagement {
+	management := &CatalogManagement{
+		SourceKind:           entry.SourceKind,
+		InstalledRevision:    fingerprintCreateServerSpec(createInput),
+		CurrentRevision:      fingerprintCreateServerSpec(createInput),
+		InstallInputSnapshot: installSnapshotFromCreateSpec(createInput),
+		LastAction:           action,
+		LastActionStatus:     CatalogActionStatusCompleted,
+		LastActionAt:         &now,
+	}
+	if previous != nil && previous.CatalogManagement != nil {
+		management.InstalledAt = previous.CatalogManagement.InstalledAt
+	}
+	if management.InstalledAt == nil {
+		management.InstalledAt = &now
+	}
+	if action == CatalogActionRefresh || action == CatalogActionReinstall {
+		management.LastMaintainedAt = &now
+	}
+	return management
+}
+
+func (m *Manager) collectRevalidationIssues(server Server, management *CatalogManagement) ([]RevalidationIssue, AvailabilityStatus, RevalidationClassification, string) {
+	issues := make([]RevalidationIssue, 0)
+	entry, ok := m.GetCatalogEntry(server.CatalogEntryID)
+	if !ok {
+		issues = append(issues, RevalidationIssue{
+			Kind:             "catalog",
+			Name:             server.CatalogEntryID,
+			Status:           RevalidationIssueStatusUnavailable,
+			Reason:           "catalog entry is no longer available",
+			EnvironmentScope: string(m.cfg.Environment),
+		})
+		return issues, AvailabilityStatusUnavailable, RevalidationClassificationMissingEntry, issues[0].Reason
+	}
+	if management == nil {
+		management = m.buildCatalogManagementLocked(server)
+	}
+	spec, _ := m.catalogSpecForServer(server, entry, true)
+	if spec.TransportKind == TransportKindStdio {
+		if strings.TrimSpace(spec.Command) == "" {
+			issues = append(issues, RevalidationIssue{Kind: "binary", Name: "command", Status: RevalidationIssueStatusUnavailable, Reason: "stdio command is not configured", EnvironmentScope: string(m.cfg.Environment)})
+		} else if _, err := exec.LookPath(strings.TrimSpace(spec.Command)); err != nil {
+			issues = append(issues, RevalidationIssue{Kind: "binary", Name: strings.TrimSpace(spec.Command), Status: RevalidationIssueStatusUnavailable, Reason: "required binary is unavailable", EnvironmentScope: string(m.cfg.Environment)})
+		}
+		if requiresOfflineVerifiedLocalCommand(spec) {
+			issues = append(issues, RevalidationIssue{Kind: "configuration", Name: "command", Status: RevalidationIssueStatusUnavailable, Reason: "default bundled stdio command requires a local command override because sandbox network is denied", EnvironmentScope: string(m.cfg.Environment)})
+		}
+	}
+	if spec.TransportKind == TransportKindStreamableHTTP && strings.TrimSpace(spec.Endpoint) == "" {
+		issues = append(issues, RevalidationIssue{Kind: "endpoint", Name: "streamable-http", Status: RevalidationIssueStatusUnsupported, Reason: "streamable-http endpoint is not configured", EnvironmentScope: string(m.cfg.Environment)})
+	}
+	resolved, _ := ResolveMCPSecrets(m.cfg.DataDir, secretRefsFromRequirements(entry.SecretRequirements))
+	for _, requirement := range entry.SecretRequirements {
+		if requirement.Required {
+			if _, ok := resolved[requirement.SecretRef]; !ok {
+				issues = append(issues, RevalidationIssue{Kind: "secret", Name: requirement.SecretRef, Status: RevalidationIssueStatusBlocked, Reason: firstNonEmpty(requirement.Description, fmt.Sprintf("%s is required", requirement.SecretRef)), EnvironmentScope: string(m.cfg.Environment)})
+			}
+		}
+	}
+	if management != nil {
+		switch management.DriftStatus {
+		case CatalogDriftStatusLocallyModified:
+			issues = append(issues, RevalidationIssue{Kind: "catalog", Name: server.CatalogEntryID, Status: RevalidationIssueStatusWarning, Reason: firstNonEmpty(management.DriftReason, "server has local operator modifications"), EnvironmentScope: string(m.cfg.Environment)})
+		case CatalogDriftStatusCatalogUpdated:
+			issues = append(issues, RevalidationIssue{Kind: "catalog", Name: server.CatalogEntryID, Status: RevalidationIssueStatusWarning, Reason: firstNonEmpty(management.DriftReason, "installed server no longer matches current catalog revision"), EnvironmentScope: string(m.cfg.Environment)})
+		}
+	}
+	state := m.states[server.ServerID]
+	switch state.Status {
+	case LifecycleStatusFailed, LifecycleStatusDenied, LifecycleStatusDegraded, LifecycleStatusUnsupported:
+		status := RevalidationIssueStatusUnavailable
+		if state.Status == LifecycleStatusUnsupported {
+			status = RevalidationIssueStatusUnsupported
+		}
+		issues = append(issues, RevalidationIssue{Kind: "runtime", Name: string(state.Status), Status: status, Reason: firstNonEmpty(state.HealthReason, "server is not healthy"), EnvironmentScope: string(m.cfg.Environment)})
+	case LifecycleStatusDisabled:
+		issues = append(issues, RevalidationIssue{Kind: "runtime", Name: string(state.Status), Status: RevalidationIssueStatusBlocked, Reason: "server is disabled", EnvironmentScope: string(m.cfg.Environment)})
+	}
+
+	classification := RevalidationClassificationHealthy
+	status := AvailabilityStatusReady
+	reason := ""
+	for _, issue := range issues {
+		if reason == "" {
+			reason = issue.Reason
+		}
+		switch issue.Status {
+		case RevalidationIssueStatusUnsupported:
+			status = AvailabilityStatusUnsupported
+		case RevalidationIssueStatusBlocked:
+			if status != AvailabilityStatusUnsupported {
+				status = AvailabilityStatusBlocked
+			}
+		case RevalidationIssueStatusUnavailable:
+			if status == AvailabilityStatusReady {
+				status = AvailabilityStatusUnavailable
+			}
+		}
+		switch issue.Kind {
+		case "secret", "binary", "endpoint", "configuration":
+			if classification == RevalidationClassificationHealthy {
+				classification = RevalidationClassificationPrerequisiteLost
+			}
+		case "runtime":
+			if classification == RevalidationClassificationHealthy {
+				classification = RevalidationClassificationRuntimeUnhealthy
+			}
+		}
+	}
+	if classification == RevalidationClassificationHealthy && management != nil {
+		switch management.DriftStatus {
+		case CatalogDriftStatusLocallyModified:
+			classification = RevalidationClassificationLocallyModified
+			reason = firstNonEmpty(reason, management.DriftReason)
+		case CatalogDriftStatusCatalogUpdated:
+			classification = RevalidationClassificationCatalogDrift
+			reason = firstNonEmpty(reason, management.DriftReason)
+		}
+	}
+	return issues, status, classification, reason
+}
+
+func redactedIssues(issues []RevalidationIssue) []map[string]any {
+	items := make([]map[string]any, 0, len(issues))
+	for _, issue := range issues {
+		items = append(items, map[string]any{
+			"kind":             issue.Kind,
+			"name":             issue.Name,
+			"status":           issue.Status,
+			"reason":           issue.Reason,
+			"environmentScope": issue.EnvironmentScope,
+		})
+	}
+	return items
+}
+
+func catalogManagementPayload(management *CatalogManagement) map[string]any {
+	if management == nil {
+		return nil
+	}
+	payload := map[string]any{
+		"sourceKind":        management.SourceKind,
+		"installedRevision": management.InstalledRevision,
+		"currentRevision":   management.CurrentRevision,
+		"driftStatus":       management.DriftStatus,
+		"driftReason":       management.DriftReason,
+	}
+	if management.InstalledAt != nil {
+		payload["installedAt"] = management.InstalledAt.UTC().Format(time.RFC3339Nano)
+	}
+	if management.LastMaintainedAt != nil {
+		payload["lastMaintainedAt"] = management.LastMaintainedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if management.LastActionAt != nil {
+		payload["lastActionAt"] = management.LastActionAt.UTC().Format(time.RFC3339Nano)
+	}
+	if management.LastAction != "" {
+		payload["lastAction"] = management.LastAction
+	}
+	if management.LastActionStatus != "" {
+		payload["lastActionStatus"] = management.LastActionStatus
+	}
+	if management.LastActionFailureClass != "" {
+		payload["lastActionFailureClass"] = management.LastActionFailureClass
+	}
+	if management.LastActionReason != "" {
+		payload["lastActionReason"] = management.LastActionReason
+	}
+	if management.LastRevalidation != nil {
+		payload["lastRevalidation"] = map[string]any{
+			"checkedAt":      management.LastRevalidation.CheckedAt.UTC().Format(time.RFC3339Nano),
+			"status":         management.LastRevalidation.Status,
+			"classification": management.LastRevalidation.Classification,
+			"reason":         management.LastRevalidation.Reason,
+			"issues":         redactedIssues(management.LastRevalidation.Issues),
+		}
+	}
+	return payload
 }
 
 func (m *Manager) CallTool(ctx context.Context, serverID, toolName string, input any, authorization ToolAuthorizationResponse) (ToolInvocationResult, error) {
@@ -1024,6 +1589,7 @@ func (m *Manager) upsertServer(ctx context.Context, createInput CreateServerInpu
 		server.SecretRefs = cleanStrings(createInput.SecretRefs)
 		server.AutoRestart = createInput.AutoRestart
 		server.OperatorModified = createInput.OperatorModified
+		server.CatalogManagement = cloneCatalogManagement(createInput.CatalogManagement)
 		server.Source = SourceAPI
 		server.UpdatedAt = now
 	} else {
@@ -1109,13 +1675,19 @@ func (m *Manager) upsertServer(ctx context.Context, createInput CreateServerInpu
 		eventName = "mcp.server_registered"
 	}
 	if err := m.publishEvent(ctx, "mcp", eventName, events.Resource{Kind: resourceKindServer, ID: server.ServerID}, map[string]any{
-		"serverId":         server.ServerID,
-		"displayName":      server.DisplayName,
-		"enabled":          server.Enabled,
-		"sandboxProfileId": server.SandboxProfileID,
-		"declarationId":    server.DeclarationID,
-		"transportKind":    server.TransportKind,
-		"created":          created,
+		"serverId":           server.ServerID,
+		"displayName":        server.DisplayName,
+		"originKind":         server.OriginKind,
+		"catalogEntryId":     server.CatalogEntryID,
+		"installMethod":      server.InstallMethod,
+		"enabled":            server.Enabled,
+		"sandboxProfileId":   server.SandboxProfileID,
+		"declarationId":      server.DeclarationID,
+		"transportKind":      server.TransportKind,
+		"availabilityStatus": resource.AvailabilityStatus,
+		"availabilityReason": resource.AvailabilityReason,
+		"catalogManagement":  catalogManagementPayload(resource.Server.CatalogManagement),
+		"created":            created,
 	}); err != nil {
 		return ServerResource{}, false, err
 	}
@@ -1375,10 +1947,14 @@ func (m *Manager) recordFailure(ctx context.Context, serverID string, state Serv
 }
 
 func (m *Manager) publishHealthChanged(ctx context.Context, serverID string, status LifecycleStatus, reason string) error {
+	resource, _ := m.GetServerResource(serverID)
 	return m.publishEvent(ctx, "mcp", "mcp.server_health_changed", events.Resource{Kind: resourceKindServer, ID: serverID}, map[string]any{
-		"serverId": serverID,
-		"status":   status,
-		"reason":   strings.TrimSpace(reason),
+		"serverId":           serverID,
+		"status":             status,
+		"reason":             strings.TrimSpace(reason),
+		"availabilityStatus": resource.AvailabilityStatus,
+		"availabilityReason": resource.AvailabilityReason,
+		"catalogManagement":  catalogManagementPayload(resource.Server.CatalogManagement),
 	})
 }
 
@@ -1475,24 +2051,136 @@ func (m *Manager) buildConsumerView(ctx context.Context, server Server, requeste
 	}, nil
 }
 
+func (m *Manager) buildCatalogManagementLocked(server Server) *CatalogManagement {
+	if server.OriginKind != OriginKindCatalog && server.CatalogManagement == nil {
+		return nil
+	}
+	management := cloneCatalogManagement(server.CatalogManagement)
+	if management == nil {
+		management = &CatalogManagement{}
+	}
+	entry, ok := m.GetCatalogEntry(server.CatalogEntryID)
+	if ok && management.SourceKind == "" {
+		management.SourceKind = entry.SourceKind
+	}
+	if management.InstalledRevision == "" {
+		if spec, ok := m.catalogSpecForServer(server, entry, ok); ok {
+			management.InstalledRevision = fingerprintCreateServerSpec(spec)
+		}
+	}
+	if ok {
+		if spec, ok := m.catalogSpecForServer(server, entry, true); ok {
+			management.CurrentRevision = fingerprintCreateServerSpec(spec)
+		}
+	} else {
+		management.CurrentRevision = ""
+	}
+	management.DriftStatus, management.DriftReason = assessCatalogDrift(server, management, ok)
+	return management
+}
+
+func (m *Manager) catalogSpecForServer(server Server, entry CatalogEntry, ok bool) (CreateServerInput, bool) {
+	if !ok {
+		return CreateServerInput{}, false
+	}
+	method := server.InstallMethod
+	if method == "" && server.CatalogManagement != nil && server.CatalogManagement.InstallInputSnapshot.InstallMethod != "" {
+		method = server.CatalogManagement.InstallInputSnapshot.InstallMethod
+	}
+	if method == "" {
+		method = InstallMethodAPI
+	}
+	snapshot := CatalogInstallSnapshot{}
+	if server.CatalogManagement != nil {
+		snapshot = cloneCatalogInstallSnapshot(server.CatalogManagement.InstallInputSnapshot)
+	}
+	if snapshot.ServerID == "" {
+		snapshot = installSnapshotFromCreateSpec(serverToCreateInput(server))
+	}
+	spec := mergeCatalogInstallInput(entry, catalogInstallInputFromSnapshot(snapshot), method, m.cfg.Environment)
+	return spec, true
+}
+
+func assessCatalogDrift(server Server, management *CatalogManagement, entryPresent bool) (CatalogDriftStatus, string) {
+	if server.OriginKind != OriginKindCatalog {
+		return "", ""
+	}
+	if !entryPresent {
+		return CatalogDriftStatusMissingEntry, "catalog entry is no longer available"
+	}
+	if server.OperatorModified {
+		if management.InstalledRevision != "" && management.CurrentRevision != "" && management.InstalledRevision != management.CurrentRevision {
+			return CatalogDriftStatusLocallyModified, "server has local modifications and the catalog entry has changed"
+		}
+		return CatalogDriftStatusLocallyModified, "server has local operator modifications"
+	}
+	if management.InstalledRevision != "" && management.CurrentRevision != "" && management.InstalledRevision != management.CurrentRevision {
+		return CatalogDriftStatusCatalogUpdated, "installed server no longer matches the current catalog revision"
+	}
+	return CatalogDriftStatusInSync, ""
+}
+
+func serverToCreateInput(server Server) CreateServerInput {
+	return CreateServerInput{
+		ServerID:          server.ServerID,
+		DisplayName:       server.DisplayName,
+		OriginKind:        server.OriginKind,
+		CatalogEntryID:    server.CatalogEntryID,
+		InstallMethod:     server.InstallMethod,
+		EnvironmentScope:  server.EnvironmentScope,
+		Enabled:           server.Enabled,
+		SandboxProfileID:  server.SandboxProfileID,
+		DeclarationID:     server.DeclarationID,
+		Declaration:       cloneDeclarationPtr(server.Declaration),
+		TransportKind:     server.TransportKind,
+		Command:           server.Command,
+		Args:              cloneStrings(server.Args),
+		Endpoint:          server.Endpoint,
+		WorkingDir:        server.WorkingDir,
+		SecretRefs:        cleanStrings(server.SecretRefs),
+		AutoRestart:       server.AutoRestart,
+		OperatorModified:  server.OperatorModified,
+		CatalogManagement: cloneCatalogManagement(server.CatalogManagement),
+	}
+}
+
 func (m *Manager) buildServerResourceLocked(server Server) ServerResource {
+	projectedServer := cloneServer(server)
+	projectedServer.CatalogManagement = sanitizeCatalogManagementProjection(m.buildCatalogManagementLocked(server))
 	state := cloneServerState(m.states[server.ServerID])
 	toolCount := len(m.tools[server.ServerID])
 	tools := make([]ToolResource, 0, toolCount)
 	for _, tool := range m.tools[server.ServerID] {
 		tools = append(tools, m.buildToolResourceLocked(server, tool))
 	}
-	availabilityStatus, availabilityReason := m.evaluateServerAvailabilityLocked(server)
+	availabilityStatus, availabilityReason := m.evaluateServerAvailabilityLocked(projectedServer)
 	return ServerResource{
-		Server:                 cloneServer(server),
+		Server:                 projectedServer,
 		State:                  state,
-		SecretSummary:          m.buildSecretSummaries(server),
+		SecretSummary:          m.buildSecretSummaries(projectedServer),
 		ToolCount:              toolCount,
 		Tools:                  tools,
-		TransportConfigSummary: m.transportConfigSummary(server),
+		TransportConfigSummary: m.transportConfigSummary(projectedServer),
 		AvailabilityStatus:     availabilityStatus,
 		AvailabilityReason:     availabilityReason,
 	}
+}
+
+func sanitizeCatalogManagementProjection(management *CatalogManagement) *CatalogManagement {
+	if management == nil {
+		return nil
+	}
+	projected := cloneCatalogManagement(management)
+	projected.InstallInputSnapshot = sanitizeCatalogInstallSnapshotProjection(projected.InstallInputSnapshot)
+	return projected
+}
+
+func sanitizeCatalogInstallSnapshotProjection(snapshot CatalogInstallSnapshot) CatalogInstallSnapshot {
+	snapshot.Command = ""
+	snapshot.Args = nil
+	snapshot.Endpoint = ""
+	snapshot.WorkingDir = ""
+	return snapshot
 }
 
 func (m *Manager) buildToolResourceLocked(server Server, tool Tool) ToolResource {
@@ -1789,6 +2477,12 @@ func (m *Manager) validateServer(server Server) error {
 }
 
 func (m *Manager) evaluateServerAvailabilityLocked(server Server) (AvailabilityStatus, string) {
+	if server.CatalogManagement != nil && server.CatalogManagement.LastRevalidation != nil {
+		snapshot := server.CatalogManagement.LastRevalidation
+		if snapshot.Status != AvailabilityStatusReady {
+			return snapshot.Status, firstNonEmpty(snapshot.Reason, "server requires revalidation")
+		}
+	}
 	switch server.TransportKind {
 	case TransportKindStdio:
 		if strings.TrimSpace(server.Command) == "" {
@@ -2102,6 +2796,7 @@ func cloneServer(server Server) Server {
 	server.Args = cloneStrings(server.Args)
 	server.SecretRefs = cloneStrings(server.SecretRefs)
 	server.Declaration = cloneDeclaration(server.Declaration)
+	server.CatalogManagement = cloneCatalogManagement(server.CatalogManagement)
 	return server
 }
 
@@ -2124,6 +2819,39 @@ func cloneDeclaration(declaration Declaration) Declaration {
 	declaration.AllowedHosts = cloneStrings(declaration.AllowedHosts)
 	declaration.AllowedPorts = cloneInts(declaration.AllowedPorts)
 	return declaration
+}
+
+func cloneDeclarationPtr(declaration Declaration) *Declaration {
+	cloned := cloneDeclaration(declaration)
+	return &cloned
+}
+
+func cloneCatalogManagement(management *CatalogManagement) *CatalogManagement {
+	if management == nil {
+		return nil
+	}
+	cloned := *management
+	cloned.InstallInputSnapshot = cloneCatalogInstallSnapshot(management.InstallInputSnapshot)
+	cloned.LastRevalidation = cloneRevalidationSnapshot(management.LastRevalidation)
+	return &cloned
+}
+
+func cloneCatalogInstallSnapshot(snapshot CatalogInstallSnapshot) CatalogInstallSnapshot {
+	snapshot.Args = cloneStrings(snapshot.Args)
+	snapshot.SecretRefs = cleanStrings(snapshot.SecretRefs)
+	snapshot.Enabled = cloneBoolPtr(snapshot.Enabled)
+	return snapshot
+}
+
+func cloneRevalidationSnapshot(snapshot *RevalidationSnapshot) *RevalidationSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	cloned := *snapshot
+	if len(snapshot.Issues) > 0 {
+		cloned.Issues = append([]RevalidationIssue(nil), snapshot.Issues...)
+	}
+	return &cloned
 }
 
 func cloneStrings(items []string) []string {

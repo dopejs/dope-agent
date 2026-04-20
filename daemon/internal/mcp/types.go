@@ -77,27 +77,28 @@ const (
 )
 
 type Server struct {
-	ServerID         string        `json:"serverId"`
-	DisplayName      string        `json:"displayName"`
-	Source           Source        `json:"source"`
-	OriginKind       OriginKind    `json:"originKind,omitempty"`
-	CatalogEntryID   string        `json:"catalogEntryId,omitempty"`
-	InstallMethod    InstallMethod `json:"installMethod,omitempty"`
-	EnvironmentScope string        `json:"environmentScope,omitempty"`
-	Enabled          bool          `json:"enabled"`
-	SandboxProfileID string        `json:"sandboxProfileId"`
-	DeclarationID    string        `json:"declarationId"`
-	Declaration      Declaration   `json:"declaration"`
-	TransportKind    TransportKind `json:"transportKind"`
-	Command          string        `json:"command"`
-	Args             []string      `json:"args"`
-	Endpoint         string        `json:"endpoint,omitempty"`
-	WorkingDir       string        `json:"workingDir,omitempty"`
-	SecretRefs       []string      `json:"secretRefs,omitempty"`
-	AutoRestart      bool          `json:"autoRestart"`
-	OperatorModified bool          `json:"operatorModified,omitempty"`
-	CreatedAt        time.Time     `json:"createdAt"`
-	UpdatedAt        time.Time     `json:"updatedAt"`
+	ServerID          string             `json:"serverId"`
+	DisplayName       string             `json:"displayName"`
+	Source            Source             `json:"source"`
+	OriginKind        OriginKind         `json:"originKind,omitempty"`
+	CatalogEntryID    string             `json:"catalogEntryId,omitempty"`
+	InstallMethod     InstallMethod      `json:"installMethod,omitempty"`
+	EnvironmentScope  string             `json:"environmentScope,omitempty"`
+	CatalogManagement *CatalogManagement `json:"catalogManagement,omitempty"`
+	Enabled           bool               `json:"enabled"`
+	SandboxProfileID  string             `json:"sandboxProfileId"`
+	DeclarationID     string             `json:"declarationId"`
+	Declaration       Declaration        `json:"declaration"`
+	TransportKind     TransportKind      `json:"transportKind"`
+	Command           string             `json:"command"`
+	Args              []string           `json:"args"`
+	Endpoint          string             `json:"endpoint,omitempty"`
+	WorkingDir        string             `json:"workingDir,omitempty"`
+	SecretRefs        []string           `json:"secretRefs,omitempty"`
+	AutoRestart       bool               `json:"autoRestart"`
+	OperatorModified  bool               `json:"operatorModified,omitempty"`
+	CreatedAt         time.Time          `json:"createdAt"`
+	UpdatedAt         time.Time          `json:"updatedAt"`
 }
 
 type ServerState struct {
@@ -180,24 +181,25 @@ type ToolResource struct {
 }
 
 type CreateServerInput struct {
-	ServerID         string        `json:"serverId"`
-	DisplayName      string        `json:"displayName"`
-	OriginKind       OriginKind    `json:"originKind,omitempty"`
-	CatalogEntryID   string        `json:"catalogEntryId,omitempty"`
-	InstallMethod    InstallMethod `json:"installMethod,omitempty"`
-	EnvironmentScope string        `json:"environmentScope,omitempty"`
-	Enabled          bool          `json:"enabled"`
-	SandboxProfileID string        `json:"sandboxProfileId"`
-	DeclarationID    string        `json:"declarationId"`
-	Declaration      *Declaration  `json:"declaration,omitempty"`
-	TransportKind    TransportKind `json:"transportKind"`
-	Command          string        `json:"command"`
-	Args             []string      `json:"args"`
-	Endpoint         string        `json:"endpoint,omitempty"`
-	WorkingDir       string        `json:"workingDir"`
-	SecretRefs       []string      `json:"secretRefs"`
-	AutoRestart      bool          `json:"autoRestart"`
-	OperatorModified bool          `json:"operatorModified,omitempty"`
+	ServerID          string             `json:"serverId"`
+	DisplayName       string             `json:"displayName"`
+	OriginKind        OriginKind         `json:"originKind,omitempty"`
+	CatalogEntryID    string             `json:"catalogEntryId,omitempty"`
+	InstallMethod     InstallMethod      `json:"installMethod,omitempty"`
+	EnvironmentScope  string             `json:"environmentScope,omitempty"`
+	Enabled           bool               `json:"enabled"`
+	SandboxProfileID  string             `json:"sandboxProfileId"`
+	DeclarationID     string             `json:"declarationId"`
+	Declaration       *Declaration       `json:"declaration,omitempty"`
+	TransportKind     TransportKind      `json:"transportKind"`
+	Command           string             `json:"command"`
+	Args              []string           `json:"args"`
+	Endpoint          string             `json:"endpoint,omitempty"`
+	WorkingDir        string             `json:"workingDir"`
+	SecretRefs        []string           `json:"secretRefs"`
+	AutoRestart       bool               `json:"autoRestart"`
+	OperatorModified  bool               `json:"operatorModified,omitempty"`
+	CatalogManagement *CatalogManagement `json:"catalogManagement,omitempty"`
 }
 
 type UpdateServerInput struct {
@@ -240,6 +242,128 @@ type LifecycleResponse struct {
 	Blocked       bool            `json:"blocked"`
 	BlockedReason string          `json:"blockedReason,omitempty"`
 	PreflightMs   int64           `json:"preflightMs"`
+}
+
+type CatalogDriftStatus string
+
+const (
+	CatalogDriftStatusInSync          CatalogDriftStatus = "in_sync"
+	CatalogDriftStatusCatalogUpdated  CatalogDriftStatus = "catalog_updated"
+	CatalogDriftStatusLocallyModified CatalogDriftStatus = "locally_modified"
+	CatalogDriftStatusMissingEntry    CatalogDriftStatus = "missing_entry"
+	CatalogDriftStatusConflicting     CatalogDriftStatus = "conflicting"
+)
+
+type CatalogAction string
+
+const (
+	CatalogActionInstall    CatalogAction = "install"
+	CatalogActionRefresh    CatalogAction = "refresh"
+	CatalogActionReinstall  CatalogAction = "reinstall"
+	CatalogActionUninstall  CatalogAction = "uninstall"
+	CatalogActionRevalidate CatalogAction = "revalidate"
+)
+
+type CatalogActionStatus string
+
+const (
+	CatalogActionStatusCompleted CatalogActionStatus = "completed"
+	CatalogActionStatusBlocked   CatalogActionStatus = "blocked"
+	CatalogActionStatusFailed    CatalogActionStatus = "failed"
+)
+
+type RevalidationClassification string
+
+const (
+	RevalidationClassificationHealthy          RevalidationClassification = "healthy"
+	RevalidationClassificationPrerequisiteLost RevalidationClassification = "prerequisite_lost"
+	RevalidationClassificationCatalogDrift     RevalidationClassification = "catalog_drift"
+	RevalidationClassificationLocallyModified  RevalidationClassification = "locally_modified"
+	RevalidationClassificationRuntimeUnhealthy RevalidationClassification = "runtime_unhealthy"
+	RevalidationClassificationMissingEntry     RevalidationClassification = "missing_entry"
+)
+
+type RevalidationIssueStatus string
+
+const (
+	RevalidationIssueStatusBlocked     RevalidationIssueStatus = "blocked"
+	RevalidationIssueStatusUnavailable RevalidationIssueStatus = "unavailable"
+	RevalidationIssueStatusUnsupported RevalidationIssueStatus = "unsupported"
+	RevalidationIssueStatusWarning     RevalidationIssueStatus = "warning"
+)
+
+type CatalogInstallSnapshot struct {
+	ServerID         string        `json:"serverId,omitempty"`
+	DisplayName      string        `json:"displayName,omitempty"`
+	Enabled          *bool         `json:"enabled,omitempty"`
+	SandboxProfileID string        `json:"sandboxProfileId,omitempty"`
+	Command          string        `json:"command,omitempty"`
+	Args             []string      `json:"args,omitempty"`
+	Endpoint         string        `json:"endpoint,omitempty"`
+	WorkingDir       string        `json:"workingDir,omitempty"`
+	SecretRefs       []string      `json:"secretRefs,omitempty"`
+	InstallMethod    InstallMethod `json:"installMethod,omitempty"`
+}
+
+type RevalidationIssue struct {
+	Kind             string                  `json:"kind"`
+	Name             string                  `json:"name"`
+	Status           RevalidationIssueStatus `json:"status"`
+	Reason           string                  `json:"reason"`
+	EnvironmentScope string                  `json:"environmentScope,omitempty"`
+}
+
+type RevalidationSnapshot struct {
+	CheckedAt      time.Time                  `json:"checkedAt"`
+	Status         AvailabilityStatus         `json:"status"`
+	Classification RevalidationClassification `json:"classification"`
+	Reason         string                     `json:"reason,omitempty"`
+	Issues         []RevalidationIssue        `json:"issues,omitempty"`
+}
+
+type CatalogManagement struct {
+	SourceKind             string                 `json:"sourceKind,omitempty"`
+	InstalledRevision      string                 `json:"installedRevision,omitempty"`
+	CurrentRevision        string                 `json:"currentRevision,omitempty"`
+	DriftStatus            CatalogDriftStatus     `json:"driftStatus,omitempty"`
+	DriftReason            string                 `json:"driftReason,omitempty"`
+	InstalledAt            *time.Time             `json:"installedAt,omitempty"`
+	LastMaintainedAt       *time.Time             `json:"lastMaintainedAt,omitempty"`
+	LastActionAt           *time.Time             `json:"lastActionAt,omitempty"`
+	LastAction             CatalogAction          `json:"lastAction,omitempty"`
+	LastActionStatus       CatalogActionStatus    `json:"lastActionStatus,omitempty"`
+	LastActionFailureClass string                 `json:"lastActionFailureClass,omitempty"`
+	LastActionReason       string                 `json:"lastActionReason,omitempty"`
+	InstallInputSnapshot   CatalogInstallSnapshot `json:"installInputSnapshot,omitempty"`
+	LastRevalidation       *RevalidationSnapshot  `json:"lastRevalidation,omitempty"`
+}
+
+type CatalogLifecycleResult struct {
+	ActionID       string              `json:"actionId"`
+	Action         CatalogAction       `json:"action"`
+	Status         CatalogActionStatus `json:"status"`
+	ServerID       string              `json:"serverId"`
+	CatalogEntryID string              `json:"catalogEntryId,omitempty"`
+	FailureClass   string              `json:"failureClass,omitempty"`
+	Reason         string              `json:"reason,omitempty"`
+	AuditEventIDs  []string            `json:"auditEventIds,omitempty"`
+	Removed        bool                `json:"removed,omitempty"`
+	Server         *ServerResource     `json:"server,omitempty"`
+	PreflightMs    int64               `json:"preflightMs,omitempty"`
+}
+
+type CatalogRevalidationResult struct {
+	ActionID       string                     `json:"actionId"`
+	Action         CatalogAction              `json:"action"`
+	ServerID       string                     `json:"serverId"`
+	CatalogEntryID string                     `json:"catalogEntryId,omitempty"`
+	Status         AvailabilityStatus         `json:"status"`
+	Classification RevalidationClassification `json:"classification"`
+	Reason         string                     `json:"reason,omitempty"`
+	Issues         []RevalidationIssue        `json:"issues,omitempty"`
+	AuditEventIDs  []string                   `json:"auditEventIds,omitempty"`
+	Server         *ServerResource            `json:"server,omitempty"`
+	PreflightMs    int64                      `json:"preflightMs,omitempty"`
 }
 
 type AuthorizeToolInput struct {

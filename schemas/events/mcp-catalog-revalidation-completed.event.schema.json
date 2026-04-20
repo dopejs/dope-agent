@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/mcp-catalog-revalidation-completed.event.schema.json",
+  "title": "MCPCatalogRevalidationCompletedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "mcp" },
+        "name": { "const": "mcp.catalog_revalidation_completed" },
+        "resource": {
+          "type": "object",
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": { "const": "mcp_server" },
+            "id": { "type": "string" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": ["actionId", "action", "serverId", "catalogEntryId", "status", "classification", "environment"],
+          "additionalProperties": false,
+          "properties": {
+            "actionId": { "type": "string" },
+            "action": { "const": "revalidate" },
+            "serverId": { "type": "string" },
+            "catalogEntryId": { "type": "string" },
+            "status": { "type": "string", "enum": ["ready", "blocked", "unavailable", "unsupported"] },
+            "classification": { "type": "string", "enum": ["healthy", "prerequisite_lost", "catalog_drift", "locally_modified", "runtime_unhealthy", "missing_entry"] },
+            "reason": { "type": "string" },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["kind", "name", "status", "reason"],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": { "type": "string" },
+                  "name": { "type": "string" },
+                  "status": { "type": "string", "enum": ["blocked", "unavailable", "unsupported", "warning"] },
+                  "reason": { "type": "string" },
+                  "environmentScope": { "type": "string", "enum": ["test", "prod"] }
+                }
+              }
+            },
+            "environment": { "type": "string", "enum": ["test", "prod"] }
+          }
+        }
+      }
+    }
+  ]
+}

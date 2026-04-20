@@ -2170,6 +2170,27 @@ func (s *SQLiteStore) ListToolCalls(ctx context.Context, runID, stepID string) (
 	return items, rows.Err()
 }
 
+func (s *SQLiteStore) HasActiveMCPToolCalls(ctx context.Context, serverID string) (bool, error) {
+	if s == nil {
+		return false, nil
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(1)
+		FROM tool_calls
+		WHERE mcp_server_id = ?
+		  AND status IN (?, ?)
+	`,
+		strings.TrimSpace(serverID),
+		string(runtime.ToolCallStatusRequested),
+		string(runtime.ToolCallStatusRunning),
+	).Scan(&count); err != nil {
+		return false, fmt.Errorf("count active mcp tool calls for %s: %w", serverID, err)
+	}
+	return count > 0, nil
+}
+
 func (s *SQLiteStore) ListSteps(ctx context.Context, runID string) ([]runtime.Step, error) {
 	if s == nil {
 		return nil, nil
@@ -2404,6 +2425,16 @@ func (s *SQLiteStore) ListMCPServers(ctx context.Context) ([]MCPServerRecord, er
 		items = append(items, record)
 	}
 	return items, rows.Err()
+}
+
+func (s *SQLiteStore) DeleteMCPServer(ctx context.Context, serverID string) error {
+	if s == nil {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM mcp_servers WHERE server_id = ?`, strings.TrimSpace(serverID)); err != nil {
+		return fmt.Errorf("delete mcp server %s: %w", serverID, err)
+	}
+	return nil
 }
 
 func (s *SQLiteStore) UpsertMCPServerState(ctx context.Context, record MCPServerStateRecord) error {
