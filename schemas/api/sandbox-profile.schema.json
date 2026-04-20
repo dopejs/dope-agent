@@ -8,6 +8,7 @@
     "title",
     "description",
     "backendKind",
+    "backendCapability",
     "defaultWorkDir",
     "filesystemPolicy",
     "networkPolicy",
@@ -28,6 +29,9 @@
     "backendKind": {
       "type": "string",
       "enum": ["subprocess", "docker", "ssh", "remote"]
+    },
+    "backendCapability": {
+      "$ref": "./sandbox-backend-capability.schema.json"
     },
     "defaultWorkDir": { "type": "string" },
     "filesystemPolicy": {

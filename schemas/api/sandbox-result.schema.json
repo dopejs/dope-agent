@@ -9,7 +9,7 @@
     "executionId": { "type": "string" },
     "status": {
       "type": "string",
-      "enum": ["pending", "running", "completed", "failed", "cancelled", "denied"]
+      "enum": ["pending", "running", "completed", "failed", "cancelled", "denied", "unsupported"]
     },
     "startedAt": { "type": "string", "format": "date-time" },
     "completedAt": { "type": "string", "format": "date-time" },
@@ -27,6 +27,7 @@
         "approval_rejected",
         "invalid_profile",
         "backend_unavailable",
+        "backend_capability_mismatch",
         "launch_failed",
         "process_failed",
         "provider_error",

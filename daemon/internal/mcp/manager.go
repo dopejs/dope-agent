@@ -1015,7 +1015,7 @@ func (m *Manager) updateStateFromExecution(ctx context.Context, serverID string,
 	}
 	state.UpdatedAt = now
 	switch execution.Status {
-	case sandbox.ExecutionStatusDenied:
+	case sandbox.ExecutionStatusDenied, sandbox.ExecutionStatusUnsupported:
 		state.Status = lifecycleStatusFromExecution(execution)
 		state.HealthReason = firstNonEmpty(execution.Result.Error, execution.Decision.Explanation)
 	case sandbox.ExecutionStatusCancelled:
@@ -1483,11 +1483,11 @@ func defaultStateForServer(server Server) ServerState {
 }
 
 func lifecycleStatusFromExecution(execution sandbox.Execution) LifecycleStatus {
+	if execution.Status == sandbox.ExecutionStatusUnsupported || execution.Decision.SelectionOutcome == sandbox.BackendSelectionOutcomeUnsupported {
+		return LifecycleStatusUnsupported
+	}
 	if execution.Result.ErrorCode == "sandbox_profile_not_found" || execution.Result.ErrorClass == sandbox.ErrorClassInvalidProfile {
 		return LifecycleStatusDenied
-	}
-	if execution.Decision.Explanation == "sandbox declaration requires stronger guarantees than the current backend can provide" {
-		return LifecycleStatusUnsupported
 	}
 	return LifecycleStatusDenied
 }

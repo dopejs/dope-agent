@@ -255,8 +255,8 @@ func TestManagerMarksUnsupportedDeclarationAtStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start returned error: %v", err)
 	}
-	if !started.Blocked || started.FailureClass != "policy_denied" {
-		t.Fatalf("expected unsupported declaration start to block with policy_denied, got %+v", started)
+	if !started.Blocked || started.FailureClass != "backend_unavailable" {
+		t.Fatalf("expected unsupported declaration start to block with backend_unavailable, got %+v", started)
 	}
 	if started.Server.State.Status != LifecycleStatusUnsupported {
 		t.Fatalf("expected unsupported lifecycle status, got %+v", started.Server.State)

@@ -504,6 +504,12 @@ func reconcileRecoveredSandboxToolCalls(ctx context.Context, sqliteStore *store.
 						Error:        execution.Result.Error,
 						FailureClass: string(execution.Result.ErrorClass),
 					})
+				case sandbox.ExecutionStatusUnsupported:
+					updated, err = runtimeManager.FailToolCall(run.RunID, step.StepID, toolCall.ToolCallID, runtime.FailToolCallInput{
+						Output:       recoveredSandboxToolCallOutput(execution),
+						Error:        execution.Result.Error,
+						FailureClass: string(execution.Result.ErrorClass),
+					})
 				default:
 					continue
 				}

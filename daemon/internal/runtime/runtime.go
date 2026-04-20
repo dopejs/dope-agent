@@ -145,25 +145,33 @@ type CreateToolCallInput struct {
 }
 
 type CompleteToolCallInput struct {
-	Output any `json:"output"`
+	Output             any            `json:"output"`
+	SandboxExecutionID string         `json:"sandboxExecutionId,omitempty"`
+	Sandbox            map[string]any `json:"sandbox,omitempty"`
 }
 
 type FailToolCallInput struct {
-	Output       any    `json:"output"`
-	Error        string `json:"error"`
-	FailureClass string `json:"failureClass"`
+	Output             any            `json:"output"`
+	Error              string         `json:"error"`
+	FailureClass       string         `json:"failureClass"`
+	SandboxExecutionID string         `json:"sandboxExecutionId,omitempty"`
+	Sandbox            map[string]any `json:"sandbox,omitempty"`
 }
 
 type DenyToolCallInput struct {
-	Output       any    `json:"output"`
-	Error        string `json:"error"`
-	FailureClass string `json:"failureClass"`
+	Output             any            `json:"output"`
+	Error              string         `json:"error"`
+	FailureClass       string         `json:"failureClass"`
+	SandboxExecutionID string         `json:"sandboxExecutionId,omitempty"`
+	Sandbox            map[string]any `json:"sandbox,omitempty"`
 }
 
 type CancelToolCallInput struct {
-	Output       any    `json:"output"`
-	Error        string `json:"error"`
-	FailureClass string `json:"failureClass"`
+	Output             any            `json:"output"`
+	Error              string         `json:"error"`
+	FailureClass       string         `json:"failureClass"`
+	SandboxExecutionID string         `json:"sandboxExecutionId,omitempty"`
+	Sandbox            map[string]any `json:"sandbox,omitempty"`
 }
 
 type Manager struct {
@@ -648,6 +656,12 @@ func (m *Manager) CompleteToolCall(runID, stepID, toolCallID string, input Compl
 	toolCall.Status = ToolCallStatusCompleted
 	toolCall.UpdatedAt = time.Now().UTC()
 	toolCall.Output = input.Output
+	if trimmed := strings.TrimSpace(input.SandboxExecutionID); trimmed != "" {
+		toolCall.SandboxExecutionID = trimmed
+	}
+	if input.Sandbox != nil {
+		toolCall.Sandbox = cloneAnyMap(input.Sandbox)
+	}
 	m.toolCallsByID[toolCallID] = toolCall
 
 	return toolCall, nil
@@ -670,6 +684,12 @@ func (m *Manager) FailToolCall(runID, stepID, toolCallID string, input FailToolC
 	toolCall.Output = input.Output
 	toolCall.Error = input.Error
 	toolCall.FailureClass = strings.TrimSpace(input.FailureClass)
+	if trimmed := strings.TrimSpace(input.SandboxExecutionID); trimmed != "" {
+		toolCall.SandboxExecutionID = trimmed
+	}
+	if input.Sandbox != nil {
+		toolCall.Sandbox = cloneAnyMap(input.Sandbox)
+	}
 	m.toolCallsByID[toolCallID] = toolCall
 
 	return toolCall, nil
@@ -692,6 +712,12 @@ func (m *Manager) DenyToolCall(runID, stepID, toolCallID string, input DenyToolC
 	toolCall.Output = input.Output
 	toolCall.Error = input.Error
 	toolCall.FailureClass = strings.TrimSpace(input.FailureClass)
+	if trimmed := strings.TrimSpace(input.SandboxExecutionID); trimmed != "" {
+		toolCall.SandboxExecutionID = trimmed
+	}
+	if input.Sandbox != nil {
+		toolCall.Sandbox = cloneAnyMap(input.Sandbox)
+	}
 	m.toolCallsByID[toolCallID] = toolCall
 
 	return toolCall, nil
@@ -714,6 +740,12 @@ func (m *Manager) CancelToolCall(runID, stepID, toolCallID string, input CancelT
 	toolCall.Output = input.Output
 	toolCall.Error = input.Error
 	toolCall.FailureClass = strings.TrimSpace(input.FailureClass)
+	if trimmed := strings.TrimSpace(input.SandboxExecutionID); trimmed != "" {
+		toolCall.SandboxExecutionID = trimmed
+	}
+	if input.Sandbox != nil {
+		toolCall.Sandbox = cloneAnyMap(input.Sandbox)
+	}
 	m.toolCallsByID[toolCallID] = toolCall
 
 	return toolCall, nil

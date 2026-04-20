@@ -3,7 +3,7 @@
   "$id": "https://dope.local/schemas/api/executable-skill-manifest.schema.json",
   "title": "ExecutableSkillManifest",
   "type": "object",
-  "required": ["entrypoint", "profileId", "approvalMode"],
+  "required": ["entrypoint", "profileId", "backendKind", "approvalMode"],
   "additionalProperties": false,
   "properties": {
     "entrypoint": { "type": "string" },
@@ -13,6 +13,10 @@
     },
     "workingDir": { "type": "string" },
     "profileId": { "type": "string" },
+    "backendKind": {
+      "type": "string",
+      "enum": ["subprocess", "docker", "ssh", "remote"]
+    },
     "readRoots": {
       "type": "array",
       "items": { "type": "string" }
@@ -42,6 +46,9 @@
       "enum": ["allow", "ask", "deny"]
     },
     "timeoutMs": { "type": "integer", "minimum": 1 },
-    "requiredEnforcementStrength": { "type": "string" }
+    "requiredEnforcementStrength": {
+      "type": "string",
+      "enum": ["declared_only", "subprocess", "containerized", "docker"]
+    }
   }
 }

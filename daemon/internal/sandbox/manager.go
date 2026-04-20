@@ -41,7 +41,10 @@ const (
 	eventCategory                         = "sandbox"
 	resourceKindExecution                 = "sandbox_execution"
 	backendMetaProcessKind                = "process"
+	backendMetaProcessKindContainer       = "container"
 	managedProviderPendingFinalizationKey = "managedProviderFinalizationPending"
+	defaultDockerProbeTimeout             = 2 * time.Second
+	defaultDockerImage                    = "alpine:3.20"
 )
 
 type Manager struct {
@@ -53,6 +56,7 @@ type Manager struct {
 	mu           sync.RWMutex
 	profiles     map[string]Profile
 	profileIDs   []string
+	capabilities map[BackendKind]BackendCapabilityProfile
 	executions   map[string]Execution
 	executionIDs []string
 	cancels      map[string]context.CancelFunc
@@ -66,6 +70,7 @@ func NewManager(cfg config.Config, sqliteStore *store.SQLiteStore, eventBus *eve
 		eventBus:     eventBus,
 		policy:       policyEngine,
 		profiles:     map[string]Profile{},
+		capabilities: map[BackendKind]BackendCapabilityProfile{},
 		executions:   map[string]Execution{},
 		cancels:      map[string]context.CancelFunc{},
 		pendingFinal: map[string]struct{}{},
@@ -92,6 +97,21 @@ func (m *Manager) GetProfile(profileID string) (Profile, bool) {
 	defer m.mu.RUnlock()
 	profile, ok := m.profiles[normalizeProfileID(profileID)]
 	return profile, ok
+}
+
+func (m *Manager) BackendCapabilities() []BackendCapabilityProfile {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	items := make([]BackendCapabilityProfile, 0, len(m.capabilities))
+	order := []BackendKind{BackendKindSubprocess, BackendKindDocker, BackendKindSSH, BackendKindRemote}
+	for _, kind := range order {
+		capability, ok := m.capabilities[kind]
+		if !ok {
+			continue
+		}
+		items = append(items, cloneBackendCapability(capability))
+	}
+	return items
 }
 
 func (m *Manager) ListExecutions() []Execution {
@@ -149,7 +169,7 @@ func (m *Manager) StartExecution(ctx context.Context, request ExecutionRequest) 
 	execution.Status = decisionToStatus(decision)
 	execution.Result.Status = execution.Status
 	synchronizeExecutionConsumerState(&execution)
-	if execution.Status == ExecutionStatusDenied {
+	if execution.Status == ExecutionStatusDenied || execution.Status == ExecutionStatusUnsupported {
 		execution.Result.ErrorClass = decisionErrorClass(decision)
 		execution.Result.ErrorCode = decisionErrorCode(decision)
 		execution.Result.Error = decision.Explanation
@@ -182,7 +202,7 @@ func (m *Manager) StartExecution(ctx context.Context, request ExecutionRequest) 
 	if err := m.publishDecisionRecorded(ctx, execution); err != nil {
 		return Execution{}, err
 	}
-	if execution.Status == ExecutionStatusDenied {
+	if execution.Status == ExecutionStatusDenied || execution.Status == ExecutionStatusUnsupported {
 		if err := m.publishExecutionTerminal(ctx, execution); err != nil {
 			return Execution{}, err
 		}
@@ -208,7 +228,7 @@ func (m *Manager) StartAttachedExecution(ctx context.Context, request ExecutionR
 	execution.Status = decisionToStatus(decision)
 	execution.Result.Status = execution.Status
 	synchronizeExecutionConsumerState(&execution)
-	if execution.Status == ExecutionStatusDenied {
+	if execution.Status == ExecutionStatusDenied || execution.Status == ExecutionStatusUnsupported {
 		execution.Result.ErrorClass = decisionErrorClass(decision)
 		execution.Result.ErrorCode = decisionErrorCode(decision)
 		execution.Result.Error = decision.Explanation
@@ -241,11 +261,14 @@ func (m *Manager) StartAttachedExecution(ctx context.Context, request ExecutionR
 	if err := m.publishDecisionRecorded(ctx, execution); err != nil {
 		return Execution{}, nil, err
 	}
-	if execution.Status == ExecutionStatusDenied {
+	if execution.Status == ExecutionStatusDenied || execution.Status == ExecutionStatusUnsupported {
 		if err := m.publishExecutionTerminal(ctx, execution); err != nil {
 			return Execution{}, nil, err
 		}
 		return cloneExecution(execution), nil, nil
+	}
+	if execution.BackendKind == BackendKindDocker {
+		return Execution{}, nil, fmt.Errorf("attached docker sandbox execution is not supported")
 	}
 
 	runCtx, cancel := context.WithTimeout(context.Background(), launch.Timeout)
@@ -297,13 +320,9 @@ func (m *Manager) StartAttachedExecution(ctx context.Context, request ExecutionR
 	execution.UpdatedAt = now
 	execution.Result.Status = ExecutionStatusRunning
 	execution.Result.StartedAt = &now
-	execution.Result.BackendMetadata = mergeBackendMetadata(map[string]any{
-		"backend":               string(BackendKindSubprocess),
-		"networkEnforcement":    execution.Decision.EffectiveBackendKind == BackendKindSubprocess,
-		"networkPolicyStrength": "declared_only",
-		"processType":           backendMetaProcessKind,
-		"pid":                   command.Process.Pid,
-	}, execution)
+	execution.Result.BackendMetadata = mergeBackendMetadata(startedBackendMetadata(execution, map[string]any{
+		"pid": command.Process.Pid,
+	}), execution)
 	synchronizeExecutionConsumerState(&execution)
 	m.executions[execution.ExecutionID] = cloneExecution(execution)
 	m.cancels[execution.ExecutionID] = cancel
@@ -514,6 +533,7 @@ func (m *Manager) Restore(ctx context.Context) error {
 }
 
 type launchSpec struct {
+	BackendKind    BackendKind
 	Command        string
 	Args           []string
 	Cwd            string
@@ -525,6 +545,15 @@ type launchSpec struct {
 	CaptureStdout  bool
 	CaptureStderr  bool
 	MaxOutputBytes int
+	DockerImage    string
+	DockerNetwork  string
+	DockerMounts   []dockerMount
+}
+
+type dockerMount struct {
+	Source   string
+	Target   string
+	ReadOnly bool
 }
 
 func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createApproval bool) (Execution, Decision, *launchSpec, string, *policy.Decision, error) {
@@ -645,6 +674,7 @@ func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createA
 	execution.Result.Consumer = cloneConsumerContractView(execution.Consumer)
 
 	launch := &launchSpec{
+		BackendKind:    execution.BackendKind,
 		Command:        execution.Command,
 		Args:           cloneStrings(execution.Args),
 		Cwd:            execution.Cwd,
@@ -657,19 +687,21 @@ func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createA
 		CaptureStderr:  profile.ProcessPolicy.CaptureStderr,
 		MaxOutputBytes: profile.ProcessPolicy.MaxOutputBytes,
 	}
+	if execution.BackendKind == BackendKindDocker {
+		launch.DockerImage = dockerImageForExecution()
+		launch.DockerNetwork = dockerNetworkMode(request.Access)
+		launch.DockerMounts = dockerMountsForExecution(execution.Cwd, request.Access)
+	}
 	return execution, decision, launch, approvalID, createdDecision, nil
 }
 
 func (m *Manager) evaluate(ctx context.Context, profile Profile, execution Execution, createApproval bool) (Decision, string, *policy.Decision, error) {
 	decision := evaluateAccessDecision(profile, execution.Cwd, execution.Access)
 	if execution.Consumer != nil && execution.Consumer.Declaration != nil {
+		decision.RequiredBackendKind = requiredBackendKind(execution.Consumer.Declaration)
 		requiredStrength := strings.TrimSpace(execution.Consumer.Declaration.RequiredEnforcementStrength)
-		if requiredStrength != "" && requiredStrength != "declared_only" && requiredStrength != "subprocess" {
-			decision.Resolution = DecisionResolutionDeny
-			decision.ApprovalRequired = false
-			decision.ApprovalStatus = DecisionApprovalStatusNotApplicable
-			decision.MatchedRules = append(decision.MatchedRules, "enforcement:unsupported")
-			decision.Explanation = "sandbox declaration requires stronger guarantees than the current backend can provide"
+		if backendRequirementUnsupported(profile.BackendKind, decision.RequiredBackendKind, requiredStrength) {
+			markDecisionUnsupported(&decision, "enforcement:unsupported", "sandbox declaration requires stronger guarantees than the selected backend can provide", "unsupported_backend_guarantee")
 			if execution.Consumer.PolicyRecord != nil {
 				execution.Consumer.PolicyRecord.Status = PolicyRecordStatusUnsupported
 				execution.Consumer.PolicyRecord.Decision = DecisionResolutionDeny
@@ -767,23 +799,34 @@ func evaluateAccessDecision(profile Profile, cwd string, access AccessRequest) D
 	decision := Decision{
 		DecisionID:           newID("sandbox_decision"),
 		Resolution:           DecisionResolutionAllow,
+		SelectionOutcome:     BackendSelectionOutcomeSelected,
 		MatchedRules:         []string{"profile:" + profile.ProfileID},
 		ApprovalStatus:       DecisionApprovalStatusNotApplicable,
 		EffectiveProfileID:   profile.ProfileID,
 		EffectiveBackendKind: profile.BackendKind,
+		HostStatus:           backendHostStatus(profile.BackendCapability),
 		Explanation:          "execution is allowed by sandbox profile",
 	}
 	approvalRequired := false
 	reasons := make([]string, 0, 4)
 
-	if profile.BackendKind != BackendKindSubprocess {
+	switch profile.BackendKind {
+	case BackendKindSubprocess:
+	case BackendKindDocker:
+		if profile.BackendCapability.AvailabilityStatus != BackendAvailabilityStatusAvailable {
+			markDecisionUnsupported(&decision, "backend:unsupported", firstNonEmpty(profile.BackendCapability.AvailabilityReason, "docker backend is not available on this host"), "backend_unavailable")
+			return decision
+		}
+		if mismatchReason := dockerAccessMismatch(access); mismatchReason != "" {
+			markDecisionUnsupported(&decision, "backend:mismatch", mismatchReason, "backend_capability_mismatch")
+			return decision
+		}
+	default:
 		if profile.ApprovalPolicy.RequiredForUnknownBackends {
 			approvalRequired = true
 			reasons = append(reasons, "backend:approval_required")
 		} else {
-			decision.Resolution = DecisionResolutionDeny
-			decision.MatchedRules = append(decision.MatchedRules, "backend:unsupported")
-			decision.Explanation = "sandbox backend is not available"
+			markDecisionUnsupported(&decision, "backend:unsupported", "sandbox backend is not available", "backend_unavailable")
 			return decision
 		}
 	}
@@ -827,6 +870,64 @@ func evaluateAccessDecision(profile Profile, cwd string, access AccessRequest) D
 	return decision
 }
 
+func requiredBackendKind(declaration *ConsumerRequirementDeclaration) BackendKind {
+	if declaration == nil {
+		return ""
+	}
+	if len(declaration.AllowedBackendKinds) == 1 {
+		return declaration.AllowedBackendKinds[0]
+	}
+	return ""
+}
+
+func backendRequirementUnsupported(profileBackend, requiredBackend BackendKind, requiredStrength string) bool {
+	if requiredBackend != "" && requiredBackend != profileBackend {
+		return true
+	}
+	switch strings.TrimSpace(requiredStrength) {
+	case "", "declared_only", "subprocess":
+		return false
+	case "containerized", "docker":
+		return profileBackend != BackendKindDocker
+	default:
+		return true
+	}
+}
+
+func backendHostStatus(capability BackendCapabilityProfile) BackendHostStatus {
+	switch capability.AvailabilityStatus {
+	case BackendAvailabilityStatusAvailable, "":
+		return BackendHostStatusReady
+	case BackendAvailabilityStatusUnavailable:
+		return BackendHostStatusMissingPrerequisite
+	default:
+		return BackendHostStatusRuntimeUnavailable
+	}
+}
+
+func dockerAccessMismatch(access AccessRequest) string {
+	if access.NetworkMode == NetworkModeAllowList || len(access.AllowedHosts) > 0 || len(access.AllowedPorts) > 0 {
+		return "docker backend cannot yet enforce host or port allow-lists for this request"
+	}
+	if access.AllowLoopback {
+		return "docker backend cannot yet provide explicit loopback-only guarantees for this request"
+	}
+	return ""
+}
+
+func markDecisionUnsupported(decision *Decision, rule, explanation, mismatchReason string) {
+	if decision == nil {
+		return
+	}
+	decision.Resolution = DecisionResolutionDeny
+	decision.SelectionOutcome = BackendSelectionOutcomeUnsupported
+	decision.ApprovalRequired = false
+	decision.ApprovalStatus = DecisionApprovalStatusNotApplicable
+	decision.MatchedRules = append(decision.MatchedRules, rule)
+	decision.Explanation = explanation
+	decision.MismatchReason = mismatchReason
+}
+
 func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, execution Execution, launch *launchSpec) {
 	if launch == nil {
 		return
@@ -840,12 +941,7 @@ func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, e
 	execution.UpdatedAt = now
 	execution.Result.Status = ExecutionStatusRunning
 	execution.Result.StartedAt = &now
-	execution.Result.BackendMetadata = mergeBackendMetadata(map[string]any{
-		"backend":               string(BackendKindSubprocess),
-		"networkEnforcement":    execution.Decision.EffectiveBackendKind == BackendKindSubprocess,
-		"networkPolicyStrength": "declared_only",
-		"processType":           backendMetaProcessKind,
-	}, execution)
+	execution.Result.BackendMetadata = mergeBackendMetadata(startedBackendMetadata(execution, nil), execution)
 	synchronizeExecutionConsumerState(&execution)
 	m.executions[execution.ExecutionID] = cloneExecution(execution)
 	m.mu.Unlock()
@@ -857,7 +953,13 @@ func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, e
 		_ = err
 	}
 
-	result := redactSubprocessResult(executeSubprocess(ctx, *launch), launch.SecretValues)
+	var result subprocessResult
+	switch launch.BackendKind {
+	case BackendKindDocker:
+		result = redactSubprocessResult(executeDocker(ctx, *launch), launch.SecretValues)
+	default:
+		result = redactSubprocessResult(executeSubprocess(ctx, *launch), launch.SecretValues)
+	}
 
 	completedAt := time.Now().UTC()
 	execution.Status = result.Status
@@ -1028,6 +1130,81 @@ type subprocessResult struct {
 	BackendMetadata map[string]any
 }
 
+func startedBackendMetadata(execution Execution, extra map[string]any) map[string]any {
+	metadata := map[string]any{
+		"backend": execution.BackendKind,
+	}
+	switch execution.BackendKind {
+	case BackendKindDocker:
+		metadata["networkEnforcement"] = true
+		metadata["networkPolicyStrength"] = "container_runtime"
+		metadata["processType"] = backendMetaProcessKindContainer
+	default:
+		metadata["networkEnforcement"] = execution.Decision.EffectiveBackendKind == BackendKindSubprocess
+		metadata["networkPolicyStrength"] = "declared_only"
+		metadata["processType"] = backendMetaProcessKind
+	}
+	for key, value := range extra {
+		metadata[key] = value
+	}
+	return metadata
+}
+
+func dockerImageForExecution() string {
+	if value := strings.TrimSpace(os.Getenv("DOPE_SANDBOX_DOCKER_IMAGE")); value != "" {
+		return value
+	}
+	return defaultDockerImage
+}
+
+func dockerNetworkMode(access AccessRequest) string {
+	if access.NetworkMode == NetworkModeDeny || access.NetworkMode == "" {
+		return "none"
+	}
+	return "bridge"
+}
+
+func dockerMountsForExecution(cwd string, access AccessRequest) []dockerMount {
+	roots := make([]dockerMount, 0, len(access.ReadRoots)+len(access.WriteRoots)+2)
+	writable := map[string]struct{}{}
+	for _, root := range access.WriteRoots {
+		if trimmed := filepath.Clean(strings.TrimSpace(root)); trimmed != "." && trimmed != "" {
+			writable[trimmed] = struct{}{}
+		}
+	}
+	seen := map[string]struct{}{}
+	add := func(root string, readOnly bool) {
+		trimmed := filepath.Clean(strings.TrimSpace(root))
+		if trimmed == "." || trimmed == "" {
+			return
+		}
+		if _, ok := seen[trimmed]; ok {
+			if !readOnly {
+				for i := range roots {
+					if roots[i].Source == trimmed {
+						roots[i].ReadOnly = false
+					}
+				}
+			}
+			return
+		}
+		seen[trimmed] = struct{}{}
+		roots = append(roots, dockerMount{Source: trimmed, Target: trimmed, ReadOnly: readOnly})
+	}
+	if cwd != "" {
+		_, isWritable := writable[filepath.Clean(cwd)]
+		add(cwd, !isWritable)
+	}
+	for _, root := range access.ReadRoots {
+		_, isWritable := writable[filepath.Clean(strings.TrimSpace(root))]
+		add(root, !isWritable)
+	}
+	for _, root := range access.WriteRoots {
+		add(root, false)
+	}
+	return roots
+}
+
 func executeSubprocess(ctx context.Context, launch launchSpec) subprocessResult {
 	command := exec.Command(launch.Command, launch.Args...)
 	command.Dir = launch.Cwd
@@ -1146,6 +1323,45 @@ func executeSubprocess(ctx context.Context, launch launchSpec) subprocessResult 
 			BackendMetadata: map[string]any{"backend": "subprocess"},
 		}
 	}
+}
+
+func executeDocker(ctx context.Context, launch launchSpec) subprocessResult {
+	args := []string{"run", "--rm", "-i"}
+	if launch.DockerNetwork != "" {
+		args = append(args, "--network", launch.DockerNetwork)
+	}
+	if strings.TrimSpace(launch.Cwd) != "" {
+		args = append(args, "--workdir", launch.Cwd)
+	}
+	for _, mount := range launch.DockerMounts {
+		spec := fmt.Sprintf("type=bind,src=%s,dst=%s", mount.Source, mount.Target)
+		if mount.ReadOnly {
+			spec += ",readonly"
+		}
+		args = append(args, "--mount", spec)
+	}
+	for _, item := range launch.Env {
+		args = append(args, "-e", item)
+	}
+	args = append(args, launch.DockerImage, launch.Command)
+	args = append(args, launch.Args...)
+
+	dockerLaunch := launch
+	dockerLaunch.Command = "docker"
+	dockerLaunch.Args = args
+
+	result := executeSubprocess(ctx, dockerLaunch)
+	if result.BackendMetadata == nil {
+		result.BackendMetadata = map[string]any{}
+	}
+	result.BackendMetadata["backend"] = string(BackendKindDocker)
+	result.BackendMetadata["dockerImage"] = launch.DockerImage
+	result.BackendMetadata["dockerNetwork"] = launch.DockerNetwork
+	result.BackendMetadata["mountCount"] = len(launch.DockerMounts)
+	result.BackendMetadata["processType"] = backendMetaProcessKindContainer
+	result.BackendMetadata["networkEnforcement"] = true
+	result.BackendMetadata["networkPolicyStrength"] = "container_runtime"
+	return result
 }
 
 func collectSecretRedactionValues(env map[string]string, consumer *ConsumerContractView) []string {
@@ -1412,11 +1628,15 @@ func (m *Manager) publishDecisionRecorded(ctx context.Context, execution Executi
 	payload := map[string]any{
 		"decisionId":           execution.Decision.DecisionID,
 		"resolution":           execution.Decision.Resolution,
+		"selectionOutcome":     execution.Decision.SelectionOutcome,
 		"matchedRules":         execution.Decision.MatchedRules,
 		"approvalRequired":     execution.Decision.ApprovalRequired,
 		"approvalStatus":       execution.Decision.ApprovalStatus,
 		"effectiveProfileId":   execution.Decision.EffectiveProfileID,
 		"effectiveBackendKind": execution.Decision.EffectiveBackendKind,
+		"requiredBackendKind":  execution.Decision.RequiredBackendKind,
+		"hostStatus":           execution.Decision.HostStatus,
+		"mismatchReason":       execution.Decision.MismatchReason,
 		"explanation":          execution.Decision.Explanation,
 	}
 	mergeConsumerPayload(payload, execution.Consumer)
@@ -1575,9 +1795,14 @@ func (m *Manager) reloadBuiltins() {
 
 func (m *Manager) reloadBuiltinsLocked() {
 	builtins := builtinProfiles(m.cfg)
+	capabilities := detectBackendCapabilities(m.cfg)
 	m.profiles = make(map[string]Profile, len(builtins))
 	m.profileIDs = make([]string, 0, len(builtins))
+	m.capabilities = capabilities
 	for _, profile := range builtins {
+		if capability, ok := capabilities[profile.BackendKind]; ok {
+			profile.BackendCapability = cloneBackendCapability(capability)
+		}
 		m.profiles[profile.ProfileID] = profile
 		m.profileIDs = append(m.profileIDs, profile.ProfileID)
 	}
@@ -1589,6 +1814,93 @@ func (m *Manager) listProfilesLocked() []Profile {
 		items = append(items, cloneProfile(m.profiles[profileID]))
 	}
 	return items
+}
+
+func detectBackendCapabilities(cfg config.Config) map[BackendKind]BackendCapabilityProfile {
+	capabilities := map[BackendKind]BackendCapabilityProfile{
+		BackendKindSubprocess: {
+			BackendKind:           BackendKindSubprocess,
+			DisplayName:           "Subprocess",
+			FilesystemEnforcement: "declared_scoped",
+			NetworkEnforcement:    "declared_only",
+			EnvInjectionMode:      "filtered_host_env",
+			ApprovalBehavior:      "profile_and_command_policy",
+			RestartBehavior:       "interrupted_execution_recovers_as_cancelled",
+			HostPrerequisites:     []string{},
+			AvailabilityStatus:    BackendAvailabilityStatusAvailable,
+		},
+	}
+	capabilities[BackendKindDocker] = detectDockerCapability(cfg)
+	return capabilities
+}
+
+func detectDockerCapability(cfg config.Config) BackendCapabilityProfile {
+	image := dockerImageForExecution()
+	capability := BackendCapabilityProfile{
+		BackendKind:           BackendKindDocker,
+		DisplayName:           "Docker",
+		FilesystemEnforcement: "container_mount_scoped",
+		NetworkEnforcement:    "container_network_mode",
+		EnvInjectionMode:      "container_env_injection",
+		ApprovalBehavior:      "profile_and_command_policy",
+		RestartBehavior:       "interrupted_execution_recovers_as_cancelled",
+		HostPrerequisites:     []string{"docker CLI available on PATH"},
+		AvailabilityStatus:    BackendAvailabilityStatusAvailable,
+	}
+	dockerPath, err := exec.LookPath("docker")
+	if err != nil {
+		capability.AvailabilityStatus = BackendAvailabilityStatusUnavailable
+		capability.AvailabilityReason = "docker CLI is not available on PATH"
+	} else if err := probeDockerServer(dockerPath); err != nil {
+		capability.AvailabilityStatus = BackendAvailabilityStatusDegraded
+		capability.AvailabilityReason = err.Error()
+	} else if err := probeDockerImage(dockerPath, image); err != nil {
+		capability.AvailabilityStatus = BackendAvailabilityStatusUnavailable
+		capability.AvailabilityReason = err.Error()
+	}
+	if image == defaultDockerImage {
+		capability.HostPrerequisites = append(capability.HostPrerequisites, "default image "+defaultDockerImage+" available locally in docker")
+	} else {
+		capability.HostPrerequisites = append(capability.HostPrerequisites, "configured image "+image+" available locally in docker")
+	}
+	_ = cfg
+	return capability
+}
+
+func probeDockerServer(dockerPath string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultDockerProbeTimeout)
+	defer cancel()
+
+	output, err := exec.CommandContext(ctx, dockerPath, "version", "--format", "{{.Server.Version}}").CombinedOutput()
+	if err == nil && strings.TrimSpace(string(output)) != "" {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return errors.New("docker runtime probe timed out")
+	}
+	message := strings.TrimSpace(string(output))
+	if message == "" && err != nil {
+		message = strings.TrimSpace(err.Error())
+	}
+	return fmt.Errorf("docker runtime is unavailable: %s", firstNonEmpty(message, "server version probe failed"))
+}
+
+func probeDockerImage(dockerPath, image string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultDockerProbeTimeout)
+	defer cancel()
+
+	output, err := exec.CommandContext(ctx, dockerPath, "image", "inspect", image, "--format", "{{.Id}}").CombinedOutput()
+	if err == nil && strings.TrimSpace(string(output)) != "" {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return fmt.Errorf("docker image %s probe timed out", image)
+	}
+	message := strings.TrimSpace(string(output))
+	if message == "" && err != nil {
+		message = strings.TrimSpace(err.Error())
+	}
+	return fmt.Errorf("docker image %s is not available locally: %s", image, firstNonEmpty(message, "image inspect failed"))
 }
 
 func builtinProfiles(cfg config.Config) []Profile {
@@ -1639,6 +1951,62 @@ func builtinProfiles(cfg config.Config) []Profile {
 				RequiredForWritesOutsideRoots: true,
 				RequiredForNetwork:            true,
 				RequiredForUnknownBackends:    true,
+			},
+			ProcessPolicy: ProcessPolicy{
+				TimeoutMs:        30000,
+				MaxTimeoutMs:     300000,
+				KillGraceMs:      1000,
+				CaptureStdout:    true,
+				CaptureStderr:    true,
+				MaxOutputBytes:   65536,
+				AllowStreaming:   false,
+				RestartOnFailure: false,
+			},
+			DefaultTimeoutMs: 30000,
+			MaxTimeoutMs:     300000,
+			Restartable:      false,
+			Source:           SourceBuiltin,
+			Active:           true,
+		},
+		{
+			ProfileID:      ProfileIDDockerDefault,
+			Title:          "Default Docker Sandbox",
+			Description:    "Container-backed sandbox execution with mount-scoped filesystem access and docker-managed network isolation.",
+			BackendKind:    BackendKindDocker,
+			DefaultWorkDir: dataDir,
+			FilesystemPolicy: FilesystemPolicy{
+				Mode:               FilesystemModeScoped,
+				ReadRoots:          []string{},
+				WriteRoots:         []string{},
+				TempRoots:          []string{tempRoot},
+				AllowDataDir:       true,
+				AllowUserAgentsDir: true,
+				AllowHomeRead:      true,
+				AllowHomeWrite:     true,
+			},
+			NetworkPolicy: NetworkPolicy{
+				Mode:            NetworkModeFull,
+				AllowedHosts:    []string{},
+				AllowedPorts:    []int{},
+				AllowLoopback:   false,
+				EnforcementMode: "container_runtime",
+			},
+			EnvPolicy: EnvironmentPolicy{
+				Mode:        EnvironmentModeClean,
+				AllowedVars: []string{},
+				InjectedVars: map[string]string{
+					"DOPE_DATA_DIR":   dataDir,
+					"DOPE_ENV":        string(cfg.Environment),
+					"DOPE_AGENTS_DIR": agentsDir,
+				},
+				RedactedVars: []string{},
+			},
+			ApprovalPolicy: ApprovalPolicy{
+				Mode:                          ApprovalModeAsk,
+				RequiredForCommands:           []string{"curl", "ssh", "scp", "rm"},
+				RequiredForWritesOutsideRoots: true,
+				RequiredForNetwork:            true,
+				RequiredForUnknownBackends:    false,
 			},
 			ProcessPolicy: ProcessPolicy{
 				TimeoutMs:        30000,
@@ -2077,11 +2445,16 @@ func decisionToStatus(decision Decision) ExecutionStatus {
 	if decision.Resolution == DecisionResolutionAllow {
 		return ExecutionStatusPending
 	}
+	if decision.SelectionOutcome == BackendSelectionOutcomeUnsupported {
+		return ExecutionStatusUnsupported
+	}
 	return ExecutionStatusDenied
 }
 
 func decisionErrorClass(decision Decision) ErrorClass {
 	switch {
+	case slices.Contains(decision.MatchedRules, "backend:mismatch"):
+		return ErrorClassBackendMismatch
 	case slices.Contains(decision.MatchedRules, "enforcement:unsupported"), slices.Contains(decision.MatchedRules, "backend:unsupported"):
 		return ErrorClassBackendMissing
 	case decision.ApprovalStatus == DecisionApprovalStatusRejected:
@@ -2095,6 +2468,8 @@ func decisionErrorClass(decision Decision) ErrorClass {
 
 func decisionErrorCode(decision Decision) string {
 	switch {
+	case slices.Contains(decision.MatchedRules, "backend:mismatch"):
+		return "sandbox_backend_mismatch"
 	case slices.Contains(decision.MatchedRules, "enforcement:unsupported"), slices.Contains(decision.MatchedRules, "backend:unsupported"):
 		return "sandbox_backend_unsupported"
 	case decision.ApprovalStatus == DecisionApprovalStatusRejected:
@@ -2142,6 +2517,7 @@ func newID(prefix string) string {
 }
 
 func cloneProfile(profile Profile) Profile {
+	profile.BackendCapability = cloneBackendCapability(profile.BackendCapability)
 	profile.FilesystemPolicy.ReadRoots = cloneStrings(profile.FilesystemPolicy.ReadRoots)
 	profile.FilesystemPolicy.WriteRoots = cloneStrings(profile.FilesystemPolicy.WriteRoots)
 	profile.FilesystemPolicy.TempRoots = cloneStrings(profile.FilesystemPolicy.TempRoots)
@@ -2152,6 +2528,11 @@ func cloneProfile(profile Profile) Profile {
 	profile.EnvPolicy.RedactedVars = cloneStrings(profile.EnvPolicy.RedactedVars)
 	profile.ApprovalPolicy.RequiredForCommands = cloneStrings(profile.ApprovalPolicy.RequiredForCommands)
 	return profile
+}
+
+func cloneBackendCapability(capability BackendCapabilityProfile) BackendCapabilityProfile {
+	capability.HostPrerequisites = cloneStrings(capability.HostPrerequisites)
+	return capability
 }
 
 func cloneExecution(execution Execution) Execution {
@@ -2227,6 +2608,11 @@ func synchronizeExecutionConsumerState(execution *Execution) {
 		record.CompletedAt = &now
 	case ExecutionStatusCancelled:
 		record.Status = PolicyRecordStatusCancelled
+		record.FailureClass = string(execution.Result.ErrorClass)
+		now := time.Now().UTC()
+		record.CompletedAt = &now
+	case ExecutionStatusUnsupported:
+		record.Status = PolicyRecordStatusUnsupported
 		record.FailureClass = string(execution.Result.ErrorClass)
 		now := time.Now().UTC()
 		record.CompletedAt = &now

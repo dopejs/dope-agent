@@ -607,16 +607,25 @@ This is the last step before a fuller orchestration layer can rely on sandbox as
 
 ### 4. Stronger Isolation And Additional Backends
 
-The first backend is intentionally policy-rich but not OS-hardened.
+This step is now closed for the first stronger backend.
 
-The hardening slice should close:
+The sandbox execution plane now includes:
 
-- at least one stronger backend such as `docker`
-- backend capability negotiation so profiles can require stronger isolation
-- stronger filesystem and network enforcement than subprocess preflight checks alone
-- operator-visible comparison of backend guarantees and degradation behavior
+- baseline `subprocess_default`
+- stronger `docker_default`
+- backend capability inspection through `/v1/config` and sandbox profile routes
+- explain-time selection truth for selected versus `unsupported` outcomes
+- fail-closed handling when a request explicitly requires `docker` but the host or declared
+  access rules cannot satisfy it
 
-This is where sandbox stops being only a control plane plus subprocess runner and becomes a stronger execution substrate for higher-risk tools.
+The current stronger-backend slice proves that the existing control plane can host more than
+one real backend without introducing a second execution API.
+
+What is still deferred:
+
+- broader migration of local capability families beyond executable skills
+- additional stronger backends such as SSH or remote execution
+- VM-grade hardening beyond the current subprocess/container split
 
 ## Explicit Prerequisites Before MCP
 

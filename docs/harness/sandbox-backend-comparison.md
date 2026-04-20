@@ -2,87 +2,88 @@
 
 ## Purpose
 
-This document narrows the first backend choice for the sandbox execution plane.
+Record the current backend posture after Roadmap 20 so operators and future roadmap work do
+not need to reconstruct it from code or commit history.
 
-The design target is a multi-backend substrate, but `Roadmap 16` should implement only one backend.
+## Implemented Backends
 
-## Candidate Backends
+### `subprocess`
 
-### 1. Subprocess
+Use for:
 
-Strengths:
+- default executable skills
+- current local-tool and MCP paths that already run on the sandbox plane
+- hosts where no stronger backend is required
 
-- lowest implementation cost
-- easiest to wire into current daemon
-- best fit for managed CLI providers and local tools
-- easiest to test in the current repository
+Guarantees:
 
-Weaknesses:
+- declared filesystem scoping with daemon-side preflight validation
+- declared network policy with approval and audit truth
+- filtered host-environment injection
 
-- weakest isolation by default
-- network controls are harder to hard-enforce
-- filesystem controls begin as policy checks rather than full OS isolation
+Limits:
 
-### 2. Docker
+- filesystem and network guarantees are not container-enforced
+- operator trust depends on truthful daemon mediation rather than OS isolation
 
-Strengths:
+### `docker`
 
-- stronger isolation boundary
-- clearer filesystem and network control
-- easier future path for reproducible tool environments
+Use for:
 
-Weaknesses:
+- executable skills that explicitly declare `execution.profile_id: docker_default`
+- workloads that require materially stronger filesystem or network isolation than
+  `subprocess`
 
-- larger operator burden
-- daemon becomes dependent on docker availability and lifecycle
-- test and prod local workflows become heavier
+Guarantees:
 
-### 3. SSH
+- container mount scoping rather than host-process cwd checks alone
+- container network mode selection (`none` or bridged) instead of declaration-only network
+  truth
+- explicit backend identity preserved in sandbox execution and tool-call history
 
-Strengths:
+Limits:
 
-- useful for remote execution and bring-your-own-host models
-- good long-term substrate for server or cluster execution
+- this slice does not support every declared access pattern on `docker`
+- allow-list host/port semantics and loopback guarantees still fail closed as
+  `unsupported` instead of silently degrading
+- attached execution is still subprocess-only
 
-Weaknesses:
+## Host Prerequisites
 
-- not appropriate as the first backend
-- significantly more operational coupling
-- identity, credential, and host lifecycle become part of roadmap 16 by accident
+`docker` is considered ready only when:
 
-### 4. Remote Managed Backend
+- the `docker` CLI is available on `PATH`
+- the local docker runtime is reachable
+- the configured image is available locally
 
-Strengths:
+If those prerequisites are absent, the daemon reports:
 
-- eventual path for cloud or worker-based execution
-- best long-term separation of control plane and execution plane
+- backend availability as `unavailable`
+- host status as `missing_prerequisite`
+- request outcome as `unsupported` when `docker` is explicitly required
 
-Weaknesses:
+## Degradation Rules
 
-- much too large for the first sandbox roadmap
-- implies queueing, remote logs, and transport reliability work immediately
+- No request that explicitly requires `docker` may silently fall back to `subprocess`.
+- If a `docker` request cannot satisfy declared access guarantees, the result is
+  `unsupported` with mismatch classification, not a normal runtime failure.
+- Unmodified executable skills remain on `subprocess`; there is no heuristic auto-promotion.
 
-## Recommended First Backend
+## Migration Inventory
 
-The recommended first backend is:
+Already sandbox-backed:
 
-- `subprocess`
+- managed-provider inspection and prompt execution
+- MCP lifecycle and tool exposure policy
+- executable skills
+- current high-risk local tools: `exec`, `shell`, `browser`
 
-Reason:
+Using `docker` in this slice:
 
-- it is enough to validate the control-plane model
-- it immediately improves provider bridges and future local tools
-- it preserves the ability to add docker or remote backends later without wasting this roadmap
+- only executable skills that explicitly opt in
 
-## Required Safeguards For Subprocess
+Still deferred:
 
-The subprocess backend is acceptable only if Roadmap 16 includes:
-
-- cwd control
-- env filtering
-- timeout and cancellation
-- explicit filesystem policy checks
-- explicit network policy declaration
-- audit trail and decision recording
-
-Without those, the subprocess backend becomes an ad hoc shell wrapper, which is not acceptable.
+- broader migration of lower-risk local capability families
+- moving MCP, managed providers, or all local tools onto `docker`
+- SSH, remote, or VM-grade backends

@@ -13,6 +13,7 @@
     "llm",
     "connectors",
     "mcp",
+    "sandbox",
     "redactedFields"
   ],
   "additionalProperties": false,
@@ -187,6 +188,17 @@
         "servers": {
           "type": "array",
           "items": { "$ref": "./mcp-server-resource.schema.json" }
+        }
+      }
+    },
+    "sandbox": {
+      "type": "object",
+      "required": ["backends"],
+      "additionalProperties": false,
+      "properties": {
+        "backends": {
+          "type": "array",
+          "items": { "$ref": "./sandbox-backend-capability.schema.json" }
         }
       }
     },

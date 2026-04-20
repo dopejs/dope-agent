@@ -41,6 +41,8 @@ Health and pairing bootstrap stay outside the protected surface.
 The first real guarded action is executable-skill and high-risk local-tool execution:
 
 - executable skills default to approval mode `ask` unless the manifest declares `allow` or `deny`
+- executable skills can now explicitly require the stronger `docker` backend by selecting
+  `docker_default`
 - capability kinds `exec`, `shell`, and `browser` require approval
 - if no approval is supplied, daemon creates a pending approval and denies execution
 - approved approval IDs allow execution
@@ -49,6 +51,10 @@ The first real guarded action is executable-skill and high-risk local-tool execu
   secret-resolution metadata for executable skills and the current high-risk tool-call path
 - launched in-scope work now crosses the sandbox execution boundary instead of an unmanaged
   subprocess path
+- if a request explicitly requires `docker` and the host cannot satisfy prerequisites or
+  declared access guarantees, the canonical result is `unsupported`
+- operator inspection surfaces now expose backend capability, host readiness, and mismatch
+  truth before execution
 - daemon restart recovers interrupted in-flight executable-skill and high-risk local-tool
   executions as `cancelled`
 - this remains a policy and provenance boundary for the existing tool-call surface, not a

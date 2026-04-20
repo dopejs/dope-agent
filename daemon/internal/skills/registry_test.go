@@ -321,12 +321,14 @@ func writeExecutableSkillSecretsFixture(t *testing.T, dataRoot string, values ma
 }
 
 type executableSkillFixtureOptions struct {
-	Description  string
-	ApprovalMode string
-	SecretRefs   []string
-	Args         []string
-	TimeoutMs    int
-	ScriptBody   string
+	Description                 string
+	ApprovalMode                string
+	SecretRefs                  []string
+	Args                        []string
+	TimeoutMs                   int
+	ScriptBody                  string
+	ProfileID                   string
+	RequiredEnforcementStrength string
 }
 
 func writeValidExecutableSkillFixture(t *testing.T, dataRoot, skillID string, opts executableSkillFixtureOptions) {
@@ -334,6 +336,7 @@ func writeValidExecutableSkillFixture(t *testing.T, dataRoot, skillID string, op
 	description := firstExecutableSkillFixtureValue(opts.Description, "executable")
 	approvalMode := firstExecutableSkillFixtureValue(opts.ApprovalMode, "ask")
 	scriptBody := firstExecutableSkillFixtureValue(opts.ScriptBody, "#!/bin/sh\nprintf ok")
+	profileID := firstExecutableSkillFixtureValue(opts.ProfileID, "subprocess_default")
 
 	lines := []string{
 		"---",
@@ -341,7 +344,7 @@ func writeValidExecutableSkillFixture(t *testing.T, dataRoot, skillID string, op
 		`description: "` + description + `"`,
 		"execution.entrypoint: scripts/run.sh",
 		"execution.working_dir: .",
-		"execution.profile_id: subprocess_default",
+		"execution.profile_id: " + profileID,
 		"execution.read_roots: .",
 		"execution.write_roots: .",
 		"execution.network_mode: deny",
@@ -356,10 +359,72 @@ func writeValidExecutableSkillFixture(t *testing.T, dataRoot, skillID string, op
 	if opts.TimeoutMs > 0 {
 		lines = append(lines, "execution.timeout_ms: "+strconv.Itoa(opts.TimeoutMs))
 	}
+	if value := strings.TrimSpace(opts.RequiredEnforcementStrength); value != "" {
+		lines = append(lines, "execution.required_enforcement_strength: "+value)
+	}
 	lines = append(lines, "---", "run it")
 
 	writeSkillFixture(t, filepath.Join(dataRoot, "skills", skillID), strings.Join(lines, "\n"))
 	writeFileFixture(t, filepath.Join(dataRoot, "skills", skillID, "scripts", "run.sh"), scriptBody)
+}
+
+func TestRegistryProjectsExplicitDockerRequirementForExecutableSkill(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("DOPE_ENV", "test")
+	dataRoot := t.TempDir()
+	writeValidExecutableSkillFixture(t, dataRoot, "docker-skill", executableSkillFixtureOptions{
+		ProfileID:                   "docker_default",
+		RequiredEnforcementStrength: "containerized",
+		ApprovalMode:                "allow",
+	})
+
+	registry, err := NewRegistry(dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistry returned error: %v", err)
+	}
+
+	skill, ok := registry.Get("docker-skill")
+	if !ok {
+		t.Fatal("expected docker-skill")
+	}
+	if skill.AvailabilityStatus != SkillAvailabilityStatusAvailable {
+		t.Fatalf("expected docker executable skill to stay available for inspection, got %+v", skill)
+	}
+	if skill.ExecutionManifest == nil {
+		t.Fatalf("expected executable manifest, got %+v", skill)
+	}
+	if skill.ExecutionManifest.ProfileID != "docker_default" || skill.ExecutionManifest.BackendKind != "docker" {
+		t.Fatalf("expected docker manifest projection, got %+v", skill.ExecutionManifest)
+	}
+	if skill.ExecutionManifest.RequiredEnforcementStrength != "containerized" {
+		t.Fatalf("expected containerized requirement, got %+v", skill.ExecutionManifest)
+	}
+}
+
+func TestRegistryKeepsUnmodifiedExecutableSkillsOnBaselineBackend(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("DOPE_ENV", "test")
+	dataRoot := t.TempDir()
+	writeValidExecutableSkillFixture(t, dataRoot, "baseline-skill", executableSkillFixtureOptions{})
+
+	registry, err := NewRegistry(dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistry returned error: %v", err)
+	}
+
+	skill, ok := registry.Get("baseline-skill")
+	if !ok {
+		t.Fatal("expected baseline-skill")
+	}
+	if skill.ExecutionManifest == nil {
+		t.Fatalf("expected executable manifest, got %+v", skill)
+	}
+	if skill.ExecutionManifest.ProfileID != "subprocess_default" || skill.ExecutionManifest.BackendKind != "subprocess" {
+		t.Fatalf("expected subprocess baseline backend, got %+v", skill.ExecutionManifest)
+	}
+	if skill.ExecutionManifest.RequiredEnforcementStrength != "declared_only" {
+		t.Fatalf("expected declared_only strength, got %+v", skill.ExecutionManifest)
+	}
 }
 
 func writeApprovalGatedExecutableSkillFixture(t *testing.T, dataRoot, skillID string, secretRefs []string) {

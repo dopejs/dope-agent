@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/sandbox-backend-capability.schema.json",
+  "title": "SandboxBackendCapability",
+  "type": "object",
+  "required": [
+    "backendKind",
+    "displayName",
+    "filesystemEnforcement",
+    "networkEnforcement",
+    "envInjectionMode",
+    "approvalBehavior",
+    "restartBehavior",
+    "availabilityStatus"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "backendKind": {
+      "type": "string",
+      "enum": ["subprocess", "docker", "ssh", "remote"]
+    },
+    "displayName": { "type": "string" },
+    "filesystemEnforcement": { "type": "string" },
+    "networkEnforcement": { "type": "string" },
+    "envInjectionMode": { "type": "string" },
+    "approvalBehavior": { "type": "string" },
+    "restartBehavior": { "type": "string" },
+    "hostPrerequisites": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "availabilityStatus": {
+      "type": "string",
+      "enum": ["available", "unavailable", "degraded"]
+    },
+    "availabilityReason": { "type": "string" }
+  }
+}

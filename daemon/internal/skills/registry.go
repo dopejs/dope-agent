@@ -64,6 +64,7 @@ type ExecutableManifest struct {
 	Args                        []string             `json:"args,omitempty"`
 	WorkingDir                  string               `json:"workingDir,omitempty"`
 	ProfileID                   string               `json:"profileId"`
+	BackendKind                 sandbox.BackendKind  `json:"backendKind,omitempty"`
 	ReadRoots                   []string             `json:"readRoots,omitempty"`
 	WriteRoots                  []string             `json:"writeRoots,omitempty"`
 	NetworkMode                 sandbox.NetworkMode  `json:"networkMode,omitempty"`
@@ -362,6 +363,7 @@ func parseExecutableManifest(skillRoot, secretRoot string, frontmatter map[strin
 	if manifest.ProfileID == "" {
 		return manifest, SkillAvailabilityStatusUnavailable, "execution.profile_id is required"
 	}
+	manifest.BackendKind = backendKindForProfile(manifest.ProfileID)
 	if !supportsRequiredStrength(manifest.RequiredEnforcementStrength) {
 		return manifest, SkillAvailabilityStatusUnavailable, "execution.required_enforcement_strength exceeds current backend support"
 	}
@@ -461,10 +463,19 @@ func resolveManifestEntrypoint(skillRoot, value string) (string, bool) {
 
 func supportsRequiredStrength(value string) bool {
 	switch strings.TrimSpace(value) {
-	case "", "declared_only", "subprocess":
+	case "", "declared_only", "subprocess", "containerized", "docker":
 		return true
 	default:
 		return false
+	}
+}
+
+func backendKindForProfile(profileID string) sandbox.BackendKind {
+	switch strings.TrimSpace(profileID) {
+	case sandbox.ProfileIDDockerDefault:
+		return sandbox.BackendKindDocker
+	default:
+		return sandbox.BackendKindSubprocess
 	}
 }
 

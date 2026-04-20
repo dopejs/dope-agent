@@ -183,10 +183,10 @@ Current completion should be read as:
 
 ## Roadmap 20: Stronger Isolation And Additional Sandbox Backends
 
-- [ ] Backend capability contract
-- [ ] Second backend implementation
-- [ ] Stronger filesystem and network enforcement
-- [ ] Backend selection and migration guidance
+- [x] Backend capability contract
+- [x] Second backend implementation
+- [x] Stronger filesystem and network enforcement
+- [x] Backend selection and migration guidance
 
 ## Completed Foundational Work
 

@@ -125,7 +125,7 @@ func NewServer(deps Dependencies) *Server {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		writeJSON(w, http.StatusOK, buildConfigResponse(deps.Config, deps.MCP))
+		writeJSON(w, http.StatusOK, buildConfigResponse(deps.Config, deps.MCP, deps.Sandboxes))
 	}))
 	mux.HandleFunc("/v1/events/stream", protected(func(w http.ResponseWriter, r *http.Request) {
 		streamEvents(deps.EventBus, deps.Store, w, r)
@@ -2966,9 +2966,23 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 		toolCall.Sandbox = consumerViewMap(execution.Consumer)
 		if execution.Status == sandbox.ExecutionStatusDenied {
 			toolCall, err = manager.DenyToolCall(runID, stepID, toolCall.ToolCallID, runtime.DenyToolCallInput{
-				Output:       buildSandboxToolCallOutput(execution),
-				Error:        execution.Result.Error,
-				FailureClass: string(execution.Result.ErrorClass),
+				Output:             buildSandboxToolCallOutput(execution),
+				Error:              execution.Result.Error,
+				FailureClass:       string(execution.Result.ErrorClass),
+				SandboxExecutionID: execution.ExecutionID,
+				Sandbox:            consumerViewMap(execution.Consumer),
+			})
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		} else if execution.Status == sandbox.ExecutionStatusUnsupported {
+			toolCall, err = manager.FailToolCall(runID, stepID, toolCall.ToolCallID, runtime.FailToolCallInput{
+				Output:             buildSandboxToolCallOutput(execution),
+				Error:              execution.Result.Error,
+				FailureClass:       string(execution.Result.ErrorClass),
+				SandboxExecutionID: execution.ExecutionID,
+				Sandbox:            consumerViewMap(execution.Consumer),
 			})
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
@@ -2987,7 +3001,7 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if execution.Status == sandbox.ExecutionStatusDenied {
+		if execution.Status == sandbox.ExecutionStatusDenied || execution.Status == sandbox.ExecutionStatusUnsupported {
 			if _, err := publishToolCallEvent(r.Context(), eventBus, sqliteStore, "tool_call.failed", runID, stepID, toolCall); err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
@@ -3347,6 +3361,14 @@ func authorizeToolCallConsumer(ctx context.Context, policyEngine *policy.Engine,
 
 func buildExecutableSkillConsumerView(cfg config.Config, skill skills.Skill, requestedBy string) *sandbox.ConsumerContractView {
 	manifest := skill.ExecutionManifest
+	backendKind := manifest.BackendKind
+	if backendKind == "" {
+		backendKind = sandbox.BackendKindSubprocess
+	}
+	enforcementStrength := firstNonEmpty(manifest.RequiredEnforcementStrength, "declared_only")
+	if backendKind == sandbox.BackendKindDocker && enforcementStrength == "declared_only" {
+		enforcementStrength = "containerized"
+	}
 	scope := sandbox.SecretEnvironmentScopeTest
 	if cfg.Environment == config.EnvironmentProd {
 		scope = sandbox.SecretEnvironmentScopeProd
@@ -3394,7 +3416,7 @@ func buildExecutableSkillConsumerView(cfg config.Config, skill skills.Skill, req
 			OperationKind:               "tool_call.execute",
 			ProfileID:                   manifest.ProfileID,
 			ExecutionMode:               sandbox.ExecutionModeSubprocess,
-			AllowedBackendKinds:         []sandbox.BackendKind{sandbox.BackendKindSubprocess},
+			AllowedBackendKinds:         []sandbox.BackendKind{backendKind},
 			ReadRoots:                   append([]string(nil), manifest.ReadRoots...),
 			WriteRoots:                  append([]string(nil), manifest.WriteRoots...),
 			NetworkMode:                 manifest.NetworkMode,
@@ -3402,7 +3424,7 @@ func buildExecutableSkillConsumerView(cfg config.Config, skill skills.Skill, req
 			AllowedPorts:                append([]int(nil), manifest.AllowedPorts...),
 			SecretRefs:                  append([]string(nil), manifest.SecretRefs...),
 			ApprovalMode:                manifest.ApprovalMode,
-			RequiredEnforcementStrength: firstNonEmpty(manifest.RequiredEnforcementStrength, "declared_only"),
+			RequiredEnforcementStrength: enforcementStrength,
 			Active:                      true,
 			Source:                      sandbox.SourceBuiltin,
 		},
@@ -3417,7 +3439,7 @@ func buildExecutableSkillConsumerView(cfg config.Config, skill skills.Skill, req
 			Decision:            initialDecision,
 			ApprovalStatus:      initialApproval,
 			SecretResolution:    secretResolutionFromOutcomes(secretScope),
-			EnforcementStrength: firstNonEmpty(manifest.RequiredEnforcementStrength, "declared_only"),
+			EnforcementStrength: enforcementStrength,
 			StartedAt:           time.Now().UTC(),
 			Status:              initialStatus,
 		},
@@ -3432,6 +3454,10 @@ func buildExecutableSkillExecutionRequest(cfg config.Config, skill skills.Skill,
 	ApprovalID   string `json:"approvalId"`
 }, consumer *sandbox.ConsumerContractView, approvalID, requestedBy string) (sandbox.ExecutionRequest, error) {
 	manifest := skill.ExecutionManifest
+	backendKind := manifest.BackendKind
+	if strings.TrimSpace(string(backendKind)) == "" {
+		backendKind = sandbox.BackendKindSubprocess
+	}
 	args := append([]string(nil), manifest.Args...)
 	if input, ok := request.Input.(map[string]any); ok {
 		if extraArgs, ok := input["args"].([]any); ok {
@@ -3466,7 +3492,10 @@ func buildExecutableSkillExecutionRequest(cfg config.Config, skill skills.Skill,
 		ApprovalID:   approvalID,
 		Reason:       "skill execution",
 		Metadata: map[string]string{
-			"skillId": skill.SkillID,
+			"skillId":             skill.SkillID,
+			"sandboxProfileId":    manifest.ProfileID,
+			"requiredBackendKind": string(backendKind),
+			"enforcementStrength": consumer.PolicyRecord.EnforcementStrength,
 		},
 		Access: sandbox.AccessRequest{
 			ReadRoots:    append([]string(nil), manifest.ReadRoots...),
@@ -3565,6 +3594,7 @@ func buildSandboxToolCallOutput(execution sandbox.Execution) map[string]any {
 	output := map[string]any{
 		"executionId": execution.ExecutionID,
 		"status":      execution.Status,
+		"backendKind": execution.BackendKind,
 		"stdout":      execution.Result.Stdout,
 		"stderr":      execution.Result.Stderr,
 	}
@@ -3573,6 +3603,9 @@ func buildSandboxToolCallOutput(execution sandbox.Execution) map[string]any {
 	}
 	if execution.Result.ErrorCode != "" {
 		output["errorCode"] = execution.Result.ErrorCode
+	}
+	if execution.Decision.MismatchReason != "" {
+		output["mismatchReason"] = execution.Decision.MismatchReason
 	}
 	return output
 }
@@ -3592,10 +3625,12 @@ func watchSandboxExecution(runID, stepID, toolCallID string, manager *runtime.Ma
 				_ = persistCheckpoint(context.Background(), checkpointManager, runID)
 			}
 		case sandbox.ExecutionStatusCompleted:
-			toolCall, err := manager.CompleteToolCall(runID, stepID, toolCallID, runtime.CompleteToolCallInput{Output: buildSandboxToolCallOutput(execution)})
+			toolCall, err := manager.CompleteToolCall(runID, stepID, toolCallID, runtime.CompleteToolCallInput{
+				Output:             buildSandboxToolCallOutput(execution),
+				SandboxExecutionID: execution.ExecutionID,
+				Sandbox:            consumerViewMap(execution.Consumer),
+			})
 			if err == nil {
-				toolCall.SandboxExecutionID = execution.ExecutionID
-				toolCall.Sandbox = consumerViewMap(execution.Consumer)
 				_ = persistToolCall(context.Background(), sqliteStore, manager, toolCall)
 				_ = persistCheckpoint(context.Background(), checkpointManager, runID)
 				_, _ = publishToolCallEvent(context.Background(), eventBus, sqliteStore, "tool_call.completed", runID, stepID, toolCall)
@@ -3603,13 +3638,13 @@ func watchSandboxExecution(runID, stepID, toolCallID string, manager *runtime.Ma
 			return
 		case sandbox.ExecutionStatusFailed:
 			toolCall, err := manager.FailToolCall(runID, stepID, toolCallID, runtime.FailToolCallInput{
-				Output:       buildSandboxToolCallOutput(execution),
-				Error:        execution.Result.Error,
-				FailureClass: string(execution.Result.ErrorClass),
+				Output:             buildSandboxToolCallOutput(execution),
+				Error:              execution.Result.Error,
+				FailureClass:       string(execution.Result.ErrorClass),
+				SandboxExecutionID: execution.ExecutionID,
+				Sandbox:            consumerViewMap(execution.Consumer),
 			})
 			if err == nil {
-				toolCall.SandboxExecutionID = execution.ExecutionID
-				toolCall.Sandbox = consumerViewMap(execution.Consumer)
 				_ = persistToolCall(context.Background(), sqliteStore, manager, toolCall)
 				_ = persistCheckpoint(context.Background(), checkpointManager, runID)
 				_, _ = publishToolCallEvent(context.Background(), eventBus, sqliteStore, "tool_call.failed", runID, stepID, toolCall)
@@ -3617,13 +3652,13 @@ func watchSandboxExecution(runID, stepID, toolCallID string, manager *runtime.Ma
 			return
 		case sandbox.ExecutionStatusCancelled:
 			toolCall, err := manager.CancelToolCall(runID, stepID, toolCallID, runtime.CancelToolCallInput{
-				Output:       buildSandboxToolCallOutput(execution),
-				Error:        execution.Result.Error,
-				FailureClass: string(execution.Result.ErrorClass),
+				Output:             buildSandboxToolCallOutput(execution),
+				Error:              execution.Result.Error,
+				FailureClass:       string(execution.Result.ErrorClass),
+				SandboxExecutionID: execution.ExecutionID,
+				Sandbox:            consumerViewMap(execution.Consumer),
 			})
 			if err == nil {
-				toolCall.SandboxExecutionID = execution.ExecutionID
-				toolCall.Sandbox = consumerViewMap(execution.Consumer)
 				_ = persistToolCall(context.Background(), sqliteStore, manager, toolCall)
 				_ = persistCheckpoint(context.Background(), checkpointManager, runID)
 				_, _ = publishToolCallEvent(context.Background(), eventBus, sqliteStore, "tool_call.failed", runID, stepID, toolCall)
@@ -3631,13 +3666,27 @@ func watchSandboxExecution(runID, stepID, toolCallID string, manager *runtime.Ma
 			return
 		case sandbox.ExecutionStatusDenied:
 			toolCall, err := manager.DenyToolCall(runID, stepID, toolCallID, runtime.DenyToolCallInput{
-				Output:       buildSandboxToolCallOutput(execution),
-				Error:        execution.Result.Error,
-				FailureClass: string(execution.Result.ErrorClass),
+				Output:             buildSandboxToolCallOutput(execution),
+				Error:              execution.Result.Error,
+				FailureClass:       string(execution.Result.ErrorClass),
+				SandboxExecutionID: execution.ExecutionID,
+				Sandbox:            consumerViewMap(execution.Consumer),
 			})
 			if err == nil {
-				toolCall.SandboxExecutionID = execution.ExecutionID
-				toolCall.Sandbox = consumerViewMap(execution.Consumer)
+				_ = persistToolCall(context.Background(), sqliteStore, manager, toolCall)
+				_ = persistCheckpoint(context.Background(), checkpointManager, runID)
+				_, _ = publishToolCallEvent(context.Background(), eventBus, sqliteStore, "tool_call.failed", runID, stepID, toolCall)
+			}
+			return
+		case sandbox.ExecutionStatusUnsupported:
+			toolCall, err := manager.FailToolCall(runID, stepID, toolCallID, runtime.FailToolCallInput{
+				Output:             buildSandboxToolCallOutput(execution),
+				Error:              execution.Result.Error,
+				FailureClass:       string(execution.Result.ErrorClass),
+				SandboxExecutionID: execution.ExecutionID,
+				Sandbox:            consumerViewMap(execution.Consumer),
+			})
+			if err == nil {
 				_ = persistToolCall(context.Background(), sqliteStore, manager, toolCall)
 				_ = persistCheckpoint(context.Background(), checkpointManager, runID)
 				_, _ = publishToolCallEvent(context.Background(), eventBus, sqliteStore, "tool_call.failed", runID, stepID, toolCall)

@@ -13,6 +13,7 @@ const (
 
 const (
 	ProfileIDSubprocessDefault     = "subprocess_default"
+	ProfileIDDockerDefault         = "docker_default"
 	ProfileIDManagedProviderClaude = "managed_provider_claude"
 	ProfileIDManagedProviderCodex  = "managed_provider_codex"
 )
@@ -78,12 +79,13 @@ const (
 type ExecutionStatus string
 
 const (
-	ExecutionStatusPending   ExecutionStatus = "pending"
-	ExecutionStatusRunning   ExecutionStatus = "running"
-	ExecutionStatusCompleted ExecutionStatus = "completed"
-	ExecutionStatusFailed    ExecutionStatus = "failed"
-	ExecutionStatusCancelled ExecutionStatus = "cancelled"
-	ExecutionStatusDenied    ExecutionStatus = "denied"
+	ExecutionStatusPending     ExecutionStatus = "pending"
+	ExecutionStatusRunning     ExecutionStatus = "running"
+	ExecutionStatusCompleted   ExecutionStatus = "completed"
+	ExecutionStatusFailed      ExecutionStatus = "failed"
+	ExecutionStatusCancelled   ExecutionStatus = "cancelled"
+	ExecutionStatusDenied      ExecutionStatus = "denied"
+	ExecutionStatusUnsupported ExecutionStatus = "unsupported"
 )
 
 type ErrorClass string
@@ -95,6 +97,7 @@ const (
 	ErrorClassApprovalRejected ErrorClass = "approval_rejected"
 	ErrorClassInvalidProfile   ErrorClass = "invalid_profile"
 	ErrorClassBackendMissing   ErrorClass = "backend_unavailable"
+	ErrorClassBackendMismatch  ErrorClass = "backend_capability_mismatch"
 	ErrorClassLaunchFailed     ErrorClass = "launch_failed"
 	ErrorClassProcessFailed    ErrorClass = "process_failed"
 	ErrorClassProviderFailed   ErrorClass = "provider_error"
@@ -184,6 +187,43 @@ const (
 	PolicyRecordStatusDenied           PolicyRecordStatus = "denied"
 	PolicyRecordStatusUnsupported      PolicyRecordStatus = "unsupported"
 )
+
+type BackendAvailabilityStatus string
+
+const (
+	BackendAvailabilityStatusAvailable   BackendAvailabilityStatus = "available"
+	BackendAvailabilityStatusUnavailable BackendAvailabilityStatus = "unavailable"
+	BackendAvailabilityStatusDegraded    BackendAvailabilityStatus = "degraded"
+)
+
+type BackendHostStatus string
+
+const (
+	BackendHostStatusReady               BackendHostStatus = "ready"
+	BackendHostStatusMissingPrerequisite BackendHostStatus = "missing_prerequisite"
+	BackendHostStatusRuntimeUnavailable  BackendHostStatus = "runtime_unavailable"
+)
+
+type BackendSelectionOutcome string
+
+const (
+	BackendSelectionOutcomeSelected    BackendSelectionOutcome = "selected"
+	BackendSelectionOutcomeUnsupported BackendSelectionOutcome = "unsupported"
+	BackendSelectionOutcomeDenied      BackendSelectionOutcome = "denied"
+)
+
+type BackendCapabilityProfile struct {
+	BackendKind           BackendKind               `json:"backendKind"`
+	DisplayName           string                    `json:"displayName"`
+	FilesystemEnforcement string                    `json:"filesystemEnforcement"`
+	NetworkEnforcement    string                    `json:"networkEnforcement"`
+	EnvInjectionMode      string                    `json:"envInjectionMode"`
+	ApprovalBehavior      string                    `json:"approvalBehavior"`
+	RestartBehavior       string                    `json:"restartBehavior"`
+	HostPrerequisites     []string                  `json:"hostPrerequisites,omitempty"`
+	AvailabilityStatus    BackendAvailabilityStatus `json:"availabilityStatus"`
+	AvailabilityReason    string                    `json:"availabilityReason,omitempty"`
+}
 
 type ConsumerRequirementDeclaration struct {
 	DeclarationID               string        `json:"declarationId"`
@@ -350,21 +390,22 @@ type ProcessPolicy struct {
 }
 
 type Profile struct {
-	ProfileID        string            `json:"profileId"`
-	Title            string            `json:"title"`
-	Description      string            `json:"description"`
-	BackendKind      BackendKind       `json:"backendKind"`
-	DefaultWorkDir   string            `json:"defaultWorkDir"`
-	FilesystemPolicy FilesystemPolicy  `json:"filesystemPolicy"`
-	NetworkPolicy    NetworkPolicy     `json:"networkPolicy"`
-	EnvPolicy        EnvironmentPolicy `json:"envPolicy"`
-	ApprovalPolicy   ApprovalPolicy    `json:"approvalPolicy"`
-	ProcessPolicy    ProcessPolicy     `json:"processPolicy"`
-	DefaultTimeoutMs int               `json:"defaultTimeoutMs"`
-	MaxTimeoutMs     int               `json:"maxTimeoutMs"`
-	Restartable      bool              `json:"restartable"`
-	Source           Source            `json:"source"`
-	Active           bool              `json:"active"`
+	ProfileID         string                   `json:"profileId"`
+	Title             string                   `json:"title"`
+	Description       string                   `json:"description"`
+	BackendKind       BackendKind              `json:"backendKind"`
+	BackendCapability BackendCapabilityProfile `json:"backendCapability"`
+	DefaultWorkDir    string                   `json:"defaultWorkDir"`
+	FilesystemPolicy  FilesystemPolicy         `json:"filesystemPolicy"`
+	NetworkPolicy     NetworkPolicy            `json:"networkPolicy"`
+	EnvPolicy         EnvironmentPolicy        `json:"envPolicy"`
+	ApprovalPolicy    ApprovalPolicy           `json:"approvalPolicy"`
+	ProcessPolicy     ProcessPolicy            `json:"processPolicy"`
+	DefaultTimeoutMs  int                      `json:"defaultTimeoutMs"`
+	MaxTimeoutMs      int                      `json:"maxTimeoutMs"`
+	Restartable       bool                     `json:"restartable"`
+	Source            Source                   `json:"source"`
+	Active            bool                     `json:"active"`
 }
 
 type AccessRequest struct {
@@ -396,16 +437,20 @@ type ExecutionRequest struct {
 }
 
 type Decision struct {
-	DecisionID           string                 `json:"decisionId"`
-	ExecutionID          string                 `json:"executionId,omitempty"`
-	Resolution           DecisionResolution     `json:"resolution"`
-	MatchedRules         []string               `json:"matchedRules"`
-	ApprovalRequired     bool                   `json:"approvalRequired"`
-	ApprovalStatus       DecisionApprovalStatus `json:"approvalStatus"`
-	EffectiveProfileID   string                 `json:"effectiveProfileId"`
-	EffectiveBackendKind BackendKind            `json:"effectiveBackendKind"`
-	Explanation          string                 `json:"explanation"`
-	Consumer             *ConsumerContractView  `json:"consumer,omitempty"`
+	DecisionID           string                  `json:"decisionId"`
+	ExecutionID          string                  `json:"executionId,omitempty"`
+	Resolution           DecisionResolution      `json:"resolution"`
+	SelectionOutcome     BackendSelectionOutcome `json:"selectionOutcome,omitempty"`
+	MatchedRules         []string                `json:"matchedRules"`
+	ApprovalRequired     bool                    `json:"approvalRequired"`
+	ApprovalStatus       DecisionApprovalStatus  `json:"approvalStatus"`
+	EffectiveProfileID   string                  `json:"effectiveProfileId"`
+	EffectiveBackendKind BackendKind             `json:"effectiveBackendKind"`
+	RequiredBackendKind  BackendKind             `json:"requiredBackendKind,omitempty"`
+	HostStatus           BackendHostStatus       `json:"hostStatus,omitempty"`
+	MismatchReason       string                  `json:"mismatchReason,omitempty"`
+	Explanation          string                  `json:"explanation"`
+	Consumer             *ConsumerContractView   `json:"consumer,omitempty"`
 }
 
 type Result struct {
@@ -470,7 +515,7 @@ type AttachedExecution struct {
 
 func IsTerminal(status ExecutionStatus) bool {
 	switch status {
-	case ExecutionStatusCompleted, ExecutionStatusFailed, ExecutionStatusCancelled, ExecutionStatusDenied:
+	case ExecutionStatusCompleted, ExecutionStatusFailed, ExecutionStatusCancelled, ExecutionStatusDenied, ExecutionStatusUnsupported:
 		return true
 	default:
 		return false

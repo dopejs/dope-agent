@@ -38,6 +38,199 @@ func TestExplainRequiresApprovalForNetwork(t *testing.T) {
 	}
 }
 
+func TestListProfilesIncludesBackendCapabilityAndDockerAvailability(t *testing.T) {
+	t.Parallel()
+
+	manager := newSandboxManagerForTest(t)
+	profiles := manager.ListProfiles()
+	if len(profiles) == 0 {
+		t.Fatal("expected builtin sandbox profiles")
+	}
+
+	var dockerProfile Profile
+	foundDocker := false
+	for _, profile := range profiles {
+		if profile.BackendCapability.BackendKind != profile.BackendKind {
+			t.Fatalf("expected backend capability on profile %+v", profile)
+		}
+		if profile.BackendKind == BackendKindDocker {
+			dockerProfile = profile
+			foundDocker = true
+		}
+	}
+	if !foundDocker {
+		t.Fatal("expected docker builtin profile")
+	}
+	if dockerProfile.BackendCapability.DisplayName == "" || len(dockerProfile.BackendCapability.HostPrerequisites) == 0 {
+		t.Fatalf("expected docker capability metadata, got %+v", dockerProfile.BackendCapability)
+	}
+}
+
+func TestExplainReturnsUnsupportedForUnavailableDockerBackend(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	manager := newSandboxManagerForTest(t)
+	cwd := t.TempDir()
+
+	decision, err := manager.Explain(context.Background(), ExecutionRequest{
+		ProfileID: ProfileIDDockerDefault,
+		Command:   "/workspace/scripts/run.sh",
+		Cwd:       cwd,
+		Access: AccessRequest{
+			ReadRoots:  []string{cwd},
+			WriteRoots: []string{cwd},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Explain returned error: %v", err)
+	}
+	if decision.SelectionOutcome != BackendSelectionOutcomeUnsupported {
+		t.Fatalf("expected unsupported selection outcome, got %+v", decision)
+	}
+	if decision.HostStatus != BackendHostStatusMissingPrerequisite {
+		t.Fatalf("expected missing prerequisite host status, got %+v", decision)
+	}
+	if decision.MismatchReason != "backend_unavailable" {
+		t.Fatalf("expected backend_unavailable mismatch reason, got %+v", decision)
+	}
+}
+
+func TestExplainReturnsUnsupportedForDockerAccessRuleMismatch(t *testing.T) {
+	fakeDockerOnPath(t, "available")
+	manager := newSandboxManagerForTest(t)
+	cwd := t.TempDir()
+
+	decision, err := manager.Explain(context.Background(), ExecutionRequest{
+		ProfileID: ProfileIDDockerDefault,
+		Command:   "/workspace/scripts/run.sh",
+		Cwd:       cwd,
+		Access: AccessRequest{
+			ReadRoots:    []string{cwd},
+			WriteRoots:   []string{cwd},
+			NetworkMode:  NetworkModeAllowList,
+			AllowedHosts: []string{"example.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Explain returned error: %v", err)
+	}
+	if decision.SelectionOutcome != BackendSelectionOutcomeUnsupported || decision.MismatchReason != "backend_capability_mismatch" {
+		t.Fatalf("expected backend mismatch, got %+v", decision)
+	}
+}
+
+func TestStartDockerExecutionUsesFakeDockerRunner(t *testing.T) {
+	fakeDockerOnPath(t, "available")
+	manager := newSandboxManagerForTest(t)
+	cwd := t.TempDir()
+	execution, err := manager.StartExecution(context.Background(), ExecutionRequest{
+		ProfileID: ProfileIDDockerDefault,
+		Command:   filepath.Join(cwd, "scripts", "run.sh"),
+		Args:      []string{"alpha"},
+		Cwd:       cwd,
+		Access: AccessRequest{
+			ReadRoots:   []string{cwd},
+			WriteRoots:  []string{cwd},
+			NetworkMode: NetworkModeDeny,
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartExecution returned error: %v", err)
+	}
+
+	execution = waitForTerminalExecution(t, manager, execution.ExecutionID)
+	if execution.Status != ExecutionStatusCompleted {
+		t.Fatalf("expected completed docker execution, got %+v", execution)
+	}
+	if execution.BackendKind != BackendKindDocker {
+		t.Fatalf("expected docker backend kind, got %+v", execution)
+	}
+	if execution.Result.BackendMetadata["backend"] != string(BackendKindDocker) {
+		t.Fatalf("expected docker backend metadata, got %+v", execution.Result.BackendMetadata)
+	}
+}
+
+func TestExplainBackendSelectionStaysUnder100ms(t *testing.T) {
+	fakeDockerOnPath(t, "available")
+	manager := newSandboxManagerForTest(t)
+	cwd := t.TempDir()
+
+	started := time.Now()
+	decision, err := manager.Explain(context.Background(), ExecutionRequest{
+		ProfileID: ProfileIDDockerDefault,
+		Command:   "/workspace/scripts/run.sh",
+		Cwd:       cwd,
+		Access: AccessRequest{
+			ReadRoots:  []string{cwd},
+			WriteRoots: []string{cwd},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Explain returned error: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
+		t.Fatalf("expected backend selection preflight <=100ms, got %s", elapsed)
+	}
+	if decision.SelectionOutcome != BackendSelectionOutcomeSelected {
+		t.Fatalf("expected selected decision, got %+v", decision)
+	}
+}
+
+func TestExplainReturnsUnsupportedForUnavailableDockerRuntime(t *testing.T) {
+	fakeDockerOnPath(t, "runtime_unavailable")
+	manager := newSandboxManagerForTest(t)
+	cwd := t.TempDir()
+
+	decision, err := manager.Explain(context.Background(), ExecutionRequest{
+		ProfileID: ProfileIDDockerDefault,
+		Command:   "/workspace/scripts/run.sh",
+		Cwd:       cwd,
+		Access: AccessRequest{
+			ReadRoots:  []string{cwd},
+			WriteRoots: []string{cwd},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Explain returned error: %v", err)
+	}
+	if decision.SelectionOutcome != BackendSelectionOutcomeUnsupported {
+		t.Fatalf("expected unsupported selection outcome, got %+v", decision)
+	}
+	if decision.HostStatus != BackendHostStatusRuntimeUnavailable {
+		t.Fatalf("expected runtime_unavailable host status, got %+v", decision)
+	}
+	if decision.MismatchReason != "backend_unavailable" {
+		t.Fatalf("expected backend_unavailable mismatch reason, got %+v", decision)
+	}
+}
+
+func TestExplainReturnsUnsupportedForMissingDockerImage(t *testing.T) {
+	fakeDockerOnPath(t, "image_missing")
+	manager := newSandboxManagerForTest(t)
+	cwd := t.TempDir()
+
+	decision, err := manager.Explain(context.Background(), ExecutionRequest{
+		ProfileID: ProfileIDDockerDefault,
+		Command:   "/workspace/scripts/run.sh",
+		Cwd:       cwd,
+		Access: AccessRequest{
+			ReadRoots:  []string{cwd},
+			WriteRoots: []string{cwd},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Explain returned error: %v", err)
+	}
+	if decision.SelectionOutcome != BackendSelectionOutcomeUnsupported {
+		t.Fatalf("expected unsupported selection outcome, got %+v", decision)
+	}
+	if decision.HostStatus != BackendHostStatusMissingPrerequisite {
+		t.Fatalf("expected missing_prerequisite host status, got %+v", decision)
+	}
+	if decision.MismatchReason != "backend_unavailable" {
+		t.Fatalf("expected backend_unavailable mismatch reason, got %+v", decision)
+	}
+}
+
 func TestStartExecutionCompletesAndPersists(t *testing.T) {
 	t.Parallel()
 
@@ -73,13 +266,26 @@ func TestStartExecutionCompletesAndPersists(t *testing.T) {
 		t.Fatalf("expected persisted sandbox execution, got %+v", records)
 	}
 
-	sandboxEvents := manager.eventBus.List(events.Filter{Category: "sandbox"})
-	if len(sandboxEvents) < 4 {
-		t.Fatalf("expected sandbox lifecycle events, got %d", len(sandboxEvents))
-	}
+	sandboxEvents := waitForSandboxEvents(t, manager.eventBus, 4)
 	if sandboxEvents[0].Name != "sandbox.execution_requested" {
 		t.Fatalf("expected sandbox.execution_requested, got %s", sandboxEvents[0].Name)
 	}
+}
+
+func waitForSandboxEvents(t *testing.T, eventBus *events.Bus, minCount int) []events.Event {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		sandboxEvents := eventBus.List(events.Filter{Category: "sandbox"})
+		if len(sandboxEvents) >= minCount {
+			return sandboxEvents
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	sandboxEvents := eventBus.List(events.Filter{Category: "sandbox"})
+	t.Fatalf("expected at least %d sandbox lifecycle events, got %d", minCount, len(sandboxEvents))
+	return nil
 }
 
 func TestStartExecutionCreatesApprovalAndDeniesUntilApproved(t *testing.T) {
@@ -647,6 +853,59 @@ func testSleepScript() string {
 		return "ping -n 6 127.0.0.1 >NUL"
 	}
 	return "sleep 5"
+}
+
+func fakeDockerOnPath(t *testing.T, mode string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	script := `#!/bin/sh
+mode="${DOPE_FAKE_DOCKER_MODE:-available}"
+cmd="$1"
+shift
+subcmd="$1"
+if [ "$cmd" = "version" ]; then
+  if [ "$mode" = "runtime_unavailable" ]; then
+    echo "Cannot connect to the Docker daemon" >&2
+    exit 1
+  fi
+  printf '26.1.0\n'
+  exit 0
+fi
+if [ "$cmd" = "image" ] && [ "$subcmd" = "inspect" ]; then
+  if [ "$mode" = "runtime_unavailable" ]; then
+    echo "Cannot connect to the Docker daemon" >&2
+    exit 1
+  fi
+  if [ "$mode" = "image_missing" ]; then
+    echo "Error: No such image" >&2
+    exit 1
+  fi
+  printf 'sha256:fake-image\n'
+  exit 0
+fi
+if [ "$cmd" = "run" ]; then
+  if [ "$mode" = "image_missing" ]; then
+    echo "Error: No such image" >&2
+    exit 1
+  fi
+  printf 'docker-ok'
+  exit 0
+fi
+printf 'docker-ok'
+exit 0
+`
+	if runtime.GOOS == "windows" {
+		t.Skip("docker path fixture is not implemented for windows")
+	}
+	path := filepath.Join(dir, "docker")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	current := os.Getenv("PATH")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+current)
+	t.Setenv("DOPE_FAKE_DOCKER_MODE", strings.TrimSpace(mode))
+	return path
 }
 
 func testManagedProviderConsumerView(providerID string, action ManagedProviderActionKind, secretScope []SecretScopeOutcome) *ConsumerContractView {

@@ -497,6 +497,53 @@ func TestToolCallCancelAndDenyTransitions(t *testing.T) {
 	}
 }
 
+func TestToolCallPreservesSandboxLinkageAndFailureClass(t *testing.T) {
+	manager := NewManager()
+
+	run, err := manager.CreateRun(CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, CreateStepInput{Title: "execute docker skill"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	toolCall, err := manager.CreateToolCall(run.RunID, step.StepID, CreateToolCallInput{
+		InvocationKind:     ToolCallInvocationKindSkill,
+		SkillID:            "docker-skill",
+		ToolName:           "docker-skill",
+		SandboxExecutionID: "sandbox_exec_docker_1",
+		Sandbox: map[string]any{
+			"policyRecord": map[string]any{"policyRecordId": "policy_docker_1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateToolCall returned error: %v", err)
+	}
+	if toolCall.InvocationKind != ToolCallInvocationKindSkill || toolCall.SkillID != "docker-skill" {
+		t.Fatalf("expected skill invocation linkage, got %+v", toolCall)
+	}
+	if toolCall.SandboxExecutionID != "sandbox_exec_docker_1" {
+		t.Fatalf("expected sandbox execution linkage, got %+v", toolCall)
+	}
+
+	toolCall, err = manager.FailToolCall(run.RunID, step.StepID, toolCall.ToolCallID, FailToolCallInput{
+		Output:       map[string]any{"status": "unsupported", "backendKind": "docker", "mismatchReason": "backend_unavailable"},
+		Error:        "docker backend is not available on this host",
+		FailureClass: "backend_unavailable",
+	})
+	if err != nil {
+		t.Fatalf("FailToolCall returned error: %v", err)
+	}
+	if toolCall.Status != ToolCallStatusFailed || toolCall.FailureClass != "backend_unavailable" {
+		t.Fatalf("expected failed unsupported linkage, got %+v", toolCall)
+	}
+	if toolCall.SandboxExecutionID != "sandbox_exec_docker_1" {
+		t.Fatalf("expected sandbox execution id to remain attached, got %+v", toolCall)
+	}
+}
+
 func TestSnapshotAndRestoreCheckpoint(t *testing.T) {
 	manager := NewManager()
 

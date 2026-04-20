@@ -55,7 +55,7 @@
     },
     "status": {
       "type": "string",
-      "enum": ["pending", "running", "completed", "failed", "cancelled", "denied"]
+      "enum": ["pending", "running", "completed", "failed", "cancelled", "denied", "unsupported"]
     },
     "decision": {
       "$ref": "./sandbox-decision.schema.json"

@@ -794,7 +794,7 @@ Implementation notes:
 
 ## Roadmap 20: Stronger Isolation And Additional Sandbox Backends
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 ### Goal
 
@@ -807,7 +807,7 @@ Strengthen the sandbox substrate beyond subprocess by adding at least one more i
 Scope:
 
 - define backend capability metadata
-- define how profiles require or prefer stronger guarantees
+- define how profiles require stronger guarantees
 
 Task definition of done:
 
@@ -820,7 +820,7 @@ Task definition of done:
 
 Scope:
 
-- implement one stronger backend such as `docker`
+- implement one stronger backend: `docker`
 - keep the control-plane contract stable across backends
 
 Task definition of done:
@@ -862,6 +862,30 @@ Task definition of done:
 - sandbox supports more than one real backend with explicit capability semantics
 - higher-risk consumers can require stronger isolation without redesigning the control plane
 - backend differences are inspectable, testable, and documented for operators
+
+### Implemented In This Slice
+
+- `/v1/config`, sandbox profile inspection, and sandbox explain now project explicit backend
+  capability and host-prerequisite truth for `subprocess` and `docker`
+- `docker_default` is available as the first stronger backend through the existing sandbox
+  execution plane
+- executable skills can opt into `docker` explicitly; unmodified skills remain on
+  `subprocess`
+- `docker`-required requests fail closed as `unsupported` when the host cannot satisfy
+  prerequisites or declared access guarantees
+- sandbox execution, runtime tool-call history, approvals, decisions, and events preserve
+  backend identity and mismatch classification
+- stronger-backend verification covers positive-path execution, unsupported host mismatch,
+  timeout/cancellation semantics, restart recovery, and contract surfaces
+- real-`docker` executable-skill verification was completed on `zentalk-1`
+  (`CentOS Stream 9`, `docker 29.4.0`, `go 1.24.0`) in addition to local negative-path
+  and contract coverage
+
+### Remaining Follow-On Work
+
+- migrate more consumer families beyond executable skills
+- add stronger backends beyond `docker`
+- add VM-grade isolation or remote execution control planes
 
 ### Explicitly Out Of Scope
 

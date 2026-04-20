@@ -35,6 +35,7 @@ type ConfigResponse struct {
 	LLM            ConfigLLMResponse        `json:"llm"`
 	Connectors     ConfigConnectorsResponse `json:"connectors"`
 	MCP            ConfigMCPResponse        `json:"mcp"`
+	Sandbox        ConfigSandboxResponse    `json:"sandbox"`
 	RedactedFields []string                 `json:"redactedFields"`
 }
 
@@ -74,6 +75,10 @@ type ConfigConnectorsResponse struct {
 
 type ConfigMCPResponse struct {
 	Servers []mcp.ServerResource `json:"servers"`
+}
+
+type ConfigSandboxResponse struct {
+	Backends []sandbox.BackendCapabilityProfile `json:"backends"`
 }
 
 type ConfigDiscordConnectorResponse struct {
@@ -201,19 +206,19 @@ type SkillFileResponse struct {
 }
 
 type SkillSummaryResponse struct {
-	SkillID            string                    `json:"skillId"`
-	Name               string                    `json:"name"`
-	Description        string                    `json:"description"`
-	Source             string                    `json:"source"`
-	RootPath           string                    `json:"rootPath"`
-	SkillPath          string                    `json:"skillPath"`
-	InstructionPath    string                    `json:"instructionPath"`
-	Files              []SkillFileResponse       `json:"files"`
-	Frontmatter        map[string]string         `json:"frontmatter"`
+	SkillID            string                     `json:"skillId"`
+	Name               string                     `json:"name"`
+	Description        string                     `json:"description"`
+	Source             string                     `json:"source"`
+	RootPath           string                     `json:"rootPath"`
+	SkillPath          string                     `json:"skillPath"`
+	InstructionPath    string                     `json:"instructionPath"`
+	Files              []SkillFileResponse        `json:"files"`
+	Frontmatter        map[string]string          `json:"frontmatter"`
 	ExecutionManifest  *skills.ExecutableManifest `json:"executionManifest,omitempty"`
-	AvailabilityStatus string                    `json:"availabilityStatus,omitempty"`
-	AvailabilityReason string                    `json:"availabilityReason,omitempty"`
-	Sandbox            map[string]any            `json:"sandbox,omitempty"`
+	AvailabilityStatus string                     `json:"availabilityStatus,omitempty"`
+	AvailabilityReason string                     `json:"availabilityReason,omitempty"`
+	Sandbox            map[string]any             `json:"sandbox,omitempty"`
 }
 
 type SkillDetailResponse struct {
@@ -255,7 +260,7 @@ func buildSystemInfoResponse(cfg config.Config) SystemInfoResponse {
 	}
 }
 
-func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager) ConfigResponse {
+func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager) ConfigResponse {
 	redactedFields := []string{}
 	if cfg.LLM.OpenAICompatible.APIKey != "" {
 		redactedFields = append(redactedFields, "llm.openaiCompatible.apiKey")
@@ -340,6 +345,9 @@ func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager) ConfigRespo
 		MCP: ConfigMCPResponse{
 			Servers: listMCPServersForConfig(mcpManager),
 		},
+		Sandbox: ConfigSandboxResponse{
+			Backends: listSandboxBackendsForConfig(sandboxManager),
+		},
 		RedactedFields: redactedFields,
 	}
 }
@@ -349,6 +357,13 @@ func listMCPServersForConfig(manager *mcp.Manager) []mcp.ServerResource {
 		return []mcp.ServerResource{}
 	}
 	return manager.ListServers()
+}
+
+func listSandboxBackendsForConfig(manager *sandbox.Manager) []sandbox.BackendCapabilityProfile {
+	if manager == nil {
+		return []sandbox.BackendCapabilityProfile{}
+	}
+	return manager.BackendCapabilities()
 }
 
 func buildSkillRegistryResponse(snapshot skills.Snapshot) SkillRegistryResponse {

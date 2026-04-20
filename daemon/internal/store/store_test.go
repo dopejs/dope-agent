@@ -596,14 +596,13 @@ func TestSQLiteStorePersistsSandboxExecutions(t *testing.T) {
 	now := time.Now().UTC()
 	record := SandboxExecutionRecord{
 		ExecutionID: "sandbox_exec_1",
-		ProfileID:   "subprocess_default",
-		BackendKind: "subprocess",
-		Status:      "completed",
+		ProfileID:   "docker_default",
+		BackendKind: "docker",
+		Status:      "unsupported",
 		RequestedAt: now.Add(-time.Second),
 		UpdatedAt:   now,
-		StartedAt:   ptrTime(now.Add(-500 * time.Millisecond)),
 		CompletedAt: ptrTime(now),
-		Document:    []byte(`{"executionId":"sandbox_exec_1","status":"completed"}`),
+		Document:    []byte(`{"executionId":"sandbox_exec_1","status":"unsupported","decision":{"selectionOutcome":"unsupported","hostStatus":"missing_prerequisite","mismatchReason":"backend_unavailable"}}`),
 	}
 	if err := store.UpsertSandboxExecution(context.Background(), record); err != nil {
 		t.Fatalf("UpsertSandboxExecution returned error: %v", err)
@@ -615,6 +614,9 @@ func TestSQLiteStorePersistsSandboxExecutions(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].ExecutionID != record.ExecutionID {
 		t.Fatalf("expected persisted sandbox execution, got %+v", items)
+	}
+	if items[0].BackendKind != "docker" || items[0].Status != "unsupported" {
+		t.Fatalf("expected stronger-backend unsupported persistence, got %+v", items[0])
 	}
 	if string(items[0].Document) != string(record.Document) {
 		t.Fatalf("expected document %s, got %s", string(record.Document), string(items[0].Document))
@@ -660,15 +662,23 @@ func TestSQLiteStorePersistsToolCalls(t *testing.T) {
 	}
 
 	toolCall := runtime.ToolCall{
-		ToolCallID:   "tool_call_1",
-		RunID:        run.RunID,
-		StepID:       step.StepID,
-		CapabilityID: "shell",
-		ToolName:     "shell.exec",
-		Status:       runtime.ToolCallStatusRequested,
-		Input:        map[string]any{"cmd": "pwd"},
-		CreatedAt:    time.Now().UTC().Add(-20 * time.Second),
-		UpdatedAt:    time.Now().UTC().Add(-20 * time.Second),
+		ToolCallID:         "tool_call_1",
+		RunID:              run.RunID,
+		StepID:             step.StepID,
+		InvocationKind:     runtime.ToolCallInvocationKindSkill,
+		SkillID:            "docker-skill",
+		ToolName:           "docker-skill",
+		Status:             runtime.ToolCallStatusFailed,
+		SandboxExecutionID: "sandbox_exec_1",
+		FailureClass:       "backend_unavailable",
+		Input:              map[string]any{"cmd": "pwd"},
+		Output:             map[string]any{"status": "unsupported", "backendKind": "docker"},
+		Sandbox: map[string]any{
+			"policyRecord": map[string]any{"policyRecordId": "policy_docker_1"},
+		},
+		Error:     "docker backend is not available on this host",
+		CreatedAt: time.Now().UTC().Add(-20 * time.Second),
+		UpdatedAt: time.Now().UTC().Add(-20 * time.Second),
 	}
 	if err := store.UpsertToolCall(ctx, toolCall); err != nil {
 		t.Fatalf("UpsertToolCall returned error: %v", err)
@@ -681,8 +691,11 @@ func TestSQLiteStorePersistsToolCalls(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("expected 1 tool call, got %d", len(items))
 	}
-	if items[0].CapabilityID != "shell" {
-		t.Fatalf("expected capability id shell, got %s", items[0].CapabilityID)
+	if items[0].SkillID != "docker-skill" || items[0].InvocationKind != runtime.ToolCallInvocationKindSkill {
+		t.Fatalf("expected skill-backed tool call persistence, got %+v", items[0])
+	}
+	if items[0].SandboxExecutionID != "sandbox_exec_1" || items[0].FailureClass != "backend_unavailable" {
+		t.Fatalf("expected stronger-backend provenance fields, got %+v", items[0])
 	}
 }
 
@@ -744,9 +757,9 @@ func TestSQLiteStorePersistsConsumerPolicyRecordsAndSecretScopeBindings(t *testi
 	if records[0].PolicyRecordID != "policy_local_tool_shell_1" {
 		t.Fatalf("expected policy_local_tool_shell_1, got %s", records[0].PolicyRecordID)
 	}
-		if records[0].Document == nil || !strings.Contains(string(records[0].Document), `"approvalId":"approval_1"`) || !strings.Contains(string(records[0].Document), `"declarationId":"local_tool:shell:tool_call.execute"`) {
-			t.Fatalf("expected persisted approval linkage in consumer policy record, got %s", string(records[0].Document))
-		}
+	if records[0].Document == nil || !strings.Contains(string(records[0].Document), `"approvalId":"approval_1"`) || !strings.Contains(string(records[0].Document), `"declarationId":"local_tool:shell:tool_call.execute"`) {
+		t.Fatalf("expected persisted approval linkage in consumer policy record, got %s", string(records[0].Document))
+	}
 
 	bindings, err := store.ListSecretScopeBindings(ctx, "managed_provider", "codex_managed")
 	if err != nil {

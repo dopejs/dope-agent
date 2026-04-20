@@ -26,19 +26,25 @@
             "matchedRules",
             "approvalRequired",
             "approvalStatus",
+            "selectionOutcome",
             "effectiveProfileId",
             "effectiveBackendKind",
+            "hostStatus",
             "explanation"
           ],
           "additionalProperties": true,
           "properties": {
             "decisionId": { "type": "string" },
             "resolution": { "type": "string" },
+            "selectionOutcome": { "type": "string" },
             "matchedRules": { "type": "array", "items": { "type": "string" } },
             "approvalRequired": { "type": "boolean" },
             "approvalStatus": { "type": "string" },
             "effectiveProfileId": { "type": "string" },
             "effectiveBackendKind": { "type": "string" },
+            "requiredBackendKind": { "type": "string" },
+            "hostStatus": { "type": "string" },
+            "mismatchReason": { "type": "string" },
             "explanation": { "type": "string" }
           }
         }

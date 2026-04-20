@@ -9,8 +9,10 @@
     "matchedRules",
     "approvalRequired",
     "approvalStatus",
+    "selectionOutcome",
     "effectiveProfileId",
     "effectiveBackendKind",
+    "hostStatus",
     "explanation"
   ],
   "additionalProperties": false,
@@ -20,6 +22,10 @@
     "resolution": {
       "type": "string",
       "enum": ["allow", "ask", "deny"]
+    },
+    "selectionOutcome": {
+      "type": "string",
+      "enum": ["selected", "unsupported", "denied"]
     },
     "matchedRules": {
       "type": "array",
@@ -35,6 +41,15 @@
       "type": "string",
       "enum": ["subprocess", "docker", "ssh", "remote"]
     },
+    "requiredBackendKind": {
+      "type": "string",
+      "enum": ["subprocess", "docker", "ssh", "remote"]
+    },
+    "hostStatus": {
+      "type": "string",
+      "enum": ["ready", "missing_prerequisite", "runtime_unavailable"]
+    },
+    "mismatchReason": { "type": "string" },
     "explanation": { "type": "string" },
     "consumer": { "$ref": "./sandbox-consumer-view.schema.json" }
   }

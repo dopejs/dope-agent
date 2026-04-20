@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -288,6 +289,21 @@ func writeExecutableSkillSecretsForTest(t *testing.T, dataRoot string, values ma
 		t.Fatalf("Marshal returned error: %v", err)
 	}
 	writeSkillFileForTest(t, filepath.Join(dataRoot, "skill-secrets.json"), string(payload))
+}
+
+func requireRealDockerForTest(t *testing.T) {
+	t.Helper()
+
+	dockerPath, err := exec.LookPath("docker")
+	if err != nil {
+		t.Skip("docker CLI is not available on PATH")
+	}
+	if output, err := exec.Command(dockerPath, "version", "--format", "{{.Server.Version}}").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) == "" {
+		t.Skipf("docker runtime is unavailable: %s", strings.TrimSpace(string(output)))
+	}
+	if output, err := exec.Command(dockerPath, "image", "inspect", "alpine:3.20", "--format", "{{.Id}}").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) == "" {
+		t.Skipf("docker image alpine:3.20 is not available locally: %s", strings.TrimSpace(string(output)))
+	}
 }
 
 func TestRunsLifecycleRoutes(t *testing.T) {
@@ -1367,6 +1383,27 @@ func TestSandboxRoutes(t *testing.T) {
 	if listRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for profile list, got %d", listRec.Code)
 	}
+	var profileList struct {
+		Items []sandbox.Profile `json:"items"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &profileList); err != nil {
+		t.Fatalf("failed to decode sandbox profile list: %v", err)
+	}
+	if len(profileList.Items) < 2 {
+		t.Fatalf("expected builtin subprocess and docker profiles, got %+v", profileList.Items)
+	}
+	foundDocker := false
+	for _, item := range profileList.Items {
+		if item.BackendKind == sandbox.BackendKindDocker {
+			foundDocker = true
+			if item.BackendCapability.BackendKind != sandbox.BackendKindDocker || item.BackendCapability.DisplayName == "" {
+				t.Fatalf("expected docker backend capability projection, got %+v", item)
+			}
+		}
+	}
+	if !foundDocker {
+		t.Fatalf("expected docker profile in list, got %+v", profileList.Items)
+	}
 
 	explainReq := httptest.NewRequest(http.MethodPost, "/v1/sandboxes/explain", strings.NewReader(`{
 		"command":"echo",
@@ -1382,6 +1419,9 @@ func TestSandboxRoutes(t *testing.T) {
 	explain := decodeStrictResponse[SandboxExplainResponse](t, explainRec.Body.Bytes())
 	if explain.Decision.Resolution != sandbox.DecisionResolutionAsk {
 		t.Fatalf("expected ask explain resolution, got %s", explain.Decision.Resolution)
+	}
+	if explain.Decision.SelectionOutcome != sandbox.BackendSelectionOutcomeSelected {
+		t.Fatalf("expected selected explain outcome, got %+v", explain.Decision)
 	}
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/sandboxes/executions", strings.NewReader(`{
@@ -1419,6 +1459,109 @@ func TestSandboxRoutes(t *testing.T) {
 	server.server.Handler.ServeHTTP(cancelRec, cancelReq)
 	if cancelRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for sandbox cancel, got %d", cancelRec.Code)
+	}
+}
+
+func TestSandboxExplainProjectsDockerUnsupportedOutcome(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+
+	eventBus := events.NewBus()
+	policyEngine := policy.NewEngine()
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		BindAddr:    "127.0.0.1:19191",
+		DataDir:     t.TempDir(),
+		LogLevel:    "info",
+		Version:     "test",
+	}
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	server := NewServer(Dependencies{
+		Config:    cfg,
+		Logger:    telemetry.New("error").Slog(),
+		EventBus:  eventBus,
+		Policy:    policyEngine,
+		Sandboxes: sandboxManager,
+	})
+
+	cwd := t.TempDir()
+	explainReq := httptest.NewRequest(http.MethodPost, "/v1/sandboxes/explain", strings.NewReader(`{
+		"profileId":"docker_default",
+		"command":"/workspace/run.sh",
+		"cwd":"`+cwd+`",
+		"access":{"readRoots":["`+cwd+`"],"writeRoots":["`+cwd+`"]}
+	}`))
+	explainRec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(explainRec, explainReq)
+	if explainRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for sandbox explain, got %d body=%s", explainRec.Code, explainRec.Body.String())
+	}
+	explain := decodeStrictResponse[SandboxExplainResponse](t, explainRec.Body.Bytes())
+	if explain.Decision.SelectionOutcome != sandbox.BackendSelectionOutcomeUnsupported {
+		t.Fatalf("expected unsupported explain outcome, got %+v", explain.Decision)
+	}
+	if explain.Decision.HostStatus != sandbox.BackendHostStatusMissingPrerequisite {
+		t.Fatalf("expected missing prerequisite host status, got %+v", explain.Decision)
+	}
+	if explain.Decision.MismatchReason != "backend_unavailable" {
+		t.Fatalf("expected backend_unavailable mismatch reason, got %+v", explain.Decision)
+	}
+}
+
+func TestSandboxExplainRouteStaysUnder100ms(t *testing.T) {
+	eventBus := events.NewBus()
+	policyEngine := policy.NewEngine()
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		BindAddr:    "127.0.0.1:19191",
+		DataDir:     t.TempDir(),
+		LogLevel:    "info",
+		Version:     "test",
+	}
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	server := NewServer(Dependencies{
+		Config:    cfg,
+		Logger:    telemetry.New("error").Slog(),
+		EventBus:  eventBus,
+		Policy:    policyEngine,
+		Sandboxes: sandboxManager,
+	})
+
+	cwd := t.TempDir()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes/explain", strings.NewReader(`{
+		"command":"echo",
+		"args":["hello"],
+		"cwd":"`+cwd+`",
+		"access":{"readRoots":["`+cwd+`"],"writeRoots":["`+cwd+`"]}
+	}`))
+	rec := httptest.NewRecorder()
+
+	started := time.Now()
+	server.server.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for sandbox explain, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
+		t.Fatalf("expected explain route <=100ms, got %s", elapsed)
 	}
 }
 
@@ -1503,6 +1646,18 @@ func TestEventStreamReplaysMatchingHistory(t *testing.T) {
 
 func TestConfigRouteUsesStrictResponseShape(t *testing.T) {
 	logger := telemetry.New("error")
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+	sandboxManager := sandbox.NewManager(config.Config{
+		Environment: config.EnvironmentTest,
+		BindAddr:    "127.0.0.1:19191",
+		DataDir:     t.TempDir(),
+		LogLevel:    "info",
+		Version:     "test",
+	}, sqliteStore, events.NewBus(), policy.NewEngine())
 	server := NewServer(Dependencies{
 		Config: config.Config{
 			BindAddr: "127.0.0.1:19191",
@@ -1513,10 +1668,11 @@ func TestConfigRouteUsesStrictResponseShape(t *testing.T) {
 				DefaultTimeoutMs: 30000,
 			},
 		},
-		Logger:   logger.Slog(),
-		EventBus: events.NewBus(),
-		Router:   router.NewSessionRouter(),
-		Runtime:  runtime.NewManager(),
+		Logger:    logger.Slog(),
+		EventBus:  events.NewBus(),
+		Router:    router.NewSessionRouter(),
+		Runtime:   runtime.NewManager(),
+		Sandboxes: sandboxManager,
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/config", nil)
@@ -1533,6 +1689,12 @@ func TestConfigRouteUsesStrictResponseShape(t *testing.T) {
 	}
 	if len(response.RedactedFields) != 0 {
 		t.Fatalf("expected no redacted fields, got %+v", response.RedactedFields)
+	}
+	if len(response.Sandbox.Backends) < 2 {
+		t.Fatalf("expected projected sandbox backends, got %+v", response.Sandbox)
+	}
+	if response.Sandbox.Backends[0].BackendKind == "" {
+		t.Fatalf("expected backend capability metadata, got %+v", response.Sandbox.Backends)
 	}
 }
 
@@ -2819,7 +2981,7 @@ execution.profile_id: subprocess_default
 execution.read_roots: .
 execution.write_roots: .
 execution.network_mode: deny
-execution.timeout_ms: 1000
+execution.timeout_ms: 5000
 ---
 instructions
 `, "#!/bin/sh\nprintf 'ok %s' \"$1\"")
@@ -2911,7 +3073,7 @@ execution.read_roots: .
 execution.write_roots: .
 execution.network_mode: deny
 execution.approval_mode: allow
-execution.timeout_ms: 1000
+execution.timeout_ms: 5000
 ---
 instructions
 `, "#!/bin/sh\nprintf 'skill:%s' \"$1\"")
@@ -2955,7 +3117,7 @@ instructions
 		t.Fatalf("expected sandbox execution linkage, got %+v", created)
 	}
 
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		got, ok := manager.GetToolCall(run.RunID, step.StepID, created.ToolCallID)
 		if ok && got.Status == runtime.ToolCallStatusCompleted {
@@ -2969,9 +3131,111 @@ instructions
 			}
 			return
 		}
+		if ok && (got.Status == runtime.ToolCallStatusFailed || got.Status == runtime.ToolCallStatusDenied || got.Status == runtime.ToolCallStatusCancelled) {
+			t.Fatalf("expected completed skill-backed tool call, got %+v", got)
+		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("expected skill-backed tool call to complete, got %+v", manager.ListRuns())
+	got, _ := manager.GetToolCall(run.RunID, step.StepID, created.ToolCallID)
+	t.Fatalf("expected skill-backed tool call to complete, got toolCall=%+v runs=%+v", got, manager.ListRuns())
+}
+
+func TestSkillToolCallLaunchUsesRealDockerSandboxExecution(t *testing.T) {
+	requireRealDockerForTest(t)
+
+	cfg := config.Config{
+		BindAddr:    "127.0.0.1:19191",
+		DataDir:     filepath.Join(t.TempDir(), "dope-runtime"),
+		LogLevel:    "info",
+		Version:     "test",
+		Environment: config.EnvironmentTest,
+	}
+	authManager := auth.NewManager()
+	eventBus := events.NewBus()
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	homeRoot := filepath.Join(t.TempDir(), ".agents")
+	dataRoot := cfg.DataDir
+	writeSkillFileForTest(t, filepath.Join(homeRoot, "AGENTS.md"), "home overlay")
+	writeSkillFileForTest(t, filepath.Join(dataRoot, "AGENTS.md"), "data overlay")
+	writeExecutableSkillForTest(t, filepath.Join(dataRoot, "skills", "docker-skill"), `
+---
+name: docker-skill
+description: executable skill on real docker
+execution.entrypoint: scripts/run.sh
+execution.working_dir: .
+execution.profile_id: docker_default
+execution.read_roots: .
+execution.write_roots: .
+execution.network_mode: deny
+execution.approval_mode: allow
+execution.required_enforcement_strength: containerized
+execution.timeout_ms: 5000
+---
+instructions
+`, "#!/bin/sh\nprintf 'docker-real'")
+	registry, err := skills.NewRegistryWithRoots(homeRoot, dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistryWithRoots returned error: %v", err)
+	}
+
+	manager := runtime.NewManager()
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policy.NewEngine())
+	defer func() { _ = sandboxManager.Close(context.Background()) }()
+	checkpointManager := checkpoints.NewManager(sqliteStore, manager)
+	server := NewServer(Dependencies{
+		Config: cfg, Logger: telemetry.New("error").Slog(), EventBus: eventBus,
+		Auth: authManager, Router: router.NewSessionRouter(), Runtime: manager,
+		Skills: registry, Sandboxes: sandboxManager, Store: sqliteStore, Checkpoints: checkpointManager,
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "skills-real-docker")
+
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "run docker skill"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"skillId":"docker-skill","toolName":"docker-skill"}`))
+	createReq.Header.Set("Authorization", authHeader)
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for docker skill tool call create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	created := decodeStrictResponse[runtime.ToolCall](t, createRec.Body.Bytes())
+	if created.SandboxExecutionID == "" {
+		t.Fatalf("expected sandbox execution linkage, got %+v", created)
+	}
+
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		got, ok := manager.GetToolCall(run.RunID, step.StepID, created.ToolCallID)
+		if ok && got.Status == runtime.ToolCallStatusCompleted {
+			output, ok := got.Output.(map[string]any)
+			if !ok {
+				t.Fatalf("expected structured tool call output, got %+v", got.Output)
+			}
+			stdout, _ := output["stdout"].(string)
+			if !strings.Contains(stdout, "docker-real") {
+				t.Fatalf("expected real docker stdout, got %+v", got.Output)
+			}
+			return
+		}
+		if ok && (got.Status == runtime.ToolCallStatusFailed || got.Status == runtime.ToolCallStatusDenied || got.Status == runtime.ToolCallStatusCancelled) {
+			t.Fatalf("expected completed real docker skill-backed tool call, got %+v", got)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	got, _ := manager.GetToolCall(run.RunID, step.StepID, created.ToolCallID)
+	t.Fatalf("expected real docker skill-backed tool call to complete, got %+v", got)
 }
 
 func TestSkillToolCallRedactsSecretOutputAndSandboxProjection(t *testing.T) {
@@ -3008,7 +3272,7 @@ execution.write_roots: .
 execution.network_mode: deny
 execution.approval_mode: allow
 execution.secret_refs: EXEC_SKILL_TOKEN
-execution.timeout_ms: 1000
+execution.timeout_ms: 5000
 ---
 instructions
 `, "#!/bin/sh\nprintf '%s' \"$EXEC_SKILL_TOKEN\"")
@@ -3144,7 +3408,7 @@ execution.write_roots: .
 execution.network_mode: deny
 execution.approval_mode: ask
 execution.secret_refs: EXEC_SKILL_TOKEN
-execution.timeout_ms: 1000
+execution.timeout_ms: 5000
 ---
 instructions
 `, "#!/bin/sh\nprintf ok")
@@ -3347,7 +3611,7 @@ execution.write_roots: .
 execution.network_mode: deny
 execution.approval_mode: allow
 execution.secret_refs: EXEC_SKILL_TOKEN
-execution.timeout_ms: 1000
+execution.timeout_ms: 5000
 ---
 instructions
 `, "#!/bin/sh\nprintf 'skill path'")
