@@ -35,6 +35,18 @@ var (
 	ErrSandboxManagerMissing  = errors.New("mcp sandbox manager is not configured")
 )
 
+const websocketReconnectMaxAttempts = 3
+
+var mcpBackoffDelay = restartBackoffDelay
+
+func SetReconnectBackoffDelayForTest(delay time.Duration) func() {
+	previous := mcpBackoffDelay
+	mcpBackoffDelay = func(int) time.Duration { return delay }
+	return func() {
+		mcpBackoffDelay = previous
+	}
+}
+
 const (
 	resourceKindServer = "mcp_server"
 	resourceKindTool   = "mcp_tool"
@@ -48,6 +60,14 @@ func SetSessionStartTimeoutForTest(timeout time.Duration) func() {
 	return func() {
 		mcpSessionStartTimeout = previous
 	}
+}
+
+func isRestoreLifecycleRequester(requestedBy string) bool {
+	return strings.TrimSpace(requestedBy) == "system.restore"
+}
+
+func isWebsocketReconnectRequester(requestedBy string) bool {
+	return strings.TrimSpace(requestedBy) == "mcp.websocket_reconnect"
 }
 
 type attachedExecutionStarter interface {
@@ -105,6 +125,65 @@ func NewManager(cfg config.Config, sqliteStore *store.SQLiteStore, eventBus *eve
 
 func (m *Manager) ListCatalog() []CatalogEntry {
 	return bundledCatalogEntries(m.cfg)
+}
+
+func (m *Manager) ListTransportCapabilities() []TransportCapability {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	items := []TransportCapability{
+		{
+			TransportKind:          TransportKindStdio,
+			AvailabilityStatus:     AvailabilityStatusReady,
+			HealthStatus:           TransportHealthStatusHealthy,
+			Prerequisites:          []string{"stdio command must be configured per server", "sandbox profile must remain available for subprocess execution"},
+			EnvironmentScope:       string(m.cfg.Environment),
+			DaemonManagedReconnect: false,
+			RecoverySummary:        "stdio sessions restart through the existing daemon-owned lifecycle path",
+		},
+		{
+			TransportKind:          TransportKindStreamableHTTP,
+			AvailabilityStatus:     AvailabilityStatusReady,
+			HealthStatus:           TransportHealthStatusHealthy,
+			Prerequisites:          []string{"streamable-http endpoint must be configured per server", "remote endpoint reachability is evaluated per server"},
+			EnvironmentScope:       string(m.cfg.Environment),
+			DaemonManagedReconnect: false,
+			RecoverySummary:        "streamable-http sessions restart through the normal lifecycle path",
+		},
+		{
+			TransportKind:          TransportKindWebsocket,
+			AvailabilityStatus:     AvailabilityStatusReady,
+			HealthStatus:           TransportHealthStatusHealthy,
+			Prerequisites:          []string{"websocket endpoint must be configured per server", "authenticated endpoints require secret-ref-backed header auth"},
+			EnvironmentScope:       string(m.cfg.Environment),
+			SupportedAuthKinds:     []string{string(WebsocketAuthModeBearerHeader), string(WebsocketAuthModeHeader)},
+			DaemonManagedReconnect: true,
+			RecoverySummary:        "daemon manages bounded websocket reconnect and restore history",
+		},
+	}
+
+	for _, serverID := range m.serverIDs {
+		server := m.servers[serverID]
+		if server.EnvironmentScope != "" && server.EnvironmentScope != string(m.cfg.Environment) {
+			continue
+		}
+		state := m.states[serverID]
+		for i := range items {
+			if items[i].TransportKind != server.TransportKind {
+				continue
+			}
+			switch state.Status {
+			case LifecycleStatusDegraded, LifecycleStatusBackingOff:
+				items[i].HealthStatus = TransportHealthStatusDegraded
+				items[i].Reason = firstNonEmpty(items[i].Reason, state.HealthReason, "one or more servers are recovering")
+			case LifecycleStatusUnsupported:
+				items[i].AvailabilityStatus = AvailabilityStatusUnsupported
+				items[i].Reason = firstNonEmpty(items[i].Reason, state.HealthReason, "transport is unsupported for at least one configured server")
+			}
+		}
+	}
+
+	return items
 }
 
 func (m *Manager) GetCatalogEntry(entryID string) (CatalogEntry, bool) {
@@ -1280,6 +1359,8 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 	if m.transport == nil {
 		return LifecycleResponse{}, ErrTransportNotConfigured
 	}
+	restoreRequest := isRestoreLifecycleRequester(requestedBy)
+	reconnectRequest := isWebsocketReconnectRequester(requestedBy)
 
 	m.mu.Lock()
 	server, ok := m.servers[serverID]
@@ -1317,6 +1398,15 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 	}
 	state.Status = LifecycleStatusStarting
 	state.HealthReason = ""
+	state.NextReconnectAt = nil
+	if restoreRequest {
+		restoreStartedAt := time.Now().UTC()
+		state.LastRecoveryAt = &restoreStartedAt
+		state.LastRecoveryClass = "restore_requested"
+	} else if !reconnectRequest {
+		state.LastRecoveryAt = nil
+		state.LastRecoveryClass = ""
+	}
 	state.UpdatedAt = time.Now().UTC()
 	m.states[serverID] = state
 	resource := m.buildServerResourceLocked(server)
@@ -1327,7 +1417,11 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 
 	consumer, err := m.buildLifecycleConsumerView(ctx, server, firstNonEmpty(strings.TrimSpace(requestedBy), "mcp"))
 	if err != nil {
-		state = m.recordFailure(ctx, serverID, state, LifecycleStatusDenied, err.Error(), "invalid_configuration")
+		if restoreRequest {
+			state = m.recordRestoreFailure(ctx, server, state, LifecycleStatusDenied, err.Error(), "invalid_configuration")
+		} else {
+			state = m.recordFailure(ctx, serverID, state, LifecycleStatusDenied, err.Error(), "invalid_configuration")
+		}
 		resource, _ = m.GetServerResource(serverID)
 		return LifecycleResponse{
 			Action:        LifecycleActionStart,
@@ -1343,13 +1437,18 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 		executionID string
 		pipes       SessionPipes
 	)
+	transportServer := cloneServer(server)
 	if server.TransportKind == TransportKindStdio {
 		if m.sandboxes == nil {
 			return LifecycleResponse{}, ErrSandboxManagerMissing
 		}
 		request, err := m.buildExecutionRequest(ctx, server, consumer, "")
 		if err != nil {
-			state = m.recordFailure(ctx, serverID, state, LifecycleStatusDenied, err.Error(), "invalid_configuration")
+			if restoreRequest {
+				state = m.recordRestoreFailure(ctx, server, state, LifecycleStatusDenied, err.Error(), "invalid_configuration")
+			} else {
+				state = m.recordFailure(ctx, serverID, state, LifecycleStatusDenied, err.Error(), "invalid_configuration")
+			}
 			resource, _ = m.GetServerResource(serverID)
 			return LifecycleResponse{
 				Action:        LifecycleActionStart,
@@ -1362,7 +1461,11 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 		}
 		attachedExecution, attached, err := m.sandboxes.StartAttachedExecution(ctx, request)
 		if err != nil {
-			state = m.recordFailure(ctx, serverID, state, LifecycleStatusFailed, err.Error(), "launch_failed")
+			if restoreRequest {
+				state = m.recordRestoreFailure(ctx, server, state, LifecycleStatusFailed, err.Error(), "launch_failed")
+			} else {
+				state = m.recordFailure(ctx, serverID, state, LifecycleStatusFailed, err.Error(), "launch_failed")
+			}
 			resource, _ = m.GetServerResource(serverID)
 			return LifecycleResponse{
 				Action:       LifecycleActionStart,
@@ -1392,15 +1495,39 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 			Stderr: attached.Stderr,
 		}
 	}
+	if server.TransportKind == TransportKindWebsocket {
+		headers, err := m.resolveWebsocketHeaders(server)
+		if err != nil {
+			if restoreRequest {
+				state = m.recordRestoreFailure(ctx, server, state, LifecycleStatusDenied, err.Error(), "invalid_configuration")
+			} else {
+				state = m.recordFailure(ctx, serverID, state, LifecycleStatusDenied, err.Error(), "invalid_configuration")
+			}
+			resource, _ = m.GetServerResource(serverID)
+			return LifecycleResponse{
+				Action:        LifecycleActionStart,
+				Server:        resource,
+				FailureClass:  "invalid_configuration",
+				Blocked:       true,
+				BlockedReason: err.Error(),
+				PreflightMs:   time.Since(startedAt).Milliseconds(),
+			}, nil
+		}
+		transportServer.ResolvedWebsocketHeaders = headers
+	}
 
 	openCtx, cancelOpen := context.WithTimeout(ctx, mcpSessionStartTimeout)
-	session, err := m.transport.Open(openCtx, server, pipes)
+	session, err := m.transport.Open(openCtx, transportServer, pipes)
 	cancelOpen()
 	if err != nil {
 		if executionID != "" && m.sandboxes != nil {
 			_, _, _ = m.sandboxes.CancelExecution(executionID)
 		}
-		state = m.recordFailure(ctx, serverID, state, LifecycleStatusFailed, err.Error(), "transport_runtime_failure")
+		if restoreRequest {
+			state = m.recordRestoreFailure(ctx, server, state, LifecycleStatusFailed, err.Error(), "transport_runtime_failure")
+		} else {
+			state = m.recordFailure(ctx, serverID, state, LifecycleStatusFailed, err.Error(), "transport_runtime_failure")
+		}
 		resource, _ = m.GetServerResource(serverID)
 		return LifecycleResponse{
 			Action:       LifecycleActionStart,
@@ -1419,7 +1546,11 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 		if executionID != "" && m.sandboxes != nil {
 			_, _, _ = m.sandboxes.CancelExecution(executionID)
 		}
-		state = m.recordFailure(ctx, serverID, state, LifecycleStatusFailed, err.Error(), "transport_runtime_failure")
+		if restoreRequest {
+			state = m.recordRestoreFailure(ctx, server, state, LifecycleStatusFailed, err.Error(), "transport_runtime_failure")
+		} else {
+			state = m.recordFailure(ctx, serverID, state, LifecycleStatusFailed, err.Error(), "transport_runtime_failure")
+		}
 		resource, _ = m.GetServerResource(serverID)
 		return LifecycleResponse{
 			Action:       LifecycleActionStart,
@@ -1436,10 +1567,17 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 	}
 	state.Status = LifecycleStatusHealthy
 	state.LastExecutionID = executionID
+	state.LastSessionID = session.ID()
 	state.LastStartedAt = &now
 	state.LastHeartbeatAt = &now
 	state.HealthReason = ""
 	state.FailureCount = 0
+	state.ReconnectAttemptCount = 0
+	state.NextReconnectAt = nil
+	if restoreRequest {
+		state.LastRecoveryAt = &now
+		state.LastRecoveryClass = "restore_succeeded"
+	}
 	state.UpdatedAt = now
 
 	m.mu.Lock()
@@ -1488,6 +1626,16 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 	}
 	if err := m.publishHealthChanged(ctx, serverID, state.Status, state.HealthReason); err != nil {
 		return LifecycleResponse{}, err
+	}
+	if restoreRequest {
+		if err := m.publishEvent(ctx, "mcp", "mcp.server_restore_completed", events.Resource{Kind: resourceKindServer, ID: serverID}, map[string]any{
+			"serverId":      serverID,
+			"transportKind": server.TransportKind,
+			"sessionId":     session.ID(),
+			"toolCount":     len(tools),
+		}); err != nil {
+			return LifecycleResponse{}, err
+		}
 	}
 
 	go m.watchSession(serverID, executionID, session)
@@ -1585,6 +1733,7 @@ func (m *Manager) upsertServer(ctx context.Context, createInput CreateServerInpu
 		server.Command = strings.TrimSpace(createInput.Command)
 		server.Args = cloneStrings(createInput.Args)
 		server.Endpoint = strings.TrimSpace(createInput.Endpoint)
+		server.WebsocketConfig = cloneWebsocketConfig(createInput.WebsocketConfig)
 		server.WorkingDir = strings.TrimSpace(createInput.WorkingDir)
 		server.SecretRefs = cleanStrings(createInput.SecretRefs)
 		server.AutoRestart = createInput.AutoRestart
@@ -1633,6 +1782,10 @@ func (m *Manager) upsertServer(ctx context.Context, createInput CreateServerInpu
 		}
 		if update.input.Endpoint != nil {
 			server.Endpoint = strings.TrimSpace(*update.input.Endpoint)
+			server.OperatorModified = true
+		}
+		if update.input.WebsocketConfig != nil {
+			server.WebsocketConfig = cloneWebsocketConfig(update.input.WebsocketConfig)
 			server.OperatorModified = true
 		}
 		if update.input.WorkingDir != nil {
@@ -1837,6 +1990,10 @@ func (m *Manager) watchSession(serverID, executionID string, session Session) {
 			return
 		}
 		if err != nil {
+			if transportKind == TransportKindWebsocket && server.Enabled && server.AutoRestart {
+				m.scheduleWebsocketReconnect(serverID, state, err)
+				return
+			}
 			state = m.recordFailure(context.Background(), serverID, state, LifecycleStatusFailed, err.Error(), "transport_runtime_failure")
 		}
 		if state.Status == LifecycleStatusFailed && server.Enabled && server.AutoRestart {
@@ -1859,7 +2016,7 @@ func (m *Manager) watchSession(serverID, executionID string, session Session) {
 }
 
 func (m *Manager) scheduleRestart(serverID string, state ServerState) {
-	delay := restartBackoffDelay(state.FailureCount)
+	delay := mcpBackoffDelay(state.FailureCount)
 	next := time.Now().UTC().Add(delay)
 
 	m.mu.Lock()
@@ -1877,6 +2034,88 @@ func (m *Manager) scheduleRestart(serverID string, state ServerState) {
 		<-timer.C
 		_, _ = m.Start(context.Background(), serverID, "mcp.auto_restart")
 	}()
+}
+
+func (m *Manager) scheduleWebsocketReconnect(serverID string, state ServerState, cause error) {
+	now := time.Now().UTC()
+	attempt := state.ReconnectAttemptCount + 1
+	reason := firstNonEmpty(strings.TrimSpace(errorString(cause)), state.HealthReason, "websocket session disconnected")
+	if attempt > websocketReconnectMaxAttempts {
+		state.Status = LifecycleStatusFailed
+		state.HealthReason = reason
+		state.LastRecoveryAt = &now
+		state.LastRecoveryClass = "reconnect_failed"
+		state.NextReconnectAt = nil
+		state.UpdatedAt = now
+		m.mu.Lock()
+		m.states[serverID] = state
+		m.mu.Unlock()
+		_ = m.persistState(context.Background(), state)
+		_ = m.publishEvent(context.Background(), "mcp", "mcp.server_reconnect_failed", events.Resource{Kind: resourceKindServer, ID: serverID}, map[string]any{
+			"serverId":      serverID,
+			"transportKind": TransportKindWebsocket,
+			"attempt":       state.ReconnectAttemptCount,
+			"reason":        reason,
+			"failureClass":  "reconnect_exhausted",
+		})
+		_ = m.publishHealthChanged(context.Background(), serverID, state.Status, state.HealthReason)
+		return
+	}
+
+	delay := mcpBackoffDelay(attempt)
+	next := now.Add(delay)
+	state.Status = LifecycleStatusDegraded
+	state.HealthReason = reason
+	state.ReconnectAttemptCount = attempt
+	state.LastRecoveryAt = &now
+	state.LastRecoveryClass = "reconnect_scheduled"
+	state.NextReconnectAt = &next
+	state.UpdatedAt = now
+
+	m.mu.Lock()
+	m.states[serverID] = state
+	m.mu.Unlock()
+	_ = m.persistState(context.Background(), state)
+	_ = m.publishEvent(context.Background(), "mcp", "mcp.server_reconnect_scheduled", events.Resource{Kind: resourceKindServer, ID: serverID}, map[string]any{
+		"serverId":      serverID,
+		"transportKind": TransportKindWebsocket,
+		"attempt":       attempt,
+		"reason":        reason,
+		"nextRetryAt":   next.UTC().Format(time.RFC3339Nano),
+	})
+	_ = m.publishHealthChanged(context.Background(), serverID, state.Status, state.HealthReason)
+
+	go func(expectedAttempt int) {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		<-timer.C
+		response, _ := m.Start(context.Background(), serverID, "mcp.websocket_reconnect")
+		if response.Server.State.Status == LifecycleStatusHealthy {
+			recoveredAt := time.Now().UTC()
+			m.mu.Lock()
+			latest := m.states[serverID]
+			latest.LastRecoveryAt = &recoveredAt
+			latest.LastRecoveryClass = "reconnect_succeeded"
+			latest.ReconnectAttemptCount = 0
+			latest.NextReconnectAt = nil
+			latest.UpdatedAt = recoveredAt
+			m.states[serverID] = latest
+			m.mu.Unlock()
+			_ = m.persistState(context.Background(), latest)
+			_ = m.publishEvent(context.Background(), "mcp", "mcp.server_reconnect_completed", events.Resource{Kind: resourceKindServer, ID: serverID}, map[string]any{
+				"serverId":      serverID,
+				"transportKind": TransportKindWebsocket,
+				"attempt":       expectedAttempt,
+				"sessionId":     response.Server.State.LastSessionID,
+			})
+			return
+		}
+		resource, ok := m.GetServerResource(serverID)
+		if !ok || !resource.Enabled || !resource.AutoRestart {
+			return
+		}
+		m.scheduleWebsocketReconnect(serverID, resource.State, fmt.Errorf("%s", firstNonEmpty(response.BlockedReason, response.Server.State.HealthReason, response.FailureClass, "websocket reconnect failed")))
+	}(attempt)
 }
 
 func (m *Manager) updateStateFromExecution(ctx context.Context, serverID string, state ServerState, execution sandbox.Execution, requestedStop bool) ServerState {
@@ -1943,6 +2182,26 @@ func (m *Manager) recordFailure(ctx context.Context, serverID string, state Serv
 		"failureClass": failureClass,
 	})
 	_ = m.publishHealthChanged(ctx, serverID, state.Status, state.HealthReason)
+	return state
+}
+
+func (m *Manager) recordRestoreFailure(ctx context.Context, server Server, state ServerState, status LifecycleStatus, reason, failureClass string) ServerState {
+	state = m.recordFailure(ctx, server.ServerID, state, status, reason, failureClass)
+	now := time.Now().UTC()
+	state.LastRecoveryAt = &now
+	state.LastRecoveryClass = "restore_failed"
+	state.NextReconnectAt = nil
+	state.UpdatedAt = now
+	m.mu.Lock()
+	m.states[server.ServerID] = state
+	m.mu.Unlock()
+	_ = m.persistState(ctx, state)
+	_ = m.publishEvent(ctx, "mcp", "mcp.server_restore_failed", events.Resource{Kind: resourceKindServer, ID: server.ServerID}, map[string]any{
+		"serverId":      server.ServerID,
+		"transportKind": server.TransportKind,
+		"reason":        state.HealthReason,
+		"failureClass":  failureClass,
+	})
 	return state
 }
 
@@ -2136,6 +2395,7 @@ func serverToCreateInput(server Server) CreateServerInput {
 		Command:           server.Command,
 		Args:              cloneStrings(server.Args),
 		Endpoint:          server.Endpoint,
+		WebsocketConfig:   cloneWebsocketConfig(server.WebsocketConfig),
 		WorkingDir:        server.WorkingDir,
 		SecretRefs:        cleanStrings(server.SecretRefs),
 		AutoRestart:       server.AutoRestart,
@@ -2146,6 +2406,9 @@ func serverToCreateInput(server Server) CreateServerInput {
 
 func (m *Manager) buildServerResourceLocked(server Server) ServerResource {
 	projectedServer := cloneServer(server)
+	if projectedServer.TransportKind == TransportKindWebsocket {
+		projectedServer.Endpoint = sanitizeWebsocketEndpointForProjection(projectedServer.Endpoint)
+	}
 	projectedServer.CatalogManagement = sanitizeCatalogManagementProjection(m.buildCatalogManagementLocked(server))
 	state := cloneServerState(m.states[server.ServerID])
 	toolCount := len(m.tools[server.ServerID])
@@ -2161,6 +2424,7 @@ func (m *Manager) buildServerResourceLocked(server Server) ServerResource {
 		ToolCount:              toolCount,
 		Tools:                  tools,
 		TransportConfigSummary: m.transportConfigSummary(projectedServer),
+		WebsocketAuthSummary:   m.buildWebsocketAuthSummary(projectedServer),
 		AvailabilityStatus:     availabilityStatus,
 		AvailabilityReason:     availabilityReason,
 	}
@@ -2455,6 +2719,10 @@ func (m *Manager) validateServer(server Server) error {
 		if strings.TrimSpace(server.Endpoint) == "" {
 			return ErrTransportUnavailable
 		}
+	case TransportKindWebsocket:
+		if err := validateWebsocketEndpoint(server.Endpoint); err != nil {
+			return err
+		}
 	default:
 		return ErrUnsupportedTransport
 	}
@@ -2492,6 +2760,13 @@ func (m *Manager) evaluateServerAvailabilityLocked(server Server) (AvailabilityS
 		if strings.TrimSpace(server.Endpoint) == "" {
 			return AvailabilityStatusUnsupported, "streamable-http endpoint is not configured"
 		}
+	case TransportKindWebsocket:
+		if strings.TrimSpace(server.Endpoint) == "" {
+			return AvailabilityStatusUnsupported, "websocket endpoint is not configured"
+		}
+		if summary := m.buildWebsocketAuthSummary(server); summary != nil && summary.Configured && !summary.Resolved {
+			return AvailabilityStatusBlocked, firstNonEmpty(summary.BlockedReason, "websocket auth secret is unavailable")
+		}
 	default:
 		return AvailabilityStatusUnsupported, "transport kind is unsupported"
 	}
@@ -2517,6 +2792,12 @@ func (m *Manager) transportConfigSummary(server Server) string {
 	switch server.TransportKind {
 	case TransportKindStreamableHTTP:
 		return strings.TrimSpace(server.Endpoint)
+	case TransportKindWebsocket:
+		summary := strings.TrimSpace(server.Endpoint)
+		if auth := m.buildWebsocketAuthSummary(server); auth != nil && auth.Mode != "" {
+			summary = strings.TrimSpace(summary + " (" + string(auth.Mode) + ")")
+		}
+		return summary
 	default:
 		if strings.TrimSpace(server.Command) == "" {
 			return ""
@@ -2526,6 +2807,119 @@ func (m *Manager) transportConfigSummary(server Server) string {
 		}
 		return strings.TrimSpace(server.Command) + " " + strings.Join(cloneStrings(server.Args), " ")
 	}
+}
+
+func (m *Manager) buildWebsocketAuthSummary(server Server) *WebsocketAuthSummary {
+	if server.TransportKind != TransportKindWebsocket || server.WebsocketConfig == nil || server.WebsocketConfig.Auth == nil {
+		return nil
+	}
+	auth := server.WebsocketConfig.Auth
+	summary := &WebsocketAuthSummary{
+		Mode:       auth.Mode,
+		HeaderName: defaultWebsocketHeaderName(auth),
+		Scheme:     defaultWebsocketScheme(auth),
+		SecretRef:  strings.TrimSpace(auth.SecretRef),
+		Configured: true,
+	}
+	if summary.SecretRef == "" {
+		summary.BlockedReason = "websocket auth secret ref is not configured"
+		return summary
+	}
+	for _, item := range m.buildSecretSummaries(server) {
+		if item.SecretRef != summary.SecretRef {
+			continue
+		}
+		summary.Resolved = item.Resolution == string(sandbox.SecretResolutionResolved)
+		if !summary.Resolved {
+			summary.BlockedReason = fmt.Sprintf("%s is unavailable in %s", item.SecretRef, item.EnvironmentScope)
+		}
+		return summary
+	}
+	summary.BlockedReason = fmt.Sprintf("%s is unavailable in %s", summary.SecretRef, m.cfg.Environment)
+	return summary
+}
+
+func defaultWebsocketHeaderName(auth *WebsocketAuthConfig) string {
+	if auth == nil {
+		return ""
+	}
+	if auth.Mode == WebsocketAuthModeBearerHeader && strings.TrimSpace(auth.HeaderName) == "" {
+		return "Authorization"
+	}
+	return strings.TrimSpace(auth.HeaderName)
+}
+
+func defaultWebsocketScheme(auth *WebsocketAuthConfig) string {
+	if auth == nil {
+		return ""
+	}
+	if auth.Mode == WebsocketAuthModeBearerHeader && strings.TrimSpace(auth.Scheme) == "" {
+		return "Bearer"
+	}
+	return strings.TrimSpace(auth.Scheme)
+}
+
+func (m *Manager) resolveWebsocketHeaders(server Server) (map[string]string, error) {
+	if server.TransportKind != TransportKindWebsocket || server.WebsocketConfig == nil || server.WebsocketConfig.Auth == nil {
+		return nil, nil
+	}
+	auth := server.WebsocketConfig.Auth
+	secretRef := strings.TrimSpace(auth.SecretRef)
+	if secretRef == "" {
+		return nil, fmt.Errorf("websocket auth secret ref is not configured")
+	}
+	resolved, err := ResolveMCPSecrets(m.cfg.DataDir, []string{secretRef})
+	if err != nil {
+		return nil, err
+	}
+	value := strings.TrimSpace(resolved[secretRef])
+	if value == "" {
+		return nil, fmt.Errorf("%s is unavailable in %s", secretRef, m.cfg.Environment)
+	}
+	headerName := defaultWebsocketHeaderName(auth)
+	if headerName == "" {
+		return nil, fmt.Errorf("websocket auth header name is not configured")
+	}
+	if auth.Mode == WebsocketAuthModeBearerHeader {
+		return map[string]string{headerName: strings.TrimSpace(defaultWebsocketScheme(auth) + " " + value)}, nil
+	}
+	return map[string]string{headerName: value}, nil
+}
+
+func validateWebsocketEndpoint(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ErrTransportUnavailable
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("websocket endpoint is invalid: %w", err)
+	}
+	if parsed.Scheme != "ws" && parsed.Scheme != "wss" {
+		return fmt.Errorf("websocket endpoint must use ws or wss")
+	}
+	if strings.TrimSpace(parsed.Host) == "" {
+		return fmt.Errorf("websocket endpoint must include a host")
+	}
+	if parsed.User != nil {
+		return fmt.Errorf("websocket endpoint must not include inline credentials; use websocketConfig.auth instead")
+	}
+	if strings.TrimSpace(parsed.RawQuery) != "" {
+		return fmt.Errorf("websocket endpoint must not include inline query parameters; use websocketConfig.auth instead")
+	}
+	return nil
+}
+
+func sanitizeWebsocketEndpointForProjection(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return strings.TrimSpace(raw)
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func defaultStateForServer(server Server) ServerState {
@@ -2796,6 +3190,8 @@ func cloneServer(server Server) Server {
 	server.Args = cloneStrings(server.Args)
 	server.SecretRefs = cloneStrings(server.SecretRefs)
 	server.Declaration = cloneDeclaration(server.Declaration)
+	server.WebsocketConfig = cloneWebsocketConfig(server.WebsocketConfig)
+	server.ResolvedWebsocketHeaders = cloneStringMap(server.ResolvedWebsocketHeaders)
 	server.CatalogManagement = cloneCatalogManagement(server.CatalogManagement)
 	return server
 }
@@ -2843,6 +3239,24 @@ func cloneCatalogInstallSnapshot(snapshot CatalogInstallSnapshot) CatalogInstall
 	return snapshot
 }
 
+func cloneWebsocketConfig(config *WebsocketConfig) *WebsocketConfig {
+	if config == nil {
+		return nil
+	}
+	cloned := *config
+	cloned.Subprotocols = cloneStrings(config.Subprotocols)
+	cloned.Auth = cloneWebsocketAuthConfig(config.Auth)
+	return &cloned
+}
+
+func cloneWebsocketAuthConfig(config *WebsocketAuthConfig) *WebsocketAuthConfig {
+	if config == nil {
+		return nil
+	}
+	cloned := *config
+	return &cloned
+}
+
 func cloneRevalidationSnapshot(snapshot *RevalidationSnapshot) *RevalidationSnapshot {
 	if snapshot == nil {
 		return nil
@@ -2859,6 +3273,17 @@ func cloneStrings(items []string) []string {
 		return nil
 	}
 	return append([]string(nil), items...)
+}
+
+func cloneStringMap(items map[string]string) map[string]string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(items))
+	for key, value := range items {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func cloneInts(items []int) []int {
@@ -2962,4 +3387,11 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

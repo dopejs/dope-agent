@@ -20,6 +20,7 @@ type TransportKind string
 const (
 	TransportKindStdio          TransportKind = "stdio"
 	TransportKindStreamableHTTP TransportKind = "streamable-http"
+	TransportKindWebsocket      TransportKind = "websocket"
 )
 
 type OriginKind string
@@ -77,43 +78,98 @@ const (
 )
 
 type Server struct {
-	ServerID          string             `json:"serverId"`
-	DisplayName       string             `json:"displayName"`
-	Source            Source             `json:"source"`
-	OriginKind        OriginKind         `json:"originKind,omitempty"`
-	CatalogEntryID    string             `json:"catalogEntryId,omitempty"`
-	InstallMethod     InstallMethod      `json:"installMethod,omitempty"`
-	EnvironmentScope  string             `json:"environmentScope,omitempty"`
-	CatalogManagement *CatalogManagement `json:"catalogManagement,omitempty"`
-	Enabled           bool               `json:"enabled"`
-	SandboxProfileID  string             `json:"sandboxProfileId"`
-	DeclarationID     string             `json:"declarationId"`
-	Declaration       Declaration        `json:"declaration"`
-	TransportKind     TransportKind      `json:"transportKind"`
-	Command           string             `json:"command"`
-	Args              []string           `json:"args"`
-	Endpoint          string             `json:"endpoint,omitempty"`
-	WorkingDir        string             `json:"workingDir,omitempty"`
-	SecretRefs        []string           `json:"secretRefs,omitempty"`
-	AutoRestart       bool               `json:"autoRestart"`
-	OperatorModified  bool               `json:"operatorModified,omitempty"`
-	CreatedAt         time.Time          `json:"createdAt"`
-	UpdatedAt         time.Time          `json:"updatedAt"`
+	ServerID                 string             `json:"serverId"`
+	DisplayName              string             `json:"displayName"`
+	Source                   Source             `json:"source"`
+	OriginKind               OriginKind         `json:"originKind,omitempty"`
+	CatalogEntryID           string             `json:"catalogEntryId,omitempty"`
+	InstallMethod            InstallMethod      `json:"installMethod,omitempty"`
+	EnvironmentScope         string             `json:"environmentScope,omitempty"`
+	CatalogManagement        *CatalogManagement `json:"catalogManagement,omitempty"`
+	Enabled                  bool               `json:"enabled"`
+	SandboxProfileID         string             `json:"sandboxProfileId"`
+	DeclarationID            string             `json:"declarationId"`
+	Declaration              Declaration        `json:"declaration"`
+	TransportKind            TransportKind      `json:"transportKind"`
+	Command                  string             `json:"command"`
+	Args                     []string           `json:"args"`
+	Endpoint                 string             `json:"endpoint,omitempty"`
+	WebsocketConfig          *WebsocketConfig   `json:"websocketConfig,omitempty"`
+	ResolvedWebsocketHeaders map[string]string  `json:"-"`
+	WorkingDir               string             `json:"workingDir,omitempty"`
+	SecretRefs               []string           `json:"secretRefs,omitempty"`
+	AutoRestart              bool               `json:"autoRestart"`
+	OperatorModified         bool               `json:"operatorModified,omitempty"`
+	CreatedAt                time.Time          `json:"createdAt"`
+	UpdatedAt                time.Time          `json:"updatedAt"`
 }
 
 type ServerState struct {
-	ServerID           string          `json:"serverId"`
-	Status             LifecycleStatus `json:"status"`
-	HealthReason       string          `json:"healthReason,omitempty"`
-	FailureCount       int             `json:"failureCount"`
-	RestartCount       int             `json:"restartCount"`
-	LastStartedAt      *time.Time      `json:"lastStartedAt,omitempty"`
-	LastStoppedAt      *time.Time      `json:"lastStoppedAt,omitempty"`
-	LastHeartbeatAt    *time.Time      `json:"lastHeartbeatAt,omitempty"`
-	NextRestartAt      *time.Time      `json:"nextRestartAt,omitempty"`
-	LastExecutionID    string          `json:"lastExecutionId,omitempty"`
-	LastPolicyRecordID string          `json:"lastPolicyRecordId,omitempty"`
-	UpdatedAt          time.Time       `json:"updatedAt"`
+	ServerID              string          `json:"serverId"`
+	Status                LifecycleStatus `json:"status"`
+	HealthReason          string          `json:"healthReason,omitempty"`
+	FailureCount          int             `json:"failureCount"`
+	RestartCount          int             `json:"restartCount"`
+	LastSessionID         string          `json:"lastSessionId,omitempty"`
+	LastRecoveryAt        *time.Time      `json:"lastRecoveryAt,omitempty"`
+	LastRecoveryClass     string          `json:"lastRecoveryClass,omitempty"`
+	ReconnectAttemptCount int             `json:"reconnectAttemptCount,omitempty"`
+	LastStartedAt         *time.Time      `json:"lastStartedAt,omitempty"`
+	LastStoppedAt         *time.Time      `json:"lastStoppedAt,omitempty"`
+	LastHeartbeatAt       *time.Time      `json:"lastHeartbeatAt,omitempty"`
+	NextRestartAt         *time.Time      `json:"nextRestartAt,omitempty"`
+	NextReconnectAt       *time.Time      `json:"nextReconnectAt,omitempty"`
+	LastExecutionID       string          `json:"lastExecutionId,omitempty"`
+	LastPolicyRecordID    string          `json:"lastPolicyRecordId,omitempty"`
+	UpdatedAt             time.Time       `json:"updatedAt"`
+}
+
+type TransportHealthStatus string
+
+const (
+	TransportHealthStatusHealthy  TransportHealthStatus = "healthy"
+	TransportHealthStatusDegraded TransportHealthStatus = "degraded"
+)
+
+type TransportCapability struct {
+	TransportKind          TransportKind         `json:"transportKind"`
+	AvailabilityStatus     AvailabilityStatus    `json:"availabilityStatus"`
+	HealthStatus           TransportHealthStatus `json:"healthStatus"`
+	Reason                 string                `json:"reason,omitempty"`
+	Prerequisites          []string              `json:"prerequisites,omitempty"`
+	EnvironmentScope       string                `json:"environmentScope,omitempty"`
+	SupportedAuthKinds     []string              `json:"supportedAuthKinds,omitempty"`
+	DaemonManagedReconnect bool                  `json:"daemonManagedReconnect"`
+	RecoverySummary        string                `json:"recoverySummary,omitempty"`
+}
+
+type WebsocketAuthMode string
+
+const (
+	WebsocketAuthModeBearerHeader WebsocketAuthMode = "bearer_header"
+	WebsocketAuthModeHeader       WebsocketAuthMode = "header"
+)
+
+type WebsocketAuthConfig struct {
+	Mode       WebsocketAuthMode `json:"mode"`
+	HeaderName string            `json:"headerName,omitempty"`
+	Scheme     string            `json:"scheme,omitempty"`
+	SecretRef  string            `json:"secretRef,omitempty"`
+}
+
+type WebsocketConfig struct {
+	Subprotocols []string             `json:"subprotocols,omitempty"`
+	Auth         *WebsocketAuthConfig `json:"auth,omitempty"`
+}
+
+type WebsocketAuthSummary struct {
+	Mode          WebsocketAuthMode `json:"mode,omitempty"`
+	HeaderName    string            `json:"headerName,omitempty"`
+	Scheme        string            `json:"scheme,omitempty"`
+	SecretRef     string            `json:"secretRef,omitempty"`
+	Configured    bool              `json:"configured"`
+	Resolved      bool              `json:"resolved"`
+	BlockedReason string            `json:"blockedReason,omitempty"`
 }
 
 type Tool struct {
@@ -163,13 +219,14 @@ type Declaration struct {
 
 type ServerResource struct {
 	Server
-	State                  ServerState        `json:"state"`
-	SecretSummary          []SecretSummary    `json:"secretSummary,omitempty"`
-	ToolCount              int                `json:"toolCount"`
-	Tools                  []ToolResource     `json:"tools,omitempty"`
-	TransportConfigSummary string             `json:"transportConfigSummary,omitempty"`
-	AvailabilityStatus     AvailabilityStatus `json:"availabilityStatus,omitempty"`
-	AvailabilityReason     string             `json:"availabilityReason,omitempty"`
+	State                  ServerState           `json:"state"`
+	SecretSummary          []SecretSummary       `json:"secretSummary,omitempty"`
+	ToolCount              int                   `json:"toolCount"`
+	Tools                  []ToolResource        `json:"tools,omitempty"`
+	TransportConfigSummary string                `json:"transportConfigSummary,omitempty"`
+	WebsocketAuthSummary   *WebsocketAuthSummary `json:"websocketAuthSummary,omitempty"`
+	AvailabilityStatus     AvailabilityStatus    `json:"availabilityStatus,omitempty"`
+	AvailabilityReason     string                `json:"availabilityReason,omitempty"`
 }
 
 type ToolResource struct {
@@ -195,6 +252,7 @@ type CreateServerInput struct {
 	Command           string             `json:"command"`
 	Args              []string           `json:"args"`
 	Endpoint          string             `json:"endpoint,omitempty"`
+	WebsocketConfig   *WebsocketConfig   `json:"websocketConfig,omitempty"`
 	WorkingDir        string             `json:"workingDir"`
 	SecretRefs        []string           `json:"secretRefs"`
 	AutoRestart       bool               `json:"autoRestart"`
@@ -203,18 +261,19 @@ type CreateServerInput struct {
 }
 
 type UpdateServerInput struct {
-	DisplayName      *string        `json:"displayName,omitempty"`
-	Enabled          *bool          `json:"enabled,omitempty"`
-	SandboxProfileID *string        `json:"sandboxProfileId,omitempty"`
-	DeclarationID    *string        `json:"declarationId,omitempty"`
-	Declaration      *Declaration   `json:"declaration,omitempty"`
-	TransportKind    *TransportKind `json:"transportKind,omitempty"`
-	Command          *string        `json:"command,omitempty"`
-	Args             []string       `json:"args,omitempty"`
-	Endpoint         *string        `json:"endpoint,omitempty"`
-	WorkingDir       *string        `json:"workingDir,omitempty"`
-	SecretRefs       []string       `json:"secretRefs,omitempty"`
-	AutoRestart      *bool          `json:"autoRestart,omitempty"`
+	DisplayName      *string          `json:"displayName,omitempty"`
+	Enabled          *bool            `json:"enabled,omitempty"`
+	SandboxProfileID *string          `json:"sandboxProfileId,omitempty"`
+	DeclarationID    *string          `json:"declarationId,omitempty"`
+	Declaration      *Declaration     `json:"declaration,omitempty"`
+	TransportKind    *TransportKind   `json:"transportKind,omitempty"`
+	Command          *string          `json:"command,omitempty"`
+	Args             []string         `json:"args,omitempty"`
+	Endpoint         *string          `json:"endpoint,omitempty"`
+	WebsocketConfig  *WebsocketConfig `json:"websocketConfig,omitempty"`
+	WorkingDir       *string          `json:"workingDir,omitempty"`
+	SecretRefs       []string         `json:"secretRefs,omitempty"`
+	AutoRestart      *bool            `json:"autoRestart,omitempty"`
 }
 
 type UpdateExposureInput struct {

@@ -190,6 +190,9 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/mcp/servers", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleMCPServers(deps.MCP, w, r)
 	}))
+	mux.HandleFunc("/v1/mcp/transports", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMCPTransports(deps.MCP, w, r)
+	}))
 	mux.HandleFunc("/v1/mcp/servers/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleMCPServerRoutes(deps.MCP, w, r)
 	}))
@@ -1829,6 +1832,18 @@ func handleMCPServers(manager *mcp.Manager, w http.ResponseWriter, r *http.Reque
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+func handleMCPTransports(manager *mcp.Manager, w http.ResponseWriter, r *http.Request) {
+	if manager == nil {
+		writeError(w, http.StatusInternalServerError, "mcp manager is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, ListResponse[mcp.TransportCapability]{Items: manager.ListTransportCapabilities()})
 }
 
 func handleMCPCatalog(manager *mcp.Manager, w http.ResponseWriter, r *http.Request) {

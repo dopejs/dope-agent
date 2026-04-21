@@ -72,6 +72,8 @@ For MCP:
   both paths converge on the same daemon-managed MCP server resource and audit history
 - `streamable-http` transport health and failure state stay explicit beside existing stdio
   subprocess lifecycle semantics
+- `websocket` transport capability, auth readiness, reconnect state, and terminal recovery
+  truth stay explicit beside existing stdio and `streamable-http` semantics
 - operator-visible MCP resources still project declaration-backed provenance and redacted secret-scope summaries
 - operator-visible MCP tool-call output, history, and event payloads remain redacted when
   installed or invoked MCP servers touch secret-backed configuration

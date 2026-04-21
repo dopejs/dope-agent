@@ -143,6 +143,8 @@ Current daemon status:
 - MCP stdio transport lifecycle runs through sandbox-backed subprocess execution
 - MCP `streamable-http` is available as the first remote transport without creating a second
   unmanaged execution plane
+- MCP `websocket` is now available as the first additional long-lived session transport,
+  with secret-ref-backed header auth and no anonymous fallback path
 - tool exposure is explicit per tool and runtime surface instead of server-wide implicit enablement
 - MCP tool invocation now reuses the existing `/v1/runs/.../tool-calls` runtime plane with
   approval, provenance, and audit continuity
@@ -153,6 +155,8 @@ Current daemon status:
 - restart recovery restores enabled MCP servers through persisted daemon state
 - MCP session bootstrap now times out explicitly so daemon start and server restore do not
   hang indefinitely on an unresponsive stdio or remote server
+- websocket disconnect recovery is daemon-managed, bounded, and projected back through MCP
+  server state and event history instead of a transport-specific background loop
 
 Follow-on work should now split rather than extending the completed MCP slice:
 

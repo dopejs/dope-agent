@@ -45,18 +45,26 @@ func NewStdioTransport() Transport {
 }
 
 type transportMux struct {
-	stdio  Transport
-	remote Transport
+	stdio     Transport
+	remote    Transport
+	websocket Transport
 }
 
-func NewTransportMux(stdio Transport, remote Transport) Transport {
+func NewTransportMux(stdio Transport, remote Transport, websocketTransport ...Transport) Transport {
 	if stdio == nil {
 		stdio = NewStdioTransport()
 	}
 	if remote == nil {
 		remote = NewStreamableHTTPTransport(nil)
 	}
-	return &transportMux{stdio: stdio, remote: remote}
+	var websocketImpl Transport
+	if len(websocketTransport) > 0 {
+		websocketImpl = websocketTransport[0]
+	}
+	if websocketImpl == nil {
+		websocketImpl = NewWebsocketTransport(nil)
+	}
+	return &transportMux{stdio: stdio, remote: remote, websocket: websocketImpl}
 }
 
 func (t *transportMux) Open(ctx context.Context, server Server, pipes SessionPipes) (Session, error) {
@@ -65,6 +73,8 @@ func (t *transportMux) Open(ctx context.Context, server Server, pipes SessionPip
 		return t.stdio.Open(ctx, server, pipes)
 	case TransportKindStreamableHTTP:
 		return t.remote.Open(ctx, server, pipes)
+	case TransportKindWebsocket:
+		return t.websocket.Open(ctx, server, pipes)
 	default:
 		return nil, ErrTransportUnavailable
 	}

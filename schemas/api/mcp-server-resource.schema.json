@@ -92,13 +92,34 @@
     "sandboxProfileId": { "type": "string" },
     "declarationId": { "type": "string" },
     "declaration": { "$ref": "./mcp-declaration.schema.json" },
-    "transportKind": { "type": "string", "enum": ["stdio", "streamable-http"] },
+    "transportKind": { "type": "string", "enum": ["stdio", "streamable-http", "websocket"] },
     "command": { "type": "string" },
     "args": {
       "type": "array",
       "items": { "type": "string" }
     },
     "endpoint": { "type": "string" },
+    "websocketConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subprotocols": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "auth": {
+          "type": "object",
+          "required": ["mode", "secretRef"],
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["bearer_header", "header"] },
+            "headerName": { "type": "string" },
+            "scheme": { "type": "string" },
+            "secretRef": { "type": "string" }
+          }
+        }
+      }
+    },
     "workingDir": { "type": "string" },
     "secretRefs": {
       "type": "array",
@@ -121,16 +142,35 @@
         "healthReason": { "type": "string" },
         "failureCount": { "type": "integer", "minimum": 0 },
         "restartCount": { "type": "integer", "minimum": 0 },
+        "lastSessionId": { "type": "string" },
+        "lastRecoveryAt": { "type": "string", "format": "date-time" },
+        "lastRecoveryClass": { "type": "string" },
+        "reconnectAttemptCount": { "type": "integer", "minimum": 0 },
         "lastStartedAt": { "type": "string", "format": "date-time" },
         "lastStoppedAt": { "type": "string", "format": "date-time" },
         "lastHeartbeatAt": { "type": "string", "format": "date-time" },
         "nextRestartAt": { "type": "string", "format": "date-time" },
+        "nextReconnectAt": { "type": "string", "format": "date-time" },
         "lastExecutionId": { "type": "string" },
         "lastPolicyRecordId": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
     "transportConfigSummary": { "type": "string" },
+    "websocketAuthSummary": {
+      "type": "object",
+      "required": ["configured", "resolved"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string", "enum": ["bearer_header", "header"] },
+        "headerName": { "type": "string" },
+        "scheme": { "type": "string" },
+        "secretRef": { "type": "string" },
+        "configured": { "type": "boolean" },
+        "resolved": { "type": "boolean" },
+        "blockedReason": { "type": "string" }
+      }
+    },
     "availabilityStatus": { "type": "string", "enum": ["ready", "blocked", "unavailable", "unsupported"] },
     "availabilityReason": { "type": "string" },
     "secretSummary": {
@@ -164,6 +204,10 @@
     {
       "properties": { "transportKind": { "const": "streamable-http" } },
       "required": ["endpoint"]
+    },
+    {
+      "properties": { "transportKind": { "const": "websocket" } },
+      "required": ["endpoint", "websocketConfig"]
     }
   ]
 }

@@ -74,8 +74,9 @@ type ConfigConnectorsResponse struct {
 }
 
 type ConfigMCPResponse struct {
-	Servers []mcp.ServerResource `json:"servers"`
-	Catalog []mcp.CatalogEntry   `json:"catalog,omitempty"`
+	Servers    []mcp.ServerResource      `json:"servers"`
+	Catalog    []mcp.CatalogEntry        `json:"catalog,omitempty"`
+	Transports []mcp.TransportCapability `json:"transports"`
 }
 
 type ConfigSandboxResponse struct {
@@ -344,8 +345,9 @@ func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager, sandboxMana
 			},
 		},
 		MCP: ConfigMCPResponse{
-			Servers: listMCPServersForConfig(mcpManager),
-			Catalog: listMCPCatalogForConfig(mcpManager),
+			Servers:    listMCPServersForConfig(mcpManager),
+			Catalog:    listMCPCatalogForConfig(mcpManager),
+			Transports: listMCPTransportsForConfig(mcpManager),
 		},
 		Sandbox: ConfigSandboxResponse{
 			Backends: listSandboxBackendsForConfig(sandboxManager),
@@ -366,6 +368,13 @@ func listMCPCatalogForConfig(manager *mcp.Manager) []mcp.CatalogEntry {
 		return []mcp.CatalogEntry{}
 	}
 	return manager.ListCatalog()
+}
+
+func listMCPTransportsForConfig(manager *mcp.Manager) []mcp.TransportCapability {
+	if manager == nil {
+		return []mcp.TransportCapability{}
+	}
+	return manager.ListTransportCapabilities()
 }
 
 func listSandboxBackendsForConfig(manager *sandbox.Manager) []sandbox.BackendCapabilityProfile {

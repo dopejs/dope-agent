@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/gorilla/websocket"
 )
 
 func TestMCPHelperProcess(t *testing.T) {
@@ -769,6 +771,325 @@ func TestManagerSupportsStreamableHTTPLifecycleAndInvocation(t *testing.T) {
 	}
 }
 
+func TestManagerSupportsWebsocketLifecycleAndInvocation(t *testing.T) {
+	manager, _ := newTestManager(t)
+	ctx := context.Background()
+
+	writeMCPSecretsFileForTest(t, manager.cfg.DataDir, map[string]string{
+		"MCP_WS_TOKEN": "secret-token",
+	})
+	remote := newTestWebsocketMCPServer(t, "secret-token")
+	defer remote.Close()
+
+	server, _, err := manager.CreateServer(ctx, CreateServerInput{
+		ServerID:         "websocket-remote-mcp",
+		DisplayName:      "Websocket Remote MCP",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:websocket-remote-mcp:lifecycle.start",
+		TransportKind:    TransportKindWebsocket,
+		Endpoint:         remote.wsURL(),
+		WebsocketConfig: &WebsocketConfig{
+			Auth: &WebsocketAuthConfig{
+				Mode:      WebsocketAuthModeBearerHeader,
+				SecretRef: "MCP_WS_TOKEN",
+			},
+		},
+		SecretRefs:  []string{"MCP_WS_TOKEN"},
+		AutoRestart: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateServer returned error: %v", err)
+	}
+	if server.TransportKind != TransportKindWebsocket {
+		t.Fatalf("expected websocket server, got %+v", server)
+	}
+
+	started, err := manager.Start(ctx, "websocket-remote-mcp", "manager-test")
+	if err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	if started.Server.State.Status != LifecycleStatusHealthy || started.ExecutionID != "" {
+		t.Fatalf("expected healthy websocket server without sandbox execution, got %+v", started)
+	}
+	if started.Server.State.LastSessionID == "" {
+		t.Fatalf("expected websocket start to persist last session id, got %+v", started.Server.State)
+	}
+
+	if _, err := manager.UpdateToolExposure(ctx, "websocket-remote-mcp", "lookup", UpdateExposureInput{RuntimeSurface: "chat", ExposureMode: ExposureModeAllow, Active: true}); err != nil {
+		t.Fatalf("UpdateToolExposure returned error: %v", err)
+	}
+	authz, err := manager.AuthorizeTool(ctx, "websocket-remote-mcp", "lookup", AuthorizeToolInput{RuntimeSurface: "chat", RequestedBy: "manager-test"})
+	if err != nil {
+		t.Fatalf("AuthorizeTool returned error: %v", err)
+	}
+	if authz.Status != ToolAuthorizationStatusAllowed {
+		t.Fatalf("expected allowed authorization, got %+v", authz)
+	}
+	result, err := manager.CallTool(ctx, "websocket-remote-mcp", "lookup", map[string]any{"query": "hello"}, authz)
+	if err != nil {
+		t.Fatalf("CallTool returned error: %v", err)
+	}
+	if result.FailureClass != "" || result.SessionID == "" {
+		t.Fatalf("unexpected websocket call result: %+v", result)
+	}
+}
+
+func TestManagerReconnectsWebsocketAfterDisconnect(t *testing.T) {
+	manager, _ := newTestManager(t)
+	ctx := context.Background()
+
+	restoreTimeout := SetSessionStartTimeoutForTest(250 * time.Millisecond)
+	defer restoreTimeout()
+	restoreBackoff := SetReconnectBackoffDelayForTest(25 * time.Millisecond)
+	defer restoreBackoff()
+	writeMCPSecretsFileForTest(t, manager.cfg.DataDir, map[string]string{
+		"MCP_WS_TOKEN": "secret-token",
+	})
+	remote := newTestWebsocketMCPServer(t, "secret-token")
+	defer remote.Close()
+
+	if _, _, err := manager.CreateServer(ctx, CreateServerInput{
+		ServerID:         "websocket-reconnect",
+		DisplayName:      "Websocket Reconnect",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:websocket-reconnect:lifecycle.start",
+		TransportKind:    TransportKindWebsocket,
+		Endpoint:         remote.wsURL(),
+		WebsocketConfig: &WebsocketConfig{
+			Auth: &WebsocketAuthConfig{
+				Mode:      WebsocketAuthModeBearerHeader,
+				SecretRef: "MCP_WS_TOKEN",
+			},
+		},
+		SecretRefs:  []string{"MCP_WS_TOKEN"},
+		AutoRestart: true,
+	}); err != nil {
+		t.Fatalf("CreateServer returned error: %v", err)
+	}
+	if _, err := manager.Start(ctx, "websocket-reconnect", "manager-test"); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	waitForServerStatus(t, manager, "websocket-reconnect", LifecycleStatusHealthy)
+
+	remote.closeActive()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		resource, ok := manager.GetServerResource("websocket-reconnect")
+		if ok && resource.State.LastRecoveryClass == "reconnect_succeeded" && resource.State.Status == LifecycleStatusHealthy {
+			if resource.State.ReconnectAttemptCount != 0 {
+				t.Fatalf("expected reconnect attempt count to reset after successful recovery, got %+v", resource.State)
+			}
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	resource, _ := manager.GetServerResource("websocket-reconnect")
+	t.Fatalf("expected websocket reconnect success, got %+v", resource.State)
+}
+
+func TestManagerReconnectBudgetResetsPerDisconnectEpisode(t *testing.T) {
+	manager, _ := newTestManager(t)
+	ctx := context.Background()
+
+	restoreTimeout := SetSessionStartTimeoutForTest(250 * time.Millisecond)
+	defer restoreTimeout()
+	restoreBackoff := SetReconnectBackoffDelayForTest(25 * time.Millisecond)
+	defer restoreBackoff()
+	writeMCPSecretsFileForTest(t, manager.cfg.DataDir, map[string]string{
+		"MCP_WS_TOKEN": "secret-token",
+	})
+	remote := newTestWebsocketMCPServer(t, "secret-token")
+	defer remote.Close()
+
+	if _, _, err := manager.CreateServer(ctx, CreateServerInput{
+		ServerID:         "websocket-reconnect-reset",
+		DisplayName:      "Websocket Reconnect Reset",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:websocket-reconnect-reset:lifecycle.start",
+		TransportKind:    TransportKindWebsocket,
+		Endpoint:         remote.wsURL(),
+		WebsocketConfig: &WebsocketConfig{
+			Auth: &WebsocketAuthConfig{
+				Mode:      WebsocketAuthModeBearerHeader,
+				SecretRef: "MCP_WS_TOKEN",
+			},
+		},
+		SecretRefs:  []string{"MCP_WS_TOKEN"},
+		AutoRestart: true,
+	}); err != nil {
+		t.Fatalf("CreateServer returned error: %v", err)
+	}
+	if _, err := manager.Start(ctx, "websocket-reconnect-reset", "manager-test"); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	waitForServerStatus(t, manager, "websocket-reconnect-reset", LifecycleStatusHealthy)
+
+	for episode := 0; episode < 2; episode++ {
+		remote.closeActive()
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			resource, ok := manager.GetServerResource("websocket-reconnect-reset")
+			if ok && resource.State.LastRecoveryClass == "reconnect_succeeded" && resource.State.Status == LifecycleStatusHealthy {
+				if resource.State.ReconnectAttemptCount != 0 {
+					t.Fatalf("expected reconnect attempt count to reset after episode %d, got %+v", episode+1, resource.State)
+				}
+				break
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+	}
+}
+
+func TestManagerListsTransportCapabilitiesAndWebsocketServerTruth(t *testing.T) {
+	manager, _ := newTestManager(t)
+	ctx := context.Background()
+
+	capabilities := manager.ListTransportCapabilities()
+	if len(capabilities) < 3 {
+		t.Fatalf("expected stdio, streamable-http, and websocket capability records, got %+v", capabilities)
+	}
+	byKind := map[TransportKind]TransportCapability{}
+	for _, capability := range capabilities {
+		byKind[capability.TransportKind] = capability
+		if capability.EnvironmentScope != string(manager.cfg.Environment) {
+			t.Fatalf("expected environment-scoped capability, got %+v", capability)
+		}
+	}
+	if byKind[TransportKindStdio].AvailabilityStatus != AvailabilityStatusReady {
+		t.Fatalf("expected stdio capability to be ready, got %+v", byKind[TransportKindStdio])
+	}
+	if byKind[TransportKindStreamableHTTP].AvailabilityStatus != AvailabilityStatusReady {
+		t.Fatalf("expected streamable-http capability to be ready, got %+v", byKind[TransportKindStreamableHTTP])
+	}
+	websocketCapability, ok := byKind[TransportKindWebsocket]
+	if !ok {
+		t.Fatalf("expected websocket capability record, got %+v", capabilities)
+	}
+	if websocketCapability.AvailabilityStatus != AvailabilityStatusReady {
+		t.Fatalf("expected websocket capability to be ready on the current host, got %+v", websocketCapability)
+	}
+	if websocketCapability.HealthStatus != TransportHealthStatusHealthy {
+		t.Fatalf("expected healthy websocket capability, got %+v", websocketCapability)
+	}
+	if !websocketCapability.DaemonManagedReconnect {
+		t.Fatalf("expected websocket capability to advertise daemon-managed reconnect, got %+v", websocketCapability)
+	}
+	if len(websocketCapability.SupportedAuthKinds) == 0 {
+		t.Fatalf("expected websocket capability to advertise supported auth kinds, got %+v", websocketCapability)
+	}
+
+	writeMCPSecretsFileForTest(t, manager.cfg.DataDir, map[string]string{})
+	resource, _, err := manager.CreateServer(ctx, CreateServerInput{
+		ServerID:         "websocket-mcp",
+		DisplayName:      "Websocket MCP",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:websocket-mcp:lifecycle.start",
+		TransportKind:    TransportKindWebsocket,
+		Endpoint:         "ws://127.0.0.1:19234/mcp",
+		WebsocketConfig: &WebsocketConfig{
+			Auth: &WebsocketAuthConfig{
+				Mode:      WebsocketAuthModeBearerHeader,
+				SecretRef: "MCP_WS_TOKEN",
+			},
+		},
+		SecretRefs:  []string{"MCP_WS_TOKEN"},
+		AutoRestart: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateServer(websocket) returned error: %v", err)
+	}
+	if resource.TransportKind != TransportKindWebsocket {
+		t.Fatalf("expected websocket server resource, got %+v", resource)
+	}
+	if resource.WebsocketAuthSummary == nil {
+		t.Fatalf("expected websocket auth summary, got %+v", resource)
+	}
+	if resource.WebsocketAuthSummary.SecretRef != "MCP_WS_TOKEN" {
+		t.Fatalf("expected redacted auth summary to retain secret ref only, got %+v", resource.WebsocketAuthSummary)
+	}
+	if resource.WebsocketAuthSummary.Resolved {
+		t.Fatalf("expected unresolved secret to stay unresolved, got %+v", resource.WebsocketAuthSummary)
+	}
+	if resource.AvailabilityStatus != AvailabilityStatusBlocked {
+		t.Fatalf("expected websocket server with missing secret to be blocked, got %+v", resource)
+	}
+	if !strings.Contains(resource.TransportConfigSummary, "ws://127.0.0.1:19234/mcp") {
+		t.Fatalf("expected websocket endpoint in transport summary, got %+v", resource)
+	}
+}
+
+func TestManagerRejectsWebsocketEndpointWithInlineSecretMaterial(t *testing.T) {
+	manager, _ := newTestManager(t)
+	ctx := context.Background()
+
+	_, _, err := manager.CreateServer(ctx, CreateServerInput{
+		ServerID:         "websocket-inline-secret",
+		DisplayName:      "Websocket Inline Secret",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:websocket-inline-secret:lifecycle.start",
+		TransportKind:    TransportKindWebsocket,
+		Endpoint:         "wss://user:secret-token@example.com/mcp?token=secret-token",
+		WebsocketConfig: &WebsocketConfig{
+			Auth: &WebsocketAuthConfig{
+				Mode:      WebsocketAuthModeBearerHeader,
+				SecretRef: "MCP_WS_TOKEN",
+			},
+		},
+		SecretRefs:  []string{"MCP_WS_TOKEN"},
+		AutoRestart: true,
+	})
+	if err == nil {
+		t.Fatal("expected websocket endpoint with inline secret material to be rejected")
+	}
+	if !strings.Contains(err.Error(), "websocket endpoint") {
+		t.Fatalf("expected websocket endpoint validation error, got %v", err)
+	}
+}
+
+func TestManagerSanitizesLegacyWebsocketEndpointProjection(t *testing.T) {
+	manager, _ := newTestManager(t)
+
+	server := Server{
+		ServerID:          "legacy-websocket-mcp",
+		DisplayName:       "Legacy Websocket MCP",
+		Enabled:           true,
+		SandboxProfileID:  sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:     "mcp_server:legacy-websocket-mcp:lifecycle.start",
+		Declaration:       Declaration{Active: true},
+		TransportKind:     TransportKindWebsocket,
+		Endpoint:          "wss://user:secret-token@example.com/mcp?token=secret-token",
+		WebsocketConfig:   &WebsocketConfig{Auth: &WebsocketAuthConfig{Mode: WebsocketAuthModeBearerHeader, SecretRef: "MCP_WS_TOKEN"}},
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
+		EnvironmentScope:  string(manager.cfg.Environment),
+		SecretRefs:        []string{"MCP_WS_TOKEN"},
+		AutoRestart:       true,
+	}
+
+	manager.mu.Lock()
+	manager.servers[server.ServerID] = server
+	manager.serverIDs = append(manager.serverIDs, server.ServerID)
+	manager.states[server.ServerID] = defaultStateForServer(server)
+	manager.mu.Unlock()
+
+	resource, ok := manager.GetServerResource(server.ServerID)
+	if !ok {
+		t.Fatal("expected legacy websocket resource")
+	}
+	if strings.Contains(resource.Endpoint, "secret-token") || strings.Contains(resource.Endpoint, "user:") {
+		t.Fatalf("expected websocket endpoint projection to redact inline secret material, got %+v", resource)
+	}
+	if strings.Contains(resource.TransportConfigSummary, "secret-token") || strings.Contains(resource.TransportConfigSummary, "user:") {
+		t.Fatalf("expected websocket transport summary to redact inline secret material, got %+v", resource)
+	}
+}
+
 func TestInstallCatalogEntryBlocksManualServerIDCollision(t *testing.T) {
 	manager, _ := newTestManager(t)
 	ctx := context.Background()
@@ -941,4 +1262,69 @@ func writeHelperError(id string, code int, message string) {
 func writeHelperFrame(value any) {
 	payload, _ := json.Marshal(value)
 	_, _ = fmt.Fprintf(os.Stdout, "Content-Length: %d\r\n\r\n%s", len(payload), payload)
+}
+
+type testWebsocketMCPServer struct {
+	server *httptest.Server
+	mu     sync.Mutex
+	conn   *websocket.Conn
+}
+
+func newTestWebsocketMCPServer(t *testing.T, token string) *testWebsocketMCPServer {
+	t.Helper()
+
+	ws := &testWebsocketMCPServer{}
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := strings.TrimSpace(r.Header.Get("Authorization")); got != "Bearer "+token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("upgrade websocket: %v", err)
+		}
+		defer conn.Close()
+		ws.mu.Lock()
+		ws.conn = conn
+		ws.mu.Unlock()
+
+		for {
+			var req rpcRequest
+			if err := conn.ReadJSON(&req); err != nil {
+				return
+			}
+			switch req.Method {
+			case "initialize":
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"protocolVersion": "2024-11-05", "capabilities": map[string]any{}, "serverInfo": map[string]any{"name": "ws-test-mcp", "version": "1.0.0"}}})
+			case "notifications/initialized":
+			case "tools/list":
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"tools": []map[string]any{{"name": "lookup", "title": "Lookup", "description": "Lookup tool", "inputSchema": map[string]any{"type": "object"}}}}})
+			case "tools/call":
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"content": []map[string]any{{"type": "text", "text": "websocket ok"}}}})
+			default:
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"code": -32601, "message": "method not found"}})
+			}
+		}
+	}))
+	ws.server = server
+	return ws
+}
+
+func (s *testWebsocketMCPServer) Close() {
+	s.server.Close()
+}
+
+func (s *testWebsocketMCPServer) wsURL() string {
+	return "ws" + strings.TrimPrefix(s.server.URL, "http") + "/mcp"
+}
+
+func (s *testWebsocketMCPServer) closeActive() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conn != nil {
+		_ = s.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, "test disconnect"), time.Now().Add(time.Second))
+		_ = s.conn.Close()
+		s.conn = nil
+	}
 }

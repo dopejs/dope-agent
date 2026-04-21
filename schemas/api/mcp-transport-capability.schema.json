@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mcp-transport-capability.schema.json",
+  "title": "MCPTransportCapability",
+  "type": "object",
+  "required": [
+    "transportKind",
+    "availabilityStatus",
+    "healthStatus",
+    "environmentScope",
+    "daemonManagedReconnect"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "transportKind": { "type": "string", "enum": ["stdio", "streamable-http", "websocket"] },
+    "availabilityStatus": { "type": "string", "enum": ["ready", "blocked", "unavailable", "unsupported"] },
+    "healthStatus": { "type": "string", "enum": ["healthy", "degraded"] },
+    "reason": { "type": "string" },
+    "prerequisites": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "supportedAuthKinds": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["bearer_header", "header"] }
+    },
+    "daemonManagedReconnect": { "type": "boolean" },
+    "recoverySummary": { "type": "string" }
+  }
+}

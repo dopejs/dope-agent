@@ -1094,7 +1094,7 @@ Task definition of done:
 
 ## Roadmap 23: Additional MCP Transports
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/008-additional-mcp-transports.md](../specs/008-additional-mcp-transports.md)
 
@@ -1162,6 +1162,28 @@ Task definition of done:
 - MCP supports more than two real transport families without splitting into multiple control planes
 - transport readiness, failure, and recovery semantics remain inspectable and auditable
 - remote MCP support can expand without weakening the current runtime or policy model
+
+### Implemented In This Slice
+
+- `GET /v1/mcp/transports` and additive `/v1/config.mcp.transports[]` now expose
+  operator-visible capability truth for `stdio`, `streamable-http`, and `websocket`
+- MCP server create, update, inspection, and runtime tool-call surfaces now support
+  `transportKind="websocket"` without introducing a transport-specific control path
+- `websocket` auth is explicit and secret-ref-backed through `websocketConfig.auth`; inline
+  secret material and anonymous fallback were intentionally not added
+- websocket-originated tool calls persist `mcpTransportKind="websocket"` and stay on the
+  existing `/v1/runs/.../tool-calls` runtime plane
+- daemon-managed websocket reconnect is bounded, persisted, and auditable through
+  reconnect-scheduled, reconnect-completed, and reconnect-failed events plus MCP server
+  state projection
+- restore preserves websocket session and recovery truth across daemon restart instead of
+  collapsing reconnect or restore failure into generic lifecycle noise
+- manual verification in `DOPE_ENV=test` on 2026-04-21 covered:
+  - under-5-minute operator inspection using `GET /v1/mcp/transports`,
+    `GET /v1/config`, and `GET /v1/mcp/servers/{id}`
+  - truthful blocked websocket server creation when `MCP_WS_TOKEN` is unavailable in test
+  - successful real websocket server start, tool discovery, and runtime tool invocation
+    through the repo-owned helper server on localhost
 
 ### Explicitly Out Of Scope
 

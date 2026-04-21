@@ -30,7 +30,7 @@
             "enabled": { "type": "boolean" },
             "sandboxProfileId": { "type": "string" },
             "declarationId": { "type": "string" },
-            "transportKind": { "type": "string", "enum": ["stdio", "streamable-http"] },
+            "transportKind": { "type": "string", "enum": ["stdio", "streamable-http", "websocket"] },
             "availabilityStatus": { "type": "string", "enum": ["ready", "blocked", "unavailable", "unsupported"] },
             "availabilityReason": { "type": "string" },
             "created": { "type": "boolean" }

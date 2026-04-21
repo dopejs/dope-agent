@@ -182,12 +182,20 @@
     },
     "mcp": {
       "type": "object",
-      "required": ["servers"],
+      "required": ["servers", "transports"],
       "additionalProperties": false,
       "properties": {
         "servers": {
           "type": "array",
           "items": { "$ref": "./mcp-server-resource.schema.json" }
+        },
+        "catalog": {
+          "type": "array",
+          "items": { "$ref": "./mcp-catalog-entry.schema.json" }
+        },
+        "transports": {
+          "type": "array",
+          "items": { "$ref": "./mcp-transport-capability.schema.json" }
         }
       }
     },

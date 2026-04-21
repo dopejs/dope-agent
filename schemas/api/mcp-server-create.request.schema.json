@@ -20,13 +20,34 @@
     "sandboxProfileId": { "type": "string" },
     "declarationId": { "type": "string" },
     "declaration": { "$ref": "./mcp-declaration.schema.json" },
-    "transportKind": { "type": "string", "enum": ["stdio", "streamable-http"] },
+    "transportKind": { "type": "string", "enum": ["stdio", "streamable-http", "websocket"] },
     "command": { "type": "string" },
     "args": {
       "type": "array",
       "items": { "type": "string" }
     },
     "endpoint": { "type": "string" },
+    "websocketConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subprotocols": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "auth": {
+          "type": "object",
+          "required": ["mode", "secretRef"],
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["bearer_header", "header"] },
+            "headerName": { "type": "string" },
+            "scheme": { "type": "string" },
+            "secretRef": { "type": "string" }
+          }
+        }
+      }
+    },
     "workingDir": { "type": "string" },
     "secretRefs": {
       "type": "array",
@@ -42,6 +63,10 @@
     {
       "properties": { "transportKind": { "const": "streamable-http" } },
       "required": ["endpoint"]
+    },
+    {
+      "properties": { "transportKind": { "const": "websocket" } },
+      "required": ["endpoint", "websocketConfig"]
     }
   ]
 }

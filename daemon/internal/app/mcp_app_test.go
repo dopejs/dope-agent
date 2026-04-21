@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +26,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/gorilla/websocket"
 )
 
 func TestAppMCPHelperProcess(t *testing.T) {
@@ -187,6 +190,169 @@ func TestRecoverPersistedStateDoesNotHangOnUnresponsiveMCPServer(t *testing.T) {
 	}
 }
 
+func TestRecoverPersistedStateRestoresWebsocketMCPServers(t *testing.T) {
+	remote := newAppWebsocketMCPServer(t, "secret-token")
+	defer remote.Close()
+
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	writeAppMCPSecretsFileForTest(t, dataDir, map[string]string{
+		"MCP_WS_TOKEN": "secret-token",
+	})
+	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	eventBus := events.NewBus()
+	defer eventBus.Close()
+	policyEngine := policy.NewEngine()
+	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxes.Close(context.Background()) }()
+
+	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewTransportMux(nil, nil))
+	if _, _, err := mcpManager.CreateServer(context.Background(), mcp.CreateServerInput{
+		ServerID:         "restored-websocket-mcp",
+		DisplayName:      "Restored Websocket MCP",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:restored-websocket-mcp:lifecycle.start",
+		TransportKind:    mcp.TransportKindWebsocket,
+		Endpoint:         remote.wsURL(),
+		WebsocketConfig: &mcp.WebsocketConfig{
+			Auth: &mcp.WebsocketAuthConfig{
+				Mode:      mcp.WebsocketAuthModeBearerHeader,
+				SecretRef: "MCP_WS_TOKEN",
+			},
+		},
+		SecretRefs:  []string{"MCP_WS_TOKEN"},
+		AutoRestart: true,
+	}); err != nil {
+		t.Fatalf("CreateServer returned error: %v", err)
+	}
+
+	restoredRouter := router.NewSessionRouter()
+	restoredRuntime := runtime.NewManager()
+	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredEventBus := events.NewBus()
+	defer restoredEventBus.Close()
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+	restoredProviders := providers.NewManager(config.Config{}, llm.NewDispatcher())
+	restoredSandboxes := sandbox.NewManager(cfg, sqliteStore, restoredEventBus, restoredPolicy)
+	defer func() { _ = restoredSandboxes.Close(context.Background()) }()
+	restoredMCP := mcp.NewManager(cfg, sqliteStore, restoredEventBus, restoredSandboxes, restoredPolicy, mcp.NewTransportMux(nil, nil))
+
+	if err := recoverPersistedState(context.Background(), sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+	resource, ok := restoredMCP.GetServerResource("restored-websocket-mcp")
+	if !ok {
+		t.Fatal("expected restored websocket mcp server resource")
+	}
+	if resource.State.Status != mcp.LifecycleStatusHealthy {
+		t.Fatalf("expected restored websocket mcp server to be healthy, got %+v", resource)
+	}
+	if resource.State.LastRecoveryClass != "restore_succeeded" {
+		t.Fatalf("expected restored websocket mcp server to record restore_succeeded truth, got %+v", resource.State)
+	}
+	items, err := sqliteStore.ListEvents(context.Background(), events.Filter{Category: "mcp"})
+	if err != nil {
+		t.Fatalf("ListEvents returned error: %v", err)
+	}
+	found := false
+	for _, item := range items {
+		if item.Name == "mcp.server_restore_completed" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected restore-completed event in history, got %+v", items)
+	}
+}
+
+func TestRecoverPersistedStateRecordsWebsocketRestoreFailureTruth(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	writeAppMCPSecretsFileForTest(t, dataDir, map[string]string{
+		"MCP_WS_TOKEN": "secret-token",
+	})
+	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	eventBus := events.NewBus()
+	defer eventBus.Close()
+	policyEngine := policy.NewEngine()
+	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxes.Close(context.Background()) }()
+
+	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewTransportMux(nil, nil))
+	if _, _, err := mcpManager.CreateServer(context.Background(), mcp.CreateServerInput{
+		ServerID:         "restore-failed-websocket-mcp",
+		DisplayName:      "Restore Failed Websocket MCP",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:restore-failed-websocket-mcp:lifecycle.start",
+		TransportKind:    mcp.TransportKindWebsocket,
+		Endpoint:         "ws://127.0.0.1:1/mcp",
+		WebsocketConfig: &mcp.WebsocketConfig{
+			Auth: &mcp.WebsocketAuthConfig{
+				Mode:      mcp.WebsocketAuthModeBearerHeader,
+				SecretRef: "MCP_WS_TOKEN",
+			},
+		},
+		SecretRefs:  []string{"MCP_WS_TOKEN"},
+		AutoRestart: true,
+	}); err != nil {
+		t.Fatalf("CreateServer returned error: %v", err)
+	}
+
+	restoredRouter := router.NewSessionRouter()
+	restoredRuntime := runtime.NewManager()
+	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredEventBus := events.NewBus()
+	defer restoredEventBus.Close()
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+	restoredProviders := providers.NewManager(config.Config{}, llm.NewDispatcher())
+	restoredSandboxes := sandbox.NewManager(cfg, sqliteStore, restoredEventBus, restoredPolicy)
+	defer func() { _ = restoredSandboxes.Close(context.Background()) }()
+	restoredMCP := mcp.NewManager(cfg, sqliteStore, restoredEventBus, restoredSandboxes, restoredPolicy, mcp.NewTransportMux(nil, nil))
+
+	if err := recoverPersistedState(context.Background(), sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+	resource, ok := restoredMCP.GetServerResource("restore-failed-websocket-mcp")
+	if !ok {
+		t.Fatal("expected restore-failed websocket mcp server resource")
+	}
+	if resource.State.Status != mcp.LifecycleStatusFailed {
+		t.Fatalf("expected failed restore state, got %+v", resource.State)
+	}
+	if resource.State.LastRecoveryClass != "restore_failed" {
+		t.Fatalf("expected restore_failed truth, got %+v", resource.State)
+	}
+	items, err := sqliteStore.ListEvents(context.Background(), events.Filter{Category: "mcp"})
+	if err != nil {
+		t.Fatalf("ListEvents returned error: %v", err)
+	}
+	found := false
+	for _, item := range items {
+		if item.Name == "mcp.server_restore_failed" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected restore-failed event in history, got %+v", items)
+	}
+}
+
 func readAppHelperFrame(reader *bufio.Reader) ([]byte, error) {
 	length := -1
 	for {
@@ -233,4 +399,53 @@ func writeAppMCPSecretsFileForTest(t *testing.T, dataDir string, values map[stri
 	if err := os.WriteFile(filepath.Join(dataDir, "mcp-secrets.json"), payload, 0o600); err != nil {
 		t.Fatalf("write mcp secrets: %v", err)
 	}
+}
+
+type appWebsocketMCPServer struct {
+	server *httptest.Server
+}
+
+func newAppWebsocketMCPServer(t *testing.T, token string) *appWebsocketMCPServer {
+	t.Helper()
+
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.TrimSpace(r.Header.Get("Authorization")) != "Bearer "+token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("upgrade websocket: %v", err)
+		}
+		defer conn.Close()
+		for {
+			var req map[string]any
+			if err := conn.ReadJSON(&req); err != nil {
+				return
+			}
+			method, _ := req["method"].(string)
+			id := req["id"]
+			switch method {
+			case "initialize":
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"protocolVersion": "2024-11-05", "capabilities": map[string]any{}, "serverInfo": map[string]any{"name": "app-ws-mcp", "version": "1.0.0"}}})
+			case "notifications/initialized":
+			case "tools/list":
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"tools": []map[string]any{{"name": "lookup", "title": "Lookup", "description": "Lookup tool", "inputSchema": map[string]any{"type": "object"}}}}})
+			case "tools/call":
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"content": []map[string]any{{"type": "text", "text": "app websocket ok"}}}})
+			default:
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32601, "message": "method not found"}})
+			}
+		}
+	}))
+	return &appWebsocketMCPServer{server: server}
+}
+
+func (s *appWebsocketMCPServer) Close() {
+	s.server.Close()
+}
+
+func (s *appWebsocketMCPServer) wsURL() string {
+	return "ws" + strings.TrimPrefix(s.server.URL, "http") + "/mcp"
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
+	"github.com/gorilla/websocket"
 )
 
 func TestAPIMCPHelperProcess(t *testing.T) {
@@ -512,6 +513,188 @@ func TestMCPCatalogMaintenanceRoutes(t *testing.T) {
 	}
 }
 
+func TestMCPTransportInspectionRoutes(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	eventBus := events.NewBus()
+	defer eventBus.Close()
+
+	authManager := auth.NewManager()
+	policyEngine := policy.NewEngine()
+	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxes.Close(context.Background()) }()
+
+	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewTransportMux(mcp.NewStdioTransport(), nil))
+	server := NewServer(Dependencies{
+		Config:    cfg,
+		Logger:    telemetry.New("error").Slog(),
+		EventBus:  eventBus,
+		Auth:      authManager,
+		Policy:    policyEngine,
+		Sandboxes: sandboxes,
+		MCP:       mcpManager,
+		Store:     sqliteStore,
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "mcp-transports")
+
+	transportReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/transports", nil)
+	transportReq.Header.Set("Authorization", authHeader)
+	transportRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(transportRec, transportReq)
+	if transportRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for transport inspection, got %d body=%s", transportRec.Code, transportRec.Body.String())
+	}
+	var transports ListResponse[mcp.TransportCapability]
+	if err := json.Unmarshal(transportRec.Body.Bytes(), &transports); err != nil {
+		t.Fatalf("decode transport capability response: %v", err)
+	}
+	if len(transports.Items) < 3 {
+		t.Fatalf("expected additive transport capability records, got %+v", transports)
+	}
+
+	configReq := httptest.NewRequest(http.MethodGet, "/v1/config", nil)
+	configReq.Header.Set("Authorization", authHeader)
+	configRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(configRec, configReq)
+	if configRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for config, got %d body=%s", configRec.Code, configRec.Body.String())
+	}
+	var configResponse ConfigResponse
+	if err := json.Unmarshal(configRec.Body.Bytes(), &configResponse); err != nil {
+		t.Fatalf("decode config response: %v", err)
+	}
+	if len(configResponse.MCP.Transports) < 3 {
+		t.Fatalf("expected config to mirror transport capability records, got %+v", configResponse.MCP)
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers", strings.NewReader(`{"serverId":"websocket-mcp","displayName":"Websocket MCP","enabled":true,"sandboxProfileId":"subprocess_default","declarationId":"mcp_server:websocket-mcp:lifecycle.start","transportKind":"websocket","endpoint":"ws://127.0.0.1:19234/mcp","websocketConfig":{"auth":{"mode":"bearer_header","secretRef":"MCP_WS_TOKEN"}},"secretRefs":["MCP_WS_TOKEN"],"autoRestart":true}`))
+	createReq.Header.Set("Authorization", authHeader)
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for websocket server create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	var websocketServer mcp.ServerResource
+	if err := json.Unmarshal(createRec.Body.Bytes(), &websocketServer); err != nil {
+		t.Fatalf("decode websocket server resource: %v", err)
+	}
+	if websocketServer.TransportKind != mcp.TransportKindWebsocket {
+		t.Fatalf("expected websocket transport kind, got %+v", websocketServer)
+	}
+	if websocketServer.WebsocketAuthSummary == nil || websocketServer.WebsocketAuthSummary.SecretRef != "MCP_WS_TOKEN" {
+		t.Fatalf("expected redacted websocket auth summary, got %+v", websocketServer)
+	}
+	if websocketServer.AvailabilityStatus != mcp.AvailabilityStatusBlocked {
+		t.Fatalf("expected missing websocket auth secret to block the server, got %+v", websocketServer)
+	}
+}
+
+func TestMCPWebsocketRuntimeToolInvocation(t *testing.T) {
+	remote := newAPIWebsocketMCPServer(t, "secret-token")
+	defer remote.Close()
+
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	writeAPIMCPSecretsFileForTest(t, dataDir, map[string]string{
+		"MCP_WS_TOKEN": "secret-token",
+	})
+	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	eventBus := events.NewBus()
+	defer eventBus.Close()
+
+	authManager := auth.NewManager()
+	policyEngine := policy.NewEngine()
+	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxes.Close(context.Background()) }()
+
+	runtimeManager := runtime.NewManager()
+	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
+	sessionRouter := router.NewSessionRouter()
+	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, mcp.NewTransportMux(nil, nil))
+	server := NewServer(Dependencies{
+		Config:      cfg,
+		Logger:      telemetry.New("error").Slog(),
+		EventBus:    eventBus,
+		Auth:        authManager,
+		Policy:      policyEngine,
+		Router:      sessionRouter,
+		Runtime:     runtimeManager,
+		Checkpoints: checkpointManager,
+		Sandboxes:   sandboxes,
+		MCP:         mcpManager,
+		Store:       sqliteStore,
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "mcp-websocket-runtime")
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers", strings.NewReader(`{"serverId":"websocket-runtime","displayName":"Websocket Runtime","enabled":true,"sandboxProfileId":"subprocess_default","declarationId":"mcp_server:websocket-runtime:lifecycle.start","transportKind":"websocket","endpoint":"`+remote.wsURL()+`","websocketConfig":{"auth":{"mode":"bearer_header","secretRef":"MCP_WS_TOKEN"}},"secretRefs":["MCP_WS_TOKEN"],"autoRestart":true}`))
+	createReq.Header.Set("Authorization", authHeader)
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for websocket create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	startReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/websocket-runtime/start", nil)
+	startReq.Header.Set("Authorization", authHeader)
+	startRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(startRec, startReq)
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for websocket start, got %d body=%s", startRec.Code, startRec.Body.String())
+	}
+	var started mcp.LifecycleResponse
+	if err := json.Unmarshal(startRec.Body.Bytes(), &started); err != nil {
+		t.Fatalf("decode websocket lifecycle response: %v", err)
+	}
+	if started.Server.State.Status != mcp.LifecycleStatusHealthy {
+		t.Fatalf("expected healthy websocket lifecycle response, got %+v", started)
+	}
+
+	exposureReq := httptest.NewRequest(http.MethodPatch, "/v1/mcp/servers/websocket-runtime/tools/lookup", strings.NewReader(`{"runtimeSurface":"chat","exposureMode":"allow","active":true}`))
+	exposureReq.Header.Set("Authorization", authHeader)
+	exposureRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(exposureRec, exposureReq)
+	if exposureRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for websocket exposure update, got %d body=%s", exposureRec.Code, exposureRec.Body.String())
+	}
+
+	run, err := runtimeManager.CreateRun(runtime.CreateRunInput{Entrypoint: "chat", Goal: "invoke websocket mcp"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+	step, err := runtimeManager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "invoke websocket", Kind: "tool"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertStep(context.Background(), step); err != nil {
+		t.Fatalf("UpsertStep returned error: %v", err)
+	}
+
+	toolCallReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/steps/"+step.StepID+"/tool-calls", strings.NewReader(`{"mcpServerId":"websocket-runtime","toolName":"lookup","runtimeSurface":"chat","input":{"query":"hello"}}`))
+	toolCallReq.Header.Set("Authorization", authHeader)
+	toolCallRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(toolCallRec, toolCallReq)
+	if toolCallRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for websocket tool call create, got %d body=%s", toolCallRec.Code, toolCallRec.Body.String())
+	}
+	if !strings.Contains(toolCallRec.Body.String(), `"mcpTransportKind":"websocket"`) {
+		t.Fatalf("expected websocket provenance in tool call response, got %s", toolCallRec.Body.String())
+	}
+}
+
 func readAPIHelperFrame(reader *bufio.Reader) ([]byte, error) {
 	length := -1
 	for {
@@ -539,6 +722,55 @@ func readAPIHelperFrame(reader *bufio.Reader) ([]byte, error) {
 		return nil, err
 	}
 	return payload, nil
+}
+
+type apiWebsocketMCPServer struct {
+	server *httptest.Server
+}
+
+func newAPIWebsocketMCPServer(t *testing.T, token string) *apiWebsocketMCPServer {
+	t.Helper()
+
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.TrimSpace(r.Header.Get("Authorization")) != "Bearer "+token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("upgrade websocket: %v", err)
+		}
+		defer conn.Close()
+		for {
+			var req map[string]any
+			if err := conn.ReadJSON(&req); err != nil {
+				return
+			}
+			method, _ := req["method"].(string)
+			id := req["id"]
+			switch method {
+			case "initialize":
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"protocolVersion": "2024-11-05", "capabilities": map[string]any{}, "serverInfo": map[string]any{"name": "api-ws-mcp", "version": "1.0.0"}}})
+			case "notifications/initialized":
+			case "tools/list":
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"tools": []map[string]any{{"name": "lookup", "title": "Lookup", "description": "Lookup tool", "inputSchema": map[string]any{"type": "object"}}}}})
+			case "tools/call":
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"content": []map[string]any{{"type": "text", "text": "lookup over websocket ok"}}}})
+			default:
+				_ = conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32601, "message": "method not found"}})
+			}
+		}
+	}))
+	return &apiWebsocketMCPServer{server: server}
+}
+
+func (s *apiWebsocketMCPServer) Close() {
+	s.server.Close()
+}
+
+func (s *apiWebsocketMCPServer) wsURL() string {
+	return "ws" + strings.TrimPrefix(s.server.URL, "http") + "/mcp"
 }
 
 func writeAPIHelperFrame(value any) {
