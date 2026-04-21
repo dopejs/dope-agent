@@ -21,6 +21,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -126,7 +127,7 @@ func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -294,7 +295,7 @@ func TestRecoverPersistedStateCancelsInFlightSandboxToolCalls(t *testing.T) {
 		}
 	}()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -319,6 +320,100 @@ func TestRecoverPersistedStateCancelsInFlightSandboxToolCalls(t *testing.T) {
 	if len(persistedToolCalls) != 1 || persistedToolCalls[0].Status != runtime.ToolCallStatusCancelled {
 		t.Fatalf("expected persisted cancelled tool call, got %+v", persistedToolCalls)
 	}
+}
+
+func TestRecoverPersistedStateInterruptsInFlightWorkflows(t *testing.T) {
+	t.Parallel()
+
+	dataDir := filepath.Join(t.TempDir(), "dope-data")
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	ctx := context.Background()
+	runtimeManager := runtime.NewManager()
+	run, err := runtimeManager.CreateRun(runtime.CreateRunInput{
+		SessionID:  "session_workflow_restore",
+		Entrypoint: "operator",
+		Goal:       "interrupt workflow on restart",
+	})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	now := time.Now().UTC()
+	session := router.Session{
+		SessionID:    run.SessionID,
+		Kind:         router.SessionKindDirect,
+		Status:       router.SessionStatusActive,
+		Channel:      "local",
+		AccountID:    "local",
+		PeerID:       "workflow",
+		RoutingKey:   "direct:local:local:workflow",
+		Generation:   1,
+		CreatedAt:    now.Add(-2 * time.Minute),
+		UpdatedAt:    now.Add(-2 * time.Minute),
+		LastActiveAt: now.Add(-2 * time.Minute),
+	}
+	if err := sqliteStore.UpsertSession(ctx, session); err != nil {
+		t.Fatalf("UpsertSession returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(ctx, run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+	workflow := orchestration.Workflow{
+		WorkflowID:       "wf_restore_interrupt",
+		RunID:            run.RunID,
+		EnvironmentScope: "test",
+		Goal:             run.Goal,
+		Status:           orchestration.WorkflowStatusRunning,
+		CreatedAt:        now.Add(-time.Minute),
+		UpdatedAt:        now.Add(-time.Minute),
+		StartedAt:        ptrAppTime(now.Add(-50 * time.Second)),
+		Steps: []orchestration.WorkflowStep{{
+			WorkflowStepID: "wfstep_restore_interrupt",
+			WorkflowID:     "wf_restore_interrupt",
+			Title:          "running step",
+			Position:       1,
+			ConsumerKind:   "skill",
+			ConsumerID:     "exec-skill",
+			ToolName:       "exec-skill",
+			Status:         orchestration.StepStatusRunning,
+			AttemptCount:   1,
+			MaxAttempts:    2,
+			CreatedAt:      now.Add(-time.Minute),
+			UpdatedAt:      now.Add(-30 * time.Second),
+		}},
+	}
+	if err := sqliteStore.UpsertWorkflow(ctx, workflow); err != nil {
+		t.Fatalf("UpsertWorkflow returned error: %v", err)
+	}
+	if err := sqliteStore.ReplaceWorkflowSteps(ctx, workflow.WorkflowID, workflow.Steps); err != nil {
+		t.Fatalf("ReplaceWorkflowSteps returned error: %v", err)
+	}
+
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtimeManager), events.NewBus(), nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+
+	restored, ok, err := sqliteStore.GetWorkflow(ctx, "test", run.RunID, workflow.WorkflowID)
+	if err != nil {
+		t.Fatalf("GetWorkflow returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected restored workflow")
+	}
+	if restored.Status != orchestration.WorkflowStatusInterrupted {
+		t.Fatalf("expected interrupted workflow, got %+v", restored)
+	}
+	if restored.InterruptedAt == nil || restored.Steps[0].Status != orchestration.StepStatusInterrupted {
+		t.Fatalf("expected interrupted workflow-step truth, got %+v", restored)
+	}
+}
+
+func ptrAppTime(value time.Time) *time.Time {
+	return &value
 }
 
 func TestRecoverPersistedStateRestoresSupervisionState(t *testing.T) {
@@ -377,7 +472,7 @@ func TestRecoverPersistedStateRestoresSupervisionState(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -487,7 +582,7 @@ func TestRecoverPersistedStateRestoresAuthAndPolicyState(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -1371,7 +1466,7 @@ func TestRecoverPersistedStateRestoresManagedProviderState(t *testing.T) {
 	restoredAuth := auth.NewManager()
 	providerManager := providers.NewManager(config.Config{}, llm.NewDispatcher())
 
-	if err := recoverPersistedState(ctx, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providerManager, nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providerManager, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 

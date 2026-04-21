@@ -1193,7 +1193,7 @@ Task definition of done:
 
 ## Roadmap 24: Tool-Call Orchestration
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/009-tool-call-orchestration.md](../specs/009-tool-call-orchestration.md)
 
@@ -1216,6 +1216,8 @@ Task definition of done:
 - orchestration decisions are explicit, inspectable, and replayable
 - tool selection and ordering can be explained without reading raw logs
 - policy and approval requirements remain attached to each concrete execution step
+- implemented with first-class workflow resources nested under runs plus additive
+  workflow linkage on runtime `Run`, `Step`, and `ToolCall` resources
 
 #### 2. Workflow Execution Semantics
 
@@ -1229,6 +1231,8 @@ Task definition of done:
 - orchestrated workflows preserve per-step provenance and terminal truth
 - retries and cancellations do not hide already-visible side effects
 - partial workflow failure is represented explicitly in runtime history
+- daemon restart now marks in-flight workflows `interrupted` while preserving completed
+  runtime history and completed workflow-step truth
 
 #### 3. Cross-Consumer Coordination
 
@@ -1242,6 +1246,8 @@ Task definition of done:
 - orchestration can combine at least two consumer families without bypassing existing policy or sandbox boundaries
 - cross-tool data flow and handoff remain operator-visible
 - docs explain mixed workflow guarantees and limits
+- verified with one repo-owned MCP helper plus one executable skill in `DOPE_ENV=test`
+  on 2026-04-21
 
 #### 4. Docs And Verification
 
@@ -1255,6 +1261,12 @@ Task definition of done:
 - docs explain orchestration lifecycle, decision visibility, and failure handling
 - contract and targeted regressions cover ordered execution, retries, cancellation, and partial failure
 - manual verification records one mixed-tool workflow using the daemon-owned runtime plane
+- verified on 2026-04-21 with:
+  - `make daemon-contract-test`
+  - `cd daemon && go test ./internal/api ./internal/store ./internal/runtime ./internal/app ./internal/contracts`
+  - `cd daemon && go test ./...`
+  - manual `DOPE_ENV=test` workflow planning inspection, blocked-MCP visibility, mixed
+    MCP+skill success, and legacy direct-skill regression
 
 ### Roadmap Definition Of Done
 

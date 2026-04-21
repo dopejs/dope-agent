@@ -132,6 +132,23 @@ func ptrContractTime(value time.Time) *time.Time {
 	return &value
 }
 
+func workflowContractFixtures() map[string]string {
+	return map[string]string{
+		"schemas/api/create-workflow.request.schema.json":               `{"goal":"Use MCP and a skill to complete a deterministic workflow."}`,
+		"schemas/api/workflow-resource.schema.json":                     `{"workflowId":"wf_1","runId":"run_1","environmentScope":"test","goal":"Use MCP and a skill to complete a deterministic workflow.","status":"planned","planSummary":"Plan one MCP step followed by one executable skill handoff.","createdAt":"2026-04-21T10:00:00Z","updatedAt":"2026-04-21T10:00:00Z","steps":[{"workflowStepId":"wfstep_1","workflowId":"wf_1","title":"Use MCP tool lookup","position":1,"consumerKind":"mcp_tool","consumerId":"filesystem-test","toolName":"lookup","input":{"query":"deterministic workflow"},"status":"planned","selectionRationale":"Selected the first available MCP tool to satisfy the goal through the existing MCP runtime plane.","approvalModeExpected":"allow","attemptCount":0,"maxAttempts":1,"createdAt":"2026-04-21T10:00:00Z","updatedAt":"2026-04-21T10:00:00Z"},{"workflowStepId":"wfstep_2","workflowId":"wf_1","title":"Run executable skill exec-skill","position":2,"consumerKind":"skill","consumerId":"exec-skill","toolName":"exec-skill","input":{"args":["deterministic workflow"]},"status":"planned","selectionRationale":"Selected the first available executable skill to continue the workflow without a new execution boundary.","approvalModeExpected":"allow","dependencyIds":["wfdep_1"],"attemptCount":0,"maxAttempts":2,"createdAt":"2026-04-21T10:00:00Z","updatedAt":"2026-04-21T10:00:00Z"}],"dependencies":[{"dependencyId":"wfdep_1","workflowId":"wf_1","fromWorkflowStepId":"wfstep_1","toWorkflowStepId":"wfstep_2","dependencyType":"success","reason":"workflow consumes MCP output before local continuation"}],"handoffs":[{"handoffId":"wfhandoff_1","workflowId":"wf_1","fromWorkflowStepId":"wfstep_1","toWorkflowStepId":"wfstep_2","status":"pending","payloadSummary":"MCP lookup result summary","sourcePath":"step.output.result"}]}`,
+		"schemas/api/workflow-list.response.schema.json":                `{"items":[{"workflowId":"wf_1","runId":"run_1","environmentScope":"test","goal":"Use MCP and a skill to complete a deterministic workflow.","status":"planned","createdAt":"2026-04-21T10:00:00Z","updatedAt":"2026-04-21T10:00:00Z"}]}`,
+		"schemas/events/workflow-planned.event.schema.json":             `{"eventId":"evt_workflow_1","sequence":1,"category":"workflow","name":"workflow.planned","occurredAt":"2026-04-21T10:00:00Z","scope":{"runId":"run_1","workflowId":"wf_1"},"resource":{"kind":"workflow","id":"wf_1"},"payload":{"workflowId":"wf_1","runId":"run_1","status":"planned"}}`,
+		"schemas/events/workflow-started.event.schema.json":             `{"eventId":"evt_workflow_2","sequence":2,"category":"workflow","name":"workflow.started","occurredAt":"2026-04-21T10:00:01Z","scope":{"runId":"run_1","workflowId":"wf_1"},"resource":{"kind":"workflow","id":"wf_1"},"payload":{"workflowId":"wf_1","runId":"run_1","status":"running"}}`,
+		"schemas/events/workflow-status-changed.event.schema.json":      `{"eventId":"evt_workflow_3","sequence":3,"category":"workflow","name":"workflow.status_changed","occurredAt":"2026-04-21T10:00:02Z","scope":{"runId":"run_1","workflowId":"wf_1"},"resource":{"kind":"workflow","id":"wf_1"},"payload":{"workflowId":"wf_1","runId":"run_1","status":"completed"}}`,
+		"schemas/events/workflow-step-status-changed.event.schema.json": `{"eventId":"evt_workflow_4","sequence":4,"category":"workflow","name":"workflow.step_status_changed","occurredAt":"2026-04-21T10:00:03Z","scope":{"runId":"run_1","workflowId":"wf_1","workflowStepId":"wfstep_2"},"resource":{"kind":"workflow","id":"wf_1"},"payload":{"workflowId":"wf_1","runId":"run_1","workflowStepId":"wfstep_2","status":"completed","runtimeStepId":"step_2","toolCallId":"tool_call_2","attempt":1,"toolName":"exec-skill","invocationKind":"skill","consumerId":"exec-skill","consumerKind":"skill"}}`,
+	}
+}
+
+func assertWorkflowContractFixtures(t *testing.T, validator *contracts.Validator) {
+	t.Helper()
+	mustValidateFixtures(t, validator, workflowContractFixtures())
+}
+
 func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 	t.Parallel()
 

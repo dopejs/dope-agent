@@ -19,6 +19,7 @@
         "system",
         "session",
         "run",
+        "workflow",
         "step",
         "tool_call",
         "policy",
@@ -58,6 +59,12 @@
           "type": "string"
         },
         "runId": {
+          "type": "string"
+        },
+        "workflowId": {
+          "type": "string"
+        },
+        "workflowStepId": {
           "type": "string"
         },
         "stepId": {

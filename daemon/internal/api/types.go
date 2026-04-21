@@ -9,6 +9,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
+	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -144,6 +145,10 @@ type CreateRunRequest struct {
 	Input      any                  `json:"input,omitempty"`
 }
 
+type CreateWorkflowRequest struct {
+	Goal string `json:"goal,omitempty"`
+}
+
 type ConnectorIngressMessage struct {
 	MessageID string `json:"messageId"`
 	Text      string `json:"text,omitempty"`
@@ -250,6 +255,8 @@ type SandboxExplainResponse struct {
 type ListResponse[T any] struct {
 	Items []T `json:"items"`
 }
+
+type WorkflowListResponse = ListResponse[orchestration.Workflow]
 
 func buildSystemInfoResponse(cfg config.Config) SystemInfoResponse {
 	return SystemInfoResponse{

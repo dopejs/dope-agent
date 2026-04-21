@@ -94,7 +94,7 @@ func New() (*App, error) {
 	capabilitySupervisor := capabilities.NewSupervisor()
 	chatService := chat.NewService(llmDispatcher, providerManager, skillRegistry, eventBus, sqliteStore)
 
-	if err := recoverPersistedState(context.Background(), sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager); err != nil {
+	if err := recoverPersistedState(context.Background(), cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager); err != nil {
 		return nil, err
 	}
 	if err := syncManagedProviderState(context.Background(), sqliteStore, providerManager); err != nil {
@@ -353,7 +353,7 @@ func newEventID() string {
 	return "evt_" + hex.EncodeToString(buf)
 }
 
-func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager) error {
+func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager) error {
 	if sqliteStore == nil {
 		return nil
 	}
@@ -437,6 +437,9 @@ func recoverPersistedState(ctx context.Context, sqliteStore *store.SQLiteStore, 
 		if err := mcpManager.Restore(ctx); err != nil {
 			return fmt.Errorf("restore mcp state: %w", err)
 		}
+	}
+	if _, err := sqliteStore.MarkInFlightWorkflowsInterrupted(ctx, string(environment), time.Now().UTC()); err != nil {
+		return fmt.Errorf("interrupt in-flight workflows: %w", err)
 	}
 
 	persistedEvents, err := sqliteStore.ListEvents(ctx, events.Filter{})

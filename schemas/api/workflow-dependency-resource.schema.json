@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/workflow-dependency-resource.schema.json",
+  "title": "WorkflowDependencyResource",
+  "type": "object",
+  "required": [
+    "dependencyId",
+    "workflowId",
+    "fromWorkflowStepId",
+    "toWorkflowStepId",
+    "dependencyType"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "dependencyId": { "type": "string" },
+    "workflowId": { "type": "string" },
+    "fromWorkflowStepId": { "type": "string" },
+    "toWorkflowStepId": { "type": "string" },
+    "dependencyType": { "type": "string", "enum": ["success", "failure", "completion"] },
+    "reason": { "type": "string" }
+  }
+}

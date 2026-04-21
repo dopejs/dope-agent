@@ -175,6 +175,21 @@ After MCP catalog management and transport expansion:
 
 This is where Dope moves from “can call a tool” to “can run a controlled tool workflow.”
 
+Current daemon status:
+
+- workflow resources are now first-class daemon-owned records nested under runs
+- `POST/GET /v1/runs/{runId}/workflows` plus `start` and `cancel` routes expose frozen
+  plan inspection before execution
+- workflow steps execute through the existing runtime `Step` and `ToolCall` plane rather
+  than a parallel executor
+- runtime `Run`, `Step`, and `ToolCall` resources now carry additive workflow linkage for
+  reverse inspection
+- mixed MCP plus executable-skill workflows now preserve dependency edges, handoff
+  summaries, approval expectation preview, and runtime linkage in one operator-visible
+  workflow resource
+- daemon restart preserves persisted workflow audit truth and marks unfinished workflows
+  `interrupted` instead of auto-resuming them
+
 ### Phase 5: Context Engineering
 
 After tool orchestration:

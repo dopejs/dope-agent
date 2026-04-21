@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/workflow-handoff-resource.schema.json",
+  "title": "WorkflowHandoffResource",
+  "type": "object",
+  "required": [
+    "handoffId",
+    "workflowId",
+    "fromWorkflowStepId",
+    "toWorkflowStepId",
+    "status"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "handoffId": { "type": "string" },
+    "workflowId": { "type": "string" },
+    "fromWorkflowStepId": { "type": "string" },
+    "toWorkflowStepId": { "type": "string" },
+    "status": { "type": "string", "enum": ["pending", "available", "consumed", "invalid"] },
+    "payloadSummary": { "type": "string" },
+    "sourcePath": { "type": "string" },
+    "consumedAt": { "type": "string", "format": "date-time" },
+    "invalidReason": { "type": "string" }
+  }
+}

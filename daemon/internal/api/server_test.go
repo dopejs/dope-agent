@@ -24,6 +24,8 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mcp"
+	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -4493,4 +4495,399 @@ func TestEventStreamSupportsLastEventIDResume(t *testing.T) {
 			t.Fatalf("unexpected read error after cancel: %v", err)
 		}
 	}
+}
+
+func TestWorkflowInspectionRoutesExposePlanAndEnvironmentScopedDetail(t *testing.T) {
+	t.Parallel()
+
+	harness := newWorkflowServerHarness(t, workflowServerHarnessOptions{
+		skillScript: "#!/bin/sh\nprintf 'workflow-ok %s' \"$1\"",
+	})
+
+	prodWorkflow := orchestration.Workflow{
+		WorkflowID:       "wf_prod_hidden",
+		RunID:            harness.run.RunID,
+		EnvironmentScope: "prod",
+		Goal:             "hidden",
+		Status:           orchestration.WorkflowStatusPlanned,
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
+	}
+	if err := harness.store.UpsertWorkflow(context.Background(), prodWorkflow); err != nil {
+		t.Fatalf("UpsertWorkflow returned error: %v", err)
+	}
+
+	created := createWorkflowForTest(t, harness.server, harness.run.RunID, `{}`)
+	assertWorkflowInspectionResponse(t, created, 1)
+
+	list := listWorkflowsForTest(t, harness.server, harness.run.RunID)
+	if len(list.Items) != 1 {
+		t.Fatalf("expected only test-environment workflow, got %+v", list)
+	}
+
+	startedAt := time.Now()
+	got := getWorkflowForTest(t, harness.server, harness.run.RunID, created.WorkflowID)
+	if elapsed := time.Since(startedAt); elapsed > 500*time.Millisecond {
+		t.Fatalf("expected workflow detail retrieval under 500ms, took %s", elapsed)
+	}
+	if got.EnvironmentScope != "test" {
+		t.Fatalf("expected test environment scope, got %+v", got)
+	}
+	assertWorkflowInspectionResponse(t, got, 1)
+}
+
+func TestWorkflowExecutionRoutesCancelAndPreserveLegacyToolCallBehavior(t *testing.T) {
+	t.Parallel()
+
+	harness := newWorkflowServerHarness(t, workflowServerHarnessOptions{
+		runGoal:     "workflow-cancel",
+		skillScript: "#!/bin/sh\nif [ \"$1\" = \"workflow-cancel\" ]; then sleep 5; printf 'cancel-too-late'; else printf 'legacy:%s' \"$1\"; fi",
+	})
+
+	created := createWorkflowForTest(t, harness.server, harness.run.RunID, `{}`)
+	started := startWorkflowForTest(t, harness.server, harness.run.RunID, created.WorkflowID)
+	assertWorkflowRuntimeLinkage(t, started)
+
+	cancelled := cancelWorkflowForTest(t, harness.server, harness.run.RunID, created.WorkflowID)
+	if cancelled.Status != orchestration.WorkflowStatusCancelled {
+		t.Fatalf("expected cancelled workflow, got %+v", cancelled)
+	}
+	if cancelled.CompletedAt == nil || cancelled.Steps[0].Status != orchestration.StepStatusCancelled {
+		t.Fatalf("expected cancelled terminal truth, got %+v", cancelled)
+	}
+
+	step, ok := harness.runtime.GetStep(harness.run.RunID, cancelled.Steps[0].RuntimeStepID)
+	if !ok {
+		t.Fatal("expected runtime step for cancelled workflow")
+	}
+	if step.Status != runtime.StepStatusCancelled {
+		t.Fatalf("expected cancelled runtime step, got %+v", step)
+	}
+	toolCall := waitForToolCallTerminalState(t, harness.runtime, harness.run.RunID, cancelled.Steps[0].RuntimeStepID, cancelled.Steps[0].ActiveToolCallID)
+	if toolCall.Status != runtime.ToolCallStatusCancelled {
+		t.Fatalf("expected cancelled tool call, got %+v", toolCall)
+	}
+
+	legacyStep, err := harness.runtime.CreateStep(harness.run.RunID, runtime.CreateStepInput{Title: "legacy skill call"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+	legacyReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+harness.run.RunID+"/steps/"+legacyStep.StepID+"/tool-calls", strings.NewReader(`{"skillId":"exec-skill","toolName":"exec-skill","input":{"args":["legacy"]}}`))
+	legacyRec := httptest.NewRecorder()
+	harness.server.Handler().ServeHTTP(legacyRec, legacyReq)
+	if legacyRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for legacy tool call create, got %d body=%s", legacyRec.Code, legacyRec.Body.String())
+	}
+	legacyCreated := decodeStrictResponse[runtime.ToolCall](t, legacyRec.Body.Bytes())
+	legacyToolCall := waitForToolCallTerminalState(t, harness.runtime, harness.run.RunID, legacyStep.StepID, legacyCreated.ToolCallID)
+	if legacyToolCall.Status != runtime.ToolCallStatusCompleted {
+		t.Fatalf("expected legacy tool call success, got %+v", legacyToolCall)
+	}
+	if legacyToolCall.WorkflowID != "" || legacyToolCall.WorkflowStepID != "" {
+		t.Fatalf("expected legacy tool call to remain non-workflow scoped, got %+v", legacyToolCall)
+	}
+}
+
+func TestWorkflowExecutionRoutesRecordMixedPartialFailureAndAvoidCrossEnvironmentLeakage(t *testing.T) {
+	t.Parallel()
+
+	harness := newWorkflowServerHarness(t, workflowServerHarnessOptions{
+		enableMCP:    true,
+		skillScript:  "#!/bin/sh\nprintf 'fail:%s' \"$1\" >&2\nexit 1",
+		hiddenProdID: "wf_prod_hidden",
+	})
+
+	created := createWorkflowForTest(t, harness.server, harness.run.RunID, `{}`)
+	if len(created.Steps) != 2 {
+		t.Fatalf("expected mixed-family workflow plan, got %+v", created)
+	}
+
+	startWorkflowForTest(t, harness.server, harness.run.RunID, created.WorkflowID)
+	final := waitForWorkflowStatus(t, harness.server, harness.run.RunID, created.WorkflowID, orchestration.WorkflowStatusPartialFailed)
+	if final.Status != orchestration.WorkflowStatusPartialFailed {
+		t.Fatalf("expected partial_failed workflow, got %+v", final)
+	}
+	if len(final.Steps) != 2 || final.Steps[0].Status != orchestration.StepStatusCompleted || final.Steps[1].Status != orchestration.StepStatusFailed {
+		t.Fatalf("expected mixed step outcomes, got %+v", final.Steps)
+	}
+	if final.Steps[1].AttemptCount != 2 {
+		t.Fatalf("expected bounded retry count of 2, got %+v", final.Steps[1])
+	}
+	assertWorkflowRuntimeLinkage(t, final)
+	if len(final.Handoffs) != 1 || final.Handoffs[0].Status != orchestration.HandoffStatusConsumed {
+		t.Fatalf("expected visible consumed handoff, got %+v", final.Handoffs)
+	}
+
+	list := listWorkflowsForTest(t, harness.server, harness.run.RunID)
+	if len(list.Items) != 1 || list.Items[0].WorkflowID != created.WorkflowID {
+		t.Fatalf("expected no cross-environment leakage, got %+v", list)
+	}
+	missingRec := httptest.NewRecorder()
+	harness.server.Handler().ServeHTTP(missingRec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+harness.run.RunID+"/workflows/"+harness.hiddenProdWorkflowID, nil))
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("expected hidden prod workflow to stay invisible, got %d body=%s", missingRec.Code, missingRec.Body.String())
+	}
+}
+
+type workflowServerHarnessOptions struct {
+	runGoal      string
+	skillScript  string
+	enableMCP    bool
+	hiddenProdID string
+}
+
+type workflowServerHarness struct {
+	cfg                  config.Config
+	server               *Server
+	store                *store.SQLiteStore
+	runtime              *runtime.Manager
+	run                  runtime.Run
+	hiddenProdWorkflowID string
+}
+
+func newWorkflowServerHarness(t *testing.T, opts workflowServerHarnessOptions) workflowServerHarness {
+	t.Helper()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+	}
+	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	eventBus := events.NewBus()
+	t.Cleanup(eventBus.Close)
+	policyEngine := policy.NewEngine()
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	t.Cleanup(func() { _ = sandboxManager.Close(context.Background()) })
+
+	registry := newAllowSkillRegistryForWorkflowHarness(t, cfg.DataDir, firstNonEmpty(opts.skillScript, "#!/bin/sh\nprintf 'workflow-ok %s' \"$1\""))
+	runtimeManager := runtime.NewManager()
+	runGoal := firstNonEmpty(opts.runGoal, "Use a skill to complete a deterministic workflow.")
+	run, err := runtimeManager.CreateRun(runtime.CreateRunInput{Entrypoint: "operator", Goal: runGoal})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	var mcpManager *mcp.Manager
+	if opts.enableMCP {
+		writeAPIMCPSecretsFileForTest(t, cfg.DataDir, map[string]string{
+			"GO_WANT_API_MCP_HELPER": "1",
+			"API_MCP_HELPER_TOOLS":   `[{"name":"lookup","title":"Lookup","description":"Lookup tool","inputSchema":{"type":"object","properties":{"query":{"type":"string"}}}}]`,
+		})
+		mcpManager = mcp.NewManager(cfg, sqliteStore, eventBus, sandboxManager, policyEngine, mcp.NewTransportMux(mcp.NewStdioTransport(), nil))
+		if _, _, err := mcpManager.CreateServer(context.Background(), mcp.CreateServerInput{
+			ServerID:         "api-workflow-mcp",
+			DisplayName:      "API Workflow MCP",
+			Enabled:          true,
+			SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+			DeclarationID:    "mcp_server:api-workflow-mcp:lifecycle.start",
+			TransportKind:    mcp.TransportKindStdio,
+			Command:          os.Args[0],
+			Args:             []string{"-test.run=TestAPIMCPHelperProcess", "--"},
+			WorkingDir:       t.TempDir(),
+			SecretRefs:       []string{"GO_WANT_API_MCP_HELPER", "API_MCP_HELPER_TOOLS"},
+			AutoRestart:      true,
+		}); err != nil {
+			t.Fatalf("CreateServer returned error: %v", err)
+		}
+		started, err := mcpManager.Start(context.Background(), "api-workflow-mcp", "workflow:test")
+		if err != nil {
+			t.Fatalf("Start returned error: %v", err)
+		}
+		if started.Server.State.Status != mcp.LifecycleStatusHealthy {
+			t.Fatalf("expected healthy mcp server, got %+v", started.Server.State)
+		}
+		if _, err := mcpManager.UpdateToolExposure(context.Background(), "api-workflow-mcp", "lookup", mcp.UpdateExposureInput{
+			RuntimeSurface: "chat",
+			ExposureMode:   mcp.ExposureModeAllow,
+			Active:         true,
+			Reason:         "workflow tests require direct allow-mode MCP execution",
+		}); err != nil {
+			t.Fatalf("UpdateToolExposure returned error: %v", err)
+		}
+	}
+
+	server := NewServer(Dependencies{
+		Config:      cfg,
+		Logger:      telemetry.New("error").Slog(),
+		EventBus:    eventBus,
+		Policy:      policyEngine,
+		Runtime:     runtimeManager,
+		Skills:      registry,
+		Sandboxes:   sandboxManager,
+		MCP:         mcpManager,
+		Store:       sqliteStore,
+		Checkpoints: checkpoints.NewManager(sqliteStore, runtimeManager),
+	})
+
+	if opts.hiddenProdID != "" {
+		hidden := orchestration.Workflow{
+			WorkflowID:       opts.hiddenProdID,
+			RunID:            run.RunID,
+			EnvironmentScope: "prod",
+			Goal:             "hidden",
+			Status:           orchestration.WorkflowStatusPlanned,
+			CreatedAt:        time.Now().UTC(),
+			UpdatedAt:        time.Now().UTC(),
+		}
+		if err := sqliteStore.UpsertWorkflow(context.Background(), hidden); err != nil {
+			t.Fatalf("UpsertWorkflow returned error: %v", err)
+		}
+	}
+
+	return workflowServerHarness{
+		cfg:                  cfg,
+		server:               server,
+		store:                sqliteStore,
+		runtime:              runtimeManager,
+		run:                  run,
+		hiddenProdWorkflowID: opts.hiddenProdID,
+	}
+}
+
+func newAllowSkillRegistryForWorkflowHarness(t *testing.T, dataRoot, script string) *skills.Registry {
+	t.Helper()
+
+	homeRoot := filepath.Join(t.TempDir(), ".agents")
+	writeSkillFileForTest(t, filepath.Join(homeRoot, "AGENTS.md"), "home overlay")
+	writeSkillFileForTest(t, filepath.Join(dataRoot, "AGENTS.md"), "data overlay")
+	writeExecutableSkillForTest(t, filepath.Join(dataRoot, "skills", "exec-skill"), `
+---
+name: exec-skill
+description: executable skill
+execution.entrypoint: scripts/run.sh
+execution.working_dir: .
+execution.profile_id: subprocess_default
+execution.read_roots: .
+execution.write_roots: .
+execution.network_mode: deny
+execution.timeout_ms: 5000
+execution.approval_mode: allow
+---
+workflow test skill
+`, script)
+
+	registry, err := skills.NewRegistryWithRoots(homeRoot, dataRoot)
+	if err != nil {
+		t.Fatalf("NewRegistryWithRoots returned error: %v", err)
+	}
+	return registry
+}
+
+func createWorkflowForTest(t *testing.T, server *Server, runID, body string) orchestration.Workflow {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+runID+"/workflows", strings.NewReader(body)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	return decodeStrictResponse[orchestration.Workflow](t, rec.Body.Bytes())
+}
+
+func listWorkflowsForTest(t *testing.T, server *Server, runID string) WorkflowListResponse {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+runID+"/workflows", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	return decodeStrictResponse[WorkflowListResponse](t, rec.Body.Bytes())
+}
+
+func getWorkflowForTest(t *testing.T, server *Server, runID, workflowID string) orchestration.Workflow {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+runID+"/workflows/"+workflowID, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	return decodeStrictResponse[orchestration.Workflow](t, rec.Body.Bytes())
+}
+
+func startWorkflowForTest(t *testing.T, server *Server, runID, workflowID string) orchestration.Workflow {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+runID+"/workflows/"+workflowID+"/start", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	return decodeStrictResponse[orchestration.Workflow](t, rec.Body.Bytes())
+}
+
+func cancelWorkflowForTest(t *testing.T, server *Server, runID, workflowID string) orchestration.Workflow {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+runID+"/workflows/"+workflowID+"/cancel", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	return decodeStrictResponse[orchestration.Workflow](t, rec.Body.Bytes())
+}
+
+func waitForWorkflowStatus(t *testing.T, server *Server, runID, workflowID string, want orchestration.WorkflowStatus) orchestration.Workflow {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		got := getWorkflowForTest(t, server, runID, workflowID)
+		if got.Status == want {
+			return got
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	got := getWorkflowForTest(t, server, runID, workflowID)
+	t.Fatalf("workflow %s did not reach %s, got %+v", workflowID, want, got)
+	return orchestration.Workflow{}
+}
+
+func assertWorkflowInspectionResponse(t *testing.T, workflow orchestration.Workflow, wantSteps int) {
+	t.Helper()
+	if workflow.Status != orchestration.WorkflowStatusPlanned {
+		t.Fatalf("expected planned workflow, got %+v", workflow)
+	}
+	if len(workflow.Steps) != wantSteps {
+		t.Fatalf("expected %d planned steps, got %+v", wantSteps, workflow.Steps)
+	}
+	for _, step := range workflow.Steps {
+		if step.RuntimeStepID != "" || step.ActiveToolCallID != "" {
+			t.Fatalf("expected inspect-only planning state, got %+v", step)
+		}
+		if step.SelectionRationale == "" || step.ApprovalModeExpected == "" {
+			t.Fatalf("expected inspectable planning metadata, got %+v", step)
+		}
+	}
+}
+
+func assertWorkflowRuntimeLinkage(t *testing.T, workflow orchestration.Workflow) {
+	t.Helper()
+	for _, step := range workflow.Steps {
+		if step.Status == orchestration.StepStatusReady || step.Status == orchestration.StepStatusWaitingDependency || step.Status == orchestration.StepStatusPlanned {
+			continue
+		}
+		if step.RuntimeStepID == "" {
+			t.Fatalf("expected runtime step linkage, got %+v", step)
+		}
+		if step.ActiveToolCallID == "" && step.Status != orchestration.StepStatusCancelled {
+			t.Fatalf("expected tool call linkage, got %+v", step)
+		}
+	}
+}
+
+func assertInterruptedWorkflowStatus(t *testing.T, workflow orchestration.Workflow) {
+	t.Helper()
+	if workflow.Status != orchestration.WorkflowStatusInterrupted || workflow.InterruptedAt == nil {
+		t.Fatalf("expected interrupted workflow truth, got %+v", workflow)
+	}
+	for _, step := range workflow.Steps {
+		if step.Status == orchestration.StepStatusInterrupted {
+			return
+		}
+	}
+	t.Fatalf("expected at least one interrupted workflow step, got %+v", workflow.Steps)
 }

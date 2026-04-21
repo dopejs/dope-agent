@@ -23,6 +23,16 @@
     "stepId": {
       "type": "string"
     },
+    "workflowId": {
+      "type": "string"
+    },
+    "workflowStepId": {
+      "type": "string"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0
+    },
     "invocationKind": {
       "type": "string",
       "enum": ["local_tool", "skill", "mcp_tool"]

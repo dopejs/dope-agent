@@ -37,6 +37,13 @@
     "goal": {
       "type": "string"
     },
+    "activeWorkflowId": {
+      "type": "string"
+    },
+    "workflowCount": {
+      "type": "integer",
+      "minimum": 0
+    },
     "createdAt": {
       "type": "string",
       "format": "date-time"

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/workflow-step-resource.schema.json",
+  "title": "WorkflowStepResource",
+  "type": "object",
+  "required": [
+    "workflowStepId",
+    "workflowId",
+    "title",
+    "position",
+    "consumerKind",
+    "consumerId",
+    "toolName",
+    "status",
+    "attemptCount",
+    "maxAttempts",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "workflowStepId": { "type": "string" },
+    "workflowId": { "type": "string" },
+    "title": { "type": "string" },
+    "position": { "type": "integer", "minimum": 1 },
+    "consumerKind": { "type": "string", "enum": ["local_tool", "skill", "mcp_tool"] },
+    "consumerId": { "type": "string" },
+    "toolName": { "type": "string" },
+    "input": { "type": ["object", "array", "string", "number", "boolean", "null"] },
+    "status": { "type": "string", "enum": ["planned", "waiting_dependency", "ready", "blocked", "running", "completed", "failed", "cancelled", "interrupted", "skipped"] },
+    "selectionRationale": { "type": "string" },
+    "approvalModeExpected": { "type": "string", "enum": ["allow", "ask", "deny"] },
+    "dependencyIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "runtimeStepId": { "type": "string" },
+    "activeToolCallId": { "type": "string" },
+    "attemptCount": { "type": "integer", "minimum": 0 },
+    "maxAttempts": { "type": "integer", "minimum": 1 },
+    "lastFailureClass": { "type": "string" },
+    "blockedReason": { "type": "string" },
+    "sideEffectsVisible": { "type": "boolean" },
+    "outputSummary": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

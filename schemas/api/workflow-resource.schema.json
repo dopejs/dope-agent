@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/workflow-resource.schema.json",
+  "title": "WorkflowResource",
+  "type": "object",
+  "required": [
+    "workflowId",
+    "runId",
+    "goal",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "workflowId": { "type": "string" },
+    "runId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "goal": { "type": "string" },
+    "status": { "type": "string", "enum": ["planning", "planning_failed", "planned", "running", "blocked", "completed", "partial_failed", "failed", "cancelled", "interrupted"] },
+    "planSummary": { "type": "string" },
+    "failureSummary": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "interruptedAt": { "type": "string", "format": "date-time" },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "./workflow-step-resource.schema.json" }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": { "$ref": "./workflow-dependency-resource.schema.json" }
+    },
+    "handoffs": {
+      "type": "array",
+      "items": { "$ref": "./workflow-handoff-resource.schema.json" }
+    }
+  }
+}

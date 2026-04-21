@@ -417,8 +417,28 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 		return
 	}
 
+	if len(parts) == 2 && parts[1] == "workflows" {
+		handleRunWorkflows(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, w, r, parts[0])
+		return
+	}
+
 	if len(parts) == 3 && parts[1] == "steps" {
 		handleRunStepByID(manager, w, r, parts[0], parts[2])
+		return
+	}
+
+	if len(parts) == 3 && parts[1] == "workflows" {
+		handleRunWorkflowByID(sqliteStore, cfg.Environment, w, r, parts[0], parts[2])
+		return
+	}
+
+	if len(parts) == 4 && parts[1] == "workflows" && parts[3] == "start" {
+		handleRunWorkflowStart(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
+		return
+	}
+
+	if len(parts) == 4 && parts[1] == "workflows" && parts[3] == "cancel" {
+		handleRunWorkflowCancel(cfg, manager, sandboxManager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
 		return
 	}
 

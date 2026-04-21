@@ -37,13 +37,15 @@ const (
 )
 
 type Run struct {
-	RunID      string    `json:"runId"`
-	SessionID  string    `json:"sessionId,omitempty"`
-	Entrypoint string    `json:"entrypoint"`
-	Status     RunStatus `json:"status"`
-	Goal       string    `json:"goal"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	RunID            string    `json:"runId"`
+	SessionID        string    `json:"sessionId,omitempty"`
+	Entrypoint       string    `json:"entrypoint"`
+	Status           RunStatus `json:"status"`
+	Goal             string    `json:"goal"`
+	ActiveWorkflowID string    `json:"activeWorkflowId,omitempty"`
+	WorkflowCount    int       `json:"workflowCount,omitempty"`
+	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
 type CreateRunInput struct {
@@ -67,21 +69,27 @@ const (
 )
 
 type Step struct {
-	StepID    string     `json:"stepId"`
-	RunID     string     `json:"runId"`
-	Title     string     `json:"title"`
-	Kind      string     `json:"kind"`
-	Status    StepStatus `json:"status"`
-	CreatedAt time.Time  `json:"createdAt"`
-	UpdatedAt time.Time  `json:"updatedAt"`
-	Input     any        `json:"input,omitempty"`
-	Output    any        `json:"output,omitempty"`
+	StepID          string     `json:"stepId"`
+	RunID           string     `json:"runId"`
+	WorkflowID      string     `json:"workflowId,omitempty"`
+	WorkflowStepID  string     `json:"workflowStepId,omitempty"`
+	Attempt         int        `json:"attempt,omitempty"`
+	Title           string     `json:"title"`
+	Kind            string     `json:"kind"`
+	Status          StepStatus `json:"status"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+	Input           any        `json:"input,omitempty"`
+	Output          any        `json:"output,omitempty"`
 }
 
 type CreateStepInput struct {
-	Title string `json:"title"`
-	Kind  string `json:"kind"`
-	Input any    `json:"input"`
+	Title          string `json:"title"`
+	Kind           string `json:"kind"`
+	WorkflowID     string `json:"workflowId,omitempty"`
+	WorkflowStepID string `json:"workflowStepId,omitempty"`
+	Attempt        int    `json:"attempt,omitempty"`
+	Input          any    `json:"input"`
 }
 
 type UpdateStepStatusInput struct {
@@ -112,6 +120,9 @@ type ToolCall struct {
 	ToolCallID          string                 `json:"toolCallId"`
 	RunID               string                 `json:"runId"`
 	StepID              string                 `json:"stepId"`
+	WorkflowID          string                 `json:"workflowId,omitempty"`
+	WorkflowStepID      string                 `json:"workflowStepId,omitempty"`
+	Attempt             int                    `json:"attempt,omitempty"`
 	InvocationKind      ToolCallInvocationKind `json:"invocationKind,omitempty"`
 	CapabilityID        string                 `json:"capabilityId,omitempty"`
 	SkillID             string                 `json:"skillId,omitempty"`
@@ -141,6 +152,9 @@ type RunCheckpoint struct {
 }
 
 type CreateToolCallInput struct {
+	WorkflowID          string                 `json:"workflowId,omitempty"`
+	WorkflowStepID      string                 `json:"workflowStepId,omitempty"`
+	Attempt             int                    `json:"attempt,omitempty"`
 	InvocationKind      ToolCallInvocationKind `json:"invocationKind,omitempty"`
 	CapabilityID        string                 `json:"capabilityId"`
 	SkillID             string                 `json:"skillId"`
@@ -320,14 +334,17 @@ func (m *Manager) CreateStep(runID string, input CreateStepInput) (Step, error) 
 	}
 
 	step := Step{
-		StepID:    newStepID(),
-		RunID:     runID,
-		Title:     input.Title,
-		Kind:      kind,
-		Status:    StepStatusQueued,
-		CreatedAt: now,
-		UpdatedAt: now,
-		Input:     input.Input,
+		StepID:         newStepID(),
+		RunID:          runID,
+		WorkflowID:     strings.TrimSpace(input.WorkflowID),
+		WorkflowStepID: strings.TrimSpace(input.WorkflowStepID),
+		Attempt:        input.Attempt,
+		Title:          input.Title,
+		Kind:           kind,
+		Status:         StepStatusQueued,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		Input:          input.Input,
 	}
 
 	m.stepsByID[step.StepID] = step
@@ -586,6 +603,9 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 		ToolCallID:          newToolCallID(),
 		RunID:               runID,
 		StepID:              stepID,
+		WorkflowID:          strings.TrimSpace(input.WorkflowID),
+		WorkflowStepID:      strings.TrimSpace(input.WorkflowStepID),
+		Attempt:             input.Attempt,
 		InvocationKind:      invocationKind,
 		CapabilityID:        strings.TrimSpace(input.CapabilityID),
 		SkillID:             strings.TrimSpace(input.SkillID),

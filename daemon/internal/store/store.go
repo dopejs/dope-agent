@@ -19,6 +19,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -28,7 +29,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 10
+	CurrentSchemaVersion = 11
 )
 
 type schemaMigration struct {
@@ -112,6 +113,49 @@ type MCPToolExposureRuleRecord struct {
 	Active         bool
 	UpdatedAt      time.Time
 	Document       []byte
+}
+
+type WorkflowRecord struct {
+	WorkflowID        string
+	RunID             string
+	EnvironmentScope  string
+	Goal              string
+	Status            string
+	PlanSummary       string
+	FailureSummary    string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+	InterruptedAt     *time.Time
+	Document          []byte
+}
+
+type WorkflowStepRecord struct {
+	WorkflowStepID       string
+	WorkflowID           string
+	Position             int
+	Status               string
+	RuntimeStepID        string
+	ActiveToolCallID     string
+	AttemptCount         int
+	MaxAttempts          int
+	LastFailureClass     string
+	BlockedReason        string
+	Document             []byte
+}
+
+type WorkflowDependencyRecord struct {
+	DependencyID string
+	WorkflowID   string
+	Document     []byte
+}
+
+type WorkflowHandoffRecord struct {
+	HandoffID   string
+	WorkflowID  string
+	Status      string
+	Document    []byte
 }
 
 var schemaMigrations = []schemaMigration{
@@ -595,6 +639,73 @@ var schemaMigrations = []schemaMigration{
 			`ALTER TABLE tool_calls ADD COLUMN mcp_session_id TEXT;`,
 			`ALTER TABLE tool_calls ADD COLUMN authorization_result TEXT;`,
 			`CREATE INDEX IF NOT EXISTS idx_tool_calls_mcp_server_created ON tool_calls(mcp_server_id, created_at DESC, tool_call_id DESC);`,
+		},
+	},
+	{
+		Version: 11,
+		Name:    "workflow_orchestration",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS workflows (
+				workflow_id TEXT PRIMARY KEY,
+				run_id TEXT NOT NULL,
+				environment_scope TEXT NOT NULL,
+				goal TEXT NOT NULL,
+				status TEXT NOT NULL,
+				plan_summary TEXT,
+				failure_summary TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				started_at TEXT,
+				completed_at TEXT,
+				interrupted_at TEXT,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS workflow_steps (
+				workflow_step_id TEXT PRIMARY KEY,
+				workflow_id TEXT NOT NULL,
+				position INTEGER NOT NULL,
+				status TEXT NOT NULL,
+				runtime_step_id TEXT,
+				active_tool_call_id TEXT,
+				attempt_count INTEGER NOT NULL,
+				max_attempts INTEGER NOT NULL,
+				last_failure_class TEXT,
+				blocked_reason TEXT,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(workflow_id) REFERENCES workflows(workflow_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS workflow_dependencies (
+				dependency_id TEXT PRIMARY KEY,
+				workflow_id TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(workflow_id) REFERENCES workflows(workflow_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS workflow_handoffs (
+				handoff_id TEXT PRIMARY KEY,
+				workflow_id TEXT NOT NULL,
+				status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(workflow_id) REFERENCES workflows(workflow_id) ON DELETE CASCADE
+			);
+			`,
+			`ALTER TABLE steps ADD COLUMN workflow_id TEXT;`,
+			`ALTER TABLE steps ADD COLUMN workflow_step_id TEXT;`,
+			`ALTER TABLE steps ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0;`,
+			`ALTER TABLE tool_calls ADD COLUMN workflow_id TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN workflow_step_id TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0;`,
+			`CREATE INDEX IF NOT EXISTS idx_workflows_run_env_created ON workflows(run_id, environment_scope, created_at DESC, workflow_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_workflow_steps_workflow_position ON workflow_steps(workflow_id, position ASC, workflow_step_id ASC);`,
+			`CREATE INDEX IF NOT EXISTS idx_steps_workflow_linkage ON steps(workflow_id, workflow_step_id, attempt);`,
+			`CREATE INDEX IF NOT EXISTS idx_tool_calls_workflow_linkage ON tool_calls(workflow_id, workflow_step_id, attempt, created_at DESC, tool_call_id DESC);`,
 		},
 	},
 }
@@ -1993,6 +2104,472 @@ func (s *SQLiteStore) ListRuns(ctx context.Context) ([]runtime.Run, error) {
 	return runs, rows.Err()
 }
 
+func (s *SQLiteStore) UpsertWorkflow(ctx context.Context, workflow orchestration.Workflow) error {
+	if s == nil {
+		return nil
+	}
+
+	document, err := json.Marshal(workflow)
+	if err != nil {
+		return fmt.Errorf("marshal workflow %s: %w", workflow.WorkflowID, err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO workflows (
+			workflow_id,
+			run_id,
+			environment_scope,
+			goal,
+			status,
+			plan_summary,
+			failure_summary,
+			created_at,
+			updated_at,
+			started_at,
+			completed_at,
+			interrupted_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(workflow_id) DO UPDATE SET
+			run_id = excluded.run_id,
+			environment_scope = excluded.environment_scope,
+			goal = excluded.goal,
+			status = excluded.status,
+			plan_summary = excluded.plan_summary,
+			failure_summary = excluded.failure_summary,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			started_at = excluded.started_at,
+			completed_at = excluded.completed_at,
+			interrupted_at = excluded.interrupted_at,
+			document_json = excluded.document_json
+	`,
+		workflow.WorkflowID,
+		workflow.RunID,
+		workflow.EnvironmentScope,
+		workflow.Goal,
+		string(workflow.Status),
+		nullString(workflow.PlanSummary),
+		nullString(workflow.FailureSummary),
+		workflow.CreatedAt.UTC().Format(time.RFC3339Nano),
+		workflow.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTimeString(workflow.StartedAt),
+		nullableTimeString(workflow.CompletedAt),
+		nullableTimeString(workflow.InterruptedAt),
+		string(document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert workflow %s: %w", workflow.WorkflowID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ReplaceWorkflowSteps(ctx context.Context, workflowID string, steps []orchestration.WorkflowStep) error {
+	if s == nil {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace workflow steps %s: %w", workflowID, err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM workflow_steps WHERE workflow_id = ?`, workflowID); err != nil {
+		return fmt.Errorf("delete workflow steps %s: %w", workflowID, err)
+	}
+	for _, step := range steps {
+		document, marshalErr := json.Marshal(step)
+		if marshalErr != nil {
+			err = fmt.Errorf("marshal workflow step %s: %w", step.WorkflowStepID, marshalErr)
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `
+			INSERT INTO workflow_steps (
+				workflow_step_id,
+				workflow_id,
+				position,
+				status,
+				runtime_step_id,
+				active_tool_call_id,
+				attempt_count,
+				max_attempts,
+				last_failure_class,
+				blocked_reason,
+				document_json
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`,
+			step.WorkflowStepID,
+			workflowID,
+			step.Position,
+			string(step.Status),
+			nullString(step.RuntimeStepID),
+			nullString(step.ActiveToolCallID),
+			step.AttemptCount,
+			step.MaxAttempts,
+			nullString(step.LastFailureClass),
+			nullString(step.BlockedReason),
+			string(document),
+		); err != nil {
+			return fmt.Errorf("insert workflow step %s: %w", step.WorkflowStepID, err)
+		}
+	}
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("commit replace workflow steps %s: %w", workflowID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ReplaceWorkflowDependencies(ctx context.Context, workflowID string, items []orchestration.Dependency) error {
+	if s == nil {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace workflow dependencies %s: %w", workflowID, err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM workflow_dependencies WHERE workflow_id = ?`, workflowID); err != nil {
+		return fmt.Errorf("delete workflow dependencies %s: %w", workflowID, err)
+	}
+	for _, item := range items {
+		document, marshalErr := json.Marshal(item)
+		if marshalErr != nil {
+			err = fmt.Errorf("marshal workflow dependency %s: %w", item.DependencyID, marshalErr)
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO workflow_dependencies (dependency_id, workflow_id, document_json) VALUES (?, ?, ?)`, item.DependencyID, workflowID, string(document)); err != nil {
+			return fmt.Errorf("insert workflow dependency %s: %w", item.DependencyID, err)
+		}
+	}
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("commit replace workflow dependencies %s: %w", workflowID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ReplaceWorkflowHandoffs(ctx context.Context, workflowID string, items []orchestration.Handoff) error {
+	if s == nil {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace workflow handoffs %s: %w", workflowID, err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM workflow_handoffs WHERE workflow_id = ?`, workflowID); err != nil {
+		return fmt.Errorf("delete workflow handoffs %s: %w", workflowID, err)
+	}
+	for _, item := range items {
+		document, marshalErr := json.Marshal(item)
+		if marshalErr != nil {
+			err = fmt.Errorf("marshal workflow handoff %s: %w", item.HandoffID, marshalErr)
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO workflow_handoffs (handoff_id, workflow_id, status, document_json) VALUES (?, ?, ?, ?)`, item.HandoffID, workflowID, string(item.Status), string(document)); err != nil {
+			return fmt.Errorf("insert workflow handoff %s: %w", item.HandoffID, err)
+		}
+	}
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("commit replace workflow handoffs %s: %w", workflowID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListWorkflows(ctx context.Context, environmentScope, runID string) ([]orchestration.Workflow, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT workflow_id, run_id, environment_scope, goal, status, plan_summary, failure_summary, created_at, updated_at, started_at, completed_at, interrupted_at, document_json
+		FROM workflows
+		WHERE environment_scope = ? AND run_id = ?
+		ORDER BY created_at ASC, workflow_id ASC
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(runID))
+	if err != nil {
+		return nil, fmt.Errorf("list workflows for run %s: %w", runID, err)
+	}
+	defer rows.Close()
+
+	records := make([]WorkflowRecord, 0)
+	for rows.Next() {
+		record, scanErr := scanWorkflowRecord(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	items := make([]orchestration.Workflow, 0, len(records))
+	for _, record := range records {
+		workflow, decodeErr := s.decodeWorkflowRecord(ctx, record)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		items = append(items, workflow)
+	}
+	return items, nil
+}
+
+func (s *SQLiteStore) GetWorkflow(ctx context.Context, environmentScope, runID, workflowID string) (orchestration.Workflow, bool, error) {
+	if s == nil {
+		return orchestration.Workflow{}, false, nil
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT workflow_id, run_id, environment_scope, goal, status, plan_summary, failure_summary, created_at, updated_at, started_at, completed_at, interrupted_at, document_json
+		FROM workflows
+		WHERE environment_scope = ? AND run_id = ? AND workflow_id = ?
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(runID), strings.TrimSpace(workflowID))
+	record, err := scanWorkflowRecord(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), sql.ErrNoRows.Error()) {
+			return orchestration.Workflow{}, false, nil
+		}
+		return orchestration.Workflow{}, false, err
+	}
+	workflow, err := s.decodeWorkflowRecord(ctx, record)
+	if err != nil {
+		return orchestration.Workflow{}, false, err
+	}
+	return workflow, true, nil
+}
+
+func (s *SQLiteStore) MarkInFlightWorkflowsInterrupted(ctx context.Context, environmentScope string, interruptedAt time.Time) ([]orchestration.Workflow, error) {
+	if s == nil {
+		return nil, nil
+	}
+	items, err := s.listInterruptibleWorkflows(ctx, environmentScope)
+	if err != nil {
+		return nil, err
+	}
+	updated := make([]orchestration.Workflow, 0, len(items))
+	for _, workflow := range items {
+		timestamp := interruptedAt.UTC()
+		workflow.Status = orchestration.WorkflowStatusInterrupted
+		workflow.UpdatedAt = timestamp
+		workflow.InterruptedAt = &timestamp
+		for idx := range workflow.Steps {
+			switch workflow.Steps[idx].Status {
+			case orchestration.StepStatusRunning, orchestration.StepStatusReady, orchestration.StepStatusWaitingDependency:
+				workflow.Steps[idx].Status = orchestration.StepStatusInterrupted
+				workflow.Steps[idx].UpdatedAt = timestamp
+			}
+		}
+		for idx := range workflow.Handoffs {
+			if workflow.Handoffs[idx].Status == orchestration.HandoffStatusPending {
+				workflow.Handoffs[idx].Status = orchestration.HandoffStatusInvalid
+				workflow.Handoffs[idx].InvalidReason = "daemon_restart_interrupted_workflow"
+			}
+		}
+		if err := s.UpsertWorkflow(ctx, workflow); err != nil {
+			return nil, err
+		}
+		if err := s.ReplaceWorkflowSteps(ctx, workflow.WorkflowID, workflow.Steps); err != nil {
+			return nil, err
+		}
+		if err := s.ReplaceWorkflowHandoffs(ctx, workflow.WorkflowID, workflow.Handoffs); err != nil {
+			return nil, err
+		}
+		updated = append(updated, workflow)
+	}
+	return updated, nil
+}
+
+func (s *SQLiteStore) listInterruptibleWorkflows(ctx context.Context, environmentScope string) ([]orchestration.Workflow, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT workflow_id, run_id, environment_scope, goal, status, plan_summary, failure_summary, created_at, updated_at, started_at, completed_at, interrupted_at, document_json
+		FROM workflows
+		WHERE environment_scope = ?
+		  AND status IN (?, ?, ?)
+		ORDER BY created_at ASC, workflow_id ASC
+	`,
+		strings.TrimSpace(environmentScope),
+		string(orchestration.WorkflowStatusPlanned),
+		string(orchestration.WorkflowStatusRunning),
+		string(orchestration.WorkflowStatusBlocked),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list interruptible workflows: %w", err)
+	}
+	defer rows.Close()
+	records := make([]WorkflowRecord, 0)
+	for rows.Next() {
+		record, scanErr := scanWorkflowRecord(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	items := make([]orchestration.Workflow, 0, len(records))
+	for _, record := range records {
+		workflow, decodeErr := s.decodeWorkflowRecord(ctx, record)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		items = append(items, workflow)
+	}
+	return items, nil
+}
+
+func (s *SQLiteStore) decodeWorkflowRecord(ctx context.Context, record WorkflowRecord) (orchestration.Workflow, error) {
+	var workflow orchestration.Workflow
+	if len(record.Document) > 0 {
+		if err := json.Unmarshal(record.Document, &workflow); err != nil {
+			return orchestration.Workflow{}, fmt.Errorf("decode workflow %s: %w", record.WorkflowID, err)
+		}
+	}
+	if workflow.WorkflowID == "" {
+		workflow = orchestration.Workflow{
+			WorkflowID:        record.WorkflowID,
+			RunID:             record.RunID,
+			EnvironmentScope:  record.EnvironmentScope,
+			Goal:              record.Goal,
+			Status:            orchestration.WorkflowStatus(record.Status),
+			PlanSummary:       record.PlanSummary,
+			FailureSummary:    record.FailureSummary,
+			CreatedAt:         record.CreatedAt,
+			UpdatedAt:         record.UpdatedAt,
+			StartedAt:         record.StartedAt,
+			CompletedAt:       record.CompletedAt,
+			InterruptedAt:     record.InterruptedAt,
+		}
+	}
+	workflow.EnvironmentScope = record.EnvironmentScope
+	workflow.Status = orchestration.WorkflowStatus(record.Status)
+	workflow.PlanSummary = record.PlanSummary
+	workflow.FailureSummary = record.FailureSummary
+	workflow.CreatedAt = record.CreatedAt
+	workflow.UpdatedAt = record.UpdatedAt
+	workflow.StartedAt = record.StartedAt
+	workflow.CompletedAt = record.CompletedAt
+	workflow.InterruptedAt = record.InterruptedAt
+
+	steps, err := s.listWorkflowSteps(ctx, record.WorkflowID)
+	if err != nil {
+		return orchestration.Workflow{}, err
+	}
+	dependencies, err := s.listWorkflowDependencies(ctx, record.WorkflowID)
+	if err != nil {
+		return orchestration.Workflow{}, err
+	}
+	handoffs, err := s.listWorkflowHandoffs(ctx, record.WorkflowID)
+	if err != nil {
+		return orchestration.Workflow{}, err
+	}
+	workflow.Steps = steps
+	workflow.Dependencies = dependencies
+	workflow.Handoffs = handoffs
+	return workflow, nil
+}
+
+func (s *SQLiteStore) listWorkflowSteps(ctx context.Context, workflowID string) ([]orchestration.WorkflowStep, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT workflow_step_id, workflow_id, position, status, runtime_step_id, active_tool_call_id, attempt_count, max_attempts, last_failure_class, blocked_reason, document_json
+		FROM workflow_steps
+		WHERE workflow_id = ?
+		ORDER BY position ASC, workflow_step_id ASC
+	`, workflowID)
+	if err != nil {
+		return nil, fmt.Errorf("list workflow steps %s: %w", workflowID, err)
+	}
+	defer rows.Close()
+	items := make([]orchestration.WorkflowStep, 0)
+	for rows.Next() {
+		record, scanErr := scanWorkflowStepRecord(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		var item orchestration.WorkflowStep
+		if len(record.Document) > 0 {
+			if err := json.Unmarshal(record.Document, &item); err != nil {
+				return nil, fmt.Errorf("decode workflow step %s: %w", record.WorkflowStepID, err)
+			}
+		}
+		item.WorkflowStepID = record.WorkflowStepID
+		item.WorkflowID = record.WorkflowID
+		item.Position = record.Position
+		item.Status = orchestration.StepStatus(record.Status)
+		item.RuntimeStepID = record.RuntimeStepID
+		item.ActiveToolCallID = record.ActiveToolCallID
+		item.AttemptCount = record.AttemptCount
+		item.MaxAttempts = record.MaxAttempts
+		item.LastFailureClass = record.LastFailureClass
+		item.BlockedReason = record.BlockedReason
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) listWorkflowDependencies(ctx context.Context, workflowID string) ([]orchestration.Dependency, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT dependency_id, workflow_id, document_json
+		FROM workflow_dependencies
+		WHERE workflow_id = ?
+		ORDER BY dependency_id ASC
+	`, workflowID)
+	if err != nil {
+		return nil, fmt.Errorf("list workflow dependencies %s: %w", workflowID, err)
+	}
+	defer rows.Close()
+	items := make([]orchestration.Dependency, 0)
+	for rows.Next() {
+		record, scanErr := scanWorkflowDependencyRecord(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		var item orchestration.Dependency
+		if err := json.Unmarshal(record.Document, &item); err != nil {
+			return nil, fmt.Errorf("decode workflow dependency %s: %w", record.DependencyID, err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) listWorkflowHandoffs(ctx context.Context, workflowID string) ([]orchestration.Handoff, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT handoff_id, workflow_id, status, document_json
+		FROM workflow_handoffs
+		WHERE workflow_id = ?
+		ORDER BY handoff_id ASC
+	`, workflowID)
+	if err != nil {
+		return nil, fmt.Errorf("list workflow handoffs %s: %w", workflowID, err)
+	}
+	defer rows.Close()
+	items := make([]orchestration.Handoff, 0)
+	for rows.Next() {
+		record, scanErr := scanWorkflowHandoffRecord(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		var item orchestration.Handoff
+		if err := json.Unmarshal(record.Document, &item); err != nil {
+			return nil, fmt.Errorf("decode workflow handoff %s: %w", record.HandoffID, err)
+		}
+		item.Status = orchestration.HandoffStatus(record.Status)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s *SQLiteStore) UpsertStep(ctx context.Context, step runtime.Step) error {
 	if s == nil {
 		return nil
@@ -2011,6 +2588,9 @@ func (s *SQLiteStore) UpsertStep(ctx context.Context, step runtime.Step) error {
 		INSERT INTO steps (
 			step_id,
 			run_id,
+			workflow_id,
+			workflow_step_id,
+			attempt,
 			title,
 			kind,
 			status,
@@ -2018,9 +2598,12 @@ func (s *SQLiteStore) UpsertStep(ctx context.Context, step runtime.Step) error {
 			output_json,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(step_id) DO UPDATE SET
 			run_id = excluded.run_id,
+			workflow_id = excluded.workflow_id,
+			workflow_step_id = excluded.workflow_step_id,
+			attempt = excluded.attempt,
 			title = excluded.title,
 			kind = excluded.kind,
 			status = excluded.status,
@@ -2031,6 +2614,9 @@ func (s *SQLiteStore) UpsertStep(ctx context.Context, step runtime.Step) error {
 	`,
 		step.StepID,
 		step.RunID,
+		nullString(step.WorkflowID),
+		nullString(step.WorkflowStepID),
+		step.Attempt,
 		step.Title,
 		step.Kind,
 		string(step.Status),
@@ -2069,6 +2655,9 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 			tool_call_id,
 			run_id,
 			step_id,
+			workflow_id,
+			workflow_step_id,
+			attempt,
 			invocation_kind,
 			capability_id,
 			skill_id,
@@ -2088,10 +2677,13 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 			error_text,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(tool_call_id) DO UPDATE SET
 			run_id = excluded.run_id,
 			step_id = excluded.step_id,
+			workflow_id = excluded.workflow_id,
+			workflow_step_id = excluded.workflow_step_id,
+			attempt = excluded.attempt,
 			invocation_kind = excluded.invocation_kind,
 			capability_id = excluded.capability_id,
 			skill_id = excluded.skill_id,
@@ -2115,6 +2707,9 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 		toolCall.ToolCallID,
 		toolCall.RunID,
 		toolCall.StepID,
+		nullString(toolCall.WorkflowID),
+		nullString(toolCall.WorkflowStepID),
+		toolCall.Attempt,
 		nullString(string(toolCall.InvocationKind)),
 		toolCall.CapabilityID,
 		nullString(toolCall.SkillID),
@@ -2148,7 +2743,7 @@ func (s *SQLiteStore) ListToolCalls(ctx context.Context, runID, stepID string) (
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tool_call_id, run_id, step_id, invocation_kind, capability_id, skill_id, mcp_server_id, mcp_server_name, mcp_tool_name, mcp_transport_kind, mcp_session_id, authorization_result, tool_name, status, sandbox_execution_id, failure_class, input_json, output_json, sandbox_json, error_text, created_at, updated_at
+		SELECT tool_call_id, run_id, step_id, workflow_id, workflow_step_id, attempt, invocation_kind, capability_id, skill_id, mcp_server_id, mcp_server_name, mcp_tool_name, mcp_transport_kind, mcp_session_id, authorization_result, tool_name, status, sandbox_execution_id, failure_class, input_json, output_json, sandbox_json, error_text, created_at, updated_at
 		FROM tool_calls
 		WHERE run_id = ? AND step_id = ?
 		ORDER BY created_at ASC, tool_call_id ASC
@@ -2197,7 +2792,7 @@ func (s *SQLiteStore) ListSteps(ctx context.Context, runID string) ([]runtime.St
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT step_id, run_id, title, kind, status, input_json, output_json, created_at, updated_at
+		SELECT step_id, run_id, workflow_id, workflow_step_id, attempt, title, kind, status, input_json, output_json, created_at, updated_at
 		FROM steps
 		WHERE run_id = ?
 		ORDER BY created_at ASC, step_id ASC
@@ -3793,21 +4388,136 @@ func scanSandboxExecution(scanner interface {
 	return record, nil
 }
 
+func scanWorkflowRecord(scanner interface {
+	Scan(dest ...any) error
+}) (WorkflowRecord, error) {
+	var (
+		record        WorkflowRecord
+		planSummary   sql.NullString
+		failureSummary sql.NullString
+		createdAt     string
+		updatedAt     string
+		startedAt     sql.NullString
+		completedAt   sql.NullString
+		interruptedAt sql.NullString
+		document      string
+	)
+	if err := scanner.Scan(
+		&record.WorkflowID,
+		&record.RunID,
+		&record.EnvironmentScope,
+		&record.Goal,
+		&record.Status,
+		&planSummary,
+		&failureSummary,
+		&createdAt,
+		&updatedAt,
+		&startedAt,
+		&completedAt,
+		&interruptedAt,
+		&document,
+	); err != nil {
+		return WorkflowRecord{}, fmt.Errorf("scan workflow: %w", err)
+	}
+	record.PlanSummary = planSummary.String
+	record.FailureSummary = failureSummary.String
+	record.Document = []byte(document)
+	if err := assignRequiredTime(&record.CreatedAt, createdAt); err != nil {
+		return WorkflowRecord{}, fmt.Errorf("parse workflow created_at: %w", err)
+	}
+	if err := assignRequiredTime(&record.UpdatedAt, updatedAt); err != nil {
+		return WorkflowRecord{}, fmt.Errorf("parse workflow updated_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.StartedAt, startedAt); err != nil {
+		return WorkflowRecord{}, fmt.Errorf("parse workflow started_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.CompletedAt, completedAt); err != nil {
+		return WorkflowRecord{}, fmt.Errorf("parse workflow completed_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.InterruptedAt, interruptedAt); err != nil {
+		return WorkflowRecord{}, fmt.Errorf("parse workflow interrupted_at: %w", err)
+	}
+	return record, nil
+}
+
+func scanWorkflowStepRecord(scanner interface {
+	Scan(dest ...any) error
+}) (WorkflowStepRecord, error) {
+	var (
+		record           WorkflowStepRecord
+		runtimeStepID    sql.NullString
+		activeToolCallID sql.NullString
+		lastFailureClass sql.NullString
+		blockedReason    sql.NullString
+		document         string
+	)
+	if err := scanner.Scan(
+		&record.WorkflowStepID,
+		&record.WorkflowID,
+		&record.Position,
+		&record.Status,
+		&runtimeStepID,
+		&activeToolCallID,
+		&record.AttemptCount,
+		&record.MaxAttempts,
+		&lastFailureClass,
+		&blockedReason,
+		&document,
+	); err != nil {
+		return WorkflowStepRecord{}, fmt.Errorf("scan workflow step: %w", err)
+	}
+	record.RuntimeStepID = runtimeStepID.String
+	record.ActiveToolCallID = activeToolCallID.String
+	record.LastFailureClass = lastFailureClass.String
+	record.BlockedReason = blockedReason.String
+	record.Document = []byte(document)
+	return record, nil
+}
+
+func scanWorkflowDependencyRecord(scanner interface {
+	Scan(dest ...any) error
+}) (WorkflowDependencyRecord, error) {
+	var record WorkflowDependencyRecord
+	var document string
+	if err := scanner.Scan(&record.DependencyID, &record.WorkflowID, &document); err != nil {
+		return WorkflowDependencyRecord{}, fmt.Errorf("scan workflow dependency: %w", err)
+	}
+	record.Document = []byte(document)
+	return record, nil
+}
+
+func scanWorkflowHandoffRecord(scanner interface {
+	Scan(dest ...any) error
+}) (WorkflowHandoffRecord, error) {
+	var record WorkflowHandoffRecord
+	var document string
+	if err := scanner.Scan(&record.HandoffID, &record.WorkflowID, &record.Status, &document); err != nil {
+		return WorkflowHandoffRecord{}, fmt.Errorf("scan workflow handoff: %w", err)
+	}
+	record.Document = []byte(document)
+	return record, nil
+}
+
 func scanStep(scanner interface {
 	Scan(dest ...any) error
 }) (runtime.Step, error) {
 	var (
-		step       runtime.Step
-		status     string
-		inputJSON  sql.NullString
-		outputJSON sql.NullString
-		createdAt  string
-		updatedAt  string
+		step           runtime.Step
+		workflowID     sql.NullString
+		workflowStepID sql.NullString
+		status         string
+		inputJSON      sql.NullString
+		outputJSON     sql.NullString
+		createdAt      string
+		updatedAt      string
 	)
 
 	if err := scanner.Scan(
 		&step.StepID,
 		&step.RunID,
+		&workflowID,
+		&workflowStepID,
+		&step.Attempt,
 		&step.Title,
 		&step.Kind,
 		&status,
@@ -3819,6 +4529,8 @@ func scanStep(scanner interface {
 		return runtime.Step{}, fmt.Errorf("scan step: %w", err)
 	}
 
+	step.WorkflowID = workflowID.String
+	step.WorkflowStepID = workflowStepID.String
 	step.Status = runtime.StepStatus(status)
 
 	if err := unmarshalNullableJSON(inputJSON, &step.Input); err != nil {
@@ -3848,6 +4560,8 @@ func scanToolCall(scanner interface {
 }) (runtime.ToolCall, error) {
 	var (
 		toolCall            runtime.ToolCall
+		workflowID          sql.NullString
+		workflowStepID      sql.NullString
 		invocationKind      sql.NullString
 		skillID             sql.NullString
 		mcpServerID         sql.NullString
@@ -3871,6 +4585,9 @@ func scanToolCall(scanner interface {
 		&toolCall.ToolCallID,
 		&toolCall.RunID,
 		&toolCall.StepID,
+		&workflowID,
+		&workflowStepID,
+		&toolCall.Attempt,
 		&invocationKind,
 		&toolCall.CapabilityID,
 		&skillID,
@@ -3894,6 +4611,8 @@ func scanToolCall(scanner interface {
 		return runtime.ToolCall{}, fmt.Errorf("scan tool call: %w", err)
 	}
 
+	toolCall.WorkflowID = workflowID.String
+	toolCall.WorkflowStepID = workflowStepID.String
 	toolCall.Status = runtime.ToolCallStatus(status)
 	toolCall.InvocationKind = runtime.ToolCallInvocationKind(invocationKind.String)
 	toolCall.SkillID = skillID.String

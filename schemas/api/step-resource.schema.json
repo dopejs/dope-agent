@@ -20,6 +20,16 @@
     "runId": {
       "type": "string"
     },
+    "workflowId": {
+      "type": "string"
+    },
+    "workflowStepId": {
+      "type": "string"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0
+    },
     "title": {
       "type": "string"
     },

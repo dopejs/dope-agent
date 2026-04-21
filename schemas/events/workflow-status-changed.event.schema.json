@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/workflow-status-changed.event.schema.json",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "workflow" },
+        "name": { "const": "workflow.status_changed" },
+        "resource": {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "workflow" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": ["workflowId", "runId", "status"]
+        }
+      }
+    }
+  ]
+}

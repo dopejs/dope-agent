@@ -62,6 +62,18 @@ The first real guarded action is executable-skill and high-risk local-tool execu
 
 This keeps approvals attached to a real side-effecting action instead of existing only as standalone resources.
 
+For workflow orchestration:
+
+- workflow planning routes are protected operator APIs like the rest of the `/v1/runs/*`
+  surface
+- planning only previews `approvalModeExpected`; it does not grant a workflow-level
+  approval bypass
+- each executing workflow step still creates normal runtime steps and tool calls, so
+  approval, redaction, provenance, and sandbox policy stay attached to the concrete
+  action
+- daemon restart interrupts unfinished workflows and leaves them visible as
+  `interrupted`; phase 24 does not silently auto-resume pending side effects
+
 For MCP:
 
 - MCP server register, start, stop, restart, and cancel stay daemon-managed and do not require routine approval

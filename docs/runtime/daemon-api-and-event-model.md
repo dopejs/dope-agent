@@ -92,6 +92,7 @@ Purpose:
 - create and inspect runs
 - drive the runtime
 - cancel and resume work
+- inspect and control nested workflow plans that execute on the existing runtime plane
 
 Examples:
 
@@ -100,6 +101,11 @@ Examples:
 - `GET /v1/runs/{runId}`
 - `POST /v1/runs/{runId}/cancel`
 - `POST /v1/runs/{runId}/resume`
+- `POST /v1/runs/{runId}/workflows`
+- `GET /v1/runs/{runId}/workflows`
+- `GET /v1/runs/{runId}/workflows/{workflowId}`
+- `POST /v1/runs/{runId}/workflows/{workflowId}/start`
+- `POST /v1/runs/{runId}/workflows/{workflowId}/cancel`
 
 ## 4. Connector And Capability API
 
@@ -274,6 +280,22 @@ Examples:
 - `artifact.created`
 - `artifact.updated`
 - `artifact.attached`
+
+## 9. Workflow Events
+
+Examples:
+
+- `workflow.planned`
+- `workflow.started`
+- `workflow.status_changed`
+- `workflow.step_status_changed`
+
+Workflow events stay additive to run and step history:
+
+- workflow planning remains inspectable before execution begins
+- workflow execution still creates normal runtime step and tool-call records
+- workflow-step events can project `workflowStepId`, `runtimeStepId`, `toolCallId`, and
+  `attempt` without creating a second execution ledger
 
 ## Event Stream Filtering
 
