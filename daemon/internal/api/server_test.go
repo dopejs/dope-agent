@@ -4629,6 +4629,49 @@ func TestWorkflowExecutionRoutesRecordMixedPartialFailureAndAvoidCrossEnvironmen
 	}
 }
 
+func TestWorkflowExecutionPublishesScopedWorkflowTransitionEvents(t *testing.T) {
+	t.Parallel()
+
+	harness := newWorkflowServerHarness(t, workflowServerHarnessOptions{
+		skillScript: "#!/bin/sh\nprintf 'workflow-ok %s' \"$1\"",
+	})
+
+	created := createWorkflowForTest(t, harness.server, harness.run.RunID, `{}`)
+	startWorkflowForTest(t, harness.server, harness.run.RunID, created.WorkflowID)
+	final := waitForWorkflowStatus(t, harness.server, harness.run.RunID, created.WorkflowID, orchestration.WorkflowStatusCompleted)
+	if final.Status != orchestration.WorkflowStatusCompleted {
+		t.Fatalf("expected completed workflow, got %+v", final)
+	}
+
+	events := harness.eventBus.List(events.Filter{Category: "workflow", RunID: harness.run.RunID})
+	if len(events) < 4 {
+		t.Fatalf("expected workflow lifecycle events, got %+v", events)
+	}
+
+	planned := findNamedEvent(t, events, "workflow.planned")
+	if planned.Scope.WorkflowID != created.WorkflowID {
+		t.Fatalf("expected workflow.planned scope to include workflowId, got %+v", planned)
+	}
+
+	started := findNamedEvent(t, events, "workflow.started")
+	if started.Scope.WorkflowID != created.WorkflowID || started.Payload["status"] != string(orchestration.WorkflowStatusRunning) {
+		t.Fatalf("expected workflow.started to project running workflow scope, got %+v", started)
+	}
+
+	stepChanged := findNamedEvent(t, events, "workflow.step_status_changed")
+	if stepChanged.Scope.WorkflowID != created.WorkflowID || stepChanged.Scope.WorkflowStepID != final.Steps[0].WorkflowStepID {
+		t.Fatalf("expected step event scope to include workflow and step ids, got %+v", stepChanged)
+	}
+	if stepChanged.Payload["status"] != string(orchestration.StepStatusCompleted) {
+		t.Fatalf("expected step event to project step status, got %+v", stepChanged.Payload)
+	}
+
+	statusChanged := findNamedEvent(t, events, "workflow.status_changed")
+	if statusChanged.Scope.WorkflowID != created.WorkflowID || statusChanged.Payload["status"] != string(orchestration.WorkflowStatusCompleted) {
+		t.Fatalf("expected workflow.status_changed to project completed workflow state, got %+v", statusChanged)
+	}
+}
+
 type workflowServerHarnessOptions struct {
 	runGoal      string
 	skillScript  string
@@ -4639,6 +4682,7 @@ type workflowServerHarnessOptions struct {
 type workflowServerHarness struct {
 	cfg                  config.Config
 	server               *Server
+	eventBus             *events.Bus
 	store                *store.SQLiteStore
 	runtime              *runtime.Manager
 	run                  runtime.Run
@@ -4745,6 +4789,7 @@ func newWorkflowServerHarness(t *testing.T, opts workflowServerHarnessOptions) w
 	return workflowServerHarness{
 		cfg:                  cfg,
 		server:               server,
+		eventBus:             eventBus,
 		store:                sqliteStore,
 		runtime:              runtimeManager,
 		run:                  run,
@@ -4890,4 +4935,15 @@ func assertInterruptedWorkflowStatus(t *testing.T, workflow orchestration.Workfl
 		}
 	}
 	t.Fatalf("expected at least one interrupted workflow step, got %+v", workflow.Steps)
+}
+
+func findNamedEvent(t *testing.T, items []events.Event, name string) events.Event {
+	t.Helper()
+	for _, item := range items {
+		if item.Name == name {
+			return item
+		}
+	}
+	t.Fatalf("expected event %s in %+v", name, items)
+	return events.Event{}
 }

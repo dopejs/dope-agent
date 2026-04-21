@@ -1280,6 +1280,92 @@ Task definition of done:
 - memory-driven planning systems
 - marketplace or ecosystem discovery surfaces
 
+## Planned Follow-On Roadmaps After Tool-Call Orchestration
+
+The next roadmap split is intentionally non-demo and pre-knowledge-plane. The goal is to
+finish the ambient personal-agent product surface before context and memory become the main
+investment focus.
+
+### Roadmap 25: Scheduled Tasks And Wakeups
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/010-scheduled-tasks-and-wakeups.md](../specs/010-scheduled-tasks-and-wakeups.md)
+
+Goal: add a durable trigger plane that can wake the daemon and launch normal runs or
+workflows through the existing runtime.
+
+### Roadmap 26: Use-Computer Capability Plane
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/011-use-computer-capability-plane.md](../specs/011-use-computer-capability-plane.md)
+
+Goal: add first-class browser-first computer use with approval, artifacts, and workflow
+integration on the current runtime plane.
+
+### Roadmap 27: Personal Integrations Platform
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/012-personal-integrations-platform.md](../specs/012-personal-integrations-platform.md)
+
+Goal: define the shared integration substrate for account-backed personal systems before
+domain-specific implementations land.
+
+### Roadmap 28: Delivery And Notifications
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/013-delivery-and-notifications.md](../specs/013-delivery-and-notifications.md)
+
+Goal: add a durable delivery plane for background results, alerts, and summaries.
+
+### Roadmap 29: Calendar Integration
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/014-calendar-integration.md](../specs/014-calendar-integration.md)
+
+Goal: add a first production-grade personal calendar domain built on the shared
+integration substrate.
+
+### Roadmap 30: Mail Integration
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/015-mail-integration.md](../specs/015-mail-integration.md)
+
+Goal: add a first production-grade personal mail domain with truthful draft and send
+semantics.
+
+### Roadmap 31: Tasks And Reminders
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/016-tasks-and-reminders.md](../specs/016-tasks-and-reminders.md)
+
+Goal: add user-facing reminders and lightweight task follow-up on top of the trigger and
+delivery planes.
+
+### Roadmap 32: Operator Shell And Onboarding
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/017-operator-shell-and-onboarding.md](../specs/017-operator-shell-and-onboarding.md)
+
+Goal: add the minimum product shell required to configure, inspect, and trust the personal
+agent without falling back to raw daemon APIs.
+
+### Roadmap 33: Evaluation And Replay Harness
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/018-evaluation-and-replay-harness.md](../specs/018-evaluation-and-replay-harness.md)
+
+Goal: add replay and comparison support so ambient personal-agent behavior can be changed
+without losing confidence.
+
 ## Roadmap 13: Provider Streaming Timeout Semantics
 
 Status: `[x] complete`
@@ -2181,3 +2267,12 @@ Task definition of done:
 22. Roadmap 22: MCP Catalog Management And Distribution
 23. Roadmap 23: Additional MCP Transports
 24. Roadmap 24: Tool-Call Orchestration
+25. Roadmap 25: Scheduled Tasks And Wakeups
+26. Roadmap 26: Use-Computer Capability Plane
+27. Roadmap 27: Personal Integrations Platform
+28. Roadmap 28: Delivery And Notifications
+29. Roadmap 29: Calendar Integration
+30. Roadmap 30: Mail Integration
+31. Roadmap 31: Tasks And Reminders
+32. Roadmap 32: Operator Shell And Onboarding
+33. Roadmap 33: Evaluation And Replay Harness

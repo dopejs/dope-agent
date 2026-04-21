@@ -577,6 +577,7 @@ func watchWorkflowSandboxExecution(cfg config.Config, manager *runtime.Manager, 
 }
 
 func advanceWorkflowAfterToolCall(ctx context.Context, cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, workflow orchestration.Workflow, toolCall runtime.ToolCall, hintedStatus orchestration.StepStatus, blockedReason string) (orchestration.Workflow, bool, error) {
+	previousStatus := workflow.Status
 	workflow = orchestration.NewManager().ApplyToolCallResult(workflow, toolCall, hintedStatus, blockedReason, time.Now().UTC())
 	step := orchestration.WorkflowStepByID(workflow, toolCall.WorkflowStepID)
 	if step != nil {
@@ -607,6 +608,9 @@ func advanceWorkflowAfterToolCall(ctx context.Context, cfg config.Config, manage
 	if toolCall.WorkflowStepID != "" {
 		_, _ = publishWorkflowEvent(ctx, eventBus, sqliteStore, "workflow.step_status_changed", workflow, &toolCall, map[string]any{"workflowStepId": toolCall.WorkflowStepID})
 	}
+	if workflow.Status != previousStatus {
+		_, _ = publishWorkflowEvent(ctx, eventBus, sqliteStore, "workflow.status_changed", workflow, &toolCall, nil)
+	}
 	nextWorkflow, err := advanceWorkflowExecution(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, workflow)
 	return nextWorkflow, true, err
 }
@@ -625,10 +629,11 @@ func persistWorkflowDetail(ctx context.Context, sqliteStore *store.SQLiteStore, 
 }
 
 func publishWorkflowEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, name string, workflow orchestration.Workflow, toolCall *runtime.ToolCall, extra map[string]any) (events.Event, error) {
+	step := workflowEventStep(workflow, toolCall, extra)
 	payload := map[string]any{
 		"workflowId": workflow.WorkflowID,
 		"runId":      workflow.RunID,
-		"status":     workflow.Status,
+		"status":     string(workflow.Status),
 	}
 	if toolCall != nil {
 		payload["workflowStepId"] = toolCall.WorkflowStepID
@@ -653,14 +658,72 @@ func publishWorkflowEvent(ctx context.Context, eventBus *events.Bus, sqliteStore
 			payload["failureClass"] = toolCall.FailureClass
 		}
 	}
+	if step != nil {
+		if name == "workflow.step_status_changed" {
+			payload["status"] = string(step.Status)
+		}
+		if step.WorkflowStepID != "" {
+			payload["workflowStepId"] = step.WorkflowStepID
+		}
+		if step.ConsumerKind != "" {
+			payload["consumerKind"] = step.ConsumerKind
+		}
+		if step.ConsumerID != "" {
+			payload["consumerId"] = step.ConsumerID
+		}
+		if step.ToolName != "" {
+			payload["toolName"] = step.ToolName
+		}
+		if step.ApprovalModeExpected != "" {
+			payload["approvalModeExpected"] = step.ApprovalModeExpected
+		}
+		if step.BlockedReason != "" {
+			payload["blockedReason"] = step.BlockedReason
+		}
+		if step.LastFailureClass != "" && payload["failureClass"] == nil {
+			payload["failureClass"] = step.LastFailureClass
+		}
+	}
 	for key, value := range extra {
 		payload[key] = value
 	}
 	return publishEvent(ctx, eventBus, sqliteStore, events.Event{
 		Category: "workflow",
 		Name:     name,
-		Scope:    events.Scope{RunID: workflow.RunID},
+		Scope: events.Scope{
+			RunID:          workflow.RunID,
+			WorkflowID:     workflow.WorkflowID,
+			WorkflowStepID: workflowEventStepID(toolCall, step, extra),
+		},
 		Resource: events.Resource{Kind: "workflow", ID: workflow.WorkflowID},
 		Payload:  payload,
 	})
+}
+
+func workflowEventStep(workflow orchestration.Workflow, toolCall *runtime.ToolCall, extra map[string]any) *orchestration.WorkflowStep {
+	if toolCall != nil && toolCall.WorkflowStepID != "" {
+		return orchestration.WorkflowStepByID(workflow, toolCall.WorkflowStepID)
+	}
+	if extra == nil {
+		return nil
+	}
+	workflowStepID, ok := extra["workflowStepId"].(string)
+	if !ok || strings.TrimSpace(workflowStepID) == "" {
+		return nil
+	}
+	return orchestration.WorkflowStepByID(workflow, workflowStepID)
+}
+
+func workflowEventStepID(toolCall *runtime.ToolCall, step *orchestration.WorkflowStep, extra map[string]any) string {
+	if toolCall != nil && strings.TrimSpace(toolCall.WorkflowStepID) != "" {
+		return toolCall.WorkflowStepID
+	}
+	if step != nil && strings.TrimSpace(step.WorkflowStepID) != "" {
+		return step.WorkflowStepID
+	}
+	if extra == nil {
+		return ""
+	}
+	workflowStepID, _ := extra["workflowStepId"].(string)
+	return workflowStepID
 }

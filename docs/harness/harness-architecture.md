@@ -190,9 +190,27 @@ Current daemon status:
 - daemon restart preserves persisted workflow audit truth and marks unfinished workflows
   `interrupted` instead of auto-resuming them
 
+### Post-Phase 4: Personal-Agent Product Surface Before Knowledge Plane
+
+Before context engineering becomes the main differentiator, the daemon should close the
+remaining non-knowledge personal-agent product surface:
+
+- Roadmap 25: scheduled tasks and wakeups
+- Roadmap 26: use-computer capability plane
+- Roadmap 27: personal integrations platform
+- Roadmap 28: delivery and notifications
+- Roadmap 29: calendar integration
+- Roadmap 30: mail integration
+- Roadmap 31: tasks and reminders
+- Roadmap 32: operator shell and onboarding
+- Roadmap 33: evaluation and replay harness
+
+These are not memory work. They are the missing product and reliability layers that turn
+the current daemon substrate into a serious personal agent.
+
 ### Phase 5: Context Engineering
 
-After tool orchestration:
+After the non-knowledge personal-agent product surface:
 
 - context sources
 - packing and truncation rules
@@ -394,9 +412,18 @@ Then continue in this order:
 1. MCP catalog management and distribution
 2. additional MCP transports
 3. tool-call orchestration
-4. context engineering
-5. memory
-6. agent-managed skills
-7. dreaming / self-improve
+4. scheduled tasks and wakeups
+5. use-computer capability plane
+6. personal integrations platform
+7. delivery and notifications
+8. calendar integration
+9. mail integration
+10. tasks and reminders
+11. operator shell and onboarding
+12. evaluation and replay harness
+13. context engineering
+14. memory
+15. agent-managed skills
+16. dreaming / self-improve
 
 This keeps the harness grounded in execution control before it grows into adaptive knowledge systems.

@@ -22,6 +22,14 @@ Use existing repository conventions before introducing new abstractions. Go code
 
 Every production change should include targeted tests in the affected layer and preserve contract coverage where applicable. Use Go unit and integration tests under `daemon/internal/...` and client tests in package-local test files. When changing API shape, schema, or event payloads, run `make daemon-contract-test` and update `schemas/` plus fixtures together.
 
+## Planning And Scope Discipline
+
+Do not plan, specify, or implement demo-grade slices unless the user explicitly asks for a demo or prototype. Treat roadmap, spec, and architecture work as production planning by default.
+
+When a capability spans both platform behavior and multiple domain implementations, split it into a parent planning document plus separate capability or domain specs rather than collapsing everything into one broad spec.
+
+Do not count a happy-path integration or a narrow vertical proof as completion of a personal-agent capability. Completion requires durable operator-visible behavior, failure handling, and verification boundaries.
+
 ## Commit & Pull Request Guidelines
 
 Follow the existing imperative commit style: `Complete roadmap 15 skill registry and prompt support`, `Add test environment workflow and repo skill`, `Improve openai-compatible base URL handling`. Keep commits scoped and descriptive. Pull requests should explain the operator impact, verification performed, rollback path, and any config or schema changes. Include screenshots only when UI behavior changes.

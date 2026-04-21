@@ -8,11 +8,13 @@ import (
 )
 
 type Scope struct {
-	SessionID    string `json:"sessionId,omitempty"`
-	RunID        string `json:"runId,omitempty"`
-	StepID       string `json:"stepId,omitempty"`
-	ConnectorID  string `json:"connectorId,omitempty"`
-	CapabilityID string `json:"capabilityId,omitempty"`
+	SessionID      string `json:"sessionId,omitempty"`
+	RunID          string `json:"runId,omitempty"`
+	WorkflowID     string `json:"workflowId,omitempty"`
+	WorkflowStepID string `json:"workflowStepId,omitempty"`
+	StepID         string `json:"stepId,omitempty"`
+	ConnectorID    string `json:"connectorId,omitempty"`
+	CapabilityID   string `json:"capabilityId,omitempty"`
 }
 
 type Resource struct {

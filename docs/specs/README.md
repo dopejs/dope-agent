@@ -33,6 +33,15 @@ Do not rely on the short roadmap heading alone when a `docs/specs` document exis
 - `007` -> Roadmap 22: MCP Catalog Management And Distribution
 - `008` -> Roadmap 23: Additional MCP Transports
 - `009` -> Roadmap 24: Tool-Call Orchestration
+- `010` -> Roadmap 25: Scheduled Tasks And Wakeups
+- `011` -> Roadmap 26: Use-Computer Capability Plane
+- `012` -> Roadmap 27: Personal Integrations Platform
+- `013` -> Roadmap 28: Delivery And Notifications
+- `014` -> Roadmap 29: Calendar Integration
+- `015` -> Roadmap 30: Mail Integration
+- `016` -> Roadmap 31: Tasks And Reminders
+- `017` -> Roadmap 32: Operator Shell And Onboarding
+- `018` -> Roadmap 33: Evaluation And Replay Harness
 
 ## Authoring Standard
 

@@ -97,6 +97,17 @@ func TestExplainReturnsUnsupportedForUnavailableDockerBackend(t *testing.T) {
 func TestExplainReturnsUnsupportedForDockerAccessRuleMismatch(t *testing.T) {
 	fakeDockerOnPath(t, "available")
 	manager := newSandboxManagerForTest(t)
+	setBackendCapabilityForTest(t, manager, BackendKindDocker, BackendCapabilityProfile{
+		BackendKind:           BackendKindDocker,
+		DisplayName:           "Docker",
+		FilesystemEnforcement: "container_mount_scoped",
+		NetworkEnforcement:    "container_network_mode",
+		EnvInjectionMode:      "container_env_injection",
+		ApprovalBehavior:      "profile_and_command_policy",
+		RestartBehavior:       "interrupted_execution_recovers_as_cancelled",
+		HostPrerequisites:     []string{"docker CLI available on PATH"},
+		AvailabilityStatus:    BackendAvailabilityStatusAvailable,
+	})
 	cwd := t.TempDir()
 
 	decision, err := manager.Explain(context.Background(), ExecutionRequest{
@@ -814,6 +825,22 @@ func newSandboxManagerForTest(t *testing.T) *Manager {
 		Environment: config.EnvironmentTest,
 		DataDir:     dataDir,
 	}, sqliteStore, events.NewBus(), policy.NewEngine())
+}
+
+func setBackendCapabilityForTest(t *testing.T, manager *Manager, kind BackendKind, capability BackendCapabilityProfile) {
+	t.Helper()
+
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+
+	manager.capabilities[kind] = cloneBackendCapability(capability)
+	for profileID, profile := range manager.profiles {
+		if profile.BackendKind != kind {
+			continue
+		}
+		profile.BackendCapability = cloneBackendCapability(capability)
+		manager.profiles[profileID] = profile
+	}
 }
 
 func waitForTerminalExecution(t *testing.T, manager *Manager, executionID string) Execution {
