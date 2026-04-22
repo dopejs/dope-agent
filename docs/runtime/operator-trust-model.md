@@ -105,6 +105,23 @@ For MCP:
 - operator-visible MCP tool-call output, history, and event payloads remain redacted when
   installed or invoked MCP servers touch secret-backed configuration
 
+For personal integrations:
+
+- daemon-owned `/v1/integrations` resources are protected operator APIs like other `/v1/*`
+  control-plane routes when auth is enabled
+- readiness is explicit operator truth with one canonical default per
+  `domainKind/accountKey/environmentScope`, but multiple records may still exist for
+  intentional multi-backend cases
+- `degraded` integrations remain inspectable and can still surface linkage, while
+  `unavailable` blocks integration-backed execution explicitly
+- mutation probes on integrations require normal approval resources instead of a special
+  integration-only bypass
+- approvals, runtime tool calls, and workflow steps expose redacted `integrationBindings`
+  so operators can inspect which integration identity and readiness truth was used at
+  invocation time
+- integration readiness does not redefine delivery or notification outcomes; it only
+  governs integration-backed execution readiness
+
 ## Security Assumptions
 
 - this is a local-first daemon trust model, not multi-tenant auth

@@ -82,6 +82,10 @@
     "failureClass": {
       "type": "string"
     },
+    "integrationBindings": {
+      "type": "array",
+      "items": { "$ref": "./integration-binding-summary.schema.json" }
+    },
     "createdAt": {
       "type": "string",
       "format": "date-time"

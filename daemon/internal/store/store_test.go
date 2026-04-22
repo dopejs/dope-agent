@@ -14,6 +14,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
@@ -984,6 +985,150 @@ func TestSQLiteStorePersistsAuthAndPolicyState(t *testing.T) {
 	}
 	if len(decisions) != 1 || decisions[0].DecisionID != decision.DecisionID {
 		t.Fatalf("expected persisted decision, got %+v", decisions)
+	}
+}
+
+func TestSQLiteStorePersistsIntegrationsAndBindingSnapshots(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	integration := integrations.Resource{
+		IntegrationID:    "calendar-a",
+		DomainKind:       "calendar",
+		DisplayName:      "Calendar A",
+		EnvironmentScope: "test",
+		ReadinessStatus:  integrations.ReadinessStatusHealthy,
+		AuthState:        integrations.AuthStateAuthorized,
+		HealthState:      integrations.HealthStateHealthy,
+		CanonicalDefault: true,
+		AccountBinding: integrations.AccountBinding{
+			AccountKey:   "acct_calendar",
+			AccountLabel: "Primary Calendar",
+		},
+		BackendBinding: integrations.BackendBinding{
+			BackendKind:           integrations.BackendKindFakeLocal,
+			SupportsProbeRead:     true,
+			SupportsProbeMutation: true,
+		},
+		Provenance: integrations.Provenance{
+			SecretResolution:      "resolved",
+			SecretMaterialPresent: true,
+			EnvironmentScope:      "test",
+			BackedBy:              string(integrations.BackendKindFakeLocal),
+		},
+		CreatedAt:        now.Add(-time.Minute),
+		UpdatedAt:        now,
+		LastTransitionAt: now,
+		LastReadyAt:      &now,
+	}
+	if err := store.UpsertIntegration(ctx, integration); err != nil {
+		t.Fatalf("UpsertIntegration returned error: %v", err)
+	}
+
+	items, err := store.ListIntegrations(ctx, "test")
+	if err != nil {
+		t.Fatalf("ListIntegrations returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 integration, got %d", len(items))
+	}
+	if items[0].IntegrationID != integration.IntegrationID || items[0].CanonicalDefault != integration.CanonicalDefault {
+		t.Fatalf("expected persisted integration %+v, got %+v", integration, items[0])
+	}
+
+	binding := integrations.BindingSummary{
+		IntegrationID:         integration.IntegrationID,
+		DomainKind:            integration.DomainKind,
+		DisplayName:           integration.DisplayName,
+		AccountKey:            integration.AccountBinding.AccountKey,
+		CanonicalDefault:      true,
+		ReadinessAtInvocation: integrations.ReadinessStatusHealthy,
+		BackendKind:           integrations.BackendKindFakeLocal,
+		SecretResolution:      "resolved",
+		EnvironmentScope:      "test",
+		CapturedAt:            now,
+	}
+
+	approval := policy.Approval{
+		ApprovalID:          "approval_integration_1",
+		Action:              "integration.probe.mutate",
+		ResourceKind:        "integration",
+		ResourceID:          integration.IntegrationID,
+		Reason:              "mutation probe",
+		RequestedBy:         "tests",
+		Status:              policy.ApprovalStatusPending,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+		IntegrationBindings: []integrations.BindingSummary{binding},
+	}
+	if err := store.UpsertApproval(ctx, approval); err != nil {
+		t.Fatalf("UpsertApproval returned error: %v", err)
+	}
+
+	run := runtime.Run{
+		RunID:      "run_integration_store",
+		Entrypoint: "operator",
+		Status:     runtime.RunStatusRunning,
+		Goal:       "persist integration bindings",
+		CreatedAt:  now.Add(-time.Minute),
+		UpdatedAt:  now,
+	}
+	if err := store.UpsertRun(ctx, run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+	step := runtime.Step{
+		StepID:    "step_integration_store",
+		RunID:     run.RunID,
+		Title:     "probe integration",
+		Kind:      "integration_probe",
+		Status:    runtime.StepStatusExecutingTool,
+		CreatedAt: now.Add(-30 * time.Second),
+		UpdatedAt: now,
+	}
+	if err := store.UpsertStep(ctx, step); err != nil {
+		t.Fatalf("UpsertStep returned error: %v", err)
+	}
+	toolCall := runtime.ToolCall{
+		ToolCallID:          "tool_call_integration_store",
+		RunID:               run.RunID,
+		StepID:              step.StepID,
+		CapabilityID:        "integration_probe",
+		ToolName:            "inspect",
+		Status:              runtime.ToolCallStatusCompleted,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+		IntegrationBindings: []integrations.BindingSummary{binding},
+		Output:              map[string]any{"ok": true},
+	}
+	if err := store.UpsertToolCall(ctx, toolCall); err != nil {
+		t.Fatalf("UpsertToolCall returned error: %v", err)
+	}
+
+	approvals, err := store.ListApprovals(ctx)
+	if err != nil {
+		t.Fatalf("ListApprovals returned error: %v", err)
+	}
+	if len(approvals) != 1 || len(approvals[0].IntegrationBindings) != 1 || approvals[0].IntegrationBindings[0].IntegrationID != integration.IntegrationID {
+		t.Fatalf("expected approval integration bindings to round-trip, got %+v", approvals)
+	}
+
+	toolCalls, err := store.ListToolCalls(ctx, run.RunID, step.StepID)
+	if err != nil {
+		t.Fatalf("ListToolCalls returned error: %v", err)
+	}
+	if len(toolCalls) != 1 || len(toolCalls[0].IntegrationBindings) != 1 || toolCalls[0].IntegrationBindings[0].IntegrationID != integration.IntegrationID {
+		t.Fatalf("expected tool call integration bindings to round-trip, got %+v", toolCalls)
 	}
 }
 

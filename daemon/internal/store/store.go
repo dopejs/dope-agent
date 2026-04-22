@@ -19,6 +19,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
@@ -30,7 +31,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 14
+	CurrentSchemaVersion = 15
 )
 
 type schemaMigration struct {
@@ -132,6 +133,18 @@ type WorkflowRecord struct {
 	CompletedAt       *time.Time
 	InterruptedAt     *time.Time
 	Document          []byte
+}
+
+type IntegrationRecord struct {
+	IntegrationID    string
+	DomainKind       string
+	EnvironmentScope string
+	AccountKey       string
+	BackendKind      string
+	ReadinessStatus  string
+	CanonicalDefault bool
+	UpdatedAt        time.Time
+	Document         []byte
 }
 
 type WorkflowStepRecord struct {
@@ -932,6 +945,29 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_tool_calls_computer_use_session ON tool_calls(computer_use_session_id, created_at DESC, tool_call_id DESC);`,
 		},
 	},
+	{
+		Version: 15,
+		Name:    "personal_integrations_platform",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS integrations (
+				integration_id TEXT PRIMARY KEY,
+				domain_kind TEXT NOT NULL,
+				environment_scope TEXT NOT NULL,
+				account_key TEXT,
+				backend_kind TEXT NOT NULL,
+				readiness_status TEXT NOT NULL,
+				canonical_default INTEGER NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`ALTER TABLE approvals ADD COLUMN integration_bindings_json TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN integration_bindings_json TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_integrations_env_domain_account ON integrations(environment_scope, domain_kind, account_key, canonical_default);`,
+			`CREATE INDEX IF NOT EXISTS idx_integrations_readiness ON integrations(environment_scope, readiness_status, updated_at DESC, integration_id DESC);`,
+		},
+	},
 }
 
 type SQLiteStore struct {
@@ -1260,8 +1296,12 @@ func (s *SQLiteStore) UpsertApproval(ctx context.Context, approval policy.Approv
 	if approval.ResolvedAt != nil {
 		resolvedAt = sql.NullString{String: approval.ResolvedAt.UTC().Format(time.RFC3339Nano), Valid: true}
 	}
+	integrationBindingsJSON, err := marshalJSON(approval.IntegrationBindings)
+	if err != nil {
+		return fmt.Errorf("marshal approval integration bindings: %w", err)
+	}
 
-	_, err := s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO approvals (
 			approval_id,
 			action,
@@ -1274,8 +1314,9 @@ func (s *SQLiteStore) UpsertApproval(ctx context.Context, approval policy.Approv
 			updated_at,
 			resolved_at,
 			resolution,
-			comment
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			comment,
+			integration_bindings_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(approval_id) DO UPDATE SET
 			action = excluded.action,
 			resource_kind = excluded.resource_kind,
@@ -1287,7 +1328,8 @@ func (s *SQLiteStore) UpsertApproval(ctx context.Context, approval policy.Approv
 			updated_at = excluded.updated_at,
 			resolved_at = excluded.resolved_at,
 			resolution = excluded.resolution,
-			comment = excluded.comment
+			comment = excluded.comment,
+			integration_bindings_json = excluded.integration_bindings_json
 	`,
 		approval.ApprovalID,
 		approval.Action,
@@ -1301,6 +1343,7 @@ func (s *SQLiteStore) UpsertApproval(ctx context.Context, approval policy.Approv
 		resolvedAt,
 		nullString(approval.Resolution),
 		nullString(approval.Comment),
+		integrationBindingsJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert approval %s: %w", approval.ApprovalID, err)
@@ -1315,7 +1358,7 @@ func (s *SQLiteStore) ListApprovals(ctx context.Context) ([]policy.Approval, err
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT approval_id, action, resource_kind, resource_id, reason, requested_by, status, created_at, updated_at, resolved_at, resolution, comment
+		SELECT approval_id, action, resource_kind, resource_id, reason, requested_by, status, created_at, updated_at, resolved_at, resolution, comment, integration_bindings_json
 		FROM approvals
 		ORDER BY created_at ASC, approval_id ASC
 	`)
@@ -2399,6 +2442,81 @@ func (s *SQLiteStore) UpsertWorkflow(ctx context.Context, workflow orchestration
 	return nil
 }
 
+func (s *SQLiteStore) UpsertIntegration(ctx context.Context, item integrations.Resource) error {
+	if s == nil {
+		return nil
+	}
+	documentJSON, err := marshalJSON(item)
+	if err != nil {
+		return fmt.Errorf("marshal integration %s: %w", item.IntegrationID, err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO integrations (
+			integration_id,
+			domain_kind,
+			environment_scope,
+			account_key,
+			backend_kind,
+			readiness_status,
+			canonical_default,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(integration_id) DO UPDATE SET
+			domain_kind = excluded.domain_kind,
+			environment_scope = excluded.environment_scope,
+			account_key = excluded.account_key,
+			backend_kind = excluded.backend_kind,
+			readiness_status = excluded.readiness_status,
+			canonical_default = excluded.canonical_default,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		item.IntegrationID,
+		item.DomainKind,
+		item.EnvironmentScope,
+		nullString(item.AccountBinding.AccountKey),
+		string(item.BackendBinding.BackendKind),
+		string(item.ReadinessStatus),
+		boolToInt(item.CanonicalDefault),
+		item.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		documentJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert integration %s: %w", item.IntegrationID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListIntegrations(ctx context.Context, environmentScope string) ([]integrations.Resource, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT integration_id, domain_kind, environment_scope, account_key, backend_kind, readiness_status, canonical_default, updated_at, document_json
+		FROM integrations
+		WHERE environment_scope = ?
+		ORDER BY updated_at ASC, integration_id ASC
+	`, strings.TrimSpace(environmentScope))
+	if err != nil {
+		return nil, fmt.Errorf("list integrations for %s: %w", environmentScope, err)
+	}
+	defer rows.Close()
+	items := make([]integrations.Resource, 0)
+	for rows.Next() {
+		record, err := scanIntegrationRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		var item integrations.Resource
+		if err := json.Unmarshal(record.Document, &item); err != nil {
+			return nil, fmt.Errorf("decode integration %s: %w", record.IntegrationID, err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s *SQLiteStore) ReplaceWorkflowSteps(ctx context.Context, workflowID string, steps []orchestration.WorkflowStep) error {
 	if s == nil {
 		return nil
@@ -3147,6 +3265,10 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 	if err != nil {
 		return fmt.Errorf("marshal tool call sandbox metadata: %w", err)
 	}
+	integrationBindingsJSON, err := marshalJSON(toolCall.IntegrationBindings)
+	if err != nil {
+		return fmt.Errorf("marshal tool call integration bindings: %w", err)
+	}
 
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO tool_calls (
@@ -3174,10 +3296,11 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 			input_json,
 			output_json,
 			sandbox_json,
+			integration_bindings_json,
 			error_text,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(tool_call_id) DO UPDATE SET
 			run_id = excluded.run_id,
 			step_id = excluded.step_id,
@@ -3202,6 +3325,7 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 			input_json = excluded.input_json,
 			output_json = excluded.output_json,
 			sandbox_json = excluded.sandbox_json,
+			integration_bindings_json = excluded.integration_bindings_json,
 			error_text = excluded.error_text,
 			created_at = excluded.created_at,
 			updated_at = excluded.updated_at
@@ -3230,6 +3354,7 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 		inputJSON,
 		outputJSON,
 		sandboxJSON,
+		integrationBindingsJSON,
 		nullString(toolCall.Error),
 		toolCall.CreatedAt.UTC().Format(time.RFC3339Nano),
 		toolCall.UpdatedAt.UTC().Format(time.RFC3339Nano),
@@ -3247,7 +3372,7 @@ func (s *SQLiteStore) ListToolCalls(ctx context.Context, runID, stepID string) (
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tool_call_id, run_id, step_id, workflow_id, workflow_step_id, attempt, computer_use_session_id, computer_use_action_id, invocation_kind, capability_id, skill_id, mcp_server_id, mcp_server_name, mcp_tool_name, mcp_transport_kind, mcp_session_id, authorization_result, tool_name, status, sandbox_execution_id, failure_class, input_json, output_json, sandbox_json, error_text, created_at, updated_at
+		SELECT tool_call_id, run_id, step_id, workflow_id, workflow_step_id, attempt, computer_use_session_id, computer_use_action_id, invocation_kind, capability_id, skill_id, mcp_server_id, mcp_server_name, mcp_tool_name, mcp_transport_kind, mcp_session_id, authorization_result, tool_name, status, sandbox_execution_id, failure_class, input_json, output_json, sandbox_json, integration_bindings_json, error_text, created_at, updated_at
 		FROM tool_calls
 		WHERE run_id = ? AND step_id = ?
 		ORDER BY created_at ASC, tool_call_id ASC
@@ -4857,16 +4982,17 @@ func scanApproval(scanner interface {
 	Scan(dest ...any) error
 }) (policy.Approval, error) {
 	var (
-		approval     policy.Approval
-		resourceKind sql.NullString
-		resourceID   sql.NullString
-		requestedBy  sql.NullString
-		status       string
-		createdAt    string
-		updatedAt    string
-		resolvedAt   sql.NullString
-		resolution   sql.NullString
-		comment      sql.NullString
+		approval                policy.Approval
+		resourceKind            sql.NullString
+		resourceID              sql.NullString
+		requestedBy             sql.NullString
+		status                  string
+		createdAt               string
+		updatedAt               string
+		resolvedAt              sql.NullString
+		resolution              sql.NullString
+		comment                 sql.NullString
+		integrationBindingsJSON sql.NullString
 	)
 
 	if err := scanner.Scan(
@@ -4882,6 +5008,7 @@ func scanApproval(scanner interface {
 		&resolvedAt,
 		&resolution,
 		&comment,
+		&integrationBindingsJSON,
 	); err != nil {
 		return policy.Approval{}, fmt.Errorf("scan approval: %w", err)
 	}
@@ -4900,6 +5027,9 @@ func scanApproval(scanner interface {
 	}
 	if err := assignOptionalTime(&approval.ResolvedAt, resolvedAt); err != nil {
 		return policy.Approval{}, err
+	}
+	if err := unmarshalNullableJSON(integrationBindingsJSON, &approval.IntegrationBindings); err != nil {
+		return policy.Approval{}, fmt.Errorf("decode approval integration bindings: %w", err)
 	}
 
 	return approval, nil
@@ -5746,28 +5876,29 @@ func scanToolCall(scanner interface {
 	Scan(dest ...any) error
 }) (runtime.ToolCall, error) {
 	var (
-		toolCall             runtime.ToolCall
-		workflowID           sql.NullString
-		workflowStepID       sql.NullString
-		computerUseSessionID sql.NullString
-		computerUseActionID  sql.NullString
-		invocationKind       sql.NullString
-		skillID              sql.NullString
-		mcpServerID          sql.NullString
-		mcpServerName        sql.NullString
-		mcpToolName          sql.NullString
-		mcpTransportKind     sql.NullString
-		mcpSessionID         sql.NullString
-		authorizationResult  sql.NullString
-		sandboxExecutionID   sql.NullString
-		failureClass         sql.NullString
-		status               string
-		inputJSON            sql.NullString
-		outputJSON           sql.NullString
-		sandboxJSON          sql.NullString
-		errorText            sql.NullString
-		createdAt            string
-		updatedAt            string
+		toolCall                runtime.ToolCall
+		workflowID              sql.NullString
+		workflowStepID          sql.NullString
+		computerUseSessionID    sql.NullString
+		computerUseActionID     sql.NullString
+		invocationKind          sql.NullString
+		skillID                 sql.NullString
+		mcpServerID             sql.NullString
+		mcpServerName           sql.NullString
+		mcpToolName             sql.NullString
+		mcpTransportKind        sql.NullString
+		mcpSessionID            sql.NullString
+		authorizationResult     sql.NullString
+		sandboxExecutionID      sql.NullString
+		failureClass            sql.NullString
+		status                  string
+		inputJSON               sql.NullString
+		outputJSON              sql.NullString
+		sandboxJSON             sql.NullString
+		integrationBindingsJSON sql.NullString
+		errorText               sql.NullString
+		createdAt               string
+		updatedAt               string
 	)
 
 	if err := scanner.Scan(
@@ -5795,6 +5926,7 @@ func scanToolCall(scanner interface {
 		&inputJSON,
 		&outputJSON,
 		&sandboxJSON,
+		&integrationBindingsJSON,
 		&errorText,
 		&createdAt,
 		&updatedAt,
@@ -5828,6 +5960,9 @@ func scanToolCall(scanner interface {
 	if err := unmarshalNullableJSON(sandboxJSON, &toolCall.Sandbox); err != nil {
 		return runtime.ToolCall{}, fmt.Errorf("decode tool call sandbox metadata: %w", err)
 	}
+	if err := unmarshalNullableJSON(integrationBindingsJSON, &toolCall.IntegrationBindings); err != nil {
+		return runtime.ToolCall{}, fmt.Errorf("decode tool call integration bindings: %w", err)
+	}
 
 	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
 	if err != nil {
@@ -5842,6 +5977,44 @@ func scanToolCall(scanner interface {
 	toolCall.UpdatedAt = parsedUpdatedAt
 
 	return toolCall, nil
+}
+
+func scanIntegrationRecord(scanner interface {
+	Scan(dest ...any) error
+}) (IntegrationRecord, error) {
+	var (
+		record           IntegrationRecord
+		accountKey       sql.NullString
+		backendKind      string
+		readinessStatus  string
+		canonicalDefault int
+		updatedAt        string
+		document         string
+	)
+	if err := scanner.Scan(
+		&record.IntegrationID,
+		&record.DomainKind,
+		&record.EnvironmentScope,
+		&accountKey,
+		&backendKind,
+		&readinessStatus,
+		&canonicalDefault,
+		&updatedAt,
+		&document,
+	); err != nil {
+		return IntegrationRecord{}, fmt.Errorf("scan integration record: %w", err)
+	}
+	record.AccountKey = accountKey.String
+	record.BackendKind = backendKind
+	record.ReadinessStatus = readinessStatus
+	record.CanonicalDefault = canonicalDefault != 0
+	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return IntegrationRecord{}, fmt.Errorf("parse integration updated_at: %w", err)
+	}
+	record.UpdatedAt = parsedUpdatedAt
+	record.Document = []byte(document)
+	return record, nil
 }
 
 func scanConsumerPolicyRecord(scanner interface {

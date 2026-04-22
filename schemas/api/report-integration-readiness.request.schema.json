@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/report-integration-readiness.request.schema.json",
+  "title": "ReportIntegrationReadinessRequest",
+  "type": "object",
+  "required": ["readinessStatus"],
+  "additionalProperties": false,
+  "properties": {
+    "readinessStatus": {
+      "type": "string",
+      "enum": ["not_configured", "auth_pending", "healthy", "degraded", "unavailable"]
+    },
+    "authState": {
+      "type": "string",
+      "enum": ["not_started", "pending", "authorized", "expired", "revoked", "not_applicable"]
+    },
+    "healthState": {
+      "type": "string",
+      "enum": ["unknown", "healthy", "degraded", "unavailable"]
+    },
+    "reason": { "type": "string" },
+    "requiredOperatorAction": { "type": "string" },
+    "secretResolution": { "type": "string" },
+    "accountBinding": {
+      "$ref": "./integration-resource.schema.json#/$defs/accountBinding"
+    }
+  }
+}

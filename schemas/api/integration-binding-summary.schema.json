@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/integration-binding-summary.schema.json",
+  "title": "IntegrationBindingSummary",
+  "type": "object",
+  "required": [
+    "integrationId",
+    "domainKind",
+    "displayName",
+    "canonicalDefault",
+    "readinessAtInvocation",
+    "backendKind",
+    "environmentScope",
+    "capturedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "integrationId": { "type": "string" },
+    "domainKind": { "type": "string" },
+    "displayName": { "type": "string" },
+    "accountKey": { "type": "string" },
+    "canonicalDefault": { "type": "boolean" },
+    "readinessAtInvocation": {
+      "type": "string",
+      "enum": ["not_configured", "auth_pending", "healthy", "degraded", "unavailable"]
+    },
+    "backendKind": {
+      "type": "string",
+      "enum": ["mcp", "managed_provider", "native", "fake_local"]
+    },
+    "secretResolution": { "type": "string" },
+    "environmentScope": { "type": "string" },
+    "capturedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

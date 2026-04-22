@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/set-integration-default.request.schema.json",
+  "title": "SetIntegrationDefaultRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

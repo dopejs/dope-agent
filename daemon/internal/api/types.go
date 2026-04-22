@@ -8,9 +8,11 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
+	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -149,6 +151,48 @@ type CreateRunRequest struct {
 
 type CreateWorkflowRequest struct {
 	Goal string `json:"goal,omitempty"`
+}
+
+type CreateIntegrationRequest struct {
+	IntegrationID      string                      `json:"integrationId"`
+	DomainKind         string                      `json:"domainKind"`
+	DisplayName        string                      `json:"displayName"`
+	BackendKind        integrations.BackendKind    `json:"backendKind"`
+	BackendRefID       string                      `json:"backendRefId,omitempty"`
+	BackendDisplayName string                      `json:"backendDisplayName,omitempty"`
+	AccountBinding     integrations.AccountBinding `json:"accountBinding,omitempty"`
+	CanonicalDefault   bool                        `json:"canonicalDefault,omitempty"`
+}
+
+type IntegrationListResponse struct {
+	Items []integrations.Resource `json:"items"`
+}
+
+type ReportIntegrationReadinessRequest struct {
+	ReadinessStatus        integrations.ReadinessStatus `json:"readinessStatus"`
+	AuthState              integrations.AuthState       `json:"authState,omitempty"`
+	HealthState            integrations.HealthState     `json:"healthState,omitempty"`
+	Reason                 string                       `json:"reason,omitempty"`
+	RequiredOperatorAction string                       `json:"requiredOperatorAction,omitempty"`
+	AccountBinding         integrations.AccountBinding  `json:"accountBinding,omitempty"`
+	SecretResolution       string                       `json:"secretResolution,omitempty"`
+}
+
+type SetIntegrationDefaultRequest struct{}
+
+type CreateIntegrationProbeRequest struct {
+	ProbeKind  integrations.ProbeKind `json:"probeKind"`
+	ApprovalID string                 `json:"approvalId,omitempty"`
+	Input      map[string]any         `json:"input,omitempty"`
+}
+
+type IntegrationProbeResponse struct {
+	RunID               string                        `json:"runId"`
+	StepID              string                        `json:"stepId,omitempty"`
+	ToolCallID          string                        `json:"toolCallId,omitempty"`
+	Status              string                        `json:"status"`
+	IntegrationBindings []integrations.BindingSummary `json:"integrationBindings,omitempty"`
+	Approval            *policy.Approval              `json:"approval,omitempty"`
 }
 
 type CreateComputerUseSessionRequest struct {

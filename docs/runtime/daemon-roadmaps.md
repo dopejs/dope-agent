@@ -1346,12 +1346,30 @@ Verification:
 
 ### Roadmap 27: Personal Integrations Platform
 
-Status: `[ ] planned`
+Status: `[x] implemented`
 
 Detailed spec: [docs/specs/012-personal-integrations-platform.md](../specs/012-personal-integrations-platform.md)
 
 Goal: define the shared integration substrate for account-backed personal systems before
 domain-specific implementations land.
+
+Implementation notes:
+
+- daemon-owned integration resources are now first-class persisted records with readiness,
+  account binding, backend binding, provenance, and canonical-default truth
+- runtime tool calls, workflow steps, and approvals now project additive
+  `integrationBindings` snapshots rather than creating a second execution ledger
+- the repo-owned fake integration backend verifies one read-only probe and one
+  approval-gated mutation probe through the normal runtime and policy plane
+- `degraded` stays inspectable while `unavailable` blocks integration-backed probe
+  execution explicitly
+
+Verification:
+
+- `cd daemon && go test ./internal/integrations ./internal/runtime ./internal/policy ./internal/store ./internal/api ./internal/app ./internal/contracts ./internal/orchestration -count=1`
+- `make daemon-contract-test`
+- isolated `DOPE_ENV=test` `quickstart.md` walkthrough completed on the current branch
+  via `127.0.0.1:19193` and `DOPE_DATA_DIR=/tmp/dope-integrations-manual`
 
 ### Roadmap 28: Delivery And Notifications
 

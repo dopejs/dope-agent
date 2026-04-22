@@ -22,6 +22,7 @@ import (
 	discordconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/discord"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/im"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/managedproviders"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
@@ -52,6 +53,7 @@ type App struct {
 	Sandboxes            *sandbox.Manager
 	MCP                  *mcp.Manager
 	Providers            *providers.Manager
+	Integrations         *integrations.Manager
 	Scheduler            *scheduler.Scheduler
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
@@ -84,6 +86,7 @@ func New() (*App, error) {
 	authManager := auth.NewManager()
 	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
 	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxManager, policyEngine, nil)
+	integrationManager := integrations.NewManager(string(cfg.Environment))
 	managedRegistry := managedproviders.NewRegistry(cfg, sandboxManager)
 	llmDispatcher, err := buildLLMDispatcher(cfg, managedRegistry)
 	if err != nil {
@@ -128,7 +131,7 @@ func New() (*App, error) {
 	})
 	envCtx := events.WithEnvironmentScope(context.Background(), string(cfg.Environment))
 
-	if err := recoverPersistedState(envCtx, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager); err != nil {
+	if err := recoverPersistedState(envCtx, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager, integrationManager); err != nil {
 		return nil, err
 	}
 	if err := syncManagedProviderState(envCtx, sqliteStore, providerManager); err != nil {
@@ -163,6 +166,7 @@ func New() (*App, error) {
 		Skills:       skillRegistry,
 		Sandboxes:    sandboxManager,
 		MCP:          mcpManager,
+		Integrations: integrationManager,
 		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
@@ -187,6 +191,7 @@ func New() (*App, error) {
 		Skills:               skillRegistry,
 		Sandboxes:            sandboxManager,
 		MCP:                  mcpManager,
+		Integrations:         integrationManager,
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
 		ConnectorSupervisor:  connectorSupervisor,
@@ -403,7 +408,7 @@ func newEventID() string {
 	return "evt_" + hex.EncodeToString(buf)
 }
 
-func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager) error {
+func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager, integrationManagers ...*integrations.Manager) error {
 	if sqliteStore == nil {
 		return nil
 	}
@@ -487,6 +492,17 @@ func recoverPersistedState(ctx context.Context, environment config.Environment, 
 		if err := mcpManager.Restore(ctx); err != nil {
 			return fmt.Errorf("restore mcp state: %w", err)
 		}
+	}
+	var integrationManager *integrations.Manager
+	if len(integrationManagers) > 0 {
+		integrationManager = integrationManagers[0]
+	}
+	if integrationManager != nil {
+		persistedIntegrations, err := sqliteStore.ListIntegrations(ctx, string(environment))
+		if err != nil {
+			return fmt.Errorf("load persisted integrations: %w", err)
+		}
+		integrationManager.Restore(persistedIntegrations)
 	}
 	if _, err := sqliteStore.MarkInFlightWorkflowsInterrupted(ctx, string(environment), time.Now().UTC()); err != nil {
 		return fmt.Errorf("interrupt in-flight workflows: %w", err)

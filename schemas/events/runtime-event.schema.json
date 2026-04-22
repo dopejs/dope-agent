@@ -30,7 +30,8 @@
         "artifact",
         "sandbox",
         "mcp",
-        "schedule"
+        "schedule",
+        "integration"
       ]
     },
     "name": {

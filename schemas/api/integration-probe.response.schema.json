@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/integration-probe.response.schema.json",
+  "title": "IntegrationProbeResponse",
+  "type": "object",
+  "required": ["runId", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "runId": { "type": "string" },
+    "stepId": { "type": "string" },
+    "toolCallId": { "type": "string" },
+    "status": { "type": "string" },
+    "integrationBindings": {
+      "type": "array",
+      "items": { "$ref": "./integration-binding-summary.schema.json" }
+    },
+    "approval": { "$ref": "./approval-resource.schema.json" }
+  }
+}

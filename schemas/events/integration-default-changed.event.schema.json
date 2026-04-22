@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/integration-default-changed.event.schema.json",
+  "title": "IntegrationDefaultChangedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "integration" },
+        "name": { "const": "integration.default_changed" },
+        "payload": {
+          "type": "object",
+          "required": ["integrationId", "domainKind", "environmentScope", "accountKey", "canonicalDefault"],
+          "additionalProperties": false,
+          "properties": {
+            "integrationId": { "type": "string" },
+            "domainKind": { "type": "string" },
+            "environmentScope": { "type": "string" },
+            "accountKey": { "type": "string" },
+            "canonicalDefault": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  ]
+}

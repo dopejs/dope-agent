@@ -51,6 +51,10 @@
       "type": "array",
       "items": { "$ref": "./computer-use-artifact-resource.schema.json" }
     },
+    "integrationBindings": {
+      "type": "array",
+      "items": { "$ref": "./integration-binding-summary.schema.json" }
+    },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }
   }

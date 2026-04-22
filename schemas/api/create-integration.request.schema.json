@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-integration.request.schema.json",
+  "title": "CreateIntegrationRequest",
+  "type": "object",
+  "required": ["integrationId", "domainKind", "displayName", "backendKind"],
+  "additionalProperties": false,
+  "properties": {
+    "integrationId": { "type": "string", "minLength": 1 },
+    "domainKind": { "type": "string", "minLength": 1 },
+    "displayName": { "type": "string", "minLength": 1 },
+    "backendKind": {
+      "type": "string",
+      "enum": ["mcp", "managed_provider", "native", "fake_local"]
+    },
+    "backendRefId": { "type": "string" },
+    "backendDisplayName": { "type": "string" },
+    "canonicalDefault": { "type": "boolean" },
+    "accountBinding": {
+      "$ref": "./integration-resource.schema.json#/$defs/accountBinding"
+    }
+  }
+}

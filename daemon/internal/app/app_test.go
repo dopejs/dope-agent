@@ -21,6 +21,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
@@ -159,6 +160,241 @@ func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 
 	if _, ok := restoredRouter.GetSession(run.SessionID); !ok {
 		t.Fatal("expected restored session")
+	}
+}
+
+func TestRecoverPersistedStateRestoresIntegrations(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	item := integrations.Resource{
+		IntegrationID:    "calendar-a",
+		DomainKind:       "calendar",
+		DisplayName:      "Calendar A",
+		EnvironmentScope: "test",
+		ReadinessStatus:  integrations.ReadinessStatusDegraded,
+		AuthState:        integrations.AuthStateAuthorized,
+		HealthState:      integrations.HealthStateDegraded,
+		CanonicalDefault: true,
+		AccountBinding: integrations.AccountBinding{
+			AccountKey:   "acct_calendar",
+			AccountLabel: "Primary Calendar",
+		},
+		BackendBinding: integrations.BackendBinding{
+			BackendKind:           integrations.BackendKindFakeLocal,
+			SupportsProbeRead:     true,
+			SupportsProbeMutation: true,
+		},
+		Provenance: integrations.Provenance{
+			SecretResolution:      "resolved",
+			SecretMaterialPresent: true,
+			EnvironmentScope:      "test",
+			BackedBy:              string(integrations.BackendKindFakeLocal),
+		},
+		CreatedAt:        now.Add(-time.Minute),
+		UpdatedAt:        now,
+		LastTransitionAt: now,
+	}
+	if err := sqliteStore.UpsertIntegration(ctx, item); err != nil {
+		t.Fatalf("UpsertIntegration returned error: %v", err)
+	}
+
+	restoredRuntime := runtime.NewManager()
+	restoredRouter := router.NewSessionRouter()
+	restoredEventBus := events.NewBus()
+	restoreCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+	restoredIntegrations := integrations.NewManager("test")
+
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+
+	got, ok := restoredIntegrations.Get(item.IntegrationID)
+	if !ok {
+		t.Fatal("expected restored integration")
+	}
+	if got.ReadinessStatus != integrations.ReadinessStatusDegraded || got.AccountBinding.AccountKey != item.AccountBinding.AccountKey || !got.CanonicalDefault {
+		t.Fatalf("expected restored integration state %+v, got %+v", item, got)
+	}
+}
+
+func TestRecoverPersistedStateRestoresIntegrationBindingsOnApprovalsAndToolCalls(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	seedRuntime := runtime.NewManager()
+	run, err := seedRuntime.CreateRun(runtime.CreateRunInput{
+		SessionID:  "session_integration_restore",
+		Entrypoint: "operator",
+		Goal:       "restore integration probe state",
+	})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := seedRuntime.CreateStep(run.RunID, runtime.CreateStepInput{
+		Title: "probe integration",
+		Kind:  "integration_probe",
+	})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+	binding := integrations.BindingSummary{
+		IntegrationID:         "calendar-a",
+		DomainKind:            "calendar",
+		DisplayName:           "Calendar A",
+		AccountKey:            "acct_calendar",
+		CanonicalDefault:      true,
+		ReadinessAtInvocation: integrations.ReadinessStatusDegraded,
+		BackendKind:           integrations.BackendKindFakeLocal,
+		SecretResolution:      "resolved",
+		EnvironmentScope:      "test",
+		CapturedAt:            now,
+	}
+	toolCall, err := seedRuntime.CreateToolCall(run.RunID, step.StepID, runtime.CreateToolCallInput{
+		CapabilityID:        "integration_probe",
+		ToolName:            "inspect",
+		IntegrationBindings: []integrations.BindingSummary{binding},
+	})
+	if err != nil {
+		t.Fatalf("CreateToolCall returned error: %v", err)
+	}
+	toolCall, err = seedRuntime.CompleteToolCall(run.RunID, step.StepID, toolCall.ToolCallID, runtime.CompleteToolCallInput{
+		Output: map[string]any{"message": "ok"},
+	})
+	if err != nil {
+		t.Fatalf("CompleteToolCall returned error: %v", err)
+	}
+
+	session := router.Session{
+		SessionID:    run.SessionID,
+		Kind:         router.SessionKindDirect,
+		Status:       router.SessionStatusActive,
+		Channel:      "local",
+		AccountID:    "local",
+		PeerID:       "chat",
+		RoutingKey:   "direct:local:local:chat",
+		Generation:   1,
+		CreatedAt:    now.Add(-time.Minute),
+		UpdatedAt:    now.Add(-time.Minute),
+		LastActiveAt: now.Add(-time.Minute),
+	}
+	if err := sqliteStore.UpsertSession(ctx, session); err != nil {
+		t.Fatalf("UpsertSession returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(ctx, run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertStep(ctx, step); err != nil {
+		t.Fatalf("UpsertStep returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertToolCall(ctx, toolCall); err != nil {
+		t.Fatalf("UpsertToolCall returned error: %v", err)
+	}
+
+	approval := policy.Approval{
+		ApprovalID:          "approval_integration_restore",
+		Action:              "integration.probe.mutate",
+		ResourceKind:        "integration",
+		ResourceID:          "calendar-a",
+		Reason:              "mutation probe",
+		RequestedBy:         "run:" + run.RunID,
+		Status:              policy.ApprovalStatusPending,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+		IntegrationBindings: []integrations.BindingSummary{binding},
+	}
+	if err := sqliteStore.UpsertApproval(ctx, approval); err != nil {
+		t.Fatalf("UpsertApproval returned error: %v", err)
+	}
+
+	integration := integrations.Resource{
+		IntegrationID:    "calendar-a",
+		DomainKind:       "calendar",
+		DisplayName:      "Calendar A",
+		EnvironmentScope: "test",
+		ReadinessStatus:  integrations.ReadinessStatusDegraded,
+		AuthState:        integrations.AuthStateAuthorized,
+		HealthState:      integrations.HealthStateDegraded,
+		CanonicalDefault: true,
+		AccountBinding: integrations.AccountBinding{
+			AccountKey: "acct_calendar",
+		},
+		BackendBinding: integrations.BackendBinding{
+			BackendKind:           integrations.BackendKindFakeLocal,
+			SupportsProbeRead:     true,
+			SupportsProbeMutation: true,
+		},
+		CreatedAt:        now.Add(-time.Minute),
+		UpdatedAt:        now,
+		LastTransitionAt: now,
+	}
+	if err := sqliteStore.UpsertIntegration(ctx, integration); err != nil {
+		t.Fatalf("UpsertIntegration returned error: %v", err)
+	}
+
+	checkpointManager := checkpoints.NewManager(sqliteStore, seedRuntime)
+	if err := checkpointManager.SaveRunCheckpoint(ctx, run.RunID); err != nil {
+		t.Fatalf("SaveRunCheckpoint returned error: %v", err)
+	}
+
+	restoredRuntime := runtime.NewManager()
+	restoredRouter := router.NewSessionRouter()
+	restoredEventBus := events.NewBus()
+	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+	restoredIntegrations := integrations.NewManager("test")
+
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+
+	restoredToolCall, ok := restoredRuntime.GetToolCall(run.RunID, step.StepID, toolCall.ToolCallID)
+	if !ok {
+		t.Fatal("expected restored tool call")
+	}
+	if len(restoredToolCall.IntegrationBindings) != 1 || restoredToolCall.IntegrationBindings[0].IntegrationID != binding.IntegrationID {
+		t.Fatalf("expected restored tool call integration bindings, got %+v", restoredToolCall)
+	}
+
+	restoredApproval, ok := restoredPolicy.GetApproval(approval.ApprovalID)
+	if !ok {
+		t.Fatal("expected restored approval")
+	}
+	if len(restoredApproval.IntegrationBindings) != 1 || restoredApproval.IntegrationBindings[0].IntegrationID != binding.IntegrationID {
+		t.Fatalf("expected restored approval integration bindings, got %+v", restoredApproval)
+	}
+
+	restoredIntegration, ok := restoredIntegrations.Get(integration.IntegrationID)
+	if !ok {
+		t.Fatal("expected restored integration")
+	}
+	if restoredIntegration.ReadinessStatus != integrations.ReadinessStatusDegraded {
+		t.Fatalf("expected degraded integration after restore, got %+v", restoredIntegration)
 	}
 }
 

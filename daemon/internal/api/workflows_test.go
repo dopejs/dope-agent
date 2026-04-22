@@ -14,6 +14,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -351,6 +352,70 @@ func TestWorkflowStartExecutesComputerUseStepAndProjectsEvidence(t *testing.T) {
 	}
 	if final.Steps[1].Status != orchestration.StepStatusCompleted {
 		t.Fatalf("expected dependent skill step to complete, got %+v", final.Steps[1])
+	}
+}
+
+func TestWorkflowStepBindingsTrackLinkedIntegrationToolCall(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	workflow := orchestration.Workflow{
+		WorkflowID:       "wf_integration",
+		RunID:            "run_integration",
+		EnvironmentScope: "test",
+		Status:           orchestration.WorkflowStatusRunning,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		Steps: []orchestration.WorkflowStep{{
+			WorkflowStepID: "wfstep_integration",
+			WorkflowID:     "wf_integration",
+			Title:          "Inspect integration",
+			Position:       1,
+			ConsumerKind:   "skill",
+			ConsumerID:     "integration-probe",
+			ToolName:       "inspect",
+			Status:         orchestration.StepStatusRunning,
+			AttemptCount:   1,
+			MaxAttempts:    1,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		}},
+	}
+	toolCall := runtime.ToolCall{
+		ToolCallID:     "tool_call_integration",
+		RunID:          "run_integration",
+		StepID:         "step_integration",
+		WorkflowID:     "wf_integration",
+		WorkflowStepID: "wfstep_integration",
+		ToolName:       "inspect",
+		Status:         runtime.ToolCallStatusCompleted,
+		Output:         map[string]any{"message": "ok"},
+		IntegrationBindings: []integrations.BindingSummary{{
+			IntegrationID:         "calendar-a",
+			DomainKind:            "calendar",
+			DisplayName:           "Calendar A",
+			AccountKey:            "acct_calendar",
+			CanonicalDefault:      true,
+			ReadinessAtInvocation: integrations.ReadinessStatusDegraded,
+			BackendKind:           integrations.BackendKindFakeLocal,
+			SecretResolution:      "resolved",
+			EnvironmentScope:      "test",
+			CapturedAt:            now,
+		}},
+	}
+
+	manager := orchestration.NewManager()
+	workflow = manager.BindToolCall(workflow, "wfstep_integration", toolCall, now)
+	if len(workflow.Steps[0].IntegrationBindings) != 1 || workflow.Steps[0].IntegrationBindings[0].IntegrationID != "calendar-a" {
+		t.Fatalf("expected workflow step to inherit integration bindings on bind, got %+v", workflow.Steps[0])
+	}
+
+	workflow = manager.ApplyToolCallResult(workflow, toolCall, orchestration.StepStatusCompleted, "", now)
+	if workflow.Steps[0].Status != orchestration.StepStatusCompleted {
+		t.Fatalf("expected completed workflow step, got %+v", workflow.Steps[0])
+	}
+	if len(workflow.Steps[0].IntegrationBindings) != 1 || workflow.Steps[0].IntegrationBindings[0].ReadinessAtInvocation != integrations.ReadinessStatusDegraded {
+		t.Fatalf("expected workflow step to retain integration bindings after result application, got %+v", workflow.Steps[0])
 	}
 }
 

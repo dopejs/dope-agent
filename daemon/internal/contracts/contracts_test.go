@@ -21,6 +21,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	contracts "github.com/dopejs/dope-agent/daemon/internal/contracts"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
@@ -156,6 +157,19 @@ func scheduleContractFixtures() map[string]string {
 	}
 }
 
+func integrationContractFixtures() map[string]string {
+	return map[string]string{
+		"schemas/api/integration-binding-summary.schema.json":            `{"integrationId":"calendar-a","domainKind":"calendar","displayName":"Calendar A","accountKey":"acct_calendar","canonicalDefault":true,"readinessAtInvocation":"degraded","backendKind":"fake_local","secretResolution":"resolved","environmentScope":"test","capturedAt":"2026-04-22T10:00:00Z"}`,
+		"schemas/api/integration-resource.schema.json":                   `{"integrationId":"calendar-a","domainKind":"calendar","displayName":"Calendar A","environmentScope":"test","readinessStatus":"healthy","authState":"authorized","healthState":"healthy","readinessReason":"probe passed","requiredOperatorAction":"none","canonicalDefault":true,"accountBinding":{"accountKey":"acct_calendar","accountLabel":"Primary Calendar"},"backendBinding":{"backendKind":"fake_local","backendRefId":"calendar-fake","backendDisplayName":"Calendar Fake","sourceKind":"fake_local","supportsProbeRead":true,"supportsProbeMutation":true},"provenance":{"secretResolution":"resolved","secretMaterialPresent":true,"environmentScope":"test","backedBy":"fake_local"},"createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:01:00Z","lastReadyAt":"2026-04-22T10:01:00Z","lastTransitionAt":"2026-04-22T10:01:00Z"}`,
+		"schemas/api/integration-list.response.schema.json":              `{"items":[{"integrationId":"calendar-a","domainKind":"calendar","displayName":"Calendar A","environmentScope":"test","readinessStatus":"healthy","canonicalDefault":true,"backendBinding":{"backendKind":"fake_local"},"createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:01:00Z","lastTransitionAt":"2026-04-22T10:01:00Z"}]}`,
+		"schemas/api/integration-probe.response.schema.json":             `{"runId":"run_1","stepId":"step_1","toolCallId":"tool_call_1","status":"completed","integrationBindings":[{"integrationId":"calendar-a","domainKind":"calendar","displayName":"Calendar A","accountKey":"acct_calendar","canonicalDefault":true,"readinessAtInvocation":"degraded","backendKind":"fake_local","secretResolution":"resolved","environmentScope":"test","capturedAt":"2026-04-22T10:00:00Z"}],"approval":{"approvalId":"approval_1","action":"integration.probe.mutate","resourceKind":"integration","resourceId":"calendar-a","reason":"mutation probe","status":"pending","createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:00:00Z","integrationBindings":[{"integrationId":"calendar-a","domainKind":"calendar","displayName":"Calendar A","accountKey":"acct_calendar","canonicalDefault":true,"readinessAtInvocation":"degraded","backendKind":"fake_local","secretResolution":"resolved","environmentScope":"test","capturedAt":"2026-04-22T10:00:00Z"}]}}`,
+		"schemas/events/integration-registered.event.schema.json":        `{"eventId":"evt_integration_1","sequence":1,"category":"integration","name":"integration.registered","occurredAt":"2026-04-22T10:00:00Z","scope":{},"resource":{"kind":"integration","id":"calendar-a"},"payload":{"integrationId":"calendar-a","domainKind":"calendar","displayName":"Calendar A","environmentScope":"test","readinessStatus":"not_configured","canonicalDefault":true,"backendKind":"fake_local","accountKey":"acct_calendar"}}`,
+		"schemas/events/integration-updated.event.schema.json":           `{"eventId":"evt_integration_2","sequence":2,"category":"integration","name":"integration.updated","occurredAt":"2026-04-22T10:01:00Z","scope":{},"resource":{"kind":"integration","id":"calendar-a"},"payload":{"integrationId":"calendar-a","domainKind":"calendar","displayName":"Calendar A","environmentScope":"test","readinessStatus":"healthy","canonicalDefault":true,"backendKind":"fake_local","accountKey":"acct_calendar"}}`,
+		"schemas/events/integration-readiness-changed.event.schema.json": `{"eventId":"evt_integration_3","sequence":3,"category":"integration","name":"integration.readiness_changed","occurredAt":"2026-04-22T10:01:00Z","scope":{},"resource":{"kind":"integration","id":"calendar-a"},"payload":{"integrationId":"calendar-a","readinessStatus":"healthy","authState":"authorized","healthState":"healthy","reason":"probe passed","requiredOperatorAction":"none","accountKey":"acct_calendar","backendKind":"fake_local"}}`,
+		"schemas/events/integration-default-changed.event.schema.json":   `{"eventId":"evt_integration_4","sequence":4,"category":"integration","name":"integration.default_changed","occurredAt":"2026-04-22T10:02:00Z","scope":{},"resource":{"kind":"integration","id":"calendar-b"},"payload":{"integrationId":"calendar-b","domainKind":"calendar","environmentScope":"test","accountKey":"acct_calendar","canonicalDefault":true}}`,
+	}
+}
+
 func assertWorkflowContractFixtures(t *testing.T, validator *contracts.Validator) {
 	t.Helper()
 	mustValidateFixtures(t, validator, workflowContractFixtures())
@@ -178,35 +192,39 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	fixtures := map[string]string{
-		"schemas/api/create-run.request.schema.json":                `{"entrypoint":"chat","goal":"ship daemon"}`,
-		"schemas/api/connector-ingress-message.request.schema.json": `{"route":{"kind":"group","accountId":"bot-main","peerId":"channel-1","threadId":"thread-1"},"message":{"messageId":"msg_1","text":"hello"},"run":{"entrypoint":"connector.message","goal":"handle inbound"}}`,
-		"schemas/api/create-step.request.schema.json":               `{"title":"plan","kind":"task","input":{"phase":"draft"}}`,
-		"schemas/api/update-step-status.request.schema.json":        `{"status":"planning","output":{"phase":"ok"}}`,
-		"schemas/api/create-tool-call.request.schema.json":          `{"capabilityId":"docs","toolName":"lookup","approvalId":"approval_1","input":{"query":"hello"}}`,
-		"schemas/api/complete-tool-call.request.schema.json":        `{"output":{"ok":true}}`,
-		"schemas/api/fail-tool-call.request.schema.json":            `{"error":"tool failed"}`,
-		"schemas/api/create-connector.request.schema.json":          `{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`,
-		"schemas/api/report-connector-health.request.schema.json":   `{"status":"healthy"}`,
-		"schemas/api/report-connector-failure.request.schema.json":  `{"reason":"socket dropped"}`,
-		"schemas/api/create-capability.request.schema.json":         `{"capabilityId":"docs","kind":"docs","displayName":"Docs"}`,
-		"schemas/api/report-capability-health.request.schema.json":  `{"status":"degraded"}`,
-		"schemas/api/report-capability-failure.request.schema.json": `{"reason":"worker exited"}`,
-		"schemas/api/create-llm-dispatch.request.schema.json":       `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"hello"}],"timeoutMs":1000,"maxRetries":1}`,
-		"schemas/api/chat-query.request.schema.json":                `{"provider":"echo","model":"echo-v1","skills":["shared"],"query":"hello","timeoutMs":1000,"maxRetries":1}`,
-		"schemas/api/run-provider-check.request.schema.json":        `{"model":"echo-v1","prompt":"hello"}`,
-		"schemas/api/provider-default-model.request.schema.json":    `{"model":"gpt-5.4"}`,
-		"schemas/api/create-schedule.request.schema.json":           `{"trigger":{"kind":"once","fireAt":"2026-04-22T10:01:00Z"},"target":{"kind":"run","run":{"entrypoint":"operator","goal":"dispatch once"}},"retryPolicy":{"maxRetries":1,"backoffKind":"fixed","baseDelaySeconds":5,"maxDelaySeconds":5}}`,
-		"schemas/api/request-approval.request.schema.json":          `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"needs approval","requestedBy":"web-ui"}`,
-		"schemas/api/resolve-approval.request.schema.json":          `{"resolution":"approved","comment":"allowed"}`,
-		"schemas/api/sandbox-execution.request.schema.json":         `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","timeoutMs":1000,"requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","reason":"inspect profile","metadata":{"ticket":"sandbox-16"},"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true}}`,
-		"schemas/api/sandbox-explain.request.schema.json":           `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"allowedHosts":[],"allowedPorts":[]}}`,
-		"schemas/api/mcp-server-create.request.schema.json":         `{"serverId":"mcp-test","displayName":"MCP Test","enabled":true,"sandboxProfileId":"subprocess_default","declarationId":"mcp_server:mcp-test:lifecycle.start","transportKind":"stdio","command":"/tmp/mcp-helper","args":["--stdio"],"workingDir":"/tmp/dope","secretRefs":["MCP_TEST_TOKEN"],"autoRestart":true}`,
-		"schemas/api/mcp-server-update.request.schema.json":         `{"displayName":"Updated MCP","enabled":false,"autoRestart":false}`,
-		"schemas/api/mcp-catalog-install-request.schema.json":       `{"serverId":"filesystem-test","displayName":"Filesystem Test","workingDir":"/tmp/dope"}`,
-		"schemas/api/mcp-tool-exposure-update.request.schema.json":  `{"runtimeSurface":"chat","exposureMode":"approval_required","active":true,"reason":"needs approval"}`,
-		"schemas/api/mcp-tool-authorization.request.schema.json":    `{"runtimeSurface":"chat","approvalId":"approval_1","requestedBy":"web-ui"}`,
-		"schemas/api/start-pairing.request.schema.json":             `{"mode":"local","label":"web-ui","ttlSeconds":120}`,
-		"schemas/api/complete-pairing.request.schema.json":          `{"code":"123456"}`,
+		"schemas/api/create-run.request.schema.json":                   `{"entrypoint":"chat","goal":"ship daemon"}`,
+		"schemas/api/connector-ingress-message.request.schema.json":    `{"route":{"kind":"group","accountId":"bot-main","peerId":"channel-1","threadId":"thread-1"},"message":{"messageId":"msg_1","text":"hello"},"run":{"entrypoint":"connector.message","goal":"handle inbound"}}`,
+		"schemas/api/create-step.request.schema.json":                  `{"title":"plan","kind":"task","input":{"phase":"draft"}}`,
+		"schemas/api/update-step-status.request.schema.json":           `{"status":"planning","output":{"phase":"ok"}}`,
+		"schemas/api/create-tool-call.request.schema.json":             `{"capabilityId":"docs","toolName":"lookup","approvalId":"approval_1","input":{"query":"hello"}}`,
+		"schemas/api/complete-tool-call.request.schema.json":           `{"output":{"ok":true}}`,
+		"schemas/api/fail-tool-call.request.schema.json":               `{"error":"tool failed"}`,
+		"schemas/api/create-connector.request.schema.json":             `{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`,
+		"schemas/api/report-connector-health.request.schema.json":      `{"status":"healthy"}`,
+		"schemas/api/report-connector-failure.request.schema.json":     `{"reason":"socket dropped"}`,
+		"schemas/api/create-capability.request.schema.json":            `{"capabilityId":"docs","kind":"docs","displayName":"Docs"}`,
+		"schemas/api/report-capability-health.request.schema.json":     `{"status":"degraded"}`,
+		"schemas/api/report-capability-failure.request.schema.json":    `{"reason":"worker exited"}`,
+		"schemas/api/create-llm-dispatch.request.schema.json":          `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"hello"}],"timeoutMs":1000,"maxRetries":1}`,
+		"schemas/api/chat-query.request.schema.json":                   `{"provider":"echo","model":"echo-v1","skills":["shared"],"query":"hello","timeoutMs":1000,"maxRetries":1}`,
+		"schemas/api/run-provider-check.request.schema.json":           `{"model":"echo-v1","prompt":"hello"}`,
+		"schemas/api/provider-default-model.request.schema.json":       `{"model":"gpt-5.4"}`,
+		"schemas/api/create-schedule.request.schema.json":              `{"trigger":{"kind":"once","fireAt":"2026-04-22T10:01:00Z"},"target":{"kind":"run","run":{"entrypoint":"operator","goal":"dispatch once"}},"retryPolicy":{"maxRetries":1,"backoffKind":"fixed","baseDelaySeconds":5,"maxDelaySeconds":5}}`,
+		"schemas/api/request-approval.request.schema.json":             `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"needs approval","requestedBy":"web-ui"}`,
+		"schemas/api/resolve-approval.request.schema.json":             `{"resolution":"approved","comment":"allowed"}`,
+		"schemas/api/create-integration.request.schema.json":           `{"integrationId":"calendar-a","domainKind":"calendar","displayName":"Calendar A","backendKind":"fake_local","accountBinding":{"accountKey":"acct_calendar"},"canonicalDefault":true}`,
+		"schemas/api/report-integration-readiness.request.schema.json": `{"readinessStatus":"healthy","authState":"authorized","healthState":"healthy","reason":"probe passed","requiredOperatorAction":"none","secretResolution":"resolved","accountBinding":{"accountKey":"acct_calendar"}}`,
+		"schemas/api/set-integration-default.request.schema.json":      `{}`,
+		"schemas/api/create-integration-probe.request.schema.json":     `{"probeKind":"mutate","approvalId":"approval_1","input":{"mode":"write"}}`,
+		"schemas/api/sandbox-execution.request.schema.json":            `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","timeoutMs":1000,"requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","reason":"inspect profile","metadata":{"ticket":"sandbox-16"},"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true}}`,
+		"schemas/api/sandbox-explain.request.schema.json":              `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"allowedHosts":[],"allowedPorts":[]}}`,
+		"schemas/api/mcp-server-create.request.schema.json":            `{"serverId":"mcp-test","displayName":"MCP Test","enabled":true,"sandboxProfileId":"subprocess_default","declarationId":"mcp_server:mcp-test:lifecycle.start","transportKind":"stdio","command":"/tmp/mcp-helper","args":["--stdio"],"workingDir":"/tmp/dope","secretRefs":["MCP_TEST_TOKEN"],"autoRestart":true}`,
+		"schemas/api/mcp-server-update.request.schema.json":            `{"displayName":"Updated MCP","enabled":false,"autoRestart":false}`,
+		"schemas/api/mcp-catalog-install-request.schema.json":          `{"serverId":"filesystem-test","displayName":"Filesystem Test","workingDir":"/tmp/dope"}`,
+		"schemas/api/mcp-tool-exposure-update.request.schema.json":     `{"runtimeSurface":"chat","exposureMode":"approval_required","active":true,"reason":"needs approval"}`,
+		"schemas/api/mcp-tool-authorization.request.schema.json":       `{"runtimeSurface":"chat","approvalId":"approval_1","requestedBy":"web-ui"}`,
+		"schemas/api/start-pairing.request.schema.json":                `{"mode":"local","label":"web-ui","ttlSeconds":120}`,
+		"schemas/api/complete-pairing.request.schema.json":             `{"code":"123456"}`,
 	}
 
 	for schemaPath, fixture := range fixtures {
@@ -227,6 +245,13 @@ func TestScheduleSchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	assertScheduleContractFixtures(t, validator)
+}
+
+func TestIntegrationSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	mustValidateFixtures(t, validator, integrationContractFixtures())
 }
 
 func TestValidatorRejectsInvalidRequestFixture(t *testing.T) {
@@ -466,6 +491,11 @@ func TestAPISchemasMatchCanonicalResponses(t *testing.T) {
 
 	h.mustValidateResponse(t, http.MethodPost, "/v1/capabilities", `{"capabilityId":"docs","kind":"docs","displayName":"Docs"}`, h.authHeader, "schemas/api/capability-resource.schema.json")
 	h.mustValidateResponse(t, http.MethodGet, "/v1/capabilities", "", h.authHeader, "schemas/api/capability-list.response.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/integrations", `{"integrationId":"calendar-a","domainKind":"calendar","displayName":"Calendar A","backendKind":"fake_local","accountBinding":{"accountKey":"acct_calendar","accountLabel":"Primary Calendar"},"canonicalDefault":true}`, h.authHeader, "schemas/api/integration-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/integrations", "", h.authHeader, "schemas/api/integration-list.response.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/integrations/calendar-a", "", h.authHeader, "schemas/api/integration-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/integrations/calendar-a/readiness", `{"readinessStatus":"degraded","authState":"authorized","healthState":"degraded","reason":"latency","requiredOperatorAction":"monitor only","secretResolution":"resolved"}`, h.authHeader, "schemas/api/integration-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/integrations/calendar-a/default", `{}`, h.authHeader, "schemas/api/integration-resource.schema.json")
 
 	createRunBody := h.request(t, http.MethodPost, "/v1/runs", `{"entrypoint":"chat","goal":"validate contracts"}`, h.authHeader)
 	h.mustValidate(t, "schemas/api/run-resource.schema.json", createRunBody)
@@ -489,6 +519,7 @@ func TestAPISchemasMatchCanonicalResponses(t *testing.T) {
 
 	h.mustValidateResponse(t, http.MethodGet, "/v1/runs/"+runID+"/steps/"+stepID+"/tool-calls", "", h.authHeader, "schemas/api/tool-call-list.response.schema.json")
 	h.mustValidateResponse(t, http.MethodPost, "/v1/runs/"+runID+"/steps/"+stepID+"/tool-calls/"+toolCallID+"/complete", `{"output":{"ok":true}}`, h.authHeader, "schemas/api/tool-call-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/runs/"+runID+"/integrations/calendar-a/probes", `{"probeKind":"inspect","input":{"mode":"readonly"}}`, h.authHeader, "schemas/api/integration-probe.response.schema.json")
 
 	createApprovalBody := h.request(t, http.MethodPost, "/v1/policy/approvals", `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"manual review","requestedBy":"contract-suite"}`, h.authHeader)
 	h.mustValidate(t, "schemas/api/approval-decision.response.schema.json", createApprovalBody)
@@ -525,6 +556,9 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 	h.authHeader = "Bearer " + decodeJSONMap(t, completePairingBody)["accessToken"].(string)
 
 	h.request(t, http.MethodPost, "/v1/capabilities", `{"capabilityId":"docs","kind":"docs","displayName":"Docs"}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/integrations", `{"integrationId":"calendar-events","domainKind":"calendar","displayName":"Calendar Events","backendKind":"fake_local","accountBinding":{"accountKey":"acct_calendar"},"canonicalDefault":true}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/integrations/calendar-events/readiness", `{"readinessStatus":"healthy","authState":"authorized","healthState":"healthy","reason":"probe passed","requiredOperatorAction":"none","secretResolution":"resolved"}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/integrations/calendar-events/default", `{}`, h.authHeader)
 	h.request(t, http.MethodPost, "/v1/connectors", `{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`, h.authHeader)
 	h.request(t, http.MethodPost, "/v1/connectors/telegram-main/ingress/messages", `{"route":{"kind":"direct","accountId":"bot-main","peerId":"dm-1"},"message":{"messageId":"msg_1","text":"hello"},"run":{"entrypoint":"connector.message","goal":"validate ingress events"}}`, h.authHeader)
 
@@ -571,6 +605,10 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 		"provider.auth_revoked":          "schemas/events/provider-auth-revoked.event.schema.json",
 		"provider.default_model_updated": "schemas/events/provider-default-model-updated.event.schema.json",
 		"connector.ingress_accepted":     "schemas/events/connector-ingress-accepted.event.schema.json",
+		"integration.registered":         "schemas/events/integration-registered.event.schema.json",
+		"integration.updated":            "schemas/events/integration-updated.event.schema.json",
+		"integration.readiness_changed":  "schemas/events/integration-readiness-changed.event.schema.json",
+		"integration.default_changed":    "schemas/events/integration-default-changed.event.schema.json",
 		"policy.approval_requested":      "schemas/events/policy-approval-requested.event.schema.json",
 		"policy.approval_resolved":       "schemas/events/policy-approval-resolved.event.schema.json",
 		"policy.decision_recorded":       "schemas/events/policy-decision-recorded.event.schema.json",
@@ -779,6 +817,7 @@ data instructions
 		Environment: config.EnvironmentTest,
 		DataDir:     dataRoot,
 	}, sqliteStore, eventBus, policyEngine)
+	integrationManager := integrations.NewManager("test")
 	t.Cleanup(func() {
 		if err := checkpointManager.Close(); err != nil {
 			t.Fatalf("Close checkpoint manager returned error: %v", err)
@@ -787,10 +826,11 @@ data instructions
 
 	server := api.NewServer(api.Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:19191",
-			DataDir:  dataRoot,
-			LogLevel: "info",
-			Version:  "test",
+			Environment: config.EnvironmentTest,
+			BindAddr:    "127.0.0.1:19191",
+			DataDir:     dataRoot,
+			LogLevel:    "info",
+			Version:     "test",
 		},
 		Logger:       telemetry.New("error").Slog(),
 		EventBus:     eventBus,
@@ -803,6 +843,7 @@ data instructions
 		Providers:    providerManager,
 		Skills:       skillRegistry,
 		Sandboxes:    sandboxManager,
+		Integrations: integrationManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
 		Store:        sqliteStore,

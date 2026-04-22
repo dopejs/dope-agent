@@ -3,6 +3,8 @@ package runtime
 import (
 	"errors"
 	"testing"
+
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 )
 
 func TestCreateRun(t *testing.T) {
@@ -271,6 +273,55 @@ func TestCancelRunAndResumeRun(t *testing.T) {
 	}
 	if len(resumedSteps) != 2 {
 		t.Fatalf("expected 2 resumed steps, got %d", len(resumedSteps))
+	}
+}
+
+func TestCreateToolCallClonesIntegrationBindingsAndKeepsThemOptional(t *testing.T) {
+	manager := NewManager()
+
+	run, err := manager.CreateRun(CreateRunInput{Entrypoint: "chat", Goal: "integration binding clone"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, CreateStepInput{Title: "probe integration"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	inputBindings := []integrations.BindingSummary{{
+		IntegrationID:         "calendar-a",
+		DomainKind:            "calendar",
+		DisplayName:           "Calendar A",
+		AccountKey:            "acct_calendar",
+		CanonicalDefault:      true,
+		ReadinessAtInvocation: integrations.ReadinessStatusDegraded,
+		BackendKind:           integrations.BackendKindFakeLocal,
+		SecretResolution:      "resolved",
+		EnvironmentScope:      "test",
+	}}
+	toolCall, err := manager.CreateToolCall(run.RunID, step.StepID, CreateToolCallInput{
+		CapabilityID:        "integration_probe",
+		ToolName:            "inspect",
+		IntegrationBindings: inputBindings,
+	})
+	if err != nil {
+		t.Fatalf("CreateToolCall returned error: %v", err)
+	}
+
+	inputBindings[0].DisplayName = "mutated outside runtime"
+	if toolCall.IntegrationBindings[0].DisplayName != "Calendar A" {
+		t.Fatalf("expected runtime tool call to clone integration bindings, got %+v", toolCall.IntegrationBindings)
+	}
+
+	plainToolCall, err := manager.CreateToolCall(run.RunID, step.StepID, CreateToolCallInput{
+		CapabilityID: "docs",
+		ToolName:     "lookup",
+	})
+	if err != nil {
+		t.Fatalf("CreateToolCall(plain) returned error: %v", err)
+	}
+	if len(plainToolCall.IntegrationBindings) != 0 {
+		t.Fatalf("expected non-integration tool call to omit bindings, got %+v", plainToolCall)
 	}
 }
 

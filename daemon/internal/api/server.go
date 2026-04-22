@@ -23,6 +23,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
@@ -50,6 +51,7 @@ type Dependencies struct {
 	Skills       *skills.Registry
 	Sandboxes    *sandbox.Manager
 	MCP          *mcp.Manager
+	Integrations *integrations.Manager
 	Connectors   *connectors.Supervisor
 	Capabilities *capabilities.Supervisor
 	ComputerUse  *computeruse.Manager
@@ -72,6 +74,7 @@ type Server struct {
 	skills       *skills.Registry
 	sandboxes    *sandbox.Manager
 	mcp          *mcp.Manager
+	integrations *integrations.Manager
 	connectors   *connectors.Supervisor
 	capabilities *capabilities.Supervisor
 	computerUse  *computeruse.Manager
@@ -151,7 +154,7 @@ func NewServer(deps Dependencies) *Server {
 		handleRuns(deps.Router, deps.Runtime, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
 	}))
 	mux.HandleFunc("/v1/runs/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.EventBus, deps.Store, deps.Checkpoints, deps.ComputerUse, w, r)
+		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.EventBus, deps.Store, deps.Checkpoints, deps.ComputerUse, w, r)
 	}))
 	mux.HandleFunc("/v1/schedules", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSchedules(deps.Scheduler, w, r)
@@ -225,6 +228,12 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/mcp/catalog/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleMCPCatalogRoutes(deps.MCP, w, r)
 	}))
+	mux.HandleFunc("/v1/integrations", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleIntegrations(deps.Config, deps.Integrations, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/integrations/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleIntegrationRoutes(deps.Config, deps.Integrations, deps.EventBus, deps.Store, w, r)
+	}))
 	mux.HandleFunc("/v1/providers", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleProviders(deps.Providers, w, r)
 	}))
@@ -258,6 +267,7 @@ func NewServer(deps Dependencies) *Server {
 		skills:       deps.Skills,
 		sandboxes:    deps.Sandboxes,
 		mcp:          deps.MCP,
+		integrations: deps.Integrations,
 		connectors:   deps.Connectors,
 		capabilities: deps.Capabilities,
 		computerUse:  deps.ComputerUse,
@@ -409,7 +419,7 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 	}
 }
 
-func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request) {
+func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
 	if path == "" {
 		http.NotFound(w, r)
@@ -444,6 +454,11 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 
 	if len(parts) == 2 && parts[1] == "workflows" {
 		handleRunWorkflows(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0])
+		return
+	}
+
+	if len(parts) == 4 && parts[1] == "integrations" && parts[3] == "probes" {
+		handleRunIntegrationProbes(cfg, manager, policyEngine, integrationsManager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
 		return
 	}
 

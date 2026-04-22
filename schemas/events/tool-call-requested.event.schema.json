@@ -65,6 +65,10 @@
             "sandboxExecutionId": {
               "type": "string"
             },
+            "integrationBindings": {
+              "type": "array",
+              "items": { "$ref": "../api/integration-binding-summary.schema.json" }
+            },
             "failureClass": {
               "type": "string"
             },

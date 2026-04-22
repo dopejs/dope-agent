@@ -107,12 +107,13 @@ Examples:
 - `POST /v1/runs/{runId}/workflows/{workflowId}/start`
 - `POST /v1/runs/{runId}/workflows/{workflowId}/cancel`
 
-## 4. Connector And Capability API
+## 4. Connector, Capability, And Integration API
 
 Purpose:
 
 - inspect connector state
 - inspect capability state
+- inspect daemon-owned integration state
 - start, stop, or reload managed units when policy allows
 
 Examples:
@@ -122,6 +123,11 @@ Examples:
 - `POST /v1/connectors/{connectorId}/restart`
 - `GET /v1/capabilities`
 - `GET /v1/capabilities/{capabilityId}`
+- `GET /v1/integrations`
+- `GET /v1/integrations/{integrationId}`
+- `POST /v1/integrations/{integrationId}/readiness`
+- `POST /v1/integrations/{integrationId}/default`
+- `POST /v1/runs/{runId}/integrations/{integrationId}/probes`
 
 ## 5. Config And Policy API
 
@@ -217,6 +223,15 @@ Examples:
 - `system.stopping`
 - `system.config_reloaded`
 - `system.health_changed`
+
+## Additional Integration Events
+
+Examples:
+
+- `integration.registered`
+- `integration.updated`
+- `integration.readiness_changed`
+- `integration.default_changed`
 
 ## 2. Session Events
 

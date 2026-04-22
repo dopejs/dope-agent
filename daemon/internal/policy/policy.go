@@ -6,6 +6,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 )
 
 var (
@@ -34,19 +36,20 @@ const (
 )
 
 type Approval struct {
-	ApprovalID   string         `json:"approvalId"`
-	Action       string         `json:"action"`
-	ResourceKind string         `json:"resourceKind,omitempty"`
-	ResourceID   string         `json:"resourceId,omitempty"`
-	Reason       string         `json:"reason"`
-	RequestedBy  string         `json:"requestedBy,omitempty"`
-	Status       ApprovalStatus `json:"status"`
-	CreatedAt    time.Time      `json:"createdAt"`
-	UpdatedAt    time.Time      `json:"updatedAt"`
-	ResolvedAt   *time.Time     `json:"resolvedAt,omitempty"`
-	Resolution   string         `json:"resolution,omitempty"`
-	Comment      string         `json:"comment,omitempty"`
-	Sandbox      map[string]any `json:"sandbox,omitempty"`
+	ApprovalID          string                        `json:"approvalId"`
+	Action              string                        `json:"action"`
+	ResourceKind        string                        `json:"resourceKind,omitempty"`
+	ResourceID          string                        `json:"resourceId,omitempty"`
+	Reason              string                        `json:"reason"`
+	RequestedBy         string                        `json:"requestedBy,omitempty"`
+	Status              ApprovalStatus                `json:"status"`
+	CreatedAt           time.Time                     `json:"createdAt"`
+	UpdatedAt           time.Time                     `json:"updatedAt"`
+	ResolvedAt          *time.Time                    `json:"resolvedAt,omitempty"`
+	Resolution          string                        `json:"resolution,omitempty"`
+	Comment             string                        `json:"comment,omitempty"`
+	Sandbox             map[string]any                `json:"sandbox,omitempty"`
+	IntegrationBindings []integrations.BindingSummary `json:"integrationBindings,omitempty"`
 }
 
 type Decision struct {
@@ -62,11 +65,12 @@ type Decision struct {
 }
 
 type RequestApprovalInput struct {
-	Action       string `json:"action"`
-	ResourceKind string `json:"resourceKind"`
-	ResourceID   string `json:"resourceId"`
-	Reason       string `json:"reason"`
-	RequestedBy  string `json:"requestedBy"`
+	Action              string                        `json:"action"`
+	ResourceKind        string                        `json:"resourceKind"`
+	ResourceID          string                        `json:"resourceId"`
+	Reason              string                        `json:"reason"`
+	RequestedBy         string                        `json:"requestedBy"`
+	IntegrationBindings []integrations.BindingSummary `json:"integrationBindings,omitempty"`
 }
 
 type ResolveApprovalInput struct {
@@ -99,15 +103,16 @@ func (e *Engine) RequestApproval(input RequestApprovalInput) (Approval, Decision
 
 	now := time.Now().UTC()
 	approval := Approval{
-		ApprovalID:   newApprovalID(),
-		Action:       input.Action,
-		ResourceKind: input.ResourceKind,
-		ResourceID:   input.ResourceID,
-		Reason:       input.Reason,
-		RequestedBy:  input.RequestedBy,
-		Status:       ApprovalStatusPending,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ApprovalID:          newApprovalID(),
+		Action:              input.Action,
+		ResourceKind:        input.ResourceKind,
+		ResourceID:          input.ResourceID,
+		Reason:              input.Reason,
+		RequestedBy:         input.RequestedBy,
+		Status:              ApprovalStatusPending,
+		IntegrationBindings: integrations.CloneBindingSummaries(input.IntegrationBindings),
+		CreatedAt:           now,
+		UpdatedAt:           now,
 	}
 	decision := Decision{
 		DecisionID:   newDecisionID(),

@@ -3,6 +3,8 @@ package policy
 import (
 	"errors"
 	"testing"
+
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 )
 
 func TestRequestAndResolveApproval(t *testing.T) {
@@ -117,5 +119,37 @@ func TestApprovalsStayScopedToRequestedResourceInstance(t *testing.T) {
 	pending := engine.ListApprovals(ApprovalStatusPending)
 	if len(pending) != 1 || pending[0].ApprovalID != browserApproval.ApprovalID {
 		t.Fatalf("expected only browser approval to remain pending, got %+v", pending)
+	}
+}
+
+func TestRequestApprovalClonesIntegrationBindings(t *testing.T) {
+	engine := NewEngine()
+
+	inputBindings := []integrations.BindingSummary{{
+		IntegrationID:         "calendar-a",
+		DomainKind:            "calendar",
+		DisplayName:           "Calendar A",
+		AccountKey:            "acct_calendar",
+		CanonicalDefault:      true,
+		ReadinessAtInvocation: integrations.ReadinessStatusHealthy,
+		BackendKind:           integrations.BackendKindFakeLocal,
+		SecretResolution:      "resolved",
+		EnvironmentScope:      "test",
+	}}
+	approval, _, err := engine.RequestApproval(RequestApprovalInput{
+		Action:              "integration.probe.mutate",
+		ResourceKind:        "integration",
+		ResourceID:          "calendar-a",
+		Reason:              "mutation requires approval",
+		RequestedBy:         "workflow:test",
+		IntegrationBindings: inputBindings,
+	})
+	if err != nil {
+		t.Fatalf("RequestApproval returned error: %v", err)
+	}
+
+	inputBindings[0].DisplayName = "mutated outside policy"
+	if len(approval.IntegrationBindings) != 1 || approval.IntegrationBindings[0].DisplayName != "Calendar A" {
+		t.Fatalf("expected approval to retain cloned integration bindings, got %+v", approval)
 	}
 }

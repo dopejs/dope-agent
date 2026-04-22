@@ -37,6 +37,10 @@
     },
     "resolution": { "type": "string" },
     "comment": { "type": "string" },
+    "integrationBindings": {
+      "type": "array",
+      "items": { "$ref": "./integration-binding-summary.schema.json" }
+    },
     "sandbox": {
       "$ref": "./sandbox-consumer-view.schema.json"
     }

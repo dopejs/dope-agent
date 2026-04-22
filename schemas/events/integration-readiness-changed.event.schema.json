@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/integration-readiness-changed.event.schema.json",
+  "title": "IntegrationReadinessChangedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "integration" },
+        "name": { "const": "integration.readiness_changed" },
+        "payload": {
+          "type": "object",
+          "required": ["integrationId", "readinessStatus", "accountKey", "backendKind"],
+          "additionalProperties": false,
+          "properties": {
+            "integrationId": { "type": "string" },
+            "readinessStatus": {
+              "type": "string",
+              "enum": ["not_configured", "auth_pending", "healthy", "degraded", "unavailable"]
+            },
+            "authState": {
+              "type": "string",
+              "enum": ["not_started", "pending", "authorized", "expired", "revoked", "not_applicable"]
+            },
+            "healthState": {
+              "type": "string",
+              "enum": ["unknown", "healthy", "degraded", "unavailable"]
+            },
+            "reason": { "type": "string" },
+            "requiredOperatorAction": { "type": "string" },
+            "accountKey": { "type": "string" },
+            "backendKind": {
+              "type": "string",
+              "enum": ["mcp", "managed_provider", "native", "fake_local"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

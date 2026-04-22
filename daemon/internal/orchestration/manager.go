@@ -11,6 +11,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 )
 
@@ -221,6 +222,7 @@ func (m *Manager) BindToolCall(workflow Workflow, workflowStepID string, toolCal
 		if workflow.Steps[idx].WorkflowStepID == workflowStepID {
 			workflow.Steps[idx].ActiveToolCallID = toolCall.ToolCallID
 			workflow.Steps[idx].RuntimeStepID = toolCall.StepID
+			workflow.Steps[idx].IntegrationBindings = integrations.CloneBindingSummaries(toolCall.IntegrationBindings)
 			workflow.Steps[idx].UpdatedAt = now
 			break
 		}
@@ -237,6 +239,7 @@ func (m *Manager) ApplyToolCallResult(workflow Workflow, toolCall runtime.ToolCa
 		step := &workflow.Steps[idx]
 		step.ActiveToolCallID = toolCall.ToolCallID
 		step.RuntimeStepID = toolCall.StepID
+		step.IntegrationBindings = integrations.CloneBindingSummaries(toolCall.IntegrationBindings)
 		step.UpdatedAt = now
 		switch toolCall.Status {
 		case runtime.ToolCallStatusCompleted:

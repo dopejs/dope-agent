@@ -21,6 +21,8 @@ Add a production-grade mail domain that supports inspectable mail state, draft a
 - read and send paths must remain distinguishable
 - draft creation and final send are separate operation classes
 - attachment handling must remain explicit and auditable
+- shared integration readiness, account binding, canonical-default selection, and
+  redacted provenance semantics come from roadmap 27 and are not redefined here
 
 ## In Scope
 
@@ -44,7 +46,9 @@ Add a production-grade mail domain that supports inspectable mail state, draft a
 
 ## Functional Requirements
 
-- mail integration MUST expose account readiness and mailbox identity
+- mail integration MUST expose account readiness and mailbox identity by reusing the
+  shared integration resource, readiness vocabulary, and account-binding contract from
+  `docs/specs/012-personal-integrations-platform.md`
 - read, draft, send, reply, and forward MUST be separate operation classes
 - sent-message side effects MUST be distinguishable from draft-only results
 - attachment metadata and failures MUST remain operator-visible

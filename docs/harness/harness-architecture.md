@@ -226,6 +226,12 @@ Current daemon status after Roadmap 26:
   desktop automation requests fail explicitly instead of widening the execution surface
 - high-risk browser actions remain approval-gated with inspect-before-act context, and
   restart recovery leaves in-flight browser work `interrupted`
+- personal integrations are now first-class daemon-owned resources with explicit
+  readiness, canonical-default, and provenance truth
+- the harness and runtime plane reuse additive `integrationBindings` snapshots on tool
+  calls, workflow steps, and approvals instead of a parallel integration execution ledger
+- the repo-owned fake integration backend closes roadmap-27 verification without touching
+  live calendar or mail systems
 
 ### Phase 5: Context Engineering
 

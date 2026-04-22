@@ -23,6 +23,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
@@ -680,6 +681,320 @@ func TestToolCallLifecycleRoutes(t *testing.T) {
 	}
 	if persistedToolCalls[0].CapabilityID != "search" {
 		t.Fatalf("expected persisted capability id search, got %s", persistedToolCalls[0].CapabilityID)
+	}
+}
+
+func TestIntegrationRoutesProjectReadinessAndCanonicalDefault(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	eventBus := events.NewBus()
+	integrationManager := integrations.NewManager("test")
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			Environment: config.EnvironmentTest,
+			BindAddr:    "127.0.0.1:19191",
+			DataDir:     "~/.dope",
+			LogLevel:    "info",
+			Version:     "test",
+		},
+		Logger:       telemetry.New("error").Slog(),
+		EventBus:     eventBus,
+		Integrations: integrationManager,
+		Store:        sqliteStore,
+	})
+
+	createARec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createARec, httptest.NewRequest(http.MethodPost, "/v1/integrations", strings.NewReader(`{
+		"integrationId":"calendar-a",
+		"domainKind":"calendar",
+		"displayName":"Calendar A",
+		"backendKind":"fake_local",
+		"accountBinding":{"accountKey":"acct_calendar","accountLabel":"Primary Calendar"},
+		"canonicalDefault":true
+	}`)))
+	if createARec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for first integration, got %d body=%s", createARec.Code, createARec.Body.String())
+	}
+	first := decodeStrictResponse[integrations.Resource](t, createARec.Body.Bytes())
+	if !first.CanonicalDefault || first.ReadinessStatus != integrations.ReadinessStatusNotConfigured {
+		t.Fatalf("expected canonical not_configured integration, got %+v", first)
+	}
+
+	createBRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createBRec, httptest.NewRequest(http.MethodPost, "/v1/integrations", strings.NewReader(`{
+		"integrationId":"calendar-b",
+		"domainKind":"calendar",
+		"displayName":"Calendar B",
+		"backendKind":"fake_local",
+		"accountBinding":{"accountKey":"acct_calendar","accountLabel":"Primary Calendar"},
+		"canonicalDefault":true
+	}`)))
+	if createBRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for second integration, got %d body=%s", createBRec.Code, createBRec.Body.String())
+	}
+	second := decodeStrictResponse[integrations.Resource](t, createBRec.Body.Bytes())
+	if !second.CanonicalDefault {
+		t.Fatalf("expected second integration to become canonical default, got %+v", second)
+	}
+
+	listRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(listRec, httptest.NewRequest(http.MethodGet, "/v1/integrations", nil))
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for integration list, got %d body=%s", listRec.Code, listRec.Body.String())
+	}
+	list := decodeStrictResponse[IntegrationListResponse](t, listRec.Body.Bytes())
+	if len(list.Items) != 2 {
+		t.Fatalf("expected 2 integrations, got %d", len(list.Items))
+	}
+	if list.Items[0].CanonicalDefault {
+		t.Fatalf("expected first integration to be demoted in list projection, got %+v", list.Items)
+	}
+
+	readinessRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(readinessRec, httptest.NewRequest(http.MethodPost, "/v1/integrations/calendar-b/readiness", strings.NewReader(`{
+		"readinessStatus":"healthy",
+		"authState":"authorized",
+		"healthState":"healthy",
+		"reason":"probe passed",
+		"requiredOperatorAction":"none",
+		"secretResolution":"resolved"
+	}`)))
+	if readinessRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for readiness update, got %d body=%s", readinessRec.Code, readinessRec.Body.String())
+	}
+	healthy := decodeStrictResponse[integrations.Resource](t, readinessRec.Body.Bytes())
+	if healthy.ReadinessStatus != integrations.ReadinessStatusHealthy || healthy.Provenance.SecretResolution != "resolved" {
+		t.Fatalf("expected healthy integration with provenance, got %+v", healthy)
+	}
+
+	defaultRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(defaultRec, httptest.NewRequest(http.MethodPost, "/v1/integrations/calendar-a/default", nil))
+	if defaultRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for canonical default swap, got %d body=%s", defaultRec.Code, defaultRec.Body.String())
+	}
+
+	getRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/v1/integrations/calendar-a", nil))
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for integration get, got %d body=%s", getRec.Code, getRec.Body.String())
+	}
+	got := decodeStrictResponse[integrations.Resource](t, getRec.Body.Bytes())
+	if !got.CanonicalDefault || got.EnvironmentScope != "test" {
+		t.Fatalf("expected canonical integration in test environment, got %+v", got)
+	}
+
+	items, err := sqliteStore.ListEvents(context.Background(), events.Filter{})
+	if err != nil {
+		t.Fatalf("ListEvents returned error: %v", err)
+	}
+	eventNames := make([]string, 0, len(items))
+	for _, item := range items {
+		eventNames = append(eventNames, item.Name)
+	}
+	expected := []string{"integration.registered", "integration.updated", "integration.readiness_changed", "integration.default_changed"}
+	for _, name := range expected {
+		found := false
+		for _, item := range eventNames {
+			if item == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected event %s in %+v", name, eventNames)
+		}
+	}
+}
+
+func TestIntegrationProbeRoutesLinkRuntimeApprovalAndProvenance(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	runtimeManager := runtime.NewManager()
+	run, err := runtimeManager.CreateRun(runtime.CreateRunInput{
+		Entrypoint: "operator",
+		Goal:       "exercise fake integration probes",
+	})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	eventBus := events.NewBus()
+	policyEngine := policy.NewEngine()
+	integrationManager := integrations.NewManager("test")
+	integration, err := integrationManager.Create(integrations.CreateInput{
+		IntegrationID:    "calendar-b",
+		DomainKind:       "calendar",
+		DisplayName:      "Calendar B",
+		EnvironmentScope: "test",
+		CanonicalDefault: true,
+		AccountBinding: integrations.AccountBinding{
+			AccountKey:   "acct_calendar",
+			AccountLabel: "Primary Calendar",
+		},
+		BackendBinding: integrations.BackendBinding{
+			BackendKind:           integrations.BackendKindFakeLocal,
+			SupportsProbeRead:     true,
+			SupportsProbeMutation: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateIntegration returned error: %v", err)
+	}
+	integration, err = integrationManager.UpdateReadiness(integration.IntegrationID, integrations.UpdateReadinessInput{
+		ReadinessStatus:  integrations.ReadinessStatusDegraded,
+		AuthState:        integrations.AuthStateAuthorized,
+		HealthState:      integrations.HealthStateDegraded,
+		ReadinessReason:  "upstream latency",
+		SecretResolution: "resolved",
+	})
+	if err != nil {
+		t.Fatalf("UpdateReadiness returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertIntegration(context.Background(), integration); err != nil {
+		t.Fatalf("UpsertIntegration returned error: %v", err)
+	}
+
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			Environment: config.EnvironmentTest,
+			BindAddr:    "127.0.0.1:19191",
+			DataDir:     "~/.dope",
+			LogLevel:    "info",
+			Version:     "test",
+		},
+		Logger:       telemetry.New("error").Slog(),
+		EventBus:     eventBus,
+		Policy:       policyEngine,
+		Runtime:      runtimeManager,
+		Integrations: integrationManager,
+		Store:        sqliteStore,
+		Checkpoints:  checkpoints.NewManager(sqliteStore, runtimeManager),
+	})
+
+	inspectRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(inspectRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/integrations/calendar-b/probes", strings.NewReader(`{
+		"probeKind":"inspect",
+		"input":{"mode":"readonly"}
+	}`)))
+	if inspectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for inspect probe, got %d body=%s", inspectRec.Code, inspectRec.Body.String())
+	}
+	inspect := decodeStrictResponse[IntegrationProbeResponse](t, inspectRec.Body.Bytes())
+	if inspect.StepID == "" || inspect.ToolCallID == "" || len(inspect.IntegrationBindings) != 1 {
+		t.Fatalf("expected runtime linkage and binding snapshot, got %+v", inspect)
+	}
+	if inspect.IntegrationBindings[0].ReadinessAtInvocation != integrations.ReadinessStatusDegraded {
+		t.Fatalf("expected degraded binding snapshot, got %+v", inspect.IntegrationBindings)
+	}
+
+	toolCallRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(toolCallRec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/steps/"+inspect.StepID+"/tool-calls/"+inspect.ToolCallID, nil))
+	if toolCallRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for tool call get, got %d body=%s", toolCallRec.Code, toolCallRec.Body.String())
+	}
+	toolCall := decodeStrictResponse[runtime.ToolCall](t, toolCallRec.Body.Bytes())
+	if len(toolCall.IntegrationBindings) != 1 || toolCall.IntegrationBindings[0].IntegrationID != "calendar-b" {
+		t.Fatalf("expected tool call integration bindings, got %+v", toolCall)
+	}
+
+	mutatePendingRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(mutatePendingRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/integrations/calendar-b/probes", strings.NewReader(`{
+		"probeKind":"mutate",
+		"input":{"mode":"write"}
+	}`)))
+	if mutatePendingRec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 for mutate probe pending approval, got %d body=%s", mutatePendingRec.Code, mutatePendingRec.Body.String())
+	}
+	pending := decodeStrictResponse[IntegrationProbeResponse](t, mutatePendingRec.Body.Bytes())
+	if pending.Approval == nil || len(pending.Approval.IntegrationBindings) != 1 {
+		t.Fatalf("expected approval with integration bindings, got %+v", pending)
+	}
+
+	approvalRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(approvalRec, httptest.NewRequest(http.MethodGet, "/v1/policy/approvals/"+pending.Approval.ApprovalID, nil))
+	if approvalRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for approval get, got %d body=%s", approvalRec.Code, approvalRec.Body.String())
+	}
+	approval := decodeStrictResponse[policy.Approval](t, approvalRec.Body.Bytes())
+	if len(approval.IntegrationBindings) != 1 || approval.IntegrationBindings[0].IntegrationID != "calendar-b" {
+		t.Fatalf("expected approval integration bindings, got %+v", approval)
+	}
+
+	if _, _, err := policyEngine.ResolveApproval(pending.Approval.ApprovalID, policy.ResolveApprovalInput{
+		Resolution: string(policy.ApprovalStatusApproved),
+		Comment:    "approved for tests",
+	}); err != nil {
+		t.Fatalf("ResolveApproval returned error: %v", err)
+	}
+
+	mutateApprovedRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(mutateApprovedRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/integrations/calendar-b/probes", strings.NewReader(`{
+		"probeKind":"mutate",
+		"approvalId":"`+pending.Approval.ApprovalID+`",
+		"input":{"mode":"write"}
+	}`)))
+	if mutateApprovedRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for approved mutate probe, got %d body=%s", mutateApprovedRec.Code, mutateApprovedRec.Body.String())
+	}
+
+	integration, err = integrationManager.UpdateReadiness(integration.IntegrationID, integrations.UpdateReadinessInput{
+		ReadinessStatus: integrations.ReadinessStatusUnavailable,
+		AuthState:       integrations.AuthStateExpired,
+		HealthState:     integrations.HealthStateUnavailable,
+		ReadinessReason: "token revoked",
+	})
+	if err != nil {
+		t.Fatalf("UpdateReadiness(unavailable) returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertIntegration(context.Background(), integration); err != nil {
+		t.Fatalf("UpsertIntegration(unavailable) returned error: %v", err)
+	}
+
+	blockedRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(blockedRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/integrations/calendar-b/probes", strings.NewReader(`{"probeKind":"inspect"}`)))
+	if blockedRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for unavailable integration probe, got %d body=%s", blockedRec.Code, blockedRec.Body.String())
+	}
+
+	items, err := sqliteStore.ListEvents(context.Background(), events.Filter{RunID: run.RunID})
+	if err != nil {
+		t.Fatalf("ListEvents returned error: %v", err)
+	}
+	foundRequested := false
+	foundCompleted := false
+	for _, item := range items {
+		if item.Name == "tool_call.requested" {
+			foundRequested = true
+		}
+		if item.Name == "tool_call.completed" {
+			foundCompleted = true
+		}
+	}
+	if !foundRequested || !foundCompleted {
+		t.Fatalf("expected tool call requested/completed events, got %+v", items)
 	}
 }
 

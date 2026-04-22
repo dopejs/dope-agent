@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-integration-probe.request.schema.json",
+  "title": "CreateIntegrationProbeRequest",
+  "type": "object",
+  "required": ["probeKind"],
+  "additionalProperties": false,
+  "properties": {
+    "probeKind": {
+      "type": "string",
+      "enum": ["inspect", "mutate"]
+    },
+    "approvalId": { "type": "string" },
+    "input": { "type": ["object", "array", "string", "number", "boolean", "null"] }
+  }
+}

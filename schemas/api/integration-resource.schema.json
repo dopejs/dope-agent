@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/integration-resource.schema.json",
+  "title": "IntegrationResource",
+  "type": "object",
+  "required": [
+    "integrationId",
+    "domainKind",
+    "displayName",
+    "environmentScope",
+    "readinessStatus",
+    "canonicalDefault",
+    "backendBinding",
+    "createdAt",
+    "updatedAt",
+    "lastTransitionAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "integrationId": { "type": "string" },
+    "domainKind": { "type": "string" },
+    "displayName": { "type": "string" },
+    "environmentScope": { "type": "string" },
+    "readinessStatus": {
+      "type": "string",
+      "enum": ["not_configured", "auth_pending", "healthy", "degraded", "unavailable"]
+    },
+    "authState": {
+      "type": "string",
+      "enum": ["not_started", "pending", "authorized", "expired", "revoked", "not_applicable"]
+    },
+    "healthState": {
+      "type": "string",
+      "enum": ["unknown", "healthy", "degraded", "unavailable"]
+    },
+    "readinessReason": { "type": "string" },
+    "requiredOperatorAction": { "type": "string" },
+    "canonicalDefault": { "type": "boolean" },
+    "accountBinding": { "$ref": "#/$defs/accountBinding" },
+    "backendBinding": { "$ref": "#/$defs/backendBinding" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "lastReadyAt": { "type": "string", "format": "date-time" },
+    "lastTransitionAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "accountBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accountKey": { "type": "string" },
+        "accountLabel": { "type": "string" },
+        "accountType": { "type": "string" },
+        "tenantLabel": { "type": "string" },
+        "externalAccountId": { "type": "string" },
+        "knownAfterAuth": { "type": "boolean" }
+      }
+    },
+    "backendBinding": {
+      "type": "object",
+      "required": ["backendKind"],
+      "additionalProperties": false,
+      "properties": {
+        "backendKind": {
+          "type": "string",
+          "enum": ["mcp", "managed_provider", "native", "fake_local"]
+        },
+        "backendRefId": { "type": "string" },
+        "backendDisplayName": { "type": "string" },
+        "sourceKind": { "type": "string" },
+        "supportsInteractiveAuth": { "type": "boolean" },
+        "supportsProbeRead": { "type": "boolean" },
+        "supportsProbeMutation": { "type": "boolean" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "secretResolution": { "type": "string" },
+        "secretMaterialPresent": { "type": "boolean" },
+        "environmentScope": { "type": "string" },
+        "backedBy": { "type": "string" }
+      }
+    }
+  }
+}

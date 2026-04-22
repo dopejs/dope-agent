@@ -22,6 +22,8 @@ Add a production-grade calendar domain that supports inspectable availability, e
 - calendar is a separate roadmap from mail and reminders
 - calendar actions must preserve account identity, event identity, and audit truth
 - busy/free lookup and event mutation are separate operation classes
+- shared integration readiness, account binding, canonical-default selection, and
+  redacted provenance semantics come from roadmap 27 and are not redefined here
 
 ## In Scope
 
@@ -45,7 +47,9 @@ Add a production-grade calendar domain that supports inspectable availability, e
 
 ## Functional Requirements
 
-- calendar integration MUST expose inspectable calendar account readiness
+- calendar integration MUST expose inspectable calendar account readiness by reusing the
+  shared integration resource, readiness vocabulary, and account-binding contract from
+  `docs/specs/012-personal-integrations-platform.md`
 - busy/free, read, create, update, and cancel actions MUST be distinct operation types
 - calendar actions MUST preserve event identity and downstream delivery truth
 - scheduled workflows MUST be able to invoke calendar reads and writes through normal runtime workflows

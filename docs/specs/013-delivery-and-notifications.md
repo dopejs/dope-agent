@@ -22,6 +22,9 @@ Add a first-class delivery plane for notifications, summaries, and routed result
 - delivery is not just connector chat reply behavior
 - scheduled and autonomous work must be able to emit routed results without an active chat request
 - delivery failures are distinct from execution failures
+- integration readiness and delivery outcome remain separate truth domains; an
+  integration-backed action may succeed while delivery fails, or fail before delivery is
+  attempted
 
 ## In Scope
 
@@ -48,6 +51,8 @@ Add a first-class delivery plane for notifications, summaries, and routed result
 - schedule- and workflow-originated work MUST be able to emit result notifications without an active foreground session
 - delivery success, retry, suppression, and failure MUST be projected explicitly
 - delivery configuration MUST remain operator-visible and environment-scoped
+- delivery state MUST NOT redefine or overwrite integration readiness; phases that depend
+  on both planes must preserve execution truth and delivery truth separately
 
 ## Compatibility And Operational Notes
 
