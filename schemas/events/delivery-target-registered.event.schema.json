@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/delivery-target-registered.event.schema.json",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "delivery" },
+        "name": { "const": "delivery.target_registered" },
+        "resource": { "type": "object", "properties": { "kind": { "const": "delivery_target" } } },
+        "payload": { "type": "object", "required": ["targetId", "targetKind", "environmentScope", "status"] }
+      }
+    }
+  ]
+}

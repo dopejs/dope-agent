@@ -31,7 +31,8 @@
         "sandbox",
         "mcp",
         "schedule",
-        "integration"
+        "integration",
+        "delivery"
       ]
     },
     "name": {

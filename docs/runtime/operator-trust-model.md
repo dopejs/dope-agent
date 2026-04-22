@@ -122,6 +122,17 @@ For personal integrations:
 - integration readiness does not redefine delivery or notification outcomes; it only
   governs integration-backed execution readiness
 
+For the delivery plane:
+
+- delivery targets, preferences, outcomes, attempts, and summary windows are protected
+  operator APIs like other `/v1/*` control-plane routes when auth is enabled
+- foreground connector replies remain channel mechanics; they do not become the only
+  source of truth for background delivery
+- delivery failure, suppression, and retry state remain explicit even when source
+  execution succeeded
+- connector-backed delivery attempts may link to `connector_messages`, but transport
+  evidence remains subordinate to the daemon-owned delivery ledger
+
 ## Security Assumptions
 
 - this is a local-first daemon trust model, not multi-tenant auth

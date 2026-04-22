@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/delivery-outcome-resource.schema.json",
+  "title": "DeliveryOutcomeResource",
+  "type": "object",
+  "required": ["deliveryId", "environmentScope", "sourceKind", "sourceId", "resultClass", "mode", "status", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "deliveryId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "sourceKind": { "type": "string" },
+    "sourceId": { "type": "string" },
+    "runId": { "type": "string" },
+    "workflowId": { "type": "string" },
+    "scheduleId": { "type": "string" },
+    "scheduleAttemptId": { "type": "string" },
+    "integrationId": { "type": "string" },
+    "resultClass": { "type": "string", "enum": ["routine_success", "urgent", "failure"] },
+    "mode": { "type": "string", "enum": ["immediate", "digest", "suppressed"] },
+    "status": { "type": "string", "enum": ["pending", "queued", "dispatching", "delivered", "suppressed", "failed"] },
+    "chosenTargetId": { "type": "string" },
+    "preferenceId": { "type": "string" },
+    "summaryWindowId": { "type": "string" },
+    "payloadPreview": { "type": "string" },
+    "suppressionReason": { "type": "string" },
+    "attempts": {
+      "type": "array",
+      "items": { "$ref": "./delivery-attempt-resource.schema.json" }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "finalizedAt": { "type": "string", "format": "date-time" }
+  }
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
+	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
@@ -29,6 +30,7 @@ type ScheduleWorkflowLauncherDependencies struct {
 	MCP          *mcp.Manager
 	Sandboxes    *sandbox.Manager
 	ComputerUse  *computeruse.Manager
+	Delivery     *delivery.Manager
 	EventBus     *events.Bus
 	Store        *store.SQLiteStore
 	Checkpoints  *checkpoints.Manager
@@ -43,6 +45,7 @@ type ScheduleWorkflowLauncher struct {
 	mcp          *mcp.Manager
 	sandboxes    *sandbox.Manager
 	computerUse  *computeruse.Manager
+	delivery     *delivery.Manager
 	eventBus     *events.Bus
 	store        *store.SQLiteStore
 	checkpoints  *checkpoints.Manager
@@ -58,6 +61,7 @@ func NewScheduleWorkflowLauncher(deps ScheduleWorkflowLauncherDependencies) *Sch
 		mcp:          deps.MCP,
 		sandboxes:    deps.Sandboxes,
 		computerUse:  deps.ComputerUse,
+		delivery:     deps.Delivery,
 		eventBus:     deps.EventBus,
 		store:        deps.Store,
 		checkpoints:  deps.Checkpoints,
@@ -129,6 +133,7 @@ func (l *ScheduleWorkflowLauncher) LaunchScheduledWorkflow(ctx context.Context, 
 		l.mcp,
 		l.sandboxes,
 		l.eventBus,
+		l.delivery,
 		l.store,
 		l.checkpoints,
 		l.computerUse,

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/delivery-attempt-resource.schema.json",
+  "title": "DeliveryAttemptResource",
+  "type": "object",
+  "required": ["attemptId", "deliveryId", "attemptNumber", "targetId", "transportKind", "status", "startedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "attemptId": { "type": "string" },
+    "deliveryId": { "type": "string" },
+    "attemptNumber": { "type": "integer", "minimum": 1 },
+    "targetId": { "type": "string" },
+    "transportKind": { "type": "string" },
+    "status": { "type": "string", "enum": ["running", "delivered", "retryable_failure", "terminal_failure"] },
+    "failureClass": { "type": "string" },
+    "failureReason": { "type": "string" },
+    "nextRetryAt": { "type": "string", "format": "date-time" },
+    "connectorMessageDeliveryId": { "type": "string" },
+    "transportReceiptSummary": { "type": "string" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" }
+  }
+}

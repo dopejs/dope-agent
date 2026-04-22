@@ -23,6 +23,8 @@ Add a production-grade mail domain that supports inspectable mail state, draft a
 - attachment handling must remain explicit and auditable
 - shared integration readiness, account binding, canonical-default selection, and
   redacted provenance semantics come from roadmap 27 and are not redefined here
+- background mail results should reuse roadmap 28 delivery targets, preferences, and
+  outcome history instead of a mail-specific notification subsystem
 
 ## In Scope
 

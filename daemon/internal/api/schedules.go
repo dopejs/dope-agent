@@ -6,10 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 )
 
-func handleSchedules(sched *scheduler.Scheduler, w http.ResponseWriter, r *http.Request) {
+func handleSchedules(sched *scheduler.Scheduler, deliveryManager *delivery.Manager, w http.ResponseWriter, r *http.Request) {
 	if sched == nil {
 		writeError(w, http.StatusInternalServerError, "scheduler is not configured")
 		return
@@ -18,6 +19,11 @@ func handleSchedules(sched *scheduler.Scheduler, w http.ResponseWriter, r *http.
 	switch r.Method {
 	case http.MethodGet:
 		items, err := sched.List(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		items, err = projectScheduleDeliverySummaries(r.Context(), deliveryManager, items)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -54,7 +60,7 @@ func handleSchedules(sched *scheduler.Scheduler, w http.ResponseWriter, r *http.
 	}
 }
 
-func handleScheduleRoutes(sched *scheduler.Scheduler, w http.ResponseWriter, r *http.Request) {
+func handleScheduleRoutes(sched *scheduler.Scheduler, deliveryManager *delivery.Manager, w http.ResponseWriter, r *http.Request) {
 	if sched == nil {
 		writeError(w, http.StatusInternalServerError, "scheduler is not configured")
 		return
@@ -66,7 +72,7 @@ func handleScheduleRoutes(sched *scheduler.Scheduler, w http.ResponseWriter, r *
 	}
 	parts := strings.Split(path, "/")
 	if len(parts) == 1 {
-		handleScheduleByID(sched, w, r, parts[0])
+		handleScheduleByID(sched, deliveryManager, w, r, parts[0])
 		return
 	}
 	if len(parts) == 2 && parts[1] == "pause" {
@@ -84,7 +90,7 @@ func handleScheduleRoutes(sched *scheduler.Scheduler, w http.ResponseWriter, r *
 	http.NotFound(w, r)
 }
 
-func handleScheduleByID(sched *scheduler.Scheduler, w http.ResponseWriter, r *http.Request, scheduleID string) {
+func handleScheduleByID(sched *scheduler.Scheduler, deliveryManager *delivery.Manager, w http.ResponseWriter, r *http.Request, scheduleID string) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -96,6 +102,11 @@ func handleScheduleByID(sched *scheduler.Scheduler, w http.ResponseWriter, r *ht
 	}
 	if !ok {
 		http.NotFound(w, r)
+		return
+	}
+	item, err = projectScheduleDeliverySummary(r.Context(), deliveryManager, item)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, item)

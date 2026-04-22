@@ -147,6 +147,9 @@ type DispatchAttempt struct {
 	RunID                  string           `json:"runId,omitempty"`
 	WorkflowID             string           `json:"workflowId,omitempty"`
 	DownstreamStatus       DownstreamStatus `json:"downstreamStatus"`
+	LatestDeliveryID       string           `json:"latestDeliveryId,omitempty"`
+	LatestDeliveryStatus   string           `json:"latestDeliveryStatus,omitempty"`
+	LatestDeliveryTargetID string           `json:"latestDeliveryTargetId,omitempty"`
 	SkippedReason          string           `json:"skippedReason,omitempty"`
 	MissedCount            int              `json:"missedCount,omitempty"`
 	CreatedAt              time.Time        `json:"createdAt"`

@@ -14,6 +14,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
+	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
@@ -294,6 +295,28 @@ func TestScheduleEventsRouteFiltersByEnvironmentAndScheduleScope(t *testing.T) {
 func TestScheduleRoutesDispatchWorkflowTargetAndLinkWorkflowTruth(t *testing.T) {
 	harness := newWorkflowScheduleServerHarness(t)
 
+	target, err := harness.delivery.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "scheduled-workflow-target",
+		DisplayName:      "Scheduled Workflow Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget returned error: %v", err)
+	}
+	if _, err := harness.delivery.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "scheduled-workflow-pref",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: target.TargetID,
+			delivery.ResultClassUrgent:         target.TargetID,
+			delivery.ResultClassFailure:        target.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference returned error: %v", err)
+	}
+
 	fireAt := time.Now().UTC().Add(100 * time.Millisecond).Format(time.RFC3339)
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/schedules", strings.NewReader(`{
 		"trigger": {
@@ -384,6 +407,23 @@ func TestScheduleRoutesDispatchWorkflowTargetAndLinkWorkflowTruth(t *testing.T) 
 	}
 	if len(workflow.Steps) != 1 || workflow.Steps[0].RuntimeStepID == "" || workflow.Steps[0].ActiveToolCallID == "" {
 		t.Fatalf("expected runtime-linked workflow step, got %+v", workflow.Steps)
+	}
+	if workflow.LatestDeliveryID == "" || workflow.LatestDeliveryStatus != string(delivery.OutcomeStatusDelivered) || workflow.LatestDeliveryTargetID != target.TargetID {
+		t.Fatalf("expected workflow latest delivery projection, got %+v", workflow)
+	}
+
+	outcomes, err := harness.delivery.ListOutcomes(context.Background(), delivery.OutcomeFilter{
+		SourceKind: "workflow",
+		SourceID:   workflowID,
+	})
+	if err != nil {
+		t.Fatalf("ListOutcomes returned error: %v", err)
+	}
+	if len(outcomes) != 1 {
+		t.Fatalf("expected one workflow delivery outcome, got %+v", outcomes)
+	}
+	if outcomes[0].ScheduleID != scheduleID || outcomes[0].ScheduleAttemptID == "" || outcomes[0].ChosenTargetID != target.TargetID {
+		t.Fatalf("expected schedule-linked workflow delivery outcome, got %+v", outcomes[0])
 	}
 }
 
@@ -494,6 +534,7 @@ type scheduleServerHarness struct {
 	store      *store.SQLiteStore
 	runtime    *runtime.Manager
 	scheduler  *scheduler.Scheduler
+	delivery   *delivery.Manager
 	authHeader string
 }
 
@@ -515,6 +556,7 @@ func newScheduleServerHarness(t *testing.T) scheduleServerHarness {
 
 	runtimeManager := runtime.NewManager()
 	authManager := auth.NewManager()
+	deliveryManager := delivery.NewManager("test", eventBus, sqliteStore, delivery.NewTestSinkAdapter())
 	scheduleManager := scheduler.New(scheduler.Dependencies{
 		Config:      cfg,
 		Runtime:     runtimeManager,
@@ -529,6 +571,7 @@ func newScheduleServerHarness(t *testing.T) scheduleServerHarness {
 		EventBus:    eventBus,
 		Runtime:     runtimeManager,
 		Scheduler:   scheduleManager,
+		Delivery:    deliveryManager,
 		Store:       sqliteStore,
 		Checkpoints: checkpoints.NewManager(sqliteStore, runtimeManager),
 	})
@@ -539,7 +582,129 @@ func newScheduleServerHarness(t *testing.T) scheduleServerHarness {
 		store:      sqliteStore,
 		runtime:    runtimeManager,
 		scheduler:  scheduleManager,
+		delivery:   deliveryManager,
 		authHeader: issueAuthHeaderForTest(t, authManager, "schedule-web"),
+	}
+}
+
+func TestScheduleRoutesProjectLatestDeliverySummaryOntoAttempts(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+	}
+	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	eventBus := events.NewBus()
+	t.Cleanup(eventBus.Close)
+
+	runtimeManager := runtime.NewManager()
+	authManager := auth.NewManager()
+	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
+	scheduleManager := scheduler.New(scheduler.Dependencies{
+		Config:      cfg,
+		Runtime:     runtimeManager,
+		EventBus:    eventBus,
+		Store:       sqliteStore,
+		Checkpoints: checkpointManager,
+	})
+	deliveryManager := delivery.NewManager("test", eventBus, sqliteStore, delivery.NewTestSinkAdapter())
+	target, err := deliveryManager.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "schedule-target",
+		DisplayName:      "Schedule Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget returned error: %v", err)
+	}
+	if _, err := deliveryManager.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "pref-schedule",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: target.TargetID,
+			delivery.ResultClassUrgent:         target.TargetID,
+			delivery.ResultClassFailure:        target.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference returned error: %v", err)
+	}
+
+	server := NewServer(Dependencies{
+		Config:      cfg,
+		Logger:      telemetry.New("error").Slog(),
+		Auth:        authManager,
+		EventBus:    eventBus,
+		Runtime:     runtimeManager,
+		Scheduler:   scheduleManager,
+		Delivery:    deliveryManager,
+		Store:       sqliteStore,
+		Checkpoints: checkpointManager,
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "delivery-schedule-web")
+
+	fireAt := time.Now().UTC().Add(20 * time.Millisecond)
+	schedule, err := scheduleManager.Create(context.Background(), scheduler.CreateInput{
+		Trigger: scheduler.Trigger{
+			Kind:   scheduler.TriggerKindOnce,
+			FireAt: &fireAt,
+		},
+		Target: scheduler.Target{
+			Kind: scheduler.TargetKindRun,
+			Run: &scheduler.RunTarget{
+				Entrypoint: "operator",
+				Goal:       "scheduled background result",
+			},
+		},
+		RetryPolicy: scheduler.RetryPolicy{MaxRetries: 0, BackoffKind: scheduler.RetryBackoffFixed, BaseDelaySeconds: 1, MaxDelaySeconds: 1},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	time.Sleep(40 * time.Millisecond)
+	if err := scheduleManager.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick returned error: %v", err)
+	}
+
+	schedule, ok, err := scheduleManager.Get(context.Background(), schedule.ScheduleID)
+	if err != nil || !ok {
+		t.Fatalf("Get returned ok=%v err=%v", ok, err)
+	}
+	if len(schedule.Attempts) != 1 {
+		t.Fatalf("expected one attempt, got %+v", schedule.Attempts)
+	}
+
+	if _, err := deliveryManager.EmitOutcome(context.Background(), delivery.OutcomeInput{
+		SourceKind:        "run",
+		SourceID:          schedule.Attempts[0].RunID,
+		RunID:             schedule.Attempts[0].RunID,
+		ScheduleID:        schedule.ScheduleID,
+		ScheduleAttemptID: schedule.Attempts[0].AttemptID,
+		ResultClass:       delivery.ResultClassRoutineSuccess,
+		PayloadPreview:    "scheduled background result",
+	}); err != nil {
+		t.Fatalf("EmitOutcome returned error: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/schedules/"+schedule.ScheduleID, nil)
+	req.Header.Set("Authorization", authHeader)
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	got := decodeStrictResponse[scheduler.Schedule](t, rec.Body.Bytes())
+	if len(got.Attempts) != 1 {
+		t.Fatalf("expected one projected attempt, got %+v", got.Attempts)
+	}
+	if got.Attempts[0].LatestDeliveryID == "" || got.Attempts[0].LatestDeliveryStatus != string(delivery.OutcomeStatusDelivered) || got.Attempts[0].LatestDeliveryTargetID != target.TargetID {
+		t.Fatalf("expected latest delivery projection on schedule attempt, got %+v", got.Attempts[0])
 	}
 }
 
@@ -565,6 +730,7 @@ func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 	policyEngine := policy.NewEngine()
 	skillRegistry := newAllowSkillRegistryForWorkflowTest(t, cfg.DataDir)
 	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	deliveryManager := delivery.NewManager("test", eventBus, sqliteStore, delivery.NewTestSinkAdapter())
 	computerUseManager := computeruse.NewManager(computeruse.Dependencies{
 		EnvironmentScope: "test",
 		Runtime:          runtimeManager,
@@ -579,6 +745,7 @@ func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 		Skills:      skillRegistry,
 		Sandboxes:   sandboxManager,
 		ComputerUse: computerUseManager,
+		Delivery:    deliveryManager,
 		EventBus:    eventBus,
 		Store:       sqliteStore,
 		Checkpoints: checkpointManager,
@@ -602,6 +769,7 @@ func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 		Sandboxes:   sandboxManager,
 		ComputerUse: computerUseManager,
 		Scheduler:   scheduleManager,
+		Delivery:    deliveryManager,
 		Store:       sqliteStore,
 		Checkpoints: checkpointManager,
 	})
@@ -612,6 +780,7 @@ func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 		store:      sqliteStore,
 		runtime:    runtimeManager,
 		scheduler:  scheduleManager,
+		delivery:   deliveryManager,
 		authHeader: issueAuthHeaderForTest(t, authManager, "schedule-workflow-web"),
 	}
 }

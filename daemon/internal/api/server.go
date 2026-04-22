@@ -22,6 +22,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
+	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
@@ -56,6 +57,7 @@ type Dependencies struct {
 	Capabilities *capabilities.Supervisor
 	ComputerUse  *computeruse.Manager
 	Scheduler    *scheduler.Scheduler
+	Delivery     *delivery.Manager
 	Store        *store.SQLiteStore
 	Checkpoints  *checkpoints.Manager
 }
@@ -79,6 +81,7 @@ type Server struct {
 	capabilities *capabilities.Supervisor
 	computerUse  *computeruse.Manager
 	scheduler    *scheduler.Scheduler
+	delivery     *delivery.Manager
 	store        *store.SQLiteStore
 	checkpoints  *checkpoints.Manager
 	server       *http.Server
@@ -151,16 +154,40 @@ func NewServer(deps Dependencies) *Server {
 		handleEvents(deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/runs", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleRuns(deps.Router, deps.Runtime, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
+		handleRuns(deps.Router, deps.Runtime, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, w, r)
 	}))
 	mux.HandleFunc("/v1/runs/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.EventBus, deps.Store, deps.Checkpoints, deps.ComputerUse, w, r)
+		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, deps.ComputerUse, w, r)
 	}))
 	mux.HandleFunc("/v1/schedules", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleSchedules(deps.Scheduler, w, r)
+		handleSchedules(deps.Scheduler, deps.Delivery, w, r)
 	}))
 	mux.HandleFunc("/v1/schedules/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleScheduleRoutes(deps.Scheduler, w, r)
+		handleScheduleRoutes(deps.Scheduler, deps.Delivery, w, r)
+	}))
+	mux.HandleFunc("/v1/delivery/targets", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleDeliveryTargets(deps.Delivery, w, r)
+	}))
+	mux.HandleFunc("/v1/delivery/targets/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleDeliveryTargetRoutes(deps.Delivery, w, r)
+	}))
+	mux.HandleFunc("/v1/delivery/preferences", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleDeliveryPreferences(deps.Delivery, w, r)
+	}))
+	mux.HandleFunc("/v1/delivery/preferences/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleDeliveryPreferenceRoutes(deps.Delivery, w, r)
+	}))
+	mux.HandleFunc("/v1/deliveries", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleDeliveries(deps.Delivery, w, r)
+	}))
+	mux.HandleFunc("/v1/deliveries/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleDeliveryRoutes(deps.Delivery, w, r)
+	}))
+	mux.HandleFunc("/v1/delivery/windows", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleDeliveryWindows(deps.Delivery, w, r)
+	}))
+	mux.HandleFunc("/v1/delivery/windows/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleDeliveryWindowRoutes(deps.Delivery, w, r)
 	}))
 	mux.HandleFunc("/v1/sessions", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSessions(deps.Router, deps.EventBus, deps.Store, w, r)
@@ -272,6 +299,7 @@ func NewServer(deps Dependencies) *Server {
 		capabilities: deps.Capabilities,
 		computerUse:  deps.ComputerUse,
 		scheduler:    deps.Scheduler,
+		delivery:     deps.Delivery,
 		store:        deps.Store,
 		checkpoints:  deps.Checkpoints,
 		server: &http.Server{
@@ -339,10 +367,15 @@ func decodeJSONBody(r *http.Request, target any) error {
 	return json.Unmarshal(body, target)
 }
 
-func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
+func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, eventBus *events.Bus, deliveryManager *delivery.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, ListResponse[runtime.Run]{Items: manager.ListRuns()})
+		runs, err := projectRunDeliverySummaries(r.Context(), deliveryManager, manager.ListRuns())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, ListResponse[runtime.Run]{Items: runs})
 	case http.MethodPost:
 		var request CreateRunRequest
 		if err := decodeJSONBody(r, &request); err != nil {
@@ -419,7 +452,7 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 	}
 }
 
-func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request) {
+func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, deliveryManager *delivery.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
 	if path == "" {
 		http.NotFound(w, r)
@@ -428,7 +461,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 
 	parts := strings.Split(path, "/")
 	if len(parts) == 1 {
-		handleRunByID(manager, w, r, parts[0])
+		handleRunByID(deliveryManager, manager, w, r, parts[0])
 		return
 	}
 
@@ -453,7 +486,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	}
 
 	if len(parts) == 2 && parts[1] == "workflows" {
-		handleRunWorkflows(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0])
+		handleRunWorkflows(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, deliveryManager, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0])
 		return
 	}
 
@@ -473,12 +506,12 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	}
 
 	if len(parts) == 3 && parts[1] == "workflows" {
-		handleRunWorkflowByID(sqliteStore, cfg.Environment, w, r, parts[0], parts[2])
+		handleRunWorkflowByID(deliveryManager, sqliteStore, cfg.Environment, w, r, parts[0], parts[2])
 		return
 	}
 
 	if len(parts) == 4 && parts[1] == "workflows" && parts[3] == "start" {
-		handleRunWorkflowStart(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0], parts[2])
+		handleRunWorkflowStart(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, deliveryManager, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0], parts[2])
 		return
 	}
 
@@ -493,7 +526,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	}
 
 	if len(parts) == 4 && parts[1] == "steps" && parts[3] == "status" {
-		handleRunStepStatus(manager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
+		handleRunStepStatus(manager, eventBus, deliveryManager, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
 		return
 	}
 
@@ -540,7 +573,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	http.NotFound(w, r)
 }
 
-func handleRunByID(manager *runtime.Manager, w http.ResponseWriter, r *http.Request, runID string) {
+func handleRunByID(deliveryManager *delivery.Manager, manager *runtime.Manager, w http.ResponseWriter, r *http.Request, runID string) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -556,7 +589,11 @@ func handleRunByID(manager *runtime.Manager, w http.ResponseWriter, r *http.Requ
 		http.NotFound(w, r)
 		return
 	}
-
+	run, err := projectRunDeliverySummary(r.Context(), deliveryManager, run)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, run)
 }
 
@@ -1101,7 +1138,7 @@ func handlePolicyApprovalResolve(cfg config.Config, policyEngine *policy.Engine,
 				if ok {
 					toolCall, toolCallOK := runtimeManager.GetToolCall(action.RunID, action.StepID, action.ToolCallID)
 					if toolCallOK {
-						if _, _, err := advanceWorkflowAfterToolCall(r.Context(), cfg, runtimeManager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, workflow, toolCall, orchestration.StepStatusRunning, ""); err != nil {
+						if _, _, err := advanceWorkflowAfterToolCall(r.Context(), cfg, runtimeManager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, nil, sqliteStore, checkpointManager, computerUseManager, workflow, toolCall, orchestration.StepStatusRunning, ""); err != nil {
 							writeError(w, http.StatusInternalServerError, err.Error())
 							return
 						}
@@ -3072,7 +3109,7 @@ func handleRunStepCancel(manager *runtime.Manager, eventBus *events.Bus, sqliteS
 	writeJSON(w, http.StatusOK, step)
 }
 
-func handleRunStepStatus(manager *runtime.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
+func handleRunStepStatus(manager *runtime.Manager, eventBus *events.Bus, deliveryManager *delivery.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -3150,9 +3187,63 @@ func handleRunStepStatus(manager *runtime.Manager, eventBus *events.Bus, sqliteS
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		if err := maybeEmitRunDelivery(r.Context(), deliveryManager, manager, *runUpdate); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, step)
+}
+
+func maybeEmitRunDelivery(ctx context.Context, deliveryManager *delivery.Manager, runtimeManager *runtime.Manager, run runtime.Run) error {
+	if deliveryManager == nil || runtimeManager == nil || run.SessionID != "" || !runtime.IsRunTerminal(run.Status) {
+		return nil
+	}
+	resultClass := delivery.ResultClassFailure
+	switch run.Status {
+	case runtime.RunStatusCompleted:
+		resultClass = delivery.ResultClassRoutineSuccess
+	case runtime.RunStatusCancelled:
+		resultClass = delivery.ResultClassUrgent
+	}
+	preview := strings.TrimSpace(run.Goal)
+	if preview == "" {
+		preview = "background run reached terminal state"
+	}
+	integrationID := resolveRunIntegrationID(runtimeManager, run)
+	_, err := deliveryManager.EmitOutcome(ctx, delivery.OutcomeInput{
+		SourceKind:        "run",
+		SourceID:          run.RunID,
+		RunID:             run.RunID,
+		ScheduleID:        run.ScheduleID,
+		ScheduleAttemptID: run.ScheduleAttemptID,
+		IntegrationID:     integrationID,
+		ResultClass:       resultClass,
+		PayloadPreview:    preview,
+	})
+	return err
+}
+
+func resolveRunIntegrationID(runtimeManager *runtime.Manager, run runtime.Run) string {
+	steps, err := runtimeManager.ListSteps(run.RunID)
+	if err != nil {
+		return ""
+	}
+	for _, step := range steps {
+		toolCalls, err := runtimeManager.ListToolCalls(run.RunID, step.StepID)
+		if err != nil {
+			continue
+		}
+		for _, toolCall := range toolCalls {
+			for _, binding := range toolCall.IntegrationBindings {
+				if integrationID := strings.TrimSpace(binding.IntegrationID); integrationID != "" {
+					return integrationID
+				}
+			}
+		}
+	}
+	return ""
 }
 
 type createToolCallRequest struct {

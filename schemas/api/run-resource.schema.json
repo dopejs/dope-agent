@@ -50,6 +50,23 @@
       "type": "integer",
       "minimum": 0
     },
+    "latestDeliveryId": {
+      "type": "string"
+    },
+    "latestDeliveryStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "queued",
+        "dispatching",
+        "delivered",
+        "suppressed",
+        "failed"
+      ]
+    },
+    "latestDeliveryTargetId": {
+      "type": "string"
+    },
     "createdAt": {
       "type": "string",
       "format": "date-time"

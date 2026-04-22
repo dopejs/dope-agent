@@ -7,6 +7,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
+	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
@@ -241,6 +242,62 @@ type ScheduleTargetRequest struct {
 }
 
 type ScheduleListResponse = ListResponse[scheduler.Schedule]
+
+type CreateDeliveryTargetRequest struct {
+	TargetID         string                     `json:"targetId"`
+	DisplayName      string                     `json:"displayName"`
+	TargetKind       delivery.TargetKind        `json:"targetKind"`
+	ConnectorBinding *delivery.ConnectorBinding `json:"connectorBinding,omitempty"`
+	AddressSummary   string                     `json:"addressSummary,omitempty"`
+}
+
+type UpdateDeliveryTargetStatusRequest struct{}
+
+type DeliveryTargetListResponse = ListResponse[delivery.DeliveryTarget]
+
+type UpsertDeliveryPreferenceRequest struct {
+	PreferenceID            string                          `json:"preferenceId"`
+	EnvironmentScope        string                          `json:"environmentScope,omitempty"`
+	ScopeKind               delivery.PreferenceScopeKind    `json:"scopeKind"`
+	IntegrationID           string                          `json:"integrationId,omitempty"`
+	PreferredTargetsByClass map[delivery.ResultClass]string `json:"preferredTargetsByClass"`
+	SummaryPolicy           delivery.SummaryPolicy          `json:"summaryPolicy,omitempty"`
+	SuppressionPolicy       delivery.SuppressionPolicy      `json:"suppressionPolicy,omitempty"`
+}
+
+type DeliveryPreferenceListResponse = ListResponse[delivery.DeliveryPreference]
+type DeliveryOutcomeListResponse = ListResponse[delivery.DeliveryOutcome]
+type DeliverySummaryWindowListResponse = ListResponse[delivery.SummaryWindow]
+
+func applyLatestDeliveryToRun(run runtime.Run, summary delivery.LatestSummary) runtime.Run {
+	run.LatestDeliveryID = summary.LatestDeliveryID
+	run.LatestDeliveryStatus = summary.LatestDeliveryStatus
+	run.LatestDeliveryTargetID = summary.LatestDeliveryTargetID
+	return run
+}
+
+func applyLatestDeliveryToWorkflow(workflow orchestration.Workflow, summary delivery.LatestSummary) orchestration.Workflow {
+	workflow.LatestDeliveryID = summary.LatestDeliveryID
+	workflow.LatestDeliveryStatus = summary.LatestDeliveryStatus
+	workflow.LatestDeliveryTargetID = summary.LatestDeliveryTargetID
+	return workflow
+}
+
+func applyLatestDeliveryToSchedule(schedule scheduler.Schedule, summaries map[string]delivery.LatestSummary) scheduler.Schedule {
+	if len(summaries) == 0 {
+		return schedule
+	}
+	for idx := range schedule.Attempts {
+		summary, ok := summaries[schedule.Attempts[idx].AttemptID]
+		if !ok {
+			continue
+		}
+		schedule.Attempts[idx].LatestDeliveryID = summary.LatestDeliveryID
+		schedule.Attempts[idx].LatestDeliveryStatus = summary.LatestDeliveryStatus
+		schedule.Attempts[idx].LatestDeliveryTargetID = summary.LatestDeliveryTargetID
+	}
+	return schedule
+}
 
 type ConnectorIngressMessage struct {
 	MessageID string `json:"messageId"`

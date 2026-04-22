@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-delivery-target.request.schema.json",
+  "title": "CreateDeliveryTargetRequest",
+  "type": "object",
+  "required": ["targetId", "displayName", "targetKind"],
+  "additionalProperties": false,
+  "properties": {
+    "targetId": { "type": "string", "minLength": 1 },
+    "displayName": { "type": "string", "minLength": 1 },
+    "targetKind": { "type": "string", "enum": ["connector_route", "test_sink"] },
+    "connectorBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "connectorId": { "type": "string" },
+        "channelId": { "type": "string" },
+        "peerId": { "type": "string" },
+        "threadId": { "type": "string" }
+      }
+    },
+    "addressSummary": { "type": "string" }
+  }
+}

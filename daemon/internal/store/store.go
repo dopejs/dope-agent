@@ -31,7 +31,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 15
+	CurrentSchemaVersion = 16
 )
 
 type schemaMigration struct {
@@ -222,6 +222,74 @@ type ScheduleDispatchAttemptRecord struct {
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 	Document               []byte
+}
+
+type DeliveryTargetRecord struct {
+	TargetID         string
+	EnvironmentScope string
+	TargetKind       string
+	Status           string
+	UpdatedAt        time.Time
+	Document         []byte
+}
+
+type DeliveryPreferenceRecord struct {
+	PreferenceID     string
+	EnvironmentScope string
+	ScopeKind        string
+	IntegrationID    string
+	Active           bool
+	UpdatedAt        time.Time
+	Document         []byte
+}
+
+type DeliveryOutcomeRecord struct {
+	DeliveryID       string
+	EnvironmentScope string
+	SourceKind       string
+	SourceID         string
+	RunID            string
+	WorkflowID       string
+	ScheduleID       string
+	IntegrationID    string
+	Status           string
+	ChosenTargetID   string
+	PreferenceID     string
+	SummaryWindowID  string
+	UpdatedAt        time.Time
+	Document         []byte
+}
+
+type DeliveryAttemptRecord struct {
+	AttemptID     string
+	DeliveryID    string
+	AttemptNumber int
+	TargetID      string
+	Status        string
+	NextRetryAt   *time.Time
+	Document      []byte
+}
+
+type DeliverySummaryWindowRecord struct {
+	SummaryWindowID  string
+	EnvironmentScope string
+	TargetID         string
+	PreferenceID     string
+	Status           string
+	WindowEndsAt     time.Time
+	UpdatedAt        time.Time
+	Document         []byte
+}
+
+type DeliveryOutcomeFilter struct {
+	SourceKind    string
+	SourceID      string
+	RunID         string
+	WorkflowID    string
+	ScheduleID    string
+	IntegrationID string
+	Status        string
+	TargetID      string
 }
 
 var schemaMigrations = []schemaMigration{
@@ -966,6 +1034,84 @@ var schemaMigrations = []schemaMigration{
 			`ALTER TABLE tool_calls ADD COLUMN integration_bindings_json TEXT;`,
 			`CREATE INDEX IF NOT EXISTS idx_integrations_env_domain_account ON integrations(environment_scope, domain_kind, account_key, canonical_default);`,
 			`CREATE INDEX IF NOT EXISTS idx_integrations_readiness ON integrations(environment_scope, readiness_status, updated_at DESC, integration_id DESC);`,
+		},
+	},
+	{
+		Version: 16,
+		Name:    "delivery_plane",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS delivery_targets (
+				target_id TEXT PRIMARY KEY,
+				environment_scope TEXT NOT NULL,
+				target_kind TEXT NOT NULL,
+				status TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS delivery_preferences (
+				preference_id TEXT PRIMARY KEY,
+				environment_scope TEXT NOT NULL,
+				scope_kind TEXT NOT NULL,
+				integration_id TEXT,
+				active INTEGER NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS delivery_outcomes (
+				delivery_id TEXT PRIMARY KEY,
+				environment_scope TEXT NOT NULL,
+				source_kind TEXT NOT NULL,
+				source_id TEXT NOT NULL,
+				run_id TEXT,
+				workflow_id TEXT,
+				schedule_id TEXT,
+				integration_id TEXT,
+				status TEXT NOT NULL,
+				chosen_target_id TEXT,
+				preference_id TEXT,
+				summary_window_id TEXT,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS delivery_attempts (
+				attempt_id TEXT PRIMARY KEY,
+				delivery_id TEXT NOT NULL,
+				attempt_number INTEGER NOT NULL,
+				target_id TEXT NOT NULL,
+				status TEXT NOT NULL,
+				next_retry_at TEXT,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(delivery_id) REFERENCES delivery_outcomes(delivery_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS delivery_summary_windows (
+				summary_window_id TEXT PRIMARY KEY,
+				environment_scope TEXT NOT NULL,
+				target_id TEXT NOT NULL,
+				preference_id TEXT NOT NULL,
+				status TEXT NOT NULL,
+				window_ends_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_targets_env_status ON delivery_targets(environment_scope, status, updated_at DESC, target_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_preferences_env_scope ON delivery_preferences(environment_scope, scope_kind, integration_id, active, updated_at DESC, preference_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_outcomes_env_source ON delivery_outcomes(environment_scope, source_kind, source_id, updated_at DESC, delivery_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_outcomes_env_run ON delivery_outcomes(environment_scope, run_id, updated_at DESC, delivery_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_outcomes_env_workflow ON delivery_outcomes(environment_scope, workflow_id, updated_at DESC, delivery_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_outcomes_env_schedule ON delivery_outcomes(environment_scope, schedule_id, updated_at DESC, delivery_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_outcomes_env_target ON delivery_outcomes(environment_scope, chosen_target_id, updated_at DESC, delivery_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_attempts_delivery ON delivery_attempts(delivery_id, attempt_number ASC, attempt_id ASC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_summary_windows_env_status ON delivery_summary_windows(environment_scope, status, window_ends_at ASC, summary_window_id ASC);`,
 		},
 	},
 }
@@ -3184,6 +3330,540 @@ func (s *SQLiteStore) ListScheduleDispatchAttempts(ctx context.Context, schedule
 		items = append(items, record)
 	}
 	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertDeliveryTarget(ctx context.Context, record DeliveryTargetRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO delivery_targets (
+			target_id,
+			environment_scope,
+			target_kind,
+			status,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(target_id) DO UPDATE SET
+			environment_scope = excluded.environment_scope,
+			target_kind = excluded.target_kind,
+			status = excluded.status,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		record.TargetID,
+		record.EnvironmentScope,
+		record.TargetKind,
+		record.Status,
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert delivery target %s: %w", record.TargetID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListDeliveryTargets(ctx context.Context, environmentScope string) ([]DeliveryTargetRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT target_id, environment_scope, target_kind, status, updated_at, document_json
+		FROM delivery_targets
+		WHERE environment_scope = ?
+		ORDER BY updated_at DESC, target_id DESC
+	`, strings.TrimSpace(environmentScope))
+	if err != nil {
+		return nil, fmt.Errorf("list delivery targets: %w", err)
+	}
+	defer rows.Close()
+	items := make([]DeliveryTargetRecord, 0)
+	for rows.Next() {
+		var item DeliveryTargetRecord
+		var updatedAt string
+		var document string
+		if err := rows.Scan(&item.TargetID, &item.EnvironmentScope, &item.TargetKind, &item.Status, &updatedAt, &document); err != nil {
+			return nil, fmt.Errorf("scan delivery target: %w", err)
+		}
+		item.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse delivery target updated_at: %w", err)
+		}
+		item.Document = []byte(document)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetDeliveryTarget(ctx context.Context, environmentScope, targetID string) (DeliveryTargetRecord, bool, error) {
+	if s == nil {
+		return DeliveryTargetRecord{}, false, nil
+	}
+	var item DeliveryTargetRecord
+	var updatedAt string
+	var document string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT target_id, environment_scope, target_kind, status, updated_at, document_json
+		FROM delivery_targets
+		WHERE environment_scope = ? AND target_id = ?
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(targetID)).Scan(&item.TargetID, &item.EnvironmentScope, &item.TargetKind, &item.Status, &updatedAt, &document)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DeliveryTargetRecord{}, false, nil
+	}
+	if err != nil {
+		return DeliveryTargetRecord{}, false, fmt.Errorf("get delivery target %s: %w", targetID, err)
+	}
+	item.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return DeliveryTargetRecord{}, false, fmt.Errorf("parse delivery target updated_at: %w", err)
+	}
+	item.Document = []byte(document)
+	return item, true, nil
+}
+
+func (s *SQLiteStore) UpsertDeliveryPreference(ctx context.Context, record DeliveryPreferenceRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO delivery_preferences (
+			preference_id,
+			environment_scope,
+			scope_kind,
+			integration_id,
+			active,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(preference_id) DO UPDATE SET
+			environment_scope = excluded.environment_scope,
+			scope_kind = excluded.scope_kind,
+			integration_id = excluded.integration_id,
+			active = excluded.active,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		record.PreferenceID,
+		record.EnvironmentScope,
+		record.ScopeKind,
+		nullString(record.IntegrationID),
+		boolToInt(record.Active),
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert delivery preference %s: %w", record.PreferenceID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListDeliveryPreferences(ctx context.Context, environmentScope string) ([]DeliveryPreferenceRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT preference_id, environment_scope, scope_kind, integration_id, active, updated_at, document_json
+		FROM delivery_preferences
+		WHERE environment_scope = ?
+		ORDER BY updated_at DESC, preference_id DESC
+	`, strings.TrimSpace(environmentScope))
+	if err != nil {
+		return nil, fmt.Errorf("list delivery preferences: %w", err)
+	}
+	defer rows.Close()
+	items := make([]DeliveryPreferenceRecord, 0)
+	for rows.Next() {
+		var item DeliveryPreferenceRecord
+		var integrationID sql.NullString
+		var active int
+		var updatedAt string
+		var document string
+		if err := rows.Scan(&item.PreferenceID, &item.EnvironmentScope, &item.ScopeKind, &integrationID, &active, &updatedAt, &document); err != nil {
+			return nil, fmt.Errorf("scan delivery preference: %w", err)
+		}
+		item.IntegrationID = integrationID.String
+		item.Active = active != 0
+		item.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse delivery preference updated_at: %w", err)
+		}
+		item.Document = []byte(document)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetDeliveryPreference(ctx context.Context, environmentScope, preferenceID string) (DeliveryPreferenceRecord, bool, error) {
+	if s == nil {
+		return DeliveryPreferenceRecord{}, false, nil
+	}
+	var item DeliveryPreferenceRecord
+	var integrationID sql.NullString
+	var active int
+	var updatedAt string
+	var document string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT preference_id, environment_scope, scope_kind, integration_id, active, updated_at, document_json
+		FROM delivery_preferences
+		WHERE environment_scope = ? AND preference_id = ?
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(preferenceID)).Scan(&item.PreferenceID, &item.EnvironmentScope, &item.ScopeKind, &integrationID, &active, &updatedAt, &document)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DeliveryPreferenceRecord{}, false, nil
+	}
+	if err != nil {
+		return DeliveryPreferenceRecord{}, false, fmt.Errorf("get delivery preference %s: %w", preferenceID, err)
+	}
+	item.IntegrationID = integrationID.String
+	item.Active = active != 0
+	item.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return DeliveryPreferenceRecord{}, false, fmt.Errorf("parse delivery preference updated_at: %w", err)
+	}
+	item.Document = []byte(document)
+	return item, true, nil
+}
+
+func (s *SQLiteStore) UpsertDeliveryOutcome(ctx context.Context, record DeliveryOutcomeRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO delivery_outcomes (
+			delivery_id,
+			environment_scope,
+			source_kind,
+			source_id,
+			run_id,
+			workflow_id,
+			schedule_id,
+			integration_id,
+			status,
+			chosen_target_id,
+			preference_id,
+			summary_window_id,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(delivery_id) DO UPDATE SET
+			environment_scope = excluded.environment_scope,
+			source_kind = excluded.source_kind,
+			source_id = excluded.source_id,
+			run_id = excluded.run_id,
+			workflow_id = excluded.workflow_id,
+			schedule_id = excluded.schedule_id,
+			integration_id = excluded.integration_id,
+			status = excluded.status,
+			chosen_target_id = excluded.chosen_target_id,
+			preference_id = excluded.preference_id,
+			summary_window_id = excluded.summary_window_id,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		record.DeliveryID,
+		record.EnvironmentScope,
+		record.SourceKind,
+		record.SourceID,
+		nullString(record.RunID),
+		nullString(record.WorkflowID),
+		nullString(record.ScheduleID),
+		nullString(record.IntegrationID),
+		record.Status,
+		nullString(record.ChosenTargetID),
+		nullString(record.PreferenceID),
+		nullString(record.SummaryWindowID),
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert delivery outcome %s: %w", record.DeliveryID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListDeliveryOutcomes(ctx context.Context, environmentScope string, filter DeliveryOutcomeFilter) ([]DeliveryOutcomeRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT delivery_id, environment_scope, source_kind, source_id, run_id, workflow_id, schedule_id, integration_id, status, chosen_target_id, preference_id, summary_window_id, updated_at, document_json
+		FROM delivery_outcomes
+		WHERE environment_scope = ?
+	`
+	args := []any{strings.TrimSpace(environmentScope)}
+	if strings.TrimSpace(filter.SourceKind) != "" {
+		query += ` AND source_kind = ?`
+		args = append(args, strings.TrimSpace(filter.SourceKind))
+	}
+	if strings.TrimSpace(filter.SourceID) != "" {
+		query += ` AND source_id = ?`
+		args = append(args, strings.TrimSpace(filter.SourceID))
+	}
+	if strings.TrimSpace(filter.RunID) != "" {
+		query += ` AND run_id = ?`
+		args = append(args, strings.TrimSpace(filter.RunID))
+	}
+	if strings.TrimSpace(filter.WorkflowID) != "" {
+		query += ` AND workflow_id = ?`
+		args = append(args, strings.TrimSpace(filter.WorkflowID))
+	}
+	if strings.TrimSpace(filter.ScheduleID) != "" {
+		query += ` AND schedule_id = ?`
+		args = append(args, strings.TrimSpace(filter.ScheduleID))
+	}
+	if strings.TrimSpace(filter.IntegrationID) != "" {
+		query += ` AND integration_id = ?`
+		args = append(args, strings.TrimSpace(filter.IntegrationID))
+	}
+	if strings.TrimSpace(filter.Status) != "" {
+		query += ` AND status = ?`
+		args = append(args, strings.TrimSpace(filter.Status))
+	}
+	if strings.TrimSpace(filter.TargetID) != "" {
+		query += ` AND chosen_target_id = ?`
+		args = append(args, strings.TrimSpace(filter.TargetID))
+	}
+	query += ` ORDER BY updated_at DESC, delivery_id DESC`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list delivery outcomes: %w", err)
+	}
+	defer rows.Close()
+	items := make([]DeliveryOutcomeRecord, 0)
+	for rows.Next() {
+		var item DeliveryOutcomeRecord
+		var runID, workflowID, scheduleID, integrationID, chosenTargetID, preferenceID, summaryWindowID sql.NullString
+		var updatedAt string
+		var document string
+		if err := rows.Scan(&item.DeliveryID, &item.EnvironmentScope, &item.SourceKind, &item.SourceID, &runID, &workflowID, &scheduleID, &integrationID, &item.Status, &chosenTargetID, &preferenceID, &summaryWindowID, &updatedAt, &document); err != nil {
+			return nil, fmt.Errorf("scan delivery outcome: %w", err)
+		}
+		item.RunID = runID.String
+		item.WorkflowID = workflowID.String
+		item.ScheduleID = scheduleID.String
+		item.IntegrationID = integrationID.String
+		item.ChosenTargetID = chosenTargetID.String
+		item.PreferenceID = preferenceID.String
+		item.SummaryWindowID = summaryWindowID.String
+		item.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse delivery outcome updated_at: %w", err)
+		}
+		item.Document = []byte(document)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetDeliveryOutcome(ctx context.Context, environmentScope, deliveryID string) (DeliveryOutcomeRecord, bool, error) {
+	if s == nil {
+		return DeliveryOutcomeRecord{}, false, nil
+	}
+	var item DeliveryOutcomeRecord
+	var runID, workflowID, scheduleID, integrationID, chosenTargetID, preferenceID, summaryWindowID sql.NullString
+	var updatedAt string
+	var document string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT delivery_id, environment_scope, source_kind, source_id, run_id, workflow_id, schedule_id, integration_id, status, chosen_target_id, preference_id, summary_window_id, updated_at, document_json
+		FROM delivery_outcomes
+		WHERE environment_scope = ? AND delivery_id = ?
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(deliveryID)).Scan(&item.DeliveryID, &item.EnvironmentScope, &item.SourceKind, &item.SourceID, &runID, &workflowID, &scheduleID, &integrationID, &item.Status, &chosenTargetID, &preferenceID, &summaryWindowID, &updatedAt, &document)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DeliveryOutcomeRecord{}, false, nil
+	}
+	if err != nil {
+		return DeliveryOutcomeRecord{}, false, fmt.Errorf("get delivery outcome %s: %w", deliveryID, err)
+	}
+	item.RunID = runID.String
+	item.WorkflowID = workflowID.String
+	item.ScheduleID = scheduleID.String
+	item.IntegrationID = integrationID.String
+	item.ChosenTargetID = chosenTargetID.String
+	item.PreferenceID = preferenceID.String
+	item.SummaryWindowID = summaryWindowID.String
+	item.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return DeliveryOutcomeRecord{}, false, fmt.Errorf("parse delivery outcome updated_at: %w", err)
+	}
+	item.Document = []byte(document)
+	return item, true, nil
+}
+
+func (s *SQLiteStore) UpsertDeliveryAttempt(ctx context.Context, record DeliveryAttemptRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO delivery_attempts (
+			attempt_id,
+			delivery_id,
+			attempt_number,
+			target_id,
+			status,
+			next_retry_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(attempt_id) DO UPDATE SET
+			delivery_id = excluded.delivery_id,
+			attempt_number = excluded.attempt_number,
+			target_id = excluded.target_id,
+			status = excluded.status,
+			next_retry_at = excluded.next_retry_at,
+			document_json = excluded.document_json
+	`,
+		record.AttemptID,
+		record.DeliveryID,
+		record.AttemptNumber,
+		record.TargetID,
+		record.Status,
+		nullableTimeString(record.NextRetryAt),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert delivery attempt %s: %w", record.AttemptID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListDeliveryAttempts(ctx context.Context, deliveryID string) ([]DeliveryAttemptRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT attempt_id, delivery_id, attempt_number, target_id, status, next_retry_at, document_json
+		FROM delivery_attempts
+		WHERE delivery_id = ?
+		ORDER BY attempt_number ASC, attempt_id ASC
+	`, strings.TrimSpace(deliveryID))
+	if err != nil {
+		return nil, fmt.Errorf("list delivery attempts: %w", err)
+	}
+	defer rows.Close()
+	items := make([]DeliveryAttemptRecord, 0)
+	for rows.Next() {
+		var item DeliveryAttemptRecord
+		var nextRetryAt sql.NullString
+		var document string
+		if err := rows.Scan(&item.AttemptID, &item.DeliveryID, &item.AttemptNumber, &item.TargetID, &item.Status, &nextRetryAt, &document); err != nil {
+			return nil, fmt.Errorf("scan delivery attempt: %w", err)
+		}
+		if nextRetryAt.Valid {
+			parsed, err := time.Parse(time.RFC3339Nano, nextRetryAt.String)
+			if err != nil {
+				return nil, fmt.Errorf("parse delivery attempt next_retry_at: %w", err)
+			}
+			item.NextRetryAt = &parsed
+		}
+		item.Document = []byte(document)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertDeliverySummaryWindow(ctx context.Context, record DeliverySummaryWindowRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO delivery_summary_windows (
+			summary_window_id,
+			environment_scope,
+			target_id,
+			preference_id,
+			status,
+			window_ends_at,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(summary_window_id) DO UPDATE SET
+			environment_scope = excluded.environment_scope,
+			target_id = excluded.target_id,
+			preference_id = excluded.preference_id,
+			status = excluded.status,
+			window_ends_at = excluded.window_ends_at,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		record.SummaryWindowID,
+		record.EnvironmentScope,
+		record.TargetID,
+		record.PreferenceID,
+		record.Status,
+		record.WindowEndsAt.UTC().Format(time.RFC3339Nano),
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert delivery summary window %s: %w", record.SummaryWindowID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListDeliverySummaryWindows(ctx context.Context, environmentScope string) ([]DeliverySummaryWindowRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT summary_window_id, environment_scope, target_id, preference_id, status, window_ends_at, updated_at, document_json
+		FROM delivery_summary_windows
+		WHERE environment_scope = ?
+		ORDER BY updated_at DESC, summary_window_id DESC
+	`, strings.TrimSpace(environmentScope))
+	if err != nil {
+		return nil, fmt.Errorf("list delivery summary windows: %w", err)
+	}
+	defer rows.Close()
+	items := make([]DeliverySummaryWindowRecord, 0)
+	for rows.Next() {
+		var item DeliverySummaryWindowRecord
+		var windowEndsAt, updatedAt string
+		var document string
+		if err := rows.Scan(&item.SummaryWindowID, &item.EnvironmentScope, &item.TargetID, &item.PreferenceID, &item.Status, &windowEndsAt, &updatedAt, &document); err != nil {
+			return nil, fmt.Errorf("scan delivery summary window: %w", err)
+		}
+		item.WindowEndsAt, err = time.Parse(time.RFC3339Nano, windowEndsAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse delivery summary window window_ends_at: %w", err)
+		}
+		item.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse delivery summary window updated_at: %w", err)
+		}
+		item.Document = []byte(document)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetDeliverySummaryWindow(ctx context.Context, environmentScope, summaryWindowID string) (DeliverySummaryWindowRecord, bool, error) {
+	if s == nil {
+		return DeliverySummaryWindowRecord{}, false, nil
+	}
+	var item DeliverySummaryWindowRecord
+	var windowEndsAt, updatedAt string
+	var document string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT summary_window_id, environment_scope, target_id, preference_id, status, window_ends_at, updated_at, document_json
+		FROM delivery_summary_windows
+		WHERE environment_scope = ? AND summary_window_id = ?
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(summaryWindowID)).Scan(&item.SummaryWindowID, &item.EnvironmentScope, &item.TargetID, &item.PreferenceID, &item.Status, &windowEndsAt, &updatedAt, &document)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DeliverySummaryWindowRecord{}, false, nil
+	}
+	if err != nil {
+		return DeliverySummaryWindowRecord{}, false, fmt.Errorf("get delivery summary window %s: %w", summaryWindowID, err)
+	}
+	item.WindowEndsAt, err = time.Parse(time.RFC3339Nano, windowEndsAt)
+	if err != nil {
+		return DeliverySummaryWindowRecord{}, false, fmt.Errorf("parse delivery summary window window_ends_at: %w", err)
+	}
+	item.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return DeliverySummaryWindowRecord{}, false, fmt.Errorf("parse delivery summary window updated_at: %w", err)
+	}
+	item.Document = []byte(document)
+	return item, true, nil
 }
 
 func (s *SQLiteStore) UpsertStep(ctx context.Context, step runtime.Step) error {

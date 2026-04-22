@@ -170,6 +170,30 @@ func integrationContractFixtures() map[string]string {
 	}
 }
 
+func deliveryContractFixtures() map[string]string {
+	return map[string]string{
+		"schemas/api/create-delivery-target.request.schema.json":           `{"targetId":"test-sink-default","displayName":"Test Sink","targetKind":"test_sink","addressSummary":"repo-owned sink"}`,
+		"schemas/api/delivery-target-resource.schema.json":                 `{"targetId":"test-sink-default","displayName":"Test Sink","environmentScope":"test","targetKind":"test_sink","status":"active","addressSummary":"repo-owned sink","supportsImmediate":true,"supportsDigest":true,"createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:00:00Z"}`,
+		"schemas/api/delivery-target-list.response.schema.json":            `{"items":[{"targetId":"test-sink-default","displayName":"Test Sink","environmentScope":"test","targetKind":"test_sink","status":"active","addressSummary":"repo-owned sink","supportsImmediate":true,"supportsDigest":true,"createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:00:00Z"}]}`,
+		"schemas/api/update-delivery-target-status.request.schema.json":    `{}`,
+		"schemas/api/upsert-delivery-preference.request.schema.json":       `{"preferenceId":"pref-default","scopeKind":"user_default","preferredTargetsByClass":{"routine_success":"test-sink-default","urgent":"test-sink-default","failure":"test-sink-default"},"summaryPolicy":{"routineSuccessMode":"digest","windowMinutes":15},"suppressionPolicy":{"suppressFailure":false}}`,
+		"schemas/api/delivery-preference-resource.schema.json":             `{"preferenceId":"pref-default","environmentScope":"test","scopeKind":"user_default","preferredTargetsByClass":{"routine_success":"test-sink-default","urgent":"test-sink-default","failure":"test-sink-default"},"summaryPolicy":{"routineSuccessMode":"digest","windowMinutes":15},"suppressionPolicy":{"suppressFailure":false},"active":true,"createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:00:00Z"}`,
+		"schemas/api/delivery-preference-list.response.schema.json":        `{"items":[{"preferenceId":"pref-default","environmentScope":"test","scopeKind":"user_default","preferredTargetsByClass":{"routine_success":"test-sink-default","urgent":"test-sink-default","failure":"test-sink-default"},"summaryPolicy":{"routineSuccessMode":"digest","windowMinutes":15},"suppressionPolicy":{"suppressFailure":false},"active":true,"createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:00:00Z"}]}`,
+		"schemas/api/delivery-outcome-resource.schema.json":                `{"deliveryId":"delivery_1","environmentScope":"test","sourceKind":"run","sourceId":"run_1","runId":"run_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","resultClass":"routine_success","mode":"immediate","status":"delivered","chosenTargetId":"test-sink-default","preferenceId":"pref-default","payloadPreview":"background result","attempts":[{"attemptId":"delivery_attempt_1","deliveryId":"delivery_1","attemptNumber":1,"targetId":"test-sink-default","transportKind":"test_sink","status":"delivered","transportReceiptSummary":"stored in repo-owned test sink","startedAt":"2026-04-22T10:00:01Z","completedAt":"2026-04-22T10:00:01Z"}],"createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:00:01Z","finalizedAt":"2026-04-22T10:00:01Z"}`,
+		"schemas/api/delivery-outcome-list.response.schema.json":           `{"items":[{"deliveryId":"delivery_1","environmentScope":"test","sourceKind":"run","sourceId":"run_1","runId":"run_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","resultClass":"routine_success","mode":"immediate","status":"delivered","chosenTargetId":"test-sink-default","preferenceId":"pref-default","payloadPreview":"background result","createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:00:01Z","finalizedAt":"2026-04-22T10:00:01Z"}]}`,
+		"schemas/api/delivery-attempt-resource.schema.json":                `{"attemptId":"delivery_attempt_1","deliveryId":"delivery_1","attemptNumber":1,"targetId":"test-sink-default","transportKind":"test_sink","status":"delivered","transportReceiptSummary":"stored in repo-owned test sink","startedAt":"2026-04-22T10:00:01Z","completedAt":"2026-04-22T10:00:01Z"}`,
+		"schemas/api/delivery-summary-window.resource.schema.json":         `{"summaryWindowId":"summary_window_1","environmentScope":"test","targetId":"test-sink-default","preferenceId":"pref-default","status":"delivered","windowStartedAt":"2026-04-22T10:00:00Z","windowEndsAt":"2026-04-22T10:15:00Z","resultCount":2,"emittedDeliveryId":"delivery_digest_1","createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:15:01Z"}`,
+		"schemas/api/delivery-summary-window-list.response.schema.json":    `{"items":[{"summaryWindowId":"summary_window_1","environmentScope":"test","targetId":"test-sink-default","preferenceId":"pref-default","status":"delivered","windowStartedAt":"2026-04-22T10:00:00Z","windowEndsAt":"2026-04-22T10:15:00Z","resultCount":2,"emittedDeliveryId":"delivery_digest_1","createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:15:01Z"}]}`,
+		"schemas/events/delivery-target-registered.event.schema.json":      `{"eventId":"evt_delivery_1","sequence":1,"category":"delivery","name":"delivery.target_registered","occurredAt":"2026-04-22T10:00:00Z","scope":{},"resource":{"kind":"delivery_target","id":"test-sink-default"},"payload":{"targetId":"test-sink-default","targetKind":"test_sink","environmentScope":"test","status":"active"}}`,
+		"schemas/events/delivery-target-status-changed.event.schema.json":  `{"eventId":"evt_delivery_2","sequence":2,"category":"delivery","name":"delivery.target_status_changed","occurredAt":"2026-04-22T10:00:01Z","scope":{},"resource":{"kind":"delivery_target","id":"test-sink-default"},"payload":{"targetId":"test-sink-default","targetKind":"test_sink","environmentScope":"test","status":"disabled"}}`,
+		"schemas/events/delivery-preference-updated.event.schema.json":     `{"eventId":"evt_delivery_3","sequence":3,"category":"delivery","name":"delivery.preference_updated","occurredAt":"2026-04-22T10:00:02Z","scope":{},"resource":{"kind":"delivery_preference","id":"pref-default"},"payload":{"preferenceId":"pref-default","environmentScope":"test","scopeKind":"user_default"}}`,
+		"schemas/events/delivery-outcome-created.event.schema.json":        `{"eventId":"evt_delivery_4","sequence":4,"category":"delivery","name":"delivery.outcome_created","occurredAt":"2026-04-22T10:00:03Z","scope":{"runId":"run_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1"},"resource":{"kind":"delivery","id":"delivery_1"},"payload":{"deliveryId":"delivery_1","sourceKind":"run","sourceId":"run_1","runId":"run_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","resultClass":"routine_success","mode":"immediate","status":"dispatching","chosenTargetId":"test-sink-default"}}`,
+		"schemas/events/delivery-attempt-recorded.event.schema.json":       `{"eventId":"evt_delivery_5","sequence":5,"category":"delivery","name":"delivery.attempt_recorded","occurredAt":"2026-04-22T10:00:04Z","scope":{"runId":"run_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1"},"resource":{"kind":"delivery","id":"delivery_1"},"payload":{"sourceKind":"run","sourceId":"run_1","runId":"run_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","deliveryId":"delivery_1","attemptId":"delivery_attempt_1","attemptNumber":1,"transportKind":"test_sink","status":"delivered"}}`,
+		"schemas/events/delivery-outcome-status-changed.event.schema.json": `{"eventId":"evt_delivery_6","sequence":6,"category":"delivery","name":"delivery.outcome_status_changed","occurredAt":"2026-04-22T10:00:05Z","scope":{"runId":"run_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1"},"resource":{"kind":"delivery","id":"delivery_1"},"payload":{"sourceKind":"run","sourceId":"run_1","runId":"run_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","deliveryId":"delivery_1","resultClass":"routine_success","mode":"immediate","status":"delivered","chosenTargetId":"test-sink-default"}}`,
+		"schemas/events/delivery-summary-emitted.event.schema.json":        `{"eventId":"evt_delivery_7","sequence":7,"category":"delivery","name":"delivery.summary_emitted","occurredAt":"2026-04-22T10:15:01Z","scope":{},"resource":{"kind":"delivery_summary_window","id":"summary_window_1"},"payload":{"summaryWindowId":"summary_window_1","resultCount":2,"emittedDeliveryId":"delivery_digest_1"}}`,
+	}
+}
+
 func assertWorkflowContractFixtures(t *testing.T, validator *contracts.Validator) {
 	t.Helper()
 	mustValidateFixtures(t, validator, workflowContractFixtures())
@@ -178,6 +202,11 @@ func assertWorkflowContractFixtures(t *testing.T, validator *contracts.Validator
 func assertScheduleContractFixtures(t *testing.T, validator *contracts.Validator) {
 	t.Helper()
 	mustValidateFixtures(t, validator, scheduleContractFixtures())
+}
+
+func assertDeliveryContractFixtures(t *testing.T, validator *contracts.Validator) {
+	t.Helper()
+	mustValidateFixtures(t, validator, deliveryContractFixtures())
 }
 
 func TestSupplementalComputerUseSchemasAcceptCanonicalFixtures(t *testing.T) {
@@ -252,6 +281,13 @@ func TestIntegrationSchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	mustValidateFixtures(t, validator, integrationContractFixtures())
+}
+
+func TestDeliverySchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	assertDeliveryContractFixtures(t, validator)
 }
 
 func TestValidatorRejectsInvalidRequestFixture(t *testing.T) {

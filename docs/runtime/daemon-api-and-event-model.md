@@ -129,7 +129,30 @@ Examples:
 - `POST /v1/integrations/{integrationId}/default`
 - `POST /v1/runs/{runId}/integrations/{integrationId}/probes`
 
-## 5. Config And Policy API
+## 5. Delivery API
+
+Purpose:
+
+- inspect and configure daemon-owned delivery targets and preferences
+- inspect routed delivery outcomes, attempt history, and summary windows
+- project latest delivery linkage onto existing run, workflow, and schedule-attempt views
+
+Examples:
+
+- `POST /v1/delivery/targets`
+- `GET /v1/delivery/targets`
+- `POST /v1/delivery/preferences`
+- `GET /v1/deliveries`
+- `GET /v1/delivery/windows`
+
+The delivery plane is additive:
+
+- it does not replace foreground connector replies
+- it does not redefine execution truth for runs, workflows, or schedules
+- `latestDeliveryId`, `latestDeliveryStatus`, and `latestDeliveryTargetId` are lookup
+  hints on source resources, not the authoritative delivery ledger
+
+## 6. Config And Policy API
 
 Purpose:
 
@@ -143,7 +166,7 @@ Examples:
 - `GET /v1/policy/approvals`
 - `POST /v1/policy/approvals/{approvalId}/resolve`
 
-## 6. Event Stream API
+## 7. Event Stream API
 
 Purpose:
 
@@ -262,6 +285,26 @@ Examples:
 - `step.blocked`
 - `step.completed`
 - `step.failed`
+
+## 5. Delivery Events
+
+Examples:
+
+- `delivery.target_registered`
+- `delivery.target_status_changed`
+- `delivery.preference_updated`
+- `delivery.outcome_created`
+- `delivery.attempt_recorded`
+- `delivery.outcome_status_changed`
+- `delivery.summary_emitted`
+
+Delivery events carry delivery truth only:
+
+- retry, suppression, and terminal failure remain explicit facts
+- connector transport receipts are linked as evidence, not promoted into the primary
+  delivery resource model
+- summary emission is separate from the original source outcome so operators can inspect
+  digest membership and digest delivery independently
 
 ## 5. Policy Events
 

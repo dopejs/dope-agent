@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/delivery-preference-updated.event.schema.json",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "delivery" },
+        "name": { "const": "delivery.preference_updated" },
+        "resource": { "type": "object", "properties": { "kind": { "const": "delivery_preference" } } },
+        "payload": { "type": "object", "required": ["preferenceId", "environmentScope", "scopeKind"] }
+      }
+    }
+  ]
+}

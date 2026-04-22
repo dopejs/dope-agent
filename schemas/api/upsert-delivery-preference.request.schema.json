@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/upsert-delivery-preference.request.schema.json",
+  "title": "UpsertDeliveryPreferenceRequest",
+  "type": "object",
+  "required": ["preferenceId", "scopeKind", "preferredTargetsByClass"],
+  "additionalProperties": false,
+  "properties": {
+    "preferenceId": { "type": "string", "minLength": 1 },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "scopeKind": { "type": "string", "enum": ["user_default", "integration_override"] },
+    "integrationId": { "type": "string" },
+    "preferredTargetsByClass": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "routine_success": { "type": "string" },
+        "urgent": { "type": "string" },
+        "failure": { "type": "string" }
+      }
+    },
+    "summaryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "routineSuccessMode": { "type": "string", "enum": ["immediate", "digest", "suppressed"] },
+        "windowMinutes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "suppressionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "suppressRoutineSuccess": { "type": "boolean" },
+        "suppressUrgent": { "type": "boolean" },
+        "suppressFailure": { "type": "boolean" }
+      }
+    }
+  }
+}

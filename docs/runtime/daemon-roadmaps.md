@@ -1373,11 +1373,20 @@ Verification:
 
 ### Roadmap 28: Delivery And Notifications
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/013-delivery-and-notifications.md](../specs/013-delivery-and-notifications.md)
 
 Goal: add a durable delivery plane for background results, alerts, and summaries.
+
+Verification:
+
+- `cd daemon && go test ./internal/delivery ./internal/api ./internal/store ./internal/app ./internal/runtime ./internal/orchestration ./internal/scheduler ./internal/integrations ./internal/policy ./internal/contracts`
+- `make daemon-contract-test`
+- manual `DOPE_ENV=test` walkthrough confirmed:
+  - one-time schedule `sched_20712ee47fcf87d5` created background run `run_0a04aa993a3657d1`
+  - source delivery outcome `delivery_9e3c576d1c3c1de3` queued into summary window `summary_window_584fc46ff405b9ec`
+  - emitted digest delivery `delivery_daae990f9020dcbc` reached `delivered`
 
 ### Roadmap 29: Calendar Integration
 

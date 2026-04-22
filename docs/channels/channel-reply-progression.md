@@ -129,6 +129,15 @@ The daemon remains responsible for:
 - eventing
 - degradation policy
 
+This boundary now matters even more because roadmap 28 adds a separate delivery plane:
+
+- foreground reply progression is for active connector conversations
+- background delivery targets are for routed results after the source work reaches a
+  terminal state
+- a successful foreground reply does not stand in for background delivery truth
+- background delivery may reuse connector transport mechanics, but it still records its
+  own outcome and attempt ledger
+
 ## Discord Mapping
 
 Discord currently maps to:

@@ -39,17 +39,20 @@ const (
 )
 
 type Run struct {
-	RunID             string    `json:"runId"`
-	SessionID         string    `json:"sessionId,omitempty"`
-	ScheduleID        string    `json:"scheduleId,omitempty"`
-	ScheduleAttemptID string    `json:"scheduleAttemptId,omitempty"`
-	Entrypoint        string    `json:"entrypoint"`
-	Status            RunStatus `json:"status"`
-	Goal              string    `json:"goal"`
-	ActiveWorkflowID  string    `json:"activeWorkflowId,omitempty"`
-	WorkflowCount     int       `json:"workflowCount,omitempty"`
-	CreatedAt         time.Time `json:"createdAt"`
-	UpdatedAt         time.Time `json:"updatedAt"`
+	RunID                  string    `json:"runId"`
+	SessionID              string    `json:"sessionId,omitempty"`
+	ScheduleID             string    `json:"scheduleId,omitempty"`
+	ScheduleAttemptID      string    `json:"scheduleAttemptId,omitempty"`
+	Entrypoint             string    `json:"entrypoint"`
+	Status                 RunStatus `json:"status"`
+	Goal                   string    `json:"goal"`
+	ActiveWorkflowID       string    `json:"activeWorkflowId,omitempty"`
+	WorkflowCount          int       `json:"workflowCount,omitempty"`
+	LatestDeliveryID       string    `json:"latestDeliveryId,omitempty"`
+	LatestDeliveryStatus   string    `json:"latestDeliveryStatus,omitempty"`
+	LatestDeliveryTargetID string    `json:"latestDeliveryTargetId,omitempty"`
+	CreatedAt              time.Time `json:"createdAt"`
+	UpdatedAt              time.Time `json:"updatedAt"`
 }
 
 type CreateRunInput struct {

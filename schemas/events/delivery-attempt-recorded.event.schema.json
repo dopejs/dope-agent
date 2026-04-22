@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/delivery-attempt-recorded.event.schema.json",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "delivery" },
+        "name": { "const": "delivery.attempt_recorded" },
+        "resource": { "type": "object", "properties": { "kind": { "const": "delivery" } } },
+        "payload": { "type": "object", "required": ["deliveryId", "attemptId", "attemptNumber", "transportKind", "status"] }
+      }
+    }
+  ]
+}

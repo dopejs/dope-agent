@@ -20,6 +20,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	discordconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/discord"
+	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/im"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
@@ -55,6 +56,7 @@ type App struct {
 	Providers            *providers.Manager
 	Integrations         *integrations.Manager
 	Scheduler            *scheduler.Scheduler
+	Delivery             *delivery.Manager
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
 	discordRuntime       managedConnectorRuntime
@@ -108,6 +110,26 @@ func New() (*App, error) {
 		Store:            sqliteStore,
 		Artifacts:        artifactService,
 	})
+	connectorAdapter := delivery.NewConnectorAdapter(sqliteStore)
+	var discordTransport discordconnector.Transport
+	if cfg.Connectors.Discord.Enabled {
+		discordTransport, err = discordconnector.NewGatewayTransport(discordconnector.Config{
+			Enabled:           cfg.Connectors.Discord.Enabled,
+			ConnectorID:       cfg.Connectors.Discord.ConnectorID,
+			DisplayName:       cfg.Connectors.Discord.DisplayName,
+			DeliveryMode:      cfg.Connectors.Discord.DeliveryMode,
+			BotToken:          cfg.Connectors.Discord.BotToken,
+			RequireMention:    cfg.Connectors.Discord.RequireMention,
+			RespondInDM:       cfg.Connectors.Discord.RespondInDM,
+			AllowedGuildIDs:   append([]string(nil), cfg.Connectors.Discord.AllowedGuildIDs...),
+			AllowedChannelIDs: append([]string(nil), cfg.Connectors.Discord.AllowedChannelIDs...),
+		})
+		if err != nil {
+			return nil, err
+		}
+		connectorAdapter.Register(cfg.Connectors.Discord.ConnectorID, discordTransport)
+	}
+	deliveryManager := delivery.NewManager(string(cfg.Environment), eventBus, sqliteStore, delivery.NewTestSinkAdapter(), connectorAdapter)
 	workflowLauncher := api.NewScheduleWorkflowLauncher(api.ScheduleWorkflowLauncherDependencies{
 		Config:       cfg,
 		Runtime:      runtimeManager,
@@ -117,6 +139,7 @@ func New() (*App, error) {
 		MCP:          mcpManager,
 		Sandboxes:    sandboxManager,
 		ComputerUse:  computerUseManager,
+		Delivery:     deliveryManager,
 		EventBus:     eventBus,
 		Store:        sqliteStore,
 		Checkpoints:  checkpointManager,
@@ -148,7 +171,7 @@ func New() (*App, error) {
 		RespondInDM:       cfg.Connectors.Discord.RespondInDM,
 		AllowedGuildIDs:   append([]string(nil), cfg.Connectors.Discord.AllowedGuildIDs...),
 		AllowedChannelIDs: append([]string(nil), cfg.Connectors.Discord.AllowedChannelIDs...),
-	}, logger.Slog(), connectorSupervisor, im.NewMessageLoop(sessionRouter, runtimeManager, checkpointManager, eventBus, sqliteStore, chatService), sqliteStore, eventBus, nil)
+	}, logger.Slog(), connectorSupervisor, im.NewMessageLoop(sessionRouter, runtimeManager, checkpointManager, eventBus, sqliteStore, chatService), sqliteStore, eventBus, discordTransport)
 	if err != nil {
 		return nil, err
 	}
@@ -172,6 +195,7 @@ func New() (*App, error) {
 		Capabilities: capabilitySupervisor,
 		ComputerUse:  computerUseManager,
 		Scheduler:    scheduleManager,
+		Delivery:     deliveryManager,
 		Store:        sqliteStore,
 		Checkpoints:  checkpointManager,
 	})
@@ -194,6 +218,7 @@ func New() (*App, error) {
 		Integrations:         integrationManager,
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
+		Delivery:             deliveryManager,
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,
 		discordRuntime:       discordRuntime,
@@ -284,6 +309,11 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	if a.Scheduler != nil {
 		if err := a.Scheduler.Start(ctx); err != nil {
+			return err
+		}
+	}
+	if a.Delivery != nil {
+		if err := a.Delivery.Restore(ctx); err != nil {
 			return err
 		}
 	}

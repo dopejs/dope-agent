@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/delivery-target-resource.schema.json",
+  "title": "DeliveryTargetResource",
+  "type": "object",
+  "required": ["targetId", "displayName", "environmentScope", "targetKind", "status", "supportsImmediate", "supportsDigest", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "targetId": { "type": "string" },
+    "displayName": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "targetKind": { "type": "string", "enum": ["connector_route", "test_sink"] },
+    "status": { "type": "string", "enum": ["active", "disabled", "unreachable", "misconfigured"] },
+    "connectorBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "connectorId": { "type": "string" },
+        "channelId": { "type": "string" },
+        "peerId": { "type": "string" },
+        "threadId": { "type": "string" }
+      }
+    },
+    "addressSummary": { "type": "string" },
+    "supportsImmediate": { "type": "boolean" },
+    "supportsDigest": { "type": "boolean" },
+    "lastValidatedAt": { "type": "string", "format": "date-time" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

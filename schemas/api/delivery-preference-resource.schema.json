@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/delivery-preference-resource.schema.json",
+  "title": "DeliveryPreferenceResource",
+  "type": "object",
+  "required": ["preferenceId", "environmentScope", "scopeKind", "preferredTargetsByClass", "active", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "preferenceId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "scopeKind": { "type": "string", "enum": ["user_default", "integration_override"] },
+    "integrationId": { "type": "string" },
+    "preferredTargetsByClass": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "routine_success": { "type": "string" },
+        "urgent": { "type": "string" },
+        "failure": { "type": "string" }
+      }
+    },
+    "summaryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "routineSuccessMode": { "type": "string", "enum": ["immediate", "digest", "suppressed"] },
+        "windowMinutes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "suppressionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "suppressRoutineSuccess": { "type": "boolean" },
+        "suppressUrgent": { "type": "boolean" },
+        "suppressFailure": { "type": "boolean" }
+      }
+    },
+    "active": { "type": "boolean" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

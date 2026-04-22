@@ -22,6 +22,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
+	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
@@ -132,6 +133,368 @@ func waitForToolCallTerminalState(t *testing.T, manager *runtime.Manager, runID,
 	}
 	t.Fatalf("tool call %s did not reach terminal state", toolCallID)
 	return runtime.ToolCall{}
+}
+
+func TestRunRoutesProjectLatestDeliverySummaryWithoutForegroundRegression(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+	}
+	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	eventBus := events.NewBus()
+	t.Cleanup(eventBus.Close)
+	runtimeManager := runtime.NewManager()
+	authManager := auth.NewManager()
+	deliveryManager := delivery.NewManager("test", eventBus, sqliteStore, delivery.NewTestSinkAdapter())
+	target, err := deliveryManager.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "target-run",
+		DisplayName:      "Run Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget returned error: %v", err)
+	}
+	if _, err := deliveryManager.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "pref-run",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: target.TargetID,
+			delivery.ResultClassUrgent:         target.TargetID,
+			delivery.ResultClassFailure:        target.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference returned error: %v", err)
+	}
+
+	backgroundRun, err := runtimeManager.CreateRun(runtime.CreateRunInput{Entrypoint: "operator", Goal: "background delivery"})
+	if err != nil {
+		t.Fatalf("CreateRun(background) returned error: %v", err)
+	}
+	backgroundRun.Status = runtime.RunStatusCompleted
+	backgroundRun.UpdatedAt = time.Now().UTC()
+	if err := sqliteStore.UpsertRun(context.Background(), backgroundRun); err != nil {
+		t.Fatalf("UpsertRun(background) returned error: %v", err)
+	}
+	if err := maybeEmitRunDelivery(context.Background(), deliveryManager, runtimeManager, backgroundRun); err != nil {
+		t.Fatalf("maybeEmitRunDelivery(background) returned error: %v", err)
+	}
+
+	foregroundRun, err := runtimeManager.CreateRun(runtime.CreateRunInput{SessionID: "session_foreground", Entrypoint: "operator", Goal: "foreground reply"})
+	if err != nil {
+		t.Fatalf("CreateRun(foreground) returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertSession(context.Background(), router.Session{
+		SessionID:    "session_foreground",
+		Kind:         router.SessionKindDirect,
+		Status:       router.SessionStatusActive,
+		Channel:      "discord",
+		PeerID:       "user_foreground",
+		RoutingKey:   "direct:discord::user_foreground:",
+		Generation:   1,
+		CreatedAt:    time.Now().UTC(),
+		UpdatedAt:    time.Now().UTC(),
+		LastActiveAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("UpsertSession returned error: %v", err)
+	}
+	foregroundRun.Status = runtime.RunStatusCompleted
+	foregroundRun.UpdatedAt = time.Now().UTC()
+	if err := sqliteStore.UpsertRun(context.Background(), foregroundRun); err != nil {
+		t.Fatalf("UpsertRun(foreground) returned error: %v", err)
+	}
+	if err := maybeEmitRunDelivery(context.Background(), deliveryManager, runtimeManager, foregroundRun); err != nil {
+		t.Fatalf("maybeEmitRunDelivery(foreground) returned error: %v", err)
+	}
+
+	server := NewServer(Dependencies{
+		Config:      cfg,
+		Logger:      telemetry.New("error").Slog(),
+		Auth:        authManager,
+		EventBus:    eventBus,
+		Runtime:     runtimeManager,
+		Delivery:    deliveryManager,
+		Store:       sqliteStore,
+		Checkpoints: checkpoints.NewManager(sqliteStore, runtimeManager),
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "delivery-run-web")
+
+	bgRec := httptest.NewRecorder()
+	bgReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+backgroundRun.RunID, nil)
+	bgReq.Header.Set("Authorization", authHeader)
+	server.Handler().ServeHTTP(bgRec, bgReq)
+	if bgRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for background run, got %d body=%s", bgRec.Code, bgRec.Body.String())
+	}
+	bg := decodeStrictResponse[runtime.Run](t, bgRec.Body.Bytes())
+	if bg.LatestDeliveryID == "" || bg.LatestDeliveryStatus != string(delivery.OutcomeStatusDelivered) || bg.LatestDeliveryTargetID != target.TargetID {
+		t.Fatalf("expected projected latest delivery on background run, got %+v", bg)
+	}
+
+	fgRec := httptest.NewRecorder()
+	fgReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+foregroundRun.RunID, nil)
+	fgReq.Header.Set("Authorization", authHeader)
+	server.Handler().ServeHTTP(fgRec, fgReq)
+	if fgRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for foreground run, got %d body=%s", fgRec.Code, fgRec.Body.String())
+	}
+	fg := decodeStrictResponse[runtime.Run](t, fgRec.Body.Bytes())
+	if fg.LatestDeliveryID != "" || fg.LatestDeliveryStatus != "" || fg.LatestDeliveryTargetID != "" {
+		t.Fatalf("expected foreground run to remain free of background delivery projection, got %+v", fg)
+	}
+}
+
+func TestDeliveryRoutesExposeTargetsPreferencesSuppressionAndEvents(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+	}
+	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	eventBus := events.NewBus()
+	t.Cleanup(eventBus.Close)
+	authManager := auth.NewManager()
+	runtimeManager := runtime.NewManager()
+	deliveryManager := delivery.NewManager("test", eventBus, sqliteStore, delivery.NewTestSinkAdapter())
+	server := NewServer(Dependencies{
+		Config:      cfg,
+		Logger:      telemetry.New("error").Slog(),
+		Auth:        authManager,
+		EventBus:    eventBus,
+		Runtime:     runtimeManager,
+		Delivery:    deliveryManager,
+		Store:       sqliteStore,
+		Checkpoints: checkpoints.NewManager(sqliteStore, runtimeManager),
+	})
+	authHeader := issueAuthHeaderForTest(t, authManager, "delivery-admin")
+
+	createTargetRec := httptest.NewRecorder()
+	createTargetReq := httptest.NewRequest(http.MethodPost, "/v1/delivery/targets", strings.NewReader(`{"targetId":"ops-target","displayName":"Ops Target","targetKind":"test_sink","addressSummary":"ops sink"}`))
+	createTargetReq.Header.Set("Authorization", authHeader)
+	server.Handler().ServeHTTP(createTargetRec, createTargetReq)
+	if createTargetRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", createTargetRec.Code, createTargetRec.Body.String())
+	}
+	target := decodeStrictResponse[delivery.DeliveryTarget](t, createTargetRec.Body.Bytes())
+	if target.TargetID != "ops-target" || target.Status != delivery.TargetStatusActive {
+		t.Fatalf("unexpected target response %+v", target)
+	}
+
+	disableRec := httptest.NewRecorder()
+	disableReq := httptest.NewRequest(http.MethodPost, "/v1/delivery/targets/ops-target/disable", nil)
+	disableReq.Header.Set("Authorization", authHeader)
+	server.Handler().ServeHTTP(disableRec, disableReq)
+	if disableRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from disable, got %d body=%s", disableRec.Code, disableRec.Body.String())
+	}
+	activateRec := httptest.NewRecorder()
+	activateReq := httptest.NewRequest(http.MethodPost, "/v1/delivery/targets/ops-target/activate", nil)
+	activateReq.Header.Set("Authorization", authHeader)
+	server.Handler().ServeHTTP(activateRec, activateReq)
+	if activateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from activate, got %d body=%s", activateRec.Code, activateRec.Body.String())
+	}
+
+	prefRec := httptest.NewRecorder()
+	prefReq := httptest.NewRequest(http.MethodPost, "/v1/delivery/preferences", strings.NewReader(`{"preferenceId":"ops-pref","scopeKind":"user_default","preferredTargetsByClass":{"routine_success":"ops-target","urgent":"ops-target","failure":"ops-target"},"suppressionPolicy":{"suppressFailure":true}}`))
+	prefReq.Header.Set("Authorization", authHeader)
+	server.Handler().ServeHTTP(prefRec, prefReq)
+	if prefRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", prefRec.Code, prefRec.Body.String())
+	}
+	pref := decodeStrictResponse[delivery.DeliveryPreference](t, prefRec.Body.Bytes())
+	if !pref.SuppressionPolicy.SuppressFailure {
+		t.Fatalf("expected suppressFailure policy, got %+v", pref)
+	}
+
+	outcome, err := deliveryManager.EmitOutcome(context.Background(), delivery.OutcomeInput{
+		SourceKind:     "run",
+		SourceID:       "suppressed_run",
+		RunID:          "suppressed_run",
+		ResultClass:    delivery.ResultClassFailure,
+		PayloadPreview: "suppressed failure",
+	})
+	if err != nil {
+		t.Fatalf("EmitOutcome returned error: %v", err)
+	}
+	if outcome.Status != delivery.OutcomeStatusSuppressed {
+		t.Fatalf("expected suppressed outcome, got %+v", outcome)
+	}
+
+	deliveriesRec := httptest.NewRecorder()
+	deliveriesReq := httptest.NewRequest(http.MethodGet, "/v1/deliveries?sourceId=suppressed_run", nil)
+	deliveriesReq.Header.Set("Authorization", authHeader)
+	server.Handler().ServeHTTP(deliveriesRec, deliveriesReq)
+	if deliveriesRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", deliveriesRec.Code, deliveriesRec.Body.String())
+	}
+	deliveries := decodeStrictResponse[DeliveryOutcomeListResponse](t, deliveriesRec.Body.Bytes())
+	if len(deliveries.Items) != 1 {
+		t.Fatalf("expected one delivery outcome, got %+v", deliveries.Items)
+	}
+	if deliveries.Items[0].Status != delivery.OutcomeStatusSuppressed || deliveries.Items[0].SuppressionReason == "" {
+		t.Fatalf("expected visible suppression truth, got %+v", deliveries.Items[0])
+	}
+
+	persistedEvents, err := sqliteStore.ListEvents(context.Background(), events.Filter{Category: "delivery"})
+	if err != nil {
+		t.Fatalf("ListEvents returned error: %v", err)
+	}
+	names := make([]string, 0, len(persistedEvents))
+	for _, event := range persistedEvents {
+		names = append(names, event.Name)
+	}
+	assertContainsEvent(t, names, "delivery.target_registered")
+	assertContainsEvent(t, names, "delivery.target_status_changed")
+	assertContainsEvent(t, names, "delivery.preference_updated")
+}
+
+func TestRunDeliveryUsesIntegrationOverrideTarget(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+	}
+	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	eventBus := events.NewBus()
+	t.Cleanup(eventBus.Close)
+	runtimeManager := runtime.NewManager()
+	deliveryManager := delivery.NewManager("test", eventBus, sqliteStore, delivery.NewTestSinkAdapter())
+	defaultTarget, err := deliveryManager.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "run-default-target",
+		DisplayName:      "Run Default Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget(default) returned error: %v", err)
+	}
+	overrideTarget, err := deliveryManager.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "run-override-target",
+		DisplayName:      "Run Override Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget(override) returned error: %v", err)
+	}
+	if _, err := deliveryManager.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "run-pref-default",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: defaultTarget.TargetID,
+			delivery.ResultClassUrgent:         defaultTarget.TargetID,
+			delivery.ResultClassFailure:        defaultTarget.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference(default) returned error: %v", err)
+	}
+	if _, err := deliveryManager.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "run-pref-calendar-b",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeIntegrationOverride,
+		IntegrationID:    "calendar-b",
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: overrideTarget.TargetID,
+			delivery.ResultClassUrgent:         overrideTarget.TargetID,
+			delivery.ResultClassFailure:        overrideTarget.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference(override) returned error: %v", err)
+	}
+
+	run, err := runtimeManager.CreateRun(runtime.CreateRunInput{Entrypoint: "operator", Goal: "run integration override"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := runtimeManager.CreateStep(run.RunID, runtime.CreateStepInput{Title: "probe integration"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+	if _, err := runtimeManager.CreateToolCall(run.RunID, step.StepID, runtime.CreateToolCallInput{
+		ToolName:     "integration.probe",
+		CapabilityID: "calendar-probe",
+		IntegrationBindings: []integrations.BindingSummary{{
+			IntegrationID: "calendar-b",
+			DisplayName:   "Calendar B",
+		}},
+	}); err != nil {
+		t.Fatalf("CreateToolCall returned error: %v", err)
+	}
+	if _, _, err := runtimeManager.UpdateStepStatusAndReconcileRun(run.RunID, step.StepID, runtime.UpdateStepStatusInput{
+		Status: runtime.StepStatusPlanning,
+		Output: map[string]any{"phase": "planning"},
+	}); err != nil {
+		t.Fatalf("UpdateStepStatusAndReconcileRun(planning) returned error: %v", err)
+	}
+	if _, _, err := runtimeManager.UpdateStepStatusAndReconcileRun(run.RunID, step.StepID, runtime.UpdateStepStatusInput{
+		Status: runtime.StepStatusCallingModel,
+		Output: map[string]any{"phase": "calling_model"},
+	}); err != nil {
+		t.Fatalf("UpdateStepStatusAndReconcileRun(calling_model) returned error: %v", err)
+	}
+	if _, _, err := runtimeManager.UpdateStepStatusAndReconcileRun(run.RunID, step.StepID, runtime.UpdateStepStatusInput{
+		Status: runtime.StepStatusCompleted,
+		Output: map[string]any{"ok": true},
+	}); err != nil {
+		t.Fatalf("UpdateStepStatusAndReconcileRun(completed) returned error: %v", err)
+	}
+	run, ok := runtimeManager.GetRun(run.RunID)
+	if !ok {
+		t.Fatal("expected completed run to remain addressable")
+	}
+	if run.Status != runtime.RunStatusCompleted {
+		t.Fatalf("expected completed run, got %+v", run)
+	}
+
+	if err := maybeEmitRunDelivery(context.Background(), deliveryManager, runtimeManager, run); err != nil {
+		t.Fatalf("maybeEmitRunDelivery returned error: %v", err)
+	}
+
+	outcomes, err := deliveryManager.ListOutcomes(context.Background(), delivery.OutcomeFilter{
+		SourceKind: "run",
+		SourceID:   run.RunID,
+	})
+	if err != nil {
+		t.Fatalf("ListOutcomes returned error: %v", err)
+	}
+	if len(outcomes) != 1 {
+		t.Fatalf("expected one run delivery outcome, got %+v", outcomes)
+	}
+	if outcomes[0].IntegrationID != "calendar-b" || outcomes[0].ChosenTargetID != overrideTarget.TargetID {
+		t.Fatalf("expected run integration override routing, got %+v", outcomes[0])
+	}
+}
+
+func assertContainsEvent(t *testing.T, names []string, expected string) {
+	t.Helper()
+	for _, name := range names {
+		if name == expected {
+			return
+		}
+	}
+	t.Fatalf("expected event %s in %+v", expected, names)
 }
 
 type testLLMProvider struct {

@@ -13,6 +13,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
+	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
@@ -200,6 +201,208 @@ func TestWorkflowStartExecutesAllowModeSkillAndLinksRuntimeTruth(t *testing.T) {
 	}
 	if toolCall.WorkflowID != created.WorkflowID || toolCall.WorkflowStepID != final.Steps[0].WorkflowStepID || toolCall.Attempt != 1 {
 		t.Fatalf("unexpected tool call linkage %+v", toolCall)
+	}
+}
+
+func TestWorkflowRoutesProjectLatestDeliverySummary(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+	}
+	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	manager := runtime.NewManager()
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "operator", Goal: "background workflow result"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	eventBus := events.NewBus()
+	policyEngine := policy.NewEngine()
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	deliveryManager := delivery.NewManager("test", eventBus, sqliteStore, delivery.NewTestSinkAdapter())
+	target, err := deliveryManager.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "workflow-target",
+		DisplayName:      "Workflow Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget returned error: %v", err)
+	}
+	if _, err := deliveryManager.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "pref-workflow",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: target.TargetID,
+			delivery.ResultClassUrgent:         target.TargetID,
+			delivery.ResultClassFailure:        target.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference returned error: %v", err)
+	}
+
+	server := NewServer(Dependencies{
+		Config:      cfg,
+		Logger:      telemetry.New("error").Slog(),
+		EventBus:    eventBus,
+		Policy:      policyEngine,
+		Runtime:     manager,
+		Delivery:    deliveryManager,
+		Sandboxes:   sandboxManager,
+		Store:       sqliteStore,
+		Checkpoints: checkpoints.NewManager(sqliteStore, manager),
+	})
+
+	workflow := orchestration.Workflow{
+		WorkflowID:       "wf_delivery_projection",
+		RunID:            run.RunID,
+		EnvironmentScope: "test",
+		Goal:             "background workflow result",
+		Status:           orchestration.WorkflowStatusCompleted,
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
+	}
+	if err := sqliteStore.UpsertWorkflow(context.Background(), workflow); err != nil {
+		t.Fatalf("UpsertWorkflow returned error: %v", err)
+	}
+	if err := maybeEmitWorkflowDelivery(context.Background(), deliveryManager, manager, workflow); err != nil {
+		t.Fatalf("maybeEmitWorkflowDelivery returned error: %v", err)
+	}
+
+	getRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/workflows/"+workflow.WorkflowID, nil))
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", getRec.Code, getRec.Body.String())
+	}
+	got := decodeStrictResponse[orchestration.Workflow](t, getRec.Body.Bytes())
+	if got.LatestDeliveryID == "" || got.LatestDeliveryStatus != string(delivery.OutcomeStatusDelivered) || got.LatestDeliveryTargetID != target.TargetID {
+		t.Fatalf("expected projected latest delivery summary, got %+v", got)
+	}
+}
+
+func TestWorkflowDeliveryUsesIntegrationOverrideTarget(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+	}
+	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	manager := runtime.NewManager()
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "operator", Goal: "integration override workflow"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	eventBus := events.NewBus()
+	testSink := delivery.NewTestSinkAdapter()
+	deliveryManager := delivery.NewManager("test", eventBus, sqliteStore, testSink)
+	defaultTarget, err := deliveryManager.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "default-target",
+		DisplayName:      "Default Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget(default) returned error: %v", err)
+	}
+	overrideTarget, err := deliveryManager.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "override-target",
+		DisplayName:      "Override Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget(override) returned error: %v", err)
+	}
+	if _, err := deliveryManager.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "pref-default",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: defaultTarget.TargetID,
+			delivery.ResultClassUrgent:         defaultTarget.TargetID,
+			delivery.ResultClassFailure:        defaultTarget.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference(default) returned error: %v", err)
+	}
+	if _, err := deliveryManager.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "pref-calendar-a",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeIntegrationOverride,
+		IntegrationID:    "calendar-a",
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: overrideTarget.TargetID,
+			delivery.ResultClassUrgent:         overrideTarget.TargetID,
+			delivery.ResultClassFailure:        overrideTarget.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference(override) returned error: %v", err)
+	}
+
+	workflow := orchestration.Workflow{
+		WorkflowID:       "wf_integration_override",
+		RunID:            run.RunID,
+		EnvironmentScope: "test",
+		Goal:             "integration override workflow",
+		Status:           orchestration.WorkflowStatusCompleted,
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
+		Steps: []orchestration.WorkflowStep{{
+			WorkflowStepID: "wfstep_1",
+			WorkflowID:     "wf_integration_override",
+			Status:         orchestration.StepStatusCompleted,
+			CreatedAt:      time.Now().UTC(),
+			UpdatedAt:      time.Now().UTC(),
+			IntegrationBindings: []integrations.BindingSummary{{
+				IntegrationID: "calendar-a",
+				DisplayName:   "Calendar A",
+			}},
+		}},
+	}
+	if err := sqliteStore.UpsertWorkflow(context.Background(), workflow); err != nil {
+		t.Fatalf("UpsertWorkflow returned error: %v", err)
+	}
+	if err := maybeEmitWorkflowDelivery(context.Background(), deliveryManager, manager, workflow); err != nil {
+		t.Fatalf("maybeEmitWorkflowDelivery returned error: %v", err)
+	}
+
+	outcomes, err := deliveryManager.ListOutcomes(context.Background(), delivery.OutcomeFilter{
+		SourceKind: "workflow",
+		SourceID:   workflow.WorkflowID,
+	})
+	if err != nil {
+		t.Fatalf("ListOutcomes returned error: %v", err)
+	}
+	if len(outcomes) != 1 {
+		t.Fatalf("expected one workflow delivery outcome, got %+v", outcomes)
+	}
+	if outcomes[0].IntegrationID != "calendar-a" || outcomes[0].ChosenTargetID != overrideTarget.TargetID {
+		t.Fatalf("expected integration override routing, got %+v", outcomes[0])
+	}
+	messages := testSink.Messages()
+	if len(messages) != 1 || messages[0].TargetID != overrideTarget.TargetID {
+		t.Fatalf("expected override target sink message, got %+v", messages)
 	}
 }
 

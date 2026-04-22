@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -145,6 +146,66 @@ func TestSQLiteStorePersistsRunsStepsAndEvents(t *testing.T) {
 	if items[0].Scope.StepID != step.StepID {
 		t.Fatalf("expected event step ID %s, got %s", step.StepID, items[0].Scope.StepID)
 	}
+}
+
+func TestSQLiteStoreDeliveryResourcesRemainEnvironmentScoped(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	ctx := context.Background()
+	testUpdatedAt := time.Now().UTC()
+	prodUpdatedAt := testUpdatedAt.Add(time.Second)
+	if err := sqliteStore.UpsertDeliveryOutcome(ctx, DeliveryOutcomeRecord{
+		DeliveryID:       "delivery_test_env",
+		EnvironmentScope: "test",
+		SourceKind:       "run",
+		SourceID:         "run_test_env",
+		Status:           "delivered",
+		UpdatedAt:        testUpdatedAt,
+		Document:         mustMarshalJSON(t, map[string]any{"deliveryId": "delivery_test_env", "environmentScope": "test", "sourceKind": "run", "sourceId": "run_test_env", "status": "delivered", "updatedAt": testUpdatedAt}),
+	}); err != nil {
+		t.Fatalf("UpsertDeliveryOutcome(test) returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertDeliveryOutcome(ctx, DeliveryOutcomeRecord{
+		DeliveryID:       "delivery_prod_env",
+		EnvironmentScope: "prod",
+		SourceKind:       "run",
+		SourceID:         "run_prod_env",
+		Status:           "delivered",
+		UpdatedAt:        prodUpdatedAt,
+		Document:         mustMarshalJSON(t, map[string]any{"deliveryId": "delivery_prod_env", "environmentScope": "prod", "sourceKind": "run", "sourceId": "run_prod_env", "status": "delivered", "updatedAt": prodUpdatedAt}),
+	}); err != nil {
+		t.Fatalf("UpsertDeliveryOutcome(prod) returned error: %v", err)
+	}
+
+	testItems, err := sqliteStore.ListDeliveryOutcomes(ctx, "test", DeliveryOutcomeFilter{})
+	if err != nil {
+		t.Fatalf("ListDeliveryOutcomes(test) returned error: %v", err)
+	}
+	prodItems, err := sqliteStore.ListDeliveryOutcomes(ctx, "prod", DeliveryOutcomeFilter{})
+	if err != nil {
+		t.Fatalf("ListDeliveryOutcomes(prod) returned error: %v", err)
+	}
+	if len(testItems) != 1 || testItems[0].DeliveryID != "delivery_test_env" {
+		t.Fatalf("expected only test-scoped outcome, got %+v", testItems)
+	}
+	if len(prodItems) != 1 || prodItems[0].DeliveryID != "delivery_prod_env" {
+		t.Fatalf("expected only prod-scoped outcome, got %+v", prodItems)
+	}
+}
+
+func mustMarshalJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	return data
 }
 
 func TestSQLiteStorePersistsComputerUseRecords(t *testing.T) {

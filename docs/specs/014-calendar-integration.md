@@ -24,6 +24,8 @@ Add a production-grade calendar domain that supports inspectable availability, e
 - busy/free lookup and event mutation are separate operation classes
 - shared integration readiness, account binding, canonical-default selection, and
   redacted provenance semantics come from roadmap 27 and are not redefined here
+- background calendar results should reuse roadmap 28 delivery targets, preferences, and
+  outcome history instead of introducing a calendar-only notification plane
 
 ## In Scope
 

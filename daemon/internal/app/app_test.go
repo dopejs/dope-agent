@@ -20,6 +20,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
+	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
@@ -31,7 +32,26 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
 )
+
+type appTestDeliveryAdapter struct {
+	results []error
+	sends   int
+}
+
+func (a *appTestDeliveryAdapter) Supports(kind delivery.TargetKind) bool {
+	return kind == delivery.TargetKindTestSink
+}
+
+func (a *appTestDeliveryAdapter) Send(_ context.Context, _ delivery.DeliveryTarget, _ delivery.DeliveryOutcome) (delivery.SendResult, error) {
+	idx := a.sends
+	a.sends++
+	if idx < len(a.results) && a.results[idx] != nil {
+		return delivery.SendResult{TransportKind: string(delivery.TargetKindTestSink)}, a.results[idx]
+	}
+	return delivery.SendResult{TransportKind: string(delivery.TargetKindTestSink), ReceiptSummary: "ok"}, nil
+}
 
 func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 	t.Parallel()
@@ -161,6 +181,136 @@ func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 	if _, ok := restoredRouter.GetSession(run.SessionID); !ok {
 		t.Fatal("expected restored session")
 	}
+}
+
+func TestAppRunRestoresPendingDeliveryLifecycle(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+
+	seedManager := delivery.NewManager("test", events.NewBus(), sqliteStore, &appTestDeliveryAdapter{
+		results: []error{context.DeadlineExceeded},
+	})
+	seedManager.ConfigureForTesting(3, time.Hour, time.Hour)
+	target, err := seedManager.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "app-restore-target",
+		DisplayName:      "App Restore Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget returned error: %v", err)
+	}
+	if _, err := seedManager.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "app-restore-pref",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: target.TargetID,
+			delivery.ResultClassUrgent:         target.TargetID,
+			delivery.ResultClassFailure:        target.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference returned error: %v", err)
+	}
+	outcome, err := seedManager.EmitOutcome(context.Background(), delivery.OutcomeInput{
+		SourceKind:     "run",
+		SourceID:       "app_restore_run",
+		RunID:          "app_restore_run",
+		ResultClass:    delivery.ResultClassFailure,
+		PayloadPreview: "restore in app run",
+	})
+	if err != nil {
+		t.Fatalf("EmitOutcome returned error: %v", err)
+	}
+	outcome, ok, err := seedManager.GetOutcome(context.Background(), outcome.DeliveryID)
+	if err != nil || !ok {
+		t.Fatalf("GetOutcome returned ok=%v err=%v", ok, err)
+	}
+	attempt := outcome.Attempts[0]
+	retrySoon := time.Now().UTC().Add(20 * time.Millisecond)
+	attempt.NextRetryAt = &retrySoon
+	if err := sqliteStore.UpsertDeliveryAttempt(context.Background(), store.DeliveryAttemptRecord{
+		AttemptID:     attempt.AttemptID,
+		DeliveryID:    attempt.DeliveryID,
+		AttemptNumber: attempt.AttemptNumber,
+		TargetID:      attempt.TargetID,
+		Status:        string(attempt.Status),
+		NextRetryAt:   attempt.NextRetryAt,
+		Document:      mustMarshalDeliveryAttempt(t, attempt),
+	}); err != nil {
+		t.Fatalf("UpsertDeliveryAttempt returned error: %v", err)
+	}
+	if err := sqliteStore.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+
+	liveStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore(live) returned error: %v", err)
+	}
+	successAdapter := &appTestDeliveryAdapter{}
+	sharedEventBus := events.NewBus()
+	deliveryManager := delivery.NewManager("test", sharedEventBus, liveStore, successAdapter)
+	deliveryManager.ConfigureForTesting(3, 10*time.Millisecond, 20*time.Millisecond)
+	server := api.NewServer(api.Dependencies{
+		Config: config.Config{
+			Environment: config.EnvironmentTest,
+			BindAddr:    "127.0.0.1:0",
+		},
+		Logger:   telemetry.New("error").Slog(),
+		EventBus: sharedEventBus,
+		Delivery: deliveryManager,
+		Store:    liveStore,
+	})
+	app := &App{
+		Config: config.Config{
+			Environment: config.EnvironmentTest,
+			BindAddr:    "127.0.0.1:0",
+		},
+		Logger:   telemetry.New("error"),
+		Store:    liveStore,
+		EventBus: sharedEventBus,
+		Delivery: deliveryManager,
+		Server:   server,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- app.Run(ctx)
+	}()
+	time.Sleep(150 * time.Millisecond)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	checkStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore(check) returned error: %v", err)
+	}
+	defer func() { _ = checkStore.Close() }()
+	checkManager := delivery.NewManager("test", events.NewBus(), checkStore, successAdapter)
+	final, ok, err := checkManager.GetOutcome(context.Background(), outcome.DeliveryID)
+	if err != nil || !ok {
+		t.Fatalf("GetOutcome(final) returned ok=%v err=%v", ok, err)
+	}
+	if final.Status != delivery.OutcomeStatusDelivered || len(final.Attempts) != 2 {
+		t.Fatalf("expected restored delivery to complete on second attempt, got %+v", final)
+	}
+}
+
+func mustMarshalDeliveryAttempt(t *testing.T, attempt delivery.DeliveryAttempt) []byte {
+	t.Helper()
+	data, err := json.Marshal(attempt)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	return data
 }
 
 func TestRecoverPersistedStateRestoresIntegrations(t *testing.T) {

@@ -22,6 +22,8 @@ Add a first-class reminders and lightweight task-follow-up domain that can sched
 - reminders are not just raw cron entries
 - acknowledgement, snooze, completion, and missed reminders must be explicit states
 - reminders may launch workflows or only deliver notifications depending on configuration
+- reminder notifications should reuse roadmap 28 delivery targets, preferences, and
+  digest behavior instead of introducing a second reminder-only delivery model
 
 ## In Scope
 
