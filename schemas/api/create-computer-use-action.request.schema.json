@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-computer-use-action.request.schema.json",
+  "title": "CreateComputerUseActionRequest",
+  "type": "object",
+  "required": ["actionKind"],
+  "additionalProperties": false,
+  "properties": {
+    "actionKind": { "type": "string", "enum": ["navigate", "back", "forward", "wait", "screenshot", "snapshot", "click", "input", "select", "download", "close_session"] },
+    "url": { "type": "string" },
+    "value": { "type": "string" },
+    "selectedValue": { "type": "string" },
+    "waitMs": { "type": "integer", "minimum": 0 },
+    "pageTarget": { "type": "string", "enum": ["active_page", "new_tab", "new_window"] },
+    "rationale": { "type": "string" },
+    "targetMatchContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matchStrategy": { "type": "string" },
+        "expectedPageUrl": { "type": "string" },
+        "expectedSelector": { "type": "string" },
+        "expectedText": { "type": "string" },
+        "trustedScopeRevision": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

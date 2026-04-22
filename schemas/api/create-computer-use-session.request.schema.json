@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-computer-use-session.request.schema.json",
+  "title": "CreateComputerUseSessionRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "workflowId": { "type": "string" },
+    "workflowStepId": { "type": "string" },
+    "driverKind": { "type": "string" },
+    "initialUrl": { "type": "string" }
+  }
+}

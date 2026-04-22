@@ -208,7 +208,7 @@ remaining non-knowledge personal-agent product surface:
 These are not memory work. They are the missing product and reliability layers that turn
 the current daemon substrate into a serious personal agent.
 
-Current daemon status after Roadmap 25:
+Current daemon status after Roadmap 26:
 
 - top-level schedule resources are now first-class daemon-owned records with create, list,
   inspect, pause, resume, and cancel routes
@@ -218,6 +218,14 @@ Current daemon status after Roadmap 25:
   overlap-skipped history, and bounded retry visibility
 - daemon restart performs bounded catch-up and records missed intervals rather than
   replaying an unbounded backlog
+- browser-first computer-use sessions, actions, and evidence artifacts are now first-class
+  daemon-owned resources
+- computer-use steps execute through the existing runtime and workflow plane with additive
+  session and action linkage on tool-call and workflow-step truth
+- phase 26 stays single-page and browser-first: extra tabs, new windows, and generalized
+  desktop automation requests fail explicitly instead of widening the execution surface
+- high-risk browser actions remain approval-gated with inspect-before-act context, and
+  restart recovery leaves in-flight browser work `interrupted`
 
 ### Phase 5: Context Engineering
 
@@ -412,22 +420,22 @@ This is a later phase, but it should stay visible in the architecture.
 The right next step is:
 
 - Roadmaps 22 through 25 are now closed
-- the next implementation roadmap should start at Roadmap 26: use-computer capability
-  plane
+- Roadmap 26 is now closed
+- the next implementation roadmap should start at Roadmap 27: personal integrations
+  platform
 
 Then continue in this order:
 
-1. use-computer capability plane
-2. personal integrations platform
-3. delivery and notifications
-4. calendar integration
-5. mail integration
-6. tasks and reminders
-7. operator shell and onboarding
-8. evaluation and replay harness
-9. context engineering
-10. memory
-11. agent-managed skills
-12. dreaming / self-improve
+1. personal integrations platform
+2. delivery and notifications
+3. calendar integration
+4. mail integration
+5. tasks and reminders
+6. operator shell and onboarding
+7. evaluation and replay harness
+8. context engineering
+9. memory
+10. agent-managed skills
+11. dreaming / self-improve
 
 This keeps the harness grounded in execution control before it grows into adaptive knowledge systems.

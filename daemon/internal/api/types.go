@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
@@ -150,6 +151,32 @@ type CreateWorkflowRequest struct {
 	Goal string `json:"goal,omitempty"`
 }
 
+type CreateComputerUseSessionRequest struct {
+	WorkflowID     string `json:"workflowId,omitempty"`
+	WorkflowStepID string `json:"workflowStepId,omitempty"`
+	DriverKind     string `json:"driverKind,omitempty"`
+	InitialURL     string `json:"initialUrl,omitempty"`
+}
+
+type CreateComputerUseActionRequest struct {
+	ActionKind         computeruse.ActionKind          `json:"actionKind"`
+	URL                string                          `json:"url,omitempty"`
+	Value              string                          `json:"value,omitempty"`
+	SelectedValue      string                          `json:"selectedValue,omitempty"`
+	WaitMs             int                             `json:"waitMs,omitempty"`
+	PageTarget         computeruse.PageTarget          `json:"pageTarget,omitempty"`
+	TargetMatchContext *computeruse.TargetMatchContext `json:"targetMatchContext,omitempty"`
+	Rationale          string                          `json:"rationale,omitempty"`
+}
+
+type ComputerUseArtifactContentResponse struct {
+	ArtifactID string `json:"artifactId"`
+	MIMEType   string `json:"mimeType,omitempty"`
+	FileName   string `json:"fileName,omitempty"`
+	Status     string `json:"status"`
+	Content    string `json:"content,omitempty"`
+}
+
 type CreateScheduleRequest struct {
 	Trigger     ScheduleTriggerRequest `json:"trigger"`
 	Target      ScheduleTargetRequest  `json:"target"`
@@ -279,6 +306,8 @@ type ListResponse[T any] struct {
 }
 
 type WorkflowListResponse = ListResponse[orchestration.Workflow]
+type ComputerUseSessionListResponse = ListResponse[computeruse.Session]
+type ComputerUseActionListResponse = ListResponse[computeruse.Action]
 
 func buildSystemInfoResponse(cfg config.Config) SystemInfoResponse {
 	return SystemInfoResponse{

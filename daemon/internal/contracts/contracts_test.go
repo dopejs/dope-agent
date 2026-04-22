@@ -166,6 +166,13 @@ func assertScheduleContractFixtures(t *testing.T, validator *contracts.Validator
 	mustValidateFixtures(t, validator, scheduleContractFixtures())
 }
 
+func TestSupplementalComputerUseSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	assertComputerUseContractFixtures(t, validator)
+}
+
 func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 	t.Parallel()
 

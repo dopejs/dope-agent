@@ -23,7 +23,7 @@
     "workflowId": { "type": "string" },
     "title": { "type": "string" },
     "position": { "type": "integer", "minimum": 1 },
-    "consumerKind": { "type": "string", "enum": ["local_tool", "skill", "mcp_tool"] },
+    "consumerKind": { "type": "string", "enum": ["local_tool", "skill", "mcp_tool", "computer_use"] },
     "consumerId": { "type": "string" },
     "toolName": { "type": "string" },
     "input": { "type": ["object", "array", "string", "number", "boolean", "null"] },
@@ -42,6 +42,15 @@
     "blockedReason": { "type": "string" },
     "sideEffectsVisible": { "type": "boolean" },
     "outputSummary": { "type": "string" },
+    "computerUseSessionId": { "type": "string" },
+    "computerUseActionIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "computerUseArtifacts": {
+      "type": "array",
+      "items": { "$ref": "./computer-use-artifact-resource.schema.json" }
+    },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }
   }

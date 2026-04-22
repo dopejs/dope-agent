@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/api"
+	"github.com/dopejs/dope-agent/daemon/internal/artifacts"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/chat"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
+	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	discordconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/discord"
@@ -95,6 +97,14 @@ func New() (*App, error) {
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 	chatService := chat.NewService(llmDispatcher, providerManager, skillRegistry, eventBus, sqliteStore)
+	artifactService := artifacts.NewService(cfg.DataDir)
+	computerUseManager := computeruse.NewManager(computeruse.Dependencies{
+		EnvironmentScope: string(cfg.Environment),
+		Runtime:          runtimeManager,
+		Policy:           policyEngine,
+		Store:            sqliteStore,
+		Artifacts:        artifactService,
+	})
 	workflowLauncher := api.NewScheduleWorkflowLauncher(api.ScheduleWorkflowLauncherDependencies{
 		Config:       cfg,
 		Runtime:      runtimeManager,
@@ -103,6 +113,7 @@ func New() (*App, error) {
 		Skills:       skillRegistry,
 		MCP:          mcpManager,
 		Sandboxes:    sandboxManager,
+		ComputerUse:  computerUseManager,
 		EventBus:     eventBus,
 		Store:        sqliteStore,
 		Checkpoints:  checkpointManager,
@@ -155,6 +166,7 @@ func New() (*App, error) {
 		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
+		ComputerUse:  computerUseManager,
 		Scheduler:    scheduleManager,
 		Store:        sqliteStore,
 		Checkpoints:  checkpointManager,
@@ -479,6 +491,9 @@ func recoverPersistedState(ctx context.Context, environment config.Environment, 
 	if _, err := sqliteStore.MarkInFlightWorkflowsInterrupted(ctx, string(environment), time.Now().UTC()); err != nil {
 		return fmt.Errorf("interrupt in-flight workflows: %w", err)
 	}
+	if err := interruptRecoveredComputerUse(ctx, string(environment), sqliteStore, checkpointManager); err != nil {
+		return fmt.Errorf("interrupt in-flight computer-use state: %w", err)
+	}
 
 	persistedEvents, err := sqliteStore.ListEvents(ctx, events.Filter{})
 	if err != nil {
@@ -565,6 +580,66 @@ func reconcileRecoveredSandboxToolCalls(ctx context.Context, sqliteStore *store.
 					}
 				}
 				changedRuns[run.RunID] = struct{}{}
+			}
+		}
+	}
+	for runID := range changedRuns {
+		if err := checkpointManager.SaveRunCheckpoint(ctx, runID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func interruptRecoveredComputerUse(ctx context.Context, environmentScope string, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager) error {
+	if sqliteStore == nil || checkpointManager == nil {
+		return nil
+	}
+	runtimeManager := checkpointManager.Runtime()
+	if runtimeManager == nil {
+		return nil
+	}
+	now := time.Now().UTC()
+	_, actions, err := sqliteStore.MarkInFlightComputerUseInterrupted(ctx, environmentScope, now)
+	if err != nil {
+		return err
+	}
+	changedRuns := map[string]struct{}{}
+	for _, action := range actions {
+		if strings.TrimSpace(action.ToolCallID) != "" && strings.TrimSpace(action.StepID) != "" {
+			updatedToolCall, err := runtimeManager.FailToolCall(action.RunID, action.StepID, action.ToolCallID, runtime.FailToolCallInput{
+				Output: map[string]any{
+					"computerUseSessionId": action.ComputerUseSessionID,
+					"computerUseActionId":  action.ComputerUseActionID,
+				},
+				Error:        action.FailureReason,
+				FailureClass: action.FailureClass,
+			})
+			if err == nil {
+				if err := sqliteStore.UpsertToolCall(ctx, updatedToolCall); err != nil {
+					return err
+				}
+				changedRuns[action.RunID] = struct{}{}
+			}
+		}
+		if strings.TrimSpace(action.StepID) != "" {
+			updatedStep, runUpdate, err := runtimeManager.UpdateStepStatusAndReconcileRun(action.RunID, action.StepID, runtime.UpdateStepStatusInput{
+				Status: runtime.StepStatusFailed,
+				Output: map[string]any{
+					"computerUseActionId": action.ComputerUseActionID,
+					"failureClass":        action.FailureClass,
+				},
+			})
+			if err == nil {
+				if err := sqliteStore.UpsertStep(ctx, updatedStep); err != nil {
+					return err
+				}
+				if runUpdate != nil {
+					if err := sqliteStore.UpsertRun(ctx, *runUpdate); err != nil {
+						return err
+					}
+				}
+				changedRuns[action.RunID] = struct{}{}
 			}
 		}
 	}

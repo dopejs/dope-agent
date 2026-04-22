@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/computer-use-artifact-content.response.schema.json",
+  "title": "ComputerUseArtifactContentResponse",
+  "type": "object",
+  "required": ["artifactId", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "artifactId": { "type": "string" },
+    "mimeType": { "type": "string" },
+    "fileName": { "type": "string" },
+    "status": { "type": "string", "enum": ["capturing", "available", "capture_failed"] },
+    "content": { "type": "string" }
+  }
+}

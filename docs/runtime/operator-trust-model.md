@@ -74,6 +74,21 @@ For workflow orchestration:
 - daemon restart interrupts unfinished workflows and leaves them visible as
   `interrupted`; phase 24 does not silently auto-resume pending side effects
 
+For browser-first computer use:
+
+- only the browser driver is in scope for phase 26; generalized desktop automation,
+  additional tabs, and new windows are rejected explicitly
+- low-risk read-only actions can execute immediately, but high-risk actions such as input,
+  click, select, download, or trusted-scope exit require action-scoped approval
+- the operator inspects concrete page and target context before approving; approval does
+  not grant a broad session-level bypass
+- target mismatch is terminal for that action and records evidence-backed failure truth
+  instead of auto-retrying or selecting a nearby target
+- successful and failed actions both remain inspectable through linked session, action,
+  tool-call, artifact, and event surfaces
+- daemon restart marks in-flight computer-use sessions and actions `interrupted` rather
+  than silently resuming browser side effects
+
 For MCP:
 
 - MCP server register, start, stop, restart, and cancel stay daemon-managed and do not require routine approval

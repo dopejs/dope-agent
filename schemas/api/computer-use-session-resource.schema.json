@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/computer-use-session-resource.schema.json",
+  "title": "ComputerUseSessionResource",
+  "type": "object",
+  "required": ["computerUseSessionId", "runId", "status", "driverKind", "startedAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "computerUseSessionId": { "type": "string" },
+    "environmentScope": { "type": "string" },
+    "runId": { "type": "string" },
+    "workflowId": { "type": "string" },
+    "workflowStepId": { "type": "string" },
+    "status": { "type": "string", "enum": ["starting", "active", "blocked", "closing", "closed", "failed", "interrupted"] },
+    "driverKind": { "type": "string" },
+    "currentPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": { "type": "string" },
+        "title": { "type": "string" }
+      }
+    },
+    "trustedPageScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scopeId": { "type": "string" },
+        "origin": { "type": "string" },
+        "pageUrl": { "type": "string" },
+        "title": { "type": "string" },
+        "scopeRevision": { "type": "integer", "minimum": 0 },
+        "derivedFromActionId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "lastActionId": { "type": "string" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "closedAt": { "type": "string", "format": "date-time" },
+    "interruptedAt": { "type": "string", "format": "date-time" },
+    "actions": {
+      "type": "array",
+      "items": { "$ref": "./computer-use-action-resource.schema.json" }
+    }
+  }
+}

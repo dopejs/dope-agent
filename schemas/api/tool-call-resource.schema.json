@@ -33,6 +33,12 @@
       "type": "integer",
       "minimum": 0
     },
+    "computerUseSessionId": {
+      "type": "string"
+    },
+    "computerUseActionId": {
+      "type": "string"
+    },
     "invocationKind": {
       "type": "string",
       "enum": ["local_tool", "skill", "mcp_tool"]

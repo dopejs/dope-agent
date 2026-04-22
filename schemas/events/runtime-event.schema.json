@@ -77,6 +77,12 @@
         "stepId": {
           "type": "string"
         },
+        "computerUseSessionId": {
+          "type": "string"
+        },
+        "computerUseActionId": {
+          "type": "string"
+        },
         "connectorId": {
           "type": "string"
         },
