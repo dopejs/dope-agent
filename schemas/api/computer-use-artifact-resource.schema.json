@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/computer-use-artifact-resource.schema.json",
+  "title": "ComputerUseArtifactResource",
+  "type": "object",
+  "required": ["artifactId", "runId", "kind", "status", "createdAt"],
+  "additionalProperties": false,
+  "properties": {
+    "artifactId": { "type": "string" },
+    "environmentScope": { "type": "string" },
+    "computerUseSessionId": { "type": "string" },
+    "computerUseActionId": { "type": "string" },
+    "runId": { "type": "string" },
+    "kind": { "type": "string", "enum": ["screenshot", "page_snapshot", "download"] },
+    "status": { "type": "string", "enum": ["capturing", "available", "capture_failed"] },
+    "mimeType": { "type": "string" },
+    "fileName": { "type": "string" },
+    "byteSize": { "type": "integer", "minimum": 0 },
+    "storageKey": { "type": "string" },
+    "sha256": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "availableAt": { "type": "string", "format": "date-time" },
+    "captureFailureReason": { "type": "string" }
+  }
+}

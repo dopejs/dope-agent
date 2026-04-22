@@ -10,6 +10,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
+	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
@@ -142,6 +143,347 @@ func TestSQLiteStorePersistsRunsStepsAndEvents(t *testing.T) {
 	}
 	if items[0].Scope.StepID != step.StepID {
 		t.Fatalf("expected event step ID %s, got %s", step.StepID, items[0].Scope.StepID)
+	}
+}
+
+func TestSQLiteStorePersistsComputerUseRecords(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	run := runtime.Run{
+		RunID:      "run_cu",
+		Entrypoint: "operator",
+		Status:     runtime.RunStatusRunning,
+		Goal:       "persist computer-use records",
+		CreatedAt:  time.Now().UTC().Add(-time.Minute),
+		UpdatedAt:  time.Now().UTC(),
+	}
+	if err := store.UpsertRun(ctx, run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	session := computeruse.Session{
+		ComputerUseSessionID: "cusess_1",
+		EnvironmentScope:     "test",
+		RunID:                run.RunID,
+		Status:               computeruse.SessionStatusActive,
+		DriverKind:           "browser",
+		StartedAt:            time.Now().UTC().Add(-time.Minute),
+		UpdatedAt:            time.Now().UTC(),
+		CurrentPage:          &computeruse.PageSummary{URL: "https://example.test", Title: "example.test"},
+	}
+	if err := store.UpsertComputerUseSession(ctx, session); err != nil {
+		t.Fatalf("UpsertComputerUseSession returned error: %v", err)
+	}
+
+	action := computeruse.Action{
+		ComputerUseActionID:  "cuact_1",
+		EnvironmentScope:     "test",
+		ComputerUseSessionID: session.ComputerUseSessionID,
+		RunID:                run.RunID,
+		ActionKind:           computeruse.ActionKindNavigate,
+		Status:               computeruse.ActionStatusCompleted,
+		RiskLevel:            computeruse.RiskLevelLow,
+		RequestedAt:          time.Now().UTC().Add(-30 * time.Second),
+		UpdatedAt:            time.Now().UTC(),
+	}
+	if err := store.UpsertComputerUseAction(ctx, action); err != nil {
+		t.Fatalf("UpsertComputerUseAction returned error: %v", err)
+	}
+
+	artifact := computeruse.Artifact{
+		ArtifactID:           "cuart_1",
+		EnvironmentScope:     "test",
+		ComputerUseSessionID: session.ComputerUseSessionID,
+		ComputerUseActionID:  action.ComputerUseActionID,
+		RunID:                run.RunID,
+		Kind:                 computeruse.ArtifactKindPageSnapshot,
+		Status:               computeruse.ArtifactStatusAvailable,
+		FileName:             "page-snapshot.json",
+		ByteSize:             12,
+		StorageKey:           "computer-use/cusess_1/cuart_1",
+		CreatedAt:            time.Now().UTC(),
+	}
+	if err := store.UpsertComputerUseArtifact(ctx, artifact); err != nil {
+		t.Fatalf("UpsertComputerUseArtifact returned error: %v", err)
+	}
+
+	sessions, err := store.ListComputerUseSessions(ctx, "test", run.RunID)
+	if err != nil {
+		t.Fatalf("ListComputerUseSessions returned error: %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].ComputerUseSessionID != session.ComputerUseSessionID {
+		t.Fatalf("expected persisted session, got %+v", sessions)
+	}
+
+	actions, err := store.ListComputerUseActions(ctx, "test", run.RunID, session.ComputerUseSessionID)
+	if err != nil {
+		t.Fatalf("ListComputerUseActions returned error: %v", err)
+	}
+	if len(actions) != 1 || actions[0].ComputerUseActionID != action.ComputerUseActionID {
+		t.Fatalf("expected persisted action, got %+v", actions)
+	}
+
+	artifacts, err := store.ListComputerUseArtifactsForAction(ctx, "test", run.RunID, action.ComputerUseActionID)
+	if err != nil {
+		t.Fatalf("ListComputerUseArtifactsForAction returned error: %v", err)
+	}
+	if len(artifacts) != 1 || artifacts[0].ArtifactID != artifact.ArtifactID {
+		t.Fatalf("expected persisted artifact, got %+v", artifacts)
+	}
+}
+
+func TestSQLiteStoreFiltersComputerUseRecordsByEnvironment(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	run := runtime.Run{
+		RunID:      "run_env",
+		Entrypoint: "operator",
+		Status:     runtime.RunStatusRunning,
+		Goal:       "env filter",
+		CreatedAt:  time.Now().UTC().Add(-time.Minute),
+		UpdatedAt:  time.Now().UTC(),
+	}
+	if err := store.UpsertRun(ctx, run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	testSession := computeruse.Session{
+		ComputerUseSessionID: "cusess_test",
+		EnvironmentScope:     "test",
+		RunID:                run.RunID,
+		Status:               computeruse.SessionStatusActive,
+		DriverKind:           "browser",
+		StartedAt:            time.Now().UTC().Add(-time.Minute),
+		UpdatedAt:            time.Now().UTC(),
+	}
+	prodSession := testSession
+	prodSession.ComputerUseSessionID = "cusess_prod"
+	prodSession.EnvironmentScope = "prod"
+	if err := store.UpsertComputerUseSession(ctx, testSession); err != nil {
+		t.Fatalf("UpsertComputerUseSession(test) returned error: %v", err)
+	}
+	if err := store.UpsertComputerUseSession(ctx, prodSession); err != nil {
+		t.Fatalf("UpsertComputerUseSession(prod) returned error: %v", err)
+	}
+
+	testAction := computeruse.Action{
+		ComputerUseActionID:  "cuact_test",
+		EnvironmentScope:     "test",
+		ComputerUseSessionID: testSession.ComputerUseSessionID,
+		RunID:                run.RunID,
+		ActionKind:           computeruse.ActionKindNavigate,
+		Status:               computeruse.ActionStatusCompleted,
+		RiskLevel:            computeruse.RiskLevelLow,
+		RequestedAt:          time.Now().UTC().Add(-30 * time.Second),
+		UpdatedAt:            time.Now().UTC(),
+	}
+	prodAction := testAction
+	prodAction.ComputerUseActionID = "cuact_prod"
+	prodAction.EnvironmentScope = "prod"
+	prodAction.ComputerUseSessionID = prodSession.ComputerUseSessionID
+	if err := store.UpsertComputerUseAction(ctx, testAction); err != nil {
+		t.Fatalf("UpsertComputerUseAction(test) returned error: %v", err)
+	}
+	if err := store.UpsertComputerUseAction(ctx, prodAction); err != nil {
+		t.Fatalf("UpsertComputerUseAction(prod) returned error: %v", err)
+	}
+
+	testArtifact := computeruse.Artifact{
+		ArtifactID:           "cuart_test",
+		EnvironmentScope:     "test",
+		ComputerUseSessionID: testSession.ComputerUseSessionID,
+		ComputerUseActionID:  testAction.ComputerUseActionID,
+		RunID:                run.RunID,
+		Kind:                 computeruse.ArtifactKindPageSnapshot,
+		Status:               computeruse.ArtifactStatusAvailable,
+		StorageKey:           "computer-use/test/cuart_test",
+		CreatedAt:            time.Now().UTC(),
+	}
+	prodArtifact := testArtifact
+	prodArtifact.ArtifactID = "cuart_prod"
+	prodArtifact.EnvironmentScope = "prod"
+	prodArtifact.ComputerUseSessionID = prodSession.ComputerUseSessionID
+	prodArtifact.ComputerUseActionID = prodAction.ComputerUseActionID
+	if err := store.UpsertComputerUseArtifact(ctx, testArtifact); err != nil {
+		t.Fatalf("UpsertComputerUseArtifact(test) returned error: %v", err)
+	}
+	if err := store.UpsertComputerUseArtifact(ctx, prodArtifact); err != nil {
+		t.Fatalf("UpsertComputerUseArtifact(prod) returned error: %v", err)
+	}
+
+	sessions, err := store.ListComputerUseSessions(ctx, "test", run.RunID)
+	if err != nil {
+		t.Fatalf("ListComputerUseSessions returned error: %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].ComputerUseSessionID != testSession.ComputerUseSessionID {
+		t.Fatalf("expected only test session, got %+v", sessions)
+	}
+
+	actions, err := store.ListComputerUseActions(ctx, "test", run.RunID, testSession.ComputerUseSessionID)
+	if err != nil {
+		t.Fatalf("ListComputerUseActions returned error: %v", err)
+	}
+	if len(actions) != 1 || actions[0].ComputerUseActionID != testAction.ComputerUseActionID {
+		t.Fatalf("expected only test action, got %+v", actions)
+	}
+
+	artifact, ok, err := store.GetComputerUseArtifact(ctx, "test", testArtifact.ArtifactID)
+	if err != nil {
+		t.Fatalf("GetComputerUseArtifact returned error: %v", err)
+	}
+	if !ok || artifact.ArtifactID != testArtifact.ArtifactID {
+		t.Fatalf("expected test artifact, got ok=%v artifact=%+v", ok, artifact)
+	}
+	if _, ok, err := store.GetComputerUseArtifact(ctx, "test", prodArtifact.ArtifactID); err != nil || ok {
+		t.Fatalf("expected prod artifact to be hidden from test, got ok=%v err=%v", ok, err)
+	}
+}
+
+func TestSQLiteStoreMarksInFlightComputerUseInterrupted(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	run := runtime.Run{
+		RunID:      "run_interrupt",
+		Entrypoint: "operator",
+		Status:     runtime.RunStatusRunning,
+		Goal:       "interrupt computer-use truth",
+		CreatedAt:  now.Add(-time.Minute),
+		UpdatedAt:  now,
+	}
+	if err := store.UpsertRun(ctx, run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	inFlightSession := computeruse.Session{
+		ComputerUseSessionID: "cusess_interrupt",
+		EnvironmentScope:     "test",
+		RunID:                run.RunID,
+		Status:               computeruse.SessionStatusBlocked,
+		DriverKind:           "browser",
+		StartedAt:            now.Add(-time.Minute),
+		UpdatedAt:            now.Add(-time.Second),
+	}
+	closedSession := inFlightSession
+	closedSession.ComputerUseSessionID = "cusess_closed"
+	closedSession.Status = computeruse.SessionStatusClosed
+	prodSession := inFlightSession
+	prodSession.ComputerUseSessionID = "cusess_prod"
+	prodSession.EnvironmentScope = "prod"
+	if err := store.UpsertComputerUseSession(ctx, inFlightSession); err != nil {
+		t.Fatalf("UpsertComputerUseSession(in-flight) returned error: %v", err)
+	}
+	if err := store.UpsertComputerUseSession(ctx, closedSession); err != nil {
+		t.Fatalf("UpsertComputerUseSession(closed) returned error: %v", err)
+	}
+	if err := store.UpsertComputerUseSession(ctx, prodSession); err != nil {
+		t.Fatalf("UpsertComputerUseSession(prod) returned error: %v", err)
+	}
+
+	waitingAction := computeruse.Action{
+		ComputerUseActionID:  "cuact_waiting",
+		EnvironmentScope:     "test",
+		ComputerUseSessionID: inFlightSession.ComputerUseSessionID,
+		RunID:                run.RunID,
+		ActionKind:           computeruse.ActionKindClick,
+		Status:               computeruse.ActionStatusWaitingApproval,
+		RiskLevel:            computeruse.RiskLevelHigh,
+		RequestedAt:          now.Add(-40 * time.Second),
+		UpdatedAt:            now.Add(-time.Second),
+	}
+	completedAction := waitingAction
+	completedAction.ComputerUseActionID = "cuact_done"
+	completedAction.Status = computeruse.ActionStatusCompleted
+	completedAction.ComputerUseSessionID = closedSession.ComputerUseSessionID
+	prodAction := waitingAction
+	prodAction.ComputerUseActionID = "cuact_prod"
+	prodAction.EnvironmentScope = "prod"
+	prodAction.ComputerUseSessionID = prodSession.ComputerUseSessionID
+	if err := store.UpsertComputerUseAction(ctx, waitingAction); err != nil {
+		t.Fatalf("UpsertComputerUseAction(waiting) returned error: %v", err)
+	}
+	if err := store.UpsertComputerUseAction(ctx, completedAction); err != nil {
+		t.Fatalf("UpsertComputerUseAction(completed) returned error: %v", err)
+	}
+	if err := store.UpsertComputerUseAction(ctx, prodAction); err != nil {
+		t.Fatalf("UpsertComputerUseAction(prod) returned error: %v", err)
+	}
+
+	interruptedAt := now.Add(time.Second)
+	sessions, actions, err := store.MarkInFlightComputerUseInterrupted(ctx, "test", interruptedAt)
+	if err != nil {
+		t.Fatalf("MarkInFlightComputerUseInterrupted returned error: %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].ComputerUseSessionID != inFlightSession.ComputerUseSessionID {
+		t.Fatalf("expected only in-flight test session interrupted, got %+v", sessions)
+	}
+	if len(actions) != 1 || actions[0].ComputerUseActionID != waitingAction.ComputerUseActionID {
+		t.Fatalf("expected only in-flight test action interrupted, got %+v", actions)
+	}
+
+	restoredSession, ok, err := store.GetComputerUseSession(ctx, "test", run.RunID, inFlightSession.ComputerUseSessionID)
+	if err != nil {
+		t.Fatalf("GetComputerUseSession returned error: %v", err)
+	}
+	if !ok || restoredSession.Status != computeruse.SessionStatusInterrupted || restoredSession.InterruptedAt == nil {
+		t.Fatalf("expected interrupted persisted session, got ok=%v session=%+v", ok, restoredSession)
+	}
+
+	restoredAction, ok, err := store.GetComputerUseAction(ctx, "test", run.RunID, inFlightSession.ComputerUseSessionID, waitingAction.ComputerUseActionID)
+	if err != nil {
+		t.Fatalf("GetComputerUseAction returned error: %v", err)
+	}
+	if !ok || restoredAction.Status != computeruse.ActionStatusInterrupted || restoredAction.FailureClass != string(computeruse.FailureClassInterrupted) {
+		t.Fatalf("expected interrupted persisted action, got ok=%v action=%+v", ok, restoredAction)
+	}
+
+	closedRestored, ok, err := store.GetComputerUseSession(ctx, "test", run.RunID, closedSession.ComputerUseSessionID)
+	if err != nil {
+		t.Fatalf("GetComputerUseSession(closed) returned error: %v", err)
+	}
+	if !ok || closedRestored.Status != computeruse.SessionStatusClosed {
+		t.Fatalf("expected closed session untouched, got ok=%v session=%+v", ok, closedRestored)
+	}
+
+	prodRestored, ok, err := store.GetComputerUseSession(ctx, "prod", run.RunID, prodSession.ComputerUseSessionID)
+	if err != nil {
+		t.Fatalf("GetComputerUseSession(prod) returned error: %v", err)
+	}
+	if !ok || prodRestored.Status != computeruse.SessionStatusBlocked {
+		t.Fatalf("expected prod session untouched, got ok=%v session=%+v", ok, prodRestored)
 	}
 }
 

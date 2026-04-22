@@ -15,6 +15,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
+	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
@@ -29,7 +30,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 13
+	CurrentSchemaVersion = 14
 )
 
 type schemaMigration struct {
@@ -845,6 +846,90 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_events_env_schedule ON events(environment_scope, schedule_id, occurred_at);`,
 			`CREATE INDEX IF NOT EXISTS idx_events_env_run ON events(environment_scope, run_id, occurred_at);`,
 			`CREATE INDEX IF NOT EXISTS idx_events_env_session ON events(environment_scope, session_id, occurred_at);`,
+		},
+	},
+	{
+		Version: 14,
+		Name:    "computer_use_capability_plane",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS computer_use_sessions (
+				computer_use_session_id TEXT PRIMARY KEY,
+				environment_scope TEXT NOT NULL,
+				run_id TEXT NOT NULL,
+				workflow_id TEXT,
+				workflow_step_id TEXT,
+				status TEXT NOT NULL,
+				driver_kind TEXT NOT NULL,
+				trusted_page_scope_json TEXT,
+				current_page_json TEXT,
+				last_action_id TEXT,
+				started_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				closed_at TEXT,
+				interrupted_at TEXT,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS computer_use_actions (
+				computer_use_action_id TEXT PRIMARY KEY,
+				environment_scope TEXT NOT NULL,
+				computer_use_session_id TEXT NOT NULL,
+				run_id TEXT NOT NULL,
+				step_id TEXT,
+				tool_call_id TEXT,
+				workflow_id TEXT,
+				workflow_step_id TEXT,
+				action_kind TEXT NOT NULL,
+				status TEXT NOT NULL,
+				risk_level TEXT NOT NULL,
+				approval_id TEXT,
+				target_match_context_json TEXT,
+				page_before_json TEXT,
+				page_after_json TEXT,
+				failure_class TEXT,
+				failure_reason TEXT,
+				requested_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				completed_at TEXT,
+				input_json TEXT,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(computer_use_session_id) REFERENCES computer_use_sessions(computer_use_session_id) ON DELETE CASCADE,
+				FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS computer_use_artifacts (
+				artifact_id TEXT PRIMARY KEY,
+				environment_scope TEXT NOT NULL,
+				computer_use_session_id TEXT NOT NULL,
+				computer_use_action_id TEXT NOT NULL,
+				run_id TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				status TEXT NOT NULL,
+				mime_type TEXT,
+				file_name TEXT,
+				byte_size INTEGER NOT NULL,
+				storage_key TEXT,
+				sha256 TEXT,
+				capture_failure_reason TEXT,
+				created_at TEXT NOT NULL,
+				available_at TEXT,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(computer_use_session_id) REFERENCES computer_use_sessions(computer_use_session_id) ON DELETE CASCADE,
+				FOREIGN KEY(computer_use_action_id) REFERENCES computer_use_actions(computer_use_action_id) ON DELETE CASCADE,
+				FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+			);
+			`,
+			`ALTER TABLE tool_calls ADD COLUMN computer_use_session_id TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN computer_use_action_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_computer_use_sessions_run ON computer_use_sessions(environment_scope, run_id, updated_at DESC, computer_use_session_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_computer_use_actions_session ON computer_use_actions(environment_scope, computer_use_session_id, requested_at ASC, computer_use_action_id ASC);`,
+			`CREATE INDEX IF NOT EXISTS idx_computer_use_actions_approval ON computer_use_actions(environment_scope, approval_id, requested_at DESC, computer_use_action_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_computer_use_artifacts_action ON computer_use_artifacts(environment_scope, computer_use_action_id, created_at ASC, artifact_id ASC);`,
+			`CREATE INDEX IF NOT EXISTS idx_tool_calls_computer_use_session ON tool_calls(computer_use_session_id, created_at DESC, tool_call_id DESC);`,
 		},
 	},
 }
@@ -3071,6 +3156,8 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 			workflow_id,
 			workflow_step_id,
 			attempt,
+			computer_use_session_id,
+			computer_use_action_id,
 			invocation_kind,
 			capability_id,
 			skill_id,
@@ -3090,13 +3177,15 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 			error_text,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(tool_call_id) DO UPDATE SET
 			run_id = excluded.run_id,
 			step_id = excluded.step_id,
 			workflow_id = excluded.workflow_id,
 			workflow_step_id = excluded.workflow_step_id,
 			attempt = excluded.attempt,
+			computer_use_session_id = excluded.computer_use_session_id,
+			computer_use_action_id = excluded.computer_use_action_id,
 			invocation_kind = excluded.invocation_kind,
 			capability_id = excluded.capability_id,
 			skill_id = excluded.skill_id,
@@ -3123,6 +3212,8 @@ func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolC
 		nullString(toolCall.WorkflowID),
 		nullString(toolCall.WorkflowStepID),
 		toolCall.Attempt,
+		nullString(toolCall.ComputerUseSessionID),
+		nullString(toolCall.ComputerUseActionID),
 		nullString(string(toolCall.InvocationKind)),
 		toolCall.CapabilityID,
 		nullString(toolCall.SkillID),
@@ -3156,7 +3247,7 @@ func (s *SQLiteStore) ListToolCalls(ctx context.Context, runID, stepID string) (
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tool_call_id, run_id, step_id, workflow_id, workflow_step_id, attempt, invocation_kind, capability_id, skill_id, mcp_server_id, mcp_server_name, mcp_tool_name, mcp_transport_kind, mcp_session_id, authorization_result, tool_name, status, sandbox_execution_id, failure_class, input_json, output_json, sandbox_json, error_text, created_at, updated_at
+		SELECT tool_call_id, run_id, step_id, workflow_id, workflow_step_id, attempt, computer_use_session_id, computer_use_action_id, invocation_kind, capability_id, skill_id, mcp_server_id, mcp_server_name, mcp_tool_name, mcp_transport_kind, mcp_session_id, authorization_result, tool_name, status, sandbox_execution_id, failure_class, input_json, output_json, sandbox_json, error_text, created_at, updated_at
 		FROM tool_calls
 		WHERE run_id = ? AND step_id = ?
 		ORDER BY created_at ASC, tool_call_id ASC
@@ -3176,6 +3267,505 @@ func (s *SQLiteStore) ListToolCalls(ctx context.Context, runID, stepID string) (
 	}
 
 	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertComputerUseSession(ctx context.Context, session computeruse.Session) error {
+	if s == nil {
+		return nil
+	}
+	documentJSON, err := marshalJSON(session)
+	if err != nil {
+		return fmt.Errorf("marshal computer-use session: %w", err)
+	}
+	trustedScopeJSON, err := marshalJSON(session.TrustedPageScope)
+	if err != nil {
+		return fmt.Errorf("marshal trusted page scope: %w", err)
+	}
+	currentPageJSON, err := marshalJSON(session.CurrentPage)
+	if err != nil {
+		return fmt.Errorf("marshal current page: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO computer_use_sessions (
+			computer_use_session_id,
+			environment_scope,
+			run_id,
+			workflow_id,
+			workflow_step_id,
+			status,
+			driver_kind,
+			trusted_page_scope_json,
+			current_page_json,
+			last_action_id,
+			started_at,
+			updated_at,
+			closed_at,
+			interrupted_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(computer_use_session_id) DO UPDATE SET
+			environment_scope = excluded.environment_scope,
+			run_id = excluded.run_id,
+			workflow_id = excluded.workflow_id,
+			workflow_step_id = excluded.workflow_step_id,
+			status = excluded.status,
+			driver_kind = excluded.driver_kind,
+			trusted_page_scope_json = excluded.trusted_page_scope_json,
+			current_page_json = excluded.current_page_json,
+			last_action_id = excluded.last_action_id,
+			started_at = excluded.started_at,
+			updated_at = excluded.updated_at,
+			closed_at = excluded.closed_at,
+			interrupted_at = excluded.interrupted_at,
+			document_json = excluded.document_json
+	`,
+		session.ComputerUseSessionID,
+		session.EnvironmentScope,
+		session.RunID,
+		nullString(session.WorkflowID),
+		nullString(session.WorkflowStepID),
+		string(session.Status),
+		session.DriverKind,
+		trustedScopeJSON,
+		currentPageJSON,
+		nullString(session.LastActionID),
+		session.StartedAt.UTC().Format(time.RFC3339Nano),
+		session.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTimeString(session.ClosedAt),
+		nullableTimeString(session.InterruptedAt),
+		documentJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert computer-use session %s: %w", session.ComputerUseSessionID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListComputerUseSessions(ctx context.Context, environmentScope, runID string) ([]computeruse.Session, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT document_json
+		FROM computer_use_sessions
+		WHERE environment_scope = ? AND run_id = ?
+		ORDER BY updated_at DESC, computer_use_session_id DESC
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(runID))
+	if err != nil {
+		return nil, fmt.Errorf("list computer-use sessions: %w", err)
+	}
+	defer rows.Close()
+	var items []computeruse.Session
+	for rows.Next() {
+		var document string
+		if err := rows.Scan(&document); err != nil {
+			return nil, fmt.Errorf("scan computer-use session: %w", err)
+		}
+		var session computeruse.Session
+		if err := json.Unmarshal([]byte(document), &session); err != nil {
+			return nil, fmt.Errorf("decode computer-use session: %w", err)
+		}
+		items = append(items, session)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetComputerUseSession(ctx context.Context, environmentScope, runID, sessionID string) (computeruse.Session, bool, error) {
+	if s == nil {
+		return computeruse.Session{}, false, nil
+	}
+	var document string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT document_json
+		FROM computer_use_sessions
+		WHERE environment_scope = ? AND run_id = ? AND computer_use_session_id = ?
+	`,
+		strings.TrimSpace(environmentScope),
+		strings.TrimSpace(runID),
+		strings.TrimSpace(sessionID),
+	).Scan(&document)
+	if errors.Is(err, sql.ErrNoRows) {
+		return computeruse.Session{}, false, nil
+	}
+	if err != nil {
+		return computeruse.Session{}, false, fmt.Errorf("get computer-use session: %w", err)
+	}
+	var session computeruse.Session
+	if err := json.Unmarshal([]byte(document), &session); err != nil {
+		return computeruse.Session{}, false, fmt.Errorf("decode computer-use session: %w", err)
+	}
+	return session, true, nil
+}
+
+func (s *SQLiteStore) UpsertComputerUseAction(ctx context.Context, action computeruse.Action) error {
+	if s == nil {
+		return nil
+	}
+	documentJSON, err := marshalJSON(action)
+	if err != nil {
+		return fmt.Errorf("marshal computer-use action: %w", err)
+	}
+	targetJSON, err := marshalJSON(action.TargetMatchContext)
+	if err != nil {
+		return fmt.Errorf("marshal target match context: %w", err)
+	}
+	pageBeforeJSON, err := marshalJSON(action.PageBefore)
+	if err != nil {
+		return fmt.Errorf("marshal page before: %w", err)
+	}
+	pageAfterJSON, err := marshalJSON(action.PageAfter)
+	if err != nil {
+		return fmt.Errorf("marshal page after: %w", err)
+	}
+	inputJSON, err := marshalJSON(action.Input)
+	if err != nil {
+		return fmt.Errorf("marshal action input: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO computer_use_actions (
+			computer_use_action_id,
+			environment_scope,
+			computer_use_session_id,
+			run_id,
+			step_id,
+			tool_call_id,
+			workflow_id,
+			workflow_step_id,
+			action_kind,
+			status,
+			risk_level,
+			approval_id,
+			target_match_context_json,
+			page_before_json,
+			page_after_json,
+			failure_class,
+			failure_reason,
+			requested_at,
+			updated_at,
+			completed_at,
+			input_json,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(computer_use_action_id) DO UPDATE SET
+			environment_scope = excluded.environment_scope,
+			computer_use_session_id = excluded.computer_use_session_id,
+			run_id = excluded.run_id,
+			step_id = excluded.step_id,
+			tool_call_id = excluded.tool_call_id,
+			workflow_id = excluded.workflow_id,
+			workflow_step_id = excluded.workflow_step_id,
+			action_kind = excluded.action_kind,
+			status = excluded.status,
+			risk_level = excluded.risk_level,
+			approval_id = excluded.approval_id,
+			target_match_context_json = excluded.target_match_context_json,
+			page_before_json = excluded.page_before_json,
+			page_after_json = excluded.page_after_json,
+			failure_class = excluded.failure_class,
+			failure_reason = excluded.failure_reason,
+			requested_at = excluded.requested_at,
+			updated_at = excluded.updated_at,
+			completed_at = excluded.completed_at,
+			input_json = excluded.input_json,
+			document_json = excluded.document_json
+	`,
+		action.ComputerUseActionID,
+		action.EnvironmentScope,
+		action.ComputerUseSessionID,
+		action.RunID,
+		nullString(action.StepID),
+		nullString(action.ToolCallID),
+		nullString(action.WorkflowID),
+		nullString(action.WorkflowStepID),
+		string(action.ActionKind),
+		string(action.Status),
+		string(action.RiskLevel),
+		nullString(action.ApprovalID),
+		targetJSON,
+		pageBeforeJSON,
+		pageAfterJSON,
+		nullString(action.FailureClass),
+		nullString(action.FailureReason),
+		action.RequestedAt.UTC().Format(time.RFC3339Nano),
+		action.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTimeString(action.CompletedAt),
+		inputJSON,
+		documentJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert computer-use action %s: %w", action.ComputerUseActionID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListComputerUseActions(ctx context.Context, environmentScope, runID, sessionID string) ([]computeruse.Action, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT document_json
+		FROM computer_use_actions
+		WHERE environment_scope = ? AND run_id = ? AND computer_use_session_id = ?
+		ORDER BY requested_at ASC, computer_use_action_id ASC
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(runID), strings.TrimSpace(sessionID))
+	if err != nil {
+		return nil, fmt.Errorf("list computer-use actions: %w", err)
+	}
+	defer rows.Close()
+	var items []computeruse.Action
+	for rows.Next() {
+		var document string
+		if err := rows.Scan(&document); err != nil {
+			return nil, fmt.Errorf("scan computer-use action: %w", err)
+		}
+		var action computeruse.Action
+		if err := json.Unmarshal([]byte(document), &action); err != nil {
+			return nil, fmt.Errorf("decode computer-use action: %w", err)
+		}
+		items = append(items, action)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetComputerUseAction(ctx context.Context, environmentScope, runID, sessionID, actionID string) (computeruse.Action, bool, error) {
+	if s == nil {
+		return computeruse.Action{}, false, nil
+	}
+	var document string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT document_json
+		FROM computer_use_actions
+		WHERE environment_scope = ? AND run_id = ? AND computer_use_session_id = ? AND computer_use_action_id = ?
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(runID), strings.TrimSpace(sessionID), strings.TrimSpace(actionID)).Scan(&document)
+	if errors.Is(err, sql.ErrNoRows) {
+		return computeruse.Action{}, false, nil
+	}
+	if err != nil {
+		return computeruse.Action{}, false, fmt.Errorf("get computer-use action: %w", err)
+	}
+	var action computeruse.Action
+	if err := json.Unmarshal([]byte(document), &action); err != nil {
+		return computeruse.Action{}, false, fmt.Errorf("decode computer-use action: %w", err)
+	}
+	return action, true, nil
+}
+
+func (s *SQLiteStore) FindPendingComputerUseActionByApproval(ctx context.Context, environmentScope, approvalID string) (computeruse.Action, bool, error) {
+	if s == nil {
+		return computeruse.Action{}, false, nil
+	}
+	var document string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT document_json
+		FROM computer_use_actions
+		WHERE environment_scope = ? AND approval_id = ? AND status = ?
+		ORDER BY requested_at DESC, computer_use_action_id DESC
+		LIMIT 1
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(approvalID), string(computeruse.ActionStatusWaitingApproval)).Scan(&document)
+	if errors.Is(err, sql.ErrNoRows) {
+		return computeruse.Action{}, false, nil
+	}
+	if err != nil {
+		return computeruse.Action{}, false, fmt.Errorf("find pending computer-use action: %w", err)
+	}
+	var action computeruse.Action
+	if err := json.Unmarshal([]byte(document), &action); err != nil {
+		return computeruse.Action{}, false, fmt.Errorf("decode pending computer-use action: %w", err)
+	}
+	return action, true, nil
+}
+
+func (s *SQLiteStore) UpsertComputerUseArtifact(ctx context.Context, artifact computeruse.Artifact) error {
+	if s == nil {
+		return nil
+	}
+	documentJSON, err := marshalJSON(artifact)
+	if err != nil {
+		return fmt.Errorf("marshal computer-use artifact: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO computer_use_artifacts (
+			artifact_id,
+			environment_scope,
+			computer_use_session_id,
+			computer_use_action_id,
+			run_id,
+			kind,
+			status,
+			mime_type,
+			file_name,
+			byte_size,
+			storage_key,
+			sha256,
+			capture_failure_reason,
+			created_at,
+			available_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(artifact_id) DO UPDATE SET
+			environment_scope = excluded.environment_scope,
+			computer_use_session_id = excluded.computer_use_session_id,
+			computer_use_action_id = excluded.computer_use_action_id,
+			run_id = excluded.run_id,
+			kind = excluded.kind,
+			status = excluded.status,
+			mime_type = excluded.mime_type,
+			file_name = excluded.file_name,
+			byte_size = excluded.byte_size,
+			storage_key = excluded.storage_key,
+			sha256 = excluded.sha256,
+			capture_failure_reason = excluded.capture_failure_reason,
+			created_at = excluded.created_at,
+			available_at = excluded.available_at,
+			document_json = excluded.document_json
+	`,
+		artifact.ArtifactID,
+		artifact.EnvironmentScope,
+		artifact.ComputerUseSessionID,
+		artifact.ComputerUseActionID,
+		artifact.RunID,
+		string(artifact.Kind),
+		string(artifact.Status),
+		nullString(artifact.MIMEType),
+		nullString(artifact.FileName),
+		artifact.ByteSize,
+		nullString(artifact.StorageKey),
+		nullString(artifact.SHA256),
+		nullString(artifact.CaptureFailureReason),
+		artifact.CreatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTimeString(artifact.AvailableAt),
+		documentJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert computer-use artifact %s: %w", artifact.ArtifactID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListComputerUseArtifactsForAction(ctx context.Context, environmentScope, runID, actionID string) ([]computeruse.Artifact, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT document_json
+		FROM computer_use_artifacts
+		WHERE environment_scope = ? AND run_id = ? AND computer_use_action_id = ?
+		ORDER BY created_at ASC, artifact_id ASC
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(runID), strings.TrimSpace(actionID))
+	if err != nil {
+		return nil, fmt.Errorf("list computer-use artifacts: %w", err)
+	}
+	defer rows.Close()
+	var items []computeruse.Artifact
+	for rows.Next() {
+		var document string
+		if err := rows.Scan(&document); err != nil {
+			return nil, fmt.Errorf("scan computer-use artifact: %w", err)
+		}
+		var artifact computeruse.Artifact
+		if err := json.Unmarshal([]byte(document), &artifact); err != nil {
+			return nil, fmt.Errorf("decode computer-use artifact: %w", err)
+		}
+		items = append(items, artifact)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetComputerUseArtifact(ctx context.Context, environmentScope, artifactID string) (computeruse.Artifact, bool, error) {
+	if s == nil {
+		return computeruse.Artifact{}, false, nil
+	}
+	var document string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT document_json
+		FROM computer_use_artifacts
+		WHERE environment_scope = ? AND artifact_id = ?
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(artifactID)).Scan(&document)
+	if errors.Is(err, sql.ErrNoRows) {
+		return computeruse.Artifact{}, false, nil
+	}
+	if err != nil {
+		return computeruse.Artifact{}, false, fmt.Errorf("get computer-use artifact: %w", err)
+	}
+	var artifact computeruse.Artifact
+	if err := json.Unmarshal([]byte(document), &artifact); err != nil {
+		return computeruse.Artifact{}, false, fmt.Errorf("decode computer-use artifact: %w", err)
+	}
+	return artifact, true, nil
+}
+
+func (s *SQLiteStore) MarkInFlightComputerUseInterrupted(ctx context.Context, environmentScope string, interruptedAt time.Time) ([]computeruse.Session, []computeruse.Action, error) {
+	if s == nil {
+		return nil, nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT document_json
+		FROM computer_use_sessions
+		WHERE environment_scope = ? AND status IN (?, ?, ?)
+	`, strings.TrimSpace(environmentScope), string(computeruse.SessionStatusStarting), string(computeruse.SessionStatusActive), string(computeruse.SessionStatusBlocked))
+	if err != nil {
+		return nil, nil, fmt.Errorf("list in-flight computer-use sessions: %w", err)
+	}
+	defer rows.Close()
+	updatedSessions := make([]computeruse.Session, 0)
+	for rows.Next() {
+		var document string
+		if err := rows.Scan(&document); err != nil {
+			return nil, nil, fmt.Errorf("scan in-flight computer-use session: %w", err)
+		}
+		var session computeruse.Session
+		if err := json.Unmarshal([]byte(document), &session); err != nil {
+			return nil, nil, fmt.Errorf("decode in-flight computer-use session: %w", err)
+		}
+		updatedSessions = append(updatedSessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	for idx := range updatedSessions {
+		updatedSessions[idx].Status = computeruse.SessionStatusInterrupted
+		updatedSessions[idx].InterruptedAt = &interruptedAt
+		updatedSessions[idx].UpdatedAt = interruptedAt
+		if err := s.UpsertComputerUseSession(ctx, updatedSessions[idx]); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	actionRows, err := s.db.QueryContext(ctx, `
+		SELECT document_json
+		FROM computer_use_actions
+		WHERE environment_scope = ? AND status IN (?, ?, ?)
+	`, strings.TrimSpace(environmentScope), string(computeruse.ActionStatusRequested), string(computeruse.ActionStatusWaitingApproval), string(computeruse.ActionStatusRunning))
+	if err != nil {
+		return nil, nil, fmt.Errorf("list in-flight computer-use actions: %w", err)
+	}
+	defer actionRows.Close()
+	updatedActions := make([]computeruse.Action, 0)
+	for actionRows.Next() {
+		var document string
+		if err := actionRows.Scan(&document); err != nil {
+			return nil, nil, fmt.Errorf("scan in-flight computer-use action: %w", err)
+		}
+		var action computeruse.Action
+		if err := json.Unmarshal([]byte(document), &action); err != nil {
+			return nil, nil, fmt.Errorf("decode in-flight computer-use action: %w", err)
+		}
+		updatedActions = append(updatedActions, action)
+	}
+	if err := actionRows.Err(); err != nil {
+		return nil, nil, err
+	}
+	for idx := range updatedActions {
+		updatedActions[idx].Status = computeruse.ActionStatusInterrupted
+		updatedActions[idx].FailureClass = string(computeruse.FailureClassInterrupted)
+		updatedActions[idx].FailureReason = "daemon restarted before computer-use action completed"
+		updatedActions[idx].UpdatedAt = interruptedAt
+		updatedActions[idx].CompletedAt = &interruptedAt
+		if err := s.UpsertComputerUseAction(ctx, updatedActions[idx]); err != nil {
+			return nil, nil, err
+		}
+	}
+	return updatedSessions, updatedActions, nil
 }
 
 func (s *SQLiteStore) HasActiveMCPToolCalls(ctx context.Context, serverID string) (bool, error) {
@@ -5156,26 +5746,28 @@ func scanToolCall(scanner interface {
 	Scan(dest ...any) error
 }) (runtime.ToolCall, error) {
 	var (
-		toolCall            runtime.ToolCall
-		workflowID          sql.NullString
-		workflowStepID      sql.NullString
-		invocationKind      sql.NullString
-		skillID             sql.NullString
-		mcpServerID         sql.NullString
-		mcpServerName       sql.NullString
-		mcpToolName         sql.NullString
-		mcpTransportKind    sql.NullString
-		mcpSessionID        sql.NullString
-		authorizationResult sql.NullString
-		sandboxExecutionID  sql.NullString
-		failureClass        sql.NullString
-		status              string
-		inputJSON           sql.NullString
-		outputJSON          sql.NullString
-		sandboxJSON         sql.NullString
-		errorText           sql.NullString
-		createdAt           string
-		updatedAt           string
+		toolCall             runtime.ToolCall
+		workflowID           sql.NullString
+		workflowStepID       sql.NullString
+		computerUseSessionID sql.NullString
+		computerUseActionID  sql.NullString
+		invocationKind       sql.NullString
+		skillID              sql.NullString
+		mcpServerID          sql.NullString
+		mcpServerName        sql.NullString
+		mcpToolName          sql.NullString
+		mcpTransportKind     sql.NullString
+		mcpSessionID         sql.NullString
+		authorizationResult  sql.NullString
+		sandboxExecutionID   sql.NullString
+		failureClass         sql.NullString
+		status               string
+		inputJSON            sql.NullString
+		outputJSON           sql.NullString
+		sandboxJSON          sql.NullString
+		errorText            sql.NullString
+		createdAt            string
+		updatedAt            string
 	)
 
 	if err := scanner.Scan(
@@ -5185,6 +5777,8 @@ func scanToolCall(scanner interface {
 		&workflowID,
 		&workflowStepID,
 		&toolCall.Attempt,
+		&computerUseSessionID,
+		&computerUseActionID,
 		&invocationKind,
 		&toolCall.CapabilityID,
 		&skillID,
@@ -5210,6 +5804,8 @@ func scanToolCall(scanner interface {
 
 	toolCall.WorkflowID = workflowID.String
 	toolCall.WorkflowStepID = workflowStepID.String
+	toolCall.ComputerUseSessionID = computerUseSessionID.String
+	toolCall.ComputerUseActionID = computerUseActionID.String
 	toolCall.Status = runtime.ToolCallStatus(status)
 	toolCall.InvocationKind = runtime.ToolCallInvocationKind(invocationKind.String)
 	toolCall.SkillID = skillID.String

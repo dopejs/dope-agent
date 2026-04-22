@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
+	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 )
@@ -62,9 +63,30 @@ func (m *Manager) Plan(cfg config.Config, run runtime.Run, input CreateWorkflowI
 
 	mcpStep, hasMCP := pickMCPWorkflowStep(goal, mcpSource, now)
 	skillStep, hasSkill := pickSkillWorkflowStep(goal, skillSource, now)
+	computerUseStep, hasComputerUse := pickComputerUseWorkflowStep(goal, now)
 	localStep, hasLocal := pickLocalWorkflowStep(cfg, goal, capabilitySupervisor, now)
 
 	switch {
+	case hasComputerUse && hasSkill:
+		workflow.PlanSummary = "Plan one browser-first computer-use step followed by one executable skill handoff."
+		workflow.Steps = []WorkflowStep{computerUseStep, skillStep}
+		workflow.Dependencies = []Dependency{{
+			DependencyID:       newWorkflowDependencyID(),
+			WorkflowID:         workflow.WorkflowID,
+			FromWorkflowStepID: computerUseStep.WorkflowStepID,
+			ToWorkflowStepID:   skillStep.WorkflowStepID,
+			DependencyType:     DependencyTypeSuccess,
+			Reason:             "workflow consumes browser evidence before local continuation",
+		}}
+		workflow.Handoffs = []Handoff{{
+			HandoffID:          newWorkflowHandoffID(),
+			WorkflowID:         workflow.WorkflowID,
+			FromWorkflowStepID: computerUseStep.WorkflowStepID,
+			ToWorkflowStepID:   skillStep.WorkflowStepID,
+			Status:             HandoffStatusPending,
+			PayloadSummary:     "Browser evidence summary",
+			SourcePath:         "step.computerUseArtifacts",
+		}}
 	case hasMCP && hasSkill:
 		workflow.PlanSummary = "Plan one MCP step followed by one executable skill handoff."
 		workflow.Steps = []WorkflowStep{mcpStep, skillStep}
@@ -88,6 +110,9 @@ func (m *Manager) Plan(cfg config.Config, run runtime.Run, input CreateWorkflowI
 	case hasSkill:
 		workflow.PlanSummary = "Plan one executable skill step."
 		workflow.Steps = []WorkflowStep{skillStep}
+	case hasComputerUse:
+		workflow.PlanSummary = "Plan one browser-first computer-use step."
+		workflow.Steps = []WorkflowStep{computerUseStep}
 	case hasMCP:
 		workflow.PlanSummary = "Plan one MCP tool step."
 		workflow.Steps = []WorkflowStep{mcpStep}
@@ -431,6 +456,36 @@ func pickSkillWorkflowStep(goal string, skillSource SkillPlanningSource, now tim
 	return WorkflowStep{}, false
 }
 
+func pickComputerUseWorkflowStep(goal string, now time.Time) (WorkflowStep, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(goal))
+	if normalized == "" {
+		return WorkflowStep{}, false
+	}
+	if !strings.Contains(normalized, "browser") && !strings.Contains(normalized, "computer-use") && !strings.Contains(normalized, "computer use") {
+		return WorkflowStep{}, false
+	}
+	return WorkflowStep{
+		WorkflowStepID: newWorkflowStepID(),
+		Title:          "Inspect deterministic browser fixture",
+		ConsumerKind:   "computer_use",
+		ConsumerID:     "browser",
+		ToolName:       "browser",
+		Input: map[string]any{
+			"driverKind": "browser",
+			"initialUrl": "https://example.test/browser",
+			"actions": []map[string]any{
+				{"actionKind": "navigate", "url": "https://example.test/browser"},
+				{"actionKind": "snapshot"},
+			},
+		},
+		SelectionRationale:   "Selected the browser-first computer-use plane to keep browser work on the normal runtime and workflow truth surfaces.",
+		ApprovalModeExpected: "allow",
+		MaxAttempts:          1,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}, true
+}
+
 func pickLocalWorkflowStep(cfg config.Config, goal string, capabilitySupervisor *capabilities.Supervisor, now time.Time) (WorkflowStep, bool) {
 	if capabilitySupervisor == nil {
 		return WorkflowStep{}, false
@@ -508,4 +563,19 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func (m *Manager) ApplyComputerUseProjection(workflow Workflow, workflowStepID string, sessionID string, actions []string, artifacts []computeruse.Artifact, now time.Time) Workflow {
+	for idx := range workflow.Steps {
+		if workflow.Steps[idx].WorkflowStepID != workflowStepID {
+			continue
+		}
+		workflow.Steps[idx].ComputerUseSessionID = strings.TrimSpace(sessionID)
+		workflow.Steps[idx].ComputerUseActionIDs = append([]string(nil), actions...)
+		workflow.Steps[idx].ComputerUseArtifacts = append([]computeruse.Artifact(nil), artifacts...)
+		workflow.Steps[idx].UpdatedAt = now
+		break
+	}
+	workflow.UpdatedAt = now
+	return workflow
 }

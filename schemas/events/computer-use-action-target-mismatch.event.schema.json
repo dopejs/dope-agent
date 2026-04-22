@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "required": ["payload", "resource"],
+      "properties": {
+        "category": { "const": "capability" },
+        "name": { "const": "computer_use.action_target_mismatch" },
+        "resource": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "computer_use_action" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": ["status", "failureClass", "computerUseSessionId", "computerUseActionId"],
+          "properties": {
+            "status": { "const": "failed" },
+            "failureClass": { "const": "target_mismatch" },
+            "computerUseSessionId": { "type": "string" },
+            "computerUseActionId": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

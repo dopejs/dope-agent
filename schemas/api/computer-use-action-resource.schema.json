@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/computer-use-action-resource.schema.json",
+  "title": "ComputerUseActionResource",
+  "type": "object",
+  "required": ["computerUseActionId", "computerUseSessionId", "runId", "actionKind", "status", "riskLevel", "requestedAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "computerUseActionId": { "type": "string" },
+    "environmentScope": { "type": "string" },
+    "computerUseSessionId": { "type": "string" },
+    "runId": { "type": "string" },
+    "stepId": { "type": "string" },
+    "toolCallId": { "type": "string" },
+    "workflowId": { "type": "string" },
+    "workflowStepId": { "type": "string" },
+    "actionKind": { "type": "string", "enum": ["navigate", "back", "forward", "wait", "screenshot", "snapshot", "click", "input", "select", "download", "close_session"] },
+    "status": { "type": "string", "enum": ["requested", "waiting_approval", "running", "completed", "denied", "failed", "interrupted"] },
+    "riskLevel": { "type": "string", "enum": ["low", "high"] },
+    "approvalId": { "type": "string" },
+    "targetMatchContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matchStrategy": { "type": "string" },
+        "expectedPageUrl": { "type": "string" },
+        "expectedSelector": { "type": "string" },
+        "expectedText": { "type": "string" },
+        "trustedScopeRevision": { "type": "integer", "minimum": 0 },
+        "observedPageUrl": { "type": "string" },
+        "observedSelectorState": { "type": "string" },
+        "matchResult": { "type": "string", "enum": ["matched", "mismatched"] },
+        "evaluatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "pageBefore": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "url": { "type": "string" }, "title": { "type": "string" } }
+    },
+    "pageAfter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "url": { "type": "string" }, "title": { "type": "string" } }
+    },
+    "failureClass": { "type": "string", "enum": ["policy_denial", "unavailable_consumer", "navigation_failure", "target_mismatch", "unsupported_action", "interrupted"] },
+    "failureReason": { "type": "string" },
+    "requestedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "input": { "type": ["object", "array", "string", "number", "boolean", "null"] },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "./computer-use-artifact-resource.schema.json" }
+    }
+  }
+}

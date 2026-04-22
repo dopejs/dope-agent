@@ -17,6 +17,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
+	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
@@ -581,6 +582,154 @@ func TestRecoverPersistedStateInterruptsInFlightWorkflows(t *testing.T) {
 	}
 	if restored.InterruptedAt == nil || restored.Steps[0].Status != orchestration.StepStatusInterrupted {
 		t.Fatalf("expected interrupted workflow-step truth, got %+v", restored)
+	}
+}
+
+func TestRecoverPersistedStateInterruptsInFlightComputerUseTruth(t *testing.T) {
+	t.Parallel()
+
+	dataDir := filepath.Join(t.TempDir(), "dope-data")
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	ctx := context.Background()
+	runtimeManager := runtime.NewManager()
+	run, err := runtimeManager.CreateRun(runtime.CreateRunInput{
+		SessionID:  "session_computer_use_restore",
+		Entrypoint: "operator",
+		Goal:       "interrupt computer-use on restart",
+	})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	now := time.Now().UTC()
+	session := router.Session{
+		SessionID:    run.SessionID,
+		Kind:         router.SessionKindDirect,
+		Status:       router.SessionStatusActive,
+		Channel:      "local",
+		AccountID:    "local",
+		PeerID:       "computer-use",
+		RoutingKey:   "direct:local:local:computer-use",
+		Generation:   1,
+		CreatedAt:    now.Add(-2 * time.Minute),
+		UpdatedAt:    now.Add(-2 * time.Minute),
+		LastActiveAt: now.Add(-2 * time.Minute),
+	}
+	if err := sqliteStore.UpsertSession(ctx, session); err != nil {
+		t.Fatalf("UpsertSession returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(ctx, run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	step, err := runtimeManager.CreateStep(run.RunID, runtime.CreateStepInput{
+		Title: "computer-use click",
+		Kind:  "computer_use",
+	})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+	step, _, err = runtimeManager.UpdateStepStatusAndReconcileRun(run.RunID, step.StepID, runtime.UpdateStepStatusInput{
+		Status: runtime.StepStatusPlanning,
+	})
+	if err != nil {
+		t.Fatalf("UpdateStepStatusAndReconcileRun(planning) returned error: %v", err)
+	}
+	step, _, err = runtimeManager.UpdateStepStatusAndReconcileRun(run.RunID, step.StepID, runtime.UpdateStepStatusInput{
+		Status: runtime.StepStatusExecutingTool,
+	})
+	if err != nil {
+		t.Fatalf("UpdateStepStatusAndReconcileRun(executing_tool) returned error: %v", err)
+	}
+	step, _, err = runtimeManager.UpdateStepStatusAndReconcileRun(run.RunID, step.StepID, runtime.UpdateStepStatusInput{
+		Status: runtime.StepStatusBlocked,
+	})
+	if err != nil {
+		t.Fatalf("UpdateStepStatusAndReconcileRun(blocked) returned error: %v", err)
+	}
+	toolCall, err := runtimeManager.CreateToolCall(run.RunID, step.StepID, runtime.CreateToolCallInput{
+		ToolName:             "click",
+		InvocationKind:       runtime.ToolCallInvocationKindLocalTool,
+		CapabilityID:         "browser",
+		ComputerUseSessionID: "cusess_restore_interrupt",
+		ComputerUseActionID:  "cuact_restore_interrupt",
+		Input:                map[string]any{"actionKind": "click"},
+	})
+	if err != nil {
+		t.Fatalf("CreateToolCall returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertStep(ctx, step); err != nil {
+		t.Fatalf("UpsertStep returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertToolCall(ctx, toolCall); err != nil {
+		t.Fatalf("UpsertToolCall returned error: %v", err)
+	}
+
+	cuSession := computeruse.Session{
+		ComputerUseSessionID: "cusess_restore_interrupt",
+		EnvironmentScope:     "test",
+		RunID:                run.RunID,
+		Status:               computeruse.SessionStatusBlocked,
+		DriverKind:           "browser",
+		StartedAt:            now.Add(-time.Minute),
+		UpdatedAt:            now.Add(-30 * time.Second),
+	}
+	if err := sqliteStore.UpsertComputerUseSession(ctx, cuSession); err != nil {
+		t.Fatalf("UpsertComputerUseSession returned error: %v", err)
+	}
+	cuAction := computeruse.Action{
+		ComputerUseActionID:  "cuact_restore_interrupt",
+		EnvironmentScope:     "test",
+		ComputerUseSessionID: cuSession.ComputerUseSessionID,
+		RunID:                run.RunID,
+		StepID:               step.StepID,
+		ToolCallID:           toolCall.ToolCallID,
+		ActionKind:           computeruse.ActionKindClick,
+		Status:               computeruse.ActionStatusWaitingApproval,
+		RiskLevel:            computeruse.RiskLevelHigh,
+		ApprovalID:           "approval_restore_interrupt",
+		RequestedAt:          now.Add(-40 * time.Second),
+		UpdatedAt:            now.Add(-30 * time.Second),
+	}
+	if err := sqliteStore.UpsertComputerUseAction(ctx, cuAction); err != nil {
+		t.Fatalf("UpsertComputerUseAction returned error: %v", err)
+	}
+
+	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
+	if err := checkpointManager.SaveRunCheckpoint(ctx, run.RunID); err != nil {
+		t.Fatalf("SaveRunCheckpoint returned error: %v", err)
+	}
+
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtimeManager), events.NewBus(), nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+
+	restoredSession, ok, err := sqliteStore.GetComputerUseSession(ctx, "test", run.RunID, cuSession.ComputerUseSessionID)
+	if err != nil {
+		t.Fatalf("GetComputerUseSession returned error: %v", err)
+	}
+	if !ok || restoredSession.Status != computeruse.SessionStatusInterrupted || restoredSession.InterruptedAt == nil {
+		t.Fatalf("expected interrupted computer-use session, got ok=%v session=%+v", ok, restoredSession)
+	}
+
+	restoredAction, ok, err := sqliteStore.GetComputerUseAction(ctx, "test", run.RunID, cuSession.ComputerUseSessionID, cuAction.ComputerUseActionID)
+	if err != nil {
+		t.Fatalf("GetComputerUseAction returned error: %v", err)
+	}
+	if !ok || restoredAction.Status != computeruse.ActionStatusInterrupted || restoredAction.FailureClass != string(computeruse.FailureClassInterrupted) {
+		t.Fatalf("expected interrupted computer-use action, got ok=%v action=%+v", ok, restoredAction)
+	}
+
+	restoredToolCall, ok := runtimeManager.GetToolCall(run.RunID, step.StepID, toolCall.ToolCallID)
+	if !ok {
+		t.Fatal("expected restored tool call")
+	}
+	if restoredToolCall.Status != runtime.ToolCallStatusFailed || restoredToolCall.FailureClass != string(computeruse.FailureClassInterrupted) {
+		t.Fatalf("expected interrupted runtime tool call truth, got %+v", restoredToolCall)
 	}
 }
 

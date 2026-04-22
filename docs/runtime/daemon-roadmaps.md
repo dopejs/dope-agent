@@ -1316,12 +1316,33 @@ Verified on `2026-04-22` with:
 
 ### Roadmap 26: Use-Computer Capability Plane
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/011-use-computer-capability-plane.md](../specs/011-use-computer-capability-plane.md)
 
 Goal: add first-class browser-first computer use with approval, artifacts, and workflow
 integration on the current runtime plane.
+
+Implementation notes:
+
+- daemon-owned `computer_use_sessions`, `computer_use_actions`, and
+  `computer_use_artifacts` are now first-class persisted resources
+- browser-first execution stays on the existing run, step, tool-call, and workflow plane
+  with additive `computerUseSessionId` and `computerUseActionId` linkage
+- high-risk actions use inspect-before-act approval, while low-risk browser actions
+  complete directly in the owning run or workflow
+- successful actions record durable artifact evidence, and failure truth distinguishes
+  policy denial, navigation failure, unavailable consumer, target mismatch, unsupported
+  action, and restart interruption
+- restart recovery marks in-flight browser work `interrupted` instead of attempting silent
+  resume
+
+Verification:
+
+- `cd daemon && go test ./internal/app ./internal/contracts ./internal/api ./internal/computeruse ./internal/store ./internal/orchestration`
+- `make daemon-contract-test`
+- manual `DOPE_ENV=test` browser-session verification covering approval, artifact
+  retrieval, target mismatch, and event history
 
 ### Roadmap 27: Personal Integrations Platform
 

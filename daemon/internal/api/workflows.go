@@ -9,6 +9,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
+	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
@@ -79,7 +80,7 @@ func (a mcpPlanningAdapter) ListTools(serverID string) ([]orchestration.MCPPlann
 	return items, nil
 }
 
-func handleRunWorkflows(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID string) {
+func handleRunWorkflows(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request, runID string) {
 	if sqliteStore == nil {
 		writeError(w, http.StatusInternalServerError, "store is not configured")
 		return
@@ -135,7 +136,7 @@ func handleRunWorkflowByID(sqliteStore *store.SQLiteStore, environment config.En
 	writeJSON(w, http.StatusOK, workflow)
 }
 
-func handleRunWorkflowStart(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, workflowID string) {
+func handleRunWorkflowStart(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request, runID, workflowID string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -166,7 +167,7 @@ func handleRunWorkflowStart(cfg config.Config, manager *runtime.Manager, policyE
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	workflow, err = advanceWorkflowExecution(r.Context(), cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, workflow)
+	workflow, err = advanceWorkflowExecution(r.Context(), cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, workflow)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -220,7 +221,7 @@ func handleRunWorkflowCancel(cfg config.Config, manager *runtime.Manager, sandbo
 	writeJSON(w, http.StatusOK, workflow)
 }
 
-func advanceWorkflowExecution(ctx context.Context, cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, workflow orchestration.Workflow) (orchestration.Workflow, error) {
+func advanceWorkflowExecution(ctx context.Context, cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, workflow orchestration.Workflow) (orchestration.Workflow, error) {
 	workflowManager := orchestration.NewManager()
 	for {
 		now := time.Now().UTC()
@@ -236,7 +237,7 @@ func advanceWorkflowExecution(ctx context.Context, cfg config.Config, manager *r
 			if workflow.Steps[idx].Status != orchestration.StepStatusReady {
 				continue
 			}
-			nextWorkflow, terminalSync, err := startWorkflowStepExecution(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, workflow, workflow.Steps[idx])
+			nextWorkflow, terminalSync, err := startWorkflowStepExecution(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, workflow, workflow.Steps[idx])
 			if err != nil {
 				return orchestration.Workflow{}, err
 			}
@@ -260,7 +261,10 @@ func advanceWorkflowExecution(ctx context.Context, cfg config.Config, manager *r
 	}
 }
 
-func startWorkflowStepExecution(ctx context.Context, cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, workflow orchestration.Workflow, wfStep orchestration.WorkflowStep) (orchestration.Workflow, bool, error) {
+func startWorkflowStepExecution(ctx context.Context, cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, workflow orchestration.Workflow, wfStep orchestration.WorkflowStep) (orchestration.Workflow, bool, error) {
+	if wfStep.ConsumerKind == "computer_use" {
+		return executeWorkflowComputerUseStep(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, workflow, wfStep)
+	}
 	runtimeStep, err := manager.CreateStep(workflow.RunID, runtime.CreateStepInput{
 		Title:          wfStep.Title,
 		Kind:           "workflow",
@@ -307,14 +311,14 @@ func startWorkflowStepExecution(ctx context.Context, cfg config.Config, manager 
 		if err != nil {
 			return workflow, false, err
 		}
-		return advanceWorkflowAfterToolCall(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, workflow, toolCall, stepStatus, blockedReason)
+		return advanceWorkflowAfterToolCall(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, workflow, toolCall, stepStatus, blockedReason)
 	case string(runtime.ToolCallInvocationKindSkill):
 		toolCall, terminalSync, stepStatus, blockedReason, err := executeWorkflowSkillTool(ctx, cfg, manager, policyEngine, skillRegistry, sandboxManager, eventBus, sqliteStore, checkpointManager, workflow, runtimeStep, wfStep)
 		if err != nil {
 			return workflow, false, err
 		}
 		if terminalSync {
-			return advanceWorkflowAfterToolCall(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, workflow, toolCall, stepStatus, blockedReason)
+			return advanceWorkflowAfterToolCall(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, workflow, toolCall, stepStatus, blockedReason)
 		}
 		workflow = orchestration.NewManager().BindToolCall(workflow, wfStep.WorkflowStepID, toolCall, time.Now().UTC())
 		return workflow, false, persistWorkflowDetail(ctx, sqliteStore, workflow)
@@ -324,11 +328,98 @@ func startWorkflowStepExecution(ctx context.Context, cfg config.Config, manager 
 			return workflow, false, err
 		}
 		if terminalSync {
-			return advanceWorkflowAfterToolCall(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, workflow, toolCall, stepStatus, blockedReason)
+			return advanceWorkflowAfterToolCall(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, workflow, toolCall, stepStatus, blockedReason)
 		}
 		workflow = orchestration.NewManager().BindToolCall(workflow, wfStep.WorkflowStepID, toolCall, time.Now().UTC())
 		return workflow, false, persistWorkflowDetail(ctx, sqliteStore, workflow)
 	}
+}
+
+func executeWorkflowComputerUseStep(ctx context.Context, cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, workflow orchestration.Workflow, wfStep orchestration.WorkflowStep) (orchestration.Workflow, bool, error) {
+	if computerUseManager == nil {
+		return workflow, false, errors.New("computer-use manager is not configured")
+	}
+	inputMap, ok := wfStep.Input.(map[string]any)
+	if !ok {
+		return workflow, false, errors.New("computer-use workflow input must be an object")
+	}
+	session, _, err := computerUseManager.AcquireSession(ctx, workflow.RunID, computeruse.CreateSessionInput{
+		WorkflowID:     workflow.WorkflowID,
+		WorkflowStepID: wfStep.WorkflowStepID,
+		DriverKind:     mapString(inputMap["driverKind"]),
+		InitialURL:     mapString(inputMap["initialUrl"]),
+	})
+	if err != nil {
+		return workflow, false, err
+	}
+	workflow = orchestration.NewManager().ApplyComputerUseProjection(workflow, wfStep.WorkflowStepID, session.ComputerUseSessionID, nil, nil, time.Now().UTC())
+	if err := persistWorkflowDetail(ctx, sqliteStore, workflow); err != nil {
+		return workflow, false, err
+	}
+
+	actionPayloads := mapSlice(inputMap["actions"])
+	if len(actionPayloads) == 0 {
+		return workflow, false, errors.New("computer-use workflow step requires at least one action")
+	}
+
+	actionIDs := make([]string, 0, len(actionPayloads))
+	var (
+		lastAction runtime.ToolCall
+		lastStepID string
+		artifacts  []computeruse.Artifact
+	)
+	for idx, raw := range actionPayloads {
+		actionInput := decodeWorkflowComputerUseAction(raw)
+		result, approval, decision, err := computerUseManager.CreateAction(ctx, workflow.RunID, session.ComputerUseSessionID, "workflow:"+workflow.WorkflowID, actionInput)
+		if err != nil {
+			return workflow, false, err
+		}
+		if idx == 0 {
+			workflow = orchestration.NewManager().StartStepAttempt(workflow, wfStep.WorkflowStepID, result.Action.StepID, time.Now().UTC())
+		}
+		actionIDs = append(actionIDs, result.Action.ComputerUseActionID)
+		artifacts = append(artifacts, result.Action.Artifacts...)
+		workflow = orchestration.NewManager().ApplyComputerUseProjection(workflow, wfStep.WorkflowStepID, session.ComputerUseSessionID, actionIDs, artifacts, time.Now().UTC())
+		if err := persistComputerUseRuntimeTracking(ctx, sqliteStore, manager, checkpointManager, result.Action); err != nil {
+			return workflow, false, err
+		}
+		publishComputerUseArtifacts(ctx, eventBus, sqliteStore, result.Action)
+		if result.Action.FailureClass == string(computeruse.FailureClassTargetMismatch) {
+			publishComputerUseTargetMismatch(ctx, eventBus, sqliteStore, result.Action)
+		}
+		if approval != nil {
+			if err := persistApproval(ctx, sqliteStore, *approval); err != nil {
+				return workflow, false, err
+			}
+		}
+		if decision != nil {
+			if err := persistDecision(ctx, sqliteStore, *decision); err != nil {
+				return workflow, false, err
+			}
+		}
+		toolCall, ok := manager.GetToolCall(result.Action.RunID, result.Action.StepID, result.Action.ToolCallID)
+		if ok {
+			lastAction = toolCall
+			lastStepID = result.Action.StepID
+			workflow = orchestration.NewManager().BindToolCall(workflow, wfStep.WorkflowStepID, toolCall, time.Now().UTC())
+		}
+		if result.Pending {
+			if err := persistWorkflowDetail(ctx, sqliteStore, workflow); err != nil {
+				return workflow, false, err
+			}
+			if ok {
+				return advanceWorkflowAfterToolCall(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, workflow, lastAction, orchestration.StepStatusBlocked, string(orchestration.BlockedReasonApprovalDenied))
+			}
+			return workflow, false, nil
+		}
+	}
+	if lastStepID == "" {
+		return workflow, false, errors.New("computer-use workflow step did not create runtime linkage")
+	}
+	if err := persistWorkflowDetail(ctx, sqliteStore, workflow); err != nil {
+		return workflow, false, err
+	}
+	return advanceWorkflowAfterToolCall(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, workflow, lastAction, orchestration.StepStatusCompleted, "")
 }
 
 func executeWorkflowMCPTool(ctx context.Context, manager *runtime.Manager, mcpManager *mcp.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, workflow orchestration.Workflow, runtimeStep runtime.Step, wfStep orchestration.WorkflowStep) (runtime.ToolCall, orchestration.StepStatus, string, error) {
@@ -569,7 +660,7 @@ func watchWorkflowSandboxExecution(cfg config.Config, manager *runtime.Manager, 
 			}
 			workflow, ok, getErr := sqliteStore.GetWorkflow(bgCtx, string(cfg.Environment), runID, workflowID)
 			if getErr == nil && ok {
-				_, _, _ = advanceWorkflowAfterToolCall(bgCtx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, workflow, toolCall, orchestration.StepStatusRunning, "")
+				_, _, _ = advanceWorkflowAfterToolCall(bgCtx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, nil, workflow, toolCall, orchestration.StepStatusRunning, "")
 			}
 			return
 		}
@@ -577,7 +668,7 @@ func watchWorkflowSandboxExecution(cfg config.Config, manager *runtime.Manager, 
 	}
 }
 
-func advanceWorkflowAfterToolCall(ctx context.Context, cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, workflow orchestration.Workflow, toolCall runtime.ToolCall, hintedStatus orchestration.StepStatus, blockedReason string) (orchestration.Workflow, bool, error) {
+func advanceWorkflowAfterToolCall(ctx context.Context, cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, workflow orchestration.Workflow, toolCall runtime.ToolCall, hintedStatus orchestration.StepStatus, blockedReason string) (orchestration.Workflow, bool, error) {
 	previousStatus := workflow.Status
 	workflow = orchestration.NewManager().ApplyToolCallResult(workflow, toolCall, hintedStatus, blockedReason, time.Now().UTC())
 	step := orchestration.WorkflowStepByID(workflow, toolCall.WorkflowStepID)
@@ -612,7 +703,7 @@ func advanceWorkflowAfterToolCall(ctx context.Context, cfg config.Config, manage
 	if workflow.Status != previousStatus {
 		_, _ = publishWorkflowEvent(ctx, eventBus, sqliteStore, "workflow.status_changed", workflow, &toolCall, nil)
 	}
-	nextWorkflow, err := advanceWorkflowExecution(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, workflow)
+	nextWorkflow, err := advanceWorkflowExecution(ctx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, computerUseManager, workflow)
 	return nextWorkflow, true, err
 }
 
@@ -699,6 +790,80 @@ func publishWorkflowEvent(ctx context.Context, eventBus *events.Bus, sqliteStore
 		Resource: events.Resource{Kind: "workflow", ID: workflow.WorkflowID},
 		Payload:  payload,
 	})
+}
+
+func publishComputerUseArtifacts(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, action computeruse.Action) {
+	for _, artifact := range action.Artifacts {
+		_, _ = publishEvent(ctx, eventBus, sqliteStore, events.Event{
+			Category: "capability",
+			Name:     "computer_use.artifact_recorded",
+			Scope: events.Scope{
+				RunID:                action.RunID,
+				ComputerUseSessionID: action.ComputerUseSessionID,
+				ComputerUseActionID:  action.ComputerUseActionID,
+			},
+			Resource: events.Resource{Kind: "computer_use_artifact", ID: artifact.ArtifactID},
+			Payload: map[string]any{
+				"artifactId":    artifact.ArtifactID,
+				"artifactKind":  artifact.Kind,
+				"captureStatus": artifact.Status,
+			},
+		})
+	}
+}
+
+func publishComputerUseTargetMismatch(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, action computeruse.Action) {
+	_, _ = publishEvent(ctx, eventBus, sqliteStore, events.Event{
+		Category: "capability",
+		Name:     "computer_use.action_target_mismatch",
+		Scope: events.Scope{
+			RunID:                action.RunID,
+			StepID:               action.StepID,
+			ComputerUseSessionID: action.ComputerUseSessionID,
+			ComputerUseActionID:  action.ComputerUseActionID,
+		},
+		Resource: events.Resource{Kind: "computer_use_action", ID: action.ComputerUseActionID},
+		Payload: map[string]any{
+			"status":               action.Status,
+			"failureClass":         action.FailureClass,
+			"computerUseSessionId": action.ComputerUseSessionID,
+			"computerUseActionId":  action.ComputerUseActionID,
+		},
+	})
+}
+
+func mapString(value any) string {
+	item, _ := value.(string)
+	return item
+}
+
+func mapSlice(value any) []map[string]any {
+	switch raw := value.(type) {
+	case []map[string]any:
+		return raw
+	case []any:
+		items := make([]map[string]any, 0, len(raw))
+		for _, entry := range raw {
+			item, ok := entry.(map[string]any)
+			if ok {
+				items = append(items, item)
+			}
+		}
+		return items
+	default:
+		return nil
+	}
+}
+
+func decodeWorkflowComputerUseAction(payload map[string]any) computeruse.CreateActionInput {
+	return computeruse.CreateActionInput{
+		ActionKind:    computeruse.ActionKind(mapString(payload["actionKind"])),
+		URL:           mapString(payload["url"]),
+		Value:         mapString(payload["value"]),
+		SelectedValue: mapString(payload["selectedValue"]),
+		PageTarget:    computeruse.PageTarget(mapString(payload["pageTarget"])),
+		Rationale:     mapString(payload["rationale"]),
+	}
 }
 
 func workflowEventStep(workflow orchestration.Workflow, toolCall *runtime.ToolCall, extra map[string]any) *orchestration.WorkflowStep {

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "required": ["payload", "resource"],
+      "properties": {
+        "category": { "const": "capability" },
+        "name": { "const": "computer_use.artifact_recorded" },
+        "resource": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "computer_use_artifact" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": ["artifactId", "artifactKind", "captureStatus"],
+          "properties": {
+            "artifactId": { "type": "string" },
+            "artifactKind": { "type": "string", "enum": ["screenshot", "page_snapshot", "download"] },
+            "captureStatus": { "type": "string", "enum": ["capturing", "available", "capture_failed"] }
+          }
+        }
+      }
+    }
+  ]
+}

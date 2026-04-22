@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/artifacts"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
+	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
@@ -385,6 +387,107 @@ func TestScheduleRoutesDispatchWorkflowTargetAndLinkWorkflowTruth(t *testing.T) 
 	}
 }
 
+func TestScheduleWorkflowComputerUseDoesNotReuseOperatorRunSession(t *testing.T) {
+	harness := newWorkflowScheduleServerHarness(t)
+
+	operatorRun := seedRunForScheduleTest(t, harness.store, harness.runtime, "operator", "prepare operator browser session")
+	createSessionReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+operatorRun.RunID+"/computer-use/sessions", strings.NewReader(`{"driverKind":"browser"}`))
+	createSessionReq.Header.Set("Authorization", harness.authHeader)
+	createSessionReq.Header.Set("Content-Type", "application/json")
+	createSessionRec := httptest.NewRecorder()
+	harness.server.Handler().ServeHTTP(createSessionRec, createSessionReq)
+	if createSessionRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for operator session create, got %d body=%s", createSessionRec.Code, createSessionRec.Body.String())
+	}
+	operatorSession := decodeStrictResponse[computeruse.Session](t, createSessionRec.Body.Bytes())
+
+	fireAt := time.Now().UTC().Add(100 * time.Millisecond).Format(time.RFC3339)
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/schedules", strings.NewReader(`{
+		"trigger": {
+			"kind": "once",
+			"fireAt": "`+fireAt+`"
+		},
+		"target": {
+			"kind": "workflow",
+			"workflow": {
+				"entrypoint": "operator",
+				"runGoal": "Schedule-owned browser workflow",
+				"workflowGoal": "Use browser and a skill to complete a deterministic workflow."
+			}
+		},
+		"retryPolicy": {
+			"maxRetries": 0,
+			"backoffKind": "fixed",
+			"baseDelaySeconds": 5,
+			"maxDelaySeconds": 5
+		}
+	}`))
+	createReq.Header.Set("Authorization", harness.authHeader)
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	harness.server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for workflow schedule create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	created := decodeStrictResponse[map[string]any](t, createRec.Body.Bytes())
+	scheduleID := created["scheduleId"].(string)
+	time.Sleep(150 * time.Millisecond)
+	if err := harness.scheduler.Tick(context.Background()); err != nil {
+		t.Fatalf("scheduler Tick returned error: %v", err)
+	}
+
+	var (
+		runID      string
+		workflowID string
+	)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := harness.scheduler.Tick(context.Background()); err != nil {
+			t.Fatalf("scheduler Tick returned error: %v", err)
+		}
+		getReq := httptest.NewRequest(http.MethodGet, "/v1/schedules/"+scheduleID, nil)
+		getReq.Header.Set("Authorization", harness.authHeader)
+		getRec := httptest.NewRecorder()
+		harness.server.Handler().ServeHTTP(getRec, getReq)
+		if getRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 for schedule get, got %d body=%s", getRec.Code, getRec.Body.String())
+		}
+		got := decodeStrictResponse[map[string]any](t, getRec.Body.Bytes())
+		attempts := got["attempts"].([]any)
+		if len(attempts) == 1 {
+			attempt := attempts[0].(map[string]any)
+			runID, _ = attempt["runId"].(string)
+			workflowID, _ = attempt["workflowId"].(string)
+			if runID != "" && workflowID != "" && attempt["downstreamStatus"] == "completed" {
+				break
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if runID == "" || workflowID == "" {
+		t.Fatalf("expected completed scheduled workflow attempt, got runId=%q workflowId=%q", runID, workflowID)
+	}
+
+	workflowReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+runID+"/workflows/"+workflowID, nil)
+	workflowReq.Header.Set("Authorization", harness.authHeader)
+	workflowRec := httptest.NewRecorder()
+	harness.server.Handler().ServeHTTP(workflowRec, workflowReq)
+	if workflowRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for workflow get, got %d body=%s", workflowRec.Code, workflowRec.Body.String())
+	}
+	workflow := decodeStrictResponse[orchestration.Workflow](t, workflowRec.Body.Bytes())
+	if len(workflow.Steps) == 0 || workflow.Steps[0].ConsumerKind != "computer_use" {
+		t.Fatalf("expected leading computer-use step, got %+v", workflow.Steps)
+	}
+	if workflow.Steps[0].ComputerUseSessionID == "" {
+		t.Fatalf("expected scheduled workflow computer-use session linkage, got %+v", workflow.Steps[0])
+	}
+	if workflow.Steps[0].ComputerUseSessionID == operatorSession.ComputerUseSessionID {
+		t.Fatalf("expected scheduled workflow to avoid reusing operator session, got %+v", workflow.Steps[0])
+	}
+}
+
 type scheduleServerHarness struct {
 	cfg        config.Config
 	server     *Server
@@ -462,12 +565,20 @@ func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 	policyEngine := policy.NewEngine()
 	skillRegistry := newAllowSkillRegistryForWorkflowTest(t, cfg.DataDir)
 	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	computerUseManager := computeruse.NewManager(computeruse.Dependencies{
+		EnvironmentScope: "test",
+		Runtime:          runtimeManager,
+		Policy:           policyEngine,
+		Store:            sqliteStore,
+		Artifacts:        artifacts.NewService(t.TempDir()),
+	})
 	workflowLauncher := NewScheduleWorkflowLauncher(ScheduleWorkflowLauncherDependencies{
 		Config:      cfg,
 		Runtime:     runtimeManager,
 		Policy:      policyEngine,
 		Skills:      skillRegistry,
 		Sandboxes:   sandboxManager,
+		ComputerUse: computerUseManager,
 		EventBus:    eventBus,
 		Store:       sqliteStore,
 		Checkpoints: checkpointManager,
@@ -489,6 +600,7 @@ func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 		Runtime:     runtimeManager,
 		Skills:      skillRegistry,
 		Sandboxes:   sandboxManager,
+		ComputerUse: computerUseManager,
 		Scheduler:   scheduleManager,
 		Store:       sqliteStore,
 		Checkpoints: checkpointManager,
