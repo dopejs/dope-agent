@@ -14,6 +14,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
+	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 )
 
@@ -148,6 +149,27 @@ type CreateRunRequest struct {
 type CreateWorkflowRequest struct {
 	Goal string `json:"goal,omitempty"`
 }
+
+type CreateScheduleRequest struct {
+	Trigger     ScheduleTriggerRequest `json:"trigger"`
+	Target      ScheduleTargetRequest  `json:"target"`
+	RetryPolicy scheduler.RetryPolicy  `json:"retryPolicy"`
+}
+
+type ScheduleTriggerRequest struct {
+	Kind     scheduler.TriggerKind `json:"kind"`
+	FireAt   string                `json:"fireAt,omitempty"`
+	CronExpr string                `json:"cronExpr,omitempty"`
+	Timezone string                `json:"timezone,omitempty"`
+}
+
+type ScheduleTargetRequest struct {
+	Kind     scheduler.TargetKind      `json:"kind"`
+	Run      *scheduler.RunTarget      `json:"run,omitempty"`
+	Workflow *scheduler.WorkflowTarget `json:"workflow,omitempty"`
+}
+
+type ScheduleListResponse = ListResponse[scheduler.Schedule]
 
 type ConnectorIngressMessage struct {
 	MessageID string `json:"messageId"`

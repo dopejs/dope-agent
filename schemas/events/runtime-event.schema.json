@@ -29,7 +29,8 @@
         "llm",
         "artifact",
         "sandbox",
-        "mcp"
+        "mcp",
+        "schedule"
       ]
     },
     "name": {
@@ -65,6 +66,12 @@
           "type": "string"
         },
         "workflowStepId": {
+          "type": "string"
+        },
+        "scheduleId": {
+          "type": "string"
+        },
+        "scheduleAttemptId": {
           "type": "string"
         },
         "stepId": {

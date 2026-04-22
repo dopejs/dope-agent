@@ -1,6 +1,7 @@
 package events
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"sync"
@@ -8,13 +9,15 @@ import (
 )
 
 type Scope struct {
-	SessionID      string `json:"sessionId,omitempty"`
-	RunID          string `json:"runId,omitempty"`
-	WorkflowID     string `json:"workflowId,omitempty"`
-	WorkflowStepID string `json:"workflowStepId,omitempty"`
-	StepID         string `json:"stepId,omitempty"`
-	ConnectorID    string `json:"connectorId,omitempty"`
-	CapabilityID   string `json:"capabilityId,omitempty"`
+	SessionID         string `json:"sessionId,omitempty"`
+	RunID             string `json:"runId,omitempty"`
+	WorkflowID        string `json:"workflowId,omitempty"`
+	WorkflowStepID    string `json:"workflowStepId,omitempty"`
+	ScheduleID        string `json:"scheduleId,omitempty"`
+	ScheduleAttemptID string `json:"scheduleAttemptId,omitempty"`
+	StepID            string `json:"stepId,omitempty"`
+	ConnectorID       string `json:"connectorId,omitempty"`
+	CapabilityID      string `json:"capabilityId,omitempty"`
 }
 
 type Resource struct {
@@ -23,22 +26,26 @@ type Resource struct {
 }
 
 type Event struct {
-	EventID    string         `json:"eventId"`
-	Sequence   int64          `json:"sequence"`
-	Category   string         `json:"category"`
-	Name       string         `json:"name"`
-	OccurredAt time.Time      `json:"occurredAt"`
-	Scope      Scope          `json:"scope"`
-	Resource   Resource       `json:"resource"`
-	Payload    map[string]any `json:"payload"`
+	EventID          string         `json:"eventId"`
+	Sequence         int64          `json:"sequence"`
+	EnvironmentScope string         `json:"-"`
+	Category         string         `json:"category"`
+	Name             string         `json:"name"`
+	OccurredAt       time.Time      `json:"occurredAt"`
+	Scope            Scope          `json:"scope"`
+	Resource         Resource       `json:"resource"`
+	Payload          map[string]any `json:"payload"`
 }
 
 type Filter struct {
-	Category     string
-	RunID        string
-	SessionID    string
-	ResourceKind string
-	Cursor       int64
+	EnvironmentScope  string
+	Category          string
+	RunID             string
+	SessionID         string
+	ScheduleID        string
+	ScheduleAttemptID string
+	ResourceKind      string
+	Cursor            int64
 }
 
 type Bus struct {
@@ -168,6 +175,9 @@ func matches(filter Filter, event Event) bool {
 	if filter.Cursor > 0 && event.Sequence <= filter.Cursor {
 		return false
 	}
+	if filter.EnvironmentScope != "" && filter.EnvironmentScope != event.EnvironmentScope {
+		return false
+	}
 	if filter.Category != "" && filter.Category != event.Category {
 		return false
 	}
@@ -175,6 +185,12 @@ func matches(filter Filter, event Event) bool {
 		return false
 	}
 	if filter.SessionID != "" && filter.SessionID != event.Scope.SessionID {
+		return false
+	}
+	if filter.ScheduleID != "" && filter.ScheduleID != event.Scope.ScheduleID {
+		return false
+	}
+	if filter.ScheduleAttemptID != "" && filter.ScheduleAttemptID != event.Scope.ScheduleAttemptID {
 		return false
 	}
 	if filter.ResourceKind != "" && filter.ResourceKind != event.Resource.Kind {
@@ -191,4 +207,23 @@ func newEventID() string {
 	}
 
 	return "evt_" + hex.EncodeToString(buf)
+}
+
+type contextKey string
+
+const environmentScopeKey contextKey = "event_environment_scope"
+
+func WithEnvironmentScope(ctx context.Context, scope string) context.Context {
+	if scope == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, environmentScopeKey, scope)
+}
+
+func EnvironmentScopeFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	scope, _ := ctx.Value(environmentScopeKey).(string)
+	return scope
 }

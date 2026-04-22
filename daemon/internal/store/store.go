@@ -29,7 +29,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 11
+	CurrentSchemaVersion = 13
 )
 
 type schemaMigration struct {
@@ -118,6 +118,8 @@ type MCPToolExposureRuleRecord struct {
 type WorkflowRecord struct {
 	WorkflowID        string
 	RunID             string
+	ScheduleID        string
+	ScheduleAttemptID string
 	EnvironmentScope  string
 	Goal              string
 	Status            string
@@ -132,17 +134,17 @@ type WorkflowRecord struct {
 }
 
 type WorkflowStepRecord struct {
-	WorkflowStepID       string
-	WorkflowID           string
-	Position             int
-	Status               string
-	RuntimeStepID        string
-	ActiveToolCallID     string
-	AttemptCount         int
-	MaxAttempts          int
-	LastFailureClass     string
-	BlockedReason        string
-	Document             []byte
+	WorkflowStepID   string
+	WorkflowID       string
+	Position         int
+	Status           string
+	RuntimeStepID    string
+	ActiveToolCallID string
+	AttemptCount     int
+	MaxAttempts      int
+	LastFailureClass string
+	BlockedReason    string
+	Document         []byte
 }
 
 type WorkflowDependencyRecord struct {
@@ -152,10 +154,60 @@ type WorkflowDependencyRecord struct {
 }
 
 type WorkflowHandoffRecord struct {
-	HandoffID   string
-	WorkflowID  string
-	Status      string
+	HandoffID  string
+	WorkflowID string
+	Status     string
+	Document   []byte
+}
+
+type ScheduleRecord struct {
+	ScheduleID       string
+	EnvironmentScope string
+	Kind             string
+	Status           string
+	TargetRefID      string
+	Timezone         string
+	NextDueAt        *time.Time
+	LastAttemptAt    *time.Time
+	LastOutcome      string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	PausedAt         *time.Time
+	CancelledAt      *time.Time
+	CompletedAt      *time.Time
+	Document         []byte
+}
+
+type ScheduleTargetRecord struct {
+	TargetRefID string
+	ScheduleID  string
+	TargetKind  string
+	Revision    int
+	Active      bool
+	UpdatedAt   time.Time
 	Document    []byte
+}
+
+type ScheduleDispatchAttemptRecord struct {
+	AttemptID              string
+	ScheduleID             string
+	DueAt                  time.Time
+	TriggerSource          string
+	DispatchStatus         string
+	FailureClass           string
+	FailureReason          string
+	RetryCount             int
+	RetryBudget            int
+	NextRetryAt            *time.Time
+	ResolvedTargetRevision int
+	RunID                  string
+	WorkflowID             string
+	DownstreamStatus       string
+	SkippedReason          string
+	MissedCount            int
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	Document               []byte
 }
 
 var schemaMigrations = []schemaMigration{
@@ -708,6 +760,93 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_tool_calls_workflow_linkage ON tool_calls(workflow_id, workflow_step_id, attempt, created_at DESC, tool_call_id DESC);`,
 		},
 	},
+	{
+		Version: 12,
+		Name:    "scheduled_tasks_wakeups",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS schedules (
+				schedule_id TEXT PRIMARY KEY,
+				environment_scope TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				status TEXT NOT NULL,
+				target_ref_id TEXT NOT NULL,
+				timezone TEXT,
+				next_due_at TEXT,
+				last_attempt_at TEXT,
+				last_outcome TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				paused_at TEXT,
+				cancelled_at TEXT,
+				completed_at TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS schedule_targets (
+				target_ref_id TEXT PRIMARY KEY,
+				schedule_id TEXT NOT NULL,
+				target_kind TEXT NOT NULL,
+				revision INTEGER NOT NULL,
+				active INTEGER NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(schedule_id) REFERENCES schedules(schedule_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS schedule_dispatch_attempts (
+				attempt_id TEXT PRIMARY KEY,
+				schedule_id TEXT NOT NULL,
+				due_at TEXT NOT NULL,
+				trigger_source TEXT NOT NULL,
+				dispatch_status TEXT NOT NULL,
+				failure_class TEXT,
+				failure_reason TEXT,
+				retry_count INTEGER NOT NULL,
+				retry_budget INTEGER NOT NULL,
+				next_retry_at TEXT,
+				resolved_target_revision INTEGER NOT NULL,
+				run_id TEXT,
+				workflow_id TEXT,
+				downstream_status TEXT NOT NULL,
+				skipped_reason TEXT,
+				missed_count INTEGER NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(schedule_id) REFERENCES schedules(schedule_id) ON DELETE CASCADE
+			);
+			`,
+			`ALTER TABLE runs ADD COLUMN schedule_id TEXT;`,
+			`ALTER TABLE runs ADD COLUMN schedule_attempt_id TEXT;`,
+			`ALTER TABLE workflows ADD COLUMN schedule_id TEXT;`,
+			`ALTER TABLE workflows ADD COLUMN schedule_attempt_id TEXT;`,
+			`ALTER TABLE events ADD COLUMN workflow_id TEXT;`,
+			`ALTER TABLE events ADD COLUMN workflow_step_id TEXT;`,
+			`ALTER TABLE events ADD COLUMN schedule_id TEXT;`,
+			`ALTER TABLE events ADD COLUMN schedule_attempt_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_schedules_env_status_due ON schedules(environment_scope, status, next_due_at, schedule_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_schedule_targets_schedule ON schedule_targets(schedule_id, updated_at DESC, target_ref_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_schedule_attempts_schedule_due ON schedule_dispatch_attempts(schedule_id, due_at DESC, attempt_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_schedule_attempts_retry_due ON schedule_dispatch_attempts(dispatch_status, next_retry_at, schedule_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_runs_schedule_linkage ON runs(schedule_id, schedule_attempt_id, created_at DESC, run_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_workflows_schedule_linkage ON workflows(schedule_id, schedule_attempt_id, created_at DESC, workflow_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_events_schedule_id ON events(schedule_id, occurred_at);`,
+		},
+	},
+	{
+		Version: 13,
+		Name:    "event_environment_scope",
+		Statements: []string{
+			`ALTER TABLE events ADD COLUMN environment_scope TEXT NOT NULL DEFAULT '';`,
+			`CREATE INDEX IF NOT EXISTS idx_events_env_category ON events(environment_scope, category, occurred_at);`,
+			`CREATE INDEX IF NOT EXISTS idx_events_env_schedule ON events(environment_scope, schedule_id, occurred_at);`,
+			`CREATE INDEX IF NOT EXISTS idx_events_env_run ON events(environment_scope, run_id, occurred_at);`,
+			`CREATE INDEX IF NOT EXISTS idx_events_env_session ON events(environment_scope, session_id, occurred_at);`,
+		},
+	},
 }
 
 type SQLiteStore struct {
@@ -779,14 +918,18 @@ func (s *SQLiteStore) UpsertRun(ctx context.Context, run runtime.Run) error {
 		INSERT INTO runs (
 			run_id,
 			session_id,
+			schedule_id,
+			schedule_attempt_id,
 			entrypoint,
 			status,
 			goal,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(run_id) DO UPDATE SET
 			session_id = excluded.session_id,
+			schedule_id = excluded.schedule_id,
+			schedule_attempt_id = excluded.schedule_attempt_id,
 			entrypoint = excluded.entrypoint,
 			status = excluded.status,
 			goal = excluded.goal,
@@ -795,6 +938,8 @@ func (s *SQLiteStore) UpsertRun(ctx context.Context, run runtime.Run) error {
 	`,
 		run.RunID,
 		nullString(run.SessionID),
+		nullString(run.ScheduleID),
+		nullString(run.ScheduleAttemptID),
 		run.Entrypoint,
 		string(run.Status),
 		run.Goal,
@@ -2083,7 +2228,7 @@ func (s *SQLiteStore) ListRuns(ctx context.Context) ([]runtime.Run, error) {
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT run_id, session_id, entrypoint, status, goal, created_at, updated_at
+		SELECT run_id, session_id, schedule_id, schedule_attempt_id, entrypoint, status, goal, created_at, updated_at
 		FROM runs
 		ORDER BY created_at ASC, run_id ASC
 	`)
@@ -2117,6 +2262,8 @@ func (s *SQLiteStore) UpsertWorkflow(ctx context.Context, workflow orchestration
 		INSERT INTO workflows (
 			workflow_id,
 			run_id,
+			schedule_id,
+			schedule_attempt_id,
 			environment_scope,
 			goal,
 			status,
@@ -2128,9 +2275,11 @@ func (s *SQLiteStore) UpsertWorkflow(ctx context.Context, workflow orchestration
 			completed_at,
 			interrupted_at,
 			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(workflow_id) DO UPDATE SET
 			run_id = excluded.run_id,
+			schedule_id = excluded.schedule_id,
+			schedule_attempt_id = excluded.schedule_attempt_id,
 			environment_scope = excluded.environment_scope,
 			goal = excluded.goal,
 			status = excluded.status,
@@ -2145,6 +2294,8 @@ func (s *SQLiteStore) UpsertWorkflow(ctx context.Context, workflow orchestration
 	`,
 		workflow.WorkflowID,
 		workflow.RunID,
+		nullString(workflow.ScheduleID),
+		nullString(workflow.ScheduleAttemptID),
 		workflow.EnvironmentScope,
 		workflow.Goal,
 		string(workflow.Status),
@@ -2293,7 +2444,7 @@ func (s *SQLiteStore) ListWorkflows(ctx context.Context, environmentScope, runID
 		return nil, nil
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT workflow_id, run_id, environment_scope, goal, status, plan_summary, failure_summary, created_at, updated_at, started_at, completed_at, interrupted_at, document_json
+		SELECT workflow_id, run_id, schedule_id, schedule_attempt_id, environment_scope, goal, status, plan_summary, failure_summary, created_at, updated_at, started_at, completed_at, interrupted_at, document_json
 		FROM workflows
 		WHERE environment_scope = ? AND run_id = ?
 		ORDER BY created_at ASC, workflow_id ASC
@@ -2330,7 +2481,7 @@ func (s *SQLiteStore) GetWorkflow(ctx context.Context, environmentScope, runID, 
 		return orchestration.Workflow{}, false, nil
 	}
 	row := s.db.QueryRowContext(ctx, `
-		SELECT workflow_id, run_id, environment_scope, goal, status, plan_summary, failure_summary, created_at, updated_at, started_at, completed_at, interrupted_at, document_json
+		SELECT workflow_id, run_id, schedule_id, schedule_attempt_id, environment_scope, goal, status, plan_summary, failure_summary, created_at, updated_at, started_at, completed_at, interrupted_at, document_json
 		FROM workflows
 		WHERE environment_scope = ? AND run_id = ? AND workflow_id = ?
 	`, strings.TrimSpace(environmentScope), strings.TrimSpace(runID), strings.TrimSpace(workflowID))
@@ -2391,7 +2542,7 @@ func (s *SQLiteStore) MarkInFlightWorkflowsInterrupted(ctx context.Context, envi
 
 func (s *SQLiteStore) listInterruptibleWorkflows(ctx context.Context, environmentScope string) ([]orchestration.Workflow, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT workflow_id, run_id, environment_scope, goal, status, plan_summary, failure_summary, created_at, updated_at, started_at, completed_at, interrupted_at, document_json
+		SELECT workflow_id, run_id, schedule_id, schedule_attempt_id, environment_scope, goal, status, plan_summary, failure_summary, created_at, updated_at, started_at, completed_at, interrupted_at, document_json
 		FROM workflows
 		WHERE environment_scope = ?
 		  AND status IN (?, ?, ?)
@@ -2439,6 +2590,8 @@ func (s *SQLiteStore) decodeWorkflowRecord(ctx context.Context, record WorkflowR
 		workflow = orchestration.Workflow{
 			WorkflowID:        record.WorkflowID,
 			RunID:             record.RunID,
+			ScheduleID:        record.ScheduleID,
+			ScheduleAttemptID: record.ScheduleAttemptID,
 			EnvironmentScope:  record.EnvironmentScope,
 			Goal:              record.Goal,
 			Status:            orchestration.WorkflowStatus(record.Status),
@@ -2451,6 +2604,8 @@ func (s *SQLiteStore) decodeWorkflowRecord(ctx context.Context, record WorkflowR
 			InterruptedAt:     record.InterruptedAt,
 		}
 	}
+	workflow.ScheduleID = record.ScheduleID
+	workflow.ScheduleAttemptID = record.ScheduleAttemptID
 	workflow.EnvironmentScope = record.EnvironmentScope
 	workflow.Status = orchestration.WorkflowStatus(record.Status)
 	workflow.PlanSummary = record.PlanSummary
@@ -2566,6 +2721,264 @@ func (s *SQLiteStore) listWorkflowHandoffs(ctx context.Context, workflowID strin
 		}
 		item.Status = orchestration.HandoffStatus(record.Status)
 		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertSchedule(ctx context.Context, record ScheduleRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO schedules (
+			schedule_id,
+			environment_scope,
+			kind,
+			status,
+			target_ref_id,
+			timezone,
+			next_due_at,
+			last_attempt_at,
+			last_outcome,
+			created_at,
+			updated_at,
+			paused_at,
+			cancelled_at,
+			completed_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(schedule_id) DO UPDATE SET
+			environment_scope = excluded.environment_scope,
+			kind = excluded.kind,
+			status = excluded.status,
+			target_ref_id = excluded.target_ref_id,
+			timezone = excluded.timezone,
+			next_due_at = excluded.next_due_at,
+			last_attempt_at = excluded.last_attempt_at,
+			last_outcome = excluded.last_outcome,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			paused_at = excluded.paused_at,
+			cancelled_at = excluded.cancelled_at,
+			completed_at = excluded.completed_at,
+			document_json = excluded.document_json
+	`,
+		record.ScheduleID,
+		record.EnvironmentScope,
+		record.Kind,
+		record.Status,
+		record.TargetRefID,
+		nullString(record.Timezone),
+		nullableTimeString(record.NextDueAt),
+		nullableTimeString(record.LastAttemptAt),
+		nullString(record.LastOutcome),
+		record.CreatedAt.UTC().Format(time.RFC3339Nano),
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTimeString(record.PausedAt),
+		nullableTimeString(record.CancelledAt),
+		nullableTimeString(record.CompletedAt),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert schedule %s: %w", record.ScheduleID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetSchedule(ctx context.Context, environmentScope, scheduleID string) (ScheduleRecord, bool, error) {
+	if s == nil {
+		return ScheduleRecord{}, false, nil
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT schedule_id, environment_scope, kind, status, target_ref_id, timezone, next_due_at, last_attempt_at, last_outcome, created_at, updated_at, paused_at, cancelled_at, completed_at, document_json
+		FROM schedules
+		WHERE environment_scope = ? AND schedule_id = ?
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(scheduleID))
+	record, err := scanScheduleRecord(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), sql.ErrNoRows.Error()) {
+			return ScheduleRecord{}, false, nil
+		}
+		return ScheduleRecord{}, false, err
+	}
+	return record, true, nil
+}
+
+func (s *SQLiteStore) ListSchedules(ctx context.Context, environmentScope string) ([]ScheduleRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT schedule_id, environment_scope, kind, status, target_ref_id, timezone, next_due_at, last_attempt_at, last_outcome, created_at, updated_at, paused_at, cancelled_at, completed_at, document_json
+		FROM schedules
+		WHERE environment_scope = ?
+		ORDER BY created_at ASC, schedule_id ASC
+	`, strings.TrimSpace(environmentScope))
+	if err != nil {
+		return nil, fmt.Errorf("list schedules: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]ScheduleRecord, 0)
+	for rows.Next() {
+		record, scanErr := scanScheduleRecord(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, record)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertScheduleTarget(ctx context.Context, record ScheduleTargetRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO schedule_targets (
+			target_ref_id,
+			schedule_id,
+			target_kind,
+			revision,
+			active,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(target_ref_id) DO UPDATE SET
+			schedule_id = excluded.schedule_id,
+			target_kind = excluded.target_kind,
+			revision = excluded.revision,
+			active = excluded.active,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		record.TargetRefID,
+		record.ScheduleID,
+		record.TargetKind,
+		record.Revision,
+		boolToInt(record.Active),
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert schedule target %s: %w", record.TargetRefID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetScheduleTarget(ctx context.Context, scheduleID, targetRefID string) (ScheduleTargetRecord, bool, error) {
+	if s == nil {
+		return ScheduleTargetRecord{}, false, nil
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT target_ref_id, schedule_id, target_kind, revision, active, updated_at, document_json
+		FROM schedule_targets
+		WHERE schedule_id = ? AND target_ref_id = ?
+	`, strings.TrimSpace(scheduleID), strings.TrimSpace(targetRefID))
+	record, err := scanScheduleTargetRecord(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), sql.ErrNoRows.Error()) {
+			return ScheduleTargetRecord{}, false, nil
+		}
+		return ScheduleTargetRecord{}, false, err
+	}
+	return record, true, nil
+}
+
+func (s *SQLiteStore) UpsertScheduleDispatchAttempt(ctx context.Context, record ScheduleDispatchAttemptRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO schedule_dispatch_attempts (
+			attempt_id,
+			schedule_id,
+			due_at,
+			trigger_source,
+			dispatch_status,
+			failure_class,
+			failure_reason,
+			retry_count,
+			retry_budget,
+			next_retry_at,
+			resolved_target_revision,
+			run_id,
+			workflow_id,
+			downstream_status,
+			skipped_reason,
+			missed_count,
+			created_at,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(attempt_id) DO UPDATE SET
+			schedule_id = excluded.schedule_id,
+			due_at = excluded.due_at,
+			trigger_source = excluded.trigger_source,
+			dispatch_status = excluded.dispatch_status,
+			failure_class = excluded.failure_class,
+			failure_reason = excluded.failure_reason,
+			retry_count = excluded.retry_count,
+			retry_budget = excluded.retry_budget,
+			next_retry_at = excluded.next_retry_at,
+			resolved_target_revision = excluded.resolved_target_revision,
+			run_id = excluded.run_id,
+			workflow_id = excluded.workflow_id,
+			downstream_status = excluded.downstream_status,
+			skipped_reason = excluded.skipped_reason,
+			missed_count = excluded.missed_count,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		record.AttemptID,
+		record.ScheduleID,
+		record.DueAt.UTC().Format(time.RFC3339Nano),
+		record.TriggerSource,
+		record.DispatchStatus,
+		nullString(record.FailureClass),
+		nullString(record.FailureReason),
+		record.RetryCount,
+		record.RetryBudget,
+		nullableTimeString(record.NextRetryAt),
+		record.ResolvedTargetRevision,
+		nullString(record.RunID),
+		nullString(record.WorkflowID),
+		record.DownstreamStatus,
+		nullString(record.SkippedReason),
+		record.MissedCount,
+		record.CreatedAt.UTC().Format(time.RFC3339Nano),
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert schedule attempt %s: %w", record.AttemptID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListScheduleDispatchAttempts(ctx context.Context, scheduleID string) ([]ScheduleDispatchAttemptRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT attempt_id, schedule_id, due_at, trigger_source, dispatch_status, failure_class, failure_reason, retry_count, retry_budget, next_retry_at, resolved_target_revision, run_id, workflow_id, downstream_status, skipped_reason, missed_count, created_at, updated_at, document_json
+		FROM schedule_dispatch_attempts
+		WHERE schedule_id = ?
+		ORDER BY due_at DESC, created_at DESC, attempt_id DESC
+	`, strings.TrimSpace(scheduleID))
+	if err != nil {
+		return nil, fmt.Errorf("list schedule attempts %s: %w", scheduleID, err)
+	}
+	defer rows.Close()
+
+	items := make([]ScheduleDispatchAttemptRecord, 0)
+	for rows.Next() {
+		record, scanErr := scanScheduleDispatchAttemptRecord(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, record)
 	}
 	return items, rows.Err()
 }
@@ -3258,26 +3671,36 @@ func (s *SQLiteStore) AppendEvent(ctx context.Context, event events.Event) (even
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO events (
 			event_id,
+			environment_scope,
 			category,
 			name,
 			occurred_at,
 			session_id,
 			run_id,
+			workflow_id,
+			workflow_step_id,
+			schedule_id,
+			schedule_attempt_id,
 			step_id,
 			connector_id,
 			capability_id,
 			resource_kind,
 			resource_id,
 			payload_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(event_id) DO NOTHING
 	`,
 		event.EventID,
+		coalesceString(event.EnvironmentScope, events.EnvironmentScopeFromContext(ctx)),
 		event.Category,
 		event.Name,
 		event.OccurredAt.UTC().Format(time.RFC3339Nano),
 		nullString(event.Scope.SessionID),
 		nullString(event.Scope.RunID),
+		nullString(event.Scope.WorkflowID),
+		nullString(event.Scope.WorkflowStepID),
+		nullString(event.Scope.ScheduleID),
+		nullString(event.Scope.ScheduleAttemptID),
 		nullString(event.Scope.StepID),
 		nullString(event.Scope.ConnectorID),
 		nullString(event.Scope.CapabilityID),
@@ -3302,12 +3725,16 @@ func (s *SQLiteStore) ListEvents(ctx context.Context, filter events.Filter) ([]e
 	}
 
 	query := `
-		SELECT rowid, event_id, category, name, occurred_at, session_id, run_id, step_id, connector_id, capability_id, resource_kind, resource_id, payload_json
+		SELECT rowid, event_id, environment_scope, category, name, occurred_at, session_id, run_id, workflow_id, workflow_step_id, schedule_id, schedule_attempt_id, step_id, connector_id, capability_id, resource_kind, resource_id, payload_json
 		FROM events
 		WHERE 1 = 1
 	`
-	args := make([]any, 0, 4)
+	args := make([]any, 0, 7)
 
+	if filter.EnvironmentScope != "" {
+		query += ` AND environment_scope = ?`
+		args = append(args, filter.EnvironmentScope)
+	}
 	if filter.Category != "" {
 		query += ` AND category = ?`
 		args = append(args, filter.Category)
@@ -3319,6 +3746,14 @@ func (s *SQLiteStore) ListEvents(ctx context.Context, filter events.Filter) ([]e
 	if filter.SessionID != "" {
 		query += ` AND session_id = ?`
 		args = append(args, filter.SessionID)
+	}
+	if filter.ScheduleID != "" {
+		query += ` AND schedule_id = ?`
+		args = append(args, filter.ScheduleID)
+	}
+	if filter.ScheduleAttemptID != "" {
+		query += ` AND schedule_attempt_id = ?`
+		args = append(args, filter.ScheduleAttemptID)
 	}
 	if filter.ResourceKind != "" {
 		query += ` AND resource_kind = ?`
@@ -3633,16 +4068,20 @@ func scanRun(scanner interface {
 	Scan(dest ...any) error
 }) (runtime.Run, error) {
 	var (
-		run       runtime.Run
-		status    string
-		sessionID sql.NullString
-		createdAt string
-		updatedAt string
+		run               runtime.Run
+		status            string
+		sessionID         sql.NullString
+		scheduleID        sql.NullString
+		scheduleAttemptID sql.NullString
+		createdAt         string
+		updatedAt         string
 	)
 
 	if err := scanner.Scan(
 		&run.RunID,
 		&sessionID,
+		&scheduleID,
+		&scheduleAttemptID,
 		&run.Entrypoint,
 		&status,
 		&run.Goal,
@@ -3653,6 +4092,8 @@ func scanRun(scanner interface {
 	}
 
 	run.SessionID = sessionID.String
+	run.ScheduleID = scheduleID.String
+	run.ScheduleAttemptID = scheduleAttemptID.String
 	run.Status = runtime.RunStatus(status)
 
 	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
@@ -4392,19 +4833,23 @@ func scanWorkflowRecord(scanner interface {
 	Scan(dest ...any) error
 }) (WorkflowRecord, error) {
 	var (
-		record        WorkflowRecord
-		planSummary   sql.NullString
-		failureSummary sql.NullString
-		createdAt     string
-		updatedAt     string
-		startedAt     sql.NullString
-		completedAt   sql.NullString
-		interruptedAt sql.NullString
-		document      string
+		record            WorkflowRecord
+		scheduleID        sql.NullString
+		scheduleAttemptID sql.NullString
+		planSummary       sql.NullString
+		failureSummary    sql.NullString
+		createdAt         string
+		updatedAt         string
+		startedAt         sql.NullString
+		completedAt       sql.NullString
+		interruptedAt     sql.NullString
+		document          string
 	)
 	if err := scanner.Scan(
 		&record.WorkflowID,
 		&record.RunID,
+		&scheduleID,
+		&scheduleAttemptID,
 		&record.EnvironmentScope,
 		&record.Goal,
 		&record.Status,
@@ -4419,6 +4864,8 @@ func scanWorkflowRecord(scanner interface {
 	); err != nil {
 		return WorkflowRecord{}, fmt.Errorf("scan workflow: %w", err)
 	}
+	record.ScheduleID = scheduleID.String
+	record.ScheduleAttemptID = scheduleAttemptID.String
 	record.PlanSummary = planSummary.String
 	record.FailureSummary = failureSummary.String
 	record.Document = []byte(document)
@@ -4495,6 +4942,156 @@ func scanWorkflowHandoffRecord(scanner interface {
 		return WorkflowHandoffRecord{}, fmt.Errorf("scan workflow handoff: %w", err)
 	}
 	record.Document = []byte(document)
+	return record, nil
+}
+
+func scanScheduleRecord(scanner interface {
+	Scan(dest ...any) error
+}) (ScheduleRecord, error) {
+	var (
+		record        ScheduleRecord
+		timezone      sql.NullString
+		nextDueAt     sql.NullString
+		lastAttemptAt sql.NullString
+		lastOutcome   sql.NullString
+		createdAt     string
+		updatedAt     string
+		pausedAt      sql.NullString
+		cancelledAt   sql.NullString
+		completedAt   sql.NullString
+		document      string
+	)
+	if err := scanner.Scan(
+		&record.ScheduleID,
+		&record.EnvironmentScope,
+		&record.Kind,
+		&record.Status,
+		&record.TargetRefID,
+		&timezone,
+		&nextDueAt,
+		&lastAttemptAt,
+		&lastOutcome,
+		&createdAt,
+		&updatedAt,
+		&pausedAt,
+		&cancelledAt,
+		&completedAt,
+		&document,
+	); err != nil {
+		return ScheduleRecord{}, fmt.Errorf("scan schedule: %w", err)
+	}
+	record.Timezone = timezone.String
+	record.LastOutcome = lastOutcome.String
+	record.Document = []byte(document)
+	if err := assignRequiredTime(&record.CreatedAt, createdAt); err != nil {
+		return ScheduleRecord{}, fmt.Errorf("parse schedule created_at: %w", err)
+	}
+	if err := assignRequiredTime(&record.UpdatedAt, updatedAt); err != nil {
+		return ScheduleRecord{}, fmt.Errorf("parse schedule updated_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.NextDueAt, nextDueAt); err != nil {
+		return ScheduleRecord{}, fmt.Errorf("parse schedule next_due_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.LastAttemptAt, lastAttemptAt); err != nil {
+		return ScheduleRecord{}, fmt.Errorf("parse schedule last_attempt_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.PausedAt, pausedAt); err != nil {
+		return ScheduleRecord{}, fmt.Errorf("parse schedule paused_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.CancelledAt, cancelledAt); err != nil {
+		return ScheduleRecord{}, fmt.Errorf("parse schedule cancelled_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.CompletedAt, completedAt); err != nil {
+		return ScheduleRecord{}, fmt.Errorf("parse schedule completed_at: %w", err)
+	}
+	return record, nil
+}
+
+func scanScheduleTargetRecord(scanner interface {
+	Scan(dest ...any) error
+}) (ScheduleTargetRecord, error) {
+	var (
+		record    ScheduleTargetRecord
+		active    int
+		updatedAt string
+		document  string
+	)
+	if err := scanner.Scan(
+		&record.TargetRefID,
+		&record.ScheduleID,
+		&record.TargetKind,
+		&record.Revision,
+		&active,
+		&updatedAt,
+		&document,
+	); err != nil {
+		return ScheduleTargetRecord{}, fmt.Errorf("scan schedule target: %w", err)
+	}
+	record.Active = active != 0
+	record.Document = []byte(document)
+	if err := assignRequiredTime(&record.UpdatedAt, updatedAt); err != nil {
+		return ScheduleTargetRecord{}, fmt.Errorf("parse schedule target updated_at: %w", err)
+	}
+	return record, nil
+}
+
+func scanScheduleDispatchAttemptRecord(scanner interface {
+	Scan(dest ...any) error
+}) (ScheduleDispatchAttemptRecord, error) {
+	var (
+		record        ScheduleDispatchAttemptRecord
+		failureClass  sql.NullString
+		failureReason sql.NullString
+		nextRetryAt   sql.NullString
+		runID         sql.NullString
+		workflowID    sql.NullString
+		skippedReason sql.NullString
+		dueAt         string
+		createdAt     string
+		updatedAt     string
+		document      string
+	)
+	if err := scanner.Scan(
+		&record.AttemptID,
+		&record.ScheduleID,
+		&dueAt,
+		&record.TriggerSource,
+		&record.DispatchStatus,
+		&failureClass,
+		&failureReason,
+		&record.RetryCount,
+		&record.RetryBudget,
+		&nextRetryAt,
+		&record.ResolvedTargetRevision,
+		&runID,
+		&workflowID,
+		&record.DownstreamStatus,
+		&skippedReason,
+		&record.MissedCount,
+		&createdAt,
+		&updatedAt,
+		&document,
+	); err != nil {
+		return ScheduleDispatchAttemptRecord{}, fmt.Errorf("scan schedule attempt: %w", err)
+	}
+	record.FailureClass = failureClass.String
+	record.FailureReason = failureReason.String
+	record.RunID = runID.String
+	record.WorkflowID = workflowID.String
+	record.SkippedReason = skippedReason.String
+	record.Document = []byte(document)
+	if err := assignRequiredTime(&record.DueAt, dueAt); err != nil {
+		return ScheduleDispatchAttemptRecord{}, fmt.Errorf("parse schedule attempt due_at: %w", err)
+	}
+	if err := assignRequiredTime(&record.CreatedAt, createdAt); err != nil {
+		return ScheduleDispatchAttemptRecord{}, fmt.Errorf("parse schedule attempt created_at: %w", err)
+	}
+	if err := assignRequiredTime(&record.UpdatedAt, updatedAt); err != nil {
+		return ScheduleDispatchAttemptRecord{}, fmt.Errorf("parse schedule attempt updated_at: %w", err)
+	}
+	if err := assignOptionalTime(&record.NextRetryAt, nextRetryAt); err != nil {
+		return ScheduleDispatchAttemptRecord{}, fmt.Errorf("parse schedule attempt next_retry_at: %w", err)
+	}
 	return record, nil
 }
 
@@ -4857,25 +5454,35 @@ func scanEvent(scanner interface {
 	Scan(dest ...any) error
 }) (events.Event, error) {
 	var (
-		event        events.Event
-		sequence     int64
-		occurredAt   string
-		sessionID    sql.NullString
-		runID        sql.NullString
-		stepID       sql.NullString
-		connectorID  sql.NullString
-		capabilityID sql.NullString
-		payloadJSON  sql.NullString
+		event             events.Event
+		sequence          int64
+		environmentScope  string
+		occurredAt        string
+		sessionID         sql.NullString
+		runID             sql.NullString
+		workflowID        sql.NullString
+		workflowStepID    sql.NullString
+		scheduleID        sql.NullString
+		scheduleAttemptID sql.NullString
+		stepID            sql.NullString
+		connectorID       sql.NullString
+		capabilityID      sql.NullString
+		payloadJSON       sql.NullString
 	)
 
 	if err := scanner.Scan(
 		&sequence,
 		&event.EventID,
+		&environmentScope,
 		&event.Category,
 		&event.Name,
 		&occurredAt,
 		&sessionID,
 		&runID,
+		&workflowID,
+		&workflowStepID,
+		&scheduleID,
+		&scheduleAttemptID,
 		&stepID,
 		&connectorID,
 		&capabilityID,
@@ -4892,13 +5499,18 @@ func scanEvent(scanner interface {
 	}
 
 	event.Sequence = sequence
+	event.EnvironmentScope = environmentScope
 	event.OccurredAt = parsedOccurredAt
 	event.Scope = events.Scope{
-		SessionID:    sessionID.String,
-		RunID:        runID.String,
-		StepID:       stepID.String,
-		ConnectorID:  connectorID.String,
-		CapabilityID: capabilityID.String,
+		SessionID:         sessionID.String,
+		RunID:             runID.String,
+		WorkflowID:        workflowID.String,
+		WorkflowStepID:    workflowStepID.String,
+		ScheduleID:        scheduleID.String,
+		ScheduleAttemptID: scheduleAttemptID.String,
+		StepID:            stepID.String,
+		ConnectorID:       connectorID.String,
+		CapabilityID:      capabilityID.String,
 	}
 	if err := unmarshalNullableJSON(payloadJSON, &event.Payload); err != nil {
 		return events.Event{}, fmt.Errorf("decode event payload: %w", err)
@@ -4966,6 +5578,15 @@ func nullString(value string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: value, Valid: true}
+}
+
+func coalesceString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func isUniqueConstraintError(err error) bool {

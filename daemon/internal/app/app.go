@@ -28,6 +28,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
+	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
@@ -49,6 +50,7 @@ type App struct {
 	Sandboxes            *sandbox.Manager
 	MCP                  *mcp.Manager
 	Providers            *providers.Manager
+	Scheduler            *scheduler.Scheduler
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
 	discordRuntime       managedConnectorRuntime
@@ -93,11 +95,32 @@ func New() (*App, error) {
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 	chatService := chat.NewService(llmDispatcher, providerManager, skillRegistry, eventBus, sqliteStore)
+	workflowLauncher := api.NewScheduleWorkflowLauncher(api.ScheduleWorkflowLauncherDependencies{
+		Config:       cfg,
+		Runtime:      runtimeManager,
+		Policy:       policyEngine,
+		Capabilities: capabilitySupervisor,
+		Skills:       skillRegistry,
+		MCP:          mcpManager,
+		Sandboxes:    sandboxManager,
+		EventBus:     eventBus,
+		Store:        sqliteStore,
+		Checkpoints:  checkpointManager,
+	})
+	scheduleManager := scheduler.New(scheduler.Dependencies{
+		Config:           cfg,
+		Runtime:          runtimeManager,
+		EventBus:         eventBus,
+		Store:            sqliteStore,
+		Checkpoints:      checkpointManager,
+		WorkflowLauncher: workflowLauncher,
+	})
+	envCtx := events.WithEnvironmentScope(context.Background(), string(cfg.Environment))
 
-	if err := recoverPersistedState(context.Background(), cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager); err != nil {
+	if err := recoverPersistedState(envCtx, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager); err != nil {
 		return nil, err
 	}
-	if err := syncManagedProviderState(context.Background(), sqliteStore, providerManager); err != nil {
+	if err := syncManagedProviderState(envCtx, sqliteStore, providerManager); err != nil {
 		return nil, err
 	}
 
@@ -132,6 +155,7 @@ func New() (*App, error) {
 		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
+		Scheduler:    scheduleManager,
 		Store:        sqliteStore,
 		Checkpoints:  checkpointManager,
 	})
@@ -152,6 +176,7 @@ func New() (*App, error) {
 		Sandboxes:            sandboxManager,
 		MCP:                  mcpManager,
 		Providers:            providerManager,
+		Scheduler:            scheduleManager,
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,
 		discordRuntime:       discordRuntime,
@@ -228,6 +253,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (a *App) Run(ctx context.Context) error {
+	ctx = events.WithEnvironmentScope(ctx, string(a.Config.Environment))
 	a.Logger.Info("starting daemon", "bind_addr", a.Config.BindAddr)
 
 	if a.discordRuntime != nil {
@@ -239,8 +265,13 @@ func (a *App) Run(ctx context.Context) error {
 			return err
 		}
 	}
+	if a.Scheduler != nil {
+		if err := a.Scheduler.Start(ctx); err != nil {
+			return err
+		}
+	}
 
-	if _, err := a.publishSystemEvent(context.Background(), "system.started", map[string]any{
+	if _, err := a.publishSystemEvent(ctx, "system.started", map[string]any{
 		"service": "dope",
 		"version": a.Config.Version,
 	}); err != nil {
@@ -252,7 +283,8 @@ func (a *App) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		if _, err := a.publishSystemEvent(context.Background(), "system.stopped", map[string]any{
+		stopCtx := events.WithEnvironmentScope(context.Background(), string(a.Config.Environment))
+		if _, err := a.publishSystemEvent(stopCtx, "system.stopped", map[string]any{
 			"service": "dope",
 			"reason":  "context_cancelled",
 		}); err != nil {
@@ -296,6 +328,11 @@ func (a *App) Close(_ context.Context) error {
 			firstErr = err
 		}
 	}
+	if a.Scheduler != nil {
+		if err := a.Scheduler.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
 	if a.Checkpoints != nil {
 		if err := a.Checkpoints.Close(); err != nil && firstErr == nil {
 			firstErr = err
@@ -315,8 +352,9 @@ func (a *App) Close(_ context.Context) error {
 
 func (a *App) publishSystemEvent(ctx context.Context, name string, payload map[string]any) (events.Event, error) {
 	event := events.Event{
-		Category: "system",
-		Name:     name,
+		EnvironmentScope: events.EnvironmentScopeFromContext(ctx),
+		Category:         "system",
+		Name:             name,
 		Resource: events.Resource{
 			Kind: "system",
 			ID:   "dope",

@@ -208,6 +208,17 @@ remaining non-knowledge personal-agent product surface:
 These are not memory work. They are the missing product and reliability layers that turn
 the current daemon substrate into a serious personal agent.
 
+Current daemon status after Roadmap 25:
+
+- top-level schedule resources are now first-class daemon-owned records with create, list,
+  inspect, pause, resume, and cancel routes
+- one-time schedules dispatch normal runs or workflows with additive `scheduleId` and
+  `scheduleAttemptId` linkage on runtime and workflow truth
+- recurring schedules preserve timezone-aware next due time, paused history,
+  overlap-skipped history, and bounded retry visibility
+- daemon restart performs bounded catch-up and records missed intervals rather than
+  replaying an unbounded backlog
+
 ### Phase 5: Context Engineering
 
 After the non-knowledge personal-agent product surface:
@@ -400,30 +411,23 @@ This is a later phase, but it should stay visible in the architecture.
 
 The right next step is:
 
-- Roadmap 16 is now closed
-- close the post-sandbox prerequisite slice:
-  - requirement declarations
-  - secret scope and redaction
-  - execution provenance
-  - remaining local-consumer convergence
+- Roadmaps 22 through 25 are now closed
+- the next implementation roadmap should start at Roadmap 26: use-computer capability
+  plane
 
 Then continue in this order:
 
-1. MCP catalog management and distribution
-2. additional MCP transports
-3. tool-call orchestration
-4. scheduled tasks and wakeups
-5. use-computer capability plane
-6. personal integrations platform
-7. delivery and notifications
-8. calendar integration
-9. mail integration
-10. tasks and reminders
-11. operator shell and onboarding
-12. evaluation and replay harness
-13. context engineering
-14. memory
-15. agent-managed skills
-16. dreaming / self-improve
+1. use-computer capability plane
+2. personal integrations platform
+3. delivery and notifications
+4. calendar integration
+5. mail integration
+6. tasks and reminders
+7. operator shell and onboarding
+8. evaluation and replay harness
+9. context engineering
+10. memory
+11. agent-managed skills
+12. dreaming / self-improve
 
 This keeps the harness grounded in execution control before it grows into adaptive knowledge systems.

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/schedule-attempt-resource.schema.json",
+  "title": "ScheduleAttemptResource",
+  "type": "object",
+  "required": [
+    "scheduleAttemptId",
+    "scheduleId",
+    "dueAt",
+    "triggerSource",
+    "dispatchStatus",
+    "retryCount",
+    "retryBudget",
+    "downstreamStatus",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "scheduleAttemptId": { "type": "string" },
+    "scheduleId": { "type": "string" },
+    "dueAt": { "type": "string", "format": "date-time" },
+    "triggerSource": { "type": "string", "enum": ["normal", "catch_up", "retry"] },
+    "dispatchStatus": { "type": "string", "enum": ["pending", "dispatching", "dispatched", "failed", "missed", "skipped_paused", "skipped_overlap", "skipped_cancelled", "exhausted"] },
+    "failureClass": { "type": "string" },
+    "failureReason": { "type": "string" },
+    "retryCount": { "type": "integer", "minimum": 0 },
+    "retryBudget": { "type": "integer", "minimum": 0 },
+    "nextRetryAt": { "type": "string", "format": "date-time" },
+    "resolvedTargetRevision": { "type": "integer", "minimum": 0 },
+    "runId": { "type": "string" },
+    "workflowId": { "type": "string" },
+    "downstreamStatus": { "type": "string", "enum": ["none", "running", "completed", "failed", "cancelled", "interrupted"] },
+    "skippedReason": { "type": "string" },
+    "missedCount": { "type": "integer", "minimum": 0 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

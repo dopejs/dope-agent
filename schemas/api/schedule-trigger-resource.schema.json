@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/schedule-trigger-resource.schema.json",
+  "title": "ScheduleTriggerResource",
+  "type": "object",
+  "required": ["kind"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["once", "cron"]
+    },
+    "fireAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cronExpr": {
+      "type": "string"
+    },
+    "timezone": {
+      "type": "string"
+    },
+    "nextDueAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

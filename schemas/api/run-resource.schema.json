@@ -19,6 +19,12 @@
     "sessionId": {
       "type": "string"
     },
+    "scheduleId": {
+      "type": "string"
+    },
+    "scheduleAttemptId": {
+      "type": "string"
+    },
     "entrypoint": {
       "type": "string"
     },

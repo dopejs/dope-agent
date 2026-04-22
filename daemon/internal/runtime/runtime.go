@@ -37,21 +37,25 @@ const (
 )
 
 type Run struct {
-	RunID            string    `json:"runId"`
-	SessionID        string    `json:"sessionId,omitempty"`
-	Entrypoint       string    `json:"entrypoint"`
-	Status           RunStatus `json:"status"`
-	Goal             string    `json:"goal"`
-	ActiveWorkflowID string    `json:"activeWorkflowId,omitempty"`
-	WorkflowCount    int       `json:"workflowCount,omitempty"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
+	RunID             string    `json:"runId"`
+	SessionID         string    `json:"sessionId,omitempty"`
+	ScheduleID        string    `json:"scheduleId,omitempty"`
+	ScheduleAttemptID string    `json:"scheduleAttemptId,omitempty"`
+	Entrypoint        string    `json:"entrypoint"`
+	Status            RunStatus `json:"status"`
+	Goal              string    `json:"goal"`
+	ActiveWorkflowID  string    `json:"activeWorkflowId,omitempty"`
+	WorkflowCount     int       `json:"workflowCount,omitempty"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
 type CreateRunInput struct {
-	SessionID  string `json:"sessionId"`
-	Entrypoint string `json:"entrypoint"`
-	Goal       string `json:"goal"`
+	SessionID         string `json:"sessionId"`
+	ScheduleID        string `json:"scheduleId,omitempty"`
+	ScheduleAttemptID string `json:"scheduleAttemptId,omitempty"`
+	Entrypoint        string `json:"entrypoint"`
+	Goal              string `json:"goal"`
 }
 
 type StepStatus string
@@ -69,18 +73,18 @@ const (
 )
 
 type Step struct {
-	StepID          string     `json:"stepId"`
-	RunID           string     `json:"runId"`
-	WorkflowID      string     `json:"workflowId,omitempty"`
-	WorkflowStepID  string     `json:"workflowStepId,omitempty"`
-	Attempt         int        `json:"attempt,omitempty"`
-	Title           string     `json:"title"`
-	Kind            string     `json:"kind"`
-	Status          StepStatus `json:"status"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
-	Input           any        `json:"input,omitempty"`
-	Output          any        `json:"output,omitempty"`
+	StepID         string     `json:"stepId"`
+	RunID          string     `json:"runId"`
+	WorkflowID     string     `json:"workflowId,omitempty"`
+	WorkflowStepID string     `json:"workflowStepId,omitempty"`
+	Attempt        int        `json:"attempt,omitempty"`
+	Title          string     `json:"title"`
+	Kind           string     `json:"kind"`
+	Status         StepStatus `json:"status"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+	Input          any        `json:"input,omitempty"`
+	Output         any        `json:"output,omitempty"`
 }
 
 type CreateStepInput struct {
@@ -228,13 +232,15 @@ func (m *Manager) CreateRun(input CreateRunInput) (Run, error) {
 
 	now := time.Now().UTC()
 	run := Run{
-		RunID:      newRunID(),
-		SessionID:  input.SessionID,
-		Entrypoint: input.Entrypoint,
-		Status:     RunStatusQueued,
-		Goal:       input.Goal,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		RunID:             newRunID(),
+		SessionID:         input.SessionID,
+		ScheduleID:        input.ScheduleID,
+		ScheduleAttemptID: input.ScheduleAttemptID,
+		Entrypoint:        input.Entrypoint,
+		Status:            RunStatusQueued,
+		Goal:              input.Goal,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 
 	m.mu.Lock()

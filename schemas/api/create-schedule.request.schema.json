@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-schedule.request.schema.json",
+  "title": "CreateScheduleRequest",
+  "type": "object",
+  "required": ["trigger", "target", "retryPolicy"],
+  "additionalProperties": false,
+  "properties": {
+    "trigger": {
+      "$ref": "./schedule-trigger-resource.schema.json"
+    },
+    "target": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["run", "workflow"]
+        },
+        "run": {
+          "type": "object",
+          "required": ["entrypoint"],
+          "additionalProperties": false,
+          "properties": {
+            "sessionId": { "type": "string" },
+            "entrypoint": { "type": "string" },
+            "goal": { "type": "string" }
+          }
+        },
+        "workflow": {
+          "type": "object",
+          "required": ["entrypoint"],
+          "additionalProperties": false,
+          "properties": {
+            "sessionId": { "type": "string" },
+            "entrypoint": { "type": "string" },
+            "runGoal": { "type": "string" },
+            "workflowGoal": { "type": "string" }
+          }
+        }
+      }
+    },
+    "retryPolicy": {
+      "type": "object",
+      "required": ["maxRetries", "backoffKind", "baseDelaySeconds", "maxDelaySeconds"],
+      "additionalProperties": false,
+      "properties": {
+        "maxRetries": { "type": "integer", "minimum": 0 },
+        "backoffKind": { "type": "string", "enum": ["fixed", "exponential"] },
+        "baseDelaySeconds": { "type": "integer", "minimum": 1 },
+        "maxDelaySeconds": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

@@ -315,10 +315,11 @@ func TestRunsLifecycleRoutes(t *testing.T) {
 	logger := telemetry.New("error")
 	server := NewServer(Dependencies{
 		Config: config.Config{
-			BindAddr: "127.0.0.1:19191",
-			DataDir:  "~/.dope",
-			LogLevel: "info",
-			Version:  "test",
+			Environment: config.EnvironmentTest,
+			BindAddr:    "127.0.0.1:19191",
+			DataDir:     "~/.dope",
+			LogLevel:    "info",
+			Version:     "test",
 		},
 		Logger:       logger.Slog(),
 		EventBus:     eventBus,
@@ -4428,22 +4429,24 @@ func TestEventStreamSupportsLastEventIDResume(t *testing.T) {
 
 	now := time.Now().UTC()
 	first, err := sqliteStore.AppendEvent(context.Background(), events.Event{
-		EventID:    "evt_stream_1",
-		Category:   "run",
-		Name:       "run.created",
-		OccurredAt: now,
-		Resource:   events.Resource{Kind: "run", ID: "run_1"},
+		EventID:          "evt_stream_1",
+		EnvironmentScope: "test",
+		Category:         "run",
+		Name:             "run.created",
+		OccurredAt:       now,
+		Resource:         events.Resource{Kind: "run", ID: "run_1"},
 	})
 	if err != nil {
 		t.Fatalf("AppendEvent(first) returned error: %v", err)
 	}
 	eventBus.Publish(first)
 	second, err := sqliteStore.AppendEvent(context.Background(), events.Event{
-		EventID:    "evt_stream_2",
-		Category:   "run",
-		Name:       "run.status_changed",
-		OccurredAt: first.OccurredAt.Add(time.Second),
-		Resource:   events.Resource{Kind: "run", ID: "run_1"},
+		EventID:          "evt_stream_2",
+		EnvironmentScope: "test",
+		Category:         "run",
+		Name:             "run.status_changed",
+		OccurredAt:       first.OccurredAt.Add(time.Second),
+		Resource:         events.Resource{Kind: "run", ID: "run_1"},
 	})
 	if err != nil {
 		t.Fatalf("AppendEvent(second) returned error: %v", err)

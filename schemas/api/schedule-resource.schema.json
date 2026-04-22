@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/schedule-resource.schema.json",
+  "title": "ScheduleResource",
+  "type": "object",
+  "required": [
+    "scheduleId",
+    "kind",
+    "status",
+    "targetRefId",
+    "trigger",
+    "target",
+    "retryPolicy",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "scheduleId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "kind": { "type": "string", "enum": ["one_time", "recurring"] },
+    "status": { "type": "string", "enum": ["scheduled", "active", "paused", "cancelled", "completed", "dispatch_failed"] },
+    "targetRefId": { "type": "string" },
+    "trigger": { "$ref": "./schedule-trigger-resource.schema.json" },
+    "target": {
+      "type": "object",
+      "required": ["kind", "revision", "active", "updatedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["run", "workflow"] },
+        "revision": { "type": "integer", "minimum": 1 },
+        "active": { "type": "boolean" },
+        "run": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sessionId": { "type": "string" },
+            "entrypoint": { "type": "string" },
+            "goal": { "type": "string" }
+          }
+        },
+        "workflow": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sessionId": { "type": "string" },
+            "entrypoint": { "type": "string" },
+            "runGoal": { "type": "string" },
+            "workflowGoal": { "type": "string" }
+          }
+        },
+        "summary": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "retryPolicy": {
+      "type": "object",
+      "required": ["maxRetries", "backoffKind", "baseDelaySeconds", "maxDelaySeconds"],
+      "additionalProperties": false,
+      "properties": {
+        "maxRetries": { "type": "integer", "minimum": 0 },
+        "backoffKind": { "type": "string", "enum": ["fixed", "exponential"] },
+        "baseDelaySeconds": { "type": "integer", "minimum": 1 },
+        "maxDelaySeconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "nextDueAt": { "type": "string", "format": "date-time" },
+    "lastAttemptAt": { "type": "string", "format": "date-time" },
+    "lastOutcome": { "type": "string" },
+    "pausedAt": { "type": "string", "format": "date-time" },
+    "cancelledAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "attempts": {
+      "type": "array",
+      "items": { "$ref": "./schedule-attempt-resource.schema.json" }
+    }
+  }
+}

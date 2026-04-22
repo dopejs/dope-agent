@@ -145,6 +145,147 @@ func TestSQLiteStorePersistsRunsStepsAndEvents(t *testing.T) {
 	}
 }
 
+func TestSQLiteStorePersistsScheduleScopedRunsAndEvents(t *testing.T) {
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	scheduleRecord := ScheduleRecord{
+		ScheduleID:       "sched_test",
+		EnvironmentScope: "test",
+		Kind:             "one_time",
+		Status:           "scheduled",
+		TargetRefID:      "sched_target_test",
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		Document:         []byte(`{"scheduleId":"sched_test","kind":"one_time","status":"scheduled","targetRefId":"sched_target_test","createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:00:00Z"}`),
+	}
+	if err := store.UpsertSchedule(ctx, scheduleRecord); err != nil {
+		t.Fatalf("UpsertSchedule returned error: %v", err)
+	}
+	if err := store.UpsertScheduleTarget(ctx, ScheduleTargetRecord{
+		TargetRefID: "sched_target_test",
+		ScheduleID:  "sched_test",
+		TargetKind:  "run",
+		Revision:    1,
+		Active:      true,
+		UpdatedAt:   now,
+		Document:    []byte(`{"kind":"run","revision":1,"active":true,"run":{"entrypoint":"operator","goal":"scheduled"}}`),
+	}); err != nil {
+		t.Fatalf("UpsertScheduleTarget returned error: %v", err)
+	}
+
+	run := runtime.Run{
+		RunID:             "run_scheduled",
+		ScheduleID:        "sched_test",
+		ScheduleAttemptID: "sched_attempt_test",
+		Entrypoint:        "operator",
+		Status:            runtime.RunStatusQueued,
+		Goal:              "scheduled run",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	if err := store.UpsertRun(ctx, run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	persistedEvent, err := store.AppendEvent(ctx, events.Event{
+		EventID:    "evt_schedule_test",
+		Category:   "schedule",
+		Name:       "schedule.dispatch_recorded",
+		OccurredAt: now,
+		Scope: events.Scope{
+			ScheduleID:        "sched_test",
+			ScheduleAttemptID: "sched_attempt_test",
+			RunID:             run.RunID,
+		},
+		Resource: events.Resource{
+			Kind: "schedule",
+			ID:   "sched_test",
+		},
+		Payload: map[string]any{"dispatchStatus": "dispatched"},
+	})
+	if err != nil {
+		t.Fatalf("AppendEvent returned error: %v", err)
+	}
+	if persistedEvent.Sequence == 0 {
+		t.Fatal("expected persisted event sequence")
+	}
+
+	runs, err := store.ListRuns(ctx)
+	if err != nil {
+		t.Fatalf("ListRuns returned error: %v", err)
+	}
+	if len(runs) != 1 || runs[0].ScheduleID != "sched_test" || runs[0].ScheduleAttemptID != "sched_attempt_test" {
+		t.Fatalf("expected persisted schedule linkage on run, got %+v", runs)
+	}
+
+	items, err := store.ListEvents(ctx, events.Filter{ScheduleID: "sched_test"})
+	if err != nil {
+		t.Fatalf("ListEvents returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one schedule-scoped event, got %+v", items)
+	}
+	if items[0].Scope.ScheduleAttemptID != "sched_attempt_test" {
+		t.Fatalf("expected schedule attempt scope, got %+v", items[0])
+	}
+}
+
+func TestSQLiteStoreListsSchedulesByEnvironmentScope(t *testing.T) {
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	now := time.Now().UTC()
+	if err := store.UpsertSchedule(context.Background(), ScheduleRecord{
+		ScheduleID:       "sched_test_visible",
+		EnvironmentScope: "test",
+		Kind:             "one_time",
+		Status:           "scheduled",
+		TargetRefID:      "target_test_visible",
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		Document:         []byte(`{"scheduleId":"sched_test_visible","environmentScope":"test","kind":"one_time","status":"scheduled","targetRefId":"target_test_visible"}`),
+	}); err != nil {
+		t.Fatalf("UpsertSchedule(test) returned error: %v", err)
+	}
+	if err := store.UpsertSchedule(context.Background(), ScheduleRecord{
+		ScheduleID:       "sched_prod_hidden",
+		EnvironmentScope: "prod",
+		Kind:             "one_time",
+		Status:           "scheduled",
+		TargetRefID:      "target_prod_hidden",
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		Document:         []byte(`{"scheduleId":"sched_prod_hidden","environmentScope":"prod","kind":"one_time","status":"scheduled","targetRefId":"target_prod_hidden"}`),
+	}); err != nil {
+		t.Fatalf("UpsertSchedule(prod) returned error: %v", err)
+	}
+
+	items, err := store.ListSchedules(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("ListSchedules returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].ScheduleID != "sched_test_visible" {
+		t.Fatalf("expected only test schedule, got %+v", items)
+	}
+}
+
 func TestSQLiteStorePersistsSessions(t *testing.T) {
 	t.Parallel()
 
@@ -868,6 +1009,65 @@ func TestSQLiteStoreListsEventsAfterCursor(t *testing.T) {
 	}
 	if items[0].Sequence != second.Sequence {
 		t.Fatalf("expected sequence %d, got %d", second.Sequence, items[0].Sequence)
+	}
+}
+
+func TestSQLiteStoreListsEventsByEnvironmentAndScheduleAttempt(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	if _, err := store.AppendEvent(ctx, events.Event{
+		EventID:          "evt_sched_test_visible",
+		EnvironmentScope: "test",
+		Category:         "schedule",
+		Name:             "schedule.dispatch_recorded",
+		OccurredAt:       time.Now().UTC().Add(-time.Second),
+		Scope: events.Scope{
+			ScheduleID:        "sched_test_visible",
+			ScheduleAttemptID: "sched_attempt_test_visible",
+		},
+		Resource: events.Resource{Kind: "schedule", ID: "sched_test_visible"},
+	}); err != nil {
+		t.Fatalf("AppendEvent(test visible) returned error: %v", err)
+	}
+	if _, err := store.AppendEvent(ctx, events.Event{
+		EventID:          "evt_sched_prod_hidden",
+		EnvironmentScope: "prod",
+		Category:         "schedule",
+		Name:             "schedule.dispatch_recorded",
+		OccurredAt:       time.Now().UTC(),
+		Scope: events.Scope{
+			ScheduleID:        "sched_prod_hidden",
+			ScheduleAttemptID: "sched_attempt_prod_hidden",
+		},
+		Resource: events.Resource{Kind: "schedule", ID: "sched_prod_hidden"},
+	}); err != nil {
+		t.Fatalf("AppendEvent(prod hidden) returned error: %v", err)
+	}
+
+	items, err := store.ListEvents(ctx, events.Filter{
+		EnvironmentScope:  "test",
+		ScheduleID:        "sched_test_visible",
+		ScheduleAttemptID: "sched_attempt_test_visible",
+	})
+	if err != nil {
+		t.Fatalf("ListEvents returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one environment-scoped schedule event, got %+v", items)
+	}
+	if items[0].EnvironmentScope != "test" || items[0].Scope.ScheduleAttemptID != "sched_attempt_test_visible" {
+		t.Fatalf("unexpected filtered event %+v", items[0])
 	}
 }
 

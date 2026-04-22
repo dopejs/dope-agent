@@ -524,6 +524,7 @@ func executeWorkflowCapabilityTool(ctx context.Context, cfg config.Config, manag
 }
 
 func watchWorkflowSandboxExecution(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, workflowID, workflowStepID, runID, stepID, toolCallID, executionID string) {
+	bgCtx := events.WithEnvironmentScope(context.Background(), string(cfg.Environment))
 	for {
 		execution, ok := sandboxManager.GetExecution(executionID)
 		if !ok {
@@ -559,16 +560,16 @@ func watchWorkflowSandboxExecution(cfg config.Config, manager *runtime.Manager, 
 			terminal = true
 		}
 		if err == nil && terminal {
-			_ = persistToolCall(context.Background(), sqliteStore, manager, toolCall)
-			_ = persistCheckpoint(context.Background(), checkpointManager, runID)
+			_ = persistToolCall(bgCtx, sqliteStore, manager, toolCall)
+			_ = persistCheckpoint(bgCtx, checkpointManager, runID)
 			if toolCall.Status == runtime.ToolCallStatusCompleted {
-				_, _ = publishToolCallEvent(context.Background(), eventBus, sqliteStore, "tool_call.completed", runID, stepID, toolCall)
+				_, _ = publishToolCallEvent(bgCtx, eventBus, sqliteStore, "tool_call.completed", runID, stepID, toolCall)
 			} else {
-				_, _ = publishToolCallEvent(context.Background(), eventBus, sqliteStore, "tool_call.failed", runID, stepID, toolCall)
+				_, _ = publishToolCallEvent(bgCtx, eventBus, sqliteStore, "tool_call.failed", runID, stepID, toolCall)
 			}
-			workflow, ok, getErr := sqliteStore.GetWorkflow(context.Background(), string(cfg.Environment), runID, workflowID)
+			workflow, ok, getErr := sqliteStore.GetWorkflow(bgCtx, string(cfg.Environment), runID, workflowID)
 			if getErr == nil && ok {
-				_, _, _ = advanceWorkflowAfterToolCall(context.Background(), cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, workflow, toolCall, orchestration.StepStatusRunning, "")
+				_, _, _ = advanceWorkflowAfterToolCall(bgCtx, cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, workflow, toolCall, orchestration.StepStatusRunning, "")
 			}
 			return
 		}

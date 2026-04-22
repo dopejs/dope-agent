@@ -29,6 +29,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
+	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
@@ -49,6 +50,7 @@ type Dependencies struct {
 	MCP          *mcp.Manager
 	Connectors   *connectors.Supervisor
 	Capabilities *capabilities.Supervisor
+	Scheduler    *scheduler.Scheduler
 	Store        *store.SQLiteStore
 	Checkpoints  *checkpoints.Manager
 }
@@ -69,6 +71,7 @@ type Server struct {
 	mcp          *mcp.Manager
 	connectors   *connectors.Supervisor
 	capabilities *capabilities.Supervisor
+	scheduler    *scheduler.Scheduler
 	store        *store.SQLiteStore
 	checkpoints  *checkpoints.Manager
 	server       *http.Server
@@ -76,8 +79,15 @@ type Server struct {
 
 func NewServer(deps Dependencies) *Server {
 	mux := http.NewServeMux()
+	withEnvironment := func(handler http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			r = r.WithContext(events.WithEnvironmentScope(r.Context(), string(deps.Config.Environment)))
+			handler(w, r)
+		}
+	}
 	protected := func(handler http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
+			r = r.WithContext(events.WithEnvironmentScope(r.Context(), string(deps.Config.Environment)))
 			token, ok, err := authenticateRequest(deps.Auth, r)
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, err.Error())
@@ -111,12 +121,12 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/system/info", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, buildSystemInfoResponse(deps.Config))
 	})
-	mux.HandleFunc("/v1/auth/pairings/start", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/auth/pairings/start", withEnvironment(func(w http.ResponseWriter, r *http.Request) {
 		handleAuthPairingStart(deps.Auth, deps.EventBus, deps.Store, w, r)
-	})
-	mux.HandleFunc("/v1/auth/pairings/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/v1/auth/pairings/", withEnvironment(func(w http.ResponseWriter, r *http.Request) {
 		handleAuthPairingRoutes(deps.Auth, deps.EventBus, deps.Store, w, r)
-	})
+	}))
 	mux.HandleFunc("/v1/auth/me", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleAuthMe(deps.Auth, deps.Store, w, r)
 	}))
@@ -138,6 +148,12 @@ func NewServer(deps Dependencies) *Server {
 	}))
 	mux.HandleFunc("/v1/runs/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.EventBus, deps.Store, deps.Checkpoints, w, r)
+	}))
+	mux.HandleFunc("/v1/schedules", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleSchedules(deps.Scheduler, w, r)
+	}))
+	mux.HandleFunc("/v1/schedules/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleScheduleRoutes(deps.Scheduler, w, r)
 	}))
 	mux.HandleFunc("/v1/sessions", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSessions(deps.Router, deps.EventBus, deps.Store, w, r)
@@ -237,6 +253,7 @@ func NewServer(deps Dependencies) *Server {
 		mcp:          deps.MCP,
 		connectors:   deps.Connectors,
 		capabilities: deps.Capabilities,
+		scheduler:    deps.Scheduler,
 		store:        deps.Store,
 		checkpoints:  deps.Checkpoints,
 		server: &http.Server{
@@ -730,11 +747,13 @@ func handleEvents(eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.R
 		return
 	}
 	filter := events.Filter{
-		Category:     strings.TrimSpace(r.URL.Query().Get("category")),
-		SessionID:    strings.TrimSpace(r.URL.Query().Get("sessionId")),
-		RunID:        strings.TrimSpace(r.URL.Query().Get("runId")),
-		ResourceKind: strings.TrimSpace(r.URL.Query().Get("resourceKind")),
-		Cursor:       cursor,
+		Category:          strings.TrimSpace(r.URL.Query().Get("category")),
+		SessionID:         strings.TrimSpace(r.URL.Query().Get("sessionId")),
+		RunID:             strings.TrimSpace(r.URL.Query().Get("runId")),
+		ScheduleID:        strings.TrimSpace(r.URL.Query().Get("scheduleId")),
+		ScheduleAttemptID: strings.TrimSpace(r.URL.Query().Get("scheduleAttemptId")),
+		ResourceKind:      strings.TrimSpace(r.URL.Query().Get("resourceKind")),
+		Cursor:            cursor,
 	}
 	items, err := listEvents(r.Context(), eventBus, sqliteStore, filter)
 	if err != nil {
@@ -4195,6 +4214,9 @@ func persistCheckpoint(ctx context.Context, checkpointManager *checkpoints.Manag
 
 func publishEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, event events.Event) (events.Event, error) {
 	prepared := ensureEventDefaults(event)
+	if prepared.EnvironmentScope == "" {
+		prepared.EnvironmentScope = events.EnvironmentScopeFromContext(ctx)
+	}
 
 	if sqliteStore != nil {
 		persisted, err := sqliteStore.AppendEvent(ctx, prepared)
@@ -5214,6 +5236,9 @@ func ensureEventDefaults(event events.Event) events.Event {
 }
 
 func listEvents(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, filter events.Filter) ([]events.Event, error) {
+	if filter.EnvironmentScope == "" {
+		filter.EnvironmentScope = events.EnvironmentScopeFromContext(ctx)
+	}
 	if sqliteStore != nil {
 		return sqliteStore.ListEvents(ctx, filter)
 	}
@@ -5296,11 +5321,14 @@ func streamEvents(eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.R
 	}
 
 	filter := events.Filter{
-		Category:  r.URL.Query().Get("category"),
-		RunID:     r.URL.Query().Get("runId"),
-		SessionID: r.URL.Query().Get("sessionId"),
+		Category:          strings.TrimSpace(r.URL.Query().Get("category")),
+		RunID:             strings.TrimSpace(r.URL.Query().Get("runId")),
+		SessionID:         strings.TrimSpace(r.URL.Query().Get("sessionId")),
+		ScheduleID:        strings.TrimSpace(r.URL.Query().Get("scheduleId")),
+		ScheduleAttemptID: strings.TrimSpace(r.URL.Query().Get("scheduleAttemptId")),
+		EnvironmentScope:  events.EnvironmentScopeFromContext(r.Context()),
 	}
-	if resourceKind := r.URL.Query().Get("resourceKind"); resourceKind != "" {
+	if resourceKind := strings.TrimSpace(r.URL.Query().Get("resourceKind")); resourceKind != "" {
 		filter.ResourceKind = resourceKind
 	}
 	cursor, err := parseEventCursor(r)

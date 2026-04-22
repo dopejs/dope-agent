@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/schedule-list.response.schema.json",
+  "title": "ScheduleListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": { "$ref": "./schedule-resource.schema.json" }
+    }
+  }
+}

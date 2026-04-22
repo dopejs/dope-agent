@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/schedule-status-changed.event.schema.json",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "schedule" },
+        "name": { "const": "schedule.status_changed" },
+        "resource": {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "schedule" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": ["scheduleId", "status"]
+        }
+      }
+    }
+  ]
+}

@@ -1288,12 +1288,31 @@ investment focus.
 
 ### Roadmap 25: Scheduled Tasks And Wakeups
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/010-scheduled-tasks-and-wakeups.md](../specs/010-scheduled-tasks-and-wakeups.md)
 
 Goal: add a durable trigger plane that can wake the daemon and launch normal runs or
 workflows through the existing runtime.
+
+Current daemon status:
+
+- `/v1/schedules` plus `pause`, `resume`, and `cancel` routes expose first-class schedule
+  resources
+- schedules persist durable trigger, target-reference, and dispatch-attempt truth in
+  SQLite schema version `12`
+- one-time schedules dispatch normal runs or workflows with additive schedule linkage on
+  runtime and workflow resources
+- recurring schedules preserve timezone-aware next due time, overlap skips, retry or
+  exhausted truth, and bounded restart catch-up
+
+Verified on `2026-04-22` with:
+
+- `make daemon-contract-test`
+- `cd daemon && go test ./internal/api ./internal/scheduler ./internal/store ./internal/app ./internal/contracts`
+- `cd daemon && go test ./...`
+- manual `DOPE_ENV=test` one-time schedule dispatch and recurring pause/resume smoke
+- automated workflow-target dispatch regression with linked workflow completion
 
 ### Roadmap 26: Use-Computer Capability Plane
 

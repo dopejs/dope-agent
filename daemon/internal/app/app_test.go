@@ -27,6 +27,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
+	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
 
@@ -320,6 +321,177 @@ func TestRecoverPersistedStateCancelsInFlightSandboxToolCalls(t *testing.T) {
 	if len(persistedToolCalls) != 1 || persistedToolCalls[0].Status != runtime.ToolCallStatusCancelled {
 		t.Fatalf("expected persisted cancelled tool call, got %+v", persistedToolCalls)
 	}
+}
+
+func TestRecoverPersistedStatePreservesSchedulesAndCatchUpDispatchesOnlyLatestOverdue(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	seedRuntime := runtime.NewManager()
+	seedCheckpoints := checkpoints.NewManager(sqliteStore, seedRuntime)
+	seedClock := &appTestClock{now: time.Date(2026, 4, 22, 14, 0, 0, 0, time.UTC)}
+	seedScheduler := scheduler.New(scheduler.Dependencies{
+		Config: config.Config{
+			Environment: config.EnvironmentTest,
+			DataDir:     sqliteStore.DataDir,
+		},
+		Runtime:     seedRuntime,
+		EventBus:    events.NewBus(),
+		Store:       sqliteStore,
+		Checkpoints: seedCheckpoints,
+		Clock:       seedClock,
+	})
+
+	created, err := seedScheduler.Create(context.Background(), scheduler.CreateInput{
+		Trigger: scheduler.Trigger{
+			Kind:     scheduler.TriggerKindCron,
+			CronExpr: "*/1 * * * *",
+			Timezone: "UTC",
+		},
+		Target: scheduler.Target{
+			Kind: scheduler.TargetKindRun,
+			Run: &scheduler.RunTarget{
+				Entrypoint: "operator",
+				Goal:       "restart catch-up",
+			},
+		},
+		RetryPolicy: scheduler.RetryPolicy{MaxRetries: 0, BackoffKind: scheduler.RetryBackoffFixed, BaseDelaySeconds: 5, MaxDelaySeconds: 5},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	restoredRuntime := runtime.NewManager()
+	restoredRouter := router.NewSessionRouter()
+	restoredEventBus := events.NewBus()
+	restoreCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredConnectors := connectors.NewSupervisor()
+	restoredCapabilities := capabilities.NewSupervisor()
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+
+	catchUpClock := &appTestClock{now: time.Date(2026, 4, 22, 14, 4, 30, 0, time.UTC)}
+	catchUpScheduler := scheduler.New(scheduler.Dependencies{
+		Config: config.Config{
+			Environment: config.EnvironmentTest,
+			DataDir:     sqliteStore.DataDir,
+		},
+		Runtime:     restoredRuntime,
+		EventBus:    restoredEventBus,
+		Store:       sqliteStore,
+		Checkpoints: restoreCheckpoints,
+		Clock:       catchUpClock,
+	})
+	if err := catchUpScheduler.CatchUp(context.Background()); err != nil {
+		t.Fatalf("CatchUp returned error: %v", err)
+	}
+
+	got, ok, err := catchUpScheduler.Get(context.Background(), created.ScheduleID)
+	if err != nil || !ok {
+		t.Fatalf("Get returned ok=%v err=%v", ok, err)
+	}
+	if len(got.Attempts) != 2 {
+		t.Fatalf("expected one missed and one dispatched attempt, got %+v", got.Attempts)
+	}
+	if got.Attempts[1].DispatchStatus != scheduler.DispatchStatusMissed || got.Attempts[1].MissedCount != 4 {
+		t.Fatalf("expected visible missed intervals, got %+v", got.Attempts)
+	}
+	if got.Attempts[0].DispatchStatus != scheduler.DispatchStatusDispatched {
+		t.Fatalf("expected latest overdue dispatch, got %+v", got.Attempts[0])
+	}
+	if got.Attempts[0].DueAt.After(catchUpClock.now) {
+		t.Fatalf("expected catch-up dispatch to use latest overdue dueAt, got %+v", got.Attempts[0])
+	}
+	runs := restoredRuntime.ListRuns()
+	if len(runs) != 1 || runs[0].ScheduleID != created.ScheduleID {
+		t.Fatalf("expected exactly one catch-up run with schedule linkage, got %+v", runs)
+	}
+}
+
+func TestSchedulerCatchUpStaysUnder2SecondsFor100PersistedSchedules(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	seedRuntime := runtime.NewManager()
+	seedCheckpoints := checkpoints.NewManager(sqliteStore, seedRuntime)
+	seedClock := &appTestClock{now: time.Date(2026, 4, 22, 16, 0, 0, 0, time.UTC)}
+	seedScheduler := scheduler.New(scheduler.Dependencies{
+		Config: config.Config{
+			Environment: config.EnvironmentTest,
+			DataDir:     sqliteStore.DataDir,
+		},
+		Runtime:     seedRuntime,
+		EventBus:    events.NewBus(),
+		Store:       sqliteStore,
+		Checkpoints: seedCheckpoints,
+		Clock:       seedClock,
+	})
+	for idx := 0; idx < 100; idx++ {
+		if _, err := seedScheduler.Create(context.Background(), scheduler.CreateInput{
+			Trigger: scheduler.Trigger{
+				Kind:     scheduler.TriggerKindCron,
+				CronExpr: "*/1 * * * *",
+				Timezone: "UTC",
+			},
+			Target: scheduler.Target{
+				Kind: scheduler.TargetKindRun,
+				Run: &scheduler.RunTarget{
+					Entrypoint: "operator",
+					Goal:       "bulk catch-up",
+				},
+			},
+			RetryPolicy: scheduler.RetryPolicy{MaxRetries: 0, BackoffKind: scheduler.RetryBackoffFixed, BaseDelaySeconds: 5, MaxDelaySeconds: 5},
+		}); err != nil {
+			t.Fatalf("Create(%d) returned error: %v", idx, err)
+		}
+	}
+
+	catchUpClock := &appTestClock{now: time.Date(2026, 4, 22, 16, 4, 30, 0, time.UTC)}
+	catchUpRuntime := runtime.NewManager()
+	catchUpScheduler := scheduler.New(scheduler.Dependencies{
+		Config: config.Config{
+			Environment: config.EnvironmentTest,
+			DataDir:     sqliteStore.DataDir,
+		},
+		Runtime:     catchUpRuntime,
+		EventBus:    events.NewBus(),
+		Store:       sqliteStore,
+		Checkpoints: checkpoints.NewManager(sqliteStore, catchUpRuntime),
+		Clock:       catchUpClock,
+	})
+	started := time.Now()
+	if err := catchUpScheduler.CatchUp(context.Background()); err != nil {
+		t.Fatalf("CatchUp returned error: %v", err)
+	}
+	elapsed := time.Since(started)
+	if elapsed > 2*time.Second {
+		t.Fatalf("expected catch-up under 2s, got %s", elapsed)
+	}
+}
+
+type appTestClock struct {
+	now time.Time
+}
+
+func (c *appTestClock) Now() time.Time {
+	return c.now
 }
 
 func TestRecoverPersistedStateInterruptsInFlightWorkflows(t *testing.T) {

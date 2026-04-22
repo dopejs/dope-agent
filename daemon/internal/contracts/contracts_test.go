@@ -144,9 +144,26 @@ func workflowContractFixtures() map[string]string {
 	}
 }
 
+func scheduleContractFixtures() map[string]string {
+	return map[string]string{
+		"schemas/api/schedule-resource.schema.json":                    `{"scheduleId":"sched_1","environmentScope":"test","kind":"one_time","status":"completed","targetRefId":"sched_target_1","trigger":{"kind":"once","fireAt":"2026-04-22T10:01:00Z","nextDueAt":"2026-04-22T10:01:00Z"},"target":{"kind":"run","revision":1,"active":true,"run":{"entrypoint":"operator","goal":"dispatch once"},"summary":"dispatch once","updatedAt":"2026-04-22T10:00:00Z"},"retryPolicy":{"maxRetries":1,"backoffKind":"fixed","baseDelaySeconds":5,"maxDelaySeconds":5},"nextDueAt":"2026-04-22T10:01:00Z","lastAttemptAt":"2026-04-22T10:01:01Z","lastOutcome":"dispatched","createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:01:01Z","completedAt":"2026-04-22T10:01:01Z","attempts":[{"scheduleAttemptId":"sched_attempt_1","scheduleId":"sched_1","dueAt":"2026-04-22T10:01:00Z","triggerSource":"normal","dispatchStatus":"dispatched","retryCount":0,"retryBudget":1,"resolvedTargetRevision":1,"runId":"run_1","downstreamStatus":"running","createdAt":"2026-04-22T10:01:01Z","updatedAt":"2026-04-22T10:01:01Z"}]}`,
+		"schemas/api/schedule-list.response.schema.json":               `{"items":[{"scheduleId":"sched_1","environmentScope":"test","kind":"recurring","status":"active","targetRefId":"sched_target_1","trigger":{"kind":"cron","cronExpr":"*/1 * * * *","timezone":"UTC","nextDueAt":"2026-04-22T10:02:00Z"},"target":{"kind":"run","revision":1,"active":true,"run":{"entrypoint":"operator","goal":"dispatch once"},"summary":"dispatch once","updatedAt":"2026-04-22T10:00:00Z"},"retryPolicy":{"maxRetries":1,"backoffKind":"fixed","baseDelaySeconds":5,"maxDelaySeconds":5},"nextDueAt":"2026-04-22T10:02:00Z","createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:01:01Z","attempts":[]}]}`,
+		"schemas/events/schedule-created.event.schema.json":            `{"eventId":"evt_schedule_1","sequence":1,"category":"schedule","name":"schedule.created","occurredAt":"2026-04-22T10:00:00Z","scope":{"scheduleId":"sched_1"},"resource":{"kind":"schedule","id":"sched_1"},"payload":{"scheduleId":"sched_1","status":"scheduled","targetKind":"run","targetRefId":"sched_target_1"}}`,
+		"schemas/events/schedule-status-changed.event.schema.json":     `{"eventId":"evt_schedule_2","sequence":2,"category":"schedule","name":"schedule.status_changed","occurredAt":"2026-04-22T10:00:01Z","scope":{"scheduleId":"sched_1"},"resource":{"kind":"schedule","id":"sched_1"},"payload":{"scheduleId":"sched_1","status":"paused"}}`,
+		"schemas/events/schedule-dispatch-attempted.event.schema.json": `{"eventId":"evt_schedule_3","sequence":3,"category":"schedule","name":"schedule.dispatch_attempted","occurredAt":"2026-04-22T10:01:00Z","scope":{"scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1"},"resource":{"kind":"schedule","id":"sched_1"},"payload":{"scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","dispatchStatus":"dispatching","dueAt":"2026-04-22T10:01:00Z","triggerSource":"normal"}}`,
+		"schemas/events/schedule-dispatch-recorded.event.schema.json":  `{"eventId":"evt_schedule_4","sequence":4,"category":"schedule","name":"schedule.dispatch_recorded","occurredAt":"2026-04-22T10:01:01Z","scope":{"scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","runId":"run_1"},"resource":{"kind":"schedule","id":"sched_1"},"payload":{"scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","dispatchStatus":"dispatched","dueAt":"2026-04-22T10:01:00Z","triggerSource":"normal","runId":"run_1"}}`,
+		"schemas/events/schedule-retry-scheduled.event.schema.json":    `{"eventId":"evt_schedule_5","sequence":5,"category":"schedule","name":"schedule.retry_scheduled","occurredAt":"2026-04-22T10:01:05Z","scope":{"scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_2"},"resource":{"kind":"schedule","id":"sched_1"},"payload":{"scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_2","dispatchStatus":"failed","retryCount":1,"nextRetryAt":"2026-04-22T10:01:10Z"}}`,
+	}
+}
+
 func assertWorkflowContractFixtures(t *testing.T, validator *contracts.Validator) {
 	t.Helper()
 	mustValidateFixtures(t, validator, workflowContractFixtures())
+}
+
+func assertScheduleContractFixtures(t *testing.T, validator *contracts.Validator) {
+	t.Helper()
+	mustValidateFixtures(t, validator, scheduleContractFixtures())
 }
 
 func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
@@ -171,6 +188,7 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 		"schemas/api/chat-query.request.schema.json":                `{"provider":"echo","model":"echo-v1","skills":["shared"],"query":"hello","timeoutMs":1000,"maxRetries":1}`,
 		"schemas/api/run-provider-check.request.schema.json":        `{"model":"echo-v1","prompt":"hello"}`,
 		"schemas/api/provider-default-model.request.schema.json":    `{"model":"gpt-5.4"}`,
+		"schemas/api/create-schedule.request.schema.json":           `{"trigger":{"kind":"once","fireAt":"2026-04-22T10:01:00Z"},"target":{"kind":"run","run":{"entrypoint":"operator","goal":"dispatch once"}},"retryPolicy":{"maxRetries":1,"backoffKind":"fixed","baseDelaySeconds":5,"maxDelaySeconds":5}}`,
 		"schemas/api/request-approval.request.schema.json":          `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"needs approval","requestedBy":"web-ui"}`,
 		"schemas/api/resolve-approval.request.schema.json":          `{"resolution":"approved","comment":"allowed"}`,
 		"schemas/api/sandbox-execution.request.schema.json":         `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","timeoutMs":1000,"requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","reason":"inspect profile","metadata":{"ticket":"sandbox-16"},"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true}}`,
@@ -195,6 +213,13 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 	if err := validator.ValidateRelative("schemas/api/create-run.request.schema.json", []byte(`{"entrypoint":"chat","route":{"kind":"direct","channel":"telegram","accountId":"bot-main","peerId":"dm-1"}}`)); err != nil {
 		t.Fatalf("ValidateRelative(create-run route fixture) returned error: %v", err)
 	}
+}
+
+func TestScheduleSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	assertScheduleContractFixtures(t, validator)
 }
 
 func TestValidatorRejectsInvalidRequestFixture(t *testing.T) {
