@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/calendar-workflow-action.schema.json",
+  "title": "CalendarWorkflowAction",
+  "type": "object",
+  "required": ["operationClass"],
+  "additionalProperties": false,
+  "properties": {
+    "operationClass": {
+      "type": "string",
+      "enum": ["list_events", "get_event", "busy_free", "create_event", "update_event", "cancel_event"]
+    },
+    "integrationId": { "type": "string" },
+    "externalEventId": { "type": "string" },
+    "windowStart": { "type": "string", "format": "date-time" },
+    "windowEnd": { "type": "string", "format": "date-time" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "location": { "type": "string" },
+    "startsAt": { "type": "string", "format": "date-time" },
+    "endsAt": { "type": "string", "format": "date-time" },
+    "timezone": { "type": "string" },
+    "calendarRef": { "type": "string" },
+    "allDay": { "type": "boolean" },
+    "recurring": { "type": "boolean" },
+    "attendees": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "reason": { "type": "string" }
+  }
+}

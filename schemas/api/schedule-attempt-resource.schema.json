@@ -34,6 +34,10 @@
     "latestDeliveryId": { "type": "string" },
     "latestDeliveryStatus": { "type": "string", "enum": ["pending", "queued", "dispatching", "delivered", "suppressed", "failed"] },
     "latestDeliveryTargetId": { "type": "string" },
+    "calendarOperationSummaries": {
+      "type": "array",
+      "items": { "$ref": "./calendar-operation-summary.schema.json" }
+    },
     "skippedReason": { "type": "string" },
     "missedCount": { "type": "integer", "minimum": 0 },
     "createdAt": { "type": "string", "format": "date-time" },

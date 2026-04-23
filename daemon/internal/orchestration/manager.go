@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
@@ -60,6 +61,22 @@ func (m *Manager) Plan(cfg config.Config, run runtime.Run, input CreateWorkflowI
 		Status:           WorkflowStatusPlanning,
 		CreatedAt:        now,
 		UpdatedAt:        now,
+	}
+
+	if input.CalendarAction != nil {
+		calendarStep := pickCalendarWorkflowStep(*input.CalendarAction, now)
+		workflow.PlanSummary = "Plan one calendar domain step on the normal workflow runtime."
+		workflow.Steps = []WorkflowStep{calendarStep}
+		workflow.Status = WorkflowStatusPlanned
+		for idx := range workflow.Steps {
+			workflow.Steps[idx].WorkflowID = workflow.WorkflowID
+			workflow.Steps[idx].Position = idx + 1
+			workflow.Steps[idx].Status = StepStatusPlanned
+			workflow.Steps[idx].CreatedAt = now
+			workflow.Steps[idx].UpdatedAt = now
+			workflow.Steps[idx].MaxAttempts = max(1, workflow.Steps[idx].MaxAttempts)
+		}
+		return workflow
 	}
 
 	mcpStep, hasMCP := pickMCPWorkflowStep(goal, mcpSource, now)
@@ -487,6 +504,41 @@ func pickComputerUseWorkflowStep(goal string, now time.Time) (WorkflowStep, bool
 		CreatedAt:            now,
 		UpdatedAt:            now,
 	}, true
+}
+
+func pickCalendarWorkflowStep(action calendar.Action, now time.Time) WorkflowStep {
+	title := "Run calendar operation"
+	switch action.OperationClass {
+	case calendar.OperationClassListEvents:
+		title = "Inspect calendar events"
+	case calendar.OperationClassGetEvent:
+		title = "Inspect calendar event"
+	case calendar.OperationClassBusyFree:
+		title = "Inspect calendar availability"
+	case calendar.OperationClassCreateEvent:
+		title = "Create calendar event"
+	case calendar.OperationClassUpdateEvent:
+		title = "Update calendar event"
+	case calendar.OperationClassCancelEvent:
+		title = "Cancel calendar event"
+	}
+	consumerID := strings.TrimSpace(action.IntegrationID)
+	if consumerID == "" {
+		consumerID = "calendar"
+	}
+	return WorkflowStep{
+		WorkflowStepID:       newWorkflowStepID(),
+		Title:                title,
+		ConsumerKind:         "calendar",
+		ConsumerID:           consumerID,
+		ToolName:             string(action.OperationClass),
+		Input:                action,
+		SelectionRationale:   "Selected the calendar domain runtime so the workflow can execute calendar work on the normal workflow and delivery truth planes.",
+		ApprovalModeExpected: "allow",
+		MaxAttempts:          1,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}
 }
 
 func pickLocalWorkflowStep(cfg config.Config, goal string, capabilitySupervisor *capabilities.Supervisor, now time.Time) (WorkflowStep, bool) {

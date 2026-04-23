@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-calendar-availability-query.request.schema.json",
+  "title": "CreateCalendarAvailabilityQueryRequest",
+  "type": "object",
+  "required": ["windowStart", "windowEnd"],
+  "additionalProperties": false,
+  "properties": {
+    "integrationId": { "type": "string" },
+    "windowStart": { "type": "string", "format": "date-time" },
+    "windowEnd": { "type": "string", "format": "date-time" },
+    "timezone": { "type": "string" },
+    "source": { "$ref": "#/$defs/source" }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": { "type": "string" },
+        "stepId": { "type": "string" },
+        "toolCallId": { "type": "string" },
+        "workflowId": { "type": "string" },
+        "workflowStepId": { "type": "string" },
+        "scheduleId": { "type": "string" },
+        "scheduleAttemptId": { "type": "string" },
+        "deliveryId": { "type": "string" }
+      }
+    }
+  }
+}

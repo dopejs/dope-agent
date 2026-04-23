@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/calendar-operation-failed.event.schema.json",
+  "title": "CalendarOperationFailedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "calendar" },
+        "name": { "const": "calendar.operation_failed" },
+        "payload": {
+          "type": "object",
+          "required": ["operationId", "operationClass", "integrationId", "status", "timezoneUsed", "failureClass"],
+          "additionalProperties": false,
+          "properties": {
+            "operationId": { "type": "string" },
+            "operationClass": { "type": "string", "enum": ["list_events", "get_event", "busy_free", "create_event", "update_event", "cancel_event"] },
+            "integrationId": { "type": "string" },
+            "runId": { "type": "string" },
+            "workflowId": { "type": "string" },
+            "scheduleId": { "type": "string" },
+            "deliveryId": { "type": "string" },
+            "status": { "type": "string", "enum": ["failed", "blocked", "cancelled"] },
+            "timezoneUsed": { "type": "string" },
+            "externalEventId": { "type": "string" },
+            "failureClass": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -445,3 +445,7 @@ Then continue in this order:
 11. dreaming / self-improve
 
 This keeps the harness grounded in execution control before it grows into adaptive knowledge systems.
+
+Roadmap 29 is now closed with a repo-owned fake calendar backend in `DOPE_ENV=test`,
+additive calendar-domain persistence, and additive workflow/schedule/delivery
+projections rather than a second calendar-only execution plane.

@@ -152,6 +152,36 @@ The delivery plane is additive:
 - `latestDeliveryId`, `latestDeliveryStatus`, and `latestDeliveryTargetId` are lookup
   hints on source resources, not the authoritative delivery ledger
 
+## 5.5 Calendar Domain API
+
+Purpose:
+
+- inspect daemon-owned calendar account projections
+- inspect event detail and busy/free truth without collapsing them into mutation
+- inspect truthful calendar operation and artifact history
+- project additive calendar-operation linkage onto workflow, schedule, and delivery
+  surfaces
+
+Examples:
+
+- `GET /v1/calendar/accounts`
+- `GET /v1/calendar/events`
+- `GET /v1/calendar/events/{eventId}`
+- `POST /v1/calendar/availability/queries`
+- `POST /v1/calendar/events`
+- `POST /v1/calendar/events/{eventId}/update`
+- `POST /v1/calendar/events/{eventId}/cancel`
+- `GET /v1/calendar/operations`
+
+The calendar domain is additive:
+
+- readiness truth still belongs to `/v1/integrations`
+- calendar operation truth does not replace workflow, schedule, or delivery truth
+- workflow and schedule resources project `calendarOperationSummaries` as lookup aids,
+  not as a second execution ledger
+- delivery outcomes project `calendarOperationIds` and summaries additively; they do not
+  redefine whether the underlying calendar action succeeded
+
 ## 6. Config And Policy API
 
 Purpose:

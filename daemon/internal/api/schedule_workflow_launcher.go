@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
@@ -29,6 +31,8 @@ type ScheduleWorkflowLauncherDependencies struct {
 	Skills       *skills.Registry
 	MCP          *mcp.Manager
 	Sandboxes    *sandbox.Manager
+	Integrations *integrations.Manager
+	Calendar     *calendar.Manager
 	ComputerUse  *computeruse.Manager
 	Delivery     *delivery.Manager
 	EventBus     *events.Bus
@@ -44,6 +48,8 @@ type ScheduleWorkflowLauncher struct {
 	skills       *skills.Registry
 	mcp          *mcp.Manager
 	sandboxes    *sandbox.Manager
+	integrations *integrations.Manager
+	calendar     *calendar.Manager
 	computerUse  *computeruse.Manager
 	delivery     *delivery.Manager
 	eventBus     *events.Bus
@@ -60,6 +66,8 @@ func NewScheduleWorkflowLauncher(deps ScheduleWorkflowLauncherDependencies) *Sch
 		skills:       deps.Skills,
 		mcp:          deps.MCP,
 		sandboxes:    deps.Sandboxes,
+		integrations: deps.Integrations,
+		calendar:     deps.Calendar,
 		computerUse:  deps.ComputerUse,
 		delivery:     deps.Delivery,
 		eventBus:     deps.EventBus,
@@ -93,7 +101,7 @@ func (l *ScheduleWorkflowLauncher) LaunchScheduledWorkflow(ctx context.Context, 
 	workflow := orchestration.NewManager().Plan(
 		l.cfg,
 		run,
-		orchestration.CreateWorkflowInput{Goal: target.WorkflowGoal},
+		orchestration.CreateWorkflowInput{Goal: target.WorkflowGoal, CalendarAction: target.CalendarAction},
 		l.capabilities,
 		skillPlanningAdapter{registry: l.skills},
 		mcpPlanningAdapter{manager: l.mcp},
@@ -132,6 +140,8 @@ func (l *ScheduleWorkflowLauncher) LaunchScheduledWorkflow(ctx context.Context, 
 		l.skills,
 		l.mcp,
 		l.sandboxes,
+		l.integrations,
+		l.calendar,
 		l.eventBus,
 		l.delivery,
 		l.store,

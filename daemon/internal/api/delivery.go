@@ -168,6 +168,11 @@ func handleDeliveries(manager *delivery.Manager, w http.ResponseWriter, r *http.
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	items, err = projectDeliveryOutcomesCalendarLinkage(r.Context(), manager.Store(), items)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, DeliveryOutcomeListResponse{Items: items})
 }
 
@@ -184,6 +189,11 @@ func handleDeliveryRoutes(manager *delivery.Manager, w http.ResponseWriter, r *h
 	}
 	if !ok {
 		http.NotFound(w, r)
+		return
+	}
+	item, err = projectDeliveryOutcomeCalendarLinkage(r.Context(), manager.Store(), item)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, item)

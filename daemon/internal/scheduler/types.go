@@ -1,6 +1,10 @@
 package scheduler
 
-import "time"
+import (
+	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/calendar"
+)
 
 type ScheduleKind string
 
@@ -119,10 +123,11 @@ type RunTarget struct {
 }
 
 type WorkflowTarget struct {
-	SessionID    string `json:"sessionId,omitempty"`
-	Entrypoint   string `json:"entrypoint"`
-	RunGoal      string `json:"runGoal,omitempty"`
-	WorkflowGoal string `json:"workflowGoal,omitempty"`
+	SessionID      string           `json:"sessionId,omitempty"`
+	Entrypoint     string           `json:"entrypoint"`
+	RunGoal        string           `json:"runGoal,omitempty"`
+	WorkflowGoal   string           `json:"workflowGoal,omitempty"`
+	CalendarAction *calendar.Action `json:"calendarAction,omitempty"`
 }
 
 type RetryPolicy struct {
@@ -133,27 +138,28 @@ type RetryPolicy struct {
 }
 
 type DispatchAttempt struct {
-	AttemptID              string           `json:"scheduleAttemptId"`
-	ScheduleID             string           `json:"scheduleId"`
-	DueAt                  time.Time        `json:"dueAt"`
-	TriggerSource          TriggerSource    `json:"triggerSource"`
-	DispatchStatus         DispatchStatus   `json:"dispatchStatus"`
-	FailureClass           string           `json:"failureClass,omitempty"`
-	FailureReason          string           `json:"failureReason,omitempty"`
-	RetryCount             int              `json:"retryCount"`
-	RetryBudget            int              `json:"retryBudget"`
-	NextRetryAt            *time.Time       `json:"nextRetryAt,omitempty"`
-	ResolvedTargetRevision int              `json:"resolvedTargetRevision,omitempty"`
-	RunID                  string           `json:"runId,omitempty"`
-	WorkflowID             string           `json:"workflowId,omitempty"`
-	DownstreamStatus       DownstreamStatus `json:"downstreamStatus"`
-	LatestDeliveryID       string           `json:"latestDeliveryId,omitempty"`
-	LatestDeliveryStatus   string           `json:"latestDeliveryStatus,omitempty"`
-	LatestDeliveryTargetID string           `json:"latestDeliveryTargetId,omitempty"`
-	SkippedReason          string           `json:"skippedReason,omitempty"`
-	MissedCount            int              `json:"missedCount,omitempty"`
-	CreatedAt              time.Time        `json:"createdAt"`
-	UpdatedAt              time.Time        `json:"updatedAt"`
+	AttemptID                  string                      `json:"scheduleAttemptId"`
+	ScheduleID                 string                      `json:"scheduleId"`
+	DueAt                      time.Time                   `json:"dueAt"`
+	TriggerSource              TriggerSource               `json:"triggerSource"`
+	DispatchStatus             DispatchStatus              `json:"dispatchStatus"`
+	FailureClass               string                      `json:"failureClass,omitempty"`
+	FailureReason              string                      `json:"failureReason,omitempty"`
+	RetryCount                 int                         `json:"retryCount"`
+	RetryBudget                int                         `json:"retryBudget"`
+	NextRetryAt                *time.Time                  `json:"nextRetryAt,omitempty"`
+	ResolvedTargetRevision     int                         `json:"resolvedTargetRevision,omitempty"`
+	RunID                      string                      `json:"runId,omitempty"`
+	WorkflowID                 string                      `json:"workflowId,omitempty"`
+	DownstreamStatus           DownstreamStatus            `json:"downstreamStatus"`
+	LatestDeliveryID           string                      `json:"latestDeliveryId,omitempty"`
+	LatestDeliveryStatus       string                      `json:"latestDeliveryStatus,omitempty"`
+	LatestDeliveryTargetID     string                      `json:"latestDeliveryTargetId,omitempty"`
+	CalendarOperationSummaries []calendar.OperationSummary `json:"calendarOperationSummaries,omitempty"`
+	SkippedReason              string                      `json:"skippedReason,omitempty"`
+	MissedCount                int                         `json:"missedCount,omitempty"`
+	CreatedAt                  time.Time                   `json:"createdAt"`
+	UpdatedAt                  time.Time                   `json:"updatedAt"`
 }
 
 func IsTerminalScheduleStatus(status ScheduleStatus) bool {

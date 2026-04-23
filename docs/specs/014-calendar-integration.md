@@ -1,6 +1,6 @@
 # Calendar Integration
 
-Status: proposed
+Status: complete
 
 Authority: This document is the authoritative upstream spec for the first personal calendar domain slice built on the shared integrations platform.
 
@@ -65,6 +65,9 @@ Add a production-grade calendar domain that supports inspectable availability, e
 ## Definition Of Done
 
 - the agent can read and mutate calendar state through a stable, inspectable, and auditable domain layer
+- the concrete phase-29 contract lives in
+  `specs/014-calendar-integration/contracts/calendar-domain-surfaces.md` together with
+  schema-backed API and event surfaces
 
 ## Recommended `/speckit-specify` Input
 

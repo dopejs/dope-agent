@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/calendar-event-artifact.schema.json",
+  "title": "CalendarEventArtifact",
+  "type": "object",
+  "required": [
+    "artifactId",
+    "operationId",
+    "kind",
+    "integrationId",
+    "environmentScope",
+    "createdAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "artifactId": { "type": "string" },
+    "operationId": { "type": "string" },
+    "kind": { "type": "string", "enum": ["event_snapshot", "availability_query"] },
+    "integrationId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "externalEventId": { "type": "string" },
+    "calendarRef": { "type": "string" },
+    "title": { "type": "string" },
+    "startsAt": { "type": "string", "format": "date-time" },
+    "endsAt": { "type": "string", "format": "date-time" },
+    "timezone": { "type": "string" },
+    "allDay": { "type": "boolean" },
+    "recurrenceSummary": { "type": "string" },
+    "mutationEligibleInPhase": { "type": "boolean" },
+    "lifecycleState": {
+      "type": "string",
+      "enum": ["active", "cancelled", "stale_snapshot", "unavailable"]
+    },
+    "availabilityQuery": { "$ref": "./calendar-availability-query-resource.schema.json" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

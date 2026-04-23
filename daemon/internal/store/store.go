@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
+	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
@@ -31,7 +32,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 16
+	CurrentSchemaVersion = 17
 )
 
 type schemaMigration struct {
@@ -145,6 +146,55 @@ type IntegrationRecord struct {
 	CanonicalDefault bool
 	UpdatedAt        time.Time
 	Document         []byte
+}
+
+type CalendarAccountRecord struct {
+	CalendarAccountID string
+	IntegrationID     string
+	EnvironmentScope  string
+	AccountKey        string
+	ReadinessStatus   string
+	CanonicalDefault  bool
+	UpdatedAt         time.Time
+	Document          []byte
+}
+
+type CalendarOperationRecord struct {
+	OperationID       string
+	IntegrationID     string
+	CalendarAccountID string
+	EnvironmentScope  string
+	OperationClass    string
+	Status            string
+	ExternalEventID   string
+	RunID             string
+	WorkflowID        string
+	ScheduleID        string
+	DeliveryID        string
+	UpdatedAt         time.Time
+	Document          []byte
+}
+
+type CalendarArtifactRecord struct {
+	ArtifactID        string
+	OperationID       string
+	IntegrationID     string
+	EnvironmentScope  string
+	Kind              string
+	ExternalEventID   string
+	CreatedAt         time.Time
+	Document          []byte
+}
+
+type CalendarOperationFilter struct {
+	IntegrationID   string
+	RunID           string
+	WorkflowID      string
+	ScheduleID      string
+	DeliveryID      string
+	OperationClass  string
+	Status          string
+	ExternalEventID string
 }
 
 type WorkflowStepRecord struct {
@@ -1112,6 +1162,63 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_delivery_outcomes_env_target ON delivery_outcomes(environment_scope, chosen_target_id, updated_at DESC, delivery_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_delivery_attempts_delivery ON delivery_attempts(delivery_id, attempt_number ASC, attempt_id ASC);`,
 			`CREATE INDEX IF NOT EXISTS idx_delivery_summary_windows_env_status ON delivery_summary_windows(environment_scope, status, window_ends_at ASC, summary_window_id ASC);`,
+		},
+	},
+	{
+		Version: 17,
+		Name:    "calendar_domain",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS calendar_accounts (
+				calendar_account_id TEXT PRIMARY KEY,
+				integration_id TEXT NOT NULL UNIQUE,
+				environment_scope TEXT NOT NULL,
+				account_key TEXT,
+				readiness_status TEXT NOT NULL,
+				canonical_default INTEGER NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS calendar_operations (
+				operation_id TEXT PRIMARY KEY,
+				integration_id TEXT NOT NULL,
+				calendar_account_id TEXT NOT NULL,
+				environment_scope TEXT NOT NULL,
+				operation_class TEXT NOT NULL,
+				status TEXT NOT NULL,
+				external_event_id TEXT,
+				run_id TEXT,
+				workflow_id TEXT,
+				schedule_id TEXT,
+				delivery_id TEXT,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS calendar_artifacts (
+				artifact_id TEXT PRIMARY KEY,
+				operation_id TEXT NOT NULL,
+				integration_id TEXT NOT NULL,
+				environment_scope TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				external_event_id TEXT,
+				created_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_accounts_env_readiness ON calendar_accounts(environment_scope, readiness_status, updated_at DESC, integration_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_accounts_env_default ON calendar_accounts(environment_scope, account_key, canonical_default, updated_at DESC, integration_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_operations_env_class_status ON calendar_operations(environment_scope, operation_class, status, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_operations_run ON calendar_operations(environment_scope, run_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_operations_workflow ON calendar_operations(environment_scope, workflow_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_operations_schedule ON calendar_operations(environment_scope, schedule_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_operations_delivery ON calendar_operations(environment_scope, delivery_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_operations_event ON calendar_operations(environment_scope, external_event_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_artifacts_operation ON calendar_artifacts(environment_scope, operation_id, created_at ASC, artifact_id ASC);`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_artifacts_event ON calendar_artifacts(environment_scope, external_event_id, created_at DESC, artifact_id DESC);`,
 		},
 	},
 }
@@ -2657,6 +2764,277 @@ func (s *SQLiteStore) ListIntegrations(ctx context.Context, environmentScope str
 		var item integrations.Resource
 		if err := json.Unmarshal(record.Document, &item); err != nil {
 			return nil, fmt.Errorf("decode integration %s: %w", record.IntegrationID, err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertCalendarAccount(ctx context.Context, item calendar.AccountProjection) error {
+	if s == nil {
+		return nil
+	}
+	documentJSON, err := marshalJSON(item)
+	if err != nil {
+		return fmt.Errorf("marshal calendar account %s: %w", item.CalendarAccountID, err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO calendar_accounts (
+			calendar_account_id,
+			integration_id,
+			environment_scope,
+			account_key,
+			readiness_status,
+			canonical_default,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(calendar_account_id) DO UPDATE SET
+			integration_id = excluded.integration_id,
+			environment_scope = excluded.environment_scope,
+			account_key = excluded.account_key,
+			readiness_status = excluded.readiness_status,
+			canonical_default = excluded.canonical_default,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		item.CalendarAccountID,
+		item.IntegrationID,
+		item.EnvironmentScope,
+		nullString(item.AccountKey),
+		item.ReadinessStatus,
+		boolToInt(item.CanonicalDefault),
+		item.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		documentJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert calendar account %s: %w", item.CalendarAccountID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListCalendarAccounts(ctx context.Context, environmentScope string) ([]calendar.AccountProjection, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT calendar_account_id, integration_id, environment_scope, account_key, readiness_status, canonical_default, updated_at, document_json
+		FROM calendar_accounts
+		WHERE environment_scope = ?
+		ORDER BY updated_at ASC, calendar_account_id ASC
+	`, strings.TrimSpace(environmentScope))
+	if err != nil {
+		return nil, fmt.Errorf("list calendar accounts for %s: %w", environmentScope, err)
+	}
+	defer rows.Close()
+	items := make([]calendar.AccountProjection, 0)
+	for rows.Next() {
+		record, err := scanCalendarAccountRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		var item calendar.AccountProjection
+		if err := json.Unmarshal(record.Document, &item); err != nil {
+			return nil, fmt.Errorf("decode calendar account %s: %w", record.CalendarAccountID, err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertCalendarOperation(ctx context.Context, item calendar.Operation) error {
+	if s == nil {
+		return nil
+	}
+	documentJSON, err := marshalJSON(item)
+	if err != nil {
+		return fmt.Errorf("marshal calendar operation %s: %w", item.OperationID, err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO calendar_operations (
+			operation_id,
+			integration_id,
+			calendar_account_id,
+			environment_scope,
+			operation_class,
+			status,
+			external_event_id,
+			run_id,
+			workflow_id,
+			schedule_id,
+			delivery_id,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(operation_id) DO UPDATE SET
+			integration_id = excluded.integration_id,
+			calendar_account_id = excluded.calendar_account_id,
+			environment_scope = excluded.environment_scope,
+			operation_class = excluded.operation_class,
+			status = excluded.status,
+			external_event_id = excluded.external_event_id,
+			run_id = excluded.run_id,
+			workflow_id = excluded.workflow_id,
+			schedule_id = excluded.schedule_id,
+			delivery_id = excluded.delivery_id,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		item.OperationID,
+		item.IntegrationID,
+		item.CalendarAccountID,
+		item.EnvironmentScope,
+		string(item.OperationClass),
+		string(item.Status),
+		nullString(item.ExternalEventID),
+		nullString(item.RunID),
+		nullString(item.WorkflowID),
+		nullString(item.ScheduleID),
+		nullString(item.DeliveryID),
+		item.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		documentJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert calendar operation %s: %w", item.OperationID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListCalendarOperations(ctx context.Context, environmentScope string, filter CalendarOperationFilter) ([]calendar.Operation, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT operation_id, integration_id, calendar_account_id, environment_scope, operation_class, status, external_event_id, run_id, workflow_id, schedule_id, delivery_id, updated_at, document_json
+		FROM calendar_operations
+		WHERE environment_scope = ?
+	`
+	args := []any{strings.TrimSpace(environmentScope)}
+	if trimmed := strings.TrimSpace(filter.IntegrationID); trimmed != "" {
+		query += ` AND integration_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.RunID); trimmed != "" {
+		query += ` AND run_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.WorkflowID); trimmed != "" {
+		query += ` AND workflow_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.ScheduleID); trimmed != "" {
+		query += ` AND schedule_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.DeliveryID); trimmed != "" {
+		query += ` AND delivery_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.OperationClass); trimmed != "" {
+		query += ` AND operation_class = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.Status); trimmed != "" {
+		query += ` AND status = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.ExternalEventID); trimmed != "" {
+		query += ` AND external_event_id = ?`
+		args = append(args, trimmed)
+	}
+	query += ` ORDER BY updated_at DESC, operation_id DESC`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list calendar operations for %s: %w", environmentScope, err)
+	}
+	defer rows.Close()
+	items := make([]calendar.Operation, 0)
+	for rows.Next() {
+		record, err := scanCalendarOperationRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		var item calendar.Operation
+		if err := json.Unmarshal(record.Document, &item); err != nil {
+			return nil, fmt.Errorf("decode calendar operation %s: %w", record.OperationID, err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertCalendarArtifact(ctx context.Context, item calendar.Artifact) error {
+	if s == nil {
+		return nil
+	}
+	documentJSON, err := marshalJSON(item)
+	if err != nil {
+		return fmt.Errorf("marshal calendar artifact %s: %w", item.ArtifactID, err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO calendar_artifacts (
+			artifact_id,
+			operation_id,
+			integration_id,
+			environment_scope,
+			kind,
+			external_event_id,
+			created_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(artifact_id) DO UPDATE SET
+			operation_id = excluded.operation_id,
+			integration_id = excluded.integration_id,
+			environment_scope = excluded.environment_scope,
+			kind = excluded.kind,
+			external_event_id = excluded.external_event_id,
+			created_at = excluded.created_at,
+			document_json = excluded.document_json
+	`,
+		item.ArtifactID,
+		item.OperationID,
+		item.IntegrationID,
+		item.EnvironmentScope,
+		string(item.Kind),
+		nullString(item.ExternalEventID),
+		item.CreatedAt.UTC().Format(time.RFC3339Nano),
+		documentJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert calendar artifact %s: %w", item.ArtifactID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListCalendarArtifacts(ctx context.Context, environmentScope, operationID string) ([]calendar.Artifact, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT artifact_id, operation_id, integration_id, environment_scope, kind, external_event_id, created_at, document_json
+		FROM calendar_artifacts
+		WHERE environment_scope = ?
+	`
+	args := []any{strings.TrimSpace(environmentScope)}
+	if trimmed := strings.TrimSpace(operationID); trimmed != "" {
+		query += ` AND operation_id = ?`
+		args = append(args, trimmed)
+	}
+	query += ` ORDER BY created_at ASC, artifact_id ASC`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list calendar artifacts for %s: %w", environmentScope, err)
+	}
+	defer rows.Close()
+	items := make([]calendar.Artifact, 0)
+	for rows.Next() {
+		record, err := scanCalendarArtifactRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		var item calendar.Artifact
+		if err := json.Unmarshal(record.Document, &item); err != nil {
+			return nil, fmt.Errorf("decode calendar artifact %s: %w", record.ArtifactID, err)
 		}
 		items = append(items, item)
 	}
@@ -6693,6 +7071,116 @@ func scanIntegrationRecord(scanner interface {
 		return IntegrationRecord{}, fmt.Errorf("parse integration updated_at: %w", err)
 	}
 	record.UpdatedAt = parsedUpdatedAt
+	record.Document = []byte(document)
+	return record, nil
+}
+
+func scanCalendarAccountRecord(scanner interface {
+	Scan(dest ...any) error
+}) (CalendarAccountRecord, error) {
+	var (
+		record           CalendarAccountRecord
+		accountKey       sql.NullString
+		readinessStatus  string
+		canonicalDefault int
+		updatedAt        string
+		document         string
+	)
+	if err := scanner.Scan(
+		&record.CalendarAccountID,
+		&record.IntegrationID,
+		&record.EnvironmentScope,
+		&accountKey,
+		&readinessStatus,
+		&canonicalDefault,
+		&updatedAt,
+		&document,
+	); err != nil {
+		return CalendarAccountRecord{}, fmt.Errorf("scan calendar account record: %w", err)
+	}
+	record.AccountKey = accountKey.String
+	record.ReadinessStatus = readinessStatus
+	record.CanonicalDefault = canonicalDefault != 0
+	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return CalendarAccountRecord{}, fmt.Errorf("parse calendar account updated_at: %w", err)
+	}
+	record.UpdatedAt = parsedUpdatedAt
+	record.Document = []byte(document)
+	return record, nil
+}
+
+func scanCalendarOperationRecord(scanner interface {
+	Scan(dest ...any) error
+}) (CalendarOperationRecord, error) {
+	var (
+		record          CalendarOperationRecord
+		externalEventID sql.NullString
+		runID           sql.NullString
+		workflowID      sql.NullString
+		scheduleID      sql.NullString
+		deliveryID      sql.NullString
+		updatedAt       string
+		document        string
+	)
+	if err := scanner.Scan(
+		&record.OperationID,
+		&record.IntegrationID,
+		&record.CalendarAccountID,
+		&record.EnvironmentScope,
+		&record.OperationClass,
+		&record.Status,
+		&externalEventID,
+		&runID,
+		&workflowID,
+		&scheduleID,
+		&deliveryID,
+		&updatedAt,
+		&document,
+	); err != nil {
+		return CalendarOperationRecord{}, fmt.Errorf("scan calendar operation record: %w", err)
+	}
+	record.ExternalEventID = externalEventID.String
+	record.RunID = runID.String
+	record.WorkflowID = workflowID.String
+	record.ScheduleID = scheduleID.String
+	record.DeliveryID = deliveryID.String
+	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return CalendarOperationRecord{}, fmt.Errorf("parse calendar operation updated_at: %w", err)
+	}
+	record.UpdatedAt = parsedUpdatedAt
+	record.Document = []byte(document)
+	return record, nil
+}
+
+func scanCalendarArtifactRecord(scanner interface {
+	Scan(dest ...any) error
+}) (CalendarArtifactRecord, error) {
+	var (
+		record          CalendarArtifactRecord
+		externalEventID sql.NullString
+		createdAt       string
+		document        string
+	)
+	if err := scanner.Scan(
+		&record.ArtifactID,
+		&record.OperationID,
+		&record.IntegrationID,
+		&record.EnvironmentScope,
+		&record.Kind,
+		&externalEventID,
+		&createdAt,
+		&document,
+	); err != nil {
+		return CalendarArtifactRecord{}, fmt.Errorf("scan calendar artifact record: %w", err)
+	}
+	record.ExternalEventID = externalEventID.String
+	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		return CalendarArtifactRecord{}, fmt.Errorf("parse calendar artifact created_at: %w", err)
+	}
+	record.CreatedAt = parsedCreatedAt
 	record.Document = []byte(document)
 	return record, nil
 }

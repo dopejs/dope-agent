@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/calendar-account-resource.schema.json",
+  "title": "CalendarAccountResource",
+  "type": "object",
+  "required": [
+    "calendarAccountId",
+    "integrationId",
+    "domainKind",
+    "environmentScope",
+    "readinessStatus",
+    "canonicalDefault",
+    "primaryCalendarRef",
+    "primaryCalendarLabel",
+    "primaryTimezone",
+    "supportsEventInspection",
+    "supportsBusyFree",
+    "supportsTimedMutation",
+    "lastSyncedAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "calendarAccountId": { "type": "string" },
+    "integrationId": { "type": "string" },
+    "domainKind": { "type": "string", "const": "calendar" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "accountKey": { "type": "string" },
+    "accountLabel": { "type": "string" },
+    "readinessStatus": {
+      "type": "string",
+      "enum": ["not_configured", "auth_pending", "healthy", "degraded", "unavailable"]
+    },
+    "canonicalDefault": { "type": "boolean" },
+    "selectionMode": { "type": "string", "enum": ["explicit", "canonical_default"] },
+    "primaryCalendarRef": { "type": "string" },
+    "primaryCalendarLabel": { "type": "string" },
+    "primaryTimezone": { "type": "string" },
+    "supportsEventInspection": { "type": "boolean" },
+    "supportsBusyFree": { "type": "boolean" },
+    "supportsTimedMutation": { "type": "boolean" },
+    "lastSyncedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

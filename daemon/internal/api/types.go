@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
@@ -151,7 +152,8 @@ type CreateRunRequest struct {
 }
 
 type CreateWorkflowRequest struct {
-	Goal string `json:"goal,omitempty"`
+	Goal           string                         `json:"goal,omitempty"`
+	CalendarAction *CalendarWorkflowActionRequest `json:"calendarAction,omitempty"`
 }
 
 type CreateIntegrationRequest struct {
@@ -196,6 +198,101 @@ type IntegrationProbeResponse struct {
 	Approval            *policy.Approval              `json:"approval,omitempty"`
 }
 
+type CalendarSourceLinkageRequest struct {
+	RunID             string `json:"runId,omitempty"`
+	StepID            string `json:"stepId,omitempty"`
+	ToolCallID        string `json:"toolCallId,omitempty"`
+	WorkflowID        string `json:"workflowId,omitempty"`
+	WorkflowStepID    string `json:"workflowStepId,omitempty"`
+	ScheduleID        string `json:"scheduleId,omitempty"`
+	ScheduleAttemptID string `json:"scheduleAttemptId,omitempty"`
+	DeliveryID        string `json:"deliveryId,omitempty"`
+}
+
+type CalendarAttendeeRequest struct {
+	Email string `json:"email,omitempty"`
+}
+
+type CalendarWorkflowActionRequest struct {
+	OperationClass  calendar.OperationClass `json:"operationClass"`
+	IntegrationID   string                  `json:"integrationId,omitempty"`
+	ExternalEventID string                  `json:"externalEventId,omitempty"`
+	WindowStart     string                  `json:"windowStart,omitempty"`
+	WindowEnd       string                  `json:"windowEnd,omitempty"`
+	Title           string                  `json:"title,omitempty"`
+	Description     string                  `json:"description,omitempty"`
+	Location        string                  `json:"location,omitempty"`
+	StartsAt        string                  `json:"startsAt,omitempty"`
+	EndsAt          string                  `json:"endsAt,omitempty"`
+	Timezone        string                  `json:"timezone,omitempty"`
+	CalendarRef     string                  `json:"calendarRef,omitempty"`
+	AllDay          bool                    `json:"allDay,omitempty"`
+	Recurring       bool                    `json:"recurring,omitempty"`
+	Attendees       []string                `json:"attendees,omitempty"`
+	Reason          string                  `json:"reason,omitempty"`
+}
+
+type CreateCalendarAvailabilityQueryRequest struct {
+	IntegrationID string                        `json:"integrationId,omitempty"`
+	WindowStart   string                        `json:"windowStart"`
+	WindowEnd     string                        `json:"windowEnd"`
+	Timezone      string                        `json:"timezone,omitempty"`
+	Source        *CalendarSourceLinkageRequest `json:"source,omitempty"`
+}
+
+type CreateCalendarEventRequest struct {
+	IntegrationID string                        `json:"integrationId,omitempty"`
+	CalendarRef   string                        `json:"calendarRef,omitempty"`
+	Title         string                        `json:"title,omitempty"`
+	Description   string                        `json:"description,omitempty"`
+	Location      string                        `json:"location,omitempty"`
+	StartsAt      string                        `json:"startsAt"`
+	EndsAt        string                        `json:"endsAt"`
+	Timezone      string                        `json:"timezone,omitempty"`
+	AllDay        bool                          `json:"allDay,omitempty"`
+	Recurring     bool                          `json:"recurring,omitempty"`
+	Attendees     []CalendarAttendeeRequest     `json:"attendees,omitempty"`
+	Source        *CalendarSourceLinkageRequest `json:"source,omitempty"`
+}
+
+type UpdateCalendarEventRequest = CreateCalendarEventRequest
+
+type CancelCalendarEventRequest struct {
+	IntegrationID string                        `json:"integrationId,omitempty"`
+	CalendarRef   string                        `json:"calendarRef,omitempty"`
+	Reason        string                        `json:"reason,omitempty"`
+	Source        *CalendarSourceLinkageRequest `json:"source,omitempty"`
+}
+
+type CalendarAccountListResponse = ListResponse[calendar.AccountProjection]
+type CalendarOperationListResponse = ListResponse[calendar.Operation]
+
+type CalendarEventListResponse struct {
+	Account   calendar.AccountProjection `json:"account"`
+	Items     []calendar.Event           `json:"items"`
+	Operation calendar.Operation         `json:"operation"`
+	Artifacts []calendar.Artifact        `json:"artifacts,omitempty"`
+}
+
+type CalendarEventResponse struct {
+	Account   calendar.AccountProjection `json:"account"`
+	Event     calendar.Event             `json:"event"`
+	Operation calendar.Operation         `json:"operation"`
+	Artifacts []calendar.Artifact        `json:"artifacts,omitempty"`
+}
+
+type CalendarAvailabilityQueryResponse struct {
+	Account   calendar.AccountProjection `json:"account"`
+	Query     calendar.AvailabilityQuery `json:"query"`
+	Operation calendar.Operation         `json:"operation"`
+	Artifacts []calendar.Artifact        `json:"artifacts,omitempty"`
+}
+
+type CalendarOperationResponse struct {
+	Operation calendar.Operation  `json:"operation"`
+	Artifacts []calendar.Artifact `json:"artifacts,omitempty"`
+}
+
 type CreateComputerUseSessionRequest struct {
 	WorkflowID     string `json:"workflowId,omitempty"`
 	WorkflowStepID string `json:"workflowStepId,omitempty"`
@@ -236,9 +333,17 @@ type ScheduleTriggerRequest struct {
 }
 
 type ScheduleTargetRequest struct {
-	Kind     scheduler.TargetKind      `json:"kind"`
-	Run      *scheduler.RunTarget      `json:"run,omitempty"`
-	Workflow *scheduler.WorkflowTarget `json:"workflow,omitempty"`
+	Kind     scheduler.TargetKind           `json:"kind"`
+	Run      *scheduler.RunTarget           `json:"run,omitempty"`
+	Workflow *ScheduleWorkflowTargetRequest `json:"workflow,omitempty"`
+}
+
+type ScheduleWorkflowTargetRequest struct {
+	SessionID      string                         `json:"sessionId,omitempty"`
+	Entrypoint     string                         `json:"entrypoint"`
+	RunGoal        string                         `json:"runGoal,omitempty"`
+	WorkflowGoal   string                         `json:"workflowGoal,omitempty"`
+	CalendarAction *CalendarWorkflowActionRequest `json:"calendarAction,omitempty"`
 }
 
 type ScheduleListResponse = ListResponse[scheduler.Schedule]

@@ -22,12 +22,16 @@
           "anyOf": [
             { "required": ["capabilityId"] },
             { "required": ["skillId"] },
-            { "required": ["mcpServerId"] }
+            { "required": ["mcpServerId"] },
+            { "required": ["domainKind"] }
           ],
           "properties": {
             "invocationKind": {
               "type": "string",
-              "enum": ["local_tool", "skill", "mcp_tool"]
+              "enum": ["local_tool", "skill", "mcp_tool", "domain_tool"]
+            },
+            "domainKind": {
+              "type": "string"
             },
             "capabilityId": {
               "type": "string"

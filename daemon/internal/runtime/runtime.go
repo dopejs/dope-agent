@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 )
 
@@ -120,40 +121,43 @@ const (
 type ToolCallInvocationKind string
 
 const (
-	ToolCallInvocationKindLocalTool ToolCallInvocationKind = "local_tool"
-	ToolCallInvocationKindSkill     ToolCallInvocationKind = "skill"
-	ToolCallInvocationKindMCPTool   ToolCallInvocationKind = "mcp_tool"
+	ToolCallInvocationKindLocalTool  ToolCallInvocationKind = "local_tool"
+	ToolCallInvocationKindSkill      ToolCallInvocationKind = "skill"
+	ToolCallInvocationKindMCPTool    ToolCallInvocationKind = "mcp_tool"
+	ToolCallInvocationKindDomainTool ToolCallInvocationKind = "domain_tool"
 )
 
 type ToolCall struct {
-	ToolCallID           string                        `json:"toolCallId"`
-	RunID                string                        `json:"runId"`
-	StepID               string                        `json:"stepId"`
-	WorkflowID           string                        `json:"workflowId,omitempty"`
-	WorkflowStepID       string                        `json:"workflowStepId,omitempty"`
-	Attempt              int                           `json:"attempt,omitempty"`
-	ComputerUseSessionID string                        `json:"computerUseSessionId,omitempty"`
-	ComputerUseActionID  string                        `json:"computerUseActionId,omitempty"`
-	InvocationKind       ToolCallInvocationKind        `json:"invocationKind,omitempty"`
-	CapabilityID         string                        `json:"capabilityId,omitempty"`
-	SkillID              string                        `json:"skillId,omitempty"`
-	MCPServerID          string                        `json:"mcpServerId,omitempty"`
-	MCPServerName        string                        `json:"mcpServerName,omitempty"`
-	MCPToolName          string                        `json:"mcpToolName,omitempty"`
-	MCPTransportKind     string                        `json:"mcpTransportKind,omitempty"`
-	MCPSessionID         string                        `json:"mcpSessionId,omitempty"`
-	AuthorizationResult  string                        `json:"authorizationResult,omitempty"`
-	ToolName             string                        `json:"toolName"`
-	Status               ToolCallStatus                `json:"status"`
-	SandboxExecutionID   string                        `json:"sandboxExecutionId,omitempty"`
-	FailureClass         string                        `json:"failureClass,omitempty"`
-	IntegrationBindings  []integrations.BindingSummary `json:"integrationBindings,omitempty"`
-	CreatedAt            time.Time                     `json:"createdAt"`
-	UpdatedAt            time.Time                     `json:"updatedAt"`
-	Input                any                           `json:"input,omitempty"`
-	Output               any                           `json:"output,omitempty"`
-	Error                string                        `json:"error,omitempty"`
-	Sandbox              map[string]any                `json:"sandbox,omitempty"`
+	ToolCallID                 string                        `json:"toolCallId"`
+	RunID                      string                        `json:"runId"`
+	StepID                     string                        `json:"stepId"`
+	WorkflowID                 string                        `json:"workflowId,omitempty"`
+	WorkflowStepID             string                        `json:"workflowStepId,omitempty"`
+	Attempt                    int                           `json:"attempt,omitempty"`
+	ComputerUseSessionID       string                        `json:"computerUseSessionId,omitempty"`
+	ComputerUseActionID        string                        `json:"computerUseActionId,omitempty"`
+	InvocationKind             ToolCallInvocationKind        `json:"invocationKind,omitempty"`
+	DomainKind                 string                        `json:"domainKind,omitempty"`
+	CapabilityID               string                        `json:"capabilityId,omitempty"`
+	SkillID                    string                        `json:"skillId,omitempty"`
+	MCPServerID                string                        `json:"mcpServerId,omitempty"`
+	MCPServerName              string                        `json:"mcpServerName,omitempty"`
+	MCPToolName                string                        `json:"mcpToolName,omitempty"`
+	MCPTransportKind           string                        `json:"mcpTransportKind,omitempty"`
+	MCPSessionID               string                        `json:"mcpSessionId,omitempty"`
+	AuthorizationResult        string                        `json:"authorizationResult,omitempty"`
+	ToolName                   string                        `json:"toolName"`
+	Status                     ToolCallStatus                `json:"status"`
+	SandboxExecutionID         string                        `json:"sandboxExecutionId,omitempty"`
+	FailureClass               string                        `json:"failureClass,omitempty"`
+	IntegrationBindings        []integrations.BindingSummary `json:"integrationBindings,omitempty"`
+	CalendarOperationSummaries []calendar.OperationSummary   `json:"calendarOperationSummaries,omitempty"`
+	CreatedAt                  time.Time                     `json:"createdAt"`
+	UpdatedAt                  time.Time                     `json:"updatedAt"`
+	Input                      any                           `json:"input,omitempty"`
+	Output                     any                           `json:"output,omitempty"`
+	Error                      string                        `json:"error,omitempty"`
+	Sandbox                    map[string]any                `json:"sandbox,omitempty"`
 }
 
 type RunCheckpoint struct {
@@ -170,6 +174,7 @@ type CreateToolCallInput struct {
 	ComputerUseSessionID string                        `json:"computerUseSessionId,omitempty"`
 	ComputerUseActionID  string                        `json:"computerUseActionId,omitempty"`
 	InvocationKind       ToolCallInvocationKind        `json:"invocationKind,omitempty"`
+	DomainKind           string                        `json:"domainKind,omitempty"`
 	CapabilityID         string                        `json:"capabilityId"`
 	SkillID              string                        `json:"skillId"`
 	MCPServerID          string                        `json:"mcpServerId"`
@@ -187,33 +192,37 @@ type CreateToolCallInput struct {
 }
 
 type CompleteToolCallInput struct {
-	Output             any            `json:"output"`
-	SandboxExecutionID string         `json:"sandboxExecutionId,omitempty"`
-	Sandbox            map[string]any `json:"sandbox,omitempty"`
+	Output              any                           `json:"output"`
+	SandboxExecutionID  string                        `json:"sandboxExecutionId,omitempty"`
+	Sandbox             map[string]any                `json:"sandbox,omitempty"`
+	IntegrationBindings []integrations.BindingSummary `json:"integrationBindings,omitempty"`
 }
 
 type FailToolCallInput struct {
-	Output             any            `json:"output"`
-	Error              string         `json:"error"`
-	FailureClass       string         `json:"failureClass"`
-	SandboxExecutionID string         `json:"sandboxExecutionId,omitempty"`
-	Sandbox            map[string]any `json:"sandbox,omitempty"`
+	Output              any                           `json:"output"`
+	Error               string                        `json:"error"`
+	FailureClass        string                        `json:"failureClass"`
+	SandboxExecutionID  string                        `json:"sandboxExecutionId,omitempty"`
+	Sandbox             map[string]any                `json:"sandbox,omitempty"`
+	IntegrationBindings []integrations.BindingSummary `json:"integrationBindings,omitempty"`
 }
 
 type DenyToolCallInput struct {
-	Output             any            `json:"output"`
-	Error              string         `json:"error"`
-	FailureClass       string         `json:"failureClass"`
-	SandboxExecutionID string         `json:"sandboxExecutionId,omitempty"`
-	Sandbox            map[string]any `json:"sandbox,omitempty"`
+	Output              any                           `json:"output"`
+	Error               string                        `json:"error"`
+	FailureClass        string                        `json:"failureClass"`
+	SandboxExecutionID  string                        `json:"sandboxExecutionId,omitempty"`
+	Sandbox             map[string]any                `json:"sandbox,omitempty"`
+	IntegrationBindings []integrations.BindingSummary `json:"integrationBindings,omitempty"`
 }
 
 type CancelToolCallInput struct {
-	Output             any            `json:"output"`
-	Error              string         `json:"error"`
-	FailureClass       string         `json:"failureClass"`
-	SandboxExecutionID string         `json:"sandboxExecutionId,omitempty"`
-	Sandbox            map[string]any `json:"sandbox,omitempty"`
+	Output              any                           `json:"output"`
+	Error               string                        `json:"error"`
+	FailureClass        string                        `json:"failureClass"`
+	SandboxExecutionID  string                        `json:"sandboxExecutionId,omitempty"`
+	Sandbox             map[string]any                `json:"sandbox,omitempty"`
+	IntegrationBindings []integrations.BindingSummary `json:"integrationBindings,omitempty"`
 }
 
 type Manager struct {
@@ -590,7 +599,7 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 	if input.ToolName == "" {
 		return ToolCall{}, ErrToolNameRequired
 	}
-	if strings.TrimSpace(input.CapabilityID) == "" && strings.TrimSpace(input.SkillID) == "" && strings.TrimSpace(input.MCPServerID) == "" {
+	if strings.TrimSpace(input.CapabilityID) == "" && strings.TrimSpace(input.SkillID) == "" && strings.TrimSpace(input.MCPServerID) == "" && strings.TrimSpace(input.DomainKind) == "" {
 		return ToolCall{}, ErrToolTargetRequired
 	}
 
@@ -626,6 +635,7 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 		ComputerUseSessionID: strings.TrimSpace(input.ComputerUseSessionID),
 		ComputerUseActionID:  strings.TrimSpace(input.ComputerUseActionID),
 		InvocationKind:       invocationKind,
+		DomainKind:           strings.TrimSpace(input.DomainKind),
 		CapabilityID:         strings.TrimSpace(input.CapabilityID),
 		SkillID:              strings.TrimSpace(input.SkillID),
 		MCPServerID:          strings.TrimSpace(input.MCPServerID),
@@ -720,6 +730,9 @@ func (m *Manager) CompleteToolCall(runID, stepID, toolCallID string, input Compl
 	if trimmed := strings.TrimSpace(input.SandboxExecutionID); trimmed != "" {
 		toolCall.SandboxExecutionID = trimmed
 	}
+	if input.IntegrationBindings != nil {
+		toolCall.IntegrationBindings = integrations.CloneBindingSummaries(input.IntegrationBindings)
+	}
 	if input.Sandbox != nil {
 		toolCall.Sandbox = cloneAnyMap(input.Sandbox)
 	}
@@ -747,6 +760,9 @@ func (m *Manager) FailToolCall(runID, stepID, toolCallID string, input FailToolC
 	toolCall.FailureClass = strings.TrimSpace(input.FailureClass)
 	if trimmed := strings.TrimSpace(input.SandboxExecutionID); trimmed != "" {
 		toolCall.SandboxExecutionID = trimmed
+	}
+	if input.IntegrationBindings != nil {
+		toolCall.IntegrationBindings = integrations.CloneBindingSummaries(input.IntegrationBindings)
 	}
 	if input.Sandbox != nil {
 		toolCall.Sandbox = cloneAnyMap(input.Sandbox)
@@ -776,6 +792,9 @@ func (m *Manager) DenyToolCall(runID, stepID, toolCallID string, input DenyToolC
 	if trimmed := strings.TrimSpace(input.SandboxExecutionID); trimmed != "" {
 		toolCall.SandboxExecutionID = trimmed
 	}
+	if input.IntegrationBindings != nil {
+		toolCall.IntegrationBindings = integrations.CloneBindingSummaries(input.IntegrationBindings)
+	}
 	if input.Sandbox != nil {
 		toolCall.Sandbox = cloneAnyMap(input.Sandbox)
 	}
@@ -803,6 +822,9 @@ func (m *Manager) CancelToolCall(runID, stepID, toolCallID string, input CancelT
 	toolCall.FailureClass = strings.TrimSpace(input.FailureClass)
 	if trimmed := strings.TrimSpace(input.SandboxExecutionID); trimmed != "" {
 		toolCall.SandboxExecutionID = trimmed
+	}
+	if input.IntegrationBindings != nil {
+		toolCall.IntegrationBindings = integrations.CloneBindingSummaries(input.IntegrationBindings)
 	}
 	if input.Sandbox != nil {
 		toolCall.Sandbox = cloneAnyMap(input.Sandbox)

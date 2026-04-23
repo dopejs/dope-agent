@@ -122,6 +122,19 @@ For personal integrations:
 - integration readiness does not redefine delivery or notification outcomes; it only
   governs integration-backed execution readiness
 
+For the calendar domain:
+
+- `/v1/calendar/accounts`, `/v1/calendar/events`, `/v1/calendar/availability/queries`,
+  and `/v1/calendar/operations` are protected operator APIs like the rest of `/v1/*`
+- calendar account projection, calendar execution truth, and delivery outcome truth stay
+  separate so operators can distinguish readiness failure, mutation failure, and delivery
+  failure without inference
+- background workflow and schedule surfaces project additive
+  `calendarOperationSummaries`; they do not replace the authoritative calendar operation
+  record
+- delivery outcomes project additive `calendarOperationIds` and summaries so a delivered
+  or failed notification never becomes the only evidence for what happened in calendar
+
 For the delivery plane:
 
 - delivery targets, preferences, outcomes, attempts, and summary windows are protected

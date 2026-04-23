@@ -15,6 +15,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/api"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
+	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
@@ -150,7 +151,7 @@ func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -368,7 +369,7 @@ func TestRecoverPersistedStateRestoresIntegrations(t *testing.T) {
 	restoredAuth := auth.NewManager()
 	restoredIntegrations := integrations.NewManager("test")
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -378,6 +379,111 @@ func TestRecoverPersistedStateRestoresIntegrations(t *testing.T) {
 	}
 	if got.ReadinessStatus != integrations.ReadinessStatusDegraded || got.AccountBinding.AccountKey != item.AccountBinding.AccountKey || !got.CanonicalDefault {
 		t.Fatalf("expected restored integration state %+v, got %+v", item, got)
+	}
+}
+
+func TestRecoverPersistedStateRestoresCalendarDomainState(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	integrationManager := integrations.NewManager("test")
+	resource, err := integrationManager.Create(integrations.CreateInput{
+		IntegrationID:    "calendar-a",
+		DomainKind:       "calendar",
+		DisplayName:      "Calendar A",
+		EnvironmentScope: "test",
+		CanonicalDefault: true,
+		AccountBinding: integrations.AccountBinding{
+			AccountKey:   "acct_calendar",
+			AccountLabel: "Primary Calendar",
+		},
+		BackendBinding: integrations.BackendBinding{
+			BackendKind:           integrations.BackendKindFakeLocal,
+			SupportsProbeRead:     true,
+			SupportsProbeMutation: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	resource, err = integrationManager.UpdateReadiness(resource.IntegrationID, integrations.UpdateReadinessInput{
+		ReadinessStatus: integrations.ReadinessStatusHealthy,
+		AuthState:       integrations.AuthStateAuthorized,
+		HealthState:     integrations.HealthStateHealthy,
+	})
+	if err != nil {
+		t.Fatalf("UpdateReadiness returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertIntegration(ctx, resource); err != nil {
+		t.Fatalf("UpsertIntegration returned error: %v", err)
+	}
+
+	seedCalendar := calendar.NewManager("test")
+	account, created, operation, artifacts, err := seedCalendar.CreateEvent([]integrations.Resource{resource}, calendar.CreateEventInput{
+		Selection: calendar.Selection{IntegrationID: resource.IntegrationID},
+		Title:     "Recovered event",
+		StartsAt:  time.Date(2026, 4, 23, 20, 0, 0, 0, time.UTC),
+		EndsAt:    time.Date(2026, 4, 23, 21, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvent returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertCalendarAccount(ctx, account); err != nil {
+		t.Fatalf("UpsertCalendarAccount returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertCalendarOperation(ctx, operation); err != nil {
+		t.Fatalf("UpsertCalendarOperation returned error: %v", err)
+	}
+	for _, artifact := range artifacts {
+		if err := sqliteStore.UpsertCalendarArtifact(ctx, artifact); err != nil {
+			t.Fatalf("UpsertCalendarArtifact returned error: %v", err)
+		}
+	}
+
+	restoredRuntime := runtime.NewManager()
+	restoredRouter := router.NewSessionRouter()
+	restoredEventBus := events.NewBus()
+	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+	restoredIntegrations := integrations.NewManager("test")
+	restoredCalendar := calendar.NewManager("test")
+
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, restoredCalendar); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+
+	restoredAccount, ok := restoredCalendar.GetAccount(resource.IntegrationID)
+	if !ok || restoredAccount.IntegrationID != resource.IntegrationID {
+		t.Fatalf("expected restored calendar account, got %+v ok=%v", restoredAccount, ok)
+	}
+	restoredOperation, ok := restoredCalendar.GetOperation(operation.OperationID)
+	if !ok || restoredOperation.ExternalEventID != created.ExternalEventID {
+		t.Fatalf("expected restored calendar operation, got %+v ok=%v", restoredOperation, ok)
+	}
+	restoredArtifacts := restoredCalendar.ListArtifacts(operation.OperationID)
+	if len(restoredArtifacts) == 0 {
+		t.Fatal("expected restored calendar artifacts")
+	}
+	_, restoredEvent, _, _, err := restoredCalendar.GetEvent(restoredIntegrations.List(), calendar.GetEventInput{
+		Selection:       calendar.Selection{IntegrationID: resource.IntegrationID},
+		ExternalEventID: created.ExternalEventID,
+	})
+	if err != nil {
+		t.Fatalf("GetEvent after restore returned error: %v", err)
+	}
+	if restoredEvent.Title != created.Title {
+		t.Fatalf("expected restored event snapshot %q, got %+v", created.Title, restoredEvent)
 	}
 }
 
@@ -519,7 +625,7 @@ func TestRecoverPersistedStateRestoresIntegrationBindingsOnApprovalsAndToolCalls
 	restoredAuth := auth.NewManager()
 	restoredIntegrations := integrations.NewManager("test")
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -683,7 +789,7 @@ func TestRecoverPersistedStateCancelsInFlightSandboxToolCalls(t *testing.T) {
 		}
 	}()
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -763,7 +869,7 @@ func TestRecoverPersistedStatePreservesSchedulesAndCatchUpDispatchesOnlyLatestOv
 	restoredCapabilities := capabilities.NewSupervisor()
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
-	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
+	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -952,7 +1058,7 @@ func TestRecoverPersistedStateInterruptsInFlightWorkflows(t *testing.T) {
 		t.Fatalf("ReplaceWorkflowSteps returned error: %v", err)
 	}
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtimeManager), events.NewBus(), nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtimeManager), events.NewBus(), nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -1090,7 +1196,7 @@ func TestRecoverPersistedStateInterruptsInFlightComputerUseTruth(t *testing.T) {
 		t.Fatalf("SaveRunCheckpoint returned error: %v", err)
 	}
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtimeManager), events.NewBus(), nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtimeManager), events.NewBus(), nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -1179,7 +1285,7 @@ func TestRecoverPersistedStateRestoresSupervisionState(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -1289,7 +1395,7 @@ func TestRecoverPersistedStateRestoresAuthAndPolicyState(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -2173,7 +2279,7 @@ func TestRecoverPersistedStateRestoresManagedProviderState(t *testing.T) {
 	restoredAuth := auth.NewManager()
 	providerManager := providers.NewManager(config.Config{}, llm.NewDispatcher())
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providerManager, nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providerManager, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
