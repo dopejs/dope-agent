@@ -661,14 +661,13 @@ func writeExecutableSkillSecretsForTest(t *testing.T, dataRoot string, values ma
 func requireRealDockerForTest(t *testing.T) {
 	t.Helper()
 
-	dockerPath, err := exec.LookPath("docker")
-	if err != nil {
+	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker CLI is not available on PATH")
 	}
-	if output, err := exec.Command(dockerPath, "version", "--format", "{{.Server.Version}}").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) == "" {
+	if output, err := exec.Command("docker", "version", "--format", "{{.Server.Version}}").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) == "" {
 		t.Skipf("docker runtime is unavailable: %s", strings.TrimSpace(string(output)))
 	}
-	if output, err := exec.Command(dockerPath, "image", "inspect", "alpine:3.20", "--format", "{{.Id}}").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) == "" {
+	if output, err := exec.Command("docker", "image", "inspect", "alpine:3.20", "--format", "{{.Id}}").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) == "" {
 		t.Skipf("docker image alpine:3.20 is not available locally: %s", strings.TrimSpace(string(output)))
 	}
 }
@@ -5173,9 +5172,7 @@ func TestEventStreamSupportsLastEventIDResume(t *testing.T) {
 	}
 
 	if _, err := io.ReadAll(resp.Body); err != nil && !strings.Contains(err.Error(), "context canceled") {
-		if err != nil {
-			t.Fatalf("unexpected read error after cancel: %v", err)
-		}
+		t.Fatalf("unexpected read error after cancel: %v", err)
 	}
 }
 

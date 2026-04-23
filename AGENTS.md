@@ -21,6 +21,7 @@ Use existing repository conventions before introducing new abstractions. Go code
 ## Testing Guidelines
 
 Every production change should include targeted tests in the affected layer and preserve contract coverage where applicable. Use Go unit and integration tests under `daemon/internal/...` and client tests in package-local test files. When changing API shape, schema, or event payloads, run `make daemon-contract-test` and update `schemas/` plus fixtures together.
+After completing each spec, run `go mod tidy` from `daemon/` before considering the work complete.
 
 ## Planning And Scope Discipline
 
