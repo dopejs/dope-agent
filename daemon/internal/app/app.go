@@ -31,6 +31,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
+	"github.com/dopejs/dope-agent/daemon/internal/reminders"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
@@ -59,6 +60,7 @@ type App struct {
 	Integrations         *integrations.Manager
 	Calendar             *calendar.Manager
 	Mail                 *mail.Manager
+	Reminders            *reminders.Manager
 	Scheduler            *scheduler.Scheduler
 	Delivery             *delivery.Manager
 	ConnectorSupervisor  *connectors.Supervisor
@@ -153,6 +155,13 @@ func New() (*App, error) {
 		Store:        sqliteStore,
 		Checkpoints:  checkpointManager,
 	})
+	reminderManager := reminders.NewManager(reminders.Dependencies{
+		EnvironmentScope: string(cfg.Environment),
+		Store:            sqliteStore,
+		EventBus:         eventBus,
+		Delivery:         deliveryManager,
+		WorkflowLauncher: workflowLauncher,
+	})
 	scheduleManager := scheduler.New(scheduler.Dependencies{
 		Config:           cfg,
 		Runtime:          runtimeManager,
@@ -163,7 +172,7 @@ func New() (*App, error) {
 	})
 	envCtx := events.WithEnvironmentScope(context.Background(), string(cfg.Environment))
 
-	if err := recoverPersistedState(envCtx, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager, integrationManager, calendarManager, mailManager); err != nil {
+	if err := recoverPersistedState(envCtx, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
 		return nil, err
 	}
 	if err := syncManagedProviderState(envCtx, sqliteStore, providerManager); err != nil {
@@ -201,6 +210,7 @@ func New() (*App, error) {
 		Integrations: integrationManager,
 		Calendar:     calendarManager,
 		Mail:         mailManager,
+		Reminders:    reminderManager,
 		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
@@ -229,6 +239,7 @@ func New() (*App, error) {
 		Integrations:         integrationManager,
 		Calendar:             calendarManager,
 		Mail:                 mailManager,
+		Reminders:            reminderManager,
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
 		Delivery:             deliveryManager,
@@ -330,6 +341,11 @@ func (a *App) Run(ctx context.Context) error {
 			return err
 		}
 	}
+	if a.Reminders != nil {
+		if err := a.Reminders.Start(ctx); err != nil {
+			return err
+		}
+	}
 
 	if _, err := a.publishSystemEvent(ctx, "system.started", map[string]any{
 		"service": "dope",
@@ -393,6 +409,11 @@ func (a *App) Close(_ context.Context) error {
 			firstErr = err
 		}
 	}
+	if a.Reminders != nil {
+		if err := a.Reminders.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
 	if a.Checkpoints != nil {
 		if err := a.Checkpoints.Close(); err != nil && firstErr == nil {
 			firstErr = err
@@ -451,11 +472,8 @@ func newEventID() string {
 	return "evt_" + hex.EncodeToString(buf)
 }
 
-func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager, integrationManager *integrations.Manager, calendarManager *calendar.Manager, mailManagers ...*mail.Manager) error {
-	var mailManager *mail.Manager
-	if len(mailManagers) > 0 {
-		mailManager = mailManagers[0]
-	}
+func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager, integrationManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, reminderManager *reminders.Manager) error {
+	_ = reminderManager
 	if sqliteStore == nil {
 		return nil
 	}

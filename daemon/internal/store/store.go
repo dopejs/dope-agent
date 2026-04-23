@@ -33,7 +33,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 18
+	CurrentSchemaVersion = 19
 )
 
 type schemaMigration struct {
@@ -254,6 +254,54 @@ type MailOperationFilter struct {
 	ThreadID       string
 	MessageID      string
 	DraftID        string
+}
+
+type ReminderRecord struct {
+	ReminderID         string
+	EnvironmentScope   string
+	BehaviorMode       string
+	CurrentState       string
+	NextDueAt          *time.Time
+	ActiveOccurrenceID string
+	UpdatedAt          time.Time
+	Document           []byte
+}
+
+type ReminderOccurrenceRecord struct {
+	OccurrenceID         string
+	ReminderID           string
+	EnvironmentScope     string
+	State                string
+	ScheduledFor         time.Time
+	RunID                string
+	WorkflowID           string
+	LatestDeliveryID     string
+	LatestDeliveryStatus string
+	UpdatedAt            time.Time
+	Document             []byte
+}
+
+type ReminderActionRecord struct {
+	ActionID     string
+	ReminderID   string
+	OccurrenceID string
+	ActionKind   string
+	NewState     string
+	RunID        string
+	WorkflowID   string
+	DeliveryID   string
+	CreatedAt    time.Time
+	Document     []byte
+}
+
+type ReminderOccurrenceFilter struct {
+	ReminderID      string
+	State           string
+	RunID           string
+	WorkflowID      string
+	DeliveryID      string
+	ScheduledBefore *time.Time
+	ScheduledAfter  *time.Time
 }
 
 type WorkflowStepRecord struct {
@@ -1349,6 +1397,65 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_mail_artifacts_attachment ON mail_artifacts(environment_scope, attachment_ref_id, created_at DESC, artifact_id DESC);`,
 		},
 	},
+	{
+		Version: 19,
+		Name:    "reminder_domain",
+		Statements: []string{
+			`ALTER TABLE runs ADD COLUMN reminder_id TEXT;`,
+			`ALTER TABLE runs ADD COLUMN reminder_occurrence_id TEXT;`,
+			`
+			CREATE TABLE IF NOT EXISTS reminders (
+				reminder_id TEXT PRIMARY KEY,
+				environment_scope TEXT NOT NULL,
+				behavior_mode TEXT NOT NULL,
+				current_state TEXT NOT NULL,
+				next_due_at TEXT,
+				active_occurrence_id TEXT,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS reminder_occurrences (
+				occurrence_id TEXT PRIMARY KEY,
+				reminder_id TEXT NOT NULL,
+				environment_scope TEXT NOT NULL,
+				state TEXT NOT NULL,
+				scheduled_for TEXT NOT NULL,
+				run_id TEXT,
+				workflow_id TEXT,
+				latest_delivery_id TEXT,
+				latest_delivery_status TEXT,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS reminder_actions (
+				action_id TEXT PRIMARY KEY,
+				reminder_id TEXT NOT NULL,
+				occurrence_id TEXT,
+				action_kind TEXT NOT NULL,
+				new_state TEXT,
+				run_id TEXT,
+				workflow_id TEXT,
+				delivery_id TEXT,
+				created_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_runs_reminder ON runs(reminder_id, reminder_occurrence_id, created_at DESC, run_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_reminders_env_state ON reminders(environment_scope, current_state, updated_at DESC, reminder_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_reminders_env_due ON reminders(environment_scope, next_due_at, updated_at DESC, reminder_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_rem_occurrences_reminder ON reminder_occurrences(environment_scope, reminder_id, scheduled_for DESC, occurrence_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_rem_occurrences_state ON reminder_occurrences(environment_scope, state, scheduled_for DESC, occurrence_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_rem_occurrences_run ON reminder_occurrences(environment_scope, run_id, updated_at DESC, occurrence_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_rem_occurrences_workflow ON reminder_occurrences(environment_scope, workflow_id, updated_at DESC, occurrence_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_rem_occurrences_delivery ON reminder_occurrences(environment_scope, latest_delivery_id, updated_at DESC, occurrence_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_rem_actions_reminder ON reminder_actions(reminder_id, created_at DESC, action_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_rem_actions_occurrence ON reminder_actions(occurrence_id, created_at DESC, action_id DESC);`,
+		},
+	},
 }
 
 type SQLiteStore struct {
@@ -1422,16 +1529,20 @@ func (s *SQLiteStore) UpsertRun(ctx context.Context, run runtime.Run) error {
 			session_id,
 			schedule_id,
 			schedule_attempt_id,
+			reminder_id,
+			reminder_occurrence_id,
 			entrypoint,
 			status,
 			goal,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(run_id) DO UPDATE SET
 			session_id = excluded.session_id,
 			schedule_id = excluded.schedule_id,
 			schedule_attempt_id = excluded.schedule_attempt_id,
+			reminder_id = excluded.reminder_id,
+			reminder_occurrence_id = excluded.reminder_occurrence_id,
 			entrypoint = excluded.entrypoint,
 			status = excluded.status,
 			goal = excluded.goal,
@@ -1442,6 +1553,8 @@ func (s *SQLiteStore) UpsertRun(ctx context.Context, run runtime.Run) error {
 		nullString(run.SessionID),
 		nullString(run.ScheduleID),
 		nullString(run.ScheduleAttemptID),
+		nullString(run.ReminderID),
+		nullString(run.ReminderOccurrenceID),
 		run.Entrypoint,
 		string(run.Status),
 		run.Goal,
@@ -2737,7 +2850,7 @@ func (s *SQLiteStore) ListRuns(ctx context.Context) ([]runtime.Run, error) {
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT run_id, session_id, schedule_id, schedule_attempt_id, entrypoint, status, goal, created_at, updated_at
+		SELECT run_id, session_id, schedule_id, schedule_attempt_id, reminder_id, reminder_occurrence_id, entrypoint, status, goal, created_at, updated_at
 		FROM runs
 		ORDER BY created_at ASC, run_id ASC
 	`)
@@ -3091,6 +3204,19 @@ func (s *SQLiteStore) ListCalendarOperations(ctx context.Context, environmentSco
 	return items, rows.Err()
 }
 
+func (s *SQLiteStore) GetCalendarOperationByID(ctx context.Context, environmentScope, operationID string) (calendar.Operation, bool, error) {
+	items, err := s.ListCalendarOperations(ctx, environmentScope, CalendarOperationFilter{})
+	if err != nil {
+		return calendar.Operation{}, false, err
+	}
+	for _, item := range items {
+		if item.OperationID == strings.TrimSpace(operationID) {
+			return item, true, nil
+		}
+	}
+	return calendar.Operation{}, false, nil
+}
+
 func (s *SQLiteStore) UpsertCalendarArtifact(ctx context.Context, item calendar.Artifact) error {
 	if s == nil {
 		return nil
@@ -3383,6 +3509,19 @@ func (s *SQLiteStore) ListMailOperations(ctx context.Context, environmentScope s
 	return items, rows.Err()
 }
 
+func (s *SQLiteStore) GetMailOperationByID(ctx context.Context, environmentScope, operationID string) (mail.Operation, bool, error) {
+	items, err := s.ListMailOperations(ctx, environmentScope, MailOperationFilter{})
+	if err != nil {
+		return mail.Operation{}, false, err
+	}
+	for _, item := range items {
+		if item.OperationID == strings.TrimSpace(operationID) {
+			return item, true, nil
+		}
+	}
+	return mail.Operation{}, false, nil
+}
+
 func (s *SQLiteStore) UpsertMailArtifact(ctx context.Context, item mail.Artifact) error {
 	if s == nil {
 		return nil
@@ -3466,6 +3605,272 @@ func (s *SQLiteStore) ListMailArtifacts(ctx context.Context, environmentScope, o
 			return nil, fmt.Errorf("decode mail artifact %s: %w", record.ArtifactID, err)
 		}
 		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertReminder(ctx context.Context, record ReminderRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO reminders (
+			reminder_id,
+			environment_scope,
+			behavior_mode,
+			current_state,
+			next_due_at,
+			active_occurrence_id,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(reminder_id) DO UPDATE SET
+			environment_scope = excluded.environment_scope,
+			behavior_mode = excluded.behavior_mode,
+			current_state = excluded.current_state,
+			next_due_at = excluded.next_due_at,
+			active_occurrence_id = excluded.active_occurrence_id,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		record.ReminderID,
+		record.EnvironmentScope,
+		record.BehaviorMode,
+		record.CurrentState,
+		nullableTimeString(record.NextDueAt),
+		nullString(record.ActiveOccurrenceID),
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert reminder %s: %w", record.ReminderID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListReminders(ctx context.Context, environmentScope string) ([]ReminderRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT reminder_id, environment_scope, behavior_mode, current_state, next_due_at, active_occurrence_id, updated_at, document_json
+		FROM reminders
+		WHERE environment_scope = ?
+		ORDER BY updated_at DESC, reminder_id DESC
+	`, strings.TrimSpace(environmentScope))
+	if err != nil {
+		return nil, fmt.Errorf("list reminders: %w", err)
+	}
+	defer rows.Close()
+	items := make([]ReminderRecord, 0)
+	for rows.Next() {
+		record, scanErr := scanReminderRecord(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, record)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetReminder(ctx context.Context, environmentScope, reminderID string) (ReminderRecord, bool, error) {
+	if s == nil {
+		return ReminderRecord{}, false, nil
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT reminder_id, environment_scope, behavior_mode, current_state, next_due_at, active_occurrence_id, updated_at, document_json
+		FROM reminders
+		WHERE environment_scope = ? AND reminder_id = ?
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(reminderID))
+	record, err := scanReminderRecord(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), sql.ErrNoRows.Error()) {
+			return ReminderRecord{}, false, nil
+		}
+		return ReminderRecord{}, false, err
+	}
+	return record, true, nil
+}
+
+func (s *SQLiteStore) UpsertReminderOccurrence(ctx context.Context, record ReminderOccurrenceRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO reminder_occurrences (
+			occurrence_id,
+			reminder_id,
+			environment_scope,
+			state,
+			scheduled_for,
+			run_id,
+			workflow_id,
+			latest_delivery_id,
+			latest_delivery_status,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(occurrence_id) DO UPDATE SET
+			reminder_id = excluded.reminder_id,
+			environment_scope = excluded.environment_scope,
+			state = excluded.state,
+			scheduled_for = excluded.scheduled_for,
+			run_id = excluded.run_id,
+			workflow_id = excluded.workflow_id,
+			latest_delivery_id = excluded.latest_delivery_id,
+			latest_delivery_status = excluded.latest_delivery_status,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		record.OccurrenceID,
+		record.ReminderID,
+		record.EnvironmentScope,
+		record.State,
+		record.ScheduledFor.UTC().Format(time.RFC3339Nano),
+		nullString(record.RunID),
+		nullString(record.WorkflowID),
+		nullString(record.LatestDeliveryID),
+		nullString(record.LatestDeliveryStatus),
+		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert reminder occurrence %s: %w", record.OccurrenceID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListReminderOccurrences(ctx context.Context, environmentScope string, filter ReminderOccurrenceFilter) ([]ReminderOccurrenceRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT occurrence_id, reminder_id, environment_scope, state, scheduled_for, run_id, workflow_id, latest_delivery_id, latest_delivery_status, updated_at, document_json
+		FROM reminder_occurrences
+		WHERE environment_scope = ?
+	`
+	args := []any{strings.TrimSpace(environmentScope)}
+	if strings.TrimSpace(filter.ReminderID) != "" {
+		query += ` AND reminder_id = ?`
+		args = append(args, strings.TrimSpace(filter.ReminderID))
+	}
+	if strings.TrimSpace(filter.State) != "" {
+		query += ` AND state = ?`
+		args = append(args, strings.TrimSpace(filter.State))
+	}
+	if strings.TrimSpace(filter.RunID) != "" {
+		query += ` AND run_id = ?`
+		args = append(args, strings.TrimSpace(filter.RunID))
+	}
+	if strings.TrimSpace(filter.WorkflowID) != "" {
+		query += ` AND workflow_id = ?`
+		args = append(args, strings.TrimSpace(filter.WorkflowID))
+	}
+	if strings.TrimSpace(filter.DeliveryID) != "" {
+		query += ` AND latest_delivery_id = ?`
+		args = append(args, strings.TrimSpace(filter.DeliveryID))
+	}
+	if filter.ScheduledBefore != nil {
+		query += ` AND scheduled_for <= ?`
+		args = append(args, filter.ScheduledBefore.UTC().Format(time.RFC3339Nano))
+	}
+	if filter.ScheduledAfter != nil {
+		query += ` AND scheduled_for >= ?`
+		args = append(args, filter.ScheduledAfter.UTC().Format(time.RFC3339Nano))
+	}
+	query += ` ORDER BY scheduled_for DESC, occurrence_id DESC`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list reminder occurrences: %w", err)
+	}
+	defer rows.Close()
+	items := make([]ReminderOccurrenceRecord, 0)
+	for rows.Next() {
+		record, scanErr := scanReminderOccurrenceRecord(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, record)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetReminderOccurrence(ctx context.Context, environmentScope, occurrenceID string) (ReminderOccurrenceRecord, bool, error) {
+	if s == nil {
+		return ReminderOccurrenceRecord{}, false, nil
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT occurrence_id, reminder_id, environment_scope, state, scheduled_for, run_id, workflow_id, latest_delivery_id, latest_delivery_status, updated_at, document_json
+		FROM reminder_occurrences
+		WHERE environment_scope = ? AND occurrence_id = ?
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(occurrenceID))
+	record, err := scanReminderOccurrenceRecord(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), sql.ErrNoRows.Error()) {
+			return ReminderOccurrenceRecord{}, false, nil
+		}
+		return ReminderOccurrenceRecord{}, false, err
+	}
+	return record, true, nil
+}
+
+func (s *SQLiteStore) AppendReminderAction(ctx context.Context, record ReminderActionRecord) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO reminder_actions (
+			action_id,
+			reminder_id,
+			occurrence_id,
+			action_kind,
+			new_state,
+			run_id,
+			workflow_id,
+			delivery_id,
+			created_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		record.ActionID,
+		record.ReminderID,
+		nullString(record.OccurrenceID),
+		record.ActionKind,
+		nullString(record.NewState),
+		nullString(record.RunID),
+		nullString(record.WorkflowID),
+		nullString(record.DeliveryID),
+		record.CreatedAt.UTC().Format(time.RFC3339Nano),
+		string(record.Document),
+	)
+	if err != nil {
+		return fmt.Errorf("append reminder action %s: %w", record.ActionID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListReminderActions(ctx context.Context, environmentScope, reminderID string) ([]ReminderActionRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT a.action_id, a.reminder_id, a.occurrence_id, a.action_kind, a.new_state, a.run_id, a.workflow_id, a.delivery_id, a.created_at, a.document_json
+		FROM reminder_actions a
+		INNER JOIN reminders r ON r.reminder_id = a.reminder_id
+		WHERE a.reminder_id = ? AND r.environment_scope = ?
+		ORDER BY a.created_at DESC, a.action_id DESC
+	`, strings.TrimSpace(reminderID), strings.TrimSpace(environmentScope))
+	if err != nil {
+		return nil, fmt.Errorf("list reminder actions: %w", err)
+	}
+	defer rows.Close()
+	items := make([]ReminderActionRecord, 0)
+	for rows.Next() {
+		record, scanErr := scanReminderActionRecord(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, record)
 	}
 	return items, rows.Err()
 }
@@ -3653,6 +4058,26 @@ func (s *SQLiteStore) GetWorkflow(ctx context.Context, environmentScope, runID, 
 		return orchestration.Workflow{}, false, err
 	}
 	return workflow, true, nil
+}
+
+func (s *SQLiteStore) GetWorkflowByID(ctx context.Context, environmentScope, workflowID string) (orchestration.Workflow, bool, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT workflow_id, run_id, schedule_id, schedule_attempt_id, environment_scope, goal, status, plan_summary, failure_summary, created_at, updated_at, started_at, completed_at, interrupted_at, document_json
+		FROM workflows
+		WHERE environment_scope = ? AND workflow_id = ?
+	`, strings.TrimSpace(environmentScope), strings.TrimSpace(workflowID))
+	record, err := scanWorkflowRecord(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return orchestration.Workflow{}, false, nil
+		}
+		return orchestration.Workflow{}, false, err
+	}
+	item, err := s.decodeWorkflowRecord(ctx, record)
+	if err != nil {
+		return orchestration.Workflow{}, false, err
+	}
+	return item, true, nil
 }
 
 func (s *SQLiteStore) MarkInFlightWorkflowsInterrupted(ctx context.Context, environmentScope string, interruptedAt time.Time) ([]orchestration.Workflow, error) {
@@ -6270,13 +6695,15 @@ func scanRun(scanner interface {
 	Scan(dest ...any) error
 }) (runtime.Run, error) {
 	var (
-		run               runtime.Run
-		status            string
-		sessionID         sql.NullString
-		scheduleID        sql.NullString
-		scheduleAttemptID sql.NullString
-		createdAt         string
-		updatedAt         string
+		run                  runtime.Run
+		status               string
+		sessionID            sql.NullString
+		scheduleID           sql.NullString
+		scheduleAttemptID    sql.NullString
+		reminderID           sql.NullString
+		reminderOccurrenceID sql.NullString
+		createdAt            string
+		updatedAt            string
 	)
 
 	if err := scanner.Scan(
@@ -6284,6 +6711,8 @@ func scanRun(scanner interface {
 		&sessionID,
 		&scheduleID,
 		&scheduleAttemptID,
+		&reminderID,
+		&reminderOccurrenceID,
 		&run.Entrypoint,
 		&status,
 		&run.Goal,
@@ -6296,6 +6725,8 @@ func scanRun(scanner interface {
 	run.SessionID = sessionID.String
 	run.ScheduleID = scheduleID.String
 	run.ScheduleAttemptID = scheduleAttemptID.String
+	run.ReminderID = reminderID.String
+	run.ReminderOccurrenceID = reminderOccurrenceID.String
 	run.Status = runtime.RunStatus(status)
 
 	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
@@ -7091,6 +7522,120 @@ func scanWorkflowRecord(scanner interface {
 	if err := assignOptionalTime(&record.InterruptedAt, interruptedAt); err != nil {
 		return WorkflowRecord{}, fmt.Errorf("parse workflow interrupted_at: %w", err)
 	}
+	return record, nil
+}
+
+func scanReminderRecord(scanner interface {
+	Scan(dest ...any) error
+}) (ReminderRecord, error) {
+	var (
+		record             ReminderRecord
+		nextDueAt          sql.NullString
+		activeOccurrenceID sql.NullString
+		updatedAt          string
+		document           string
+	)
+	if err := scanner.Scan(
+		&record.ReminderID,
+		&record.EnvironmentScope,
+		&record.BehaviorMode,
+		&record.CurrentState,
+		&nextDueAt,
+		&activeOccurrenceID,
+		&updatedAt,
+		&document,
+	); err != nil {
+		return ReminderRecord{}, fmt.Errorf("scan reminder: %w", err)
+	}
+	record.ActiveOccurrenceID = activeOccurrenceID.String
+	if err := assignOptionalTime(&record.NextDueAt, nextDueAt); err != nil {
+		return ReminderRecord{}, fmt.Errorf("parse reminder next_due_at: %w", err)
+	}
+	if err := assignRequiredTime(&record.UpdatedAt, updatedAt); err != nil {
+		return ReminderRecord{}, fmt.Errorf("parse reminder updated_at: %w", err)
+	}
+	record.Document = []byte(document)
+	return record, nil
+}
+
+func scanReminderOccurrenceRecord(scanner interface {
+	Scan(dest ...any) error
+}) (ReminderOccurrenceRecord, error) {
+	var (
+		record               ReminderOccurrenceRecord
+		runID                sql.NullString
+		workflowID           sql.NullString
+		latestDeliveryID     sql.NullString
+		latestDeliveryStatus sql.NullString
+		scheduledFor         string
+		updatedAt            string
+		document             string
+	)
+	if err := scanner.Scan(
+		&record.OccurrenceID,
+		&record.ReminderID,
+		&record.EnvironmentScope,
+		&record.State,
+		&scheduledFor,
+		&runID,
+		&workflowID,
+		&latestDeliveryID,
+		&latestDeliveryStatus,
+		&updatedAt,
+		&document,
+	); err != nil {
+		return ReminderOccurrenceRecord{}, fmt.Errorf("scan reminder occurrence: %w", err)
+	}
+	record.RunID = runID.String
+	record.WorkflowID = workflowID.String
+	record.LatestDeliveryID = latestDeliveryID.String
+	record.LatestDeliveryStatus = latestDeliveryStatus.String
+	if err := assignRequiredTime(&record.ScheduledFor, scheduledFor); err != nil {
+		return ReminderOccurrenceRecord{}, fmt.Errorf("parse reminder occurrence scheduled_for: %w", err)
+	}
+	if err := assignRequiredTime(&record.UpdatedAt, updatedAt); err != nil {
+		return ReminderOccurrenceRecord{}, fmt.Errorf("parse reminder occurrence updated_at: %w", err)
+	}
+	record.Document = []byte(document)
+	return record, nil
+}
+
+func scanReminderActionRecord(scanner interface {
+	Scan(dest ...any) error
+}) (ReminderActionRecord, error) {
+	var (
+		record       ReminderActionRecord
+		occurrenceID sql.NullString
+		newState     sql.NullString
+		runID        sql.NullString
+		workflowID   sql.NullString
+		deliveryID   sql.NullString
+		createdAt    string
+		document     string
+	)
+	if err := scanner.Scan(
+		&record.ActionID,
+		&record.ReminderID,
+		&occurrenceID,
+		&record.ActionKind,
+		&newState,
+		&runID,
+		&workflowID,
+		&deliveryID,
+		&createdAt,
+		&document,
+	); err != nil {
+		return ReminderActionRecord{}, fmt.Errorf("scan reminder action: %w", err)
+	}
+	record.OccurrenceID = occurrenceID.String
+	record.NewState = newState.String
+	record.RunID = runID.String
+	record.WorkflowID = workflowID.String
+	record.DeliveryID = deliveryID.String
+	if err := assignRequiredTime(&record.CreatedAt, createdAt); err != nil {
+		return ReminderActionRecord{}, fmt.Errorf("parse reminder action created_at: %w", err)
+	}
+	record.Document = []byte(document)
 	return record, nil
 }
 

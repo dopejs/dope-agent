@@ -459,3 +459,8 @@ This keeps the harness grounded in execution control before it grows into adapti
 Roadmap 29 is now closed with a repo-owned fake calendar backend in `DOPE_ENV=test`,
 additive calendar-domain persistence, and additive workflow/schedule/delivery
 projections rather than a second calendar-only execution plane.
+
+Roadmap 31 is now closed with daemon-owned reminder resources, occurrence and action
+history, additive reminder linkage on runs and workflows, shared-delivery reuse, and a
+recorded `DOPE_ENV=test` walkthrough that covers notification-only reminders, recurring
+rollover, workflow success, isolated workflow-start failure, and follow-up references.

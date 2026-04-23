@@ -160,6 +160,20 @@ For the delivery plane:
 - connector-backed delivery attempts may link to `connector_messages`, but transport
   evidence remains subordinate to the daemon-owned delivery ledger
 
+For the reminders domain:
+
+- `/v1/reminders`, `/v1/reminders/occurrences`, and reminder lifecycle command routes are
+  protected operator APIs like the rest of `/v1/*`
+- reminder lifecycle truth, workflow execution truth, and delivery truth stay separate so
+  operators can distinguish acknowledgement, downstream execution, and notification state
+  without inference
+- reminder-triggered workflow launch auto-acknowledges only after launch succeeds; launch
+  failure is recorded explicitly and leaves the occurrence `due` or later `overdue`
+- recurring rollover preserves one active unresolved occurrence at a time by moving the
+  prior unresolved occurrence to `missed` while keeping acknowledged history intact
+- follow-up reminders project additive source references and stale-source state; they do
+  not replace authoritative calendar, mail, run, or workflow records
+
 ## Security Assumptions
 
 - this is a local-first daemon trust model, not multi-tenant auth

@@ -45,6 +45,8 @@ type Run struct {
 	SessionID              string    `json:"sessionId,omitempty"`
 	ScheduleID             string    `json:"scheduleId,omitempty"`
 	ScheduleAttemptID      string    `json:"scheduleAttemptId,omitempty"`
+	ReminderID             string    `json:"reminderId,omitempty"`
+	ReminderOccurrenceID   string    `json:"reminderOccurrenceId,omitempty"`
 	Entrypoint             string    `json:"entrypoint"`
 	Status                 RunStatus `json:"status"`
 	Goal                   string    `json:"goal"`
@@ -58,11 +60,13 @@ type Run struct {
 }
 
 type CreateRunInput struct {
-	SessionID         string `json:"sessionId"`
-	ScheduleID        string `json:"scheduleId,omitempty"`
-	ScheduleAttemptID string `json:"scheduleAttemptId,omitempty"`
-	Entrypoint        string `json:"entrypoint"`
-	Goal              string `json:"goal"`
+	SessionID            string `json:"sessionId"`
+	ScheduleID           string `json:"scheduleId,omitempty"`
+	ScheduleAttemptID    string `json:"scheduleAttemptId,omitempty"`
+	ReminderID           string `json:"reminderId,omitempty"`
+	ReminderOccurrenceID string `json:"reminderOccurrenceId,omitempty"`
+	Entrypoint           string `json:"entrypoint"`
+	Goal                 string `json:"goal"`
 }
 
 type StepStatus string
@@ -254,15 +258,17 @@ func (m *Manager) CreateRun(input CreateRunInput) (Run, error) {
 
 	now := time.Now().UTC()
 	run := Run{
-		RunID:             newRunID(),
-		SessionID:         input.SessionID,
-		ScheduleID:        input.ScheduleID,
-		ScheduleAttemptID: input.ScheduleAttemptID,
-		Entrypoint:        input.Entrypoint,
-		Status:            RunStatusQueued,
-		Goal:              input.Goal,
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		RunID:                newRunID(),
+		SessionID:            input.SessionID,
+		ScheduleID:           input.ScheduleID,
+		ScheduleAttemptID:    input.ScheduleAttemptID,
+		ReminderID:           input.ReminderID,
+		ReminderOccurrenceID: input.ReminderOccurrenceID,
+		Entrypoint:           input.Entrypoint,
+		Status:               RunStatusQueued,
+		Goal:                 input.Goal,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 
 	m.mu.Lock()

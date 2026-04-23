@@ -1432,12 +1432,38 @@ Delivered:
 
 ### Roadmap 31: Tasks And Reminders
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/016-tasks-and-reminders.md](../specs/016-tasks-and-reminders.md)
 
 Goal: add user-facing reminders and lightweight task follow-up on top of the trigger and
 delivery planes.
+
+Delivered:
+
+- daemon-owned reminder resources, occurrence history, and append-only action history
+  under `/v1/reminders` and `/v1/reminders/occurrences`
+- explicit reminder lifecycle truth for `due`, `acknowledged`, `snoozed`, `completed`,
+  `dismissed`, `cancelled`, `overdue`, and `missed`
+- additive reminder linkage on runs and workflows plus reminder-owned workflow launch
+  semantics that auto-acknowledge on success without auto-completing
+- additive shared-delivery linkage on reminder occurrences so reminder truth, workflow
+  truth, and delivery truth stay separately inspectable
+- lightweight follow-up references for calendar, mail, run, and workflow source truth
+  with explicit stale-source projection instead of copying source-domain state
+
+Verification:
+
+- `cd daemon && go mod tidy`
+- `cd daemon && go test ./internal/reminders ./internal/api ./internal/store ./internal/app ./internal/runtime ./internal/orchestration ./internal/scheduler ./internal/delivery ./internal/contracts ./internal/calendar ./internal/mail`
+- `cd daemon && go test ./internal/api -run 'TestReminderRoutesCreateInspectOccurrencesAndActions|TestReminderRoutesReuseDigestDeliveryPreference|TestReminderLifecycleRoutesAndWorkflowLinkage|TestScheduleWorkflowLauncherPersistsReminderLinkageOnRunsAndWorkflows|TestReminderRoutePerformanceSmoke' -count=1`
+- `cd daemon && go test ./internal/reminders -run 'TestManagerTickCreatesDueOccurrenceAndLinksDeliveryOutcome|TestManagerRecurringRemindersMarkMissedAndPreserveAcknowledgedHistory|TestManagerWorkflowLinkedReminderAcknowledgesOnSuccessAndStaysDueOnFailure|TestManagerRefreshesFollowUpLinkStaleness|TestManagerPerformanceSmoke' -count=1`
+- `make daemon-contract-test`
+- manual `DOPE_ENV=test` walkthrough confirmed notification-only delivery, digest reuse,
+  acknowledge and snooze actions, recurring rollover to `missed`, workflow success with
+  linked run and workflow IDs, and follow-up-link inspection; a separate isolated test
+  daemon with empty home and data roots confirmed `workflow_start_failed` leaves the
+  occurrence `due` and later `overdue`
 
 ### Roadmap 32: Operator Shell And Onboarding
 

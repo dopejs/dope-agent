@@ -29,6 +29,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
+	"github.com/dopejs/dope-agent/daemon/internal/reminders"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
@@ -152,7 +153,7 @@ func TestRecoverPersistedStateRestoresRuntimeAndEventHistory(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -370,7 +371,7 @@ func TestRecoverPersistedStateRestoresIntegrations(t *testing.T) {
 	restoredAuth := auth.NewManager()
 	restoredIntegrations := integrations.NewManager("test")
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -460,7 +461,7 @@ func TestRecoverPersistedStateRestoresCalendarDomainState(t *testing.T) {
 	restoredIntegrations := integrations.NewManager("test")
 	restoredCalendar := calendar.NewManager("test")
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, restoredCalendar); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, restoredCalendar, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -560,7 +561,7 @@ func TestRecoverPersistedStateRestoresMailDomainState(t *testing.T) {
 	restoredIntegrations := integrations.NewManager("test")
 	restoredMail := mail.NewManager("test")
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, nil, restoredMail); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, nil, restoredMail, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -726,7 +727,7 @@ func TestRecoverPersistedStateRestoresIntegrationBindingsOnApprovalsAndToolCalls
 	restoredAuth := auth.NewManager()
 	restoredIntegrations := integrations.NewManager("test")
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -890,7 +891,7 @@ func TestRecoverPersistedStateCancelsInFlightSandboxToolCalls(t *testing.T) {
 		}
 	}()
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, nil, nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -970,7 +971,7 @@ func TestRecoverPersistedStatePreservesSchedulesAndCatchUpDispatchesOnlyLatestOv
 	restoredCapabilities := capabilities.NewSupervisor()
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
-	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil); err != nil {
+	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoreCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -1159,7 +1160,7 @@ func TestRecoverPersistedStateInterruptsInFlightWorkflows(t *testing.T) {
 		t.Fatalf("ReplaceWorkflowSteps returned error: %v", err)
 	}
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtimeManager), events.NewBus(), nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtimeManager), events.NewBus(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -1297,7 +1298,7 @@ func TestRecoverPersistedStateInterruptsInFlightComputerUseTruth(t *testing.T) {
 		t.Fatalf("SaveRunCheckpoint returned error: %v", err)
 	}
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtimeManager), events.NewBus(), nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtimeManager), events.NewBus(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -1386,7 +1387,7 @@ func TestRecoverPersistedStateRestoresSupervisionState(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -1496,7 +1497,7 @@ func TestRecoverPersistedStateRestoresAuthAndPolicyState(t *testing.T) {
 	restoredPolicy := policy.NewEngine()
 	restoredAuth := auth.NewManager()
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 
@@ -1564,6 +1565,110 @@ func TestAppRunPublishesLifecycleEvents(t *testing.T) {
 	}
 	if items[1].Sequence <= items[0].Sequence {
 		t.Fatalf("expected monotonic system event sequence, got %d then %d", items[0].Sequence, items[1].Sequence)
+	}
+}
+
+func TestAppRunCatchesUpDueReminderAfterRestart(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	ctx := context.Background()
+	seedStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore(seed) returned error: %v", err)
+	}
+
+	seedEventBus := events.NewBus()
+	seedDelivery := delivery.NewManager("test", seedEventBus, seedStore, delivery.NewTestSinkAdapter())
+	target, err := seedDelivery.CreateTarget(ctx, delivery.DeliveryTarget{
+		TargetID:         "restart-reminder-target",
+		DisplayName:      "Restart Reminder Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget returned error: %v", err)
+	}
+	if _, err := seedDelivery.UpsertPreference(ctx, delivery.DeliveryPreference{
+		PreferenceID:     "restart-reminder-pref",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: target.TargetID,
+			delivery.ResultClassUrgent:         target.TargetID,
+			delivery.ResultClassFailure:        target.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference returned error: %v", err)
+	}
+
+	seedReminders := reminders.NewManager(reminders.Dependencies{
+		EnvironmentScope: "test",
+		Store:            seedStore,
+		EventBus:         seedEventBus,
+		Delivery:         seedDelivery,
+	})
+	fireAt := time.Now().UTC().Add(75 * time.Millisecond)
+	created, err := seedReminders.Create(ctx, reminders.CreateInput{
+		Title:        "Restart reminder catch-up",
+		BehaviorMode: reminders.BehaviorModeNotifyOnly,
+		Trigger: scheduler.Trigger{
+			Kind:   scheduler.TriggerKindOnce,
+			FireAt: &fireAt,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if err := seedStore.Close(); err != nil {
+		t.Fatalf("Close(seed) returned error: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	t.Setenv("DOPE_ENV", "test")
+	t.Setenv("DOPE_DATA_DIR", dataDir)
+	t.Setenv("DOPE_BIND_ADDR", "127.0.0.1:0")
+	t.Setenv("DOPE_LOG_LEVEL", "error")
+	t.Setenv("DOPE_VERSION", "test")
+
+	application, err := New()
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- application.Run(runCtx)
+	}()
+	defer func() {
+		cancel()
+		if err := <-errCh; err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+	}()
+
+	var current reminders.Reminder
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		item, ok, err := application.Reminders.Get(ctx, created.ReminderID)
+		if err != nil {
+			t.Fatalf("Get returned error: %v", err)
+		}
+		if ok && item.ActiveOccurrenceID != "" && item.CurrentState == reminders.StateDue {
+			current = item
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if current.ActiveOccurrenceID == "" || current.CurrentState != reminders.StateDue {
+		t.Fatalf("expected due reminder after restart catch-up, got %+v", current)
+	}
+
+	occurrence, ok, err := application.Reminders.GetOccurrence(ctx, current.ActiveOccurrenceID)
+	if err != nil || !ok {
+		t.Fatalf("GetOccurrence returned ok=%v err=%v", ok, err)
+	}
+	if occurrence.State != reminders.StateDue || occurrence.LatestDeliveryID == "" || occurrence.LatestDeliveryStatus != string(delivery.OutcomeStatusDelivered) {
+		t.Fatalf("expected delivered due occurrence after restart catch-up, got %+v", occurrence)
 	}
 }
 
@@ -2380,7 +2485,7 @@ func TestRecoverPersistedStateRestoresManagedProviderState(t *testing.T) {
 	restoredAuth := auth.NewManager()
 	providerManager := providers.NewManager(config.Config{}, llm.NewDispatcher())
 
-	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providerManager, nil, nil, nil, nil); err != nil {
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, restoredConnectors, restoredCapabilities, restoredPolicy, restoredAuth, providerManager, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 

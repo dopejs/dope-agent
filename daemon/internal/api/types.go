@@ -17,6 +17,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
+	"github.com/dopejs/dope-agent/daemon/internal/reminders"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
@@ -467,6 +468,40 @@ type CreateScheduleRequest struct {
 	RetryPolicy scheduler.RetryPolicy  `json:"retryPolicy"`
 }
 
+type CreateReminderRequest struct {
+	Title                string                         `json:"title"`
+	Details              string                         `json:"details,omitempty"`
+	BehaviorMode         reminders.BehaviorMode         `json:"behaviorMode,omitempty"`
+	Trigger              ScheduleTriggerRequest         `json:"trigger"`
+	WorkflowLaunchConfig *ReminderWorkflowLaunchRequest `json:"workflowLaunchConfig,omitempty"`
+	FollowUpLink         *ReminderFollowUpLinkRequest   `json:"followUpLink,omitempty"`
+}
+
+type ReminderWorkflowLaunchRequest struct {
+	SessionID      string                         `json:"sessionId,omitempty"`
+	Entrypoint     string                         `json:"entrypoint"`
+	RunGoal        string                         `json:"runGoal,omitempty"`
+	WorkflowGoal   string                         `json:"workflowGoal,omitempty"`
+	CalendarAction *CalendarWorkflowActionRequest `json:"calendarAction,omitempty"`
+	MailAction     *MailWorkflowActionRequest     `json:"mailAction,omitempty"`
+}
+
+type ReminderFollowUpLinkRequest struct {
+	LinkKind           reminders.FollowUpLinkKind `json:"linkKind"`
+	SourceID           string                     `json:"sourceId"`
+	EnvironmentScope   string                     `json:"environmentScope,omitempty"`
+	SourceSummary      string                     `json:"sourceSummary,omitempty"`
+	SourceDisplayState string                     `json:"sourceDisplayState,omitempty"`
+}
+
+type ReminderTransitionRequest struct {
+	OccurrenceID string                  `json:"occurrenceId,omitempty"`
+	Reason       string                  `json:"reason,omitempty"`
+	ActorKind    reminders.ActorKind     `json:"actorKind,omitempty"`
+	SnoozedUntil string                  `json:"snoozedUntil,omitempty"`
+	Trigger      *ScheduleTriggerRequest `json:"trigger,omitempty"`
+}
+
 type ScheduleTriggerRequest struct {
 	Kind     scheduler.TriggerKind `json:"kind"`
 	FireAt   string                `json:"fireAt,omitempty"`
@@ -490,6 +525,9 @@ type ScheduleWorkflowTargetRequest struct {
 }
 
 type ScheduleListResponse = ListResponse[scheduler.Schedule]
+type ReminderListResponse = ListResponse[reminders.Reminder]
+type ReminderOccurrenceListResponse = ListResponse[reminders.Occurrence]
+type ReminderActionListResponse = ListResponse[reminders.ActionRecord]
 
 type CreateDeliveryTargetRequest struct {
 	TargetID         string                     `json:"targetId"`

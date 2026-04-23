@@ -25,6 +25,12 @@
     "scheduleAttemptId": {
       "type": "string"
     },
+    "reminderId": {
+      "type": "string"
+    },
+    "reminderOccurrenceId": {
+      "type": "string"
+    },
     "entrypoint": {
       "type": "string"
     },

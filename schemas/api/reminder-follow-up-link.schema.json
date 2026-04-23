@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/reminder-follow-up-link.schema.json",
+  "title": "ReminderFollowUpLink",
+  "type": "object",
+  "required": ["linkKind", "sourceId"],
+  "additionalProperties": false,
+  "properties": {
+    "linkKind": {
+      "type": "string",
+      "enum": ["calendar_operation", "mail_operation", "run", "workflow"]
+    },
+    "sourceId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "sourceSummary": { "type": "string" },
+    "sourceDisplayState": { "type": "string" },
+    "stale": { "type": "boolean" },
+    "lastCheckedAt": { "type": "string", "format": "date-time" }
+  }
+}

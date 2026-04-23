@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/reminder-occurrence-resource.schema.json",
+  "title": "ReminderOccurrenceResource",
+  "type": "object",
+  "required": [
+    "occurrenceId",
+    "reminderId",
+    "state",
+    "scheduledFor",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "occurrenceId": { "type": "string" },
+    "reminderId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "state": {
+      "type": "string",
+      "enum": ["pending", "due", "acknowledged", "snoozed", "completed", "dismissed", "cancelled", "overdue", "missed"]
+    },
+    "scheduledFor": { "type": "string", "format": "date-time" },
+    "becameDueAt": { "type": "string", "format": "date-time" },
+    "acknowledgedAt": { "type": "string", "format": "date-time" },
+    "snoozedUntil": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "dismissedAt": { "type": "string", "format": "date-time" },
+    "cancelledAt": { "type": "string", "format": "date-time" },
+    "overdueAt": { "type": "string", "format": "date-time" },
+    "missedAt": { "type": "string", "format": "date-time" },
+    "runId": { "type": "string" },
+    "workflowId": { "type": "string" },
+    "latestDeliveryId": { "type": "string" },
+    "latestDeliveryStatus": {
+      "type": "string",
+      "enum": ["pending", "queued", "dispatching", "delivered", "suppressed", "failed"]
+    },
+    "latestDeliveryTargetId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

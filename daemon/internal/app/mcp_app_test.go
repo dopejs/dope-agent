@@ -117,7 +117,7 @@ func TestRecoverPersistedStateRestoresMCPServers(t *testing.T) {
 	defer func() { _ = restoredSandboxes.Close(context.Background()) }()
 	restoredMCP := mcp.NewManager(cfg, sqliteStore, restoredEventBus, restoredSandboxes, restoredPolicy, mcp.NewTransportMux(mcp.NewStdioTransport(), nil))
 
-	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP, nil, nil); err != nil {
+	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 	resource, ok := restoredMCP.GetServerResource("restored-mcp")
@@ -175,7 +175,7 @@ func TestRecoverPersistedStateDoesNotHangOnUnresponsiveMCPServer(t *testing.T) {
 	restoredMCP := mcp.NewManager(cfg, sqliteStore, restoredEventBus, restoredSandboxes, restoredPolicy, mcp.NewTransportMux(mcp.NewStdioTransport(), nil))
 
 	startedAt := time.Now()
-	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP, nil, nil); err != nil {
+	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 	if time.Since(startedAt) > time.Second {
@@ -244,7 +244,7 @@ func TestRecoverPersistedStateRestoresWebsocketMCPServers(t *testing.T) {
 	defer func() { _ = restoredSandboxes.Close(context.Background()) }()
 	restoredMCP := mcp.NewManager(cfg, sqliteStore, restoredEventBus, restoredSandboxes, restoredPolicy, mcp.NewTransportMux(nil, nil))
 
-	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP, nil, nil); err != nil {
+	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 	resource, ok := restoredMCP.GetServerResource("restored-websocket-mcp")
@@ -324,7 +324,7 @@ func TestRecoverPersistedStateRecordsWebsocketRestoreFailureTruth(t *testing.T) 
 	defer func() { _ = restoredSandboxes.Close(context.Background()) }()
 	restoredMCP := mcp.NewManager(cfg, sqliteStore, restoredEventBus, restoredSandboxes, restoredPolicy, mcp.NewTransportMux(nil, nil))
 
-	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP, nil, nil); err != nil {
+	if err := recoverPersistedState(context.Background(), config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, restoredProviders, restoredSandboxes, restoredMCP, nil, nil, nil, nil); err != nil {
 		t.Fatalf("recoverPersistedState returned error: %v", err)
 	}
 	resource, ok := restoredMCP.GetServerResource("restore-failed-websocket-mcp")

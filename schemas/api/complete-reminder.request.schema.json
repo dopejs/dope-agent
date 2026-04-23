@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/complete-reminder.request.schema.json",
+  "title": "CompleteReminderRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "occurrenceId": { "type": "string" },
+    "reason": { "type": "string" },
+    "actorKind": { "type": "string", "enum": ["system", "user", "reminder"] }
+  }
+}
