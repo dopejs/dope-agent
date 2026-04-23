@@ -368,8 +368,7 @@ func TestRunDeliveryUsesIntegrationOverrideTarget(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{
-		Environment: config.EnvironmentTest,
-		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+		DataDir: filepath.Join(t.TempDir(), "dope-data"),
 	}
 	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
 	if err != nil {
@@ -5648,19 +5647,6 @@ func TestMailOperationRoutesFilterByWorkflowScheduleAndDeliveryLinkage(t *testin
 	if got.Operation.WorkflowID != "wf_1" || got.Operation.ScheduleID != "sched_1" || got.Operation.DeliveryID != "delivery_1" {
 		t.Fatalf("expected linked provenance on operation get, got %+v", got.Operation)
 	}
-}
-
-func assertInterruptedWorkflowStatus(t *testing.T, workflow orchestration.Workflow) {
-	t.Helper()
-	if workflow.Status != orchestration.WorkflowStatusInterrupted || workflow.InterruptedAt == nil {
-		t.Fatalf("expected interrupted workflow truth, got %+v", workflow)
-	}
-	for _, step := range workflow.Steps {
-		if step.Status == orchestration.StepStatusInterrupted {
-			return
-		}
-	}
-	t.Fatalf("expected at least one interrupted workflow step, got %+v", workflow.Steps)
 }
 
 func findNamedEvent(t *testing.T, items []events.Event, name string) events.Event {

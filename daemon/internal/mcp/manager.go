@@ -781,10 +781,9 @@ func (m *Manager) RevalidateCatalogServer(ctx context.Context, serverID string) 
 	if blocked, handled := m.catalogTargetBlockResult(server); handled {
 		return m.catalogRevalidationBlockedResult(ctx, server, result, blocked, startedAt), nil
 	}
-	if blocked, handled, err := m.catalogRevalidationBusyBlockResult(ctx, server); handled || err != nil {
-		if err != nil {
-			return CatalogRevalidationResult{}, err
-		}
+	if blocked, handled, err := m.catalogRevalidationBusyBlockResult(ctx, server); err != nil {
+		return CatalogRevalidationResult{}, err
+	} else if handled {
 		return m.catalogRevalidationBlockedResult(ctx, server, result, blocked, startedAt), nil
 	}
 
@@ -864,10 +863,9 @@ func (m *Manager) runCatalogLifecycleAction(ctx context.Context, serverID string
 		return CatalogLifecycleResult{}, err
 	}
 	result.AuditEventIDs = append(result.AuditEventIDs, requestedEvent.EventID)
-	if blocked, handled, err := m.catalogLifecycleBlockResult(ctx, server, action, action != CatalogActionUninstall); handled || err != nil {
-		if err != nil {
-			return CatalogLifecycleResult{}, err
-		}
+	if blocked, handled, err := m.catalogLifecycleBlockResult(ctx, server, action, action != CatalogActionUninstall); err != nil {
+		return CatalogLifecycleResult{}, err
+	} else if handled {
 		return m.catalogLifecycleBlockedResult(ctx, server, result, blocked, startedAt)
 	}
 

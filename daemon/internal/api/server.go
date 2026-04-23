@@ -3448,7 +3448,8 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 		}
 		toolCall.SandboxExecutionID = execution.ExecutionID
 		toolCall.Sandbox = consumerViewMap(execution.Consumer)
-		if execution.Status == sandbox.ExecutionStatusDenied {
+		switch execution.Status {
+		case sandbox.ExecutionStatusDenied:
 			toolCall, err = manager.DenyToolCall(runID, stepID, toolCall.ToolCallID, runtime.DenyToolCallInput{
 				Output:             buildSandboxToolCallOutput(execution),
 				Error:              execution.Result.Error,
@@ -3460,7 +3461,7 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-		} else if execution.Status == sandbox.ExecutionStatusUnsupported {
+		case sandbox.ExecutionStatusUnsupported:
 			toolCall, err = manager.FailToolCall(runID, stepID, toolCall.ToolCallID, runtime.FailToolCallInput{
 				Output:             buildSandboxToolCallOutput(execution),
 				Error:              execution.Result.Error,

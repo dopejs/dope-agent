@@ -297,8 +297,7 @@ func TestWorkflowDeliveryUsesIntegrationOverrideTarget(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{
-		Environment: config.EnvironmentTest,
-		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+		DataDir: filepath.Join(t.TempDir(), "dope-data"),
 	}
 	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
 	if err != nil {
