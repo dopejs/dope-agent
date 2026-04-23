@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/reminder-resource.schema.json",
+  "title": "ReminderResource",
+  "type": "object",
+  "required": [
+    "reminderId",
+    "title",
+    "behaviorMode",
+    "trigger",
+    "currentState",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "reminderId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "title": { "type": "string" },
+    "details": { "type": "string" },
+    "behaviorMode": {
+      "type": "string",
+      "enum": ["notify_only", "launch_workflow"]
+    },
+    "trigger": { "$ref": "./reminder-trigger-resource.schema.json" },
+    "currentState": {
+      "type": "string",
+      "enum": ["pending", "due", "acknowledged", "snoozed", "completed", "dismissed", "cancelled", "overdue", "missed"]
+    },
+    "nextDueAt": { "type": "string", "format": "date-time" },
+    "activeOccurrenceId": { "type": "string" },
+    "workflowLaunchConfig": { "$ref": "./reminder-workflow-launch.schema.json" },
+    "followUpLink": { "$ref": "./reminder-follow-up-link.schema.json" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "cancelledAt": { "type": "string", "format": "date-time" }
+  }
+}

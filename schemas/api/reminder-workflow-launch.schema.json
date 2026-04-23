@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/reminder-workflow-launch.schema.json",
+  "title": "ReminderWorkflowLaunch",
+  "type": "object",
+  "required": ["entrypoint"],
+  "additionalProperties": false,
+  "properties": {
+    "sessionId": { "type": "string" },
+    "entrypoint": { "type": "string" },
+    "runGoal": { "type": "string" },
+    "workflowGoal": { "type": "string" },
+    "calendarAction": { "$ref": "./calendar-workflow-action.schema.json" },
+    "mailAction": { "$ref": "./mail-workflow-action.schema.json" }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-reminder.request.schema.json",
+  "title": "CreateReminderRequest",
+  "type": "object",
+  "required": ["title", "trigger"],
+  "additionalProperties": false,
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "details": { "type": "string" },
+    "behaviorMode": {
+      "type": "string",
+      "enum": ["notify_only", "launch_workflow"]
+    },
+    "trigger": { "$ref": "./reminder-trigger-resource.schema.json" },
+    "workflowLaunchConfig": { "$ref": "./reminder-workflow-launch.schema.json" },
+    "followUpLink": { "$ref": "./reminder-follow-up-link.schema.json" }
+  }
+}

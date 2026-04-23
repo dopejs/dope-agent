@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/reminder-action-resource.schema.json",
+  "title": "ReminderActionResource",
+  "type": "object",
+  "required": [
+    "actionId",
+    "reminderId",
+    "actionKind",
+    "actorKind",
+    "createdAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "actionId": { "type": "string" },
+    "reminderId": { "type": "string" },
+    "occurrenceId": { "type": "string" },
+    "actionKind": {
+      "type": "string",
+      "enum": ["created", "due", "acknowledged", "snoozed", "completed", "dismissed", "cancelled", "rescheduled", "overdue", "missed", "workflow_started", "workflow_start_failed", "delivery_linked"]
+    },
+    "actorKind": {
+      "type": "string",
+      "enum": ["system", "user", "reminder"]
+    },
+    "previousState": {
+      "type": "string",
+      "enum": ["pending", "due", "acknowledged", "snoozed", "completed", "dismissed", "cancelled", "overdue", "missed"]
+    },
+    "newState": {
+      "type": "string",
+      "enum": ["pending", "due", "acknowledged", "snoozed", "completed", "dismissed", "cancelled", "overdue", "missed"]
+    },
+    "reason": { "type": "string" },
+    "runId": { "type": "string" },
+    "workflowId": { "type": "string" },
+    "deliveryId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

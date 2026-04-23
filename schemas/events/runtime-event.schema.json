@@ -34,7 +34,8 @@
         "integration",
         "delivery",
         "calendar",
-        "mail"
+        "mail",
+        "reminder"
       ]
     },
     "name": {

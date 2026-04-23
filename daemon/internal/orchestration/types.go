@@ -75,6 +75,8 @@ type Workflow struct {
 	RunID                  string         `json:"runId"`
 	ScheduleID             string         `json:"scheduleId,omitempty"`
 	ScheduleAttemptID      string         `json:"scheduleAttemptId,omitempty"`
+	ReminderID             string         `json:"reminderId,omitempty"`
+	ReminderOccurrenceID   string         `json:"reminderOccurrenceId,omitempty"`
 	EnvironmentScope       string         `json:"environmentScope,omitempty"`
 	Goal                   string         `json:"goal"`
 	Status                 WorkflowStatus `json:"status"`

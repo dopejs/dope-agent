@@ -32,6 +32,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
+	"github.com/dopejs/dope-agent/daemon/internal/reminders"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
@@ -57,6 +58,7 @@ type Dependencies struct {
 	Integrations *integrations.Manager
 	Calendar     *calendar.Manager
 	Mail         *mail.Manager
+	Reminders    *reminders.Manager
 	Connectors   *connectors.Supervisor
 	Capabilities *capabilities.Supervisor
 	ComputerUse  *computeruse.Manager
@@ -83,6 +85,7 @@ type Server struct {
 	integrations *integrations.Manager
 	calendar     *calendar.Manager
 	mail         *mail.Manager
+	reminders    *reminders.Manager
 	connectors   *connectors.Supervisor
 	capabilities *capabilities.Supervisor
 	computerUse  *computeruse.Manager
@@ -170,6 +173,12 @@ func NewServer(deps Dependencies) *Server {
 	}))
 	mux.HandleFunc("/v1/schedules/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleScheduleRoutes(deps.Scheduler, deps.Delivery, w, r)
+	}))
+	mux.HandleFunc("/v1/reminders", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleReminders(deps.Reminders, w, r)
+	}))
+	mux.HandleFunc("/v1/reminders/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleReminderRoutes(deps.Reminders, w, r)
 	}))
 	mux.HandleFunc("/v1/delivery/targets", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleDeliveryTargets(deps.Delivery, w, r)
@@ -357,6 +366,7 @@ func NewServer(deps Dependencies) *Server {
 		integrations: deps.Integrations,
 		calendar:     deps.Calendar,
 		mail:         deps.Mail,
+		reminders:    deps.Reminders,
 		connectors:   deps.Connectors,
 		capabilities: deps.Capabilities,
 		computerUse:  deps.ComputerUse,

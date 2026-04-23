@@ -268,6 +268,42 @@ func assertMailContractFixtures(t *testing.T, validator *contracts.Validator) {
 	mustValidateFixtures(t, validator, mailContractFixtures())
 }
 
+func reminderContractFixtures() map[string]string {
+	return map[string]string{
+		"schemas/api/create-reminder.request.schema.json":                `{"title":"Review follow-up","details":"check workflow outcome","behaviorMode":"launch_workflow","trigger":{"kind":"once","fireAt":"2026-04-23T12:00:00Z"},"workflowLaunchConfig":{"entrypoint":"operator","runGoal":"launch reminder workflow","workflowGoal":"follow up","calendarAction":{"operationClass":"create_event","integrationId":"calendar-a","title":"Reminder workflow","startsAt":"2026-04-23T17:00:00Z","endsAt":"2026-04-23T17:30:00Z"}},"followUpLink":{"linkKind":"workflow","sourceId":"wf_1","environmentScope":"test","sourceSummary":"Existing workflow","sourceDisplayState":"running"}}`,
+		"schemas/api/reminder-trigger-resource.schema.json":              `{"kind":"once","fireAt":"2026-04-23T12:00:00Z"}`,
+		"schemas/api/reminder-workflow-launch.schema.json":               `{"entrypoint":"operator","runGoal":"launch reminder workflow","workflowGoal":"follow up","mailAction":{"operationClass":"send_message","integrationId":"mail-a","to":["carol@example.com"],"subject":"Reminder workflow","body":"hello","allowSendSideEffects":true}}`,
+		"schemas/api/reminder-follow-up-link.schema.json":                `{"linkKind":"workflow","sourceId":"wf_1","environmentScope":"test","sourceSummary":"Existing workflow","sourceDisplayState":"running","stale":false,"lastCheckedAt":"2026-04-23T12:01:00Z"}`,
+		"schemas/api/reminder-resource.schema.json":                      `{"reminderId":"rem_1","environmentScope":"test","title":"Review follow-up","details":"check workflow outcome","behaviorMode":"launch_workflow","trigger":{"kind":"once","fireAt":"2026-04-23T12:00:00Z"},"currentState":"acknowledged","activeOccurrenceId":"rem_occ_1","workflowLaunchConfig":{"entrypoint":"operator","workflowGoal":"follow up"},"followUpLink":{"linkKind":"workflow","sourceId":"wf_1","environmentScope":"test","sourceSummary":"Existing workflow","sourceDisplayState":"running","stale":false,"lastCheckedAt":"2026-04-23T12:01:00Z"},"createdAt":"2026-04-23T11:59:00Z","updatedAt":"2026-04-23T12:01:00Z"}`,
+		"schemas/api/reminder-list.response.schema.json":                 `{"items":[{"reminderId":"rem_1","environmentScope":"test","title":"Review follow-up","behaviorMode":"notify_only","trigger":{"kind":"once","fireAt":"2026-04-23T12:00:00Z"},"currentState":"pending","createdAt":"2026-04-23T11:59:00Z","updatedAt":"2026-04-23T11:59:00Z"}]}`,
+		"schemas/api/acknowledge-reminder.request.schema.json":           `{"occurrenceId":"rem_occ_1","reason":"saw it","actorKind":"user"}`,
+		"schemas/api/snooze-reminder.request.schema.json":                `{"occurrenceId":"rem_occ_1","reason":"later","actorKind":"user","snoozedUntil":"2026-04-23T12:15:00Z"}`,
+		"schemas/api/complete-reminder.request.schema.json":              `{"occurrenceId":"rem_occ_1","reason":"done","actorKind":"user"}`,
+		"schemas/api/dismiss-reminder.request.schema.json":               `{"occurrenceId":"rem_occ_1","reason":"ignore","actorKind":"user"}`,
+		"schemas/api/reschedule-reminder.request.schema.json":            `{"occurrenceId":"rem_occ_1","reason":"move it","actorKind":"user","trigger":{"kind":"once","fireAt":"2026-04-23T12:30:00Z"}}`,
+		"schemas/api/cancel-reminder.request.schema.json":                `{"reason":"not needed","actorKind":"user"}`,
+		"schemas/api/reminder-occurrence-resource.schema.json":           `{"occurrenceId":"rem_occ_1","reminderId":"rem_1","environmentScope":"test","state":"acknowledged","scheduledFor":"2026-04-23T12:00:00Z","becameDueAt":"2026-04-23T12:00:00Z","acknowledgedAt":"2026-04-23T12:00:02Z","runId":"run_1","workflowId":"wf_1","latestDeliveryId":"delivery_1","latestDeliveryStatus":"delivered","latestDeliveryTargetId":"test-sink-default","createdAt":"2026-04-23T12:00:00Z","updatedAt":"2026-04-23T12:00:02Z"}`,
+		"schemas/api/reminder-occurrence-list.response.schema.json":      `{"items":[{"occurrenceId":"rem_occ_1","reminderId":"rem_1","environmentScope":"test","state":"due","scheduledFor":"2026-04-23T12:00:00Z","createdAt":"2026-04-23T12:00:00Z","updatedAt":"2026-04-23T12:00:01Z"}]}`,
+		"schemas/api/reminder-action-resource.schema.json":               `{"actionId":"rem_act_1","reminderId":"rem_1","occurrenceId":"rem_occ_1","actionKind":"workflow_started","actorKind":"system","previousState":"due","newState":"acknowledged","reason":"launched","runId":"run_1","workflowId":"wf_1","deliveryId":"delivery_1","createdAt":"2026-04-23T12:00:02Z"}`,
+		"schemas/api/reminder-action-list.response.schema.json":          `{"items":[{"actionId":"rem_act_2","reminderId":"rem_1","occurrenceId":"rem_occ_1","actionKind":"delivery_linked","actorKind":"system","newState":"due","deliveryId":"delivery_1","createdAt":"2026-04-23T12:00:01Z"}]}`,
+		"schemas/api/run-resource.schema.json":                           `{"runId":"run_1","sessionId":"session_1","reminderId":"rem_1","reminderOccurrenceId":"rem_occ_1","entrypoint":"operator","status":"running","goal":"launch reminder workflow","activeWorkflowId":"wf_1","workflowCount":1,"latestDeliveryId":"delivery_1","latestDeliveryStatus":"delivered","latestDeliveryTargetId":"test-sink-default","createdAt":"2026-04-23T11:59:59Z","updatedAt":"2026-04-23T12:00:02Z"}`,
+		"schemas/api/workflow-resource.schema.json":                      `{"workflowId":"wf_1","runId":"run_1","reminderId":"rem_1","reminderOccurrenceId":"rem_occ_1","environmentScope":"test","goal":"follow up","status":"planned","createdAt":"2026-04-23T12:00:00Z","updatedAt":"2026-04-23T12:00:00Z","steps":[],"dependencies":[],"handoffs":[]}`,
+		"schemas/api/delivery-outcome-resource.schema.json":              `{"deliveryId":"delivery_1","environmentScope":"test","sourceKind":"reminder_occurrence","sourceId":"rem_occ_1","runId":"run_1","workflowId":"wf_1","resultClass":"routine_success","mode":"immediate","status":"delivered","chosenTargetId":"test-sink-default","preferenceId":"pref-default","payloadPreview":"review follow-up","attempts":[{"attemptId":"delivery_attempt_1","deliveryId":"delivery_1","attemptNumber":1,"targetId":"test-sink-default","transportKind":"test_sink","status":"delivered","transportReceiptSummary":"stored in repo-owned test sink","startedAt":"2026-04-23T12:00:01Z","completedAt":"2026-04-23T12:00:01Z"}],"createdAt":"2026-04-23T12:00:01Z","updatedAt":"2026-04-23T12:00:01Z","finalizedAt":"2026-04-23T12:00:01Z"}`,
+		"schemas/events/reminder-created.event.schema.json":              `{"eventId":"evt_reminder_1","sequence":1,"category":"reminder","name":"reminder.created","occurredAt":"2026-04-23T11:59:00Z","scope":{},"resource":{"kind":"reminder","id":"rem_1"},"payload":{"reminderId":"rem_1","behaviorMode":"notify_only","currentState":"pending"}}`,
+		"schemas/events/reminder-updated.event.schema.json":              `{"eventId":"evt_reminder_2","sequence":2,"category":"reminder","name":"reminder.updated","occurredAt":"2026-04-23T12:05:00Z","scope":{},"resource":{"kind":"reminder","id":"rem_1"},"payload":{"reminderId":"rem_1","currentState":"cancelled"}}`,
+		"schemas/events/reminder-occurrence-created.event.schema.json":   `{"eventId":"evt_reminder_3","sequence":3,"category":"reminder","name":"reminder.occurrence_created","occurredAt":"2026-04-23T12:00:00Z","scope":{},"resource":{"kind":"reminder","id":"rem_1"},"payload":{"reminderId":"rem_1","occurrenceId":"rem_occ_1","state":"due","scheduledFor":"2026-04-23T12:00:00Z"}}`,
+		"schemas/events/reminder-occurrence-transitioned.event.schema.json": `{"eventId":"evt_reminder_4","sequence":4,"category":"reminder","name":"reminder.occurrence_transitioned","occurredAt":"2026-04-23T12:00:02Z","scope":{"runId":"run_1","workflowId":"wf_1"},"resource":{"kind":"reminder","id":"rem_1"},"payload":{"reminderId":"rem_1","occurrenceId":"rem_occ_1","state":"acknowledged","actionKind":"workflow_started"}}`,
+		"schemas/events/reminder-workflow-launch-started.event.schema.json": `{"eventId":"evt_reminder_5","sequence":5,"category":"reminder","name":"reminder.workflow_launch_started","occurredAt":"2026-04-23T12:00:02Z","scope":{"runId":"run_1","workflowId":"wf_1"},"resource":{"kind":"reminder","id":"rem_1"},"payload":{"reminderId":"rem_1","occurrenceId":"rem_occ_1","actionKind":"workflow_started"}}`,
+		"schemas/events/reminder-workflow-launch-failed.event.schema.json":  `{"eventId":"evt_reminder_6","sequence":6,"category":"reminder","name":"reminder.workflow_launch_failed","occurredAt":"2026-04-23T12:00:02Z","scope":{},"resource":{"kind":"reminder","id":"rem_1"},"payload":{"reminderId":"rem_1","occurrenceId":"rem_occ_1","actionKind":"workflow_start_failed","reason":"launcher unavailable"}}`,
+		"schemas/events/reminder-delivery-linked.event.schema.json":         `{"eventId":"evt_reminder_7","sequence":7,"category":"reminder","name":"reminder.delivery_linked","occurredAt":"2026-04-23T12:00:01Z","scope":{},"resource":{"kind":"reminder","id":"rem_1"},"payload":{"reminderId":"rem_1","occurrenceId":"rem_occ_1","actionKind":"delivery_linked","deliveryId":"delivery_1"}}`,
+	}
+}
+
+func assertReminderContractFixtures(t *testing.T, validator *contracts.Validator) {
+	t.Helper()
+	mustValidateFixtures(t, validator, reminderContractFixtures())
+}
+
 func TestSupplementalComputerUseSchemasAcceptCanonicalFixtures(t *testing.T) {
 	t.Parallel()
 
@@ -371,6 +407,13 @@ func TestMailSchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	assertMailContractFixtures(t, validator)
+}
+
+func TestReminderSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	assertReminderContractFixtures(t, validator)
 }
 
 func TestValidatorRejectsInvalidRequestFixture(t *testing.T) {

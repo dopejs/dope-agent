@@ -17,6 +17,8 @@
     "runId": { "type": "string" },
     "scheduleId": { "type": "string" },
     "scheduleAttemptId": { "type": "string" },
+    "reminderId": { "type": "string" },
+    "reminderOccurrenceId": { "type": "string" },
     "environmentScope": { "type": "string", "enum": ["test", "prod"] },
     "goal": { "type": "string" },
     "status": { "type": "string", "enum": ["planning", "planning_failed", "planned", "running", "blocked", "completed", "partial_failed", "failed", "cancelled", "interrupted"] },

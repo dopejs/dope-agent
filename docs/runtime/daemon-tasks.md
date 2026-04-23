@@ -43,6 +43,9 @@ Current completion should be read as:
 - `Roadmap 18: MCP Execution Plane` remains planned on top of that prerequisite work
 - `Roadmap 19: Skill And Local Tool Sandbox Execution` is complete after the executable-skill and high-risk local-tool migration onto sandbox-backed execution
 - `Roadmap 20: Stronger Isolation And Additional Sandbox Backends` remains planned after the first consumer migrations
+- `Roadmap 31: Tasks And Reminders` is now closed with daemon-owned reminder resources,
+  lifecycle truth, shared-delivery reuse, workflow linkage, and recorded automated plus
+  manual verification
 
 ## Roadmap 1: Runtime Closure
 

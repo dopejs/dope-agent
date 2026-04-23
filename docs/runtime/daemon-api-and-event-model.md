@@ -212,6 +212,42 @@ The mail domain is additive:
 - delivery outcomes project additive `mailOperationIds` and summaries; they do not
   redefine whether the underlying mail action succeeded
 
+## 5.7 Reminder Domain API
+
+Purpose:
+
+- inspect daemon-owned reminder resources distinct from raw schedules
+- inspect explicit reminder occurrence lifecycle and append-only action history
+- keep reminder lifecycle truth, workflow truth, and delivery truth separately visible
+- project lightweight follow-up linkage to calendar, mail, run, or workflow source truth
+
+Examples:
+
+- `POST /v1/reminders`
+- `GET /v1/reminders`
+- `GET /v1/reminders/{reminderId}`
+- `POST /v1/reminders/{reminderId}/acknowledge`
+- `POST /v1/reminders/{reminderId}/snooze`
+- `POST /v1/reminders/{reminderId}/complete`
+- `POST /v1/reminders/{reminderId}/dismiss`
+- `POST /v1/reminders/{reminderId}/reschedule`
+- `POST /v1/reminders/{reminderId}/cancel`
+- `GET /v1/reminders/{reminderId}/actions`
+- `GET /v1/reminders/occurrences`
+- `GET /v1/reminders/occurrences/{occurrenceId}`
+
+The reminder domain is additive:
+
+- recurring reminders reuse scheduler trigger semantics, but the reminder resource stays
+  distinct from raw schedule resources
+- recurring API requests currently use scheduler-native trigger kinds: `once` and `cron`
+- successful reminder-triggered workflow launch auto-acknowledges the occurrence, but it
+  does not auto-complete the reminder
+- reminder occurrences project additive latest-delivery linkage, but `/v1/deliveries`
+  remains the authoritative delivery ledger
+- reminder follow-up links project source references and stale-source state; they do not
+  copy calendar, mail, run, or workflow truth into the reminder resource
+
 ## 6. Config And Policy API
 
 Purpose:
@@ -365,6 +401,27 @@ Delivery events carry delivery truth only:
   delivery resource model
 - summary emission is separate from the original source outcome so operators can inspect
   digest membership and digest delivery independently
+
+## Reminder Events
+
+Examples:
+
+- `reminder.created`
+- `reminder.updated`
+- `reminder.occurrence_created`
+- `reminder.occurrence_transitioned`
+- `reminder.workflow_launch_started`
+- `reminder.workflow_launch_failed`
+- `reminder.delivery_linked`
+
+Reminder events carry reminder-domain truth only:
+
+- overdue and missed remain explicit occurrence facts rather than delivery or workflow
+  inferences
+- successful workflow launch and workflow-start failure stay distinct from downstream
+  workflow execution status
+- delivery linkage events attach delivery evidence additively without redefining reminder
+  lifecycle state
 
 ## 5. Policy Events
 

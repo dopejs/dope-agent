@@ -64,6 +64,14 @@ Add a first-class reminders and lightweight task-follow-up domain that can sched
 
 - the agent can manage personal reminders as a user-facing domain instead of raw scheduler entries
 
+## Implementation Note
+
+- phase 31 is now implemented in `specs/016-tasks-reminders/`
+- the shipped reminder API uses scheduler-native trigger kinds: `once` for one-shot
+  reminders and `cron` for recurring reminders
+- reminder delivery, reminder lifecycle, and reminder-triggered workflow execution remain
+  separate truths with additive linkage across the owning resources
+
 ## Recommended `/speckit-specify` Input
 
 `$speckit-specify 结合 docs/specs/016-tasks-and-reminders.md 完成 phase 31 的工作`
