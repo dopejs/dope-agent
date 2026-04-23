@@ -13,6 +13,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 )
 
@@ -67,6 +68,21 @@ func (m *Manager) Plan(cfg config.Config, run runtime.Run, input CreateWorkflowI
 		calendarStep := pickCalendarWorkflowStep(*input.CalendarAction, now)
 		workflow.PlanSummary = "Plan one calendar domain step on the normal workflow runtime."
 		workflow.Steps = []WorkflowStep{calendarStep}
+		workflow.Status = WorkflowStatusPlanned
+		for idx := range workflow.Steps {
+			workflow.Steps[idx].WorkflowID = workflow.WorkflowID
+			workflow.Steps[idx].Position = idx + 1
+			workflow.Steps[idx].Status = StepStatusPlanned
+			workflow.Steps[idx].CreatedAt = now
+			workflow.Steps[idx].UpdatedAt = now
+			workflow.Steps[idx].MaxAttempts = max(1, workflow.Steps[idx].MaxAttempts)
+		}
+		return workflow
+	}
+	if input.MailAction != nil {
+		mailStep := pickMailWorkflowStep(*input.MailAction, now)
+		workflow.PlanSummary = "Plan one mail domain step on the normal workflow runtime."
+		workflow.Steps = []WorkflowStep{mailStep}
 		workflow.Status = WorkflowStatusPlanned
 		for idx := range workflow.Steps {
 			workflow.Steps[idx].WorkflowID = workflow.WorkflowID
@@ -240,6 +256,7 @@ func (m *Manager) BindToolCall(workflow Workflow, workflowStepID string, toolCal
 			workflow.Steps[idx].ActiveToolCallID = toolCall.ToolCallID
 			workflow.Steps[idx].RuntimeStepID = toolCall.StepID
 			workflow.Steps[idx].IntegrationBindings = integrations.CloneBindingSummaries(toolCall.IntegrationBindings)
+			workflow.Steps[idx].MailOperationSummaries = append([]mail.OperationSummary(nil), toolCall.MailOperationSummaries...)
 			workflow.Steps[idx].UpdatedAt = now
 			break
 		}
@@ -257,6 +274,7 @@ func (m *Manager) ApplyToolCallResult(workflow Workflow, toolCall runtime.ToolCa
 		step.ActiveToolCallID = toolCall.ToolCallID
 		step.RuntimeStepID = toolCall.StepID
 		step.IntegrationBindings = integrations.CloneBindingSummaries(toolCall.IntegrationBindings)
+		step.MailOperationSummaries = append([]mail.OperationSummary(nil), toolCall.MailOperationSummaries...)
 		step.UpdatedAt = now
 		switch toolCall.Status {
 		case runtime.ToolCallStatusCompleted:
@@ -534,6 +552,51 @@ func pickCalendarWorkflowStep(action calendar.Action, now time.Time) WorkflowSte
 		ToolName:             string(action.OperationClass),
 		Input:                action,
 		SelectionRationale:   "Selected the calendar domain runtime so the workflow can execute calendar work on the normal workflow and delivery truth planes.",
+		ApprovalModeExpected: "allow",
+		MaxAttempts:          1,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}
+}
+
+func pickMailWorkflowStep(action mail.Action, now time.Time) WorkflowStep {
+	title := "Run mail operation"
+	switch action.OperationClass {
+	case mail.OperationClassListThreads:
+		title = "Inspect mail threads"
+	case mail.OperationClassGetThread:
+		title = "Inspect mail thread"
+	case mail.OperationClassGetMessage:
+		title = "Inspect mail message"
+	case mail.OperationClassListDrafts:
+		title = "Inspect mail drafts"
+	case mail.OperationClassGetDraft:
+		title = "Inspect mail draft"
+	case mail.OperationClassCreateDraft:
+		title = "Create mail draft"
+	case mail.OperationClassUpdateDraft:
+		title = "Update mail draft"
+	case mail.OperationClassSendMessage:
+		title = "Send mail message"
+	case mail.OperationClassSendDraft:
+		title = "Send mail draft"
+	case mail.OperationClassReplyMessage:
+		title = "Reply to mail message"
+	case mail.OperationClassForwardMessage:
+		title = "Forward mail message"
+	}
+	consumerID := strings.TrimSpace(action.IntegrationID)
+	if consumerID == "" {
+		consumerID = "mail"
+	}
+	return WorkflowStep{
+		WorkflowStepID:       newWorkflowStepID(),
+		Title:                title,
+		ConsumerKind:         "mail",
+		ConsumerID:           consumerID,
+		ToolName:             string(action.OperationClass),
+		Input:                action,
+		SelectionRationale:   "Selected the mail domain runtime so the workflow can execute mail work on the normal workflow and delivery truth planes.",
 		ApprovalModeExpected: "allow",
 		MaxAttempts:          1,
 		CreatedAt:            now,

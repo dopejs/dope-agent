@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mail-operation-summary.schema.json",
+  "title": "MailOperationSummary",
+  "type": "object",
+  "required": ["operationId", "operationClass", "integrationId", "resultMode", "status", "capturedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "operationId": { "type": "string" },
+    "operationClass": { "type": "string", "enum": ["list_threads", "get_thread", "get_message", "list_drafts", "get_draft", "create_draft", "update_draft", "send_message", "send_draft", "reply_message", "forward_message"] },
+    "integrationId": { "type": "string" },
+    "threadId": { "type": "string" },
+    "messageId": { "type": "string" },
+    "draftId": { "type": "string" },
+    "resultMode": { "type": "string", "enum": ["inspection", "draft_only", "sent", "blocked", "failed"] },
+    "sendPath": { "type": "string", "enum": ["direct", "draft"] },
+    "status": { "type": "string", "enum": ["requested", "completed", "failed", "blocked", "cancelled"] },
+    "capturedAt": { "type": "string", "format": "date-time" }
+  }
+}

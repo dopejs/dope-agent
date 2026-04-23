@@ -1410,12 +1410,25 @@ Delivered:
 
 ### Roadmap 30: Mail Integration
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/015-mail-integration.md](../specs/015-mail-integration.md)
 
 Goal: add a first production-grade personal mail domain with truthful draft and send
 semantics.
+
+Delivered:
+
+- daemon-owned mail account, thread, message, draft, and operation routes under
+  `/v1/mail/*`
+- additive SQLite persistence for mail account projections, mail operations, and mail
+  artifacts
+- truthful direct send, send-existing-draft, reply, and forward with distinct
+  `operationClass`, `resultMode`, and `sendPath`
+- additive `mailOperationSummaries` projection onto tool calls, workflow steps, schedule
+  attempts, and delivery outcomes
+- repo-owned fake mail verification in `DOPE_ENV=test`, including blocked background send
+  without `allowSendSideEffects` and delivery-linked scheduled background send
 
 ### Roadmap 31: Tasks And Reminders
 

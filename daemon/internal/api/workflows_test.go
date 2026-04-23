@@ -17,6 +17,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -779,6 +780,201 @@ func TestWorkflowStepBindingsTrackLinkedIntegrationToolCall(t *testing.T) {
 	}
 }
 
+func TestWorkflowRoutesBlockBackgroundMailSendWithoutExplicitPermission(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+	}
+	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	manager := runtime.NewManager()
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "operator", Goal: "Block unsafe background mail send."})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	eventBus := events.NewBus()
+	t.Cleanup(eventBus.Close)
+	policyEngine := policy.NewEngine()
+	integrationManager := integrations.NewManager("test")
+	seedHealthyMailIntegration(t, integrationManager, sqliteStore, "mail-a", true)
+	mailManager := mail.NewManager("test")
+
+	server := NewServer(Dependencies{
+		Config:       cfg,
+		Logger:       telemetry.New("error").Slog(),
+		EventBus:     eventBus,
+		Policy:       policyEngine,
+		Runtime:      manager,
+		Integrations: integrationManager,
+		Mail:         mailManager,
+		Store:        sqliteStore,
+		Checkpoints:  checkpoints.NewManager(sqliteStore, manager),
+	})
+
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows", strings.NewReader(`{
+		"goal":"Block unsafe background mail send",
+		"mailAction":{
+			"operationClass":"send_message",
+			"integrationId":"mail-a",
+			"to":["carol@example.com"],
+			"subject":"Blocked background mail",
+			"body":"hello"
+		}
+	}`)))
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	created := decodeStrictResponse[orchestration.Workflow](t, createRec.Body.Bytes())
+
+	startRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(startRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows/"+created.WorkflowID+"/start", nil))
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", startRec.Code, startRec.Body.String())
+	}
+
+	workflow := waitForWorkflowTerminalState(t, server, run.RunID, created.WorkflowID)
+	if workflow.Status != orchestration.WorkflowStatusFailed {
+		t.Fatalf("expected failed workflow after blocked send, got %+v", workflow)
+	}
+	if workflow.Steps[0].LastFailureClass != "send_permission_required" {
+		t.Fatalf("expected send permission failure, got %+v", workflow.Steps[0])
+	}
+	if len(workflow.Steps[0].MailOperationSummaries) != 1 {
+		t.Fatalf("expected one blocked mail operation summary, got %+v", workflow.Steps[0])
+	}
+	summary := workflow.Steps[0].MailOperationSummaries[0]
+	if summary.Status != mail.OperationStatusBlocked || summary.ResultMode != mail.ResultModeBlocked {
+		t.Fatalf("expected blocked mail summary, got %+v", summary)
+	}
+}
+
+func TestWorkflowRoutesProjectMailOperationSummariesAndDeliveryLinkage(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+	}
+	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	manager := runtime.NewManager()
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "operator", Goal: "Deliver background mail result."})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	eventBus := events.NewBus()
+	t.Cleanup(eventBus.Close)
+	policyEngine := policy.NewEngine()
+	integrationManager := integrations.NewManager("test")
+	seedHealthyMailIntegration(t, integrationManager, sqliteStore, "mail-a", true)
+	mailManager := mail.NewManager("test")
+	deliveryManager := delivery.NewManager("test", eventBus, sqliteStore, delivery.NewTestSinkAdapter())
+	target, err := deliveryManager.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "workflow-mail-target",
+		DisplayName:      "Workflow Mail Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget returned error: %v", err)
+	}
+	if _, err := deliveryManager.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "pref-workflow-mail",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: target.TargetID,
+			delivery.ResultClassUrgent:         target.TargetID,
+			delivery.ResultClassFailure:        target.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference returned error: %v", err)
+	}
+
+	server := NewServer(Dependencies{
+		Config:       cfg,
+		Logger:       telemetry.New("error").Slog(),
+		EventBus:     eventBus,
+		Policy:       policyEngine,
+		Runtime:      manager,
+		Integrations: integrationManager,
+		Mail:         mailManager,
+		Delivery:     deliveryManager,
+		Store:        sqliteStore,
+		Checkpoints:  checkpoints.NewManager(sqliteStore, manager),
+	})
+
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows", strings.NewReader(`{
+		"goal":"Send background mail",
+		"mailAction":{
+			"operationClass":"send_message",
+			"integrationId":"mail-a",
+			"to":["carol@example.com"],
+			"subject":"Workflow mail",
+			"body":"hello",
+			"allowSendSideEffects":true
+		}
+	}`)))
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	created := decodeStrictResponse[orchestration.Workflow](t, createRec.Body.Bytes())
+
+	startRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(startRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows/"+created.WorkflowID+"/start", nil))
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", startRec.Code, startRec.Body.String())
+	}
+
+	workflow := waitForWorkflowTerminalState(t, server, run.RunID, created.WorkflowID)
+	if workflow.Status != orchestration.WorkflowStatusCompleted {
+		t.Fatalf("expected completed workflow, got %+v", workflow)
+	}
+	if len(workflow.Steps[0].MailOperationSummaries) != 1 {
+		t.Fatalf("expected one mail operation summary, got %+v", workflow.Steps[0])
+	}
+	summary := workflow.Steps[0].MailOperationSummaries[0]
+	if summary.OperationClass != mail.OperationClassSendMessage || summary.Status != mail.OperationStatusCompleted || summary.ResultMode != mail.ResultModeSent || summary.SendPath != mail.SendPathDirect {
+		t.Fatalf("expected sent mail summary, got %+v", summary)
+	}
+	if workflow.LatestDeliveryID == "" || workflow.LatestDeliveryStatus != string(delivery.OutcomeStatusDelivered) || workflow.LatestDeliveryTargetID != target.TargetID {
+		t.Fatalf("expected workflow delivery linkage, got %+v", workflow)
+	}
+
+	deliveryRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(deliveryRec, httptest.NewRequest(http.MethodGet, "/v1/deliveries/"+workflow.LatestDeliveryID, nil))
+	if deliveryRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for delivery get, got %d body=%s", deliveryRec.Code, deliveryRec.Body.String())
+	}
+	outcome := decodeStrictResponse[delivery.DeliveryOutcome](t, deliveryRec.Body.Bytes())
+	if len(outcome.MailOperationIDs) != 1 || outcome.MailOperationIDs[0] != summary.OperationID {
+		t.Fatalf("expected delivery-linked mail operation ids, got %+v", outcome.MailOperationIDs)
+	}
+	if len(outcome.MailOperationSummaries) != 1 || outcome.MailOperationSummaries[0].OperationID != summary.OperationID {
+		t.Fatalf("expected delivery-linked mail operation summaries, got %+v", outcome.MailOperationSummaries)
+	}
+}
+
 func newAllowSkillRegistryForWorkflowTest(t *testing.T, dataRoot string) *skills.Registry {
 	t.Helper()
 
@@ -806,4 +1002,25 @@ workflow test skill
 		t.Fatalf("NewRegistryWithRoots returned error: %v", err)
 	}
 	return registry
+}
+
+func waitForWorkflowTerminalState(t *testing.T, server *Server, runID, workflowID string) orchestration.Workflow {
+	t.Helper()
+
+	var workflow orchestration.Workflow
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		getRec := httptest.NewRecorder()
+		server.Handler().ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+runID+"/workflows/"+workflowID, nil))
+		if getRec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", getRec.Code, getRec.Body.String())
+		}
+		workflow = decodeStrictResponse[orchestration.Workflow](t, getRec.Body.Bytes())
+		if orchestration.IsTerminalWorkflowStatus(workflow.Status) {
+			return workflow
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("workflow %s did not reach terminal state", workflowID)
+	return orchestration.Workflow{}
 }

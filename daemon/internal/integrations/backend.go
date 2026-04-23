@@ -17,6 +17,17 @@ var (
 
 type Backend interface {
 	RunProbe(resource Resource, probeKind ProbeKind, input map[string]any) (ProbeResult, error)
+	SupportedDomainKinds() []string
+}
+
+func BackendKindSupportsDomain(kind BackendKind, domainKind string) bool {
+	trimmed := strings.TrimSpace(domainKind)
+	switch kind {
+	case BackendKindFakeLocal:
+		return FakeBackend{}.supportsDomainKind(trimmed)
+	default:
+		return false
+	}
 }
 
 func normalizeBackendBinding(binding BackendBinding) BackendBinding {

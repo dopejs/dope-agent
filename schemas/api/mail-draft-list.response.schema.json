@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mail-draft-list.response.schema.json",
+  "title": "MailDraftListResponse",
+  "type": "object",
+  "required": ["account", "items", "operation"],
+  "additionalProperties": false,
+  "properties": {
+    "account": { "$ref": "./mail-account-resource.schema.json" },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "./mail-draft-resource.schema.json" }
+    },
+    "operation": { "$ref": "./mail-operation-resource.schema.json" },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "./mail-artifact-resource.schema.json" }
+    }
+  }
+}

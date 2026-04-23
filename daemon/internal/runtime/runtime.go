@@ -11,6 +11,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 )
 
 var (
@@ -152,6 +153,7 @@ type ToolCall struct {
 	FailureClass               string                        `json:"failureClass,omitempty"`
 	IntegrationBindings        []integrations.BindingSummary `json:"integrationBindings,omitempty"`
 	CalendarOperationSummaries []calendar.OperationSummary   `json:"calendarOperationSummaries,omitempty"`
+	MailOperationSummaries     []mail.OperationSummary       `json:"mailOperationSummaries,omitempty"`
 	CreatedAt                  time.Time                     `json:"createdAt"`
 	UpdatedAt                  time.Time                     `json:"updatedAt"`
 	Input                      any                           `json:"input,omitempty"`

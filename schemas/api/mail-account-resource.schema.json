@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mail-account-resource.schema.json",
+  "title": "MailAccountResource",
+  "type": "object",
+  "required": [
+    "mailAccountId",
+    "integrationId",
+    "domainKind",
+    "environmentScope",
+    "readinessStatus",
+    "canonicalDefault",
+    "mailboxAddress",
+    "mailboxLabel",
+    "supportsThreadInspection",
+    "supportsDrafts",
+    "supportsDirectSend",
+    "supportsReply",
+    "supportsForward",
+    "lastSyncedAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "mailAccountId": { "type": "string" },
+    "integrationId": { "type": "string" },
+    "domainKind": { "type": "string", "const": "mail" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "accountKey": { "type": "string" },
+    "accountLabel": { "type": "string" },
+    "readinessStatus": {
+      "type": "string",
+      "enum": ["not_configured", "auth_pending", "healthy", "degraded", "unavailable"]
+    },
+    "canonicalDefault": { "type": "boolean" },
+    "selectionMode": { "type": "string", "enum": ["explicit", "canonical_default"] },
+    "mailboxAddress": { "type": "string" },
+    "mailboxLabel": { "type": "string" },
+    "supportsThreadInspection": { "type": "boolean" },
+    "supportsDrafts": { "type": "boolean" },
+    "supportsDirectSend": { "type": "boolean" },
+    "supportsReply": { "type": "boolean" },
+    "supportsForward": { "type": "boolean" },
+    "lastSyncedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

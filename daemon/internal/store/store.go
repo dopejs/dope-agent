@@ -22,6 +22,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
@@ -32,7 +33,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 17
+	CurrentSchemaVersion = 18
 )
 
 type schemaMigration struct {
@@ -176,14 +177,14 @@ type CalendarOperationRecord struct {
 }
 
 type CalendarArtifactRecord struct {
-	ArtifactID        string
-	OperationID       string
-	IntegrationID     string
-	EnvironmentScope  string
-	Kind              string
-	ExternalEventID   string
-	CreatedAt         time.Time
-	Document          []byte
+	ArtifactID       string
+	OperationID      string
+	IntegrationID    string
+	EnvironmentScope string
+	Kind             string
+	ExternalEventID  string
+	CreatedAt        time.Time
+	Document         []byte
 }
 
 type CalendarOperationFilter struct {
@@ -195,6 +196,64 @@ type CalendarOperationFilter struct {
 	OperationClass  string
 	Status          string
 	ExternalEventID string
+}
+
+type MailAccountRecord struct {
+	MailAccountID    string
+	IntegrationID    string
+	EnvironmentScope string
+	AccountKey       string
+	ReadinessStatus  string
+	CanonicalDefault bool
+	UpdatedAt        time.Time
+	Document         []byte
+}
+
+type MailOperationRecord struct {
+	OperationID      string
+	IntegrationID    string
+	MailAccountID    string
+	EnvironmentScope string
+	OperationClass   string
+	Status           string
+	ResultMode       string
+	ThreadID         string
+	MessageID        string
+	DraftID          string
+	RunID            string
+	WorkflowID       string
+	ScheduleID       string
+	DeliveryID       string
+	UpdatedAt        time.Time
+	Document         []byte
+}
+
+type MailArtifactRecord struct {
+	ArtifactID       string
+	OperationID      string
+	IntegrationID    string
+	EnvironmentScope string
+	Kind             string
+	ThreadID         string
+	MessageID        string
+	DraftID          string
+	AttachmentRefID  string
+	CreatedAt        time.Time
+	Document         []byte
+}
+
+type MailOperationFilter struct {
+	IntegrationID  string
+	RunID          string
+	WorkflowID     string
+	ScheduleID     string
+	DeliveryID     string
+	OperationClass string
+	Status         string
+	ResultMode     string
+	ThreadID       string
+	MessageID      string
+	DraftID        string
 }
 
 type WorkflowStepRecord struct {
@@ -1219,6 +1278,75 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_calendar_operations_event ON calendar_operations(environment_scope, external_event_id, updated_at DESC, operation_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_calendar_artifacts_operation ON calendar_artifacts(environment_scope, operation_id, created_at ASC, artifact_id ASC);`,
 			`CREATE INDEX IF NOT EXISTS idx_calendar_artifacts_event ON calendar_artifacts(environment_scope, external_event_id, created_at DESC, artifact_id DESC);`,
+		},
+	},
+	{
+		Version: 18,
+		Name:    "mail_domain",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS mail_accounts (
+				mail_account_id TEXT PRIMARY KEY,
+				integration_id TEXT NOT NULL UNIQUE,
+				environment_scope TEXT NOT NULL,
+				account_key TEXT,
+				readiness_status TEXT NOT NULL,
+				canonical_default INTEGER NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS mail_operations (
+				operation_id TEXT PRIMARY KEY,
+				integration_id TEXT NOT NULL,
+				mail_account_id TEXT NOT NULL,
+				environment_scope TEXT NOT NULL,
+				operation_class TEXT NOT NULL,
+				status TEXT NOT NULL,
+				result_mode TEXT NOT NULL,
+				thread_id TEXT,
+				message_id TEXT,
+				draft_id TEXT,
+				run_id TEXT,
+				workflow_id TEXT,
+				schedule_id TEXT,
+				delivery_id TEXT,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS mail_artifacts (
+				artifact_id TEXT PRIMARY KEY,
+				operation_id TEXT NOT NULL,
+				integration_id TEXT NOT NULL,
+				environment_scope TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				thread_id TEXT,
+				message_id TEXT,
+				draft_id TEXT,
+				attachment_ref_id TEXT,
+				created_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_accounts_env_readiness ON mail_accounts(environment_scope, readiness_status, updated_at DESC, integration_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_accounts_env_default ON mail_accounts(environment_scope, account_key, canonical_default, updated_at DESC, integration_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_operations_env_class_status ON mail_operations(environment_scope, operation_class, status, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_operations_env_result ON mail_operations(environment_scope, result_mode, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_operations_run ON mail_operations(environment_scope, run_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_operations_workflow ON mail_operations(environment_scope, workflow_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_operations_schedule ON mail_operations(environment_scope, schedule_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_operations_delivery ON mail_operations(environment_scope, delivery_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_operations_thread ON mail_operations(environment_scope, thread_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_operations_message ON mail_operations(environment_scope, message_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_operations_draft ON mail_operations(environment_scope, draft_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_artifacts_operation ON mail_artifacts(environment_scope, operation_id, created_at ASC, artifact_id ASC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_artifacts_thread ON mail_artifacts(environment_scope, thread_id, created_at DESC, artifact_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_artifacts_message ON mail_artifacts(environment_scope, message_id, created_at DESC, artifact_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_artifacts_draft ON mail_artifacts(environment_scope, draft_id, created_at DESC, artifact_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_artifacts_attachment ON mail_artifacts(environment_scope, attachment_ref_id, created_at DESC, artifact_id DESC);`,
 		},
 	},
 }
@@ -3035,6 +3163,307 @@ func (s *SQLiteStore) ListCalendarArtifacts(ctx context.Context, environmentScop
 		var item calendar.Artifact
 		if err := json.Unmarshal(record.Document, &item); err != nil {
 			return nil, fmt.Errorf("decode calendar artifact %s: %w", record.ArtifactID, err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertMailAccount(ctx context.Context, item mail.AccountProjection) error {
+	if s == nil {
+		return nil
+	}
+	documentJSON, err := marshalJSON(item)
+	if err != nil {
+		return fmt.Errorf("marshal mail account %s: %w", item.MailAccountID, err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO mail_accounts (
+			mail_account_id,
+			integration_id,
+			environment_scope,
+			account_key,
+			readiness_status,
+			canonical_default,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(mail_account_id) DO UPDATE SET
+			integration_id = excluded.integration_id,
+			environment_scope = excluded.environment_scope,
+			account_key = excluded.account_key,
+			readiness_status = excluded.readiness_status,
+			canonical_default = excluded.canonical_default,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		item.MailAccountID,
+		item.IntegrationID,
+		item.EnvironmentScope,
+		nullString(item.AccountKey),
+		item.ReadinessStatus,
+		boolToInt(item.CanonicalDefault),
+		item.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		documentJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert mail account %s: %w", item.MailAccountID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListMailAccounts(ctx context.Context, environmentScope string) ([]mail.AccountProjection, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT mail_account_id, integration_id, environment_scope, account_key, readiness_status, canonical_default, updated_at, document_json
+		FROM mail_accounts
+		WHERE environment_scope = ?
+		ORDER BY updated_at ASC, mail_account_id ASC
+	`, strings.TrimSpace(environmentScope))
+	if err != nil {
+		return nil, fmt.Errorf("list mail accounts for %s: %w", environmentScope, err)
+	}
+	defer rows.Close()
+	items := make([]mail.AccountProjection, 0)
+	for rows.Next() {
+		record, err := scanMailAccountRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		var item mail.AccountProjection
+		if err := json.Unmarshal(record.Document, &item); err != nil {
+			return nil, fmt.Errorf("decode mail account %s: %w", record.MailAccountID, err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertMailOperation(ctx context.Context, item mail.Operation) error {
+	if s == nil {
+		return nil
+	}
+	documentJSON, err := marshalJSON(item)
+	if err != nil {
+		return fmt.Errorf("marshal mail operation %s: %w", item.OperationID, err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO mail_operations (
+			operation_id,
+			integration_id,
+			mail_account_id,
+			environment_scope,
+			operation_class,
+			status,
+			result_mode,
+			thread_id,
+			message_id,
+			draft_id,
+			run_id,
+			workflow_id,
+			schedule_id,
+			delivery_id,
+			updated_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(operation_id) DO UPDATE SET
+			integration_id = excluded.integration_id,
+			mail_account_id = excluded.mail_account_id,
+			environment_scope = excluded.environment_scope,
+			operation_class = excluded.operation_class,
+			status = excluded.status,
+			result_mode = excluded.result_mode,
+			thread_id = excluded.thread_id,
+			message_id = excluded.message_id,
+			draft_id = excluded.draft_id,
+			run_id = excluded.run_id,
+			workflow_id = excluded.workflow_id,
+			schedule_id = excluded.schedule_id,
+			delivery_id = excluded.delivery_id,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`,
+		item.OperationID,
+		item.IntegrationID,
+		item.MailAccountID,
+		item.EnvironmentScope,
+		string(item.OperationClass),
+		string(item.Status),
+		string(item.ResultMode),
+		nullString(item.ThreadID),
+		nullString(item.MessageID),
+		nullString(item.DraftID),
+		nullString(item.RunID),
+		nullString(item.WorkflowID),
+		nullString(item.ScheduleID),
+		nullString(item.DeliveryID),
+		item.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		documentJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert mail operation %s: %w", item.OperationID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListMailOperations(ctx context.Context, environmentScope string, filter MailOperationFilter) ([]mail.Operation, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT operation_id, integration_id, mail_account_id, environment_scope, operation_class, status, result_mode, thread_id, message_id, draft_id, run_id, workflow_id, schedule_id, delivery_id, updated_at, document_json
+		FROM mail_operations
+		WHERE environment_scope = ?
+	`
+	args := []any{strings.TrimSpace(environmentScope)}
+	if trimmed := strings.TrimSpace(filter.IntegrationID); trimmed != "" {
+		query += ` AND integration_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.RunID); trimmed != "" {
+		query += ` AND run_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.WorkflowID); trimmed != "" {
+		query += ` AND workflow_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.ScheduleID); trimmed != "" {
+		query += ` AND schedule_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.DeliveryID); trimmed != "" {
+		query += ` AND delivery_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.OperationClass); trimmed != "" {
+		query += ` AND operation_class = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.Status); trimmed != "" {
+		query += ` AND status = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.ResultMode); trimmed != "" {
+		query += ` AND result_mode = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.ThreadID); trimmed != "" {
+		query += ` AND thread_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.MessageID); trimmed != "" {
+		query += ` AND message_id = ?`
+		args = append(args, trimmed)
+	}
+	if trimmed := strings.TrimSpace(filter.DraftID); trimmed != "" {
+		query += ` AND draft_id = ?`
+		args = append(args, trimmed)
+	}
+	query += ` ORDER BY updated_at DESC, operation_id DESC`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list mail operations for %s: %w", environmentScope, err)
+	}
+	defer rows.Close()
+	items := make([]mail.Operation, 0)
+	for rows.Next() {
+		record, err := scanMailOperationRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		var item mail.Operation
+		if err := json.Unmarshal(record.Document, &item); err != nil {
+			return nil, fmt.Errorf("decode mail operation %s: %w", record.OperationID, err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertMailArtifact(ctx context.Context, item mail.Artifact) error {
+	if s == nil {
+		return nil
+	}
+	documentJSON, err := marshalJSON(item)
+	if err != nil {
+		return fmt.Errorf("marshal mail artifact %s: %w", item.ArtifactID, err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO mail_artifacts (
+			artifact_id,
+			operation_id,
+			integration_id,
+			environment_scope,
+			kind,
+			thread_id,
+			message_id,
+			draft_id,
+			attachment_ref_id,
+			created_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(artifact_id) DO UPDATE SET
+			operation_id = excluded.operation_id,
+			integration_id = excluded.integration_id,
+			environment_scope = excluded.environment_scope,
+			kind = excluded.kind,
+			thread_id = excluded.thread_id,
+			message_id = excluded.message_id,
+			draft_id = excluded.draft_id,
+			attachment_ref_id = excluded.attachment_ref_id,
+			created_at = excluded.created_at,
+			document_json = excluded.document_json
+	`,
+		item.ArtifactID,
+		item.OperationID,
+		item.IntegrationID,
+		item.EnvironmentScope,
+		string(item.Kind),
+		nullString(item.ThreadID),
+		nullString(item.MessageID),
+		nullString(item.DraftID),
+		nullString(item.AttachmentRefID),
+		item.CreatedAt.UTC().Format(time.RFC3339Nano),
+		documentJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert mail artifact %s: %w", item.ArtifactID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListMailArtifacts(ctx context.Context, environmentScope, operationID string) ([]mail.Artifact, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT artifact_id, operation_id, integration_id, environment_scope, kind, thread_id, message_id, draft_id, attachment_ref_id, created_at, document_json
+		FROM mail_artifacts
+		WHERE environment_scope = ?
+	`
+	args := []any{strings.TrimSpace(environmentScope)}
+	if trimmed := strings.TrimSpace(operationID); trimmed != "" {
+		query += ` AND operation_id = ?`
+		args = append(args, trimmed)
+	}
+	query += ` ORDER BY created_at ASC, artifact_id ASC`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list mail artifacts for %s: %w", environmentScope, err)
+	}
+	defer rows.Close()
+	items := make([]mail.Artifact, 0)
+	for rows.Next() {
+		record, err := scanMailArtifactRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		var item mail.Artifact
+		if err := json.Unmarshal(record.Document, &item); err != nil {
+			return nil, fmt.Errorf("decode mail artifact %s: %w", record.ArtifactID, err)
 		}
 		items = append(items, item)
 	}
@@ -7179,6 +7608,132 @@ func scanCalendarArtifactRecord(scanner interface {
 	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
 	if err != nil {
 		return CalendarArtifactRecord{}, fmt.Errorf("parse calendar artifact created_at: %w", err)
+	}
+	record.CreatedAt = parsedCreatedAt
+	record.Document = []byte(document)
+	return record, nil
+}
+
+func scanMailAccountRecord(scanner interface {
+	Scan(dest ...any) error
+}) (MailAccountRecord, error) {
+	var (
+		record           MailAccountRecord
+		accountKey       sql.NullString
+		readinessStatus  string
+		canonicalDefault int
+		updatedAt        string
+		document         string
+	)
+	if err := scanner.Scan(
+		&record.MailAccountID,
+		&record.IntegrationID,
+		&record.EnvironmentScope,
+		&accountKey,
+		&readinessStatus,
+		&canonicalDefault,
+		&updatedAt,
+		&document,
+	); err != nil {
+		return MailAccountRecord{}, fmt.Errorf("scan mail account record: %w", err)
+	}
+	record.AccountKey = accountKey.String
+	record.ReadinessStatus = readinessStatus
+	record.CanonicalDefault = canonicalDefault != 0
+	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return MailAccountRecord{}, fmt.Errorf("parse mail account updated_at: %w", err)
+	}
+	record.UpdatedAt = parsedUpdatedAt
+	record.Document = []byte(document)
+	return record, nil
+}
+
+func scanMailOperationRecord(scanner interface {
+	Scan(dest ...any) error
+}) (MailOperationRecord, error) {
+	var (
+		record     MailOperationRecord
+		threadID   sql.NullString
+		messageID  sql.NullString
+		draftID    sql.NullString
+		runID      sql.NullString
+		workflowID sql.NullString
+		scheduleID sql.NullString
+		deliveryID sql.NullString
+		updatedAt  string
+		document   string
+	)
+	if err := scanner.Scan(
+		&record.OperationID,
+		&record.IntegrationID,
+		&record.MailAccountID,
+		&record.EnvironmentScope,
+		&record.OperationClass,
+		&record.Status,
+		&record.ResultMode,
+		&threadID,
+		&messageID,
+		&draftID,
+		&runID,
+		&workflowID,
+		&scheduleID,
+		&deliveryID,
+		&updatedAt,
+		&document,
+	); err != nil {
+		return MailOperationRecord{}, fmt.Errorf("scan mail operation record: %w", err)
+	}
+	record.ThreadID = threadID.String
+	record.MessageID = messageID.String
+	record.DraftID = draftID.String
+	record.RunID = runID.String
+	record.WorkflowID = workflowID.String
+	record.ScheduleID = scheduleID.String
+	record.DeliveryID = deliveryID.String
+	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return MailOperationRecord{}, fmt.Errorf("parse mail operation updated_at: %w", err)
+	}
+	record.UpdatedAt = parsedUpdatedAt
+	record.Document = []byte(document)
+	return record, nil
+}
+
+func scanMailArtifactRecord(scanner interface {
+	Scan(dest ...any) error
+}) (MailArtifactRecord, error) {
+	var (
+		record          MailArtifactRecord
+		threadID        sql.NullString
+		messageID       sql.NullString
+		draftID         sql.NullString
+		attachmentRefID sql.NullString
+		createdAt       string
+		document        string
+	)
+	if err := scanner.Scan(
+		&record.ArtifactID,
+		&record.OperationID,
+		&record.IntegrationID,
+		&record.EnvironmentScope,
+		&record.Kind,
+		&threadID,
+		&messageID,
+		&draftID,
+		&attachmentRefID,
+		&createdAt,
+		&document,
+	); err != nil {
+		return MailArtifactRecord{}, fmt.Errorf("scan mail artifact record: %w", err)
+	}
+	record.ThreadID = threadID.String
+	record.MessageID = messageID.String
+	record.DraftID = draftID.String
+	record.AttachmentRefID = attachmentRefID.String
+	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		return MailArtifactRecord{}, fmt.Errorf("parse mail artifact created_at: %w", err)
 	}
 	record.CreatedAt = parsedCreatedAt
 	record.Document = []byte(document)

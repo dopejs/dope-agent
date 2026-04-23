@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 )
 
 type ScheduleKind string
@@ -128,6 +129,7 @@ type WorkflowTarget struct {
 	RunGoal        string           `json:"runGoal,omitempty"`
 	WorkflowGoal   string           `json:"workflowGoal,omitempty"`
 	CalendarAction *calendar.Action `json:"calendarAction,omitempty"`
+	MailAction     *mail.Action     `json:"mailAction,omitempty"`
 }
 
 type RetryPolicy struct {
@@ -156,6 +158,7 @@ type DispatchAttempt struct {
 	LatestDeliveryStatus       string                      `json:"latestDeliveryStatus,omitempty"`
 	LatestDeliveryTargetID     string                      `json:"latestDeliveryTargetId,omitempty"`
 	CalendarOperationSummaries []calendar.OperationSummary `json:"calendarOperationSummaries,omitempty"`
+	MailOperationSummaries     []mail.OperationSummary     `json:"mailOperationSummaries,omitempty"`
 	SkippedReason              string                      `json:"skippedReason,omitempty"`
 	MissedCount                int                         `json:"missedCount,omitempty"`
 	CreatedAt                  time.Time                   `json:"createdAt"`

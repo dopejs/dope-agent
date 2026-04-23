@@ -1,6 +1,6 @@
 # Mail Integration
 
-Status: proposed
+Status: implemented
 
 Authority: This document is the authoritative upstream spec for the first personal mail domain slice built on the shared integrations platform.
 
@@ -67,6 +67,18 @@ Add a production-grade mail domain that supports inspectable mail state, draft a
 ## Definition Of Done
 
 - the agent can inspect mail, create drafts, and send messages with truthful audit and delivery behavior
+
+## Implemented Scope
+
+- `/v1/mail/accounts`, `/v1/mail/threads`, `/v1/mail/messages`, `/v1/mail/drafts`, and
+  `/v1/mail/operations` are implemented
+- draft create or update, direct send, send existing draft, reply, and forward all
+  persist distinct operation truth
+- attachment handling is limited to metadata and failure truth; unresolved references
+  block final send
+- background final send requires explicit `allowSendSideEffects`
+- schedule-driven background mail links into the shared delivery plane through additive
+  `mailOperationIds` and `mailOperationSummaries`
 
 ## Recommended `/speckit-specify` Input
 

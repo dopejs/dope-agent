@@ -6,6 +6,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 )
 
 type WorkflowStatus string
@@ -66,6 +67,7 @@ const (
 type CreateWorkflowInput struct {
 	Goal           string           `json:"goal,omitempty"`
 	CalendarAction *calendar.Action `json:"calendarAction,omitempty"`
+	MailAction     *mail.Action     `json:"mailAction,omitempty"`
 }
 
 type Workflow struct {
@@ -117,6 +119,7 @@ type WorkflowStep struct {
 	ComputerUseArtifacts       []computeruse.Artifact        `json:"computerUseArtifacts,omitempty"`
 	IntegrationBindings        []integrations.BindingSummary `json:"integrationBindings,omitempty"`
 	CalendarOperationSummaries []calendar.OperationSummary   `json:"calendarOperationSummaries,omitempty"`
+	MailOperationSummaries     []mail.OperationSummary       `json:"mailOperationSummaries,omitempty"`
 	CreatedAt                  time.Time                     `json:"createdAt"`
 	UpdatedAt                  time.Time                     `json:"updatedAt"`
 }

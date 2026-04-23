@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mail-artifact-resource.schema.json",
+  "title": "MailArtifactResource",
+  "type": "object",
+  "required": ["artifactId", "operationId", "kind", "integrationId", "environmentScope", "createdAt"],
+  "additionalProperties": false,
+  "properties": {
+    "artifactId": { "type": "string" },
+    "operationId": { "type": "string" },
+    "kind": { "type": "string", "enum": ["thread_snapshot", "message_snapshot", "draft_snapshot", "attachment_reference"] },
+    "integrationId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "threadId": { "type": "string" },
+    "messageId": { "type": "string" },
+    "draftId": { "type": "string" },
+    "attachmentRefId": { "type": "string" },
+    "thread": { "$ref": "./mail-thread-resource.schema.json" },
+    "message": { "$ref": "./mail-message-resource.schema.json" },
+    "draft": { "$ref": "./mail-draft-resource.schema.json" },
+    "attachment": {
+      "type": "object",
+      "required": ["attachmentRefId", "parentKind", "parentId", "resolutionStatus", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "attachmentRefId": { "type": "string" },
+        "operationId": { "type": "string" },
+        "integrationId": { "type": "string" },
+        "parentKind": { "type": "string", "enum": ["draft", "message"] },
+        "parentId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "mediaType": { "type": "string" },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "resolutionStatus": { "type": "string", "enum": ["resolved", "unresolved", "failed"] },
+        "failureReason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

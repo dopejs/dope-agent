@@ -31,6 +31,14 @@
       "type": "array",
       "items": { "$ref": "./calendar-operation-summary.schema.json" }
     },
+    "mailOperationIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "mailOperationSummaries": {
+      "type": "array",
+      "items": { "$ref": "./mail-operation-summary.schema.json" }
+    },
     "attempts": {
       "type": "array",
       "items": { "$ref": "./delivery-attempt-resource.schema.json" }

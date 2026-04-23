@@ -27,6 +27,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
@@ -55,6 +56,7 @@ type Dependencies struct {
 	MCP          *mcp.Manager
 	Integrations *integrations.Manager
 	Calendar     *calendar.Manager
+	Mail         *mail.Manager
 	Connectors   *connectors.Supervisor
 	Capabilities *capabilities.Supervisor
 	ComputerUse  *computeruse.Manager
@@ -80,6 +82,7 @@ type Server struct {
 	mcp          *mcp.Manager
 	integrations *integrations.Manager
 	calendar     *calendar.Manager
+	mail         *mail.Manager
 	connectors   *connectors.Supervisor
 	capabilities *capabilities.Supervisor
 	computerUse  *computeruse.Manager
@@ -160,7 +163,7 @@ func NewServer(deps Dependencies) *Server {
 		handleRuns(deps.Router, deps.Runtime, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, w, r)
 	}))
 	mux.HandleFunc("/v1/runs/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, deps.ComputerUse, w, r)
+		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.Mail, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, deps.ComputerUse, w, r)
 	}))
 	mux.HandleFunc("/v1/schedules", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSchedules(deps.Scheduler, deps.Delivery, w, r)
@@ -202,7 +205,7 @@ func NewServer(deps Dependencies) *Server {
 		handlePolicyApprovals(deps.Policy, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/policy/approvals/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handlePolicyApprovalRoutes(deps.Config, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.EventBus, deps.Store, deps.ComputerUse, deps.Runtime, deps.Checkpoints, w, r)
+		handlePolicyApprovalRoutes(deps.Config, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.Mail, deps.EventBus, deps.Store, deps.ComputerUse, deps.Runtime, deps.Checkpoints, w, r)
 	}))
 	mux.HandleFunc("/v1/computer-use/artifacts/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleComputerUseArtifactRoutes(deps.ComputerUse, w, r)
@@ -288,6 +291,36 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/calendar/operations/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleCalendarOperationRoutes(deps.Config, deps.Calendar, deps.Store, w, r)
 	}))
+	mux.HandleFunc("/v1/mail/accounts", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMailAccounts(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/mail/accounts/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMailAccountRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/mail/threads", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMailThreads(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/mail/threads/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMailThreadRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/mail/messages/send", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMailSendMessage(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/mail/messages/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMailMessageRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/mail/drafts", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMailDrafts(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/mail/drafts/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMailDraftRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/mail/operations", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMailOperations(deps.Config, deps.Mail, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/mail/operations/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMailOperationRoutes(deps.Config, deps.Mail, deps.Store, w, r)
+	}))
 	mux.HandleFunc("/v1/providers", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleProviders(deps.Providers, w, r)
 	}))
@@ -323,6 +356,7 @@ func NewServer(deps Dependencies) *Server {
 		mcp:          deps.MCP,
 		integrations: deps.Integrations,
 		calendar:     deps.Calendar,
+		mail:         deps.Mail,
 		connectors:   deps.Connectors,
 		capabilities: deps.Capabilities,
 		computerUse:  deps.ComputerUse,
@@ -480,7 +514,7 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 	}
 }
 
-func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, eventBus *events.Bus, deliveryManager *delivery.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request) {
+func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, eventBus *events.Bus, deliveryManager *delivery.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
 	if path == "" {
 		http.NotFound(w, r)
@@ -514,7 +548,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	}
 
 	if len(parts) == 2 && parts[1] == "workflows" {
-		handleRunWorkflows(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, eventBus, deliveryManager, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0])
+		handleRunWorkflows(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, deliveryManager, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0])
 		return
 	}
 
@@ -539,7 +573,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	}
 
 	if len(parts) == 4 && parts[1] == "workflows" && parts[3] == "start" {
-		handleRunWorkflowStart(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, eventBus, deliveryManager, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0], parts[2])
+		handleRunWorkflowStart(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, deliveryManager, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0], parts[2])
 		return
 	}
 
@@ -981,7 +1015,7 @@ func handlePolicyApprovals(policyEngine *policy.Engine, eventBus *events.Bus, sq
 	}
 }
 
-func handlePolicyApprovalRoutes(cfg config.Config, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, computerUseManager *computeruse.Manager, runtimeManager *runtime.Manager, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
+func handlePolicyApprovalRoutes(cfg config.Config, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, computerUseManager *computeruse.Manager, runtimeManager *runtime.Manager, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
 	if policyEngine == nil {
 		writeError(w, http.StatusInternalServerError, "policy engine is not configured")
 		return
@@ -999,7 +1033,7 @@ func handlePolicyApprovalRoutes(cfg config.Config, policyEngine *policy.Engine, 
 		return
 	}
 	if len(parts) == 2 && parts[1] == "resolve" {
-		handlePolicyApprovalResolve(cfg, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, eventBus, sqliteStore, computerUseManager, runtimeManager, checkpointManager, w, r, parts[0])
+		handlePolicyApprovalResolve(cfg, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, sqliteStore, computerUseManager, runtimeManager, checkpointManager, w, r, parts[0])
 		return
 	}
 
@@ -1026,7 +1060,7 @@ func handlePolicyApprovalByID(policyEngine *policy.Engine, sqliteStore *store.SQ
 	writeJSON(w, http.StatusOK, enriched[0])
 }
 
-func handlePolicyApprovalResolve(cfg config.Config, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, computerUseManager *computeruse.Manager, runtimeManager *runtime.Manager, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, approvalID string) {
+func handlePolicyApprovalResolve(cfg config.Config, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, computerUseManager *computeruse.Manager, runtimeManager *runtime.Manager, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, approvalID string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -1166,7 +1200,7 @@ func handlePolicyApprovalResolve(cfg config.Config, policyEngine *policy.Engine,
 				if ok {
 					toolCall, toolCallOK := runtimeManager.GetToolCall(action.RunID, action.StepID, action.ToolCallID)
 					if toolCallOK {
-						if _, _, err := advanceWorkflowAfterToolCall(r.Context(), cfg, runtimeManager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, eventBus, nil, sqliteStore, checkpointManager, computerUseManager, workflow, toolCall, orchestration.StepStatusRunning, ""); err != nil {
+						if _, _, err := advanceWorkflowAfterToolCall(r.Context(), cfg, runtimeManager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, nil, sqliteStore, checkpointManager, computerUseManager, workflow, toolCall, orchestration.StepStatusRunning, ""); err != nil {
 							writeError(w, http.StatusInternalServerError, err.Error())
 							return
 						}
@@ -3302,6 +3336,11 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		toolCalls, err = projectToolCallsMailSummaries(r.Context(), sqliteStore, toolCalls)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, ListResponse[runtime.ToolCall]{Items: toolCalls})
 	case http.MethodPost:
 		var request createToolCallRequest
@@ -3620,6 +3659,11 @@ func handleRunStepToolCallByID(manager *runtime.Manager, sqliteStore *store.SQLi
 		return
 	}
 	toolCall, err := projectToolCallCalendarSummaries(r.Context(), sqliteStore, toolCall)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	toolCall, err = projectToolCallMailSummaries(r.Context(), sqliteStore, toolCall)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

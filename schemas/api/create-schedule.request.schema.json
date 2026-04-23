@@ -37,7 +37,8 @@
             "entrypoint": { "type": "string" },
             "runGoal": { "type": "string" },
             "workflowGoal": { "type": "string" },
-            "calendarAction": { "$ref": "./calendar-workflow-action.schema.json" }
+            "calendarAction": { "$ref": "./calendar-workflow-action.schema.json" },
+            "mailAction": { "$ref": "./mail-workflow-action.schema.json" }
           }
         }
       }

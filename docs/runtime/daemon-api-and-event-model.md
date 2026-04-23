@@ -182,6 +182,36 @@ The calendar domain is additive:
 - delivery outcomes project `calendarOperationIds` and summaries additively; they do not
   redefine whether the underlying calendar action succeeded
 
+## 5.6 Mail Domain API
+
+Purpose:
+
+- inspect daemon-owned mail account projections
+- inspect truthful thread, message, and draft state without collapsing inspection into
+  mutation
+- execute draft create or update, direct send, send draft, reply, and forward while
+  keeping outcome truth explicit
+- project additive mail-operation linkage onto workflow, schedule, and delivery surfaces
+
+Examples:
+
+- `GET /v1/mail/accounts`
+- `GET /v1/mail/threads`
+- `GET /v1/mail/messages/{messageId}`
+- `GET /v1/mail/drafts`
+- `POST /v1/mail/drafts`
+- `POST /v1/mail/messages/send`
+- `GET /v1/mail/operations`
+
+The mail domain is additive:
+
+- readiness truth still belongs to `/v1/integrations`
+- `resultMode` and `sendPath` distinguish draft-only, blocked, failed, and sent outcomes
+- workflow and schedule resources project `mailOperationSummaries` as lookup aids, not as
+  a second execution ledger
+- delivery outcomes project additive `mailOperationIds` and summaries; they do not
+  redefine whether the underlying mail action succeeded
+
 ## 6. Config And Policy API
 
 Purpose:

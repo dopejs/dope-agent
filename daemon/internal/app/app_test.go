@@ -25,6 +25,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
@@ -484,6 +485,106 @@ func TestRecoverPersistedStateRestoresCalendarDomainState(t *testing.T) {
 	}
 	if restoredEvent.Title != created.Title {
 		t.Fatalf("expected restored event snapshot %q, got %+v", created.Title, restoredEvent)
+	}
+}
+
+func TestRecoverPersistedStateRestoresMailDomainState(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	resource, err := integrations.NewManager("test").Create(integrations.CreateInput{
+		IntegrationID:    "mail-a",
+		DomainKind:       "mail",
+		DisplayName:      "Mail A",
+		EnvironmentScope: "test",
+		CanonicalDefault: true,
+		AccountBinding: integrations.AccountBinding{
+			AccountKey:   "alice@example.com",
+			AccountLabel: "Alice Mailbox",
+		},
+		BackendBinding: integrations.BackendBinding{
+			BackendKind:           integrations.BackendKindFakeLocal,
+			SupportsProbeRead:     true,
+			SupportsProbeMutation: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	resource.ReadinessStatus = integrations.ReadinessStatusHealthy
+	resource.AuthState = integrations.AuthStateAuthorized
+	resource.HealthState = integrations.HealthStateHealthy
+	if err := sqliteStore.UpsertIntegration(ctx, resource); err != nil {
+		t.Fatalf("UpsertIntegration returned error: %v", err)
+	}
+
+	seedMail := mail.NewManager("test")
+	account, draft, operation, artifacts, err := seedMail.CreateDraft([]integrations.Resource{resource}, mail.CreateDraftInput{
+		Selection:   mail.Selection{IntegrationID: resource.IntegrationID},
+		ComposeMode: mail.ComposeModeNewMessage,
+		To:          []string{"carol@example.com"},
+		Subject:     "Recovered draft",
+		Body:        "Recovered mail body",
+	})
+	if err != nil {
+		t.Fatalf("CreateDraft returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertMailAccount(ctx, account); err != nil {
+		t.Fatalf("UpsertMailAccount returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertMailOperation(ctx, operation); err != nil {
+		t.Fatalf("UpsertMailOperation returned error: %v", err)
+	}
+	for _, artifact := range artifacts {
+		if err := sqliteStore.UpsertMailArtifact(ctx, artifact); err != nil {
+			t.Fatalf("UpsertMailArtifact returned error: %v", err)
+		}
+	}
+
+	restoredRuntime := runtime.NewManager()
+	restoredRouter := router.NewSessionRouter()
+	restoredEventBus := events.NewBus()
+	restoredCheckpoints := checkpoints.NewManager(sqliteStore, restoredRuntime)
+	restoredPolicy := policy.NewEngine()
+	restoredAuth := auth.NewManager()
+	restoredIntegrations := integrations.NewManager("test")
+	restoredMail := mail.NewManager("test")
+
+	if err := recoverPersistedState(ctx, config.EnvironmentTest, sqliteStore, restoredRouter, restoredCheckpoints, restoredEventBus, nil, nil, restoredPolicy, restoredAuth, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, nil, restoredIntegrations, nil, restoredMail); err != nil {
+		t.Fatalf("recoverPersistedState returned error: %v", err)
+	}
+
+	restoredAccount, ok := restoredMail.GetAccount(resource.IntegrationID)
+	if !ok || restoredAccount.IntegrationID != resource.IntegrationID {
+		t.Fatalf("expected restored mail account, got %+v ok=%v", restoredAccount, ok)
+	}
+	restoredOperation, ok := restoredMail.GetOperation(operation.OperationID)
+	if !ok || restoredOperation.DraftID != draft.DraftID {
+		t.Fatalf("expected restored mail operation, got %+v ok=%v", restoredOperation, ok)
+	}
+	restoredArtifacts := restoredMail.ListArtifacts(operation.OperationID)
+	if len(restoredArtifacts) == 0 {
+		t.Fatal("expected restored mail artifacts")
+	}
+	_, restoredDraft, _, _, err := restoredMail.GetDraft(restoredIntegrations.List(), mail.GetDraftInput{
+		Selection: mail.Selection{IntegrationID: resource.IntegrationID},
+		DraftID:   draft.DraftID,
+	})
+	if err != nil {
+		t.Fatalf("GetDraft after restore returned error: %v", err)
+	}
+	if restoredDraft.Subject != draft.Subject {
+		t.Fatalf("expected restored draft subject %q, got %+v", draft.Subject, restoredDraft)
 	}
 }
 

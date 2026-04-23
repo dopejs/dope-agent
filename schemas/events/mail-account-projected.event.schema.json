@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/mail-account-projected.event.schema.json",
+  "title": "MailAccountProjectedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "mail" },
+        "name": { "const": "mail.account_projected" },
+        "payload": {
+          "type": "object",
+          "required": ["integrationId", "mailboxAddress", "readinessStatus", "canonicalDefault"],
+          "additionalProperties": false,
+          "properties": {
+            "integrationId": { "type": "string" },
+            "accountKey": { "type": "string" },
+            "mailboxAddress": { "type": "string" },
+            "readinessStatus": { "type": "string" },
+            "canonicalDefault": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  ]
+}

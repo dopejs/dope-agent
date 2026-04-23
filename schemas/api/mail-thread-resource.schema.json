@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mail-thread-resource.schema.json",
+  "title": "MailThreadResource",
+  "type": "object",
+  "required": ["threadId", "operationId", "integrationId", "mailAccountId", "subject", "latestMessageAt", "messageCount", "draftCount", "createdAt"],
+  "additionalProperties": false,
+  "properties": {
+    "threadId": { "type": "string" },
+    "operationId": { "type": "string" },
+    "integrationId": { "type": "string" },
+    "mailAccountId": { "type": "string" },
+    "subject": { "type": "string" },
+    "participantSummary": { "type": "array", "items": { "type": "string" } },
+    "messageIds": { "type": "array", "items": { "type": "string" } },
+    "draftIds": { "type": "array", "items": { "type": "string" } },
+    "latestMessageAt": { "type": "string", "format": "date-time" },
+    "messageCount": { "type": "integer", "minimum": 0 },
+    "draftCount": { "type": "integer", "minimum": 0 },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

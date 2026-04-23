@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mail-message-resource.schema.json",
+  "title": "MailMessageResource",
+  "type": "object",
+  "required": ["messageId", "operationId", "integrationId", "mailAccountId", "direction", "subject", "deliveryState", "createdAt"],
+  "additionalProperties": false,
+  "properties": {
+    "messageId": { "type": "string" },
+    "threadId": { "type": "string" },
+    "operationId": { "type": "string" },
+    "integrationId": { "type": "string" },
+    "mailAccountId": { "type": "string" },
+    "direction": { "type": "string", "enum": ["inbound", "outbound"] },
+    "senderSummary": { "type": "string" },
+    "recipientSummary": { "type": "array", "items": { "type": "string" } },
+    "subject": { "type": "string" },
+    "bodyPreview": { "type": "string" },
+    "replyToMessageId": { "type": "string" },
+    "forwardedFromMessageId": { "type": "string" },
+    "deliveryState": { "type": "string", "enum": ["received", "sent", "blocked", "historical"] },
+    "attachmentRefIds": { "type": "array", "items": { "type": "string" } },
+    "sentAt": { "type": "string", "format": "date-time" },
+    "receivedAt": { "type": "string", "format": "date-time" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

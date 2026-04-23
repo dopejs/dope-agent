@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 )
 
 type TargetKind string
@@ -158,6 +159,8 @@ type DeliveryOutcome struct {
 	SuppressionReason          string                      `json:"suppressionReason,omitempty"`
 	CalendarOperationIDs       []string                    `json:"calendarOperationIds,omitempty"`
 	CalendarOperationSummaries []calendar.OperationSummary `json:"calendarOperationSummaries,omitempty"`
+	MailOperationIDs           []string                    `json:"mailOperationIds,omitempty"`
+	MailOperationSummaries     []mail.OperationSummary     `json:"mailOperationSummaries,omitempty"`
 	Attempts                   []DeliveryAttempt           `json:"attempts,omitempty"`
 	CreatedAt                  time.Time                   `json:"createdAt"`
 	UpdatedAt                  time.Time                   `json:"updatedAt"`

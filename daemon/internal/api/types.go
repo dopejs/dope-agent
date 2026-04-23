@@ -12,6 +12,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
@@ -154,6 +155,7 @@ type CreateRunRequest struct {
 type CreateWorkflowRequest struct {
 	Goal           string                         `json:"goal,omitempty"`
 	CalendarAction *CalendarWorkflowActionRequest `json:"calendarAction,omitempty"`
+	MailAction     *MailWorkflowActionRequest     `json:"mailAction,omitempty"`
 }
 
 type CreateIntegrationRequest struct {
@@ -232,6 +234,42 @@ type CalendarWorkflowActionRequest struct {
 	Reason          string                  `json:"reason,omitempty"`
 }
 
+type MailSourceLinkageRequest struct {
+	RunID                string `json:"runId,omitempty"`
+	StepID               string `json:"stepId,omitempty"`
+	ToolCallID           string `json:"toolCallId,omitempty"`
+	WorkflowID           string `json:"workflowId,omitempty"`
+	WorkflowStepID       string `json:"workflowStepId,omitempty"`
+	ScheduleID           string `json:"scheduleId,omitempty"`
+	ScheduleAttemptID    string `json:"scheduleAttemptId,omitempty"`
+	DeliveryID           string `json:"deliveryId,omitempty"`
+	AllowSendSideEffects bool   `json:"allowSendSideEffects,omitempty"`
+}
+
+type MailAttachmentRefRequest struct {
+	AttachmentRefID string `json:"attachmentRefId,omitempty"`
+	DisplayName     string `json:"displayName,omitempty"`
+	MediaType       string `json:"mediaType,omitempty"`
+	SizeBytes       int64  `json:"sizeBytes,omitempty"`
+}
+
+type MailWorkflowActionRequest struct {
+	OperationClass       mail.OperationClass         `json:"operationClass"`
+	IntegrationID        string                      `json:"integrationId,omitempty"`
+	ThreadID             string                      `json:"threadId,omitempty"`
+	MessageID            string                      `json:"messageId,omitempty"`
+	DraftID              string                      `json:"draftId,omitempty"`
+	ComposeMode          mail.ComposeMode            `json:"composeMode,omitempty"`
+	ResultMode           mail.ReplyForwardResultMode `json:"resultMode,omitempty"`
+	To                   []string                    `json:"to,omitempty"`
+	Cc                   []string                    `json:"cc,omitempty"`
+	Bcc                  []string                    `json:"bcc,omitempty"`
+	Subject              string                      `json:"subject,omitempty"`
+	Body                 string                      `json:"body,omitempty"`
+	AttachmentRefs       []MailAttachmentRefRequest  `json:"attachmentRefs,omitempty"`
+	AllowSendSideEffects bool                        `json:"allowSendSideEffects,omitempty"`
+}
+
 type CreateCalendarAvailabilityQueryRequest struct {
 	IntegrationID string                        `json:"integrationId,omitempty"`
 	WindowStart   string                        `json:"windowStart"`
@@ -264,8 +302,72 @@ type CancelCalendarEventRequest struct {
 	Source        *CalendarSourceLinkageRequest `json:"source,omitempty"`
 }
 
+type CreateMailDraftRequest struct {
+	IntegrationID   string                     `json:"integrationId,omitempty"`
+	ComposeMode     mail.ComposeMode           `json:"composeMode"`
+	ThreadID        string                     `json:"threadId,omitempty"`
+	SourceMessageID string                     `json:"sourceMessageId,omitempty"`
+	To              []string                   `json:"to,omitempty"`
+	Cc              []string                   `json:"cc,omitempty"`
+	Bcc             []string                   `json:"bcc,omitempty"`
+	Subject         string                     `json:"subject,omitempty"`
+	Body            string                     `json:"body,omitempty"`
+	AttachmentRefs  []MailAttachmentRefRequest `json:"attachmentRefs,omitempty"`
+	Source          *MailSourceLinkageRequest  `json:"source,omitempty"`
+}
+
+type UpdateMailDraftRequest struct {
+	IntegrationID  string                     `json:"integrationId,omitempty"`
+	To             []string                   `json:"to,omitempty"`
+	Cc             []string                   `json:"cc,omitempty"`
+	Bcc            []string                   `json:"bcc,omitempty"`
+	Subject        string                     `json:"subject,omitempty"`
+	Body           string                     `json:"body,omitempty"`
+	AttachmentRefs []MailAttachmentRefRequest `json:"attachmentRefs,omitempty"`
+	Source         *MailSourceLinkageRequest  `json:"source,omitempty"`
+}
+
+type SendMailMessageRequest struct {
+	IntegrationID  string                     `json:"integrationId,omitempty"`
+	To             []string                   `json:"to,omitempty"`
+	Cc             []string                   `json:"cc,omitempty"`
+	Bcc            []string                   `json:"bcc,omitempty"`
+	Subject        string                     `json:"subject,omitempty"`
+	Body           string                     `json:"body,omitempty"`
+	AttachmentRefs []MailAttachmentRefRequest `json:"attachmentRefs,omitempty"`
+	Source         *MailSourceLinkageRequest  `json:"source,omitempty"`
+}
+
+type SendMailDraftRequest struct {
+	IntegrationID string                    `json:"integrationId,omitempty"`
+	Source        *MailSourceLinkageRequest `json:"source,omitempty"`
+}
+
+type ReplyMailMessageRequest struct {
+	IntegrationID  string                      `json:"integrationId,omitempty"`
+	ResultMode     mail.ReplyForwardResultMode `json:"resultMode,omitempty"`
+	Subject        string                      `json:"subject,omitempty"`
+	Body           string                      `json:"body,omitempty"`
+	AttachmentRefs []MailAttachmentRefRequest  `json:"attachmentRefs,omitempty"`
+	Source         *MailSourceLinkageRequest   `json:"source,omitempty"`
+}
+
+type ForwardMailMessageRequest struct {
+	IntegrationID  string                      `json:"integrationId,omitempty"`
+	ResultMode     mail.ReplyForwardResultMode `json:"resultMode,omitempty"`
+	To             []string                    `json:"to,omitempty"`
+	Cc             []string                    `json:"cc,omitempty"`
+	Bcc            []string                    `json:"bcc,omitempty"`
+	Subject        string                      `json:"subject,omitempty"`
+	Body           string                      `json:"body,omitempty"`
+	AttachmentRefs []MailAttachmentRefRequest  `json:"attachmentRefs,omitempty"`
+	Source         *MailSourceLinkageRequest   `json:"source,omitempty"`
+}
+
 type CalendarAccountListResponse = ListResponse[calendar.AccountProjection]
 type CalendarOperationListResponse = ListResponse[calendar.Operation]
+type MailAccountListResponse = ListResponse[mail.AccountProjection]
+type MailOperationListResponse = ListResponse[mail.Operation]
 
 type CalendarEventListResponse struct {
 	Account   calendar.AccountProjection `json:"account"`
@@ -291,6 +393,46 @@ type CalendarAvailabilityQueryResponse struct {
 type CalendarOperationResponse struct {
 	Operation calendar.Operation  `json:"operation"`
 	Artifacts []calendar.Artifact `json:"artifacts,omitempty"`
+}
+
+type MailThreadListResponse struct {
+	Account   mail.AccountProjection `json:"account"`
+	Items     []mail.ThreadSnapshot  `json:"items"`
+	Operation mail.Operation         `json:"operation"`
+	Artifacts []mail.Artifact        `json:"artifacts,omitempty"`
+}
+
+type MailThreadResponse struct {
+	Account   mail.AccountProjection `json:"account"`
+	Thread    mail.ThreadSnapshot    `json:"thread"`
+	Operation mail.Operation         `json:"operation"`
+	Artifacts []mail.Artifact        `json:"artifacts,omitempty"`
+}
+
+type MailMessageResponse struct {
+	Account   mail.AccountProjection `json:"account"`
+	Message   mail.MessageSnapshot   `json:"message"`
+	Operation mail.Operation         `json:"operation"`
+	Artifacts []mail.Artifact        `json:"artifacts,omitempty"`
+}
+
+type MailDraftListResponse struct {
+	Account   mail.AccountProjection `json:"account"`
+	Items     []mail.DraftSnapshot   `json:"items"`
+	Operation mail.Operation         `json:"operation"`
+	Artifacts []mail.Artifact        `json:"artifacts,omitempty"`
+}
+
+type MailDraftResponse struct {
+	Account   mail.AccountProjection `json:"account"`
+	Draft     mail.DraftSnapshot     `json:"draft"`
+	Operation mail.Operation         `json:"operation"`
+	Artifacts []mail.Artifact        `json:"artifacts,omitempty"`
+}
+
+type MailOperationResponse struct {
+	Operation mail.Operation  `json:"operation"`
+	Artifacts []mail.Artifact `json:"artifacts,omitempty"`
 }
 
 type CreateComputerUseSessionRequest struct {
@@ -344,6 +486,7 @@ type ScheduleWorkflowTargetRequest struct {
 	RunGoal        string                         `json:"runGoal,omitempty"`
 	WorkflowGoal   string                         `json:"workflowGoal,omitempty"`
 	CalendarAction *CalendarWorkflowActionRequest `json:"calendarAction,omitempty"`
+	MailAction     *MailWorkflowActionRequest     `json:"mailAction,omitempty"`
 }
 
 type ScheduleListResponse = ListResponse[scheduler.Schedule]

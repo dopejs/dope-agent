@@ -23,6 +23,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -234,6 +235,39 @@ func assertCalendarContractFixtures(t *testing.T, validator *contracts.Validator
 	mustValidateFixtures(t, validator, calendarContractFixtures())
 }
 
+func mailContractFixtures() map[string]string {
+	return map[string]string{
+		"schemas/api/mail-account-resource.schema.json":             `{"mailAccountId":"mail_acct_mail-a","integrationId":"mail-a","domainKind":"mail","environmentScope":"test","accountKey":"alice@example.com","accountLabel":"Alice Mailbox","readinessStatus":"healthy","canonicalDefault":true,"selectionMode":"explicit","mailboxAddress":"alice@example.com","mailboxLabel":"Alice Mailbox","supportsThreadInspection":true,"supportsDrafts":true,"supportsDirectSend":true,"supportsReply":true,"supportsForward":true,"lastSyncedAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:00Z"}`,
+		"schemas/api/mail-account-list.response.schema.json":        `{"items":[{"mailAccountId":"mail_acct_mail-a","integrationId":"mail-a","domainKind":"mail","environmentScope":"test","readinessStatus":"healthy","canonicalDefault":true,"mailboxAddress":"alice@example.com","mailboxLabel":"Alice Mailbox","supportsThreadInspection":true,"supportsDrafts":true,"supportsDirectSend":true,"supportsReply":true,"supportsForward":true,"lastSyncedAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:00Z"}]}`,
+		"schemas/api/mail-thread-resource.schema.json":              `{"threadId":"thread_seed","operationId":"mail_op_1","integrationId":"mail-a","mailAccountId":"mail_acct_mail-a","subject":"Seed message thread","participantSummary":["alice@example.com","bob@example.com"],"messageIds":["msg_seed"],"draftIds":["draft_seed"],"latestMessageAt":"2026-04-23T16:00:00Z","messageCount":1,"draftCount":1,"createdAt":"2026-04-23T10:00:00Z"}`,
+		"schemas/api/mail-thread-list.response.schema.json":         `{"account":{"mailAccountId":"mail_acct_mail-a","integrationId":"mail-a","domainKind":"mail","environmentScope":"test","readinessStatus":"healthy","canonicalDefault":true,"mailboxAddress":"alice@example.com","mailboxLabel":"Alice Mailbox","supportsThreadInspection":true,"supportsDrafts":true,"supportsDirectSend":true,"supportsReply":true,"supportsForward":true,"lastSyncedAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:00Z"},"items":[{"threadId":"thread_seed","operationId":"mail_op_1","integrationId":"mail-a","mailAccountId":"mail_acct_mail-a","subject":"Seed message thread","participantSummary":["alice@example.com","bob@example.com"],"messageIds":["msg_seed"],"draftIds":["draft_seed"],"latestMessageAt":"2026-04-23T16:00:00Z","messageCount":1,"draftCount":1,"createdAt":"2026-04-23T10:00:00Z"}],"operation":{"operationId":"mail_op_1","operationClass":"list_threads","status":"completed","resultMode":"inspection","integrationId":"mail-a","mailAccountId":"mail_acct_mail-a","environmentScope":"test","selectionMode":"explicit","threadId":"thread_seed","artifactIds":["mail_artifact_thread"],"createdAt":"2026-04-23T10:00:00Z","completedAt":"2026-04-23T10:00:01Z","updatedAt":"2026-04-23T10:00:01Z"},"artifacts":[{"artifactId":"mail_artifact_thread","operationId":"mail_op_1","kind":"thread_snapshot","integrationId":"mail-a","environmentScope":"test","threadId":"thread_seed","thread":{"threadId":"thread_seed","operationId":"mail_op_1","integrationId":"mail-a","mailAccountId":"mail_acct_mail-a","subject":"Seed message thread","participantSummary":["alice@example.com","bob@example.com"],"messageIds":["msg_seed"],"draftIds":["draft_seed"],"latestMessageAt":"2026-04-23T16:00:00Z","messageCount":1,"draftCount":1,"createdAt":"2026-04-23T10:00:00Z"},"createdAt":"2026-04-23T10:00:00Z"}]}`,
+		"schemas/api/mail-message-resource.schema.json":             `{"messageId":"msg_seed","threadId":"thread_seed","operationId":"mail_op_2","integrationId":"mail-a","mailAccountId":"mail_acct_mail-a","direction":"inbound","senderSummary":"bob@example.com","recipientSummary":["alice@example.com"],"subject":"Seed message thread","bodyPreview":"Can you review phase 30 today?","deliveryState":"received","receivedAt":"2026-04-23T16:00:00Z","createdAt":"2026-04-23T10:00:00Z"}`,
+		"schemas/api/mail-draft-resource.schema.json":               `{"draftId":"draft_seed","threadId":"thread_seed","operationId":"mail_op_3","integrationId":"mail-a","mailAccountId":"mail_acct_mail-a","composeMode":"reply","sourceMessageId":"msg_seed","recipientSummary":["bob@example.com"],"subject":"Re: Seed message thread","bodyPreview":"Draft response body.","draftStatus":"draft","createdAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:00Z"}`,
+		"schemas/api/mail-draft-list.response.schema.json":          `{"account":{"mailAccountId":"mail_acct_mail-a","integrationId":"mail-a","domainKind":"mail","environmentScope":"test","readinessStatus":"healthy","canonicalDefault":true,"mailboxAddress":"alice@example.com","mailboxLabel":"Alice Mailbox","supportsThreadInspection":true,"supportsDrafts":true,"supportsDirectSend":true,"supportsReply":true,"supportsForward":true,"lastSyncedAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:00Z"},"items":[{"draftId":"draft_seed","threadId":"thread_seed","operationId":"mail_op_3","integrationId":"mail-a","mailAccountId":"mail_acct_mail-a","composeMode":"reply","sourceMessageId":"msg_seed","recipientSummary":["bob@example.com"],"subject":"Re: Seed message thread","bodyPreview":"Draft response body.","draftStatus":"draft","createdAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:00Z"}],"operation":{"operationId":"mail_op_3","operationClass":"list_drafts","status":"completed","resultMode":"inspection","integrationId":"mail-a","mailAccountId":"mail_acct_mail-a","environmentScope":"test","selectionMode":"explicit","draftId":"draft_seed","artifactIds":["mail_artifact_draft"],"createdAt":"2026-04-23T10:00:00Z","completedAt":"2026-04-23T10:00:01Z","updatedAt":"2026-04-23T10:00:01Z"},"artifacts":[{"artifactId":"mail_artifact_draft","operationId":"mail_op_3","kind":"draft_snapshot","integrationId":"mail-a","environmentScope":"test","draftId":"draft_seed","draft":{"draftId":"draft_seed","threadId":"thread_seed","operationId":"mail_op_3","integrationId":"mail-a","mailAccountId":"mail_acct_mail-a","composeMode":"reply","sourceMessageId":"msg_seed","recipientSummary":["bob@example.com"],"subject":"Re: Seed message thread","bodyPreview":"Draft response body.","draftStatus":"draft","createdAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:00Z"},"createdAt":"2026-04-23T10:00:00Z"}]}`,
+		"schemas/api/mail-artifact-resource.schema.json":            `{"artifactId":"mail_artifact_attachment","operationId":"mail_op_4","kind":"attachment_reference","integrationId":"mail-a","environmentScope":"test","attachmentRefId":"attachment_1","attachment":{"attachmentRefId":"attachment_1","operationId":"mail_op_4","integrationId":"mail-a","parentKind":"message","parentId":"msg_sent","displayName":"brief.pdf","mediaType":"application/pdf","sizeBytes":1024,"resolutionStatus":"resolved","createdAt":"2026-04-23T10:00:00Z"},"createdAt":"2026-04-23T10:00:00Z"}`,
+		"schemas/api/mail-operation-resource.schema.json":           `{"operationId":"mail_op_4","operationClass":"send_message","status":"completed","resultMode":"sent","sendPath":"direct","integrationId":"mail-a","mailAccountId":"mail_acct_mail-a","environmentScope":"test","selectionMode":"explicit","threadId":"thread_sent","messageId":"msg_sent","requestSummary":"Phase 30 -> carol@example.com","backgroundSendPermitted":false,"runId":"run_1","stepId":"step_1","toolCallId":"tool_call_1","workflowId":"wf_1","workflowStepId":"wfstep_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","deliveryId":"delivery_1","artifactIds":["mail_artifact_message"],"createdAt":"2026-04-23T10:00:00Z","completedAt":"2026-04-23T10:00:01Z","updatedAt":"2026-04-23T10:00:01Z"}`,
+		"schemas/api/mail-operation-list.response.schema.json":      `{"items":[{"operationId":"mail_op_4","operationClass":"send_message","status":"completed","resultMode":"sent","sendPath":"direct","integrationId":"mail-a","mailAccountId":"mail_acct_mail-a","environmentScope":"test","createdAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:01Z"}]}`,
+		"schemas/api/mail-operation-summary.schema.json":            `{"operationId":"mail_op_4","operationClass":"send_message","integrationId":"mail-a","threadId":"thread_sent","messageId":"msg_sent","resultMode":"sent","sendPath":"direct","status":"completed","capturedAt":"2026-04-23T10:00:01Z"}`,
+		"schemas/api/mail-workflow-action.schema.json":              `{"operationClass":"send_message","integrationId":"mail-a","to":["carol@example.com"],"subject":"Workflow mail","body":"hello","allowSendSideEffects":true}`,
+		"schemas/api/create-workflow.request.schema.json":           `{"goal":"Send mail from workflow.","mailAction":{"operationClass":"send_message","integrationId":"mail-a","to":["carol@example.com"],"subject":"Workflow mail","body":"hello","allowSendSideEffects":true}}`,
+		"schemas/api/create-schedule.request.schema.json":           `{"trigger":{"kind":"once","fireAt":"2026-04-22T10:01:00Z"},"target":{"kind":"workflow","workflow":{"entrypoint":"operator","runGoal":"dispatch mail workflow","workflowGoal":"send mail","mailAction":{"operationClass":"send_message","integrationId":"mail-a","to":["carol@example.com"],"subject":"Workflow mail","body":"hello","allowSendSideEffects":true}}},"retryPolicy":{"maxRetries":1,"backoffKind":"fixed","baseDelaySeconds":5,"maxDelaySeconds":5}}`,
+		"schemas/api/tool-call-resource.schema.json":                `{"toolCallId":"tool_call_mail_1","runId":"run_1","stepId":"step_1","workflowId":"wf_1","workflowStepId":"wfstep_1","invocationKind":"domain_tool","domainKind":"mail","toolName":"mail.send_message","status":"completed","mailOperationSummaries":[{"operationId":"mail_op_4","operationClass":"send_message","integrationId":"mail-a","threadId":"thread_sent","messageId":"msg_sent","resultMode":"sent","sendPath":"direct","status":"completed","capturedAt":"2026-04-23T10:00:01Z"}],"createdAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:01Z","output":{"result":"sent"}}`,
+		"schemas/api/workflow-step-resource.schema.json":            `{"workflowStepId":"wfstep_mail_1","workflowId":"wf_1","title":"Send workflow mail","position":1,"consumerKind":"mail","consumerId":"mail-a","toolName":"mail.send_message","input":{"operationClass":"send_message","to":["carol@example.com"]},"status":"completed","selectionRationale":"Selected the configured mail integration for outbound action.","approvalModeExpected":"allow","attemptCount":1,"maxAttempts":1,"mailOperationSummaries":[{"operationId":"mail_op_4","operationClass":"send_message","integrationId":"mail-a","threadId":"thread_sent","messageId":"msg_sent","resultMode":"sent","sendPath":"direct","status":"completed","capturedAt":"2026-04-23T10:00:01Z"}],"createdAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:01Z"}`,
+		"schemas/api/schedule-attempt-resource.schema.json":         `{"scheduleAttemptId":"sched_attempt_1","scheduleId":"sched_1","dueAt":"2026-04-22T10:01:00Z","triggerSource":"normal","dispatchStatus":"dispatched","retryCount":0,"retryBudget":1,"resolvedTargetRevision":1,"runId":"run_1","workflowId":"wf_1","downstreamStatus":"completed","latestDeliveryId":"delivery_1","latestDeliveryStatus":"delivered","latestDeliveryTargetId":"test-sink-default","mailOperationSummaries":[{"operationId":"mail_op_4","operationClass":"send_message","integrationId":"mail-a","threadId":"thread_sent","messageId":"msg_sent","resultMode":"sent","sendPath":"direct","status":"completed","capturedAt":"2026-04-23T10:00:01Z"}],"createdAt":"2026-04-22T10:01:01Z","updatedAt":"2026-04-22T10:01:01Z"}`,
+		"schemas/api/delivery-outcome-resource.schema.json":         `{"deliveryId":"delivery_1","environmentScope":"test","sourceKind":"workflow","sourceId":"wf_1","runId":"run_1","workflowId":"wf_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","resultClass":"routine_success","mode":"immediate","status":"delivered","chosenTargetId":"test-sink-default","preferenceId":"pref-default","payloadPreview":"workflow mail sent","mailOperationIds":["mail_op_4"],"mailOperationSummaries":[{"operationId":"mail_op_4","operationClass":"send_message","integrationId":"mail-a","threadId":"thread_sent","messageId":"msg_sent","resultMode":"sent","sendPath":"direct","status":"completed","capturedAt":"2026-04-23T10:00:01Z"}],"attempts":[{"attemptId":"delivery_attempt_1","deliveryId":"delivery_1","attemptNumber":1,"targetId":"test-sink-default","transportKind":"test_sink","status":"delivered","transportReceiptSummary":"stored in repo-owned test sink","startedAt":"2026-04-22T10:00:01Z","completedAt":"2026-04-22T10:00:01Z"}],"createdAt":"2026-04-22T10:00:00Z","updatedAt":"2026-04-22T10:00:01Z","finalizedAt":"2026-04-22T10:00:01Z"}`,
+		"schemas/events/mail-account-projected.event.schema.json":   `{"eventId":"evt_mail_1","sequence":1,"category":"mail","name":"mail.account_projected","occurredAt":"2026-04-23T10:00:00Z","scope":{},"resource":{"kind":"mail_account","id":"mail_acct_mail-a"},"payload":{"integrationId":"mail-a","accountKey":"alice@example.com","mailboxAddress":"alice@example.com","readinessStatus":"healthy","canonicalDefault":true}}`,
+		"schemas/events/mail-operation-requested.event.schema.json": `{"eventId":"evt_mail_2","sequence":2,"category":"mail","name":"mail.operation_requested","occurredAt":"2026-04-23T10:00:00Z","scope":{"runId":"run_1","workflowId":"wf_1","scheduleId":"sched_1"},"resource":{"kind":"mail_operation","id":"mail_op_4"},"payload":{"operationId":"mail_op_4","operationClass":"send_message","integrationId":"mail-a","runId":"run_1","workflowId":"wf_1","scheduleId":"sched_1","resultMode":"sent","sendPath":"direct","threadId":"thread_sent","messageId":"msg_sent","failureClass":""}}`,
+		"schemas/events/mail-operation-completed.event.schema.json": `{"eventId":"evt_mail_3","sequence":3,"category":"mail","name":"mail.operation_completed","occurredAt":"2026-04-23T10:00:01Z","scope":{"runId":"run_1","workflowId":"wf_1","scheduleId":"sched_1"},"resource":{"kind":"mail_operation","id":"mail_op_4"},"payload":{"operationId":"mail_op_4","operationClass":"send_message","integrationId":"mail-a","runId":"run_1","workflowId":"wf_1","scheduleId":"sched_1","resultMode":"sent","sendPath":"direct","threadId":"thread_sent","messageId":"msg_sent","failureClass":""}}`,
+		"schemas/events/mail-operation-failed.event.schema.json":    `{"eventId":"evt_mail_4","sequence":4,"category":"mail","name":"mail.operation_failed","occurredAt":"2026-04-23T10:00:02Z","scope":{"runId":"run_1"},"resource":{"kind":"mail_operation","id":"mail_op_5"},"payload":{"operationId":"mail_op_5","operationClass":"send_message","integrationId":"mail-a","runId":"run_1","resultMode":"blocked","sendPath":"","failureClass":"attachment_unresolved"}}`,
+		"schemas/events/mail-artifact-recorded.event.schema.json":   `{"eventId":"evt_mail_5","sequence":5,"category":"mail","name":"mail.artifact_recorded","occurredAt":"2026-04-23T10:00:03Z","scope":{"runId":"run_1"},"resource":{"kind":"mail_artifact","id":"mail_artifact_message"},"payload":{"artifactId":"mail_artifact_message","operationId":"mail_op_4","threadId":"thread_sent","messageId":"msg_sent","draftId":""}}`,
+	}
+}
+
+func assertMailContractFixtures(t *testing.T, validator *contracts.Validator) {
+	t.Helper()
+	mustValidateFixtures(t, validator, mailContractFixtures())
+}
+
 func TestSupplementalComputerUseSchemasAcceptCanonicalFixtures(t *testing.T) {
 	t.Parallel()
 
@@ -274,6 +308,12 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 		"schemas/api/create-calendar-event.request.schema.json":              `{"integrationId":"calendar-a","title":"Design review","startsAt":"2026-04-23T17:00:00Z","endsAt":"2026-04-23T17:30:00Z","timezone":"America/Los_Angeles"}`,
 		"schemas/api/update-calendar-event.request.schema.json":              `{"title":"Moved review","startsAt":"2026-04-23T18:00:00Z","endsAt":"2026-04-23T18:30:00Z"}`,
 		"schemas/api/cancel-calendar-event.request.schema.json":              `{"reason":"cancelled","source":{"runId":"run_1"}}`,
+		"schemas/api/create-mail-draft.request.schema.json":                  `{"integrationId":"mail-a","composeMode":"new_message","to":["carol@example.com"],"subject":"Phase 30 draft","body":"Hello","source":{"runId":"run_1","workflowId":"wf_1","allowSendSideEffects":false}}`,
+		"schemas/api/update-mail-draft.request.schema.json":                  `{"integrationId":"mail-a","subject":"Updated draft","attachmentRefs":[{"attachmentRefId":"attachment_1","displayName":"brief.pdf","mediaType":"application/pdf","sizeBytes":1024}],"source":{"runId":"run_1"}}`,
+		"schemas/api/send-mail-message.request.schema.json":                  `{"integrationId":"mail-a","to":["carol@example.com"],"subject":"Phase 30 send","body":"Hello","source":{"workflowId":"wf_1","allowSendSideEffects":true}}`,
+		"schemas/api/send-mail-draft.request.schema.json":                    `{"integrationId":"mail-a","source":{"scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","allowSendSideEffects":true}}`,
+		"schemas/api/reply-mail-message.request.schema.json":                 `{"integrationId":"mail-a","resultMode":"draft","body":"Reply later","source":{"runId":"run_1"}}`,
+		"schemas/api/forward-mail-message.request.schema.json":               `{"integrationId":"mail-a","resultMode":"send","to":["dave@example.com"],"body":"FYI","source":{"workflowId":"wf_1","allowSendSideEffects":true}}`,
 		"schemas/api/sandbox-execution.request.schema.json":                  `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","timeoutMs":1000,"requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","reason":"inspect profile","metadata":{"ticket":"sandbox-16"},"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true}}`,
 		"schemas/api/sandbox-explain.request.schema.json":                    `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"allowedHosts":[],"allowedPorts":[]}}`,
 		"schemas/api/mcp-server-create.request.schema.json":                  `{"serverId":"mcp-test","displayName":"MCP Test","enabled":true,"sandboxProfileId":"subprocess_default","declarationId":"mcp_server:mcp-test:lifecycle.start","transportKind":"stdio","command":"/tmp/mcp-helper","args":["--stdio"],"workingDir":"/tmp/dope","secretRefs":["MCP_TEST_TOKEN"],"autoRestart":true}`,
@@ -324,6 +364,13 @@ func TestCalendarSchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	assertCalendarContractFixtures(t, validator)
+}
+
+func TestMailSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	assertMailContractFixtures(t, validator)
 }
 
 func TestValidatorRejectsInvalidRequestFixture(t *testing.T) {
@@ -568,6 +615,9 @@ func TestAPISchemasMatchCanonicalResponses(t *testing.T) {
 	h.mustValidateResponse(t, http.MethodGet, "/v1/integrations/calendar-a", "", h.authHeader, "schemas/api/integration-resource.schema.json")
 	h.mustValidateResponse(t, http.MethodPost, "/v1/integrations/calendar-a/readiness", `{"readinessStatus":"degraded","authState":"authorized","healthState":"degraded","reason":"latency","requiredOperatorAction":"monitor only","secretResolution":"resolved"}`, h.authHeader, "schemas/api/integration-resource.schema.json")
 	h.mustValidateResponse(t, http.MethodPost, "/v1/integrations/calendar-a/default", `{}`, h.authHeader, "schemas/api/integration-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/integrations", `{"integrationId":"mail-a","domainKind":"mail","displayName":"Mail A","backendKind":"fake_local","accountBinding":{"accountKey":"alice@example.com","accountLabel":"Alice Mailbox"},"canonicalDefault":true}`, h.authHeader, "schemas/api/integration-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/integrations/mail-a/readiness", `{"readinessStatus":"healthy","authState":"authorized","healthState":"healthy","reason":"probe passed","requiredOperatorAction":"none","secretResolution":"resolved"}`, h.authHeader, "schemas/api/integration-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodPost, "/v1/integrations/mail-a/default", `{}`, h.authHeader, "schemas/api/integration-resource.schema.json")
 
 	createRunBody := h.request(t, http.MethodPost, "/v1/runs", `{"entrypoint":"chat","goal":"validate contracts"}`, h.authHeader)
 	h.mustValidate(t, "schemas/api/run-resource.schema.json", createRunBody)
@@ -592,6 +642,49 @@ func TestAPISchemasMatchCanonicalResponses(t *testing.T) {
 	h.mustValidateResponse(t, http.MethodGet, "/v1/runs/"+runID+"/steps/"+stepID+"/tool-calls", "", h.authHeader, "schemas/api/tool-call-list.response.schema.json")
 	h.mustValidateResponse(t, http.MethodPost, "/v1/runs/"+runID+"/steps/"+stepID+"/tool-calls/"+toolCallID+"/complete", `{"output":{"ok":true}}`, h.authHeader, "schemas/api/tool-call-resource.schema.json")
 	h.mustValidateResponse(t, http.MethodPost, "/v1/runs/"+runID+"/integrations/calendar-a/probes", `{"probeKind":"inspect","input":{"mode":"readonly"}}`, h.authHeader, "schemas/api/integration-probe.response.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/mail/accounts", "", h.authHeader, "schemas/api/mail-account-list.response.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/mail/accounts/mail-a", "", h.authHeader, "schemas/api/mail-account-resource.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/mail/threads?integrationId=mail-a", "", h.authHeader, "schemas/api/mail-thread-list.response.schema.json")
+	mailThreadBody := h.request(t, http.MethodGet, "/v1/mail/threads/thread_seed?integrationId=mail-a", "", h.authHeader)
+	mailThreadResponse := decodeJSONMap(t, mailThreadBody)
+	threadPayload, _ := json.Marshal(mailThreadResponse["thread"])
+	h.mustValidate(t, "schemas/api/mail-thread-resource.schema.json", threadPayload)
+	h.mustValidate(t, "schemas/api/mail-account-resource.schema.json", mustMarshalContractJSON(t, mailThreadResponse["account"]))
+	h.mustValidate(t, "schemas/api/mail-operation-resource.schema.json", mustMarshalContractJSON(t, mailThreadResponse["operation"]))
+	mailMessageBody := h.request(t, http.MethodGet, "/v1/mail/messages/msg_seed?integrationId=mail-a", "", h.authHeader)
+	mailMessageResponse := decodeJSONMap(t, mailMessageBody)
+	h.mustValidate(t, "schemas/api/mail-message-resource.schema.json", mustMarshalContractJSON(t, mailMessageResponse["message"]))
+	h.mustValidate(t, "schemas/api/mail-account-resource.schema.json", mustMarshalContractJSON(t, mailMessageResponse["account"]))
+	h.mustValidate(t, "schemas/api/mail-operation-resource.schema.json", mustMarshalContractJSON(t, mailMessageResponse["operation"]))
+	h.mustValidateResponse(t, http.MethodGet, "/v1/mail/drafts?integrationId=mail-a", "", h.authHeader, "schemas/api/mail-draft-list.response.schema.json")
+	createMailDraftBody := h.request(t, http.MethodPost, "/v1/mail/drafts", `{"integrationId":"mail-a","composeMode":"new_message","to":["carol@example.com"],"subject":"Contract draft","body":"hello"}`, h.authHeader)
+	createdMailDraft := decodeJSONMap(t, createMailDraftBody)
+	h.mustValidate(t, "schemas/api/mail-draft-resource.schema.json", mustMarshalContractJSON(t, createdMailDraft["draft"]))
+	h.mustValidate(t, "schemas/api/mail-account-resource.schema.json", mustMarshalContractJSON(t, createdMailDraft["account"]))
+	h.mustValidate(t, "schemas/api/mail-operation-resource.schema.json", mustMarshalContractJSON(t, createdMailDraft["operation"]))
+	draftID := createdMailDraft["draft"].(map[string]any)["draftId"].(string)
+	updateMailDraftBody := h.request(t, http.MethodPost, "/v1/mail/drafts/"+draftID+"/update", `{"integrationId":"mail-a","subject":"Contract draft updated"}`, h.authHeader)
+	h.mustValidate(t, "schemas/api/mail-draft-resource.schema.json", mustMarshalContractJSON(t, decodeJSONMap(t, updateMailDraftBody)["draft"]))
+	sendMailMessageBody := h.request(t, http.MethodPost, "/v1/mail/messages/send", `{"integrationId":"mail-a","to":["carol@example.com"],"subject":"Contract send","body":"hello"}`, h.authHeader)
+	h.mustValidate(t, "schemas/api/mail-message-resource.schema.json", mustMarshalContractJSON(t, decodeJSONMap(t, sendMailMessageBody)["message"]))
+	sendMailDraftBody := h.request(t, http.MethodPost, "/v1/mail/drafts/"+draftID+"/send", `{"integrationId":"mail-a"}`, h.authHeader)
+	h.mustValidate(t, "schemas/api/mail-message-resource.schema.json", mustMarshalContractJSON(t, decodeJSONMap(t, sendMailDraftBody)["message"]))
+	replyMailBody := h.request(t, http.MethodPost, "/v1/mail/messages/msg_seed/reply", `{"integrationId":"mail-a","resultMode":"draft","body":"reply later"}`, h.authHeader)
+	h.mustValidate(t, "schemas/api/mail-draft-resource.schema.json", mustMarshalContractJSON(t, decodeJSONMap(t, replyMailBody)["draft"]))
+	forwardMailBody := h.request(t, http.MethodPost, "/v1/mail/messages/msg_seed/forward", `{"integrationId":"mail-a","resultMode":"send","to":["dave@example.com"],"body":"fwd"}`, h.authHeader)
+	h.mustValidate(t, "schemas/api/mail-message-resource.schema.json", mustMarshalContractJSON(t, decodeJSONMap(t, forwardMailBody)["message"]))
+	h.mustValidateResponse(t, http.MethodGet, "/v1/mail/operations", "", h.authHeader, "schemas/api/mail-operation-list.response.schema.json")
+	h.mustValidateResponse(t, http.MethodGet, "/v1/mail/operations?resultMode=sent", "", h.authHeader, "schemas/api/mail-operation-list.response.schema.json")
+	mailOpsBody := h.request(t, http.MethodGet, "/v1/mail/operations", "", h.authHeader)
+	h.mustValidate(t, "schemas/api/mail-operation-list.response.schema.json", mailOpsBody)
+	mailOps := decodeJSONMap(t, mailOpsBody)["items"].([]any)
+	if len(mailOps) == 0 {
+		t.Fatal("expected mail operations to be present")
+	}
+	mailOperationID := mailOps[0].(map[string]any)["operationId"].(string)
+	mailOperationBody := h.request(t, http.MethodGet, "/v1/mail/operations/"+mailOperationID, "", h.authHeader)
+	mailOperationResponse := decodeJSONMap(t, mailOperationBody)
+	h.mustValidate(t, "schemas/api/mail-operation-resource.schema.json", mustMarshalContractJSON(t, mailOperationResponse["operation"]))
 
 	createApprovalBody := h.request(t, http.MethodPost, "/v1/policy/approvals", `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"manual review","requestedBy":"contract-suite"}`, h.authHeader)
 	h.mustValidate(t, "schemas/api/approval-decision.response.schema.json", createApprovalBody)
@@ -631,8 +724,21 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 	h.request(t, http.MethodPost, "/v1/integrations", `{"integrationId":"calendar-events","domainKind":"calendar","displayName":"Calendar Events","backendKind":"fake_local","accountBinding":{"accountKey":"acct_calendar"},"canonicalDefault":true}`, h.authHeader)
 	h.request(t, http.MethodPost, "/v1/integrations/calendar-events/readiness", `{"readinessStatus":"healthy","authState":"authorized","healthState":"healthy","reason":"probe passed","requiredOperatorAction":"none","secretResolution":"resolved"}`, h.authHeader)
 	h.request(t, http.MethodPost, "/v1/integrations/calendar-events/default", `{}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/integrations", `{"integrationId":"mail-events","domainKind":"mail","displayName":"Mail Events","backendKind":"fake_local","accountBinding":{"accountKey":"alice@example.com"},"canonicalDefault":true}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/integrations/mail-events/readiness", `{"readinessStatus":"healthy","authState":"authorized","healthState":"healthy","reason":"probe passed","requiredOperatorAction":"none","secretResolution":"resolved"}`, h.authHeader)
+	h.request(t, http.MethodPost, "/v1/integrations/mail-events/default", `{}`, h.authHeader)
 	h.request(t, http.MethodPost, "/v1/connectors", `{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`, h.authHeader)
 	h.request(t, http.MethodPost, "/v1/connectors/telegram-main/ingress/messages", `{"route":{"kind":"direct","accountId":"bot-main","peerId":"dm-1"},"message":{"messageId":"msg_1","text":"hello"},"run":{"entrypoint":"connector.message","goal":"validate ingress events"}}`, h.authHeader)
+	h.request(t, http.MethodGet, "/v1/mail/accounts", ``, h.authHeader)
+	h.request(t, http.MethodGet, "/v1/mail/threads?integrationId=mail-events", ``, h.authHeader)
+	blockedMailReq := httptest.NewRequest(http.MethodPost, "/v1/mail/messages/send", strings.NewReader(`{"integrationId":"mail-events","to":["carol@example.com"],"subject":"event send","attachmentRefs":[{"attachmentRefId":"missing_event_attachment"}]}`))
+	blockedMailReq.Header.Set("Authorization", h.authHeader)
+	blockedMailReq.Header.Set("Content-Type", "application/json")
+	blockedMailRec := httptest.NewRecorder()
+	h.server.Handler().ServeHTTP(blockedMailRec, blockedMailReq)
+	if blockedMailRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected blocked mail send to return 400, got %d body=%s", blockedMailRec.Code, blockedMailRec.Body.String())
+	}
 
 	runBody := h.request(t, http.MethodPost, "/v1/runs", `{"entrypoint":"chat","goal":"validate events"}`, h.authHeader)
 	runID := decodeJSONMap(t, runBody)["runId"].(string)
@@ -681,6 +787,11 @@ func TestEventSchemasMatchPersistedEvents(t *testing.T) {
 		"integration.updated":            "schemas/events/integration-updated.event.schema.json",
 		"integration.readiness_changed":  "schemas/events/integration-readiness-changed.event.schema.json",
 		"integration.default_changed":    "schemas/events/integration-default-changed.event.schema.json",
+		"mail.account_projected":         "schemas/events/mail-account-projected.event.schema.json",
+		"mail.operation_requested":       "schemas/events/mail-operation-requested.event.schema.json",
+		"mail.operation_completed":       "schemas/events/mail-operation-completed.event.schema.json",
+		"mail.operation_failed":          "schemas/events/mail-operation-failed.event.schema.json",
+		"mail.artifact_recorded":         "schemas/events/mail-artifact-recorded.event.schema.json",
 		"policy.approval_requested":      "schemas/events/policy-approval-requested.event.schema.json",
 		"policy.approval_resolved":       "schemas/events/policy-approval-resolved.event.schema.json",
 		"policy.decision_recorded":       "schemas/events/policy-decision-recorded.event.schema.json",
@@ -916,6 +1027,7 @@ data instructions
 		Skills:       skillRegistry,
 		Sandboxes:    sandboxManager,
 		Integrations: integrationManager,
+		Mail:         mail.NewManager("test"),
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
 		Store:        sqliteStore,
@@ -1013,6 +1125,16 @@ func decodeJSONMap(t *testing.T, body []byte) map[string]any {
 		t.Fatalf("json.Unmarshal returned error: %v\nbody=%s", err, string(body))
 	}
 	return value
+}
+
+func mustMarshalContractJSON(t *testing.T, value any) []byte {
+	t.Helper()
+
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal returned error: %v", err)
+	}
+	return payload
 }
 
 func mustValidateFixtures(t *testing.T, validator *contracts.Validator, fixtures map[string]string) {

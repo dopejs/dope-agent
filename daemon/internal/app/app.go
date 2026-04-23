@@ -26,6 +26,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/im"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/managedproviders"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
@@ -57,6 +58,7 @@ type App struct {
 	Providers            *providers.Manager
 	Integrations         *integrations.Manager
 	Calendar             *calendar.Manager
+	Mail                 *mail.Manager
 	Scheduler            *scheduler.Scheduler
 	Delivery             *delivery.Manager
 	ConnectorSupervisor  *connectors.Supervisor
@@ -92,6 +94,7 @@ func New() (*App, error) {
 	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxManager, policyEngine, nil)
 	integrationManager := integrations.NewManager(string(cfg.Environment))
 	calendarManager := calendar.NewManager(string(cfg.Environment))
+	mailManager := mail.NewManager(string(cfg.Environment))
 	managedRegistry := managedproviders.NewRegistry(cfg, sandboxManager)
 	llmDispatcher, err := buildLLMDispatcher(cfg, managedRegistry)
 	if err != nil {
@@ -143,6 +146,7 @@ func New() (*App, error) {
 		Sandboxes:    sandboxManager,
 		Integrations: integrationManager,
 		Calendar:     calendarManager,
+		Mail:         mailManager,
 		ComputerUse:  computerUseManager,
 		Delivery:     deliveryManager,
 		EventBus:     eventBus,
@@ -159,7 +163,7 @@ func New() (*App, error) {
 	})
 	envCtx := events.WithEnvironmentScope(context.Background(), string(cfg.Environment))
 
-	if err := recoverPersistedState(envCtx, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager, integrationManager, calendarManager); err != nil {
+	if err := recoverPersistedState(envCtx, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager, integrationManager, calendarManager, mailManager); err != nil {
 		return nil, err
 	}
 	if err := syncManagedProviderState(envCtx, sqliteStore, providerManager); err != nil {
@@ -196,6 +200,7 @@ func New() (*App, error) {
 		MCP:          mcpManager,
 		Integrations: integrationManager,
 		Calendar:     calendarManager,
+		Mail:         mailManager,
 		Providers:    providerManager,
 		Connectors:   connectorSupervisor,
 		Capabilities: capabilitySupervisor,
@@ -223,6 +228,7 @@ func New() (*App, error) {
 		MCP:                  mcpManager,
 		Integrations:         integrationManager,
 		Calendar:             calendarManager,
+		Mail:                 mailManager,
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
 		Delivery:             deliveryManager,
@@ -445,7 +451,11 @@ func newEventID() string {
 	return "evt_" + hex.EncodeToString(buf)
 }
 
-func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager, integrationManager *integrations.Manager, calendarManager *calendar.Manager) error {
+func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager, integrationManager *integrations.Manager, calendarManager *calendar.Manager, mailManagers ...*mail.Manager) error {
+	var mailManager *mail.Manager
+	if len(mailManagers) > 0 {
+		mailManager = mailManagers[0]
+	}
 	if sqliteStore == nil {
 		return nil
 	}
@@ -551,6 +561,21 @@ func recoverPersistedState(ctx context.Context, environment config.Environment, 
 			return fmt.Errorf("load persisted calendar artifacts: %w", err)
 		}
 		calendarManager.Restore(accounts, operations, artifacts)
+	}
+	if mailManager != nil {
+		accounts, err := sqliteStore.ListMailAccounts(ctx, string(environment))
+		if err != nil {
+			return fmt.Errorf("load persisted mail accounts: %w", err)
+		}
+		operations, err := sqliteStore.ListMailOperations(ctx, string(environment), store.MailOperationFilter{})
+		if err != nil {
+			return fmt.Errorf("load persisted mail operations: %w", err)
+		}
+		artifacts, err := sqliteStore.ListMailArtifacts(ctx, string(environment), "")
+		if err != nil {
+			return fmt.Errorf("load persisted mail artifacts: %w", err)
+		}
+		mailManager.Restore(accounts, operations, artifacts)
 	}
 	if _, err := sqliteStore.MarkInFlightWorkflowsInterrupted(ctx, string(environment), time.Now().UTC()); err != nil {
 		return fmt.Errorf("interrupt in-flight workflows: %w", err)

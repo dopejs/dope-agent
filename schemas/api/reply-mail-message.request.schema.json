@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/reply-mail-message.request.schema.json",
+  "title": "ReplyMailMessageRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "integrationId": { "type": "string" },
+    "resultMode": { "type": "string", "enum": ["draft", "send"] },
+    "subject": { "type": "string" },
+    "body": { "type": "string" },
+    "attachmentRefs": {
+      "type": "array",
+      "items": { "$ref": "./mail-attachment-ref.schema.json" }
+    },
+    "source": { "$ref": "./create-mail-draft.request.schema.json#/$defs/source" }
+  }
+}

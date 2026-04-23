@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/mail-artifact-recorded.event.schema.json",
+  "title": "MailArtifactRecordedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "mail" },
+        "name": { "const": "mail.artifact_recorded" },
+        "payload": {
+          "type": "object",
+          "required": ["artifactId", "operationId"],
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": { "type": "string" },
+            "operationId": { "type": "string" },
+            "threadId": { "type": "string" },
+            "messageId": { "type": "string" },
+            "draftId": { "type": "string" },
+            "attachmentRefId": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

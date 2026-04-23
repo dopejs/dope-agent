@@ -218,6 +218,16 @@ Current daemon status after Roadmap 26:
   overlap-skipped history, and bounded retry visibility
 - daemon restart performs bounded catch-up and records missed intervals rather than
   replaying an unbounded backlog
+
+Current daemon status after Roadmap 30:
+
+- calendar and mail are now first-class daemon-owned personal domains layered on the
+  shared integrations, workflow, schedule, and delivery planes
+- mail execution reuses the normal tool-call and workflow runtime rather than a parallel
+  executor, and projects additive `mailOperationSummaries` onto workflow, schedule, and
+  delivery inspection surfaces
+- background mail send is explicitly gated by `allowSendSideEffects`, preserving a hard
+  trust boundary between draft-only automation and final-send side effects
 - browser-first computer-use sessions, actions, and evidence artifacts are now first-class
   daemon-owned resources
 - computer-use steps execute through the existing runtime and workflow plane with additive

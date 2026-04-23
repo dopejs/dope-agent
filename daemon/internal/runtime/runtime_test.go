@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 )
 
 func TestCreateRun(t *testing.T) {
@@ -322,6 +323,53 @@ func TestCreateToolCallClonesIntegrationBindingsAndKeepsThemOptional(t *testing.
 	}
 	if len(plainToolCall.IntegrationBindings) != 0 {
 		t.Fatalf("expected non-integration tool call to omit bindings, got %+v", plainToolCall)
+	}
+}
+
+func TestRestoreCheckpointsPreservesMailOperationSummariesOnToolCalls(t *testing.T) {
+	manager := NewManager()
+
+	run, err := manager.CreateRun(CreateRunInput{Entrypoint: "operator", Goal: "restore mail summaries"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	step, err := manager.CreateStep(run.RunID, CreateStepInput{Title: "send mail"})
+	if err != nil {
+		t.Fatalf("CreateStep returned error: %v", err)
+	}
+
+	checkpoint := RunCheckpoint{
+		Run:   run,
+		Steps: []Step{step},
+		ToolCalls: []ToolCall{{
+			ToolCallID:     "tool_call_mail_restore",
+			RunID:          run.RunID,
+			StepID:         step.StepID,
+			InvocationKind: ToolCallInvocationKindDomainTool,
+			DomainKind:     "mail",
+			ToolName:       "send_message",
+			Status:         ToolCallStatusCompleted,
+			MailOperationSummaries: []mail.OperationSummary{{
+				OperationID:    "mail_op_restore",
+				OperationClass: mail.OperationClassSendMessage,
+				IntegrationID:  "mail-a",
+				MessageID:      "msg_restore",
+				ResultMode:     mail.ResultModeSent,
+				SendPath:       mail.SendPathDirect,
+				Status:         mail.OperationStatusCompleted,
+			}},
+		}},
+	}
+
+	restored := NewManager()
+	restored.RestoreCheckpoints([]RunCheckpoint{checkpoint})
+
+	toolCall, ok := restored.GetToolCall(run.RunID, step.StepID, "tool_call_mail_restore")
+	if !ok {
+		t.Fatal("expected restored mail tool call")
+	}
+	if len(toolCall.MailOperationSummaries) != 1 || toolCall.MailOperationSummaries[0].OperationID != "mail_op_restore" {
+		t.Fatalf("expected restored mail operation summaries, got %+v", toolCall.MailOperationSummaries)
 	}
 }
 

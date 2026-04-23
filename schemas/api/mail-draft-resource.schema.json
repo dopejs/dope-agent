@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mail-draft-resource.schema.json",
+  "title": "MailDraftResource",
+  "type": "object",
+  "required": ["draftId", "operationId", "integrationId", "mailAccountId", "composeMode", "draftStatus", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "draftId": { "type": "string" },
+    "threadId": { "type": "string" },
+    "operationId": { "type": "string" },
+    "integrationId": { "type": "string" },
+    "mailAccountId": { "type": "string" },
+    "composeMode": { "type": "string", "enum": ["new_message", "reply", "forward"] },
+    "sourceMessageId": { "type": "string" },
+    "recipientSummary": { "type": "array", "items": { "type": "string" } },
+    "subject": { "type": "string" },
+    "bodyPreview": { "type": "string" },
+    "attachmentRefIds": { "type": "array", "items": { "type": "string" } },
+    "draftStatus": { "type": "string", "enum": ["draft", "updated", "send_blocked", "sent_from_draft", "stale_snapshot", "unavailable"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

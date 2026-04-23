@@ -10,6 +10,9 @@
     },
     "calendarAction": {
       "$ref": "./calendar-workflow-action.schema.json"
+    },
+    "mailAction": {
+      "$ref": "./mail-workflow-action.schema.json"
     }
   }
 }

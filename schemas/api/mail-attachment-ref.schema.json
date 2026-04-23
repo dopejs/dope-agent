@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mail-attachment-ref.schema.json",
+  "title": "MailAttachmentRef",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "attachmentRefId": { "type": "string" },
+    "displayName": { "type": "string" },
+    "mediaType": { "type": "string" },
+    "sizeBytes": { "type": "integer", "minimum": 0 }
+  }
+}

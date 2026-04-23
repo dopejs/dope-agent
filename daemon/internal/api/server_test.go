@@ -26,6 +26,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
@@ -5602,6 +5603,53 @@ func assertWorkflowRuntimeLinkage(t *testing.T, workflow orchestration.Workflow)
 		if step.ActiveToolCallID == "" && step.Status != orchestration.StepStatusCancelled {
 			t.Fatalf("expected tool call linkage, got %+v", step)
 		}
+	}
+}
+
+func TestMailOperationRoutesFilterByWorkflowScheduleAndDeliveryLinkage(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, _, integrationManager, mailManager, server := newMailServerForTest(t)
+	resource := seedHealthyMailIntegration(t, integrationManager, sqliteStore, "mail-a", true)
+
+	_, _, operation, _, err := mailManager.SendMessage([]integrations.Resource{resource}, mail.SendMessageInput{
+		Selection: mail.Selection{IntegrationID: resource.IntegrationID},
+		To:        []string{"carol@example.com"},
+		Subject:   "Linked mail",
+		Body:      "hello",
+		Source: mail.SourceLinkage{
+			RunID:                "run_1",
+			WorkflowID:           "wf_1",
+			ScheduleID:           "sched_1",
+			ScheduleAttemptID:    "sched_attempt_1",
+			DeliveryID:           "delivery_1",
+			AllowSendSideEffects: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage returned error: %v", err)
+	}
+
+	listRec := httptest.NewRecorder()
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/mail/operations?workflowId=wf_1&scheduleId=sched_1&deliveryId=delivery_1", nil)
+	server.Handler().ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for operation list, got %d body=%s", listRec.Code, listRec.Body.String())
+	}
+	list := decodeStrictResponse[MailOperationListResponse](t, listRec.Body.Bytes())
+	if len(list.Items) != 1 || list.Items[0].OperationID != operation.OperationID {
+		t.Fatalf("expected filtered linked mail operation, got %+v", list.Items)
+	}
+
+	getRec := httptest.NewRecorder()
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/mail/operations/"+operation.OperationID, nil)
+	server.Handler().ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for operation get, got %d body=%s", getRec.Code, getRec.Body.String())
+	}
+	got := decodeStrictResponse[MailOperationResponse](t, getRec.Body.Bytes())
+	if got.Operation.WorkflowID != "wf_1" || got.Operation.ScheduleID != "sched_1" || got.Operation.DeliveryID != "delivery_1" {
+		t.Fatalf("expected linked provenance on operation get, got %+v", got.Operation)
 	}
 }
 

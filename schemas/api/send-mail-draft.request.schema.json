@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/send-mail-draft.request.schema.json",
+  "title": "SendMailDraftRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "integrationId": { "type": "string" },
+    "source": { "$ref": "./create-mail-draft.request.schema.json#/$defs/source" }
+  }
+}

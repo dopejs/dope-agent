@@ -18,6 +18,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -873,6 +874,113 @@ func TestScheduleRoutesProjectCalendarOperationSummariesAndDeliveryLinkage(t *te
 	}
 }
 
+func TestScheduleRoutesProjectMailOperationSummariesAndDeliveryLinkage(t *testing.T) {
+	harness := newWorkflowScheduleServerHarness(t)
+
+	target, err := harness.delivery.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "schedule-mail-target",
+		DisplayName:      "Schedule Mail Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget returned error: %v", err)
+	}
+	if _, err := harness.delivery.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "pref-schedule-mail",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: target.TargetID,
+			delivery.ResultClassUrgent:         target.TargetID,
+			delivery.ResultClassFailure:        target.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference returned error: %v", err)
+	}
+
+	fireAt := time.Now().UTC().Add(100 * time.Millisecond).Format(time.RFC3339)
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/schedules", strings.NewReader(`{
+		"trigger": {
+			"kind": "once",
+			"fireAt": "`+fireAt+`"
+		},
+		"target": {
+			"kind": "workflow",
+			"workflow": {
+				"entrypoint": "operator",
+				"runGoal": "schedule mail linkage",
+				"workflowGoal": "Send scheduled mail.",
+				"mailAction": {
+					"operationClass": "send_message",
+					"integrationId": "mail-a",
+					"to": ["carol@example.com"],
+					"subject": "Scheduled workflow mail",
+					"body": "hello",
+					"allowSendSideEffects": true
+				}
+			}
+		},
+		"retryPolicy": {
+			"maxRetries": 0,
+			"backoffKind": "fixed",
+			"baseDelaySeconds": 5,
+			"maxDelaySeconds": 5
+		}
+	}`))
+	createReq.Header.Set("Authorization", harness.authHeader)
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	harness.server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for schedule create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	created := decodeStrictResponse[scheduler.Schedule](t, createRec.Body.Bytes())
+
+	time.Sleep(140 * time.Millisecond)
+	if err := harness.scheduler.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick returned error: %v", err)
+	}
+
+	scheduleRec := httptest.NewRecorder()
+	scheduleReq := httptest.NewRequest(http.MethodGet, "/v1/schedules/"+created.ScheduleID, nil)
+	scheduleReq.Header.Set("Authorization", harness.authHeader)
+	harness.server.Handler().ServeHTTP(scheduleRec, scheduleReq)
+	if scheduleRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for schedule get, got %d body=%s", scheduleRec.Code, scheduleRec.Body.String())
+	}
+	projected := decodeStrictResponse[scheduler.Schedule](t, scheduleRec.Body.Bytes())
+	if len(projected.Attempts) != 1 {
+		t.Fatalf("expected one attempt, got %+v", projected)
+	}
+	attempt := projected.Attempts[0]
+	if len(attempt.MailOperationSummaries) != 1 {
+		t.Fatalf("expected projected mail operation summaries, got %+v", attempt)
+	}
+	summary := attempt.MailOperationSummaries[0]
+	if summary.OperationClass != mail.OperationClassSendMessage || summary.Status != mail.OperationStatusCompleted || summary.ResultMode != mail.ResultModeSent {
+		t.Fatalf("expected sent mail summary, got %+v", summary)
+	}
+	if attempt.LatestDeliveryID == "" || attempt.LatestDeliveryStatus != string(delivery.OutcomeStatusDelivered) || attempt.LatestDeliveryTargetID != target.TargetID {
+		t.Fatalf("expected attempt delivery linkage, got %+v", attempt)
+	}
+
+	deliveryReq := httptest.NewRequest(http.MethodGet, "/v1/deliveries/"+attempt.LatestDeliveryID, nil)
+	deliveryReq.Header.Set("Authorization", harness.authHeader)
+	deliveryRec := httptest.NewRecorder()
+	harness.server.Handler().ServeHTTP(deliveryRec, deliveryReq)
+	if deliveryRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for delivery get, got %d body=%s", deliveryRec.Code, deliveryRec.Body.String())
+	}
+	outcome := decodeStrictResponse[delivery.DeliveryOutcome](t, deliveryRec.Body.Bytes())
+	if len(outcome.MailOperationIDs) != 1 || outcome.MailOperationIDs[0] != summary.OperationID {
+		t.Fatalf("expected delivery linkage ids, got %+v", outcome.MailOperationIDs)
+	}
+	if len(outcome.MailOperationSummaries) != 1 || outcome.MailOperationSummaries[0].OperationID != summary.OperationID {
+		t.Fatalf("expected delivery linkage summaries, got %+v", outcome.MailOperationSummaries)
+	}
+}
+
 func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 	t.Helper()
 
@@ -905,7 +1013,9 @@ func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 	})
 	integrationManager := integrations.NewManager("test")
 	seedHealthyCalendarIntegration(t, integrationManager, sqliteStore, "calendar-a", true)
+	seedHealthyMailIntegration(t, integrationManager, sqliteStore, "mail-a", true)
 	calendarManager := calendar.NewManager("test")
+	mailManager := mail.NewManager("test")
 	workflowLauncher := NewScheduleWorkflowLauncher(ScheduleWorkflowLauncherDependencies{
 		Config:       cfg,
 		Runtime:      runtimeManager,
@@ -914,6 +1024,7 @@ func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 		Sandboxes:    sandboxManager,
 		Integrations: integrationManager,
 		Calendar:     calendarManager,
+		Mail:         mailManager,
 		ComputerUse:  computerUseManager,
 		Delivery:     deliveryManager,
 		EventBus:     eventBus,
@@ -939,6 +1050,7 @@ func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 		Sandboxes:    sandboxManager,
 		Integrations: integrationManager,
 		Calendar:     calendarManager,
+		Mail:         mailManager,
 		ComputerUse:  computerUseManager,
 		Scheduler:    scheduleManager,
 		Delivery:     deliveryManager,

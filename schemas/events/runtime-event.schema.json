@@ -33,7 +33,8 @@
         "schedule",
         "integration",
         "delivery",
-        "calendar"
+        "calendar",
+        "mail"
       ]
     },
     "name": {

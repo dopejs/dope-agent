@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/mail-workflow-action.schema.json",
+  "title": "MailWorkflowAction",
+  "type": "object",
+  "required": ["operationClass"],
+  "additionalProperties": false,
+  "properties": {
+    "operationClass": { "type": "string", "enum": ["list_threads", "get_thread", "get_message", "list_drafts", "get_draft", "create_draft", "update_draft", "send_message", "send_draft", "reply_message", "forward_message"] },
+    "integrationId": { "type": "string" },
+    "threadId": { "type": "string" },
+    "messageId": { "type": "string" },
+    "draftId": { "type": "string" },
+    "composeMode": { "type": "string", "enum": ["new_message", "reply", "forward"] },
+    "resultMode": { "type": "string", "enum": ["draft", "send"] },
+    "to": { "type": "array", "items": { "type": "string" } },
+    "cc": { "type": "array", "items": { "type": "string" } },
+    "bcc": { "type": "array", "items": { "type": "string" } },
+    "subject": { "type": "string" },
+    "body": { "type": "string" },
+    "attachmentRefs": {
+      "type": "array",
+      "items": { "$ref": "./mail-attachment-ref.schema.json" }
+    },
+    "allowSendSideEffects": { "type": "boolean" }
+  }
+}

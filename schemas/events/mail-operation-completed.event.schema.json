@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/mail-operation-completed.event.schema.json",
+  "title": "MailOperationCompletedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "mail" },
+        "name": { "const": "mail.operation_completed" },
+        "payload": {
+          "type": "object",
+          "required": ["operationId", "operationClass", "integrationId", "resultMode"],
+          "additionalProperties": false,
+          "properties": {
+            "operationId": { "type": "string" },
+            "operationClass": { "type": "string" },
+            "integrationId": { "type": "string" },
+            "runId": { "type": "string" },
+            "workflowId": { "type": "string" },
+            "scheduleId": { "type": "string" },
+            "resultMode": { "type": "string" },
+            "sendPath": { "type": "string" },
+            "threadId": { "type": "string" },
+            "messageId": { "type": "string" },
+            "draftId": { "type": "string" },
+            "failureClass": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -18,6 +18,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -197,6 +198,147 @@ func TestSQLiteStoreDeliveryResourcesRemainEnvironmentScoped(t *testing.T) {
 	}
 	if len(prodItems) != 1 || prodItems[0].DeliveryID != "delivery_prod_env" {
 		t.Fatalf("expected only prod-scoped outcome, got %+v", prodItems)
+	}
+}
+
+func TestSQLiteStoreMailRecordsRemainEnvironmentScopedAndFilterable(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	testAccount := mail.AccountProjection{
+		MailAccountID:            "mail_acct_test",
+		IntegrationID:            "mail-test",
+		DomainKind:               "mail",
+		EnvironmentScope:         "test",
+		ReadinessStatus:          "healthy",
+		CanonicalDefault:         true,
+		MailboxAddress:           "alice@example.com",
+		MailboxLabel:             "Alice Mailbox",
+		SupportsThreadInspection: true,
+		SupportsDrafts:           true,
+		SupportsDirectSend:       true,
+		SupportsReply:            true,
+		SupportsForward:          true,
+		LastSyncedAt:             now,
+		UpdatedAt:                now,
+	}
+	prodAccount := testAccount
+	prodAccount.MailAccountID = "mail_acct_prod"
+	prodAccount.IntegrationID = "mail-prod"
+	prodAccount.EnvironmentScope = "prod"
+	if err := sqliteStore.UpsertMailAccount(ctx, testAccount); err != nil {
+		t.Fatalf("UpsertMailAccount(test) returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertMailAccount(ctx, prodAccount); err != nil {
+		t.Fatalf("UpsertMailAccount(prod) returned error: %v", err)
+	}
+
+	testCompletedAt := now.Add(time.Second)
+	testOperation := mail.Operation{
+		OperationID:      "mail_op_test",
+		OperationClass:   mail.OperationClassSendMessage,
+		Status:           mail.OperationStatusCompleted,
+		ResultMode:       mail.ResultModeSent,
+		SendPath:         mail.SendPathDirect,
+		IntegrationID:    testAccount.IntegrationID,
+		MailAccountID:    testAccount.MailAccountID,
+		EnvironmentScope: "test",
+		ThreadID:         "thread_test",
+		MessageID:        "msg_test",
+		WorkflowID:       "wf_1",
+		ScheduleID:       "sched_1",
+		DeliveryID:       "delivery_1",
+		CreatedAt:        now,
+		CompletedAt:      &testCompletedAt,
+		UpdatedAt:        testCompletedAt,
+	}
+	prodOperation := testOperation
+	prodOperation.OperationID = "mail_op_prod"
+	prodOperation.IntegrationID = prodAccount.IntegrationID
+	prodOperation.MailAccountID = prodAccount.MailAccountID
+	prodOperation.EnvironmentScope = "prod"
+	prodOperation.WorkflowID = "wf_prod"
+	prodOperation.DeliveryID = "delivery_prod"
+	if err := sqliteStore.UpsertMailOperation(ctx, testOperation); err != nil {
+		t.Fatalf("UpsertMailOperation(test) returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertMailOperation(ctx, prodOperation); err != nil {
+		t.Fatalf("UpsertMailOperation(prod) returned error: %v", err)
+	}
+
+	testArtifact := mail.Artifact{
+		ArtifactID:       "mail_artifact_test",
+		OperationID:      testOperation.OperationID,
+		Kind:             mail.ArtifactKindMessageSnapshot,
+		IntegrationID:    testAccount.IntegrationID,
+		EnvironmentScope: "test",
+		MessageID:        "msg_test",
+		Message: &mail.MessageSnapshot{
+			MessageID:     "msg_test",
+			OperationID:   testOperation.OperationID,
+			IntegrationID: testAccount.IntegrationID,
+			MailAccountID: testAccount.MailAccountID,
+			Direction:     mail.DirectionOutbound,
+			Subject:       "Stored message",
+			DeliveryState: mail.DeliveryStateSent,
+			CreatedAt:     now,
+		},
+		CreatedAt: now,
+	}
+	prodArtifact := testArtifact
+	prodArtifact.ArtifactID = "mail_artifact_prod"
+	prodArtifact.OperationID = prodOperation.OperationID
+	prodArtifact.IntegrationID = prodAccount.IntegrationID
+	prodArtifact.EnvironmentScope = "prod"
+	if err := sqliteStore.UpsertMailArtifact(ctx, testArtifact); err != nil {
+		t.Fatalf("UpsertMailArtifact(test) returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertMailArtifact(ctx, prodArtifact); err != nil {
+		t.Fatalf("UpsertMailArtifact(prod) returned error: %v", err)
+	}
+
+	testAccounts, err := sqliteStore.ListMailAccounts(ctx, "test")
+	if err != nil {
+		t.Fatalf("ListMailAccounts(test) returned error: %v", err)
+	}
+	if len(testAccounts) != 1 || testAccounts[0].IntegrationID != "mail-test" {
+		t.Fatalf("expected only test-scoped mail account, got %+v", testAccounts)
+	}
+
+	filteredOps, err := sqliteStore.ListMailOperations(ctx, "test", MailOperationFilter{
+		WorkflowID: "wf_1",
+		ScheduleID: "sched_1",
+		DeliveryID: "delivery_1",
+		Status:     string(mail.OperationStatusCompleted),
+	})
+	if err != nil {
+		t.Fatalf("ListMailOperations(test) returned error: %v", err)
+	}
+	if len(filteredOps) != 1 || filteredOps[0].OperationID != testOperation.OperationID {
+		t.Fatalf("expected filtered test mail operation, got %+v", filteredOps)
+	}
+
+	prodOps, err := sqliteStore.ListMailOperations(ctx, "prod", MailOperationFilter{})
+	if err != nil {
+		t.Fatalf("ListMailOperations(prod) returned error: %v", err)
+	}
+	if len(prodOps) != 1 || prodOps[0].OperationID != prodOperation.OperationID {
+		t.Fatalf("expected only prod-scoped mail operation, got %+v", prodOps)
+	}
+
+	testArtifacts, err := sqliteStore.ListMailArtifacts(ctx, "test", testOperation.OperationID)
+	if err != nil {
+		t.Fatalf("ListMailArtifacts(test) returned error: %v", err)
+	}
+	if len(testArtifacts) != 1 || testArtifacts[0].ArtifactID != testArtifact.ArtifactID {
+		t.Fatalf("expected only test-scoped mail artifact, got %+v", testArtifacts)
 	}
 }
 

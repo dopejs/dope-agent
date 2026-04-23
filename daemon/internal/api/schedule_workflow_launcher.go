@@ -13,6 +13,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
@@ -33,6 +34,7 @@ type ScheduleWorkflowLauncherDependencies struct {
 	Sandboxes    *sandbox.Manager
 	Integrations *integrations.Manager
 	Calendar     *calendar.Manager
+	Mail         *mail.Manager
 	ComputerUse  *computeruse.Manager
 	Delivery     *delivery.Manager
 	EventBus     *events.Bus
@@ -50,6 +52,7 @@ type ScheduleWorkflowLauncher struct {
 	sandboxes    *sandbox.Manager
 	integrations *integrations.Manager
 	calendar     *calendar.Manager
+	mail         *mail.Manager
 	computerUse  *computeruse.Manager
 	delivery     *delivery.Manager
 	eventBus     *events.Bus
@@ -68,6 +71,7 @@ func NewScheduleWorkflowLauncher(deps ScheduleWorkflowLauncherDependencies) *Sch
 		sandboxes:    deps.Sandboxes,
 		integrations: deps.Integrations,
 		calendar:     deps.Calendar,
+		mail:         deps.Mail,
 		computerUse:  deps.ComputerUse,
 		delivery:     deps.Delivery,
 		eventBus:     deps.EventBus,
@@ -101,7 +105,7 @@ func (l *ScheduleWorkflowLauncher) LaunchScheduledWorkflow(ctx context.Context, 
 	workflow := orchestration.NewManager().Plan(
 		l.cfg,
 		run,
-		orchestration.CreateWorkflowInput{Goal: target.WorkflowGoal, CalendarAction: target.CalendarAction},
+		orchestration.CreateWorkflowInput{Goal: target.WorkflowGoal, CalendarAction: target.CalendarAction, MailAction: target.MailAction},
 		l.capabilities,
 		skillPlanningAdapter{registry: l.skills},
 		mcpPlanningAdapter{manager: l.mcp},
@@ -142,6 +146,7 @@ func (l *ScheduleWorkflowLauncher) LaunchScheduledWorkflow(ctx context.Context, 
 		l.sandboxes,
 		l.integrations,
 		l.calendar,
+		l.mail,
 		l.eventBus,
 		l.delivery,
 		l.store,

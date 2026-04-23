@@ -135,6 +135,20 @@ For the calendar domain:
 - delivery outcomes project additive `calendarOperationIds` and summaries so a delivered
   or failed notification never becomes the only evidence for what happened in calendar
 
+For the mail domain:
+
+- `/v1/mail/accounts`, `/v1/mail/threads`, `/v1/mail/messages`, `/v1/mail/drafts`, and
+  `/v1/mail/operations` are protected operator APIs like the rest of `/v1/*`
+- mail account projection, mail execution truth, and delivery outcome truth stay
+  separate so operators can distinguish readiness failure, blocked send, send failure,
+  and delivery failure without inference
+- new outbound mail that is not reply or forward requires explicit recipients from the
+  current request; the daemon does not infer those recipients from mailbox history
+- background final send requires explicit `allowSendSideEffects`; absent that flag, the
+  daemon records blocked mail truth rather than silently sending
+- workflow, schedule, and delivery resources project additive `mailOperationSummaries`
+  and `mailOperationIds`; they do not replace the authoritative mail operation record
+
 For the delivery plane:
 
 - delivery targets, preferences, outcomes, attempts, and summary windows are protected

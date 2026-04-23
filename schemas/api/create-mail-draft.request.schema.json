@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-mail-draft.request.schema.json",
+  "title": "CreateMailDraftRequest",
+  "type": "object",
+  "required": ["composeMode"],
+  "additionalProperties": false,
+  "properties": {
+    "integrationId": { "type": "string" },
+    "composeMode": { "type": "string", "enum": ["new_message", "reply", "forward"] },
+    "threadId": { "type": "string" },
+    "sourceMessageId": { "type": "string" },
+    "to": { "type": "array", "items": { "type": "string" } },
+    "cc": { "type": "array", "items": { "type": "string" } },
+    "bcc": { "type": "array", "items": { "type": "string" } },
+    "subject": { "type": "string" },
+    "body": { "type": "string" },
+    "attachmentRefs": {
+      "type": "array",
+      "items": { "$ref": "./mail-attachment-ref.schema.json" }
+    },
+    "source": { "$ref": "#/$defs/source" }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": { "type": "string" },
+        "stepId": { "type": "string" },
+        "toolCallId": { "type": "string" },
+        "workflowId": { "type": "string" },
+        "workflowStepId": { "type": "string" },
+        "scheduleId": { "type": "string" },
+        "scheduleAttemptId": { "type": "string" },
+        "deliveryId": { "type": "string" },
+        "allowSendSideEffects": { "type": "boolean" }
+      }
+    }
+  }
+}

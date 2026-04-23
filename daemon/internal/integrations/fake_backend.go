@@ -4,6 +4,10 @@ import "fmt"
 
 type FakeBackend struct{}
 
+func (FakeBackend) SupportedDomainKinds() []string {
+	return []string{"calendar", "mail"}
+}
+
 func (FakeBackend) RunProbe(resource Resource, probeKind ProbeKind, input map[string]any) (ProbeResult, error) {
 	result := ProbeResult{
 		ProbeKind: probeKind,
@@ -28,4 +32,13 @@ func (FakeBackend) RunProbe(resource Resource, probeKind ProbeKind, input map[st
 	default:
 		return ProbeResult{}, ErrProbeUnsupported
 	}
+}
+
+func (FakeBackend) supportsDomainKind(domainKind string) bool {
+	for _, item := range (FakeBackend{}).SupportedDomainKinds() {
+		if item == domainKind {
+			return true
+		}
+	}
+	return false
 }

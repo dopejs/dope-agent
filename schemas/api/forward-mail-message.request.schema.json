@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/forward-mail-message.request.schema.json",
+  "title": "ForwardMailMessageRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "integrationId": { "type": "string" },
+    "resultMode": { "type": "string", "enum": ["draft", "send"] },
+    "to": { "type": "array", "items": { "type": "string" } },
+    "cc": { "type": "array", "items": { "type": "string" } },
+    "bcc": { "type": "array", "items": { "type": "string" } },
+    "subject": { "type": "string" },
+    "body": { "type": "string" },
+    "attachmentRefs": {
+      "type": "array",
+      "items": { "$ref": "./mail-attachment-ref.schema.json" }
+    },
+    "source": { "$ref": "./create-mail-draft.request.schema.json#/$defs/source" }
+  }
+}

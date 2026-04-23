@@ -38,6 +38,10 @@
       "type": "array",
       "items": { "$ref": "./calendar-operation-summary.schema.json" }
     },
+    "mailOperationSummaries": {
+      "type": "array",
+      "items": { "$ref": "./mail-operation-summary.schema.json" }
+    },
     "skippedReason": { "type": "string" },
     "missedCount": { "type": "integer", "minimum": 0 },
     "createdAt": { "type": "string", "format": "date-time" },
