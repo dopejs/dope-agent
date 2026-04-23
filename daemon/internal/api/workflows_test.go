@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/artifacts"
+	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
@@ -276,7 +277,7 @@ func TestWorkflowRoutesProjectLatestDeliverySummary(t *testing.T) {
 	if err := sqliteStore.UpsertWorkflow(context.Background(), workflow); err != nil {
 		t.Fatalf("UpsertWorkflow returned error: %v", err)
 	}
-	if err := maybeEmitWorkflowDelivery(context.Background(), deliveryManager, manager, workflow); err != nil {
+	if err := maybeEmitWorkflowDelivery(context.Background(), deliveryManager, manager, nil, sqliteStore, workflow); err != nil {
 		t.Fatalf("maybeEmitWorkflowDelivery returned error: %v", err)
 	}
 
@@ -383,7 +384,7 @@ func TestWorkflowDeliveryUsesIntegrationOverrideTarget(t *testing.T) {
 	if err := sqliteStore.UpsertWorkflow(context.Background(), workflow); err != nil {
 		t.Fatalf("UpsertWorkflow returned error: %v", err)
 	}
-	if err := maybeEmitWorkflowDelivery(context.Background(), deliveryManager, manager, workflow); err != nil {
+	if err := maybeEmitWorkflowDelivery(context.Background(), deliveryManager, manager, nil, sqliteStore, workflow); err != nil {
 		t.Fatalf("maybeEmitWorkflowDelivery returned error: %v", err)
 	}
 
@@ -403,6 +404,162 @@ func TestWorkflowDeliveryUsesIntegrationOverrideTarget(t *testing.T) {
 	messages := testSink.Messages()
 	if len(messages) != 1 || messages[0].TargetID != overrideTarget.TargetID {
 		t.Fatalf("expected override target sink message, got %+v", messages)
+	}
+}
+
+func TestWorkflowRoutesProjectCalendarOperationSummariesAndDeliveryLinkage(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Environment: config.EnvironmentTest,
+		DataDir:     filepath.Join(t.TempDir(), "dope-data"),
+	}
+	sqliteStore, err := store.NewSQLiteStore(cfg.DataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	manager := runtime.NewManager()
+	run, err := manager.CreateRun(runtime.CreateRunInput{Entrypoint: "operator", Goal: "Use a skill to complete a deterministic workflow."})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	registry := newAllowSkillRegistryForWorkflowTest(t, cfg.DataDir)
+	eventBus := events.NewBus()
+	t.Cleanup(eventBus.Close)
+	policyEngine := policy.NewEngine()
+	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	integrationManager := integrations.NewManager("test")
+	seedHealthyCalendarIntegration(t, integrationManager, sqliteStore, "calendar-a", true)
+	calendarManager := calendar.NewManager("test")
+	deliveryManager := delivery.NewManager("test", eventBus, sqliteStore, delivery.NewTestSinkAdapter())
+	target, err := deliveryManager.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "workflow-calendar-target",
+		DisplayName:      "Workflow Calendar Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget returned error: %v", err)
+	}
+	if _, err := deliveryManager.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "pref-workflow-calendar",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: target.TargetID,
+			delivery.ResultClassUrgent:         target.TargetID,
+			delivery.ResultClassFailure:        target.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference returned error: %v", err)
+	}
+
+	server := NewServer(Dependencies{
+		Config:       cfg,
+		Logger:       telemetry.New("error").Slog(),
+		EventBus:     eventBus,
+		Policy:       policyEngine,
+		Runtime:      manager,
+		Skills:       registry,
+		Sandboxes:    sandboxManager,
+		Integrations: integrationManager,
+		Calendar:     calendarManager,
+		Delivery:     deliveryManager,
+		Store:        sqliteStore,
+		Checkpoints:  checkpoints.NewManager(sqliteStore, manager),
+	})
+
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows", strings.NewReader(`{
+		"goal":"Create a background calendar event",
+		"calendarAction":{
+			"operationClass":"create_event",
+			"integrationId":"calendar-a",
+			"title":"Workflow calendar write",
+			"startsAt":"2026-04-23T17:00:00Z",
+			"endsAt":"2026-04-23T17:30:00Z"
+		}
+	}`)))
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	created := decodeStrictResponse[orchestration.Workflow](t, createRec.Body.Bytes())
+	if len(created.Steps) != 1 || created.Steps[0].ConsumerKind != "calendar" || created.Steps[0].ToolName != string(calendar.OperationClassCreateEvent) {
+		t.Fatalf("expected planned calendar workflow step, got %+v", created.Steps)
+	}
+
+	startRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(startRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows/"+created.WorkflowID+"/start", nil))
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", startRec.Code, startRec.Body.String())
+	}
+
+	var workflow orchestration.Workflow
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		getRec := httptest.NewRecorder()
+		server.Handler().ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/workflows/"+created.WorkflowID, nil))
+		if getRec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", getRec.Code, getRec.Body.String())
+		}
+		workflow = decodeStrictResponse[orchestration.Workflow](t, getRec.Body.Bytes())
+		if workflow.Status == orchestration.WorkflowStatusCompleted {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if workflow.Status != orchestration.WorkflowStatusCompleted {
+		t.Fatalf("expected completed workflow, got %+v", workflow)
+	}
+
+	ops, err := sqliteStore.ListCalendarOperations(context.Background(), "test", store.CalendarOperationFilter{WorkflowID: workflow.WorkflowID})
+	if err != nil {
+		t.Fatalf("ListCalendarOperations returned error: %v", err)
+	}
+	if len(ops) != 1 {
+		t.Fatalf("expected one persisted calendar operation, got %+v", ops)
+	}
+	operation := ops[0]
+	if operation.OperationClass != calendar.OperationClassCreateEvent || operation.Status != calendar.OperationStatusCompleted || operation.IntegrationID != "calendar-a" {
+		t.Fatalf("expected completed create_event operation, got %+v", operation)
+	}
+	if operation.WorkflowID != workflow.WorkflowID || operation.RunID != run.RunID || operation.StepID != workflow.Steps[0].RuntimeStepID || operation.ToolCallID != workflow.Steps[0].ActiveToolCallID {
+		t.Fatalf("expected operation linkage onto workflow runtime ids, got %+v", operation)
+	}
+
+	getRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/workflows/"+workflow.WorkflowID, nil))
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for workflow get, got %d body=%s", getRec.Code, getRec.Body.String())
+	}
+	projected := decodeStrictResponse[orchestration.Workflow](t, getRec.Body.Bytes())
+	if projected.LatestDeliveryID == "" || projected.LatestDeliveryStatus != string(delivery.OutcomeStatusDelivered) || projected.LatestDeliveryTargetID != target.TargetID {
+		t.Fatalf("expected projected delivery summary, got %+v", projected)
+	}
+	if len(projected.Steps) != 1 || len(projected.Steps[0].CalendarOperationSummaries) != 1 || projected.Steps[0].CalendarOperationSummaries[0].OperationID != operation.OperationID {
+		t.Fatalf("expected projected calendar operation summary, got %+v", projected.Steps)
+	}
+	if len(projected.Steps[0].IntegrationBindings) != 1 || projected.Steps[0].IntegrationBindings[0].IntegrationID != "calendar-a" {
+		t.Fatalf("expected projected workflow integration binding, got %+v", projected.Steps[0].IntegrationBindings)
+	}
+
+	deliveryRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(deliveryRec, httptest.NewRequest(http.MethodGet, "/v1/deliveries/"+projected.LatestDeliveryID, nil))
+	if deliveryRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for delivery get, got %d body=%s", deliveryRec.Code, deliveryRec.Body.String())
+	}
+	projectedOutcome := decodeStrictResponse[delivery.DeliveryOutcome](t, deliveryRec.Body.Bytes())
+	if len(projectedOutcome.CalendarOperationIDs) != 1 || projectedOutcome.CalendarOperationIDs[0] != operation.OperationID {
+		t.Fatalf("expected delivery linkage ids, got %+v", projectedOutcome.CalendarOperationIDs)
+	}
+	if len(projectedOutcome.CalendarOperationSummaries) != 1 || projectedOutcome.CalendarOperationSummaries[0].OperationID != operation.OperationID {
+		t.Fatalf("expected delivery linkage summaries, got %+v", projectedOutcome.CalendarOperationSummaries)
 	}
 }
 

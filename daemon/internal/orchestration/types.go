@@ -3,6 +3,7 @@ package orchestration
 import (
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 )
@@ -63,7 +64,8 @@ const (
 )
 
 type CreateWorkflowInput struct {
-	Goal string `json:"goal,omitempty"`
+	Goal           string           `json:"goal,omitempty"`
+	CalendarAction *calendar.Action `json:"calendarAction,omitempty"`
 }
 
 type Workflow struct {
@@ -90,32 +92,33 @@ type Workflow struct {
 }
 
 type WorkflowStep struct {
-	WorkflowStepID       string                        `json:"workflowStepId"`
-	WorkflowID           string                        `json:"workflowId"`
-	Title                string                        `json:"title"`
-	Position             int                           `json:"position"`
-	ConsumerKind         string                        `json:"consumerKind"`
-	ConsumerID           string                        `json:"consumerId"`
-	ToolName             string                        `json:"toolName"`
-	Input                any                           `json:"input,omitempty"`
-	Status               StepStatus                    `json:"status"`
-	SelectionRationale   string                        `json:"selectionRationale,omitempty"`
-	ApprovalModeExpected string                        `json:"approvalModeExpected,omitempty"`
-	DependencyIDs        []string                      `json:"dependencyIds,omitempty"`
-	RuntimeStepID        string                        `json:"runtimeStepId,omitempty"`
-	ActiveToolCallID     string                        `json:"activeToolCallId,omitempty"`
-	AttemptCount         int                           `json:"attemptCount"`
-	MaxAttempts          int                           `json:"maxAttempts"`
-	LastFailureClass     string                        `json:"lastFailureClass,omitempty"`
-	BlockedReason        string                        `json:"blockedReason,omitempty"`
-	SideEffectsVisible   bool                          `json:"sideEffectsVisible,omitempty"`
-	OutputSummary        string                        `json:"outputSummary,omitempty"`
-	ComputerUseSessionID string                        `json:"computerUseSessionId,omitempty"`
-	ComputerUseActionIDs []string                      `json:"computerUseActionIds,omitempty"`
-	ComputerUseArtifacts []computeruse.Artifact        `json:"computerUseArtifacts,omitempty"`
-	IntegrationBindings  []integrations.BindingSummary `json:"integrationBindings,omitempty"`
-	CreatedAt            time.Time                     `json:"createdAt"`
-	UpdatedAt            time.Time                     `json:"updatedAt"`
+	WorkflowStepID             string                        `json:"workflowStepId"`
+	WorkflowID                 string                        `json:"workflowId"`
+	Title                      string                        `json:"title"`
+	Position                   int                           `json:"position"`
+	ConsumerKind               string                        `json:"consumerKind"`
+	ConsumerID                 string                        `json:"consumerId"`
+	ToolName                   string                        `json:"toolName"`
+	Input                      any                           `json:"input,omitempty"`
+	Status                     StepStatus                    `json:"status"`
+	SelectionRationale         string                        `json:"selectionRationale,omitempty"`
+	ApprovalModeExpected       string                        `json:"approvalModeExpected,omitempty"`
+	DependencyIDs              []string                      `json:"dependencyIds,omitempty"`
+	RuntimeStepID              string                        `json:"runtimeStepId,omitempty"`
+	ActiveToolCallID           string                        `json:"activeToolCallId,omitempty"`
+	AttemptCount               int                           `json:"attemptCount"`
+	MaxAttempts                int                           `json:"maxAttempts"`
+	LastFailureClass           string                        `json:"lastFailureClass,omitempty"`
+	BlockedReason              string                        `json:"blockedReason,omitempty"`
+	SideEffectsVisible         bool                          `json:"sideEffectsVisible,omitempty"`
+	OutputSummary              string                        `json:"outputSummary,omitempty"`
+	ComputerUseSessionID       string                        `json:"computerUseSessionId,omitempty"`
+	ComputerUseActionIDs       []string                      `json:"computerUseActionIds,omitempty"`
+	ComputerUseArtifacts       []computeruse.Artifact        `json:"computerUseArtifacts,omitempty"`
+	IntegrationBindings        []integrations.BindingSummary `json:"integrationBindings,omitempty"`
+	CalendarOperationSummaries []calendar.OperationSummary   `json:"calendarOperationSummaries,omitempty"`
+	CreatedAt                  time.Time                     `json:"createdAt"`
+	UpdatedAt                  time.Time                     `json:"updatedAt"`
 }
 
 type Dependency struct {

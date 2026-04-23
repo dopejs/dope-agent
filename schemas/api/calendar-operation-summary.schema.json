@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/calendar-operation-summary.schema.json",
+  "title": "CalendarOperationSummary",
+  "type": "object",
+  "required": [
+    "operationId",
+    "operationClass",
+    "integrationId",
+    "status",
+    "capturedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "operationId": { "type": "string" },
+    "operationClass": {
+      "type": "string",
+      "enum": ["list_events", "get_event", "busy_free", "create_event", "update_event", "cancel_event"]
+    },
+    "integrationId": { "type": "string" },
+    "externalEventId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["requested", "completed", "failed", "blocked", "cancelled"]
+    },
+    "timezoneUsed": { "type": "string" },
+    "capturedAt": { "type": "string", "format": "date-time" }
+  }
+}

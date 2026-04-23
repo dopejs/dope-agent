@@ -1390,12 +1390,23 @@ Verification:
 
 ### Roadmap 29: Calendar Integration
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/014-calendar-integration.md](../specs/014-calendar-integration.md)
 
 Goal: add a first production-grade personal calendar domain built on the shared
 integration substrate.
+
+Delivered:
+
+- daemon-owned calendar account, event, availability, and operation routes under
+  `/v1/calendar/*`
+- additive SQLite persistence for calendar account projections, operations, and artifacts
+- truthful timed single-event create, update, and cancel on the primary calendar only
+- additive `calendarOperationSummaries` projection onto workflow steps and schedule
+  attempts plus additive delivery-outcome linkage
+- repo-owned fake calendar verification in `DOPE_ENV=test` without requiring live
+  third-party calendar credentials
 
 ### Roadmap 30: Mail Integration
 

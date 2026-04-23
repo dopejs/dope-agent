@@ -135,7 +135,8 @@ func ptrContractTime(value time.Time) *time.Time {
 
 func workflowContractFixtures() map[string]string {
 	return map[string]string{
-		"schemas/api/create-workflow.request.schema.json":               `{"goal":"Use MCP and a skill to complete a deterministic workflow."}`,
+		"schemas/api/calendar-workflow-action.schema.json":              `{"operationClass":"create_event","integrationId":"calendar-a","title":"Calendar workflow","startsAt":"2026-04-23T17:00:00Z","endsAt":"2026-04-23T17:30:00Z"}`,
+		"schemas/api/create-workflow.request.schema.json":               `{"goal":"Create a deterministic calendar workflow.","calendarAction":{"operationClass":"create_event","integrationId":"calendar-a","title":"Calendar workflow","startsAt":"2026-04-23T17:00:00Z","endsAt":"2026-04-23T17:30:00Z"}}`,
 		"schemas/api/workflow-resource.schema.json":                     `{"workflowId":"wf_1","runId":"run_1","environmentScope":"test","goal":"Use MCP and a skill to complete a deterministic workflow.","status":"planned","planSummary":"Plan one MCP step followed by one executable skill handoff.","createdAt":"2026-04-21T10:00:00Z","updatedAt":"2026-04-21T10:00:00Z","steps":[{"workflowStepId":"wfstep_1","workflowId":"wf_1","title":"Use MCP tool lookup","position":1,"consumerKind":"mcp_tool","consumerId":"filesystem-test","toolName":"lookup","input":{"query":"deterministic workflow"},"status":"planned","selectionRationale":"Selected the first available MCP tool to satisfy the goal through the existing MCP runtime plane.","approvalModeExpected":"allow","attemptCount":0,"maxAttempts":1,"createdAt":"2026-04-21T10:00:00Z","updatedAt":"2026-04-21T10:00:00Z"},{"workflowStepId":"wfstep_2","workflowId":"wf_1","title":"Run executable skill exec-skill","position":2,"consumerKind":"skill","consumerId":"exec-skill","toolName":"exec-skill","input":{"args":["deterministic workflow"]},"status":"planned","selectionRationale":"Selected the first available executable skill to continue the workflow without a new execution boundary.","approvalModeExpected":"allow","dependencyIds":["wfdep_1"],"attemptCount":0,"maxAttempts":2,"createdAt":"2026-04-21T10:00:00Z","updatedAt":"2026-04-21T10:00:00Z"}],"dependencies":[{"dependencyId":"wfdep_1","workflowId":"wf_1","fromWorkflowStepId":"wfstep_1","toWorkflowStepId":"wfstep_2","dependencyType":"success","reason":"workflow consumes MCP output before local continuation"}],"handoffs":[{"handoffId":"wfhandoff_1","workflowId":"wf_1","fromWorkflowStepId":"wfstep_1","toWorkflowStepId":"wfstep_2","status":"pending","payloadSummary":"MCP lookup result summary","sourcePath":"step.output.result"}]}`,
 		"schemas/api/workflow-list.response.schema.json":                `{"items":[{"workflowId":"wf_1","runId":"run_1","environmentScope":"test","goal":"Use MCP and a skill to complete a deterministic workflow.","status":"planned","createdAt":"2026-04-21T10:00:00Z","updatedAt":"2026-04-21T10:00:00Z"}]}`,
 		"schemas/events/workflow-planned.event.schema.json":             `{"eventId":"evt_workflow_1","sequence":1,"category":"workflow","name":"workflow.planned","occurredAt":"2026-04-21T10:00:00Z","scope":{"runId":"run_1","workflowId":"wf_1"},"resource":{"kind":"workflow","id":"wf_1"},"payload":{"workflowId":"wf_1","runId":"run_1","status":"planned"}}`,
@@ -209,6 +210,30 @@ func assertDeliveryContractFixtures(t *testing.T, validator *contracts.Validator
 	mustValidateFixtures(t, validator, deliveryContractFixtures())
 }
 
+func calendarContractFixtures() map[string]string {
+	return map[string]string{
+		"schemas/api/calendar-operation-summary.schema.json":            `{"operationId":"calendar_op_1","operationClass":"list_events","integrationId":"calendar-a","externalEventId":"evt_ext_1","status":"completed","timezoneUsed":"America/Los_Angeles","capturedAt":"2026-04-23T10:00:00Z"}`,
+		"schemas/api/calendar-account-resource.schema.json":             `{"calendarAccountId":"acct_calendar-a","integrationId":"calendar-a","domainKind":"calendar","environmentScope":"test","accountKey":"acct_calendar","accountLabel":"Primary Calendar","readinessStatus":"healthy","canonicalDefault":true,"selectionMode":"canonical_default","primaryCalendarRef":"primary","primaryCalendarLabel":"Primary Calendar","primaryTimezone":"America/Los_Angeles","supportsEventInspection":true,"supportsBusyFree":true,"supportsTimedMutation":true,"lastSyncedAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:00Z"}`,
+		"schemas/api/calendar-account-list.response.schema.json":        `{"items":[{"calendarAccountId":"acct_calendar-a","integrationId":"calendar-a","domainKind":"calendar","environmentScope":"test","readinessStatus":"healthy","canonicalDefault":true,"primaryCalendarRef":"primary","primaryCalendarLabel":"Primary Calendar","primaryTimezone":"America/Los_Angeles","supportsEventInspection":true,"supportsBusyFree":true,"supportsTimedMutation":true,"lastSyncedAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:00Z"}]}`,
+		"schemas/api/calendar-event-resource.schema.json":               `{"externalEventId":"evt_ext_1","integrationId":"calendar-a","calendarAccountId":"acct_calendar-a","calendarRef":"primary","title":"Design review","startsAt":"2026-04-23T17:00:00Z","endsAt":"2026-04-23T17:30:00Z","timezone":"America/Los_Angeles","mutationEligibleInPhase":true,"lifecycleState":"active","createdAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:05:00Z"}`,
+		"schemas/api/calendar-availability-query-resource.schema.json":  `{"queryId":"calendar_op_2","operationId":"calendar_op_2","integrationId":"calendar-a","calendarAccountId":"acct_calendar-a","windowStart":"2026-04-23T16:00:00Z","windowEnd":"2026-04-23T18:00:00Z","timezone":"America/Los_Angeles","busyIntervals":[{"startsAt":"2026-04-23T17:00:00Z","endsAt":"2026-04-23T17:30:00Z"}],"conflictCount":1,"resultSummary":"1 busy interval(s)","createdAt":"2026-04-23T10:01:00Z"}`,
+		"schemas/api/calendar-event-artifact.schema.json":               `{"artifactId":"calendar_artifact_1","operationId":"calendar_op_1","kind":"event_snapshot","integrationId":"calendar-a","environmentScope":"test","externalEventId":"evt_ext_1","calendarRef":"primary","title":"Design review","startsAt":"2026-04-23T17:00:00Z","endsAt":"2026-04-23T17:30:00Z","timezone":"America/Los_Angeles","mutationEligibleInPhase":true,"lifecycleState":"active","createdAt":"2026-04-23T10:00:00Z"}`,
+		"schemas/api/calendar-operation-resource.schema.json":           `{"operationId":"calendar_op_1","operationClass":"list_events","status":"completed","integrationId":"calendar-a","calendarAccountId":"acct_calendar-a","environmentScope":"test","calendarRef":"primary","selectionMode":"explicit","timezoneUsed":"America/Los_Angeles","requestSummary":"2026-04-23T16:00:00Z/2026-04-23T18:00:00Z","externalEventId":"evt_ext_1","runId":"run_1","stepId":"step_1","toolCallId":"tool_call_1","workflowId":"wf_1","workflowStepId":"wfstep_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","deliveryId":"delivery_1","artifactIds":["calendar_artifact_1"],"createdAt":"2026-04-23T10:00:00Z","completedAt":"2026-04-23T10:00:01Z","updatedAt":"2026-04-23T10:00:01Z"}`,
+		"schemas/api/calendar-operation-list.response.schema.json":      `{"items":[{"operationId":"calendar_op_1","operationClass":"list_events","status":"completed","integrationId":"calendar-a","calendarAccountId":"acct_calendar-a","environmentScope":"test","createdAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:01Z"}]}`,
+		"schemas/api/calendar-event-list.response.schema.json":          `{"account":{"calendarAccountId":"acct_calendar-a","integrationId":"calendar-a","domainKind":"calendar","environmentScope":"test","readinessStatus":"healthy","canonicalDefault":true,"primaryCalendarRef":"primary","primaryCalendarLabel":"Primary Calendar","primaryTimezone":"America/Los_Angeles","supportsEventInspection":true,"supportsBusyFree":true,"supportsTimedMutation":true,"lastSyncedAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:00Z"},"items":[{"externalEventId":"evt_ext_1","integrationId":"calendar-a","calendarAccountId":"acct_calendar-a","calendarRef":"primary","title":"Design review","startsAt":"2026-04-23T17:00:00Z","endsAt":"2026-04-23T17:30:00Z","timezone":"America/Los_Angeles","mutationEligibleInPhase":true,"lifecycleState":"active","createdAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:05:00Z"}],"operation":{"operationId":"calendar_op_1","operationClass":"list_events","status":"completed","integrationId":"calendar-a","calendarAccountId":"acct_calendar-a","environmentScope":"test","createdAt":"2026-04-23T10:00:00Z","updatedAt":"2026-04-23T10:00:01Z"},"artifacts":[{"artifactId":"calendar_artifact_1","operationId":"calendar_op_1","kind":"event_snapshot","integrationId":"calendar-a","environmentScope":"test","createdAt":"2026-04-23T10:00:00Z"}]}`,
+		"schemas/events/calendar-account-projected.event.schema.json":   `{"eventId":"evt_calendar_1","sequence":1,"category":"calendar","name":"calendar.account_projected","occurredAt":"2026-04-23T10:00:00Z","scope":{},"resource":{"kind":"calendar_account","id":"acct_calendar-a"},"payload":{"integrationId":"calendar-a","accountKey":"acct_calendar","primaryCalendarRef":"primary","primaryTimezone":"America/Los_Angeles","readinessStatus":"healthy","canonicalDefault":true}}`,
+		"schemas/events/calendar-operation-requested.event.schema.json": `{"eventId":"evt_calendar_2","sequence":2,"category":"calendar","name":"calendar.operation_requested","occurredAt":"2026-04-23T10:00:00Z","scope":{"runId":"run_1","workflowId":"wf_1","scheduleId":"sched_1"},"resource":{"kind":"calendar_operation","id":"calendar_op_1"},"payload":{"operationId":"calendar_op_1","operationClass":"list_events","integrationId":"calendar-a","runId":"run_1","workflowId":"wf_1","scheduleId":"sched_1","deliveryId":"delivery_1","status":"completed","timezoneUsed":"America/Los_Angeles","externalEventId":"evt_ext_1","failureClass":""}}`,
+		"schemas/events/calendar-operation-completed.event.schema.json": `{"eventId":"evt_calendar_3","sequence":3,"category":"calendar","name":"calendar.operation_completed","occurredAt":"2026-04-23T10:00:01Z","scope":{"runId":"run_1","workflowId":"wf_1","scheduleId":"sched_1"},"resource":{"kind":"calendar_operation","id":"calendar_op_1"},"payload":{"operationId":"calendar_op_1","operationClass":"list_events","integrationId":"calendar-a","runId":"run_1","workflowId":"wf_1","scheduleId":"sched_1","status":"completed","timezoneUsed":"America/Los_Angeles","externalEventId":"evt_ext_1","failureClass":""}}`,
+		"schemas/events/calendar-operation-failed.event.schema.json":    `{"eventId":"evt_calendar_4","sequence":4,"category":"calendar","name":"calendar.operation_failed","occurredAt":"2026-04-23T10:00:02Z","scope":{"runId":"run_1"},"resource":{"kind":"calendar_operation","id":"calendar_op_2"},"payload":{"operationId":"calendar_op_2","operationClass":"create_event","integrationId":"calendar-a","runId":"run_1","status":"failed","timezoneUsed":"America/Los_Angeles","failureClass":"backend_error"}}`,
+		"schemas/events/calendar-artifact-recorded.event.schema.json":   `{"eventId":"evt_calendar_5","sequence":5,"category":"calendar","name":"calendar.artifact_recorded","occurredAt":"2026-04-23T10:00:03Z","scope":{"runId":"run_1"},"resource":{"kind":"calendar_artifact","id":"calendar_artifact_1"},"payload":{"artifactId":"calendar_artifact_1","operationId":"calendar_op_1","externalEventId":"evt_ext_1","calendarRef":"primary","lifecycleState":"active"}}`,
+	}
+}
+
+func assertCalendarContractFixtures(t *testing.T, validator *contracts.Validator) {
+	t.Helper()
+	mustValidateFixtures(t, validator, calendarContractFixtures())
+}
+
 func TestSupplementalComputerUseSchemasAcceptCanonicalFixtures(t *testing.T) {
 	t.Parallel()
 
@@ -221,39 +246,43 @@ func TestRequestSchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	fixtures := map[string]string{
-		"schemas/api/create-run.request.schema.json":                   `{"entrypoint":"chat","goal":"ship daemon"}`,
-		"schemas/api/connector-ingress-message.request.schema.json":    `{"route":{"kind":"group","accountId":"bot-main","peerId":"channel-1","threadId":"thread-1"},"message":{"messageId":"msg_1","text":"hello"},"run":{"entrypoint":"connector.message","goal":"handle inbound"}}`,
-		"schemas/api/create-step.request.schema.json":                  `{"title":"plan","kind":"task","input":{"phase":"draft"}}`,
-		"schemas/api/update-step-status.request.schema.json":           `{"status":"planning","output":{"phase":"ok"}}`,
-		"schemas/api/create-tool-call.request.schema.json":             `{"capabilityId":"docs","toolName":"lookup","approvalId":"approval_1","input":{"query":"hello"}}`,
-		"schemas/api/complete-tool-call.request.schema.json":           `{"output":{"ok":true}}`,
-		"schemas/api/fail-tool-call.request.schema.json":               `{"error":"tool failed"}`,
-		"schemas/api/create-connector.request.schema.json":             `{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`,
-		"schemas/api/report-connector-health.request.schema.json":      `{"status":"healthy"}`,
-		"schemas/api/report-connector-failure.request.schema.json":     `{"reason":"socket dropped"}`,
-		"schemas/api/create-capability.request.schema.json":            `{"capabilityId":"docs","kind":"docs","displayName":"Docs"}`,
-		"schemas/api/report-capability-health.request.schema.json":     `{"status":"degraded"}`,
-		"schemas/api/report-capability-failure.request.schema.json":    `{"reason":"worker exited"}`,
-		"schemas/api/create-llm-dispatch.request.schema.json":          `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"hello"}],"timeoutMs":1000,"maxRetries":1}`,
-		"schemas/api/chat-query.request.schema.json":                   `{"provider":"echo","model":"echo-v1","skills":["shared"],"query":"hello","timeoutMs":1000,"maxRetries":1}`,
-		"schemas/api/run-provider-check.request.schema.json":           `{"model":"echo-v1","prompt":"hello"}`,
-		"schemas/api/provider-default-model.request.schema.json":       `{"model":"gpt-5.4"}`,
-		"schemas/api/create-schedule.request.schema.json":              `{"trigger":{"kind":"once","fireAt":"2026-04-22T10:01:00Z"},"target":{"kind":"run","run":{"entrypoint":"operator","goal":"dispatch once"}},"retryPolicy":{"maxRetries":1,"backoffKind":"fixed","baseDelaySeconds":5,"maxDelaySeconds":5}}`,
-		"schemas/api/request-approval.request.schema.json":             `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"needs approval","requestedBy":"web-ui"}`,
-		"schemas/api/resolve-approval.request.schema.json":             `{"resolution":"approved","comment":"allowed"}`,
-		"schemas/api/create-integration.request.schema.json":           `{"integrationId":"calendar-a","domainKind":"calendar","displayName":"Calendar A","backendKind":"fake_local","accountBinding":{"accountKey":"acct_calendar"},"canonicalDefault":true}`,
-		"schemas/api/report-integration-readiness.request.schema.json": `{"readinessStatus":"healthy","authState":"authorized","healthState":"healthy","reason":"probe passed","requiredOperatorAction":"none","secretResolution":"resolved","accountBinding":{"accountKey":"acct_calendar"}}`,
-		"schemas/api/set-integration-default.request.schema.json":      `{}`,
-		"schemas/api/create-integration-probe.request.schema.json":     `{"probeKind":"mutate","approvalId":"approval_1","input":{"mode":"write"}}`,
-		"schemas/api/sandbox-execution.request.schema.json":            `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","timeoutMs":1000,"requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","reason":"inspect profile","metadata":{"ticket":"sandbox-16"},"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true}}`,
-		"schemas/api/sandbox-explain.request.schema.json":              `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"allowedHosts":[],"allowedPorts":[]}}`,
-		"schemas/api/mcp-server-create.request.schema.json":            `{"serverId":"mcp-test","displayName":"MCP Test","enabled":true,"sandboxProfileId":"subprocess_default","declarationId":"mcp_server:mcp-test:lifecycle.start","transportKind":"stdio","command":"/tmp/mcp-helper","args":["--stdio"],"workingDir":"/tmp/dope","secretRefs":["MCP_TEST_TOKEN"],"autoRestart":true}`,
-		"schemas/api/mcp-server-update.request.schema.json":            `{"displayName":"Updated MCP","enabled":false,"autoRestart":false}`,
-		"schemas/api/mcp-catalog-install-request.schema.json":          `{"serverId":"filesystem-test","displayName":"Filesystem Test","workingDir":"/tmp/dope"}`,
-		"schemas/api/mcp-tool-exposure-update.request.schema.json":     `{"runtimeSurface":"chat","exposureMode":"approval_required","active":true,"reason":"needs approval"}`,
-		"schemas/api/mcp-tool-authorization.request.schema.json":       `{"runtimeSurface":"chat","approvalId":"approval_1","requestedBy":"web-ui"}`,
-		"schemas/api/start-pairing.request.schema.json":                `{"mode":"local","label":"web-ui","ttlSeconds":120}`,
-		"schemas/api/complete-pairing.request.schema.json":             `{"code":"123456"}`,
+		"schemas/api/create-run.request.schema.json":                         `{"entrypoint":"chat","goal":"ship daemon"}`,
+		"schemas/api/connector-ingress-message.request.schema.json":          `{"route":{"kind":"group","accountId":"bot-main","peerId":"channel-1","threadId":"thread-1"},"message":{"messageId":"msg_1","text":"hello"},"run":{"entrypoint":"connector.message","goal":"handle inbound"}}`,
+		"schemas/api/create-step.request.schema.json":                        `{"title":"plan","kind":"task","input":{"phase":"draft"}}`,
+		"schemas/api/update-step-status.request.schema.json":                 `{"status":"planning","output":{"phase":"ok"}}`,
+		"schemas/api/create-tool-call.request.schema.json":                   `{"capabilityId":"docs","toolName":"lookup","approvalId":"approval_1","input":{"query":"hello"}}`,
+		"schemas/api/complete-tool-call.request.schema.json":                 `{"output":{"ok":true}}`,
+		"schemas/api/fail-tool-call.request.schema.json":                     `{"error":"tool failed"}`,
+		"schemas/api/create-connector.request.schema.json":                   `{"connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main"}`,
+		"schemas/api/report-connector-health.request.schema.json":            `{"status":"healthy"}`,
+		"schemas/api/report-connector-failure.request.schema.json":           `{"reason":"socket dropped"}`,
+		"schemas/api/create-capability.request.schema.json":                  `{"capabilityId":"docs","kind":"docs","displayName":"Docs"}`,
+		"schemas/api/report-capability-health.request.schema.json":           `{"status":"degraded"}`,
+		"schemas/api/report-capability-failure.request.schema.json":          `{"reason":"worker exited"}`,
+		"schemas/api/create-llm-dispatch.request.schema.json":                `{"provider":"echo","model":"echo-v1","messages":[{"role":"user","content":"hello"}],"timeoutMs":1000,"maxRetries":1}`,
+		"schemas/api/chat-query.request.schema.json":                         `{"provider":"echo","model":"echo-v1","skills":["shared"],"query":"hello","timeoutMs":1000,"maxRetries":1}`,
+		"schemas/api/run-provider-check.request.schema.json":                 `{"model":"echo-v1","prompt":"hello"}`,
+		"schemas/api/provider-default-model.request.schema.json":             `{"model":"gpt-5.4"}`,
+		"schemas/api/create-schedule.request.schema.json":                    `{"trigger":{"kind":"once","fireAt":"2026-04-22T10:01:00Z"},"target":{"kind":"workflow","workflow":{"entrypoint":"operator","runGoal":"dispatch calendar workflow","workflowGoal":"create calendar event","calendarAction":{"operationClass":"create_event","integrationId":"calendar-a","title":"Calendar workflow","startsAt":"2026-04-23T17:00:00Z","endsAt":"2026-04-23T17:30:00Z"}}},"retryPolicy":{"maxRetries":1,"backoffKind":"fixed","baseDelaySeconds":5,"maxDelaySeconds":5}}`,
+		"schemas/api/request-approval.request.schema.json":                   `{"action":"tool_call.execute","resourceKind":"capability","resourceId":"browser","reason":"needs approval","requestedBy":"web-ui"}`,
+		"schemas/api/resolve-approval.request.schema.json":                   `{"resolution":"approved","comment":"allowed"}`,
+		"schemas/api/create-integration.request.schema.json":                 `{"integrationId":"calendar-a","domainKind":"calendar","displayName":"Calendar A","backendKind":"fake_local","accountBinding":{"accountKey":"acct_calendar"},"canonicalDefault":true}`,
+		"schemas/api/report-integration-readiness.request.schema.json":       `{"readinessStatus":"healthy","authState":"authorized","healthState":"healthy","reason":"probe passed","requiredOperatorAction":"none","secretResolution":"resolved","accountBinding":{"accountKey":"acct_calendar"}}`,
+		"schemas/api/set-integration-default.request.schema.json":            `{}`,
+		"schemas/api/create-integration-probe.request.schema.json":           `{"probeKind":"mutate","approvalId":"approval_1","input":{"mode":"write"}}`,
+		"schemas/api/create-calendar-availability-query.request.schema.json": `{"integrationId":"calendar-a","windowStart":"2026-04-23T16:00:00Z","windowEnd":"2026-04-23T18:00:00Z","source":{"runId":"run_1","stepId":"step_1","toolCallId":"tool_call_1","workflowId":"wf_1","workflowStepId":"wfstep_1","scheduleId":"sched_1","scheduleAttemptId":"sched_attempt_1","deliveryId":"delivery_1"}}`,
+		"schemas/api/create-calendar-event.request.schema.json":              `{"integrationId":"calendar-a","title":"Design review","startsAt":"2026-04-23T17:00:00Z","endsAt":"2026-04-23T17:30:00Z","timezone":"America/Los_Angeles"}`,
+		"schemas/api/update-calendar-event.request.schema.json":              `{"title":"Moved review","startsAt":"2026-04-23T18:00:00Z","endsAt":"2026-04-23T18:30:00Z"}`,
+		"schemas/api/cancel-calendar-event.request.schema.json":              `{"reason":"cancelled","source":{"runId":"run_1"}}`,
+		"schemas/api/sandbox-execution.request.schema.json":                  `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","timeoutMs":1000,"requestedBy":"web-ui","resourceKind":"skill","resourceId":"shared","scope":"chat","reason":"inspect profile","metadata":{"ticket":"sandbox-16"},"access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"networkMode":"allow_list","allowedHosts":["localhost"],"allowedPorts":[80],"allowLoopback":true}}`,
+		"schemas/api/sandbox-explain.request.schema.json":                    `{"profileId":"subprocess_default","command":"echo","args":["hello"],"cwd":"/tmp/dope","access":{"readRoots":["/tmp/dope"],"writeRoots":["/tmp/dope"],"allowedHosts":[],"allowedPorts":[]}}`,
+		"schemas/api/mcp-server-create.request.schema.json":                  `{"serverId":"mcp-test","displayName":"MCP Test","enabled":true,"sandboxProfileId":"subprocess_default","declarationId":"mcp_server:mcp-test:lifecycle.start","transportKind":"stdio","command":"/tmp/mcp-helper","args":["--stdio"],"workingDir":"/tmp/dope","secretRefs":["MCP_TEST_TOKEN"],"autoRestart":true}`,
+		"schemas/api/mcp-server-update.request.schema.json":                  `{"displayName":"Updated MCP","enabled":false,"autoRestart":false}`,
+		"schemas/api/mcp-catalog-install-request.schema.json":                `{"serverId":"filesystem-test","displayName":"Filesystem Test","workingDir":"/tmp/dope"}`,
+		"schemas/api/mcp-tool-exposure-update.request.schema.json":           `{"runtimeSurface":"chat","exposureMode":"approval_required","active":true,"reason":"needs approval"}`,
+		"schemas/api/mcp-tool-authorization.request.schema.json":             `{"runtimeSurface":"chat","approvalId":"approval_1","requestedBy":"web-ui"}`,
+		"schemas/api/start-pairing.request.schema.json":                      `{"mode":"local","label":"web-ui","ttlSeconds":120}`,
+		"schemas/api/complete-pairing.request.schema.json":                   `{"code":"123456"}`,
 	}
 
 	for schemaPath, fixture := range fixtures {
@@ -288,6 +317,13 @@ func TestDeliverySchemasAcceptCanonicalFixtures(t *testing.T) {
 
 	validator := contracts.NewValidator(schemaRootDir(t))
 	assertDeliveryContractFixtures(t, validator)
+}
+
+func TestCalendarSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	assertCalendarContractFixtures(t, validator)
 }
 
 func TestValidatorRejectsInvalidRequestFixture(t *testing.T) {

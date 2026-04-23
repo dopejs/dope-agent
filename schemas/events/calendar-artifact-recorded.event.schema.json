@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/calendar-artifact-recorded.event.schema.json",
+  "title": "CalendarArtifactRecordedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "calendar" },
+        "name": { "const": "calendar.artifact_recorded" },
+        "payload": {
+          "type": "object",
+          "required": ["artifactId", "operationId", "calendarRef", "lifecycleState"],
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": { "type": "string" },
+            "operationId": { "type": "string" },
+            "externalEventId": { "type": "string" },
+            "calendarRef": { "type": "string" },
+            "lifecycleState": { "type": "string", "enum": ["active", "cancelled", "stale_snapshot", "unavailable"] }
+          }
+        }
+      }
+    }
+  ]
+}

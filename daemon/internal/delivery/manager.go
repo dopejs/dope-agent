@@ -58,6 +58,13 @@ func (m *Manager) ConfigureForTesting(maxAttempts int, baseRetryDelay, maxRetryD
 	}
 }
 
+func (m *Manager) Store() *store.SQLiteStore {
+	if m == nil {
+		return nil
+	}
+	return m.sqliteStore
+}
+
 func (m *Manager) CreateTarget(ctx context.Context, target DeliveryTarget) (DeliveryTarget, error) {
 	if m == nil || m.sqliteStore == nil {
 		return DeliveryTarget{}, errors.New("delivery manager is not configured")

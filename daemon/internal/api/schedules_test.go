@@ -11,11 +11,13 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/artifacts"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
+	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -708,6 +710,169 @@ func TestScheduleRoutesProjectLatestDeliverySummaryOntoAttempts(t *testing.T) {
 	}
 }
 
+func TestScheduleRoutesProjectCalendarOperationSummariesAndDeliveryLinkage(t *testing.T) {
+	harness := newWorkflowScheduleServerHarness(t)
+
+	target, err := harness.delivery.CreateTarget(context.Background(), delivery.DeliveryTarget{
+		TargetID:         "schedule-calendar-target",
+		DisplayName:      "Schedule Calendar Target",
+		TargetKind:       delivery.TargetKindTestSink,
+		EnvironmentScope: "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarget returned error: %v", err)
+	}
+	if _, err := harness.delivery.UpsertPreference(context.Background(), delivery.DeliveryPreference{
+		PreferenceID:     "pref-schedule-calendar",
+		EnvironmentScope: "test",
+		ScopeKind:        delivery.PreferenceScopeUserDefault,
+		PreferredTargetsByClass: map[delivery.ResultClass]string{
+			delivery.ResultClassRoutineSuccess: target.TargetID,
+			delivery.ResultClassUrgent:         target.TargetID,
+			delivery.ResultClassFailure:        target.TargetID,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertPreference returned error: %v", err)
+	}
+
+	fireAt := time.Now().UTC().Add(100 * time.Millisecond).Format(time.RFC3339)
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/schedules", strings.NewReader(`{
+		"trigger": {
+			"kind": "once",
+			"fireAt": "`+fireAt+`"
+		},
+		"target": {
+			"kind": "workflow",
+			"workflow": {
+				"entrypoint": "operator",
+				"runGoal": "schedule calendar linkage",
+				"workflowGoal": "Create a scheduled calendar event.",
+				"calendarAction": {
+					"operationClass": "create_event",
+					"integrationId": "calendar-a",
+					"title": "Scheduled calendar write",
+					"startsAt": "2026-04-23T18:00:00Z",
+					"endsAt": "2026-04-23T18:30:00Z"
+				}
+			}
+		},
+		"retryPolicy": {
+			"maxRetries": 0,
+			"backoffKind": "fixed",
+			"baseDelaySeconds": 5,
+			"maxDelaySeconds": 5
+		}
+	}`))
+	createReq.Header.Set("Authorization", harness.authHeader)
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	harness.server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for schedule create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	created := decodeStrictResponse[map[string]any](t, createRec.Body.Bytes())
+	scheduleID := created["scheduleId"].(string)
+
+	time.Sleep(150 * time.Millisecond)
+	var (
+		runID             string
+		workflowID        string
+		scheduleAttemptID string
+	)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := harness.scheduler.Tick(context.Background()); err != nil {
+			t.Fatalf("scheduler Tick returned error: %v", err)
+		}
+		getReq := httptest.NewRequest(http.MethodGet, "/v1/schedules/"+scheduleID, nil)
+		getReq.Header.Set("Authorization", harness.authHeader)
+		getRec := httptest.NewRecorder()
+		harness.server.Handler().ServeHTTP(getRec, getReq)
+		if getRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 for schedule get, got %d body=%s", getRec.Code, getRec.Body.String())
+		}
+		got := decodeStrictResponse[map[string]any](t, getRec.Body.Bytes())
+		attempts := got["attempts"].([]any)
+		if len(attempts) == 1 {
+			attempt := attempts[0].(map[string]any)
+			runID, _ = attempt["runId"].(string)
+			workflowID, _ = attempt["workflowId"].(string)
+			scheduleAttemptID, _ = attempt["scheduleAttemptId"].(string)
+			if runID != "" && workflowID != "" && scheduleAttemptID != "" && attempt["downstreamStatus"] == "completed" {
+				break
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if runID == "" || workflowID == "" || scheduleAttemptID == "" {
+		t.Fatalf("expected completed scheduled workflow attempt, got runId=%q workflowId=%q attemptId=%q", runID, workflowID, scheduleAttemptID)
+	}
+
+	ops, err := harness.store.ListCalendarOperations(context.Background(), "test", store.CalendarOperationFilter{
+		WorkflowID: workflowID,
+		ScheduleID: scheduleID,
+	})
+	if err != nil {
+		t.Fatalf("ListCalendarOperations returned error: %v", err)
+	}
+	if len(ops) != 1 {
+		t.Fatalf("expected one persisted scheduled calendar operation, got %+v", ops)
+	}
+	operation := ops[0]
+	if operation.OperationClass != calendar.OperationClassCreateEvent || operation.Status != calendar.OperationStatusCompleted || operation.ScheduleAttemptID != scheduleAttemptID {
+		t.Fatalf("expected completed scheduled create_event operation, got %+v", operation)
+	}
+
+	workflowReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+runID+"/workflows/"+workflowID, nil)
+	workflowReq.Header.Set("Authorization", harness.authHeader)
+	workflowRec := httptest.NewRecorder()
+	harness.server.Handler().ServeHTTP(workflowRec, workflowReq)
+	if workflowRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for workflow get, got %d body=%s", workflowRec.Code, workflowRec.Body.String())
+	}
+	workflow := decodeStrictResponse[orchestration.Workflow](t, workflowRec.Body.Bytes())
+	if workflow.LatestDeliveryID == "" {
+		t.Fatalf("expected workflow delivery linkage, got %+v", workflow)
+	}
+
+	scheduleReq := httptest.NewRequest(http.MethodGet, "/v1/schedules/"+scheduleID, nil)
+	scheduleReq.Header.Set("Authorization", harness.authHeader)
+	scheduleRec := httptest.NewRecorder()
+	harness.server.Handler().ServeHTTP(scheduleRec, scheduleReq)
+	if scheduleRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for schedule get after projection, got %d body=%s", scheduleRec.Code, scheduleRec.Body.String())
+	}
+	projected := decodeStrictResponse[map[string]any](t, scheduleRec.Body.Bytes())
+	attempts := projected["attempts"].([]any)
+	if len(attempts) != 1 {
+		t.Fatalf("expected one attempt, got %+v", projected)
+	}
+	attempt := attempts[0].(map[string]any)
+	summaries := attempt["calendarOperationSummaries"].([]any)
+	if len(summaries) != 1 {
+		t.Fatalf("expected projected calendar operation summaries, got %+v", attempt)
+	}
+	summary := summaries[0].(map[string]any)
+	if summary["operationId"] != operation.OperationID {
+		t.Fatalf("expected operation %s, got %+v", operation.OperationID, summary)
+	}
+
+	deliveryReq := httptest.NewRequest(http.MethodGet, "/v1/deliveries/"+workflow.LatestDeliveryID, nil)
+	deliveryReq.Header.Set("Authorization", harness.authHeader)
+	deliveryRec := httptest.NewRecorder()
+	harness.server.Handler().ServeHTTP(deliveryRec, deliveryReq)
+	if deliveryRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for delivery get, got %d body=%s", deliveryRec.Code, deliveryRec.Body.String())
+	}
+	outcome := decodeStrictResponse[delivery.DeliveryOutcome](t, deliveryRec.Body.Bytes())
+	if len(outcome.CalendarOperationIDs) != 1 || outcome.CalendarOperationIDs[0] != operation.OperationID {
+		t.Fatalf("expected delivery linkage ids, got %+v", outcome.CalendarOperationIDs)
+	}
+	if len(outcome.CalendarOperationSummaries) != 1 || outcome.CalendarOperationSummaries[0].OperationID != operation.OperationID {
+		t.Fatalf("expected delivery linkage summaries, got %+v", outcome.CalendarOperationSummaries)
+	}
+}
+
 func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 	t.Helper()
 
@@ -738,17 +903,22 @@ func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 		Store:            sqliteStore,
 		Artifacts:        artifacts.NewService(t.TempDir()),
 	})
+	integrationManager := integrations.NewManager("test")
+	seedHealthyCalendarIntegration(t, integrationManager, sqliteStore, "calendar-a", true)
+	calendarManager := calendar.NewManager("test")
 	workflowLauncher := NewScheduleWorkflowLauncher(ScheduleWorkflowLauncherDependencies{
-		Config:      cfg,
-		Runtime:     runtimeManager,
-		Policy:      policyEngine,
-		Skills:      skillRegistry,
-		Sandboxes:   sandboxManager,
-		ComputerUse: computerUseManager,
-		Delivery:    deliveryManager,
-		EventBus:    eventBus,
-		Store:       sqliteStore,
-		Checkpoints: checkpointManager,
+		Config:       cfg,
+		Runtime:      runtimeManager,
+		Policy:       policyEngine,
+		Skills:       skillRegistry,
+		Sandboxes:    sandboxManager,
+		Integrations: integrationManager,
+		Calendar:     calendarManager,
+		ComputerUse:  computerUseManager,
+		Delivery:     deliveryManager,
+		EventBus:     eventBus,
+		Store:        sqliteStore,
+		Checkpoints:  checkpointManager,
 	})
 	scheduleManager := scheduler.New(scheduler.Dependencies{
 		Config:           cfg,
@@ -759,19 +929,21 @@ func newWorkflowScheduleServerHarness(t *testing.T) scheduleServerHarness {
 		WorkflowLauncher: workflowLauncher,
 	})
 	server := NewServer(Dependencies{
-		Config:      cfg,
-		Logger:      telemetry.New("error").Slog(),
-		Auth:        authManager,
-		EventBus:    eventBus,
-		Policy:      policyEngine,
-		Runtime:     runtimeManager,
-		Skills:      skillRegistry,
-		Sandboxes:   sandboxManager,
-		ComputerUse: computerUseManager,
-		Scheduler:   scheduleManager,
-		Delivery:    deliveryManager,
-		Store:       sqliteStore,
-		Checkpoints: checkpointManager,
+		Config:       cfg,
+		Logger:       telemetry.New("error").Slog(),
+		Auth:         authManager,
+		EventBus:     eventBus,
+		Policy:       policyEngine,
+		Runtime:      runtimeManager,
+		Skills:       skillRegistry,
+		Sandboxes:    sandboxManager,
+		Integrations: integrationManager,
+		Calendar:     calendarManager,
+		ComputerUse:  computerUseManager,
+		Scheduler:    scheduleManager,
+		Delivery:     deliveryManager,
+		Store:        sqliteStore,
+		Checkpoints:  checkpointManager,
 	})
 
 	return scheduleServerHarness{

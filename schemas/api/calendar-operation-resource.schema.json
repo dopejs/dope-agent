@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/calendar-operation-resource.schema.json",
+  "title": "CalendarOperationResource",
+  "type": "object",
+  "required": [
+    "operationId",
+    "operationClass",
+    "status",
+    "integrationId",
+    "calendarAccountId",
+    "environmentScope",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "operationId": { "type": "string" },
+    "operationClass": {
+      "type": "string",
+      "enum": ["list_events", "get_event", "busy_free", "create_event", "update_event", "cancel_event"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["requested", "completed", "failed", "blocked", "cancelled"]
+    },
+    "integrationId": { "type": "string" },
+    "calendarAccountId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "calendarRef": { "type": "string" },
+    "selectionMode": { "type": "string", "enum": ["explicit", "canonical_default"] },
+    "timezoneUsed": { "type": "string" },
+    "requestSummary": { "type": "string" },
+    "externalEventId": { "type": "string" },
+    "failureClass": { "type": "string" },
+    "failureReason": { "type": "string" },
+    "runId": { "type": "string" },
+    "stepId": { "type": "string" },
+    "toolCallId": { "type": "string" },
+    "workflowId": { "type": "string" },
+    "workflowStepId": { "type": "string" },
+    "scheduleId": { "type": "string" },
+    "scheduleAttemptId": { "type": "string" },
+    "deliveryId": { "type": "string" },
+    "artifactIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "availabilityQueryId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

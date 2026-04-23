@@ -23,7 +23,7 @@
     "workflowId": { "type": "string" },
     "title": { "type": "string" },
     "position": { "type": "integer", "minimum": 1 },
-    "consumerKind": { "type": "string", "enum": ["local_tool", "skill", "mcp_tool", "computer_use"] },
+    "consumerKind": { "type": "string", "enum": ["local_tool", "skill", "mcp_tool", "computer_use", "calendar"] },
     "consumerId": { "type": "string" },
     "toolName": { "type": "string" },
     "input": { "type": ["object", "array", "string", "number", "boolean", "null"] },
@@ -54,6 +54,10 @@
     "integrationBindings": {
       "type": "array",
       "items": { "$ref": "./integration-binding-summary.schema.json" }
+    },
+    "calendarOperationSummaries": {
+      "type": "array",
+      "items": { "$ref": "./calendar-operation-summary.schema.json" }
     },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }

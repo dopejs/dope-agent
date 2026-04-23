@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-calendar-event.request.schema.json",
+  "title": "CreateCalendarEventRequest",
+  "type": "object",
+  "required": ["startsAt", "endsAt"],
+  "additionalProperties": false,
+  "properties": {
+    "integrationId": { "type": "string" },
+    "calendarRef": { "type": "string" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "location": { "type": "string" },
+    "startsAt": { "type": "string", "format": "date-time" },
+    "endsAt": { "type": "string", "format": "date-time" },
+    "timezone": { "type": "string" },
+    "allDay": { "type": "boolean" },
+    "recurring": { "type": "boolean" },
+    "attendees": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "email": { "type": "string" }
+        }
+      }
+    },
+    "source": { "$ref": "./create-calendar-availability-query.request.schema.json#/$defs/source" }
+  }
+}

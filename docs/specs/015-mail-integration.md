@@ -25,6 +25,9 @@ Add a production-grade mail domain that supports inspectable mail state, draft a
   redacted provenance semantics come from roadmap 27 and are not redefined here
 - background mail results should reuse roadmap 28 delivery targets, preferences, and
   outcome history instead of a mail-specific notification subsystem
+- any later mail workflow that links to calendar state should reuse the concrete
+  calendar-domain contract from `specs/014-calendar-integration/contracts/calendar-domain-surfaces.md`
+  instead of redefining calendar truth
 
 ## In Scope
 

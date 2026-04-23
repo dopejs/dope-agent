@@ -23,6 +23,14 @@
     "summaryWindowId": { "type": "string" },
     "payloadPreview": { "type": "string" },
     "suppressionReason": { "type": "string" },
+    "calendarOperationIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "calendarOperationSummaries": {
+      "type": "array",
+      "items": { "$ref": "./calendar-operation-summary.schema.json" }
+    },
     "attempts": {
       "type": "array",
       "items": { "$ref": "./delivery-attempt-resource.schema.json" }

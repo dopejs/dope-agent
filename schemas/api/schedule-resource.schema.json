@@ -46,7 +46,8 @@
             "sessionId": { "type": "string" },
             "entrypoint": { "type": "string" },
             "runGoal": { "type": "string" },
-            "workflowGoal": { "type": "string" }
+            "workflowGoal": { "type": "string" },
+            "calendarAction": { "$ref": "./calendar-workflow-action.schema.json" }
           }
         },
         "summary": { "type": "string" },

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
+	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
@@ -1854,6 +1855,144 @@ func TestSQLiteStoreRejectsFutureSchemaVersion(t *testing.T) {
 
 	if _, err := NewSQLiteStore(dataDir); err == nil {
 		t.Fatal("expected NewSQLiteStore to reject future schema version")
+	}
+}
+
+func TestSQLiteStoreRoundTripsCalendarDomainRecords(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	account := calendar.AccountProjection{
+		CalendarAccountID:       "acct_calendar_store",
+		IntegrationID:           "calendar-a",
+		DomainKind:              "calendar",
+		EnvironmentScope:        "test",
+		AccountKey:              "acct_primary",
+		AccountLabel:            "Primary",
+		ReadinessStatus:         "healthy",
+		CanonicalDefault:        true,
+		SelectionMode:           "canonical_default",
+		PrimaryCalendarRef:      "primary",
+		PrimaryCalendarLabel:    "Primary Calendar",
+		PrimaryTimezone:         "America/Los_Angeles",
+		SupportsEventInspection: true,
+		SupportsBusyFree:        true,
+		SupportsTimedMutation:   true,
+		LastSyncedAt:            now,
+		UpdatedAt:               now,
+	}
+	if err := store.UpsertCalendarAccount(ctx, account); err != nil {
+		t.Fatalf("UpsertCalendarAccount returned error: %v", err)
+	}
+
+	operation := calendar.Operation{
+		OperationID:       "calendar_op_store_1",
+		OperationClass:    calendar.OperationClassCreateEvent,
+		Status:            calendar.OperationStatusCompleted,
+		IntegrationID:     account.IntegrationID,
+		CalendarAccountID: account.CalendarAccountID,
+		EnvironmentScope:  "test",
+		CalendarRef:       "primary",
+		SelectionMode:     "explicit",
+		TimezoneUsed:      "America/Los_Angeles",
+		RequestSummary:    "create test event",
+		ExternalEventID:   "evt_store_1",
+		RunID:             "run_calendar_store",
+		WorkflowID:        "wf_calendar_store",
+		ScheduleID:        "sched_calendar_store",
+		DeliveryID:        "delivery_calendar_store",
+		ArtifactIDs:       []string{"artifact_calendar_store_1"},
+		CreatedAt:         now,
+		CompletedAt:       ptrTime(now),
+		UpdatedAt:         now,
+	}
+	if err := store.UpsertCalendarOperation(ctx, operation); err != nil {
+		t.Fatalf("UpsertCalendarOperation returned error: %v", err)
+	}
+
+	startsAt := now.Add(time.Hour)
+	endsAt := now.Add(2 * time.Hour)
+	artifact := calendar.Artifact{
+		ArtifactID:              "artifact_calendar_store_1",
+		OperationID:             operation.OperationID,
+		Kind:                    calendar.ArtifactKindEventSnapshot,
+		IntegrationID:           account.IntegrationID,
+		EnvironmentScope:        "test",
+		ExternalEventID:         operation.ExternalEventID,
+		CalendarRef:             "primary",
+		Title:                   "Store Event",
+		StartsAt:                &startsAt,
+		EndsAt:                  &endsAt,
+		Timezone:                "America/Los_Angeles",
+		MutationEligibleInPhase: true,
+		LifecycleState:          calendar.EventLifecycleStateActive,
+		CreatedAt:               now,
+	}
+	if err := store.UpsertCalendarArtifact(ctx, artifact); err != nil {
+		t.Fatalf("UpsertCalendarArtifact returned error: %v", err)
+	}
+
+	accounts, err := store.ListCalendarAccounts(ctx, "test")
+	if err != nil {
+		t.Fatalf("ListCalendarAccounts returned error: %v", err)
+	}
+	if len(accounts) != 1 || accounts[0].IntegrationID != account.IntegrationID {
+		t.Fatalf("expected calendar account round-trip, got %+v", accounts)
+	}
+
+	operations, err := store.ListCalendarOperations(ctx, "test", CalendarOperationFilter{
+		RunID:           operation.RunID,
+		OperationClass:  string(calendar.OperationClassCreateEvent),
+		ExternalEventID: operation.ExternalEventID,
+	})
+	if err != nil {
+		t.Fatalf("ListCalendarOperations returned error: %v", err)
+	}
+	if len(operations) != 1 || operations[0].OperationID != operation.OperationID {
+		t.Fatalf("expected calendar operation round-trip, got %+v", operations)
+	}
+
+	artifacts, err := store.ListCalendarArtifacts(ctx, "test", operation.OperationID)
+	if err != nil {
+		t.Fatalf("ListCalendarArtifacts returned error: %v", err)
+	}
+	if len(artifacts) != 1 || artifacts[0].ArtifactID != artifact.ArtifactID {
+		t.Fatalf("expected calendar artifact round-trip, got %+v", artifacts)
+	}
+
+	workflowFiltered, err := store.ListCalendarOperations(ctx, "test", CalendarOperationFilter{WorkflowID: operation.WorkflowID})
+	if err != nil {
+		t.Fatalf("ListCalendarOperations(workflow) returned error: %v", err)
+	}
+	if len(workflowFiltered) != 1 || workflowFiltered[0].OperationID != operation.OperationID {
+		t.Fatalf("expected workflow-filtered calendar operation, got %+v", workflowFiltered)
+	}
+
+	scheduleFiltered, err := store.ListCalendarOperations(ctx, "test", CalendarOperationFilter{ScheduleID: operation.ScheduleID})
+	if err != nil {
+		t.Fatalf("ListCalendarOperations(schedule) returned error: %v", err)
+	}
+	if len(scheduleFiltered) != 1 || scheduleFiltered[0].OperationID != operation.OperationID {
+		t.Fatalf("expected schedule-filtered calendar operation, got %+v", scheduleFiltered)
+	}
+
+	deliveryFiltered, err := store.ListCalendarOperations(ctx, "test", CalendarOperationFilter{DeliveryID: operation.DeliveryID})
+	if err != nil {
+		t.Fatalf("ListCalendarOperations(delivery) returned error: %v", err)
+	}
+	if len(deliveryFiltered) != 1 || deliveryFiltered[0].OperationID != operation.OperationID {
+		t.Fatalf("expected delivery-filtered calendar operation, got %+v", deliveryFiltered)
 	}
 }
 

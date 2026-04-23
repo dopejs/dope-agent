@@ -28,6 +28,11 @@ func handleSchedules(sched *scheduler.Scheduler, deliveryManager *delivery.Manag
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		items, err = projectSchedulesCalendarSummaries(r.Context(), sched.Store(), items)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, ScheduleListResponse{Items: items})
 	case http.MethodPost:
 		var input CreateScheduleRequest
@@ -40,10 +45,25 @@ func handleSchedules(sched *scheduler.Scheduler, deliveryManager *delivery.Manag
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		var workflowTarget *scheduler.WorkflowTarget
+		if input.Target.Workflow != nil {
+			action, err := buildCalendarAction(input.Target.Workflow.CalendarAction)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			workflowTarget = &scheduler.WorkflowTarget{
+				SessionID:      input.Target.Workflow.SessionID,
+				Entrypoint:     input.Target.Workflow.Entrypoint,
+				RunGoal:        input.Target.Workflow.RunGoal,
+				WorkflowGoal:   input.Target.Workflow.WorkflowGoal,
+				CalendarAction: action,
+			}
+		}
 		target := scheduler.Target{
 			Kind:     input.Target.Kind,
 			Run:      input.Target.Run,
-			Workflow: input.Target.Workflow,
+			Workflow: workflowTarget,
 		}
 		item, err := sched.Create(r.Context(), scheduler.CreateInput{
 			Trigger:     trigger,
@@ -105,6 +125,11 @@ func handleScheduleByID(sched *scheduler.Scheduler, deliveryManager *delivery.Ma
 		return
 	}
 	item, err = projectScheduleDeliverySummary(r.Context(), deliveryManager, item)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	item, err = projectScheduleCalendarSummaries(r.Context(), sched.Store(), item)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

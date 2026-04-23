@@ -24,6 +24,9 @@ Add a first-class reminders and lightweight task-follow-up domain that can sched
 - reminders may launch workflows or only deliver notifications depending on configuration
 - reminder notifications should reuse roadmap 28 delivery targets, preferences, and
   digest behavior instead of introducing a second reminder-only delivery model
+- reminder or follow-up flows that reference calendar execution should reuse the concrete
+  calendar-domain contract from `specs/014-calendar-integration/contracts/calendar-domain-surfaces.md`
+  instead of redefining calendar linkage or delivery truth
 
 ## In Scope
 

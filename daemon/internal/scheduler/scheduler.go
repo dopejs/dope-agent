@@ -134,6 +134,13 @@ func (s *Scheduler) Close() error {
 	return nil
 }
 
+func (s *Scheduler) Store() *store.SQLiteStore {
+	if s == nil {
+		return nil
+	}
+	return s.store
+}
+
 func (s *Scheduler) Create(ctx context.Context, input CreateInput) (Schedule, error) {
 	if s == nil || s.store == nil {
 		return Schedule{}, fmt.Errorf("scheduler store is not configured")

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/calendar-event-resource.schema.json",
+  "title": "CalendarEventResource",
+  "type": "object",
+  "required": [
+    "externalEventId",
+    "integrationId",
+    "calendarAccountId",
+    "calendarRef",
+    "title",
+    "startsAt",
+    "endsAt",
+    "timezone",
+    "mutationEligibleInPhase",
+    "lifecycleState",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "externalEventId": { "type": "string" },
+    "integrationId": { "type": "string" },
+    "calendarAccountId": { "type": "string" },
+    "calendarRef": { "type": "string" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "location": { "type": "string" },
+    "startsAt": { "type": "string", "format": "date-time" },
+    "endsAt": { "type": "string", "format": "date-time" },
+    "timezone": { "type": "string" },
+    "allDay": { "type": "boolean" },
+    "recurring": { "type": "boolean" },
+    "recurrenceSummary": { "type": "string" },
+    "attendees": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "mutationEligibleInPhase": { "type": "boolean" },
+    "lifecycleState": {
+      "type": "string",
+      "enum": ["active", "cancelled", "stale_snapshot", "unavailable"]
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "cancelledAt": { "type": "string", "format": "date-time" }
+  }
+}

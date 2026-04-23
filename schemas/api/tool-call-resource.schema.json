@@ -41,7 +41,10 @@
     },
     "invocationKind": {
       "type": "string",
-      "enum": ["local_tool", "skill", "mcp_tool"]
+      "enum": ["local_tool", "skill", "mcp_tool", "domain_tool"]
+    },
+    "domainKind": {
+      "type": "string"
     },
     "capabilityId": {
       "type": "string"
@@ -85,6 +88,10 @@
     "integrationBindings": {
       "type": "array",
       "items": { "$ref": "./integration-binding-summary.schema.json" }
+    },
+    "calendarOperationSummaries": {
+      "type": "array",
+      "items": { "$ref": "./calendar-operation-summary.schema.json" }
     },
     "createdAt": {
       "type": "string",
