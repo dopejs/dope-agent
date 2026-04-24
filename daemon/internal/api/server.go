@@ -25,6 +25,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
+	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
@@ -67,6 +68,7 @@ type Dependencies struct {
 	Delivery     *delivery.Manager
 	Store        *store.SQLiteStore
 	Checkpoints  *checkpoints.Manager
+	Evaluation   *evaluation.Manager
 }
 
 type Server struct {
@@ -94,6 +96,7 @@ type Server struct {
 	delivery     *delivery.Manager
 	store        *store.SQLiteStore
 	checkpoints  *checkpoints.Manager
+	evaluation   *evaluation.Manager
 	server       *http.Server
 }
 
@@ -171,6 +174,9 @@ func NewServer(deps Dependencies) *Server {
 	}))
 	mux.HandleFunc("/v1/events", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleEvents(deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/evaluation/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleEvaluationRoutes(deps.Evaluation, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/runs", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleRuns(deps.Router, deps.Runtime, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, w, r)
@@ -384,6 +390,7 @@ func NewServer(deps Dependencies) *Server {
 		delivery:     deps.Delivery,
 		store:        deps.Store,
 		checkpoints:  deps.Checkpoints,
+		evaluation:   deps.Evaluation,
 		server: &http.Server{
 			Addr:              deps.Config.BindAddr,
 			Handler:           withLocalWebCORS(mux),

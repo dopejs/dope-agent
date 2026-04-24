@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/replay-comparison-resource.schema.json",
+  "title": "ReplayComparisonResource",
+  "type": "object",
+  "required": ["comparisonId", "candidateId", "baselineRef", "attemptId", "environmentScope", "terminalStatus", "runtimeSummary", "policySummary", "integrationSummary", "deliverySummary", "evidenceSummary", "confidence", "limitations", "driftFindings", "generatedAt"],
+  "properties": {
+    "comparisonId": { "type": "string" },
+    "candidateId": { "type": "string" },
+    "baselineRef": { "type": "string" },
+    "attemptId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "terminalStatus": { "type": "string", "enum": ["matched", "drifted", "blocked", "unreplayable"] },
+    "runtimeSummary": { "type": "string" },
+    "policySummary": { "type": "string" },
+    "integrationSummary": { "type": "string" },
+    "deliverySummary": { "type": "string" },
+    "evidenceSummary": { "type": "string" },
+    "confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "driftFindings": { "type": "array", "items": { "$ref": "./replay-drift-finding.schema.json" } },
+    "changeWindowLabel": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" }
+  }
+}

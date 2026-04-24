@@ -276,6 +276,40 @@ The operator shell projection layer is additive:
   `/v1/runs/{runId}`, `/v1/runs/{runId}/workflows/{workflowId}`, `/v1/schedules/{scheduleId}`,
   and `/v1/deliveries/{deliveryId}`, but those routes remain authoritative
 
+## 5.9 Evaluation And Replay API
+
+Purpose:
+
+- expose daemon-owned replay candidates, attempts, comparisons, and regression fixtures
+- keep replay and comparison truth durable and environment-scoped
+- let the web operator shell launch default non-live replay and inspect plane-level drift
+  without reconstructing outcomes from raw events
+
+Examples:
+
+- `GET /v1/evaluation/replay-candidates`
+- `POST /v1/evaluation/replay-candidates`
+- `GET /v1/evaluation/replay-candidates/{candidateId}`
+- `POST /v1/evaluation/replay-candidates/{candidateId}/attempts`
+- `GET /v1/evaluation/replay-attempts`
+- `GET /v1/evaluation/replay-attempts/{attemptId}`
+- `POST /v1/evaluation/replay-attempts/{attemptId}/compare`
+- `GET /v1/evaluation/comparisons`
+- `GET /v1/evaluation/comparisons/{comparisonId}`
+- `GET /v1/evaluation/fixtures`
+
+The evaluation plane is additive:
+
+- replay candidates are curated or repo-managed fixtures; ordinary completed work is not
+  automatically candidate-eligible
+- replay attempts default to `non_live` mode and preserve evidence without executing real
+  side effects
+- comparison terminal status is distinct from replay execution status
+- fixture manifests remain engineer-managed repository artifacts, not browser-authored
+  resources
+- existing run, workflow, schedule, integration, delivery, policy, and computer-use routes
+  remain authoritative source details
+
 ## 6. Config And Policy API
 
 Purpose:
@@ -378,6 +412,22 @@ Examples:
 - `integration.registered`
 - `integration.updated`
 - `integration.readiness_changed`
+
+## Evaluation Events
+
+Examples:
+
+- `evaluation.replay_started`
+- `evaluation.replay_completed`
+- `evaluation.replay_blocked`
+- `evaluation.replay_unreplayable`
+- `evaluation.replay_failed`
+- `evaluation.comparison_completed`
+
+Evaluation event payloads identify the candidate, attempt or comparison, replay mode,
+terminal status where relevant, environment scope, and blocked or drift details. They are
+refresh triggers and audit facts; clients should still fetch `/v1/evaluation/*` resources
+for authoritative replay and comparison state.
 - `integration.default_changed`
 
 ## 2. Session Events

@@ -250,7 +250,9 @@ label span {
 }
 
 .status-ready,
-.status-completed {
+.status-completed,
+.status-fully_replayable,
+.status-matched {
   background: var(--success-soft);
   color: var(--success);
 }
@@ -265,7 +267,9 @@ label span {
 
 .status-degraded,
 .status-warning,
-.status-ready_for_action {
+.status-ready_for_action,
+.status-partially_replayable,
+.status-drifted {
   background: var(--warning-soft);
   color: var(--warning);
 }
@@ -274,7 +278,8 @@ label span {
 .status-critical,
 .status-error,
 .status-failed,
-.status-rejected {
+.status-rejected,
+.status-unreplayable {
   background: var(--critical-soft);
   color: var(--critical);
 }
@@ -295,6 +300,60 @@ label span {
 
 .stack-list {
   flex-direction: column;
+}
+
+.evaluation-panel {
+  background:
+    linear-gradient(135deg, rgba(234, 245, 242, 0.88), rgba(255, 250, 241, 0.92)),
+    var(--panel);
+}
+
+.muted-line {
+  color: var(--muted);
+}
+
+.fixture-strip {
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding-top: 14px;
+}
+
+.fixture-strip span {
+  color: var(--muted);
+  text-align: right;
+}
+
+.mini-card-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mini-card {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.mini-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.drift-list {
+  border-left: 3px solid var(--warning);
+  display: grid;
+  gap: 6px;
+  padding-left: 12px;
+}
+
+.drift-list p {
+  margin: 0;
 }
 
 button {
@@ -348,6 +407,7 @@ pre {
   .dashboard-grid,
   .action-grid,
   .action-inputs,
+  .mini-card-grid,
   .banner-strip,
   .config-panel {
     grid-template-columns: 1fr;
@@ -368,5 +428,13 @@ pre {
   .panel,
   .config-panel {
     padding: 18px;
+  }
+
+  .fixture-strip {
+    display: grid;
+  }
+
+  .fixture-strip span {
+    text-align: left;
   }
 }

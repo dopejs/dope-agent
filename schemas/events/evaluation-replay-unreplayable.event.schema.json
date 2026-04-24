@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/evaluation-replay-unreplayable.event.schema.json",
+  "title": "EvaluationReplayUnreplayableEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": { "const": "evaluation.replay_unreplayable" },
+        "payload": { "$ref": "evaluation-replay-started.event.schema.json#/$defs/replayPayload" }
+      }
+    }
+  ]
+}

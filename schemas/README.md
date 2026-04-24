@@ -17,3 +17,11 @@ The first concrete P0 schemas should cover:
 - system info responses
 - run and step resources
 - event envelope and early event shapes
+
+Current additive contract groups include:
+
+- operator-shell projection responses
+- schedule, delivery, calendar, mail, reminder, computer-use, integration, provider, MCP,
+  sandbox, and workflow resources
+- evaluation and replay resources, including replay candidates, replay attempts,
+  comparisons, drift findings, fixtures, and `evaluation.*` events

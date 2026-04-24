@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/evaluation-comparison-completed.event.schema.json",
+  "title": "EvaluationComparisonCompletedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": { "const": "evaluation.comparison_completed" },
+        "payload": {
+          "type": "object",
+          "required": ["candidateId", "attemptId", "comparisonId", "terminalStatus", "environmentScope"],
+          "properties": {
+            "candidateId": { "type": "string" },
+            "attemptId": { "type": "string" },
+            "comparisonId": { "type": "string" },
+            "terminalStatus": { "type": "string", "enum": ["matched", "drifted", "blocked", "unreplayable"] },
+            "driftPlanes": { "type": "array", "items": { "type": "string" } },
+            "environmentScope": { "type": "string", "enum": ["test", "prod"] }
+          }
+        }
+      }
+    }
+  ]
+}

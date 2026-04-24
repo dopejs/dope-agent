@@ -1496,12 +1496,42 @@ Verification:
 
 ### Roadmap 33: Evaluation And Replay Harness
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/018-evaluation-and-replay-harness.md](../specs/018-evaluation-and-replay-harness.md)
 
 Goal: add replay and comparison support so ambient personal-agent behavior can be changed
 without losing confidence.
+
+Delivered:
+
+- daemon-owned `daemon/internal/evaluation` domain for replay candidates, replay attempts,
+  comparison results, drift findings, and repo-managed regression fixtures
+- additive SQLite migration for restart-safe evaluation records and fixture metadata
+- schema-backed `/v1/evaluation/*` routes for curated candidate registration, candidate
+  inspection, evidence-backed default non-live replay launch, attempt inspection,
+  plane-level comparison, comparison listing, and fixture listing
+- additive `evaluation.*` event schemas for replay start, terminal replay outcomes, and
+  comparison completion
+- TypeScript SDK methods and shared resource types for all evaluation surfaces
+- web operator-shell Evaluation Replay panel for curated candidates, non-live replay,
+  replay/comparison history, latest comparison, fixture provenance, drift findings, and
+  same-shell authoritative detail inspection
+- schedule, integration, and computer-use fixtures under `daemon/internal/evaluation/testdata/fixtures`
+
+Verification:
+
+- `cd daemon && GOCACHE=/tmp/dope-go-cache go test ./internal/evaluation ./internal/api ./internal/store ./internal/contracts ./internal/app`
+- `make daemon-contract-test`
+- `pnpm test:sdk`
+- `pnpm test:web -- --runInBand`
+- `pnpm build:web`
+- `cd daemon && go mod tidy`
+
+Manual `DOPE_ENV=test` acceptance is represented by automated app/API/web coverage for
+fixture loading, default non-live replay, comparison, and durable evaluation state; a
+live browser walkthrough remains the final operator smoke check when the local daemon is
+running.
 
 ## Roadmap 13: Provider Streaming Timeout Semantics
 

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-replay-attempt.request.schema.json",
+  "title": "CreateReplayAttemptRequest",
+  "type": "object",
+  "properties": {
+    "mode": { "type": "string", "enum": ["non_live", "live_validation"] },
+    "changeWindowLabel": { "type": "string" },
+    "baselineAttemptId": { "type": "string" },
+    "launchedBy": { "type": "string" },
+    "safetyScope": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["non_live", "live_validation"] },
+        "description": { "type": "string" }
+      }
+    }
+  }
+}

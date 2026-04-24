@@ -129,6 +129,81 @@ describe("DopeClient", () => {
     expect(detail.runId).toBe("run_1");
   });
 
+  it("calls evaluation replay and comparison surfaces", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        environmentScope: "test",
+        items: [{ candidateId: "candidate_1", candidateKind: "fixture", displayName: "Fixture", sourceKind: "fixture", sourceId: "fixture_1", sourceRefs: [], environmentScope: "test", readinessStatus: "fully_replayable", readinessReasons: [], limitations: [], defaultReplayMode: "non_live", createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z" }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        candidateId: "candidate_1", candidateKind: "fixture", displayName: "Fixture", sourceKind: "fixture", sourceId: "fixture_1", sourceRefs: [], environmentScope: "test", readinessStatus: "fully_replayable", readinessReasons: [], limitations: [], defaultReplayMode: "non_live", createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(201, {
+        candidateId: "candidate_curated", candidateKind: "curated_work", displayName: "Curated", sourceKind: "run", sourceId: "run_1", sourceRefs: [], environmentScope: "test", readinessStatus: "partially_replayable", readinessReasons: ["curated"], limitations: ["evidence-only"], defaultReplayMode: "non_live", createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(202, {
+        attemptId: "attempt_1", candidateId: "candidate_1", sourceRefs: [], environmentScope: "test", mode: "non_live", status: "completed", safetyScope: { mode: "non_live" }, approvalHandling: "evidence_only", sideEffectHandling: "evidence_only", evidenceRefs: [], blockedReasons: [], createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        environmentScope: "test",
+        items: []
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        attemptId: "attempt_1", candidateId: "candidate_1", sourceRefs: [], environmentScope: "test", mode: "non_live", status: "completed", safetyScope: { mode: "non_live" }, approvalHandling: "evidence_only", sideEffectHandling: "evidence_only", evidenceRefs: [], blockedReasons: [], createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(201, {
+        comparisonId: "comparison_1", candidateId: "candidate_1", baselineRef: "fixture_1", attemptId: "attempt_1", environmentScope: "test", terminalStatus: "matched", runtimeSummary: "runtime", policySummary: "policy", integrationSummary: "integration", deliverySummary: "delivery", evidenceSummary: "evidence", confidence: "high", limitations: [], driftFindings: [], generatedAt: "2026-04-24T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        environmentScope: "test",
+        items: []
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        comparisonId: "comparison_1", candidateId: "candidate_1", baselineRef: "fixture_1", attemptId: "attempt_1", environmentScope: "test", terminalStatus: "matched", runtimeSummary: "runtime", policySummary: "policy", integrationSummary: "integration", deliverySummary: "delivery", evidenceSummary: "evidence", confidence: "high", limitations: [], driftFindings: [], generatedAt: "2026-04-24T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        environmentScope: "test",
+        items: []
+      }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192/",
+      accessToken: "token",
+      fetchImpl
+    });
+
+    await client.listReplayCandidates({ readinessStatus: "fully_replayable", limit: 5 });
+    await client.getReplayCandidate("candidate_1");
+    await client.createReplayCandidate({
+      candidateId: "candidate_curated",
+      candidateKind: "curated_work",
+      displayName: "Curated",
+      sourceKind: "run",
+      sourceId: "run_1",
+      sourceRefs: [],
+      environmentScope: "test",
+      readinessStatus: "partially_replayable",
+      readinessReasons: ["curated"],
+      limitations: ["evidence-only"],
+      defaultReplayMode: "non_live"
+    });
+    await client.createReplayAttempt("candidate_1", { changeWindowLabel: "phase-33" });
+    await client.listReplayAttempts({ candidateId: "candidate_1" });
+    await client.getReplayAttempt("attempt_1");
+    await client.createReplayComparison("attempt_1", { changeWindowLabel: "phase-33" });
+    await client.listReplayComparisons({ terminalStatus: "matched" });
+    await client.getReplayComparison("comparison_1");
+    await client.listReplayFixtures({ domainClass: "schedule" });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/evaluation/replay-candidates?readinessStatus=fully_replayable&limit=5", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/evaluation/replay-candidates/candidate_1", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/evaluation/replay-candidates", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/evaluation/replay-candidates/candidate_1/attempts", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/evaluation/replay-attempts/attempt_1/compare", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(10, "http://127.0.0.1:19192/v1/evaluation/fixtures?domainClass=schedule", expect.anything());
+  });
+
   it("streams chat events until terminal response", async () => {
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({

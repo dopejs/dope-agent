@@ -13,6 +13,15 @@ const mockClient = {
   fetchRoute: vi.fn(),
   createRun: vi.fn(),
   queryChat: vi.fn(),
+  listReplayCandidates: vi.fn(),
+  getReplayCandidate: vi.fn(),
+  createReplayAttempt: vi.fn(),
+  listReplayAttempts: vi.fn(),
+  getReplayAttempt: vi.fn(),
+  createReplayComparison: vi.fn(),
+  listReplayComparisons: vi.fn(),
+  getReplayComparison: vi.fn(),
+  listReplayFixtures: vi.fn(),
   streamEvents: vi.fn()
 };
 
@@ -95,6 +104,15 @@ describe("App", () => {
     mockClient.fetchRoute.mockReset();
     mockClient.createRun.mockReset();
     mockClient.queryChat.mockReset();
+    mockClient.listReplayCandidates.mockReset().mockResolvedValue({ environmentScope: "test", items: [] });
+    mockClient.getReplayCandidate.mockReset();
+    mockClient.createReplayAttempt.mockReset();
+    mockClient.listReplayAttempts.mockReset().mockResolvedValue({ environmentScope: "test", items: [] });
+    mockClient.getReplayAttempt.mockReset();
+    mockClient.createReplayComparison.mockReset();
+    mockClient.listReplayComparisons.mockReset().mockResolvedValue({ environmentScope: "test", items: [] });
+    mockClient.getReplayComparison.mockReset();
+    mockClient.listReplayFixtures.mockReset().mockResolvedValue({ environmentScope: "test", items: [] });
     mockClient.streamEvents.mockReset().mockReturnValue(emptySubscription);
   });
 
@@ -312,6 +330,152 @@ describe("App", () => {
         query: "Return one bounded readiness confirmation."
       });
       expect(screen.getByText(/Test query completed with 2 total tokens/i)).not.toBeNull();
+    });
+  });
+
+  it("loads evaluation candidates, launches replay, compares, and exposes fixtures without editing controls", async () => {
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-04-24T10:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-04-24T10:00:00Z" });
+    mockClient.listReplayCandidates.mockResolvedValue({
+      environmentScope: "test",
+      items: [
+        {
+          candidateId: "candidate_1",
+          candidateKind: "fixture",
+          displayName: "Schedule Fixture",
+          sourceKind: "fixture",
+          sourceId: "fixture_schedule",
+          sourceRefs: [{ kind: "schedule", id: "sched_1", route: "/v1/schedules/sched_1" }],
+          environmentScope: "test",
+          readinessStatus: "fully_replayable",
+          readinessReasons: ["fixture has evidence"],
+          limitations: [],
+          defaultReplayMode: "non_live",
+          latestAttemptId: "attempt_1",
+          createdAt: "2026-04-24T10:00:00Z",
+          updatedAt: "2026-04-24T10:00:00Z"
+        }
+      ]
+    });
+    mockClient.listReplayAttempts.mockResolvedValue({ environmentScope: "test", items: [] });
+    mockClient.listReplayComparisons.mockResolvedValue({
+      environmentScope: "test",
+      items: [
+        {
+          comparisonId: "comparison_existing",
+          candidateId: "candidate_1",
+          baselineRef: "fixture_schedule",
+          attemptId: "attempt_existing",
+          environmentScope: "test",
+          terminalStatus: "drifted",
+          runtimeSummary: "runtime changed",
+          policySummary: "policy matched",
+          integrationSummary: "integration matched",
+          deliverySummary: "delivery matched",
+          evidenceSummary: "evidence matched",
+          confidence: "medium",
+          limitations: ["captured evidence only"],
+          driftFindings: [
+            {
+              findingId: "finding_1",
+              comparisonId: "comparison_existing",
+              plane: "runtime",
+              severity: "warning",
+              summary: "runtime summary changed",
+              baselineValue: "old",
+              replayValue: "new",
+              createdAt: "2026-04-24T10:00:00Z"
+            }
+          ],
+          generatedAt: "2026-04-24T10:00:00Z"
+        }
+      ]
+    });
+    mockClient.listReplayFixtures.mockResolvedValue({
+      environmentScope: "test",
+      items: [
+        {
+          fixtureId: "fixture_schedule",
+          displayName: "Schedule Fixture",
+          domainClass: "schedule",
+          manifestPath: "daemon/internal/evaluation/testdata/fixtures/schedule-basic/manifest.json",
+          sourceRefs: [],
+          capturedEvidenceRefs: [],
+          assumptions: ["captured evidence"],
+          limitations: [],
+          expectedReplayMode: "non_live",
+          expectedComparisonSummary: { runtime: "runtime", evidence: "evidence" },
+          candidateId: "candidate_1",
+          environmentScope: "test",
+          createdAt: "2026-04-24T10:00:00Z",
+          updatedAt: "2026-04-24T10:00:00Z"
+        }
+      ]
+    });
+    mockClient.createReplayAttempt.mockResolvedValue({
+      attemptId: "attempt_1",
+      candidateId: "candidate_1",
+      sourceRefs: [],
+      environmentScope: "test",
+      mode: "non_live",
+      status: "completed",
+      safetyScope: { mode: "non_live" },
+      approvalHandling: "evidence_only",
+      sideEffectHandling: "evidence_only",
+      evidenceRefs: [],
+      blockedReasons: [],
+      createdAt: "2026-04-24T10:00:00Z",
+      updatedAt: "2026-04-24T10:00:00Z"
+    });
+    mockClient.createReplayComparison.mockResolvedValue({
+      comparisonId: "comparison_1",
+      candidateId: "candidate_1",
+      baselineRef: "fixture_schedule",
+      attemptId: "attempt_1",
+      environmentScope: "test",
+      terminalStatus: "matched",
+      runtimeSummary: "runtime matched",
+      policySummary: "policy matched",
+      integrationSummary: "integration matched",
+      deliverySummary: "delivery matched",
+      evidenceSummary: "evidence matched",
+      confidence: "high",
+      limitations: [],
+      driftFindings: [],
+      generatedAt: "2026-04-24T10:00:00Z"
+    });
+
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText(/access token/i), "token");
+    await user.click(screen.getByRole("button", { name: /load shell/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Evaluation Replay")).not.toBeNull();
+      expect(screen.getAllByText("Schedule Fixture").length).toBeGreaterThan(0);
+      expect(screen.getByText(/Fixtures are engineer-managed and repo-backed/i)).not.toBeNull();
+      expect(screen.getByText("Replay History")).not.toBeNull();
+      expect(screen.getByText(/runtime changed/i)).not.toBeNull();
+      expect(screen.getByText(/runtime summary changed/i)).not.toBeNull();
+    });
+
+    expect(screen.queryByRole("button", { name: /edit fixture/i })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Launch Replay" }));
+
+    await waitFor(() => {
+      expect(mockClient.createReplayAttempt).toHaveBeenCalledWith("candidate_1", { mode: "non_live" });
+      expect(screen.getByText(/Replay attempt attempt_1 completed/i)).not.toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Compare Latest" }));
+
+    await waitFor(() => {
+      expect(mockClient.createReplayComparison).toHaveBeenCalledWith("attempt_1", {});
+      expect(screen.getByText(/Comparison comparison_1 matched/i)).not.toBeNull();
     });
   });
 });

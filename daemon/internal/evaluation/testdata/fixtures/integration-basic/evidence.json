@@ -1,0 +1,9 @@
+{
+  "sourceKind": "integration",
+  "terminalStatus": "completed",
+  "runtime": "integration-backed workflow replay reaches completed evidence",
+  "policy": "integration policy evidence remains allowed",
+  "integration": "fake-local integration response is captured",
+  "delivery": "integration fixture does not require live delivery",
+  "evidence": "integration fixture evidence is complete"
+}

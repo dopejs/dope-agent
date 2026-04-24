@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-replay-candidate.request.schema.json",
+  "title": "CreateReplayCandidateRequest",
+  "type": "object",
+  "required": ["candidateId", "candidateKind", "displayName", "sourceKind", "sourceId", "sourceRefs", "environmentScope", "readinessStatus", "readinessReasons", "limitations", "defaultReplayMode"],
+  "properties": {
+    "candidateId": { "type": "string", "minLength": 1 },
+    "candidateKind": { "type": "string", "enum": ["curated_work", "fixture"] },
+    "displayName": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "sourceKind": { "type": "string", "enum": ["run", "workflow", "schedule", "integration", "computer_use", "fixture"] },
+    "sourceId": { "type": "string", "minLength": 1 },
+    "sourceRefs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/sourceRef" } },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "readinessStatus": { "type": "string", "enum": ["fully_replayable", "partially_replayable", "blocked", "unreplayable"] },
+    "readinessReasons": { "type": "array", "items": { "type": "string" } },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "defaultReplayMode": { "type": "string", "enum": ["non_live"] },
+    "fixtureId": { "type": "string" },
+    "expectedComparisonSummary": { "$ref": "#/$defs/planeSummaries" },
+    "capturedEvidenceRefs": { "type": "array", "items": { "$ref": "#/$defs/sourceRef" } }
+  },
+  "$defs": {
+    "sourceRef": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "type": "string" },
+        "id": { "type": "string", "minLength": 1 },
+        "route": { "type": "string" }
+      }
+    },
+    "planeSummaries": {
+      "type": "object",
+      "properties": {
+        "runtime": { "type": "string" },
+        "policy": { "type": "string" },
+        "integration": { "type": "string" },
+        "delivery": { "type": "string" },
+        "evidence": { "type": "string" }
+      }
+    }
+  }
+}

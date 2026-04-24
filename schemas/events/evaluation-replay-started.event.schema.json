@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/evaluation-replay-started.event.schema.json",
+  "title": "EvaluationReplayStartedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": { "const": "evaluation.replay_started" },
+        "payload": { "$ref": "#/$defs/replayPayload" }
+      }
+    }
+  ],
+  "$defs": {
+    "replayPayload": {
+      "type": "object",
+      "required": ["candidateId", "attemptId", "mode", "environmentScope"],
+      "properties": {
+        "candidateId": { "type": "string" },
+        "attemptId": { "type": "string" },
+        "mode": { "type": "string", "enum": ["non_live", "live_validation"] },
+        "status": { "type": "string" },
+        "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+        "resultRunId": { "type": "string" },
+        "resultWorkflowId": { "type": "string" },
+        "blockedReasons": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

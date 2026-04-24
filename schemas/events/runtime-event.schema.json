@@ -35,7 +35,8 @@
         "delivery",
         "calendar",
         "mail",
-        "reminder"
+        "reminder",
+        "evaluation"
       ]
     },
     "name": {

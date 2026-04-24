@@ -1,0 +1,9 @@
+{
+  "sourceKind": "schedule",
+  "terminalStatus": "completed",
+  "runtime": "scheduled workflow replay reaches completed evidence",
+  "policy": "no fresh approval required in non-live fixture replay",
+  "integration": "calendar integration evidence is captured",
+  "delivery": "test sink delivery evidence is captured",
+  "evidence": "schedule fixture evidence is complete"
+}

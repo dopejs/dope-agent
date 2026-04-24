@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/replay-candidate-resource.schema.json",
+  "title": "ReplayCandidateResource",
+  "type": "object",
+  "required": ["candidateId", "candidateKind", "displayName", "sourceKind", "sourceId", "sourceRefs", "environmentScope", "readinessStatus", "readinessReasons", "limitations", "defaultReplayMode", "createdAt", "updatedAt"],
+  "properties": {
+    "candidateId": { "type": "string" },
+    "candidateKind": { "type": "string", "enum": ["curated_work", "fixture"] },
+    "displayName": { "type": "string" },
+    "description": { "type": "string" },
+    "sourceKind": { "type": "string", "enum": ["run", "workflow", "schedule", "integration", "computer_use", "fixture"] },
+    "sourceId": { "type": "string" },
+    "sourceRefs": { "type": "array", "items": { "$ref": "#/$defs/sourceRef" } },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "readinessStatus": { "type": "string", "enum": ["fully_replayable", "partially_replayable", "blocked", "unreplayable"] },
+    "readinessReasons": { "type": "array", "items": { "type": "string" } },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "defaultReplayMode": { "type": "string", "enum": ["non_live"] },
+    "fixtureId": { "type": "string" },
+    "latestAttemptId": { "type": "string" },
+    "latestComparisonId": { "type": "string" },
+    "expectedComparisonSummary": { "$ref": "#/$defs/planeSummaries" },
+    "capturedEvidenceRefs": { "type": "array", "items": { "$ref": "#/$defs/sourceRef" } },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "sourceRef": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "type": "string" },
+        "id": { "type": "string" },
+        "route": { "type": "string" }
+      }
+    },
+    "planeSummaries": {
+      "type": "object",
+      "properties": {
+        "runtime": { "type": "string" },
+        "policy": { "type": "string" },
+        "integration": { "type": "string" },
+        "delivery": { "type": "string" },
+        "evidence": { "type": "string" }
+      }
+    }
+  }
+}

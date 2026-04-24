@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/replay-attempt-resource.schema.json",
+  "title": "ReplayAttemptResource",
+  "type": "object",
+  "required": ["attemptId", "candidateId", "sourceRefs", "environmentScope", "mode", "status", "safetyScope", "approvalHandling", "sideEffectHandling", "evidenceRefs", "blockedReasons", "createdAt", "updatedAt"],
+  "properties": {
+    "attemptId": { "type": "string" },
+    "candidateId": { "type": "string" },
+    "sourceRefs": { "type": "array", "items": { "$ref": "replay-candidate-resource.schema.json#/$defs/sourceRef" } },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "mode": { "type": "string", "enum": ["non_live", "live_validation"] },
+    "status": { "type": "string", "enum": ["queued", "running", "completed", "blocked", "unreplayable", "failed", "cancelled"] },
+    "safetyScope": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["non_live", "live_validation"] },
+        "description": { "type": "string" }
+      }
+    },
+    "approvalHandling": { "type": "string", "enum": ["blocked", "evidence_only", "fresh_approval_required"] },
+    "sideEffectHandling": { "type": "string", "enum": ["blocked", "evidence_only", "live"] },
+    "launchedBy": { "type": "string" },
+    "changeWindowLabel": { "type": "string" },
+    "baselineAttemptId": { "type": "string" },
+    "resultRunId": { "type": "string" },
+    "resultWorkflowId": { "type": "string" },
+    "evidenceRefs": { "type": "array", "items": { "$ref": "replay-candidate-resource.schema.json#/$defs/sourceRef" } },
+    "blockedReasons": { "type": "array", "items": { "type": "string" } },
+    "runtimeSummary": { "type": "string" },
+    "policySummary": { "type": "string" },
+    "integrationSummary": { "type": "string" },
+    "deliverySummary": { "type": "string" },
+    "evidenceSummary": { "type": "string" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

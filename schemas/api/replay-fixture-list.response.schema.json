@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/replay-fixture-list.response.schema.json",
+  "title": "ReplayFixtureListResponse",
+  "type": "object",
+  "required": ["environmentScope", "items"],
+  "properties": {
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "items": { "type": "array", "items": { "$ref": "./replay-fixture-resource.schema.json" } }
+  }
+}

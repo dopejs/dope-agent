@@ -1,0 +1,29 @@
+{
+  "fixtureId": "fixture_integration_basic",
+  "displayName": "Integration Basic Replay",
+  "domainClass": "integration",
+  "sourceRefs": [
+    {
+      "kind": "integration",
+      "id": "calendar-fixture",
+      "route": "/v1/integrations/calendar-fixture"
+    }
+  ],
+  "capturedEvidenceRefs": [
+    {
+      "kind": "fixture_evidence",
+      "id": "integration-basic/evidence.json",
+      "route": "daemon/internal/evaluation/testdata/fixtures/integration-basic/evidence.json"
+    }
+  ],
+  "assumptions": ["Integration replay uses fake-local captured evidence."],
+  "limitations": [],
+  "expectedReplayMode": "non_live",
+  "expectedComparisonSummary": {
+    "runtime": "integration-backed workflow replay reaches completed evidence",
+    "policy": "integration policy evidence remains allowed",
+    "integration": "fake-local integration response is captured",
+    "delivery": "integration fixture does not require live delivery",
+    "evidence": "integration fixture evidence is complete"
+  }
+}

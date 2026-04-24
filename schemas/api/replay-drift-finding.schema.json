@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/replay-drift-finding.schema.json",
+  "title": "ReplayDriftFinding",
+  "type": "object",
+  "required": ["findingId", "comparisonId", "plane", "severity", "summary", "createdAt"],
+  "properties": {
+    "findingId": { "type": "string" },
+    "comparisonId": { "type": "string" },
+    "plane": { "type": "string", "enum": ["runtime", "policy", "integration", "delivery", "evidence", "unknown", "mixed"] },
+    "severity": { "type": "string", "enum": ["info", "warning", "critical"] },
+    "summary": { "type": "string" },
+    "baselineValue": { "type": "string" },
+    "replayValue": { "type": "string" },
+    "evidenceRefs": { "type": "array", "items": { "$ref": "replay-candidate-resource.schema.json#/$defs/sourceRef" } },
+    "recommendedAction": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

@@ -22,6 +22,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
+	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
@@ -1565,6 +1566,68 @@ func TestAppRunPublishesLifecycleEvents(t *testing.T) {
 	}
 	if items[1].Sequence <= items[0].Sequence {
 		t.Fatalf("expected monotonic system event sequence, got %d then %d", items[0].Sequence, items[1].Sequence)
+	}
+}
+
+func TestNewLoadsEvaluationFixturesAndSupportsReplayComparison(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("DOPE_ENV", "test")
+	t.Setenv("DOPE_DATA_DIR", dataDir)
+	t.Setenv("DOPE_BIND_ADDR", "127.0.0.1:0")
+	t.Setenv("DOPE_LOG_LEVEL", "error")
+	t.Setenv("DOPE_VERSION", "test")
+
+	application, err := New()
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer func() {
+		if err := application.Close(context.Background()); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	fixtures, err := application.Evaluation.ListFixtures(ctx, evaluation.FixtureFilter{EnvironmentScope: "test"})
+	if err != nil {
+		t.Fatalf("ListFixtures returned error: %v", err)
+	}
+	if len(fixtures) != 3 {
+		t.Fatalf("expected 3 evaluation fixtures, got %+v", fixtures)
+	}
+
+	seen := map[evaluation.FixtureDomainClass]bool{}
+	for _, fixture := range fixtures {
+		seen[fixture.DomainClass] = true
+	}
+	for _, domain := range []evaluation.FixtureDomainClass{evaluation.FixtureDomainSchedule, evaluation.FixtureDomainIntegration, evaluation.FixtureDomainComputerUse} {
+		if !seen[domain] {
+			t.Fatalf("expected loaded fixture for %s, got %+v", domain, fixtures)
+		}
+	}
+
+	candidates, err := application.Evaluation.ListReplayCandidates(ctx, evaluation.CandidateFilter{EnvironmentScope: "test", CandidateKind: evaluation.CandidateKindFixture})
+	if err != nil {
+		t.Fatalf("ListReplayCandidates returned error: %v", err)
+	}
+	if len(candidates) != 3 {
+		t.Fatalf("expected 3 fixture replay candidates, got %+v", candidates)
+	}
+	for _, candidate := range candidates {
+		attempt, err := application.Evaluation.CreateReplayAttempt(ctx, candidate.CandidateID, evaluation.CreateReplayAttemptInput{})
+		if err != nil {
+			t.Fatalf("CreateReplayAttempt(%s) returned error: %v", candidate.CandidateID, err)
+		}
+		if attempt.Status != evaluation.ReplayAttemptStatusCompleted {
+			t.Fatalf("expected completed fixture replay for %s, got %+v", candidate.CandidateID, attempt)
+		}
+		comparison, err := application.Evaluation.CreateComparison(ctx, attempt.AttemptID, evaluation.CreateComparisonInput{})
+		if err != nil {
+			t.Fatalf("CreateComparison(%s) returned error: %v", attempt.AttemptID, err)
+		}
+		if comparison.TerminalStatus != evaluation.ComparisonMatched {
+			t.Fatalf("expected matched fixture comparison for %s, got %+v", attempt.AttemptID, comparison)
+		}
 	}
 }
 

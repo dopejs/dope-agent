@@ -423,13 +423,24 @@ This should probably become a common artifact substrate rather than a one-off fe
 
 As the harness grows, replay and evaluation become necessary.
 
-The system should eventually support:
+Current daemon status:
 
-- replaying a run with the same skills and policies
-- comparing before/after skill or sandbox changes
-- regression testing orchestration and context behavior
+- replay candidates, replay attempts, comparison results, drift findings, and fixture
+  metadata are daemon-owned durable records
+- curated candidates and repo-managed schedule, integration, and computer-use fixtures can
+  be listed through `/v1/evaluation/*`
+- replay launch defaults to non-live evidence-preserving behavior and does not execute
+  real side effects
+- plane-level comparisons classify runtime, policy, integration, delivery, and
+  evidence-summary differences where evidence is available
+- the web operator shell can list candidates, launch replay, create latest comparisons,
+  show fixture provenance, and inspect authoritative evaluation details
 
-This is a later phase, but it should stay visible in the architecture.
+Follow-on work should stay separate from this closed phase:
+
+- broad automatic candidate eligibility for all completed work
+- live validation execution with explicit operator scope
+- model training, autonomous optimization, and knowledge-plane self-improvement loops
 
 ## Current Recommendation
 
@@ -470,3 +481,8 @@ onboarding, activity, and diagnostics projections; direct approve or reject hand
 the shell; shell-resident authoritative detail inspection for linked runs, workflows,
 schedules, deliveries, and approvals; and shared SDK coverage for projection fetches,
 run creation, approval resolution, and bounded `/v1/events/stream` refresh hooks.
+
+Roadmap 33 is now closed with a daemon-owned evaluation plane, schema-backed
+`/v1/evaluation/*` routes, non-live replay attempts, plane-level comparisons,
+repo-managed schedule/integration/computer-use fixtures, additive evaluation events, SDK
+coverage, and a web operator-shell Evaluation Replay panel.

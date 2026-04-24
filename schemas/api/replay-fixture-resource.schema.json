@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/replay-fixture-resource.schema.json",
+  "title": "ReplayFixtureResource",
+  "type": "object",
+  "required": ["fixtureId", "displayName", "domainClass", "manifestPath", "sourceRefs", "capturedEvidenceRefs", "assumptions", "limitations", "expectedReplayMode", "expectedComparisonSummary", "environmentScope", "createdAt", "updatedAt"],
+  "properties": {
+    "fixtureId": { "type": "string" },
+    "displayName": { "type": "string" },
+    "domainClass": { "type": "string", "enum": ["schedule", "integration", "computer_use"] },
+    "manifestPath": { "type": "string" },
+    "sourceRefs": { "type": "array", "items": { "$ref": "replay-candidate-resource.schema.json#/$defs/sourceRef" } },
+    "capturedEvidenceRefs": { "type": "array", "items": { "$ref": "replay-candidate-resource.schema.json#/$defs/sourceRef" } },
+    "assumptions": { "type": "array", "items": { "type": "string" } },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "expectedReplayMode": { "type": "string", "enum": ["non_live", "live_validation"] },
+    "expectedComparisonSummary": { "$ref": "replay-candidate-resource.schema.json#/$defs/planeSummaries" },
+    "candidateId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

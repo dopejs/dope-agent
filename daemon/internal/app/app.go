@@ -6,6 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	stdruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +25,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	discordconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/discord"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
+	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/im"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
@@ -63,6 +67,7 @@ type App struct {
 	Reminders            *reminders.Manager
 	Scheduler            *scheduler.Scheduler
 	Delivery             *delivery.Manager
+	Evaluation           *evaluation.Manager
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
 	discordRuntime       managedConnectorRuntime
@@ -138,6 +143,16 @@ func New() (*App, error) {
 		connectorAdapter.Register(cfg.Connectors.Discord.ConnectorID, discordTransport)
 	}
 	deliveryManager := delivery.NewManager(string(cfg.Environment), eventBus, sqliteStore, delivery.NewTestSinkAdapter(), connectorAdapter)
+	envCtx := events.WithEnvironmentScope(context.Background(), string(cfg.Environment))
+	evaluationManager := evaluation.NewManager(evaluation.Dependencies{
+		EnvironmentScope: string(cfg.Environment),
+		Store:            sqliteStore,
+		FixturesDir:      defaultEvaluationFixturesDir(),
+		RuntimeRecorder:  evaluation.NewRuntimeReplayRecorder(runtimeManager, sqliteStore),
+	})
+	if err := evaluationManager.LoadFixtures(envCtx); err != nil {
+		return nil, err
+	}
 	workflowLauncher := api.NewScheduleWorkflowLauncher(api.ScheduleWorkflowLauncherDependencies{
 		Config:       cfg,
 		Runtime:      runtimeManager,
@@ -170,8 +185,6 @@ func New() (*App, error) {
 		Checkpoints:      checkpointManager,
 		WorkflowLauncher: workflowLauncher,
 	})
-	envCtx := events.WithEnvironmentScope(context.Background(), string(cfg.Environment))
-
 	if err := recoverPersistedState(envCtx, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
 		return nil, err
 	}
@@ -219,6 +232,7 @@ func New() (*App, error) {
 		Delivery:     deliveryManager,
 		Store:        sqliteStore,
 		Checkpoints:  checkpointManager,
+		Evaluation:   evaluationManager,
 	})
 
 	return &App{
@@ -243,11 +257,32 @@ func New() (*App, error) {
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
 		Delivery:             deliveryManager,
+		Evaluation:           evaluationManager,
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,
 		discordRuntime:       discordRuntime,
 		Server:               server,
 	}, nil
+}
+
+func defaultEvaluationFixturesDir() string {
+	candidates := []string{
+		filepath.Join("internal", "evaluation", "testdata", "fixtures"),
+		filepath.Join("daemon", "internal", "evaluation", "testdata", "fixtures"),
+	}
+	if _, file, _, ok := stdruntime.Caller(0); ok {
+		appDir := filepath.Dir(file)
+		candidates = append(candidates,
+			filepath.Clean(filepath.Join(appDir, "..", "evaluation", "testdata", "fixtures")),
+			filepath.Clean(filepath.Join(appDir, "..", "..", "internal", "evaluation", "testdata", "fixtures")),
+		)
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func buildLLMDispatcher(cfg config.Config, registry providers.ManagedRegistry) (*llm.Dispatcher, error) {

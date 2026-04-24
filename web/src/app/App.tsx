@@ -10,7 +10,11 @@ import {
   type OperatorDiagnosticFinding,
   type OperatorDiagnosticListResponse,
   type OperatorFirstUsefulAction,
-  type OperatorOnboardingResponse
+  type OperatorOnboardingResponse,
+  type ReplayAttemptResource,
+  type ReplayCandidateResource,
+  type ReplayComparisonResource,
+  type ReplayFixtureResource
 } from "@dope/client";
 
 const DEFAULT_DAEMON_URL = "http://127.0.0.1:19192";
@@ -25,6 +29,10 @@ type ShellSnapshot = {
   approvals: ApprovalResource[];
   activity: OperatorActivityListResponse | null;
   diagnostics: OperatorDiagnosticListResponse | null;
+  replayCandidates: ReplayCandidateResource[];
+  replayAttempts: ReplayAttemptResource[];
+  replayComparisons: ReplayComparisonResource[];
+  replayFixtures: ReplayFixtureResource[];
 };
 
 type DetailView = {
@@ -52,7 +60,11 @@ export function App() {
     onboarding: null,
     approvals: [],
     activity: null,
-    diagnostics: null
+    diagnostics: null,
+    replayCandidates: [],
+    replayAttempts: [],
+    replayComparisons: [],
+    replayFixtures: []
   });
 
   function buildClient() {
@@ -76,20 +88,28 @@ export function App() {
 
     try {
       const client = buildClient();
-      const [onboarding, approvals, activity, diagnostics] = await Promise.all([
+      const [onboarding, approvals, activity, diagnostics, replayCandidates, replayAttempts, replayComparisons, replayFixtures] = await Promise.all([
         client.getOnboarding(),
         client.listApprovals("pending"),
         client.getActivity({ attentionOnly: true, limit: 20 }),
         client.getDiagnostics({
           plane: diagnosticPlane ? (diagnosticPlane as OperatorDiagnosticFinding["plane"]) : undefined,
           severity: diagnosticSeverity ? (diagnosticSeverity as OperatorDiagnosticFinding["severity"]) : undefined
-        })
+        }),
+        client.listReplayCandidates({ limit: 20 }),
+        client.listReplayAttempts({ limit: 20 }),
+        client.listReplayComparisons({ limit: 20 }),
+        client.listReplayFixtures()
       ]);
       setShell({
         onboarding,
         approvals: approvals.items,
         activity,
-        diagnostics
+        diagnostics,
+        replayCandidates: replayCandidates.items,
+        replayAttempts: replayAttempts.items,
+        replayComparisons: replayComparisons.items,
+        replayFixtures: replayFixtures.items
       });
       setStatus("ready");
     } catch (caught) {
@@ -187,6 +207,52 @@ export function App() {
           payload: response
         });
       }
+      await refreshShell({ soft: true });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setError(message);
+    } finally {
+      setActiveActionId("");
+    }
+  }
+
+  async function handleLaunchReplay(candidate: ReplayCandidateResource) {
+    setActiveActionId(candidate.candidateId);
+    setError("");
+    try {
+      const attempt = await buildClient().createReplayAttempt(candidate.candidateId, { mode: "non_live" });
+      setActionMessage(`Replay attempt ${attempt.attemptId} ${attempt.status}.`);
+      setDetail({
+        title: `Replay Attempt ${attempt.attemptId}`,
+        route: `/v1/evaluation/replay-attempts/${attempt.attemptId}`,
+        payload: attempt
+      });
+      await refreshShell({ soft: true });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setError(message);
+    } finally {
+      setActiveActionId("");
+    }
+  }
+
+  async function handleCompareLatest(candidate: ReplayCandidateResource) {
+    const attemptId = candidate.latestAttemptId || shell.replayAttempts.find((attempt) => attempt.candidateId === candidate.candidateId)?.attemptId;
+    if (!attemptId) {
+      setError("No replay attempt is available to compare for this candidate.");
+      return;
+    }
+
+    setActiveActionId(`compare-${candidate.candidateId}`);
+    setError("");
+    try {
+      const comparison = await buildClient().createReplayComparison(attemptId, {});
+      setActionMessage(`Comparison ${comparison.comparisonId} ${comparison.terminalStatus}.`);
+      setDetail({
+        title: `Comparison ${comparison.comparisonId}`,
+        route: `/v1/evaluation/comparisons/${comparison.comparisonId}`,
+        payload: comparison
+      });
       await refreshShell({ soft: true });
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
@@ -476,6 +542,141 @@ export function App() {
             </div>
           ) : (
             <div className="empty-state">No matching diagnostics in the current filter window.</div>
+          )}
+        </section>
+
+        <section className="panel evaluation-panel">
+          <div className="panel-head">
+            <div>
+              <p className="section-kicker">Deterministic Harness</p>
+              <h2>Evaluation Replay</h2>
+            </div>
+            <span className="count-chip">{shell.replayCandidates.length}</span>
+          </div>
+
+          {shell.replayCandidates.length ? (
+            <div className="stack-list">
+              {shell.replayCandidates.map((candidate) => (
+                <article className="stack-card" key={candidate.candidateId}>
+                  <div className="stack-head">
+                    <strong>{candidate.displayName}</strong>
+                    <span className={`status-chip status-${candidate.readinessStatus}`}>{candidate.readinessStatus}</span>
+                  </div>
+                  <p>{candidate.readinessReasons.join(" ") || "Replay readiness is available."}</p>
+                  <small>{candidate.candidateKind} · {candidate.sourceKind} · {candidate.defaultReplayMode}</small>
+                  {candidate.limitations.length ? <p className="muted-line">{candidate.limitations.join(" ")}</p> : null}
+                  <div className="inline-actions">
+                    <button
+                      className="primary"
+                      disabled={activeActionId === candidate.candidateId}
+                      type="button"
+                      onClick={() => {
+                        void handleLaunchReplay(candidate);
+                      }}
+                    >
+                      Launch Replay
+                    </button>
+                    <button
+                      disabled={activeActionId === `compare-${candidate.candidateId}`}
+                      type="button"
+                      onClick={() => {
+                        void handleCompareLatest(candidate);
+                      }}
+                    >
+                      Compare Latest
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void inspectRoute(`/v1/evaluation/replay-candidates/${candidate.candidateId}`, candidate.displayName);
+                      }}
+                    >
+                      Inspect
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">No curated replay candidates or fixtures are available in this environment.</div>
+          )}
+
+          <div className="fixture-strip">
+            <strong>Fixtures</strong>
+            <span>Fixtures are engineer-managed and repo-backed; this shell intentionally does not expose fixture editing controls.</span>
+          </div>
+          {shell.replayFixtures.length ? (
+            <div className="mini-card-grid">
+              {shell.replayFixtures.map((fixture) => (
+                <article className="mini-card" key={fixture.fixtureId}>
+                  <strong>{fixture.displayName}</strong>
+                  <small>{fixture.domainClass}</small>
+                  <p>{fixture.assumptions.join(" ") || "No fixture assumptions recorded."}</p>
+                </article>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="fixture-strip">
+            <strong>Replay History</strong>
+            <span>Attempts and comparisons are daemon-owned records; inspect detail for the authoritative payload.</span>
+          </div>
+          {shell.replayAttempts.length || shell.replayComparisons.length ? (
+            <div className="stack-list">
+              {shell.replayAttempts.map((attempt) => (
+                <article className="stack-card" key={attempt.attemptId}>
+                  <div className="stack-head">
+                    <strong>{attempt.attemptId}</strong>
+                    <span className={`status-chip status-${attempt.status}`}>{attempt.status}</span>
+                  </div>
+                  <p>{attempt.runtimeSummary || attempt.evidenceSummary || "Replay attempt has no summary yet."}</p>
+                  <small>{attempt.mode} · {attempt.sideEffectHandling} · {attempt.candidateId}</small>
+                  <div className="inline-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void inspectRoute(`/v1/evaluation/replay-attempts/${attempt.attemptId}`, attempt.attemptId);
+                      }}
+                    >
+                      Inspect Attempt
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {shell.replayComparisons.map((comparison) => (
+                <article className="stack-card" key={comparison.comparisonId}>
+                  <div className="stack-head">
+                    <strong>{comparison.comparisonId}</strong>
+                    <span className={`status-chip status-${comparison.terminalStatus}`}>{comparison.terminalStatus}</span>
+                  </div>
+                  <p>{comparison.runtimeSummary}</p>
+                  <small>
+                    policy: {comparison.policySummary || "n/a"} · integration: {comparison.integrationSummary || "n/a"} · delivery: {comparison.deliverySummary || "n/a"}
+                  </small>
+                  {comparison.driftFindings.length ? (
+                    <div className="drift-list">
+                      {comparison.driftFindings.map((finding) => (
+                        <p key={finding.findingId}>
+                          <strong>{finding.plane}</strong>: {finding.summary}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="inline-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void inspectRoute(`/v1/evaluation/comparisons/${comparison.comparisonId}`, comparison.comparisonId);
+                      }}
+                    >
+                      Inspect Comparison
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">No replay attempts or comparisons have been recorded yet.</div>
           )}
         </section>
 

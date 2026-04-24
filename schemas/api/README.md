@@ -70,3 +70,24 @@ Operator shell schemas should also stay in sync with implementation and fixtures
 - operator activity list response
 - operator diagnostic finding
 - operator diagnostic list response
+
+Evaluation and replay schemas should stay in sync with daemon-owned evaluation resources,
+SDK types, web-shell behavior, and contract fixtures:
+
+- replay candidate resource
+- replay candidate list response
+- create replay candidate request
+- create replay attempt request
+- replay attempt resource
+- replay attempt list response
+- create replay comparison request
+- replay comparison resource
+- replay comparison list response
+- replay drift finding
+- replay fixture resource
+- replay fixture list response
+
+Evaluation routes are additive under `/v1/evaluation/*`. Replay attempts default to
+`non_live`; comparison terminal status is separate from replay execution status; fixture
+resources describe repo-managed fixture provenance and must not imply browser-side
+fixture editing support.

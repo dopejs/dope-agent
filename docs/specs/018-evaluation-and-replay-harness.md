@@ -1,6 +1,6 @@
 # Evaluation And Replay Harness
 
-Status: proposed
+Status: implemented
 
 Authority: This document is the authoritative upstream spec for replay, comparison, and regression support needed before knowledge-plane work becomes the main differentiator.
 
@@ -56,6 +56,38 @@ Add replay and comparison primitives that let operators re-run or audit represen
 ## Definition Of Done
 
 - the daemon has a credible replay and evaluation substrate for non-knowledge-plane personal-agent work
+
+## Implementation Notes
+
+Roadmap 33 is implemented by the feature plan at
+`specs/018-evaluation-replay-harness/plan.md`.
+
+The delivered slice includes:
+
+- daemon-owned evaluation records for replay candidates, replay attempts, comparison
+  results, drift findings, and regression fixtures
+- SQLite persistence and restart-safe restoration through normal daemon state
+- schema-backed `/v1/evaluation/*` API routes and additive `evaluation.*` events
+- default evidence-backed `non_live` replay behavior with explicit safety, approval,
+  side-effect, evidence, and environment scope
+- completed `non_live` replay attempts are linked to an `evaluation.replay` runtime run
+  and completed replay workflow envelope so replay outcomes are inspectable through the
+  existing runtime/workflow truth model
+- explicit curated-work candidate registration through the evaluation API
+- candidate registration rejects missing source provenance, while fixture candidates
+  remain repo-managed
+- plane-level comparison summaries for runtime, policy, integration, delivery, and
+  evidence differences
+- repo-managed schedule, integration, and computer-use fixtures
+- TypeScript SDK and web operator-shell Evaluation Replay support
+
+Still out of scope:
+
+- broad automatic replay eligibility for every completed run
+- in-product fixture editing
+- live validation without explicit operator scope
+- live validation execution before a replay executor and approval flow are implemented
+- knowledge-plane self-improvement, autonomous optimization, or model training
 
 ## Recommended `/speckit-specify` Input
 

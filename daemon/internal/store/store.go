@@ -18,6 +18,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
+	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
@@ -33,7 +34,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 19
+	CurrentSchemaVersion = 20
 )
 
 type schemaMigration struct {
@@ -1454,6 +1455,77 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_rem_occurrences_delivery ON reminder_occurrences(environment_scope, latest_delivery_id, updated_at DESC, occurrence_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_rem_actions_reminder ON reminder_actions(reminder_id, created_at DESC, action_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_rem_actions_occurrence ON reminder_actions(occurrence_id, created_at DESC, action_id DESC);`,
+		},
+	},
+	{
+		Version: 20,
+		Name:    "evaluation_replay_harness",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_replay_candidates (
+				candidate_id TEXT PRIMARY KEY,
+				environment_scope TEXT NOT NULL,
+				candidate_kind TEXT NOT NULL,
+				source_kind TEXT NOT NULL,
+				source_id TEXT NOT NULL,
+				readiness_status TEXT NOT NULL,
+				latest_attempt_id TEXT,
+				latest_comparison_id TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_replay_attempts (
+				attempt_id TEXT PRIMARY KEY,
+				candidate_id TEXT NOT NULL,
+				environment_scope TEXT NOT NULL,
+				mode TEXT NOT NULL,
+				status TEXT NOT NULL,
+				change_window_label TEXT,
+				baseline_attempt_id TEXT,
+				started_at TEXT,
+				completed_at TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(candidate_id) REFERENCES evaluation_replay_candidates(candidate_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_comparisons (
+				comparison_id TEXT PRIMARY KEY,
+				candidate_id TEXT NOT NULL,
+				attempt_id TEXT NOT NULL,
+				environment_scope TEXT NOT NULL,
+				terminal_status TEXT NOT NULL,
+				change_window_label TEXT,
+				generated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(candidate_id) REFERENCES evaluation_replay_candidates(candidate_id) ON DELETE CASCADE,
+				FOREIGN KEY(attempt_id) REFERENCES evaluation_replay_attempts(attempt_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_regression_fixtures (
+				fixture_id TEXT PRIMARY KEY,
+				environment_scope TEXT NOT NULL,
+				domain_class TEXT NOT NULL,
+				candidate_id TEXT,
+				manifest_path TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_candidates_env_ready ON evaluation_replay_candidates(environment_scope, readiness_status, updated_at DESC, candidate_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_candidates_env_kind ON evaluation_replay_candidates(environment_scope, candidate_kind, source_kind, updated_at DESC, candidate_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_attempts_env_candidate ON evaluation_replay_attempts(environment_scope, candidate_id, created_at DESC, attempt_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_attempts_env_status ON evaluation_replay_attempts(environment_scope, status, created_at DESC, attempt_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_comparisons_env_candidate ON evaluation_comparisons(environment_scope, candidate_id, generated_at DESC, comparison_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_comparisons_env_attempt ON evaluation_comparisons(environment_scope, attempt_id, generated_at DESC, comparison_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_fixtures_env_domain ON evaluation_regression_fixtures(environment_scope, domain_class, updated_at DESC, fixture_id DESC);`,
 		},
 	},
 }
@@ -6285,6 +6357,374 @@ func (s *SQLiteStore) ListMCPToolExposureRules(ctx context.Context, serverID str
 	return items, rows.Err()
 }
 
+func (s *SQLiteStore) UpsertReplayCandidate(ctx context.Context, item evaluation.ReplayCandidate) error {
+	if s == nil {
+		return nil
+	}
+	document, err := json.Marshal(item)
+	if err != nil {
+		return fmt.Errorf("marshal replay candidate: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO evaluation_replay_candidates (
+			candidate_id, environment_scope, candidate_kind, source_kind, source_id, readiness_status,
+			latest_attempt_id, latest_comparison_id, created_at, updated_at, document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(candidate_id) DO UPDATE SET
+			environment_scope = excluded.environment_scope,
+			candidate_kind = excluded.candidate_kind,
+			source_kind = excluded.source_kind,
+			source_id = excluded.source_id,
+			readiness_status = excluded.readiness_status,
+			latest_attempt_id = excluded.latest_attempt_id,
+			latest_comparison_id = excluded.latest_comparison_id,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`, item.CandidateID, item.EnvironmentScope, string(item.CandidateKind), string(item.SourceKind), item.SourceID, string(item.ReadinessStatus),
+		nullString(item.LatestAttemptID), nullString(item.LatestComparisonID), item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), string(document))
+	if err != nil {
+		return fmt.Errorf("upsert replay candidate %s: %w", item.CandidateID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListReplayCandidates(ctx context.Context, filter evaluation.CandidateFilter) ([]evaluation.ReplayCandidate, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `SELECT document_json FROM evaluation_replay_candidates WHERE 1 = 1`
+	args := make([]any, 0, 5)
+	if filter.EnvironmentScope != "" {
+		query += ` AND environment_scope = ?`
+		args = append(args, filter.EnvironmentScope)
+	}
+	if filter.CandidateKind != "" {
+		query += ` AND candidate_kind = ?`
+		args = append(args, string(filter.CandidateKind))
+	}
+	if filter.SourceKind != "" {
+		query += ` AND source_kind = ?`
+		args = append(args, string(filter.SourceKind))
+	}
+	if filter.ReadinessStatus != "" {
+		query += ` AND readiness_status = ?`
+		args = append(args, string(filter.ReadinessStatus))
+	}
+	query += ` ORDER BY updated_at DESC, candidate_id DESC`
+	if filter.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list replay candidates: %w", err)
+	}
+	defer rows.Close()
+	items := []evaluation.ReplayCandidate{}
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var item evaluation.ReplayCandidate
+		if err := json.Unmarshal([]byte(raw), &item); err != nil {
+			return nil, fmt.Errorf("decode replay candidate: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetReplayCandidate(ctx context.Context, environmentScope, candidateID string) (evaluation.ReplayCandidate, bool, error) {
+	if s == nil {
+		return evaluation.ReplayCandidate{}, false, nil
+	}
+	query := `SELECT document_json FROM evaluation_replay_candidates WHERE candidate_id = ?`
+	args := []any{candidateID}
+	if environmentScope != "" {
+		query += ` AND environment_scope = ?`
+		args = append(args, environmentScope)
+	}
+	var raw string
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&raw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return evaluation.ReplayCandidate{}, false, nil
+		}
+		return evaluation.ReplayCandidate{}, false, fmt.Errorf("get replay candidate %s: %w", candidateID, err)
+	}
+	var item evaluation.ReplayCandidate
+	if err := json.Unmarshal([]byte(raw), &item); err != nil {
+		return evaluation.ReplayCandidate{}, false, fmt.Errorf("decode replay candidate %s: %w", candidateID, err)
+	}
+	return item, true, nil
+}
+
+func (s *SQLiteStore) UpsertReplayAttempt(ctx context.Context, item evaluation.ReplayAttempt) error {
+	if s == nil {
+		return nil
+	}
+	document, err := json.Marshal(item)
+	if err != nil {
+		return fmt.Errorf("marshal replay attempt: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO evaluation_replay_attempts (
+			attempt_id, candidate_id, environment_scope, mode, status, change_window_label,
+			baseline_attempt_id, started_at, completed_at, created_at, updated_at, document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(attempt_id) DO UPDATE SET
+			candidate_id = excluded.candidate_id,
+			environment_scope = excluded.environment_scope,
+			mode = excluded.mode,
+			status = excluded.status,
+			change_window_label = excluded.change_window_label,
+			baseline_attempt_id = excluded.baseline_attempt_id,
+			started_at = excluded.started_at,
+			completed_at = excluded.completed_at,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`, item.AttemptID, item.CandidateID, item.EnvironmentScope, string(item.Mode), string(item.Status), nullString(item.ChangeWindowLabel),
+		nullString(item.BaselineAttemptID), nullableValueTimeString(item.StartedAt), nullableValueTimeString(item.CompletedAt),
+		item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), string(document))
+	if err != nil {
+		return fmt.Errorf("upsert replay attempt %s: %w", item.AttemptID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListReplayAttempts(ctx context.Context, filter evaluation.AttemptFilter) ([]evaluation.ReplayAttempt, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `SELECT document_json FROM evaluation_replay_attempts WHERE 1 = 1`
+	args := make([]any, 0, 4)
+	if filter.EnvironmentScope != "" {
+		query += ` AND environment_scope = ?`
+		args = append(args, filter.EnvironmentScope)
+	}
+	if filter.CandidateID != "" {
+		query += ` AND candidate_id = ?`
+		args = append(args, filter.CandidateID)
+	}
+	if filter.Status != "" {
+		query += ` AND status = ?`
+		args = append(args, string(filter.Status))
+	}
+	query += ` ORDER BY created_at DESC, attempt_id DESC`
+	if filter.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list replay attempts: %w", err)
+	}
+	defer rows.Close()
+	items := []evaluation.ReplayAttempt{}
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var item evaluation.ReplayAttempt
+		if err := json.Unmarshal([]byte(raw), &item); err != nil {
+			return nil, fmt.Errorf("decode replay attempt: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetReplayAttempt(ctx context.Context, environmentScope, attemptID string) (evaluation.ReplayAttempt, bool, error) {
+	if s == nil {
+		return evaluation.ReplayAttempt{}, false, nil
+	}
+	query := `SELECT document_json FROM evaluation_replay_attempts WHERE attempt_id = ?`
+	args := []any{attemptID}
+	if environmentScope != "" {
+		query += ` AND environment_scope = ?`
+		args = append(args, environmentScope)
+	}
+	var raw string
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&raw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return evaluation.ReplayAttempt{}, false, nil
+		}
+		return evaluation.ReplayAttempt{}, false, fmt.Errorf("get replay attempt %s: %w", attemptID, err)
+	}
+	var item evaluation.ReplayAttempt
+	if err := json.Unmarshal([]byte(raw), &item); err != nil {
+		return evaluation.ReplayAttempt{}, false, fmt.Errorf("decode replay attempt %s: %w", attemptID, err)
+	}
+	return item, true, nil
+}
+
+func (s *SQLiteStore) UpsertComparisonResult(ctx context.Context, item evaluation.ComparisonResult) error {
+	if s == nil {
+		return nil
+	}
+	document, err := json.Marshal(item)
+	if err != nil {
+		return fmt.Errorf("marshal comparison result: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO evaluation_comparisons (
+			comparison_id, candidate_id, attempt_id, environment_scope, terminal_status,
+			change_window_label, generated_at, document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(comparison_id) DO UPDATE SET
+			candidate_id = excluded.candidate_id,
+			attempt_id = excluded.attempt_id,
+			environment_scope = excluded.environment_scope,
+			terminal_status = excluded.terminal_status,
+			change_window_label = excluded.change_window_label,
+			generated_at = excluded.generated_at,
+			document_json = excluded.document_json
+	`, item.ComparisonID, item.CandidateID, item.AttemptID, item.EnvironmentScope, string(item.TerminalStatus),
+		nullString(item.ChangeWindowLabel), item.GeneratedAt.Format(time.RFC3339Nano), string(document))
+	if err != nil {
+		return fmt.Errorf("upsert comparison %s: %w", item.ComparisonID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListComparisonResults(ctx context.Context, filter evaluation.ComparisonFilter) ([]evaluation.ComparisonResult, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `SELECT document_json FROM evaluation_comparisons WHERE 1 = 1`
+	args := make([]any, 0, 5)
+	if filter.EnvironmentScope != "" {
+		query += ` AND environment_scope = ?`
+		args = append(args, filter.EnvironmentScope)
+	}
+	if filter.CandidateID != "" {
+		query += ` AND candidate_id = ?`
+		args = append(args, filter.CandidateID)
+	}
+	if filter.AttemptID != "" {
+		query += ` AND attempt_id = ?`
+		args = append(args, filter.AttemptID)
+	}
+	if filter.TerminalStatus != "" {
+		query += ` AND terminal_status = ?`
+		args = append(args, string(filter.TerminalStatus))
+	}
+	query += ` ORDER BY generated_at DESC, comparison_id DESC`
+	if filter.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list comparisons: %w", err)
+	}
+	defer rows.Close()
+	items := []evaluation.ComparisonResult{}
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var item evaluation.ComparisonResult
+		if err := json.Unmarshal([]byte(raw), &item); err != nil {
+			return nil, fmt.Errorf("decode comparison: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) GetComparisonResult(ctx context.Context, environmentScope, comparisonID string) (evaluation.ComparisonResult, bool, error) {
+	if s == nil {
+		return evaluation.ComparisonResult{}, false, nil
+	}
+	query := `SELECT document_json FROM evaluation_comparisons WHERE comparison_id = ?`
+	args := []any{comparisonID}
+	if environmentScope != "" {
+		query += ` AND environment_scope = ?`
+		args = append(args, environmentScope)
+	}
+	var raw string
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&raw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return evaluation.ComparisonResult{}, false, nil
+		}
+		return evaluation.ComparisonResult{}, false, fmt.Errorf("get comparison %s: %w", comparisonID, err)
+	}
+	var item evaluation.ComparisonResult
+	if err := json.Unmarshal([]byte(raw), &item); err != nil {
+		return evaluation.ComparisonResult{}, false, fmt.Errorf("decode comparison %s: %w", comparisonID, err)
+	}
+	return item, true, nil
+}
+
+func (s *SQLiteStore) UpsertRegressionFixture(ctx context.Context, item evaluation.RegressionFixture) error {
+	if s == nil {
+		return nil
+	}
+	document, err := json.Marshal(item)
+	if err != nil {
+		return fmt.Errorf("marshal regression fixture: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO evaluation_regression_fixtures (
+			fixture_id, environment_scope, domain_class, candidate_id, manifest_path, created_at, updated_at, document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(fixture_id) DO UPDATE SET
+			environment_scope = excluded.environment_scope,
+			domain_class = excluded.domain_class,
+			candidate_id = excluded.candidate_id,
+			manifest_path = excluded.manifest_path,
+			updated_at = excluded.updated_at,
+			document_json = excluded.document_json
+	`, item.FixtureID, item.EnvironmentScope, string(item.DomainClass), nullString(item.CandidateID), item.ManifestPath,
+		item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), string(document))
+	if err != nil {
+		return fmt.Errorf("upsert regression fixture %s: %w", item.FixtureID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListRegressionFixtures(ctx context.Context, filter evaluation.FixtureFilter) ([]evaluation.RegressionFixture, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `SELECT document_json FROM evaluation_regression_fixtures WHERE 1 = 1`
+	args := make([]any, 0, 3)
+	if filter.EnvironmentScope != "" {
+		query += ` AND environment_scope = ?`
+		args = append(args, filter.EnvironmentScope)
+	}
+	if filter.DomainClass != "" {
+		query += ` AND domain_class = ?`
+		args = append(args, string(filter.DomainClass))
+	}
+	query += ` ORDER BY domain_class ASC, fixture_id ASC`
+	if filter.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list regression fixtures: %w", err)
+	}
+	defer rows.Close()
+	items := []evaluation.RegressionFixture{}
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var item evaluation.RegressionFixture
+		if err := json.Unmarshal([]byte(raw), &item); err != nil {
+			return nil, fmt.Errorf("decode regression fixture: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s *SQLiteStore) AppendEvent(ctx context.Context, event events.Event) (events.Event, error) {
 	if s == nil {
 		return event, nil
@@ -8615,6 +9055,13 @@ func nullString(value string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: value, Valid: true}
+}
+
+func nullableValueTimeString(value time.Time) sql.NullString {
+	if value.IsZero() {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: value.UTC().Format(time.RFC3339Nano), Valid: true}
 }
 
 func coalesceString(values ...string) string {

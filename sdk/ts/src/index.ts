@@ -149,6 +149,188 @@ export type OperatorDiagnosticsQuery = {
   severity?: OperatorDiagnosticFinding["severity"];
 };
 
+export type ReplaySourceRef = {
+  kind: string;
+  id: string;
+  route?: string;
+};
+
+export type PlaneSummaries = {
+  runtime?: string;
+  policy?: string;
+  integration?: string;
+  delivery?: string;
+  evidence?: string;
+};
+
+export type ReplayCandidateResource = {
+  candidateId: string;
+  candidateKind: "curated_work" | "fixture";
+  displayName: string;
+  description?: string;
+  sourceKind: "run" | "workflow" | "schedule" | "integration" | "computer_use" | "fixture";
+  sourceId: string;
+  sourceRefs: ReplaySourceRef[];
+  environmentScope: EnvironmentScope;
+  readinessStatus: "fully_replayable" | "partially_replayable" | "blocked" | "unreplayable";
+  readinessReasons: string[];
+  limitations: string[];
+  defaultReplayMode: "non_live";
+  fixtureId?: string;
+  latestAttemptId?: string;
+  latestComparisonId?: string;
+  expectedComparisonSummary?: PlaneSummaries;
+  capturedEvidenceRefs?: ReplaySourceRef[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReplayCandidateListResponse = {
+  environmentScope: EnvironmentScope;
+  items: ReplayCandidateResource[];
+};
+
+export type ReplayCandidateQuery = {
+  candidateKind?: ReplayCandidateResource["candidateKind"];
+  sourceKind?: ReplayCandidateResource["sourceKind"];
+  readinessStatus?: ReplayCandidateResource["readinessStatus"];
+  limit?: number;
+};
+
+export type CreateReplayCandidateInput = Omit<ReplayCandidateResource, "createdAt" | "updatedAt" | "latestAttemptId" | "latestComparisonId"> & {
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CreateReplayAttemptInput = {
+  mode?: "non_live" | "live_validation";
+  changeWindowLabel?: string;
+  baselineAttemptId?: string;
+  safetyScope?: {
+    mode?: "non_live" | "live_validation";
+    description?: string;
+  };
+};
+
+export type ReplayAttemptResource = {
+  attemptId: string;
+  candidateId: string;
+  sourceRefs: ReplaySourceRef[];
+  environmentScope: EnvironmentScope;
+  mode: "non_live" | "live_validation";
+  status: "queued" | "running" | "completed" | "blocked" | "unreplayable" | "failed" | "cancelled";
+  safetyScope: {
+    mode?: "non_live" | "live_validation";
+    description?: string;
+  };
+  approvalHandling: "blocked" | "evidence_only" | "fresh_approval_required";
+  sideEffectHandling: "blocked" | "evidence_only" | "live";
+  launchedBy?: string;
+  changeWindowLabel?: string;
+  baselineAttemptId?: string;
+  resultRunId?: string;
+  resultWorkflowId?: string;
+  evidenceRefs: ReplaySourceRef[];
+  blockedReasons: string[];
+  runtimeSummary?: string;
+  policySummary?: string;
+  integrationSummary?: string;
+  deliverySummary?: string;
+  evidenceSummary?: string;
+  startedAt?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReplayAttemptListResponse = {
+  environmentScope: EnvironmentScope;
+  items: ReplayAttemptResource[];
+};
+
+export type ReplayAttemptQuery = {
+  candidateId?: string;
+  status?: ReplayAttemptResource["status"];
+  limit?: number;
+};
+
+export type DriftFindingResource = {
+  findingId: string;
+  comparisonId: string;
+  plane: "runtime" | "policy" | "integration" | "delivery" | "evidence" | "unknown" | "mixed";
+  severity: "info" | "warning" | "critical";
+  summary: string;
+  baselineValue?: string;
+  replayValue?: string;
+  evidenceRefs?: ReplaySourceRef[];
+  recommendedAction?: string;
+  createdAt: string;
+};
+
+export type CreateReplayComparisonInput = {
+  baselineAttemptId?: string;
+  baselineRef?: string;
+  changeWindowLabel?: string;
+};
+
+export type ReplayComparisonResource = {
+  comparisonId: string;
+  candidateId: string;
+  baselineRef: string;
+  attemptId: string;
+  environmentScope: EnvironmentScope;
+  terminalStatus: "matched" | "drifted" | "blocked" | "unreplayable";
+  runtimeSummary: string;
+  policySummary: string;
+  integrationSummary: string;
+  deliverySummary: string;
+  evidenceSummary: string;
+  confidence: "high" | "medium" | "low";
+  limitations: string[];
+  driftFindings: DriftFindingResource[];
+  changeWindowLabel?: string;
+  generatedAt: string;
+};
+
+export type ReplayComparisonListResponse = {
+  environmentScope: EnvironmentScope;
+  items: ReplayComparisonResource[];
+};
+
+export type ReplayComparisonQuery = {
+  candidateId?: string;
+  attemptId?: string;
+  terminalStatus?: ReplayComparisonResource["terminalStatus"];
+  limit?: number;
+};
+
+export type ReplayFixtureResource = {
+  fixtureId: string;
+  displayName: string;
+  domainClass: "schedule" | "integration" | "computer_use";
+  manifestPath: string;
+  sourceRefs: ReplaySourceRef[];
+  capturedEvidenceRefs: ReplaySourceRef[];
+  assumptions: string[];
+  limitations: string[];
+  expectedReplayMode: "non_live" | "live_validation";
+  expectedComparisonSummary: PlaneSummaries;
+  candidateId?: string;
+  environmentScope: EnvironmentScope;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReplayFixtureListResponse = {
+  environmentScope: EnvironmentScope;
+  items: ReplayFixtureResource[];
+};
+
+export type ReplayFixtureQuery = {
+  domainClass?: ReplayFixtureResource["domainClass"];
+  limit?: number;
+};
+
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 
 export type ApprovalResource = {
@@ -385,6 +567,55 @@ export class DopeClient {
         severity: query.severity
       }
     });
+  }
+
+  async listReplayCandidates(query: ReplayCandidateQuery = {}): Promise<ReplayCandidateListResponse> {
+    return this.requestJSON<ReplayCandidateListResponse>("/v1/evaluation/replay-candidates", { query });
+  }
+
+  async getReplayCandidate(candidateId: string): Promise<ReplayCandidateResource> {
+    return this.requestJSON<ReplayCandidateResource>(`/v1/evaluation/replay-candidates/${candidateId.trim()}`);
+  }
+
+  async createReplayCandidate(input: CreateReplayCandidateInput): Promise<ReplayCandidateResource> {
+    return this.requestJSON<ReplayCandidateResource>("/v1/evaluation/replay-candidates", {
+      method: "POST",
+      body: input
+    });
+  }
+
+  async createReplayAttempt(candidateId: string, input: CreateReplayAttemptInput = {}): Promise<ReplayAttemptResource> {
+    return this.requestJSON<ReplayAttemptResource>(`/v1/evaluation/replay-candidates/${candidateId.trim()}/attempts`, {
+      method: "POST",
+      body: input
+    });
+  }
+
+  async listReplayAttempts(query: ReplayAttemptQuery = {}): Promise<ReplayAttemptListResponse> {
+    return this.requestJSON<ReplayAttemptListResponse>("/v1/evaluation/replay-attempts", { query });
+  }
+
+  async getReplayAttempt(attemptId: string): Promise<ReplayAttemptResource> {
+    return this.requestJSON<ReplayAttemptResource>(`/v1/evaluation/replay-attempts/${attemptId.trim()}`);
+  }
+
+  async createReplayComparison(attemptId: string, input: CreateReplayComparisonInput = {}): Promise<ReplayComparisonResource> {
+    return this.requestJSON<ReplayComparisonResource>(`/v1/evaluation/replay-attempts/${attemptId.trim()}/compare`, {
+      method: "POST",
+      body: input
+    });
+  }
+
+  async listReplayComparisons(query: ReplayComparisonQuery = {}): Promise<ReplayComparisonListResponse> {
+    return this.requestJSON<ReplayComparisonListResponse>("/v1/evaluation/comparisons", { query });
+  }
+
+  async getReplayComparison(comparisonId: string): Promise<ReplayComparisonResource> {
+    return this.requestJSON<ReplayComparisonResource>(`/v1/evaluation/comparisons/${comparisonId.trim()}`);
+  }
+
+  async listReplayFixtures(query: ReplayFixtureQuery = {}): Promise<ReplayFixtureListResponse> {
+    return this.requestJSON<ReplayFixtureListResponse>("/v1/evaluation/fixtures", { query });
   }
 
   async listApprovals(status?: ApprovalStatus): Promise<ApprovalListResponse> {
