@@ -1533,6 +1533,195 @@ fixture loading, default non-live replay, comparison, and durable evaluation sta
 live browser walkthrough remains the final operator smoke check when the local daemon is
 running.
 
+## Planned Follow-On Roadmaps After Evaluation And Replay Harness
+
+The next roadmap split is intentionally production-oriented. Roadmap 33 closed the first
+evaluation substrate, but the product still needs hosted tenancy, tenant-owned data,
+tenant-aware clients, isolated hosted credentials, real quota enforcement, operational soak,
+live side-effect validation, and evaluation product expansion before it should be treated
+as an OpenClaw/Hermes-style hosted personal-agent equivalent.
+
+Parent split: [docs/product/hosted-productization-roadmap-split.md](../product/hosted-productization-roadmap-split.md)
+
+### Roadmap 34: Tenant Identity And Access Foundation
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/019-tenant-identity-and-access-foundation.md](../specs/019-tenant-identity-and-access-foundation.md)
+
+Goal: introduce first-class personal and organization tenants, principals, memberships,
+token tenant grants, default tenant resolution, request tenant override, and RBAC plus
+capability permissions.
+
+Roadmap definition of done:
+
+- every inbound request resolves a tenant context or returns a stable authorization error
+- personal and organization tenants are persisted and inspectable
+- membership, role, and permission checks are shared rather than domain-specific
+- tenant access denial is audited without leaking inaccessible tenant existence
+
+Explicitly out of scope:
+
+- migrating every daemon resource to tenant scope
+- billing and quota enforcement
+- per-tenant physical storage
+
+### Roadmap 35: Tenant-Scoped Data Migration
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/020-tenant-scoped-data-migration.md](../specs/020-tenant-scoped-data-migration.md)
+
+Goal: migrate core daemon-owned runtime, product, integration, delivery, and evaluation
+records so they are owned and isolated by tenant.
+
+Roadmap definition of done:
+
+- existing single-user data migrates into the default personal tenant
+- in-scope APIs, event streams, stores, and replay surfaces enforce tenant scope
+- cross-tenant access tests cover representative same-shaped resources
+- migration and rollback guidance are documented
+
+Explicitly out of scope:
+
+- per-tenant databases
+- tenant switcher UI
+- live side-effect replay
+
+### Roadmap 36: Tenant-Aware Operator Shell And SDK
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/021-tenant-aware-operator-shell-and-sdk.md](../specs/021-tenant-aware-operator-shell-and-sdk.md)
+
+Goal: expose tenant selection, tenant-scoped projections, membership management, and SDK
+tenant override support in the operator-facing product surface.
+
+Roadmap definition of done:
+
+- SDK clients can set a default tenant and override tenant per request
+- web shell displays active tenant and supports switching among allowed tenants
+- operator projections refetch and remain scoped after tenant switch
+- membership management is permission-gated and auditable
+
+Explicitly out of scope:
+
+- payment checkout
+- full enterprise administration suite
+- native mobile tenant switching
+
+### Roadmap 37: Hosted Secrets, Integrations, And Connector Isolation
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/022-hosted-secrets-integrations-and-connector-isolation.md](../specs/022-hosted-secrets-integrations-and-connector-isolation.md)
+
+Goal: make secrets, integration accounts, provider auth state, connector configuration,
+MCP installs, and sandbox policy references tenant-owned and permission-gated.
+
+Roadmap definition of done:
+
+- secret references resolve only inside the active tenant
+- integration account and provider auth state are tenant-owned
+- connector and MCP administration requires tenant permissions
+- API responses, logs, events, replay artifacts, and fixtures do not expose secret values
+
+Explicitly out of scope:
+
+- enterprise external secret-manager integration
+- cross-tenant shared service accounts
+- marketplace distribution
+
+### Roadmap 38: Billing, Quotas, And Usage Accounting
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/023-billing-quotas-and-usage-accounting.md](../specs/023-billing-quotas-and-usage-accounting.md)
+
+Goal: introduce tenant plans, quota definitions, usage counters, enforcement hooks, and
+operator-visible billing or usage projections.
+
+Roadmap definition of done:
+
+- tenant plans and effective quotas are persisted and inspectable
+- usage counters are tenant-scoped and restart-safe for in-scope categories
+- quotas are enforced before expensive or side-effecting work starts
+- quota denial and plan changes are auditable
+
+Explicitly out of scope:
+
+- external payment-provider checkout by default
+- invoices, taxes, and revenue recognition
+- cross-tenant pooled quota
+
+### Roadmap 39: Production Install, Upgrade, Backup, And Soak
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/024-production-install-upgrade-backup-and-soak.md](../specs/024-production-install-upgrade-backup-and-soak.md)
+
+Goal: close the user-deliverable product readiness gap for install, upgrade, backup,
+restore, long-running daemon operation, real account smoke, external-service faults, and
+operator-visible recovery.
+
+Roadmap definition of done:
+
+- production install and upgrade runbooks are documented and verified
+- backup and restore have a tested path
+- long-running soak exercises runtime, scheduler, integrations, delivery, and evaluation
+- external-service fault drills classify retry, recovery, and operator-action-needed states
+
+Explicitly out of scope:
+
+- new integration domains
+- payment-provider production launch
+- memory or self-improvement
+
+### Roadmap 40: Live Validation And Side-Effect Replay
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/025-live-validation-and-side-effect-replay.md](../specs/025-live-validation-and-side-effect-replay.md)
+
+Goal: add a permission-gated live validation executor with fresh approvals, quota checks,
+side-effect ledgering, kill switches, abort/retry semantics, and supported tool-call-level
+replay.
+
+Roadmap definition of done:
+
+- live validation requires `live_validation.execute` and fresh approval for side effects
+- attempted, skipped, completed, failed, aborted, and denied side effects are ledgered
+- tenant and global kill switches prevent new live validation starts
+- unsupported tool-call replay is explicitly classified
+
+Explicitly out of scope:
+
+- autonomous optimization
+- silent background live replay
+- replay for unsupported tool classes beyond explicit unsupported reporting
+
+### Roadmap 41: Evaluation Product Expansion
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/026-evaluation-product-expansion.md](../specs/026-evaluation-product-expansion.md)
+
+Goal: make evaluation a tenant-aware product workflow with automatic historical candidate
+discovery, fixture editing, replay campaigns, dashboards, and tool-call replay inspection.
+
+Roadmap definition of done:
+
+- historical run and workflow candidates are discovered by tenant with explanations
+- in-product fixture editing is permission-gated and preserves provenance
+- replay campaigns group attempts, comparisons, and live validation outcomes
+- dashboards expose drift, failure, unsupported replay, and tool-call replay evidence
+
+Explicitly out of scope:
+
+- model training infrastructure
+- autonomous self-improvement
+- unreviewed fixture mutation by the agent
+
 ## Roadmap 13: Provider Streaming Timeout Semantics
 
 Status: `[x] complete`
@@ -2443,3 +2632,11 @@ Task definition of done:
 31. Roadmap 31: Tasks And Reminders
 32. Roadmap 32: Operator Shell And Onboarding
 33. Roadmap 33: Evaluation And Replay Harness
+34. Roadmap 34: Tenant Identity And Access Foundation
+35. Roadmap 35: Tenant-Scoped Data Migration
+36. Roadmap 36: Tenant-Aware Operator Shell And SDK
+37. Roadmap 37: Hosted Secrets, Integrations, And Connector Isolation
+38. Roadmap 38: Billing, Quotas, And Usage Accounting
+39. Roadmap 39: Production Install, Upgrade, Backup, And Soak
+40. Roadmap 40: Live Validation And Side-Effect Replay
+41. Roadmap 41: Evaluation Product Expansion

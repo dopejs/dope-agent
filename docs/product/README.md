@@ -7,6 +7,7 @@ This module defines product framing, benchmark positioning, and phased scope.
 - [01-product-outline.md](/Users/John/Code/agent-os/docs/product/product-outline.md)
 - [07-feature-phasing.md](/Users/John/Code/agent-os/docs/product/feature-phasing.md)
 - [08-openclaw-architecture-gaps.md](/Users/John/Code/agent-os/docs/product/openclaw-architecture-gaps.md)
+- [hosted-productization-roadmap-split.md](hosted-productization-roadmap-split.md)
 
 ## Suggested Reading Order
 
@@ -14,8 +15,9 @@ This module defines product framing, benchmark positioning, and phased scope.
 2. [07-feature-phasing.md](/Users/John/Code/agent-os/docs/product/feature-phasing.md)
 3. [04-openclaw-integration.md](/Users/John/Code/agent-os/docs/product/openclaw-integration.md)
 4. [08-openclaw-architecture-gaps.md](/Users/John/Code/agent-os/docs/product/openclaw-architecture-gaps.md)
-5. [05-roadmap.md](/Users/John/Code/agent-os/docs/product/initial-roadmap.md)
-6. [06-foundation-first.md](/Users/John/Code/agent-os/docs/product/foundation-first.md)
+5. [hosted-productization-roadmap-split.md](hosted-productization-roadmap-split.md)
+6. [05-roadmap.md](/Users/John/Code/agent-os/docs/product/initial-roadmap.md)
+7. [06-foundation-first.md](/Users/John/Code/agent-os/docs/product/foundation-first.md)
 
 ## Add New Docs Here When
 

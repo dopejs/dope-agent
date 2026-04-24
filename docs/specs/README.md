@@ -42,6 +42,14 @@ Do not rely on the short roadmap heading alone when a `docs/specs` document exis
 - `016` -> Roadmap 31: Tasks And Reminders
 - `017` -> Roadmap 32: Operator Shell And Onboarding
 - `018` -> Roadmap 33: Evaluation And Replay Harness
+- `019` -> Roadmap 34: Tenant Identity And Access Foundation
+- `020` -> Roadmap 35: Tenant-Scoped Data Migration
+- `021` -> Roadmap 36: Tenant-Aware Operator Shell And SDK
+- `022` -> Roadmap 37: Hosted Secrets, Integrations, And Connector Isolation
+- `023` -> Roadmap 38: Billing, Quotas, And Usage Accounting
+- `024` -> Roadmap 39: Production Install, Upgrade, Backup, And Soak
+- `025` -> Roadmap 40: Live Validation And Side-Effect Replay
+- `026` -> Roadmap 41: Evaluation Product Expansion
 
 ## Authoring Standard
 

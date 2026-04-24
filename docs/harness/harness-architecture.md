@@ -243,9 +243,27 @@ Current daemon status after Roadmap 30:
 - the repo-owned fake integration backend closes roadmap-27 verification without touching
   live calendar or mail systems
 
+### Post-Roadmap 33: Hosted Productization And Production Validation
+
+After the first evaluation and replay harness, the next work should close hosted product
+readiness before context and memory become the main differentiators:
+
+- Roadmap 34: tenant identity and access foundation
+- Roadmap 35: tenant-scoped data migration
+- Roadmap 36: tenant-aware operator shell and SDK
+- Roadmap 37: hosted secrets, integrations, and connector isolation
+- Roadmap 38: billing, quotas, and usage accounting
+- Roadmap 39: production install, upgrade, backup, and soak
+- Roadmap 40: live validation and side-effect replay
+- Roadmap 41: evaluation product expansion
+
+This is the bridge from a strong local-first personal-agent daemon to a hosted product. It
+does not replace knowledge-plane work; it creates the tenant, safety, operational, and
+evaluation boundaries that knowledge-plane work should rely on.
+
 ### Phase 5: Context Engineering
 
-After the non-knowledge personal-agent product surface:
+After hosted productization and production validation:
 
 - context sources
 - packing and truncation rules
