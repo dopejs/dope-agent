@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/operator-activity-list.response.schema.json",
+  "title": "OperatorActivityListResponse",
+  "type": "object",
+  "required": ["environmentScope", "items", "generatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "./operator-activity-record.schema.json" }
+    },
+    "generatedAt": { "type": "string", "format": "date-time" }
+  }
+}

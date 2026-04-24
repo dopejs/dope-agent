@@ -137,6 +137,93 @@ type ChatQueryStreamDelta struct {
 	Reply      string `json:"reply"`
 }
 
+type OperatorOnboardingResponse struct {
+	EnvironmentScope        string                      `json:"environmentScope"`
+	Status                  string                      `json:"status"`
+	CurrentStepID           string                      `json:"currentStepId,omitempty"`
+	CompletedStepIDs        []string                    `json:"completedStepIds,omitempty"`
+	BlockingItemIDs         []string                    `json:"blockingItemIds"`
+	OptionalFollowUpItemIDs []string                    `json:"optionalFollowUpItemIds"`
+	RecommendedActionID     string                      `json:"recommendedActionId,omitempty"`
+	ReadinessItems          []OperatorReadinessItem     `json:"readinessItems"`
+	FirstUsefulActions      []OperatorFirstUsefulAction `json:"firstUsefulActions"`
+	LastEvaluatedAt         time.Time                   `json:"lastEvaluatedAt"`
+}
+
+type OperatorReadinessItem struct {
+	ItemID                    string    `json:"itemId"`
+	ItemKind                  string    `json:"itemKind"`
+	ResourceID                string    `json:"resourceId,omitempty"`
+	DisplayName               string    `json:"displayName"`
+	Status                    string    `json:"status"`
+	HealthState               string    `json:"healthState,omitempty"`
+	Reason                    string    `json:"reason,omitempty"`
+	RequiredOperatorAction    string    `json:"requiredOperatorAction,omitempty"`
+	RequiredForSelectedAction bool      `json:"requiredForSelectedAction"`
+	DetailRoute               string    `json:"detailRoute,omitempty"`
+	EnvironmentScope          string    `json:"environmentScope"`
+	UpdatedAt                 time.Time `json:"updatedAt"`
+}
+
+type OperatorFirstUsefulAction struct {
+	ActionID        string   `json:"actionId"`
+	ActionKind      string   `json:"actionKind"`
+	DisplayName     string   `json:"displayName"`
+	Recommended     bool     `json:"recommended"`
+	Available       bool     `json:"available"`
+	BlockingItemIDs []string `json:"blockingItemIds,omitempty"`
+	Summary         string   `json:"summary,omitempty"`
+	InvokeRoute     string   `json:"invokeRoute"`
+	ResultRoute     string   `json:"resultRoute,omitempty"`
+}
+
+type OperatorResourceRef struct {
+	Kind  string `json:"kind"`
+	ID    string `json:"id"`
+	Route string `json:"route,omitempty"`
+}
+
+type OperatorActivityRecord struct {
+	ActivityID          string                `json:"activityId"`
+	SourceKind          string                `json:"sourceKind"`
+	SourceID            string                `json:"sourceId"`
+	Title               string                `json:"title"`
+	Status              string                `json:"status"`
+	Summary             string                `json:"summary"`
+	AttentionLevel      string                `json:"attentionLevel"`
+	OccurredAt          time.Time             `json:"occurredAt"`
+	DetailRoute         string                `json:"detailRoute,omitempty"`
+	RelatedResourceRefs []OperatorResourceRef `json:"relatedResourceRefs,omitempty"`
+	EnvironmentScope    string                `json:"environmentScope"`
+}
+
+type OperatorActivityListResponse struct {
+	EnvironmentScope string                   `json:"environmentScope"`
+	Items            []OperatorActivityRecord `json:"items"`
+	GeneratedAt      time.Time                `json:"generatedAt"`
+}
+
+type OperatorDiagnosticFinding struct {
+	FindingID           string                `json:"findingId"`
+	SourceKind          string                `json:"sourceKind"`
+	SourceID            string                `json:"sourceId"`
+	Plane               string                `json:"plane"`
+	Severity            string                `json:"severity"`
+	Status              string                `json:"status"`
+	Reason              string                `json:"reason"`
+	RecommendedAction   string                `json:"recommendedAction,omitempty"`
+	DetailRoute         string                `json:"detailRoute,omitempty"`
+	RelatedResourceRefs []OperatorResourceRef `json:"relatedResourceRefs,omitempty"`
+	EnvironmentScope    string                `json:"environmentScope"`
+	CapturedAt          time.Time             `json:"capturedAt"`
+}
+
+type OperatorDiagnosticListResponse struct {
+	EnvironmentScope string                      `json:"environmentScope"`
+	Items            []OperatorDiagnosticFinding `json:"items"`
+	GeneratedAt      time.Time                   `json:"generatedAt"`
+}
+
 type SessionRouteRequest struct {
 	Kind      router.SessionKind `json:"kind,omitempty"`
 	Channel   string             `json:"channel,omitempty"`

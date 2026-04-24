@@ -248,6 +248,34 @@ The reminder domain is additive:
 - reminder follow-up links project source references and stale-source state; they do not
   copy calendar, mail, run, or workflow truth into the reminder resource
 
+## 5.8 Operator Shell Projection API
+
+Purpose:
+
+- project daemon-owned onboarding, operator activity, and diagnostics into one primary
+  operator surface
+- keep approvals, runs, workflows, schedules, deliveries, integrations, connectors, and
+  capabilities authoritative on their existing routes
+- support shell-resident inspection by linking to authoritative detail instead of
+  rebuilding truth in the browser
+
+Examples:
+
+- `GET /v1/operator/onboarding`
+- `GET /v1/operator/activity`
+- `GET /v1/operator/diagnostics`
+
+The operator shell projection layer is additive:
+
+- it does not create a second source of truth for readiness, approval, execution, or
+  delivery state
+- it reuses `/v1/events/stream` for bounded browser refetch rather than browser-owned
+  event replay
+- it is web-first in roadmap 32; TUI parity is intentionally deferred
+- shell-resident detail inspection may fetch existing routes such as `/v1/policy/approvals/{approvalId}`,
+  `/v1/runs/{runId}`, `/v1/runs/{runId}/workflows/{workflowId}`, `/v1/schedules/{scheduleId}`,
+  and `/v1/deliveries/{deliveryId}`, but those routes remain authoritative
+
 ## 6. Config And Policy API
 
 Purpose:

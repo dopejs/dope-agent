@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/operator-onboarding.response.schema.json",
+  "title": "OperatorOnboardingResponse",
+  "type": "object",
+  "required": [
+    "environmentScope",
+    "status",
+    "blockingItemIds",
+    "optionalFollowUpItemIds",
+    "readinessItems",
+    "firstUsefulActions",
+    "lastEvaluatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "status": {
+      "type": "string",
+      "enum": ["blocked", "ready_for_action", "completed"]
+    },
+    "currentStepId": { "type": "string" },
+    "completedStepIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blockingItemIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "optionalFollowUpItemIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "recommendedActionId": { "type": "string" },
+    "readinessItems": {
+      "type": "array",
+      "items": { "$ref": "./operator-readiness-item.schema.json" }
+    },
+    "firstUsefulActions": {
+      "type": "array",
+      "items": { "$ref": "./operator-first-use-action.schema.json" }
+    },
+    "lastEvaluatedAt": { "type": "string", "format": "date-time" }
+  }
+}

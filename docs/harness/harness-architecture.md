@@ -464,3 +464,9 @@ Roadmap 31 is now closed with daemon-owned reminder resources, occurrence and ac
 history, additive reminder linkage on runs and workflows, shared-delivery reuse, and a
 recorded `DOPE_ENV=test` walkthrough that covers notification-only reminders, recurring
 rollover, workflow success, isolated workflow-start failure, and follow-up references.
+
+Roadmap 32 is now closed with a web-first operator shell backed by daemon-owned
+onboarding, activity, and diagnostics projections; direct approve or reject handling in
+the shell; shell-resident authoritative detail inspection for linked runs, workflows,
+schedules, deliveries, and approvals; and shared SDK coverage for projection fetches,
+run creation, approval resolution, and bounded `/v1/events/stream` refresh hooks.

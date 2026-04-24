@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/operator-activity-record.schema.json",
+  "title": "OperatorActivityRecord",
+  "type": "object",
+  "required": [
+    "activityId",
+    "sourceKind",
+    "sourceId",
+    "title",
+    "status",
+    "summary",
+    "attentionLevel",
+    "occurredAt",
+    "environmentScope"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "activityId": { "type": "string" },
+    "sourceKind": { "type": "string" },
+    "sourceId": { "type": "string" },
+    "title": { "type": "string" },
+    "status": { "type": "string" },
+    "summary": { "type": "string" },
+    "attentionLevel": {
+      "type": "string",
+      "enum": ["info", "warning", "critical"]
+    },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "detailRoute": { "type": "string" },
+    "relatedResourceRefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "id"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string" },
+          "id": { "type": "string" },
+          "route": { "type": "string" }
+        }
+      }
+    },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] }
+  }
+}

@@ -1467,12 +1467,32 @@ Verification:
 
 ### Roadmap 32: Operator Shell And Onboarding
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/017-operator-shell-and-onboarding.md](../specs/017-operator-shell-and-onboarding.md)
 
 Goal: add the minimum product shell required to configure, inspect, and trust the personal
 agent without falling back to raw daemon APIs.
+
+Delivered:
+
+- daemon-owned operator projection routes for onboarding, recent activity, and diagnostics
+- web-first operator shell with readiness projection, approval inbox, activity feed,
+  diagnostics filters, shell-resident authoritative detail inspection, and bounded first
+  useful actions
+- shared TypeScript SDK coverage for operator projections, approval resolution, run
+  creation, authoritative detail fetches, and event-stream refetch hooks
+
+Verification:
+
+- `cd daemon && go mod tidy`
+- `cd daemon && go test ./internal/api ./internal/contracts`
+- `pnpm --dir sdk/ts build && pnpm --dir sdk/ts test`
+- `pnpm --dir web exec tsc --noEmit && pnpm --dir web test && pnpm --dir web build`
+- manual `DOPE_ENV=test` walkthrough confirmed onboarding and diagnostics projection,
+  approval persistence across restart, and durable recent activity truth; browser-level
+  interaction was covered by web tests because desktop automation was unavailable in the
+  local environment
 
 ### Roadmap 33: Evaluation And Replay Harness
 

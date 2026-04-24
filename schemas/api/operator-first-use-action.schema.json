@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/operator-first-use-action.schema.json",
+  "title": "OperatorFirstUsefulAction",
+  "type": "object",
+  "required": [
+    "actionId",
+    "actionKind",
+    "displayName",
+    "recommended",
+    "available",
+    "invokeRoute"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "actionId": { "type": "string" },
+    "actionKind": { "type": "string" },
+    "displayName": { "type": "string" },
+    "recommended": { "type": "boolean" },
+    "available": { "type": "boolean" },
+    "blockingItemIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "summary": { "type": "string" },
+    "invokeRoute": { "type": "string" },
+    "resultRoute": { "type": "string" }
+  }
+}

@@ -1,3 +1,5 @@
+export type EnvironmentScope = "test" | "prod";
+
 export type ChatQueryInput = {
   provider?: string;
   model?: string;
@@ -48,6 +50,233 @@ export type StreamHandlers = {
   onCancelled?: (payload: ChatQueryResponse) => void;
 };
 
+export type OperatorReadinessItem = {
+  itemId: string;
+  itemKind: string;
+  resourceId?: string;
+  displayName: string;
+  status: "ready" | "blocked" | "degraded" | "missing_configuration" | "optional";
+  healthState?: string;
+  reason?: string;
+  requiredOperatorAction?: string;
+  requiredForSelectedAction: boolean;
+  detailRoute?: string;
+  environmentScope: EnvironmentScope;
+  updatedAt: string;
+};
+
+export type OperatorFirstUsefulAction = {
+  actionId: string;
+  actionKind: string;
+  displayName: string;
+  recommended: boolean;
+  available: boolean;
+  blockingItemIds?: string[];
+  summary?: string;
+  invokeRoute: string;
+  resultRoute?: string;
+};
+
+export type OperatorOnboardingResponse = {
+  environmentScope: EnvironmentScope;
+  status: "blocked" | "ready_for_action" | "completed";
+  currentStepId?: string;
+  completedStepIds?: string[];
+  blockingItemIds: string[];
+  optionalFollowUpItemIds: string[];
+  recommendedActionId?: string;
+  readinessItems: OperatorReadinessItem[];
+  firstUsefulActions: OperatorFirstUsefulAction[];
+  lastEvaluatedAt: string;
+};
+
+export type OperatorResourceRef = {
+  kind: string;
+  id: string;
+  route?: string;
+};
+
+export type OperatorActivityRecord = {
+  activityId: string;
+  sourceKind: string;
+  sourceId: string;
+  title: string;
+  status: string;
+  summary: string;
+  attentionLevel: "info" | "warning" | "critical";
+  occurredAt: string;
+  detailRoute?: string;
+  relatedResourceRefs?: OperatorResourceRef[];
+  environmentScope: EnvironmentScope;
+};
+
+export type OperatorActivityListResponse = {
+  environmentScope: EnvironmentScope;
+  items: OperatorActivityRecord[];
+  generatedAt: string;
+};
+
+export type OperatorDiagnosticFinding = {
+  findingId: string;
+  sourceKind: string;
+  sourceId: string;
+  plane: "readiness" | "approval" | "execution" | "delivery";
+  severity: "warning" | "critical";
+  status: string;
+  reason: string;
+  recommendedAction?: string;
+  detailRoute?: string;
+  relatedResourceRefs?: OperatorResourceRef[];
+  environmentScope: EnvironmentScope;
+  capturedAt: string;
+};
+
+export type OperatorDiagnosticListResponse = {
+  environmentScope: EnvironmentScope;
+  items: OperatorDiagnosticFinding[];
+  generatedAt: string;
+};
+
+export type OperatorActivityQuery = {
+  sourceKind?: string;
+  attentionOnly?: boolean;
+  limit?: number;
+};
+
+export type OperatorDiagnosticsQuery = {
+  sourceKind?: string;
+  plane?: OperatorDiagnosticFinding["plane"];
+  severity?: OperatorDiagnosticFinding["severity"];
+};
+
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
+export type ApprovalResource = {
+  approvalId: string;
+  action: string;
+  resourceKind?: string;
+  resourceId?: string;
+  reason: string;
+  requestedBy?: string;
+  status: ApprovalStatus;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  resolution?: string;
+  comment?: string;
+  integrationBindings?: Array<Record<string, unknown>>;
+  sandbox?: Record<string, unknown>;
+};
+
+export type ApprovalListResponse = {
+  items: ApprovalResource[];
+};
+
+export type DecisionResource = {
+  decisionId: string;
+  action: string;
+  resourceKind?: string;
+  resourceId?: string;
+  outcome: string;
+  reason: string;
+  approvalId?: string;
+  createdAt: string;
+  sandbox?: Record<string, unknown>;
+};
+
+export type ApprovalDecisionResponse = {
+  approval: ApprovalResource;
+  decision: DecisionResource;
+};
+
+export type ResolveApprovalInput = {
+  resolution: "approved" | "rejected";
+  comment?: string;
+};
+
+export type SessionRouteRequest = {
+  kind?: string;
+  channel?: string;
+  accountId?: string;
+  peerId?: string;
+  threadId?: string;
+};
+
+export type CreateRunInput = {
+  sessionId?: string;
+  route?: SessionRouteRequest;
+  entrypoint: string;
+  goal?: string;
+  input?: unknown;
+};
+
+export type RunResource = {
+  runId: string;
+  sessionId?: string;
+  scheduleId?: string;
+  scheduleAttemptId?: string;
+  reminderId?: string;
+  reminderOccurrenceId?: string;
+  entrypoint: string;
+  status: string;
+  goal: string;
+  activeWorkflowId?: string;
+  workflowCount?: number;
+  latestDeliveryId?: string;
+  latestDeliveryStatus?: string;
+  latestDeliveryTargetId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DaemonEventScope = {
+  sessionId?: string;
+  runId?: string;
+  workflowId?: string;
+  workflowStepId?: string;
+  scheduleId?: string;
+  scheduleAttemptId?: string;
+  stepId?: string;
+  computerUseSessionId?: string;
+  computerUseActionId?: string;
+  connectorId?: string;
+  capabilityId?: string;
+};
+
+export type DaemonEvent = {
+  eventId: string;
+  sequence: number;
+  category: string;
+  name: string;
+  occurredAt: string;
+  scope: DaemonEventScope;
+  resource: {
+    kind: string;
+    id: string;
+  };
+  payload: Record<string, unknown>;
+};
+
+export type EventStreamQuery = {
+  category?: string;
+  runId?: string;
+  sessionId?: string;
+  scheduleId?: string;
+  scheduleAttemptId?: string;
+  resourceKind?: string;
+  cursor?: number;
+};
+
+export type EventStreamHandlers = {
+  onEvent?: (event: DaemonEvent) => void;
+  onError?: (error: Error) => void;
+};
+
+export type EventStreamSubscription = {
+  close: () => void;
+  completed: Promise<void>;
+};
+
 export type DopeClientOptions = {
   baseURL: string;
   accessToken?: string;
@@ -74,27 +303,21 @@ export class DopeClient {
   constructor(options: DopeClientOptions) {
     this.baseURL = trimBaseURL(options.baseURL);
     this.accessToken = options.accessToken?.trim() || undefined;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
   async queryChat(input: ChatQueryInput): Promise<ChatQueryResponse> {
-    const response = await this.fetchImpl(`${this.baseURL}/v1/chat/query`, {
+    return this.requestJSON<ChatQueryResponse>("/v1/chat/query", {
       method: "POST",
-      headers: this.buildHeaders(),
-      body: JSON.stringify(normalizeInput(input)),
+      body: normalizeChatInput(input)
     });
-
-    if (!response.ok) {
-      throw await toClientError(response);
-    }
-    return (await response.json()) as ChatQueryResponse;
   }
 
   async streamChatQuery(input: ChatQueryInput, handlers: StreamHandlers = {}): Promise<ChatQueryResponse> {
-    const response = await this.fetchImpl(`${this.baseURL}/v1/chat/query/stream`, {
+    const response = await this.fetchImpl(this.buildURL("/v1/chat/query/stream"), {
       method: "POST",
       headers: this.buildHeaders(),
-      body: JSON.stringify(normalizeInput(input)),
+      body: JSON.stringify(normalizeChatInput(input))
     });
 
     if (!response.ok) {
@@ -140,6 +363,136 @@ export class DopeClient {
     return terminal;
   }
 
+  async getOnboarding(): Promise<OperatorOnboardingResponse> {
+    return this.requestJSON<OperatorOnboardingResponse>("/v1/operator/onboarding");
+  }
+
+  async getActivity(query: OperatorActivityQuery = {}): Promise<OperatorActivityListResponse> {
+    return this.requestJSON<OperatorActivityListResponse>("/v1/operator/activity", {
+      query: {
+        sourceKind: query.sourceKind,
+        attentionOnly: query.attentionOnly,
+        limit: query.limit
+      }
+    });
+  }
+
+  async getDiagnostics(query: OperatorDiagnosticsQuery = {}): Promise<OperatorDiagnosticListResponse> {
+    return this.requestJSON<OperatorDiagnosticListResponse>("/v1/operator/diagnostics", {
+      query: {
+        sourceKind: query.sourceKind,
+        plane: query.plane,
+        severity: query.severity
+      }
+    });
+  }
+
+  async listApprovals(status?: ApprovalStatus): Promise<ApprovalListResponse> {
+    return this.requestJSON<ApprovalListResponse>("/v1/policy/approvals", {
+      query: { status }
+    });
+  }
+
+  async getApproval(approvalId: string): Promise<ApprovalResource> {
+    return this.requestJSON<ApprovalResource>(`/v1/policy/approvals/${approvalId.trim()}`);
+  }
+
+  async resolveApproval(approvalId: string, input: ResolveApprovalInput): Promise<ApprovalDecisionResponse> {
+    return this.requestJSON<ApprovalDecisionResponse>(`/v1/policy/approvals/${approvalId.trim()}/resolve`, {
+      method: "POST",
+      body: {
+        resolution: input.resolution,
+        comment: input.comment?.trim() || ""
+      }
+    });
+  }
+
+  async createRun(input: CreateRunInput): Promise<RunResource> {
+    return this.requestJSON<RunResource>("/v1/runs", {
+      method: "POST",
+      body: {
+        sessionId: input.sessionId?.trim() || undefined,
+        route: input.route,
+        entrypoint: input.entrypoint.trim(),
+        goal: input.goal?.trim() || undefined,
+        input: input.input
+      }
+    });
+  }
+
+  async fetchRoute<T>(route: string): Promise<T> {
+    return this.requestJSON<T>(normalizeRoute(route));
+  }
+
+  streamEvents(query: EventStreamQuery = {}, handlers: EventStreamHandlers = {}): EventStreamSubscription {
+    const controller = new AbortController();
+    const completed = (async () => {
+      const response = await this.fetchImpl(this.buildURL("/v1/events/stream", query), {
+        method: "GET",
+        headers: this.buildHeaders(),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw await toClientError(response);
+      }
+      if (!response.body) {
+        throw new DopeClientError("event stream response body is missing", { status: 500, code: "stream_body_missing" });
+      }
+
+      await readSSE(response.body, (event) => {
+        handlers.onEvent?.(JSON.parse(event.data) as DaemonEvent);
+      });
+    })().catch((error: unknown) => {
+      if (controller.signal.aborted) {
+        return;
+      }
+      handlers.onError?.(error instanceof Error ? error : new Error(String(error)));
+    });
+
+    return {
+      close() {
+        controller.abort();
+      },
+      completed
+    };
+  }
+
+  private async requestJSON<T>(
+    route: string,
+    options: {
+      method?: string;
+      query?: Record<string, QueryValue>;
+      body?: unknown;
+    } = {}
+  ): Promise<T> {
+    const response = await this.fetchImpl(this.buildURL(route, options.query), {
+      method: options.method ?? "GET",
+      headers: this.buildHeaders(),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+    });
+
+    if (!response.ok) {
+      throw await toClientError(response);
+    }
+    return (await response.json()) as T;
+  }
+
+  private buildURL(route: string, query?: Record<string, QueryValue>): string {
+    const url = new URL(`${this.baseURL}${normalizeRoute(route)}`);
+    if (!query) {
+      return url.toString();
+    }
+
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || value === "") {
+        continue;
+      }
+      url.searchParams.set(key, String(value));
+    }
+    return url.toString();
+  }
+
   private buildHeaders(): HeadersInit {
     const headers: Record<string, string> = {
       "Content-Type": "application/json"
@@ -155,6 +508,8 @@ export function createDopeClient(options: DopeClientOptions): DopeClient {
   return new DopeClient(options);
 }
 
+type QueryValue = string | number | boolean | undefined | null;
+
 function trimBaseURL(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -163,7 +518,15 @@ function trimBaseURL(value: string): string {
   return trimmed.replace(/\/+$/, "");
 }
 
-function normalizeInput(input: ChatQueryInput): ChatQueryInput {
+function normalizeRoute(route: string): string {
+  const trimmed = route.trim();
+  if (!trimmed) {
+    throw new Error("route is required");
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+function normalizeChatInput(input: ChatQueryInput): ChatQueryInput {
   return {
     provider: input.provider?.trim() || undefined,
     model: input.model?.trim() || undefined,
@@ -187,7 +550,7 @@ async function toClientError(response: Response): Promise<DopeClientError> {
       code = payload.errorCode;
     }
   } catch {
-    // ignore non-json failure bodies
+    // Ignore non-json failure bodies.
   }
 
   return new DopeClientError(message, { status: response.status, code });
@@ -238,6 +601,9 @@ function parseSSEEvent(chunk: string): SSEEvent | null {
   const data: string[] = [];
 
   for (const line of lines) {
+    if (line.startsWith(":")) {
+      continue;
+    }
     if (line.startsWith("event:")) {
       event = line.slice("event:".length).trim();
       continue;

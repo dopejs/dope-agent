@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	goruntime "runtime"
 	"strconv"
 	"strings"
@@ -155,6 +156,15 @@ func NewServer(deps Dependencies) *Server {
 			return
 		}
 		writeJSON(w, http.StatusOK, buildConfigResponse(deps.Config, deps.MCP, deps.Sandboxes))
+	}))
+	mux.HandleFunc("/v1/operator/onboarding", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleOperatorOnboarding(deps.Config, deps.Auth, deps.Providers, deps.Integrations, deps.Connectors, deps.Capabilities, deps.Runtime, w, r)
+	}))
+	mux.HandleFunc("/v1/operator/activity", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleOperatorActivity(deps.Config, deps.Policy, deps.Runtime, deps.Scheduler, deps.Delivery, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/operator/diagnostics", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleOperatorDiagnostics(deps.Config, deps.Providers, deps.Integrations, deps.Connectors, deps.Capabilities, deps.Policy, deps.Runtime, deps.Scheduler, deps.Delivery, deps.ComputerUse, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/events/stream", protected(func(w http.ResponseWriter, r *http.Request) {
 		streamEvents(deps.EventBus, deps.Store, w, r)
@@ -376,7 +386,7 @@ func NewServer(deps Dependencies) *Server {
 		checkpoints:  deps.Checkpoints,
 		server: &http.Server{
 			Addr:              deps.Config.BindAddr,
-			Handler:           mux,
+			Handler:           withLocalWebCORS(mux),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 	}
@@ -411,6 +421,46 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) Handler() http.Handler {
 	return s.server.Handler
+}
+
+func withLocalWebCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origin := strings.TrimSpace(r.Header.Get("Origin")); localWebOriginAllowed(origin) {
+			header := w.Header()
+			header.Set("Access-Control-Allow-Origin", origin)
+			header.Add("Vary", "Origin")
+			header.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			header.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			header.Set("Access-Control-Expose-Headers", "Content-Type")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func localWebOriginAllowed(origin string) bool {
+	if origin == "" {
+		return false
+	}
+
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+
+	switch parsed.Hostname() {
+	case "127.0.0.1", "localhost", "::1":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

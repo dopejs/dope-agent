@@ -60,3 +60,13 @@ The first P0 schemas should define:
 - create tool call request
 - complete tool call request
 - fail tool call request
+
+Operator shell schemas should also stay in sync with implementation and fixtures:
+
+- operator onboarding response
+- operator readiness item
+- operator first useful action
+- operator activity record
+- operator activity list response
+- operator diagnostic finding
+- operator diagnostic list response

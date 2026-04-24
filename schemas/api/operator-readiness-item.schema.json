@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/operator-readiness-item.schema.json",
+  "title": "OperatorReadinessItem",
+  "type": "object",
+  "required": [
+    "itemId",
+    "itemKind",
+    "displayName",
+    "status",
+    "requiredForSelectedAction",
+    "environmentScope",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "itemId": { "type": "string" },
+    "itemKind": { "type": "string" },
+    "resourceId": { "type": "string" },
+    "displayName": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["ready", "blocked", "degraded", "missing_configuration", "optional"]
+    },
+    "healthState": { "type": "string" },
+    "reason": { "type": "string" },
+    "requiredOperatorAction": { "type": "string" },
+    "requiredForSelectedAction": { "type": "boolean" },
+    "detailRoute": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

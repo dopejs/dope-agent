@@ -1,6 +1,6 @@
 # Operator Shell And Onboarding
 
-Status: proposed
+Status: complete
 
 Authority: This document is the authoritative upstream spec for the product shell required to operate a production personal agent rather than a developer daemon.
 
@@ -58,6 +58,17 @@ Add the minimum onboarding and operator-control surface required to configure, i
 ## Definition Of Done
 
 - a non-developer operator can set up and inspect the personal-agent system without dropping to raw daemon routes for basic control
+
+## Delivered Outcome
+
+- daemon-owned operator projection routes now expose onboarding, recent activity, and
+  diagnostics on `/v1/operator/onboarding`, `/v1/operator/activity`, and
+  `/v1/operator/diagnostics`
+- the primary `web` surface is now an operator shell rather than a chat-only console
+- approvals are directly actionable in the shell, and linked detail is inspectable
+  without leaving the shell surface
+- the shared TypeScript SDK covers operator projections, approval resolution, bounded
+  first useful actions, authoritative detail fetches, and event-stream refresh hooks
 
 ## Recommended `/speckit-specify` Input
 

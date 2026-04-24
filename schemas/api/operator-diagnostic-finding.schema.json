@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/operator-diagnostic-finding.schema.json",
+  "title": "OperatorDiagnosticFinding",
+  "type": "object",
+  "required": [
+    "findingId",
+    "sourceKind",
+    "sourceId",
+    "plane",
+    "severity",
+    "status",
+    "reason",
+    "environmentScope",
+    "capturedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "findingId": { "type": "string" },
+    "sourceKind": { "type": "string" },
+    "sourceId": { "type": "string" },
+    "plane": {
+      "type": "string",
+      "enum": ["readiness", "approval", "execution", "delivery"]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["warning", "critical"]
+    },
+    "status": { "type": "string" },
+    "reason": { "type": "string" },
+    "recommendedAction": { "type": "string" },
+    "detailRoute": { "type": "string" },
+    "relatedResourceRefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "id"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string" },
+          "id": { "type": "string" },
+          "route": { "type": "string" }
+        }
+      }
+    },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "capturedAt": { "type": "string", "format": "date-time" }
+  }
+}
