@@ -29,6 +29,9 @@ operator-visible billing or usage projections.
   payment processor.
 - Usage accounting is tenant-scoped and auditable.
 - Quota decisions must be enforced before expensive or side-effecting work starts.
+- Quotas have explicit periods and reset semantics.
+- Usage enforcement uses reservation, commit, and refund semantics so retries, failures, and
+  concurrent launches do not double-count or bypass limits.
 
 ## Dependencies On Completed Phases
 
@@ -40,9 +43,12 @@ operator-visible billing or usage projections.
 
 - tenant plan records
 - quota definitions and effective quota projection
+- quota period, reset, and carryover rules
 - usage counters for runs, workflows, tool calls, live validation, storage/artifacts, and
   integration operations where measurable
+- usage reservation, commit, refund, and manual adjustment records
 - enforcement hooks at run/workflow launch and live validation entry points
+- idempotency keys for usage updates across retry and restart
 - billing or usage inspection APIs
 - audit events for quota denial, plan changes, and usage counter adjustment
 
@@ -69,10 +75,20 @@ operator-visible billing or usage projections.
 ## Functional Requirements
 
 - The system MUST persist tenant plans and quota definitions.
+- The system MUST define quota periods, reset behavior, and whether unused quota carries
+  over for every quota category.
 - The system MUST count usage by tenant for in-scope resource categories.
 - The system MUST enforce quotas before starting in-scope expensive or side-effecting work.
+- The system MUST reserve usage before work starts, commit usage after successful
+  consumption, and refund or release reservations when work is denied, cancelled, or fails
+  before consuming the resource.
+- The system MUST make usage updates idempotent by stable operation key so daemon restart or
+  client retry cannot double-count usage.
+- The system MUST handle concurrent quota checks without allowing two launches to consume
+  the same remaining quota.
 - The system MUST expose tenant usage and effective quota through API.
-- The system MUST emit auditable quota denial and plan-change events.
+- The system MUST emit auditable quota denial, plan-change, reservation, commit, refund, and
+  manual-adjustment events.
 
 ## Compatibility And Operational Notes
 
@@ -83,14 +99,20 @@ operator-visible billing or usage projections.
 ## Verification Expectations
 
 - Unit tests for quota calculation and idempotent counter updates.
+- Unit tests for quota period reset, reservation, commit, refund, and concurrent launch
+  enforcement.
 - API tests for plan inspection and quota denial.
 - Integration tests proving quota checks prevent run/workflow or live-validation launch.
+- Restart tests proving pending reservations recover into a safe committed, released, or
+  operator-action-needed state.
 - Contract tests for usage and quota response shapes.
 
 ## Definition Of Done
 
 - Hosted tenants have real plan, usage, and quota behavior that can gate product work before
   resource consumption or external side effects.
+- Usage accounting is idempotent, period-aware, and safe under retry, restart, and
+  concurrent launch pressure.
 
 ## Recommended `/speckit-specify` Input
 

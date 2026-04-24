@@ -28,6 +28,10 @@ single-user data into the default personal tenant.
   support per-tenant storage without rewriting every domain.
 - Existing data migrates into the default personal tenant.
 - Cross-tenant reads and writes are correctness bugs, not UI filtering issues.
+- Every persisted table must be explicitly classified as `tenant_owned`, `global`, or
+  `derived`; unclassified tables block roadmap completion.
+- Tenant-owned tables must reject tenantless writes and should use tenant-aware indexes and
+  uniqueness constraints where the existing access pattern requires them.
 
 ## Dependencies On Completed Phases
 
@@ -41,6 +45,10 @@ single-user data into the default personal tenant.
 - tenant-scoped list, get, create, update, delete, event, and SSE behavior
 - tenant-aware replay, schedule, workflow, run, delivery, integration, calendar, mail,
   reminder, computer-use, and evaluation records
+- schema inventory that classifies every persisted table and event-bearing record
+- tenant-aware store helpers or query guards that prevent tenant-owned lookups without
+  tenant context
+- tenant-aware indexes and uniqueness constraints for migrated tenant-owned tables
 - cross-tenant isolation tests
 - operational rollback notes for migration failure
 
@@ -68,9 +76,15 @@ single-user data into the default personal tenant.
 ## Functional Requirements
 
 - The migration MUST add tenant ownership to all in-scope persisted records.
+- The migration MUST classify every persisted table as `tenant_owned`, `global`, or
+  `derived`, and the implementation plan MUST reject unclassified tables.
 - Existing rows MUST be assigned to the default personal tenant during migration.
 - APIs MUST scope all in-scope resource access by resolved tenant context.
 - Events and SSE replay MUST not leak events across tenants.
+- Store-layer access for tenant-owned records MUST require tenant context rather than
+  relying only on API-layer filtering.
+- Tenant-owned tables MUST have tenant-aware indexes for common list/get paths and
+  tenant-aware uniqueness constraints for names or natural keys that were previously global.
 - The system MUST include tests that intentionally create same-shaped resources in two
   tenants and prove isolation.
 
@@ -85,6 +99,10 @@ single-user data into the default personal tenant.
 
 - Migration tests from pre-tenant fixtures.
 - Cross-tenant API and store isolation regressions.
+- Schema inventory test proving every persisted table is classified.
+- Store tests proving tenant-owned queries without tenant context fail or are unavailable.
+- Index or query-plan smoke for high-volume tenant-owned list paths where supported by the
+  local database test environment.
 - Contract tests for additive tenant fields where exposed.
 - Full daemon tests after migration.
 
@@ -92,6 +110,8 @@ single-user data into the default personal tenant.
 
 - Core daemon state is tenant-owned and cannot be accessed cross-tenant through normal
   APIs, event streams, or replay surfaces.
+- No tenant-owned persisted table remains unclassified, tenantless, or reachable through a
+  tenantless store path.
 
 ## Recommended `/speckit-specify` Input
 

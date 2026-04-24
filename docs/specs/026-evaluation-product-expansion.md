@@ -30,6 +30,9 @@ inspection.
 - Campaigns group replay attempts, comparisons, and live validation outcomes without
   replacing underlying runtime truth.
 - Tool-call replay inspection consumes the Roadmap 40 side-effect ledger for live paths.
+- Candidate discovery must have explicit scan bounds, retention policy, and sensitive-data
+  exclusion rules.
+- Operators can manually exclude runs, workflows, or fixtures from discovery and campaigns.
 
 ## Dependencies On Completed Phases
 
@@ -42,6 +45,9 @@ inspection.
 
 - automatic historical run and workflow candidate discovery
 - candidate scoring, explanation, and operator override
+- configurable discovery windows by time, count, and tenant
+- sensitive-data filtering for candidate evidence and fixture materialization
+- retention and deletion behavior for discovered candidates and product-edited fixtures
 - product UI for fixture creation, editing, review, and provenance inspection
 - replay campaign records and dashboard projections
 - tool-call replay inspection and diff views
@@ -71,6 +77,14 @@ inspection.
 
 - The system MUST discover historical run and workflow candidates by tenant.
 - Candidate suggestions MUST include explanation and source provenance.
+- Candidate discovery MUST be bounded by configured time window and maximum inspected
+  record count per tenant.
+- Candidate discovery MUST exclude or redact secrets, credentials, raw tokens, and
+  configured sensitive fields before presenting candidate evidence or creating fixtures.
+- The system MUST support manual exclusion of specific runs, workflows, candidates, and
+  fixtures from future discovery and campaigns.
+- The system MUST define retention and deletion behavior for discovered candidates,
+  campaign results, and product-edited fixtures.
 - Fixture editing MUST be permission-gated and auditable.
 - Campaigns MUST group replay attempts, comparisons, and live-validation outcomes.
 - Dashboards MUST expose drift, failure, and unsupported replay summaries.
@@ -83,10 +97,16 @@ inspection.
 - Product-edited fixtures must not overwrite repo-managed fixtures silently.
 - Candidate discovery must be bounded so it does not scan unbounded history on every page
   load.
+- Candidate discovery should run as an incremental or background process with explicit
+  per-tenant cost limits rather than synchronous full-history scans.
+- Deletion or exclusion requests must not mutate immutable repo-managed fixtures; they
+  should create product-side suppression records instead.
 
 ## Verification Expectations
 
 - Candidate discovery tests over representative historical run data.
+- Candidate discovery tests for scan bounds, per-tenant cost limits, sensitive-field
+  redaction, manual exclusion, and retention/deletion behavior.
 - Fixture editing API and UI tests.
 - Campaign aggregation tests.
 - Dashboard and SDK tests for tenant-scoped evaluation projections.
@@ -96,6 +116,7 @@ inspection.
 
 - Evaluation is usable as a tenant-aware product workflow with candidate discovery, fixture
   editing, campaigns, and tool-call replay inspection.
+- Automatic discovery is bounded, privacy-aware, and operator-controllable.
 
 ## Recommended `/speckit-specify` Input
 

@@ -33,6 +33,12 @@ clear abort or retry semantics.
   and evaluation evidence.
 - A tenant or global kill switch can prevent new live validation from starting.
 - Quota checks run before live validation starts.
+- Every replayable tool class must declare whether it is read-only, idempotent mutation,
+  non-idempotent mutation, or unsupported for live replay.
+- External side-effect attempts require stable correlation or idempotency keys where the
+  downstream system can support them.
+- Ambiguous external commits must stop automatic retry and move to an operator-visible
+  reconciliation state.
 
 ## Dependencies On Completed Phases
 
@@ -47,7 +53,11 @@ clear abort or retry semantics.
 - fresh approval flow for side-effecting replay
 - side-effect ledger records
 - full tool-call-level replay for supported tool-call classes
+- tool-class replay support matrix with safety class, approval requirement, idempotency
+  expectation, retry policy, and unsupported-state behavior
 - abort, retry, and kill-switch semantics
+- ambiguous commit detection and reconciliation states
+- compensation or manual-confirmation guidance for non-idempotent side effects
 - tenant permission and quota gates
 - comparison between original and live replay outcomes
 
@@ -82,6 +92,17 @@ clear abort or retry semantics.
 - The system MUST support abort and bounded retry semantics.
 - The system MUST respect tenant and global live-validation kill switches.
 - The system MUST classify unsupported tool-call replay instead of silently ignoring it.
+- The system MUST maintain a replay support matrix for every tool-call class reachable from
+  replay candidates.
+- The system MUST attach an idempotency key or correlation ID to side-effect attempts when
+  the downstream tool or integration supports it.
+- The system MUST not automatically retry non-idempotent side effects after timeout,
+  connection loss, unknown provider response, or daemon restart unless the side-effect
+  ledger proves the prior attempt did not commit.
+- The system MUST expose an `ambiguous_commit` or equivalent operator-action-needed state
+  when commit status cannot be proven.
+- The system MUST record compensation availability, manual confirmation requirement, or
+  unsupported compensation for each side-effecting replay class.
 
 ## Compatibility And Operational Notes
 
@@ -89,12 +110,18 @@ clear abort or retry semantics.
 - Live validation must never reuse stale approvals.
 - Side-effect ledger entries must be durable before or atomically with external mutation
   attempts where feasible.
+- For integrations that cannot provide idempotency or reconciliation evidence, live replay
+  must either be disabled or require explicit manual confirmation before any retry.
 
 ## Verification Expectations
 
 - Permission and quota denial tests.
 - Approval-required tests for side-effect replay.
 - Ledger tests for completed, failed, skipped, denied, and aborted paths.
+- Ledger tests for timeout-after-submit, daemon restart after submit, duplicate retry,
+  ambiguous commit, and manual reconciliation paths.
+- Replay support matrix tests proving unsupported and non-idempotent classes cannot slip
+  into automatic retry.
 - Fake integration live-validation tests and opt-in real-account smoke notes.
 - Contract tests for live validation and side-effect ledger resources.
 
@@ -102,6 +129,8 @@ clear abort or retry semantics.
 
 - Operators can run controlled live validation for supported work without bypassing tenant
   permissions, approvals, quota, audit, or abort controls.
+- Live replay cannot duplicate side effects silently when downstream commit status is
+  unknown.
 
 ## Recommended `/speckit-specify` Input
 

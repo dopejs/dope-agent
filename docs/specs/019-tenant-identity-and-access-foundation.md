@@ -33,6 +33,10 @@ resolution, and permission checks that every later hosted roadmap can depend on.
 - Initial permissions include `tenant.manage`, `secrets.manage`, `integrations.manage`,
   `connectors.manage`, `mcp.manage`, `runs.execute`, `approvals.resolve`,
   `live_validation.execute`, `evaluation.manage`, and `billing.view`.
+- Principal lifecycle is part of this roadmap: invited, active, disabled, and removed
+  principals must have defined access behavior.
+- Token lifecycle is part of this roadmap: token issue, expiry, revocation, rotation, and
+  tenant-grant changes must be durable and auditable.
 
 ## Dependencies On Completed Phases
 
@@ -46,7 +50,10 @@ resolution, and permission checks that every later hosted roadmap can depend on.
 - personal-tenant bootstrap for existing single-user installations
 - organization tenant model
 - membership records and role assignments
+- organization invite and accept flow
 - token tenant grants and default tenant
+- token issue, expiry, revocation, and rotation behavior
+- disabled-principal and removed-membership access denial
 - request tenant resolution middleware
 - permission evaluation service
 - audit events for tenant switching, denied access, and membership changes
@@ -80,6 +87,13 @@ resolution, and permission checks that every later hosted roadmap can depend on.
 - The system MUST expose stable tenant and membership inspection APIs.
 - The system MUST evaluate capability permissions through a shared service.
 - The system MUST emit auditable events for membership changes and denied tenant access.
+- The system MUST support inviting a principal to an organization tenant and accepting or
+  rejecting the invite through auditable state transitions.
+- The system MUST deny all tenant access for disabled principals, revoked tokens, expired
+  tokens, and removed memberships.
+- The system MUST support token rotation without widening the old token's allowed tenant set.
+- The system MUST audit token issue, rotation, revocation, expiry-based denial, and
+  tenant-grant changes.
 
 ## Compatibility And Operational Notes
 
@@ -92,13 +106,18 @@ resolution, and permission checks that every later hosted roadmap can depend on.
 
 - API tests for tenant resolution, default tenant behavior, header override, and denial.
 - Unit tests for role and permission evaluation.
+- Unit tests for disabled principals, removed memberships, token expiry, token revocation,
+  and token rotation.
 - Contract fixtures for tenant and membership resources.
 - Restart coverage proving tenant grants and memberships survive daemon restart.
+- API tests for invite, accept, reject, and membership removal.
 
 ## Definition Of Done
 
 - All inbound requests have a resolved tenant context or a stable authorization error.
 - Later roadmap specs can depend on a shared tenant and permission service.
+- Principal and token lifecycle changes are durable, auditable, and enforced before tenant
+  resource access.
 
 ## Recommended `/speckit-specify` Input
 
