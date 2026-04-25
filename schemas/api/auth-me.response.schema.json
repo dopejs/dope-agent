@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/auth-me.response.schema.json",
+  "title": "AuthMeResponse",
+  "type": "object",
+  "required": ["token", "principal", "defaultTenant", "currentTenant", "allowedTenants", "tokenGrants", "permissions", "tenantContext"],
+  "additionalProperties": false,
+  "properties": {
+    "token": { "$ref": "./auth-access-token-resource.schema.json" },
+    "principal": { "$ref": "./principal-resource.schema.json" },
+    "defaultTenant": { "$ref": "./tenant-resource.schema.json" },
+    "currentTenant": { "$ref": "./tenant-resource.schema.json" },
+    "allowedTenants": {
+      "type": "array",
+      "items": { "$ref": "./tenant-resource.schema.json" }
+    },
+    "tokenGrants": {
+      "type": "array",
+      "items": { "$ref": "./token-tenant-grant-resource.schema.json" }
+    },
+    "permissions": {
+      "type": "array",
+      "items": { "$ref": "./tenant-permission-resource.schema.json#/$defs/permission" }
+    },
+    "tenantContext": { "$ref": "./tenant-context-resource.schema.json" }
+  }
+}

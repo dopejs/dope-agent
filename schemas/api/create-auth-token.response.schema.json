@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-auth-token.response.schema.json",
+  "title": "CreateAuthTokenResponse",
+  "type": "object",
+  "required": ["token", "accessToken", "grants"],
+  "additionalProperties": false,
+  "properties": {
+    "token": { "$ref": "./auth-access-token-resource.schema.json" },
+    "accessToken": { "type": "string" },
+    "grants": { "type": "array", "items": { "$ref": "./token-tenant-grant-resource.schema.json" } }
+  }
+}

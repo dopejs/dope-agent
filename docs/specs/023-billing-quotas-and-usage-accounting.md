@@ -52,6 +52,48 @@ operator-visible billing or usage projections.
 - billing or usage inspection APIs
 - audit events for quota denial, plan changes, and usage counter adjustment
 
+## Required Quota Catalog
+
+Implementation planning MUST define the first quota catalog before coding. Each quota
+category MUST include:
+
+- `category`: stable quota identifier
+- `unit`: count, bytes, seconds, attempts, or another explicit unit
+- `period`: none, daily, monthly, rolling window, or custom period
+- `carryover`: whether unused quota carries over and the maximum carryover amount
+- `reservationPoint`: route or service method that reserves usage before work starts
+- `commitPoint`: event or state transition that commits actual usage
+- `refundPoint`: failure, cancellation, denial, or retry transition that releases reserved
+  usage
+- `operationKey`: idempotency key shape used across retry and restart
+- `concurrencyGuard`: transaction, row lock, compare-and-swap, or queue serialization used
+  to prevent double-spend
+- `denialShape`: stable API error and audit reason code
+
+The initial catalog MUST cover at least these quota dimensions:
+
+- run launches
+- workflow launches
+- runtime tool calls
+- live validation attempts
+- integration operations
+- persisted artifact or storage bytes where measurable
+- replay or evaluation campaign attempts where measurable
+
+## Required Enforcement Matrix
+
+The implementation plan MUST include an enforcement matrix with one row per guarded entry
+point. Required columns:
+
+- API route or internal service entry point
+- tenant context source
+- quota categories touched
+- reservation amount calculation
+- commit/refund transition
+- idempotency key source
+- behavior when quota storage is unavailable
+- tests for allowed, denied, retry, restart, and concurrent launch scenarios
+
 ## Out Of Scope
 
 - external payment-provider checkout by default
@@ -106,6 +148,8 @@ operator-visible billing or usage projections.
 - Restart tests proving pending reservations recover into a safe committed, released, or
   operator-action-needed state.
 - Contract tests for usage and quota response shapes.
+- Matrix completeness test proving each in-scope expensive or side-effecting entry point
+  has an enforcement row.
 
 ## Definition Of Done
 

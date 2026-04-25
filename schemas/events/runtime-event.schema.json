@@ -36,7 +36,8 @@
         "calendar",
         "mail",
         "reminder",
-        "evaluation"
+        "evaluation",
+        "tenant"
       ]
     },
     "name": {

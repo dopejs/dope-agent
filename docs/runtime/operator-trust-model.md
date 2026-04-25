@@ -10,6 +10,10 @@ Define the local-first trust boundary for the Dope daemon.
 - pairing bootstrap is the only unauthenticated control path
 - pairing produces a durable local access token
 - the token is persisted and restored across daemon restart
+- protected requests resolve a principal and tenant context before tenant-owned control
+  surfaces run
+- `X-Dope-Tenant-ID` can select a non-default tenant only when both principal membership
+  and token tenant grant allow it
 - high-risk capability execution is gated by approval state
 
 ## Pairing Flow
@@ -33,8 +37,27 @@ When auth is enabled, protected routes include:
 - connectors
 - capabilities
 - `GET /v1/auth/me`
+- tenant, principal, membership, invitation, tenant-audit, and auth-token lifecycle APIs
 
 Health and pairing bootstrap stay outside the protected surface.
+
+## Tenant Identity Boundary
+
+Roadmap 34 adds a local-first tenant identity layer without migrating every domain record
+to tenant ownership yet:
+
+- existing local operators bootstrap into one default personal tenant
+- organization tenants have owner/admin/operator/viewer memberships
+- sensitive tenant administration uses `tenant.manage`
+- token tenant grants limit which tenants a bearer token may resolve
+- disabled principals, removed memberships, revoked tokens, expired tokens, and rotated
+  tokens fail before tenant-scoped handlers run
+- tenant selection denials use a stable response and do not reveal whether an inaccessible
+  tenant exists
+- membership changes, invitation decisions, permission denials, token lifecycle changes,
+  and tenant grant changes write durable tenant audit events
+- security-relevant membership and token grant changes fail closed when required audit
+  persistence fails
 
 ## Approval Boundary
 
@@ -176,14 +199,15 @@ For the reminders domain:
 
 ## Security Assumptions
 
-- this is a local-first daemon trust model, not multi-tenant auth
-- bearer tokens are sufficient for P0 because the daemon is expected to run on a user-controlled host
+- this remains a local-first daemon trust model; hosted tenant data isolation is covered
+  by later roadmaps
+- bearer tokens are sufficient for this phase because the daemon is expected to run on a
+  user-controlled host
 - token material is only returned at completion time; persisted state stores token hashes, not raw tokens
 - pairing codes are one-time bootstrap secrets with expiration
 
 ## Out Of Scope
 
 - remote SSO
-- org RBAC
-- delegated admin roles
+- per-domain tenant data migration
 - device inventory and remote revocation UI

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-tenant-invitation.response.schema.json",
+  "title": "CreateTenantInvitationResponse",
+  "type": "object",
+  "required": ["invitation"],
+  "additionalProperties": false,
+  "properties": {
+    "invitation": { "$ref": "./tenant-invitation-resource.schema.json" }
+  }
+}

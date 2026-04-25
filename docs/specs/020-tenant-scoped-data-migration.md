@@ -52,6 +52,50 @@ single-user data into the default personal tenant.
 - cross-tenant isolation tests
 - operational rollback notes for migration failure
 
+## Required Design Artifacts
+
+Implementation planning MUST produce a tenant-scope inventory before code changes begin.
+The inventory can be Markdown or JSON, but it MUST include one row per persisted table and
+event-bearing record with these fields:
+
+- `name`: table, event stream, or persisted projection name
+- `classification`: `tenant_owned`, `global`, or `derived`
+- `tenantIdSource`: existing column, backfilled default personal tenant, parent resource,
+  authenticated tenant context, or `not_applicable`
+- `migrationAction`: add column, backfill, rebuild index, leave global, derive at read
+  time, or remove tenantless access
+- `affectedAPIs`: list/get/create/update/delete routes that must read resolved tenant
+  context
+- `affectedEvents`: event names and SSE replay filters that must include tenant scope
+- `storeAccess`: tenant-aware helper/query required and tenantless helper to delete or
+  restrict
+- `indexesAndUniqueness`: tenant-aware list indexes and natural-key uniqueness changes
+- `isolationTests`: same-shaped cross-tenant fixtures required for API and store coverage
+- `rollback`: restore-from-backup, reversible down migration, or operator action
+
+The implementation plan MUST fail if any persisted table, replay fixture source, event
+history source, or operator projection source is absent from this inventory.
+
+## 020/022 Ownership Boundary
+
+This roadmap owns the generic tenant migration mechanics:
+
+- adding and backfilling tenant ownership for existing persisted records
+- enforcing tenant-aware store access and API/event/SSE filtering
+- classifying every persisted table and event-bearing record
+- adding tenant-aware indexes and uniqueness constraints
+
+Roadmap 37 owns credential and external-account semantics after the generic migration:
+
+- tenant-scoped secret value storage and redaction policy
+- OAuth/provider auth lifecycle and credential rotation behavior
+- connector, MCP, and sandbox policy administration permissions
+- secret reference resolution at execution time
+- replay, fixture, log, and event redaction for secret material
+
+If a table is touched by both roadmaps, Roadmap 35 must make ownership explicit and safe
+for tenant filtering; Roadmap 37 must make the credential semantics safe for hosted use.
+
 ## Out Of Scope
 
 - per-tenant physical databases
@@ -100,6 +144,8 @@ single-user data into the default personal tenant.
 - Migration tests from pre-tenant fixtures.
 - Cross-tenant API and store isolation regressions.
 - Schema inventory test proving every persisted table is classified.
+- Inventory completeness test proving the checked-in inventory matches the actual SQLite
+  schema and persisted event sources.
 - Store tests proving tenant-owned queries without tenant context fail or are unavailable.
 - Index or query-plan smoke for high-volume tenant-owned list paths where supported by the
   local database test environment.

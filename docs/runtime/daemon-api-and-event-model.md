@@ -212,6 +212,51 @@ The mail domain is additive:
 - delivery outcomes project additive `mailOperationIds` and summaries; they do not
   redefine whether the underlying mail action succeeded
 
+## 5.65 Tenant Identity And Access API
+
+Purpose:
+
+- resolve the authenticated principal and current tenant for protected requests
+- inspect allowed tenants, memberships, principals, permissions, and tenant audit history
+- manage organization invitations and memberships
+- issue, rotate, revoke, and grant-scope auth tokens
+
+Examples:
+
+- `GET /v1/auth/me`
+- `GET /v1/tenants`
+- `POST /v1/tenants`
+- `GET /v1/tenants/{tenantId}`
+- `GET /v1/tenants/{tenantId}/permissions`
+- `GET /v1/tenants/{tenantId}/memberships`
+- `PATCH /v1/tenants/{tenantId}/memberships/{membershipId}`
+- `DELETE /v1/tenants/{tenantId}/memberships/{membershipId}`
+- `POST /v1/tenants/{tenantId}/invitations`
+- `GET /v1/tenant-invitations`
+- `POST /v1/tenant-invitations/{invitationId}/accept`
+- `POST /v1/tenant-invitations/{invitationId}/reject`
+- `GET /v1/principals`
+- `PATCH /v1/principals/{principalId}`
+- `GET /v1/auth/tokens`
+- `POST /v1/auth/tokens`
+- `POST /v1/auth/tokens/{tokenId}/rotate`
+- `POST /v1/auth/tokens/{tokenId}/revoke`
+- `PATCH /v1/auth/tokens/{tokenId}/tenant-grants`
+- `GET /v1/tenant-audit-events`
+
+Tenant access behavior:
+
+- absent `X-Dope-Tenant-ID` resolves the token default tenant
+- present `X-Dope-Tenant-ID` resolves only when the principal has active membership and
+  the token has an active tenant grant
+- denied tenant resolution returns the stable tenant authorization error shape
+- `tenant.manage` gates tenant creation, membership changes, principal lifecycle changes,
+  and token grant management
+
+Tenant event taxonomy adds `tenant.*` events for access denial, context resolution,
+membership change, invitation decisions, audit fail-closed denials, token issue, token
+rotation, token revocation, token expiry denial, and token grant changes.
+
 ## 5.7 Reminder Domain API
 
 Purpose:

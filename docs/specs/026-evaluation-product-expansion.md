@@ -8,6 +8,7 @@ product expansion that completes the remaining Roadmap 33 out-of-scope product g
 Primary source documents:
 - `docs/product/hosted-productization-roadmap-split.md`
 - `docs/specs/018-evaluation-and-replay-harness.md`
+- `docs/specs/024-production-install-upgrade-backup-and-soak.md`
 - `docs/specs/025-live-validation-and-side-effect-replay.md`
 
 ## Background
@@ -52,6 +53,37 @@ inspection.
 - replay campaign records and dashboard projections
 - tool-call replay inspection and diff views
 - tenant-aware evaluation permissions and audit events
+
+## Required Discovery Design Artifact
+
+Implementation planning MUST define the candidate discovery contract before coding. The
+artifact MUST include:
+
+- candidate source tables and APIs
+- tenant context and permission required for discovery
+- scan bounds by time window, maximum inspected records, maximum candidates emitted, and
+  per-tenant cost budget
+- incremental cursor or background job strategy
+- scoring inputs and explanation fields
+- sensitive-field exclusion and redaction rules before evidence is presented or
+  materialized into fixtures
+- retention period for discovered candidates and generated evidence
+- deletion and manual suppression behavior
+- behavior for repo-managed fixtures versus product-edited fixtures
+- audit events for discovery, suppression, fixture creation, fixture edit, campaign start,
+  and campaign result publication
+
+## Required Campaign And Dashboard Contract
+
+The implementation plan MUST define campaign and dashboard resource shapes with:
+
+- campaign identity, tenant ownership, status, and lifecycle transitions
+- selected fixtures or candidates and immutable source references
+- replay attempt grouping and comparison summary fields
+- live validation linkage to Roadmap 40 side-effect ledger entries
+- drift, failure, unsupported replay, and operator-action-needed aggregate fields
+- pagination and retention behavior for dashboard queries
+- SDK and web projection contracts
 
 ## Out Of Scope
 
@@ -111,12 +143,19 @@ inspection.
 - Campaign aggregation tests.
 - Dashboard and SDK tests for tenant-scoped evaluation projections.
 - Regression proving repo-managed fixtures remain immutable through product editing paths.
+- Discovery bounds test proving page loads or dashboard refreshes cannot trigger
+  unbounded full-history scans.
+- Campaign contract tests proving live validation outcomes link to side-effect ledger
+  records without replacing underlying runtime truth.
 
 ## Definition Of Done
 
 - Evaluation is usable as a tenant-aware product workflow with candidate discovery, fixture
   editing, campaigns, and tool-call replay inspection.
 - Automatic discovery is bounded, privacy-aware, and operator-controllable.
+- Final hosted-productization release readiness has rerun the Roadmap 39 soak harness with
+  Roadmap 40 live validation and Roadmap 41 evaluation-product workflows included in the
+  workload, fault drills, cross-tenant leakage checks, and resource-growth report.
 
 ## Recommended `/speckit-specify` Input
 

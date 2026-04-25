@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/update-principal.response.schema.json",
+  "title": "UpdatePrincipalResponse",
+  "type": "object",
+  "required": ["principal"],
+  "additionalProperties": false,
+  "properties": {
+    "principal": { "$ref": "./principal-resource.schema.json" }
+  }
+}

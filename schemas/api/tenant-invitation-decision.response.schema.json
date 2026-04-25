@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/tenant-invitation-decision.response.schema.json",
+  "title": "TenantInvitationDecisionResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "membership": { "$ref": "./membership-resource.schema.json" },
+    "invitation": { "$ref": "./tenant-invitation-resource.schema.json" }
+  },
+  "anyOf": [
+    { "required": ["membership"] },
+    { "required": ["invitation"] }
+  ]
+}

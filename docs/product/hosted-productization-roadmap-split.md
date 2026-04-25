@@ -75,11 +75,15 @@ The hosted productization program is split into:
 - secrets, integrations, connectors, and MCP installs have distinct leakage and blast-radius
   risks
 - billing and quotas require durable accounting semantics, not only schema placeholders
-- install, upgrade, backup, and soak are operational product-readiness work, not feature UI
+- install, upgrade, backup, and foundational soak are operational readiness work, not
+  feature UI
 - live side-effect validation and full replay can cause external mutations and need a
   stronger safety model than non-live replay
 - fixture editing and automatic candidate discovery are evaluation product work and should
   not be collapsed into the live executor
+- final user-deliverable readiness is not achieved until the Roadmap 39 operational
+  baseline has been rerun after Roadmaps 40 and 41, including live validation and
+  evaluation product workflows in the soak workload
 
 ## Out Of Scope
 
@@ -101,6 +105,10 @@ Each child roadmap must end with:
   side-effect abort paths as appropriate
 - at least one manual or automated acceptance path that exercises the production-relevant
   behavior in `DOPE_ENV=test`
+
+Final release readiness after this split additionally requires a release-verification pass
+that depends on all eight child specs and reuses the Roadmap 39 soak harness against the
+Roadmap 40 and 41 surfaces.
 
 ## Definition Of Done
 

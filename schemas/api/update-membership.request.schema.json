@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/update-membership.request.schema.json",
+  "title": "UpdateMembershipRequest",
+  "type": "object",
+  "required": ["role"],
+  "additionalProperties": false,
+  "properties": {
+    "role": { "type": "string", "enum": ["owner", "admin", "operator", "viewer"] }
+  }
+}

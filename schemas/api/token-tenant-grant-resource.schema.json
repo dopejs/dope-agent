@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/token-tenant-grant-resource.schema.json",
+  "title": "TokenTenantGrantResource",
+  "type": "object",
+  "required": ["grantId", "tokenId", "tenantId", "isDefault", "status", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "grantId": { "type": "string" },
+    "tokenId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "isDefault": { "type": "boolean" },
+    "status": { "type": "string", "enum": ["active", "revoked", "expired"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "revokedAt": { "type": "string", "format": "date-time" },
+    "grantedByPrincipalId": { "type": "string" }
+  }
+}

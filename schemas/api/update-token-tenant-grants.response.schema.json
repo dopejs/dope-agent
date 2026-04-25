@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/update-token-tenant-grants.response.schema.json",
+  "title": "UpdateTokenTenantGrantsResponse",
+  "type": "object",
+  "required": ["tokenId", "grants"],
+  "additionalProperties": false,
+  "properties": {
+    "tokenId": { "type": "string" },
+    "grants": { "type": "array", "items": { "$ref": "./token-tenant-grant-resource.schema.json" } }
+  }
+}

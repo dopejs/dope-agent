@@ -8,7 +8,7 @@ P0 uses SQLite as the local durable store. Schema evolution is versioned and exp
 
 ## Current Strategy
 
-- current supported schema version: `2`
+- current supported schema version: `21`
 - migration ledger table: `schema_migrations`
 - version rule: the daemon applies forward migrations in ascending order
 - compatibility rule: a database newer than the daemon-supported version is rejected on startup
@@ -78,5 +78,22 @@ The store test suite now covers:
 - new database reaches current schema version
 - legacy baseline schema upgrades to current version
 - future schema version is rejected
+- tenant identity tables, token lifecycle fields, token tenant grants, organization
+  memberships, and invitations persist across restart
 
 That is the minimum P0 migration confidence bar.
+
+## Latest Tenant Identity Migration
+
+Schema version `21` adds the Roadmap 34 tenant identity foundation:
+
+- `tenants`
+- `principals`
+- `memberships`
+- `tenant_invitations`
+- `token_tenant_grants`
+- token lifecycle columns on `auth_tokens`
+- `tenant_audit_events`
+
+Rollback requires restoring a pre-upgrade SQLite backup. The daemon does not down-migrate
+tenant identity records or widen token authority during rollback.

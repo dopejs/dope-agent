@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/accept-tenant-invitation.request.schema.json",
+  "title": "AcceptTenantInvitationRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

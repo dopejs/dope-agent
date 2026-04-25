@@ -74,6 +74,34 @@ usable in the web shell and TypeScript SDK.
 - The UI MUST present stable authorization errors without falling back to global data.
 - Membership management MUST be permission-gated.
 
+## Required SDK Contract
+
+The implementation plan MUST define and test the concrete SDK tenant API:
+
+- client-level default tenant configuration
+- per-request tenant override
+- behavior when no tenant is configured and the server resolves the default tenant
+- stable typing for tenant, membership, principal, permission, denial, and token grant
+  resources reused from daemon schemas
+- propagation of `X-Dope-Tenant-ID` without callers manually constructing headers
+- error mapping for stable tenant authorization denials
+
+## Required UX Acceptance Cases
+
+The web shell implementation MUST include acceptance coverage for:
+
+- first load with one personal tenant and no organization tenants
+- user with multiple allowed tenants switching from personal to organization
+- switching tenants clears or marks stale detail panes before refetch completes
+- activity, diagnostics, approvals, onboarding, and evaluation projections refetch under
+  the new tenant and never show previous-tenant rows after switch
+- denied tenant access displays the stable authorization state without falling back to
+  global or previous-tenant data
+- membership management controls are hidden or disabled without `tenant.manage`
+- owner/admin can inspect members, update role, and see resulting audit-visible state
+- SDK caller can set a default tenant and override it for one request without mutating the
+  default for subsequent requests
+
 ## Compatibility And Operational Notes
 
 - Existing SDK usage without a tenant override should continue to use the server-resolved
@@ -84,6 +112,8 @@ usable in the web shell and TypeScript SDK.
 
 - SDK tests for default tenant and override header behavior.
 - Web tests for tenant switch, scoped projections, and denied tenant states.
+- Web regression proving stale previous-tenant data is cleared or hidden during tenant
+  switch refetch.
 - Contract tests where tenant list or membership response shapes are added.
 
 ## Definition Of Done

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/tenant-audit-failed-closed.event.schema.json",
+  "title": "TenantAuditFailedClosedEvent",
+  "allOf": [{ "$ref": "./runtime-event.schema.json" }],
+  "properties": {
+    "category": { "const": "tenant" },
+    "name": { "const": "tenant.audit_failed_closed" },
+    "payload": {
+      "type": "object",
+      "required": ["reasonCode"],
+      "additionalProperties": false,
+      "properties": {
+        "tenantId": { "type": "string" },
+        "principalId": { "type": "string" },
+        "tokenId": { "type": "string" },
+        "reasonCode": { "type": "string" }
+      }
+    }
+  }
+}

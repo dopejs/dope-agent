@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/revoke-auth-token.request.schema.json",
+  "title": "RevokeAuthTokenRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "reason": { "type": "string" }
+  }
+}

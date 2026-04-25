@@ -49,6 +49,30 @@ auth state, and sandbox policy records tenant-owned and permission-gated.
   MCP config changes
 - tests for cross-tenant secret and integration isolation
 
+## Boundary With Tenant-Scoped Data Migration
+
+Roadmap 35 must already classify and tenant-scope persisted rows for integrations,
+connectors, MCP resources, sandbox policies, and provider auth state where those records
+exist. This roadmap builds on that ownership and is responsible for the hosted credential
+semantics:
+
+- secret values, secret references, and redaction policy
+- provider auth state lifecycle, expiry, disconnect, and rotation behavior
+- runtime credential resolution through the active tenant only
+- connector, MCP, and sandbox policy mutation permissions
+- audit events for secret reference use and credential-bearing configuration changes
+- proof that logs, events, replay fixtures, evaluation artifacts, and API responses never
+  contain raw secret material
+
+The implementation plan MUST include a handoff table for every shared resource with:
+
+- resource or table name
+- Roadmap 35 tenant-ownership status
+- Roadmap 37 credential or admin behavior to implement
+- permission required for read, mutate, connect, disconnect, rotate, or invoke
+- redaction expectations for API, events, logs, replay fixtures, and evaluation artifacts
+- cross-tenant misuse test case
+
 ## Out Of Scope
 
 - external enterprise secret-manager integrations unless explicitly selected later
@@ -86,6 +110,9 @@ auth state, and sandbox policy records tenant-owned and permission-gated.
 
 - Secret redaction contract tests.
 - Cross-tenant integration and MCP install isolation tests.
+- Handoff table verification proving every shared integration, connector, MCP, provider
+  auth, sandbox policy, and secret-bearing resource has an owner in either Roadmap 35 or
+  Roadmap 37.
 - Permission-denial tests for viewer and operator roles.
 - Manual `DOPE_ENV=test` smoke for tenant-scoped fake integration configuration.
 

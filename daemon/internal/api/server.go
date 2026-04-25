@@ -27,6 +27,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/mail"
@@ -49,6 +50,7 @@ type Dependencies struct {
 	EventBus     *events.Bus
 	Policy       *policy.Engine
 	Auth         *auth.Manager
+	Identity     *identity.Manager
 	Router       *router.SessionRouter
 	Runtime      *runtime.Manager
 	LLM          *llm.Dispatcher
@@ -77,6 +79,7 @@ type Server struct {
 	eventBus     *events.Bus
 	policy       *policy.Engine
 	auth         *auth.Manager
+	identity     *identity.Manager
 	router       *router.SessionRouter
 	runtime      *runtime.Manager
 	llm          *llm.Dispatcher
@@ -113,6 +116,12 @@ func NewServer(deps Dependencies) *Server {
 			r = r.WithContext(events.WithEnvironmentScope(r.Context(), string(deps.Config.Environment)))
 			token, ok, err := authenticateRequest(deps.Auth, r)
 			if err != nil {
+				if errors.Is(err, auth.ErrTokenExpired) && token.TokenID != "" {
+					if auditErr := recordTenantAccessDenied(r.Context(), deps.Store, token, token.DefaultTenantID, "token_expired"); auditErr != nil {
+						writeError(w, http.StatusInternalServerError, auditErr.Error())
+						return
+					}
+				}
 				writeError(w, http.StatusUnauthorized, err.Error())
 				return
 			}
@@ -121,11 +130,36 @@ func NewServer(deps Dependencies) *Server {
 				return
 			}
 			if ok {
+				if deps.Identity != nil {
+					var err error
+					token, err = ensureLocalTokenIdentity(r.Context(), deps.Auth, deps.Identity, deps.Store, token)
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, err.Error())
+						return
+					}
+				}
 				if err := persistAccessToken(r.Context(), deps.Store, token); err != nil {
 					writeError(w, http.StatusInternalServerError, err.Error())
 					return
 				}
 				r = r.WithContext(withAuthenticatedToken(r.Context(), token))
+				if deps.Identity != nil {
+					tenantContext, err := deps.Identity.Resolve(r.Context(), authTokenAuthority(token), strings.TrimSpace(r.Header.Get("X-Dope-Tenant-ID")))
+					if err != nil {
+						if errors.Is(err, identity.ErrTenantAccessDenied) {
+							if auditErr := recordTenantAccessDenied(r.Context(), deps.Store, token, strings.TrimSpace(r.Header.Get("X-Dope-Tenant-ID")), "tenant_resolution_denied"); auditErr != nil {
+								writeError(w, http.StatusInternalServerError, auditErr.Error())
+								return
+							}
+							writeTenantDenial(w, http.StatusForbidden)
+							return
+						}
+						writeError(w, http.StatusInternalServerError, err.Error())
+						return
+					}
+					r = r.WithContext(withTenantContext(r.Context(), tenantContext))
+					r = r.WithContext(withTenantAuditStore(r.Context(), deps.Store))
+				}
 			}
 			handler(w, r)
 		}
@@ -151,7 +185,34 @@ func NewServer(deps Dependencies) *Server {
 		handleAuthPairingRoutes(deps.Auth, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/auth/me", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleAuthMe(deps.Auth, deps.Store, w, r)
+		handleAuthMe(deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/auth/tokens", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleAuthTokens(deps.Auth, deps.Identity, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/auth/tokens/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleAuthTokenRoutes(deps.Auth, deps.Identity, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/tenants", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleTenants(deps.Identity, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/tenants/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleTenantRoutes(deps.Identity, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/tenant-invitations", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleTenantInvitations(deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/tenant-invitations/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleTenantInvitationRoutes(deps.Identity, w, r)
+	}))
+	mux.HandleFunc("/v1/principals", protected(func(w http.ResponseWriter, r *http.Request) {
+		handlePrincipals(deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/principals/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handlePrincipalRoutes(deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/tenant-audit-events", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleTenantAuditEvents(deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/config", protected(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -371,6 +432,7 @@ func NewServer(deps Dependencies) *Server {
 		eventBus:     deps.EventBus,
 		policy:       deps.Policy,
 		auth:         deps.Auth,
+		identity:     deps.Identity,
 		router:       deps.Router,
 		runtime:      deps.Runtime,
 		llm:          deps.LLM,
@@ -1399,7 +1461,7 @@ func handleAuthPairingComplete(authManager *auth.Manager, eventBus *events.Bus, 
 	})
 }
 
-func handleAuthMe(authManager *auth.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleAuthMe(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -1413,7 +1475,17 @@ func handleAuthMe(authManager *auth.Manager, sqliteStore *store.SQLiteStore, w h
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, token)
+	tenantContext, hasTenantContext := tenantContextFromContext(r.Context())
+	if !hasTenantContext || sqliteStore == nil {
+		writeJSON(w, http.StatusOK, token)
+		return
+	}
+	response, err := buildAuthMeResponse(r.Context(), sqliteStore, token, tenantContext)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func handleProviders(manager *providers.Manager, w http.ResponseWriter, r *http.Request) {
@@ -4582,6 +4654,8 @@ func publishEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.
 type contextKey string
 
 const authenticatedTokenKey contextKey = "authenticated_token"
+const tenantContextKey contextKey = "tenant_context"
+const tenantAuditStoreKey contextKey = "tenant_audit_store"
 
 func withAuthenticatedToken(ctx context.Context, token auth.AccessToken) context.Context {
 	return context.WithValue(ctx, authenticatedTokenKey, token)
@@ -4590,6 +4664,82 @@ func withAuthenticatedToken(ctx context.Context, token auth.AccessToken) context
 func authenticatedToken(ctx context.Context) (auth.AccessToken, bool) {
 	token, ok := ctx.Value(authenticatedTokenKey).(auth.AccessToken)
 	return token, ok
+}
+
+func authTokenAuthority(token auth.AccessToken) identity.TokenAuthority {
+	status := identity.LifecycleStatus(token.Status)
+	if status == "" {
+		status = identity.StatusActive
+	}
+	return identity.TokenAuthority{
+		TokenID:         token.TokenID,
+		PrincipalID:     token.PrincipalID,
+		DefaultTenantID: token.DefaultTenantID,
+		Status:          status,
+		ExpiresAt:       token.ExpiresAt,
+	}
+}
+
+func ensureLocalTokenIdentity(ctx context.Context, authManager *auth.Manager, identityManager *identity.Manager, sqliteStore *store.SQLiteStore, token auth.AccessToken) (auth.AccessToken, error) {
+	if identityManager == nil || token.Mode != auth.PairingModeLocal {
+		return token, nil
+	}
+	if token.PrincipalID != "" && token.DefaultTenantID != "" {
+		return token, nil
+	}
+	principal, tenant, err := identityManager.BootstrapLocal(ctx, []string{token.TokenID})
+	if err != nil {
+		return auth.AccessToken{}, fmt.Errorf("bootstrap local token identity: %w", err)
+	}
+	changed := false
+	if token.Status == "" {
+		token.Status = string(identity.StatusActive)
+		changed = true
+	}
+	if token.PrincipalID == "" {
+		token.PrincipalID = principal.PrincipalID
+		changed = true
+	}
+	if token.DefaultTenantID == "" {
+		token.DefaultTenantID = tenant.TenantID
+		changed = true
+	}
+	if changed {
+		token.UpdatedAt = time.Now().UTC()
+		if sqliteStore != nil {
+			if err := sqliteStore.UpsertAccessToken(ctx, token); err != nil {
+				return auth.AccessToken{}, err
+			}
+		}
+		if authManager != nil {
+			authManager.UpdateToken(token)
+		}
+	}
+	return token, nil
+}
+
+func writeTenantDenial(w http.ResponseWriter, status int) {
+	writeJSON(w, status, identity.StableDenial())
+}
+
+func recordTenantAccessDenied(ctx context.Context, sqliteStore *store.SQLiteStore, token auth.AccessToken, tenantID string, reasonCode string) error {
+	if sqliteStore == nil {
+		return nil
+	}
+	eventKind := "tenant.access_denied"
+	if reasonCode == "token_expired" {
+		eventKind = "tenant.token_expiry_denied"
+	}
+	_, err := sqliteStore.AppendTenantAuditEvent(ctx, identity.TenantAuditEvent{
+		EventKind:   eventKind,
+		TenantID:    tenantID,
+		PrincipalID: token.PrincipalID,
+		TokenID:     token.TokenID,
+		Outcome:     identity.AuditOutcomeDenied,
+		ReasonCode:  reasonCode,
+		CreatedAt:   time.Now().UTC(),
+	})
+	return err
 }
 
 func currentActor(ctx context.Context) string {
@@ -4617,7 +4767,7 @@ func authenticateRequest(authManager *auth.Manager, r *http.Request) (auth.Acces
 	}
 	token, err := authManager.Authenticate(strings.TrimSpace(tokenSecret))
 	if err != nil {
-		return auth.AccessToken{}, false, err
+		return token, false, err
 	}
 	return token, true, nil
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
@@ -34,7 +35,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 20
+	CurrentSchemaVersion = 21
 )
 
 type schemaMigration struct {
@@ -1528,6 +1529,110 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_eval_fixtures_env_domain ON evaluation_regression_fixtures(environment_scope, domain_class, updated_at DESC, fixture_id DESC);`,
 		},
 	},
+	{
+		Version: 21,
+		Name:    "tenant_identity_access_foundation",
+		Statements: []string{
+			`ALTER TABLE auth_tokens ADD COLUMN principal_id TEXT;`,
+			`ALTER TABLE auth_tokens ADD COLUMN status TEXT NOT NULL DEFAULT 'active';`,
+			`ALTER TABLE auth_tokens ADD COLUMN default_tenant_id TEXT;`,
+			`ALTER TABLE auth_tokens ADD COLUMN expires_at TEXT;`,
+			`ALTER TABLE auth_tokens ADD COLUMN revoked_at TEXT;`,
+			`ALTER TABLE auth_tokens ADD COLUMN rotated_from_token_id TEXT;`,
+			`ALTER TABLE auth_tokens ADD COLUMN rotated_to_token_id TEXT;`,
+			`
+			CREATE TABLE IF NOT EXISTS tenants (
+				tenant_id TEXT PRIMARY KEY,
+				tenant_kind TEXT NOT NULL,
+				display_name TEXT NOT NULL,
+				status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				created_by_principal_id TEXT,
+				default_owner_principal_id TEXT
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS principals (
+				principal_id TEXT PRIMARY KEY,
+				principal_kind TEXT NOT NULL,
+				display_name TEXT NOT NULL,
+				status TEXT NOT NULL,
+				default_tenant_id TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				disabled_at TEXT,
+				removed_at TEXT
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS memberships (
+				membership_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				principal_id TEXT NOT NULL,
+				role TEXT NOT NULL,
+				status TEXT NOT NULL,
+				invitation_id TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				accepted_at TEXT,
+				removed_at TEXT
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS tenant_invitations (
+				invitation_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				invited_principal_id TEXT NOT NULL,
+				invited_by_principal_id TEXT NOT NULL,
+				role TEXT NOT NULL,
+				status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				expires_at TEXT,
+				decided_at TEXT
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS token_tenant_grants (
+				grant_id TEXT PRIMARY KEY,
+				token_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				is_default INTEGER NOT NULL,
+				status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				revoked_at TEXT,
+				granted_by_principal_id TEXT
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS tenant_audit_events (
+				audit_event_id TEXT PRIMARY KEY,
+				event_kind TEXT NOT NULL,
+				tenant_id TEXT,
+				principal_id TEXT,
+				target_principal_id TEXT,
+				token_id TEXT,
+				outcome TEXT NOT NULL,
+				reason_code TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				document_json TEXT
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_tenants_kind_status ON tenants(tenant_kind, status, created_at DESC, tenant_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_principals_status ON principals(status, created_at DESC, principal_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_memberships_tenant_status ON memberships(tenant_id, status, role, principal_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_memberships_principal_status ON memberships(principal_id, status, tenant_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_invitations_tenant_status ON tenant_invitations(tenant_id, status, created_at DESC, invitation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_invitations_principal_status ON tenant_invitations(invited_principal_id, status, created_at DESC, invitation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_token_grants_token_status ON token_tenant_grants(token_id, status, tenant_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_token_grants_tenant_status ON token_tenant_grants(tenant_id, status, token_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_tenant_audit_events_tenant_created ON tenant_audit_events(tenant_id, created_at DESC, audit_event_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_tenant_audit_events_principal_created ON tenant_audit_events(principal_id, created_at DESC, audit_event_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_tenant_audit_events_token_created ON tenant_audit_events(token_id, created_at DESC, audit_event_id DESC);`,
+		},
+	},
 }
 
 type SQLiteStore struct {
@@ -1785,39 +1890,60 @@ func (s *SQLiteStore) UpsertAccessToken(ctx context.Context, token auth.AccessTo
 		return nil
 	}
 
-	var lastUsedAt sql.NullString
-	if token.LastUsedAt != nil {
-		lastUsedAt = sql.NullString{String: token.LastUsedAt.UTC().Format(time.RFC3339Nano), Valid: true}
+	status := token.Status
+	if status == "" {
+		status = "active"
 	}
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO auth_tokens (
 			token_id,
+			principal_id,
 			label,
 			mode,
 			token_hash,
 			token_preview,
+			status,
+			default_tenant_id,
 			created_at,
 			updated_at,
-			last_used_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			last_used_at,
+			expires_at,
+			revoked_at,
+			rotated_from_token_id,
+			rotated_to_token_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(token_id) DO UPDATE SET
+			principal_id = excluded.principal_id,
 			label = excluded.label,
 			mode = excluded.mode,
 			token_hash = excluded.token_hash,
 			token_preview = excluded.token_preview,
+			status = excluded.status,
+			default_tenant_id = excluded.default_tenant_id,
 			created_at = excluded.created_at,
 			updated_at = excluded.updated_at,
-			last_used_at = excluded.last_used_at
+			last_used_at = excluded.last_used_at,
+			expires_at = excluded.expires_at,
+			revoked_at = excluded.revoked_at,
+			rotated_from_token_id = excluded.rotated_from_token_id,
+			rotated_to_token_id = excluded.rotated_to_token_id
 	`,
 		token.TokenID,
+		nullString(token.PrincipalID),
 		token.Label,
 		string(token.Mode),
 		token.TokenHash,
 		token.TokenPreview,
+		status,
+		nullString(token.DefaultTenantID),
 		token.CreatedAt.UTC().Format(time.RFC3339Nano),
 		token.UpdatedAt.UTC().Format(time.RFC3339Nano),
-		lastUsedAt,
+		nullableTimeString(token.LastUsedAt),
+		nullableTimeString(token.ExpiresAt),
+		nullableTimeString(token.RevokedAt),
+		nullString(token.RotatedFromTokenID),
+		nullString(token.RotatedToTokenID),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert access token %s: %w", token.TokenID, err)
@@ -1832,7 +1958,7 @@ func (s *SQLiteStore) ListAccessTokens(ctx context.Context) ([]auth.AccessToken,
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT token_id, label, mode, token_hash, token_preview, created_at, updated_at, last_used_at
+		SELECT token_id, principal_id, label, mode, token_hash, token_preview, status, default_tenant_id, created_at, updated_at, last_used_at, expires_at, revoked_at, rotated_from_token_id, rotated_to_token_id
 		FROM auth_tokens
 		ORDER BY created_at ASC, token_id ASC
 	`)
@@ -1850,6 +1976,567 @@ func (s *SQLiteStore) ListAccessTokens(ctx context.Context) ([]auth.AccessToken,
 		items = append(items, token)
 	}
 
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) ListTokenAuthorities(ctx context.Context) ([]identity.TokenAuthority, error) {
+	tokens, err := s.ListAccessTokens(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]identity.TokenAuthority, 0, len(tokens))
+	for _, token := range tokens {
+		status := identity.LifecycleStatus(token.Status)
+		if status == "" {
+			status = identity.StatusActive
+		}
+		items = append(items, identity.TokenAuthority{
+			TokenID:         token.TokenID,
+			PrincipalID:     token.PrincipalID,
+			DefaultTenantID: token.DefaultTenantID,
+			Status:          status,
+			ExpiresAt:       token.ExpiresAt,
+		})
+	}
+	return items, nil
+}
+
+func (s *SQLiteStore) UpsertTenant(ctx context.Context, tenant identity.Tenant) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO tenants (
+			tenant_id,
+			tenant_kind,
+			display_name,
+			status,
+			created_at,
+			updated_at,
+			created_by_principal_id,
+			default_owner_principal_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(tenant_id) DO UPDATE SET
+			tenant_kind = excluded.tenant_kind,
+			display_name = excluded.display_name,
+			status = excluded.status,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			created_by_principal_id = excluded.created_by_principal_id,
+			default_owner_principal_id = excluded.default_owner_principal_id
+	`,
+		tenant.TenantID,
+		string(tenant.TenantKind),
+		tenant.DisplayName,
+		string(tenant.Status),
+		tenant.CreatedAt.UTC().Format(time.RFC3339Nano),
+		tenant.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		nullString(tenant.CreatedByPrincipalID),
+		nullString(tenant.DefaultOwnerPrincipalID),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert tenant %s: %w", tenant.TenantID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetTenant(ctx context.Context, tenantID string) (identity.Tenant, bool, error) {
+	if s == nil {
+		return identity.Tenant{}, false, nil
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT tenant_id, tenant_kind, display_name, status, created_at, updated_at, created_by_principal_id, default_owner_principal_id
+		FROM tenants
+		WHERE tenant_id = ?
+	`, tenantID)
+	tenant, err := scanTenant(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return identity.Tenant{}, false, nil
+	}
+	if err != nil {
+		return identity.Tenant{}, false, err
+	}
+	return tenant, true, nil
+}
+
+func (s *SQLiteStore) ListTenants(ctx context.Context, filter identity.TenantFilter) ([]identity.Tenant, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT tenant_id, tenant_kind, display_name, status, created_at, updated_at, created_by_principal_id, default_owner_principal_id
+		FROM tenants
+		WHERE 1 = 1
+	`
+	args := make([]any, 0, 4)
+	if filter.TenantKind != "" {
+		query += ` AND tenant_kind = ?`
+		args = append(args, string(filter.TenantKind))
+	}
+	if filter.Status != "" {
+		query += ` AND status = ?`
+		args = append(args, string(filter.Status))
+	}
+	query += ` ORDER BY created_at ASC, tenant_id ASC`
+	if filter.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list tenants: %w", err)
+	}
+	defer rows.Close()
+	items := make([]identity.Tenant, 0)
+	for rows.Next() {
+		item, err := scanTenant(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertPrincipal(ctx context.Context, principal identity.Principal) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO principals (
+			principal_id,
+			principal_kind,
+			display_name,
+			status,
+			default_tenant_id,
+			created_at,
+			updated_at,
+			disabled_at,
+			removed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(principal_id) DO UPDATE SET
+			principal_kind = excluded.principal_kind,
+			display_name = excluded.display_name,
+			status = excluded.status,
+			default_tenant_id = excluded.default_tenant_id,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			disabled_at = excluded.disabled_at,
+			removed_at = excluded.removed_at
+	`,
+		principal.PrincipalID,
+		string(principal.PrincipalKind),
+		principal.DisplayName,
+		string(principal.Status),
+		principal.DefaultTenantID,
+		principal.CreatedAt.UTC().Format(time.RFC3339Nano),
+		principal.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTimeString(principal.DisabledAt),
+		nullableTimeString(principal.RemovedAt),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert principal %s: %w", principal.PrincipalID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetPrincipal(ctx context.Context, principalID string) (identity.Principal, bool, error) {
+	if s == nil {
+		return identity.Principal{}, false, nil
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT principal_id, principal_kind, display_name, status, default_tenant_id, created_at, updated_at, disabled_at, removed_at
+		FROM principals
+		WHERE principal_id = ?
+	`, principalID)
+	principal, err := scanPrincipal(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return identity.Principal{}, false, nil
+	}
+	if err != nil {
+		return identity.Principal{}, false, err
+	}
+	return principal, true, nil
+}
+
+func (s *SQLiteStore) ListPrincipals(ctx context.Context, filter identity.PrincipalFilter) ([]identity.Principal, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT p.principal_id, p.principal_kind, p.display_name, p.status, p.default_tenant_id, p.created_at, p.updated_at, p.disabled_at, p.removed_at
+		FROM principals p
+	`
+	args := make([]any, 0, 4)
+	if filter.TenantID != "" {
+		query += ` JOIN memberships m ON m.principal_id = p.principal_id`
+	}
+	query += ` WHERE 1 = 1`
+	if filter.TenantID != "" {
+		query += ` AND m.tenant_id = ?`
+		args = append(args, filter.TenantID)
+	}
+	if filter.Status != "" {
+		query += ` AND p.status = ?`
+		args = append(args, string(filter.Status))
+	}
+	query += ` ORDER BY p.created_at ASC, p.principal_id ASC`
+	if filter.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list principals: %w", err)
+	}
+	defer rows.Close()
+	items := make([]identity.Principal, 0)
+	for rows.Next() {
+		item, err := scanPrincipal(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertMembership(ctx context.Context, membership identity.Membership) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO memberships (
+			membership_id,
+			tenant_id,
+			principal_id,
+			role,
+			status,
+			invitation_id,
+			created_at,
+			updated_at,
+			accepted_at,
+			removed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(membership_id) DO UPDATE SET
+			tenant_id = excluded.tenant_id,
+			principal_id = excluded.principal_id,
+			role = excluded.role,
+			status = excluded.status,
+			invitation_id = excluded.invitation_id,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			accepted_at = excluded.accepted_at,
+			removed_at = excluded.removed_at
+	`,
+		membership.MembershipID,
+		membership.TenantID,
+		membership.PrincipalID,
+		string(membership.Role),
+		string(membership.Status),
+		nullString(membership.InvitationID),
+		membership.CreatedAt.UTC().Format(time.RFC3339Nano),
+		membership.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTimeString(membership.AcceptedAt),
+		nullableTimeString(membership.RemovedAt),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert membership %s: %w", membership.MembershipID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListMemberships(ctx context.Context, filter identity.MembershipFilter) ([]identity.Membership, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT membership_id, tenant_id, principal_id, role, status, invitation_id, created_at, updated_at, accepted_at, removed_at
+		FROM memberships
+		WHERE 1 = 1
+	`
+	args := make([]any, 0, 5)
+	if filter.TenantID != "" {
+		query += ` AND tenant_id = ?`
+		args = append(args, filter.TenantID)
+	}
+	if filter.Status != "" {
+		query += ` AND status = ?`
+		args = append(args, string(filter.Status))
+	}
+	if filter.Role != "" {
+		query += ` AND role = ?`
+		args = append(args, string(filter.Role))
+	}
+	query += ` ORDER BY created_at ASC, membership_id ASC`
+	if filter.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list memberships: %w", err)
+	}
+	defer rows.Close()
+	items := make([]identity.Membership, 0)
+	for rows.Next() {
+		item, err := scanMembership(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertTenantInvitation(ctx context.Context, invitation identity.TenantInvitation) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO tenant_invitations (
+			invitation_id,
+			tenant_id,
+			invited_principal_id,
+			invited_by_principal_id,
+			role,
+			status,
+			created_at,
+			updated_at,
+			expires_at,
+			decided_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(invitation_id) DO UPDATE SET
+			tenant_id = excluded.tenant_id,
+			invited_principal_id = excluded.invited_principal_id,
+			invited_by_principal_id = excluded.invited_by_principal_id,
+			role = excluded.role,
+			status = excluded.status,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			expires_at = excluded.expires_at,
+			decided_at = excluded.decided_at
+	`,
+		invitation.InvitationID,
+		invitation.TenantID,
+		invitation.InvitedPrincipalID,
+		invitation.InvitedByPrincipalID,
+		string(invitation.Role),
+		string(invitation.Status),
+		invitation.CreatedAt.UTC().Format(time.RFC3339Nano),
+		invitation.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTimeString(invitation.ExpiresAt),
+		nullableTimeString(invitation.DecidedAt),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert tenant invitation %s: %w", invitation.InvitationID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListTenantInvitations(ctx context.Context, filter identity.InvitationFilter) ([]identity.TenantInvitation, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT invitation_id, tenant_id, invited_principal_id, invited_by_principal_id, role, status, created_at, updated_at, expires_at, decided_at
+		FROM tenant_invitations
+		WHERE 1 = 1
+	`
+	args := make([]any, 0, 5)
+	if filter.TenantID != "" {
+		query += ` AND tenant_id = ?`
+		args = append(args, filter.TenantID)
+	}
+	if filter.PrincipalID != "" {
+		query += ` AND invited_principal_id = ?`
+		args = append(args, filter.PrincipalID)
+	}
+	if filter.Status != "" {
+		query += ` AND status = ?`
+		args = append(args, string(filter.Status))
+	}
+	query += ` ORDER BY created_at ASC, invitation_id ASC`
+	if filter.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list tenant invitations: %w", err)
+	}
+	defer rows.Close()
+	items := make([]identity.TenantInvitation, 0)
+	for rows.Next() {
+		item, err := scanTenantInvitation(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertTokenTenantGrant(ctx context.Context, grant identity.TokenTenantGrant) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO token_tenant_grants (
+			grant_id,
+			token_id,
+			tenant_id,
+			is_default,
+			status,
+			created_at,
+			updated_at,
+			revoked_at,
+			granted_by_principal_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(grant_id) DO UPDATE SET
+			token_id = excluded.token_id,
+			tenant_id = excluded.tenant_id,
+			is_default = excluded.is_default,
+			status = excluded.status,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			revoked_at = excluded.revoked_at,
+			granted_by_principal_id = excluded.granted_by_principal_id
+	`,
+		grant.GrantID,
+		grant.TokenID,
+		grant.TenantID,
+		boolToInt(grant.IsDefault),
+		string(grant.Status),
+		grant.CreatedAt.UTC().Format(time.RFC3339Nano),
+		grant.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTimeString(grant.RevokedAt),
+		nullString(grant.GrantedByPrincipalID),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert token tenant grant %s: %w", grant.GrantID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListTokenTenantGrants(ctx context.Context, tokenID string) ([]identity.TokenTenantGrant, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT grant_id, token_id, tenant_id, is_default, status, created_at, updated_at, revoked_at, granted_by_principal_id
+		FROM token_tenant_grants
+		WHERE token_id = ?
+		ORDER BY created_at ASC, grant_id ASC
+	`, tokenID)
+	if err != nil {
+		return nil, fmt.Errorf("list token tenant grants: %w", err)
+	}
+	defer rows.Close()
+	items := make([]identity.TokenTenantGrant, 0)
+	for rows.Next() {
+		item, err := scanTokenTenantGrant(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) AppendTenantAuditEvent(ctx context.Context, event identity.TenantAuditEvent) (identity.TenantAuditEvent, error) {
+	if s == nil {
+		return event, nil
+	}
+	if event.AuditEventID == "" {
+		event.AuditEventID = newTenantAuditEventID()
+	}
+	if event.CreatedAt.IsZero() {
+		event.CreatedAt = time.Now().UTC()
+	}
+	documentJSON, err := marshalJSON(event.Document)
+	if err != nil {
+		return identity.TenantAuditEvent{}, fmt.Errorf("encode tenant audit event %s document: %w", event.AuditEventID, err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO tenant_audit_events (
+			audit_event_id,
+			event_kind,
+			tenant_id,
+			principal_id,
+			target_principal_id,
+			token_id,
+			outcome,
+			reason_code,
+			created_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		event.AuditEventID,
+		event.EventKind,
+		nullString(event.TenantID),
+		nullString(event.PrincipalID),
+		nullString(event.TargetPrincipalID),
+		nullString(event.TokenID),
+		event.Outcome,
+		event.ReasonCode,
+		event.CreatedAt.UTC().Format(time.RFC3339Nano),
+		documentJSON,
+	)
+	if err != nil {
+		return identity.TenantAuditEvent{}, fmt.Errorf("append tenant audit event %s: %w", event.AuditEventID, err)
+	}
+	return event, nil
+}
+
+func (s *SQLiteStore) ListTenantAuditEvents(ctx context.Context, filter identity.AuditEventFilter) ([]identity.TenantAuditEvent, error) {
+	if s == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT audit_event_id, event_kind, tenant_id, principal_id, target_principal_id, token_id, outcome, reason_code, created_at, document_json
+		FROM tenant_audit_events
+		WHERE 1 = 1
+	`
+	args := make([]any, 0, 6)
+	if filter.TenantID != "" {
+		query += ` AND tenant_id = ?`
+		args = append(args, filter.TenantID)
+	}
+	if filter.PrincipalID != "" {
+		query += ` AND principal_id = ?`
+		args = append(args, filter.PrincipalID)
+	}
+	if filter.TokenID != "" {
+		query += ` AND token_id = ?`
+		args = append(args, filter.TokenID)
+	}
+	if filter.EventKind != "" {
+		query += ` AND event_kind = ?`
+		args = append(args, filter.EventKind)
+	}
+	if filter.Outcome != "" {
+		query += ` AND outcome = ?`
+		args = append(args, filter.Outcome)
+	}
+	query += ` ORDER BY created_at DESC, audit_event_id DESC`
+	if filter.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list tenant audit events: %w", err)
+	}
+	defer rows.Close()
+	items := make([]identity.TenantAuditEvent, 0)
+	for rows.Next() {
+		item, err := scanTenantAuditEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
 	return items, rows.Err()
 }
 
@@ -7302,27 +7989,47 @@ func scanAccessToken(scanner interface {
 	Scan(dest ...any) error
 }) (auth.AccessToken, error) {
 	var (
-		token      auth.AccessToken
-		mode       string
-		createdAt  string
-		updatedAt  string
-		lastUsedAt sql.NullString
+		token              auth.AccessToken
+		principalID        sql.NullString
+		mode               string
+		status             string
+		defaultTenantID    sql.NullString
+		createdAt          string
+		updatedAt          string
+		lastUsedAt         sql.NullString
+		expiresAt          sql.NullString
+		revokedAt          sql.NullString
+		rotatedFromTokenID sql.NullString
+		rotatedToTokenID   sql.NullString
 	)
 
 	if err := scanner.Scan(
 		&token.TokenID,
+		&principalID,
 		&token.Label,
 		&mode,
 		&token.TokenHash,
 		&token.TokenPreview,
+		&status,
+		&defaultTenantID,
 		&createdAt,
 		&updatedAt,
 		&lastUsedAt,
+		&expiresAt,
+		&revokedAt,
+		&rotatedFromTokenID,
+		&rotatedToTokenID,
 	); err != nil {
 		return auth.AccessToken{}, fmt.Errorf("scan access token: %w", err)
 	}
 
+	token.PrincipalID = principalID.String
 	token.Mode = auth.PairingMode(mode)
+	token.Status = status
+	if token.Status == "" {
+		token.Status = "active"
+	}
+	token.DefaultTenantID = defaultTenantID.String
 	if err := assignRequiredTime(&token.CreatedAt, createdAt); err != nil {
 		return auth.AccessToken{}, err
 	}
@@ -7332,8 +8039,265 @@ func scanAccessToken(scanner interface {
 	if err := assignOptionalTime(&token.LastUsedAt, lastUsedAt); err != nil {
 		return auth.AccessToken{}, err
 	}
+	if err := assignOptionalTime(&token.ExpiresAt, expiresAt); err != nil {
+		return auth.AccessToken{}, err
+	}
+	if err := assignOptionalTime(&token.RevokedAt, revokedAt); err != nil {
+		return auth.AccessToken{}, err
+	}
+	token.RotatedFromTokenID = rotatedFromTokenID.String
+	token.RotatedToTokenID = rotatedToTokenID.String
 
 	return token, nil
+}
+
+func scanTenant(scanner interface {
+	Scan(dest ...any) error
+}) (identity.Tenant, error) {
+	var (
+		tenant                  identity.Tenant
+		tenantKind              string
+		status                  string
+		createdAt               string
+		updatedAt               string
+		createdByPrincipalID    sql.NullString
+		defaultOwnerPrincipalID sql.NullString
+	)
+	if err := scanner.Scan(
+		&tenant.TenantID,
+		&tenantKind,
+		&tenant.DisplayName,
+		&status,
+		&createdAt,
+		&updatedAt,
+		&createdByPrincipalID,
+		&defaultOwnerPrincipalID,
+	); err != nil {
+		return identity.Tenant{}, fmt.Errorf("scan tenant: %w", err)
+	}
+	tenant.TenantKind = identity.TenantKind(tenantKind)
+	tenant.Status = identity.LifecycleStatus(status)
+	tenant.CreatedByPrincipalID = createdByPrincipalID.String
+	tenant.DefaultOwnerPrincipalID = defaultOwnerPrincipalID.String
+	if err := assignRequiredTime(&tenant.CreatedAt, createdAt); err != nil {
+		return identity.Tenant{}, err
+	}
+	if err := assignRequiredTime(&tenant.UpdatedAt, updatedAt); err != nil {
+		return identity.Tenant{}, err
+	}
+	return tenant, nil
+}
+
+func scanPrincipal(scanner interface {
+	Scan(dest ...any) error
+}) (identity.Principal, error) {
+	var (
+		principal     identity.Principal
+		principalKind string
+		status        string
+		createdAt     string
+		updatedAt     string
+		disabledAt    sql.NullString
+		removedAt     sql.NullString
+	)
+	if err := scanner.Scan(
+		&principal.PrincipalID,
+		&principalKind,
+		&principal.DisplayName,
+		&status,
+		&principal.DefaultTenantID,
+		&createdAt,
+		&updatedAt,
+		&disabledAt,
+		&removedAt,
+	); err != nil {
+		return identity.Principal{}, fmt.Errorf("scan principal: %w", err)
+	}
+	principal.PrincipalKind = identity.PrincipalKind(principalKind)
+	principal.Status = identity.LifecycleStatus(status)
+	if err := assignRequiredTime(&principal.CreatedAt, createdAt); err != nil {
+		return identity.Principal{}, err
+	}
+	if err := assignRequiredTime(&principal.UpdatedAt, updatedAt); err != nil {
+		return identity.Principal{}, err
+	}
+	if err := assignOptionalTime(&principal.DisabledAt, disabledAt); err != nil {
+		return identity.Principal{}, err
+	}
+	if err := assignOptionalTime(&principal.RemovedAt, removedAt); err != nil {
+		return identity.Principal{}, err
+	}
+	return principal, nil
+}
+
+func scanMembership(scanner interface {
+	Scan(dest ...any) error
+}) (identity.Membership, error) {
+	var (
+		membership   identity.Membership
+		role         string
+		status       string
+		invitationID sql.NullString
+		createdAt    string
+		updatedAt    string
+		acceptedAt   sql.NullString
+		removedAt    sql.NullString
+	)
+	if err := scanner.Scan(
+		&membership.MembershipID,
+		&membership.TenantID,
+		&membership.PrincipalID,
+		&role,
+		&status,
+		&invitationID,
+		&createdAt,
+		&updatedAt,
+		&acceptedAt,
+		&removedAt,
+	); err != nil {
+		return identity.Membership{}, fmt.Errorf("scan membership: %w", err)
+	}
+	membership.Role = identity.Role(role)
+	membership.Status = identity.LifecycleStatus(status)
+	membership.InvitationID = invitationID.String
+	if err := assignRequiredTime(&membership.CreatedAt, createdAt); err != nil {
+		return identity.Membership{}, err
+	}
+	if err := assignRequiredTime(&membership.UpdatedAt, updatedAt); err != nil {
+		return identity.Membership{}, err
+	}
+	if err := assignOptionalTime(&membership.AcceptedAt, acceptedAt); err != nil {
+		return identity.Membership{}, err
+	}
+	if err := assignOptionalTime(&membership.RemovedAt, removedAt); err != nil {
+		return identity.Membership{}, err
+	}
+	return membership, nil
+}
+
+func scanTenantInvitation(scanner interface {
+	Scan(dest ...any) error
+}) (identity.TenantInvitation, error) {
+	var (
+		invitation identity.TenantInvitation
+		role       string
+		status     string
+		createdAt  string
+		updatedAt  string
+		expiresAt  sql.NullString
+		decidedAt  sql.NullString
+	)
+	if err := scanner.Scan(
+		&invitation.InvitationID,
+		&invitation.TenantID,
+		&invitation.InvitedPrincipalID,
+		&invitation.InvitedByPrincipalID,
+		&role,
+		&status,
+		&createdAt,
+		&updatedAt,
+		&expiresAt,
+		&decidedAt,
+	); err != nil {
+		return identity.TenantInvitation{}, fmt.Errorf("scan tenant invitation: %w", err)
+	}
+	invitation.Role = identity.Role(role)
+	invitation.Status = identity.LifecycleStatus(status)
+	if err := assignRequiredTime(&invitation.CreatedAt, createdAt); err != nil {
+		return identity.TenantInvitation{}, err
+	}
+	if err := assignRequiredTime(&invitation.UpdatedAt, updatedAt); err != nil {
+		return identity.TenantInvitation{}, err
+	}
+	if err := assignOptionalTime(&invitation.ExpiresAt, expiresAt); err != nil {
+		return identity.TenantInvitation{}, err
+	}
+	if err := assignOptionalTime(&invitation.DecidedAt, decidedAt); err != nil {
+		return identity.TenantInvitation{}, err
+	}
+	return invitation, nil
+}
+
+func scanTokenTenantGrant(scanner interface {
+	Scan(dest ...any) error
+}) (identity.TokenTenantGrant, error) {
+	var (
+		grant                identity.TokenTenantGrant
+		isDefault            int
+		status               string
+		createdAt            string
+		updatedAt            string
+		revokedAt            sql.NullString
+		grantedByPrincipalID sql.NullString
+	)
+	if err := scanner.Scan(
+		&grant.GrantID,
+		&grant.TokenID,
+		&grant.TenantID,
+		&isDefault,
+		&status,
+		&createdAt,
+		&updatedAt,
+		&revokedAt,
+		&grantedByPrincipalID,
+	); err != nil {
+		return identity.TokenTenantGrant{}, fmt.Errorf("scan token tenant grant: %w", err)
+	}
+	grant.IsDefault = isDefault == 1
+	grant.Status = identity.LifecycleStatus(status)
+	grant.GrantedByPrincipalID = grantedByPrincipalID.String
+	if err := assignRequiredTime(&grant.CreatedAt, createdAt); err != nil {
+		return identity.TokenTenantGrant{}, err
+	}
+	if err := assignRequiredTime(&grant.UpdatedAt, updatedAt); err != nil {
+		return identity.TokenTenantGrant{}, err
+	}
+	if err := assignOptionalTime(&grant.RevokedAt, revokedAt); err != nil {
+		return identity.TokenTenantGrant{}, err
+	}
+	return grant, nil
+}
+
+func scanTenantAuditEvent(scanner interface {
+	Scan(dest ...any) error
+}) (identity.TenantAuditEvent, error) {
+	var (
+		event             identity.TenantAuditEvent
+		tenantID          sql.NullString
+		principalID       sql.NullString
+		targetPrincipalID sql.NullString
+		tokenID           sql.NullString
+		createdAt         string
+		documentJSON      sql.NullString
+	)
+	if err := scanner.Scan(
+		&event.AuditEventID,
+		&event.EventKind,
+		&tenantID,
+		&principalID,
+		&targetPrincipalID,
+		&tokenID,
+		&event.Outcome,
+		&event.ReasonCode,
+		&createdAt,
+		&documentJSON,
+	); err != nil {
+		return identity.TenantAuditEvent{}, fmt.Errorf("scan tenant audit event: %w", err)
+	}
+	event.TenantID = tenantID.String
+	event.PrincipalID = principalID.String
+	event.TargetPrincipalID = targetPrincipalID.String
+	event.TokenID = tokenID.String
+	if err := assignRequiredTime(&event.CreatedAt, createdAt); err != nil {
+		return identity.TenantAuditEvent{}, err
+	}
+	if err := unmarshalNullableJSON(documentJSON, &event.Document); err != nil {
+		return identity.TenantAuditEvent{}, fmt.Errorf("decode tenant audit event document: %w", err)
+	}
+	if event.Document == nil {
+		event.Document = map[string]any{}
+	}
+	return event, nil
 }
 
 func scanApproval(scanner interface {
@@ -9087,4 +10051,12 @@ func newCheckpointID() string {
 		return "ckpt_fallback"
 	}
 	return "ckpt_" + hex.EncodeToString(buf)
+}
+
+func newTenantAuditEventID() string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return "audit_fallback"
+	}
+	return "audit_" + hex.EncodeToString(buf)
 }

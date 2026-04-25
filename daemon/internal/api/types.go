@@ -1,15 +1,18 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/mail"
@@ -23,6 +26,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
+	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
 
 type SystemInfoResponse struct {
@@ -777,6 +781,64 @@ type SandboxExplainResponse struct {
 
 type ListResponse[T any] struct {
 	Items []T `json:"items"`
+}
+
+type AuthMeResponse struct {
+	Token          auth.AccessToken            `json:"token"`
+	Principal      identity.Principal          `json:"principal"`
+	DefaultTenant  identity.Tenant             `json:"defaultTenant"`
+	CurrentTenant  identity.Tenant             `json:"currentTenant"`
+	AllowedTenants []identity.Tenant           `json:"allowedTenants"`
+	TokenGrants    []identity.TokenTenantGrant `json:"tokenGrants"`
+	Permissions    []identity.Permission       `json:"permissions"`
+	TenantContext  identity.TenantContext      `json:"tenantContext"`
+}
+
+type TenantListResponse = ListResponse[identity.Tenant]
+
+type TenantDetailResponse struct {
+	Tenant        identity.Tenant        `json:"tenant"`
+	TenantContext identity.TenantContext `json:"tenantContext"`
+}
+
+func withTenantContext(ctx context.Context, tenantContext identity.TenantContext) context.Context {
+	return context.WithValue(ctx, tenantContextKey, tenantContext)
+}
+
+func tenantContextFromContext(ctx context.Context) (identity.TenantContext, bool) {
+	tenantContext, ok := ctx.Value(tenantContextKey).(identity.TenantContext)
+	return tenantContext, ok
+}
+
+func withTenantAuditStore(ctx context.Context, sqliteStore *store.SQLiteStore) context.Context {
+	return context.WithValue(ctx, tenantAuditStoreKey, sqliteStore)
+}
+
+func tenantAuditStoreFromContext(ctx context.Context) (*store.SQLiteStore, bool) {
+	sqliteStore, ok := ctx.Value(tenantAuditStoreKey).(*store.SQLiteStore)
+	return sqliteStore, ok
+}
+
+func RequirePermission(ctx context.Context, permission identity.Permission) (identity.TenantContext, error) {
+	tenantContext, ok := tenantContextFromContext(ctx)
+	if !ok {
+		return identity.TenantContext{}, identity.ErrTenantAccessDenied
+	}
+	if err := identity.RequirePermission(tenantContext, permission); err != nil {
+		if sqliteStore, ok := tenantAuditStoreFromContext(ctx); ok && sqliteStore != nil {
+			_, _ = sqliteStore.AppendTenantAuditEvent(ctx, identity.TenantAuditEvent{
+				EventKind:   "tenant.permission_denied",
+				TenantID:    tenantContext.TenantID,
+				PrincipalID: tenantContext.PrincipalID,
+				TokenID:     tenantContext.TokenID,
+				Outcome:     identity.AuditOutcomeDenied,
+				ReasonCode:  "permission_denied:" + string(permission),
+				CreatedAt:   time.Now().UTC(),
+			})
+		}
+		return identity.TenantContext{}, err
+	}
+	return tenantContext, nil
 }
 
 type WorkflowListResponse = ListResponse[orchestration.Workflow]

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/tenant-invitation-rejected.event.schema.json",
+  "title": "TenantInvitationRejectedEvent",
+  "allOf": [{ "$ref": "./runtime-event.schema.json" }],
+  "properties": {
+    "category": { "const": "tenant" },
+    "name": { "const": "tenant.invitation_rejected" },
+    "payload": { "$ref": "tenant-invitation-created.event.schema.json#/$defs/payload" }
+  }
+}

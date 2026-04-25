@@ -61,6 +61,43 @@ clear abort or retry semantics.
 - tenant permission and quota gates
 - comparison between original and live replay outcomes
 
+## Required Replay Support Matrix
+
+Implementation planning MUST create a replay support matrix before executor work starts.
+The matrix MUST include every tool-call class reachable from replay candidates and these
+columns:
+
+- `toolClass`: stable class name or resource kind
+- `safetyClass`: `read_only`, `idempotent_mutation`, `non_idempotent_mutation`, or
+  `unsupported`
+- `permission`: required tenant permission
+- `approval`: whether fresh approval is required and what approval action is recorded
+- `idempotency`: correlation key or downstream idempotency support
+- `retryPolicy`: automatic retry, manual retry, or no retry
+- `ambiguousCommitBehavior`: state used when submit status is unknown
+- `compensation`: automatic compensation, manual confirmation, or unsupported
+- `ledgerEvents`: attempted, skipped, completed, failed, aborted, denied, or
+  operator-action-needed entries required
+- `testCase`: fake-backend test proving the declared behavior
+
+The initial matrix MUST classify at least:
+
+- read-only daemon inspection calls
+- runtime local tool calls
+- MCP tool calls
+- integration probe read operations
+- integration mutation probes
+- calendar event create/update/cancel
+- mail draft create/update
+- mail send/reply/forward
+- reminder lifecycle mutations
+- delivery dispatch attempts
+- connector message sends
+- unsupported provider or sandbox operations that cannot be safely replayed
+
+No tool class may default to live replay support. Missing matrix rows are treated as
+`unsupported`.
+
 ## Out Of Scope
 
 - autonomous optimization based on replay results
@@ -122,6 +159,8 @@ clear abort or retry semantics.
   ambiguous commit, and manual reconciliation paths.
 - Replay support matrix tests proving unsupported and non-idempotent classes cannot slip
   into automatic retry.
+- Matrix completeness test proving every tool-call class reachable from replay candidates
+  has an explicit safety classification.
 - Fake integration live-validation tests and opt-in real-account smoke notes.
 - Contract tests for live validation and side-effect ledger resources.
 

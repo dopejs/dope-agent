@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/tenant-context-resolved.event.schema.json",
+  "title": "TenantContextResolvedEvent",
+  "allOf": [{ "$ref": "./runtime-event.schema.json" }],
+  "type": "object",
+  "required": ["eventId", "sequence", "category", "name", "occurredAt", "resource", "scope", "payload"],
+  "properties": {
+    "category": { "const": "tenant" },
+    "name": { "const": "tenant.context_resolved" },
+    "resource": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "tenant" },
+        "id": { "type": "string" }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "required": ["principalId", "tokenId", "tenantId", "tenantSource"],
+      "additionalProperties": false,
+      "properties": {
+        "principalId": { "type": "string" },
+        "tokenId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "tenantSource": { "type": "string", "enum": ["default", "explicit_header"] },
+        "membershipId": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "admin", "operator", "viewer"] }
+      }
+    }
+  }
+}

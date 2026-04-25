@@ -3,7 +3,7 @@
 Status: proposed
 
 Authority: This document is the authoritative upstream spec for Roadmap 39, the production
-readiness work required before treating the product as user-deliverable.
+operations baseline required before live validation and evaluation-product expansion land.
 
 Primary source documents:
 - `docs/product/hosted-productization-roadmap-split.md`
@@ -12,24 +12,30 @@ Primary source documents:
 
 ## Background
 
-Feature completeness is not enough for a personal agent product. A credible user-deliverable
-system needs installation, upgrade, backup, restore, long-running behavior, real account
-connection smoke, failure recovery, and external-service instability validation.
+Feature completeness is not enough for a personal agent product. Before adding live
+side-effect replay and evaluation-product workflows, the daemon needs installation,
+upgrade, backup, restore, long-running behavior, real account connection smoke, failure
+recovery, and external-service instability validation.
 
 ## Goal
 
-Close the operational readiness gap between a functional daemon and a product that can be
-installed, upgraded, recovered, and run for long periods with real user accounts.
+Close the operational readiness gap between a functional daemon and a product baseline that
+can be installed, upgraded, recovered, and run for long periods with real user accounts.
+This roadmap produces the reusable soak harness and release checks; final user-deliverable
+readiness must rerun them after Roadmaps 40 and 41.
 
 ## Fixed Decisions
 
-- This roadmap validates production operation; it is not a new domain feature.
+- This roadmap validates production operation for the tenant-scoped, quota-aware product
+  baseline; it is not a new domain feature.
 - Long-running soak must include restart, external-service fault, and recovery scenarios.
 - Upgrade and rollback paths must be documented and tested against real migration artifacts.
 - Real account smoke tests are required where safe credentials are available, with fake
   backend coverage remaining mandatory.
 - Soak completion requires explicit pass/fail thresholds, not only a narrative runbook.
 - Release readiness must include resource-growth checks and recovery-time expectations.
+- The soak harness must be reusable by later final-release verification after live
+  validation and evaluation product expansion are implemented.
 
 ## Dependencies On Completed Phases
 
@@ -112,9 +118,12 @@ installed, upgraded, recovered, and run for long periods with real user accounts
 ## Definition Of Done
 
 - The product has documented and verified operational paths for install, upgrade, backup,
-  restore, soak, and external-service recovery.
+  restore, foundational soak, and external-service recovery.
 - The soak result is measurable and rejects unbounded resource growth, unclassified
   failures, failed recovery, or cross-tenant leakage.
+- A follow-up final release gate is explicitly documented for Roadmaps 40 and 41 so their
+  live side-effect and evaluation-product surfaces cannot ship without rerunning the soak
+  harness.
 
 ## Recommended `/speckit-specify` Input
 

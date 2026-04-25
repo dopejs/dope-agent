@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-tenant.response.schema.json",
+  "title": "CreateTenantResponse",
+  "type": "object",
+  "required": ["tenant", "membership"],
+  "additionalProperties": false,
+  "properties": {
+    "tenant": { "$ref": "./tenant-resource.schema.json" },
+    "membership": { "$ref": "./membership-resource.schema.json" }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/principal-resource.schema.json",
+  "title": "PrincipalResource",
+  "type": "object",
+  "required": ["principalId", "principalKind", "displayName", "status", "defaultTenantId", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "principalId": { "type": "string" },
+    "principalKind": { "type": "string", "enum": ["local_operator", "user", "service_client"] },
+    "displayName": { "type": "string" },
+    "status": { "type": "string", "enum": ["active", "disabled", "removed"] },
+    "defaultTenantId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "disabledAt": { "type": "string", "format": "date-time" },
+    "removedAt": { "type": "string", "format": "date-time" }
+  }
+}

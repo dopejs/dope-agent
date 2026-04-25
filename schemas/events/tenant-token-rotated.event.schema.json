@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/tenant-token-rotated.event.schema.json",
+  "title": "TenantTokenRotatedEvent",
+  "allOf": [{ "$ref": "./runtime-event.schema.json" }],
+  "properties": {
+    "category": { "const": "tenant" },
+    "name": { "const": "tenant.token_rotated" },
+    "payload": {
+      "type": "object",
+      "required": ["principalId", "oldTokenId", "newTokenId"],
+      "additionalProperties": false,
+      "properties": {
+        "principalId": { "type": "string" },
+        "oldTokenId": { "type": "string" },
+        "newTokenId": { "type": "string" },
+        "reasonCode": { "type": "string" }
+      }
+    }
+  }
+}

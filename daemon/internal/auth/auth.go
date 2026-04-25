@@ -33,6 +33,9 @@ var (
 	ErrTokenInvalid        = errors.New("access token is invalid")
 	ErrAccessTokenNotFound = errors.New("access token not found")
 	ErrAuthRequired        = errors.New("authentication is required")
+	ErrTokenRevoked        = errors.New("access token is revoked")
+	ErrTokenExpired        = errors.New("access token is expired")
+	ErrTokenRotated        = errors.New("access token is rotated")
 )
 
 type Pairing struct {
@@ -49,14 +52,21 @@ type Pairing struct {
 }
 
 type AccessToken struct {
-	TokenID      string      `json:"tokenId"`
-	Label        string      `json:"label"`
-	Mode         PairingMode `json:"mode"`
-	TokenHash    string      `json:"-"`
-	TokenPreview string      `json:"tokenPreview"`
-	CreatedAt    time.Time   `json:"createdAt"`
-	UpdatedAt    time.Time   `json:"updatedAt"`
-	LastUsedAt   *time.Time  `json:"lastUsedAt,omitempty"`
+	TokenID            string      `json:"tokenId"`
+	PrincipalID        string      `json:"principalId,omitempty"`
+	Label              string      `json:"label"`
+	Mode               PairingMode `json:"mode"`
+	TokenHash          string      `json:"-"`
+	TokenPreview       string      `json:"tokenPreview"`
+	Status             string      `json:"status"`
+	DefaultTenantID    string      `json:"defaultTenantId,omitempty"`
+	CreatedAt          time.Time   `json:"createdAt"`
+	UpdatedAt          time.Time   `json:"updatedAt"`
+	LastUsedAt         *time.Time  `json:"lastUsedAt,omitempty"`
+	ExpiresAt          *time.Time  `json:"expiresAt,omitempty"`
+	RevokedAt          *time.Time  `json:"revokedAt,omitempty"`
+	RotatedFromTokenID string      `json:"rotatedFromTokenId,omitempty"`
+	RotatedToTokenID   string      `json:"rotatedToTokenId,omitempty"`
 }
 
 type StartPairingInput struct {
@@ -67,6 +77,18 @@ type StartPairingInput struct {
 
 type CompletePairingInput struct {
 	Code string `json:"code"`
+}
+
+type IssueTokenInput struct {
+	PrincipalID     string     `json:"principalId"`
+	Label           string     `json:"label"`
+	DefaultTenantID string     `json:"defaultTenantId"`
+	ExpiresAt       *time.Time `json:"expiresAt,omitempty"`
+}
+
+type RotateTokenInput struct {
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	Reason    string     `json:"reason,omitempty"`
 }
 
 type Manager struct {
@@ -150,6 +172,7 @@ func (m *Manager) CompletePairing(pairingID string, input CompletePairingInput) 
 		Mode:         pairing.Mode,
 		TokenHash:    hashSecret(tokenSecret),
 		TokenPreview: tokenSecret[:12],
+		Status:       "active",
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -165,6 +188,106 @@ func (m *Manager) CompletePairing(pairingID string, input CompletePairingInput) 
 	return pairing, token, tokenSecret, nil
 }
 
+func (m *Manager) IssueToken(input IssueTokenInput) (AccessToken, string, error) {
+	if input.PrincipalID == "" || input.DefaultTenantID == "" {
+		return AccessToken{}, "", ErrTokenInvalid
+	}
+	now := time.Now().UTC()
+	tokenSecret := "dope_" + randomHex(24, "fallback")
+	token := AccessToken{
+		TokenID:         "tok_" + randomHex(8, "fallback"),
+		PrincipalID:     input.PrincipalID,
+		Label:           input.Label,
+		Mode:            PairingModeToken,
+		TokenHash:       hashSecret(tokenSecret),
+		TokenPreview:    tokenSecret[:12],
+		Status:          "active",
+		DefaultTenantID: input.DefaultTenantID,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		ExpiresAt:       input.ExpiresAt,
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.tokens[token.TokenID] = token
+	m.tokenIDs = append(m.tokenIDs, token.TokenID)
+	return token, tokenSecret, nil
+}
+
+func (m *Manager) RevokeToken(tokenID string) (AccessToken, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	token, ok := m.tokens[tokenID]
+	if !ok {
+		return AccessToken{}, ErrAccessTokenNotFound
+	}
+	if token.Status == "rotated" {
+		return AccessToken{}, ErrTokenRotated
+	}
+	if token.Status == "expired" {
+		return AccessToken{}, ErrTokenExpired
+	}
+	now := time.Now().UTC()
+	token.Status = "revoked"
+	token.UpdatedAt = now
+	token.RevokedAt = &now
+	m.tokens[tokenID] = token
+	return token, nil
+}
+
+func (m *Manager) RotateToken(tokenID string, input RotateTokenInput) (AccessToken, AccessToken, string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	oldToken, ok := m.tokens[tokenID]
+	if !ok {
+		return AccessToken{}, AccessToken{}, "", ErrAccessTokenNotFound
+	}
+	switch oldToken.Status {
+	case "", "active":
+	case "revoked":
+		return AccessToken{}, AccessToken{}, "", ErrTokenRevoked
+	case "expired":
+		return AccessToken{}, AccessToken{}, "", ErrTokenExpired
+	case "rotated":
+		return AccessToken{}, AccessToken{}, "", ErrTokenRotated
+	default:
+		return AccessToken{}, AccessToken{}, "", ErrTokenInvalid
+	}
+	now := time.Now().UTC()
+	if oldToken.ExpiresAt != nil && !oldToken.ExpiresAt.After(now) {
+		oldToken.Status = "expired"
+		oldToken.UpdatedAt = now
+		m.tokens[tokenID] = oldToken
+		return AccessToken{}, AccessToken{}, "", ErrTokenExpired
+	}
+
+	replacementSecret := "dope_" + randomHex(24, "fallback")
+	replacement := AccessToken{
+		TokenID:            "tok_" + randomHex(8, "fallback"),
+		PrincipalID:        oldToken.PrincipalID,
+		Label:              oldToken.Label,
+		Mode:               oldToken.Mode,
+		TokenHash:          hashSecret(replacementSecret),
+		TokenPreview:       replacementSecret[:12],
+		Status:             "active",
+		DefaultTenantID:    oldToken.DefaultTenantID,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		ExpiresAt:          input.ExpiresAt,
+		RotatedFromTokenID: oldToken.TokenID,
+	}
+	oldToken.Status = "rotated"
+	oldToken.UpdatedAt = now
+	oldToken.RotatedToTokenID = replacement.TokenID
+	m.tokens[oldToken.TokenID] = oldToken
+	m.tokens[replacement.TokenID] = replacement
+	m.tokenIDs = append(m.tokenIDs, replacement.TokenID)
+	return oldToken, replacement, replacementSecret, nil
+}
+
 func (m *Manager) Authenticate(tokenSecret string) (AccessToken, error) {
 	if tokenSecret == "" {
 		return AccessToken{}, ErrAuthRequired
@@ -178,7 +301,24 @@ func (m *Manager) Authenticate(tokenSecret string) (AccessToken, error) {
 		if token.TokenHash != tokenHash {
 			continue
 		}
+		switch token.Status {
+		case "", "active":
+		case "revoked":
+			return token, ErrTokenRevoked
+		case "expired":
+			return token, ErrTokenExpired
+		case "rotated":
+			return token, ErrTokenRotated
+		default:
+			return AccessToken{}, ErrTokenInvalid
+		}
 		now := time.Now().UTC()
+		if token.ExpiresAt != nil && !token.ExpiresAt.After(now) {
+			token.Status = "expired"
+			token.UpdatedAt = now
+			m.tokens[tokenID] = token
+			return token, ErrTokenExpired
+		}
 		token.LastUsedAt = &now
 		token.UpdatedAt = now
 		m.tokens[tokenID] = token
@@ -194,6 +334,16 @@ func (m *Manager) GetToken(tokenID string) (AccessToken, bool) {
 
 	token, ok := m.tokens[tokenID]
 	return token, ok
+}
+
+func (m *Manager) UpdateToken(token AccessToken) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.tokens[token.TokenID]; !ok {
+		m.tokenIDs = append(m.tokenIDs, token.TokenID)
+	}
+	m.tokens[token.TokenID] = token
 }
 
 func (m *Manager) ListTokens() []AccessToken {

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/tenant-token-grants-changed.event.schema.json",
+  "title": "TenantTokenGrantsChangedEvent",
+  "allOf": [{ "$ref": "./runtime-event.schema.json" }],
+  "properties": {
+    "category": { "const": "tenant" },
+    "name": { "const": "tenant.token_grants_changed" },
+    "payload": { "$ref": "tenant-token-issued.event.schema.json#/$defs/tokenPayload" }
+  }
+}

@@ -119,6 +119,16 @@ resolution, and permission checks that every later hosted roadmap can depend on.
 - Principal and token lifecycle changes are durable, auditable, and enforced before tenant
   resource access.
 
+## Implementation Status
+
+Status: implementation complete in `specs/019-tenant-identity-access`.
+
+Implemented verification includes targeted auth manager lifecycle tests, identity manager
+membership and grant tests, API route tests, SQLite restart tests, app restore tests,
+contract fixtures, schema coverage, and bounded tenant resolution/list behavior tests.
+Full daemon package verification must run outside sandboxed listener restrictions because
+existing unrelated API and app tests create local `httptest` servers.
+
 ## Recommended `/speckit-specify` Input
 
 `$speckit-specify 结合 docs/specs/019-tenant-identity-and-access-foundation.md 完成 phase 34 的工作`

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/tenant-permission-resource.schema.json",
+  "title": "TenantPermissionResource",
+  "type": "object",
+  "required": ["permission", "allowed"],
+  "additionalProperties": false,
+  "properties": {
+    "permission": { "$ref": "#/$defs/permission" },
+    "allowed": { "type": "boolean" },
+    "reasonCode": { "type": "string" }
+  },
+  "$defs": {
+    "permission": {
+      "type": "string",
+      "enum": [
+        "tenant.manage",
+        "secrets.manage",
+        "integrations.manage",
+        "connectors.manage",
+        "mcp.manage",
+        "runs.execute",
+        "approvals.resolve",
+        "live_validation.execute",
+        "evaluation.manage",
+        "billing.view",
+        "read_only.inspect"
+      ]
+    }
+  }
+}

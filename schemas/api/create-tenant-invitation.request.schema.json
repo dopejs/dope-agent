@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-tenant-invitation.request.schema.json",
+  "title": "CreateTenantInvitationRequest",
+  "type": "object",
+  "required": ["invitedPrincipalId", "role"],
+  "additionalProperties": false,
+  "properties": {
+    "invitedPrincipalId": { "type": "string" },
+    "role": { "type": "string", "enum": ["owner", "admin", "operator", "viewer"] }
+  }
+}

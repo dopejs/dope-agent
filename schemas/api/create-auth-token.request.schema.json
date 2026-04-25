@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-auth-token.request.schema.json",
+  "title": "CreateAuthTokenRequest",
+  "type": "object",
+  "required": ["label", "defaultTenantId", "allowedTenantIds"],
+  "additionalProperties": false,
+  "properties": {
+    "label": { "type": "string" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "defaultTenantId": { "type": "string" },
+    "allowedTenantIds": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+  }
+}

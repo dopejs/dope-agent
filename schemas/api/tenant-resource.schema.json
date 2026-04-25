@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/tenant-resource.schema.json",
+  "title": "TenantResource",
+  "type": "object",
+  "required": ["tenantId", "tenantKind", "displayName", "status", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "tenantKind": { "type": "string", "enum": ["personal", "organization"] },
+    "displayName": { "type": "string" },
+    "status": { "type": "string", "enum": ["invited", "pending", "active", "disabled", "removed", "rejected", "revoked", "expired", "accepted", "rotated"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "createdByPrincipalId": { "type": "string" },
+    "defaultOwnerPrincipalId": { "type": "string" },
+    "callerMembershipRole": { "type": "string", "enum": ["owner", "admin", "operator", "viewer"] },
+    "callerMembershipStatus": { "type": "string", "enum": ["active", "removed"] },
+    "callerPermissions": {
+      "type": "array",
+      "items": { "$ref": "./tenant-permission-resource.schema.json#/$defs/permission" }
+    },
+    "defaultForCurrentToken": { "type": "boolean" },
+    "defaultForCurrentPrincipal": { "type": "boolean" }
+  }
+}

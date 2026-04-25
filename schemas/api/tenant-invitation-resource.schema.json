@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/tenant-invitation-resource.schema.json",
+  "title": "TenantInvitationResource",
+  "type": "object",
+  "required": ["invitationId", "tenantId", "invitedPrincipalId", "invitedByPrincipalId", "role", "status", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "invitationId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "invitedPrincipalId": { "type": "string" },
+    "invitedByPrincipalId": { "type": "string" },
+    "role": { "type": "string", "enum": ["owner", "admin", "operator", "viewer"] },
+    "status": { "type": "string", "enum": ["invited", "accepted", "rejected", "revoked", "expired"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "decidedAt": { "type": "string", "format": "date-time" }
+  }
+}

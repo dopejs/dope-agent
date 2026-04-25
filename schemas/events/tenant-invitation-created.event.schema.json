@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/tenant-invitation-created.event.schema.json",
+  "title": "TenantInvitationCreatedEvent",
+  "allOf": [{ "$ref": "./runtime-event.schema.json" }],
+  "properties": {
+    "category": { "const": "tenant" },
+    "name": { "const": "tenant.invitation_created" },
+    "payload": { "$ref": "#/$defs/payload" }
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "required": ["tenantId", "invitationId", "invitedPrincipalId", "role"],
+      "additionalProperties": false,
+      "properties": {
+        "tenantId": { "type": "string" },
+        "invitationId": { "type": "string" },
+        "invitedPrincipalId": { "type": "string" },
+        "role": { "type": "string" }
+      }
+    }
+  }
+}

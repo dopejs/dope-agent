@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/rotate-auth-token.response.schema.json",
+  "title": "RotateAuthTokenResponse",
+  "type": "object",
+  "required": ["oldToken", "newToken", "accessToken"],
+  "additionalProperties": false,
+  "properties": {
+    "oldToken": { "$ref": "./auth-access-token-resource.schema.json" },
+    "newToken": { "$ref": "./auth-access-token-resource.schema.json" },
+    "accessToken": { "type": "string" },
+    "grants": { "type": "array", "items": { "$ref": "./token-tenant-grant-resource.schema.json" } }
+  }
+}

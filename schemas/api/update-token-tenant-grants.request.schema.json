@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/update-token-tenant-grants.request.schema.json",
+  "title": "UpdateTokenTenantGrantsRequest",
+  "type": "object",
+  "required": ["defaultTenantId", "allowedTenantIds"],
+  "additionalProperties": false,
+  "properties": {
+    "defaultTenantId": { "type": "string" },
+    "allowedTenantIds": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "reason": { "type": "string" }
+  }
+}

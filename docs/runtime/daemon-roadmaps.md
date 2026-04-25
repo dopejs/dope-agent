@@ -1545,7 +1545,7 @@ Parent split: [docs/product/hosted-productization-roadmap-split.md](../product/h
 
 ### Roadmap 34: Tenant Identity And Access Foundation
 
-Status: `[ ] planned`
+Status: `[x] implementation complete`
 
 Detailed spec: [docs/specs/019-tenant-identity-and-access-foundation.md](../specs/019-tenant-identity-and-access-foundation.md)
 
@@ -1559,6 +1559,16 @@ Roadmap definition of done:
 - personal and organization tenants are persisted and inspectable
 - membership, role, and permission checks are shared rather than domain-specific
 - tenant access denial is audited without leaking inaccessible tenant existence
+- token issue, grant replacement, rotation, revocation, expiry denial, and no-widening
+  rotation behavior are covered by daemon tests
+- schemas and contract fixtures cover tenant, principal, membership, invitation,
+  permission, token lifecycle, token grants, tenant audit, and denial surfaces
+
+Verification notes:
+
+- targeted auth, identity, API, store, contract, and app restart tests cover the phase
+- full daemon package verification requires running outside filesystem/network sandboxing
+  because existing tests bind local listeners
 
 Explicitly out of scope:
 

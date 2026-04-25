@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/membership-list.response.schema.json",
+  "title": "MembershipListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": { "type": "array", "items": { "$ref": "./membership-resource.schema.json" } }
+  }
+}

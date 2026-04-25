@@ -27,6 +27,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/im"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
@@ -55,6 +56,7 @@ type App struct {
 	Runtime              *runtime.Manager
 	Policy               *policy.Engine
 	Auth                 *auth.Manager
+	Identity             *identity.Manager
 	LLM                  *llm.Dispatcher
 	Chat                 *chat.Service
 	Skills               *skills.Registry
@@ -97,6 +99,7 @@ func New() (*App, error) {
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
 	policyEngine := policy.NewEngine()
 	authManager := auth.NewManager()
+	identityManager := identity.NewManager(sqliteStore)
 	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
 	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxManager, policyEngine, nil)
 	integrationManager := integrations.NewManager(string(cfg.Environment))
@@ -185,7 +188,7 @@ func New() (*App, error) {
 		Checkpoints:      checkpointManager,
 		WorkflowLauncher: workflowLauncher,
 	})
-	if err := recoverPersistedState(envCtx, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, providerManager, sandboxManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
+	if err := recoverPersistedState(envCtx, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, identityManager, providerManager, sandboxManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
 		return nil, err
 	}
 	if err := syncManagedProviderState(envCtx, sqliteStore, providerManager); err != nil {
@@ -213,6 +216,7 @@ func New() (*App, error) {
 		EventBus:     eventBus,
 		Policy:       policyEngine,
 		Auth:         authManager,
+		Identity:     identityManager,
 		Router:       sessionRouter,
 		Runtime:      runtimeManager,
 		LLM:          llmDispatcher,
@@ -245,6 +249,7 @@ func New() (*App, error) {
 		Runtime:              runtimeManager,
 		Policy:               policyEngine,
 		Auth:                 authManager,
+		Identity:             identityManager,
 		LLM:                  llmDispatcher,
 		Chat:                 chatService,
 		Skills:               skillRegistry,
@@ -507,7 +512,7 @@ func newEventID() string {
 	return "evt_" + hex.EncodeToString(buf)
 }
 
-func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager, integrationManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, reminderManager *reminders.Manager) error {
+func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, identityManager *identity.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager, integrationManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, reminderManager *reminders.Manager) error {
 	_ = reminderManager
 	if sqliteStore == nil {
 		return nil
@@ -558,6 +563,42 @@ func recoverPersistedState(ctx context.Context, environment config.Environment, 
 	persistedTokens, err := sqliteStore.ListAccessTokens(ctx)
 	if err != nil {
 		return fmt.Errorf("load persisted access tokens: %w", err)
+	}
+	if identityManager != nil {
+		var localTokenIDs []string
+		for _, token := range persistedTokens {
+			if token.Mode == auth.PairingModeLocal && (token.Status == "" || token.Status == "active") {
+				localTokenIDs = append(localTokenIDs, token.TokenID)
+			}
+		}
+		principal, tenant, err := identityManager.BootstrapLocal(ctx, localTokenIDs)
+		if err != nil {
+			return fmt.Errorf("bootstrap local identity: %w", err)
+		}
+		for idx := range persistedTokens {
+			if persistedTokens[idx].Mode != auth.PairingModeLocal {
+				continue
+			}
+			changed := false
+			if persistedTokens[idx].Status == "" {
+				persistedTokens[idx].Status = "active"
+				changed = true
+			}
+			if persistedTokens[idx].PrincipalID == "" {
+				persistedTokens[idx].PrincipalID = principal.PrincipalID
+				changed = true
+			}
+			if persistedTokens[idx].DefaultTenantID == "" {
+				persistedTokens[idx].DefaultTenantID = tenant.TenantID
+				changed = true
+			}
+			if changed {
+				persistedTokens[idx].UpdatedAt = time.Now().UTC()
+				if err := sqliteStore.UpsertAccessToken(ctx, persistedTokens[idx]); err != nil {
+					return fmt.Errorf("persist bootstrap token identity %s: %w", persistedTokens[idx].TokenID, err)
+				}
+			}
+		}
 	}
 	if authManager != nil {
 		authManager.Restore(persistedPairings, persistedTokens)

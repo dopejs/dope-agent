@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/tenant-context-resource.schema.json",
+  "title": "TenantContextResource",
+  "type": "object",
+  "required": ["principalId", "tokenId", "tenantId", "tenantSource", "permissions", "resolvedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "principalId": { "type": "string" },
+    "tokenId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "tenantSource": { "type": "string", "enum": ["default", "explicit_header"] },
+    "membershipId": { "type": "string" },
+    "role": { "type": "string", "enum": ["owner", "admin", "operator", "viewer"] },
+    "permissions": {
+      "type": "array",
+      "items": { "$ref": "./tenant-permission-resource.schema.json#/$defs/permission" }
+    },
+    "resolvedAt": { "type": "string", "format": "date-time" }
+  }
+}

@@ -8,17 +8,25 @@
     "label",
     "mode",
     "tokenPreview",
+    "status",
     "createdAt",
     "updatedAt"
   ],
   "additionalProperties": false,
   "properties": {
     "tokenId": { "type": "string" },
+    "principalId": { "type": "string" },
     "label": { "type": "string" },
     "mode": { "type": "string", "enum": ["local", "token"] },
     "tokenPreview": { "type": "string" },
+    "status": { "type": "string", "enum": ["active", "revoked", "expired", "rotated"] },
+    "defaultTenantId": { "type": "string" },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" },
-    "lastUsedAt": { "type": "string", "format": "date-time" }
+    "lastUsedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "revokedAt": { "type": "string", "format": "date-time" },
+    "rotatedFromTokenId": { "type": "string" },
+    "rotatedToTokenId": { "type": "string" }
   }
 }

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/membership-resource.schema.json",
+  "title": "MembershipResource",
+  "type": "object",
+  "required": ["membershipId", "tenantId", "principalId", "role", "status", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "membershipId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "principalId": { "type": "string" },
+    "role": { "type": "string", "enum": ["owner", "admin", "operator", "viewer"] },
+    "status": { "type": "string", "enum": ["invited", "active", "removed"] },
+    "invitationId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "acceptedAt": { "type": "string", "format": "date-time" },
+    "removedAt": { "type": "string", "format": "date-time" }
+  }
+}
