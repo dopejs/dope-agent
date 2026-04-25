@@ -16,3 +16,5 @@ web/dist/
 web/node_modules/
 tui/dist/
 tui/node_modules/
+
+.worktrees/
