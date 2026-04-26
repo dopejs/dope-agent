@@ -6,6 +6,7 @@
   "required": ["preferenceId", "environmentScope", "scopeKind", "preferredTargetsByClass", "active", "createdAt", "updatedAt"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "preferenceId": { "type": "string" },
     "environmentScope": { "type": "string", "enum": ["test", "prod"] },
     "scopeKind": { "type": "string", "enum": ["user_default", "integration_override"] },

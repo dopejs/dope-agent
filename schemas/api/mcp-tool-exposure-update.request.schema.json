@@ -6,6 +6,7 @@
   "required": ["runtimeSurface", "exposureMode", "active"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "runtimeSurface": { "type": "string" },
     "exposureMode": { "type": "string", "enum": ["blocked", "allow", "approval_required"] },
     "active": { "type": "boolean" },

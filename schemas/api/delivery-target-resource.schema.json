@@ -6,6 +6,7 @@
   "required": ["targetId", "displayName", "environmentScope", "targetKind", "status", "supportsImmediate", "supportsDigest", "createdAt", "updatedAt"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "targetId": { "type": "string" },
     "displayName": { "type": "string" },
     "environmentScope": { "type": "string", "enum": ["test", "prod"] },

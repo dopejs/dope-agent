@@ -1,0 +1,8 @@
+{
+  "runId": "run_abc",
+  "entrypoint": "skill:demo",
+  "status": "running",
+  "goal": "demo legacy backward compat",
+  "createdAt": "2026-04-01T00:00:00Z",
+  "updatedAt": "2026-04-01T00:00:01Z"
+}

@@ -6,6 +6,7 @@
   "required": ["artifactId", "operationId", "kind", "integrationId", "environmentScope", "createdAt"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "artifactId": { "type": "string" },
     "operationId": { "type": "string" },
     "kind": { "type": "string", "enum": ["thread_snapshot", "message_snapshot", "draft_snapshot", "attachment_reference"] },

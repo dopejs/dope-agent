@@ -19,6 +19,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "externalEventId": { "type": "string" },
     "integrationId": { "type": "string" },
     "calendarAccountId": { "type": "string" },

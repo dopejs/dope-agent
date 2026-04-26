@@ -6,6 +6,7 @@
   "required": ["windowStart", "windowEnd"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "integrationId": { "type": "string" },
     "windowStart": { "type": "string", "format": "date-time" },
     "windowEnd": { "type": "string", "format": "date-time" },

@@ -12,6 +12,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "actionId": { "type": "string" },
     "reminderId": { "type": "string" },
     "occurrenceId": { "type": "string" },

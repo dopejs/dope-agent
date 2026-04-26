@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,7 +36,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 21
+	CurrentSchemaVersion = 33
 )
 
 type schemaMigration struct {
@@ -1633,12 +1634,261 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_tenant_audit_events_token_created ON tenant_audit_events(token_id, created_at DESC, audit_event_id DESC);`,
 		},
 	},
+	{
+		// Roadmap 35: durable per-step progress for the tenant-scoped data
+		// migration. Backfill steps record `last_processed_key` after each
+		// chunk commit so an interrupted migration resumes exactly once.
+		Version: 22,
+		Name:    "tenant_migration_progress",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS tenant_migration_progress (
+				step_name           TEXT PRIMARY KEY,
+				status              TEXT NOT NULL,
+				started_at          INTEGER,
+				completed_at        INTEGER,
+				last_processed_key  TEXT,
+				error               TEXT
+			);
+			`,
+		},
+	},
+	{
+		// Roadmap 35 (Phase 2 / T016): add NULLABLE tenant_id column and
+		// tenant-aware indexes on the events table (step (a) of the
+		// three-stage pattern). The actual backfill is owned by T077 in US2
+		// and runs only after every parent table's tenant_id has been
+		// populated. Step (c) for the events table (T077b) is a CHECK +
+		// partial-index pair, not a NOT NULL swap, since events is a
+		// mixed table carrying both tenant-owned and global categories.
+		Version: 23,
+		Name:    "tenant_scope_events_column",
+		Statements: []string{
+			`ALTER TABLE events ADD COLUMN tenant_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_events_tenant_time ON events(tenant_id, occurred_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_events_tenant_category_time ON events(tenant_id, category, name, occurred_at DESC);`,
+		},
+	},
+	{
+		// Roadmap 35 (Phase 3 / T018): add NULLABLE tenant_id and tenant-aware
+		// indexes on the runtime spine — sessions, runs, steps, tool_calls,
+		// llm_dispatches, checkpoints. This is step (a) of the three-stage
+		// per-domain pattern. Backfill (T067) and the NOT NULL shadow swap
+		// (T077a) follow in US2; until then writers populate tenant_id
+		// opportunistically when a TenantContext is present in the request.
+		Version: 24,
+		Name:    "tenant_scope_runtime_columns",
+		Statements: []string{
+			`ALTER TABLE sessions ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE runs ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE steps ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE tool_calls ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE llm_dispatches ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE checkpoints ADD COLUMN tenant_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_sessions_tenant_created ON sessions(tenant_id, created_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_runs_tenant_created ON runs(tenant_id, created_at DESC, run_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_steps_tenant_run_created ON steps(tenant_id, run_id, created_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_tool_calls_tenant_step ON tool_calls(tenant_id, step_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_tool_calls_tenant_status_created ON tool_calls(tenant_id, status, created_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_llm_dispatches_tenant_created ON llm_dispatches(tenant_id, created_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_llm_dispatches_tenant_provider_status ON llm_dispatches(tenant_id, provider, status, created_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_checkpoints_tenant_run_captured ON checkpoints(tenant_id, run_id, captured_at DESC);`,
+		},
+	},
+	{
+		// Roadmap 35 (Phase 3 / T019): schedules family — schedules,
+		// schedule_targets, schedule_dispatch_attempts. Step (a) only:
+		// NULLABLE column add + tenant-aware indexes. UNIQUE
+		// (tenant_id, kind, target_ref_id) on schedules is added via
+		// shadow swap in T077a.
+		Version: 25,
+		Name:    "tenant_scope_schedules_columns",
+		Statements: []string{
+			`ALTER TABLE schedules ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE schedule_targets ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE schedule_dispatch_attempts ADD COLUMN tenant_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_schedules_tenant_status_due ON schedules(tenant_id, status, next_due_at, schedule_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_schedule_targets_tenant_schedule ON schedule_targets(tenant_id, schedule_id, target_ref_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_schedule_attempts_tenant_schedule_due ON schedule_dispatch_attempts(tenant_id, schedule_id, due_at DESC, attempt_id DESC);`,
+		},
+	},
+	{
+		// Roadmap 35 (T020): workflows family. workflows.tenant_id is
+		// derived from runs.tenant_id via the workflows.run_id FK during
+		// US2 backfill.
+		Version: 26,
+		Name:    "tenant_scope_workflows_columns",
+		Statements: []string{
+			`ALTER TABLE workflows ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE workflow_steps ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE workflow_dependencies ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE workflow_handoffs ADD COLUMN tenant_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_workflows_tenant_updated ON workflows(tenant_id, updated_at DESC, workflow_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_workflow_steps_tenant_workflow_position ON workflow_steps(tenant_id, workflow_id, position);`,
+			`CREATE INDEX IF NOT EXISTS idx_workflow_dependencies_tenant_workflow ON workflow_dependencies(tenant_id, workflow_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_workflow_handoffs_tenant_workflow ON workflow_handoffs(tenant_id, workflow_id);`,
+		},
+	},
+	{
+		// Roadmap 35 (T021): integrations + delivery family. Step (a)
+		// only — UNIQUE (tenant_id, domain_kind, account_key) on
+		// integrations is added via shadow swap in T077a (partial index
+		// filtered to non-NULL account_key).
+		Version: 27,
+		Name:    "tenant_scope_integrations_delivery_columns",
+		Statements: []string{
+			`ALTER TABLE integrations ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE delivery_targets ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE delivery_preferences ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE delivery_outcomes ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE delivery_attempts ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE delivery_summary_windows ADD COLUMN tenant_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_integrations_tenant_domain_account ON integrations(tenant_id, domain_kind, account_key, canonical_default);`,
+			`CREATE INDEX IF NOT EXISTS idx_integrations_tenant_readiness ON integrations(tenant_id, readiness_status, updated_at DESC, integration_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_targets_tenant_status ON delivery_targets(tenant_id, status, updated_at DESC, target_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_preferences_tenant_scope ON delivery_preferences(tenant_id, scope_kind, integration_id, active, updated_at DESC, preference_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_outcomes_tenant_updated ON delivery_outcomes(tenant_id, updated_at DESC, delivery_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_attempts_tenant_delivery ON delivery_attempts(tenant_id, delivery_id, attempt_number ASC, attempt_id ASC);`,
+			`CREATE INDEX IF NOT EXISTS idx_delivery_summary_windows_tenant_status ON delivery_summary_windows(tenant_id, status, window_ends_at ASC, summary_window_id ASC);`,
+		},
+	},
+	{
+		// Roadmap 35 (T022): calendar family. Account-level uniqueness
+		// (tenant_id, account_key) on calendar_accounts is added in
+		// T077a via partial index filtered to non-NULL account_key.
+		Version: 28,
+		Name:    "tenant_scope_calendar_columns",
+		Statements: []string{
+			`ALTER TABLE calendar_accounts ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE calendar_operations ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE calendar_artifacts ADD COLUMN tenant_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_accounts_tenant_readiness ON calendar_accounts(tenant_id, readiness_status, updated_at DESC, calendar_account_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_operations_tenant_account ON calendar_operations(tenant_id, calendar_account_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_calendar_artifacts_tenant_operation ON calendar_artifacts(tenant_id, operation_id, created_at ASC, artifact_id ASC);`,
+		},
+	},
+	{
+		// Roadmap 35 (T023): mail family. Account-level uniqueness
+		// (tenant_id, account_key) on mail_accounts is added in T077a
+		// via partial index filtered to non-NULL account_key.
+		Version: 29,
+		Name:    "tenant_scope_mail_columns",
+		Statements: []string{
+			`ALTER TABLE mail_accounts ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE mail_operations ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE mail_artifacts ADD COLUMN tenant_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_accounts_tenant_readiness ON mail_accounts(tenant_id, readiness_status, updated_at DESC, mail_account_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_operations_tenant_account ON mail_operations(tenant_id, mail_account_id, updated_at DESC, operation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mail_artifacts_tenant_operation ON mail_artifacts(tenant_id, operation_id, created_at ASC, artifact_id ASC);`,
+		},
+	},
+	{
+		// Roadmap 35 (T024): reminders family.
+		Version: 30,
+		Name:    "tenant_scope_reminders_columns",
+		Statements: []string{
+			`ALTER TABLE reminders ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE reminder_occurrences ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE reminder_actions ADD COLUMN tenant_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_reminders_tenant_state ON reminders(tenant_id, current_state, updated_at DESC, reminder_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_reminders_tenant_due ON reminders(tenant_id, next_due_at, updated_at DESC, reminder_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_reminder_occurrences_tenant_reminder ON reminder_occurrences(tenant_id, reminder_id, scheduled_for DESC, occurrence_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_reminder_actions_tenant_reminder ON reminder_actions(tenant_id, reminder_id, created_at DESC, action_id DESC);`,
+		},
+	},
+	{
+		// Roadmap 35 (T025): computer-use family. Tenant derived from
+		// runs.tenant_id via the NOT NULL run_id FK during US2 backfill.
+		Version: 31,
+		Name:    "tenant_scope_computer_use_columns",
+		Statements: []string{
+			`ALTER TABLE computer_use_sessions ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE computer_use_actions ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE computer_use_artifacts ADD COLUMN tenant_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_computer_use_sessions_tenant_run ON computer_use_sessions(tenant_id, run_id, updated_at DESC, computer_use_session_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_computer_use_actions_tenant_session ON computer_use_actions(tenant_id, computer_use_session_id, requested_at ASC, computer_use_action_id ASC);`,
+			`CREATE INDEX IF NOT EXISTS idx_computer_use_artifacts_tenant_action ON computer_use_artifacts(tenant_id, computer_use_action_id, created_at ASC, artifact_id ASC);`,
+		},
+	},
+	{
+		// Roadmap 35 (T026): evaluation + harness + remaining
+		// tenant_owned tables (approvals, decisions, connector_messages,
+		// sandbox_executions, consumer_policy_records, provider_preferences,
+		// mcp_tool_exposure_rules, secret_scope_bindings).
+		// secret_scope_bindings credential semantics remain owned by
+		// Roadmap 37; this migration only attaches tenant ownership for
+		// scoping. Per-tenant uniqueness on mcp_tool_exposure_rules
+		// (extending its composite PK to include tenant_id) and on
+		// evaluation_regression_fixtures.manifest_path is added via
+		// shadow swap in T077a.
+		Version: 32,
+		Name:    "tenant_scope_evaluation_and_remaining_columns",
+		Statements: []string{
+			`ALTER TABLE evaluation_replay_candidates ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE evaluation_replay_attempts ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE evaluation_comparisons ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE evaluation_regression_fixtures ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE approvals ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE decisions ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE connector_messages ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE sandbox_executions ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE consumer_policy_records ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE provider_preferences ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE mcp_tool_exposure_rules ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE secret_scope_bindings ADD COLUMN tenant_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_candidates_tenant_ready ON evaluation_replay_candidates(tenant_id, readiness_status, updated_at DESC, candidate_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_attempts_tenant_candidate ON evaluation_replay_attempts(tenant_id, candidate_id, created_at DESC, attempt_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_comparisons_tenant_candidate ON evaluation_comparisons(tenant_id, candidate_id, generated_at DESC, comparison_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_fixtures_tenant_domain ON evaluation_regression_fixtures(tenant_id, domain_class, updated_at DESC, fixture_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_approvals_tenant_status_created ON approvals(tenant_id, status, created_at);`,
+			`CREATE INDEX IF NOT EXISTS idx_decisions_tenant_created ON decisions(tenant_id, created_at DESC, decision_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_connector_messages_tenant_connector ON connector_messages(tenant_id, connector_id, created_at DESC, delivery_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_sandbox_executions_tenant_status ON sandbox_executions(tenant_id, status, requested_at DESC, execution_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_policy_records_tenant_started ON consumer_policy_records(tenant_id, started_at DESC, policy_record_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_provider_preferences_tenant ON provider_preferences(tenant_id, provider_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_mcp_tool_exposure_tenant_server_tool ON mcp_tool_exposure_rules(tenant_id, server_id, tool_name, runtime_surface);`,
+			`CREATE INDEX IF NOT EXISTS idx_secret_scope_bindings_tenant_consumer ON secret_scope_bindings(tenant_id, consumer_kind, consumer_id, secret_ref);`,
+		},
+	},
+	{
+		// Roadmap 35 (T027): verified-only migration for the Roadmap 34
+		// tenant tables. The tenant_id column and the basic per-tenant
+		// list indexes were already added in v21 (Roadmap 34); this
+		// migration adds the missing per-tenant uniqueness constraints
+		// the inventory requires. No column adds, no backfill — every
+		// row already has tenant_id from the R34 bootstrap path.
+		Version: 33,
+		Name:    "tenant_scope_r34_uniqueness",
+		Statements: []string{
+			`CREATE UNIQUE INDEX IF NOT EXISTS uq_memberships_tenant_principal ON memberships(tenant_id, principal_id);`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS uq_token_grants_tenant_token ON token_tenant_grants(tenant_id, token_id);`,
+		},
+	},
 }
 
 type SQLiteStore struct {
 	DataDir string
 	DBPath  string
 	db      *sql.DB
+	// defaultTenantCache memoizes the bootstrapped personal tenant id
+	// so the legacy Upsert helpers can auto-bind tenant_id without
+	// requiring callers to plumb a TenantContext (see
+	// default_tenant.go for the Pass B rationale).
+	defaultTenantCache defaultTenantCache
+	// coldPathLogger is the sink for the C4 cold-path fail-closed
+	// warning. nil means use slog.Default(). Override via
+	// SetColdPathLogger from tests that need to capture the warning.
+	coldPathLogger *slog.Logger
+}
+
+// SetColdPathLogger overrides the slog.Logger used by the C4 cold-path
+// fail-closed warning. Test-only: production callers MUST leave it
+// unset so warnings reach the operator's structured-log pipeline.
+func (s *SQLiteStore) SetColdPathLogger(l *slog.Logger) {
+	if s == nil {
+		return
+	}
+	s.coldPathLogger = l
 }
 
 func NewSQLiteStore(dataDir string) (*SQLiteStore, error) {
@@ -1672,6 +1922,40 @@ func NewSQLiteStore(dataDir string) (*SQLiteStore, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	// Roadmap 35 (T016): register the events backfill + step (c) progress
+	// rows as `pending` so operators can observe the migration plan via
+	// `tenant_migration_progress`. Idempotent — re-running on an existing
+	// store is a no-op. Per-domain backfill steps register themselves
+	// when their migrations land in US1/US2.
+	if err := store.RegisterEventsMigrationSteps(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	// Roadmap 35 (T067 / T018): register runtime spine backfill rows so the
+	// migration plan is observable as soon as the v24 schema lands. The
+	// driver itself is owned by US2 and is a no-op until invoked.
+	if err := store.RegisterRuntimeMigrationSteps(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	// Roadmap 35 (T068+T069+T070+T071): register approvals/decisions,
+	// schedules+children, workflows+children, and integrations+delivery
+	// progress rows. Idempotent.
+	if err := store.RegisterBatch2MigrationSteps(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	// Roadmap 35 (T072–T076b): calendar/mail/reminders/computer-use/
+	// evaluation/harness/connector_messages.
+	if err := store.RegisterBatch3MigrationSteps(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	// Roadmap 35 (T077a + T077b): step (c) enforcement progress rows.
+	if err := store.RegisterEnforcementMigrationSteps(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 
 	return store, nil
 }
@@ -1681,6 +1965,17 @@ func (s *SQLiteStore) Close() error {
 		return nil
 	}
 	return s.db.Close()
+}
+
+// DB returns the underlying *sql.DB handle. Exposed so the tenancy
+// subpackage (daemon/internal/store/tenancy) can issue tenant-scoped
+// queries directly without duplicating connection/lifecycle management.
+// Callers MUST NOT close the handle.
+func (s *SQLiteStore) DB() *sql.DB {
+	if s == nil {
+		return nil
+	}
+	return s.db
 }
 
 func (s *SQLiteStore) SchemaVersion(ctx context.Context) (int, error) {
@@ -1699,7 +1994,14 @@ func (s *SQLiteStore) UpsertRun(ctx context.Context, run runtime.Run) error {
 	if s == nil {
 		return nil
 	}
-
+	// Roadmap 35 Pass B: bind tenant_id by delegating to the
+	// tenant-aware safe variant when a personal tenant is bootstrapped.
+	// Pre-bootstrap callers (NewSQLiteStore, early app boot) fall back
+	// to the legacy tenantless write so the migration progress + auth
+	// bootstrap paths still work before the personal tenant exists.
+	if tenantID, err := s.ResolveDefaultPersonalTenantID(ctx); err == nil && tenantID != "" {
+		return s.UpsertRunForTenantSafe(ctx, run, tenantID)
+	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO runs (
 			run_id,
@@ -1748,6 +2050,9 @@ func (s *SQLiteStore) UpsertRun(ctx context.Context, run runtime.Run) error {
 func (s *SQLiteStore) UpsertSession(ctx context.Context, session router.Session) error {
 	if s == nil {
 		return nil
+	}
+	if tenantID, err := s.ResolveDefaultPersonalTenantID(ctx); err == nil && tenantID != "" {
+		return s.UpsertSessionForTenantSafe(ctx, session, tenantID)
 	}
 
 	var lastResetAt sql.NullString
@@ -2568,8 +2873,9 @@ func (s *SQLiteStore) UpsertApproval(ctx context.Context, approval policy.Approv
 			resolved_at,
 			resolution,
 			comment,
-			integration_bindings_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			integration_bindings_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(approval_id) DO UPDATE SET
 			action = excluded.action,
 			resource_kind = excluded.resource_kind,
@@ -2582,7 +2888,8 @@ func (s *SQLiteStore) UpsertApproval(ctx context.Context, approval policy.Approv
 			resolved_at = excluded.resolved_at,
 			resolution = excluded.resolution,
 			comment = excluded.comment,
-			integration_bindings_json = excluded.integration_bindings_json
+			integration_bindings_json = excluded.integration_bindings_json,
+			tenant_id = COALESCE(approvals.tenant_id, excluded.tenant_id)
 	`,
 		approval.ApprovalID,
 		approval.Action,
@@ -2597,6 +2904,7 @@ func (s *SQLiteStore) UpsertApproval(ctx context.Context, approval policy.Approv
 		nullString(approval.Resolution),
 		nullString(approval.Comment),
 		integrationBindingsJSON,
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert approval %s: %w", approval.ApprovalID, err)
@@ -2646,8 +2954,9 @@ func (s *SQLiteStore) UpsertDecision(ctx context.Context, decision policy.Decisi
 			outcome,
 			reason,
 			approval_id,
-			created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			created_at,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(decision_id) DO UPDATE SET
 			action = excluded.action,
 			resource_kind = excluded.resource_kind,
@@ -2655,7 +2964,8 @@ func (s *SQLiteStore) UpsertDecision(ctx context.Context, decision policy.Decisi
 			outcome = excluded.outcome,
 			reason = excluded.reason,
 			approval_id = excluded.approval_id,
-			created_at = excluded.created_at
+			created_at = excluded.created_at,
+			tenant_id = COALESCE(decisions.tenant_id, excluded.tenant_id)
 	`,
 		decision.DecisionID,
 		decision.Action,
@@ -2665,6 +2975,7 @@ func (s *SQLiteStore) UpsertDecision(ctx context.Context, decision policy.Decisi
 		decision.Reason,
 		nullString(decision.ApprovalID),
 		decision.CreatedAt.UTC().Format(time.RFC3339Nano),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert decision %s: %w", decision.DecisionID, err)
@@ -2885,8 +3196,9 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 			reply_to_external_message_id,
 			response_to_delivery_id,
 			created_at,
-			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			updated_at,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(delivery_id) DO UPDATE SET
 			connector_id = excluded.connector_id,
 			direction = excluded.direction,
@@ -2903,7 +3215,8 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 			reply_to_external_message_id = excluded.reply_to_external_message_id,
 			response_to_delivery_id = excluded.response_to_delivery_id,
 			created_at = excluded.created_at,
-			updated_at = excluded.updated_at
+			updated_at = excluded.updated_at,
+			tenant_id = COALESCE(connector_messages.tenant_id, excluded.tenant_id)
 	`,
 		message.DeliveryID,
 		message.ConnectorID,
@@ -2922,6 +3235,7 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 		nullString(message.ResponseToDeliveryID),
 		message.CreatedAt.UTC().Format(time.RFC3339Nano),
 		message.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert connector message %s: %w", message.DeliveryID, err)
@@ -3027,6 +3341,9 @@ func (s *SQLiteStore) UpsertCapability(ctx context.Context, capability capabilit
 func (s *SQLiteStore) UpsertLLMDispatch(ctx context.Context, dispatch llm.Dispatch) error {
 	if s == nil {
 		return nil
+	}
+	if tenantID, err := s.ResolveDefaultPersonalTenantID(ctx); err == nil && tenantID != "" {
+		return s.UpsertLLMDispatchForTenantSafe(ctx, dispatch, tenantID)
 	}
 
 	messagesJSON, err := marshalJSON(dispatch.Messages)
@@ -3511,12 +3828,13 @@ func (s *SQLiteStore) UpsertProviderPreference(ctx context.Context, preference p
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO provider_preferences (provider_id, default_model, updated_at)
-		VALUES (?, ?, ?)
+		INSERT INTO provider_preferences (provider_id, default_model, updated_at, tenant_id)
+		VALUES (?, ?, ?, ?)
 		ON CONFLICT(provider_id) DO UPDATE SET
 			default_model = excluded.default_model,
-			updated_at = excluded.updated_at
-	`, preference.ProviderID, preference.DefaultModel, updatedAt.Format(time.RFC3339Nano))
+			updated_at = excluded.updated_at,
+			tenant_id = COALESCE(provider_preferences.tenant_id, excluded.tenant_id)
+	`, preference.ProviderID, preference.DefaultModel, updatedAt.Format(time.RFC3339Nano), s.ResolveDefaultTenantBinding(ctx))
 	if err != nil {
 		return fmt.Errorf("upsert provider preference %s: %w", preference.ProviderID, err)
 	}
@@ -3603,32 +3921,9 @@ func (s *SQLiteStore) ListSessions(ctx context.Context) ([]router.Session, error
 	return sessions, rows.Err()
 }
 
-func (s *SQLiteStore) ListRuns(ctx context.Context) ([]runtime.Run, error) {
-	if s == nil {
-		return nil, nil
-	}
-
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT run_id, session_id, schedule_id, schedule_attempt_id, reminder_id, reminder_occurrence_id, entrypoint, status, goal, created_at, updated_at
-		FROM runs
-		ORDER BY created_at ASC, run_id ASC
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("list runs: %w", err)
-	}
-	defer rows.Close()
-
-	runs := make([]runtime.Run, 0)
-	for rows.Next() {
-		run, err := scanRun(rows)
-		if err != nil {
-			return nil, err
-		}
-		runs = append(runs, run)
-	}
-
-	return runs, rows.Err()
-}
+// Store.ListRuns was removed by Roadmap 35 (T028). The tenantless scan
+// violated FR-006 (cross-tenant isolation). Use
+// ListRunsForTenantRaw / tenancy.Runtime.ListRunsForTenant instead.
 
 func (s *SQLiteStore) UpsertWorkflow(ctx context.Context, workflow orchestration.Workflow) error {
 	if s == nil {
@@ -3655,8 +3950,9 @@ func (s *SQLiteStore) UpsertWorkflow(ctx context.Context, workflow orchestration
 			started_at,
 			completed_at,
 			interrupted_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(workflow_id) DO UPDATE SET
 			run_id = excluded.run_id,
 			schedule_id = excluded.schedule_id,
@@ -3671,7 +3967,8 @@ func (s *SQLiteStore) UpsertWorkflow(ctx context.Context, workflow orchestration
 			started_at = excluded.started_at,
 			completed_at = excluded.completed_at,
 			interrupted_at = excluded.interrupted_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(workflows.tenant_id, excluded.tenant_id)
 	`,
 		workflow.WorkflowID,
 		workflow.RunID,
@@ -3688,6 +3985,7 @@ func (s *SQLiteStore) UpsertWorkflow(ctx context.Context, workflow orchestration
 		nullableTimeString(workflow.CompletedAt),
 		nullableTimeString(workflow.InterruptedAt),
 		string(document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert workflow %s: %w", workflow.WorkflowID, err)
@@ -3713,8 +4011,9 @@ func (s *SQLiteStore) UpsertIntegration(ctx context.Context, item integrations.R
 			readiness_status,
 			canonical_default,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(integration_id) DO UPDATE SET
 			domain_kind = excluded.domain_kind,
 			environment_scope = excluded.environment_scope,
@@ -3723,7 +4022,8 @@ func (s *SQLiteStore) UpsertIntegration(ctx context.Context, item integrations.R
 			readiness_status = excluded.readiness_status,
 			canonical_default = excluded.canonical_default,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(integrations.tenant_id, excluded.tenant_id)
 	`,
 		item.IntegrationID,
 		item.DomainKind,
@@ -3734,6 +4034,7 @@ func (s *SQLiteStore) UpsertIntegration(ctx context.Context, item integrations.R
 		boolToInt(item.CanonicalDefault),
 		item.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		documentJSON,
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert integration %s: %w", item.IntegrationID, err)
@@ -3787,8 +4088,9 @@ func (s *SQLiteStore) UpsertCalendarAccount(ctx context.Context, item calendar.A
 			readiness_status,
 			canonical_default,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(calendar_account_id) DO UPDATE SET
 			integration_id = excluded.integration_id,
 			environment_scope = excluded.environment_scope,
@@ -3796,7 +4098,8 @@ func (s *SQLiteStore) UpsertCalendarAccount(ctx context.Context, item calendar.A
 			readiness_status = excluded.readiness_status,
 			canonical_default = excluded.canonical_default,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(calendar_accounts.tenant_id, excluded.tenant_id)
 	`,
 		item.CalendarAccountID,
 		item.IntegrationID,
@@ -3806,6 +4109,7 @@ func (s *SQLiteStore) UpsertCalendarAccount(ctx context.Context, item calendar.A
 		boolToInt(item.CanonicalDefault),
 		item.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		documentJSON,
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert calendar account %s: %w", item.CalendarAccountID, err)
@@ -3864,8 +4168,9 @@ func (s *SQLiteStore) UpsertCalendarOperation(ctx context.Context, item calendar
 			schedule_id,
 			delivery_id,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(operation_id) DO UPDATE SET
 			integration_id = excluded.integration_id,
 			calendar_account_id = excluded.calendar_account_id,
@@ -3878,7 +4183,8 @@ func (s *SQLiteStore) UpsertCalendarOperation(ctx context.Context, item calendar
 			schedule_id = excluded.schedule_id,
 			delivery_id = excluded.delivery_id,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(calendar_operations.tenant_id, excluded.tenant_id)
 	`,
 		item.OperationID,
 		item.IntegrationID,
@@ -3893,6 +4199,7 @@ func (s *SQLiteStore) UpsertCalendarOperation(ctx context.Context, item calendar
 		nullString(item.DeliveryID),
 		item.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		documentJSON,
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert calendar operation %s: %w", item.OperationID, err)
@@ -3993,8 +4300,9 @@ func (s *SQLiteStore) UpsertCalendarArtifact(ctx context.Context, item calendar.
 			kind,
 			external_event_id,
 			created_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(artifact_id) DO UPDATE SET
 			operation_id = excluded.operation_id,
 			integration_id = excluded.integration_id,
@@ -4002,7 +4310,8 @@ func (s *SQLiteStore) UpsertCalendarArtifact(ctx context.Context, item calendar.
 			kind = excluded.kind,
 			external_event_id = excluded.external_event_id,
 			created_at = excluded.created_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(calendar_artifacts.tenant_id, excluded.tenant_id)
 	`,
 		item.ArtifactID,
 		item.OperationID,
@@ -4012,6 +4321,7 @@ func (s *SQLiteStore) UpsertCalendarArtifact(ctx context.Context, item calendar.
 		nullString(item.ExternalEventID),
 		item.CreatedAt.UTC().Format(time.RFC3339Nano),
 		documentJSON,
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert calendar artifact %s: %w", item.ArtifactID, err)
@@ -4071,8 +4381,9 @@ func (s *SQLiteStore) UpsertMailAccount(ctx context.Context, item mail.AccountPr
 			readiness_status,
 			canonical_default,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(mail_account_id) DO UPDATE SET
 			integration_id = excluded.integration_id,
 			environment_scope = excluded.environment_scope,
@@ -4080,7 +4391,8 @@ func (s *SQLiteStore) UpsertMailAccount(ctx context.Context, item mail.AccountPr
 			readiness_status = excluded.readiness_status,
 			canonical_default = excluded.canonical_default,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(mail_accounts.tenant_id, excluded.tenant_id)
 	`,
 		item.MailAccountID,
 		item.IntegrationID,
@@ -4090,6 +4402,7 @@ func (s *SQLiteStore) UpsertMailAccount(ctx context.Context, item mail.AccountPr
 		boolToInt(item.CanonicalDefault),
 		item.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		documentJSON,
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert mail account %s: %w", item.MailAccountID, err)
@@ -4151,8 +4464,9 @@ func (s *SQLiteStore) UpsertMailOperation(ctx context.Context, item mail.Operati
 			schedule_id,
 			delivery_id,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(operation_id) DO UPDATE SET
 			integration_id = excluded.integration_id,
 			mail_account_id = excluded.mail_account_id,
@@ -4168,7 +4482,8 @@ func (s *SQLiteStore) UpsertMailOperation(ctx context.Context, item mail.Operati
 			schedule_id = excluded.schedule_id,
 			delivery_id = excluded.delivery_id,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(mail_operations.tenant_id, excluded.tenant_id)
 	`,
 		item.OperationID,
 		item.IntegrationID,
@@ -4186,6 +4501,7 @@ func (s *SQLiteStore) UpsertMailOperation(ctx context.Context, item mail.Operati
 		nullString(item.DeliveryID),
 		item.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		documentJSON,
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert mail operation %s: %w", item.OperationID, err)
@@ -4301,8 +4617,9 @@ func (s *SQLiteStore) UpsertMailArtifact(ctx context.Context, item mail.Artifact
 			draft_id,
 			attachment_ref_id,
 			created_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(artifact_id) DO UPDATE SET
 			operation_id = excluded.operation_id,
 			integration_id = excluded.integration_id,
@@ -4313,7 +4630,8 @@ func (s *SQLiteStore) UpsertMailArtifact(ctx context.Context, item mail.Artifact
 			draft_id = excluded.draft_id,
 			attachment_ref_id = excluded.attachment_ref_id,
 			created_at = excluded.created_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(mail_artifacts.tenant_id, excluded.tenant_id)
 	`,
 		item.ArtifactID,
 		item.OperationID,
@@ -4326,6 +4644,7 @@ func (s *SQLiteStore) UpsertMailArtifact(ctx context.Context, item mail.Artifact
 		nullString(item.AttachmentRefID),
 		item.CreatedAt.UTC().Format(time.RFC3339Nano),
 		documentJSON,
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert mail artifact %s: %w", item.ArtifactID, err)
@@ -4381,8 +4700,9 @@ func (s *SQLiteStore) UpsertReminder(ctx context.Context, record ReminderRecord)
 			next_due_at,
 			active_occurrence_id,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(reminder_id) DO UPDATE SET
 			environment_scope = excluded.environment_scope,
 			behavior_mode = excluded.behavior_mode,
@@ -4390,7 +4710,8 @@ func (s *SQLiteStore) UpsertReminder(ctx context.Context, record ReminderRecord)
 			next_due_at = excluded.next_due_at,
 			active_occurrence_id = excluded.active_occurrence_id,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(reminders.tenant_id, excluded.tenant_id)
 	`,
 		record.ReminderID,
 		record.EnvironmentScope,
@@ -4400,6 +4721,7 @@ func (s *SQLiteStore) UpsertReminder(ctx context.Context, record ReminderRecord)
 		nullString(record.ActiveOccurrenceID),
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert reminder %s: %w", record.ReminderID, err)
@@ -4467,8 +4789,9 @@ func (s *SQLiteStore) UpsertReminderOccurrence(ctx context.Context, record Remin
 			latest_delivery_id,
 			latest_delivery_status,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(occurrence_id) DO UPDATE SET
 			reminder_id = excluded.reminder_id,
 			environment_scope = excluded.environment_scope,
@@ -4479,7 +4802,8 @@ func (s *SQLiteStore) UpsertReminderOccurrence(ctx context.Context, record Remin
 			latest_delivery_id = excluded.latest_delivery_id,
 			latest_delivery_status = excluded.latest_delivery_status,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(reminder_occurrences.tenant_id, excluded.tenant_id)
 	`,
 		record.OccurrenceID,
 		record.ReminderID,
@@ -4492,6 +4816,7 @@ func (s *SQLiteStore) UpsertReminderOccurrence(ctx context.Context, record Remin
 		nullString(record.LatestDeliveryStatus),
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert reminder occurrence %s: %w", record.OccurrenceID, err)
@@ -4588,8 +4913,9 @@ func (s *SQLiteStore) AppendReminderAction(ctx context.Context, record ReminderA
 			workflow_id,
 			delivery_id,
 			created_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		record.ActionID,
 		record.ReminderID,
@@ -4601,6 +4927,7 @@ func (s *SQLiteStore) AppendReminderAction(ctx context.Context, record ReminderA
 		nullString(record.DeliveryID),
 		record.CreatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("append reminder action %s: %w", record.ActionID, err)
@@ -4668,8 +4995,9 @@ func (s *SQLiteStore) ReplaceWorkflowSteps(ctx context.Context, workflowID strin
 				max_attempts,
 				last_failure_class,
 				blocked_reason,
-				document_json
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				document_json,
+				tenant_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			step.WorkflowStepID,
 			workflowID,
@@ -4682,6 +5010,7 @@ func (s *SQLiteStore) ReplaceWorkflowSteps(ctx context.Context, workflowID strin
 			nullString(step.LastFailureClass),
 			nullString(step.BlockedReason),
 			string(document),
+			s.ResolveDefaultTenantBinding(ctx),
 		); err != nil {
 			return fmt.Errorf("insert workflow step %s: %w", step.WorkflowStepID, err)
 		}
@@ -4715,7 +5044,7 @@ func (s *SQLiteStore) ReplaceWorkflowDependencies(ctx context.Context, workflowI
 			err = fmt.Errorf("marshal workflow dependency %s: %w", item.DependencyID, marshalErr)
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO workflow_dependencies (dependency_id, workflow_id, document_json) VALUES (?, ?, ?)`, item.DependencyID, workflowID, string(document)); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO workflow_dependencies (dependency_id, workflow_id, document_json, tenant_id) VALUES (?, ?, ?, ?)`, item.DependencyID, workflowID, string(document), s.ResolveDefaultTenantBinding(ctx)); err != nil {
 			return fmt.Errorf("insert workflow dependency %s: %w", item.DependencyID, err)
 		}
 	}
@@ -4748,7 +5077,7 @@ func (s *SQLiteStore) ReplaceWorkflowHandoffs(ctx context.Context, workflowID st
 			err = fmt.Errorf("marshal workflow handoff %s: %w", item.HandoffID, marshalErr)
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO workflow_handoffs (handoff_id, workflow_id, status, document_json) VALUES (?, ?, ?, ?)`, item.HandoffID, workflowID, string(item.Status), string(document)); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO workflow_handoffs (handoff_id, workflow_id, status, document_json, tenant_id) VALUES (?, ?, ?, ?, ?)`, item.HandoffID, workflowID, string(item.Status), string(document), s.ResolveDefaultTenantBinding(ctx)); err != nil {
 			return fmt.Errorf("insert workflow handoff %s: %w", item.HandoffID, err)
 		}
 	}
@@ -5085,8 +5414,9 @@ func (s *SQLiteStore) UpsertSchedule(ctx context.Context, record ScheduleRecord)
 			paused_at,
 			cancelled_at,
 			completed_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(schedule_id) DO UPDATE SET
 			environment_scope = excluded.environment_scope,
 			kind = excluded.kind,
@@ -5101,7 +5431,8 @@ func (s *SQLiteStore) UpsertSchedule(ctx context.Context, record ScheduleRecord)
 			paused_at = excluded.paused_at,
 			cancelled_at = excluded.cancelled_at,
 			completed_at = excluded.completed_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(schedules.tenant_id, excluded.tenant_id)
 	`,
 		record.ScheduleID,
 		record.EnvironmentScope,
@@ -5118,6 +5449,7 @@ func (s *SQLiteStore) UpsertSchedule(ctx context.Context, record ScheduleRecord)
 		nullableTimeString(record.CancelledAt),
 		nullableTimeString(record.CompletedAt),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert schedule %s: %w", record.ScheduleID, err)
@@ -5182,15 +5514,17 @@ func (s *SQLiteStore) UpsertScheduleTarget(ctx context.Context, record ScheduleT
 			revision,
 			active,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(target_ref_id) DO UPDATE SET
 			schedule_id = excluded.schedule_id,
 			target_kind = excluded.target_kind,
 			revision = excluded.revision,
 			active = excluded.active,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(schedule_targets.tenant_id, excluded.tenant_id)
 	`,
 		record.TargetRefID,
 		record.ScheduleID,
@@ -5199,6 +5533,7 @@ func (s *SQLiteStore) UpsertScheduleTarget(ctx context.Context, record ScheduleT
 		boolToInt(record.Active),
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert schedule target %s: %w", record.TargetRefID, err)
@@ -5249,8 +5584,9 @@ func (s *SQLiteStore) UpsertScheduleDispatchAttempt(ctx context.Context, record 
 			missed_count,
 			created_at,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(attempt_id) DO UPDATE SET
 			schedule_id = excluded.schedule_id,
 			due_at = excluded.due_at,
@@ -5269,7 +5605,8 @@ func (s *SQLiteStore) UpsertScheduleDispatchAttempt(ctx context.Context, record 
 			missed_count = excluded.missed_count,
 			created_at = excluded.created_at,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(schedule_dispatch_attempts.tenant_id, excluded.tenant_id)
 	`,
 		record.AttemptID,
 		record.ScheduleID,
@@ -5290,6 +5627,7 @@ func (s *SQLiteStore) UpsertScheduleDispatchAttempt(ctx context.Context, record 
 		record.CreatedAt.UTC().Format(time.RFC3339Nano),
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert schedule attempt %s: %w", record.AttemptID, err)
@@ -5334,14 +5672,16 @@ func (s *SQLiteStore) UpsertDeliveryTarget(ctx context.Context, record DeliveryT
 			target_kind,
 			status,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(target_id) DO UPDATE SET
 			environment_scope = excluded.environment_scope,
 			target_kind = excluded.target_kind,
 			status = excluded.status,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(delivery_targets.tenant_id, excluded.tenant_id)
 	`,
 		record.TargetID,
 		record.EnvironmentScope,
@@ -5349,6 +5689,7 @@ func (s *SQLiteStore) UpsertDeliveryTarget(ctx context.Context, record DeliveryT
 		record.Status,
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert delivery target %s: %w", record.TargetID, err)
@@ -5426,15 +5767,17 @@ func (s *SQLiteStore) UpsertDeliveryPreference(ctx context.Context, record Deliv
 			integration_id,
 			active,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(preference_id) DO UPDATE SET
 			environment_scope = excluded.environment_scope,
 			scope_kind = excluded.scope_kind,
 			integration_id = excluded.integration_id,
 			active = excluded.active,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(delivery_preferences.tenant_id, excluded.tenant_id)
 	`,
 		record.PreferenceID,
 		record.EnvironmentScope,
@@ -5443,6 +5786,7 @@ func (s *SQLiteStore) UpsertDeliveryPreference(ctx context.Context, record Deliv
 		boolToInt(record.Active),
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert delivery preference %s: %w", record.PreferenceID, err)
@@ -5535,8 +5879,9 @@ func (s *SQLiteStore) UpsertDeliveryOutcome(ctx context.Context, record Delivery
 			preference_id,
 			summary_window_id,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(delivery_id) DO UPDATE SET
 			environment_scope = excluded.environment_scope,
 			source_kind = excluded.source_kind,
@@ -5550,7 +5895,8 @@ func (s *SQLiteStore) UpsertDeliveryOutcome(ctx context.Context, record Delivery
 			preference_id = excluded.preference_id,
 			summary_window_id = excluded.summary_window_id,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(delivery_outcomes.tenant_id, excluded.tenant_id)
 	`,
 		record.DeliveryID,
 		record.EnvironmentScope,
@@ -5566,6 +5912,7 @@ func (s *SQLiteStore) UpsertDeliveryOutcome(ctx context.Context, record Delivery
 		nullString(record.SummaryWindowID),
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert delivery outcome %s: %w", record.DeliveryID, err)
@@ -5693,15 +6040,17 @@ func (s *SQLiteStore) UpsertDeliveryAttempt(ctx context.Context, record Delivery
 			target_id,
 			status,
 			next_retry_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(attempt_id) DO UPDATE SET
 			delivery_id = excluded.delivery_id,
 			attempt_number = excluded.attempt_number,
 			target_id = excluded.target_id,
 			status = excluded.status,
 			next_retry_at = excluded.next_retry_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(delivery_attempts.tenant_id, excluded.tenant_id)
 	`,
 		record.AttemptID,
 		record.DeliveryID,
@@ -5710,6 +6059,7 @@ func (s *SQLiteStore) UpsertDeliveryAttempt(ctx context.Context, record Delivery
 		record.Status,
 		nullableTimeString(record.NextRetryAt),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert delivery attempt %s: %w", record.AttemptID, err)
@@ -5765,8 +6115,9 @@ func (s *SQLiteStore) UpsertDeliverySummaryWindow(ctx context.Context, record De
 			status,
 			window_ends_at,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(summary_window_id) DO UPDATE SET
 			environment_scope = excluded.environment_scope,
 			target_id = excluded.target_id,
@@ -5774,7 +6125,8 @@ func (s *SQLiteStore) UpsertDeliverySummaryWindow(ctx context.Context, record De
 			status = excluded.status,
 			window_ends_at = excluded.window_ends_at,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(delivery_summary_windows.tenant_id, excluded.tenant_id)
 	`,
 		record.SummaryWindowID,
 		record.EnvironmentScope,
@@ -5784,6 +6136,7 @@ func (s *SQLiteStore) UpsertDeliverySummaryWindow(ctx context.Context, record De
 		record.WindowEndsAt.UTC().Format(time.RFC3339Nano),
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert delivery summary window %s: %w", record.SummaryWindowID, err)
@@ -5861,6 +6214,9 @@ func (s *SQLiteStore) UpsertStep(ctx context.Context, step runtime.Step) error {
 	if s == nil {
 		return nil
 	}
+	if tenantID, err := s.ResolveDefaultPersonalTenantID(ctx); err == nil && tenantID != "" {
+		return s.UpsertStepForTenantSafe(ctx, step, tenantID)
+	}
 
 	inputJSON, err := marshalJSON(step.Input)
 	if err != nil {
@@ -5922,6 +6278,9 @@ func (s *SQLiteStore) UpsertStep(ctx context.Context, step runtime.Step) error {
 func (s *SQLiteStore) UpsertToolCall(ctx context.Context, toolCall runtime.ToolCall) error {
 	if s == nil {
 		return nil
+	}
+	if tenantID, err := s.ResolveDefaultPersonalTenantID(ctx); err == nil && tenantID != "" {
+		return s.UpsertToolCallForTenantSafe(ctx, toolCall, tenantID)
 	}
 
 	inputJSON, err := marshalJSON(toolCall.Input)
@@ -6097,8 +6456,9 @@ func (s *SQLiteStore) UpsertComputerUseSession(ctx context.Context, session comp
 			updated_at,
 			closed_at,
 			interrupted_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(computer_use_session_id) DO UPDATE SET
 			environment_scope = excluded.environment_scope,
 			run_id = excluded.run_id,
@@ -6113,7 +6473,8 @@ func (s *SQLiteStore) UpsertComputerUseSession(ctx context.Context, session comp
 			updated_at = excluded.updated_at,
 			closed_at = excluded.closed_at,
 			interrupted_at = excluded.interrupted_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(computer_use_sessions.tenant_id, excluded.tenant_id)
 	`,
 		session.ComputerUseSessionID,
 		session.EnvironmentScope,
@@ -6130,6 +6491,7 @@ func (s *SQLiteStore) UpsertComputerUseSession(ctx context.Context, session comp
 		nullableTimeString(session.ClosedAt),
 		nullableTimeString(session.InterruptedAt),
 		documentJSON,
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert computer-use session %s: %w", session.ComputerUseSessionID, err)
@@ -6240,8 +6602,9 @@ func (s *SQLiteStore) UpsertComputerUseAction(ctx context.Context, action comput
 			updated_at,
 			completed_at,
 			input_json,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(computer_use_action_id) DO UPDATE SET
 			environment_scope = excluded.environment_scope,
 			computer_use_session_id = excluded.computer_use_session_id,
@@ -6263,7 +6626,8 @@ func (s *SQLiteStore) UpsertComputerUseAction(ctx context.Context, action comput
 			updated_at = excluded.updated_at,
 			completed_at = excluded.completed_at,
 			input_json = excluded.input_json,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(computer_use_actions.tenant_id, excluded.tenant_id)
 	`,
 		action.ComputerUseActionID,
 		action.EnvironmentScope,
@@ -6287,6 +6651,7 @@ func (s *SQLiteStore) UpsertComputerUseAction(ctx context.Context, action comput
 		nullableTimeString(action.CompletedAt),
 		inputJSON,
 		documentJSON,
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert computer-use action %s: %w", action.ComputerUseActionID, err)
@@ -6396,8 +6761,9 @@ func (s *SQLiteStore) UpsertComputerUseArtifact(ctx context.Context, artifact co
 			capture_failure_reason,
 			created_at,
 			available_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(artifact_id) DO UPDATE SET
 			environment_scope = excluded.environment_scope,
 			computer_use_session_id = excluded.computer_use_session_id,
@@ -6413,7 +6779,8 @@ func (s *SQLiteStore) UpsertComputerUseArtifact(ctx context.Context, artifact co
 			capture_failure_reason = excluded.capture_failure_reason,
 			created_at = excluded.created_at,
 			available_at = excluded.available_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(computer_use_artifacts.tenant_id, excluded.tenant_id)
 	`,
 		artifact.ArtifactID,
 		artifact.EnvironmentScope,
@@ -6431,6 +6798,7 @@ func (s *SQLiteStore) UpsertComputerUseArtifact(ctx context.Context, artifact co
 		artifact.CreatedAt.UTC().Format(time.RFC3339Nano),
 		nullableTimeString(artifact.AvailableAt),
 		documentJSON,
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert computer-use artifact %s: %w", artifact.ArtifactID, err)
@@ -6634,8 +7002,9 @@ func (s *SQLiteStore) UpsertConsumerPolicyRecord(ctx context.Context, record Con
 			provider_operation_id,
 			started_at,
 			completed_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(policy_record_id) DO UPDATE SET
 			consumer_kind = excluded.consumer_kind,
 			consumer_id = excluded.consumer_id,
@@ -6651,7 +7020,8 @@ func (s *SQLiteStore) UpsertConsumerPolicyRecord(ctx context.Context, record Con
 			provider_operation_id = excluded.provider_operation_id,
 			started_at = excluded.started_at,
 			completed_at = excluded.completed_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(consumer_policy_records.tenant_id, excluded.tenant_id)
 	`,
 		record.PolicyRecordID,
 		record.ConsumerKind,
@@ -6669,6 +7039,7 @@ func (s *SQLiteStore) UpsertConsumerPolicyRecord(ctx context.Context, record Con
 		record.StartedAt.UTC().Format(time.RFC3339Nano),
 		nullableTimeString(record.CompletedAt),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert consumer policy record %s: %w", record.PolicyRecordID, err)
@@ -6715,8 +7086,9 @@ func (s *SQLiteStore) UpsertSecretScopeBinding(ctx context.Context, record Secre
 			default_source,
 			delivery_kind,
 			active,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(binding_id) DO UPDATE SET
 			consumer_kind = excluded.consumer_kind,
 			consumer_id = excluded.consumer_id,
@@ -6725,7 +7097,8 @@ func (s *SQLiteStore) UpsertSecretScopeBinding(ctx context.Context, record Secre
 			default_source = excluded.default_source,
 			delivery_kind = excluded.delivery_kind,
 			active = excluded.active,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(secret_scope_bindings.tenant_id, excluded.tenant_id)
 	`,
 		record.BindingID,
 		record.ConsumerKind,
@@ -6736,6 +7109,7 @@ func (s *SQLiteStore) UpsertSecretScopeBinding(ctx context.Context, record Secre
 		record.DeliveryKind,
 		boolToInt(record.Active),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert secret scope binding %s: %w", record.BindingID, err)
@@ -6996,13 +7370,15 @@ func (s *SQLiteStore) UpsertMCPToolExposureRule(ctx context.Context, record MCPT
 			exposure_mode,
 			active,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(server_id, tool_name, runtime_surface) DO UPDATE SET
 			exposure_mode = excluded.exposure_mode,
 			active = excluded.active,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(mcp_tool_exposure_rules.tenant_id, excluded.tenant_id)
 	`,
 		record.ServerID,
 		record.ToolName,
@@ -7011,6 +7387,7 @@ func (s *SQLiteStore) UpsertMCPToolExposureRule(ctx context.Context, record MCPT
 		boolToInt(record.Active),
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert mcp tool exposure rule %s/%s/%s: %w", record.ServerID, record.ToolName, record.RuntimeSurface, err)
@@ -7055,8 +7432,8 @@ func (s *SQLiteStore) UpsertReplayCandidate(ctx context.Context, item evaluation
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO evaluation_replay_candidates (
 			candidate_id, environment_scope, candidate_kind, source_kind, source_id, readiness_status,
-			latest_attempt_id, latest_comparison_id, created_at, updated_at, document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			latest_attempt_id, latest_comparison_id, created_at, updated_at, document_json, tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(candidate_id) DO UPDATE SET
 			environment_scope = excluded.environment_scope,
 			candidate_kind = excluded.candidate_kind,
@@ -7066,9 +7443,10 @@ func (s *SQLiteStore) UpsertReplayCandidate(ctx context.Context, item evaluation
 			latest_attempt_id = excluded.latest_attempt_id,
 			latest_comparison_id = excluded.latest_comparison_id,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(evaluation_replay_candidates.tenant_id, excluded.tenant_id)
 	`, item.CandidateID, item.EnvironmentScope, string(item.CandidateKind), string(item.SourceKind), item.SourceID, string(item.ReadinessStatus),
-		nullString(item.LatestAttemptID), nullString(item.LatestComparisonID), item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), string(document))
+		nullString(item.LatestAttemptID), nullString(item.LatestComparisonID), item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), string(document), s.ResolveDefaultTenantBinding(ctx))
 	if err != nil {
 		return fmt.Errorf("upsert replay candidate %s: %w", item.CandidateID, err)
 	}
@@ -7157,8 +7535,8 @@ func (s *SQLiteStore) UpsertReplayAttempt(ctx context.Context, item evaluation.R
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO evaluation_replay_attempts (
 			attempt_id, candidate_id, environment_scope, mode, status, change_window_label,
-			baseline_attempt_id, started_at, completed_at, created_at, updated_at, document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			baseline_attempt_id, started_at, completed_at, created_at, updated_at, document_json, tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(attempt_id) DO UPDATE SET
 			candidate_id = excluded.candidate_id,
 			environment_scope = excluded.environment_scope,
@@ -7169,10 +7547,11 @@ func (s *SQLiteStore) UpsertReplayAttempt(ctx context.Context, item evaluation.R
 			started_at = excluded.started_at,
 			completed_at = excluded.completed_at,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(evaluation_replay_attempts.tenant_id, excluded.tenant_id)
 	`, item.AttemptID, item.CandidateID, item.EnvironmentScope, string(item.Mode), string(item.Status), nullString(item.ChangeWindowLabel),
 		nullString(item.BaselineAttemptID), nullableValueTimeString(item.StartedAt), nullableValueTimeString(item.CompletedAt),
-		item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), string(document))
+		item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), string(document), s.ResolveDefaultTenantBinding(ctx))
 	if err != nil {
 		return fmt.Errorf("upsert replay attempt %s: %w", item.AttemptID, err)
 	}
@@ -7257,8 +7636,8 @@ func (s *SQLiteStore) UpsertComparisonResult(ctx context.Context, item evaluatio
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO evaluation_comparisons (
 			comparison_id, candidate_id, attempt_id, environment_scope, terminal_status,
-			change_window_label, generated_at, document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			change_window_label, generated_at, document_json, tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(comparison_id) DO UPDATE SET
 			candidate_id = excluded.candidate_id,
 			attempt_id = excluded.attempt_id,
@@ -7266,9 +7645,10 @@ func (s *SQLiteStore) UpsertComparisonResult(ctx context.Context, item evaluatio
 			terminal_status = excluded.terminal_status,
 			change_window_label = excluded.change_window_label,
 			generated_at = excluded.generated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(evaluation_comparisons.tenant_id, excluded.tenant_id)
 	`, item.ComparisonID, item.CandidateID, item.AttemptID, item.EnvironmentScope, string(item.TerminalStatus),
-		nullString(item.ChangeWindowLabel), item.GeneratedAt.Format(time.RFC3339Nano), string(document))
+		nullString(item.ChangeWindowLabel), item.GeneratedAt.Format(time.RFC3339Nano), string(document), s.ResolveDefaultTenantBinding(ctx))
 	if err != nil {
 		return fmt.Errorf("upsert comparison %s: %w", item.ComparisonID, err)
 	}
@@ -7356,17 +7736,18 @@ func (s *SQLiteStore) UpsertRegressionFixture(ctx context.Context, item evaluati
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO evaluation_regression_fixtures (
-			fixture_id, environment_scope, domain_class, candidate_id, manifest_path, created_at, updated_at, document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			fixture_id, environment_scope, domain_class, candidate_id, manifest_path, created_at, updated_at, document_json, tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(fixture_id) DO UPDATE SET
 			environment_scope = excluded.environment_scope,
 			domain_class = excluded.domain_class,
 			candidate_id = excluded.candidate_id,
 			manifest_path = excluded.manifest_path,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(evaluation_regression_fixtures.tenant_id, excluded.tenant_id)
 	`, item.FixtureID, item.EnvironmentScope, string(item.DomainClass), nullString(item.CandidateID), item.ManifestPath,
-		item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), string(document))
+		item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), string(document), s.ResolveDefaultTenantBinding(ctx))
 	if err != nil {
 		return fmt.Errorf("upsert regression fixture %s: %w", item.FixtureID, err)
 	}
@@ -7422,6 +7803,22 @@ func (s *SQLiteStore) AppendEvent(ctx context.Context, event events.Event) (even
 		return events.Event{}, fmt.Errorf("marshal event payload: %w", err)
 	}
 
+	// Auto-bind tenant_id for non-global categories so legacy callers
+	// (sandbox manager, recovery paths) satisfy the T077b CHECK
+	// constraint. Resolution order: caller-provided event.TenantID,
+	// then tenant context, then the cached default personal tenant.
+	// Global categories stay NULL by inventory contract.
+	tenantID := event.TenantID
+	if tenantID == "" && !events.IsGlobalCategory(event.Category) {
+		if cached, ok := s.defaultTenantCache.getOK(); ok {
+			tenantID = cached
+		}
+	}
+	var tenantArg any
+	if tenantID != "" {
+		tenantArg = tenantID
+	}
+
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO events (
 			event_id,
@@ -7440,8 +7837,9 @@ func (s *SQLiteStore) AppendEvent(ctx context.Context, event events.Event) (even
 			capability_id,
 			resource_kind,
 			resource_id,
-			payload_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			payload_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(event_id) DO NOTHING
 	`,
 		event.EventID,
@@ -7461,6 +7859,7 @@ func (s *SQLiteStore) AppendEvent(ctx context.Context, event events.Event) (even
 		event.Resource.Kind,
 		event.Resource.ID,
 		payloadJSON,
+		tenantArg,
 	)
 	if err != nil {
 		return events.Event{}, fmt.Errorf("append event %s: %w", event.EventID, err)
@@ -7468,6 +7867,9 @@ func (s *SQLiteStore) AppendEvent(ctx context.Context, event events.Event) (even
 
 	if err := s.db.QueryRowContext(ctx, `SELECT rowid FROM events WHERE event_id = ?`, event.EventID).Scan(&event.Sequence); err != nil {
 		return events.Event{}, fmt.Errorf("load event sequence %s: %w", event.EventID, err)
+	}
+	if tenantID != "" {
+		event.TenantID = tenantID
 	}
 
 	return event, nil
@@ -7567,8 +7969,9 @@ func (s *SQLiteStore) UpsertSandboxExecution(ctx context.Context, record Sandbox
 			updated_at,
 			started_at,
 			completed_at,
-			document_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(execution_id) DO UPDATE SET
 			profile_id = excluded.profile_id,
 			backend_kind = excluded.backend_kind,
@@ -7578,7 +7981,8 @@ func (s *SQLiteStore) UpsertSandboxExecution(ctx context.Context, record Sandbox
 			updated_at = excluded.updated_at,
 			started_at = excluded.started_at,
 			completed_at = excluded.completed_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(sandbox_executions.tenant_id, excluded.tenant_id)
 	`,
 		record.ExecutionID,
 		record.ProfileID,
@@ -7590,6 +7994,7 @@ func (s *SQLiteStore) UpsertSandboxExecution(ctx context.Context, record Sandbox
 		startedAt,
 		completedAt,
 		string(record.Document),
+		s.ResolveDefaultTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert sandbox execution %s: %w", record.ExecutionID, err)
@@ -7632,18 +8037,34 @@ func (s *SQLiteStore) SaveCheckpoint(ctx context.Context, checkpoint runtime.Run
 		return fmt.Errorf("marshal checkpoint: %w", err)
 	}
 
+	// Roadmap 35 Pass B: bind tenant_id at insert time. The checkpoint
+	// row inherits tenant_id from the runs table (checkpoints derive
+	// from runs per the inventory's parent-FK rule). Resolve via a
+	// lookup on runs; fall back to the bootstrapped personal tenant if
+	// the parent has no tenant id yet (pre-backfill window).
+	var tenantID sql.NullString
+	var parentTenant sql.NullString
+	_ = s.db.QueryRowContext(ctx, `SELECT tenant_id FROM runs WHERE run_id = ?`, checkpoint.Run.RunID).Scan(&parentTenant)
+	if parentTenant.Valid && parentTenant.String != "" {
+		tenantID = parentTenant
+	} else if id, err := s.ResolveDefaultPersonalTenantID(ctx); err == nil && id != "" {
+		tenantID = sql.NullString{String: id, Valid: true}
+	}
+
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO checkpoints (
 			checkpoint_id,
 			run_id,
 			captured_at,
-			snapshot_json
-		) VALUES (?, ?, ?, ?)
+			snapshot_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?)
 	`,
 		newCheckpointID(),
 		checkpoint.Run.RunID,
 		checkpoint.CapturedAt.UTC().Format(time.RFC3339Nano),
 		string(snapshotJSON),
+		tenantID,
 	)
 	if err != nil {
 		return fmt.Errorf("save checkpoint for run %s: %w", checkpoint.Run.RunID, err)
@@ -7694,6 +8115,117 @@ func (s *SQLiteStore) configure(ctx context.Context) error {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("apply pragma %q: %w", stmt, err)
 		}
+	}
+	return nil
+}
+
+// MigrateToVersion applies schema migrations only up through `targetVersion`,
+// stopping before any later migration is applied. Used by the Roadmap 35
+// US2 fixture builder to produce a pre-tenant (v21) database that
+// subsequent test code can run the rest of the migrations against.
+//
+// This is a test-only helper. Production callers MUST use NewSQLiteStore
+// which always migrates to the head version.
+func (s *SQLiteStore) MigrateToVersion(ctx context.Context, targetVersion int) error {
+	if s == nil {
+		return errors.New("MigrateToVersion: nil store")
+	}
+	if targetVersion < 1 {
+		return fmt.Errorf("MigrateToVersion: invalid target %d", targetVersion)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			applied_at TEXT NOT NULL
+		);
+	`); err != nil {
+		return fmt.Errorf("ensure schema_migrations: %w", err)
+	}
+	currentVersion, err := currentSchemaVersion(ctx, tx)
+	if err != nil {
+		return err
+	}
+	for _, migration := range schemaMigrations {
+		if migration.Version <= currentVersion {
+			continue
+		}
+		if migration.Version > targetVersion {
+			break
+		}
+		for _, stmt := range migration.Statements {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				return fmt.Errorf("apply migration %d (%s): %w", migration.Version, migration.Name, err)
+			}
+		}
+		if err := recordSchemaMigration(ctx, tx, migration.Version, migration.Name); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// NewSQLiteStoreAtVersion is a test-only constructor that opens a SQLite
+// store and migrates only up through `targetVersion`. Used to build the
+// Roadmap 35 US2 pre-tenant (v21) fixture without applying the v22+
+// tenant_id columns.
+//
+// Callers must invoke ApplyHeadMigrations later to bring the database
+// to the production head; doing so is what the migration regression
+// suite exercises.
+func NewSQLiteStoreAtVersion(dataDir string, targetVersion int) (*SQLiteStore, error) {
+	resolvedDir, err := resolveDataDir(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve data dir: %w", err)
+	}
+	if err := os.MkdirAll(resolvedDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create data dir: %w", err)
+	}
+	dbPath := filepath.Join(resolvedDir, defaultDatabaseFile)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite db: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	store := &SQLiteStore{DataDir: resolvedDir, DBPath: dbPath, db: db}
+	if err := store.configure(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := store.MigrateToVersion(context.Background(), targetVersion); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+// ApplyHeadMigrations brings a store opened via NewSQLiteStoreAtVersion
+// up to CurrentSchemaVersion and registers every batch of progress
+// rows. Mirrors the post-migration steps in NewSQLiteStore.
+func (s *SQLiteStore) ApplyHeadMigrations(ctx context.Context) error {
+	if err := s.migrate(ctx); err != nil {
+		return err
+	}
+	if err := s.RegisterEventsMigrationSteps(ctx); err != nil {
+		return err
+	}
+	if err := s.RegisterRuntimeMigrationSteps(ctx); err != nil {
+		return err
+	}
+	if err := s.RegisterBatch2MigrationSteps(ctx); err != nil {
+		return err
+	}
+	if err := s.RegisterBatch3MigrationSteps(ctx); err != nil {
+		return err
+	}
+	if err := s.RegisterEnforcementMigrationSteps(ctx); err != nil {
+		return err
 	}
 	return nil
 }

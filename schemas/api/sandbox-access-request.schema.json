@@ -6,6 +6,7 @@
   "required": ["readRoots", "writeRoots", "allowedHosts", "allowedPorts"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "readRoots": {
       "type": "array",
       "items": { "type": "string" }

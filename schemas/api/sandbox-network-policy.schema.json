@@ -6,6 +6,7 @@
   "required": ["mode", "allowedHosts", "allowedPorts", "allowLoopback", "enforcementMode"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "mode": {
       "type": "string",
       "enum": ["deny", "allow_list", "full"]

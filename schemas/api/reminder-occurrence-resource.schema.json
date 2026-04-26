@@ -13,6 +13,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "occurrenceId": { "type": "string" },
     "reminderId": { "type": "string" },
     "environmentScope": { "type": "string", "enum": ["test", "prod"] },

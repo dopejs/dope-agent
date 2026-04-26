@@ -16,6 +16,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "connectorId": { "type": "string" },
     "kind": { "type": "string" },
     "displayName": { "type": "string" },

@@ -13,6 +13,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "workflowId": { "type": "string" },
     "runId": { "type": "string" },
     "scheduleId": { "type": "string" },

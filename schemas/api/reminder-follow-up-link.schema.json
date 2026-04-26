@@ -6,6 +6,7 @@
   "required": ["linkKind", "sourceId"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "linkKind": {
       "type": "string",
       "enum": ["calendar_operation", "mail_operation", "run", "workflow"]

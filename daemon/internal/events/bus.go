@@ -8,6 +8,28 @@ import (
 	"time"
 )
 
+// GlobalCategories enumerates the event categories that are owned by no
+// tenant (the events table is the only mixed table in the inventory).
+// Rows in these categories MUST keep tenant_id NULL. Adding a category
+// here MUST stay in sync with the inventory's "Event Sources" section
+// AND with store.AppendEventForTenantRaw's claim-refusal gate.
+var GlobalCategories = map[string]struct{}{
+	"mcp":               {},
+	"provider":          {},
+	"system":            {},
+	"daemon.migration":  {},
+	"connector_global":  {},
+	"capability_global": {},
+}
+
+// IsGlobalCategory reports whether the given category is in the
+// hard-coded global set. Callers in the store and tenancy layers use
+// this to decide whether tenant_id may be bound on the row.
+func IsGlobalCategory(category string) bool {
+	_, ok := GlobalCategories[category]
+	return ok
+}
+
 type Scope struct {
 	SessionID            string `json:"sessionId,omitempty"`
 	RunID                string `json:"runId,omitempty"`
@@ -31,23 +53,35 @@ type Event struct {
 	EventID          string         `json:"eventId"`
 	Sequence         int64          `json:"sequence"`
 	EnvironmentScope string         `json:"-"`
-	Category         string         `json:"category"`
-	Name             string         `json:"name"`
-	OccurredAt       time.Time      `json:"occurredAt"`
-	Scope            Scope          `json:"scope"`
-	Resource         Resource       `json:"resource"`
-	Payload          map[string]any `json:"payload"`
+	// TenantID is set by the publisher for tenant-owned events. Global
+	// categories (mcp-*, provider-*, system-*, daemon.migration.*,
+	// connector_global, capability_global) carry an empty TenantID per the
+	// inventory's events row.
+	TenantID   string         `json:"tenantId,omitempty"`
+	Category   string         `json:"category"`
+	Name       string         `json:"name"`
+	OccurredAt time.Time      `json:"occurredAt"`
+	Scope      Scope          `json:"scope"`
+	Resource   Resource       `json:"resource"`
+	Payload    map[string]any `json:"payload"`
 }
 
+// Filter selects events on the bus. TenantOwnedTenantID gates a subscriber
+// to a single tenant's tenant-owned events; if set, the subscriber receives
+// ONLY events whose TenantID matches AND never sees NULL-tenant (global)
+// events. To subscribe to global events, set IncludeGlobal=true and leave
+// TenantOwnedTenantID empty.
 type Filter struct {
-	EnvironmentScope  string
-	Category          string
-	RunID             string
-	SessionID         string
-	ScheduleID        string
-	ScheduleAttemptID string
-	ResourceKind      string
-	Cursor            int64
+	EnvironmentScope    string
+	Category            string
+	RunID               string
+	SessionID           string
+	ScheduleID          string
+	ScheduleAttemptID   string
+	ResourceKind        string
+	Cursor              int64
+	TenantOwnedTenantID string
+	IncludeGlobal       bool
 }
 
 type Bus struct {
@@ -198,7 +232,18 @@ func matches(filter Filter, event Event) bool {
 	if filter.ResourceKind != "" && filter.ResourceKind != event.Resource.Kind {
 		return false
 	}
-
+	// Roadmap 35: tenant-owned filter MUST exclude both other-tenant rows
+	// AND NULL-tenant (global) rows. Subscribers that want only global
+	// events MUST set IncludeGlobal=true and leave TenantOwnedTenantID
+	// empty. Legacy subscribers (neither flag set) keep seeing every
+	// event to preserve existing behaviour during the staged rollout.
+	if filter.TenantOwnedTenantID != "" {
+		if event.TenantID != filter.TenantOwnedTenantID {
+			return false
+		}
+	} else if filter.IncludeGlobal && event.TenantID != "" {
+		return false
+	}
 	return true
 }
 

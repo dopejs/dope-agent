@@ -8,6 +8,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
@@ -484,6 +485,13 @@ func newReminderManagerHarness(t *testing.T, opts reminderManagerHarnessOptions)
 	}
 	t.Cleanup(func() { _ = sqliteStore.Close() })
 
+	// Roadmap 35 (Pass B): bootstrap a personal tenant + seed the
+	// default-tenant cache so the legacy Upsert* helpers used by this
+	// test harness bind tenant_id correctly. Without this the reminder
+	// follow-up projection would treat run/workflow links as stale (the
+	// FR-006 isolation guarantee — there is no visible tenant context).
+	bootstrapTestPersonalTenant(t, sqliteStore)
+
 	eventBus := events.NewBus()
 	deliveryManager := delivery.NewManager("test", eventBus, sqliteStore, delivery.NewTestSinkAdapter())
 	target, err := deliveryManager.CreateTarget(context.Background(), delivery.DeliveryTarget{
@@ -528,4 +536,29 @@ func newReminderManagerHarness(t *testing.T, opts reminderManagerHarnessOptions)
 		TickInterval:     tickInterval,
 	})
 	return manager, deliveryManager, clock
+}
+
+// bootstrapTestPersonalTenant inserts a personal tenant row directly
+// (bypassing identity.Manager.BootstrapLocal which has wider deps the
+// reminder tests do not need) and primes the default-tenant cache so
+// that the legacy Upsert* helpers in this test harness bind tenant_id
+// correctly. Required after Roadmap 35 Pass B made tenant_id the
+// authoritative ownership marker for runtime-spine tables.
+func bootstrapTestPersonalTenant(t *testing.T, s *store.SQLiteStore) {
+	t.Helper()
+	now := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	tenant := identity.Tenant{
+		TenantID:    "ten_test_personal",
+		TenantKind:  identity.TenantKindPersonal,
+		DisplayName: "Test Personal",
+		Status:      identity.StatusActive,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := s.UpsertTenant(context.Background(), tenant); err != nil {
+		t.Fatalf("UpsertTenant: %v", err)
+	}
+	if err := s.SeedDefaultTenantCache(context.Background()); err != nil {
+		t.Fatalf("SeedDefaultTenantCache: %v", err)
+	}
 }

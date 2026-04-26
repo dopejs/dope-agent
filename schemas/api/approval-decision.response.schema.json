@@ -6,6 +6,7 @@
   "required": ["approval", "decision"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "approval": {
       "$ref": "./approval-resource.schema.json"
     },

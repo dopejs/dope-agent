@@ -6,6 +6,7 @@
   "required": ["entrypoint"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "sessionId": {
       "type": "string"
     },

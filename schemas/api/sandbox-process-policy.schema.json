@@ -15,6 +15,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "timeoutMs": { "type": "integer", "minimum": 1 },
     "maxTimeoutMs": { "type": "integer", "minimum": 1 },
     "killGraceMs": { "type": "integer", "minimum": 0 },

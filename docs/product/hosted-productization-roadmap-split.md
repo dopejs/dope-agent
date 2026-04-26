@@ -58,10 +58,15 @@ capability.
 
 The hosted productization program is split into:
 
-1. `019-tenant-identity-and-access-foundation.md`
-2. `020-tenant-scoped-data-migration.md`
+1. `019-tenant-identity-and-access-foundation.md` — Roadmap 34, **complete**.
+2. `020-tenant-scoped-data-migration.md` — Roadmap 35, **complete**.
 3. `021-tenant-aware-operator-shell-and-sdk.md`
-4. `022-hosted-secrets-integrations-and-connector-isolation.md`
+4. `022-hosted-secrets-integrations-and-connector-isolation.md` — Roadmap 37 owns credential
+   semantics for `provider_auth_states`, `mcp_servers`, `mcp_server_states`, `mcp_tools`,
+   `connectors`, and the credential portion of `secret_scope_bindings` /
+   `mcp_tool_exposure_rules`. Roadmap 35 explicitly does NOT change DDL or store access for
+   those tables — the boundary is enforced by the
+   `TestR37BoundarySignaturesGolden` exported-signature snapshot.
 5. `023-billing-quotas-and-usage-accounting.md`
 6. `024-production-install-upgrade-backup-and-soak.md`
 7. `025-live-validation-and-side-effect-replay.md`

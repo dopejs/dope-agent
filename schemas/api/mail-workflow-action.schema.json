@@ -6,6 +6,7 @@
   "required": ["operationClass"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "operationClass": { "type": "string", "enum": ["list_threads", "get_thread", "get_message", "list_drafts", "get_draft", "create_draft", "update_draft", "send_message", "send_draft", "reply_message", "forward_message"] },
     "integrationId": { "type": "string" },
     "threadId": { "type": "string" },

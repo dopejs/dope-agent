@@ -6,6 +6,7 @@
   "required": ["kind"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "kind": {
       "type": "string",
       "enum": ["once", "cron"]

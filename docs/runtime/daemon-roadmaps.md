@@ -1578,9 +1578,11 @@ Explicitly out of scope:
 
 ### Roadmap 35: Tenant-Scoped Data Migration
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/020-tenant-scoped-data-migration.md](../specs/020-tenant-scoped-data-migration.md)
+Spec workspace: [specs/020-tenant-scoped-data-migration/](../../specs/020-tenant-scoped-data-migration/)
+Operator runbook: [docs/runtime/tenant-migration-rollback.md](./tenant-migration-rollback.md)
 
 Goal: migrate core daemon-owned runtime, product, integration, delivery, and evaluation
 records so they are owned and isolated by tenant.
@@ -1597,6 +1599,27 @@ Explicitly out of scope:
 - per-tenant databases
 - tenant switcher UI
 - live side-effect replay
+
+Closure notes:
+
+- Runtime spine (sessions, runs, steps, tool_calls, llm_dispatches, checkpoints) ships
+  with `tenant_id NOT NULL CHECK (tenant_id GLOB 'ten_*')` plus tenant-aware indexes;
+  legacy `Upsert*` helpers auto-bind via the cached default-personal-tenant resolver.
+- Events table carries `tenant_id` with partial indexes splitting tenant-owned categories
+  from globals (mcp/provider/system/daemon.migration/connector_global/capability_global).
+- Cross-tenant denial emits `audit.cross_tenant_access_denied` with payload restricted to
+  acting tenant id, principal id, surface, and resource kind — no target tenant id or
+  row data leaks.
+- Phase 5 verification suite (T082–T089c) locks in inventory completeness, query-plan
+  index selection, p95 latency regression budget (post ≤ 1.2× pre), audit envelope
+  shape, no-admin-route invariant, and the Roadmap 37 boundary signature golden.
+- Step (c) UNIQUE-index activation for the ~30 non-runtime-spine tables (T019–T026,
+  T077a/T077b) is live. Each legacy `Upsert*` helper for those tables auto-binds
+  `tenant_id` via `ResolveDefaultTenantBinding` (cached default-personal-tenant
+  resolver pre-seeded at app boot to avoid a `MaxOpenConns=1` deadlock against
+  in-flight transactions). The shadow-table swap recreates each table with
+  `tenant_id NOT NULL CHECK (tenant_id GLOB 'ten_*')` and adds the per-tenant
+  UNIQUE indexes from the inventory (`store.ExtendedEnforcementSpecs()`).
 
 ### Roadmap 36: Tenant-Aware Operator Shell And SDK
 

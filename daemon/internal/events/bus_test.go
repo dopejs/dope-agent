@@ -104,3 +104,66 @@ func TestListAndSubscribeRespectCursor(t *testing.T) {
 		t.Fatalf("expected event sequence after %d, got %d", second.Sequence, event.Sequence)
 	}
 }
+
+// Roadmap 35: tenant-owned event subscribers MUST receive only their tenant's
+// events and MUST NOT see global (NULL-tenant) events. The default filter
+// continues to see global events for backward compatibility.
+func TestTenantOwnedFilterIsolatesAcrossTenants(t *testing.T) {
+	bus := NewBus()
+
+	chA, unA := bus.Subscribe(Filter{TenantOwnedTenantID: "ten_a"})
+	defer unA()
+	chB, unB := bus.Subscribe(Filter{TenantOwnedTenantID: "ten_b"})
+	defer unB()
+
+	bus.Publish(Event{TenantID: "ten_a", Category: "run", Name: "run.created", Resource: Resource{Kind: "run", ID: "run_1"}})
+	bus.Publish(Event{TenantID: "ten_b", Category: "run", Name: "run.created", Resource: Resource{Kind: "run", ID: "run_2"}})
+	// Global event MUST NOT be delivered to tenant-owned subscribers.
+	bus.Publish(Event{Category: "system", Name: "system.started", Resource: Resource{Kind: "system", ID: "dope"}})
+
+	gotA := drain(chA, 2)
+	gotB := drain(chB, 2)
+
+	if len(gotA) != 1 || gotA[0].TenantID != "ten_a" {
+		t.Fatalf("tenant A subscriber received wrong events: %+v", gotA)
+	}
+	if len(gotB) != 1 || gotB[0].TenantID != "ten_b" {
+		t.Fatalf("tenant B subscriber received wrong events: %+v", gotB)
+	}
+}
+
+func TestIncludeGlobalSubscribesOnlyToGlobal(t *testing.T) {
+	bus := NewBus()
+	ch, unsub := bus.Subscribe(Filter{IncludeGlobal: true})
+	defer unsub()
+
+	bus.Publish(Event{TenantID: "ten_a", Category: "run", Name: "run.created", Resource: Resource{Kind: "run", ID: "run_1"}})
+	bus.Publish(Event{Category: "system", Name: "system.started", Resource: Resource{Kind: "system", ID: "dope"}})
+
+	// IncludeGlobal=true (without a TenantOwnedTenantID) MUST deliver
+	// ONLY events that have no tenant id — the tenant-owned event above
+	// must be filtered out.
+	got := drain(ch, 2)
+	if len(got) != 1 {
+		t.Fatalf("expected only the global event, got %d: %+v", len(got), got)
+	}
+	if got[0].TenantID != "" {
+		t.Fatalf("IncludeGlobal subscriber received tenant-owned event: %+v", got[0])
+	}
+}
+
+func drain(ch <-chan Event, max int) []Event {
+	out := make([]Event, 0, max)
+	for i := 0; i < max; i++ {
+		select {
+		case e, ok := <-ch:
+			if !ok {
+				return out
+			}
+			out = append(out, e)
+		default:
+			return out
+		}
+	}
+	return out
+}

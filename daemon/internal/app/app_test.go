@@ -1898,7 +1898,7 @@ func TestAppRestartRestoresRuntimeBoundary(t *testing.T) {
 	createRunReq.Header.Set("Authorization", authHeader)
 	first.Server.Handler().ServeHTTP(createRunRec, createRunReq)
 	if createRunRec.Code != http.StatusCreated {
-		t.Fatalf("expected 201 for run create, got %d", createRunRec.Code)
+		t.Fatalf("expected 201 for run create, got %d body=%s", createRunRec.Code, createRunRec.Body.String())
 	}
 	var createdRun runtime.Run
 	if err := json.Unmarshal(createRunRec.Body.Bytes(), &createdRun); err != nil {

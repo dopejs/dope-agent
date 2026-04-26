@@ -6,6 +6,7 @@
   "required": ["actionKind"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "actionKind": { "type": "string", "enum": ["navigate", "back", "forward", "wait", "screenshot", "snapshot", "click", "input", "select", "download", "close_session"] },
     "url": { "type": "string" },
     "value": { "type": "string" },

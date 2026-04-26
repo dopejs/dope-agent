@@ -19,6 +19,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "workflowStepId": { "type": "string" },
     "workflowId": { "type": "string" },
     "title": { "type": "string" },

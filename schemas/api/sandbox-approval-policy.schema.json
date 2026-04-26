@@ -12,6 +12,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "mode": {
       "type": "string",
       "enum": ["allow", "ask", "deny"]

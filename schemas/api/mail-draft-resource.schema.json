@@ -6,6 +6,7 @@
   "required": ["draftId", "operationId", "integrationId", "mailAccountId", "composeMode", "draftStatus", "createdAt", "updatedAt"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "draftId": { "type": "string" },
     "threadId": { "type": "string" },
     "operationId": { "type": "string" },

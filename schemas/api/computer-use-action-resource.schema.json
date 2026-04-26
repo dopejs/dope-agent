@@ -6,6 +6,7 @@
   "required": ["computerUseActionId", "computerUseSessionId", "runId", "actionKind", "status", "riskLevel", "requestedAt", "updatedAt"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "computerUseActionId": { "type": "string" },
     "environmentScope": { "type": "string" },
     "computerUseSessionId": { "type": "string" },

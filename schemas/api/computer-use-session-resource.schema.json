@@ -6,6 +6,7 @@
   "required": ["computerUseSessionId", "runId", "status", "driverKind", "startedAt", "updatedAt"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "computerUseSessionId": { "type": "string" },
     "environmentScope": { "type": "string" },
     "runId": { "type": "string" },

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
@@ -42,6 +43,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/store/tenancy"
 )
 
 type Dependencies struct {
@@ -71,6 +73,27 @@ type Dependencies struct {
 	Store        *store.SQLiteStore
 	Checkpoints  *checkpoints.Manager
 	Evaluation   *evaluation.Manager
+	// Roadmap 35 (T040+): emitter used by route handlers to publish
+	// `audit.cross_tenant_access_denied` when a request resolves to a
+	// tenant context that does not own the targeted resource. Optional;
+	// the daemon's startup wires the shared emitter constructed against
+	// EventBus + Logger.
+	AuditEmitter *audit.Emitter
+	// Roadmap 35 (Finding #4): post-startup snapshot of the tenant
+	// migration progress. While `InProgress()` returns true, the
+	// `protected()` middleware refuses tenant-owned requests with HTTP
+	// 503 + stable error code `tenant_migration_in_progress` so
+	// clients can backoff coherently. Optional — when nil, the daemon
+	// behaves as if all backfills are complete.
+	TenantMigrationStatus MigrationStatus
+}
+
+// MigrationStatus is the read-only view the API needs from the
+// migration gate — kept narrow so the api package does not need to
+// import the app package.
+type MigrationStatus interface {
+	InProgress() bool
+	PendingSteps() []string
 }
 
 type Server struct {
@@ -100,7 +123,9 @@ type Server struct {
 	store        *store.SQLiteStore
 	checkpoints  *checkpoints.Manager
 	evaluation   *evaluation.Manager
-	server       *http.Server
+	auditEmitter      *audit.Emitter
+	migrationStatus   MigrationStatus
+	server            *http.Server
 }
 
 func NewServer(deps Dependencies) *Server {
@@ -242,69 +267,70 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/runs", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleRuns(deps.Router, deps.Runtime, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, w, r)
 	}))
-	mux.HandleFunc("/v1/runs/", protected(func(w http.ResponseWriter, r *http.Request) {
+	ae := resolveAuditEmitter(deps)
+	mux.HandleFunc("/v1/runs/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/runs/", "runs", "run_id", "run", func(w http.ResponseWriter, r *http.Request) {
 		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.Mail, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, deps.ComputerUse, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/schedules", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSchedules(deps.Scheduler, deps.Delivery, w, r)
 	}))
-	mux.HandleFunc("/v1/schedules/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/schedules/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/schedules/", "schedules", "schedule_id", "schedule", func(w http.ResponseWriter, r *http.Request) {
 		handleScheduleRoutes(deps.Scheduler, deps.Delivery, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/reminders", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleReminders(deps.Reminders, w, r)
 	}))
-	mux.HandleFunc("/v1/reminders/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/reminders/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/reminders/", "reminders", "reminder_id", "reminder", func(w http.ResponseWriter, r *http.Request) {
 		handleReminderRoutes(deps.Reminders, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/delivery/targets", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleDeliveryTargets(deps.Delivery, w, r)
 	}))
-	mux.HandleFunc("/v1/delivery/targets/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/delivery/targets/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/delivery/targets/", "delivery_targets", "target_id", "delivery_target", func(w http.ResponseWriter, r *http.Request) {
 		handleDeliveryTargetRoutes(deps.Delivery, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/delivery/preferences", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleDeliveryPreferences(deps.Delivery, w, r)
 	}))
-	mux.HandleFunc("/v1/delivery/preferences/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/delivery/preferences/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/delivery/preferences/", "delivery_preferences", "preference_id", "delivery_preference", func(w http.ResponseWriter, r *http.Request) {
 		handleDeliveryPreferenceRoutes(deps.Delivery, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/deliveries", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleDeliveries(deps.Delivery, w, r)
 	}))
-	mux.HandleFunc("/v1/deliveries/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/deliveries/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/deliveries/", "delivery_outcomes", "delivery_id", "delivery_outcome", func(w http.ResponseWriter, r *http.Request) {
 		handleDeliveryRoutes(deps.Delivery, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/delivery/windows", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleDeliveryWindows(deps.Delivery, w, r)
 	}))
-	mux.HandleFunc("/v1/delivery/windows/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/delivery/windows/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/delivery/windows/", "delivery_summary_windows", "summary_window_id", "delivery_summary_window", func(w http.ResponseWriter, r *http.Request) {
 		handleDeliveryWindowRoutes(deps.Delivery, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/sessions", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSessions(deps.Router, deps.EventBus, deps.Store, w, r)
 	}))
-	mux.HandleFunc("/v1/sessions/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/sessions/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/sessions/", "sessions", "session_id", "session", func(w http.ResponseWriter, r *http.Request) {
 		handleSessionRoutes(deps.Router, deps.EventBus, deps.Store, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/policy/approvals", protected(func(w http.ResponseWriter, r *http.Request) {
 		handlePolicyApprovals(deps.Policy, deps.EventBus, deps.Store, w, r)
 	}))
-	mux.HandleFunc("/v1/policy/approvals/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/policy/approvals/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/policy/approvals/", "approvals", "approval_id", "approval", func(w http.ResponseWriter, r *http.Request) {
 		handlePolicyApprovalRoutes(deps.Config, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.Mail, deps.EventBus, deps.Store, deps.ComputerUse, deps.Runtime, deps.Checkpoints, w, r)
-	}))
-	mux.HandleFunc("/v1/computer-use/artifacts/", protected(func(w http.ResponseWriter, r *http.Request) {
+	})))
+	mux.HandleFunc("/v1/computer-use/artifacts/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/computer-use/artifacts/", "computer_use_artifacts", "artifact_id", "computer_use_artifact", func(w http.ResponseWriter, r *http.Request) {
 		handleComputerUseArtifactRoutes(deps.ComputerUse, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/llm/dispatches/stream", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleLLMDispatchStream(deps.LLM, deps.Providers, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/llm/dispatches", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleLLMDispatches(deps.LLM, deps.Providers, deps.EventBus, deps.Store, w, r)
 	}))
-	mux.HandleFunc("/v1/llm/dispatches/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/llm/dispatches/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/llm/dispatches/", "llm_dispatches", "dispatch_id", "llm_dispatch", func(w http.ResponseWriter, r *http.Request) {
 		handleLLMDispatchRoutes(deps.Store, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/chat/query/stream", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleChatQueryStream(deps.Chat, w, r)
 	}))
@@ -326,9 +352,9 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/sandboxes/executions", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSandboxExecutions(deps.Sandboxes, w, r)
 	}))
-	mux.HandleFunc("/v1/sandboxes/executions/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/sandboxes/executions/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/sandboxes/executions/", "sandbox_executions", "execution_id", "sandbox_execution", func(w http.ResponseWriter, r *http.Request) {
 		handleSandboxExecutionRoutes(deps.Sandboxes, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/sandboxes/explain", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSandboxExplain(deps.Sandboxes, w, r)
 	}))
@@ -350,15 +376,15 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/integrations", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleIntegrations(deps.Config, deps.Integrations, deps.EventBus, deps.Store, w, r)
 	}))
-	mux.HandleFunc("/v1/integrations/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/integrations/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/integrations/", "integrations", "integration_id", "integration", func(w http.ResponseWriter, r *http.Request) {
 		handleIntegrationRoutes(deps.Config, deps.Integrations, deps.EventBus, deps.Store, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/calendar/accounts", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleCalendarAccounts(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Store, w, r)
 	}))
-	mux.HandleFunc("/v1/calendar/accounts/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/calendar/accounts/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/calendar/accounts/", "calendar_accounts", "calendar_account_id", "calendar_account", func(w http.ResponseWriter, r *http.Request) {
 		handleCalendarAccountRoutes(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Store, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/calendar/events", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleCalendarEvents(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Store, w, r)
 	}))
@@ -374,15 +400,15 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/calendar/operations", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleCalendarOperations(deps.Config, deps.Calendar, deps.Store, w, r)
 	}))
-	mux.HandleFunc("/v1/calendar/operations/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/calendar/operations/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/calendar/operations/", "calendar_operations", "operation_id", "calendar_operation", func(w http.ResponseWriter, r *http.Request) {
 		handleCalendarOperationRoutes(deps.Config, deps.Calendar, deps.Store, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/mail/accounts", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleMailAccounts(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
 	}))
-	mux.HandleFunc("/v1/mail/accounts/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/mail/accounts/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/mail/accounts/", "mail_accounts", "mail_account_id", "mail_account", func(w http.ResponseWriter, r *http.Request) {
 		handleMailAccountRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/mail/threads", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleMailThreads(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
 	}))
@@ -404,9 +430,9 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/mail/operations", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleMailOperations(deps.Config, deps.Mail, deps.Store, w, r)
 	}))
-	mux.HandleFunc("/v1/mail/operations/", protected(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/mail/operations/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/mail/operations/", "mail_operations", "operation_id", "mail_operation", func(w http.ResponseWriter, r *http.Request) {
 		handleMailOperationRoutes(deps.Config, deps.Mail, deps.Store, w, r)
-	}))
+	})))
 	mux.HandleFunc("/v1/providers", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleProviders(deps.Providers, w, r)
 	}))
@@ -453,6 +479,8 @@ func NewServer(deps Dependencies) *Server {
 		store:        deps.Store,
 		checkpoints:  deps.Checkpoints,
 		evaluation:   deps.Evaluation,
+		auditEmitter:    resolveAuditEmitter(deps),
+		migrationStatus: deps.TenantMigrationStatus,
 		server: &http.Server{
 			Addr:              deps.Config.BindAddr,
 			Handler:           withLocalWebCORS(mux),
@@ -566,6 +594,15 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		// Roadmap 35 (Finding #1): the in-memory runtime manager
+		// returns every tenant's runs. Filter by the caller's
+		// resolved tenant against the store's `tenant_id` column so
+		// tenant A never sees tenant B's runs through this endpoint.
+		runs, err = filterRunsByTenant(r.Context(), sqliteStore, runs)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, ListResponse[runtime.Run]{Items: runs})
 	case http.MethodPost:
 		var request CreateRunRequest
@@ -597,10 +634,20 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 		}
 
 		if err := persistSession(r.Context(), sqliteStore, session); err != nil {
+			if errors.Is(err, ErrTenantOwnershipDenied) {
+				emitTenantBreach(r.Context(), audit.NewEmitter(eventBus, nil), surfaceFromRequest(r), "session")
+				http.NotFound(w, r)
+				return
+			}
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		if err := persistRun(r.Context(), sqliteStore, run); err != nil {
+			if errors.Is(err, ErrTenantOwnershipDenied) {
+				emitTenantBreach(r.Context(), audit.NewEmitter(eventBus, nil), surfaceFromRequest(r), "run")
+				http.NotFound(w, r)
+				return
+			}
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -908,7 +955,15 @@ func handleSessions(sessionRouter *router.SessionRouter, eventBus *events.Bus, s
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ListResponse[router.Session]{Items: sessionRouter.ListSessions()})
+	// Roadmap 35 (Finding #1): in-memory router enumerates every
+	// tenant's sessions. Filter by the caller's tenant against the
+	// store's `tenant_id` column.
+	sessions, err := filterSessionsByTenant(r.Context(), sqliteStore, sessionRouter.ListSessions())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, ListResponse[router.Session]{Items: sessions})
 }
 
 func handleSessionRoutes(sessionRouter *router.SessionRouter, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
@@ -1030,6 +1085,14 @@ func handleEvents(eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.R
 		ScheduleAttemptID: strings.TrimSpace(r.URL.Query().Get("scheduleAttemptId")),
 		ResourceKind:      strings.TrimSpace(r.URL.Query().Get("resourceKind")),
 		Cursor:            cursor,
+	}
+	// Roadmap 35 (T051): scope SSE replay to the caller's tenant when
+	// resolved. Tenant-owned categories pass through tenant_id; global
+	// categories carry no tenant id and are NOT mixed into a tenant
+	// filter — the legacy IncludeGlobal subscription is reserved for
+	// system/migration observability.
+	if tc, ok := tenantContextFromContext(r.Context()); ok && tc.TenantID != "" {
+		filter.TenantOwnedTenantID = tc.TenantID
 	}
 	items, err := listEvents(r.Context(), eventBus, sqliteStore, filter)
 	if err != nil {
@@ -4508,9 +4571,24 @@ func publishToolCallEvent(ctx context.Context, eventBus *events.Bus, sqliteStore
 	})
 }
 
+// persistRun writes the run to SQLite, binding tenant_id atomically
+// when the request carries a resolved tenant context. Pre-Roadmap-35
+// (or anonymous-traffic) callers fall back to the legacy upsert.
+//
+// Roadmap 35 (Finding #2 + Finding #1): a tenant-aware request MUST
+// not be served by the legacy `UpsertRun` path because that path uses
+// `ON CONFLICT DO UPDATE` which would clobber another tenant's row
+// before any post-hoc bind helper could detect the mismatch.
 func persistRun(ctx context.Context, sqliteStore *store.SQLiteStore, run runtime.Run) error {
 	if sqliteStore == nil {
 		return nil
+	}
+	if tc, ok := tenantContextFromContext(ctx); ok && tc.TenantID != "" {
+		err := sqliteStore.UpsertRunForTenantSafe(ctx, run, tc.TenantID)
+		if errors.Is(err, store.ErrCrossTenantRow) {
+			return ErrTenantOwnershipDenied
+		}
+		return err
 	}
 	return sqliteStore.UpsertRun(ctx, run)
 }
@@ -4518,6 +4596,13 @@ func persistRun(ctx context.Context, sqliteStore *store.SQLiteStore, run runtime
 func persistSession(ctx context.Context, sqliteStore *store.SQLiteStore, session router.Session) error {
 	if sqliteStore == nil {
 		return nil
+	}
+	if tc, ok := tenantContextFromContext(ctx); ok && tc.TenantID != "" {
+		err := sqliteStore.UpsertSessionForTenantSafe(ctx, session, tc.TenantID)
+		if errors.Is(err, store.ErrCrossTenantRow) {
+			return ErrTenantOwnershipDenied
+		}
+		return err
 	}
 	return sqliteStore.UpsertSession(ctx, session)
 }
@@ -4550,9 +4635,20 @@ func persistDecision(ctx context.Context, sqliteStore *store.SQLiteStore, decisi
 	return sqliteStore.UpsertDecision(ctx, decision)
 }
 
+// persistStep writes the step to SQLite, binding tenant_id atomically
+// when the request carries a resolved tenant context (Roadmap 35
+// Finding #1/#2 follow-up). Pre-Roadmap-35 callers fall back to the
+// legacy path so anonymous/background traffic keeps working.
 func persistStep(ctx context.Context, sqliteStore *store.SQLiteStore, step runtime.Step) error {
 	if sqliteStore == nil {
 		return nil
+	}
+	if tc, ok := tenantContextFromContext(ctx); ok && tc.TenantID != "" {
+		err := sqliteStore.UpsertStepForTenantSafe(ctx, step, tc.TenantID)
+		if errors.Is(err, store.ErrCrossTenantRow) {
+			return ErrTenantOwnershipDenied
+		}
+		return err
 	}
 	return sqliteStore.UpsertStep(ctx, step)
 }
@@ -4574,6 +4670,13 @@ func persistCapability(ctx context.Context, sqliteStore *store.SQLiteStore, capa
 func persistLLMDispatch(ctx context.Context, sqliteStore *store.SQLiteStore, dispatch llm.Dispatch) error {
 	if sqliteStore == nil {
 		return nil
+	}
+	if tc, ok := tenantContextFromContext(ctx); ok && tc.TenantID != "" {
+		err := sqliteStore.UpsertLLMDispatchForTenantSafe(ctx, dispatch, tc.TenantID)
+		if errors.Is(err, store.ErrCrossTenantRow) {
+			return ErrTenantOwnershipDenied
+		}
+		return err
 	}
 	return sqliteStore.UpsertLLMDispatch(ctx, dispatch)
 }
@@ -4597,6 +4700,15 @@ func persistToolCall(ctx context.Context, sqliteStore *store.SQLiteStore, manage
 		if err := persistStep(ctx, sqliteStore, step); err != nil {
 			return err
 		}
+	}
+	if tc, ok := tenantContextFromContext(ctx); ok && tc.TenantID != "" {
+		if err := sqliteStore.UpsertToolCallForTenantSafe(ctx, toolCall, tc.TenantID); err != nil {
+			if errors.Is(err, store.ErrCrossTenantRow) {
+				return ErrTenantOwnershipDenied
+			}
+			return err
+		}
+		return nil
 	}
 	return sqliteStore.UpsertToolCall(ctx, toolCall)
 }
@@ -4640,12 +4752,32 @@ func publishEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.
 		prepared.EnvironmentScope = events.EnvironmentScopeFromContext(ctx)
 	}
 
-	if sqliteStore != nil {
-		persisted, err := sqliteStore.AppendEvent(ctx, prepared)
-		if err != nil {
-			return events.Event{}, err
+	// Roadmap 35 (Finding #3): if the request carries a resolved tenant
+	// context AND the event category is tenant-owned (NOT one of the
+	// global categories enumerated in tenancy.IsGlobalCategory), bind
+	// `tenant_id` on the persisted row. Otherwise the new event is
+	// invisible to the same tenant's SSE subscriber, which filters out
+	// rows whose tenant_id is NULL or different.
+	if prepared.TenantID == "" {
+		if tc, ok := tenantContextFromContext(ctx); ok && tc.TenantID != "" && !tenancy.IsGlobalCategory(prepared.Category) {
+			prepared.TenantID = tc.TenantID
 		}
-		prepared = persisted
+	}
+
+	if sqliteStore != nil {
+		if prepared.TenantID != "" {
+			persisted, err := sqliteStore.AppendEventForTenantRaw(ctx, prepared, prepared.TenantID)
+			if err != nil {
+				return events.Event{}, err
+			}
+			prepared = persisted
+		} else {
+			persisted, err := sqliteStore.AppendEvent(ctx, prepared)
+			if err != nil {
+				return events.Event{}, err
+			}
+			prepared = persisted
+		}
 	}
 
 	return eventBus.Publish(prepared), nil
@@ -5396,7 +5528,15 @@ func listLLMDispatches(ctx context.Context, sqliteStore *store.SQLiteStore) ([]l
 	if sqliteStore == nil {
 		return []llm.Dispatch{}, nil
 	}
-	return sqliteStore.ListLLMDispatches(ctx)
+	all, err := sqliteStore.ListLLMDispatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Roadmap 35 round-3 Finding #1: scope the result to the caller's
+	// tenant. Pre-backfill NULL-tenant rows stay visible (legacy compat);
+	// post-backfill, the filter is strict. Returns the input unchanged
+	// when no tenant context is resolved.
+	return filterLLMDispatchesByTenant(ctx, sqliteStore, all)
 }
 
 func getLLMDispatch(ctx context.Context, sqliteStore *store.SQLiteStore, dispatchID string) (llm.Dispatch, bool, error) {
@@ -5740,6 +5880,13 @@ func listEvents(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQ
 		filter.EnvironmentScope = events.EnvironmentScopeFromContext(ctx)
 	}
 	if sqliteStore != nil {
+		// Roadmap 35 (T051 / T039): when the filter carries a
+		// TenantOwnedTenantID, read through the tenant-aware path so
+		// rows whose tenant_id is NULL (global) or owned by another
+		// tenant are excluded at the SQL level.
+		if filter.TenantOwnedTenantID != "" {
+			return sqliteStore.ListEventsForTenantRaw(ctx, filter.TenantOwnedTenantID, filter)
+		}
 		return sqliteStore.ListEvents(ctx, filter)
 	}
 	return eventBus.List(filter), nil
@@ -5837,6 +5984,12 @@ func streamEvents(eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.R
 		return
 	}
 	filter.Cursor = cursor
+	// Roadmap 35 (T051): scope SSE stream replay + live fan-out to the
+	// caller's tenant. Without this, an authenticated B-tenant client
+	// could observe A-tenant runtime events.
+	if tc, ok := tenantContextFromContext(r.Context()); ok && tc.TenantID != "" {
+		filter.TenantOwnedTenantID = tc.TenantID
+	}
 
 	history, err := listEvents(r.Context(), eventBus, sqliteStore, filter)
 	if err != nil {

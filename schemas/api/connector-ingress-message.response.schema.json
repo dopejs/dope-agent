@@ -6,6 +6,7 @@
   "required": ["ingressId", "connectorId", "acceptedAt", "session", "sessionCreated", "runCreated"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "ingressId": {
       "type": "string"
     },

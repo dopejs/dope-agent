@@ -110,9 +110,13 @@ func TestSQLiteStorePersistsRunsStepsAndEvents(t *testing.T) {
 		t.Fatal("expected persisted event sequence")
 	}
 
-	runs, err := store.ListRuns(ctx)
+	// Roadmap 35 (T028) deleted Store.ListRuns. The test verifies that
+	// the just-upserted run is readable; pull the row directly via SQL
+	// to avoid coupling the assertion to tenant scoping (the test does
+	// not bootstrap a tenant).
+	runs, err := listRunsForTest(t, store, ctx)
 	if err != nil {
-		t.Fatalf("ListRuns returned error: %v", err)
+		t.Fatalf("listRunsForTest returned error: %v", err)
 	}
 	if len(runs) != 1 {
 		t.Fatalf("expected 1 run, got %d", len(runs))
@@ -767,9 +771,13 @@ func TestSQLiteStorePersistsScheduleScopedRunsAndEvents(t *testing.T) {
 		t.Fatal("expected persisted event sequence")
 	}
 
-	runs, err := store.ListRuns(ctx)
+	// Roadmap 35 (T028) deleted Store.ListRuns. The test verifies that
+	// the just-upserted run is readable; pull the row directly via SQL
+	// to avoid coupling the assertion to tenant scoping (the test does
+	// not bootstrap a tenant).
+	runs, err := listRunsForTest(t, store, ctx)
 	if err != nil {
-		t.Fatalf("ListRuns returned error: %v", err)
+		t.Fatalf("listRunsForTest returned error: %v", err)
 	}
 	if len(runs) != 1 || runs[0].ScheduleID != "sched_test" || runs[0].ScheduleAttemptID != "sched_attempt_test" {
 		t.Fatalf("expected persisted schedule linkage on run, got %+v", runs)
@@ -2140,4 +2148,13 @@ func TestSQLiteStoreRoundTripsCalendarDomainRecords(t *testing.T) {
 
 func ptrTime(value time.Time) *time.Time {
 	return &value
+}
+
+// listRunsForTest is a thin wrapper around ListRunsAllTenantsForTest
+// preserved for the store-package's internal regression tests that
+// pre-date the tenant-scope migration. Production code MUST go through
+// the tenancy layer (tenancy.Runtime.ListRunsForTenant).
+func listRunsForTest(t *testing.T, s *SQLiteStore, ctx context.Context) ([]runtime.Run, error) {
+	t.Helper()
+	return s.ListRunsAllTenantsForTest(ctx)
 }

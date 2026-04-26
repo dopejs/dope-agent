@@ -13,6 +13,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "artifactId": { "type": "string" },
     "operationId": { "type": "string" },
     "kind": { "type": "string", "enum": ["event_snapshot", "availability_query"] },

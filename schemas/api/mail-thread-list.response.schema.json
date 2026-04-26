@@ -6,6 +6,7 @@
   "required": ["account", "items", "operation"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "account": { "$ref": "./mail-account-resource.schema.json" },
     "items": {
       "type": "array",

@@ -6,6 +6,7 @@
   "required": ["status", "tool"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "status": { "type": "string", "enum": ["allowed", "pending", "rejected", "blocked"] },
     "tool": { "$ref": "./mcp-tool-resource.schema.json" },
     "message": { "type": "string" },

@@ -371,7 +371,7 @@ func TestScheduleWorkflowLauncherPersistsReminderLinkageOnRunsAndWorkflows(t *te
 		t.Fatal("expected planning failure to surface as launch error")
 	}
 
-	runs, err := sqliteStore.ListRuns(context.Background())
+	runs, err := sqliteStore.ListRunsAllTenantsForTest(context.Background())
 	if err != nil {
 		t.Fatalf("ListRuns returned error: %v", err)
 	}

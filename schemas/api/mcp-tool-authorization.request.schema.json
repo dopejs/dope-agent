@@ -6,6 +6,7 @@
   "required": ["runtimeSurface"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "runtimeSurface": { "type": "string" },
     "approvalId": { "type": "string" },
     "requestedBy": { "type": "string" }

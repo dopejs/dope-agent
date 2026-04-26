@@ -6,6 +6,7 @@
   "required": ["artifactId", "status"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "artifactId": { "type": "string" },
     "mimeType": { "type": "string" },
     "fileName": { "type": "string" },

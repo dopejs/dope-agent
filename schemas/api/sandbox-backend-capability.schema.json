@@ -15,6 +15,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "backendKind": {
       "type": "string",
       "enum": ["subprocess", "docker", "ssh", "remote"]

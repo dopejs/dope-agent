@@ -17,6 +17,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "decisionId": { "type": "string" },
     "executionId": { "type": "string" },
     "resolution": {

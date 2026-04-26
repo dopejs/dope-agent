@@ -6,6 +6,7 @@
   "required": ["status", "outputTruncated", "partial"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "executionId": { "type": "string" },
     "status": {
       "type": "string",

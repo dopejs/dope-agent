@@ -5,6 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "declaration": {
       "type": "object",
       "additionalProperties": false,

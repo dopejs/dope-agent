@@ -6,6 +6,7 @@
   "required": ["artifactId", "runId", "kind", "status", "createdAt"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "artifactId": { "type": "string" },
     "environmentScope": { "type": "string" },
     "computerUseSessionId": { "type": "string" },

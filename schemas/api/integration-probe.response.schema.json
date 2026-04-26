@@ -6,6 +6,7 @@
   "required": ["runId", "status"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "runId": { "type": "string" },
     "stepId": { "type": "string" },
     "toolCallId": { "type": "string" },

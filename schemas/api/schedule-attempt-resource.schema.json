@@ -17,6 +17,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "scheduleAttemptId": { "type": "string" },
     "scheduleId": { "type": "string" },
     "dueAt": { "type": "string", "format": "date-time" },

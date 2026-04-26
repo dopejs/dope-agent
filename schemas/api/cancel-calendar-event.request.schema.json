@@ -5,6 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "integrationId": { "type": "string" },
     "calendarRef": { "type": "string" },
     "reason": { "type": "string" },

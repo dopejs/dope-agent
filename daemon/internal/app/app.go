@@ -15,6 +15,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/api"
 	"github.com/dopejs/dope-agent/daemon/internal/artifacts"
+	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
@@ -94,6 +95,30 @@ func New() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Roadmap 35 (Pass B): seed the default-personal-tenant cache early so
+	// any subsystem that issues legacy Upsert* calls before BootstrapLocal
+	// runs (e.g. evaluation.Manager.LoadFixtures during NewManager wiring)
+	// still binds tenant_id correctly on a daemon restart where the
+	// personal tenant already exists. On the very first boot the personal
+	// tenant does not exist yet — SeedDefaultTenantCache silently no-ops
+	// and the cache is populated again after BootstrapLocal below. Both
+	// orderings are required: NULL inserts pre-bootstrap are recovered by
+	// the per-domain backfill, while post-bootstrap inserts MUST bind to
+	// avoid the NOT NULL CHECK that step (c) enforcement installs.
+	if err := sqliteStore.SeedDefaultTenantCache(context.Background()); err != nil {
+		_ = sqliteStore.Close()
+		return nil, fmt.Errorf("seed default tenant cache (early): %w", err)
+	}
+	// Roadmap 35 (T017): refuse to start if any tenant-migration step is in
+	// the `failed` state. Resume of `running` steps is owned by the
+	// individual backfill drivers (US2). At Phase 2 only the events
+	// progress rows are registered; per-domain steps land in US1/US2.
+	migrationGate, err := guardTenantMigrationStartup(context.Background(), sqliteStore, logger, eventBus)
+	if err != nil {
+		_ = sqliteStore.Close()
+		return nil, err
+	}
+	_ = migrationGate // wired into api.Dependencies below so handlers can refuse tenant traffic during in-flight migration
 	sessionRouter := router.NewSessionRouter()
 	runtimeManager := runtime.NewManager()
 	checkpointManager := checkpoints.NewManager(sqliteStore, runtimeManager)
@@ -237,6 +262,8 @@ func New() (*App, error) {
 		Store:        sqliteStore,
 		Checkpoints:  checkpointManager,
 		Evaluation:   evaluationManager,
+		AuditEmitter:          audit.NewEmitter(eventBus, logger.Slog()),
+		TenantMigrationStatus: migrationGate,
 	})
 
 	return &App{
@@ -574,6 +601,55 @@ func recoverPersistedState(ctx context.Context, environment config.Environment, 
 		principal, tenant, err := identityManager.BootstrapLocal(ctx, localTokenIDs)
 		if err != nil {
 			return fmt.Errorf("bootstrap local identity: %w", err)
+		}
+		// Roadmap 35 (Pass B): seed the in-memory default-personal-tenant
+		// cache so legacy Upsert helpers can bind tenant_id without
+		// issuing SQL on the hot path. Required because MaxOpenConns=1
+		// would deadlock if the resolver ran inside an active transaction
+		// (e.g. ReplaceWorkflowSteps).
+		if err := sqliteStore.SeedDefaultTenantCache(ctx); err != nil {
+			return fmt.Errorf("seed default tenant cache: %w", err)
+		}
+		// Roadmap 35 (US2 / T067): drive the runtime spine backfill
+		// (sessions/runs/steps/tool_calls/llm_dispatches/checkpoints).
+		// Default-personal-tenant fallback uses the just-bootstrapped
+		// personal tenant. Idempotent: any already-`completed` step is
+		// skipped. On orphan or other failure the step is marked
+		// `failed`, the daemon refuses to start on the next boot until
+		// the operator resolves it.
+		// nil logger is tolerated by the driver; recoverPersistedState
+		// does not currently thread a telemetry.Logger and threading one
+		// through every existing dependency belongs to a separate
+		// refactor. The startup-level guard already publishes
+		// daemon.migration.* events on the bus.
+		if err := runRuntimeBackfills(ctx, sqliteStore, tenant.TenantID, eventBus, nil); err != nil {
+			return fmt.Errorf("runtime backfill: %w", err)
+		}
+		// Roadmap 35 (US2 / T068+T069+T070+T071): approvals/decisions,
+		// schedules, workflows, and integrations+delivery.
+		if err := runBatch2Backfills(ctx, sqliteStore, tenant.TenantID, eventBus, nil); err != nil {
+			return fmt.Errorf("batch2 backfill: %w", err)
+		}
+		// Roadmap 35 (US2 / T072–T076b): calendar/mail/reminders/
+		// computer-use/evaluation/harness/connector_messages.
+		if err := runBatch3Backfills(ctx, sqliteStore, tenant.TenantID, eventBus, nil); err != nil {
+			return fmt.Errorf("batch3 backfill: %w", err)
+		}
+		// Roadmap 35 (US2 / T077): events backfill runs LAST. It
+		// derives tenant_id from event parent FKs (priority cascade)
+		// and reclassifies legacy connector/capability events into
+		// the global pool. All earlier backfills MUST have completed
+		// for parent.tenant_id to be non-NULL during the cascade.
+		if err := runEventsBackfill(ctx, sqliteStore, tenant.TenantID, eventBus, nil); err != nil {
+			return fmt.Errorf("events backfill: %w", err)
+		}
+		// Roadmap 35 (US2 / T077a + T077b): step (c) enforcement.
+		// Recreates each runtime-spine table with NOT NULL + CHECK on
+		// tenant_id; adds the events partial indexes. Gated on the
+		// matching backfill step having `completed` status — refuses
+		// otherwise with a clear operator error.
+		if err := runEnforcementSteps(ctx, sqliteStore, eventBus, nil); err != nil {
+			return fmt.Errorf("enforcement: %w", err)
 		}
 		for idx := range persistedTokens {
 			if persistedTokens[idx].Mode != auth.PairingModeLocal {

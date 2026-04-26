@@ -6,6 +6,7 @@
   "required": ["summaryWindowId", "environmentScope", "targetId", "preferenceId", "status", "windowStartedAt", "windowEndsAt", "resultCount", "createdAt", "updatedAt"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "summaryWindowId": { "type": "string" },
     "environmentScope": { "type": "string", "enum": ["test", "prod"] },
     "targetId": { "type": "string" },

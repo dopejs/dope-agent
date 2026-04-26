@@ -6,6 +6,7 @@
   "required": ["decision"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "decision": {
       "$ref": "./sandbox-decision.schema.json"
     }

@@ -6,6 +6,10 @@
   "required": ["eventId", "sequence", "category", "name", "occurredAt", "resource", "scope"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": {
+      "type": "string",
+      "description": "Roadmap 35: tenant owner of the event. Optional during the staged rollout — omitted on global-category events (mcp, provider, system, daemon.migration, connector_global, capability_global) and on tenant-owned events written before the per-domain backfill completes."
+    },
     "eventId": {
       "type": "string"
     },

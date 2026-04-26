@@ -15,6 +15,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "operationId": { "type": "string" },
     "operationClass": {
       "type": "string",

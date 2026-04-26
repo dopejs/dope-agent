@@ -6,6 +6,7 @@
   "required": ["threadId", "operationId", "integrationId", "mailAccountId", "subject", "latestMessageAt", "messageCount", "draftCount", "createdAt"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "threadId": { "type": "string" },
     "operationId": { "type": "string" },
     "integrationId": { "type": "string" },

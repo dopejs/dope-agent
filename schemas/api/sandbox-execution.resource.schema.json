@@ -22,6 +22,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "executionId": { "type": "string" },
     "profileId": { "type": "string" },
     "backendKind": {

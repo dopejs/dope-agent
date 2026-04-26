@@ -5,6 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "attachmentRefId": { "type": "string" },
     "displayName": { "type": "string" },
     "mediaType": { "type": "string" },

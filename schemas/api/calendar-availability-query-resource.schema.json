@@ -17,6 +17,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "queryId": { "type": "string" },
     "operationId": { "type": "string" },
     "integrationId": { "type": "string" },

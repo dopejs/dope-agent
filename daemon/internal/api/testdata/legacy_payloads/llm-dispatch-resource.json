@@ -1,0 +1,16 @@
+{
+  "tenantId": "ten_personal_default",
+  "dispatchId": "disp_a",
+  "provider": "echo",
+  "model": "echo-v1",
+  "messages": [{"role":"user","content":"hi"}],
+  "stream": false,
+  "status": "completed",
+  "partial": false,
+  "usage": {"promptTokens": 1, "completionTokens": 1, "totalTokens": 2},
+  "timeoutMs": 30000,
+  "maxRetries": 0,
+  "attemptCount": 1,
+  "createdAt": "2026-04-01T00:00:00Z",
+  "updatedAt": "2026-04-01T00:00:01Z"
+}

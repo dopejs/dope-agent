@@ -6,6 +6,7 @@
   "required": ["attemptId", "deliveryId", "attemptNumber", "targetId", "transportKind", "status", "startedAt"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "attemptId": { "type": "string" },
     "deliveryId": { "type": "string" },
     "attemptNumber": { "type": "integer", "minimum": 1 },

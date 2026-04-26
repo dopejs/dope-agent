@@ -5,6 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "model": { "type": "string" },
     "prompt": { "type": "string" }
   }

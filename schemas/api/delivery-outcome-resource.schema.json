@@ -6,6 +6,7 @@
   "required": ["deliveryId", "environmentScope", "sourceKind", "sourceId", "resultClass", "mode", "status", "createdAt", "updatedAt"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "deliveryId": { "type": "string" },
     "environmentScope": { "type": "string", "enum": ["test", "prod"] },
     "sourceKind": { "type": "string" },

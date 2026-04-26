@@ -27,6 +27,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 type SystemInfoResponse struct {
@@ -802,12 +803,14 @@ type TenantDetailResponse struct {
 }
 
 func withTenantContext(ctx context.Context, tenantContext identity.TenantContext) context.Context {
-	return context.WithValue(ctx, tenantContextKey, tenantContext)
+	// Roadmap 35: route the carrier through daemon/internal/tenantctx so the
+	// store-layer tenancy guards can read the same value without depending on
+	// this api-private package.
+	return tenantctx.WithContext(ctx, tenantContext)
 }
 
 func tenantContextFromContext(ctx context.Context) (identity.TenantContext, bool) {
-	tenantContext, ok := ctx.Value(tenantContextKey).(identity.TenantContext)
-	return tenantContext, ok
+	return tenantctx.FromContext(ctx)
 }
 
 func withTenantAuditStore(ctx context.Context, sqliteStore *store.SQLiteStore) context.Context {

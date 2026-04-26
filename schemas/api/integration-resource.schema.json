@@ -17,6 +17,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "integrationId": { "type": "string" },
     "domainKind": { "type": "string" },
     "displayName": { "type": "string" },

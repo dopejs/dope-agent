@@ -6,6 +6,7 @@
   "required": ["operationClass"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "operationClass": {
       "type": "string",
       "enum": ["list_events", "get_event", "busy_free", "create_event", "update_event", "cancel_event"]

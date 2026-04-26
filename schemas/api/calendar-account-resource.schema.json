@@ -21,6 +21,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "calendarAccountId": { "type": "string" },
     "integrationId": { "type": "string" },
     "domainKind": { "type": "string", "const": "calendar" },

@@ -23,6 +23,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "profileId": { "type": "string" },
     "title": { "type": "string" },
     "description": { "type": "string" },

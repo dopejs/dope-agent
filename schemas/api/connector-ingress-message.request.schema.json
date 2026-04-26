@@ -6,6 +6,7 @@
   "required": ["route", "message"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "route": {
       "type": "object",
       "required": ["peerId"],

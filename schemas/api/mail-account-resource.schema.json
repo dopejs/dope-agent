@@ -22,6 +22,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "mailAccountId": { "type": "string" },
     "integrationId": { "type": "string" },
     "domainKind": { "type": "string", "const": "mail" },

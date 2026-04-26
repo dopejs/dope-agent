@@ -15,6 +15,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "mode": {
       "type": "string",
       "enum": ["none", "scoped", "full"]

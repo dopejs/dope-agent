@@ -12,6 +12,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "dependencyId": { "type": "string" },
     "workflowId": { "type": "string" },
     "fromWorkflowStepId": { "type": "string" },

@@ -6,6 +6,7 @@
   "required": ["command"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "profileId": { "type": "string" },
     "command": { "type": "string", "minLength": 1 },
     "args": {

@@ -1477,7 +1477,7 @@ func TestRunLifecyclePersistsToSQLiteStore(t *testing.T) {
 
 	ctx := context.Background()
 
-	runs, err := sqliteStore.ListRuns(ctx)
+	runs, err := sqliteStore.ListRunsAllTenantsForTest(ctx)
 	if err != nil {
 		t.Fatalf("ListRuns returned error: %v", err)
 	}
@@ -1787,7 +1787,7 @@ func TestCreateRunWithExplicitRoute(t *testing.T) {
 		t.Fatalf("expected telegram channel, got %s", session.Channel)
 	}
 
-	persistedRuns, err := sqliteStore.ListRuns(context.Background())
+	persistedRuns, err := sqliteStore.ListRunsAllTenantsForTest(context.Background())
 	if err != nil {
 		t.Fatalf("ListRuns returned error: %v", err)
 	}
@@ -1885,7 +1885,7 @@ func TestConnectorIngressRoutesSessionAndCreatesRun(t *testing.T) {
 	if len(persistedSessions) != 1 {
 		t.Fatalf("expected 1 persisted session, got %d", len(persistedSessions))
 	}
-	persistedRuns, err := sqliteStore.ListRuns(context.Background())
+	persistedRuns, err := sqliteStore.ListRunsAllTenantsForTest(context.Background())
 	if err != nil {
 		t.Fatalf("ListRuns returned error: %v", err)
 	}

@@ -16,6 +16,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "scheduleId": { "type": "string" },
     "environmentScope": { "type": "string", "enum": ["test", "prod"] },
     "kind": { "type": "string", "enum": ["one_time", "recurring"] },

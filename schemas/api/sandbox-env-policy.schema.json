@@ -6,6 +6,7 @@
   "required": ["mode", "allowedVars", "injectedVars", "redactedVars"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "mode": {
       "type": "string",
       "enum": ["clean", "inherit_safe", "inherit_all"]
