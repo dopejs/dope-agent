@@ -70,6 +70,7 @@ textarea {
 
 .hero-panel,
 .config-panel,
+.tenant-strip,
 .panel,
 .banner-card,
 .error-box,
@@ -123,7 +124,7 @@ label span {
   padding: 18px;
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(220px, 0.7fr) auto;
   align-items: end;
 }
 
@@ -143,6 +144,19 @@ label span {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.tenant-strip {
+  padding: 16px 18px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.5fr);
+  align-items: center;
+}
+
+.tenant-strip p {
+  margin: 0;
+  line-height: 1.45;
 }
 
 .banner-card {
@@ -196,6 +210,10 @@ label span {
 .onboarding-panel,
 .detail-panel {
   grid-column: span 2;
+}
+
+.membership-panel {
+  align-content: start;
 }
 
 .action-inputs {
@@ -285,9 +303,23 @@ label span {
 }
 
 .status-pending,
-.status-loading {
+.status-loading,
+.status-resolving,
+.status-stale {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.status-denied,
+.status-hidden {
+  background: var(--critical-soft);
+  color: var(--critical);
+}
+
+.status-active,
+.status-empty {
+  background: var(--success-soft);
+  color: var(--success);
 }
 
 .inline-actions,
@@ -345,6 +377,26 @@ label span {
   line-height: 1.5;
 }
 
+.membership-table {
+  display: grid;
+  gap: 10px;
+}
+
+.membership-row {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.4fr);
+  align-items: center;
+  padding: 12px;
+}
+
+.membership-row div {
+  display: grid;
+  gap: 4px;
+}
+
 .drift-list {
   border-left: 3px solid var(--warning);
   display: grid;
@@ -385,6 +437,12 @@ button:disabled {
   cursor: wait;
 }
 
+.tenant-stale .stack-card,
+.tenant-stale .action-card,
+.tenant-stale .readiness-card {
+  opacity: 0.62;
+}
+
 .empty-state,
 pre,
 .stack-card p,
@@ -409,6 +467,8 @@ pre {
   .action-inputs,
   .mini-card-grid,
   .banner-strip,
+  .tenant-strip,
+  .membership-row,
   .config-panel {
     grid-template-columns: 1fr;
   }

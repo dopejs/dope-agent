@@ -97,6 +97,7 @@ func (m *Manager) UpsertReplayCandidate(ctx context.Context, candidate ReplayCan
 	if err := validateReplayCandidate(candidate); err != nil {
 		return err
 	}
+	candidate = normalizeReplayCandidate(candidate)
 	return m.store.UpsertReplayCandidate(ctx, candidate)
 }
 
@@ -112,11 +113,15 @@ func (m *Manager) ListReplayCandidates(ctx context.Context, filter CandidateFilt
 		}
 		return items[i].CreatedAt.Before(items[j].CreatedAt)
 	})
-	return limitCandidates(items, filter.Limit), nil
+	return normalizeReplayCandidates(limitCandidates(items, filter.Limit)), nil
 }
 
 func (m *Manager) GetReplayCandidate(ctx context.Context, candidateID string) (ReplayCandidate, bool, error) {
-	return m.store.GetReplayCandidate(ctx, m.environmentScope, candidateID)
+	item, ok, err := m.store.GetReplayCandidate(ctx, m.environmentScope, candidateID)
+	if err != nil || !ok {
+		return item, ok, err
+	}
+	return normalizeReplayCandidate(item), true, nil
 }
 
 func (m *Manager) CreateReplayAttempt(ctx context.Context, candidateID string, input CreateReplayAttemptInput) (ReplayAttempt, error) {
@@ -127,6 +132,7 @@ func (m *Manager) CreateReplayAttempt(ctx context.Context, candidateID string, i
 	if !ok {
 		return ReplayAttempt{}, fmt.Errorf("replay candidate %s not found", candidateID)
 	}
+	candidate = normalizeReplayCandidate(candidate)
 	now := m.clock()
 	mode := replayModeDefault(input.Mode)
 	evidence, evidenceErr := m.capturedEvidenceForCandidate(ctx, candidate)
@@ -206,6 +212,7 @@ func (m *Manager) CreateReplayAttempt(ctx context.Context, candidateID string, i
 			attempt.EvidenceRefs = append(attempt.EvidenceRefs, record.EvidenceRefs...)
 		}
 	}
+	attempt = normalizeReplayAttempt(attempt)
 	if err := m.store.UpsertReplayAttempt(ctx, attempt); err != nil {
 		return ReplayAttempt{}, err
 	}
@@ -229,11 +236,15 @@ func (m *Manager) ListReplayAttempts(ctx context.Context, filter AttemptFilter) 
 		}
 		return items[i].CreatedAt.Before(items[j].CreatedAt)
 	})
-	return limitAttempts(items, filter.Limit), nil
+	return normalizeReplayAttempts(limitAttempts(items, filter.Limit)), nil
 }
 
 func (m *Manager) GetReplayAttempt(ctx context.Context, attemptID string) (ReplayAttempt, bool, error) {
-	return m.store.GetReplayAttempt(ctx, m.environmentScope, attemptID)
+	item, ok, err := m.store.GetReplayAttempt(ctx, m.environmentScope, attemptID)
+	if err != nil || !ok {
+		return item, ok, err
+	}
+	return normalizeReplayAttempt(item), true, nil
 }
 
 func (m *Manager) CreateComparison(ctx context.Context, attemptID string, input CreateComparisonInput) (ComparisonResult, error) {
@@ -244,6 +255,7 @@ func (m *Manager) CreateComparison(ctx context.Context, attemptID string, input 
 	if !ok {
 		return ComparisonResult{}, fmt.Errorf("replay attempt %s not found", attemptID)
 	}
+	attempt = normalizeReplayAttempt(attempt)
 	candidate, ok, err := m.store.GetReplayCandidate(ctx, m.environmentScope, attempt.CandidateID)
 	if err != nil {
 		return ComparisonResult{}, err
@@ -251,6 +263,7 @@ func (m *Manager) CreateComparison(ctx context.Context, attemptID string, input 
 	if !ok {
 		return ComparisonResult{}, fmt.Errorf("replay candidate %s not found", attempt.CandidateID)
 	}
+	candidate = normalizeReplayCandidate(candidate)
 	var baseline *ReplayAttempt
 	if input.BaselineAttemptID != "" {
 		item, ok, err := m.store.GetReplayAttempt(ctx, m.environmentScope, input.BaselineAttemptID)
@@ -260,9 +273,10 @@ func (m *Manager) CreateComparison(ctx context.Context, attemptID string, input 
 		if !ok {
 			return ComparisonResult{}, fmt.Errorf("baseline replay attempt %s not found", input.BaselineAttemptID)
 		}
+		item = normalizeReplayAttempt(item)
 		baseline = &item
 	}
-	comparison := CompareAttempt(candidate, baseline, attempt, input, m.clock())
+	comparison := normalizeComparison(CompareAttempt(candidate, baseline, attempt, input, m.clock()))
 	if err := m.store.UpsertComparisonResult(ctx, comparison); err != nil {
 		return ComparisonResult{}, err
 	}
@@ -302,11 +316,15 @@ func (m *Manager) ListComparisons(ctx context.Context, filter ComparisonFilter) 
 		}
 		return items[i].GeneratedAt.Before(items[j].GeneratedAt)
 	})
-	return limitComparisons(items, filter.Limit), nil
+	return normalizeComparisons(limitComparisons(items, filter.Limit)), nil
 }
 
 func (m *Manager) GetComparison(ctx context.Context, comparisonID string) (ComparisonResult, bool, error) {
-	return m.store.GetComparisonResult(ctx, m.environmentScope, comparisonID)
+	item, ok, err := m.store.GetComparisonResult(ctx, m.environmentScope, comparisonID)
+	if err != nil || !ok {
+		return item, ok, err
+	}
+	return normalizeComparison(item), true, nil
 }
 
 func (m *Manager) ListFixtures(ctx context.Context, filter FixtureFilter) ([]RegressionFixture, error) {
@@ -321,7 +339,90 @@ func (m *Manager) ListFixtures(ctx context.Context, filter FixtureFilter) ([]Reg
 		}
 		return items[i].DomainClass < items[j].DomainClass
 	})
-	return limitFixtures(items, filter.Limit), nil
+	return normalizeFixtures(limitFixtures(items, filter.Limit)), nil
+}
+
+func normalizeReplayCandidates(items []ReplayCandidate) []ReplayCandidate {
+	for idx := range items {
+		items[idx] = normalizeReplayCandidate(items[idx])
+	}
+	return items
+}
+
+func normalizeReplayCandidate(item ReplayCandidate) ReplayCandidate {
+	if item.SourceRefs == nil {
+		item.SourceRefs = []SourceRef{}
+	}
+	if item.ReadinessReasons == nil {
+		item.ReadinessReasons = []string{}
+	}
+	if item.Limitations == nil {
+		item.Limitations = []string{}
+	}
+	if item.CapturedEvidenceRefs == nil {
+		item.CapturedEvidenceRefs = []SourceRef{}
+	}
+	return item
+}
+
+func normalizeReplayAttempts(items []ReplayAttempt) []ReplayAttempt {
+	for idx := range items {
+		items[idx] = normalizeReplayAttempt(items[idx])
+	}
+	return items
+}
+
+func normalizeReplayAttempt(item ReplayAttempt) ReplayAttempt {
+	if item.SourceRefs == nil {
+		item.SourceRefs = []SourceRef{}
+	}
+	if item.EvidenceRefs == nil {
+		item.EvidenceRefs = []SourceRef{}
+	}
+	if item.BlockedReasons == nil {
+		item.BlockedReasons = []string{}
+	}
+	return item
+}
+
+func normalizeComparisons(items []ComparisonResult) []ComparisonResult {
+	for idx := range items {
+		items[idx] = normalizeComparison(items[idx])
+	}
+	return items
+}
+
+func normalizeComparison(item ComparisonResult) ComparisonResult {
+	if item.Limitations == nil {
+		item.Limitations = []string{}
+	}
+	if item.DriftFindings == nil {
+		item.DriftFindings = []DriftFinding{}
+	}
+	for idx := range item.DriftFindings {
+		if item.DriftFindings[idx].EvidenceRefs == nil {
+			item.DriftFindings[idx].EvidenceRefs = []SourceRef{}
+		}
+	}
+	return item
+}
+
+func normalizeFixtures(items []RegressionFixture) []RegressionFixture {
+	for idx := range items {
+		if items[idx].SourceRefs == nil {
+			items[idx].SourceRefs = []SourceRef{}
+		}
+		if items[idx].CapturedEvidenceRefs == nil {
+			items[idx].CapturedEvidenceRefs = []SourceRef{}
+		}
+		if items[idx].Assumptions == nil {
+			items[idx].Assumptions = []string{}
+		}
+		if items[idx].Limitations == nil {
+			items[idx].Limitations = []string{}
+		}
+	}
+	return items
 }
 
 func validateReplayCandidate(candidate ReplayCandidate) error {

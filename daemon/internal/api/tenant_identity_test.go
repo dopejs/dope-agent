@@ -133,6 +133,111 @@ func TestTenantManagementRoutesCoverMembershipInvitationAndAudit(t *testing.T) {
 	}
 }
 
+func TestMembershipRoleUpdateLeavesAuditVisibleRoleChangeState(t *testing.T) {
+	harness := newTenantAuthHarness(t)
+	_, memberPrincipal := harness.issuePrincipalToken(t, "prn_role_member", "Role Member")
+
+	createRec := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/tenants", strings.NewReader(`{"displayName":"Audit Org","tenantKind":"organization"}`))
+	createReq.Header.Set("Authorization", harness.authHeader)
+	harness.server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for tenant create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	var created struct {
+		Tenant identity.Tenant `json:"tenant"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode tenant create: %v", err)
+	}
+
+	ctx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
+	member := identity.Membership{
+		MembershipID: "mem_role_member",
+		TenantID:     created.Tenant.TenantID,
+		PrincipalID:  memberPrincipal.PrincipalID,
+		Role:         identity.RoleOperator,
+		Status:       identity.StatusActive,
+		CreatedAt:    created.Tenant.CreatedAt,
+		UpdatedAt:    created.Tenant.UpdatedAt,
+	}
+	if err := harness.store.UpsertMembership(ctx, member); err != nil {
+		t.Fatalf("UpsertMembership returned error: %v", err)
+	}
+
+	updateRec := httptest.NewRecorder()
+	updateReq := httptest.NewRequest(http.MethodPatch, "/v1/tenants/"+created.Tenant.TenantID+"/memberships/"+member.MembershipID, strings.NewReader(`{"role":"admin"}`))
+	updateReq.Header.Set("Authorization", harness.authHeader)
+	updateReq.Header.Set("X-Dope-Tenant-ID", created.Tenant.TenantID)
+	harness.server.Handler().ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for membership update, got %d body=%s", updateRec.Code, updateRec.Body.String())
+	}
+
+	audits, err := harness.store.ListTenantAuditEvents(ctx, identity.AuditEventFilter{TenantID: created.Tenant.TenantID, EventKind: "tenant.membership_role_updated", Limit: 10})
+	if err != nil {
+		t.Fatalf("ListTenantAuditEvents returned error: %v", err)
+	}
+	if len(audits) != 1 {
+		t.Fatalf("expected one role update audit, got %+v", audits)
+	}
+	audit := audits[0]
+	if audit.PrincipalID != harness.principal.PrincipalID || audit.TargetPrincipalID != memberPrincipal.PrincipalID || audit.TenantID != created.Tenant.TenantID {
+		t.Fatalf("audit actor/tenant/target mismatch: %+v", audit)
+	}
+	if audit.CreatedAt.IsZero() {
+		t.Fatalf("expected audit timestamp: %+v", audit)
+	}
+	if audit.Document["membershipId"] != member.MembershipID || audit.Document["oldRole"] != string(identity.RoleOperator) || audit.Document["newRole"] != string(identity.RoleAdmin) {
+		t.Fatalf("expected audit document with membership and old/new role, got %+v", audit.Document)
+	}
+}
+
+func TestMembershipRoleUpdateAndRemovalPreventLastOwnerLoss(t *testing.T) {
+	harness := newTenantAuthHarness(t)
+
+	createRec := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/tenants", strings.NewReader(`{"displayName":"Owner Guard Org","tenantKind":"organization"}`))
+	createReq.Header.Set("Authorization", harness.authHeader)
+	harness.server.Handler().ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for tenant create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	var created struct {
+		Tenant     identity.Tenant     `json:"tenant"`
+		Membership identity.Membership `json:"membership"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode tenant create: %v", err)
+	}
+
+	downgradeRec := httptest.NewRecorder()
+	downgradeReq := httptest.NewRequest(http.MethodPatch, "/v1/tenants/"+created.Tenant.TenantID+"/memberships/"+created.Membership.MembershipID, strings.NewReader(`{"role":"viewer"}`))
+	downgradeReq.Header.Set("Authorization", harness.authHeader)
+	downgradeReq.Header.Set("X-Dope-Tenant-ID", created.Tenant.TenantID)
+	harness.server.Handler().ServeHTTP(downgradeRec, downgradeReq)
+	if downgradeRec.Code != http.StatusBadRequest || !strings.Contains(downgradeRec.Body.String(), identity.ErrOwnerInvariant.Error()) {
+		t.Fatalf("expected last-owner downgrade denial, got %d body=%s", downgradeRec.Code, downgradeRec.Body.String())
+	}
+
+	removeRec := httptest.NewRecorder()
+	removeReq := httptest.NewRequest(http.MethodDelete, "/v1/tenants/"+created.Tenant.TenantID+"/memberships/"+created.Membership.MembershipID, nil)
+	removeReq.Header.Set("Authorization", harness.authHeader)
+	removeReq.Header.Set("X-Dope-Tenant-ID", created.Tenant.TenantID)
+	harness.server.Handler().ServeHTTP(removeRec, removeReq)
+	if removeRec.Code != http.StatusBadRequest || !strings.Contains(removeRec.Body.String(), identity.ErrOwnerInvariant.Error()) {
+		t.Fatalf("expected last-owner removal denial, got %d body=%s", removeRec.Code, removeRec.Body.String())
+	}
+
+	memberships, err := harness.store.ListMemberships(httptest.NewRequest(http.MethodGet, "/", nil).Context(), identity.MembershipFilter{TenantID: created.Tenant.TenantID, Status: identity.StatusActive, Role: identity.RoleOwner, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListMemberships returned error: %v", err)
+	}
+	if len(memberships) != 1 || memberships[0].MembershipID != created.Membership.MembershipID {
+		t.Fatalf("expected last owner to remain active, got %+v", memberships)
+	}
+}
+
 func TestSensitiveTenantManagementPermissionOutcomes(t *testing.T) {
 	harness := newTenantAuthHarness(t)
 

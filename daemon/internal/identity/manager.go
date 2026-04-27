@@ -205,9 +205,24 @@ func (m *Manager) UpdateMembershipRole(ctx context.Context, actor TenantContext,
 		}
 	}
 	now := m.now().UTC()
+	oldRole := membership.Role
 	membership.Role = role
 	membership.UpdatedAt = now
-	if _, err := m.auditor.Require(ctx, TenantAuditEvent{AuditEventID: "audit_" + randomID(8), EventKind: "tenant.membership_role_updated", TenantID: tenantID, PrincipalID: actor.PrincipalID, TargetPrincipalID: membership.PrincipalID, Outcome: AuditOutcomeSucceeded, ReasonCode: "membership_role_updated", CreatedAt: now}); err != nil {
+	if _, err := m.auditor.Require(ctx, TenantAuditEvent{
+		AuditEventID:      "audit_" + randomID(8),
+		EventKind:         "tenant.membership_role_updated",
+		TenantID:          tenantID,
+		PrincipalID:       actor.PrincipalID,
+		TargetPrincipalID: membership.PrincipalID,
+		Outcome:           AuditOutcomeSucceeded,
+		ReasonCode:        "membership_role_updated",
+		CreatedAt:         now,
+		Document: map[string]any{
+			"membershipId": membership.MembershipID,
+			"oldRole":      oldRole,
+			"newRole":      role,
+		},
+	}); err != nil {
 		return Membership{}, err
 	}
 	if err := m.store.UpsertMembership(ctx, membership); err != nil {
@@ -233,7 +248,21 @@ func (m *Manager) RemoveMembership(ctx context.Context, actor TenantContext, ten
 	membership.Status = StatusRemoved
 	membership.UpdatedAt = now
 	membership.RemovedAt = &now
-	if _, err := m.auditor.Require(ctx, TenantAuditEvent{AuditEventID: "audit_" + randomID(8), EventKind: "tenant.membership_removed", TenantID: tenantID, PrincipalID: actor.PrincipalID, TargetPrincipalID: membership.PrincipalID, Outcome: AuditOutcomeSucceeded, ReasonCode: "membership_removed", CreatedAt: now}); err != nil {
+	if _, err := m.auditor.Require(ctx, TenantAuditEvent{
+		AuditEventID:      "audit_" + randomID(8),
+		EventKind:         "tenant.membership_removed",
+		TenantID:          tenantID,
+		PrincipalID:       actor.PrincipalID,
+		TargetPrincipalID: membership.PrincipalID,
+		Outcome:           AuditOutcomeSucceeded,
+		ReasonCode:        "membership_removed",
+		CreatedAt:         now,
+		Document: map[string]any{
+			"membershipId": membership.MembershipID,
+			"oldRole":      membership.Role,
+			"newStatus":    StatusRemoved,
+		},
+	}); err != nil {
 		return Membership{}, err
 	}
 	if err := m.store.UpsertMembership(ctx, membership); err != nil {

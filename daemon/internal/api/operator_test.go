@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -534,6 +535,12 @@ func TestOperatorRoutesAllowLocalWebOriginCORS(t *testing.T) {
 	}
 	if got := preflightRec.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:4173" {
 		t.Fatalf("expected allow-origin header, got %q", got)
+	}
+	if got := preflightRec.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "X-Dope-Tenant-ID") {
+		t.Fatalf("expected tenant header to be allowed, got %q", got)
+	}
+	if got := preflightRec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, "PATCH") {
+		t.Fatalf("expected membership update method to be allowed, got %q", got)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/operator/onboarding", nil)

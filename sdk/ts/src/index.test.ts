@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDopeClient } from "./index.js";
+import { DopeClientError, createDopeClient, type MembershipResource, type TenantResource } from "./index.js";
 
 function mockJSONResponse(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -9,6 +9,36 @@ function mockJSONResponse(status: number, payload: unknown): Response {
       "Content-Type": "application/json"
     }
   });
+}
+
+function tenantResource(overrides: Partial<TenantResource> = {}): TenantResource {
+  return {
+    tenantId: "ten_personal",
+    tenantKind: "personal",
+    displayName: "Personal Tenant",
+    status: "active",
+    createdAt: "2026-04-24T10:00:00Z",
+    updatedAt: "2026-04-24T10:00:00Z",
+    callerMembershipRole: "owner",
+    callerMembershipStatus: "active",
+    callerPermissions: ["tenant.manage"],
+    defaultForCurrentToken: true,
+    defaultForCurrentPrincipal: true,
+    ...overrides
+  };
+}
+
+function membershipResource(overrides: Partial<MembershipResource> = {}): MembershipResource {
+  return {
+    membershipId: "mem_1",
+    tenantId: "ten_personal",
+    principalId: "prn_1",
+    role: "owner",
+    status: "active",
+    createdAt: "2026-04-24T10:00:00Z",
+    updatedAt: "2026-04-24T10:00:00Z",
+    ...overrides
+  };
 }
 
 describe("DopeClient", () => {
@@ -310,5 +340,134 @@ describe("DopeClient", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("propagates default tenant, per-request override, omitted tenant, and stream tenant headers", async () => {
+    const observedHeaders: Array<Record<string, string>> = [];
+    const encoder = new TextEncoder();
+    const streamBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("event: chat.query.completed\ndata: {\"dispatchId\":\"dispatch_1\",\"provider\":\"echo\",\"model\":\"echo\",\"skills\":[],\"query\":\"hello\",\"status\":\"completed\",\"partial\":false,\"reply\":\"ok\",\"usage\":{\"inputTokens\":1,\"outputTokens\":1,\"totalTokens\":2}}\n\n"));
+        controller.close();
+      }
+    });
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      defaultTenantId: "ten_default",
+      fetchImpl: async (_input, init) => {
+        observedHeaders.push(init?.headers as Record<string, string>);
+        if (observedHeaders.length === 3) {
+          return new Response(streamBody, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+        }
+        return mockJSONResponse(200, {
+          environmentScope: "test",
+          items: [],
+          generatedAt: "2026-04-24T10:00:00Z"
+        });
+      }
+    });
+
+    await client.getActivity();
+    await client.getActivity({}, { tenantId: "ten_override" });
+    await client.streamChatQuery({ query: "hello" });
+
+    const tenantlessClient = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      fetchImpl: async (_input, init) => {
+        observedHeaders.push(init?.headers as Record<string, string>);
+        return mockJSONResponse(200, { environmentScope: "test", items: [], generatedAt: "2026-04-24T10:00:00Z" });
+      }
+    });
+    await tenantlessClient.getActivity();
+
+    expect(observedHeaders[0]["X-Dope-Tenant-ID"]).toBe("ten_default");
+    expect(observedHeaders[1]["X-Dope-Tenant-ID"]).toBe("ten_override");
+    expect(observedHeaders[2]["X-Dope-Tenant-ID"]).toBe("ten_default");
+    expect(observedHeaders[3]["X-Dope-Tenant-ID"]).toBeUndefined();
+  });
+
+  it("exports tenant helpers and maps stable tenant denial metadata", async () => {
+    const tenant = tenantResource();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        token: { tokenId: "tok_1" },
+        principal: {
+          principalId: "prn_1",
+          principalKind: "local_operator",
+          displayName: "Local",
+          status: "active",
+          defaultTenantId: tenant.tenantId,
+          createdAt: "2026-04-24T10:00:00Z",
+          updatedAt: "2026-04-24T10:00:00Z"
+        },
+        defaultTenant: tenant,
+        currentTenant: tenant,
+        allowedTenants: [tenant],
+        tokenGrants: [],
+        permissions: ["tenant.manage"],
+        tenantContext: {
+          principalId: "prn_1",
+          tokenId: "tok_1",
+          tenantId: tenant.tenantId,
+          tenantSource: "default",
+          permissions: ["tenant.manage"],
+          resolvedAt: "2026-04-24T10:00:00Z"
+        }
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { items: [tenant] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { tenant, tenantContext: { principalId: "prn_1", tokenId: "tok_1", tenantId: tenant.tenantId, tenantSource: "explicit_header", permissions: ["tenant.manage"], resolvedAt: "2026-04-24T10:00:00Z" } }))
+      .mockResolvedValueOnce(mockJSONResponse(403, { error: "tenant access denied", errorCode: "tenant_access_denied" }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      fetchImpl
+    });
+
+    await expect(client.getMe()).resolves.toMatchObject({ currentTenant: { tenantId: "ten_personal" } });
+    await expect(client.listTenants()).resolves.toMatchObject({ items: [{ tenantId: "ten_personal" }] });
+    await expect(client.getTenant("ten_personal", { tenantId: "ten_personal" })).resolves.toMatchObject({ tenant: { tenantId: "ten_personal" } });
+    await expect(client.getTenant("ten_denied", { tenantId: "ten_denied" })).rejects.toMatchObject({
+      name: "DopeClientError",
+      status: 403,
+      code: "tenant_access_denied",
+      tenantDenied: true,
+      denial: { errorCode: "tenant_access_denied" }
+    });
+  });
+
+  it("calls membership helper routes with active tenant intent", async () => {
+    const membership = membershipResource();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, { items: [membership] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { membership: { ...membership, role: "admin" } }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { membership: { ...membership, status: "removed" } }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { items: [membership] }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      fetchImpl
+    });
+
+    await client.listMemberships("ten_personal", {}, { tenantId: "ten_personal" });
+    await client.updateMembershipRole("ten_personal", "mem_1", { role: "admin" }, { tenantId: "ten_personal" });
+    await client.removeMembership("ten_personal", "mem_1", { tenantId: "ten_personal" });
+    await client.listMemberships("ten_personal");
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/tenants/ten_personal/memberships", expect.objectContaining({
+      headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/tenants/ten_personal/memberships/mem_1", expect.objectContaining({
+      method: "PATCH",
+      headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/tenants/ten_personal/memberships/mem_1", expect.objectContaining({
+      method: "DELETE",
+      headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" })
+    }));
+    const fourthCall = fetchImpl.mock.calls[3][1];
+    expect((fourthCall?.headers as Record<string, string>)["X-Dope-Tenant-ID"]).toBeUndefined();
   });
 });

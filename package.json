@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.0.0",
   "scripts": {
+    "build": "pnpm build:clients",
     "build:sdk": "pnpm --dir sdk/ts build",
     "test:sdk": "pnpm --dir sdk/ts test",
     "dev:web": "pnpm --dir web dev",

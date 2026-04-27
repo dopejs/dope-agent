@@ -213,6 +213,9 @@ func (s *SQLiteStore) enforceTenantNotNull(ctx context.Context, stepName, table,
 	// future write while staying compatible with SQLite's lack of
 	// ALTER TABLE ADD CONSTRAINT.
 	for _, u := range uniqueIndexes {
+		if err := normalizeNullableUniqueKeyDuplicates(ctx, tx, table, cols, u, pkCols); err != nil {
+			return err
+		}
 		stmt := fmt.Sprintf(`CREATE UNIQUE INDEX %s ON %s (%s)`, u.Name, table, strings.Join(u.Columns, ", "))
 		if u.Where != "" {
 			stmt += " WHERE " + u.Where
@@ -225,6 +228,70 @@ func (s *SQLiteStore) enforceTenantNotNull(ctx context.Context, stepName, table,
 		return fmt.Errorf("enforcement commit: %w", err)
 	}
 	return s.CompleteMigrationStep(ctx, stepName)
+}
+
+func normalizeNullableUniqueKeyDuplicates(ctx context.Context, tx *sql.Tx, table string, cols []columnInfo, unique TenantUniqueIndex, pkCols []string) error {
+	if strings.TrimSpace(unique.Where) != "account_key IS NOT NULL" || !containsString(unique.Columns, "account_key") || !hasColumn(cols, "account_key") {
+		return nil
+	}
+	// Legacy single-tenant data can contain duplicate account_key rows
+	// that were valid before Roadmap 35's partial per-tenant unique
+	// indexes. Keep the best row keyed and preserve the other historical
+	// rows by clearing their nullable account_key before adding the index.
+	partition := strings.Join(unique.Columns, ", ")
+	order := nullableUniqueDuplicateOrder(cols, pkCols)
+	stmt := fmt.Sprintf(`
+		WITH ranked AS (
+			SELECT rowid AS rid,
+				ROW_NUMBER() OVER (PARTITION BY %s ORDER BY %s) AS rn
+			FROM %s
+			WHERE account_key IS NOT NULL
+		)
+		UPDATE %s
+		SET account_key = NULL
+		WHERE rowid IN (SELECT rid FROM ranked WHERE rn > 1)
+	`, partition, order, table, table)
+	if _, err := tx.ExecContext(ctx, stmt); err != nil {
+		return fmt.Errorf("normalize duplicate nullable unique keys for %s.%s: %w", table, unique.Name, err)
+	}
+	return nil
+}
+
+func nullableUniqueDuplicateOrder(cols []columnInfo, pkCols []string) string {
+	parts := make([]string, 0, 4)
+	if hasColumn(cols, "canonical_default") {
+		parts = append(parts, "canonical_default DESC")
+	}
+	if hasColumn(cols, "updated_at") {
+		parts = append(parts, "updated_at DESC")
+	}
+	for _, col := range pkCols {
+		if col != "" {
+			parts = append(parts, col+" ASC")
+		}
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "rowid ASC")
+	}
+	return strings.Join(parts, ", ")
+}
+
+func hasColumn(cols []columnInfo, name string) bool {
+	for _, col := range cols {
+		if col.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }
 
 // columnInfo mirrors PRAGMA table_info output.
@@ -395,16 +462,16 @@ func columnListSQL(cols []columnInfo) string {
 //  1. Shadow-swap rebuild adding two CHECK constraints that bind the
 //     tenant_id column to FR-007 semantics:
 //     - column-level: `tenant_id IS NULL OR tenant_id GLOB 'ten_*'`
-//       so any non-NULL value matches the tenant id format.
+//     so any non-NULL value matches the tenant id format.
 //     - table-level: `tenant_id IS NOT NULL OR category IN (<global>)`
-//       so a NULL tenant_id is allowed only for the inventory's hard-
-//       coded global event categories.
+//     so a NULL tenant_id is allowed only for the inventory's hard-
+//     coded global event categories.
 //  2. Recreate the inventory-mandated partial indexes:
 //     - idx_events_tenant_owned (tenant_id, occurred_at DESC, event_id DESC)
-//       WHERE tenant_id IS NOT NULL — selectivity for the tenant-aware
-//       list path.
+//     WHERE tenant_id IS NOT NULL — selectivity for the tenant-aware
+//     list path.
 //     - idx_events_global (category, occurred_at DESC, event_id DESC)
-//       WHERE tenant_id IS NULL — selectivity for the global-event read.
+//     WHERE tenant_id IS NULL — selectivity for the global-event read.
 //
 // Gated on the events backfill step (T077). Idempotent: a `completed`
 // step is a no-op, and re-runs detect the existing CHECK on the live
@@ -616,12 +683,12 @@ const (
 	// Enforcement step names follow tenant_migration:enforce_not_null:<table>
 	// for tables that get NOT NULL, and tenant_migration:enforce_check:events
 	// for the mixed events table (CHECK + partial indexes only).
-	EnforceNotNullSessionsStepName     = "tenant_migration:enforce_not_null:sessions"
-	EnforceNotNullRunsStepName         = "tenant_migration:enforce_not_null:runs"
-	EnforceNotNullStepsStepName        = "tenant_migration:enforce_not_null:steps"
-	EnforceNotNullToolCallsStepName    = "tenant_migration:enforce_not_null:tool_calls"
+	EnforceNotNullSessionsStepName      = "tenant_migration:enforce_not_null:sessions"
+	EnforceNotNullRunsStepName          = "tenant_migration:enforce_not_null:runs"
+	EnforceNotNullStepsStepName         = "tenant_migration:enforce_not_null:steps"
+	EnforceNotNullToolCallsStepName     = "tenant_migration:enforce_not_null:tool_calls"
 	EnforceNotNullLLMDispatchesStepName = "tenant_migration:enforce_not_null:llm_dispatches"
-	EnforceNotNullCheckpointsStepName  = "tenant_migration:enforce_not_null:checkpoints"
+	EnforceNotNullCheckpointsStepName   = "tenant_migration:enforce_not_null:checkpoints"
 
 	// Schedules / workflows / delivery / calendar / mail / reminders /
 	// computer-use / evaluation / harness / connector_messages.
@@ -862,4 +929,3 @@ func (s *SQLiteStore) RegisterEnforcementMigrationSteps(ctx context.Context) err
 // EnforceTenantNotNull pattern; landing them is mechanical but bulky.
 // The runtime-spine enforcement above is sufficient to demonstrate
 // the pipeline works end-to-end.
-

@@ -459,21 +459,155 @@ export type EventStreamSubscription = {
   completed: Promise<void>;
 };
 
+export type TenantRole = "owner" | "admin" | "operator" | "viewer";
+export type TenantKind = "personal" | "organization";
+export type TenantLifecycleStatus =
+  | "invited"
+  | "pending"
+  | "active"
+  | "disabled"
+  | "removed"
+  | "rejected"
+  | "revoked"
+  | "expired"
+  | "accepted"
+  | "rotated";
+
+export type TenantPermission =
+  | "tenant.manage"
+  | "secrets.manage"
+  | "integrations.manage"
+  | "connectors.manage"
+  | "mcp.manage"
+  | "runs.execute"
+  | "approvals.resolve"
+  | "live_validation.execute"
+  | "evaluation.manage"
+  | "billing.view"
+  | "read_only.inspect";
+
+export type TenantResource = {
+  tenantId: string;
+  tenantKind: TenantKind;
+  displayName: string;
+  status: TenantLifecycleStatus;
+  createdAt: string;
+  updatedAt: string;
+  createdByPrincipalId?: string;
+  defaultOwnerPrincipalId?: string;
+  callerMembershipRole?: TenantRole;
+  callerMembershipStatus?: TenantLifecycleStatus;
+  callerPermissions?: TenantPermission[];
+  defaultForCurrentToken?: boolean;
+  defaultForCurrentPrincipal?: boolean;
+};
+
+export type PrincipalResource = {
+  principalId: string;
+  principalKind: "local_operator" | "user" | "service_client";
+  displayName: string;
+  status: TenantLifecycleStatus;
+  defaultTenantId: string;
+  createdAt: string;
+  updatedAt: string;
+  disabledAt?: string;
+  removedAt?: string;
+};
+
+export type MembershipResource = {
+  membershipId: string;
+  tenantId: string;
+  principalId: string;
+  role: TenantRole;
+  status: TenantLifecycleStatus;
+  invitationId?: string;
+  createdAt: string;
+  updatedAt: string;
+  acceptedAt?: string;
+  removedAt?: string;
+};
+
+export type TokenTenantGrantResource = {
+  grantId: string;
+  tokenId: string;
+  tenantId: string;
+  isDefault: boolean;
+  status: TenantLifecycleStatus;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt?: string;
+  grantedByPrincipalId?: string;
+};
+
+export type TenantContextResource = {
+  principalId: string;
+  tokenId: string;
+  tenantId: string;
+  tenantSource: string;
+  membershipId?: string;
+  role?: TenantRole;
+  permissions: TenantPermission[];
+  resolvedAt: string;
+};
+
+export type TenantDenialResource = {
+  error: string;
+  errorCode: string;
+  requestId?: string;
+};
+
+export type AuthMeResponse = {
+  token: Record<string, unknown>;
+  principal: PrincipalResource;
+  defaultTenant: TenantResource;
+  currentTenant: TenantResource;
+  allowedTenants: TenantResource[];
+  tokenGrants: TokenTenantGrantResource[];
+  permissions: TenantPermission[];
+  tenantContext: TenantContextResource;
+};
+
+export type TenantListResponse = {
+  items: TenantResource[];
+};
+
+export type TenantDetailResponse = {
+  tenant: TenantResource;
+  tenantContext: TenantContextResource;
+};
+
+export type MembershipListResponse = {
+  items: MembershipResource[];
+};
+
+export type UpdateMembershipRoleInput = {
+  role: TenantRole;
+};
+
+export type TenantRequestOptions = {
+  tenantId?: string;
+};
+
 export type DopeClientOptions = {
   baseURL: string;
   accessToken?: string;
   fetchImpl?: typeof fetch;
+  defaultTenantId?: string;
 };
 
 export class DopeClientError extends Error {
   readonly status: number;
   readonly code?: string;
+  readonly tenantDenied?: boolean;
+  readonly denial?: TenantDenialResource;
 
-  constructor(message: string, options: { status: number; code?: string }) {
+  constructor(message: string, options: { status: number; code?: string; tenantDenied?: boolean; denial?: TenantDenialResource }) {
     super(message);
     this.name = "DopeClientError";
     this.status = options.status;
     this.code = options.code;
+    this.tenantDenied = options.tenantDenied;
+    this.denial = options.denial;
   }
 }
 
@@ -481,24 +615,27 @@ export class DopeClient {
   private readonly baseURL: string;
   private readonly accessToken?: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly defaultTenantId?: string;
 
   constructor(options: DopeClientOptions) {
     this.baseURL = trimBaseURL(options.baseURL);
     this.accessToken = options.accessToken?.trim() || undefined;
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.defaultTenantId = options.defaultTenantId?.trim() || undefined;
   }
 
-  async queryChat(input: ChatQueryInput): Promise<ChatQueryResponse> {
+  async queryChat(input: ChatQueryInput, tenantOptions?: TenantRequestOptions): Promise<ChatQueryResponse> {
     return this.requestJSON<ChatQueryResponse>("/v1/chat/query", {
       method: "POST",
-      body: normalizeChatInput(input)
+      body: normalizeChatInput(input),
+      tenant: tenantOptions
     });
   }
 
-  async streamChatQuery(input: ChatQueryInput, handlers: StreamHandlers = {}): Promise<ChatQueryResponse> {
+  async streamChatQuery(input: ChatQueryInput, handlers: StreamHandlers = {}, tenantOptions?: TenantRequestOptions): Promise<ChatQueryResponse> {
     const response = await this.fetchImpl(this.buildURL("/v1/chat/query/stream"), {
       method: "POST",
-      headers: this.buildHeaders(),
+      headers: this.buildHeaders(tenantOptions),
       body: JSON.stringify(normalizeChatInput(input))
     });
 
@@ -545,100 +682,146 @@ export class DopeClient {
     return terminal;
   }
 
-  async getOnboarding(): Promise<OperatorOnboardingResponse> {
-    return this.requestJSON<OperatorOnboardingResponse>("/v1/operator/onboarding");
+  async getMe(tenantOptions?: TenantRequestOptions): Promise<AuthMeResponse> {
+    return this.requestJSON<AuthMeResponse>("/v1/auth/me", { tenant: tenantOptions });
   }
 
-  async getActivity(query: OperatorActivityQuery = {}): Promise<OperatorActivityListResponse> {
+  async listTenants(query: Record<string, QueryValue> = {}, tenantOptions?: TenantRequestOptions): Promise<TenantListResponse> {
+    return this.requestJSON<TenantListResponse>("/v1/tenants", { query, tenant: tenantOptions });
+  }
+
+  async getTenant(tenantId: string, tenantOptions?: TenantRequestOptions): Promise<TenantDetailResponse> {
+    return this.requestJSON<TenantDetailResponse>(`/v1/tenants/${tenantId.trim()}`, { tenant: tenantOptions });
+  }
+
+  async listMemberships(tenantId: string, query: Record<string, QueryValue> = {}, tenantOptions?: TenantRequestOptions): Promise<MembershipListResponse> {
+    return this.requestJSON<MembershipListResponse>(`/v1/tenants/${tenantId.trim()}/memberships`, {
+      query,
+      tenant: tenantOptions
+    });
+  }
+
+  async updateMembershipRole(
+    tenantId: string,
+    membershipId: string,
+    input: UpdateMembershipRoleInput,
+    tenantOptions?: TenantRequestOptions
+  ): Promise<{ membership: MembershipResource }> {
+    return this.requestJSON<{ membership: MembershipResource }>(`/v1/tenants/${tenantId.trim()}/memberships/${membershipId.trim()}`, {
+      method: "PATCH",
+      body: { role: input.role },
+      tenant: tenantOptions
+    });
+  }
+
+  async removeMembership(tenantId: string, membershipId: string, tenantOptions?: TenantRequestOptions): Promise<{ membership: MembershipResource }> {
+    return this.requestJSON<{ membership: MembershipResource }>(`/v1/tenants/${tenantId.trim()}/memberships/${membershipId.trim()}`, {
+      method: "DELETE",
+      tenant: tenantOptions
+    });
+  }
+
+  async getOnboarding(tenantOptions?: TenantRequestOptions): Promise<OperatorOnboardingResponse> {
+    return this.requestJSON<OperatorOnboardingResponse>("/v1/operator/onboarding", { tenant: tenantOptions });
+  }
+
+  async getActivity(query: OperatorActivityQuery = {}, tenantOptions?: TenantRequestOptions): Promise<OperatorActivityListResponse> {
     return this.requestJSON<OperatorActivityListResponse>("/v1/operator/activity", {
       query: {
         sourceKind: query.sourceKind,
         attentionOnly: query.attentionOnly,
         limit: query.limit
-      }
+      },
+      tenant: tenantOptions
     });
   }
 
-  async getDiagnostics(query: OperatorDiagnosticsQuery = {}): Promise<OperatorDiagnosticListResponse> {
+  async getDiagnostics(query: OperatorDiagnosticsQuery = {}, tenantOptions?: TenantRequestOptions): Promise<OperatorDiagnosticListResponse> {
     return this.requestJSON<OperatorDiagnosticListResponse>("/v1/operator/diagnostics", {
       query: {
         sourceKind: query.sourceKind,
         plane: query.plane,
         severity: query.severity
-      }
+      },
+      tenant: tenantOptions
     });
   }
 
-  async listReplayCandidates(query: ReplayCandidateQuery = {}): Promise<ReplayCandidateListResponse> {
-    return this.requestJSON<ReplayCandidateListResponse>("/v1/evaluation/replay-candidates", { query });
+  async listReplayCandidates(query: ReplayCandidateQuery = {}, tenantOptions?: TenantRequestOptions): Promise<ReplayCandidateListResponse> {
+    return this.requestJSON<ReplayCandidateListResponse>("/v1/evaluation/replay-candidates", { query, tenant: tenantOptions });
   }
 
-  async getReplayCandidate(candidateId: string): Promise<ReplayCandidateResource> {
-    return this.requestJSON<ReplayCandidateResource>(`/v1/evaluation/replay-candidates/${candidateId.trim()}`);
+  async getReplayCandidate(candidateId: string, tenantOptions?: TenantRequestOptions): Promise<ReplayCandidateResource> {
+    return this.requestJSON<ReplayCandidateResource>(`/v1/evaluation/replay-candidates/${candidateId.trim()}`, { tenant: tenantOptions });
   }
 
-  async createReplayCandidate(input: CreateReplayCandidateInput): Promise<ReplayCandidateResource> {
+  async createReplayCandidate(input: CreateReplayCandidateInput, tenantOptions?: TenantRequestOptions): Promise<ReplayCandidateResource> {
     return this.requestJSON<ReplayCandidateResource>("/v1/evaluation/replay-candidates", {
       method: "POST",
-      body: input
+      body: input,
+      tenant: tenantOptions
     });
   }
 
-  async createReplayAttempt(candidateId: string, input: CreateReplayAttemptInput = {}): Promise<ReplayAttemptResource> {
+  async createReplayAttempt(candidateId: string, input: CreateReplayAttemptInput = {}, tenantOptions?: TenantRequestOptions): Promise<ReplayAttemptResource> {
     return this.requestJSON<ReplayAttemptResource>(`/v1/evaluation/replay-candidates/${candidateId.trim()}/attempts`, {
       method: "POST",
-      body: input
+      body: input,
+      tenant: tenantOptions
     });
   }
 
-  async listReplayAttempts(query: ReplayAttemptQuery = {}): Promise<ReplayAttemptListResponse> {
-    return this.requestJSON<ReplayAttemptListResponse>("/v1/evaluation/replay-attempts", { query });
+  async listReplayAttempts(query: ReplayAttemptQuery = {}, tenantOptions?: TenantRequestOptions): Promise<ReplayAttemptListResponse> {
+    return this.requestJSON<ReplayAttemptListResponse>("/v1/evaluation/replay-attempts", { query, tenant: tenantOptions });
   }
 
-  async getReplayAttempt(attemptId: string): Promise<ReplayAttemptResource> {
-    return this.requestJSON<ReplayAttemptResource>(`/v1/evaluation/replay-attempts/${attemptId.trim()}`);
+  async getReplayAttempt(attemptId: string, tenantOptions?: TenantRequestOptions): Promise<ReplayAttemptResource> {
+    return this.requestJSON<ReplayAttemptResource>(`/v1/evaluation/replay-attempts/${attemptId.trim()}`, { tenant: tenantOptions });
   }
 
-  async createReplayComparison(attemptId: string, input: CreateReplayComparisonInput = {}): Promise<ReplayComparisonResource> {
+  async createReplayComparison(attemptId: string, input: CreateReplayComparisonInput = {}, tenantOptions?: TenantRequestOptions): Promise<ReplayComparisonResource> {
     return this.requestJSON<ReplayComparisonResource>(`/v1/evaluation/replay-attempts/${attemptId.trim()}/compare`, {
       method: "POST",
-      body: input
+      body: input,
+      tenant: tenantOptions
     });
   }
 
-  async listReplayComparisons(query: ReplayComparisonQuery = {}): Promise<ReplayComparisonListResponse> {
-    return this.requestJSON<ReplayComparisonListResponse>("/v1/evaluation/comparisons", { query });
+  async listReplayComparisons(query: ReplayComparisonQuery = {}, tenantOptions?: TenantRequestOptions): Promise<ReplayComparisonListResponse> {
+    return this.requestJSON<ReplayComparisonListResponse>("/v1/evaluation/comparisons", { query, tenant: tenantOptions });
   }
 
-  async getReplayComparison(comparisonId: string): Promise<ReplayComparisonResource> {
-    return this.requestJSON<ReplayComparisonResource>(`/v1/evaluation/comparisons/${comparisonId.trim()}`);
+  async getReplayComparison(comparisonId: string, tenantOptions?: TenantRequestOptions): Promise<ReplayComparisonResource> {
+    return this.requestJSON<ReplayComparisonResource>(`/v1/evaluation/comparisons/${comparisonId.trim()}`, { tenant: tenantOptions });
   }
 
-  async listReplayFixtures(query: ReplayFixtureQuery = {}): Promise<ReplayFixtureListResponse> {
-    return this.requestJSON<ReplayFixtureListResponse>("/v1/evaluation/fixtures", { query });
+  async listReplayFixtures(query: ReplayFixtureQuery = {}, tenantOptions?: TenantRequestOptions): Promise<ReplayFixtureListResponse> {
+    return this.requestJSON<ReplayFixtureListResponse>("/v1/evaluation/fixtures", { query, tenant: tenantOptions });
   }
 
-  async listApprovals(status?: ApprovalStatus): Promise<ApprovalListResponse> {
+  async listApprovals(status?: ApprovalStatus, tenantOptions?: TenantRequestOptions): Promise<ApprovalListResponse> {
     return this.requestJSON<ApprovalListResponse>("/v1/policy/approvals", {
-      query: { status }
+      query: { status },
+      tenant: tenantOptions
     });
   }
 
-  async getApproval(approvalId: string): Promise<ApprovalResource> {
-    return this.requestJSON<ApprovalResource>(`/v1/policy/approvals/${approvalId.trim()}`);
+  async getApproval(approvalId: string, tenantOptions?: TenantRequestOptions): Promise<ApprovalResource> {
+    return this.requestJSON<ApprovalResource>(`/v1/policy/approvals/${approvalId.trim()}`, { tenant: tenantOptions });
   }
 
-  async resolveApproval(approvalId: string, input: ResolveApprovalInput): Promise<ApprovalDecisionResponse> {
+  async resolveApproval(approvalId: string, input: ResolveApprovalInput, tenantOptions?: TenantRequestOptions): Promise<ApprovalDecisionResponse> {
     return this.requestJSON<ApprovalDecisionResponse>(`/v1/policy/approvals/${approvalId.trim()}/resolve`, {
       method: "POST",
       body: {
         resolution: input.resolution,
         comment: input.comment?.trim() || ""
-      }
+      },
+      tenant: tenantOptions
     });
   }
 
-  async createRun(input: CreateRunInput): Promise<RunResource> {
+  async createRun(input: CreateRunInput, tenantOptions?: TenantRequestOptions): Promise<RunResource> {
     return this.requestJSON<RunResource>("/v1/runs", {
       method: "POST",
       body: {
@@ -647,20 +830,21 @@ export class DopeClient {
         entrypoint: input.entrypoint.trim(),
         goal: input.goal?.trim() || undefined,
         input: input.input
-      }
+      },
+      tenant: tenantOptions
     });
   }
 
-  async fetchRoute<T>(route: string): Promise<T> {
-    return this.requestJSON<T>(normalizeRoute(route));
+  async fetchRoute<T>(route: string, tenantOptions?: TenantRequestOptions): Promise<T> {
+    return this.requestJSON<T>(normalizeRoute(route), { tenant: tenantOptions });
   }
 
-  streamEvents(query: EventStreamQuery = {}, handlers: EventStreamHandlers = {}): EventStreamSubscription {
+  streamEvents(query: EventStreamQuery = {}, handlers: EventStreamHandlers = {}, tenantOptions?: TenantRequestOptions): EventStreamSubscription {
     const controller = new AbortController();
     const completed = (async () => {
       const response = await this.fetchImpl(this.buildURL("/v1/events/stream", query), {
         method: "GET",
-        headers: this.buildHeaders(),
+        headers: this.buildHeaders(tenantOptions),
         signal: controller.signal
       });
 
@@ -695,11 +879,12 @@ export class DopeClient {
       method?: string;
       query?: Record<string, QueryValue>;
       body?: unknown;
+      tenant?: TenantRequestOptions;
     } = {}
   ): Promise<T> {
     const response = await this.fetchImpl(this.buildURL(route, options.query), {
       method: options.method ?? "GET",
-      headers: this.buildHeaders(),
+      headers: this.buildHeaders(options.tenant),
       body: options.body === undefined ? undefined : JSON.stringify(options.body)
     });
 
@@ -724,14 +909,22 @@ export class DopeClient {
     return url.toString();
   }
 
-  private buildHeaders(): HeadersInit {
+  private buildHeaders(tenantOptions?: TenantRequestOptions): HeadersInit {
     const headers: Record<string, string> = {
       "Content-Type": "application/json"
     };
     if (this.accessToken) {
       headers.Authorization = `Bearer ${this.accessToken}`;
     }
+    const tenantId = this.resolveTenantId(tenantOptions);
+    if (tenantId) {
+      headers["X-Dope-Tenant-ID"] = tenantId;
+    }
     return headers;
+  }
+
+  private resolveTenantId(tenantOptions?: TenantRequestOptions): string | undefined {
+    return tenantOptions?.tenantId?.trim() || this.defaultTenantId;
   }
 }
 
@@ -771,20 +964,33 @@ function normalizeChatInput(input: ChatQueryInput): ChatQueryInput {
 async function toClientError(response: Response): Promise<DopeClientError> {
   let message = `request failed with status ${response.status}`;
   let code: string | undefined;
+  let denial: TenantDenialResource | undefined;
 
   try {
-    const payload = (await response.json()) as { error?: string; errorCode?: string };
+    const payload = (await response.json()) as { error?: string; errorCode?: string; requestId?: string };
     if (payload.error) {
       message = payload.error;
     }
     if (payload.errorCode) {
       code = payload.errorCode;
     }
+    if (isTenantDenialCode(payload.errorCode) && payload.errorCode) {
+      denial = {
+        error: payload.error ?? "tenant access denied",
+        errorCode: payload.errorCode,
+        requestId: payload.requestId
+      };
+    }
   } catch {
     // Ignore non-json failure bodies.
   }
 
-  return new DopeClientError(message, { status: response.status, code });
+  const tenantDenied = Boolean(denial) || isTenantDenialCode(code);
+  return new DopeClientError(message, { status: response.status, code, tenantDenied: tenantDenied || undefined, denial });
+}
+
+function isTenantDenialCode(code: string | undefined): boolean {
+  return code === "tenant_access_denied" || code === "tenant_permission_denied" || code === "tenant_ownership_denied";
 }
 
 type SSEEvent = {

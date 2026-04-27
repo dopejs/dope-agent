@@ -173,6 +173,86 @@ func TestManagerLoadsFixtureCandidatesAndLaunchesNonLiveReplay(t *testing.T) {
 	}
 }
 
+func TestManagerNormalizesNilCollectionsForAPIResponses(t *testing.T) {
+	ctx := context.Background()
+	store := newMemoryStore()
+	manager := NewManager(Dependencies{EnvironmentScope: "test", Store: store, Clock: fixedClock})
+	store.candidates["candidate_legacy"] = ReplayCandidate{
+		CandidateID:       "candidate_legacy",
+		CandidateKind:     CandidateKindCuratedWork,
+		DisplayName:       "Legacy Candidate",
+		SourceKind:        SourceKindRun,
+		SourceID:          "run_1",
+		EnvironmentScope:  "test",
+		ReadinessStatus:   ReadinessFullyReplayable,
+		DefaultReplayMode: ReplayModeNonLive,
+		CreatedAt:         fixedClock(),
+		UpdatedAt:         fixedClock(),
+	}
+	store.attempts["attempt_legacy"] = ReplayAttempt{
+		AttemptID:        "attempt_legacy",
+		CandidateID:      "candidate_legacy",
+		EnvironmentScope: "test",
+		Mode:             ReplayModeNonLive,
+		Status:           ReplayAttemptStatusCompleted,
+		CreatedAt:        fixedClock(),
+		UpdatedAt:        fixedClock(),
+	}
+	store.comparisons["comparison_legacy"] = ComparisonResult{
+		ComparisonID:     "comparison_legacy",
+		CandidateID:      "candidate_legacy",
+		AttemptID:        "attempt_legacy",
+		EnvironmentScope: "test",
+		TerminalStatus:   ComparisonMatched,
+		GeneratedAt:      fixedClock(),
+	}
+	store.fixtures["fixture_legacy"] = RegressionFixture{
+		FixtureID:        "fixture_legacy",
+		DisplayName:      "Legacy Fixture",
+		DomainClass:      FixtureDomainSchedule,
+		ManifestPath:     "manifest.json",
+		EnvironmentScope: "test",
+		CreatedAt:        fixedClock(),
+		UpdatedAt:        fixedClock(),
+	}
+
+	candidates, err := manager.ListReplayCandidates(ctx, CandidateFilter{})
+	if err != nil {
+		t.Fatalf("ListReplayCandidates returned error: %v", err)
+	}
+	if candidates[0].SourceRefs == nil || candidates[0].ReadinessReasons == nil || candidates[0].Limitations == nil || candidates[0].CapturedEvidenceRefs == nil {
+		t.Fatalf("expected candidate collections to be normalized, got %+v", candidates[0])
+	}
+	candidate, ok, err := manager.GetReplayCandidate(ctx, "candidate_legacy")
+	if err != nil || !ok {
+		t.Fatalf("GetReplayCandidate returned ok=%v err=%v", ok, err)
+	}
+	if candidate.SourceRefs == nil || candidate.ReadinessReasons == nil || candidate.Limitations == nil || candidate.CapturedEvidenceRefs == nil {
+		t.Fatalf("expected candidate detail collections to be normalized, got %+v", candidate)
+	}
+	attempts, err := manager.ListReplayAttempts(ctx, AttemptFilter{})
+	if err != nil {
+		t.Fatalf("ListReplayAttempts returned error: %v", err)
+	}
+	if attempts[0].SourceRefs == nil || attempts[0].EvidenceRefs == nil || attempts[0].BlockedReasons == nil {
+		t.Fatalf("expected attempt collections to be normalized, got %+v", attempts[0])
+	}
+	comparisons, err := manager.ListComparisons(ctx, ComparisonFilter{})
+	if err != nil {
+		t.Fatalf("ListComparisons returned error: %v", err)
+	}
+	if comparisons[0].Limitations == nil || comparisons[0].DriftFindings == nil {
+		t.Fatalf("expected comparison collections to be normalized, got %+v", comparisons[0])
+	}
+	fixtures, err := manager.ListFixtures(ctx, FixtureFilter{})
+	if err != nil {
+		t.Fatalf("ListFixtures returned error: %v", err)
+	}
+	if fixtures[0].SourceRefs == nil || fixtures[0].CapturedEvidenceRefs == nil || fixtures[0].Assumptions == nil || fixtures[0].Limitations == nil {
+		t.Fatalf("expected fixture collections to be normalized, got %+v", fixtures[0])
+	}
+}
+
 func TestManagerBlocksUnreadyCandidateWithoutRunningSideEffects(t *testing.T) {
 	ctx := context.Background()
 	store := newMemoryStore()

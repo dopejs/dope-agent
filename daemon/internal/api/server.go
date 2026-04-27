@@ -97,35 +97,35 @@ type MigrationStatus interface {
 }
 
 type Server struct {
-	cfg          config.Config
-	logger       *slog.Logger
-	eventBus     *events.Bus
-	policy       *policy.Engine
-	auth         *auth.Manager
-	identity     *identity.Manager
-	router       *router.SessionRouter
-	runtime      *runtime.Manager
-	llm          *llm.Dispatcher
-	chat         *chat.Service
-	providers    *providers.Manager
-	skills       *skills.Registry
-	sandboxes    *sandbox.Manager
-	mcp          *mcp.Manager
-	integrations *integrations.Manager
-	calendar     *calendar.Manager
-	mail         *mail.Manager
-	reminders    *reminders.Manager
-	connectors   *connectors.Supervisor
-	capabilities *capabilities.Supervisor
-	computerUse  *computeruse.Manager
-	scheduler    *scheduler.Scheduler
-	delivery     *delivery.Manager
-	store        *store.SQLiteStore
-	checkpoints  *checkpoints.Manager
-	evaluation   *evaluation.Manager
-	auditEmitter      *audit.Emitter
-	migrationStatus   MigrationStatus
-	server            *http.Server
+	cfg             config.Config
+	logger          *slog.Logger
+	eventBus        *events.Bus
+	policy          *policy.Engine
+	auth            *auth.Manager
+	identity        *identity.Manager
+	router          *router.SessionRouter
+	runtime         *runtime.Manager
+	llm             *llm.Dispatcher
+	chat            *chat.Service
+	providers       *providers.Manager
+	skills          *skills.Registry
+	sandboxes       *sandbox.Manager
+	mcp             *mcp.Manager
+	integrations    *integrations.Manager
+	calendar        *calendar.Manager
+	mail            *mail.Manager
+	reminders       *reminders.Manager
+	connectors      *connectors.Supervisor
+	capabilities    *capabilities.Supervisor
+	computerUse     *computeruse.Manager
+	scheduler       *scheduler.Scheduler
+	delivery        *delivery.Manager
+	store           *store.SQLiteStore
+	checkpoints     *checkpoints.Manager
+	evaluation      *evaluation.Manager
+	auditEmitter    *audit.Emitter
+	migrationStatus MigrationStatus
+	server          *http.Server
 }
 
 func NewServer(deps Dependencies) *Server {
@@ -453,32 +453,32 @@ func NewServer(deps Dependencies) *Server {
 	}))
 
 	return &Server{
-		cfg:          deps.Config,
-		logger:       deps.Logger,
-		eventBus:     deps.EventBus,
-		policy:       deps.Policy,
-		auth:         deps.Auth,
-		identity:     deps.Identity,
-		router:       deps.Router,
-		runtime:      deps.Runtime,
-		llm:          deps.LLM,
-		chat:         deps.Chat,
-		providers:    deps.Providers,
-		skills:       deps.Skills,
-		sandboxes:    deps.Sandboxes,
-		mcp:          deps.MCP,
-		integrations: deps.Integrations,
-		calendar:     deps.Calendar,
-		mail:         deps.Mail,
-		reminders:    deps.Reminders,
-		connectors:   deps.Connectors,
-		capabilities: deps.Capabilities,
-		computerUse:  deps.ComputerUse,
-		scheduler:    deps.Scheduler,
-		delivery:     deps.Delivery,
-		store:        deps.Store,
-		checkpoints:  deps.Checkpoints,
-		evaluation:   deps.Evaluation,
+		cfg:             deps.Config,
+		logger:          deps.Logger,
+		eventBus:        deps.EventBus,
+		policy:          deps.Policy,
+		auth:            deps.Auth,
+		identity:        deps.Identity,
+		router:          deps.Router,
+		runtime:         deps.Runtime,
+		llm:             deps.LLM,
+		chat:            deps.Chat,
+		providers:       deps.Providers,
+		skills:          deps.Skills,
+		sandboxes:       deps.Sandboxes,
+		mcp:             deps.MCP,
+		integrations:    deps.Integrations,
+		calendar:        deps.Calendar,
+		mail:            deps.Mail,
+		reminders:       deps.Reminders,
+		connectors:      deps.Connectors,
+		capabilities:    deps.Capabilities,
+		computerUse:     deps.ComputerUse,
+		scheduler:       deps.Scheduler,
+		delivery:        deps.Delivery,
+		store:           deps.Store,
+		checkpoints:     deps.Checkpoints,
+		evaluation:      deps.Evaluation,
 		auditEmitter:    resolveAuditEmitter(deps),
 		migrationStatus: deps.TenantMigrationStatus,
 		server: &http.Server{
@@ -526,8 +526,8 @@ func withLocalWebCORS(next http.Handler) http.Handler {
 			header := w.Header()
 			header.Set("Access-Control-Allow-Origin", origin)
 			header.Add("Vary", "Origin")
-			header.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-			header.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			header.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Dope-Tenant-ID")
+			header.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			header.Set("Access-Control-Expose-Headers", "Content-Type")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)

@@ -132,6 +132,71 @@ func TestEnforceTenantNotNull_AppliesPerTenantUniqueIndex(t *testing.T) {
 	}
 }
 
+func TestEnforceTenantNotNull_NormalizesLegacyDuplicateNullableUniqueKeys(t *testing.T) {
+	s := newBackfillTestStore(t)
+	ctx := context.Background()
+
+	rows := []struct {
+		id        string
+		tenantID  string
+		updatedAt string
+	}{
+		{id: "calendar-fake-a", tenantID: "ten_aaaa", updatedAt: "2025-01-01T00:00:00Z"},
+		{id: "calendar-fake-b", tenantID: "ten_aaaa", updatedAt: "2025-01-02T00:00:00Z"},
+	}
+	for _, row := range rows {
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO integrations (integration_id, domain_kind, environment_scope, account_key, backend_kind, readiness_status, canonical_default, updated_at, document_json, tenant_id)
+			VALUES (?, 'calendar', 'test', 'alice@example.com', 'fake_local', 'healthy', 0, ?, '{}', ?)`, row.id, row.updatedAt, row.tenantID); err != nil {
+			t.Fatalf("seed duplicate integration %s: %v", row.id, err)
+		}
+	}
+
+	if err := s.RegisterMigrationStep(ctx, IntegrationsBackfillStepName); err != nil {
+		t.Fatalf("register backfill: %v", err)
+	}
+	if err := s.CompleteMigrationStep(ctx, IntegrationsBackfillStepName); err != nil {
+		t.Fatalf("complete backfill: %v", err)
+	}
+	if err := s.RegisterMigrationStep(ctx, EnforceNotNullIntegrationsStepName); err != nil {
+		t.Fatalf("register enforcement: %v", err)
+	}
+
+	var spec EnforcementSpec
+	for _, sp := range ExtendedEnforcementSpecs() {
+		if sp.Table == "integrations" {
+			spec = sp
+			break
+		}
+	}
+	if spec.Table == "" {
+		t.Fatalf("integrations spec missing from ExtendedEnforcementSpecs()")
+	}
+	if err := s.EnforceTenantNotNullSpec(ctx, spec); err != nil {
+		t.Fatalf("EnforceTenantNotNullSpec: %v", err)
+	}
+
+	var keyed, total int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM integrations WHERE tenant_id = 'ten_aaaa' AND domain_kind = 'calendar' AND account_key = 'alice@example.com'`).Scan(&keyed); err != nil {
+		t.Fatalf("count keyed integrations: %v", err)
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM integrations WHERE integration_id IN ('calendar-fake-a', 'calendar-fake-b')`).Scan(&total); err != nil {
+		t.Fatalf("count seeded integrations: %v", err)
+	}
+	if keyed != 1 || total != 2 {
+		t.Fatalf("expected one keyed row and both historical rows preserved, keyed=%d total=%d", keyed, total)
+	}
+
+	_, err := s.db.ExecContext(ctx, `INSERT INTO integrations (integration_id, domain_kind, environment_scope, account_key, backend_kind, readiness_status, canonical_default, updated_at, document_json, tenant_id)
+		VALUES ('calendar-fake-c', 'calendar', 'test', 'alice@example.com', 'fake_local', 'healthy', 0, '2025-01-03T00:00:00Z', '{}', 'ten_aaaa')`)
+	if err == nil {
+		t.Fatalf("same-tenant duplicate integration account_key MUST fail")
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO integrations (integration_id, domain_kind, environment_scope, account_key, backend_kind, readiness_status, canonical_default, updated_at, document_json, tenant_id)
+		VALUES ('calendar-fake-d', 'calendar', 'test', 'alice@example.com', 'fake_local', 'healthy', 0, '2025-01-03T00:00:00Z', '{}', 'ten_bbbb')`); err != nil {
+		t.Fatalf("different-tenant integration account_key MUST succeed: %v", err)
+	}
+}
+
 // T026 step (c) regression: mcp_tool_exposure_rules has a composite PK
 // (server_id, tool_name, runtime_surface). After enforcement the PK
 // MUST be extended to (tenant_id, server_id, tool_name, runtime_surface),

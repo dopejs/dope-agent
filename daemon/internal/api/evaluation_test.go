@@ -132,6 +132,9 @@ func TestEvaluationRoutesLaunchReplayAndCompare(t *testing.T) {
 	if attempt.Mode != evaluation.ReplayModeNonLive || attempt.Status != evaluation.ReplayAttemptStatusCompleted {
 		t.Fatalf("expected completed non-live attempt, got %+v", attempt)
 	}
+	if attempt.SourceRefs == nil || attempt.EvidenceRefs == nil || attempt.BlockedReasons == nil {
+		t.Fatalf("expected attempt response collections to encode as arrays, got %+v", attempt)
+	}
 	if attempt.ResultRunID == "" {
 		t.Fatalf("expected attempt resultRunId")
 	}
@@ -162,6 +165,9 @@ func TestEvaluationRoutesLaunchReplayAndCompare(t *testing.T) {
 	comparison := decodeStrictResponse[ReplayComparisonResource](t, compareRec.Body.Bytes())
 	if comparison.TerminalStatus != evaluation.ComparisonMatched {
 		t.Fatalf("expected matched comparison, got %+v", comparison)
+	}
+	if comparison.Limitations == nil || comparison.DriftFindings == nil {
+		t.Fatalf("expected comparison response collections to encode as arrays, got %+v", comparison)
 	}
 	comparisonsRec := requestEvaluationRoute(t, server, http.MethodGet, "/v1/evaluation/comparisons", "", tokenSecret)
 	if comparisonsRec.Code != http.StatusOK {
