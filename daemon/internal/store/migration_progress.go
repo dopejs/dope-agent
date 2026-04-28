@@ -81,6 +81,17 @@ func (s *SQLiteStore) BeginMigrationStep(ctx context.Context, name string) (resu
 	return false, nil
 }
 
+// IsMigrationStepCompleted reports whether a registered migration step has
+// already completed and should be skipped by callers that cannot distinguish
+// BeginMigrationStep's completed and first-run false return values.
+func (s *SQLiteStore) IsMigrationStepCompleted(ctx context.Context, name string) (bool, error) {
+	step, err := s.GetMigrationStep(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	return step.Status == MigrationStepCompleted, nil
+}
+
 // RecordMigrationChunk persists the resume cursor after a successful chunk
 // commit. Callers MUST invoke this inside the same transaction (or
 // immediately after) the chunk write, so the cursor never leads the data.
@@ -181,6 +192,8 @@ const EventsBackfillStepName = "tenant_migration:backfill:events"
 // tenant_id for global categories.
 const EventsEnforceCheckStepName = "tenant_migration:enforce_check:events"
 
+const HostedCredentialBridgeStepName = "tenant_migration:bridge:hosted_credentials"
+
 // RegisterEventsMigrationSteps inserts the two events-table progress rows in
 // `pending` state if they don't already exist. The daemon startup path
 // invokes this after schema migrations apply so that operators can observe
@@ -254,36 +267,36 @@ const (
 // Integrations + delivery backfill (T071). delivery_attempts derives
 // from delivery_outcomes; everything else is top-level.
 const (
-	IntegrationsBackfillStepName            = "tenant_migration:backfill:integrations"
-	DeliveryTargetsBackfillStepName         = "tenant_migration:backfill:delivery_targets"
-	DeliveryPreferencesBackfillStepName     = "tenant_migration:backfill:delivery_preferences"
-	DeliveryOutcomesBackfillStepName        = "tenant_migration:backfill:delivery_outcomes"
-	DeliveryAttemptsBackfillStepName        = "tenant_migration:backfill:delivery_attempts"
-	DeliverySummaryWindowsBackfillStepName  = "tenant_migration:backfill:delivery_summary_windows"
+	IntegrationsBackfillStepName           = "tenant_migration:backfill:integrations"
+	DeliveryTargetsBackfillStepName        = "tenant_migration:backfill:delivery_targets"
+	DeliveryPreferencesBackfillStepName    = "tenant_migration:backfill:delivery_preferences"
+	DeliveryOutcomesBackfillStepName       = "tenant_migration:backfill:delivery_outcomes"
+	DeliveryAttemptsBackfillStepName       = "tenant_migration:backfill:delivery_attempts"
+	DeliverySummaryWindowsBackfillStepName = "tenant_migration:backfill:delivery_summary_windows"
 )
 
 // Calendar/mail/reminders/computer-use/evaluation backfill (T072–T076).
 const (
-	CalendarAccountsBackfillStepName    = "tenant_migration:backfill:calendar_accounts"
-	CalendarOperationsBackfillStepName  = "tenant_migration:backfill:calendar_operations"
-	CalendarArtifactsBackfillStepName   = "tenant_migration:backfill:calendar_artifacts"
+	CalendarAccountsBackfillStepName   = "tenant_migration:backfill:calendar_accounts"
+	CalendarOperationsBackfillStepName = "tenant_migration:backfill:calendar_operations"
+	CalendarArtifactsBackfillStepName  = "tenant_migration:backfill:calendar_artifacts"
 
 	MailAccountsBackfillStepName   = "tenant_migration:backfill:mail_accounts"
 	MailOperationsBackfillStepName = "tenant_migration:backfill:mail_operations"
 	MailArtifactsBackfillStepName  = "tenant_migration:backfill:mail_artifacts"
 
-	RemindersBackfillStepName            = "tenant_migration:backfill:reminders"
-	ReminderOccurrencesBackfillStepName  = "tenant_migration:backfill:reminder_occurrences"
-	ReminderActionsBackfillStepName      = "tenant_migration:backfill:reminder_actions"
+	RemindersBackfillStepName           = "tenant_migration:backfill:reminders"
+	ReminderOccurrencesBackfillStepName = "tenant_migration:backfill:reminder_occurrences"
+	ReminderActionsBackfillStepName     = "tenant_migration:backfill:reminder_actions"
 
 	ComputerUseSessionsBackfillStepName  = "tenant_migration:backfill:computer_use_sessions"
 	ComputerUseActionsBackfillStepName   = "tenant_migration:backfill:computer_use_actions"
 	ComputerUseArtifactsBackfillStepName = "tenant_migration:backfill:computer_use_artifacts"
 
-	EvaluationReplayCandidatesBackfillStepName    = "tenant_migration:backfill:evaluation_replay_candidates"
-	EvaluationReplayAttemptsBackfillStepName      = "tenant_migration:backfill:evaluation_replay_attempts"
-	EvaluationComparisonsBackfillStepName         = "tenant_migration:backfill:evaluation_comparisons"
-	EvaluationRegressionFixturesBackfillStepName  = "tenant_migration:backfill:evaluation_regression_fixtures"
+	EvaluationReplayCandidatesBackfillStepName   = "tenant_migration:backfill:evaluation_replay_candidates"
+	EvaluationReplayAttemptsBackfillStepName     = "tenant_migration:backfill:evaluation_replay_attempts"
+	EvaluationComparisonsBackfillStepName        = "tenant_migration:backfill:evaluation_comparisons"
+	EvaluationRegressionFixturesBackfillStepName = "tenant_migration:backfill:evaluation_regression_fixtures"
 
 	// Harness-domain (T076a). All top-level → default personal tenant
 	// except sandbox_executions which has an optional run_id parent.

@@ -146,6 +146,38 @@ Current operator loop is:
 
 This is the intended substrate for the next roadmap, where managed coding providers will add login-backed profiles instead of `baseURL + apiKey`.
 
+## Tenant-Owned Provider Auth
+
+Hosted credential isolation makes provider auth state tenant-owned. Provider auth
+resources include `tenantId`, lifecycle status, disabled reason, and redacted secret
+reference summaries. They do not expose OAuth codes, access tokens, refresh tokens,
+CLI auth material, or derived credential values.
+
+Provider auth lifecycle routes must run in the active tenant:
+
+- connect or complete auth creates/updates only that tenant's provider auth state
+- refresh and checks resolve credential material only from the active tenant
+- revoke/disconnect disables dependent use for that tenant without deleting redacted
+  operator-visible metadata
+- another tenant with the same provider account label or external account id must
+  connect independently
+
+Mutation requires the provider/integration management permission. A tenant-scoped
+operator with `credentials.inspect` can inspect redacted auth status for that tenant;
+viewers cannot inspect provider credential state.
+
+## Local Bridge Behavior
+
+On startup, the hosted credential bridge imports legacy local credential files into
+the default personal tenant. Safe values become tenant secrets. Ambiguous values, such
+as the same secret ref with conflicting legacy values, become disabled
+`pending_remediation` metadata and cannot be used until an operator rotates or
+reconnects the credential.
+
+Provider readiness and auth status must treat bridged values like any other tenant
+secret: only status, account labels, and redacted secret summaries are visible.
+Bridge progress and provider auth events must not log raw credential material.
+
 ## Out Of Scope
 
 This roadmap does not include:

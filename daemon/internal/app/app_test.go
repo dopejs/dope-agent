@@ -36,6 +36,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
+	"github.com/dopejs/dope-agent/daemon/internal/secrets"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
 )
@@ -265,6 +266,204 @@ func TestRecoverPersistedStateBootstrapsIdentityForExistingLocalTokens(t *testin
 	}
 	if len(persistedTokens) != 1 || persistedTokens[0].PrincipalID != principals[0].PrincipalID || persistedTokens[0].DefaultTenantID != tenants[0].TenantID {
 		t.Fatalf("expected persisted token identity fields, got %+v", persistedTokens)
+	}
+}
+
+func TestRecoverPersistedStateBridgesLocalCredentialsIntoDefaultTenant(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := sqliteStore.UpsertAccessToken(ctx, auth.AccessToken{
+		TokenID:      "tok_bridge",
+		Label:        "bridge",
+		Mode:         auth.PairingModeLocal,
+		TokenHash:    "hash",
+		TokenPreview: "dope_preview",
+		Status:       "active",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}); err != nil {
+		t.Fatalf("UpsertAccessToken returned error: %v", err)
+	}
+	writeAppJSONFile(t, filepath.Join(dataDir, "mcp-secrets.json"), map[string]string{
+		"MCP_TOKEN":                  "R37_FAKE_SECRET_TENANT_A_DO_NOT_LEAK",
+		"R37_SHARED_BRIDGED_SECRET":  "shared-value",
+		"R37_CONFLICT_BRIDGED_TOKEN": "one",
+	})
+	writeAppJSONFile(t, filepath.Join(dataDir, "skill-secrets.json"), map[string]string{
+		"SKILL_TOKEN":                "skill-value",
+		"R37_SHARED_BRIDGED_SECRET":  "shared-value",
+		"R37_CONFLICT_BRIDGED_TOKEN": "two",
+	})
+	now = time.Now().UTC()
+	if err := sqliteStore.UpsertProviderAuthState(ctx, providers.AuthState{
+		ProviderID:    "legacy-provider",
+		Family:        providers.FamilyOpenAICompatible,
+		AuthMode:      providers.AuthModeAPIKey,
+		Status:        providers.AuthStatusAuthenticated,
+		CLIAvailable:  true,
+		AccountLabel:  "legacy account",
+		LastCheckedAt: now,
+	}); err != nil {
+		t.Fatalf("seed legacy provider auth: %v", err)
+	}
+	if err := sqliteStore.UpsertIntegration(ctx, integrations.Resource{
+		IntegrationID:    "legacy-integration",
+		DomainKind:       "calendar",
+		DisplayName:      "Legacy Integration",
+		EnvironmentScope: string(config.EnvironmentTest),
+		ReadinessStatus:  integrations.ReadinessStatusHealthy,
+		AuthState:        integrations.AuthStateAuthorized,
+		HealthState:      integrations.HealthStateHealthy,
+		AccountBinding:   integrations.AccountBinding{AccountKey: "legacy@example.com"},
+		BackendBinding:   integrations.BackendBinding{BackendKind: integrations.BackendKindManagedProvider, BackendRefID: "legacy-provider"},
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		LastTransitionAt: now,
+	}); err != nil {
+		t.Fatalf("seed legacy integration: %v", err)
+	}
+	if err := sqliteStore.UpsertConnector(ctx, connectors.Connector{
+		ConnectorID:    "legacy-connector",
+		Kind:           "discord",
+		DisplayName:    "Legacy Connector",
+		Status:         connectors.StatusHealthy,
+		SecretRefs:     []string{"R37_CONFLICT_BRIDGED_TOKEN"},
+		FailureCount:   0,
+		RestartCount:   0,
+		BackoffSeconds: 1,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("seed legacy connector: %v", err)
+	}
+	mcpServerDocument := mustAppJSON(t, map[string]any{
+		"serverId":      "legacy-mcp",
+		"displayName":   "Legacy MCP",
+		"enabled":       true,
+		"transportKind": "stdio",
+		"command":       "fake",
+		"secretRefs":    []string{"R37_CONFLICT_BRIDGED_TOKEN"},
+	})
+	if err := sqliteStore.UpsertMCPServer(ctx, store.MCPServerRecord{ServerID: "legacy-mcp", Enabled: true, UpdatedAt: now, Document: mcpServerDocument}); err != nil {
+		t.Fatalf("seed legacy mcp server: %v", err)
+	}
+	if err := sqliteStore.UpsertMCPServerState(ctx, store.MCPServerStateRecord{ServerID: "legacy-mcp", Status: "healthy", UpdatedAt: now, Document: mustAppJSON(t, map[string]any{"serverId": "legacy-mcp", "status": "healthy"})}); err != nil {
+		t.Fatalf("seed legacy mcp state: %v", err)
+	}
+	if err := sqliteStore.UpsertMCPTool(ctx, store.MCPToolRecord{ServerID: "legacy-mcp", ToolName: "lookup", DiscoveryStatus: "discovered", UpdatedAt: now, Document: mustAppJSON(t, map[string]any{"name": "lookup"})}); err != nil {
+		t.Fatalf("seed legacy mcp tool: %v", err)
+	}
+	if err := sqliteStore.UpsertMCPToolExposureRule(ctx, store.MCPToolExposureRuleRecord{ServerID: "legacy-mcp", ToolName: "lookup", RuntimeSurface: "chat", ExposureMode: "allow", Active: true, UpdatedAt: now, Document: mustAppJSON(t, map[string]any{"toolName": "lookup", "runtimeSurface": "chat"})}); err != nil {
+		t.Fatalf("seed legacy mcp exposure: %v", err)
+	}
+	secretBackend, err := secrets.NewLocalBackend(filepath.Join(dataDir, "tenant-secret-values"))
+	if err != nil {
+		t.Fatalf("NewLocalBackend returned error: %v", err)
+	}
+	secretManager := secrets.NewManager(sqliteStore, secretBackend)
+	identityManager := identity.NewManager(sqliteStore)
+
+	if err := recoverPersistedStateWithSecrets(ctx, dataDir, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtime.NewManager()), events.NewBus(), connectors.NewSupervisor(), capabilities.NewSupervisor(), policy.NewEngine(), auth.NewManager(), identityManager, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, secretManager, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("recoverPersistedStateWithSecrets returned error: %v", err)
+	}
+	tenants, err := sqliteStore.ListTenants(ctx, identity.TenantFilter{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListTenants returned error: %v", err)
+	}
+	if len(tenants) != 1 {
+		t.Fatalf("expected one default tenant, got %+v", tenants)
+	}
+	defaultTenantID := tenants[0].TenantID
+	for _, ref := range []string{"MCP_TOKEN", "SKILL_TOKEN", "R37_SHARED_BRIDGED_SECRET"} {
+		resolved, err := secretManager.Resolve(ctx, secrets.ResolveInput{TenantID: defaultTenantID, SecretRef: ref})
+		if err != nil {
+			t.Fatalf("resolve bridged secret %s: %v", ref, err)
+		}
+		if resolved.Value == "" || resolved.Value == secrets.RedactedValue {
+			t.Fatalf("unexpected bridged value for %s", ref)
+		}
+	}
+	conflict, err := secretManager.Get(ctx, defaultTenantID, "R37_CONFLICT_BRIDGED_TOKEN")
+	if err != nil {
+		t.Fatalf("get conflict metadata: %v", err)
+	}
+	if conflict.Status != secrets.SecretStatusPendingRemediation || conflict.DisabledReason != "legacy_secret_ref_conflict" {
+		t.Fatalf("expected conflict to be disabled for remediation, got %+v", conflict)
+	}
+	var versionCount int
+	providerStates, err := sqliteStore.ListProviderAuthStates(ctx)
+	if err != nil {
+		t.Fatalf("list provider auth states: %v", err)
+	}
+	if len(providerStates) == 0 || providerStates[0].TenantID != defaultTenantID {
+		t.Fatalf("expected bridged provider auth tenant %s, got %+v", defaultTenantID, providerStates)
+	}
+	integrationItems, err := sqliteStore.ListIntegrations(ctx, string(config.EnvironmentTest))
+	if err != nil {
+		t.Fatalf("list integrations: %v", err)
+	}
+	if len(integrationItems) == 0 || integrationItems[0].TenantID != defaultTenantID {
+		t.Fatalf("expected bridged integration tenant %s, got %+v", defaultTenantID, integrationItems)
+	}
+	connectorItems, err := sqliteStore.ListConnectors(ctx)
+	if err != nil {
+		t.Fatalf("list connectors: %v", err)
+	}
+	if len(connectorItems) == 0 || connectorItems[0].TenantID != defaultTenantID || connectorItems[0].Status != connectors.StatusDisabled || connectorItems[0].DisabledReason != "legacy_secret_ref_conflict" {
+		t.Fatalf("expected bridged disabled connector for tenant %s, got %+v", defaultTenantID, connectorItems)
+	}
+	var mcpTenantID string
+	var mcpEnabled int
+	var mcpDocumentRaw string
+	if err := sqliteStore.DB().QueryRowContext(ctx, `SELECT tenant_id, enabled, document_json FROM mcp_servers WHERE server_id = ?`, "legacy-mcp").Scan(&mcpTenantID, &mcpEnabled, &mcpDocumentRaw); err != nil {
+		t.Fatalf("load bridged mcp server: %v", err)
+	}
+	var mcpDocument map[string]any
+	if err := json.Unmarshal([]byte(mcpDocumentRaw), &mcpDocument); err != nil {
+		t.Fatalf("decode bridged mcp server document: %v", err)
+	}
+	if mcpTenantID != defaultTenantID || mcpEnabled != 0 || mcpDocument["tenantId"] != defaultTenantID || mcpDocument["enabled"] != false {
+		t.Fatalf("expected bridged disabled mcp server for tenant %s, tenant=%q enabled=%d document=%+v", defaultTenantID, mcpTenantID, mcpEnabled, mcpDocument)
+	}
+	var mcpStateTenantID, mcpStateStatus string
+	if err := sqliteStore.DB().QueryRowContext(ctx, `SELECT tenant_id, status FROM mcp_server_states WHERE server_id = ?`, "legacy-mcp").Scan(&mcpStateTenantID, &mcpStateStatus); err != nil {
+		t.Fatalf("load bridged mcp state: %v", err)
+	}
+	if mcpStateTenantID != defaultTenantID || mcpStateStatus != "disabled" {
+		t.Fatalf("expected bridged disabled mcp state, tenant=%q status=%q", mcpStateTenantID, mcpStateStatus)
+	}
+	var mcpToolTenantID, exposureTenantID string
+	if err := sqliteStore.DB().QueryRowContext(ctx, `SELECT tenant_id FROM mcp_tools WHERE server_id = ? AND tool_name = ?`, "legacy-mcp", "lookup").Scan(&mcpToolTenantID); err != nil {
+		t.Fatalf("load bridged mcp tool: %v", err)
+	}
+	if err := sqliteStore.DB().QueryRowContext(ctx, `SELECT tenant_id FROM mcp_tool_exposure_rules WHERE server_id = ? AND tool_name = ? AND runtime_surface = ?`, "legacy-mcp", "lookup", "chat").Scan(&exposureTenantID); err != nil {
+		t.Fatalf("load bridged mcp exposure: %v", err)
+	}
+	if mcpToolTenantID != defaultTenantID || exposureTenantID != defaultTenantID {
+		t.Fatalf("expected bridged mcp tool/exposure tenant %s, got tool=%q exposure=%q", defaultTenantID, mcpToolTenantID, exposureTenantID)
+	}
+	if err := sqliteStore.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM tenant_secret_versions WHERE tenant_id = ? AND secret_ref = ?`, defaultTenantID, "MCP_TOKEN").Scan(&versionCount); err != nil {
+		t.Fatalf("count versions: %v", err)
+	}
+	if versionCount != 1 {
+		t.Fatalf("expected one version before restart, got %d", versionCount)
+	}
+	if err := recoverPersistedStateWithSecrets(ctx, dataDir, config.EnvironmentTest, sqliteStore, router.NewSessionRouter(), checkpoints.NewManager(sqliteStore, runtime.NewManager()), events.NewBus(), connectors.NewSupervisor(), capabilities.NewSupervisor(), policy.NewEngine(), auth.NewManager(), identityManager, providers.NewManager(config.Config{}, llm.NewDispatcher()), nil, secretManager, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("second recoverPersistedStateWithSecrets returned error: %v", err)
+	}
+	if err := sqliteStore.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM tenant_secret_versions WHERE tenant_id = ? AND secret_ref = ?`, defaultTenantID, "MCP_TOKEN").Scan(&versionCount); err != nil {
+		t.Fatalf("count versions after restart: %v", err)
+	}
+	if versionCount != 1 {
+		t.Fatalf("bridge duplicated versions after restart: %d", versionCount)
 	}
 }
 
@@ -2761,4 +2960,24 @@ func testAuthHeader(t *testing.T, manager *auth.Manager) string {
 		t.Fatalf("CompletePairing returned error: %v", err)
 	}
 	return "Bearer " + tokenSecret
+}
+
+func writeAppJSONFile(t *testing.T, path string, value any) {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+}
+
+func mustAppJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	return payload
 }

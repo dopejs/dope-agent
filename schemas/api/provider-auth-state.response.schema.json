@@ -18,6 +18,7 @@
       ],
       "additionalProperties": false,
       "properties": {
+        "tenantId": { "type": "string" },
         "providerId": { "type": "string" },
         "family": { "type": "string", "enum": ["builtin_echo", "openai_compatible", "claude_code_cli", "codex_cli"] },
         "authMode": { "type": "string", "enum": ["none", "api_key", "local_cli_bridge"] },
@@ -39,6 +40,11 @@
         "lastCheckedAt": { "type": "string", "format": "date-time" },
         "lastAuthenticatedAt": { "type": "string", "format": "date-time" },
         "lastError": { "type": "string" },
+        "disabledReason": { "type": "string" },
+        "secretRefs": {
+          "type": "array",
+          "items": { "$ref": "./tenant-secret-resource.schema.json#/$defs/redactedSecretSummary" }
+        },
         "metadata": {
           "type": "object",
           "additionalProperties": { "type": "string" }

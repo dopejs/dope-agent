@@ -6,8 +6,13 @@
   "required": ["connectorId", "kind"],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "connectorId": { "type": "string" },
     "kind": { "type": "string" },
-    "displayName": { "type": "string" }
+    "displayName": { "type": "string" },
+    "secretRefs": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
   }
 }

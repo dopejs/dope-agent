@@ -10,10 +10,12 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/store/tenancy"
 )
 
 func handleIntegrations(cfg config.Config, manager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
@@ -23,14 +25,31 @@ func handleIntegrations(cfg config.Config, manager *integrations.Manager, eventB
 	}
 	switch r.Method {
 	case http.MethodGet:
+		if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+			if _, reason := requireHostedCredentialReadAny(r, identity.PermissionIntegrationsManage); reason != "" {
+				writeCredentialDenial(w, http.StatusForbidden, reason)
+				return
+			}
+			writeJSON(w, http.StatusOK, IntegrationListResponse{Items: manager.ListForTenant(tenantContext.TenantID)})
+			return
+		}
 		writeJSON(w, http.StatusOK, IntegrationListResponse{Items: manager.List()})
 	case http.MethodPost:
+		tenantID := ""
+		if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+			if _, reason := requireHostedCredentialPermission(r, identity.PermissionIntegrationsManage, ""); reason != "" {
+				writeCredentialDenial(w, http.StatusForbidden, reason)
+				return
+			}
+			tenantID = tenantContext.TenantID
+		}
 		var input CreateIntegrationRequest
 		if err := decodeJSONBody(r, &input); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		item, err := manager.Create(integrations.CreateInput{
+			TenantID:         tenantID,
 			IntegrationID:    input.IntegrationID,
 			DomainKind:       input.DomainKind,
 			DisplayName:      input.DisplayName,
@@ -89,12 +108,28 @@ func handleIntegrationRoutes(cfg config.Config, manager *integrations.Manager, e
 	}
 	parts := strings.Split(path, "/")
 	if len(parts) == 1 && r.Method == http.MethodGet {
-		item, ok := manager.Get(parts[0])
+		var (
+			item integrations.Resource
+			ok   bool
+		)
+		if tenantContext, tenantOK := tenantContextFromContext(r.Context()); tenantOK && tenantContext.TenantID != "" {
+			if _, reason := requireHostedCredentialReadAny(r, identity.PermissionIntegrationsManage); reason != "" {
+				writeCredentialDenial(w, http.StatusForbidden, reason)
+				return
+			}
+			item, ok = manager.GetForTenant(parts[0], tenantContext.TenantID)
+		} else {
+			item, ok = manager.Get(parts[0])
+		}
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
 		writeJSON(w, http.StatusOK, item)
+		return
+	}
+	if len(parts) == 1 && r.Method == http.MethodDelete {
+		handleIntegrationDisconnect(manager, eventBus, sqliteStore, w, r, parts[0])
 		return
 	}
 	if len(parts) == 2 && parts[1] == "readiness" {
@@ -113,12 +148,25 @@ func handleIntegrationReadiness(manager *integrations.Manager, eventBus *events.
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+		if _, reason := requireHostedCredentialPermission(r, identity.PermissionIntegrationsManage, ""); reason != "" {
+			writeCredentialDenial(w, http.StatusForbidden, reason)
+			return
+		}
+		if _, ok := manager.GetForTenant(integrationID, tenantContext.TenantID); !ok {
+			http.NotFound(w, r)
+			return
+		}
+	} else if _, ok := manager.Get(integrationID); !ok {
+		http.NotFound(w, r)
+		return
+	}
 	var input ReportIntegrationReadinessRequest
 	if err := decodeJSONBody(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	item, err := manager.UpdateReadiness(integrationID, integrations.UpdateReadinessInput{
+	readinessInput := integrations.UpdateReadinessInput{
 		ReadinessStatus:        input.ReadinessStatus,
 		AuthState:              input.AuthState,
 		HealthState:            input.HealthState,
@@ -126,7 +174,14 @@ func handleIntegrationReadiness(manager *integrations.Manager, eventBus *events.
 		RequiredOperatorAction: input.RequiredOperatorAction,
 		AccountBinding:         input.AccountBinding,
 		SecretResolution:       input.SecretResolution,
-	})
+	}
+	var item integrations.Resource
+	var err error
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+		item, err = manager.UpdateReadinessForTenant(integrationID, tenantContext.TenantID, readinessInput)
+	} else {
+		item, err = manager.UpdateReadiness(integrationID, readinessInput)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, integrations.ErrIntegrationNotFound):
@@ -184,7 +239,28 @@ func handleIntegrationDefault(manager *integrations.Manager, eventBus *events.Bu
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	item, err := manager.SetCanonicalDefault(integrationID)
+	tenantID := ""
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+		if _, reason := requireHostedCredentialPermission(r, identity.PermissionIntegrationsManage, ""); reason != "" {
+			writeCredentialDenial(w, http.StatusForbidden, reason)
+			return
+		}
+		if _, ok := manager.GetForTenant(integrationID, tenantContext.TenantID); !ok {
+			http.NotFound(w, r)
+			return
+		}
+		tenantID = tenantContext.TenantID
+	} else if _, ok := manager.Get(integrationID); !ok {
+		http.NotFound(w, r)
+		return
+	}
+	var item integrations.Resource
+	var err error
+	if tenantID != "" {
+		item, err = manager.SetCanonicalDefaultForTenant(integrationID, tenantID)
+	} else {
+		item, err = manager.SetCanonicalDefault(integrationID)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, integrations.ErrIntegrationNotFound):
@@ -194,7 +270,11 @@ func handleIntegrationDefault(manager *integrations.Manager, eventBus *events.Bu
 		}
 		return
 	}
-	for _, integration := range manager.List() {
+	integrationsToPersist := manager.List()
+	if tenantID != "" {
+		integrationsToPersist = manager.ListForTenant(tenantID)
+	}
+	for _, integration := range integrationsToPersist {
 		if integration.DomainKind == item.DomainKind && integration.EnvironmentScope == item.EnvironmentScope && integration.AccountBinding.AccountKey == item.AccountBinding.AccountKey {
 			if err := persistIntegration(r.Context(), sqliteStore, integration); err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
@@ -230,6 +310,53 @@ func handleIntegrationDefault(manager *integrations.Manager, eventBus *events.Bu
 			"environmentScope": item.EnvironmentScope,
 			"accountKey":       item.AccountBinding.AccountKey,
 			"canonicalDefault": item.CanonicalDefault,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func handleIntegrationDisconnect(manager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, integrationID string) {
+	reason := strings.TrimSpace(r.URL.Query().Get("reason"))
+	if reason == "" {
+		reason = "operator disconnected integration"
+	}
+	var item integrations.Resource
+	var err error
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+		if _, reasonCode := requireHostedCredentialPermission(r, identity.PermissionIntegrationsManage, ""); reasonCode != "" {
+			writeCredentialDenial(w, http.StatusForbidden, reasonCode)
+			return
+		}
+		item, err = manager.DisconnectForTenant(integrationID, tenantContext.TenantID, reason)
+	} else {
+		item, err = manager.Disconnect(integrationID, reason)
+	}
+	if err != nil {
+		if errors.Is(err, integrations.ErrIntegrationNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := persistIntegration(r.Context(), sqliteStore, item); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+		Category: "integration",
+		Name:     "integration.disconnected",
+		Resource: events.Resource{Kind: "integration", ID: item.IntegrationID},
+		Payload: map[string]any{
+			"tenantId":        item.TenantID,
+			"integrationId":   item.IntegrationID,
+			"readinessStatus": item.ReadinessStatus,
+			"authState":       item.AuthState,
+			"healthState":     item.HealthState,
+			"disabledReason":  item.DisabledReason,
 		},
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -422,6 +549,10 @@ func handleRunIntegrationProbes(cfg config.Config, runtimeManager *runtime.Manag
 func persistIntegration(ctx context.Context, sqliteStore *store.SQLiteStore, item integrations.Resource) error {
 	if sqliteStore == nil {
 		return nil
+	}
+	if tc, ok := tenantContextFromContext(ctx); ok && tc.TenantID != "" {
+		item.TenantID = tc.TenantID
+		return tenancy.NewIntegrations(sqliteStore, nil).UpsertIntegrationForTenant(ctx, item)
 	}
 	return sqliteStore.UpsertIntegration(ctx, item)
 }

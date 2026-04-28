@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,10 +21,13 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
+	"github.com/dopejs/dope-agent/daemon/internal/secrets"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 	"github.com/gorilla/websocket"
 )
 
@@ -1056,20 +1060,20 @@ func TestManagerSanitizesLegacyWebsocketEndpointProjection(t *testing.T) {
 	manager, _ := newTestManager(t)
 
 	server := Server{
-		ServerID:          "legacy-websocket-mcp",
-		DisplayName:       "Legacy Websocket MCP",
-		Enabled:           true,
-		SandboxProfileID:  sandbox.ProfileIDSubprocessDefault,
-		DeclarationID:     "mcp_server:legacy-websocket-mcp:lifecycle.start",
-		Declaration:       Declaration{Active: true},
-		TransportKind:     TransportKindWebsocket,
-		Endpoint:          "wss://user:secret-token@example.com/mcp?token=secret-token",
-		WebsocketConfig:   &WebsocketConfig{Auth: &WebsocketAuthConfig{Mode: WebsocketAuthModeBearerHeader, SecretRef: "MCP_WS_TOKEN"}},
-		CreatedAt:         time.Now().UTC(),
-		UpdatedAt:         time.Now().UTC(),
-		EnvironmentScope:  string(manager.cfg.Environment),
-		SecretRefs:        []string{"MCP_WS_TOKEN"},
-		AutoRestart:       true,
+		ServerID:         "legacy-websocket-mcp",
+		DisplayName:      "Legacy Websocket MCP",
+		Enabled:          true,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:legacy-websocket-mcp:lifecycle.start",
+		Declaration:      Declaration{Active: true},
+		TransportKind:    TransportKindWebsocket,
+		Endpoint:         "wss://user:secret-token@example.com/mcp?token=secret-token",
+		WebsocketConfig:  &WebsocketConfig{Auth: &WebsocketAuthConfig{Mode: WebsocketAuthModeBearerHeader, SecretRef: "MCP_WS_TOKEN"}},
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
+		EnvironmentScope: string(manager.cfg.Environment),
+		SecretRefs:       []string{"MCP_WS_TOKEN"},
+		AutoRestart:      true,
 	}
 
 	manager.mu.Lock()
@@ -1134,6 +1138,112 @@ func TestResolveMCPSecretsIgnoresProcessEnvironment(t *testing.T) {
 	if _, ok := resolved["MCP_ENV_ONLY"]; ok {
 		t.Fatalf("expected process environment to be ignored, got %+v", resolved)
 	}
+}
+
+func TestR37MCPSecretResolutionUsesActiveTenant(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("MCP_TOKEN", "process-env-secret")
+	writeMCPSecretsFileForTest(t, dataDir, map[string]string{"MCP_TOKEN": "file-secret"})
+
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+	backend, err := secrets.NewLocalBackend(filepath.Join(dataDir, "values"))
+	if err != nil {
+		t.Fatalf("NewLocalBackend returned error: %v", err)
+	}
+	secretManager := secrets.NewManager(sqliteStore, backend)
+	if _, err := secretManager.Create(context.Background(), secrets.CreateInput{TenantID: "ten_r37_a", SecretRef: "MCP_TOKEN", Value: "tenant-a-secret"}); err != nil {
+		t.Fatalf("create tenant A secret: %v", err)
+	}
+	if _, err := secretManager.Create(context.Background(), secrets.CreateInput{TenantID: "ten_r37_b", SecretRef: "MCP_TOKEN", Value: "tenant-b-secret"}); err != nil {
+		t.Fatalf("create tenant B secret: %v", err)
+	}
+
+	manager := NewManager(config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}, sqliteStore, nil, nil, nil, nil)
+	manager.SetSecretManager(secretManager)
+	server := Server{ServerID: "tenant-mcp", SecretRefs: []string{"MCP_TOKEN"}}
+
+	envA, err := manager.resolveSecretEnv(r37MCPTenantContext("ten_r37_a"), server)
+	if err != nil {
+		t.Fatalf("resolve tenant A env: %v", err)
+	}
+	if got := envA["MCP_TOKEN"]; got != "tenant-a-secret" {
+		t.Fatalf("tenant A resolved %q, want tenant-a-secret", got)
+	}
+	envB, err := manager.resolveSecretEnv(r37MCPTenantContext("ten_r37_b"), server)
+	if err != nil {
+		t.Fatalf("resolve tenant B env: %v", err)
+	}
+	if got := envB["MCP_TOKEN"]; got != "tenant-b-secret" {
+		t.Fatalf("tenant B resolved %q, want tenant-b-secret", got)
+	}
+	if _, err := manager.resolveSecretEnv(context.Background(), server); !errors.Is(err, tenantctx.ErrTenantContextRequired) {
+		t.Fatalf("missing tenant context err=%v, want ErrTenantContextRequired", err)
+	}
+	if got := manager.resolveSecretRef(context.Background(), "MCP_TOKEN", sandbox.SecretEnvironmentScopeTest); got != sandbox.SecretResolutionDenied {
+		t.Fatalf("missing tenant context resolution=%s, want denied", got)
+	}
+}
+
+func TestR37MCPPersistenceWritesTenantOwnership(t *testing.T) {
+	dataDir := t.TempDir()
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+	manager := NewManager(config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}, sqliteStore, nil, nil, nil, nil)
+	ctx := r37MCPTenantContext("ten_r37_a")
+
+	_, _, err = manager.CreateServer(ctx, CreateServerInput{
+		ServerID:         "tenant-owned-mcp",
+		DisplayName:      "Tenant MCP",
+		Enabled:          false,
+		SandboxProfileID: sandbox.ProfileIDSubprocessDefault,
+		DeclarationID:    "mcp_server:tenant-owned-mcp:lifecycle.start",
+		TransportKind:    TransportKindStdio,
+		Command:          "echo",
+	})
+	if err != nil {
+		t.Fatalf("CreateServer returned error: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := manager.persistTools(ctx, "tenant-owned-mcp", []Tool{{
+		ServerID:        "tenant-owned-mcp",
+		ToolName:        "lookup",
+		DiscoveryStatus: DiscoveryStatusDiscovered,
+		UpdatedAt:       now,
+	}}); err != nil {
+		t.Fatalf("persistTools returned error: %v", err)
+	}
+
+	for table, query := range map[string]string{
+		"mcp_servers":       `SELECT tenant_id FROM mcp_servers WHERE server_id = 'tenant-owned-mcp'`,
+		"mcp_server_states": `SELECT tenant_id FROM mcp_server_states WHERE server_id = 'tenant-owned-mcp'`,
+		"mcp_tools":         `SELECT tenant_id FROM mcp_tools WHERE server_id = 'tenant-owned-mcp' AND tool_name = 'lookup'`,
+	} {
+		var tenantID string
+		if err := sqliteStore.DB().QueryRowContext(context.Background(), query).Scan(&tenantID); err != nil {
+			t.Fatalf("query %s tenant: %v", table, err)
+		}
+		if tenantID != "ten_r37_a" {
+			t.Fatalf("%s tenant_id=%q, want ten_r37_a", table, tenantID)
+		}
+	}
+}
+
+func r37MCPTenantContext(tenantID string) context.Context {
+	return tenantctx.WithContext(context.Background(), identity.TenantContext{
+		TenantID:     tenantID,
+		PrincipalID:  "prn_" + tenantID,
+		TenantSource: "test",
+		Role:         identity.RoleAdmin,
+		Permissions:  identity.PermissionsForRole(identity.RoleAdmin, identity.StatusActive),
+		ResolvedAt:   time.Now().UTC(),
+	})
 }
 
 func TestRedactStringRedactsCommonDerivedSecretForms(t *testing.T) {

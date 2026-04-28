@@ -13,6 +13,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "serverId": { "type": "string" },
     "toolName": { "type": "string" },
     "title": { "type": "string" },
@@ -28,6 +29,7 @@
         "required": ["serverId", "toolName", "runtimeSurface", "exposureMode", "active", "updatedAt"],
         "additionalProperties": false,
         "properties": {
+          "tenantId": { "type": "string" },
           "serverId": { "type": "string" },
           "toolName": { "type": "string" },
           "runtimeSurface": { "type": "string" },

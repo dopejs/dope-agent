@@ -15,6 +15,21 @@
     "outcome": { "type": "string", "enum": ["succeeded", "denied", "failed_closed"] },
     "reasonCode": { "type": "string" },
     "createdAt": { "type": "string", "format": "date-time" },
-    "document": { "type": "object", "additionalProperties": true }
+    "document": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "resourceKind": { "type": "string" },
+        "resourceId": { "type": "string" },
+        "action": { "type": "string" },
+        "secretRef": { "type": "string" },
+        "secretVersionId": { "type": "string" },
+        "secretRefCount": { "type": "integer", "minimum": 0 },
+        "secretRefs": {
+          "type": "array",
+          "items": { "$ref": "./tenant-secret-resource.schema.json#/$defs/redactedSecretSummary" }
+        }
+      }
+    }
   }
 }

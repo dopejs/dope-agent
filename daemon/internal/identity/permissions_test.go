@@ -9,7 +9,7 @@ func TestPermissionsForRoleUsesTieredLeastPrivilege(t *testing.T) {
 		want []Permission
 	}{
 		{name: "owner", role: RoleOwner, want: AllSensitivePermissions},
-		{name: "admin", role: RoleAdmin, want: []Permission{PermissionTenantManage, PermissionSecretsManage, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionEvaluationManage, PermissionBillingView}},
+		{name: "admin", role: RoleAdmin, want: []Permission{PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionEvaluationManage, PermissionBillingView}},
 		{name: "operator", role: RoleOperator, want: []Permission{PermissionRunsExecute, PermissionApprovalsResolve, PermissionLiveValidationExecute}},
 		{name: "viewer", role: RoleViewer, want: []Permission{PermissionReadOnlyInspect}},
 	}
@@ -40,7 +40,7 @@ func TestPermissionsDeniedForInactiveLifecycle(t *testing.T) {
 func TestPermissionEvaluatorCoversSensitiveCapabilities(t *testing.T) {
 	rolePermissions := map[Role][]Permission{
 		RoleOwner:    AllSensitivePermissions,
-		RoleAdmin:    {PermissionTenantManage, PermissionSecretsManage, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionEvaluationManage, PermissionBillingView},
+		RoleAdmin:    {PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionEvaluationManage, PermissionBillingView},
 		RoleOperator: {PermissionRunsExecute, PermissionApprovalsResolve, PermissionLiveValidationExecute},
 		RoleViewer:   {PermissionReadOnlyInspect},
 	}

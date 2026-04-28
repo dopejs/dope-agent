@@ -20,6 +20,7 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "tenantId": { "type": "string" },
     "serverId": { "type": "string" },
     "displayName": { "type": "string" },
     "source": { "type": "string", "enum": ["api", "config", "builtin"] },

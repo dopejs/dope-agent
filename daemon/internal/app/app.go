@@ -42,6 +42,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
+	"github.com/dopejs/dope-agent/daemon/internal/secrets"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
@@ -62,6 +63,7 @@ type App struct {
 	Chat                 *chat.Service
 	Skills               *skills.Registry
 	Sandboxes            *sandbox.Manager
+	Secrets              *secrets.Manager
 	MCP                  *mcp.Manager
 	Providers            *providers.Manager
 	Integrations         *integrations.Manager
@@ -126,7 +128,15 @@ func New() (*App, error) {
 	authManager := auth.NewManager()
 	identityManager := identity.NewManager(sqliteStore)
 	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	secretBackend, err := secrets.NewLocalBackend(filepath.Join(cfg.DataDir, "tenant-secret-values"))
+	if err != nil {
+		_ = sqliteStore.Close()
+		return nil, fmt.Errorf("create tenant secret backend: %w", err)
+	}
+	secretManager := secrets.NewManager(sqliteStore, secretBackend)
+	sandboxManager.SetSecretManager(secretManager)
 	mcpManager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxManager, policyEngine, nil)
+	mcpManager.SetSecretManager(secretManager)
 	integrationManager := integrations.NewManager(string(cfg.Environment))
 	calendarManager := calendar.NewManager(string(cfg.Environment))
 	mailManager := mail.NewManager(string(cfg.Environment))
@@ -213,7 +223,7 @@ func New() (*App, error) {
 		Checkpoints:      checkpointManager,
 		WorkflowLauncher: workflowLauncher,
 	})
-	if err := recoverPersistedState(envCtx, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, identityManager, providerManager, sandboxManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
+	if err := recoverPersistedStateWithSecrets(envCtx, cfg.DataDir, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, identityManager, providerManager, sandboxManager, secretManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
 		return nil, err
 	}
 	if err := syncManagedProviderState(envCtx, sqliteStore, providerManager); err != nil {
@@ -236,32 +246,33 @@ func New() (*App, error) {
 	}
 
 	server := api.NewServer(api.Dependencies{
-		Config:       cfg,
-		Logger:       logger.Slog(),
-		EventBus:     eventBus,
-		Policy:       policyEngine,
-		Auth:         authManager,
-		Identity:     identityManager,
-		Router:       sessionRouter,
-		Runtime:      runtimeManager,
-		LLM:          llmDispatcher,
-		Chat:         chatService,
-		Skills:       skillRegistry,
-		Sandboxes:    sandboxManager,
-		MCP:          mcpManager,
-		Integrations: integrationManager,
-		Calendar:     calendarManager,
-		Mail:         mailManager,
-		Reminders:    reminderManager,
-		Providers:    providerManager,
-		Connectors:   connectorSupervisor,
-		Capabilities: capabilitySupervisor,
-		ComputerUse:  computerUseManager,
-		Scheduler:    scheduleManager,
-		Delivery:     deliveryManager,
-		Store:        sqliteStore,
-		Checkpoints:  checkpointManager,
-		Evaluation:   evaluationManager,
+		Config:                cfg,
+		Logger:                logger.Slog(),
+		EventBus:              eventBus,
+		Policy:                policyEngine,
+		Auth:                  authManager,
+		Identity:              identityManager,
+		Router:                sessionRouter,
+		Runtime:               runtimeManager,
+		LLM:                   llmDispatcher,
+		Chat:                  chatService,
+		Skills:                skillRegistry,
+		Sandboxes:             sandboxManager,
+		Secrets:               secretManager,
+		MCP:                   mcpManager,
+		Integrations:          integrationManager,
+		Calendar:              calendarManager,
+		Mail:                  mailManager,
+		Reminders:             reminderManager,
+		Providers:             providerManager,
+		Connectors:            connectorSupervisor,
+		Capabilities:          capabilitySupervisor,
+		ComputerUse:           computerUseManager,
+		Scheduler:             scheduleManager,
+		Delivery:              deliveryManager,
+		Store:                 sqliteStore,
+		Checkpoints:           checkpointManager,
+		Evaluation:            evaluationManager,
 		AuditEmitter:          audit.NewEmitter(eventBus, logger.Slog()),
 		TenantMigrationStatus: migrationGate,
 	})
@@ -281,6 +292,7 @@ func New() (*App, error) {
 		Chat:                 chatService,
 		Skills:               skillRegistry,
 		Sandboxes:            sandboxManager,
+		Secrets:              secretManager,
 		MCP:                  mcpManager,
 		Integrations:         integrationManager,
 		Calendar:             calendarManager,
@@ -540,6 +552,10 @@ func newEventID() string {
 }
 
 func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, identityManager *identity.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager, integrationManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, reminderManager *reminders.Manager) error {
+	return recoverPersistedStateWithSecrets(ctx, "", environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, identityManager, providerManager, sandboxManager, nil, mcpManager, integrationManager, calendarManager, mailManager, reminderManager)
+}
+
+func recoverPersistedStateWithSecrets(ctx context.Context, dataDir string, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, identityManager *identity.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, secretManager *secrets.Manager, mcpManager *mcp.Manager, integrationManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, reminderManager *reminders.Manager) error {
 	_ = reminderManager
 	if sqliteStore == nil {
 		return nil
@@ -609,6 +625,18 @@ func recoverPersistedState(ctx context.Context, environment config.Environment, 
 		// (e.g. ReplaceWorkflowSteps).
 		if err := sqliteStore.SeedDefaultTenantCache(ctx); err != nil {
 			return fmt.Errorf("seed default tenant cache: %w", err)
+		}
+		if secretManager != nil {
+			if _, err := secrets.BridgeLocalCredentialFiles(ctx, secrets.LocalCredentialBridgeInput{
+				DataDir:       dataDir,
+				TenantID:      tenant.TenantID,
+				StepName:      store.HostedCredentialBridgeStepName,
+				Manager:       secretManager,
+				ProgressStore: sqliteStore,
+				ResourceStore: sqliteStore,
+			}); err != nil {
+				return fmt.Errorf("bridge local credential files: %w", err)
+			}
 		}
 		// Roadmap 35 (US2 / T067): drive the runtime spine backfill
 		// (sessions/runs/steps/tool_calls/llm_dispatches/checkpoints).

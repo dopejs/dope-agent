@@ -78,6 +78,7 @@ const (
 )
 
 type Server struct {
+	TenantID                 string             `json:"tenantId,omitempty"`
 	ServerID                 string             `json:"serverId"`
 	DisplayName              string             `json:"displayName"`
 	Source                   Source             `json:"source"`
@@ -173,6 +174,7 @@ type WebsocketAuthSummary struct {
 }
 
 type Tool struct {
+	TenantID          string          `json:"tenantId,omitempty"`
 	ServerID          string          `json:"serverId"`
 	ToolName          string          `json:"toolName"`
 	Title             string          `json:"title,omitempty"`
@@ -184,6 +186,7 @@ type Tool struct {
 }
 
 type ToolExposureRule struct {
+	TenantID       string       `json:"tenantId,omitempty"`
 	ServerID       string       `json:"serverId"`
 	ToolName       string       `json:"toolName"`
 	RuntimeSurface string       `json:"runtimeSurface"`

@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
+	"github.com/dopejs/dope-agent/daemon/internal/secrets"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 var (
@@ -413,6 +416,35 @@ func ResolveExecutableSkillSecrets(secretRoot string, secretRefs []string) (map[
 	return items, nil
 }
 
+func ResolveExecutableSkillSecretsForTenant(ctx context.Context, secretManager *secrets.Manager, secretRefs []string) (map[string]string, error) {
+	refs := cleanStrings(secretRefs)
+	items := make(map[string]string, len(refs))
+	if len(refs) == 0 {
+		return items, nil
+	}
+	if secretManager == nil {
+		return nil, errors.New("tenant secret manager is required")
+	}
+	tenantContext, ok := tenantctx.FromContext(ctx)
+	if !ok || strings.TrimSpace(tenantContext.TenantID) == "" {
+		return nil, tenantctx.ErrTenantContextRequired
+	}
+	for _, secretRef := range refs {
+		secret, err := secretManager.Resolve(ctx, secrets.ResolveInput{
+			TenantID:  strings.TrimSpace(tenantContext.TenantID),
+			SecretRef: secretRef,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("resolve executable skill secret %s: %w", secretRef, err)
+		}
+		if strings.TrimSpace(secret.Value) == "" {
+			return nil, fmt.Errorf("resolve executable skill secret %s: empty value", secretRef)
+		}
+		items[secretRef] = secret.Value
+	}
+	return items, nil
+}
+
 func loadExecutableSkillSecretFile(secretRoot string) (map[string]string, error) {
 	path := executableSkillSecretsPath(secretRoot)
 	content, err := os.ReadFile(path)
@@ -511,6 +543,23 @@ func splitCSV(value string) []string {
 		if item := strings.TrimSpace(part); item != "" {
 			items = append(items, item)
 		}
+	}
+	return items
+}
+
+func cleanStrings(values []string) []string {
+	items := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		items = append(items, trimmed)
 	}
 	return items
 }

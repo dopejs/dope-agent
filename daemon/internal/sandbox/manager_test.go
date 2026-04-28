@@ -12,8 +12,11 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/secrets"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 func TestExplainRequiresApprovalForNetwork(t *testing.T) {
@@ -713,6 +716,51 @@ func TestStartExecutionPersistsEnvironmentScopedSecretScopeBindings(t *testing.T
 	}
 	if !foundTest || !foundProd {
 		t.Fatalf("expected test and prod environment bindings, got %+v", bindings)
+	}
+}
+
+func TestSandboxSecretScopeUsesActiveTenantAndFailsClosed(t *testing.T) {
+	manager := newSandboxManagerForTest(t)
+	backend, err := secrets.NewLocalBackend(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalBackend returned error: %v", err)
+	}
+	secretManager := secrets.NewManager(manager.store, backend)
+	manager.SetSecretManager(secretManager)
+	if _, err := secretManager.Create(context.Background(), secrets.CreateInput{TenantID: "ten_a", SecretRef: "SANDBOX_TOKEN", Value: "tenant-a"}); err != nil {
+		t.Fatalf("create tenant A secret: %v", err)
+	}
+	if _, err := secretManager.Create(context.Background(), secrets.CreateInput{TenantID: "ten_b", SecretRef: "SANDBOX_TOKEN", Value: "tenant-b"}); err != nil {
+		t.Fatalf("create tenant B secret: %v", err)
+	}
+	cwd := t.TempDir()
+	request := ExecutionRequest{
+		ProfileID: ProfileIDSubprocessDefault,
+		Command:   "echo",
+		Args:      []string{"ok"},
+		Cwd:       cwd,
+		Access: AccessRequest{
+			ReadRoots:  []string{cwd},
+			WriteRoots: []string{cwd},
+		},
+		Consumer: testManagedProviderConsumerView("sandbox_scope", ManagedProviderActionPromptExecution, []SecretScopeOutcome{
+			testSecretScopeOutcome(ConsumerKindManagedProvider, "sandbox_scope", "SANDBOX_TOKEN", SecretEnvironmentScopeTest, SecretResolutionUnavailable),
+		}),
+	}
+	denied, err := manager.Explain(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Explain without tenant returned error: %v", err)
+	}
+	if denied.Resolution != DecisionResolutionDeny || denied.Consumer.SecretScope[0].Resolution != SecretResolutionDenied {
+		t.Fatalf("expected missing tenant fail-closed, got %+v", denied)
+	}
+	ctx := tenantctx.WithContext(context.Background(), identity.TenantContext{TenantID: "ten_b", PrincipalID: "prn_b"})
+	allowed, err := manager.Explain(ctx, request)
+	if err != nil {
+		t.Fatalf("Explain with tenant returned error: %v", err)
+	}
+	if allowed.Consumer.SecretScope[0].Resolution != SecretResolutionResolved {
+		t.Fatalf("expected active tenant secret to resolve, got %+v", allowed.Consumer.SecretScope)
 	}
 }
 

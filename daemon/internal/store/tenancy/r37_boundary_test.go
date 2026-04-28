@@ -1,6 +1,6 @@
 package tenancy_test
 
-// Roadmap 35 (US3 / T089c) — Roadmap-37 boundary signature golden.
+// Roadmap 37 hosted credential boundary signature golden.
 //
 // Verifies FR-015 by enforcing two disjoint groups distinguished by inventory
 // classification:
@@ -15,10 +15,13 @@ package tenancy_test
 //     the migration suite — Group A schema check here is the structural
 //     guard).
 //
-//   GROUP B (this roadmap MUST NOT change DDL or storeAccess):
+//   GROUP B (owned by this roadmap):
 //     provider_auth_states, mcp_servers, mcp_server_states, mcp_tools,
-//     connectors. For each: (i) NO `tenant_id` column; (ii) NO new index or
-//     constraint declared by R35; (iii) NO new tenancy helper.
+//     connectors. For each: (i) `tenant_id` is required for new
+//     tenant-aware access paths; (ii) indexes and uniqueness must be scoped
+//     by tenant; (iii) tenancy helpers may wire ownership, but credential
+//     resolution, OAuth lifecycle, redaction, and authorization remain in
+//     the R37 domain packages.
 //
 // Both groups share an exported-signature snapshot under
 // `testdata/r37_boundary_signatures.golden` covering daemon/internal/secrets,
@@ -54,7 +57,7 @@ var groupATables = []string{
 	"mcp_tool_exposure_rules",
 }
 
-// Group B — R35 explicitly leaves these untouched (R37 boundary).
+// Group B — R37 adds explicit tenant ownership.
 var groupBTables = []string{
 	"provider_auth_states",
 	"mcp_servers",
@@ -86,40 +89,31 @@ func TestR37GroupASchemaHasTenantID(t *testing.T) {
 	}
 }
 
-func TestR37GroupBSchemaHasNoTenantID(t *testing.T) {
+func TestR37GroupBSchemaHasTenantID(t *testing.T) {
 	cols := loadColumnsByTable(t)
 	for _, table := range groupBTables {
 		if _, ok := cols[table]; !ok {
 			t.Errorf("Group B table %s missing from schema", table)
 			continue
 		}
-		if hasColumn(cols[table], "tenant_id") {
-			t.Errorf("Group B table %s MUST NOT have tenant_id column — R37 owns credential semantics", table)
+		if !hasColumn(cols[table], "tenant_id") {
+			t.Errorf("Group B table %s MUST have tenant_id column for R37 credential isolation", table)
 		}
 	}
 }
 
-func TestR37GroupBHasNoTenantHelper(t *testing.T) {
+func TestR37GroupBTenantHelpersArePresent(t *testing.T) {
 	_, thisFile, _, _ := runtime.Caller(0)
-	tenancyDir := filepath.Dir(thisFile)
-	files, err := os.ReadDir(tenancyDir)
+	helperPath := filepath.Join(filepath.Dir(thisFile), "r37_resources.go")
+	body, err := os.ReadFile(helperPath)
 	if err != nil {
-		t.Fatalf("read tenancy dir: %v", err)
+		t.Fatalf("read R37 resource helpers: %v", err)
 	}
-	for _, f := range files {
-		if f.IsDir() || !strings.HasSuffix(f.Name(), ".go") || strings.HasSuffix(f.Name(), "_test.go") {
-			continue
-		}
-		body, err := os.ReadFile(filepath.Join(tenancyDir, f.Name()))
-		if err != nil {
-			t.Fatalf("read %s: %v", f.Name(), err)
-		}
-		text := string(body)
-		for _, table := range groupBTables {
-			needle := `"` + table + `"`
-			if strings.Contains(text, needle) {
-				t.Errorf("tenancy helper %s references Group B table %s — R37 boundary violation", f.Name(), table)
-			}
+	text := string(body)
+	for _, table := range groupBTables {
+		needle := `"` + table + `"`
+		if !strings.Contains(text, needle) {
+			t.Errorf("R37 resource helper missing Group B table %s", table)
 		}
 	}
 }

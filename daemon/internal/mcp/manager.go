@@ -17,7 +17,9 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
+	"github.com/dopejs/dope-agent/daemon/internal/secrets"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 var (
@@ -93,6 +95,7 @@ type Manager struct {
 	eventBus  *events.Bus
 	policy    *policy.Engine
 	sandboxes attachedExecutionStarter
+	secrets   *secrets.Manager
 	transport Transport
 
 	mu        sync.RWMutex
@@ -121,6 +124,12 @@ func NewManager(cfg config.Config, sqliteStore *store.SQLiteStore, eventBus *eve
 		exposure:  map[string]map[string]map[string]ToolExposureRule{},
 		sessions:  map[string]*sessionState{},
 	}
+}
+
+func (m *Manager) SetSecretManager(secretManager *secrets.Manager) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.secrets = secretManager
 }
 
 func (m *Manager) ListCatalog() []CatalogEntry {
@@ -336,6 +345,21 @@ func (m *Manager) ListServers() []ServerResource {
 	return items
 }
 
+func (m *Manager) ListServersForTenant(tenantID string) []ServerResource {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	tenantID = strings.TrimSpace(tenantID)
+	items := make([]ServerResource, 0, len(m.serverIDs))
+	for _, serverID := range m.serverIDs {
+		server := m.servers[serverID]
+		if tenantID == "" || server.TenantID == tenantID {
+			items = append(items, m.buildServerResourceLocked(server))
+		}
+	}
+	return items
+}
+
 func (m *Manager) GetServer(serverID string) (Server, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -344,6 +368,18 @@ func (m *Manager) GetServer(serverID string) (Server, bool) {
 		return Server{}, false
 	}
 	return cloneServer(server), true
+}
+
+func (m *Manager) GetServerForTenant(serverID, tenantID string) (Server, bool) {
+	server, ok := m.GetServer(serverID)
+	if !ok {
+		return Server{}, false
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID != "" && server.TenantID != tenantID {
+		return Server{}, false
+	}
+	return server, true
 }
 
 func (m *Manager) GetServerResource(serverID string) (ServerResource, bool) {
@@ -356,11 +392,44 @@ func (m *Manager) GetServerResource(serverID string) (ServerResource, bool) {
 	return m.buildServerResourceLocked(server), true
 }
 
+func (m *Manager) GetServerResourceForTenant(serverID, tenantID string) (ServerResource, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	server, ok := m.servers[strings.TrimSpace(serverID)]
+	if !ok {
+		return ServerResource{}, false
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID != "" && server.TenantID != tenantID {
+		return ServerResource{}, false
+	}
+	return m.buildServerResourceLocked(server), true
+}
+
 func (m *Manager) ListTools(serverID string) ([]ToolResource, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	server, ok := m.servers[strings.TrimSpace(serverID)]
 	if !ok {
+		return nil, ErrServerNotFound
+	}
+	toolMap := m.tools[server.ServerID]
+	items := make([]ToolResource, 0, len(toolMap))
+	for _, tool := range toolMap {
+		items = append(items, m.buildToolResourceLocked(server, tool))
+	}
+	return items, nil
+}
+
+func (m *Manager) ListToolsForTenant(serverID, tenantID string) ([]ToolResource, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	server, ok := m.servers[strings.TrimSpace(serverID)]
+	if !ok {
+		return nil, ErrServerNotFound
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID != "" && server.TenantID != tenantID {
 		return nil, ErrServerNotFound
 	}
 	toolMap := m.tools[server.ServerID]
@@ -1170,7 +1239,7 @@ func (m *Manager) collectRevalidationIssues(server Server, management *CatalogMa
 	if spec.TransportKind == TransportKindStreamableHTTP && strings.TrimSpace(spec.Endpoint) == "" {
 		issues = append(issues, RevalidationIssue{Kind: "endpoint", Name: "streamable-http", Status: RevalidationIssueStatusUnsupported, Reason: "streamable-http endpoint is not configured", EnvironmentScope: string(m.cfg.Environment)})
 	}
-	resolved, _ := ResolveMCPSecrets(m.cfg.DataDir, secretRefsFromRequirements(entry.SecretRequirements))
+	resolved, _ := m.resolveSecretValues(context.Background(), secretRefsFromRequirements(entry.SecretRequirements))
 	for _, requirement := range entry.SecretRequirements {
 		if requirement.Required {
 			if _, ok := resolved[requirement.SecretRef]; !ok {
@@ -1333,7 +1402,7 @@ func (m *Manager) CallTool(ctx context.Context, serverID, toolName string, input
 			Error:        err.Error(),
 		}, nil
 	}
-	redacted := m.redactValue(server, output)
+	redacted := m.redactValue(ctx, server, output)
 	if flag, ok := output["isError"].(bool); ok && flag {
 		return ToolInvocationResult{
 			SessionID:    active.sessionID,
@@ -1494,7 +1563,7 @@ func (m *Manager) Start(ctx context.Context, serverID, requestedBy string) (Life
 		}
 	}
 	if server.TransportKind == TransportKindWebsocket {
-		headers, err := m.resolveWebsocketHeaders(server)
+		headers, err := m.resolveWebsocketHeaders(ctx, server)
 		if err != nil {
 			if restoreRequest {
 				state = m.recordRestoreFailure(ctx, server, state, LifecycleStatusDenied, err.Error(), "invalid_configuration")
@@ -1694,6 +1763,7 @@ func (m *Manager) upsertServer(ctx context.Context, createInput CreateServerInpu
 			created = false
 		} else {
 			server = Server{
+				TenantID:         activeTenantID(ctx),
 				ServerID:         serverID,
 				Source:           SourceAPI,
 				OriginKind:       OriginKindManual,
@@ -1705,6 +1775,9 @@ func (m *Manager) upsertServer(ctx context.Context, createInput CreateServerInpu
 			}
 			created = true
 			m.serverIDs = append(m.serverIDs, serverID)
+		}
+		if tenantID := activeTenantID(ctx); tenantID != "" {
+			server.TenantID = tenantID
 		}
 		server.DisplayName = strings.TrimSpace(createInput.DisplayName)
 		if createInput.OriginKind != "" {
@@ -1745,6 +1818,9 @@ func (m *Manager) upsertServer(ctx context.Context, createInput CreateServerInpu
 			return ServerResource{}, false, ErrServerNotFound
 		}
 		server = existing
+		if tenantID := activeTenantID(ctx); tenantID != "" && server.TenantID != "" && server.TenantID != tenantID {
+			return ServerResource{}, false, ErrServerNotFound
+		}
 		created = false
 		if update.input.DisplayName != nil {
 			server.DisplayName = strings.TrimSpace(*update.input.DisplayName)
@@ -2446,12 +2522,14 @@ func sanitizeCatalogInstallSnapshotProjection(snapshot CatalogInstallSnapshot) C
 }
 
 func (m *Manager) buildToolResourceLocked(server Server, tool Tool) ToolResource {
+	tool.TenantID = server.TenantID
 	ruleMap := m.exposure[server.ServerID][tool.ToolName]
 	exposure := make([]ToolExposureRule, 0, len(ruleMap))
 	approvalRequired := false
 	effective := "unavailable"
 	reason := ""
 	for _, rule := range ruleMap {
+		rule.TenantID = server.TenantID
 		exposure = append(exposure, cloneToolExposureRule(rule))
 		if rule.Active && rule.ExposureMode == ExposureModeApprovalRequired {
 			approvalRequired = true
@@ -2485,6 +2563,14 @@ func (m *Manager) buildToolResourceLocked(server Server, tool Tool) ToolResource
 	}
 }
 
+func activeTenantID(ctx context.Context) string {
+	tenantContext, ok := tenantctx.FromContext(ctx)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(tenantContext.TenantID)
+}
+
 func (m *Manager) buildSecretScope(ctx context.Context, server Server) ([]sandbox.SecretScopeOutcome, error) {
 	items, err := m.listSecretBindings(ctx, server)
 	if err != nil {
@@ -2512,7 +2598,7 @@ func (m *Manager) listSecretBindings(ctx context.Context, server Server) ([]sand
 			DefaultRuleID:    "mcp_server:" + server.ServerID,
 			DeliveryKind:     "environment_variable",
 			RedactionRule:    "value_redacted",
-			Resolution:       m.resolveSecretRef(secretRef, envScope),
+			Resolution:       m.resolveSecretRef(ctx, secretRef, envScope),
 		})
 	}
 	return items, nil
@@ -2523,7 +2609,7 @@ func (m *Manager) resolveSecretEnv(ctx context.Context, server Server) (map[stri
 	if err != nil {
 		return nil, err
 	}
-	resolvedSecrets, err := ResolveMCPSecrets(m.cfg.DataDir, server.SecretRefs)
+	resolvedSecrets, err := m.resolveSecretValues(ctx, server.SecretRefs)
 	if err != nil {
 		return nil, err
 	}
@@ -2539,7 +2625,7 @@ func (m *Manager) resolveSecretEnv(ctx context.Context, server Server) (map[stri
 	return env, nil
 }
 
-func (m *Manager) resolveSecretRef(secretRef string, envScope sandbox.SecretEnvironmentScope) sandbox.SecretResolution {
+func (m *Manager) resolveSecretRef(ctx context.Context, secretRef string, envScope sandbox.SecretEnvironmentScope) sandbox.SecretResolution {
 	switch m.cfg.Environment {
 	case config.EnvironmentTest:
 		if envScope != sandbox.SecretEnvironmentScopeTest && envScope != sandbox.SecretEnvironmentScopeBoth {
@@ -2550,14 +2636,51 @@ func (m *Manager) resolveSecretRef(secretRef string, envScope sandbox.SecretEnvi
 			return sandbox.SecretResolutionDenied
 		}
 	}
-	resolved, err := ResolveMCPSecrets(m.cfg.DataDir, []string{secretRef})
+	resolved, err := m.resolveSecretValues(ctx, []string{secretRef})
 	if err != nil {
+		if errors.Is(err, tenantctx.ErrTenantContextRequired) {
+			return sandbox.SecretResolutionDenied
+		}
 		return sandbox.SecretResolutionUnavailable
 	}
 	if _, ok := resolved[secretRef]; ok {
 		return sandbox.SecretResolutionResolved
 	}
 	return sandbox.SecretResolutionUnavailable
+}
+
+func (m *Manager) resolveSecretValues(ctx context.Context, secretRefs []string) (map[string]string, error) {
+	refs := cleanStrings(secretRefs)
+	if len(refs) == 0 {
+		return map[string]string{}, nil
+	}
+	secretManager := m.secrets
+	if secretManager == nil {
+		return ResolveMCPSecrets(m.cfg.DataDir, refs)
+	}
+	tenantContext, ok := tenantctx.FromContext(ctx)
+	if !ok || strings.TrimSpace(tenantContext.TenantID) == "" {
+		return nil, tenantctx.ErrTenantContextRequired
+	}
+	resolved := make(map[string]string, len(refs))
+	for _, secretRef := range refs {
+		secret, err := secretManager.Resolve(ctx, secrets.ResolveInput{
+			TenantID:  tenantContext.TenantID,
+			SecretRef: secretRef,
+		})
+		if err != nil {
+			if errors.Is(err, secrets.ErrSecretNotFound) ||
+				errors.Is(err, secrets.ErrSecretDisabled) ||
+				errors.Is(err, secrets.ErrSecretVersionNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		if strings.TrimSpace(secret.Value) != "" {
+			resolved[secretRef] = secret.Value
+		}
+	}
+	return resolved, nil
 }
 
 func (m *Manager) persistDeclarationView(ctx context.Context, server Server) error {
@@ -2604,12 +2727,13 @@ func (m *Manager) persistServer(ctx context.Context, server Server) error {
 	if err != nil {
 		return fmt.Errorf("marshal mcp server %s: %w", server.ServerID, err)
 	}
-	return m.store.UpsertMCPServer(ctx, store.MCPServerRecord{
+	record := store.MCPServerRecord{
 		ServerID:  server.ServerID,
 		Enabled:   server.Enabled,
 		UpdatedAt: server.UpdatedAt,
 		Document:  document,
-	})
+	}
+	return m.store.UpsertMCPServer(ctx, record)
 }
 
 func (m *Manager) persistState(ctx context.Context, state ServerState) error {
@@ -2620,12 +2744,13 @@ func (m *Manager) persistState(ctx context.Context, state ServerState) error {
 	if err != nil {
 		return fmt.Errorf("marshal mcp server state %s: %w", state.ServerID, err)
 	}
-	return m.store.UpsertMCPServerState(ctx, store.MCPServerStateRecord{
+	record := store.MCPServerStateRecord{
 		ServerID:  state.ServerID,
 		Status:    string(state.Status),
 		UpdatedAt: state.UpdatedAt,
 		Document:  document,
-	})
+	}
+	return m.store.UpsertMCPServerState(ctx, record)
 }
 
 func (m *Manager) persistTools(ctx context.Context, serverID string, tools []Tool) error {
@@ -2857,7 +2982,7 @@ func defaultWebsocketScheme(auth *WebsocketAuthConfig) string {
 	return strings.TrimSpace(auth.Scheme)
 }
 
-func (m *Manager) resolveWebsocketHeaders(server Server) (map[string]string, error) {
+func (m *Manager) resolveWebsocketHeaders(ctx context.Context, server Server) (map[string]string, error) {
 	if server.TransportKind != TransportKindWebsocket || server.WebsocketConfig == nil || server.WebsocketConfig.Auth == nil {
 		return nil, nil
 	}
@@ -2866,7 +2991,7 @@ func (m *Manager) resolveWebsocketHeaders(server Server) (map[string]string, err
 	if secretRef == "" {
 		return nil, fmt.Errorf("websocket auth secret ref is not configured")
 	}
-	resolved, err := ResolveMCPSecrets(m.cfg.DataDir, []string{secretRef})
+	resolved, err := m.resolveSecretValues(ctx, []string{secretRef})
 	if err != nil {
 		return nil, err
 	}
@@ -3043,8 +3168,8 @@ func (m *Manager) publishAuditEvent(ctx context.Context, name string, resource e
 	return event, nil
 }
 
-func (m *Manager) redactValue(server Server, value any) any {
-	secrets, err := ResolveMCPSecrets(m.cfg.DataDir, server.SecretRefs)
+func (m *Manager) redactValue(ctx context.Context, server Server, value any) any {
+	secrets, err := m.resolveSecretValues(ctx, server.SecretRefs)
 	if err != nil || len(secrets) == 0 {
 		return value
 	}
@@ -3054,13 +3179,13 @@ func (m *Manager) redactValue(server Server, value any) any {
 	case []any:
 		items := make([]any, 0, len(typed))
 		for _, item := range typed {
-			items = append(items, m.redactValue(server, item))
+			items = append(items, m.redactValue(ctx, server, item))
 		}
 		return items
 	case map[string]any:
 		cloned := make(map[string]any, len(typed))
 		for key, item := range typed {
-			cloned[key] = m.redactValue(server, item)
+			cloned[key] = m.redactValue(ctx, server, item)
 		}
 		return cloned
 	default:

@@ -75,6 +75,7 @@ type Provenance struct {
 }
 
 type Resource struct {
+	TenantID               string          `json:"tenantId,omitempty"`
 	IntegrationID          string          `json:"integrationId"`
 	DomainKind             string          `json:"domainKind"`
 	DisplayName            string          `json:"displayName"`
@@ -84,6 +85,7 @@ type Resource struct {
 	HealthState            HealthState     `json:"healthState,omitempty"`
 	ReadinessReason        string          `json:"readinessReason,omitempty"`
 	RequiredOperatorAction string          `json:"requiredOperatorAction,omitempty"`
+	DisabledReason         string          `json:"disabledReason,omitempty"`
 	CanonicalDefault       bool            `json:"canonicalDefault"`
 	AccountBinding         AccountBinding  `json:"accountBinding,omitempty"`
 	BackendBinding         BackendBinding  `json:"backendBinding"`
@@ -95,6 +97,7 @@ type Resource struct {
 }
 
 type BindingSummary struct {
+	TenantID              string          `json:"tenantId,omitempty"`
 	IntegrationID         string          `json:"integrationId"`
 	DomainKind            string          `json:"domainKind"`
 	DisplayName           string          `json:"displayName"`
@@ -108,6 +111,7 @@ type BindingSummary struct {
 }
 
 type CreateInput struct {
+	TenantID         string
 	IntegrationID    string
 	DomainKind       string
 	DisplayName      string

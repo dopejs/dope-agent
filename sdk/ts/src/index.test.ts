@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { DopeClientError, createDopeClient, type MembershipResource, type TenantResource } from "./index.js";
+import { DopeClientError, createDopeClient, type MembershipResource, type TenantResource, type TenantSecretResource } from "./index.js";
 
 function mockJSONResponse(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -37,6 +37,22 @@ function membershipResource(overrides: Partial<MembershipResource> = {}): Member
     status: "active",
     createdAt: "2026-04-24T10:00:00Z",
     updatedAt: "2026-04-24T10:00:00Z",
+    ...overrides
+  };
+}
+
+function tenantSecretResource(overrides: Partial<TenantSecretResource> = {}): TenantSecretResource {
+  return {
+    secretId: "sec_1",
+    tenantId: "ten_personal",
+    secretRef: "provider/api-key",
+    displayName: "Provider API key",
+    status: "active",
+    activeVersionId: "secver_1",
+    createdAt: "2026-04-24T10:00:00Z",
+    updatedAt: "2026-04-24T10:00:00Z",
+    rotatedAt: "2026-04-24T10:00:00Z",
+    secretRefs: [{ secretRef: "provider/api-key", resolution: "unavailable", redactionRule: "secret_ref_only" }],
     ...overrides
   };
 }
@@ -469,5 +485,64 @@ describe("DopeClient", () => {
     }));
     const fourthCall = fetchImpl.mock.calls[3][1];
     expect((fourthCall?.headers as Record<string, string>)["X-Dope-Tenant-ID"]).toBeUndefined();
+  });
+
+  it("calls tenant secret helper routes with redacted resource types", async () => {
+    const secret = tenantSecretResource();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, { items: [secret] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { secret }))
+      .mockResolvedValueOnce(mockJSONResponse(201, { secret }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { secret: { ...secret, displayName: "Updated Key" } }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { secret: { ...secret, activeVersionId: "secver_2" } }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { secret: { ...secret, status: "disabled", disabledReason: "operator_request" } }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      fetchImpl,
+      defaultTenantId: "ten_personal"
+    });
+
+    await expect(client.listTenantSecrets()).resolves.toMatchObject({ items: [{ secretRef: "provider/api-key" }] });
+    await expect(client.getTenantSecret("provider/api-key")).resolves.toMatchObject({ secret: { secretRef: "provider/api-key" } });
+    await client.createTenantSecret({ secretRef: "provider/api-key", displayName: " Provider API key ", value: "raw-secret" });
+    await client.updateTenantSecret("provider/api-key", { displayName: " Updated Key " });
+    await client.rotateTenantSecret("provider/api-key", { value: "new-raw-secret" });
+    await client.disableTenantSecret("provider/api-key", { disabledReason: " operator_request " });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/tenant-secrets/provider%2Fapi-key", expect.objectContaining({
+      headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/tenant-secrets", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ secretRef: "provider/api-key", displayName: "Provider API key", value: "raw-secret" })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(5, "http://127.0.0.1:19192/v1/tenant-secrets/provider%2Fapi-key/rotate", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ value: "new-raw-secret" })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/tenant-secrets/provider%2Fapi-key/disable", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ disabledReason: "operator_request" })
+    }));
+  });
+
+  it("maps hosted credential stable denials", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(mockJSONResponse(403, {
+      error: "credential_access_denied",
+      reasonCode: "credential_denied:missing_permission"
+    }));
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      fetchImpl
+    });
+
+    await expect(client.listTenantSecrets({ tenantId: "ten_personal" })).rejects.toMatchObject({
+      name: "DopeClientError",
+      status: 403,
+      code: "credential_denied:missing_permission",
+      tenantDenied: true
+    });
   });
 });

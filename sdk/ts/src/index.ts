@@ -476,6 +476,7 @@ export type TenantLifecycleStatus =
 export type TenantPermission =
   | "tenant.manage"
   | "secrets.manage"
+  | "credentials.inspect"
   | "integrations.manage"
   | "connectors.manage"
   | "mcp.manage"
@@ -586,6 +587,63 @@ export type UpdateMembershipRoleInput = {
 
 export type TenantRequestOptions = {
   tenantId?: string;
+};
+
+export type SecretStatus = "active" | "disabled" | "pending_remediation";
+export type SecretResolutionStatus = "resolved" | "unavailable" | "denied" | "not_applicable";
+
+export type RedactedSecretSummary = {
+  secretRef?: string;
+  secretVersionId?: string;
+  resolution?: SecretResolutionStatus;
+  status?: SecretStatus;
+  disabledReason?: string;
+  redactionRule?: string;
+};
+
+export type TenantSecretResource = {
+  secretId: string;
+  tenantId: string;
+  secretRef: string;
+  displayName?: string;
+  status: SecretStatus;
+  activeVersionId?: string;
+  disabledReason?: string;
+  remediationReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  rotatedAt?: string;
+  disabledAt?: string;
+  document?: Record<string, unknown>;
+  secretRefs?: RedactedSecretSummary[];
+};
+
+export type TenantSecretListResponse = {
+  items: TenantSecretResource[];
+};
+
+export type CreateTenantSecretInput = {
+  secretRef: string;
+  displayName?: string;
+  value: string;
+  document?: Record<string, unknown>;
+};
+
+export type UpdateTenantSecretInput = {
+  displayName?: string;
+  document?: Record<string, unknown>;
+};
+
+export type RotateTenantSecretInput = {
+  value: string;
+};
+
+export type DisableTenantSecretInput = {
+  disabledReason: string;
+};
+
+export type TenantSecretResponse = {
+  secret: TenantSecretResource;
 };
 
 export type DopeClientOptions = {
@@ -717,6 +775,54 @@ export class DopeClient {
   async removeMembership(tenantId: string, membershipId: string, tenantOptions?: TenantRequestOptions): Promise<{ membership: MembershipResource }> {
     return this.requestJSON<{ membership: MembershipResource }>(`/v1/tenants/${tenantId.trim()}/memberships/${membershipId.trim()}`, {
       method: "DELETE",
+      tenant: tenantOptions
+    });
+  }
+
+  async listTenantSecrets(tenantOptions?: TenantRequestOptions): Promise<TenantSecretListResponse> {
+    return this.requestJSON<TenantSecretListResponse>("/v1/tenant-secrets", { tenant: tenantOptions });
+  }
+
+  async getTenantSecret(secretRef: string, tenantOptions?: TenantRequestOptions): Promise<TenantSecretResponse> {
+    return this.requestJSON<TenantSecretResponse>(`/v1/tenant-secrets/${encodePathComponent(secretRef)}`, { tenant: tenantOptions });
+  }
+
+  async createTenantSecret(input: CreateTenantSecretInput, tenantOptions?: TenantRequestOptions): Promise<TenantSecretResponse> {
+    return this.requestJSON<TenantSecretResponse>("/v1/tenant-secrets", {
+      method: "POST",
+      body: {
+        secretRef: input.secretRef.trim(),
+        displayName: input.displayName?.trim() || undefined,
+        value: input.value,
+        document: input.document
+      },
+      tenant: tenantOptions
+    });
+  }
+
+  async updateTenantSecret(secretRef: string, input: UpdateTenantSecretInput, tenantOptions?: TenantRequestOptions): Promise<TenantSecretResponse> {
+    return this.requestJSON<TenantSecretResponse>(`/v1/tenant-secrets/${encodePathComponent(secretRef)}`, {
+      method: "PATCH",
+      body: {
+        displayName: input.displayName?.trim() || undefined,
+        document: input.document
+      },
+      tenant: tenantOptions
+    });
+  }
+
+  async rotateTenantSecret(secretRef: string, input: RotateTenantSecretInput, tenantOptions?: TenantRequestOptions): Promise<TenantSecretResponse> {
+    return this.requestJSON<TenantSecretResponse>(`/v1/tenant-secrets/${encodePathComponent(secretRef)}/rotate`, {
+      method: "POST",
+      body: { value: input.value },
+      tenant: tenantOptions
+    });
+  }
+
+  async disableTenantSecret(secretRef: string, input: DisableTenantSecretInput, tenantOptions?: TenantRequestOptions): Promise<TenantSecretResponse> {
+    return this.requestJSON<TenantSecretResponse>(`/v1/tenant-secrets/${encodePathComponent(secretRef)}/disable`, {
+      method: "POST",
+      body: { disabledReason: input.disabledReason.trim() },
       tenant: tenantOptions
     });
   }
@@ -950,6 +1056,14 @@ function normalizeRoute(route: string): string {
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
+function encodePathComponent(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("path value is required");
+  }
+  return encodeURIComponent(trimmed);
+}
+
 function normalizeChatInput(input: ChatQueryInput): ChatQueryInput {
   return {
     provider: input.provider?.trim() || undefined,
@@ -967,12 +1081,12 @@ async function toClientError(response: Response): Promise<DopeClientError> {
   let denial: TenantDenialResource | undefined;
 
   try {
-    const payload = (await response.json()) as { error?: string; errorCode?: string; requestId?: string };
+    const payload = (await response.json()) as { error?: string; errorCode?: string; reasonCode?: string; requestId?: string };
     if (payload.error) {
       message = payload.error;
     }
-    if (payload.errorCode) {
-      code = payload.errorCode;
+    if (payload.errorCode || payload.reasonCode) {
+      code = payload.errorCode ?? payload.reasonCode;
     }
     if (isTenantDenialCode(payload.errorCode) && payload.errorCode) {
       denial = {
@@ -990,7 +1104,7 @@ async function toClientError(response: Response): Promise<DopeClientError> {
 }
 
 function isTenantDenialCode(code: string | undefined): boolean {
-  return code === "tenant_access_denied" || code === "tenant_permission_denied" || code === "tenant_ownership_denied";
+  return code === "tenant_access_denied" || code === "tenant_permission_denied" || code === "tenant_ownership_denied" || code?.startsWith("credential_denied:") === true;
 }
 
 type SSEEvent = {

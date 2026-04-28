@@ -22,7 +22,16 @@
     "displayName": { "type": "string" },
     "status": {
       "type": "string",
-      "enum": ["registered", "healthy", "degraded", "backing_off", "failed"]
+      "enum": ["registered", "healthy", "degraded", "backing_off", "failed", "disabled"]
+    },
+    "disabledReason": { "type": "string" },
+    "secretRefs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "secretSummary": {
+      "type": "array",
+      "items": { "$ref": "./tenant-secret-resource.schema.json#/$defs/redactedSecretSummary" }
     },
     "failureCount": { "type": "integer", "minimum": 0 },
     "restartCount": { "type": "integer", "minimum": 0 },

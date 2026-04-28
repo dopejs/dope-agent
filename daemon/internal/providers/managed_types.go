@@ -14,6 +14,7 @@ const (
 )
 
 type AuthState struct {
+	TenantID            string            `json:"tenantId,omitempty"`
 	ProviderID          string            `json:"providerId"`
 	Family              Family            `json:"family"`
 	AuthMode            AuthMode          `json:"authMode"`

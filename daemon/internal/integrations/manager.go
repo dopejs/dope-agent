@@ -47,11 +47,36 @@ func (m *Manager) List() []Resource {
 	return items
 }
 
+func (m *Manager) ListForTenant(tenantID string) []Resource {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	tenantID = strings.TrimSpace(tenantID)
+	items := make([]Resource, 0, len(m.order))
+	for _, id := range m.order {
+		item := m.byID[id]
+		if tenantID == "" || strings.TrimSpace(item.TenantID) == tenantID {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
 func (m *Manager) Get(integrationID string) (Resource, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	item, ok := m.byID[strings.TrimSpace(integrationID)]
 	return item, ok
+}
+
+func (m *Manager) GetForTenant(integrationID, tenantID string) (Resource, bool) {
+	item, ok := m.Get(integrationID)
+	if !ok {
+		return Resource{}, false
+	}
+	if strings.TrimSpace(tenantID) != "" && strings.TrimSpace(item.TenantID) != strings.TrimSpace(tenantID) {
+		return Resource{}, false
+	}
+	return item, true
 }
 
 func (m *Manager) Create(input CreateInput) (Resource, error) {
@@ -73,6 +98,7 @@ func (m *Manager) Create(input CreateInput) (Resource, error) {
 
 	now := time.Now().UTC()
 	resource := Resource{
+		TenantID:         strings.TrimSpace(input.TenantID),
 		IntegrationID:    strings.TrimSpace(input.IntegrationID),
 		DomainKind:       strings.TrimSpace(input.DomainKind),
 		DisplayName:      strings.TrimSpace(input.DisplayName),
@@ -132,6 +158,16 @@ func (m *Manager) UpdateReadiness(integrationID string, input UpdateReadinessInp
 	return resource, nil
 }
 
+func (m *Manager) UpdateReadinessForTenant(integrationID, tenantID string, input UpdateReadinessInput) (Resource, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	resource, ok := m.byID[strings.TrimSpace(integrationID)]
+	if !ok || strings.TrimSpace(resource.TenantID) != strings.TrimSpace(tenantID) {
+		return Resource{}, ErrIntegrationNotFound
+	}
+	return m.updateReadinessLocked(resource, input), nil
+}
+
 func (m *Manager) SetCanonicalDefault(integrationID string) (Resource, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -146,6 +182,40 @@ func (m *Manager) SetCanonicalDefault(integrationID string) (Resource, error) {
 	return resource, nil
 }
 
+func (m *Manager) SetCanonicalDefaultForTenant(integrationID, tenantID string) (Resource, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	resource, ok := m.byID[strings.TrimSpace(integrationID)]
+	if !ok || strings.TrimSpace(resource.TenantID) != strings.TrimSpace(tenantID) {
+		return Resource{}, ErrIntegrationNotFound
+	}
+	resource.CanonicalDefault = true
+	resource.UpdatedAt = time.Now().UTC()
+	m.demoteSiblingDefaultsLocked(resource)
+	m.byID[resource.IntegrationID] = resource
+	return resource, nil
+}
+
+func (m *Manager) Disconnect(integrationID, reason string) (Resource, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	resource, ok := m.byID[strings.TrimSpace(integrationID)]
+	if !ok {
+		return Resource{}, ErrIntegrationNotFound
+	}
+	return m.disconnectLocked(resource, reason), nil
+}
+
+func (m *Manager) DisconnectForTenant(integrationID, tenantID, reason string) (Resource, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	resource, ok := m.byID[strings.TrimSpace(integrationID)]
+	if !ok || strings.TrimSpace(resource.TenantID) != strings.TrimSpace(tenantID) {
+		return Resource{}, ErrIntegrationNotFound
+	}
+	return m.disconnectLocked(resource, reason), nil
+}
+
 func (m *Manager) BindingSummary(integrationID string, capturedAt time.Time) (BindingSummary, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -154,6 +224,44 @@ func (m *Manager) BindingSummary(integrationID string, capturedAt time.Time) (Bi
 		return BindingSummary{}, ErrIntegrationNotFound
 	}
 	return resourceBindingSummary(resource, capturedAt), nil
+}
+
+func (m *Manager) updateReadinessLocked(resource Resource, input UpdateReadinessInput) Resource {
+	now := time.Now().UTC()
+	resource.ReadinessStatus = input.ReadinessStatus
+	if input.AuthState != "" {
+		resource.AuthState = input.AuthState
+	}
+	if input.HealthState != "" {
+		resource.HealthState = input.HealthState
+	}
+	resource.ReadinessReason = strings.TrimSpace(input.ReadinessReason)
+	resource.RequiredOperatorAction = strings.TrimSpace(input.RequiredOperatorAction)
+	if strings.TrimSpace(input.AccountBinding.AccountKey) != "" || strings.TrimSpace(input.AccountBinding.AccountLabel) != "" || strings.TrimSpace(input.AccountBinding.ExternalAccountID) != "" {
+		resource.AccountBinding = input.AccountBinding
+	}
+	if resource.ReadinessStatus == ReadinessStatusHealthy {
+		resource.LastReadyAt = &now
+	}
+	resource.UpdatedAt = now
+	resource.LastTransitionAt = now
+	resource = updateProvenance(resource, input)
+	m.byID[resource.IntegrationID] = resource
+	return resource
+}
+
+func (m *Manager) disconnectLocked(resource Resource, reason string) Resource {
+	now := time.Now().UTC()
+	resource.ReadinessStatus = ReadinessStatusUnavailable
+	resource.AuthState = AuthStateRevoked
+	resource.HealthState = HealthStateUnavailable
+	resource.DisabledReason = strings.TrimSpace(reason)
+	resource.RequiredOperatorAction = "reconnect integration"
+	resource.CanonicalDefault = false
+	resource.UpdatedAt = now
+	resource.LastTransitionAt = now
+	m.byID[resource.IntegrationID] = resource
+	return resource
 }
 
 func (m *Manager) RunProbe(integrationID string, probeKind ProbeKind, input map[string]any) (Resource, ProbeResult, BindingSummary, error) {
@@ -199,13 +307,15 @@ func (m *Manager) demoteSiblingDefaultsLocked(selected Resource) {
 }
 
 func sameBindingGroup(left, right Resource) bool {
-	return strings.TrimSpace(left.DomainKind) == strings.TrimSpace(right.DomainKind) &&
+	return strings.TrimSpace(left.TenantID) == strings.TrimSpace(right.TenantID) &&
+		strings.TrimSpace(left.DomainKind) == strings.TrimSpace(right.DomainKind) &&
 		strings.TrimSpace(left.EnvironmentScope) == strings.TrimSpace(right.EnvironmentScope) &&
 		strings.TrimSpace(left.AccountBinding.AccountKey) == strings.TrimSpace(right.AccountBinding.AccountKey)
 }
 
 func resourceBindingSummary(resource Resource, capturedAt time.Time) BindingSummary {
 	return BindingSummary{
+		TenantID:              resource.TenantID,
 		IntegrationID:         resource.IntegrationID,
 		DomainKind:            resource.DomainKind,
 		DisplayName:           resource.DisplayName,

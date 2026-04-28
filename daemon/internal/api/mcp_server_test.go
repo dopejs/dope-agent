@@ -17,6 +17,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -207,6 +208,60 @@ func TestMCPServerRoutes(t *testing.T) {
 	server.Handler().ServeHTTP(eventsRec, eventsReq)
 	if eventsRec.Code != http.StatusOK || !strings.Contains(eventsRec.Body.String(), `"mcp.server_started"`) {
 		t.Fatalf("expected mcp event list response, got %d body=%s", eventsRec.Code, eventsRec.Body.String())
+	}
+}
+
+func TestMCPServerRoutesScopeTenantResources(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "dope")
+	cfg := config.Config{Environment: config.EnvironmentTest, DataDir: dataDir}
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() { _ = sqliteStore.Close() }()
+	eventBus := events.NewBus()
+	defer eventBus.Close()
+	policyEngine := policy.NewEngine()
+	sandboxes := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
+	defer func() { _ = sandboxes.Close(context.Background()) }()
+	manager := mcp.NewManager(cfg, sqliteStore, eventBus, sandboxes, policyEngine, nil)
+
+	ctxA := withTenantContext(context.Background(), r37TenantContext(t, "ten_r37_a", identity.RoleAdmin))
+	ctxB := withTenantContext(context.Background(), r37TenantContext(t, "ten_r37_b", identity.RoleAdmin))
+	if _, _, err := manager.CreateServer(ctxA, mcp.CreateServerInput{
+		ServerID: "tenant-a-mcp", DisplayName: "Shared MCP", Enabled: true, SandboxProfileID: "subprocess_default",
+		DeclarationID: "mcp_server:tenant-a-mcp:lifecycle.start", TransportKind: mcp.TransportKindStdio,
+		Command: os.Args[0], Args: []string{"-test.run=TestAPIMCPHelperProcess", "--"}, WorkingDir: t.TempDir(), AutoRestart: true,
+	}); err != nil {
+		t.Fatalf("create tenant A server: %v", err)
+	}
+	if _, _, err := manager.CreateServer(ctxB, mcp.CreateServerInput{
+		ServerID: "tenant-b-mcp", DisplayName: "Shared MCP", Enabled: true, SandboxProfileID: "subprocess_default",
+		DeclarationID: "mcp_server:tenant-b-mcp:lifecycle.start", TransportKind: mcp.TransportKindStdio,
+		Command: os.Args[0], Args: []string{"-test.run=TestAPIMCPHelperProcess", "--"}, WorkingDir: t.TempDir(), AutoRestart: true,
+	}); err != nil {
+		t.Fatalf("create tenant B server: %v", err)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/servers", nil).WithContext(ctxA)
+	listRec := httptest.NewRecorder()
+	handleMCPServers(manager, listRec, listReq)
+	if listRec.Code != http.StatusOK || strings.Contains(listRec.Body.String(), "tenant-b-mcp") || !strings.Contains(listRec.Body.String(), "tenant-a-mcp") {
+		t.Fatalf("tenant A MCP list leaked or omitted resources: status=%d body=%s", listRec.Code, listRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/servers/tenant-a-mcp", nil).WithContext(ctxB)
+	getRec := httptest.NewRecorder()
+	handleMCPServerByID(manager, getRec, getReq, "tenant-a-mcp")
+	if getRec.Code != http.StatusNotFound {
+		t.Fatalf("cross-tenant MCP get must 404, got %d body=%s", getRec.Code, getRec.Body.String())
+	}
+
+	exposureReq := httptest.NewRequest(http.MethodPatch, "/v1/mcp/servers/tenant-a-mcp/tools/lookup", strings.NewReader(`{"runtimeSurface":"chat","exposureMode":"allow","active":true}`)).WithContext(ctxB)
+	exposureRec := httptest.NewRecorder()
+	handleMCPServerToolExposure(manager, exposureRec, exposureReq, "tenant-a-mcp", []string{"tools", "lookup"})
+	if exposureRec.Code != http.StatusNotFound {
+		t.Fatalf("cross-tenant MCP exposure update must 404, got %d body=%s", exposureRec.Code, exposureRec.Body.String())
 	}
 }
 

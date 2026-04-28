@@ -40,6 +40,15 @@ func (a *Integrations) UpsertIntegrationForTenant(ctx context.Context, item inte
 	if err != nil {
 		return err
 	}
+	owner, ok, err := a.store.LookupRowTenant(ctx, "integrations", "integration_id", item.IntegrationID)
+	if err != nil {
+		return err
+	}
+	if ok && owner != "" && owner != tenantID {
+		a.emit(ctx, "store:UpsertIntegrationForTenant", "integration")
+		return ErrCrossTenantWrite
+	}
+	item.TenantID = tenantID
 	if err := a.store.UpsertIntegration(ctx, item); err != nil {
 		return err
 	}

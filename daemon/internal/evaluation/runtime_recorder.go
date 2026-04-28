@@ -3,6 +3,7 @@ package evaluation
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
@@ -10,6 +11,13 @@ import (
 )
 
 const replayRuntimeEntrypoint = "evaluation.replay"
+const replayRedactedCredential = "[REDACTED]"
+
+var replayCredentialLeakMarkers = []string{
+	"R37_FAKE_SECRET",
+	"R37_FAKE_TOKEN",
+	"secret-token",
+}
 
 type RuntimeRecorder interface {
 	RecordReplay(context.Context, ReplayRecordInput) (ReplayRecordResult, error)
@@ -57,6 +65,7 @@ func (r *RuntimeReplayRecorder) RecordReplay(ctx context.Context, input ReplayRe
 	if r == nil || r.runtime == nil {
 		return ReplayRecordResult{}, nil
 	}
+	input = redactReplayRecordInput(input)
 	run, err := r.runtime.CreateRun(runtime.CreateRunInput{
 		Entrypoint: replayRuntimeEntrypoint,
 		Goal:       replayRunGoal(input.Candidate, input.Attempt),
@@ -208,6 +217,44 @@ func (r *RuntimeReplayRecorder) replaceWorkflowSteps(ctx context.Context, workfl
 		return fmt.Errorf("replace workflow steps %s: %w", workflowID, err)
 	}
 	return nil
+}
+
+func redactReplayRecordInput(input ReplayRecordInput) ReplayRecordInput {
+	input.Attempt.ChangeWindowLabel = redactReplayCredentialString(input.Attempt.ChangeWindowLabel)
+	input.Attempt.RuntimeSummary = redactReplayCredentialString(input.Attempt.RuntimeSummary)
+	input.Attempt.PolicySummary = redactReplayCredentialString(input.Attempt.PolicySummary)
+	input.Attempt.IntegrationSummary = redactReplayCredentialString(input.Attempt.IntegrationSummary)
+	input.Attempt.DeliverySummary = redactReplayCredentialString(input.Attempt.DeliverySummary)
+	input.Attempt.EvidenceSummary = redactReplayCredentialString(input.Attempt.EvidenceSummary)
+	input.Attempt.BlockedReasons = redactReplayCredentialStrings(input.Attempt.BlockedReasons)
+	input.Evidence.RuntimeSummary = redactReplayCredentialString(input.Evidence.RuntimeSummary)
+	input.Evidence.PolicySummary = redactReplayCredentialString(input.Evidence.PolicySummary)
+	input.Evidence.IntegrationSummary = redactReplayCredentialString(input.Evidence.IntegrationSummary)
+	input.Evidence.DeliverySummary = redactReplayCredentialString(input.Evidence.DeliverySummary)
+	input.Evidence.EvidenceSummary = redactReplayCredentialString(input.Evidence.EvidenceSummary)
+	input.Evidence.BlockedReasons = redactReplayCredentialStrings(input.Evidence.BlockedReasons)
+	input.Evidence.Limitations = redactReplayCredentialStrings(input.Evidence.Limitations)
+	return input
+}
+
+func redactReplayCredentialStrings(values []string) []string {
+	if len(values) == 0 {
+		return values
+	}
+	out := append([]string(nil), values...)
+	for i := range out {
+		out[i] = redactReplayCredentialString(out[i])
+	}
+	return out
+}
+
+func redactReplayCredentialString(value string) string {
+	for _, marker := range replayCredentialLeakMarkers {
+		if marker != "" && strings.Contains(value, marker) {
+			return replayRedactedCredential
+		}
+	}
+	return value
 }
 
 func replayRunGoal(candidate ReplayCandidate, attempt ReplayAttempt) string {

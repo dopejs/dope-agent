@@ -41,6 +41,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
+	"github.com/dopejs/dope-agent/daemon/internal/secrets"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/store/tenancy"
@@ -60,6 +61,7 @@ type Dependencies struct {
 	Providers    *providers.Manager
 	Skills       *skills.Registry
 	Sandboxes    *sandbox.Manager
+	Secrets      *secrets.Manager
 	MCP          *mcp.Manager
 	Integrations *integrations.Manager
 	Calendar     *calendar.Manager
@@ -110,6 +112,7 @@ type Server struct {
 	providers       *providers.Manager
 	skills          *skills.Registry
 	sandboxes       *sandbox.Manager
+	secrets         *secrets.Manager
 	mcp             *mcp.Manager
 	integrations    *integrations.Manager
 	calendar        *calendar.Manager
@@ -239,6 +242,12 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/tenant-audit-events", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleTenantAuditEvents(deps.Store, w, r)
 	}))
+	mux.HandleFunc("/v1/tenant-secrets", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleTenantSecrets(deps.Secrets, w, r)
+	}))
+	mux.HandleFunc("/v1/tenant-secrets/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleTenantSecretRoutes(deps.Secrets, w, r)
+	}))
 	mux.HandleFunc("/v1/config", protected(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -269,7 +278,7 @@ func NewServer(deps Dependencies) *Server {
 	}))
 	ae := resolveAuditEmitter(deps)
 	mux.HandleFunc("/v1/runs/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/runs/", "runs", "run_id", "run", func(w http.ResponseWriter, r *http.Request) {
-		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.Mail, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, deps.ComputerUse, w, r)
+		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.Secrets, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.Mail, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, deps.ComputerUse, w, r)
 	})))
 	mux.HandleFunc("/v1/schedules", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSchedules(deps.Scheduler, deps.Delivery, w, r)
@@ -466,6 +475,7 @@ func NewServer(deps Dependencies) *Server {
 		providers:       deps.Providers,
 		skills:          deps.Skills,
 		sandboxes:       deps.Sandboxes,
+		secrets:         deps.Secrets,
 		mcp:             deps.MCP,
 		integrations:    deps.Integrations,
 		calendar:        deps.Calendar,
@@ -690,7 +700,7 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 	}
 }
 
-func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, eventBus *events.Bus, deliveryManager *delivery.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request) {
+func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, secretManager *secrets.Manager, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, eventBus *events.Bus, deliveryManager *delivery.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
 	if path == "" {
 		http.NotFound(w, r)
@@ -774,7 +784,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	}
 
 	if len(parts) == 4 && parts[1] == "steps" && parts[3] == "tool-calls" {
-		handleRunStepToolCalls(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
+		handleRunStepToolCalls(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, secretManager, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
 		return
 	}
 
@@ -1594,7 +1604,19 @@ func handleProviderRoutes(manager *providers.Manager, eventBus *events.Bus, sqli
 
 	switch {
 	case parts[1] == "auth" && len(parts) == 2 && r.Method == http.MethodGet:
-		state, ok := manager.GetAuthState(providerID)
+		var (
+			state providers.AuthState
+			ok    bool
+		)
+		if tenantContext, tenantOK := tenantContextFromContext(r.Context()); tenantOK && tenantContext.TenantID != "" {
+			if _, reason := requireHostedCredentialReadAny(r, identity.PermissionIntegrationsManage); reason != "" {
+				writeCredentialDenial(w, http.StatusForbidden, reason)
+				return
+			}
+			state, ok = manager.GetAuthStateForTenant(providerID, tenantContext.TenantID)
+		} else {
+			state, ok = manager.GetAuthState(providerID)
+		}
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -1606,6 +1628,14 @@ func handleProviderRoutes(manager *providers.Manager, eventBus *events.Bus, sqli
 			writeError(w, http.StatusInternalServerError, "store is not configured")
 			return
 		}
+		tenantID := ""
+		if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+			if _, reason := requireHostedCredentialPermission(r, identity.PermissionIntegrationsManage, ""); reason != "" {
+				writeCredentialDenial(w, http.StatusForbidden, reason)
+				return
+			}
+			tenantID = tenantContext.TenantID
+		}
 		var (
 			state  providers.AuthState
 			models []providers.Model
@@ -1614,16 +1644,32 @@ func handleProviderRoutes(manager *providers.Manager, eventBus *events.Bus, sqli
 		)
 		switch parts[2] {
 		case "start":
-			state, models, err = manager.StartManagedAuth(r.Context(), providerID)
+			if tenantID != "" {
+				state, models, err = manager.StartManagedAuthForTenant(r.Context(), providerID, tenantID)
+			} else {
+				state, models, err = manager.StartManagedAuth(r.Context(), providerID)
+			}
 			event = "provider.auth_started"
 		case "complete":
-			state, models, err = manager.CompleteManagedAuth(r.Context(), providerID)
+			if tenantID != "" {
+				state, models, err = manager.CompleteManagedAuthForTenant(r.Context(), providerID, tenantID)
+			} else {
+				state, models, err = manager.CompleteManagedAuth(r.Context(), providerID)
+			}
 			event = "provider.auth_completed"
 		case "refresh":
-			state, models, err = manager.RefreshManagedAuth(r.Context(), providerID)
+			if tenantID != "" {
+				state, models, err = manager.RefreshManagedAuthForTenant(r.Context(), providerID, tenantID)
+			} else {
+				state, models, err = manager.RefreshManagedAuth(r.Context(), providerID)
+			}
 			event = "provider.auth_refreshed"
 		case "revoke":
-			state, models, err = manager.RevokeManagedAuth(r.Context(), providerID)
+			if tenantID != "" {
+				state, models, err = manager.RevokeManagedAuthForTenant(r.Context(), providerID, tenantID)
+			} else {
+				state, models, err = manager.RevokeManagedAuth(r.Context(), providerID)
+			}
 			event = "provider.auth_revoked"
 		default:
 			http.NotFound(w, r)
@@ -2248,7 +2294,25 @@ func handleSandboxExplain(manager *sandbox.Manager, w http.ResponseWriter, r *ht
 		}
 		return
 	}
+	redactSandboxDecisionCredentialInspection(r, &decision)
 	writeJSON(w, http.StatusOK, SandboxExplainResponse{Decision: decision})
+}
+
+func redactSandboxDecisionCredentialInspection(r *http.Request, decision *sandbox.Decision) {
+	if decision == nil || decision.Consumer == nil {
+		return
+	}
+	tenantContext, ok := tenantContextFromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		return
+	}
+	if identity.CanInspectCredentials(tenantContext, identity.PermissionSecretsManage, identity.PermissionIntegrationsManage) {
+		return
+	}
+	decision.Consumer.SecretScope = nil
+	if decision.Consumer.Declaration != nil {
+		decision.Consumer.Declaration.SecretRefs = nil
+	}
 }
 
 func handleMCPServers(manager *mcp.Manager, w http.ResponseWriter, r *http.Request) {
@@ -2258,8 +2322,16 @@ func handleMCPServers(manager *mcp.Manager, w http.ResponseWriter, r *http.Reque
 	}
 	switch r.Method {
 	case http.MethodGet:
+		if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+			writeJSON(w, http.StatusOK, ListResponse[mcp.ServerResource]{Items: manager.ListServersForTenant(tenantContext.TenantID)})
+			return
+		}
 		writeJSON(w, http.StatusOK, ListResponse[mcp.ServerResource]{Items: manager.ListServers()})
 	case http.MethodPost:
+		if _, reason := requireMCPPermissionIfTenant(r, identity.PermissionMCPManage); reason != "" {
+			writeCredentialDenial(w, http.StatusForbidden, reason)
+			return
+		}
 		var request mcp.CreateServerInput
 		if err := decodeJSONBody(r, &request); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -2388,13 +2460,21 @@ func handleMCPServerRoutes(manager *mcp.Manager, w http.ResponseWriter, r *http.
 func handleMCPServerByID(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
 	switch r.Method {
 	case http.MethodGet:
-		resource, ok := manager.GetServerResource(serverID)
+		resource, ok := mcpServerResourceForRequest(manager, r, serverID)
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
 		writeJSON(w, http.StatusOK, resource)
 	case http.MethodPatch:
+		if _, ok := mcpServerResourceForRequest(manager, r, serverID); !ok {
+			http.NotFound(w, r)
+			return
+		}
+		if _, reason := requireMCPPermissionIfTenant(r, identity.PermissionMCPManage); reason != "" {
+			writeCredentialDenial(w, http.StatusForbidden, reason)
+			return
+		}
 		var request mcp.UpdateServerInput
 		if err := decodeJSONBody(r, &request); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -2421,6 +2501,9 @@ func handleMCPServerStart(manager *mcp.Manager, w http.ResponseWriter, r *http.R
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	if !ensureMCPServerRouteAccess(manager, w, r, serverID, true) {
+		return
+	}
 	response, err := manager.Start(r.Context(), serverID, currentActor(r.Context()))
 	if err != nil {
 		switch {
@@ -2437,6 +2520,9 @@ func handleMCPServerStart(manager *mcp.Manager, w http.ResponseWriter, r *http.R
 func handleMCPServerRefresh(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if !ensureMCPServerRouteAccess(manager, w, r, serverID, true) {
 		return
 	}
 	response, err := manager.RefreshCatalogServer(r.Context(), serverID)
@@ -2461,6 +2547,9 @@ func handleMCPServerReinstall(manager *mcp.Manager, w http.ResponseWriter, r *ht
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	if !ensureMCPServerRouteAccess(manager, w, r, serverID, true) {
+		return
+	}
 	response, err := manager.ReinstallCatalogServer(r.Context(), serverID)
 	if err != nil {
 		switch {
@@ -2481,6 +2570,9 @@ func handleMCPServerReinstall(manager *mcp.Manager, w http.ResponseWriter, r *ht
 func handleMCPServerUninstall(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if !ensureMCPServerRouteAccess(manager, w, r, serverID, true) {
 		return
 	}
 	response, err := manager.UninstallCatalogServer(r.Context(), serverID)
@@ -2505,6 +2597,9 @@ func handleMCPServerRevalidate(manager *mcp.Manager, w http.ResponseWriter, r *h
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	if !ensureMCPServerRouteAccess(manager, w, r, serverID, true) {
+		return
+	}
 	response, err := manager.RevalidateCatalogServer(r.Context(), serverID)
 	if err != nil {
 		switch {
@@ -2527,6 +2622,9 @@ func handleMCPServerStop(manager *mcp.Manager, w http.ResponseWriter, r *http.Re
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	if !ensureMCPServerRouteAccess(manager, w, r, serverID, true) {
+		return
+	}
 	response, err := manager.Stop(r.Context(), serverID)
 	if err != nil {
 		switch {
@@ -2543,6 +2641,9 @@ func handleMCPServerStop(manager *mcp.Manager, w http.ResponseWriter, r *http.Re
 func handleMCPServerRestart(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if !ensureMCPServerRouteAccess(manager, w, r, serverID, true) {
 		return
 	}
 	response, err := manager.Restart(r.Context(), serverID, currentActor(r.Context()))
@@ -2563,6 +2664,9 @@ func handleMCPServerCancel(manager *mcp.Manager, w http.ResponseWriter, r *http.
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	if !ensureMCPServerRouteAccess(manager, w, r, serverID, true) {
+		return
+	}
 	response, err := manager.Cancel(r.Context(), serverID)
 	if err != nil {
 		switch {
@@ -2579,6 +2683,19 @@ func handleMCPServerCancel(manager *mcp.Manager, w http.ResponseWriter, r *http.
 func handleMCPServerTools(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+		items, err := manager.ListToolsForTenant(serverID, tenantContext.TenantID)
+		if err != nil {
+			if errors.Is(err, mcp.ErrServerNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, ListResponse[mcp.ToolResource]{Items: items})
 		return
 	}
 	items, err := manager.ListTools(serverID)
@@ -2604,6 +2721,9 @@ func handleMCPServerToolExposure(manager *mcp.Manager, w http.ResponseWriter, r 
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	if !ensureMCPServerRouteAccess(manager, w, r, serverID, true) {
+		return
+	}
 	var request mcp.UpdateExposureInput
 	if err := decodeJSONBody(r, &request); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -2625,6 +2745,9 @@ func handleMCPServerToolExposure(manager *mcp.Manager, w http.ResponseWriter, r 
 func handleMCPServerToolAuthorize(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID, toolName string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if !ensureMCPServerRouteAccess(manager, w, r, serverID, false) {
 		return
 	}
 	var request mcp.AuthorizeToolInput
@@ -2661,6 +2784,34 @@ func handleMCPServerToolAuthorize(manager *mcp.Manager, w http.ResponseWriter, r
 	}
 }
 
+func mcpServerResourceForRequest(manager *mcp.Manager, r *http.Request, serverID string) (mcp.ServerResource, bool) {
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+		return manager.GetServerResourceForTenant(serverID, tenantContext.TenantID)
+	}
+	return manager.GetServerResource(serverID)
+}
+
+func requireMCPPermissionIfTenant(r *http.Request, permission identity.Permission) (identity.TenantContext, string) {
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+		return requireHostedCredentialPermission(r, permission, tenantContext.TenantID)
+	}
+	return identity.TenantContext{}, ""
+}
+
+func ensureMCPServerRouteAccess(manager *mcp.Manager, w http.ResponseWriter, r *http.Request, serverID string, manage bool) bool {
+	if _, ok := mcpServerResourceForRequest(manager, r, serverID); !ok {
+		http.NotFound(w, r)
+		return false
+	}
+	if manage {
+		if _, reason := requireMCPPermissionIfTenant(r, identity.PermissionMCPManage); reason != "" {
+			writeCredentialDenial(w, http.StatusForbidden, reason)
+			return false
+		}
+	}
+	return true
+}
+
 func handleConnectors(supervisor *connectors.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if supervisor == nil {
 		writeError(w, http.StatusInternalServerError, "connector supervisor is not configured")
@@ -2669,12 +2820,29 @@ func handleConnectors(supervisor *connectors.Supervisor, eventBus *events.Bus, s
 
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, ListResponse[connectors.Connector]{Items: supervisor.List()})
+		if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+			if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+				writeCredentialDenial(w, http.StatusForbidden, reason)
+				return
+			}
+			writeJSON(w, http.StatusOK, ListResponse[connectors.Connector]{Items: projectConnectorResources(supervisor.ListForTenant(tenantContext.TenantID))})
+			return
+		}
+		writeJSON(w, http.StatusOK, ListResponse[connectors.Connector]{Items: projectConnectorResources(supervisor.List())})
 	case http.MethodPost:
+		if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+			if _, reason := requireHostedCredentialPermission(r, identity.PermissionConnectorsManage, tenantContext.TenantID); reason != "" {
+				writeCredentialDenial(w, http.StatusForbidden, reason)
+				return
+			}
+		}
 		var input connectors.RegisterInput
 		if err := decodeJSONBody(r, &input); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
+		}
+		if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+			input.TenantID = tenantContext.TenantID
 		}
 		connector, created, err := supervisor.Register(input)
 		if err != nil {
@@ -2691,10 +2859,12 @@ func handleConnectors(supervisor *connectors.Supervisor, eventBus *events.Bus, s
 			Scope:    events.Scope{ConnectorID: connector.ConnectorID},
 			Resource: events.Resource{Kind: "connector", ID: connector.ConnectorID},
 			Payload: map[string]any{
+				"tenantId":    connector.TenantID,
 				"kind":        connector.Kind,
 				"status":      connector.Status,
 				"created":     created,
 				"displayName": connector.DisplayName,
+				"secretRefs":  connector.SecretRefs,
 			},
 		}); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -2704,7 +2874,7 @@ func handleConnectors(supervisor *connectors.Supervisor, eventBus *events.Bus, s
 		if created {
 			status = http.StatusCreated
 		}
-		writeJSON(w, status, connector)
+		writeJSON(w, status, projectConnectorResource(connector))
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -2748,16 +2918,58 @@ func handleConnectorByID(supervisor *connectors.Supervisor, w http.ResponseWrite
 		return
 	}
 	connector, ok := supervisor.Get(connectorID)
+	if tenantContext, tenantOK := tenantContextFromContext(r.Context()); tenantOK && tenantContext.TenantID != "" {
+		if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+			writeCredentialDenial(w, http.StatusForbidden, reason)
+			return
+		}
+		connector, ok = supervisor.GetForTenant(connectorID, tenantContext.TenantID)
+	}
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, connector)
+	writeJSON(w, http.StatusOK, projectConnectorResource(connector))
+}
+
+func projectConnectorResources(items []connectors.Connector) []connectors.Connector {
+	out := make([]connectors.Connector, 0, len(items))
+	for _, item := range items {
+		out = append(out, projectConnectorResource(item))
+	}
+	return out
+}
+
+func projectConnectorResource(connector connectors.Connector) connectors.Connector {
+	connector.SecretSummary = secrets.RedactSecretRefs(connector.SecretRefs)
+	return connector
+}
+
+func ensureConnectorMutationAccess(supervisor *connectors.Supervisor, w http.ResponseWriter, r *http.Request, connectorID string) bool {
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok && tenantContext.TenantID != "" {
+		if _, reason := requireHostedCredentialPermission(r, identity.PermissionConnectorsManage, tenantContext.TenantID); reason != "" {
+			writeCredentialDenial(w, http.StatusForbidden, reason)
+			return false
+		}
+		if _, ok := supervisor.GetForTenant(connectorID, tenantContext.TenantID); !ok {
+			http.NotFound(w, r)
+			return false
+		}
+		return true
+	}
+	if _, ok := supervisor.Get(connectorID); !ok {
+		http.NotFound(w, r)
+		return false
+	}
+	return true
 }
 
 func handleConnectorHealth(supervisor *connectors.Supervisor, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, connectorID string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if !ensureConnectorMutationAccess(supervisor, w, r, connectorID) {
 		return
 	}
 	var input connectors.ReportHealthInput
@@ -2770,6 +2982,8 @@ func handleConnectorHealth(supervisor *connectors.Supervisor, eventBus *events.B
 		switch {
 		case errors.Is(err, connectors.ErrConnectorNotFound):
 			http.NotFound(w, r)
+		case errors.Is(err, connectors.ErrConnectorDisabled):
+			writeError(w, http.StatusConflict, err.Error())
 		default:
 			writeError(w, http.StatusBadRequest, err.Error())
 		}
@@ -2785,7 +2999,8 @@ func handleConnectorHealth(supervisor *connectors.Supervisor, eventBus *events.B
 		Scope:    events.Scope{ConnectorID: connector.ConnectorID},
 		Resource: events.Resource{Kind: "connector", ID: connector.ConnectorID},
 		Payload: map[string]any{
-			"status": connector.Status,
+			"tenantId": connector.TenantID,
+			"status":   connector.Status,
 		},
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -2799,6 +3014,9 @@ func handleConnectorFail(supervisor *connectors.Supervisor, eventBus *events.Bus
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	if !ensureConnectorMutationAccess(supervisor, w, r, connectorID) {
+		return
+	}
 	var input connectors.ReportFailureInput
 	if err := decodeJSONBody(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -2809,6 +3027,8 @@ func handleConnectorFail(supervisor *connectors.Supervisor, eventBus *events.Bus
 		switch {
 		case errors.Is(err, connectors.ErrConnectorNotFound):
 			http.NotFound(w, r)
+		case errors.Is(err, connectors.ErrConnectorDisabled):
+			writeError(w, http.StatusConflict, err.Error())
 		default:
 			writeError(w, http.StatusBadRequest, err.Error())
 		}
@@ -2824,6 +3044,7 @@ func handleConnectorFail(supervisor *connectors.Supervisor, eventBus *events.Bus
 		Scope:    events.Scope{ConnectorID: connector.ConnectorID},
 		Resource: events.Resource{Kind: "connector", ID: connector.ConnectorID},
 		Payload: map[string]any{
+			"tenantId":       connector.TenantID,
 			"status":         connector.Status,
 			"failureCount":   connector.FailureCount,
 			"backoffSeconds": connector.BackoffSeconds,
@@ -2841,10 +3062,17 @@ func handleConnectorRestart(supervisor *connectors.Supervisor, eventBus *events.
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	if !ensureConnectorMutationAccess(supervisor, w, r, connectorID) {
+		return
+	}
 	connector, err := supervisor.Restart(connectorID)
 	if err != nil {
 		if errors.Is(err, connectors.ErrConnectorNotFound) {
 			http.NotFound(w, r)
+			return
+		}
+		if errors.Is(err, connectors.ErrConnectorDisabled) {
+			writeError(w, http.StatusConflict, err.Error())
 			return
 		}
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -2860,8 +3088,10 @@ func handleConnectorRestart(supervisor *connectors.Supervisor, eventBus *events.
 		Scope:    events.Scope{ConnectorID: connector.ConnectorID},
 		Resource: events.Resource{Kind: "connector", ID: connector.ConnectorID},
 		Payload: map[string]any{
-			"status":       connector.Status,
-			"restartCount": connector.RestartCount,
+			"tenantId":       connector.TenantID,
+			"status":         connector.Status,
+			"restartCount":   connector.RestartCount,
+			"disabledReason": connector.DisabledReason,
 		},
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -2877,8 +3107,15 @@ func handleConnectorIngressMessages(supervisor *connectors.Supervisor, sessionRo
 	}
 
 	connector, ok := supervisor.Get(connectorID)
+	if tenantContext, tenantOK := tenantContextFromContext(r.Context()); tenantOK && tenantContext.TenantID != "" {
+		connector, ok = supervisor.GetForTenant(connectorID, tenantContext.TenantID)
+	}
 	if !ok {
 		http.NotFound(w, r)
+		return
+	}
+	if connector.Status == connectors.StatusDisabled {
+		writeError(w, http.StatusConflict, "connector is disabled")
 		return
 	}
 	if connector.Status == connectors.StatusFailed || connector.Status == connectors.StatusBackingOff {
@@ -3006,6 +3243,18 @@ func handleConnectorIngressMessages(supervisor *connectors.Supervisor, sessionRo
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if len(connector.SecretRefs) > 0 {
+		if err := recordCredentialAudit(r.Context(), audit.CredentialAuditInput{
+			ResourceKind: secrets.ResourceKindConnector,
+			ResourceID:   connector.ConnectorID,
+			Action:       secrets.AuditActionSecretUse,
+			ReasonCode:   "connector_ingress_accepted",
+			SecretRefs:   connector.SecretRefs,
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusAccepted, response)
@@ -3520,7 +3769,7 @@ type createToolCallRequest struct {
 	RuntimeSurface string `json:"runtimeSurface"`
 }
 
-func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
+func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, secretManager *secrets.Manager, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
 	switch r.Method {
 	case http.MethodGet:
 		toolCalls, err := manager.ListToolCalls(runID, stepID)
@@ -3603,7 +3852,7 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 			handleMCPToolCallRequest(manager, mcpManager, eventBus, sqliteStore, checkpointManager, w, r, runID, stepID, request)
 			return
 		case strings.TrimSpace(request.SkillID) != "":
-			createInput, consumer, executionReq, approvalOutcome, err = prepareExecutableSkillToolCall(r.Context(), cfg, policyEngine, sqliteStore, eventBus, skillRegistry, request, currentActor(r.Context()))
+			createInput, consumer, executionReq, approvalOutcome, err = prepareExecutableSkillToolCall(r.Context(), cfg, policyEngine, sqliteStore, eventBus, skillRegistry, secretManager, request, currentActor(r.Context()))
 		default:
 			createInput, consumer, executionReq, approvalOutcome, err = prepareCapabilityToolCall(r.Context(), cfg, policyEngine, sqliteStore, eventBus, capabilitySupervisor, request, currentActor(r.Context()))
 		}
@@ -3737,7 +3986,7 @@ func handleMCPToolCallRequest(manager *runtime.Manager, mcpManager *mcp.Manager,
 		return
 	}
 
-	server, ok := mcpManager.GetServerResource(request.MCPServerID)
+	server, ok := mcpServerResourceForRequest(mcpManager, r, request.MCPServerID)
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -3785,6 +4034,18 @@ func handleMCPToolCallRequest(manager *runtime.Manager, mcpManager *mcp.Manager,
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if len(server.SecretRefs) > 0 {
+		if err := recordCredentialAudit(r.Context(), audit.CredentialAuditInput{
+			ResourceKind: secrets.ResourceKindMCPTool,
+			ResourceID:   server.ServerID + "/" + request.ToolName,
+			Action:       secrets.AuditActionSecretUse,
+			ReasonCode:   "mcp_tool_invoked",
+			SecretRefs:   server.SecretRefs,
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	output := map[string]any{
 		"transportKind": server.TransportKind,
@@ -4007,7 +4268,7 @@ func handleRunStepToolCallFail(manager *runtime.Manager, eventBus *events.Bus, s
 	writeJSON(w, http.StatusOK, toolCall)
 }
 
-func prepareExecutableSkillToolCall(ctx context.Context, cfg config.Config, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, skillRegistry *skills.Registry, request createToolCallRequest, requestedBy string) (runtime.CreateToolCallInput, *sandbox.ConsumerContractView, sandbox.ExecutionRequest, *approvalGateResponse, error) {
+func prepareExecutableSkillToolCall(ctx context.Context, cfg config.Config, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, skillRegistry *skills.Registry, secretManager *secrets.Manager, request createToolCallRequest, requestedBy string) (runtime.CreateToolCallInput, *sandbox.ConsumerContractView, sandbox.ExecutionRequest, *approvalGateResponse, error) {
 	if skillRegistry == nil {
 		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, errors.New("skills registry is not configured")
 	}
@@ -4021,13 +4282,13 @@ func prepareExecutableSkillToolCall(ctx context.Context, cfg config.Config, poli
 	if skill.AvailabilityStatus != skills.SkillAvailabilityStatusAvailable {
 		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, errors.New(firstNonEmpty(skill.AvailabilityReason, "skill is unavailable"))
 	}
-	consumer := buildExecutableSkillConsumerView(cfg, skill, requestedBy)
+	consumer := buildExecutableSkillConsumerView(ctx, cfg, secretManager, skill, requestedBy)
 	if outcome, approved, err := authorizeToolCallConsumer(ctx, policyEngine, sqliteStore, eventBus, request.ApprovalID, "skill", skill.SkillID, "executable skill execution requires approval", consumer, requestedBy); err != nil {
 		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, err
 	} else if !approved {
 		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, &outcome, nil
 	}
-	executionReq, err := buildExecutableSkillExecutionRequest(cfg, skill, request, consumer, request.ApprovalID, requestedBy)
+	executionReq, err := buildExecutableSkillExecutionRequest(ctx, cfg, secretManager, skill, request, consumer, request.ApprovalID, requestedBy)
 	if err != nil {
 		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, err
 	}
@@ -4191,7 +4452,7 @@ func authorizeToolCallConsumer(ctx context.Context, policyEngine *policy.Engine,
 	}
 }
 
-func buildExecutableSkillConsumerView(cfg config.Config, skill skills.Skill, requestedBy string) *sandbox.ConsumerContractView {
+func buildExecutableSkillConsumerView(ctx context.Context, cfg config.Config, secretManager *secrets.Manager, skill skills.Skill, requestedBy string) *sandbox.ConsumerContractView {
 	manifest := skill.ExecutionManifest
 	backendKind := manifest.BackendKind
 	if backendKind == "" {
@@ -4205,7 +4466,7 @@ func buildExecutableSkillConsumerView(cfg config.Config, skill skills.Skill, req
 	if cfg.Environment == config.EnvironmentProd {
 		scope = sandbox.SecretEnvironmentScopeProd
 	}
-	resolvedSecrets, secretErr := skills.ResolveExecutableSkillSecrets(cfg.DataDir, manifest.SecretRefs)
+	resolvedSecrets, secretErr := resolveExecutableSkillSecrets(ctx, cfg, secretManager, manifest.SecretRefs)
 	secretScope := make([]sandbox.SecretScopeOutcome, 0, len(manifest.SecretRefs))
 	for _, secretRef := range manifest.SecretRefs {
 		resolution := sandbox.SecretResolutionUnavailable
@@ -4278,7 +4539,7 @@ func buildExecutableSkillConsumerView(cfg config.Config, skill skills.Skill, req
 	}
 }
 
-func buildExecutableSkillExecutionRequest(cfg config.Config, skill skills.Skill, request createToolCallRequest, consumer *sandbox.ConsumerContractView, approvalID, requestedBy string) (sandbox.ExecutionRequest, error) {
+func buildExecutableSkillExecutionRequest(ctx context.Context, cfg config.Config, secretManager *secrets.Manager, skill skills.Skill, request createToolCallRequest, consumer *sandbox.ConsumerContractView, approvalID, requestedBy string) (sandbox.ExecutionRequest, error) {
 	manifest := skill.ExecutionManifest
 	backendKind := manifest.BackendKind
 	if strings.TrimSpace(string(backendKind)) == "" {
@@ -4294,7 +4555,7 @@ func buildExecutableSkillExecutionRequest(cfg config.Config, skill skills.Skill,
 			}
 		}
 	}
-	env, err := skills.ResolveExecutableSkillSecrets(cfg.DataDir, manifest.SecretRefs)
+	env, err := resolveExecutableSkillSecrets(ctx, cfg, secretManager, manifest.SecretRefs)
 	if err != nil {
 		return sandbox.ExecutionRequest{}, fmt.Errorf("resolve executable skill secrets: %w", err)
 	}
@@ -4332,6 +4593,13 @@ func buildExecutableSkillExecutionRequest(cfg config.Config, skill skills.Skill,
 		},
 		Consumer: consumer,
 	}, nil
+}
+
+func resolveExecutableSkillSecrets(ctx context.Context, cfg config.Config, secretManager *secrets.Manager, secretRefs []string) (map[string]string, error) {
+	if secretManager != nil {
+		return skills.ResolveExecutableSkillSecretsForTenant(ctx, secretManager, secretRefs)
+	}
+	return skills.ResolveExecutableSkillSecrets(cfg.DataDir, secretRefs)
 }
 
 func buildCapabilityExecutionRequest(cfg config.Config, capability capabilities.Capability, request createToolCallRequest, consumer *sandbox.ConsumerContractView, requestedBy string) (sandbox.ExecutionRequest, error) {
@@ -4656,6 +4924,10 @@ func persistStep(ctx context.Context, sqliteStore *store.SQLiteStore, step runti
 func persistConnector(ctx context.Context, sqliteStore *store.SQLiteStore, connector connectors.Connector) error {
 	if sqliteStore == nil {
 		return nil
+	}
+	if tc, ok := tenantContextFromContext(ctx); ok && tc.TenantID != "" {
+		connector.TenantID = tc.TenantID
+		return tenancy.NewR37Resources(sqliteStore, nil).UpsertConnectorForTenant(ctx, connector)
 	}
 	return sqliteStore.UpsertConnector(ctx, connector)
 }
@@ -5578,14 +5850,22 @@ func persistManagedProviderState(ctx context.Context, sqliteStore *store.SQLiteS
 	if sqliteStore == nil {
 		return nil
 	}
-	if err := sqliteStore.UpsertProviderAuthState(ctx, state); err != nil {
-		return err
+	if tc, ok := tenantContextFromContext(ctx); ok && tc.TenantID != "" {
+		state.TenantID = tc.TenantID
+		if err := tenancy.NewR37Resources(sqliteStore, nil).UpsertProviderAuthStateForTenant(ctx, state); err != nil {
+			return err
+		}
+	} else {
+		if err := sqliteStore.UpsertProviderAuthState(ctx, state); err != nil {
+			return err
+		}
 	}
 	return sqliteStore.ReplaceProviderModels(ctx, state.ProviderID, models)
 }
 
 func publishProviderAuthEvent(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, state providers.AuthState, eventName string) (events.Event, error) {
 	payload := map[string]any{
+		"tenantId":     state.TenantID,
 		"providerId":   state.ProviderID,
 		"family":       state.Family,
 		"authMode":     state.AuthMode,

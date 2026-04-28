@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,6 +9,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
+	"github.com/dopejs/dope-agent/daemon/internal/secrets"
+	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 func TestRegistryLoadsDataDirAndHomeSkillsWithDataDirPrecedence(t *testing.T) {
@@ -250,6 +256,37 @@ func TestRegistryReadsExecutableSkillSecretsFromDataDir(t *testing.T) {
 	}
 	if values["EXEC_SKILL_TOKEN"] != "test-secret" {
 		t.Fatalf("expected data-dir scoped secret value, got %+v", values)
+	}
+}
+
+func TestResolveExecutableSkillSecretsForTenantUsesActiveTenant(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+	backend, err := secrets.NewLocalBackend(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalBackend returned error: %v", err)
+	}
+	manager := secrets.NewManager(sqliteStore, backend)
+	if _, err := manager.Create(context.Background(), secrets.CreateInput{TenantID: "ten_a", SecretRef: "EXEC_SKILL_TOKEN", Value: "tenant-a"}); err != nil {
+		t.Fatalf("create tenant A secret: %v", err)
+	}
+	if _, err := manager.Create(context.Background(), secrets.CreateInput{TenantID: "ten_b", SecretRef: "EXEC_SKILL_TOKEN", Value: "tenant-b"}); err != nil {
+		t.Fatalf("create tenant B secret: %v", err)
+	}
+
+	ctx := tenantctx.WithContext(context.Background(), identity.TenantContext{TenantID: "ten_b", PrincipalID: "prn_b"})
+	values, err := ResolveExecutableSkillSecretsForTenant(ctx, manager, []string{"EXEC_SKILL_TOKEN"})
+	if err != nil {
+		t.Fatalf("ResolveExecutableSkillSecretsForTenant returned error: %v", err)
+	}
+	if values["EXEC_SKILL_TOKEN"] != "tenant-b" {
+		t.Fatalf("expected active tenant secret, got %+v", values)
+	}
+	if _, err := ResolveExecutableSkillSecretsForTenant(context.Background(), manager, []string{"EXEC_SKILL_TOKEN"}); err == nil {
+		t.Fatal("expected missing tenant context to fail closed")
 	}
 }
 

@@ -739,7 +739,7 @@ func executeWorkflowSkillTool(ctx context.Context, cfg config.Config, manager *r
 		ToolName: wfStep.ToolName,
 		Input:    wfStep.Input,
 	}
-	createInput, consumer, executionReq, approvalOutcome, err := prepareExecutableSkillToolCall(ctx, cfg, policyEngine, sqliteStore, eventBus, skillRegistry, request, "workflow:"+workflow.WorkflowID)
+	createInput, consumer, executionReq, approvalOutcome, err := prepareExecutableSkillToolCall(ctx, cfg, policyEngine, sqliteStore, eventBus, skillRegistry, nil, request, "workflow:"+workflow.WorkflowID)
 	if err != nil {
 		return runtime.ToolCall{}, false, orchestration.StepStatusFailed, "", err
 	}

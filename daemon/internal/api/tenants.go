@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
+	"github.com/dopejs/dope-agent/daemon/internal/secrets"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
 
@@ -352,7 +354,51 @@ func handleTenantAuditEvents(sqliteStore *store.SQLiteStore, w http.ResponseWrit
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, ListResponse[identity.TenantAuditEvent]{Items: items})
+	writeJSON(w, http.StatusOK, ListResponse[identity.TenantAuditEvent]{Items: projectTenantAuditEvents(items)})
+}
+
+func projectTenantAuditEvents(items []identity.TenantAuditEvent) []identity.TenantAuditEvent {
+	out := make([]identity.TenantAuditEvent, 0, len(items))
+	for _, item := range items {
+		out = append(out, projectTenantAuditEvent(item))
+	}
+	return out
+}
+
+func projectTenantAuditEvent(item identity.TenantAuditEvent) identity.TenantAuditEvent {
+	if item.EventKind != audit.CredentialEventKind || len(item.Document) == 0 {
+		return item
+	}
+	document := make(map[string]any, len(item.Document))
+	for key, value := range item.Document {
+		switch key {
+		case "value", "secretValue", "rawSecret", "accessToken", "refreshToken", "apiKey":
+			document[key] = secrets.RedactedValue
+		case "secretRefs":
+			switch refs := value.(type) {
+			case []string:
+				document[key] = secrets.RedactSecretRefs(refs)
+			case []any:
+				rawRefs := make([]string, 0, len(refs))
+				for _, ref := range refs {
+					if s, ok := ref.(string); ok {
+						rawRefs = append(rawRefs, s)
+					}
+				}
+				if len(rawRefs) > 0 {
+					document[key] = secrets.RedactSecretRefs(rawRefs)
+					continue
+				}
+				document[key] = value
+			default:
+				document[key] = value
+			}
+		default:
+			document[key] = value
+		}
+	}
+	item.Document = document
+	return item
 }
 
 func handleTenantPermissions(w http.ResponseWriter, r *http.Request, tenantContext identity.TenantContext) {

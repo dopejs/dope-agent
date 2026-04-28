@@ -11,6 +11,7 @@ func PermissionsForRole(role Role, lifecycle LifecycleStatus) []Permission {
 		return []Permission{
 			PermissionTenantManage,
 			PermissionSecretsManage,
+			PermissionCredentialsInspect,
 			PermissionIntegrationsManage,
 			PermissionConnectorsManage,
 			PermissionMCPManage,
@@ -28,6 +29,21 @@ func PermissionsForRole(role Role, lifecycle LifecycleStatus) []Permission {
 	default:
 		return nil
 	}
+}
+
+func CanInspectCredentials(tenantContext TenantContext, managePermissions ...Permission) bool {
+	if tenantContext.PrincipalID == "" || tenantContext.TenantID == "" {
+		return false
+	}
+	if HasPermission(tenantContext.Permissions, PermissionCredentialsInspect) {
+		return true
+	}
+	for _, permission := range managePermissions {
+		if HasPermission(tenantContext.Permissions, permission) {
+			return true
+		}
+	}
+	return false
 }
 
 func HasPermission(perms []Permission, permission Permission) bool {

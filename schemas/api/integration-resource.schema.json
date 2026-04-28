@@ -36,6 +36,7 @@
     },
     "readinessReason": { "type": "string" },
     "requiredOperatorAction": { "type": "string" },
+    "disabledReason": { "type": "string" },
     "canonicalDefault": { "type": "boolean" },
     "accountBinding": { "$ref": "#/$defs/accountBinding" },
     "backendBinding": { "$ref": "#/$defs/backendBinding" },

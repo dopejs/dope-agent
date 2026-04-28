@@ -642,6 +642,32 @@ Those prerequisites are now in place for the current managed-provider, skill-ins
 MCP, executable-skill, and high-risk local-tool surfaces. What remains for later roadmaps
 is broader local-capability migration plus stronger backends.
 
+## Hosted Credential Isolation
+
+Sandbox and MCP secret references resolve through hosted tenant secrets when a tenant
+context is active. Resolution is scoped to the active tenant, and missing or disabled
+tenant secrets fail closed before the sandboxed process receives environment material.
+
+Operator projections expose only redacted secret scope outcomes:
+
+- consumer kind and id
+- `secretRef`
+- environment scope
+- delivery kind
+- resolution (`resolved`, `unavailable`, `denied`, or `not_applicable`)
+- redaction rule
+
+`POST /v1/sandboxes/explain` includes secret scope outcomes only for callers with
+`credentials.inspect` or the relevant credential-management permission in the active
+tenant. Viewers and tenantless callers do not receive secret refs from sandbox explain
+payloads.
+
+MCP server resources similarly expose tenant ownership, lifecycle state, unavailable
+reasons, websocket auth summaries, and redacted secret summaries. A server or tool that
+cannot resolve its active tenant secret remains configured but unavailable/disabled
+until the tenant credential is rotated or reconnected. Another tenant's matching
+secret ref or MCP server id cannot satisfy the request.
+
 ## Recommended Post-16 Order
 
 1. close execution requirement declarations and consumer convergence

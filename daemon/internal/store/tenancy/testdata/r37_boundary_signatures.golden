@@ -3,7 +3,237 @@
 // Roadmap 37 owner MUST co-review changes to this file.
 
 ## package internal/secrets
-(no .go files)
+const AuditActionCredentialDenied AuditAction = "credential.denied"
+const AuditActionSecretCreate AuditAction = "secret.create"
+const AuditActionSecretDisable AuditAction = "secret.disable"
+const AuditActionSecretRotate AuditAction = "secret.rotate"
+const AuditActionSecretUpdate AuditAction = "secret.update_metadata"
+const AuditActionSecretUse AuditAction = "secret.use"
+const RedactedValue = "[REDACTED]"
+const ResolutionStatusDenied ResolutionStatus = "denied"
+const ResolutionStatusNotApplicable ResolutionStatus = "not_applicable"
+const ResolutionStatusResolved ResolutionStatus = "resolved"
+const ResolutionStatusUnavailable ResolutionStatus = "unavailable"
+const ResourceKindConnector ResourceKind = "connector"
+const ResourceKindDisabledCredential ResourceKind = "disabled_credential_resource"
+const ResourceKindIntegration ResourceKind = "integration"
+const ResourceKindMCPServer ResourceKind = "mcp_server"
+const ResourceKindMCPTool ResourceKind = "mcp_tool"
+const ResourceKindProviderAuthState ResourceKind = "provider_auth_state"
+const ResourceKindSandboxPolicy ResourceKind = "sandbox_policy"
+const ResourceKindSecretVersion ResourceKind = "tenant_secret_version"
+const ResourceKindTenantSecret ResourceKind = "tenant_secret"
+const SecretStatusActive SecretStatus = "active"
+const SecretStatusDisabled SecretStatus = "disabled"
+const SecretStatusPendingRemediation SecretStatus = "pending_remediation"
+const SecretVersionStatusActive SecretVersionStatus = "active"
+const SecretVersionStatusDisabled SecretVersionStatus = "disabled"
+const SecretVersionStatusPendingRemediation SecretVersionStatus = "pending_remediation"
+const SecretVersionStatusSuperseded SecretVersionStatus = "superseded"
+func (*LocalBackend) Delete(_ context.Context, backendRef string) error
+func (*LocalBackend) Get(_ context.Context, backendRef string) (string, error)
+func (*LocalBackend) Put(_ context.Context, tenantID, secretID, secretVersionID, value string) (string, error)
+func (*Manager) Create(ctx context.Context, input CreateInput) (TenantSecret, error)
+func (*Manager) CreateDisabledMetadata(ctx context.Context, input CreateDisabledMetadataInput) (TenantSecret, error)
+func (*Manager) Disable(ctx context.Context, input DisableInput) (TenantSecret, error)
+func (*Manager) Get(ctx context.Context, tenantID, secretRef string) (TenantSecret, error)
+func (*Manager) List(ctx context.Context, tenantID string) ([]TenantSecret, error)
+func (*Manager) Resolve(ctx context.Context, input ResolveInput) (ResolvedSecret, error)
+func (*Manager) Rotate(ctx context.Context, input RotateInput) (TenantSecret, error)
+func (*Manager) UpdateMetadata(ctx context.Context, input UpdateMetadataInput) (TenantSecret, error)
+func BridgeLocalCredentialFiles(ctx context.Context, input LocalCredentialBridgeInput) (LocalCredentialBridgeResult, error)
+func ContainsAnyLeakSentinel(value string, sentinels []string) bool
+func JSONContainsAnyLeakSentinel(value any, sentinels []string) (bool, error)
+func NewLocalBackend(root string) (*LocalBackend, error)
+func NewManager(store Store, backend ValueBackend) *Manager
+func RedactSecretRefs(secretRefs []string) []RedactedSecretSummary
+func RedactSecretValue(value string) string
+type AuditAction string
+type AuditRecord struct {
+    TenantID        string       `json:"tenantId"`
+    PrincipalID     string       `json:"principalId,omitempty"`
+    ResourceKind    ResourceKind `json:"resourceKind"`
+    ResourceID      string       `json:"resourceId,omitempty"`
+    Action          AuditAction  `json:"action"`
+    Outcome         string       `json:"outcome"`
+    ReasonCode      string       `json:"reasonCode,omitempty"`
+    SecretRef       string       `json:"secretRef,omitempty"`
+    SecretVersionID string       `json:"secretVersionId,omitempty"`
+    SecretRefCount  int          `json:"secretRefCount,omitempty"`
+    CreatedAt       time.Time    `json:"createdAt"`
+}
+type BridgeProgressStore interface {
+    RegisterMigrationStep(ctx context.Context, name string) error
+    IsMigrationStepCompleted(ctx context.Context, name string) (bool, error)
+    BeginMigrationStep(ctx context.Context, name string) (bool, error)
+    RecordMigrationChunk(ctx context.Context, name, lastProcessedKey string) error
+    CompleteMigrationStep(ctx context.Context, name string) error
+    FailMigrationStep(ctx context.Context, name string, cause error) error
+}
+type BridgedCredentialResource struct {
+    TenantID       string       `json:"tenantId"`
+    ResourceKind   ResourceKind `json:"resourceKind"`
+    ResourceID     string       `json:"resourceId"`
+    Status         string       `json:"status,omitempty"`
+    DisabledReason string       `json:"disabledReason,omitempty"`
+    SecretRefs     []string     `json:"secretRefs,omitempty"`
+    UpdatedAt      time.Time    `json:"updatedAt"`
+}
+type CreateDisabledMetadataInput struct {
+    TenantID          string
+    SecretRef         string
+    DisplayName       string
+    DisabledReason    string
+    RemediationReason string
+    Document          map[string]any
+}
+type CreateInput struct {
+    TenantID    string
+    SecretRef   string
+    DisplayName string
+    Value       string
+    Document    map[string]any
+}
+type DisableInput struct {
+    TenantID       string
+    SecretRef      string
+    DisabledReason string
+}
+type DisabledResource struct {
+    TenantID          string       `json:"tenantId"`
+    ResourceKind      ResourceKind `json:"resourceKind"`
+    ResourceID        string       `json:"resourceId"`
+    Status            SecretStatus `json:"status"`
+    DisabledReason    string       `json:"disabledReason,omitempty"`
+    RemediationReason string       `json:"remediationReason,omitempty"`
+    SecretRefs        []string     `json:"secretRefs,omitempty"`
+    UpdatedAt         time.Time    `json:"updatedAt"`
+}
+type LegacyCredentialResourceBridgeInput struct {
+    TenantID           string
+    ActiveSecretRefs   []string
+    DisabledSecretRefs []string
+}
+type LegacyCredentialResourceBridgeResult struct {
+    Bridged  []BridgedCredentialResource `json:"bridged,omitempty"`
+    Disabled []BridgedCredentialResource `json:"disabled,omitempty"`
+}
+type LegacyCredentialResourceStore interface {
+    BridgeLegacyCredentialResources(ctx context.Context, input LegacyCredentialResourceBridgeInput) (LegacyCredentialResourceBridgeResult, error)
+}
+type LocalBackend struct {
+    root string
+}
+type LocalCredentialBridgeInput struct {
+    DataDir       string
+    TenantID      string
+    StepName      string
+    Manager       *Manager
+    ProgressStore BridgeProgressStore
+    ResourceStore LegacyCredentialResourceStore
+}
+type LocalCredentialBridgeResult struct {
+    TenantID          string                      `json:"tenantId"`
+    ScannedFiles      []string                    `json:"scannedFiles,omitempty"`
+    Created           []RedactedSecretSummary     `json:"created,omitempty"`
+    SkippedExisting   []RedactedSecretSummary     `json:"skippedExisting,omitempty"`
+    Disabled          []DisabledResource          `json:"disabled,omitempty"`
+    BridgedResources  []BridgedCredentialResource `json:"bridgedResources,omitempty"`
+    DisabledResources []BridgedCredentialResource `json:"disabledResources,omitempty"`
+    SecretRefCount    int                         `json:"secretRefCount"`
+    CompletedAt       time.Time                   `json:"completedAt"`
+    AlreadyCompleted  bool                        `json:"alreadyCompleted,omitempty"`
+}
+type Manager struct {
+    store   Store
+    backend ValueBackend
+    now     func() time.Time
+    mu      sync.Mutex
+}
+type RedactedSecretSummary struct {
+    SecretRef       string           `json:"secretRef,omitempty"`
+    SecretVersionID string           `json:"secretVersionId,omitempty"`
+    Resolution      ResolutionStatus `json:"resolution,omitempty"`
+    Status          SecretStatus     `json:"status,omitempty"`
+    DisabledReason  string           `json:"disabledReason,omitempty"`
+    RedactionRule   string           `json:"redactionRule,omitempty"`
+}
+type ResolutionStatus string
+type ResolveInput struct {
+    TenantID  string
+    SecretRef string
+}
+type ResolvedSecret struct {
+    TenantID        string           `json:"tenantId"`
+    SecretID        string           `json:"secretId"`
+    SecretRef       string           `json:"secretRef"`
+    SecretVersionID string           `json:"secretVersionId"`
+    Resolution      ResolutionStatus `json:"resolution"`
+    Value           string           `json:"-"`
+    ResolvedAt      time.Time        `json:"resolvedAt"`
+}
+type ResourceKind string
+type RotateInput struct {
+    TenantID  string
+    SecretRef string
+    Value     string
+}
+type SecretStatus string
+type SecretVersion struct {
+    SecretVersionID string              `json:"secretVersionId"`
+    SecretID        string              `json:"secretId"`
+    TenantID        string              `json:"tenantId"`
+    SecretRef       string              `json:"secretRef"`
+    VersionNumber   int                 `json:"versionNumber"`
+    Status          SecretVersionStatus `json:"status"`
+    ValueBackendRef string              `json:"valueBackendRef,omitempty"`
+    CreatedAt       time.Time           `json:"createdAt"`
+    ActivatedAt     *time.Time          `json:"activatedAt,omitempty"`
+    SupersededAt    *time.Time          `json:"supersededAt,omitempty"`
+}
+type SecretVersionStatus string
+type Store interface {
+    CreateSecret(ctx context.Context, secret TenantSecret, version SecretVersion) error
+    UpdateSecretMetadata(ctx context.Context, secret TenantSecret) error
+    RotateSecret(ctx context.Context, secret TenantSecret, previousVersionID string, version SecretVersion) error
+    DisableSecret(ctx context.Context, secret TenantSecret) error
+    GetSecretByRef(ctx context.Context, tenantID, secretRef string) (TenantSecret, bool, error)
+    GetSecretVersion(ctx context.Context, tenantID, secretVersionID string) (SecretVersion, bool, error)
+    ListSecrets(ctx context.Context, tenantID string) ([]TenantSecret, error)
+}
+type TenantSecret struct {
+    SecretID          string         `json:"secretId"`
+    TenantID          string         `json:"tenantId"`
+    SecretRef         string         `json:"secretRef"`
+    DisplayName       string         `json:"displayName,omitempty"`
+    Status            SecretStatus   `json:"status"`
+    ActiveVersionID   string         `json:"activeVersionId,omitempty"`
+    DisabledReason    string         `json:"disabledReason,omitempty"`
+    RemediationReason string         `json:"remediationReason,omitempty"`
+    CreatedAt         time.Time      `json:"createdAt"`
+    UpdatedAt         time.Time      `json:"updatedAt"`
+    RotatedAt         *time.Time     `json:"rotatedAt,omitempty"`
+    DisabledAt        *time.Time     `json:"disabledAt,omitempty"`
+    Document          map[string]any `json:"document,omitempty"`
+}
+type UpdateMetadataInput struct {
+    TenantID    string
+    SecretRef   string
+    DisplayName *string
+    Document    map[string]any
+}
+type ValueBackend interface {
+    Put(ctx context.Context, tenantID, secretID, secretVersionID, value string) (string, error)
+    Get(ctx context.Context, backendRef string) (string, error)
+    Delete(ctx context.Context, backendRef string) error
+}
+var ErrCrossTenantSecret = errors.New("cross-tenant credential access denied")
+var ErrSecretDisabled = errors.New("tenant secret is disabled")
+var ErrSecretNotFound = errors.New("tenant secret not found")
+var ErrSecretRefRequired = errors.New("secret ref is required")
+var ErrSecretValueRequired = errors.New("secret value is required")
+var ErrSecretVersionNotFound = errors.New("tenant secret version not found")
+var ErrTenantRequired = errors.New("tenant id is required")
 
 ## package internal/providers
 const AuthModeAPIKey AuthMode = "api_key"
@@ -32,26 +262,35 @@ const SourceBuiltin Source = "builtin"
 const SourceConfig Source = "config"
 const SourceManaged Source = "managed"
 func (*Manager) CompleteManagedAuth(ctx context.Context, providerID string) (AuthState, []Model, error)
+func (*Manager) CompleteManagedAuthForTenant(ctx context.Context, providerID, tenantID string) (AuthState, []Model, error)
 func (*Manager) GetAuthState(providerID string) (AuthState, bool)
+func (*Manager) GetAuthStateForTenant(providerID, tenantID string) (AuthState, bool)
 func (*Manager) GetPreference(providerID string) (Preference, bool)
 func (*Manager) GetProfile(providerID string) (Profile, bool)
+func (*Manager) GetProfileForTenant(providerID, tenantID string) (Profile, bool)
 func (*Manager) ListModels(providerID string) ([]Model, bool)
 func (*Manager) ListProfiles() []Profile
 func (*Manager) RefreshManagedAuth(ctx context.Context, providerID string) (AuthState, []Model, error)
+func (*Manager) RefreshManagedAuthForTenant(ctx context.Context, providerID, tenantID string) (AuthState, []Model, error)
 func (*Manager) Resolve(providerID, model string, timeoutMs, maxRetries int) (ResolvedDispatch, error)
 func (*Manager) ResolveDispatchInput(input llm.CreateDispatchInput) (ResolvedDispatch, llm.CreateDispatchInput, error)
+func (*Manager) ResolveForTenant(providerID, model string, timeoutMs, maxRetries int, tenantID string) (ResolvedDispatch, error)
 func (*Manager) RestoreManagedAuthStates(states []AuthState)
+func (*Manager) RestoreManagedAuthStatesForTenant(tenantID string, states []AuthState)
 func (*Manager) RestoreProviderModels(items []Model)
 func (*Manager) RestoreProviderPreferences(items []Preference)
 func (*Manager) RevokeManagedAuth(ctx context.Context, providerID string) (AuthState, []Model, error)
+func (*Manager) RevokeManagedAuthForTenant(ctx context.Context, providerID, tenantID string) (AuthState, []Model, error)
 func (*Manager) RunCheck(ctx context.Context, providerID, checkID string, input CheckInput) (Check, error)
 func (*Manager) SetDefaultModel(providerID, model string) (Preference, error)
 func (*Manager) StartManagedAuth(ctx context.Context, providerID string) (AuthState, []Model, error)
+func (*Manager) StartManagedAuthForTenant(ctx context.Context, providerID, tenantID string) (AuthState, []Model, error)
 func (*Manager) SyncManagedProviders(ctx context.Context) ([]SyncResult, error)
 func NewCheckID() string
 func NewManager(cfg config.Config, dispatcher *llm.Dispatcher, registries ...ManagedRegistry) *Manager
 type AuthMode string
 type AuthState struct {
+    TenantID            string            `json:"tenantId,omitempty"`
     ProviderID          string            `json:"providerId"`
     Family              Family            `json:"family"`
     AuthMode            AuthMode          `json:"authMode"`
@@ -192,6 +431,7 @@ type SyncResult struct {
 }
 var ErrManagedAuthUnsupported = errors.New("managed auth is not supported by provider")
 var ErrModelNotSupported = errors.New("model is not supported by provider")
+var ErrProviderAuthUnavailable = errors.New("tenant provider auth is unavailable")
 
 ## package internal/managedproviders
 const ClaudeProviderID = "claude_managed"
@@ -331,17 +571,22 @@ func (*Manager) Cancel(ctx context.Context, serverID string) (LifecycleResponse,
 func (*Manager) CreateServer(ctx context.Context, input CreateServerInput) (ServerResource, bool, error)
 func (*Manager) GetCatalogEntry(entryID string) (CatalogEntry, bool)
 func (*Manager) GetServer(serverID string) (Server, bool)
+func (*Manager) GetServerForTenant(serverID, tenantID string) (Server, bool)
 func (*Manager) GetServerResource(serverID string) (ServerResource, bool)
+func (*Manager) GetServerResourceForTenant(serverID, tenantID string) (ServerResource, bool)
 func (*Manager) InstallCatalogEntry(ctx context.Context, entryID string, input CatalogInstallInput, method InstallMethod) (CatalogInstallResult, error)
 func (*Manager) ListCatalog() []CatalogEntry
 func (*Manager) ListServers() []ServerResource
+func (*Manager) ListServersForTenant(tenantID string) []ServerResource
 func (*Manager) ListTools(serverID string) ([]ToolResource, error)
+func (*Manager) ListToolsForTenant(serverID, tenantID string) ([]ToolResource, error)
 func (*Manager) ListTransportCapabilities() []TransportCapability
 func (*Manager) RefreshCatalogServer(ctx context.Context, serverID string) (CatalogLifecycleResult, error)
 func (*Manager) ReinstallCatalogServer(ctx context.Context, serverID string) (CatalogLifecycleResult, error)
 func (*Manager) Restart(ctx context.Context, serverID, requestedBy string) (LifecycleResponse, error)
 func (*Manager) Restore(ctx context.Context) error
 func (*Manager) RevalidateCatalogServer(ctx context.Context, serverID string) (CatalogRevalidationResult, error)
+func (*Manager) SetSecretManager(secretManager *secrets.Manager)
 func (*Manager) Start(ctx context.Context, serverID, requestedBy string) (LifecycleResponse, error)
 func (*Manager) Stop(ctx context.Context, serverID string) (LifecycleResponse, error)
 func (*Manager) UninstallCatalogServer(ctx context.Context, serverID string) (CatalogLifecycleResult, error)
@@ -546,6 +791,7 @@ type Manager struct {
     eventBus  *events.Bus
     policy    *policy.Engine
     sandboxes attachedExecutionStarter
+    secrets   *secrets.Manager
     transport Transport
 
     mu        sync.RWMutex
@@ -583,6 +829,7 @@ type SecretSummary struct {
     RedactionRule    string `json:"redactionRule,omitempty"`
 }
 type Server struct {
+    TenantID                 string             `json:"tenantId,omitempty"`
     ServerID                 string             `json:"serverId"`
     DisplayName              string             `json:"displayName"`
     Source                   Source             `json:"source"`
@@ -652,6 +899,7 @@ type SessionPipes struct {
 }
 type Source string
 type Tool struct {
+    TenantID          string          `json:"tenantId,omitempty"`
     ServerID          string          `json:"serverId"`
     ToolName          string          `json:"toolName"`
     Title             string          `json:"title,omitempty"`
@@ -672,6 +920,7 @@ type ToolAuthorizationResponse struct {
 }
 type ToolAuthorizationStatus string
 type ToolExposureRule struct {
+    TenantID       string       `json:"tenantId,omitempty"`
     ServerID       string       `json:"serverId"`
     ToolName       string       `json:"toolName"`
     RuntimeSurface string       `json:"runtimeSurface"`
@@ -768,11 +1017,15 @@ var ErrUnsupportedTransport = errors.New("mcp transport kind is unsupported")
 ## package internal/connectors
 const StatusBackingOff Status = "backing_off"
 const StatusDegraded Status = "degraded"
+const StatusDisabled Status = "disabled"
 const StatusFailed Status = "failed"
 const StatusHealthy Status = "healthy"
 const StatusRegistered Status = "registered"
+func (*Supervisor) Disable(connectorID string, reason string) (Connector, error)
 func (*Supervisor) Get(connectorID string) (Connector, bool)
+func (*Supervisor) GetForTenant(connectorID, tenantID string) (Connector, bool)
 func (*Supervisor) List() []Connector
+func (*Supervisor) ListForTenant(tenantID string) []Connector
 func (*Supervisor) Register(input RegisterInput) (Connector, bool, error)
 func (*Supervisor) ReportFailure(connectorID string, input ReportFailureInput) (Connector, error)
 func (*Supervisor) ReportHealth(connectorID string, input ReportHealthInput) (Connector, error)
@@ -780,24 +1033,30 @@ func (*Supervisor) Restart(connectorID string) (Connector, error)
 func (*Supervisor) Restore(items []Connector)
 func NewSupervisor() *Supervisor
 type Connector struct {
-    ConnectorID       string     `json:"connectorId"`
-    Kind              string     `json:"kind"`
-    DisplayName       string     `json:"displayName"`
-    Status            Status     `json:"status"`
-    FailureCount      int        `json:"failureCount"`
-    RestartCount      int        `json:"restartCount"`
-    BackoffSeconds    int        `json:"backoffSeconds"`
-    NextRestartAt     *time.Time `json:"nextRestartAt,omitempty"`
-    LastRestartAt     *time.Time `json:"lastRestartAt,omitempty"`
-    LastHeartbeatAt   *time.Time `json:"lastHeartbeatAt,omitempty"`
-    LastFailureReason string     `json:"lastFailureReason,omitempty"`
-    CreatedAt         time.Time  `json:"createdAt"`
-    UpdatedAt         time.Time  `json:"updatedAt"`
+    TenantID          string                          `json:"tenantId,omitempty"`
+    ConnectorID       string                          `json:"connectorId"`
+    Kind              string                          `json:"kind"`
+    DisplayName       string                          `json:"displayName"`
+    Status            Status                          `json:"status"`
+    DisabledReason    string                          `json:"disabledReason,omitempty"`
+    SecretRefs        []string                        `json:"secretRefs,omitempty"`
+    SecretSummary     []secrets.RedactedSecretSummary `json:"secretSummary,omitempty"`
+    FailureCount      int                             `json:"failureCount"`
+    RestartCount      int                             `json:"restartCount"`
+    BackoffSeconds    int                             `json:"backoffSeconds"`
+    NextRestartAt     *time.Time                      `json:"nextRestartAt,omitempty"`
+    LastRestartAt     *time.Time                      `json:"lastRestartAt,omitempty"`
+    LastHeartbeatAt   *time.Time                      `json:"lastHeartbeatAt,omitempty"`
+    LastFailureReason string                          `json:"lastFailureReason,omitempty"`
+    CreatedAt         time.Time                       `json:"createdAt"`
+    UpdatedAt         time.Time                       `json:"updatedAt"`
 }
 type RegisterInput struct {
-    ConnectorID string `json:"connectorId"`
-    Kind        string `json:"kind"`
-    DisplayName string `json:"displayName"`
+    TenantID    string   `json:"tenantId,omitempty"`
+    ConnectorID string   `json:"connectorId"`
+    Kind        string   `json:"kind"`
+    DisplayName string   `json:"displayName"`
+    SecretRefs  []string `json:"secretRefs,omitempty"`
 }
 type ReportFailureInput struct {
     Reason string `json:"reason"`
@@ -811,6 +1070,7 @@ type Supervisor struct {
     byID  map[string]Connector
     order []string
 }
+var ErrConnectorDisabled = errors.New("connector is disabled")
 var ErrConnectorFailureRequired = errors.New("connector failure reason is required")
 var ErrConnectorIDRequired = errors.New("connector id is required")
 var ErrConnectorKindRequired = errors.New("connector kind is required")

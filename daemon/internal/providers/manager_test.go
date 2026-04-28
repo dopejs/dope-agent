@@ -198,6 +198,52 @@ func TestManagerManagedProfilesAndDefaultModelPreference(t *testing.T) {
 	}
 }
 
+func TestR37ResolveForTenantDoesNotFallbackToGlobalProviderAuth(t *testing.T) {
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&providerTestLLM{name: "codex_managed"})
+	models := []Model{
+		{ProviderID: "codex_managed", ModelID: "gpt-5.4", DisplayName: "gpt-5.4", Default: true, Available: true, Source: "cache", Chat: true, Stream: true},
+	}
+	registry := managedRegistryStub{bridges: []ManagedBridge{
+		managedBridgeStub{
+			providerID:  "codex_managed",
+			displayName: "Codex CLI",
+			family:      FamilyCodexCLI,
+			authMode:    AuthModeLocalCLIBridge,
+			models:      models,
+		},
+	}}
+	manager := NewManager(config.Config{}, dispatcher, registry)
+	now := time.Now().UTC()
+	manager.RestoreProviderModels(models)
+	manager.RestoreManagedAuthStates([]AuthState{{
+		ProviderID: "codex_managed", Family: FamilyCodexCLI, AuthMode: AuthModeLocalCLIBridge,
+		Status: AuthStatusAuthenticated, CLIAvailable: true, LastCheckedAt: now,
+	}})
+	manager.RestoreManagedAuthStatesForTenant("ten_r37_a", []AuthState{{
+		ProviderID: "codex_managed", Family: FamilyCodexCLI, AuthMode: AuthModeLocalCLIBridge,
+		Status: AuthStatusRevoked, CLIAvailable: true, LastCheckedAt: now,
+	}})
+	manager.RestoreManagedAuthStatesForTenant("ten_r37_b", []AuthState{{
+		ProviderID: "codex_managed", Family: FamilyCodexCLI, AuthMode: AuthModeLocalCLIBridge,
+		Status: AuthStatusAuthenticated, CLIAvailable: true, LastCheckedAt: now,
+	}})
+
+	if _, err := manager.ResolveForTenant("codex_managed", "", 0, 0, "ten_r37_a"); !errors.Is(err, ErrProviderAuthUnavailable) {
+		t.Fatalf("tenant A revoked provider auth err=%v, want ErrProviderAuthUnavailable", err)
+	}
+	if _, err := manager.ResolveForTenant("codex_managed", "", 0, 0, "ten_r37_missing"); !errors.Is(err, ErrProviderAuthUnavailable) {
+		t.Fatalf("missing tenant provider auth err=%v, want ErrProviderAuthUnavailable", err)
+	}
+	resolved, err := manager.ResolveForTenant("codex_managed", "", 0, 0, "ten_r37_b")
+	if err != nil {
+		t.Fatalf("tenant B ResolveForTenant returned error: %v", err)
+	}
+	if resolved.Model != "gpt-5.4" || !resolved.Profile.Ready {
+		t.Fatalf("tenant B resolved unexpected dispatch: %+v", resolved)
+	}
+}
+
 func TestManagerManagedAuthLifecycle(t *testing.T) {
 	dispatcher := llm.NewDispatcher()
 	dispatcher.RegisterProvider(&providerTestLLM{name: "codex_managed"})
@@ -308,11 +354,15 @@ type managedBridgeStub struct {
 	models        []Model
 }
 
-func (b managedBridgeStub) ProviderID() string      { return b.providerID }
-func (b managedBridgeStub) DisplayName() string     { return b.displayName }
-func (b managedBridgeStub) Family() Family          { return b.family }
-func (b managedBridgeStub) AuthMode() AuthMode      { return b.authMode }
-func (b managedBridgeStub) Provider() llm.Provider  { return &providerTestLLM{name: b.providerID, complete: func(context.Context, llm.ProviderRequest) (llm.ProviderResponse, error) { return llm.ProviderResponse{Output: "ok"}, nil }} }
+func (b managedBridgeStub) ProviderID() string  { return b.providerID }
+func (b managedBridgeStub) DisplayName() string { return b.displayName }
+func (b managedBridgeStub) Family() Family      { return b.family }
+func (b managedBridgeStub) AuthMode() AuthMode  { return b.authMode }
+func (b managedBridgeStub) Provider() llm.Provider {
+	return &providerTestLLM{name: b.providerID, complete: func(context.Context, llm.ProviderRequest) (llm.ProviderResponse, error) {
+		return llm.ProviderResponse{Output: "ok"}, nil
+	}}
+}
 func (b managedBridgeStub) Detect(context.Context) (AuthState, []Model, error) {
 	return b.state, cloneModels(b.models), nil
 }

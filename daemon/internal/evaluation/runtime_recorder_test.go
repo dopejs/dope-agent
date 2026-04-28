@@ -2,6 +2,8 @@ package evaluation
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
@@ -12,6 +14,57 @@ type memoryRuntimeStore struct {
 	runs      map[string]runtime.Run
 	steps     map[string]runtime.Step
 	workflows map[string]orchestration.Workflow
+}
+
+func TestRuntimeReplayRecorderPreservesRedactedCredentialEvidence(t *testing.T) {
+	ctx := context.Background()
+	runtimeManager := runtime.NewManager()
+	runtimeStore := newMemoryRuntimeStore()
+	recorder := NewRuntimeReplayRecorder(runtimeManager, runtimeStore)
+	_, err := recorder.RecordReplay(ctx, ReplayRecordInput{
+		Candidate: ReplayCandidate{
+			CandidateID: "candidate_redacted_runtime",
+			SourceKind:  SourceKindRun,
+			SourceID:    "run_redacted_source",
+			SourceRefs:  []SourceRef{{Kind: SourceKindRun, ID: "run_redacted_source"}},
+		},
+		Attempt: ReplayAttempt{
+			AttemptID:       "attempt_redacted_runtime",
+			Mode:            ReplayModeNonLive,
+			RuntimeSummary:  "credential-backed runtime completed with token=R37_FAKE_SECRET_TENANT_A_DO_NOT_LEAK",
+			PolicySummary:   "policy blocked secret-token",
+			EvidenceSummary: "captured output was already redacted",
+			BlockedReasons:  []string{"never persist R37_FAKE_TOKEN_TENANT_B_DO_NOT_LEAK"},
+			EvidenceRefs:    []SourceRef{{Kind: SourceKindRun, ID: "run_redacted_source"}},
+		},
+		Evidence: CapturedEvidence{
+			RuntimeSummary:     "credential-backed runtime completed with token=R37_FAKE_SECRET_TENANT_A_DO_NOT_LEAK",
+			PolicySummary:      "policy blocked secret-token",
+			IntegrationSummary: "integration used R37_FAKE_TOKEN_TENANT_B_DO_NOT_LEAK",
+			EvidenceSummary:    "captured output was already redacted",
+			Limitations:        []string{"do not persist R37_FAKE_SECRET_TENANT_B_DO_NOT_LEAK"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RecordReplay returned error: %v", err)
+	}
+	data, err := json.Marshal(map[string]any{
+		"runs":      runtimeStore.runs,
+		"steps":     runtimeStore.steps,
+		"workflows": runtimeStore.workflows,
+	})
+	if err != nil {
+		t.Fatalf("marshal runtime store: %v", err)
+	}
+	if strings.Contains(string(data), "secret-token") || strings.Contains(string(data), "R37_FAKE_SECRET") {
+		t.Fatalf("runtime replay artifacts leaked credential material: %s", string(data))
+	}
+	if strings.Contains(string(data), "R37_FAKE_TOKEN") {
+		t.Fatalf("runtime replay artifacts leaked token material: %s", string(data))
+	}
+	if !strings.Contains(string(data), "[REDACTED]") {
+		t.Fatalf("expected redacted credential marker to be preserved: %s", string(data))
+	}
 }
 
 func newMemoryRuntimeStore() *memoryRuntimeStore {

@@ -31,13 +31,21 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 	_ "modernc.org/sqlite"
 )
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 33
+	CurrentSchemaVersion = 35
 )
+
+func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
+	if tenantContext, ok := tenantctx.FromContext(ctx); ok && strings.TrimSpace(tenantContext.TenantID) != "" {
+		return strings.TrimSpace(tenantContext.TenantID)
+	}
+	return s.ResolveDefaultTenantBinding(ctx)
+}
 
 type schemaMigration struct {
 	Version    int
@@ -1864,6 +1872,68 @@ var schemaMigrations = []schemaMigration{
 			`CREATE UNIQUE INDEX IF NOT EXISTS uq_token_grants_tenant_token ON token_tenant_grants(tenant_id, token_id);`,
 		},
 	},
+	{
+		// Roadmap 37: hosted credential metadata and explicit tenant
+		// ownership for the R37 boundary resources. Backup-restore remains
+		// the rollback path for these additive storage changes.
+		Version: 34,
+		Name:    "hosted_credentials_and_r37_boundary_tenancy",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS tenant_secrets (
+				secret_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				secret_ref TEXT NOT NULL,
+				display_name TEXT,
+				status TEXT NOT NULL,
+				active_version_id TEXT,
+				disabled_reason TEXT,
+				remediation_reason TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				rotated_at TEXT,
+				disabled_at TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS tenant_secret_versions (
+				secret_version_id TEXT PRIMARY KEY,
+				secret_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				secret_ref TEXT NOT NULL,
+				version_number INTEGER NOT NULL,
+				status TEXT NOT NULL,
+				value_backend_ref TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				activated_at TEXT,
+				superseded_at TEXT,
+				FOREIGN KEY(secret_id) REFERENCES tenant_secrets(secret_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_secrets_ref ON tenant_secrets(tenant_id, secret_ref);`,
+			`CREATE INDEX IF NOT EXISTS idx_tenant_secrets_tenant_status ON tenant_secrets(tenant_id, status, updated_at DESC, secret_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_tenant_secret_versions_secret ON tenant_secret_versions(tenant_id, secret_id, version_number DESC);`,
+			`ALTER TABLE provider_auth_states ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE connectors ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE mcp_servers ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE mcp_server_states ADD COLUMN tenant_id TEXT;`,
+			`ALTER TABLE mcp_tools ADD COLUMN tenant_id TEXT;`,
+			`CREATE INDEX IF NOT EXISTS idx_provider_auth_states_tenant_provider ON provider_auth_states(tenant_id, provider_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_connectors_tenant_kind_status ON connectors(tenant_id, kind, status);`,
+			`CREATE INDEX IF NOT EXISTS idx_mcp_servers_tenant_enabled ON mcp_servers(tenant_id, enabled, updated_at DESC, server_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mcp_server_states_tenant_status ON mcp_server_states(tenant_id, status, updated_at DESC, server_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_mcp_tools_tenant_server_status ON mcp_tools(tenant_id, server_id, discovery_status, tool_name);`,
+		},
+	},
+	{
+		Version: 35,
+		Name:    "r37_connector_disabled_metadata",
+		Statements: []string{
+			`ALTER TABLE connectors ADD COLUMN disabled_reason TEXT;`,
+			`ALTER TABLE connectors ADD COLUMN secret_refs_json TEXT NOT NULL DEFAULT '[]';`,
+		},
+	},
 }
 
 type SQLiteStore struct {
@@ -3028,13 +3098,20 @@ func (s *SQLiteStore) UpsertConnector(ctx context.Context, connector connectors.
 	if connector.LastHeartbeatAt != nil {
 		lastHeartbeatAt = sql.NullString{String: connector.LastHeartbeatAt.UTC().Format(time.RFC3339Nano), Valid: true}
 	}
+	secretRefsJSON, err := json.Marshal(connector.SecretRefs)
+	if err != nil {
+		return fmt.Errorf("marshal connector secret refs %s: %w", connector.ConnectorID, err)
+	}
 
-	_, err := s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO connectors (
 			connector_id,
+			tenant_id,
 			kind,
 			display_name,
 			status,
+			disabled_reason,
+			secret_refs_json,
 			failure_count,
 			restart_count,
 			backoff_seconds,
@@ -3044,11 +3121,14 @@ func (s *SQLiteStore) UpsertConnector(ctx context.Context, connector connectors.
 			last_failure_reason,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(connector_id) DO UPDATE SET
+			tenant_id = COALESCE(connectors.tenant_id, excluded.tenant_id),
 			kind = excluded.kind,
 			display_name = excluded.display_name,
 			status = excluded.status,
+			disabled_reason = excluded.disabled_reason,
+			secret_refs_json = excluded.secret_refs_json,
 			failure_count = excluded.failure_count,
 			restart_count = excluded.restart_count,
 			backoff_seconds = excluded.backoff_seconds,
@@ -3060,9 +3140,12 @@ func (s *SQLiteStore) UpsertConnector(ctx context.Context, connector connectors.
 			updated_at = excluded.updated_at
 	`,
 		connector.ConnectorID,
+		coalesceString(connector.TenantID, tenantBindingString(s.ResolveActiveTenantBinding(ctx))),
 		connector.Kind,
 		connector.DisplayName,
 		string(connector.Status),
+		nullString(connector.DisabledReason),
+		string(secretRefsJSON),
 		connector.FailureCount,
 		connector.RestartCount,
 		connector.BackoffSeconds,
@@ -3086,7 +3169,7 @@ func (s *SQLiteStore) ListConnectors(ctx context.Context) ([]connectors.Connecto
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT connector_id, kind, display_name, status, failure_count, restart_count, backoff_seconds, next_restart_at, last_restart_at, last_heartbeat_at, last_failure_reason, created_at, updated_at
+		SELECT connector_id, tenant_id, kind, display_name, status, disabled_reason, secret_refs_json, failure_count, restart_count, backoff_seconds, next_restart_at, last_restart_at, last_heartbeat_at, last_failure_reason, created_at, updated_at
 		FROM connectors
 		ORDER BY created_at ASC, connector_id ASC
 	`)
@@ -3618,6 +3701,7 @@ func (s *SQLiteStore) UpsertProviderAuthState(ctx context.Context, state provide
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO provider_auth_states (
 			provider_id,
+			tenant_id,
 			family,
 			auth_mode,
 			status,
@@ -3634,8 +3718,9 @@ func (s *SQLiteStore) UpsertProviderAuthState(ctx context.Context, state provide
 			last_error,
 			metadata_json,
 			sandbox_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(provider_id) DO UPDATE SET
+			tenant_id = excluded.tenant_id,
 			family = excluded.family,
 			auth_mode = excluded.auth_mode,
 			status = excluded.status,
@@ -3654,6 +3739,7 @@ func (s *SQLiteStore) UpsertProviderAuthState(ctx context.Context, state provide
 			sandbox_json = excluded.sandbox_json
 	`,
 		state.ProviderID,
+		nullString(state.TenantID),
 		string(state.Family),
 		string(state.AuthMode),
 		string(state.Status),
@@ -3683,7 +3769,7 @@ func (s *SQLiteStore) ListProviderAuthStates(ctx context.Context) ([]providers.A
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT provider_id, family, auth_mode, status, cli_path, cli_available, account_label, account_id, plan, auth_method, login_command_json, logout_command_json, last_checked_at, last_authenticated_at, last_error, metadata_json, sandbox_json
+		SELECT provider_id, tenant_id, family, auth_mode, status, cli_path, cli_available, account_label, account_id, plan, auth_method, login_command_json, logout_command_json, last_checked_at, last_authenticated_at, last_error, metadata_json, sandbox_json
 		FROM provider_auth_states
 		ORDER BY provider_id ASC
 	`)
@@ -4034,7 +4120,7 @@ func (s *SQLiteStore) UpsertIntegration(ctx context.Context, item integrations.R
 		boolToInt(item.CanonicalDefault),
 		item.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		documentJSON,
-		s.ResolveDefaultTenantBinding(ctx),
+		coalesceString(item.TenantID, tenantBindingString(s.ResolveActiveTenantBinding(ctx)), tenantBindingString(s.ResolveDefaultTenantBinding(ctx))),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert integration %s: %w", item.IntegrationID, err)
@@ -7152,17 +7238,20 @@ func (s *SQLiteStore) UpsertMCPServer(ctx context.Context, record MCPServerRecor
 			server_id,
 			enabled,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(server_id) DO UPDATE SET
 			enabled = excluded.enabled,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(mcp_servers.tenant_id, excluded.tenant_id)
 	`,
 		record.ServerID,
 		boolToInt(record.Enabled),
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveActiveTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert mcp server %s: %w", record.ServerID, err)
@@ -7214,17 +7303,20 @@ func (s *SQLiteStore) UpsertMCPServerState(ctx context.Context, record MCPServer
 			server_id,
 			status,
 			updated_at,
-			document_json
-		) VALUES (?, ?, ?, ?)
+			document_json,
+			tenant_id
+		) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(server_id) DO UPDATE SET
 			status = excluded.status,
 			updated_at = excluded.updated_at,
-			document_json = excluded.document_json
+			document_json = excluded.document_json,
+			tenant_id = COALESCE(mcp_server_states.tenant_id, excluded.tenant_id)
 	`,
 		record.ServerID,
 		record.Status,
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
+		s.ResolveActiveTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert mcp server state %s: %w", record.ServerID, err)
@@ -7302,7 +7394,8 @@ func (s *SQLiteStore) ReplaceMCPTools(ctx context.Context, serverID string, reco
 			_ = tx.Rollback()
 		}
 	}()
-	if _, err = tx.ExecContext(ctx, `DELETE FROM mcp_tools WHERE server_id = ?`, serverID); err != nil {
+	tenantID := s.ResolveActiveTenantBinding(ctx)
+	if _, err = tx.ExecContext(ctx, `DELETE FROM mcp_tools WHERE server_id = ? AND (? IS NULL OR ? = '' OR tenant_id = ? OR tenant_id IS NULL)`, serverID, tenantID, tenantID, tenantID); err != nil {
 		return fmt.Errorf("clear mcp tools for %s: %w", serverID, err)
 	}
 	for _, record := range records {
@@ -7313,8 +7406,9 @@ func (s *SQLiteStore) ReplaceMCPTools(ctx context.Context, serverID string, reco
 				discovery_status,
 				updated_at,
 				last_discovered_at,
-				document_json
-			) VALUES (?, ?, ?, ?, ?, ?)
+				document_json,
+				tenant_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?)
 		`,
 			record.ServerID,
 			record.ToolName,
@@ -7322,6 +7416,7 @@ func (s *SQLiteStore) ReplaceMCPTools(ctx context.Context, serverID string, reco
 			record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 			nullableTimeString(record.LastDiscoveredAt),
 			string(record.Document),
+			tenantID,
 		); err != nil {
 			return fmt.Errorf("insert mcp tool %s/%s: %w", record.ServerID, record.ToolName, err)
 		}
@@ -7387,7 +7482,7 @@ func (s *SQLiteStore) UpsertMCPToolExposureRule(ctx context.Context, record MCPT
 		boolToInt(record.Active),
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
-		s.ResolveDefaultTenantBinding(ctx),
+		s.ResolveActiveTenantBinding(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert mcp tool exposure rule %s/%s/%s: %w", record.ServerID, record.ToolName, record.RuntimeSurface, err)
@@ -8930,7 +9025,10 @@ func scanConnector(scanner interface {
 }) (connectors.Connector, error) {
 	var (
 		item            connectors.Connector
+		tenantID        sql.NullString
 		status          string
+		disabledReason  sql.NullString
+		secretRefsRaw   string
 		nextRestartAt   sql.NullString
 		lastRestartAt   sql.NullString
 		lastHeartbeatAt sql.NullString
@@ -8941,9 +9039,12 @@ func scanConnector(scanner interface {
 
 	if err := scanner.Scan(
 		&item.ConnectorID,
+		&tenantID,
 		&item.Kind,
 		&item.DisplayName,
 		&status,
+		&disabledReason,
+		&secretRefsRaw,
 		&item.FailureCount,
 		&item.RestartCount,
 		&item.BackoffSeconds,
@@ -8957,8 +9058,15 @@ func scanConnector(scanner interface {
 		return connectors.Connector{}, fmt.Errorf("scan connector: %w", err)
 	}
 
+	item.TenantID = tenantID.String
 	item.Status = connectors.Status(status)
+	item.DisabledReason = disabledReason.String
 	item.LastFailureReason = lastFailure.String
+	if secretRefsRaw != "" {
+		if err := json.Unmarshal([]byte(secretRefsRaw), &item.SecretRefs); err != nil {
+			return connectors.Connector{}, fmt.Errorf("parse connector secret refs: %w", err)
+		}
+	}
 
 	if err := assignOptionalTime(&item.NextRestartAt, nextRestartAt); err != nil {
 		return connectors.Connector{}, fmt.Errorf("parse connector next_restart_at: %w", err)
@@ -9244,10 +9352,12 @@ func scanProviderAuthState(scanner interface {
 		lastError           sql.NullString
 		metadataRaw         string
 		sandboxRaw          sql.NullString
+		tenantID            sql.NullString
 	)
 
 	if err := scanner.Scan(
 		&item.ProviderID,
+		&tenantID,
 		&family,
 		&authMode,
 		&status,
@@ -9268,6 +9378,7 @@ func scanProviderAuthState(scanner interface {
 		return providers.AuthState{}, fmt.Errorf("scan provider auth state: %w", err)
 	}
 
+	item.TenantID = tenantID.String
 	item.Family = providers.Family(family)
 	item.AuthMode = providers.AuthMode(authMode)
 	item.Status = providers.AuthStatus(status)
@@ -10565,6 +10676,16 @@ func coalesceString(values ...string) string {
 		if strings.TrimSpace(value) != "" {
 			return value
 		}
+	}
+	return ""
+}
+
+func tenantBindingString(value any) string {
+	if value == nil {
+		return ""
+	}
+	if tenantID, ok := value.(string); ok {
+		return tenantID
 	}
 	return ""
 }

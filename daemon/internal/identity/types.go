@@ -49,6 +49,7 @@ type Permission string
 const (
 	PermissionTenantManage          Permission = "tenant.manage"
 	PermissionSecretsManage         Permission = "secrets.manage"
+	PermissionCredentialsInspect    Permission = "credentials.inspect"
 	PermissionIntegrationsManage    Permission = "integrations.manage"
 	PermissionConnectorsManage      Permission = "connectors.manage"
 	PermissionMCPManage             Permission = "mcp.manage"
@@ -63,6 +64,7 @@ const (
 var AllSensitivePermissions = []Permission{
 	PermissionTenantManage,
 	PermissionSecretsManage,
+	PermissionCredentialsInspect,
 	PermissionIntegrationsManage,
 	PermissionConnectorsManage,
 	PermissionMCPManage,

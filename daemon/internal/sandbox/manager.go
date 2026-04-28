@@ -24,10 +24,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/secrets"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 var (
@@ -52,6 +56,7 @@ type Manager struct {
 	store    *store.SQLiteStore
 	eventBus *events.Bus
 	policy   *policy.Engine
+	secrets  *secrets.Manager
 
 	mu           sync.RWMutex
 	profiles     map[string]Profile
@@ -77,6 +82,13 @@ func NewManager(cfg config.Config, sqliteStore *store.SQLiteStore, eventBus *eve
 	}
 	manager.reloadBuiltins()
 	return manager
+}
+
+func (m *Manager) SetSecretManager(secretManager *secrets.Manager) {
+	if m == nil {
+		return
+	}
+	m.secrets = secretManager
 }
 
 func (m *Manager) Reload() []Profile {
@@ -623,7 +635,11 @@ func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createA
 		return Execution{}, Decision{}, nil, "", nil, fmt.Errorf("resolve sandbox write roots: %w", err)
 	}
 	timeoutMs := effectiveTimeout(profile, request.TimeoutMs)
-	env := buildEnvironment(profile, request.Env)
+	requestEnv := cloneStringMap(request.Env)
+	if requestEnv == nil {
+		requestEnv = map[string]string{}
+	}
+	env := buildEnvironment(profile, requestEnv)
 
 	execution := Execution{
 		ExecutionID:   executionID,
@@ -663,6 +679,19 @@ func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createA
 	if execution.Consumer != nil && execution.Consumer.PolicyRecord != nil {
 		execution.Consumer.PolicyRecord.SandboxExecutionID = execution.ExecutionID
 	}
+	if deniedRule, deniedReason := m.resolveTenantSecretScope(ctx, execution.Consumer, requestEnv); deniedReason != "" {
+		decision := evaluateAccessDecision(profile, execution.Cwd, execution.Access)
+		decision.ExecutionID = executionID
+		decision.Consumer = cloneConsumerContractView(execution.Consumer)
+		markDecisionDenied(&decision, deniedRule, deniedReason, "secret_resolution_denied")
+		execution.Decision = decision
+		execution.Result.Consumer = cloneConsumerContractView(execution.Consumer)
+		if execution.Consumer != nil && execution.Consumer.PolicyRecord != nil {
+			execution.Consumer.PolicyRecord.SecretResolution = secretResolutionFromConsumer(execution.Consumer)
+		}
+		return execution, decision, nil, "", nil, nil
+	}
+	env = buildEnvironment(profile, requestEnv)
 	decision, approvalID, createdDecision, err := m.evaluate(ctx, profile, execution, createApproval)
 	if err != nil {
 		return Execution{}, Decision{}, nil, "", nil, err
@@ -679,7 +708,7 @@ func (m *Manager) prepare(ctx context.Context, request ExecutionRequest, createA
 		Args:           cloneStrings(execution.Args),
 		Cwd:            execution.Cwd,
 		Env:            env,
-		SecretValues:   collectSecretRedactionValues(request.Env, execution.Consumer),
+		SecretValues:   collectSecretRedactionValues(requestEnv, execution.Consumer),
 		Stdin:          request.Stdin,
 		Timeout:        time.Duration(timeoutMs) * time.Millisecond,
 		KillGrace:      time.Duration(profile.ProcessPolicy.KillGraceMs) * time.Millisecond,
@@ -926,6 +955,95 @@ func markDecisionUnsupported(decision *Decision, rule, explanation, mismatchReas
 	decision.MatchedRules = append(decision.MatchedRules, rule)
 	decision.Explanation = explanation
 	decision.MismatchReason = mismatchReason
+}
+
+func markDecisionDenied(decision *Decision, rule, explanation, mismatchReason string) {
+	if decision == nil {
+		return
+	}
+	decision.Resolution = DecisionResolutionDeny
+	decision.SelectionOutcome = BackendSelectionOutcomeDenied
+	decision.ApprovalRequired = false
+	decision.ApprovalStatus = DecisionApprovalStatusNotApplicable
+	decision.MatchedRules = append(decision.MatchedRules, rule)
+	decision.Explanation = explanation
+	decision.MismatchReason = mismatchReason
+}
+
+func consumerID(view *ConsumerContractView) string {
+	if view == nil {
+		return ""
+	}
+	if view.PolicyRecord != nil && strings.TrimSpace(view.PolicyRecord.ConsumerID) != "" {
+		return strings.TrimSpace(view.PolicyRecord.ConsumerID)
+	}
+	if view.Declaration != nil {
+		return strings.TrimSpace(view.Declaration.ConsumerID)
+	}
+	return ""
+}
+
+func (m *Manager) resolveTenantSecretScope(ctx context.Context, consumer *ConsumerContractView, env map[string]string) (string, string) {
+	if m == nil || m.secrets == nil || consumer == nil || len(consumer.SecretScope) == 0 {
+		return "", ""
+	}
+	tenantContext, ok := tenantctx.FromContext(ctx)
+	if !ok || strings.TrimSpace(tenantContext.TenantID) == "" {
+		for i := range consumer.SecretScope {
+			if strings.TrimSpace(consumer.SecretScope[i].SecretRef) != "" {
+				consumer.SecretScope[i].Resolution = SecretResolutionDenied
+			}
+		}
+		return "secret_scope:missing_tenant", "tenant context is required to resolve sandbox secrets"
+	}
+	for i := range consumer.SecretScope {
+		secretRef := strings.TrimSpace(consumer.SecretScope[i].SecretRef)
+		if secretRef == "" {
+			continue
+		}
+		secret, err := m.secrets.Resolve(ctx, secrets.ResolveInput{
+			TenantID:  strings.TrimSpace(tenantContext.TenantID),
+			SecretRef: secretRef,
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, secrets.ErrSecretDisabled):
+				consumer.SecretScope[i].Resolution = SecretResolutionDenied
+				return "secret_scope:disabled", "required sandbox secret is disabled"
+			case errors.Is(err, secrets.ErrSecretNotFound), errors.Is(err, secrets.ErrSecretVersionNotFound):
+				consumer.SecretScope[i].Resolution = SecretResolutionUnavailable
+				return "secret_scope:unavailable", "required sandbox secret is unavailable"
+			default:
+				consumer.SecretScope[i].Resolution = SecretResolutionUnavailable
+				return "secret_scope:unavailable", "required sandbox secret could not be resolved"
+			}
+		}
+		if strings.TrimSpace(secret.Value) == "" {
+			consumer.SecretScope[i].Resolution = SecretResolutionUnavailable
+			return "secret_scope:unavailable", "required sandbox secret is unavailable"
+		}
+		env[secretRef] = secret.Value
+		consumer.SecretScope[i].Resolution = SecretResolutionResolved
+	}
+	if m.store != nil {
+		secretRefs := make([]string, 0, len(consumer.SecretScope))
+		for _, item := range consumer.SecretScope {
+			if strings.TrimSpace(item.SecretRef) != "" {
+				secretRefs = append(secretRefs, strings.TrimSpace(item.SecretRef))
+			}
+		}
+		_, _ = m.store.AppendTenantAuditEvent(ctx, audit.BuildCredentialAuditEvent(audit.CredentialAuditInput{
+			TenantID:     strings.TrimSpace(tenantContext.TenantID),
+			PrincipalID:  strings.TrimSpace(tenantContext.PrincipalID),
+			ResourceKind: secrets.ResourceKindSandboxPolicy,
+			ResourceID:   firstNonEmpty(consumerID(consumer), "sandbox"),
+			Action:       secrets.AuditActionSecretUse,
+			Outcome:      identity.AuditOutcomeSucceeded,
+			ReasonCode:   "sandbox_secret_scope_prepared",
+			SecretRefs:   secretRefs,
+		}))
+	}
+	return "", ""
 }
 
 func (m *Manager) runExecution(ctx context.Context, cancel context.CancelFunc, execution Execution, launch *launchSpec) {

@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	ErrModelNotSupported      = errors.New("model is not supported by provider")
-	ErrManagedAuthUnsupported = errors.New("managed auth is not supported by provider")
+	ErrModelNotSupported       = errors.New("model is not supported by provider")
+	ErrManagedAuthUnsupported  = errors.New("managed auth is not supported by provider")
+	ErrProviderAuthUnavailable = errors.New("tenant provider auth is unavailable")
 )
 
 type Family string
@@ -206,12 +207,44 @@ func (m *Manager) GetProfile(providerID string) (Profile, bool) {
 	return cloneProfile(profile), true
 }
 
+func (m *Manager) GetProfileForTenant(providerID, tenantID string) (Profile, bool) {
+	trimmed := strings.TrimSpace(providerID)
+	if trimmed == "" {
+		return Profile{}, false
+	}
+	if m.registry != nil {
+		if bridge, ok := m.registry.Get(trimmed); ok {
+			return cloneProfile(m.buildManagedProfileForTenant(bridge, tenantID)), true
+		}
+	}
+	return m.GetProfile(trimmed)
+}
+
 func (m *Manager) GetAuthState(providerID string) (AuthState, bool) {
 	state, ok := m.authStates[strings.TrimSpace(providerID)]
 	if !ok {
 		return AuthState{}, false
 	}
 	return cloneAuthState(state), true
+}
+
+func (m *Manager) GetAuthStateForTenant(providerID, tenantID string) (AuthState, bool) {
+	state, ok := m.authStates[tenantAuthKey(tenantID, providerID)]
+	if !ok {
+		return AuthState{}, false
+	}
+	return cloneAuthState(state), true
+}
+
+func (m *Manager) RestoreManagedAuthStatesForTenant(tenantID string, states []AuthState) {
+	for _, state := range states {
+		if strings.TrimSpace(state.ProviderID) == "" {
+			continue
+		}
+		state.TenantID = strings.TrimSpace(tenantID)
+		m.authStates[tenantAuthKey(state.TenantID, state.ProviderID)] = cloneAuthState(state)
+	}
+	m.loadProfiles()
 }
 
 func (m *Manager) ListModels(providerID string) ([]Model, bool) {
@@ -254,7 +287,7 @@ func (m *Manager) RestoreManagedAuthStates(states []AuthState) {
 		if strings.TrimSpace(state.ProviderID) == "" {
 			continue
 		}
-		m.authStates[state.ProviderID] = cloneAuthState(state)
+		m.authStates[tenantAuthKey(state.TenantID, state.ProviderID)] = cloneAuthState(state)
 	}
 	m.loadProfiles()
 }
@@ -312,8 +345,20 @@ func (m *Manager) StartManagedAuth(ctx context.Context, providerID string) (Auth
 	})
 }
 
+func (m *Manager) StartManagedAuthForTenant(ctx context.Context, providerID, tenantID string) (AuthState, []Model, error) {
+	return m.runManagedActionForTenant(ctx, providerID, tenantID, func(ctx context.Context, bridge ManagedBridge) (AuthState, []Model, error) {
+		return bridge.Start(ctx)
+	})
+}
+
 func (m *Manager) CompleteManagedAuth(ctx context.Context, providerID string) (AuthState, []Model, error) {
 	return m.runManagedAction(ctx, providerID, func(ctx context.Context, bridge ManagedBridge) (AuthState, []Model, error) {
+		return bridge.Complete(ctx)
+	})
+}
+
+func (m *Manager) CompleteManagedAuthForTenant(ctx context.Context, providerID, tenantID string) (AuthState, []Model, error) {
+	return m.runManagedActionForTenant(ctx, providerID, tenantID, func(ctx context.Context, bridge ManagedBridge) (AuthState, []Model, error) {
 		return bridge.Complete(ctx)
 	})
 }
@@ -324,8 +369,20 @@ func (m *Manager) RefreshManagedAuth(ctx context.Context, providerID string) (Au
 	})
 }
 
+func (m *Manager) RefreshManagedAuthForTenant(ctx context.Context, providerID, tenantID string) (AuthState, []Model, error) {
+	return m.runManagedActionForTenant(ctx, providerID, tenantID, func(ctx context.Context, bridge ManagedBridge) (AuthState, []Model, error) {
+		return bridge.Refresh(ctx)
+	})
+}
+
 func (m *Manager) RevokeManagedAuth(ctx context.Context, providerID string) (AuthState, []Model, error) {
 	return m.runManagedAction(ctx, providerID, func(ctx context.Context, bridge ManagedBridge) (AuthState, []Model, error) {
+		return bridge.Revoke(ctx)
+	})
+}
+
+func (m *Manager) RevokeManagedAuthForTenant(ctx context.Context, providerID, tenantID string) (AuthState, []Model, error) {
+	return m.runManagedActionForTenant(ctx, providerID, tenantID, func(ctx context.Context, bridge ManagedBridge) (AuthState, []Model, error) {
 		return bridge.Revoke(ctx)
 	})
 }
@@ -359,18 +416,31 @@ func (m *Manager) SetDefaultModel(providerID, model string) (Preference, error) 
 }
 
 func (m *Manager) Resolve(providerID, model string, timeoutMs, maxRetries int) (ResolvedDispatch, error) {
+	return m.resolveWithProfile(providerID, model, timeoutMs, maxRetries, m.GetProfile, false)
+}
+
+func (m *Manager) ResolveForTenant(providerID, model string, timeoutMs, maxRetries int, tenantID string) (ResolvedDispatch, error) {
+	return m.resolveWithProfile(providerID, model, timeoutMs, maxRetries, func(providerID string) (Profile, bool) {
+		return m.GetProfileForTenant(providerID, tenantID)
+	}, true)
+}
+
+func (m *Manager) resolveWithProfile(providerID, model string, timeoutMs, maxRetries int, profileResolver func(string) (Profile, bool), requireManagedAuthReady bool) (ResolvedDispatch, error) {
 	requestedProvider := strings.TrimSpace(providerID)
 	effectiveProvider := requestedProvider
 	if effectiveProvider == "" {
 		effectiveProvider = m.defaultProviderID()
 	}
 
-	profile, ok := m.GetProfile(effectiveProvider)
+	profile, ok := profileResolver(effectiveProvider)
 	if !ok {
 		return ResolvedDispatch{}, fmt.Errorf("%w: %s", llm.ErrProviderNotFound, effectiveProvider)
 	}
 	if !profile.Registered {
 		return ResolvedDispatch{}, fmt.Errorf("%w: %s", llm.ErrProviderNotFound, effectiveProvider)
+	}
+	if requireManagedAuthReady && profile.Source == SourceManaged && !profile.Ready {
+		return ResolvedDispatch{}, fmt.Errorf("%w: %s", ErrProviderAuthUnavailable, effectiveProvider)
 	}
 
 	effectiveModel := strings.TrimSpace(model)
@@ -491,6 +561,10 @@ func NewCheckID() string {
 }
 
 func (m *Manager) runManagedAction(ctx context.Context, providerID string, action func(context.Context, ManagedBridge) (AuthState, []Model, error)) (AuthState, []Model, error) {
+	return m.runManagedActionForTenant(ctx, providerID, "", action)
+}
+
+func (m *Manager) runManagedActionForTenant(ctx context.Context, providerID, tenantID string, action func(context.Context, ManagedBridge) (AuthState, []Model, error)) (AuthState, []Model, error) {
 	bridge, ok := m.managedBridge(providerID)
 	if !ok {
 		if _, exists := m.GetProfile(providerID); exists {
@@ -502,6 +576,7 @@ func (m *Manager) runManagedAction(ctx context.Context, providerID string, actio
 	if err != nil {
 		return AuthState{}, nil, err
 	}
+	state.TenantID = strings.TrimSpace(tenantID)
 	m.applyManagedState(state, models)
 	m.loadProfiles()
 	return cloneAuthState(state), cloneModels(models), nil
@@ -524,8 +599,17 @@ func (m *Manager) applyManagedState(state AuthState, models []Model) {
 	if providerID == "" {
 		return
 	}
-	m.authStates[providerID] = cloneAuthState(state)
+	m.authStates[tenantAuthKey(state.TenantID, providerID)] = cloneAuthState(state)
 	m.models[providerID] = cloneModels(models)
+}
+
+func tenantAuthKey(tenantID, providerID string) string {
+	providerID = strings.TrimSpace(providerID)
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return providerID
+	}
+	return tenantID + "\x00" + providerID
 }
 
 func (m *Manager) loadProfiles() {
@@ -648,7 +732,11 @@ func (m *Manager) buildOpenAICompatibleProfile() Profile {
 }
 
 func (m *Manager) buildManagedProfile(bridge ManagedBridge) Profile {
-	state, hasState := m.authStates[bridge.ProviderID()]
+	return m.buildManagedProfileForTenant(bridge, "")
+}
+
+func (m *Manager) buildManagedProfileForTenant(bridge ManagedBridge, tenantID string) Profile {
+	state, hasState := m.authStates[tenantAuthKey(tenantID, bridge.ProviderID())]
 	models := cloneModels(m.models[bridge.ProviderID()])
 	issues := []string{}
 	knownModels := make([]string, 0, len(models))

@@ -73,3 +73,38 @@ func TestConnectorSupervisorFailsAfterRepeatedFailures(t *testing.T) {
 		t.Fatalf("expected failed status, got %s", connector.Status)
 	}
 }
+
+func TestConnectorSupervisorTenantOwnershipAndDisable(t *testing.T) {
+	supervisor := NewSupervisor()
+	if _, _, err := supervisor.Register(RegisterInput{
+		TenantID:    "ten_a",
+		ConnectorID: "discord-shared",
+		Kind:        "discord",
+		SecretRefs:  []string{"discord/token"},
+	}); err != nil {
+		t.Fatalf("Register tenant A returned error: %v", err)
+	}
+	if _, _, err := supervisor.Register(RegisterInput{
+		TenantID:    "ten_b",
+		ConnectorID: "slack-b",
+		Kind:        "slack",
+	}); err != nil {
+		t.Fatalf("Register tenant B returned error: %v", err)
+	}
+	if got := supervisor.ListForTenant("ten_a"); len(got) != 1 || got[0].ConnectorID != "discord-shared" || got[0].SecretRefs[0] != "discord/token" {
+		t.Fatalf("tenant A list did not preserve ownership and refs: %+v", got)
+	}
+	if _, ok := supervisor.GetForTenant("discord-shared", "ten_b"); ok {
+		t.Fatal("tenant B unexpectedly resolved tenant A connector")
+	}
+	disabled, err := supervisor.Disable("discord-shared", "integration disconnected")
+	if err != nil {
+		t.Fatalf("Disable returned error: %v", err)
+	}
+	if disabled.Status != StatusDisabled || disabled.DisabledReason == "" {
+		t.Fatalf("expected disabled connector with reason, got %+v", disabled)
+	}
+	if _, err := supervisor.Restart("discord-shared"); err != ErrConnectorDisabled {
+		t.Fatalf("expected disabled restart denial, got %v", err)
+	}
+}
