@@ -164,6 +164,7 @@ type Selection struct {
 }
 
 type SourceLinkage struct {
+	OperationID       string
 	RunID             string
 	StepID            string
 	ToolCallID        string

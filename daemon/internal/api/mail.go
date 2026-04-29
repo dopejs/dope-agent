@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dopejs/dope-agent/daemon/internal/billing"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
@@ -65,7 +66,7 @@ func handleMailAccountRoutes(cfg config.Config, manager *mail.Manager, integrati
 	writeJSON(w, http.StatusOK, items[0])
 }
 
-func handleMailThreads(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleMailThreads(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil || integrationsManager == nil {
 		writeError(w, http.StatusInternalServerError, "mail dependencies are not configured")
 		return
@@ -75,18 +76,27 @@ func handleMailThreads(cfg config.Config, manager *mail.Manager, integrationsMan
 		return
 	}
 	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	operationID := mail.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "GET /v1/mail/threads", w, r)
+	if !ok {
+		return
+	}
 	account, items, operation, artifacts, err := manager.ListThreads(integrationsManager.List(), mail.ListThreadsInput{
 		Selection: mail.Selection{IntegrationID: strings.TrimSpace(r.URL.Query().Get("integrationId"))},
 		Limit:     limit,
 		Cursor:    strings.TrimSpace(r.URL.Query().Get("cursor")),
+		Source:    mail.SourceLinkage{OperationID: operationID},
 	})
 	if operation.OperationID != "" {
-		if recordErr := recordMailActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
+		if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+		}
 		writeMailError(w, err)
 		return
 	}
@@ -98,7 +108,7 @@ func handleMailThreads(cfg config.Config, manager *mail.Manager, integrationsMan
 	})
 }
 
-func handleMailThreadRoutes(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleMailThreadRoutes(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil || integrationsManager == nil {
 		writeError(w, http.StatusInternalServerError, "mail dependencies are not configured")
 		return
@@ -112,17 +122,26 @@ func handleMailThreadRoutes(cfg config.Config, manager *mail.Manager, integratio
 		http.NotFound(w, r)
 		return
 	}
+	operationID := mail.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "GET /v1/mail/threads/{threadId}", w, r)
+	if !ok {
+		return
+	}
 	account, item, operation, artifacts, err := manager.GetThread(integrationsManager.List(), mail.GetThreadInput{
 		Selection: mail.Selection{IntegrationID: strings.TrimSpace(r.URL.Query().Get("integrationId"))},
 		ThreadID:  threadID,
+		Source:    mail.SourceLinkage{OperationID: operationID},
 	})
 	if operation.OperationID != "" {
-		if recordErr := recordMailActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
+		if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+		}
 		writeMailError(w, err)
 		return
 	}
@@ -134,7 +153,7 @@ func handleMailThreadRoutes(cfg config.Config, manager *mail.Manager, integratio
 	})
 }
 
-func handleMailMessageRoutes(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleMailMessageRoutes(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil || integrationsManager == nil {
 		writeError(w, http.StatusInternalServerError, "mail dependencies are not configured")
 		return
@@ -147,28 +166,37 @@ func handleMailMessageRoutes(cfg config.Config, manager *mail.Manager, integrati
 	parts := strings.Split(path, "/")
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
-		handleMailMessageGet(manager, integrationsManager, eventBus, sqliteStore, w, r, parts[0])
+		handleMailMessageGet(cfg, manager, integrationsManager, eventBus, billingManager, sqliteStore, w, r, parts[0])
 	case len(parts) == 2 && parts[1] == "reply" && r.Method == http.MethodPost:
-		handleMailReplyMessage(manager, integrationsManager, eventBus, sqliteStore, w, r, parts[0])
+		handleMailReplyMessage(cfg, manager, integrationsManager, eventBus, billingManager, sqliteStore, w, r, parts[0])
 	case len(parts) == 2 && parts[1] == "forward" && r.Method == http.MethodPost:
-		handleMailForwardMessage(manager, integrationsManager, eventBus, sqliteStore, w, r, parts[0])
+		handleMailForwardMessage(cfg, manager, integrationsManager, eventBus, billingManager, sqliteStore, w, r, parts[0])
 	default:
 		http.NotFound(w, r)
 	}
 }
 
-func handleMailMessageGet(manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, messageID string) {
+func handleMailMessageGet(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, messageID string) {
+	operationID := mail.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "GET /v1/mail/messages/{messageId}", w, r)
+	if !ok {
+		return
+	}
 	account, item, operation, artifacts, err := manager.GetMessage(integrationsManager.List(), mail.GetMessageInput{
 		Selection: mail.Selection{IntegrationID: strings.TrimSpace(r.URL.Query().Get("integrationId"))},
 		MessageID: strings.TrimSpace(messageID),
+		Source:    mail.SourceLinkage{OperationID: operationID},
 	})
 	if operation.OperationID != "" {
-		if recordErr := recordMailActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
+		if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+		}
 		writeMailError(w, err)
 		return
 	}
@@ -180,23 +208,32 @@ func handleMailMessageGet(manager *mail.Manager, integrationsManager *integratio
 	})
 }
 
-func handleMailDrafts(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleMailDrafts(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil || integrationsManager == nil {
 		writeError(w, http.StatusInternalServerError, "mail dependencies are not configured")
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
+		operationID := mail.NewOperationID()
+		reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "GET /v1/mail/drafts", w, r)
+		if !ok {
+			return
+		}
 		account, items, operation, artifacts, err := manager.ListDrafts(integrationsManager.List(), mail.ListDraftsInput{
 			Selection: mail.Selection{IntegrationID: strings.TrimSpace(r.URL.Query().Get("integrationId"))},
+			Source:    mail.SourceLinkage{OperationID: operationID},
 		})
 		if operation.OperationID != "" {
-			if recordErr := recordMailActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
+			if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
 				writeError(w, http.StatusInternalServerError, recordErr.Error())
 				return
 			}
 		}
 		if err != nil {
+			if operation.OperationID == "" {
+				releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+			}
 			writeMailError(w, err)
 			return
 		}
@@ -212,6 +249,11 @@ func handleMailDrafts(cfg config.Config, manager *mail.Manager, integrationsMana
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		operationID := mail.NewOperationID()
+		reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "POST /v1/mail/drafts", w, r)
+		if !ok {
+			return
+		}
 		account, item, operation, artifacts, err := manager.CreateDraft(integrationsManager.List(), mail.CreateDraftInput{
 			Selection:       mail.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
 			ComposeMode:     request.ComposeMode,
@@ -223,15 +265,18 @@ func handleMailDrafts(cfg config.Config, manager *mail.Manager, integrationsMana
 			Subject:         strings.TrimSpace(request.Subject),
 			Body:            request.Body,
 			AttachmentRefs:  mailAttachmentInputs(request.AttachmentRefs),
-			Source:          mailSourceLinkage(request.Source),
+			Source:          mailSourceLinkageWithOperation(request.Source, operationID),
 		})
 		if operation.OperationID != "" {
-			if recordErr := recordMailActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
+			if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
 				writeError(w, http.StatusInternalServerError, recordErr.Error())
 				return
 			}
 		}
 		if err != nil {
+			if operation.OperationID == "" {
+				releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+			}
 			writeMailError(w, err)
 			return
 		}
@@ -246,7 +291,7 @@ func handleMailDrafts(cfg config.Config, manager *mail.Manager, integrationsMana
 	}
 }
 
-func handleMailDraftRoutes(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleMailDraftRoutes(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil || integrationsManager == nil {
 		writeError(w, http.StatusInternalServerError, "mail dependencies are not configured")
 		return
@@ -259,28 +304,37 @@ func handleMailDraftRoutes(cfg config.Config, manager *mail.Manager, integration
 	parts := strings.Split(path, "/")
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
-		handleMailDraftGet(manager, integrationsManager, eventBus, sqliteStore, w, r, parts[0])
+		handleMailDraftGet(cfg, manager, integrationsManager, eventBus, billingManager, sqliteStore, w, r, parts[0])
 	case len(parts) == 2 && parts[1] == "update" && r.Method == http.MethodPost:
-		handleMailDraftUpdate(manager, integrationsManager, eventBus, sqliteStore, w, r, parts[0])
+		handleMailDraftUpdate(cfg, manager, integrationsManager, eventBus, billingManager, sqliteStore, w, r, parts[0])
 	case len(parts) == 2 && parts[1] == "send" && r.Method == http.MethodPost:
-		handleMailDraftSend(manager, integrationsManager, eventBus, sqliteStore, w, r, parts[0])
+		handleMailDraftSend(cfg, manager, integrationsManager, eventBus, billingManager, sqliteStore, w, r, parts[0])
 	default:
 		http.NotFound(w, r)
 	}
 }
 
-func handleMailDraftGet(manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, draftID string) {
+func handleMailDraftGet(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, draftID string) {
+	operationID := mail.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "GET /v1/mail/drafts/{draftId}", w, r)
+	if !ok {
+		return
+	}
 	account, item, operation, artifacts, err := manager.GetDraft(integrationsManager.List(), mail.GetDraftInput{
 		Selection: mail.Selection{IntegrationID: strings.TrimSpace(r.URL.Query().Get("integrationId"))},
 		DraftID:   strings.TrimSpace(draftID),
+		Source:    mail.SourceLinkage{OperationID: operationID},
 	})
 	if operation.OperationID != "" {
-		if recordErr := recordMailActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
+		if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+		}
 		writeMailError(w, err)
 		return
 	}
@@ -292,10 +346,15 @@ func handleMailDraftGet(manager *mail.Manager, integrationsManager *integrations
 	})
 }
 
-func handleMailDraftUpdate(manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, draftID string) {
+func handleMailDraftUpdate(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, draftID string) {
 	var request UpdateMailDraftRequest
 	if err := decodeJSONBody(r, &request); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	operationID := mail.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "POST /v1/mail/drafts/{draftId}/update", w, r)
+	if !ok {
 		return
 	}
 	account, item, operation, artifacts, err := manager.UpdateDraft(integrationsManager.List(), mail.UpdateDraftInput{
@@ -307,15 +366,18 @@ func handleMailDraftUpdate(manager *mail.Manager, integrationsManager *integrati
 		Subject:        strings.TrimSpace(request.Subject),
 		Body:           request.Body,
 		AttachmentRefs: mailAttachmentInputs(request.AttachmentRefs),
-		Source:         mailSourceLinkage(request.Source),
+		Source:         mailSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
-		if recordErr := recordMailActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
+		if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+		}
 		writeMailError(w, err)
 		return
 	}
@@ -327,7 +389,7 @@ func handleMailDraftUpdate(manager *mail.Manager, integrationsManager *integrati
 	})
 }
 
-func handleMailSendMessage(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleMailSendMessage(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil || integrationsManager == nil {
 		writeError(w, http.StatusInternalServerError, "mail dependencies are not configured")
 		return
@@ -341,6 +403,11 @@ func handleMailSendMessage(cfg config.Config, manager *mail.Manager, integration
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	operationID := mail.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "POST /v1/mail/messages/send", w, r)
+	if !ok {
+		return
+	}
 	account, item, operation, artifacts, err := manager.SendMessage(integrationsManager.List(), mail.SendMessageInput{
 		Selection:      mail.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
 		To:             append([]string(nil), request.To...),
@@ -349,15 +416,18 @@ func handleMailSendMessage(cfg config.Config, manager *mail.Manager, integration
 		Subject:        strings.TrimSpace(request.Subject),
 		Body:           request.Body,
 		AttachmentRefs: mailAttachmentInputs(request.AttachmentRefs),
-		Source:         mailSourceLinkage(request.Source),
+		Source:         mailSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
-		if recordErr := recordMailActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
+		if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+		}
 		writeMailError(w, err)
 		return
 	}
@@ -369,24 +439,32 @@ func handleMailSendMessage(cfg config.Config, manager *mail.Manager, integration
 	})
 }
 
-func handleMailDraftSend(manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, draftID string) {
+func handleMailDraftSend(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, draftID string) {
 	var request SendMailDraftRequest
 	if err := decodeJSONBody(r, &request); err != nil && !errors.Is(err, http.ErrBodyNotAllowed) && !strings.Contains(err.Error(), "EOF") {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	operationID := mail.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "POST /v1/mail/drafts/{draftId}/send", w, r)
+	if !ok {
+		return
+	}
 	account, _, message, operation, artifacts, err := manager.SendDraft(integrationsManager.List(), mail.SendDraftInput{
 		Selection: mail.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
 		DraftID:   strings.TrimSpace(draftID),
-		Source:    mailSourceLinkage(request.Source),
+		Source:    mailSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
-		if recordErr := recordMailActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
+		if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+		}
 		writeMailError(w, err)
 		return
 	}
@@ -398,10 +476,15 @@ func handleMailDraftSend(manager *mail.Manager, integrationsManager *integration
 	})
 }
 
-func handleMailReplyMessage(manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, messageID string) {
+func handleMailReplyMessage(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, messageID string) {
 	var request ReplyMailMessageRequest
 	if err := decodeJSONBody(r, &request); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	operationID := mail.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "POST /v1/mail/messages/{messageId}/reply", w, r)
+	if !ok {
 		return
 	}
 	account, draft, message, operation, artifacts, err := manager.ReplyMessage(integrationsManager.List(), mail.ReplyMessageInput{
@@ -411,15 +494,18 @@ func handleMailReplyMessage(manager *mail.Manager, integrationsManager *integrat
 		Subject:        strings.TrimSpace(request.Subject),
 		Body:           request.Body,
 		AttachmentRefs: mailAttachmentInputs(request.AttachmentRefs),
-		Source:         mailSourceLinkage(request.Source),
+		Source:         mailSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
-		if recordErr := recordMailActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
+		if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+		}
 		writeMailError(w, err)
 		return
 	}
@@ -430,10 +516,15 @@ func handleMailReplyMessage(manager *mail.Manager, integrationsManager *integrat
 	writeJSON(w, http.StatusOK, MailMessageResponse{Account: account, Message: *message, Operation: operation, Artifacts: artifacts})
 }
 
-func handleMailForwardMessage(manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, messageID string) {
+func handleMailForwardMessage(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, messageID string) {
 	var request ForwardMailMessageRequest
 	if err := decodeJSONBody(r, &request); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	operationID := mail.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "POST /v1/mail/messages/{messageId}/forward", w, r)
+	if !ok {
 		return
 	}
 	account, draft, message, operation, artifacts, err := manager.ForwardMessage(integrationsManager.List(), mail.ForwardMessageInput{
@@ -446,15 +537,18 @@ func handleMailForwardMessage(manager *mail.Manager, integrationsManager *integr
 		Subject:        strings.TrimSpace(request.Subject),
 		Body:           request.Body,
 		AttachmentRefs: mailAttachmentInputs(request.AttachmentRefs),
-		Source:         mailSourceLinkage(request.Source),
+		Source:         mailSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
-		if recordErr := recordMailActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
+		if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+		}
 		writeMailError(w, err)
 		return
 	}
@@ -558,6 +652,16 @@ func recordMailActivity(ctx context.Context, eventBus *events.Bus, sqliteStore *
 	default:
 		return nil
 	}
+}
+
+func recordMailActivityAndCommitQuota(ctx context.Context, eventBus *events.Bus, billingManager *billing.Manager, reservation billing.UsageReservation, sqliteStore *store.SQLiteStore, account mail.AccountProjection, operation mail.Operation, artifacts []mail.Artifact) error {
+	if operation.OperationID == "" {
+		return nil
+	}
+	if err := recordMailActivity(ctx, eventBus, sqliteStore, account, operation, artifacts); err != nil {
+		return err
+	}
+	return commitBillingReservation(ctx, billingManager, reservation, "billing.integration_operation_committed", "mail operation recorded after backend attempt")
 }
 
 func persistMailAccount(ctx context.Context, sqliteStore *store.SQLiteStore, item mail.AccountProjection) error {
@@ -673,6 +777,12 @@ func mailSourceLinkage(source *MailSourceLinkageRequest) mail.SourceLinkage {
 		DeliveryID:           strings.TrimSpace(source.DeliveryID),
 		AllowSendSideEffects: source.AllowSendSideEffects,
 	}
+}
+
+func mailSourceLinkageWithOperation(source *MailSourceLinkageRequest, operationID string) mail.SourceLinkage {
+	linkage := mailSourceLinkage(source)
+	linkage.OperationID = strings.TrimSpace(operationID)
+	return linkage
 }
 
 func mailAttachmentInputs(items []MailAttachmentRefRequest) []mail.AttachmentRefInput {

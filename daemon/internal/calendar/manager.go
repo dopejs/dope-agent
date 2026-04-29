@@ -342,8 +342,12 @@ func (m *Manager) projectResource(resource integrations.Resource, selectionMode 
 
 func (m *Manager) newOperation(account AccountProjection, resource integrations.Resource, class OperationClass, selectionMode, timezone, requestSummary string, source SourceLinkage) Operation {
 	now := time.Now().UTC()
+	operationID := strings.TrimSpace(source.OperationID)
+	if operationID == "" {
+		operationID = NewOperationID()
+	}
 	item := Operation{
-		OperationID:       newID("calendar_op"),
+		OperationID:       operationID,
 		OperationClass:    class,
 		Status:            OperationStatusRequested,
 		IntegrationID:     resource.IntegrationID,
@@ -416,6 +420,10 @@ func summarizeWindow(startsAt, endsAt *time.Time) string {
 	default:
 		return endsAt.UTC().Format(time.RFC3339)
 	}
+}
+
+func NewOperationID() string {
+	return newID("calendar_op")
 }
 
 func newID(prefix string) string {

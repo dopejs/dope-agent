@@ -6,8 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/billing"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 const replayRuntimeEntrypoint = "evaluation.replay"
@@ -50,8 +52,10 @@ type ReplayRuntimeStore interface {
 }
 
 type RuntimeReplayRecorder struct {
-	runtime ReplayRuntime
-	store   ReplayRuntimeStore
+	runtime        ReplayRuntime
+	store          ReplayRuntimeStore
+	billingManager *billing.Manager
+	hostedBilling  bool
 }
 
 func NewRuntimeReplayRecorder(runtimeManager ReplayRuntime, store ReplayRuntimeStore) *RuntimeReplayRecorder {
@@ -61,27 +65,67 @@ func NewRuntimeReplayRecorder(runtimeManager ReplayRuntime, store ReplayRuntimeS
 	}
 }
 
+func (r *RuntimeReplayRecorder) ConfigureBilling(manager *billing.Manager, hosted bool) {
+	if r == nil {
+		return
+	}
+	r.billingManager = manager
+	r.hostedBilling = hosted
+}
+
 func (r *RuntimeReplayRecorder) RecordReplay(ctx context.Context, input ReplayRecordInput) (ReplayRecordResult, error) {
 	if r == nil || r.runtime == nil {
 		return ReplayRecordResult{}, nil
 	}
 	input = redactReplayRecordInput(input)
+	tenantID := ""
+	if tenantContext, ok := tenantctx.FromContext(ctx); ok {
+		tenantID = strings.TrimSpace(tenantContext.TenantID)
+	}
+	runOperationKey := ""
+	workflowOperationKey := ""
+	var runReservation billing.UsageReservation
+	var workflowReservation billing.UsageReservation
+	runID := runtime.NewRunID()
+	workflowID := newID("workflow")
+	workflowStepID := newID("workflow_step")
+	if tenantID != "" {
+		runOperationKey = billing.RunOperationKey(tenantID, "evaluation:"+input.Attempt.AttemptID, "")
+		workflowOperationKey = billing.WorkflowOperationKey(tenantID, runID, workflowID, "evaluation:"+input.Attempt.AttemptID)
+		runtimeReservations, err := reserveReplayRuntimeQuotas(ctx, r.billingManager, tenantID, runOperationKey, workflowOperationKey, r.hostedBilling)
+		if err != nil {
+			return ReplayRecordResult{}, err
+		}
+		if len(runtimeReservations.Results) > 0 {
+			runReservation = runtimeReservations.Results[0].Reservation
+		}
+		if len(runtimeReservations.Results) > 1 {
+			workflowReservation = runtimeReservations.Results[1].Reservation
+		}
+	}
 	run, err := r.runtime.CreateRun(runtime.CreateRunInput{
+		RunID:      runID,
 		Entrypoint: replayRuntimeEntrypoint,
 		Goal:       replayRunGoal(input.Candidate, input.Attempt),
 	})
 	if err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay runtime run creation failed")
+		releaseReplayRuntimeReservation(ctx, r.billingManager, runReservation, "evaluation replay runtime run creation failed")
 		return ReplayRecordResult{}, err
 	}
 	if err := r.upsertRun(ctx, run); err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay runtime run persistence failed")
+		releaseReplayRuntimeReservation(ctx, r.billingManager, runReservation, "evaluation replay runtime run persistence failed")
+		return ReplayRecordResult{}, err
+	}
+	if err := commitReplayRuntimeReservation(ctx, r.billingManager, runReservation, "evaluation replay runtime run persisted"); err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay runtime run billing commit failed")
 		return ReplayRecordResult{}, err
 	}
 	now := input.Now
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	workflowID := newID("workflow")
-	workflowStepID := newID("workflow_step")
 
 	step, err := r.runtime.CreateStep(run.RunID, runtime.CreateStepInput{
 		Title:          "Replay captured evidence",
@@ -98,18 +142,22 @@ func (r *RuntimeReplayRecorder) RecordReplay(ctx context.Context, input ReplayRe
 		},
 	})
 	if err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay runtime step creation failed")
 		return ReplayRecordResult{}, err
 	}
 	if err := r.upsertStep(ctx, step); err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay runtime step persistence failed")
 		return ReplayRecordResult{}, err
 	}
 	step, runUpdate, err := r.runtime.UpdateStepStatusAndReconcileRun(run.RunID, step.StepID, runtime.UpdateStepStatusInput{
 		Status: runtime.StepStatusPlanning,
 	})
 	if err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay runtime step planning failed")
 		return ReplayRecordResult{}, err
 	}
 	if err := r.upsertStep(ctx, step); err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay runtime planned step persistence failed")
 		return ReplayRecordResult{}, err
 	}
 	if runUpdate != nil {
@@ -122,9 +170,11 @@ func (r *RuntimeReplayRecorder) RecordReplay(ctx context.Context, input ReplayRe
 		Status: runtime.StepStatusExecutingTool,
 	})
 	if err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay runtime step execution failed")
 		return ReplayRecordResult{}, err
 	}
 	if err := r.upsertStep(ctx, step); err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay runtime executing step persistence failed")
 		return ReplayRecordResult{}, err
 	}
 	if runUpdate != nil {
@@ -145,9 +195,11 @@ func (r *RuntimeReplayRecorder) RecordReplay(ctx context.Context, input ReplayRe
 		},
 	})
 	if err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay runtime step completion failed")
 		return ReplayRecordResult{}, err
 	}
 	if err := r.upsertStep(ctx, step); err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay runtime completed step persistence failed")
 		return ReplayRecordResult{}, err
 	}
 	if runUpdate != nil {
@@ -158,9 +210,14 @@ func (r *RuntimeReplayRecorder) RecordReplay(ctx context.Context, input ReplayRe
 	}
 	workflow := replayWorkflow(input, run.RunID, workflowID, workflowStepID, step.StepID, now)
 	if err := r.upsertWorkflow(ctx, workflow); err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay workflow persistence failed")
 		return ReplayRecordResult{}, err
 	}
 	if err := r.replaceWorkflowSteps(ctx, workflow.WorkflowID, workflow.Steps); err != nil {
+		releaseReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay workflow steps persistence failed")
+		return ReplayRecordResult{}, err
+	}
+	if err := commitReplayRuntimeReservation(ctx, r.billingManager, workflowReservation, "evaluation replay workflow persisted"); err != nil {
 		return ReplayRecordResult{}, err
 	}
 
@@ -217,6 +274,65 @@ func (r *RuntimeReplayRecorder) replaceWorkflowSteps(ctx context.Context, workfl
 		return fmt.Errorf("replace workflow steps %s: %w", workflowID, err)
 	}
 	return nil
+}
+
+func reserveReplayRuntimeQuotas(ctx context.Context, manager *billing.Manager, tenantID, runOperationKey, workflowOperationKey string, hosted bool) (billing.ReserveAllResult, error) {
+	if manager == nil {
+		if hosted {
+			denial := billing.NewQuotaStateUnavailableDenial(tenantID, runOperationKey).Payload
+			return billing.ReserveAllResult{Allowed: false, Denial: &denial}, billing.ErrQuotaStateUnavailable
+		}
+		return billing.ReserveAllResult{Allowed: true}, nil
+	}
+	return manager.ReserveAll(ctx, []billing.ReserveInput{
+		{
+			TenantID:          tenantID,
+			Category:          billing.CategoryRunLaunches,
+			Amount:            1,
+			OperationKey:      runOperationKey,
+			ReservationPoint:  "evaluation replay runtime run launch",
+			GuardedEntryPoint: "evaluation replay runtime run launch",
+			Hosted:            hosted,
+		},
+		{
+			TenantID:          tenantID,
+			Category:          billing.CategoryWorkflowLaunches,
+			Amount:            1,
+			OperationKey:      workflowOperationKey,
+			ReservationPoint:  "evaluation replay runtime workflow launch",
+			GuardedEntryPoint: "evaluation replay runtime workflow launch",
+			Hosted:            hosted,
+		},
+	})
+}
+
+func releaseReplayRuntimeReservation(ctx context.Context, manager *billing.Manager, reservation billing.UsageReservation, reason string) {
+	if manager == nil || reservation.ReservationID == "" {
+		return
+	}
+	_, _ = manager.Release(ctx, billing.ResolveInput{
+		TenantID:     reservation.TenantID,
+		Category:     reservation.Category,
+		OperationKey: reservation.OperationKey,
+		Amount:       reservation.AmountReserved,
+		ReasonCode:   "billing.evaluation_replay_runtime_released",
+		Reason:       reason,
+	})
+}
+
+func commitReplayRuntimeReservation(ctx context.Context, manager *billing.Manager, reservation billing.UsageReservation, reason string) error {
+	if manager == nil || reservation.ReservationID == "" {
+		return nil
+	}
+	_, err := manager.Commit(ctx, billing.ResolveInput{
+		TenantID:     reservation.TenantID,
+		Category:     reservation.Category,
+		OperationKey: reservation.OperationKey,
+		Amount:       reservation.AmountReserved,
+		ReasonCode:   "billing.evaluation_replay_runtime_committed",
+		Reason:       reason,
+	})
+	return err
 }
 
 func redactReplayRecordInput(input ReplayRecordInput) ReplayRecordInput {

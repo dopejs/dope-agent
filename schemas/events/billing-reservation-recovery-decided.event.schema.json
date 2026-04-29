@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/billing-reservation-recovery-decided.event.schema.json",
+  "title": "BillingReservationRecoveryDecidedEvent",
+  "type": "object",
+  "required": ["eventId", "sequence", "category", "name", "occurredAt", "scope", "resource", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "eventId": { "type": "string" },
+    "sequence": { "type": "integer" },
+    "category": { "const": "billing" },
+    "name": { "const": "billing.reservation_recovery_decided" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "scope": { "type": "object" },
+    "resource": { "type": "object" },
+    "payload": { "type": "object", "required": ["tenantId", "category", "operationKey", "outcome", "reason"], "additionalProperties": true }
+  }
+}

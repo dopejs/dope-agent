@@ -1,0 +1,24 @@
+{
+  "planKey": "finite",
+  "enforcementMode": "enforced",
+  "quotas": [
+    {
+      "tenantId": "ten_1",
+      "planKey": "finite",
+      "category": "run_launches",
+      "unit": "count",
+      "periodStart": "2026-04-01T00:00:00Z",
+      "periodEnd": "2026-05-01T00:00:00Z",
+      "periodAnchor": "UTC",
+      "limit": 10,
+      "consumedAmount": 5,
+      "reservedAmount": 1,
+      "adjustedAmount": 0,
+      "carryoverApplied": 0,
+      "remainingAmount": 4,
+      "enforcementMode": "enforced"
+    }
+  ],
+  "manualAdjustments": [],
+  "denials": []
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/billing-denial-resource.schema.json",
+  "title": "BillingDenialResource",
+  "type": "object",
+  "required": ["denialId", "operationKey", "reasonCode", "requestedAmount", "remainingAmount", "guardedEntryPoint", "createdAt"],
+  "additionalProperties": true,
+  "properties": {
+    "denialId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "category": { "type": "string" },
+    "quotaPeriodId": { "type": "string" },
+    "operationKey": { "type": "string" },
+    "reasonCode": { "type": "string" },
+    "requestedAmount": { "type": "integer" },
+    "remainingAmount": { "type": "integer" },
+    "guardedEntryPoint": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

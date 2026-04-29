@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/billing-manual-adjustment-resource.schema.json",
+  "title": "BillingManualAdjustmentResource",
+  "type": "object",
+  "required": ["adjustmentId", "category", "quotaPeriodId", "amountDelta", "reason", "createdAt"],
+  "additionalProperties": true,
+  "properties": {
+    "adjustmentId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "category": { "type": "string" },
+    "quotaPeriodId": { "type": "string" },
+    "amountDelta": { "type": "integer" },
+    "reason": { "type": "string" },
+    "createdByPrincipalId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

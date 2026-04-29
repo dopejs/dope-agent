@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/billing-usage-reserved.event.schema.json",
+  "title": "BillingUsageReservedEvent",
+  "type": "object",
+  "required": ["eventId", "sequence", "category", "name", "occurredAt", "scope", "resource", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "eventId": { "type": "string" },
+    "sequence": { "type": "integer" },
+    "category": { "const": "billing" },
+    "name": { "const": "billing.usage_reserved" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "scope": { "type": "object" },
+    "resource": { "type": "object" },
+    "payload": { "type": "object", "required": ["tenantId", "category", "operationKey", "amount"], "additionalProperties": true }
+  }
+}

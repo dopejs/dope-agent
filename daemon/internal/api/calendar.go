@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/billing"
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
@@ -68,22 +69,22 @@ func handleCalendarAccountRoutes(cfg config.Config, manager *calendar.Manager, i
 	writeJSON(w, http.StatusOK, items[0])
 }
 
-func handleCalendarEvents(cfg config.Config, manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleCalendarEvents(cfg config.Config, manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil || integrationsManager == nil {
 		writeError(w, http.StatusInternalServerError, "calendar dependencies are not configured")
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
-		handleCalendarEventList(manager, integrationsManager, eventBus, sqliteStore, w, r)
+		handleCalendarEventList(cfg, manager, integrationsManager, eventBus, billingManager, sqliteStore, w, r)
 	case http.MethodPost:
-		handleCalendarEventCreate(manager, integrationsManager, eventBus, sqliteStore, w, r)
+		handleCalendarEventCreate(cfg, manager, integrationsManager, eventBus, billingManager, sqliteStore, w, r)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
-func handleCalendarEventRoutes(cfg config.Config, manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleCalendarEventRoutes(cfg config.Config, manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil || integrationsManager == nil {
 		writeError(w, http.StatusInternalServerError, "calendar dependencies are not configured")
 		return
@@ -95,21 +96,21 @@ func handleCalendarEventRoutes(cfg config.Config, manager *calendar.Manager, int
 	}
 	parts := strings.Split(path, "/")
 	if len(parts) == 1 && r.Method == http.MethodGet {
-		handleCalendarEventGet(manager, integrationsManager, eventBus, sqliteStore, w, r, parts[0])
+		handleCalendarEventGet(cfg, manager, integrationsManager, eventBus, billingManager, sqliteStore, w, r, parts[0])
 		return
 	}
 	if len(parts) == 2 && parts[1] == "update" && r.Method == http.MethodPost {
-		handleCalendarEventUpdate(manager, integrationsManager, eventBus, sqliteStore, w, r, parts[0])
+		handleCalendarEventUpdate(cfg, manager, integrationsManager, eventBus, billingManager, sqliteStore, w, r, parts[0])
 		return
 	}
 	if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
-		handleCalendarEventCancel(manager, integrationsManager, eventBus, sqliteStore, w, r, parts[0])
+		handleCalendarEventCancel(cfg, manager, integrationsManager, eventBus, billingManager, sqliteStore, w, r, parts[0])
 		return
 	}
 	http.NotFound(w, r)
 }
 
-func handleCalendarAvailabilityQueries(cfg config.Config, manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleCalendarAvailabilityQueries(cfg config.Config, manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil || integrationsManager == nil {
 		writeError(w, http.StatusInternalServerError, "calendar dependencies are not configured")
 		return
@@ -135,20 +136,32 @@ func handleCalendarAvailabilityQueries(cfg config.Config, manager *calendar.Mana
 		return
 	}
 
+	operationID := calendar.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "calendar", operationID, "POST /v1/calendar/availability/queries", w, r)
+	if !ok {
+		return
+	}
 	account, query, operation, artifacts, err := manager.BusyFree(integrationsManager.List(), calendar.BusyFreeInput{
 		Selection:   calendar.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
 		WindowStart: windowStart,
 		WindowEnd:   windowEnd,
 		Timezone:    strings.TrimSpace(request.Timezone),
-		Source:      calendarSourceLinkage(request.Source),
+		Source:      calendarSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
 		if recordErr := recordCalendarActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
+		if commitErr := commitBillingReservation(r.Context(), billingManager, reservation, "billing.integration_operation_committed", "calendar operation recorded after backend attempt"); commitErr != nil {
+			writeError(w, http.StatusInternalServerError, commitErr.Error())
+			return
+		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "calendar operation failed before backend attempt")
+		}
 		writeCalendarError(w, r, err)
 		return
 	}
@@ -253,7 +266,7 @@ func handleCalendarOperationRoutes(cfg config.Config, manager *calendar.Manager,
 	})
 }
 
-func handleCalendarEventList(manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleCalendarEventList(cfg config.Config, manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	startsAt, err := parseOptionalCalendarTimestamp(r.URL.Query().Get("startsAt"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "startsAt must be RFC3339")
@@ -264,18 +277,31 @@ func handleCalendarEventList(manager *calendar.Manager, integrationsManager *int
 		writeError(w, http.StatusBadRequest, "endsAt must be RFC3339")
 		return
 	}
+	operationID := calendar.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "calendar", operationID, "GET /v1/calendar/events", w, r)
+	if !ok {
+		return
+	}
 	account, items, operation, artifacts, err := manager.ListEvents(integrationsManager.List(), calendar.ListEventsInput{
 		Selection: calendar.Selection{IntegrationID: strings.TrimSpace(r.URL.Query().Get("integrationId"))},
 		StartsAt:  startsAt,
 		EndsAt:    endsAt,
+		Source:    calendar.SourceLinkage{OperationID: operationID},
 	})
 	if operation.OperationID != "" {
 		if recordErr := recordCalendarActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
+		if commitErr := commitBillingReservation(r.Context(), billingManager, reservation, "billing.integration_operation_committed", "calendar operation recorded after backend attempt"); commitErr != nil {
+			writeError(w, http.StatusInternalServerError, commitErr.Error())
+			return
+		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "calendar operation failed before backend attempt")
+		}
 		writeCalendarError(w, r, err)
 		return
 	}
@@ -287,18 +313,31 @@ func handleCalendarEventList(manager *calendar.Manager, integrationsManager *int
 	})
 }
 
-func handleCalendarEventGet(manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, externalEventID string) {
+func handleCalendarEventGet(cfg config.Config, manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, externalEventID string) {
+	operationID := calendar.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "calendar", operationID, "GET /v1/calendar/events/{externalEventId}", w, r)
+	if !ok {
+		return
+	}
 	account, item, operation, artifacts, err := manager.GetEvent(integrationsManager.List(), calendar.GetEventInput{
 		Selection:       calendar.Selection{IntegrationID: strings.TrimSpace(r.URL.Query().Get("integrationId"))},
 		ExternalEventID: strings.TrimSpace(externalEventID),
+		Source:          calendar.SourceLinkage{OperationID: operationID},
 	})
 	if operation.OperationID != "" {
 		if recordErr := recordCalendarActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
+		if commitErr := commitBillingReservation(r.Context(), billingManager, reservation, "billing.integration_operation_committed", "calendar operation recorded after backend attempt"); commitErr != nil {
+			writeError(w, http.StatusInternalServerError, commitErr.Error())
+			return
+		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "calendar operation failed before backend attempt")
+		}
 		writeCalendarError(w, r, err)
 		return
 	}
@@ -310,7 +349,7 @@ func handleCalendarEventGet(manager *calendar.Manager, integrationsManager *inte
 	})
 }
 
-func handleCalendarEventCreate(manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleCalendarEventCreate(cfg config.Config, manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	var request CreateCalendarEventRequest
 	if err := decodeJSONBody(r, &request); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -331,6 +370,11 @@ func handleCalendarEventCreate(manager *calendar.Manager, integrationsManager *i
 		return
 	}
 
+	operationID := calendar.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "calendar", operationID, "POST /v1/calendar/events", w, r)
+	if !ok {
+		return
+	}
 	account, item, operation, artifacts, err := manager.CreateEvent(integrationsManager.List(), calendar.CreateEventInput{
 		Selection:   calendar.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
 		Title:       strings.TrimSpace(request.Title),
@@ -339,15 +383,22 @@ func handleCalendarEventCreate(manager *calendar.Manager, integrationsManager *i
 		StartsAt:    startsAt,
 		EndsAt:      endsAt,
 		Timezone:    strings.TrimSpace(request.Timezone),
-		Source:      calendarSourceLinkage(request.Source),
+		Source:      calendarSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
 		if recordErr := recordCalendarActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
+		if commitErr := commitBillingReservation(r.Context(), billingManager, reservation, "billing.integration_operation_committed", "calendar operation recorded after backend attempt"); commitErr != nil {
+			writeError(w, http.StatusInternalServerError, commitErr.Error())
+			return
+		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "calendar operation failed before backend attempt")
+		}
 		writeCalendarError(w, r, err)
 		return
 	}
@@ -359,7 +410,7 @@ func handleCalendarEventCreate(manager *calendar.Manager, integrationsManager *i
 	})
 }
 
-func handleCalendarEventUpdate(manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, externalEventID string) {
+func handleCalendarEventUpdate(cfg config.Config, manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, externalEventID string) {
 	var request UpdateCalendarEventRequest
 	if err := decodeJSONBody(r, &request); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -380,6 +431,11 @@ func handleCalendarEventUpdate(manager *calendar.Manager, integrationsManager *i
 		return
 	}
 
+	operationID := calendar.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "calendar", operationID, "POST /v1/calendar/events/{externalEventId}/update", w, r)
+	if !ok {
+		return
+	}
 	account, item, operation, artifacts, err := manager.UpdateEvent(integrationsManager.List(), calendar.UpdateEventInput{
 		Selection:       calendar.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
 		ExternalEventID: strings.TrimSpace(externalEventID),
@@ -389,15 +445,22 @@ func handleCalendarEventUpdate(manager *calendar.Manager, integrationsManager *i
 		StartsAt:        startsAt,
 		EndsAt:          endsAt,
 		Timezone:        strings.TrimSpace(request.Timezone),
-		Source:          calendarSourceLinkage(request.Source),
+		Source:          calendarSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
 		if recordErr := recordCalendarActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
+		if commitErr := commitBillingReservation(r.Context(), billingManager, reservation, "billing.integration_operation_committed", "calendar operation recorded after backend attempt"); commitErr != nil {
+			writeError(w, http.StatusInternalServerError, commitErr.Error())
+			return
+		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "calendar operation failed before backend attempt")
+		}
 		writeCalendarError(w, r, err)
 		return
 	}
@@ -409,7 +472,7 @@ func handleCalendarEventUpdate(manager *calendar.Manager, integrationsManager *i
 	})
 }
 
-func handleCalendarEventCancel(manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, externalEventID string) {
+func handleCalendarEventCancel(cfg config.Config, manager *calendar.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, externalEventID string) {
 	var request CancelCalendarEventRequest
 	if err := decodeJSONBody(r, &request); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -419,19 +482,31 @@ func handleCalendarEventCancel(manager *calendar.Manager, integrationsManager *i
 		writeCalendarError(w, r, calendar.ErrCalendarAlternateCalendarDeny)
 		return
 	}
+	operationID := calendar.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "calendar", operationID, "POST /v1/calendar/events/{externalEventId}/cancel", w, r)
+	if !ok {
+		return
+	}
 	account, item, operation, artifacts, err := manager.CancelEvent(integrationsManager.List(), calendar.CancelEventInput{
 		Selection:       calendar.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
 		ExternalEventID: strings.TrimSpace(externalEventID),
 		Reason:          strings.TrimSpace(request.Reason),
-		Source:          calendarSourceLinkage(request.Source),
+		Source:          calendarSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
 		if recordErr := recordCalendarActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
 			writeError(w, http.StatusInternalServerError, recordErr.Error())
 			return
 		}
+		if commitErr := commitBillingReservation(r.Context(), billingManager, reservation, "billing.integration_operation_committed", "calendar operation recorded after backend attempt"); commitErr != nil {
+			writeError(w, http.StatusInternalServerError, commitErr.Error())
+			return
+		}
 	}
 	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "calendar operation failed before backend attempt")
+		}
 		writeCalendarError(w, r, err)
 		return
 	}
@@ -612,6 +687,12 @@ func calendarSourceLinkage(source *CalendarSourceLinkageRequest) calendar.Source
 		ScheduleAttemptID: strings.TrimSpace(source.ScheduleAttemptID),
 		DeliveryID:        strings.TrimSpace(source.DeliveryID),
 	}
+}
+
+func calendarSourceLinkageWithOperation(source *CalendarSourceLinkageRequest, operationID string) calendar.SourceLinkage {
+	linkage := calendarSourceLinkage(source)
+	linkage.OperationID = strings.TrimSpace(operationID)
+	return linkage
 }
 
 func filterCalendarAccounts(items []calendar.AccountProjection, r *http.Request) []calendar.AccountProjection {

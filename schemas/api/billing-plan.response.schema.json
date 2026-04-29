@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/billing-plan.response.schema.json",
+  "title": "BillingPlanResponse",
+  "type": "object",
+  "required": ["planId", "planKey", "status", "enforcementMode", "effectiveAt"],
+  "additionalProperties": true,
+  "properties": {
+    "planId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "planKey": { "type": "string" },
+    "status": { "type": "string" },
+    "enforcementMode": { "type": "string", "enum": ["enforced", "unlimited", "not_measurable"] },
+    "effectiveAt": { "type": "string", "format": "date-time" },
+    "supersededAt": { "type": "string", "format": "date-time" },
+    "assignedByPrincipalId": { "type": "string" },
+    "assignmentReason": { "type": "string" }
+  }
+}

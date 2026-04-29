@@ -3,11 +3,24 @@
   "$id": "https://dope.local/schemas/api/error-response.schema.json",
   "title": "ErrorResponse",
   "type": "object",
-  "required": ["error"],
+  "anyOf": [
+    { "required": ["error"] },
+    { "required": ["code", "reasonCode", "message"] }
+  ],
   "additionalProperties": false,
   "properties": {
     "error": { "type": "string" },
+    "message": { "type": "string" },
     "errorCode": { "type": "string" },
-    "requestId": { "type": "string" }
+    "requestId": { "type": "string" },
+    "code": { "type": "string" },
+    "reasonCode": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "category": { "type": "string" },
+    "operationKey": { "type": "string" },
+    "requestedAmount": { "type": "integer" },
+    "remainingAmount": { "type": "integer" },
+    "periodStart": { "type": "string", "format": "date-time" },
+    "periodEnd": { "type": "string", "format": "date-time" }
   }
 }

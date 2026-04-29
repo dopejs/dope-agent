@@ -545,4 +545,117 @@ describe("DopeClient", () => {
       tenantDenied: true
     });
   });
+
+  it("calls billing inspection and admin routes with tenant intent", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        planId: "plan_1",
+        tenantId: "ten_personal",
+        planKey: "finite",
+        status: "active",
+        enforcementMode: "enforced",
+        effectiveAt: "2026-04-28T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_personal",
+        planKey: "finite",
+        enforcementMode: "enforced",
+        quotas: []
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { items: [] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { items: [] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        planId: "plan_2",
+        tenantId: "ten_personal",
+        planKey: "unlimited",
+        status: "active",
+        enforcementMode: "unlimited",
+        effectiveAt: "2026-04-28T10:01:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        quotaOverrideId: "override_1",
+        tenantId: "ten_personal",
+        category: "run_launches",
+        limit: 10,
+        reason: "temporary increase"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        adjustmentId: "adjustment_1",
+        tenantId: "ten_personal",
+        category: "run_launches",
+        quotaPeriodId: "period_1",
+        amountDelta: -1,
+        reason: "operator correction",
+        createdAt: "2026-04-28T10:02:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        reservationId: "reservation_1",
+        tenantId: "ten_personal",
+        category: "run_launches",
+        quotaPeriodId: "period_1",
+        operationKey: "tenant:ten_personal:run:client_1",
+        amountReserved: 1,
+        amountCommitted: 0,
+        amountRefunded: 1,
+        status: "released",
+        createdAt: "2026-04-28T10:00:00Z",
+        updatedAt: "2026-04-28T10:03:00Z"
+      }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192/",
+      defaultTenantId: "ten_personal",
+      fetchImpl
+    });
+
+    await client.getBillingPlan();
+    await client.getBillingUsage();
+    await client.listBillingQuotas();
+    await client.listBillingDenials();
+    await client.assignBillingPlan("ten_personal", { planKey: " unlimited ", enforcementMode: "unlimited", reason: " operator request " });
+    await client.createBillingQuotaOverride("ten_personal", { category: "run_launches", limit: 10, reason: " temporary increase " });
+    await client.createBillingManualAdjustment("ten_personal", { category: "run_launches", quotaPeriodId: " period_1 ", amountDelta: -1, reason: " operator correction " });
+    await client.resolveBillingReservation("ten_personal", " reservation_1 ", { outcome: "released", reason: " operator verified no work started ", amount: 1 });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/billing/plan", expect.objectContaining({ headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" }) }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/billing/usage", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/billing/quotas", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/billing/denials", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(5, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/plan", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/quota-overrides", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/manual-adjustments", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(8, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/reservations/reservation_1/resolve", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("maps quota denial payloads into DopeClientError", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(mockJSONResponse(429, {
+      error: "quota exhausted",
+      code: "quota_denied",
+      reasonCode: "quota_denied:run_launches_exhausted",
+      tenantId: "ten_personal",
+      category: "run_launches",
+      operationKey: "tenant:ten_personal:run:client_1",
+      requestedAmount: 1,
+      remainingAmount: 0,
+      periodStart: "2026-04-01T00:00:00Z",
+      periodEnd: "2026-05-01T00:00:00Z"
+    }));
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      fetchImpl
+    });
+
+    await expect(client.createRun({ entrypoint: "operator.shell.test" })).rejects.toMatchObject({
+      name: "DopeClientError",
+      status: 429,
+      code: "quota_denied:run_launches_exhausted",
+      quotaDenial: {
+        code: "quota_denied",
+        reasonCode: "quota_denied:run_launches_exhausted",
+        category: "run_launches",
+        remainingAmount: 0
+      }
+    });
+  });
 });

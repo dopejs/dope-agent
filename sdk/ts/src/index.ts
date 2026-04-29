@@ -485,6 +485,7 @@ export type TenantPermission =
   | "live_validation.execute"
   | "evaluation.manage"
   | "billing.view"
+  | "billing.manage"
   | "read_only.inspect";
 
 export type TenantResource = {
@@ -589,6 +590,129 @@ export type TenantRequestOptions = {
   tenantId?: string;
 };
 
+export type BillingEnforcementMode = "enforced" | "unlimited" | "not_measurable";
+
+export type BillingPlanResource = {
+  planId: string;
+  tenantId?: string;
+  planKey: string;
+  status: "active" | "scheduled" | "disabled" | "superseded" | string;
+  enforcementMode: BillingEnforcementMode;
+  effectiveAt: string;
+  supersededAt?: string;
+  assignedByPrincipalId?: string;
+  assignmentReason?: string;
+  document?: Record<string, unknown>;
+};
+
+export type BillingQuotaResource = {
+  tenantId?: string;
+  planKey: string;
+  category: string;
+  unit: string;
+  periodStart: string;
+  periodEnd: string;
+  periodAnchor?: string;
+  limit: number;
+  consumedAmount: number;
+  reservedAmount: number;
+  adjustedAmount: number;
+  carryoverApplied: number;
+  remainingAmount: number;
+  enforcementMode: BillingEnforcementMode;
+  denialReasonCode?: string;
+  overLimit?: boolean;
+};
+
+export type BillingDenialResource = {
+  denialId: string;
+  tenantId?: string;
+  category?: string;
+  quotaPeriodId?: string;
+  operationKey: string;
+  reasonCode: string;
+  requestedAmount: number;
+  remainingAmount: number;
+  guardedEntryPoint: string;
+  createdAt: string;
+};
+
+export type BillingManualAdjustmentResource = {
+  adjustmentId: string;
+  tenantId?: string;
+  category: string;
+  quotaPeriodId: string;
+  amountDelta: number;
+  reason: string;
+  createdByPrincipalId?: string;
+  createdAt: string;
+};
+
+export type BillingUsageResponse = {
+  tenantId?: string;
+  planKey: string;
+  enforcementMode: BillingEnforcementMode;
+  quotas: BillingQuotaResource[];
+  manualAdjustments?: BillingManualAdjustmentResource[];
+  denials?: BillingDenialResource[];
+};
+
+export type BillingPlanAssignmentInput = {
+  planKey: string;
+  enforcementMode: BillingEnforcementMode;
+  reason: string;
+};
+
+export type BillingQuotaOverrideInput = {
+  category: string;
+  limit?: number;
+  reason: string;
+};
+
+export type BillingManualAdjustmentInput = {
+  category: string;
+  quotaPeriodId: string;
+  amountDelta: number;
+  reason: string;
+};
+
+export type BillingReservationResource = {
+  reservationId: string;
+  tenantId?: string;
+  category: string;
+  quotaPeriodId: string;
+  operationKey: string;
+  amountReserved: number;
+  amountCommitted?: number;
+  amountRefunded?: number;
+  status: string;
+  reservationPoint?: string;
+  commitPoint?: string;
+  refundPoint?: string;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt?: string;
+  recoveryReason?: string;
+};
+
+export type BillingReservationResolutionInput = {
+  outcome: "committed" | "released" | "refunded" | "operator_action_needed";
+  reason: string;
+  amount?: number;
+};
+
+export type BillingQuotaDenialPayload = {
+  code: "quota_denied";
+  reasonCode: string;
+  tenantId?: string;
+  category?: string;
+  operationKey?: string;
+  requestedAmount?: number;
+  remainingAmount?: number;
+  periodStart?: string;
+  periodEnd?: string;
+};
+
 export type SecretStatus = "active" | "disabled" | "pending_remediation";
 export type SecretResolutionStatus = "resolved" | "unavailable" | "denied" | "not_applicable";
 
@@ -658,14 +782,16 @@ export class DopeClientError extends Error {
   readonly code?: string;
   readonly tenantDenied?: boolean;
   readonly denial?: TenantDenialResource;
+  readonly quotaDenial?: BillingQuotaDenialPayload;
 
-  constructor(message: string, options: { status: number; code?: string; tenantDenied?: boolean; denial?: TenantDenialResource }) {
+  constructor(message: string, options: { status: number; code?: string; tenantDenied?: boolean; denial?: TenantDenialResource; quotaDenial?: BillingQuotaDenialPayload }) {
     super(message);
     this.name = "DopeClientError";
     this.status = options.status;
     this.code = options.code;
     this.tenantDenied = options.tenantDenied;
     this.denial = options.denial;
+    this.quotaDenial = options.quotaDenial;
   }
 }
 
@@ -785,6 +911,71 @@ export class DopeClient {
 
   async getTenantSecret(secretRef: string, tenantOptions?: TenantRequestOptions): Promise<TenantSecretResponse> {
     return this.requestJSON<TenantSecretResponse>(`/v1/tenant-secrets/${encodePathComponent(secretRef)}`, { tenant: tenantOptions });
+  }
+
+  async getBillingPlan(tenantOptions?: TenantRequestOptions): Promise<BillingPlanResource> {
+    return this.requestJSON<BillingPlanResource>("/v1/billing/plan", { tenant: tenantOptions });
+  }
+
+  async getBillingUsage(tenantOptions?: TenantRequestOptions): Promise<BillingUsageResponse> {
+    return this.requestJSON<BillingUsageResponse>("/v1/billing/usage", { tenant: tenantOptions });
+  }
+
+  async listBillingQuotas(tenantOptions?: TenantRequestOptions): Promise<{ items: BillingQuotaResource[] }> {
+    return this.requestJSON<{ items: BillingQuotaResource[] }>("/v1/billing/quotas", { tenant: tenantOptions });
+  }
+
+  async listBillingDenials(tenantOptions?: TenantRequestOptions): Promise<{ items: BillingDenialResource[] }> {
+    return this.requestJSON<{ items: BillingDenialResource[] }>("/v1/billing/denials", { tenant: tenantOptions });
+  }
+
+  async assignBillingPlan(tenantId: string, input: BillingPlanAssignmentInput, tenantOptions?: TenantRequestOptions): Promise<BillingPlanResource> {
+    return this.requestJSON<BillingPlanResource>(`/v1/admin/billing/tenants/${tenantId.trim()}/plan`, {
+      method: "POST",
+      body: {
+        planKey: input.planKey.trim(),
+        enforcementMode: input.enforcementMode,
+        reason: input.reason.trim()
+      },
+      tenant: tenantOptions
+    });
+  }
+
+  async createBillingQuotaOverride(tenantId: string, input: BillingQuotaOverrideInput, tenantOptions?: TenantRequestOptions): Promise<Record<string, unknown>> {
+    return this.requestJSON<Record<string, unknown>>(`/v1/admin/billing/tenants/${tenantId.trim()}/quota-overrides`, {
+      method: "POST",
+      body: {
+        category: input.category,
+        limit: input.limit,
+        reason: input.reason.trim()
+      },
+      tenant: tenantOptions
+    });
+  }
+
+  async createBillingManualAdjustment(tenantId: string, input: BillingManualAdjustmentInput, tenantOptions?: TenantRequestOptions): Promise<BillingManualAdjustmentResource> {
+    return this.requestJSON<BillingManualAdjustmentResource>(`/v1/admin/billing/tenants/${tenantId.trim()}/manual-adjustments`, {
+      method: "POST",
+      body: {
+        category: input.category,
+        quotaPeriodId: input.quotaPeriodId.trim(),
+        amountDelta: input.amountDelta,
+        reason: input.reason.trim()
+      },
+      tenant: tenantOptions
+    });
+  }
+
+  async resolveBillingReservation(tenantId: string, reservationId: string, input: BillingReservationResolutionInput, tenantOptions?: TenantRequestOptions): Promise<BillingReservationResource> {
+    return this.requestJSON<BillingReservationResource>(`/v1/admin/billing/tenants/${tenantId.trim()}/reservations/${reservationId.trim()}/resolve`, {
+      method: "POST",
+      body: {
+        outcome: input.outcome,
+        reason: input.reason.trim(),
+        amount: input.amount
+      },
+      tenant: tenantOptions
+    });
   }
 
   async createTenantSecret(input: CreateTenantSecretInput, tenantOptions?: TenantRequestOptions): Promise<TenantSecretResponse> {
@@ -1079,9 +1270,14 @@ async function toClientError(response: Response): Promise<DopeClientError> {
   let message = `request failed with status ${response.status}`;
   let code: string | undefined;
   let denial: TenantDenialResource | undefined;
+  let quotaDenial: BillingQuotaDenialPayload | undefined;
 
   try {
-    const payload = (await response.json()) as { error?: string; errorCode?: string; reasonCode?: string; requestId?: string };
+    const payload = (await response.json()) as {
+      error?: string;
+      errorCode?: string;
+      requestId?: string;
+    } & Partial<BillingQuotaDenialPayload>;
     if (payload.error) {
       message = payload.error;
     }
@@ -1095,12 +1291,26 @@ async function toClientError(response: Response): Promise<DopeClientError> {
         requestId: payload.requestId
       };
     }
+    if (payload.code === "quota_denied" && payload.reasonCode) {
+      quotaDenial = {
+        code: "quota_denied",
+        reasonCode: payload.reasonCode,
+        tenantId: payload.tenantId,
+        category: payload.category,
+        operationKey: payload.operationKey,
+        requestedAmount: payload.requestedAmount,
+        remainingAmount: payload.remainingAmount,
+        periodStart: payload.periodStart,
+        periodEnd: payload.periodEnd
+      };
+      code = payload.reasonCode;
+    }
   } catch {
     // Ignore non-json failure bodies.
   }
 
   const tenantDenied = Boolean(denial) || isTenantDenialCode(code);
-  return new DopeClientError(message, { status: response.status, code, tenantDenied: tenantDenied || undefined, denial });
+  return new DopeClientError(message, { status: response.status, code, tenantDenied: tenantDenied || undefined, denial, quotaDenial });
 }
 
 function isTenantDenialCode(code: string | undefined): boolean {

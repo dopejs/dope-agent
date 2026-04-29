@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/billing-plan-assignment.request.schema.json",
+  "title": "BillingPlanAssignmentRequest",
+  "type": "object",
+  "required": ["planKey", "enforcementMode", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "planKey": { "type": "string", "minLength": 1 },
+    "enforcementMode": { "type": "string", "enum": ["enforced", "unlimited", "not_measurable"] },
+    "reason": { "type": "string", "minLength": 1 }
+  }
+}

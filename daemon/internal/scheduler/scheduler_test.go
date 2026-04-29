@@ -6,11 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/billing"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 func TestSchedulerDispatchesOneTimeScheduleExactlyOnce(t *testing.T) {
@@ -71,6 +74,68 @@ func TestSchedulerDispatchesOneTimeScheduleExactlyOnce(t *testing.T) {
 	}
 	if len(got.Attempts) != 1 || got.Attempts[0].DispatchStatus != DispatchStatusDispatched {
 		t.Fatalf("expected one dispatched attempt, got %+v", got.Attempts)
+	}
+}
+
+func TestSchedulerRunTargetQuotaDeniesBeforeRuntimeCreateRun(t *testing.T) {
+	now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+	harness := newSchedulerHarness(t, now)
+	ctx := context.Background()
+	tenantID := "ten_scheduler_run_quota"
+	if err := harness.store.EnsureBillingCatalog(ctx); err != nil {
+		t.Fatalf("EnsureBillingCatalog returned error: %v", err)
+	}
+	if err := harness.store.SavePlan(ctx, billing.TenantPlan{
+		PlanID:          "plan_" + tenantID,
+		TenantID:        tenantID,
+		PlanKey:         "finite",
+		Status:          billing.PlanStatusActive,
+		EnforcementMode: billing.EnforcementModeEnforced,
+		EffectiveAt:     now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("SavePlan returned error: %v", err)
+	}
+	limit := int64(0)
+	if err := harness.store.SaveQuotaOverride(ctx, billing.QuotaOverride{
+		QuotaOverrideID: "override_" + tenantID,
+		TenantID:        tenantID,
+		Category:        billing.CategoryRunLaunches,
+		Limit:           &limit,
+		EffectiveAt:     now.Add(-time.Minute),
+		Reason:          "test exhausted scheduled run quota",
+	}); err != nil {
+		t.Fatalf("SaveQuotaOverride returned error: %v", err)
+	}
+	harness.scheduler.billing = billing.NewManager(harness.store)
+
+	fireAt := now.Add(30 * time.Second)
+	tenantCtx := tenantctx.WithContext(ctx, identity.TenantContext{TenantID: tenantID, PrincipalID: "prn_scheduler"})
+	schedule, err := harness.scheduler.Create(tenantCtx, CreateInput{
+		Trigger: Trigger{Kind: TriggerKindOnce, FireAt: &fireAt},
+		Target: Target{
+			Kind: TargetKindRun,
+			Run:  &RunTarget{Entrypoint: "operator.scheduler", Goal: "deny scheduled run"},
+		},
+		RetryPolicy: RetryPolicy{MaxRetries: 0},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	harness.clock.now = fireAt.Add(time.Second)
+	if err := harness.scheduler.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick returned error: %v", err)
+	}
+
+	if runs := harness.runtime.ListRuns(); len(runs) != 0 {
+		t.Fatalf("expected no runtime run before scheduled quota denial, got %+v", runs)
+	}
+	got, ok, err := harness.scheduler.Get(context.Background(), schedule.ScheduleID)
+	if err != nil || !ok {
+		t.Fatalf("Get returned ok=%v err=%v", ok, err)
+	}
+	if got.LastOutcome != string(DispatchStatusExhausted) {
+		t.Fatalf("expected failed dispatch outcome after quota denial, got %+v", got)
 	}
 }
 

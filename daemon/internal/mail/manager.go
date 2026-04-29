@@ -585,8 +585,12 @@ func (m *Manager) projectResource(resource integrations.Resource, selectionMode 
 
 func (m *Manager) newOperation(account AccountProjection, resource integrations.Resource, class OperationClass, selectionMode, summary string, source SourceLinkage) Operation {
 	now := time.Now().UTC()
+	operationID := strings.TrimSpace(source.OperationID)
+	if operationID == "" {
+		operationID = NewOperationID()
+	}
 	operation := Operation{
-		OperationID:             newID("mail_op"),
+		OperationID:             operationID,
 		OperationClass:          class,
 		Status:                  OperationStatusRequested,
 		ResultMode:              ResultModeInspection,
@@ -724,6 +728,10 @@ func collectArtifactIDs(artifacts []Artifact) []string {
 		ids = append(ids, item.ArtifactID)
 	}
 	return ids
+}
+
+func NewOperationID() string {
+	return newID("mail_op")
 }
 
 func newID(prefix string) string {

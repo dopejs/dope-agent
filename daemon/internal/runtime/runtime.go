@@ -16,6 +16,7 @@ import (
 
 var (
 	ErrEntrypointRequired    = errors.New("entrypoint is required")
+	ErrRunAlreadyExists      = errors.New("run already exists")
 	ErrRunNotFound           = errors.New("run not found")
 	ErrTitleRequired         = errors.New("title is required")
 	ErrStepNotFound          = errors.New("step not found")
@@ -60,6 +61,7 @@ type Run struct {
 }
 
 type CreateRunInput struct {
+	RunID                string `json:"runId,omitempty"`
 	SessionID            string `json:"sessionId"`
 	ScheduleID           string `json:"scheduleId,omitempty"`
 	ScheduleAttemptID    string `json:"scheduleAttemptId,omitempty"`
@@ -174,6 +176,7 @@ type RunCheckpoint struct {
 }
 
 type CreateToolCallInput struct {
+	ToolCallID           string                        `json:"toolCallId,omitempty"`
 	WorkflowID           string                        `json:"workflowId,omitempty"`
 	WorkflowStepID       string                        `json:"workflowStepId,omitempty"`
 	Attempt              int                           `json:"attempt,omitempty"`
@@ -257,8 +260,12 @@ func (m *Manager) CreateRun(input CreateRunInput) (Run, error) {
 	}
 
 	now := time.Now().UTC()
+	runID := strings.TrimSpace(input.RunID)
+	if runID == "" {
+		runID = NewRunID()
+	}
 	run := Run{
-		RunID:                newRunID(),
+		RunID:                runID,
 		SessionID:            input.SessionID,
 		ScheduleID:           input.ScheduleID,
 		ScheduleAttemptID:    input.ScheduleAttemptID,
@@ -273,6 +280,9 @@ func (m *Manager) CreateRun(input CreateRunInput) (Run, error) {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if _, exists := m.byID[run.RunID]; exists {
+		return Run{}, ErrRunAlreadyExists
+	}
 
 	m.byID[run.RunID] = run
 	m.runIDs = append(m.runIDs, run.RunID)
@@ -623,6 +633,10 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 	}
 
 	now := time.Now().UTC()
+	toolCallID := strings.TrimSpace(input.ToolCallID)
+	if toolCallID == "" {
+		toolCallID = NewToolCallID()
+	}
 	invocationKind := input.InvocationKind
 	switch {
 	case invocationKind != "":
@@ -634,7 +648,7 @@ func (m *Manager) CreateToolCall(runID, stepID string, input CreateToolCallInput
 		invocationKind = ToolCallInvocationKindLocalTool
 	}
 	toolCall := ToolCall{
-		ToolCallID:           newToolCallID(),
+		ToolCallID:           toolCallID,
 		RunID:                runID,
 		StepID:               stepID,
 		WorkflowID:           strings.TrimSpace(input.WorkflowID),
@@ -1059,13 +1073,17 @@ var stepTransitions = map[StepStatus]map[StepStatus]struct{}{
 	StepStatusCancelled: {},
 }
 
-func newRunID() string {
+func NewRunID() string {
 	buf := make([]byte, 8)
 	if _, err := rand.Read(buf); err != nil {
 		return "run_fallback"
 	}
 
 	return "run_" + hex.EncodeToString(buf)
+}
+
+func NewToolCallID() string {
+	return newToolCallID()
 }
 
 func newStepID() string {

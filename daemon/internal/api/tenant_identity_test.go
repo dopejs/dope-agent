@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
+	"github.com/dopejs/dope-agent/daemon/internal/billing"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 )
 
@@ -130,6 +132,60 @@ func TestTenantManagementRoutesCoverMembershipInvitationAndAudit(t *testing.T) {
 	harness.server.Handler().ServeHTTP(auditRec, auditReq)
 	if auditRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for audit list, got %d body=%s", auditRec.Code, auditRec.Body.String())
+	}
+}
+
+func TestTenantAuditEventsExposeTenantScopedBillingEvidence(t *testing.T) {
+	harness := newTenantAuthHarness(t)
+	ctx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
+	billingEvent := audit.BuildBillingAuditEvent(audit.BillingAuditInput{
+		TenantID:     harness.defaultTenant.TenantID,
+		PrincipalID:  harness.principal.PrincipalID,
+		Category:     billing.CategoryRunLaunches,
+		OperationKey: "tenant:" + harness.defaultTenant.TenantID + ":run:client_1",
+		Action:       "billing.quota_denied",
+		Outcome:      identity.AuditOutcomeDenied,
+		ReasonCode:   "quota_denied:run_launches_exhausted",
+		Amount:       1,
+	})
+	billingEvent.AuditEventID = "audit_billing_visible"
+	if _, err := harness.store.AppendTenantAuditEvent(ctx, billingEvent); err != nil {
+		t.Fatalf("AppendTenantAuditEvent billing returned error: %v", err)
+	}
+	otherEvent := audit.BuildBillingAuditEvent(audit.BillingAuditInput{
+		TenantID:     "ten_other_billing_audit",
+		PrincipalID:  "prn_other",
+		Category:     billing.CategoryRunLaunches,
+		OperationKey: "tenant:ten_other_billing_audit:run:client_1",
+		Action:       "billing.quota_denied",
+		Outcome:      identity.AuditOutcomeDenied,
+		ReasonCode:   "quota_denied:run_launches_exhausted",
+		Amount:       1,
+	})
+	otherEvent.AuditEventID = "audit_billing_other"
+	if _, err := harness.store.AppendTenantAuditEvent(ctx, otherEvent); err != nil {
+		t.Fatalf("AppendTenantAuditEvent other billing returned error: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/tenant-audit-events?tenantId="+harness.defaultTenant.TenantID, nil)
+	req.Header.Set("Authorization", harness.authHeader)
+	req.Header.Set("X-Dope-Tenant-ID", harness.defaultTenant.TenantID)
+	harness.server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for billing audit list, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "audit_billing_visible") || strings.Contains(rec.Body.String(), "audit_billing_other") {
+		t.Fatalf("expected only active-tenant billing audit evidence, got %s", rec.Body.String())
+	}
+
+	crossRec := httptest.NewRecorder()
+	crossReq := httptest.NewRequest(http.MethodGet, "/v1/tenant-audit-events?tenantId=ten_other_billing_audit", nil)
+	crossReq.Header.Set("Authorization", harness.authHeader)
+	crossReq.Header.Set("X-Dope-Tenant-ID", harness.defaultTenant.TenantID)
+	harness.server.Handler().ServeHTTP(crossRec, crossReq)
+	if crossRec.Code != http.StatusForbidden {
+		t.Fatalf("expected cross-tenant billing audit denial, got %d body=%s", crossRec.Code, crossRec.Body.String())
 	}
 }
 

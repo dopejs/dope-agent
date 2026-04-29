@@ -67,7 +67,10 @@ The hosted productization program is split into:
    `mcp_tool_exposure_rules`. Roadmap 35 explicitly does NOT change DDL or store access for
    those tables — the boundary is enforced by the
    `TestR37BoundarySignaturesGolden` exported-signature snapshot.
-5. `023-billing-quotas-and-usage-accounting.md`
+5. `023-billing-quotas-and-usage-accounting.md` — Roadmap 38 owns tenant plans, quota
+   definitions, usage counters, reservations, denials, manual adjustments, billing
+   inspection/admin APIs, SDK types, schema contracts, inventory registration, and
+   hosted fail-closed/local-unlimited semantics.
 6. `024-production-install-upgrade-backup-and-soak.md`
 7. `025-live-validation-and-side-effect-replay.md`
 8. `026-evaluation-product-expansion.md`

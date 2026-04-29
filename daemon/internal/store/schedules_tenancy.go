@@ -16,7 +16,7 @@ func (s *SQLiteStore) ListSchedulesForTenantRaw(ctx context.Context, tenantID, e
 		return nil, nil
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT schedule_id, environment_scope, kind, status, target_ref_id, timezone, next_due_at, last_attempt_at, last_outcome, created_at, updated_at, paused_at, cancelled_at, completed_at, document_json
+			SELECT schedule_id, environment_scope, tenant_id, kind, status, target_ref_id, timezone, next_due_at, last_attempt_at, last_outcome, created_at, updated_at, paused_at, cancelled_at, completed_at, document_json
 		FROM schedules
 		WHERE tenant_id = ? AND environment_scope = ?
 		ORDER BY created_at ASC, schedule_id ASC

@@ -79,6 +79,7 @@ const (
 type Reminder struct {
 	ReminderID           string                `json:"reminderId"`
 	EnvironmentScope     string                `json:"environmentScope"`
+	TenantID             string                `json:"tenantId,omitempty"`
 	Title                string                `json:"title"`
 	Details              string                `json:"details,omitempty"`
 	BehaviorMode         BehaviorMode          `json:"behaviorMode"`

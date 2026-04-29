@@ -82,6 +82,7 @@ const (
 type Schedule struct {
 	ScheduleID       string            `json:"scheduleId"`
 	EnvironmentScope string            `json:"environmentScope,omitempty"`
+	TenantID         string            `json:"tenantId,omitempty"`
 	Kind             ScheduleKind      `json:"kind"`
 	Status           ScheduleStatus    `json:"status"`
 	TargetRefID      string            `json:"targetRefId"`

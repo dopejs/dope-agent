@@ -52,6 +52,15 @@ Roadmap 16 should **not** try to close:
 
 Those should sit on top of the sandbox substrate, not inside it.
 
+## Roadmap 38 Live Validation Quota Gate
+
+Roadmap 38 reserves the `live_validation_attempts` quota category and defines the
+preflight gate contract for future live validation. The gate must run before any live
+side effect and must return stable quota denials when exhausted or fail closed when hosted
+billing state is unavailable. Roadmap 38 does not create the Roadmap 40 live-validation
+executor; concrete live-validation entry points added later must use the shared billing
+reservation lifecycle before touching external systems.
+
 ## Benchmark Synthesis
 
 ### What to take from OpenClaw

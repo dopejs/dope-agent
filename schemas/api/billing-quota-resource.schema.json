@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/billing-quota-resource.schema.json",
+  "title": "BillingQuotaResource",
+  "type": "object",
+  "required": ["planKey", "category", "unit", "periodStart", "periodEnd", "limit", "consumedAmount", "reservedAmount", "adjustedAmount", "carryoverApplied", "remainingAmount", "enforcementMode"],
+  "additionalProperties": true,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "planKey": { "type": "string" },
+    "category": { "type": "string" },
+    "unit": { "type": "string" },
+    "periodStart": { "type": "string", "format": "date-time" },
+    "periodEnd": { "type": "string", "format": "date-time" },
+    "periodAnchor": { "type": "string" },
+    "limit": { "type": "integer" },
+    "consumedAmount": { "type": "integer" },
+    "reservedAmount": { "type": "integer" },
+    "adjustedAmount": { "type": "integer" },
+    "carryoverApplied": { "type": "integer" },
+    "remainingAmount": { "type": "integer" },
+    "enforcementMode": { "type": "string" },
+    "denialReasonCode": { "type": "string" },
+    "overLimit": { "type": "boolean" }
+  }
+}

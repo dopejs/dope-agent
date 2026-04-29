@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/billing-reservation-resolution.request.schema.json",
+  "title": "BillingReservationResolutionRequest",
+  "type": "object",
+  "required": ["outcome", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "outcome": { "type": "string", "enum": ["committed", "released", "refunded", "operator_action_needed"] },
+    "reason": { "type": "string", "minLength": 1 },
+    "amount": { "type": "integer" }
+  }
+}

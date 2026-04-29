@@ -58,6 +58,7 @@ const (
 	PermissionLiveValidationExecute Permission = "live_validation.execute"
 	PermissionEvaluationManage      Permission = "evaluation.manage"
 	PermissionBillingView           Permission = "billing.view"
+	PermissionBillingManage         Permission = "billing.manage"
 	PermissionReadOnlyInspect       Permission = "read_only.inspect"
 )
 
@@ -73,6 +74,7 @@ var AllSensitivePermissions = []Permission{
 	PermissionLiveValidationExecute,
 	PermissionEvaluationManage,
 	PermissionBillingView,
+	PermissionBillingManage,
 }
 
 var (

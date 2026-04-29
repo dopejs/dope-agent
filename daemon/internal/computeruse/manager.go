@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/billing"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 )
@@ -361,6 +362,9 @@ func (m *Manager) executeAction(ctx context.Context, session Session, action Act
 			}
 			artifact, saveErr := m.artifacts.SaveComputerUseArtifact(ctx, capture)
 			if saveErr != nil {
+				if isQuotaArtifactCaptureError(saveErr) {
+					return Action{}, saveErr
+				}
 				continue
 			}
 			artifact.EnvironmentScope = m.environment
@@ -419,6 +423,9 @@ func (m *Manager) executeAction(ctx context.Context, session Session, action Act
 		}
 		artifact, saveErr := m.artifacts.SaveComputerUseArtifact(ctx, capture)
 		if saveErr != nil {
+			if isQuotaArtifactCaptureError(saveErr) {
+				return Action{}, saveErr
+			}
 			continue
 		}
 		artifact.EnvironmentScope = m.environment
@@ -524,6 +531,12 @@ func (m *Manager) enrichSession(ctx context.Context, session Session) (Session, 
 		session.Actions = append(session.Actions, enriched)
 	}
 	return session, nil
+}
+
+func isQuotaArtifactCaptureError(err error) bool {
+	return errors.Is(err, billing.ErrQuotaDenied) ||
+		errors.Is(err, billing.ErrQuotaStateUnavailable) ||
+		errors.Is(err, billing.ErrOperatorActionRequired)
 }
 
 func (m *Manager) enrichAction(ctx context.Context, action Action) (Action, error) {

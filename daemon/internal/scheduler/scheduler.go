@@ -5,16 +5,21 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/billing"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 type Clock interface {
@@ -48,6 +53,7 @@ type Dependencies struct {
 	Store            *store.SQLiteStore
 	Checkpoints      *checkpoints.Manager
 	WorkflowLauncher WorkflowLauncher
+	Billing          *billing.Manager
 	Clock            Clock
 	TickInterval     time.Duration
 }
@@ -59,6 +65,7 @@ type Scheduler struct {
 	store        *store.SQLiteStore
 	checkpoints  *checkpoints.Manager
 	workflow     WorkflowLauncher
+	billing      *billing.Manager
 	clock        Clock
 	tickInterval time.Duration
 
@@ -83,6 +90,7 @@ func New(deps Dependencies) *Scheduler {
 		store:        deps.Store,
 		checkpoints:  deps.Checkpoints,
 		workflow:     deps.WorkflowLauncher,
+		billing:      deps.Billing,
 		clock:        clock,
 		tickInterval: interval,
 	}
@@ -163,6 +171,9 @@ func (s *Scheduler) Create(ctx context.Context, input CreateInput) (Schedule, er
 		CreatedAt:        now,
 		UpdatedAt:        now,
 		NextDueAt:        nextDueAt,
+	}
+	if tenantContext, ok := tenantctx.FromContext(ctx); ok {
+		schedule.TenantID = strings.TrimSpace(tenantContext.TenantID)
 	}
 	schedule.Target.UpdatedAt = now
 	schedule.Target.Revision = 1
@@ -419,6 +430,7 @@ func (s *Scheduler) finishNonDispatchAttempt(ctx context.Context, schedule *Sche
 }
 
 func (s *Scheduler) dispatchAttempt(ctx context.Context, schedule *Schedule, attempt *DispatchAttempt, source TriggerSource) error {
+	ctx = s.withScheduleTenantContext(ctx, *schedule)
 	now := s.clock.Now().UTC()
 	attempt.TriggerSource = source
 	attempt.DispatchStatus = DispatchStatusDispatching
@@ -450,14 +462,33 @@ func (s *Scheduler) dispatchAttempt(ctx context.Context, schedule *Schedule, att
 
 	switch target.Kind {
 	case TargetKindRun:
-		run, createErr := s.runtime.CreateRun(runtime.CreateRunInput{
+		input := runtime.CreateRunInput{
 			SessionID:         target.Run.SessionID,
 			ScheduleID:        schedule.ScheduleID,
 			ScheduleAttemptID: attempt.AttemptID,
 			Entrypoint:        target.Run.Entrypoint,
 			Goal:              target.Run.Goal,
-		})
+		}
+		var reservation billing.UsageReservation
+		if s.billing != nil && strings.TrimSpace(schedule.TenantID) != "" {
+			input.RunID = runtime.NewRunID()
+			result, reserveErr := s.billing.Reserve(ctx, billing.ReserveInput{
+				TenantID:          strings.TrimSpace(schedule.TenantID),
+				Category:          billing.CategoryRunLaunches,
+				Amount:            1,
+				OperationKey:      billing.RunOperationKey(schedule.TenantID, "schedule:"+attempt.AttemptID, input.RunID),
+				ReservationPoint:  "scheduler run target before runtime.CreateRun",
+				GuardedEntryPoint: "scheduler run target",
+				Hosted:            s.cfg.Environment == config.EnvironmentProd,
+			})
+			if reserveErr != nil {
+				return s.recordDispatchFailure(ctx, schedule, attempt, "quota_denied", reserveErr.Error(), true)
+			}
+			reservation = result.Reservation
+		}
+		run, createErr := s.runtime.CreateRun(input)
 		if createErr != nil {
+			releaseSchedulerBillingReservation(ctx, s.billing, reservation, "scheduled run creation failed before persistence")
 			return s.recordDispatchFailure(ctx, schedule, attempt, "run_create_failed", createErr.Error(), true)
 		}
 		attempt.RunID = run.RunID
@@ -470,6 +501,10 @@ func (s *Scheduler) dispatchAttempt(ctx context.Context, schedule *Schedule, att
 			return err
 		}
 		if err := s.store.UpsertRun(ctx, run); err != nil {
+			releaseSchedulerBillingReservation(ctx, s.billing, reservation, "scheduled run persistence failed before commit")
+			return err
+		}
+		if err := commitSchedulerBillingReservation(ctx, s.billing, reservation, "scheduled run persisted"); err != nil {
 			return err
 		}
 		if s.checkpoints != nil {
@@ -693,6 +728,7 @@ func (s *Scheduler) hydrateSchedule(ctx context.Context, record store.ScheduleRe
 		schedule = Schedule{
 			ScheduleID:       record.ScheduleID,
 			EnvironmentScope: record.EnvironmentScope,
+			TenantID:         record.TenantID,
 			Kind:             ScheduleKind(record.Kind),
 			Status:           ScheduleStatus(record.Status),
 			TargetRefID:      record.TargetRefID,
@@ -731,6 +767,7 @@ func (s *Scheduler) hydrateSchedule(ctx context.Context, record store.ScheduleRe
 	}
 	schedule.Attempts = attempts
 	schedule.EnvironmentScope = record.EnvironmentScope
+	schedule.TenantID = record.TenantID
 	schedule.Kind = ScheduleKind(record.Kind)
 	schedule.Status = ScheduleStatus(record.Status)
 	schedule.TargetRefID = record.TargetRefID
@@ -754,6 +791,7 @@ func (s *Scheduler) persistSchedule(ctx context.Context, schedule Schedule) erro
 	scheduleRecord := store.ScheduleRecord{
 		ScheduleID:       schedule.ScheduleID,
 		EnvironmentScope: schedule.EnvironmentScope,
+		TenantID:         schedule.TenantID,
 		Kind:             string(schedule.Kind),
 		Status:           string(schedule.Status),
 		TargetRefID:      schedule.TargetRefID,
@@ -875,6 +913,52 @@ func deriveScheduleKind(kind TriggerKind) ScheduleKind {
 		return ScheduleKindRecurring
 	}
 	return ScheduleKindOneTime
+}
+
+func (s *Scheduler) withScheduleTenantContext(ctx context.Context, schedule Schedule) context.Context {
+	if _, ok := tenantctx.FromContext(ctx); ok {
+		return ctx
+	}
+	tenantID := strings.TrimSpace(schedule.TenantID)
+	if tenantID == "" {
+		return ctx
+	}
+	return tenantctx.WithContext(ctx, identity.TenantContext{
+		TenantID:    tenantID,
+		PrincipalID: "system:scheduler",
+	})
+}
+
+func releaseSchedulerBillingReservation(ctx context.Context, manager *billing.Manager, reservation billing.UsageReservation, reason string) {
+	if manager == nil || reservation.ReservationID == "" {
+		return
+	}
+	_, _ = manager.Release(ctx, billing.ResolveInput{
+		TenantID:     reservation.TenantID,
+		Category:     reservation.Category,
+		OperationKey: reservation.OperationKey,
+		Amount:       reservation.AmountReserved,
+		ReasonCode:   "billing.scheduled_run_released",
+		Reason:       reason,
+	})
+}
+
+func commitSchedulerBillingReservation(ctx context.Context, manager *billing.Manager, reservation billing.UsageReservation, reason string) error {
+	if manager == nil || reservation.ReservationID == "" {
+		return nil
+	}
+	_, err := manager.Commit(ctx, billing.ResolveInput{
+		TenantID:     reservation.TenantID,
+		Category:     reservation.Category,
+		OperationKey: reservation.OperationKey,
+		Amount:       reservation.AmountReserved,
+		ReasonCode:   "billing.scheduled_run_committed",
+		Reason:       reason,
+	})
+	if errors.Is(err, billing.ErrReservationNotFound) {
+		return nil
+	}
+	return err
 }
 
 func initialScheduleStatus(kind ScheduleKind) ScheduleStatus {

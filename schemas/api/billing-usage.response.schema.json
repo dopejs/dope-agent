@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/billing-usage.response.schema.json",
+  "title": "BillingUsageResponse",
+  "type": "object",
+  "required": ["planKey", "enforcementMode", "quotas"],
+  "additionalProperties": true,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "planKey": { "type": "string" },
+    "enforcementMode": { "type": "string" },
+    "quotas": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "manualAdjustments": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "denials": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    }
+  }
+}

@@ -17,6 +17,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/artifacts"
 	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
+	"github.com/dopejs/dope-agent/daemon/internal/billing"
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/chat"
@@ -72,6 +73,7 @@ type App struct {
 	Reminders            *reminders.Manager
 	Scheduler            *scheduler.Scheduler
 	Delivery             *delivery.Manager
+	Billing              *billing.Manager
 	Evaluation           *evaluation.Manager
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
@@ -111,6 +113,10 @@ func New() (*App, error) {
 		_ = sqliteStore.Close()
 		return nil, fmt.Errorf("seed default tenant cache (early): %w", err)
 	}
+	if err := sqliteStore.EnsureBillingCatalog(context.Background()); err != nil {
+		_ = sqliteStore.Close()
+		return nil, fmt.Errorf("ensure billing catalog: %w", err)
+	}
 	// Roadmap 35 (T017): refuse to start if any tenant-migration step is in
 	// the `failed` state. Resume of `running` steps is owned by the
 	// individual backfill drivers (US2). At Phase 2 only the events
@@ -127,6 +133,7 @@ func New() (*App, error) {
 	policyEngine := policy.NewEngine()
 	authManager := auth.NewManager()
 	identityManager := identity.NewManager(sqliteStore)
+	billingManager := billing.NewManager(sqliteStore)
 	sandboxManager := sandbox.NewManager(cfg, sqliteStore, eventBus, policyEngine)
 	secretBackend, err := secrets.NewLocalBackend(filepath.Join(cfg.DataDir, "tenant-secret-values"))
 	if err != nil {
@@ -154,6 +161,7 @@ func New() (*App, error) {
 	capabilitySupervisor := capabilities.NewSupervisor()
 	chatService := chat.NewService(llmDispatcher, providerManager, skillRegistry, eventBus, sqliteStore)
 	artifactService := artifacts.NewService(cfg.DataDir)
+	artifactService.ConfigureBilling(billingManager, cfg.Environment == config.EnvironmentProd)
 	computerUseManager := computeruse.NewManager(computeruse.Dependencies{
 		EnvironmentScope: string(cfg.Environment),
 		Runtime:          runtimeManager,
@@ -182,11 +190,15 @@ func New() (*App, error) {
 	}
 	deliveryManager := delivery.NewManager(string(cfg.Environment), eventBus, sqliteStore, delivery.NewTestSinkAdapter(), connectorAdapter)
 	envCtx := events.WithEnvironmentScope(context.Background(), string(cfg.Environment))
+	replayRecorder := evaluation.NewRuntimeReplayRecorder(runtimeManager, sqliteStore)
+	replayRecorder.ConfigureBilling(billingManager, cfg.Environment == config.EnvironmentProd)
 	evaluationManager := evaluation.NewManager(evaluation.Dependencies{
 		EnvironmentScope: string(cfg.Environment),
 		Store:            sqliteStore,
 		FixturesDir:      defaultEvaluationFixturesDir(),
-		RuntimeRecorder:  evaluation.NewRuntimeReplayRecorder(runtimeManager, sqliteStore),
+		RuntimeRecorder:  replayRecorder,
+		Billing:          billingManager,
+		HostedBilling:    cfg.Environment == config.EnvironmentProd,
 	})
 	if err := evaluationManager.LoadFixtures(envCtx); err != nil {
 		return nil, err
@@ -204,6 +216,7 @@ func New() (*App, error) {
 		Mail:         mailManager,
 		ComputerUse:  computerUseManager,
 		Delivery:     deliveryManager,
+		Billing:      billingManager,
 		EventBus:     eventBus,
 		Store:        sqliteStore,
 		Checkpoints:  checkpointManager,
@@ -222,12 +235,16 @@ func New() (*App, error) {
 		Store:            sqliteStore,
 		Checkpoints:      checkpointManager,
 		WorkflowLauncher: workflowLauncher,
+		Billing:          billingManager,
 	})
 	if err := recoverPersistedStateWithSecrets(envCtx, cfg.DataDir, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, identityManager, providerManager, sandboxManager, secretManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
 		return nil, err
 	}
 	if err := syncManagedProviderState(envCtx, sqliteStore, providerManager); err != nil {
 		return nil, err
+	}
+	if _, err := billingManager.RecoverPendingReservations(envCtx, nil); err != nil {
+		return nil, fmt.Errorf("recover billing reservations: %w", err)
 	}
 
 	discordRuntime, err := discordconnector.NewRuntime(discordconnector.Config{
@@ -270,6 +287,7 @@ func New() (*App, error) {
 		ComputerUse:           computerUseManager,
 		Scheduler:             scheduleManager,
 		Delivery:              deliveryManager,
+		Billing:               billingManager,
 		Store:                 sqliteStore,
 		Checkpoints:           checkpointManager,
 		Evaluation:            evaluationManager,
@@ -301,6 +319,7 @@ func New() (*App, error) {
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
 		Delivery:             deliveryManager,
+		Billing:              billingManager,
 		Evaluation:           evaluationManager,
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,
@@ -625,6 +644,9 @@ func recoverPersistedStateWithSecrets(ctx context.Context, dataDir string, envir
 		// (e.g. ReplaceWorkflowSteps).
 		if err := sqliteStore.SeedDefaultTenantCache(ctx); err != nil {
 			return fmt.Errorf("seed default tenant cache: %w", err)
+		}
+		if err := sqliteStore.EnsureDevelopmentBillingPlan(ctx, tenant.TenantID); err != nil {
+			return fmt.Errorf("ensure development billing plan: %w", err)
 		}
 		if secretManager != nil {
 			if _, err := secrets.BridgeLocalCredentialFiles(ctx, secrets.LocalCredentialBridgeInput{

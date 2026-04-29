@@ -18,6 +18,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
+	"github.com/dopejs/dope-agent/daemon/internal/billing"
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/chat"
@@ -72,6 +73,7 @@ type Dependencies struct {
 	ComputerUse  *computeruse.Manager
 	Scheduler    *scheduler.Scheduler
 	Delivery     *delivery.Manager
+	Billing      *billing.Manager
 	Store        *store.SQLiteStore
 	Checkpoints  *checkpoints.Manager
 	Evaluation   *evaluation.Manager
@@ -123,6 +125,7 @@ type Server struct {
 	computerUse     *computeruse.Manager
 	scheduler       *scheduler.Scheduler
 	delivery        *delivery.Manager
+	billing         *billing.Manager
 	store           *store.SQLiteStore
 	checkpoints     *checkpoints.Manager
 	evaluation      *evaluation.Manager
@@ -242,6 +245,12 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/tenant-audit-events", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleTenantAuditEvents(deps.Store, w, r)
 	}))
+	mux.HandleFunc("/v1/billing/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleHostedBilling(deps.Config, deps.Billing, w, r)
+	}))
+	mux.HandleFunc("/v1/admin/billing/tenants/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleHostedBillingAdmin(deps.Billing, w, r)
+	}))
 	mux.HandleFunc("/v1/tenant-secrets", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleTenantSecrets(deps.Secrets, w, r)
 	}))
@@ -274,11 +283,11 @@ func NewServer(deps Dependencies) *Server {
 		handleEvaluationRoutes(deps.Evaluation, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/runs", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleRuns(deps.Router, deps.Runtime, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, w, r)
+		handleRuns(deps.Config, deps.Router, deps.Runtime, deps.EventBus, deps.Delivery, deps.Billing, deps.Store, deps.Checkpoints, w, r)
 	}))
 	ae := resolveAuditEmitter(deps)
 	mux.HandleFunc("/v1/runs/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/runs/", "runs", "run_id", "run", func(w http.ResponseWriter, r *http.Request) {
-		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.Secrets, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.Mail, deps.EventBus, deps.Delivery, deps.Store, deps.Checkpoints, deps.ComputerUse, w, r)
+		handleRunRoutes(deps.Config, deps.Runtime, deps.Policy, deps.Capabilities, deps.Skills, deps.Secrets, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.Mail, deps.EventBus, deps.Delivery, deps.Billing, deps.Store, deps.Checkpoints, deps.ComputerUse, w, r)
 	})))
 	mux.HandleFunc("/v1/schedules", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSchedules(deps.Scheduler, deps.Delivery, w, r)
@@ -326,7 +335,7 @@ func NewServer(deps Dependencies) *Server {
 		handlePolicyApprovals(deps.Policy, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/policy/approvals/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/policy/approvals/", "approvals", "approval_id", "approval", func(w http.ResponseWriter, r *http.Request) {
-		handlePolicyApprovalRoutes(deps.Config, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.Mail, deps.EventBus, deps.Store, deps.ComputerUse, deps.Runtime, deps.Checkpoints, w, r)
+		handlePolicyApprovalRoutes(deps.Config, deps.Policy, deps.Capabilities, deps.Skills, deps.MCP, deps.Sandboxes, deps.Integrations, deps.Calendar, deps.Mail, deps.EventBus, deps.Billing, deps.Store, deps.ComputerUse, deps.Runtime, deps.Checkpoints, w, r)
 	})))
 	mux.HandleFunc("/v1/computer-use/artifacts/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/computer-use/artifacts/", "computer_use_artifacts", "artifact_id", "computer_use_artifact", func(w http.ResponseWriter, r *http.Request) {
 		handleComputerUseArtifactRoutes(deps.ComputerUse, w, r)
@@ -395,13 +404,13 @@ func NewServer(deps Dependencies) *Server {
 		handleCalendarAccountRoutes(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Store, w, r)
 	})))
 	mux.HandleFunc("/v1/calendar/events", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleCalendarEvents(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Store, w, r)
+		handleCalendarEvents(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Billing, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/calendar/events/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleCalendarEventRoutes(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Store, w, r)
+		handleCalendarEventRoutes(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Billing, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/calendar/availability/queries", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleCalendarAvailabilityQueries(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Store, w, r)
+		handleCalendarAvailabilityQueries(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Billing, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/calendar/availability/queries/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleCalendarAvailabilityQueryRoutes(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Store, w, r)
@@ -419,22 +428,22 @@ func NewServer(deps Dependencies) *Server {
 		handleMailAccountRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
 	})))
 	mux.HandleFunc("/v1/mail/threads", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleMailThreads(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+		handleMailThreads(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Billing, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/mail/threads/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleMailThreadRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+		handleMailThreadRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Billing, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/mail/messages/send", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleMailSendMessage(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+		handleMailSendMessage(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Billing, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/mail/messages/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleMailMessageRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+		handleMailMessageRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Billing, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/mail/drafts", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleMailDrafts(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+		handleMailDrafts(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Billing, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/mail/drafts/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleMailDraftRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Store, w, r)
+		handleMailDraftRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Billing, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/mail/operations", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleMailOperations(deps.Config, deps.Mail, deps.Store, w, r)
@@ -486,6 +495,7 @@ func NewServer(deps Dependencies) *Server {
 		computerUse:     deps.ComputerUse,
 		scheduler:       deps.Scheduler,
 		delivery:        deps.Delivery,
+		billing:         deps.Billing,
 		store:           deps.Store,
 		checkpoints:     deps.Checkpoints,
 		evaluation:      deps.Evaluation,
@@ -596,7 +606,7 @@ func decodeJSONBody(r *http.Request, target any) error {
 	return json.Unmarshal(body, target)
 }
 
-func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, eventBus *events.Bus, deliveryManager *delivery.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
+func handleRuns(cfg config.Config, sessionRouter *router.SessionRouter, manager *runtime.Manager, eventBus *events.Bus, deliveryManager *delivery.Manager, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		runs, err := projectRunDeliverySummaries(r.Context(), deliveryManager, manager.ListRuns())
@@ -636,14 +646,38 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 			Entrypoint: request.Entrypoint,
 			Goal:       request.Goal,
 		}
+		tenantID := ""
+		if tenantContext, ok := tenantContextFromContext(r.Context()); ok {
+			tenantID = tenantContext.TenantID
+		}
+		var reservation billing.UsageReservation
+		if billingManager != nil && tenantID != "" {
+			input.RunID = runtime.NewRunID()
+			result, err := billingManager.Reserve(r.Context(), billing.ReserveInput{
+				TenantID:          tenantID,
+				Category:          billing.CategoryRunLaunches,
+				Amount:            1,
+				OperationKey:      billing.RunOperationKey(tenantID, r.Header.Get("Idempotency-Key"), input.RunID),
+				ReservationPoint:  "POST /v1/runs before runtime.CreateRun",
+				GuardedEntryPoint: "POST /v1/runs",
+				Hosted:            cfg.Environment == config.EnvironmentProd,
+			})
+			if err != nil {
+				writeBillingDenial(w, result, err)
+				return
+			}
+			reservation = result.Reservation
+		}
 
 		run, err := manager.CreateRun(input)
 		if err != nil {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "run creation failed before persistence")
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
 		if err := persistSession(r.Context(), sqliteStore, session); err != nil {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "session persistence failed before run persistence")
 			if errors.Is(err, ErrTenantOwnershipDenied) {
 				emitTenantBreach(r.Context(), audit.NewEmitter(eventBus, nil), surfaceFromRequest(r), "session")
 				http.NotFound(w, r)
@@ -653,6 +687,7 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 			return
 		}
 		if err := persistRun(r.Context(), sqliteStore, run); err != nil {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "run persistence failed before durable launch")
 			if errors.Is(err, ErrTenantOwnershipDenied) {
 				emitTenantBreach(r.Context(), audit.NewEmitter(eventBus, nil), surfaceFromRequest(r), "run")
 				http.NotFound(w, r)
@@ -660,6 +695,19 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 			}
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+		if reservation.ReservationID != "" {
+			if _, err := billingManager.Commit(r.Context(), billing.ResolveInput{
+				TenantID:     reservation.TenantID,
+				Category:     reservation.Category,
+				OperationKey: reservation.OperationKey,
+				Amount:       reservation.AmountReserved,
+				ReasonCode:   "billing.run_launch_committed",
+				Reason:       "run persisted",
+			}); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
 		}
 		if err := persistCheckpoint(r.Context(), checkpointManager, run.RunID); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -700,7 +748,7 @@ func handleRuns(sessionRouter *router.SessionRouter, manager *runtime.Manager, e
 	}
 }
 
-func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, secretManager *secrets.Manager, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, eventBus *events.Bus, deliveryManager *delivery.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request) {
+func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, secretManager *secrets.Manager, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, eventBus *events.Bus, deliveryManager *delivery.Manager, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, computerUseManager *computeruse.Manager, w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/runs/")
 	if path == "" {
 		http.NotFound(w, r)
@@ -734,7 +782,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	}
 
 	if len(parts) == 2 && parts[1] == "workflows" {
-		handleRunWorkflows(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, deliveryManager, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0])
+		handleRunWorkflows(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, deliveryManager, billingManager, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0])
 		return
 	}
 
@@ -759,7 +807,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	}
 
 	if len(parts) == 4 && parts[1] == "workflows" && parts[3] == "start" {
-		handleRunWorkflowStart(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, deliveryManager, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0], parts[2])
+		handleRunWorkflowStart(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, deliveryManager, billingManager, sqliteStore, checkpointManager, computerUseManager, w, r, parts[0], parts[2])
 		return
 	}
 
@@ -784,7 +832,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	}
 
 	if len(parts) == 4 && parts[1] == "steps" && parts[3] == "tool-calls" {
-		handleRunStepToolCalls(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, secretManager, mcpManager, sandboxManager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
+		handleRunStepToolCalls(cfg, manager, policyEngine, capabilitySupervisor, skillRegistry, secretManager, mcpManager, sandboxManager, eventBus, billingManager, sqliteStore, checkpointManager, w, r, parts[0], parts[2])
 		return
 	}
 
@@ -804,12 +852,12 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	}
 
 	if len(parts) == 6 && parts[1] == "steps" && parts[3] == "tool-calls" && parts[5] == "complete" {
-		handleRunStepToolCallComplete(manager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2], parts[4])
+		handleRunStepToolCallComplete(manager, eventBus, billingManager, sqliteStore, checkpointManager, w, r, parts[0], parts[2], parts[4])
 		return
 	}
 
 	if len(parts) == 6 && parts[1] == "steps" && parts[3] == "tool-calls" && parts[5] == "fail" {
-		handleRunStepToolCallFail(manager, eventBus, sqliteStore, checkpointManager, w, r, parts[0], parts[2], parts[4])
+		handleRunStepToolCallFail(manager, eventBus, billingManager, sqliteStore, checkpointManager, w, r, parts[0], parts[2], parts[4])
 		return
 	}
 
@@ -1217,7 +1265,7 @@ func handlePolicyApprovals(policyEngine *policy.Engine, eventBus *events.Bus, sq
 	}
 }
 
-func handlePolicyApprovalRoutes(cfg config.Config, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, computerUseManager *computeruse.Manager, runtimeManager *runtime.Manager, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
+func handlePolicyApprovalRoutes(cfg config.Config, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, eventBus *events.Bus, billingMgr *billing.Manager, sqliteStore *store.SQLiteStore, computerUseManager *computeruse.Manager, runtimeManager *runtime.Manager, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request) {
 	if policyEngine == nil {
 		writeError(w, http.StatusInternalServerError, "policy engine is not configured")
 		return
@@ -1235,7 +1283,7 @@ func handlePolicyApprovalRoutes(cfg config.Config, policyEngine *policy.Engine, 
 		return
 	}
 	if len(parts) == 2 && parts[1] == "resolve" {
-		handlePolicyApprovalResolve(cfg, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, sqliteStore, computerUseManager, runtimeManager, checkpointManager, w, r, parts[0])
+		handlePolicyApprovalResolve(cfg, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, billingMgr, sqliteStore, computerUseManager, runtimeManager, checkpointManager, w, r, parts[0])
 		return
 	}
 
@@ -1262,7 +1310,7 @@ func handlePolicyApprovalByID(policyEngine *policy.Engine, sqliteStore *store.SQ
 	writeJSON(w, http.StatusOK, enriched[0])
 }
 
-func handlePolicyApprovalResolve(cfg config.Config, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, computerUseManager *computeruse.Manager, runtimeManager *runtime.Manager, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, approvalID string) {
+func handlePolicyApprovalResolve(cfg config.Config, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, integrationsManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, eventBus *events.Bus, billingMgr *billing.Manager, sqliteStore *store.SQLiteStore, computerUseManager *computeruse.Manager, runtimeManager *runtime.Manager, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, approvalID string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -1402,7 +1450,10 @@ func handlePolicyApprovalResolve(cfg config.Config, policyEngine *policy.Engine,
 				if ok {
 					toolCall, toolCallOK := runtimeManager.GetToolCall(action.RunID, action.StepID, action.ToolCallID)
 					if toolCallOK {
-						if _, _, err := advanceWorkflowAfterToolCall(r.Context(), cfg, runtimeManager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, nil, sqliteStore, checkpointManager, computerUseManager, workflow, toolCall, orchestration.StepStatusRunning, ""); err != nil {
+						if _, _, err := advanceWorkflowAfterToolCall(r.Context(), cfg, runtimeManager, policyEngine, capabilitySupervisor, skillRegistry, mcpManager, sandboxManager, integrationsManager, calendarManager, mailManager, eventBus, nil, billingMgr, sqliteStore, checkpointManager, computerUseManager, workflow, toolCall, orchestration.StepStatusRunning, ""); err != nil {
+							if writeBillingReservationError(w, err) {
+								return
+							}
 							writeError(w, http.StatusInternalServerError, err.Error())
 							return
 						}
@@ -3769,7 +3820,7 @@ type createToolCallRequest struct {
 	RuntimeSurface string `json:"runtimeSurface"`
 }
 
-func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, secretManager *secrets.Manager, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
+func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyEngine *policy.Engine, capabilitySupervisor *capabilities.Supervisor, skillRegistry *skills.Registry, secretManager *secrets.Manager, mcpManager *mcp.Manager, sandboxManager *sandbox.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string) {
 	switch r.Method {
 	case http.MethodGet:
 		toolCalls, err := manager.ListToolCalls(runID, stepID)
@@ -3804,16 +3855,33 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 			writeError(w, http.StatusBadRequest, runtime.ErrToolNameRequired.Error())
 			return
 		}
+		tenantID := ""
+		if tenantContext, ok := tenantContextFromContext(r.Context()); ok {
+			tenantID = tenantContext.TenantID
+		}
+		hosted := cfg.Environment == config.EnvironmentProd
 		if strings.TrimSpace(request.SkillID) == "" && strings.TrimSpace(request.MCPServerID) == "" && capabilitySupervisor != nil {
 			capability, ok := capabilitySupervisor.Get(request.CapabilityID)
 			if ok && !requiresApprovalForCapability(capability) {
+				toolCallID := runtime.NewToolCallID()
+				var reservation billing.UsageReservation
+				if tenantID != "" {
+					result, err := reserveRuntimeToolCallQuota(r.Context(), billingManager, tenantID, runID, stepID, toolCallID, "POST /v1/runs/{runId}/steps/{stepId}/tool-calls", hosted)
+					if err != nil {
+						writeBillingDenial(w, result, err)
+						return
+					}
+					reservation = result.Reservation
+				}
 				toolCall, err := manager.CreateToolCall(runID, stepID, runtime.CreateToolCallInput{
+					ToolCallID:     toolCallID,
 					InvocationKind: runtime.ToolCallInvocationKindLocalTool,
 					CapabilityID:   request.CapabilityID,
 					ToolName:       request.ToolName,
 					Input:          request.Input,
 				})
 				if err != nil {
+					releaseBillingReservation(r.Context(), billingManager, reservation, "tool call creation failed before persistence")
 					switch {
 					case errors.Is(err, runtime.ErrRunNotFound), errors.Is(err, runtime.ErrStepNotFound):
 						http.NotFound(w, r)
@@ -3823,6 +3891,11 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 					return
 				}
 				if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
+					releaseBillingReservation(r.Context(), billingManager, reservation, "tool call persistence failed before durable request")
+					writeError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+				if err := commitBillingReservation(r.Context(), billingManager, reservation, "billing.runtime_tool_call_committed", "tool call persisted"); err != nil {
 					writeError(w, http.StatusInternalServerError, err.Error())
 					return
 				}
@@ -3849,7 +3922,7 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 
 		switch {
 		case strings.TrimSpace(request.MCPServerID) != "":
-			handleMCPToolCallRequest(manager, mcpManager, eventBus, sqliteStore, checkpointManager, w, r, runID, stepID, request)
+			handleMCPToolCallRequest(cfg, manager, mcpManager, eventBus, billingManager, sqliteStore, checkpointManager, w, r, runID, stepID, request)
 			return
 		case strings.TrimSpace(request.SkillID) != "":
 			createInput, consumer, executionReq, approvalOutcome, err = prepareExecutableSkillToolCall(r.Context(), cfg, policyEngine, sqliteStore, eventBus, skillRegistry, secretManager, request, currentActor(r.Context()))
@@ -3875,9 +3948,21 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 			writeError(w, http.StatusInternalServerError, "sandbox manager is not configured")
 			return
 		}
+		toolCallID := runtime.NewToolCallID()
+		var reservation billing.UsageReservation
+		if tenantID != "" {
+			result, err := reserveRuntimeToolCallQuota(r.Context(), billingManager, tenantID, runID, stepID, toolCallID, "POST /v1/runs/{runId}/steps/{stepId}/tool-calls", hosted)
+			if err != nil {
+				writeBillingDenial(w, result, err)
+				return
+			}
+			reservation = result.Reservation
+		}
+		createInput.ToolCallID = toolCallID
 
 		toolCall, err := manager.CreateToolCall(runID, stepID, createInput)
 		if err != nil {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "tool call creation failed before sandbox execution")
 			switch {
 			case errors.Is(err, runtime.ErrRunNotFound), errors.Is(err, runtime.ErrStepNotFound):
 				http.NotFound(w, r)
@@ -3894,6 +3979,7 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 
 		execution, err := sandboxManager.StartExecution(r.Context(), executionReq)
 		if err != nil {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "sandbox execution failed before tool invocation")
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -3925,6 +4011,10 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 				return
 			}
 		}
+		if err := commitBillingReservation(r.Context(), billingManager, reservation, "billing.runtime_tool_call_committed", "tool call accepted by sandbox execution"); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -3952,7 +4042,7 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 	}
 }
 
-func handleMCPToolCallRequest(manager *runtime.Manager, mcpManager *mcp.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string, request createToolCallRequest) {
+func handleMCPToolCallRequest(cfg config.Config, manager *runtime.Manager, mcpManager *mcp.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID string, request createToolCallRequest) {
 	if mcpManager == nil {
 		writeError(w, http.StatusInternalServerError, "mcp manager is not configured")
 		return
@@ -3991,7 +4081,22 @@ func handleMCPToolCallRequest(manager *runtime.Manager, mcpManager *mcp.Manager,
 		http.NotFound(w, r)
 		return
 	}
+	tenantID := ""
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok {
+		tenantID = tenantContext.TenantID
+	}
+	toolCallID := runtime.NewToolCallID()
+	var reservation billing.UsageReservation
+	if tenantID != "" {
+		result, err := reserveRuntimeToolCallQuota(r.Context(), billingManager, tenantID, runID, stepID, toolCallID, "POST /v1/runs/{runId}/steps/{stepId}/tool-calls", cfg.Environment == config.EnvironmentProd)
+		if err != nil {
+			writeBillingDenial(w, result, err)
+			return
+		}
+		reservation = result.Reservation
+	}
 	createInput := runtime.CreateToolCallInput{
+		ToolCallID:          toolCallID,
 		InvocationKind:      runtime.ToolCallInvocationKindMCPTool,
 		MCPServerID:         server.ServerID,
 		MCPServerName:       server.DisplayName,
@@ -4005,6 +4110,7 @@ func handleMCPToolCallRequest(manager *runtime.Manager, mcpManager *mcp.Manager,
 	}
 	toolCall, err := manager.CreateToolCall(runID, stepID, createInput)
 	if err != nil {
+		releaseBillingReservation(r.Context(), billingManager, reservation, "MCP tool call creation failed before invocation")
 		switch {
 		case errors.Is(err, runtime.ErrRunNotFound), errors.Is(err, runtime.ErrStepNotFound):
 			http.NotFound(w, r)
@@ -4018,6 +4124,7 @@ func handleMCPToolCallRequest(manager *runtime.Manager, mcpManager *mcp.Manager,
 		toolCall.Sandbox = consumerViewMap(authorization.Sandbox)
 	}
 	if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
+		releaseBillingReservation(r.Context(), billingManager, reservation, "MCP tool call persistence failed before invocation")
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -4026,6 +4133,10 @@ func handleMCPToolCallRequest(manager *runtime.Manager, mcpManager *mcp.Manager,
 		return
 	}
 	if _, err := publishToolCallEvent(r.Context(), eventBus, sqliteStore, "tool_call.requested", runID, stepID, toolCall); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := commitBillingReservation(r.Context(), billingManager, reservation, "billing.runtime_tool_call_committed", "MCP tool call accepted for invocation"); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -4136,7 +4247,7 @@ func handleRunStepToolCallByID(manager *runtime.Manager, sqliteStore *store.SQLi
 	writeJSON(w, http.StatusOK, toolCall)
 }
 
-func handleRunStepToolCallComplete(manager *runtime.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID, toolCallID string) {
+func handleRunStepToolCallComplete(manager *runtime.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID, toolCallID string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -4172,6 +4283,12 @@ func handleRunStepToolCallComplete(manager *runtime.Manager, eventBus *events.Bu
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok {
+		if err := maybeCommitRuntimeToolCallQuota(r.Context(), billingManager, tenantContext.TenantID, runID, stepID, toolCall, "billing.runtime_tool_call_completed", "tool call completed"); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	if err := persistCheckpoint(r.Context(), checkpointManager, runID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -4201,7 +4318,7 @@ func handleRunStepToolCallComplete(manager *runtime.Manager, eventBus *events.Bu
 	writeJSON(w, http.StatusOK, toolCall)
 }
 
-func handleRunStepToolCallFail(manager *runtime.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID, toolCallID string) {
+func handleRunStepToolCallFail(manager *runtime.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID, stepID, toolCallID string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -4237,6 +4354,12 @@ func handleRunStepToolCallFail(manager *runtime.Manager, eventBus *events.Bus, s
 	if err := persistToolCall(r.Context(), sqliteStore, manager, toolCall); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok {
+		if err := maybeCommitRuntimeToolCallQuota(r.Context(), billingManager, tenantContext.TenantID, runID, stepID, toolCall, "billing.runtime_tool_call_failed", "tool call failed after invocation"); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	if err := persistCheckpoint(r.Context(), checkpointManager, runID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

@@ -12,8 +12,10 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 type Clock interface {
@@ -479,6 +481,7 @@ func (m *Manager) createDueOccurrence(ctx context.Context, reminder Reminder, no
 }
 
 func (m *Manager) handleDueOccurrence(ctx context.Context, reminder Reminder, occurrence Occurrence, now time.Time) error {
+	ctx = m.withReminderTenantContext(ctx, reminder)
 	switch reminder.BehaviorMode {
 	case BehaviorModeNotifyOnly:
 		return m.emitReminderDelivery(ctx, reminder, occurrence, now)
@@ -511,6 +514,20 @@ func (m *Manager) handleDueOccurrence(ctx context.Context, reminder Reminder, oc
 	default:
 		return ErrReminderUnsupportedBehavior
 	}
+}
+
+func (m *Manager) withReminderTenantContext(ctx context.Context, reminder Reminder) context.Context {
+	if _, ok := tenantctx.FromContext(ctx); ok {
+		return ctx
+	}
+	tenantID := strings.TrimSpace(reminder.TenantID)
+	if tenantID == "" {
+		return ctx
+	}
+	return tenantctx.WithContext(ctx, identity.TenantContext{
+		TenantID:    tenantID,
+		PrincipalID: "system:reminder",
+	})
 }
 
 func (m *Manager) emitReminderDelivery(ctx context.Context, reminder Reminder, occurrence Occurrence, now time.Time) error {
@@ -860,6 +877,7 @@ func encodeReminderRecord(item Reminder) (store.ReminderRecord, error) {
 	return store.ReminderRecord{
 		ReminderID:         item.ReminderID,
 		EnvironmentScope:   item.EnvironmentScope,
+		TenantID:           item.TenantID,
 		BehaviorMode:       string(item.BehaviorMode),
 		CurrentState:       string(item.CurrentState),
 		NextDueAt:          item.NextDueAt,
@@ -874,6 +892,7 @@ func decodeReminderRecord(record store.ReminderRecord) (Reminder, error) {
 	if err := json.Unmarshal(record.Document, &item); err != nil {
 		return Reminder{}, fmt.Errorf("decode reminder %s: %w", record.ReminderID, err)
 	}
+	item.TenantID = record.TenantID
 	return item, nil
 }
 

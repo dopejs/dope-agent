@@ -146,6 +146,15 @@ Current operator loop is:
 
 This is the intended substrate for the next roadmap, where managed coding providers will add login-backed profiles instead of `baseURL + apiKey`.
 
+## Roadmap 38 Integration Operation Quotas
+
+Hosted integration operations are covered by the `integration_operations` billing quota
+category. Calendar, mail, and future provider-backed side-effecting operations must
+reserve quota before invoking the backend, commit usage after the backend attempt is
+durably represented, and refund or release reservations when work fails before
+consumption. Local development tenants remain explicitly unlimited unless a finite plan is
+configured.
+
 ## Tenant-Owned Provider Auth
 
 Hosted credential isolation makes provider auth state tenant-owned. Provider auth

@@ -9,7 +9,31 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/billing"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
+
+type BillingReservationError struct {
+	Result billing.ReserveResult
+	Err    error
+}
+
+func (e BillingReservationError) Error() string {
+	return e.Err.Error()
+}
+
+func (e BillingReservationError) Unwrap() error {
+	return e.Err
+}
+
+func (e BillingReservationError) BillingReserveResult() (billing.ReserveResult, error) {
+	return e.Result, e.Err
+}
+
+func NewBillingReservationError(result billing.ReserveResult, err error) error {
+	return BillingReservationError{Result: result, Err: err}
+}
 
 type Store interface {
 	UpsertReplayCandidate(context.Context, ReplayCandidate) error
@@ -30,6 +54,8 @@ type Dependencies struct {
 	Store            Store
 	FixturesDir      string
 	RuntimeRecorder  RuntimeRecorder
+	Billing          *billing.Manager
+	HostedBilling    bool
 	Clock            func() time.Time
 }
 
@@ -38,6 +64,8 @@ type Manager struct {
 	store            Store
 	fixturesDir      string
 	runtimeRecorder  RuntimeRecorder
+	billingManager   *billing.Manager
+	hostedBilling    bool
 	clock            func() time.Time
 }
 
@@ -51,6 +79,8 @@ func NewManager(deps Dependencies) *Manager {
 		store:            deps.Store,
 		fixturesDir:      deps.FixturesDir,
 		runtimeRecorder:  deps.RuntimeRecorder,
+		billingManager:   deps.Billing,
+		hostedBilling:    deps.HostedBilling,
 		clock:            clock,
 	}
 }
@@ -135,9 +165,18 @@ func (m *Manager) CreateReplayAttempt(ctx context.Context, candidateID string, i
 	candidate = normalizeReplayCandidate(candidate)
 	now := m.clock()
 	mode := replayModeDefault(input.Mode)
+	attemptID := newID("replay_attempt")
+	var reservation billing.UsageReservation
+	if tenantContext, ok := tenantctx.FromContext(ctx); ok && tenantContext.TenantID != "" {
+		result, reserveErr := reserveEvaluationAttemptQuota(ctx, m.billingManager, tenantContext.TenantID, candidate.CandidateID, attemptID, m.hostedBilling)
+		if reserveErr != nil {
+			return ReplayAttempt{}, NewBillingReservationError(result, reserveErr)
+		}
+		reservation = result.Reservation
+	}
 	evidence, evidenceErr := m.capturedEvidenceForCandidate(ctx, candidate)
 	attempt := ReplayAttempt{
-		AttemptID:          newID("replay_attempt"),
+		AttemptID:          attemptID,
 		CandidateID:        candidate.CandidateID,
 		SourceRefs:         append([]SourceRef(nil), candidate.SourceRefs...),
 		EnvironmentScope:   candidate.EnvironmentScope,
@@ -214,6 +253,10 @@ func (m *Manager) CreateReplayAttempt(ctx context.Context, candidateID string, i
 	}
 	attempt = normalizeReplayAttempt(attempt)
 	if err := m.store.UpsertReplayAttempt(ctx, attempt); err != nil {
+		releaseEvaluationAttemptReservation(ctx, m.billingManager, reservation, "replay attempt persistence failed before accepted attempt")
+		return ReplayAttempt{}, err
+	}
+	if err := commitEvaluationAttemptReservation(ctx, m.billingManager, reservation, "replay attempt persisted"); err != nil {
 		return ReplayAttempt{}, err
 	}
 	candidate.LatestAttemptID = attempt.AttemptID
@@ -245,6 +288,55 @@ func (m *Manager) GetReplayAttempt(ctx context.Context, attemptID string) (Repla
 		return item, ok, err
 	}
 	return normalizeReplayAttempt(item), true, nil
+}
+
+func reserveEvaluationAttemptQuota(ctx context.Context, manager *billing.Manager, tenantID, candidateID, attemptID string, hosted bool) (billing.ReserveResult, error) {
+	operationKey := billing.EvaluationOperationKey(tenantID, candidateID, attemptID, "")
+	if manager == nil {
+		if hosted {
+			denial := billing.NewQuotaStateUnavailableDenial(tenantID, operationKey).Payload
+			return billing.ReserveResult{Allowed: false, Denial: &denial}, billing.ErrQuotaStateUnavailable
+		}
+		return billing.ReserveResult{Allowed: true}, nil
+	}
+	return manager.Reserve(ctx, billing.ReserveInput{
+		TenantID:          tenantID,
+		Category:          billing.CategoryReplayEvaluationAttempts,
+		Amount:            1,
+		OperationKey:      operationKey,
+		ReservationPoint:  "replay/evaluation attempt creation before work starts",
+		GuardedEntryPoint: "POST /v1/evaluation/replay-candidates/{candidateId}/attempts",
+		Hosted:            hosted,
+	})
+}
+
+func releaseEvaluationAttemptReservation(ctx context.Context, manager *billing.Manager, reservation billing.UsageReservation, reason string) {
+	if manager == nil || reservation.ReservationID == "" {
+		return
+	}
+	_, _ = manager.Release(ctx, billing.ResolveInput{
+		TenantID:     reservation.TenantID,
+		Category:     reservation.Category,
+		OperationKey: reservation.OperationKey,
+		Amount:       reservation.AmountReserved,
+		ReasonCode:   "billing.replay_evaluation_attempt_released",
+		Reason:       reason,
+	})
+}
+
+func commitEvaluationAttemptReservation(ctx context.Context, manager *billing.Manager, reservation billing.UsageReservation, reason string) error {
+	if manager == nil || reservation.ReservationID == "" {
+		return nil
+	}
+	_, err := manager.Commit(ctx, billing.ResolveInput{
+		TenantID:     reservation.TenantID,
+		Category:     reservation.Category,
+		OperationKey: reservation.OperationKey,
+		Amount:       reservation.AmountReserved,
+		ReasonCode:   "billing.replay_evaluation_attempt_committed",
+		Reason:       reason,
+	})
+	return err
 }
 
 func (m *Manager) CreateComparison(ctx context.Context, attemptID string, input CreateComparisonInput) (ComparisonResult, error) {

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/billing-reservation-resource.schema.json",
+  "title": "BillingReservationResource",
+  "type": "object",
+  "required": ["reservationId", "category", "quotaPeriodId", "operationKey", "amountReserved", "status", "createdAt", "updatedAt"],
+  "additionalProperties": true,
+  "properties": {
+    "reservationId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "category": { "type": "string" },
+    "quotaPeriodId": { "type": "string" },
+    "operationKey": { "type": "string" },
+    "amountReserved": { "type": "integer" },
+    "amountCommitted": { "type": "integer" },
+    "amountRefunded": { "type": "integer" },
+    "status": {
+      "type": "string",
+      "enum": ["reserved", "committed", "released", "refunded", "denied", "operator_action_needed"]
+    },
+    "reservationPoint": { "type": "string" },
+    "commitPoint": { "type": "string" },
+    "refundPoint": { "type": "string" },
+    "recoveryReason": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

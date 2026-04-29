@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/billing"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -14,6 +15,8 @@ import (
 )
 
 type stubArtifactRecorder struct{}
+
+type quotaDeniedArtifactRecorder struct{}
 
 type failingDriver struct {
 	startErr   error
@@ -53,6 +56,14 @@ func (stubArtifactRecorder) SaveComputerUseArtifact(_ context.Context, input com
 
 func (stubArtifactRecorder) ReadComputerUseArtifactContent(context.Context, string) ([]byte, error) {
 	return []byte("artifact"), nil
+}
+
+func (quotaDeniedArtifactRecorder) SaveComputerUseArtifact(context.Context, computeruse.ArtifactCaptureRequest) (computeruse.Artifact, error) {
+	return computeruse.Artifact{}, billing.ErrQuotaDenied
+}
+
+func (quotaDeniedArtifactRecorder) ReadComputerUseArtifactContent(context.Context, string) ([]byte, error) {
+	return nil, billing.ErrQuotaDenied
 }
 
 func actionTime() time.Time {
@@ -388,6 +399,43 @@ func TestManagerSessionAndActionLatencyStayLocal(t *testing.T) {
 	}
 	if len(result.Action.Artifacts) == 0 {
 		t.Fatalf("expected artifact evidence, got %+v", result.Action)
+	}
+}
+
+func TestManagerPropagatesQuotaDeniedArtifactCapture(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	runtimeManager := runtime.NewManager()
+	run, err := runtimeManager.CreateRun(runtime.CreateRunInput{Entrypoint: "operator", Goal: "computer-use quota denial"})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+	manager := computeruse.NewManager(computeruse.Dependencies{
+		EnvironmentScope: "test",
+		Runtime:          runtimeManager,
+		Policy:           policy.NewEngine(),
+		Store:            sqliteStore,
+		Artifacts:        quotaDeniedArtifactRecorder{},
+	})
+	session, err := manager.CreateSession(context.Background(), run.RunID, computeruse.CreateSessionInput{DriverKind: "browser"})
+	if err != nil {
+		t.Fatalf("CreateSession returned error: %v", err)
+	}
+
+	_, _, _, err = manager.CreateAction(context.Background(), run.RunID, session.ComputerUseSessionID, "tester", computeruse.CreateActionInput{
+		ActionKind: computeruse.ActionKindSnapshot,
+	})
+	if !errors.Is(err, billing.ErrQuotaDenied) {
+		t.Fatalf("expected artifact quota denial to propagate, got %v", err)
 	}
 }
 

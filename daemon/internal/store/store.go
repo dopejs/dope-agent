@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 35
+	CurrentSchemaVersion = 36
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -270,6 +270,7 @@ type MailOperationFilter struct {
 type ReminderRecord struct {
 	ReminderID         string
 	EnvironmentScope   string
+	TenantID           string
 	BehaviorMode       string
 	CurrentState       string
 	NextDueAt          *time.Time
@@ -345,6 +346,7 @@ type WorkflowHandoffRecord struct {
 type ScheduleRecord struct {
 	ScheduleID       string
 	EnvironmentScope string
+	TenantID         string
 	Kind             string
 	Status           string
 	TargetRefID      string
@@ -1934,6 +1936,170 @@ var schemaMigrations = []schemaMigration{
 			`ALTER TABLE connectors ADD COLUMN secret_refs_json TEXT NOT NULL DEFAULT '[]';`,
 		},
 	},
+	{
+		Version: 36,
+		Name:    "r38_billing_quotas_usage",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS billing_tenant_plans (
+				plan_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				plan_key TEXT NOT NULL,
+				status TEXT NOT NULL,
+				enforcement_mode TEXT NOT NULL,
+				effective_at TEXT NOT NULL,
+				superseded_at TEXT,
+				assigned_by_principal_id TEXT,
+				assignment_reason TEXT,
+				document_json TEXT
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS billing_quota_definitions (
+				quota_definition_id TEXT PRIMARY KEY,
+				category TEXT NOT NULL UNIQUE,
+				unit TEXT NOT NULL,
+				period_kind TEXT NOT NULL,
+				period_anchor TEXT NOT NULL,
+				default_limit INTEGER NOT NULL,
+				carryover_enabled INTEGER NOT NULL,
+				carryover_max INTEGER NOT NULL,
+				reservation_rule TEXT NOT NULL,
+				commit_rule TEXT NOT NULL,
+				refund_rule TEXT NOT NULL,
+				denial_reason_code TEXT NOT NULL,
+				active INTEGER NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS billing_quota_overrides (
+				quota_override_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				category TEXT NOT NULL,
+				limit_amount INTEGER,
+				carryover_enabled INTEGER,
+				carryover_max INTEGER,
+				effective_at TEXT NOT NULL,
+				expires_at TEXT,
+				reason TEXT NOT NULL,
+				created_by_principal_id TEXT
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS billing_quota_periods (
+				quota_period_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				category TEXT NOT NULL,
+				period_kind TEXT NOT NULL,
+				period_start TEXT NOT NULL,
+				period_end TEXT NOT NULL,
+				carryover_from_period_id TEXT,
+				status TEXT NOT NULL,
+				UNIQUE(tenant_id, category, period_start)
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS billing_usage_counters (
+				usage_counter_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				category TEXT NOT NULL,
+				quota_period_id TEXT NOT NULL,
+				committed_amount INTEGER NOT NULL,
+				reserved_amount INTEGER NOT NULL,
+				adjusted_amount INTEGER NOT NULL,
+				carryover_amount INTEGER NOT NULL,
+				updated_at TEXT NOT NULL,
+				UNIQUE(tenant_id, category, quota_period_id)
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS billing_usage_reservations (
+				reservation_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				category TEXT NOT NULL,
+				quota_period_id TEXT NOT NULL,
+				operation_key TEXT NOT NULL,
+				amount_reserved INTEGER NOT NULL,
+				amount_committed INTEGER NOT NULL,
+				amount_refunded INTEGER NOT NULL,
+				status TEXT NOT NULL,
+				reservation_point TEXT,
+				commit_point TEXT,
+				refund_point TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				expires_at TEXT,
+				recovery_reason TEXT,
+				UNIQUE(tenant_id, category, operation_key)
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS billing_usage_events (
+				usage_event_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				category TEXT,
+				quota_period_id TEXT,
+				operation_key TEXT,
+				event_kind TEXT NOT NULL,
+				amount INTEGER NOT NULL,
+				reason_code TEXT NOT NULL,
+				reason TEXT,
+				actor_principal_id TEXT,
+				outcome TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				document_json TEXT
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS billing_quota_denials (
+				denial_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				category TEXT,
+				quota_period_id TEXT,
+				operation_key TEXT NOT NULL,
+				reason_code TEXT NOT NULL,
+				requested_amount INTEGER NOT NULL,
+				remaining_amount INTEGER NOT NULL,
+				guarded_entry_point TEXT NOT NULL,
+				created_at TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS billing_manual_adjustments (
+				adjustment_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				category TEXT NOT NULL,
+				quota_period_id TEXT NOT NULL,
+				amount_delta INTEGER NOT NULL,
+				reason TEXT NOT NULL,
+				created_by_principal_id TEXT,
+				created_at TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS billing_audit_retention_policies (
+				policy_id TEXT PRIMARY KEY,
+				tenant_id TEXT,
+				retention_mode TEXT NOT NULL,
+				retention_period TEXT,
+				created_by_principal_id TEXT,
+				reason TEXT,
+				created_at TEXT NOT NULL,
+				expires_at TEXT
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_billing_tenant_plans_active ON billing_tenant_plans(tenant_id, status, effective_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_billing_quota_overrides_tenant_category ON billing_quota_overrides(tenant_id, category, effective_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_billing_quota_periods_tenant_category ON billing_quota_periods(tenant_id, category, period_start DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_billing_usage_reservations_pending ON billing_usage_reservations(status, updated_at ASC);`,
+			`CREATE INDEX IF NOT EXISTS idx_billing_usage_events_tenant_created ON billing_usage_events(tenant_id, created_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_billing_quota_denials_tenant_created ON billing_quota_denials(tenant_id, created_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_billing_manual_adjustments_tenant_created ON billing_manual_adjustments(tenant_id, created_at DESC);`,
+		},
+	},
 }
 
 type SQLiteStore struct {
@@ -2115,6 +2281,25 @@ func (s *SQLiteStore) UpsertRun(ctx context.Context, run runtime.Run) error {
 	}
 
 	return nil
+}
+
+func (s *SQLiteStore) RunTenantID(ctx context.Context, runID string) (string, bool, error) {
+	if s == nil {
+		return "", false, nil
+	}
+	var tenantID sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+		SELECT tenant_id
+		FROM runs
+		WHERE run_id = ?
+	`, strings.TrimSpace(runID)).Scan(&tenantID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("get run tenant %s: %w", runID, err)
+	}
+	return strings.TrimSpace(tenantID.String), tenantID.Valid && strings.TrimSpace(tenantID.String) != "", nil
 }
 
 func (s *SQLiteStore) UpsertSession(ctx context.Context, session router.Session) error {
@@ -4807,7 +4992,7 @@ func (s *SQLiteStore) UpsertReminder(ctx context.Context, record ReminderRecord)
 		nullString(record.ActiveOccurrenceID),
 		record.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		string(record.Document),
-		s.ResolveDefaultTenantBinding(ctx),
+		coalesceTenantBinding(record.TenantID, tenantBindingString(s.ResolveActiveTenantBinding(ctx)), tenantBindingString(s.ResolveDefaultTenantBinding(ctx))),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert reminder %s: %w", record.ReminderID, err)
@@ -4820,7 +5005,7 @@ func (s *SQLiteStore) ListReminders(ctx context.Context, environmentScope string
 		return nil, nil
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT reminder_id, environment_scope, behavior_mode, current_state, next_due_at, active_occurrence_id, updated_at, document_json
+			SELECT reminder_id, environment_scope, tenant_id, behavior_mode, current_state, next_due_at, active_occurrence_id, updated_at, document_json
 		FROM reminders
 		WHERE environment_scope = ?
 		ORDER BY updated_at DESC, reminder_id DESC
@@ -4845,7 +5030,7 @@ func (s *SQLiteStore) GetReminder(ctx context.Context, environmentScope, reminde
 		return ReminderRecord{}, false, nil
 	}
 	row := s.db.QueryRowContext(ctx, `
-		SELECT reminder_id, environment_scope, behavior_mode, current_state, next_due_at, active_occurrence_id, updated_at, document_json
+			SELECT reminder_id, environment_scope, tenant_id, behavior_mode, current_state, next_due_at, active_occurrence_id, updated_at, document_json
 		FROM reminders
 		WHERE environment_scope = ? AND reminder_id = ?
 	`, strings.TrimSpace(environmentScope), strings.TrimSpace(reminderID))
@@ -5535,7 +5720,7 @@ func (s *SQLiteStore) UpsertSchedule(ctx context.Context, record ScheduleRecord)
 		nullableTimeString(record.CancelledAt),
 		nullableTimeString(record.CompletedAt),
 		string(record.Document),
-		s.ResolveDefaultTenantBinding(ctx),
+		coalesceTenantBinding(record.TenantID, tenantBindingString(s.ResolveActiveTenantBinding(ctx)), tenantBindingString(s.ResolveDefaultTenantBinding(ctx))),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert schedule %s: %w", record.ScheduleID, err)
@@ -5548,7 +5733,7 @@ func (s *SQLiteStore) GetSchedule(ctx context.Context, environmentScope, schedul
 		return ScheduleRecord{}, false, nil
 	}
 	row := s.db.QueryRowContext(ctx, `
-		SELECT schedule_id, environment_scope, kind, status, target_ref_id, timezone, next_due_at, last_attempt_at, last_outcome, created_at, updated_at, paused_at, cancelled_at, completed_at, document_json
+			SELECT schedule_id, environment_scope, tenant_id, kind, status, target_ref_id, timezone, next_due_at, last_attempt_at, last_outcome, created_at, updated_at, paused_at, cancelled_at, completed_at, document_json
 		FROM schedules
 		WHERE environment_scope = ? AND schedule_id = ?
 	`, strings.TrimSpace(environmentScope), strings.TrimSpace(scheduleID))
@@ -5567,7 +5752,7 @@ func (s *SQLiteStore) ListSchedules(ctx context.Context, environmentScope string
 		return nil, nil
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT schedule_id, environment_scope, kind, status, target_ref_id, timezone, next_due_at, last_attempt_at, last_outcome, created_at, updated_at, paused_at, cancelled_at, completed_at, document_json
+			SELECT schedule_id, environment_scope, tenant_id, kind, status, target_ref_id, timezone, next_due_at, last_attempt_at, last_outcome, created_at, updated_at, paused_at, cancelled_at, completed_at, document_json
 		FROM schedules
 		WHERE environment_scope = ?
 		ORDER BY created_at ASC, schedule_id ASC
@@ -9577,6 +9762,7 @@ func scanReminderRecord(scanner interface {
 }) (ReminderRecord, error) {
 	var (
 		record             ReminderRecord
+		tenantID           sql.NullString
 		nextDueAt          sql.NullString
 		activeOccurrenceID sql.NullString
 		updatedAt          string
@@ -9585,6 +9771,7 @@ func scanReminderRecord(scanner interface {
 	if err := scanner.Scan(
 		&record.ReminderID,
 		&record.EnvironmentScope,
+		&tenantID,
 		&record.BehaviorMode,
 		&record.CurrentState,
 		&nextDueAt,
@@ -9594,6 +9781,7 @@ func scanReminderRecord(scanner interface {
 	); err != nil {
 		return ReminderRecord{}, fmt.Errorf("scan reminder: %w", err)
 	}
+	record.TenantID = tenantID.String
 	record.ActiveOccurrenceID = activeOccurrenceID.String
 	if err := assignOptionalTime(&record.NextDueAt, nextDueAt); err != nil {
 		return ReminderRecord{}, fmt.Errorf("parse reminder next_due_at: %w", err)
@@ -9749,6 +9937,7 @@ func scanScheduleRecord(scanner interface {
 }) (ScheduleRecord, error) {
 	var (
 		record        ScheduleRecord
+		tenantID      sql.NullString
 		timezone      sql.NullString
 		nextDueAt     sql.NullString
 		lastAttemptAt sql.NullString
@@ -9763,6 +9952,7 @@ func scanScheduleRecord(scanner interface {
 	if err := scanner.Scan(
 		&record.ScheduleID,
 		&record.EnvironmentScope,
+		&tenantID,
 		&record.Kind,
 		&record.Status,
 		&record.TargetRefID,
@@ -9779,6 +9969,7 @@ func scanScheduleRecord(scanner interface {
 	); err != nil {
 		return ScheduleRecord{}, fmt.Errorf("scan schedule: %w", err)
 	}
+	record.TenantID = tenantID.String
 	record.Timezone = timezone.String
 	record.LastOutcome = lastOutcome.String
 	record.Document = []byte(document)
@@ -10678,6 +10869,14 @@ func coalesceString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func coalesceTenantBinding(values ...string) any {
+	value := coalesceString(values...)
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
 }
 
 func tenantBindingString(value any) string {

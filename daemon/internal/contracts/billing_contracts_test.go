@@ -1,0 +1,36 @@
+package contracts_test
+
+import (
+	"testing"
+
+	contracts "github.com/dopejs/dope-agent/daemon/internal/contracts"
+)
+
+func billingContractFixtures() map[string]string {
+	return map[string]string{
+		"schemas/api/billing-plan.response.schema.json":                         `{"planId":"plan_1","tenantId":"ten_1","planKey":"finite","status":"active","enforcementMode":"enforced","effectiveAt":"2026-04-28T10:00:00Z","assignedByPrincipalId":"prn_admin","assignmentReason":"test assignment"}`,
+		"schemas/api/billing-quota-resource.schema.json":                        `{"tenantId":"ten_1","planKey":"finite","category":"run_launches","unit":"count","periodStart":"2026-04-01T00:00:00Z","periodEnd":"2026-05-01T00:00:00Z","periodAnchor":"UTC","limit":10,"consumedAmount":5,"reservedAmount":1,"adjustedAmount":0,"carryoverApplied":0,"remainingAmount":4,"enforcementMode":"enforced"}`,
+		"schemas/api/billing-usage.response.schema.json":                        `{"tenantId":"ten_1","planKey":"finite","enforcementMode":"enforced","quotas":[{"tenantId":"ten_1","planKey":"finite","category":"run_launches","unit":"count","periodStart":"2026-04-01T00:00:00Z","periodEnd":"2026-05-01T00:00:00Z","limit":10,"consumedAmount":5,"reservedAmount":1,"adjustedAmount":0,"carryoverApplied":0,"remainingAmount":4,"enforcementMode":"enforced"}],"manualAdjustments":[],"denials":[]}`,
+		"schemas/api/billing-denial-resource.schema.json":                       `{"denialId":"denial_1","tenantId":"ten_1","category":"run_launches","quotaPeriodId":"period_1","operationKey":"tenant:ten_1:run:client_1","reasonCode":"quota_denied:run_launches_exhausted","requestedAmount":1,"remainingAmount":0,"guardedEntryPoint":"POST /v1/runs","createdAt":"2026-04-28T10:00:00Z"}`,
+		"schemas/api/billing-manual-adjustment-resource.schema.json":            `{"adjustmentId":"adjustment_1","tenantId":"ten_1","category":"run_launches","quotaPeriodId":"period_1","amountDelta":-1,"reason":"operator correction","createdByPrincipalId":"prn_admin","createdAt":"2026-04-28T10:00:00Z"}`,
+		"schemas/api/billing-manual-adjustment.request.schema.json":             `{"category":"run_launches","quotaPeriodId":"period_1","amountDelta":-1,"reason":"operator correction"}`,
+		"schemas/api/billing-plan-assignment.request.schema.json":               `{"planKey":"finite","enforcementMode":"enforced","reason":"customer plan assignment"}`,
+		"schemas/api/billing-quota-override.request.schema.json":                `{"category":"run_launches","limit":10,"reason":"temporary increase"}`,
+		"schemas/api/billing-reservation-resource.schema.json":                  `{"reservationId":"reservation_1","tenantId":"ten_1","category":"run_launches","quotaPeriodId":"period_1","operationKey":"tenant:ten_1:run:client_1","amountReserved":1,"amountCommitted":0,"amountRefunded":0,"status":"operator_action_needed","reservationPoint":"POST /v1/runs before runtime.CreateRun","recoveryReason":"restart outcome could not be proven","createdAt":"2026-04-28T10:00:00Z","updatedAt":"2026-04-28T10:00:00Z"}`,
+		"schemas/api/billing-reservation-resolution.request.schema.json":        `{"outcome":"released","reason":"work did not start","amount":1}`,
+		"schemas/api/error-response.schema.json":                                `{"code":"quota_denied","reasonCode":"quota_denied:run_launches_exhausted","tenantId":"ten_1","category":"run_launches","operationKey":"tenant:ten_1:run:client_2","periodStart":"2026-04-01T00:00:00Z","periodEnd":"2026-05-01T00:00:00Z","requestedAmount":1,"remainingAmount":0,"message":"Quota exhausted for run launches."}`,
+		"schemas/events/billing-usage-reserved.event.schema.json":               `{"eventId":"evt_1","sequence":1,"category":"billing","name":"billing.usage_reserved","occurredAt":"2026-04-28T10:00:00Z","scope":{},"resource":{"kind":"billing_reservation","id":"reservation_1"},"payload":{"tenantId":"ten_1","category":"run_launches","operationKey":"tenant:ten_1:run:client_1","amount":1}}`,
+		"schemas/events/billing-usage-committed.event.schema.json":              `{"eventId":"evt_2","sequence":2,"category":"billing","name":"billing.usage_committed","occurredAt":"2026-04-28T10:00:01Z","scope":{},"resource":{"kind":"billing_reservation","id":"reservation_1"},"payload":{"tenantId":"ten_1","category":"run_launches","operationKey":"tenant:ten_1:run:client_1","amount":1}}`,
+		"schemas/events/billing-usage-refunded.event.schema.json":               `{"eventId":"evt_3","sequence":3,"category":"billing","name":"billing.usage_refunded","occurredAt":"2026-04-28T10:00:02Z","scope":{},"resource":{"kind":"billing_reservation","id":"reservation_1"},"payload":{"tenantId":"ten_1","category":"run_launches","operationKey":"tenant:ten_1:run:client_1","amount":1}}`,
+		"schemas/events/billing-quota-denied.event.schema.json":                 `{"eventId":"evt_4","sequence":4,"category":"billing","name":"billing.quota_denied","occurredAt":"2026-04-28T10:00:03Z","scope":{},"resource":{"kind":"billing_denial","id":"denial_1"},"payload":{"tenantId":"ten_1","category":"run_launches","operationKey":"tenant:ten_1:run:client_2","reasonCode":"quota_denied:run_launches_exhausted","requestedAmount":1,"remainingAmount":0}}`,
+		"schemas/events/billing-manual-adjustment-created.event.schema.json":    `{"eventId":"evt_5","sequence":5,"category":"billing","name":"billing.manual_adjustment_created","occurredAt":"2026-04-28T10:00:04Z","scope":{},"resource":{"kind":"billing_manual_adjustment","id":"adjustment_1"},"payload":{"tenantId":"ten_1","category":"run_launches","quotaPeriodId":"period_1","amountDelta":-1,"reason":"operator correction"}}`,
+		"schemas/events/billing-reservation-recovery-decided.event.schema.json": `{"eventId":"evt_6","sequence":6,"category":"billing","name":"billing.reservation_recovery_decided","occurredAt":"2026-04-28T10:00:05Z","scope":{},"resource":{"kind":"billing_reservation","id":"reservation_1"},"payload":{"tenantId":"ten_1","category":"run_launches","operationKey":"tenant:ten_1:run:client_1","outcome":"operator_action_needed","reason":"restart outcome could not be proven"}}`,
+	}
+}
+
+func TestBillingSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	mustValidateFixtures(t, validator, billingContractFixtures())
+}

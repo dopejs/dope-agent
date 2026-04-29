@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/billing-quota-override.request.schema.json",
+  "title": "BillingQuotaOverrideRequest",
+  "type": "object",
+  "required": ["category", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "category": { "type": "string" },
+    "limit": { "type": "integer" },
+    "reason": { "type": "string", "minLength": 1 }
+  }
+}

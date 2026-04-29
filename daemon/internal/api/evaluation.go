@@ -142,6 +142,9 @@ func handleEvaluationReplayCandidateRoutes(manager *evaluation.Manager, eventBus
 		}
 		attempt, err := manager.CreateReplayAttempt(r.Context(), parts[0], input)
 		if err != nil {
+			if writeBillingReservationError(w, err) {
+				return
+			}
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}

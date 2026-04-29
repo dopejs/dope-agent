@@ -212,4 +212,5 @@ type ArtifactCaptureRequest struct {
 	MIMEType             string
 	FileName             string
 	Content              []byte
+	EstimatedByteSize    int64
 }
