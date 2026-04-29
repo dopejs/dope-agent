@@ -1,0 +1,24 @@
+{
+  "examples": [
+    {
+      "name": "cross_tenant_leakage",
+      "crossTenantLeakage": true,
+      "expectedResult": "fail"
+    },
+    {
+      "name": "restart_recovery_too_slow",
+      "restartRecoveryMinutes": 6,
+      "expectedResult": "fail"
+    },
+    {
+      "name": "queue_backlog_too_old",
+      "queueBacklogMinutes": 31,
+      "expectedResult": "fail"
+    },
+    {
+      "name": "monotonic_resource_growth",
+      "monotonicResourceGrowth": true,
+      "expectedResult": "fail"
+    }
+  ]
+}

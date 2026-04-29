@@ -73,3 +73,10 @@ Use fake values such as `R37_FAKE_SECRET_TENANT_A_DO_NOT_LEAK`. Any appearance o
 that value in output, events, audit records, replay/evaluation artifacts, or logs is
 a blocking failure. The full smoke flow is maintained in
 `specs/022-hosted-secrets-isolation/quickstart.md`.
+## Roadmap 39 Backup And Restore Rule
+
+Production backup artifacts include secret metadata and references only. They
+must not include raw secret values, OAuth authorization codes, access tokens,
+refresh tokens, provider tokens, local CLI auth material, or derived credential
+material. After restore, credential-bearing integrations remain blocked until an
+operator reconnects or revalidates them.

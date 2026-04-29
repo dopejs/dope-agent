@@ -1,0 +1,16 @@
+{
+  "reportId": "soak_r39_passing",
+  "branchOrVersion": "024-production-ops-soak",
+  "environment": "test",
+  "dataDirectory": "~/.dope-test",
+  "baselineTopology": "tenant_scoped_single_node",
+  "durationHours": 24,
+  "tenantSetSummary": ["ten_ops_alpha", "ten_ops_beta", "ten_ops_gamma"],
+  "workloadCoverage": ["runtime", "scheduler", "integrations", "delivery", "approvals", "quotas", "tenant_switching", "evaluation"],
+  "restartCount": 3,
+  "faultDrills": ["transient_5xx", "rate_limit", "auth_expiry", "provider_unavailable", "slow_response", "malformed_response"],
+  "resourceObservations": ["logs", "stored_data_size", "active_work_or_queue_backlog", "memory", "open_handles", "goroutines"],
+  "crossTenantLeakage": false,
+  "unclassifiedFailures": [],
+  "finalResult": "pass"
+}

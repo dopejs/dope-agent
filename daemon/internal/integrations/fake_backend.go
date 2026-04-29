@@ -2,6 +2,24 @@ package integrations
 
 import "fmt"
 
+type FakeFaultType string
+
+const (
+	FakeFaultTransient5xx        FakeFaultType = "transient_5xx"
+	FakeFaultRateLimit           FakeFaultType = "rate_limit"
+	FakeFaultAuthExpiry          FakeFaultType = "auth_expiry"
+	FakeFaultProviderUnavailable FakeFaultType = "provider_unavailable"
+	FakeFaultSlowResponse        FakeFaultType = "slow_response"
+	FakeFaultMalformedResponse   FakeFaultType = "malformed_response"
+)
+
+type FakeFaultDrillResult struct {
+	FaultType              FakeFaultType
+	DomainKind             string
+	ObservedClassification string
+	OperatorActionNeeded   bool
+}
+
 type FakeBackend struct{}
 
 func (FakeBackend) SupportedDomainKinds() []string {
@@ -31,6 +49,25 @@ func (FakeBackend) RunProbe(resource Resource, probeKind ProbeKind, input map[st
 		return result, nil
 	default:
 		return ProbeResult{}, ErrProbeUnsupported
+	}
+}
+
+func (FakeBackend) RunFaultDrill(resource Resource, faultType FakeFaultType) FakeFaultDrillResult {
+	classification := "recovered"
+	operatorActionNeeded := false
+	switch faultType {
+	case FakeFaultAuthExpiry, FakeFaultMalformedResponse:
+		classification = "operator_action_needed"
+		operatorActionNeeded = true
+	case FakeFaultProviderUnavailable:
+		classification = "retry_exhausted"
+		operatorActionNeeded = true
+	}
+	return FakeFaultDrillResult{
+		FaultType:              faultType,
+		DomainKind:             resource.DomainKind,
+		ObservedClassification: classification,
+		OperatorActionNeeded:   operatorActionNeeded,
 	}
 }
 

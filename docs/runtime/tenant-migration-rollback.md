@@ -4,6 +4,11 @@
 **Spec**: [`specs/020-tenant-scoped-data-migration/`](../../specs/020-tenant-scoped-data-migration/)
 **Audience**: operator running the daemon for themselves; on-call engineer triaging a failed upgrade.
 
+Roadmap 39 production upgrade evidence reuses this rollback boundary: in-place
+rollback is acceptable only when persisted state remains compatible with the
+previous binary. If migration changed persisted state in a way that cannot be
+safely reversed, restore from a verified backup is the canonical rollback path.
+
 This document describes (a) the **hard prerequisite** before upgrading the daemon to a release that crosses schema v22+, (b) the **rollback procedure** when the upgrade refuses to start or fails part-way, and (c) the **boundary conventions** that the regression suite enforces for the lifetime of Roadmap 35.
 
 ---

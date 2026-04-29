@@ -1,0 +1,20 @@
+{
+  "examples": [
+    {
+      "name": "missing_soak_report",
+      "soakReportPassed": false,
+      "expectedDecision": "no_ship"
+    },
+    {
+      "name": "missing_real_account_skip_reason",
+      "realAccountSmoke": [{"domain": "calendar", "safeCredentialsAvailable": false}],
+      "expectedDecision": "no_ship"
+    },
+    {
+      "name": "missing_roadmap_40_41_rerun_gate",
+      "roadmap40RerunGatePresent": false,
+      "roadmap41RerunGatePresent": false,
+      "expectedDecision": "no_ship"
+    }
+  ]
+}

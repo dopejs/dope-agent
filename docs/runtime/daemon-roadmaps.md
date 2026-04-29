@@ -60,6 +60,15 @@ The sandbox prerequisite slice is now implemented for the current in-scope consu
 
 The remaining roadmap work is narrow operator-surface closure; the next major sandbox-backed harness subsystem is MCP.
 
+Roadmap 39 is implemented as the production operations baseline: install,
+upgrade, backup, restore, migration verification, rollback guidance, a reusable
+24-hour test-environment soak harness, fake-backend fault drills, real-account
+smoke skip policy, resource-growth checks, and release readiness gates. Its
+operator entry point is `docs/runtime/production-operations.md`. The roadmap is
+not final release evidence for Roadmaps 40 or 41; those roadmaps must rerun the
+Roadmap 39 soak gate after their live-validation and evaluation-product changes
+land.
+
 ## Roadmap 1: Runtime Closure
 
 Status: `[x] complete`

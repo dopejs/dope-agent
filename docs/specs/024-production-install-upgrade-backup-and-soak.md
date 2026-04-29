@@ -1,6 +1,6 @@
 # Production Install, Upgrade, Backup, And Soak
 
-Status: proposed
+Status: implemented
 
 Authority: This document is the authoritative upstream spec for Roadmap 39, the production
 operations baseline required before live validation and evaluation-product expansion land.
@@ -9,6 +9,18 @@ Primary source documents:
 - `docs/product/hosted-productization-roadmap-split.md`
 - `docs/runtime/p0-release-review.md`
 - `docs/runtime/daemon-roadmaps.md`
+
+Implementation artifacts:
+- `docs/runtime/production-operations.md`
+- `docs/runtime/production-install.md`
+- `docs/runtime/production-upgrade.md`
+- `docs/runtime/backup-restore.md`
+- `docs/harness/production-soak.md`
+- `docs/runtime/release-readiness.md`
+- `docs/providers/real-account-smoke.md`
+- `daemon/internal/opsreadiness`
+- `scripts/production`
+- `specs/024-production-ops-soak`
 
 ## Background
 

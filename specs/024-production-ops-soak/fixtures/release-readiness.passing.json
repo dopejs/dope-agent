@@ -1,0 +1,30 @@
+{
+  "decision": "ship_with_recorded_skips",
+  "reviewElapsedMinutes": 25,
+  "installRunbookPassed": true,
+  "upgradeRunbookPassed": true,
+  "backupArtifactPassed": true,
+  "restoreVerificationPassed": true,
+  "migrationVerificationPassed": true,
+  "rollbackGuidancePresent": true,
+  "soakReportPassed": true,
+  "resourceGrowthChecksPassed": true,
+  "credentialRedactionPassed": true,
+  "fakeBackendCoveragePassed": true,
+  "roadmap40RerunGatePresent": true,
+  "roadmap41RerunGatePresent": true,
+  "realAccountSmoke": [
+    {
+      "domain": "calendar",
+      "safeCredentialsAvailable": false,
+      "skipReason": "no safe operator-provided account",
+      "fakeBackendCoveragePassing": true
+    },
+    {
+      "domain": "mail",
+      "safeCredentialsAvailable": false,
+      "skipReason": "no safe operator-provided account",
+      "fakeBackendCoveragePassing": true
+    }
+  ]
+}
