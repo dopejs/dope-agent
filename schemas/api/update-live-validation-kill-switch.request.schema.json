@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/update-live-validation-kill-switch.request.schema.json",
+  "title": "UpdateLiveValidationKillSwitchRequest",
+  "type": "object",
+  "required": ["scope", "enabled", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "scope": { "type": "string", "enum": ["tenant", "global"] },
+    "tenantId": { "type": "string" },
+    "enabled": { "type": "boolean" },
+    "reason": { "type": "string", "minLength": 1 },
+    "expiresAt": { "type": "string", "format": "date-time" }
+  }
+}

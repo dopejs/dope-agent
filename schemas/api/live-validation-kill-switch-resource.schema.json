@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/live-validation-kill-switch-resource.schema.json",
+  "title": "LiveValidationKillSwitchResource",
+  "type": "object",
+  "required": ["killSwitchId", "scope", "enabled", "reason", "changedBy", "changedAt"],
+  "additionalProperties": true,
+  "properties": {
+    "killSwitchId": { "type": "string" },
+    "scope": { "type": "string", "enum": ["tenant", "global"] },
+    "tenantId": { "type": "string" },
+    "enabled": { "type": "boolean" },
+    "reason": { "type": "string" },
+    "changedBy": { "type": "string" },
+    "changedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" }
+  }
+}

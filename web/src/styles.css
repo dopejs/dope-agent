@@ -269,6 +269,7 @@ label span {
 
 .status-ready,
 .status-completed,
+.status-running,
 .status-fully_replayable,
 .status-matched {
   background: var(--success-soft);
@@ -286,6 +287,8 @@ label span {
 .status-degraded,
 .status-warning,
 .status-ready_for_action,
+.status-awaiting_approval,
+.status-operator_action_needed,
 .status-partially_replayable,
 .status-drifted {
   background: var(--warning-soft);
@@ -293,6 +296,7 @@ label span {
 }
 
 .status-blocked,
+.status-aborted,
 .status-critical,
 .status-error,
 .status-failed,
@@ -303,6 +307,7 @@ label span {
 }
 
 .status-pending,
+.status-queued,
 .status-loading,
 .status-resolving,
 .status-stale {
@@ -344,7 +349,8 @@ label span {
   color: var(--muted);
 }
 
-.fixture-strip {
+.fixture-strip,
+.support-matrix-strip {
   border-top: 1px solid var(--line);
   display: flex;
   gap: 10px;
@@ -352,9 +358,64 @@ label span {
   padding-top: 14px;
 }
 
-.fixture-strip span {
+.fixture-strip span,
+.support-matrix-strip span {
   color: var(--muted);
   text-align: right;
+}
+
+.live-validation-box {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  padding-top: 14px;
+}
+
+.live-validation-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(160px, 0.7fr) auto;
+  align-items: end;
+}
+
+.live-validation-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.live-validation-gates {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.gate-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gate-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 28px;
+  padding: 5px 10px;
+  text-transform: uppercase;
+}
+
+.gate-allowed {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.gate-denied {
+  background: var(--critical-soft);
+  color: var(--critical);
 }
 
 .mini-card-grid {
@@ -465,6 +526,7 @@ pre {
   .dashboard-grid,
   .action-grid,
   .action-inputs,
+  .live-validation-form,
   .mini-card-grid,
   .banner-strip,
   .tenant-strip,
@@ -490,11 +552,13 @@ pre {
     padding: 18px;
   }
 
-  .fixture-strip {
+  .fixture-strip,
+  .support-matrix-strip {
     display: grid;
   }
 
-  .fixture-strip span {
+  .fixture-strip span,
+  .support-matrix-strip span {
     text-align: left;
   }
 }

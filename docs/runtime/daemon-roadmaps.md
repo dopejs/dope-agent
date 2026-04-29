@@ -1632,7 +1632,7 @@ Closure notes:
 
 ### Roadmap 36: Tenant-Aware Operator Shell And SDK
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/021-tenant-aware-operator-shell-and-sdk.md](../specs/021-tenant-aware-operator-shell-and-sdk.md)
 
@@ -1735,6 +1735,8 @@ Roadmap definition of done:
 - attempted, skipped, completed, failed, aborted, and denied side effects are ledgered
 - tenant and global kill switches prevent new live validation starts
 - unsupported tool-call replay is explicitly classified
+- operator-action-needed, comparison, reconciliation, retention, SDK, web, contract, and
+  fake-backend verification artifacts are linked from `specs/025-live-validation-replay`
 
 Explicitly out of scope:
 

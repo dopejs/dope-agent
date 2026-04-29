@@ -489,6 +489,31 @@ func TestLiveValidationReplayIsExplicitlyBlockedUntilExecutorExists(t *testing.T
 	}
 }
 
+func TestNonLiveReplayIsUnaffectedByLiveValidationKillSwitchConcept(t *testing.T) {
+	ctx := context.Background()
+	store := newMemoryStore()
+	manager := NewManager(Dependencies{
+		EnvironmentScope: "test",
+		Store:            store,
+		FixturesDir:      filepath.Join("testdata", "fixtures"),
+		Clock:            fixedClock,
+	})
+	if err := manager.LoadFixtures(ctx); err != nil {
+		t.Fatalf("LoadFixtures returned error: %v", err)
+	}
+	candidates, err := manager.ListReplayCandidates(ctx, CandidateFilter{EnvironmentScope: "test"})
+	if err != nil {
+		t.Fatalf("ListReplayCandidates returned error: %v", err)
+	}
+	attempt, err := manager.CreateReplayAttempt(ctx, candidates[0].CandidateID, CreateReplayAttemptInput{Mode: ReplayModeNonLive})
+	if err != nil {
+		t.Fatalf("CreateReplayAttempt returned error: %v", err)
+	}
+	if attempt.Status != ReplayAttemptStatusCompleted || attempt.SideEffectHandling != SideEffectEvidenceOnly {
+		t.Fatalf("non-live replay should remain evidence-only and completed, got %+v", attempt)
+	}
+}
+
 func TestManagerReplaysAndComparesRequiredFixtureClasses(t *testing.T) {
 	ctx := context.Background()
 	store := newMemoryStore()

@@ -154,6 +154,17 @@ func (m *Manager) GetReplayCandidate(ctx context.Context, candidateID string) (R
 	return normalizeReplayCandidate(item), true, nil
 }
 
+func (m *Manager) PrepareLiveValidationHandoff(ctx context.Context, candidateID string) (ReplayCandidate, error) {
+	candidate, ok, err := m.GetReplayCandidate(ctx, candidateID)
+	if err != nil {
+		return ReplayCandidate{}, err
+	}
+	if !ok {
+		return ReplayCandidate{}, fmt.Errorf("replay candidate %s not found", candidateID)
+	}
+	return candidate, nil
+}
+
 func (m *Manager) CreateReplayAttempt(ctx context.Context, candidateID string, input CreateReplayAttemptInput) (ReplayAttempt, error) {
 	candidate, ok, err := m.store.GetReplayCandidate(ctx, m.environmentScope, candidateID)
 	if err != nil {
@@ -444,6 +455,9 @@ func normalizeReplayCandidates(items []ReplayCandidate) []ReplayCandidate {
 func normalizeReplayCandidate(item ReplayCandidate) ReplayCandidate {
 	if item.SourceRefs == nil {
 		item.SourceRefs = []SourceRef{}
+	}
+	if item.ToolClasses == nil {
+		item.ToolClasses = []string{}
 	}
 	if item.ReadinessReasons == nil {
 		item.ReadinessReasons = []string{}

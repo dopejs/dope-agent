@@ -47,19 +47,20 @@ const (
 type Permission string
 
 const (
-	PermissionTenantManage          Permission = "tenant.manage"
-	PermissionSecretsManage         Permission = "secrets.manage"
-	PermissionCredentialsInspect    Permission = "credentials.inspect"
-	PermissionIntegrationsManage    Permission = "integrations.manage"
-	PermissionConnectorsManage      Permission = "connectors.manage"
-	PermissionMCPManage             Permission = "mcp.manage"
-	PermissionRunsExecute           Permission = "runs.execute"
-	PermissionApprovalsResolve      Permission = "approvals.resolve"
-	PermissionLiveValidationExecute Permission = "live_validation.execute"
-	PermissionEvaluationManage      Permission = "evaluation.manage"
-	PermissionBillingView           Permission = "billing.view"
-	PermissionBillingManage         Permission = "billing.manage"
-	PermissionReadOnlyInspect       Permission = "read_only.inspect"
+	PermissionTenantManage            Permission = "tenant.manage"
+	PermissionSecretsManage           Permission = "secrets.manage"
+	PermissionCredentialsInspect      Permission = "credentials.inspect"
+	PermissionIntegrationsManage      Permission = "integrations.manage"
+	PermissionConnectorsManage        Permission = "connectors.manage"
+	PermissionMCPManage               Permission = "mcp.manage"
+	PermissionRunsExecute             Permission = "runs.execute"
+	PermissionApprovalsResolve        Permission = "approvals.resolve"
+	PermissionLiveValidationExecute   Permission = "live_validation.execute"
+	PermissionLiveValidationReconcile Permission = "live_validation.reconcile"
+	PermissionEvaluationManage        Permission = "evaluation.manage"
+	PermissionBillingView             Permission = "billing.view"
+	PermissionBillingManage           Permission = "billing.manage"
+	PermissionReadOnlyInspect         Permission = "read_only.inspect"
 )
 
 var AllSensitivePermissions = []Permission{
@@ -72,6 +73,7 @@ var AllSensitivePermissions = []Permission{
 	PermissionRunsExecute,
 	PermissionApprovalsResolve,
 	PermissionLiveValidationExecute,
+	PermissionLiveValidationReconcile,
 	PermissionEvaluationManage,
 	PermissionBillingView,
 	PermissionBillingManage,

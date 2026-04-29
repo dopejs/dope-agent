@@ -5,6 +5,11 @@ import {
   type ApprovalResource,
   type AuthMeResponse,
   type EventStreamSubscription,
+  type LiveValidationAttemptResource,
+  type LiveValidationLedgerResource,
+  type LiveValidationRetentionResource,
+  type LiveValidationKillSwitchResource,
+  type LiveValidationSupportMatrixResource,
   type MembershipResource,
   type OperatorActivityListResponse,
   type OperatorActivityRecord,
@@ -40,6 +45,11 @@ type ShellSnapshot = {
   replayAttempts: ReplayAttemptResource[];
   replayComparisons: ReplayComparisonResource[];
   replayFixtures: ReplayFixtureResource[];
+  liveValidations: LiveValidationAttemptResource[];
+  supportMatrix: LiveValidationSupportMatrixResource[];
+  liveValidationLedger: LiveValidationLedgerResource[];
+  liveValidationRetention: LiveValidationRetentionResource | null;
+  liveValidationKillSwitches: LiveValidationKillSwitchResource[];
 };
 
 type DetailView = {
@@ -65,7 +75,12 @@ const EMPTY_SHELL: ShellSnapshot = {
   replayCandidates: [],
   replayAttempts: [],
   replayComparisons: [],
-  replayFixtures: []
+  replayFixtures: [],
+  liveValidations: [],
+  supportMatrix: [],
+  liveValidationLedger: [],
+  liveValidationRetention: null,
+  liveValidationKillSwitches: []
 };
 
 const ROLE_OPTIONS: TenantRole[] = ["owner", "admin", "operator", "viewer"];
@@ -83,6 +98,9 @@ export function App() {
   const [activeActionId, setActiveActionId] = useState("");
   const [runGoal, setRunGoal] = useState(DEFAULT_RUN_GOAL);
   const [testQuery, setTestQuery] = useState(DEFAULT_TEST_QUERY);
+  const [liveValidationCandidateId, setLiveValidationCandidateId] = useState("");
+  const [liveValidationToolClasses, setLiveValidationToolClasses] = useState("read_only");
+  const [liveValidationApprovalMode, setLiveValidationApprovalMode] = useState<"scope_level" | "per_action" | "mixed">("scope_level");
   const [diagnosticPlane, setDiagnosticPlane] = useState("");
   const [diagnosticSeverity, setDiagnosticSeverity] = useState("");
   const [authMe, setAuthMe] = useState<AuthMeResponse | null>(null);
@@ -205,6 +223,9 @@ export function App() {
         replayAttempts,
         replayComparisons,
         replayFixtures,
+        liveValidations,
+        supportMatrix,
+        killSwitches,
         membershipItems
       ] = await Promise.all([
         scopedClient.getOnboarding(scopedOptions),
@@ -218,8 +239,16 @@ export function App() {
         scopedClient.listReplayAttempts({ limit: 20 }, scopedOptions),
         scopedClient.listReplayComparisons({ limit: 20 }, scopedOptions),
         scopedClient.listReplayFixtures({}, scopedOptions),
+        scopedClient.listLiveValidations({ limit: 20 }, scopedOptions),
+        scopedClient.listLiveValidationSupportMatrix(scopedOptions),
+        scopedClient.listLiveValidationKillSwitches({}, scopedOptions),
         membershipPromise
       ]);
+      const latestValidation = liveValidations.items[0] ?? null;
+      const [liveValidationLedger, liveValidationRetention] = latestValidation ? await Promise.all([
+        scopedClient.listLiveValidationLedger(latestValidation.validationId, { limit: 20 }, scopedOptions).then((response) => response.items),
+        scopedClient.getLiveValidationRetention(latestValidation.validationId, scopedOptions)
+      ]) : [[], null] as const;
 
       if (generation !== generationRef.current || activeTenantRef.current !== tenant.tenantId) {
         return;
@@ -233,7 +262,12 @@ export function App() {
         replayCandidates: replayCandidates.items,
         replayAttempts: replayAttempts.items,
         replayComparisons: replayComparisons.items,
-        replayFixtures: replayFixtures.items
+        replayFixtures: replayFixtures.items,
+        liveValidations: liveValidations.items,
+        supportMatrix: supportMatrix.items,
+        liveValidationLedger,
+        liveValidationRetention,
+        liveValidationKillSwitches: killSwitches.items
       });
       setMemberships({
         status: hasPermission(tenant, "tenant.manage") ? membershipStatusFor(membershipItems) : "hidden",
@@ -492,6 +526,100 @@ export function App() {
     }
   }
 
+  async function handleStartLiveValidation() {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const candidateId = liveValidationCandidateId.trim() || shell.replayCandidates[0]?.candidateId || "";
+    if (!candidateId) {
+      setError("Select a replay candidate before starting live validation.");
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    const validationId = `lv_${Date.now()}`;
+    const includedToolClasses = splitCSV(liveValidationToolClasses);
+    const candidate = shell.replayCandidates.find((item) => item.candidateId === candidateId);
+    const candidateToolClasses = candidate?.toolClasses?.length ? candidate.toolClasses : includedToolClasses;
+    setActiveActionId("live-validation-start");
+    setError("");
+    try {
+      const response = await buildClient(tenantId).startLiveValidation({
+        validationId,
+        candidateId,
+        candidateToolClasses,
+        requestedScope: {
+          scopeId: `${validationId}_scope`,
+          validationId,
+          includedToolClasses,
+          approvalMode: liveValidationApprovalMode,
+          declaredBy: authMe?.principal.principalId || "operator-shell",
+          declaredAt: new Date().toISOString()
+        }
+      }, scoped);
+      if (generation !== generationRef.current || activeTenantRef.current !== tenantId) {
+        return;
+      }
+      const denialSuffix = response.denials?.length ? ` with ${response.denials.length} denial(s)` : "";
+      setActionMessage(`Live validation ${response.attempt.validationId} ${response.attempt.status}${denialSuffix}.`);
+      setDetail({
+        title: `Live Validation ${response.attempt.validationId}`,
+        route: `/v1/live-validations/${response.attempt.validationId}`,
+        tenantId,
+        generation,
+        payload: response
+      });
+      setActiveActionId("");
+      await refreshShell({ soft: true, tenantId });
+    } catch (caught) {
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      if (isTenantDenied(caught)) {
+        markActiveTenantDenied("Tenant access was denied. Choose another allowed tenant before continuing.");
+        return;
+      }
+      setError(errorMessage(caught));
+    } finally {
+      if (activeTenantRef.current === tenantId) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleEnableTenantKillSwitch() {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    setActiveActionId("live-validation-kill-switch");
+    setError("");
+    try {
+      const item = await buildClient(tenantId).updateLiveValidationKillSwitch({
+        scope: "tenant",
+        enabled: true,
+        reason: "Enabled from operator shell."
+      }, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Live validation kill switch ${item.enabled ? "enabled" : "disabled"}.`);
+      await refreshShell({ soft: true, tenantId });
+    } catch (caught) {
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setError(errorMessage(caught));
+    } finally {
+      if (activeTenantRef.current === tenantId) {
+        setActiveActionId("");
+      }
+    }
+  }
+
   async function handleMembershipRoleChange(membership: MembershipResource, role: TenantRole) {
     const scoped = currentTenantOptions();
     if (!scoped) {
@@ -541,6 +669,9 @@ export function App() {
   const onboarding = shell.onboarding;
   const activityItems = shell.activity?.items ?? [];
   const diagnosticItems = shell.diagnostics?.items ?? [];
+  const selectedLiveValidationCandidateId = liveValidationCandidateId || shell.replayCandidates[0]?.candidateId || "";
+  const latestLiveValidation = shell.liveValidations[0] ?? null;
+  const unsupportedMatrixRows = shell.supportMatrix.filter((row) => row.safetyClass === "unsupported");
 
   return (
     <main className="operator-shell">
@@ -878,6 +1009,109 @@ export function App() {
             <div className="empty-state">No curated replay candidates or fixtures are available in this environment.</div>
           )}
 
+          <div className="live-validation-box" aria-label="live validation controls">
+            <div className="stack-head">
+              <div>
+                <p className="section-kicker">Live Gate</p>
+                <strong>Live Validation Scope</strong>
+              </div>
+              <span className="count-chip">{shell.liveValidations.length}</span>
+            </div>
+            <div className="live-validation-form">
+              <label>
+                <span>Candidate</span>
+                <select
+                  aria-label="Live validation candidate"
+                  disabled={!canUseTenantActions || !shell.replayCandidates.length}
+                  value={selectedLiveValidationCandidateId}
+                  onChange={(event) => setLiveValidationCandidateId(event.target.value)}
+                >
+                  {shell.replayCandidates.length ? null : <option value="">No candidate</option>}
+                  {shell.replayCandidates.map((candidate) => (
+                    <option key={candidate.candidateId} value={candidate.candidateId}>{candidate.displayName}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Included Tool Classes</span>
+                <input
+                  aria-label="Included tool classes"
+                  disabled={!canUseTenantActions}
+                  value={liveValidationToolClasses}
+                  onChange={(event) => setLiveValidationToolClasses(event.target.value)}
+                  placeholder="read_only, idempotent_mutation"
+                />
+              </label>
+              <label>
+                <span>Approval Mode</span>
+                <select
+                  aria-label="Live validation approval mode"
+                  disabled={!canUseTenantActions}
+                  value={liveValidationApprovalMode}
+                  onChange={(event) => setLiveValidationApprovalMode(event.target.value as "scope_level" | "per_action" | "mixed")}
+                >
+                  <option value="scope_level">scope_level</option>
+                  <option value="per_action">per_action</option>
+                  <option value="mixed">mixed</option>
+                </select>
+              </label>
+              <button
+                className="primary"
+                disabled={!canUseTenantActions || !selectedLiveValidationCandidateId || activeActionId === "live-validation-start"}
+                type="button"
+                onClick={() => {
+                  void handleStartLiveValidation();
+                }}
+              >
+                {activeActionId === "live-validation-start" ? "Starting..." : "Start Live Validation"}
+              </button>
+            </div>
+            {latestLiveValidation ? <LiveValidationGateSummary attempt={latestLiveValidation} onInspect={inspectRoute} disabled={!canUseTenantActions} /> : (
+              <div className="empty-state">No live validation attempts have been recorded yet.</div>
+            )}
+            <div className="support-matrix-strip">
+              <strong>Ledger</strong>
+              <span>{shell.liveValidationLedger.length} entries · retention {shell.liveValidationRetention?.mode ?? "not loaded"}</span>
+            </div>
+            {shell.liveValidationLedger.length ? (
+              <div className="mini-card-grid">
+                {shell.liveValidationLedger.map((entry) => (
+                  <article className="mini-card" key={entry.ledgerEntryId}>
+                    <strong>{entry.toolClass}</strong>
+                    <small>{entry.outcome}</small>
+                    <p>{entry.reasonCode || entry.actionRef || "No ledger note."}</p>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+            <div className="support-matrix-strip">
+              <strong>Kill Switches</strong>
+              <span>{shell.liveValidationKillSwitches.filter((item) => item.enabled).length} active</span>
+            </div>
+            <div className="inline-actions">
+              <button disabled={!canUseTenantActions || activeActionId === "live-validation-kill-switch"} type="button" onClick={() => {
+                void handleEnableTenantKillSwitch();
+              }}>
+                Enable Tenant Kill Switch
+              </button>
+            </div>
+            <div className="support-matrix-strip">
+              <strong>Support Matrix</strong>
+              <span>{shell.supportMatrix.length} classes · {unsupportedMatrixRows.length} unsupported</span>
+            </div>
+            {unsupportedMatrixRows.length ? (
+              <div className="mini-card-grid">
+                {unsupportedMatrixRows.map((row) => (
+                  <article className="mini-card" key={row.toolClass}>
+                    <strong>{row.toolClass}</strong>
+                    <small>{row.safetyClass}</small>
+                    <p>{row.testCase}</p>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
           <div className="fixture-strip">
             <strong>Fixtures</strong>
             <span>Fixtures are engineer-managed and repo-backed; this shell intentionally does not expose fixture editing controls.</span>
@@ -966,6 +1200,44 @@ export function App() {
         </section>
       </section>
     </main>
+  );
+}
+
+function LiveValidationGateSummary(props: {
+  attempt: LiveValidationAttemptResource;
+  disabled: boolean;
+  onInspect: (route: string, title: string) => Promise<void>;
+}) {
+  const { attempt, disabled, onInspect } = props;
+  const gateDecisions = [
+    ["permission", attempt.permissionDecision],
+    ["quota", attempt.quotaDecision],
+    ["kill switch", attempt.killSwitchDecision]
+  ] as const;
+
+  return (
+    <article className="live-validation-gates">
+      <div className="stack-head">
+        <strong>{attempt.validationId}</strong>
+        <span className={`status-chip status-${attempt.status}`}>{attempt.status}</span>
+      </div>
+      <p>{attempt.candidateId} · approvals {attempt.approvalSummary.approved}/{attempt.approvalSummary.required} · pending {attempt.approvalSummary.pending}</p>
+      <div className="gate-grid">
+        {gateDecisions.map(([label, decision]) => (
+          <span className={`gate-chip gate-${decision.allowed ? "allowed" : "denied"}`} key={label}>
+            {label}: {decision.allowed ? "allowed" : decision.reasonCode || "denied"}
+          </span>
+        ))}
+      </div>
+      <small>{(attempt.requestedScope.includedToolClasses ?? []).join(", ") || "all declared classes"} · {attempt.requestedScope.approvalMode}</small>
+      <div className="inline-actions">
+        <button disabled={disabled} type="button" onClick={() => {
+          void onInspect(`/v1/live-validations/${attempt.validationId}`, attempt.validationId);
+        }}>
+          Inspect Live Validation
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -1123,6 +1395,10 @@ function writeTenantPreference(daemonURL: string, principalId: string, tenantId:
   } catch {
     // Browser storage is continuity only; failing closed to no preference is acceptable.
   }
+}
+
+function splitCSV(value: string): string[] {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 function errorMessage(caught: unknown): string {

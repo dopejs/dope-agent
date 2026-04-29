@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/live-validation-comparison-completed.event.schema.json",
+  "title": "LiveValidationComparisonCompletedEvent",
+  "type": "object",
+  "required": ["eventId", "sequence", "category", "name", "occurredAt", "resource", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "name": { "const": "live_validation.comparison_completed" },
+    "payload": {
+      "type": "object",
+      "required": ["validationId", "comparisonId", "terminalStatus"],
+      "additionalProperties": true,
+      "properties": {
+        "validationId": { "type": "string" },
+        "comparisonId": { "type": "string" },
+        "terminalStatus": { "type": "string" }
+      }
+    }
+  }
+}

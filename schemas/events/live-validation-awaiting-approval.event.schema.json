@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/live-validation-awaiting-approval.event.schema.json",
+  "title": "LiveValidationAwaitingApprovalEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": { "const": "live_validation.awaiting_approval" },
+        "payload": { "$ref": "#/$defs/payload" }
+      }
+    }
+  ],
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "required": ["validationId", "tenantId", "candidateId", "environmentScope", "status"],
+      "properties": {
+        "validationId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "environmentScope": { "type": "string" },
+        "status": { "const": "awaiting_approval" }
+      }
+    }
+  }
+}

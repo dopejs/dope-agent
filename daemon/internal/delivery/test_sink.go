@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
 )
 
 type TestSinkMessage struct {
@@ -22,6 +24,10 @@ type TestSinkAdapter struct {
 
 func NewTestSinkAdapter() *TestSinkAdapter {
 	return &TestSinkAdapter{}
+}
+
+func (a *TestSinkAdapter) RunLiveValidationOutcome(outcome livevalidation.FakeOutcome) livevalidation.FakeOutcomeResult {
+	return livevalidation.FakeOutcomeResultFor(outcome, livevalidation.SafetyClassNonIdempotentMutation)
 }
 
 func (a *TestSinkAdapter) Supports(kind TargetKind) bool {

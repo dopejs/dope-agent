@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-live-validation.request.schema.json",
+  "title": "CreateLiveValidationRequest",
+  "type": "object",
+  "required": ["candidateId", "requestedScope"],
+  "additionalProperties": false,
+  "properties": {
+    "validationId": { "type": "string" },
+    "candidateId": { "type": "string" },
+    "sourceAttemptId": { "type": "string" },
+    "candidateToolClasses": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "requestedScope": { "$ref": "./live-validation-attempt-resource.schema.json#/$defs/sideEffectScope" },
+    "freshApprovals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["approvalId", "validationId", "approvalTarget", "toolClass", "safetyClass", "status", "requestedBy", "requestedAt"],
+        "additionalProperties": true,
+        "properties": {
+          "approvalId": { "type": "string" },
+          "validationId": { "type": "string" },
+          "tenantId": { "type": "string" },
+          "approvalTarget": { "type": "string", "enum": ["scope", "action"] },
+          "toolClass": { "type": "string" },
+          "safetyClass": { "type": "string", "enum": ["read_only", "idempotent_mutation", "non_idempotent_mutation", "unsupported"] },
+          "actionRef": { "type": "string" },
+          "approvedScope": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "approved", "denied", "expired"] },
+          "requestedBy": { "type": "string" },
+          "resolvedBy": { "type": "string" },
+          "requestedAt": { "type": "string", "format": "date-time" },
+          "resolvedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "clientKey": { "type": "string" },
+    "changeWindowLabel": { "type": "string" }
+  }
+}

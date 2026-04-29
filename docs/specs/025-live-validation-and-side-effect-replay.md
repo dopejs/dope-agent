@@ -1,5 +1,11 @@
 # Live Validation And Side-Effect Replay
 
+Implementation status: Roadmap 40 artifacts are implemented under
+`specs/025-live-validation-replay`, with additive daemon APIs, SDK methods, web operator
+inspection, schemas, fake-backend coverage, kill-switch containment, and verification
+notes. Historical evidence remains inspectable when new live validation starts are
+disabled.
+
 Status: proposed
 
 Authority: This document is the authoritative upstream spec for Roadmap 40, the live

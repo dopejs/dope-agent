@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/resolve-live-validation-reconciliation.request.schema.json",
+  "title": "ResolveLiveValidationReconciliationRequest",
+  "type": "object",
+  "required": ["resolution", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "resolution": {
+      "type": "string",
+      "enum": ["confirmed_committed", "confirmed_not_committed", "compensated", "accepted_manual_state", "unsupported_unresolved"]
+    },
+    "reason": { "type": "string", "minLength": 1 },
+    "evidenceRefs": { "type": "array", "items": { "type": "string" } }
+  }
+}

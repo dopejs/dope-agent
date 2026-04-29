@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/live-validation-reconciliation-resource.schema.json",
+  "title": "LiveValidationReconciliationResource",
+  "type": "object",
+  "required": ["reconciliationId", "ambiguousCommitId", "resolvedBy", "resolution", "reason", "resolvedAt"],
+  "additionalProperties": true,
+  "properties": {
+    "reconciliationId": { "type": "string" },
+    "ambiguousCommitId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "resolvedBy": { "type": "string" },
+    "resolution": { "type": "string", "enum": ["confirmed_committed", "confirmed_not_committed", "compensated", "accepted_manual_state", "unsupported_unresolved"] },
+    "reason": { "type": "string" },
+    "evidenceRefs": { "type": "array", "items": { "type": "string" } },
+    "resolvedAt": { "type": "string", "format": "date-time" }
+  }
+}

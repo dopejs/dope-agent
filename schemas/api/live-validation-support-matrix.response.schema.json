@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/live-validation-support-matrix.response.schema.json",
+  "title": "LiveValidationSupportMatrixResponse",
+  "type": "object",
+  "required": ["version", "items"],
+  "additionalProperties": true,
+  "properties": {
+    "environmentScope": { "type": "string" },
+    "version": { "type": "string" },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "live-validation-support-matrix-resource.schema.json" }
+    }
+  }
+}

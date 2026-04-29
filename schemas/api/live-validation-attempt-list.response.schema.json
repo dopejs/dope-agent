@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/live-validation-attempt-list.response.schema.json",
+  "title": "LiveValidationAttemptListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": true,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "environmentScope": { "type": "string" },
+    "items": { "type": "array", "items": { "$ref": "./live-validation-attempt-resource.schema.json" } }
+  }
+}

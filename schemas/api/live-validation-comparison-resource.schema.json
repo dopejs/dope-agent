@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/live-validation-comparison-resource.schema.json",
+  "title": "LiveValidationComparisonResource",
+  "type": "object",
+  "required": ["comparisonId", "validationId", "candidateId", "baselineRef", "terminalStatus", "ledgerSummary", "generatedAt"],
+  "additionalProperties": true,
+  "properties": {
+    "comparisonId": { "type": "string" },
+    "validationId": { "type": "string" },
+    "candidateId": { "type": "string" },
+    "baselineRef": { "type": "string" },
+    "terminalStatus": { "type": "string", "enum": ["matched", "drifted", "blocked", "unsupported", "operator_action_needed"] },
+    "ledgerSummary": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "unsupportedClasses": { "type": "array", "items": { "type": "string" } },
+    "denials": { "type": "array", "items": { "type": "string" } },
+    "ambiguousCommits": { "type": "array", "items": { "type": "string" } },
+    "driftFindings": { "type": "array", "items": { "type": "string" } },
+    "generatedAt": { "type": "string", "format": "date-time" }
+  }
+}

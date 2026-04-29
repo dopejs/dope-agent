@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/live-validation-retention-resource.schema.json",
+  "title": "LiveValidationRetentionResource",
+  "type": "object",
+  "required": ["policyId", "appliesTo", "mode", "createdByPrincipalId", "createdAt"],
+  "additionalProperties": true,
+  "properties": {
+    "policyId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "appliesTo": { "type": "string", "enum": ["attempts", "ledger_entries", "reconciliation_decisions", "comparisons", "all"] },
+    "mode": { "type": "string", "enum": ["indefinite", "explicit"] },
+    "retentionPeriod": { "type": "string" },
+    "createdByPrincipalId": { "type": "string" },
+    "reason": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" }
+  }
+}

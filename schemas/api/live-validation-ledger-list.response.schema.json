@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/live-validation-ledger-list.response.schema.json",
+  "title": "LiveValidationLedgerListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": true,
+  "properties": {
+    "validationId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "items": { "type": "array", "items": { "$ref": "./live-validation-ledger-resource.schema.json" } }
+  }
+}

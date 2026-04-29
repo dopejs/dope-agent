@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 36
+	CurrentSchemaVersion = 37
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -2098,6 +2098,155 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_billing_usage_events_tenant_created ON billing_usage_events(tenant_id, created_at DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_billing_quota_denials_tenant_created ON billing_quota_denials(tenant_id, created_at DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_billing_manual_adjustments_tenant_created ON billing_manual_adjustments(tenant_id, created_at DESC);`,
+		},
+	},
+	{
+		Version: 37,
+		Name:    "r40_live_validation_replay",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS live_validation_attempts (
+				validation_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				candidate_id TEXT NOT NULL,
+				source_attempt_id TEXT,
+				environment_scope TEXT NOT NULL,
+				status TEXT NOT NULL,
+				comparison_id TEXT,
+				created_at TEXT NOT NULL,
+				started_at TEXT,
+				completed_at TEXT,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS live_validation_scopes (
+				scope_id TEXT PRIMARY KEY,
+				validation_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				approval_mode TEXT NOT NULL,
+				declared_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(validation_id) REFERENCES live_validation_attempts(validation_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS live_validation_approvals (
+				approval_id TEXT PRIMARY KEY,
+				validation_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				approval_target TEXT NOT NULL,
+				tool_class TEXT NOT NULL,
+				action_ref TEXT,
+				status TEXT NOT NULL,
+				requested_at TEXT NOT NULL,
+				resolved_at TEXT,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(validation_id) REFERENCES live_validation_attempts(validation_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS live_validation_support_matrix_snapshots (
+				snapshot_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				validation_id TEXT,
+				version TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS live_validation_ledger_entries (
+				ledger_entry_id TEXT PRIMARY KEY,
+				validation_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				candidate_id TEXT NOT NULL,
+				tool_class TEXT NOT NULL,
+				safety_class TEXT NOT NULL,
+				action_ref TEXT NOT NULL,
+				outcome TEXT NOT NULL,
+				attempted_at TEXT,
+				completed_at TEXT,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(validation_id) REFERENCES live_validation_attempts(validation_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS live_validation_kill_switches (
+				kill_switch_id TEXT PRIMARY KEY,
+				scope TEXT NOT NULL,
+				tenant_id TEXT,
+				enabled INTEGER NOT NULL,
+				changed_at TEXT NOT NULL,
+				expires_at TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS live_validation_ambiguous_commits (
+				ambiguous_commit_id TEXT PRIMARY KEY,
+				ledger_entry_id TEXT NOT NULL,
+				validation_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				cause TEXT NOT NULL,
+				automatic_retry_stopped INTEGER NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(ledger_entry_id) REFERENCES live_validation_ledger_entries(ledger_entry_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS live_validation_reconciliation_resolutions (
+				reconciliation_id TEXT PRIMARY KEY,
+				ambiguous_commit_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				resolved_by TEXT NOT NULL,
+				resolution TEXT NOT NULL,
+				resolved_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(ambiguous_commit_id) REFERENCES live_validation_ambiguous_commits(ambiguous_commit_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS live_validation_comparisons (
+				comparison_id TEXT PRIMARY KEY,
+				validation_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				candidate_id TEXT NOT NULL,
+				terminal_status TEXT NOT NULL,
+				generated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(validation_id) REFERENCES live_validation_attempts(validation_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS live_validation_retention_policies (
+				policy_id TEXT PRIMARY KEY,
+				tenant_id TEXT,
+				applies_to TEXT NOT NULL,
+				retention_mode TEXT NOT NULL,
+				created_by_principal_id TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				expires_at TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_attempts_tenant_status ON live_validation_attempts(tenant_id, status, updated_at DESC, validation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_attempts_tenant_candidate ON live_validation_attempts(tenant_id, candidate_id, updated_at DESC, validation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_attempts_env_status ON live_validation_attempts(environment_scope, status, updated_at DESC, validation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_scopes_validation ON live_validation_scopes(tenant_id, validation_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_approvals_validation_status ON live_validation_approvals(tenant_id, validation_id, status, requested_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_matrix_tenant_created ON live_validation_support_matrix_snapshots(tenant_id, created_at DESC, snapshot_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_ledger_validation ON live_validation_ledger_entries(tenant_id, validation_id, updated_at DESC, ledger_entry_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_ledger_outcome ON live_validation_ledger_entries(tenant_id, outcome, updated_at DESC, ledger_entry_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_kill_switches_enabled ON live_validation_kill_switches(scope, tenant_id, enabled, changed_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_ambiguous_validation ON live_validation_ambiguous_commits(tenant_id, validation_id, updated_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_reconciliations_tenant ON live_validation_reconciliation_resolutions(tenant_id, resolved_at DESC, reconciliation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_comparisons_validation ON live_validation_comparisons(tenant_id, validation_id, generated_at DESC, comparison_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_live_validation_retention_tenant ON live_validation_retention_policies(tenant_id, applies_to, created_at DESC, policy_id DESC);`,
 		},
 	},
 }

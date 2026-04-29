@@ -32,6 +32,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/im"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/managedproviders"
@@ -75,6 +76,7 @@ type App struct {
 	Delivery             *delivery.Manager
 	Billing              *billing.Manager
 	Evaluation           *evaluation.Manager
+	LiveValidation       *livevalidation.Manager
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
 	discordRuntime       managedConnectorRuntime
@@ -200,6 +202,28 @@ func New() (*App, error) {
 		Billing:          billingManager,
 		HostedBilling:    cfg.Environment == config.EnvironmentProd,
 	})
+	liveValidationManager := livevalidation.NewManager(livevalidation.Dependencies{
+		EnvironmentScope: string(cfg.Environment),
+		Store:            sqliteStore,
+		Enabled:          true,
+		Billing:          billingManager,
+		HostedBilling:    cfg.Environment == config.EnvironmentProd,
+		CandidateToolClassResolver: func(ctx context.Context, candidateID string) ([]livevalidation.ToolClass, error) {
+			candidate, ok, err := sqliteStore.GetReplayCandidate(ctx, string(cfg.Environment), candidateID)
+			if err != nil || !ok {
+				return nil, err
+			}
+			return liveValidationToolClasses(candidate.ToolClasses), nil
+		},
+		LedgerEventSink: func(ctx context.Context, eventName string, entry livevalidation.SideEffectLedgerEntry) {
+			event := events.LiveValidationLedgerEvent(eventName, entry)
+			event.EnvironmentScope = string(cfg.Environment)
+			published := eventBus.Publish(event)
+			if published.TenantID != "" {
+				_, _ = sqliteStore.AppendEventForTenantRaw(ctx, published, published.TenantID)
+			}
+		},
+	})
 	if err := evaluationManager.LoadFixtures(envCtx); err != nil {
 		return nil, err
 	}
@@ -291,6 +315,7 @@ func New() (*App, error) {
 		Store:                 sqliteStore,
 		Checkpoints:           checkpointManager,
 		Evaluation:            evaluationManager,
+		LiveValidation:        liveValidationManager,
 		AuditEmitter:          audit.NewEmitter(eventBus, logger.Slog()),
 		TenantMigrationStatus: migrationGate,
 	})
@@ -321,6 +346,7 @@ func New() (*App, error) {
 		Delivery:             deliveryManager,
 		Billing:              billingManager,
 		Evaluation:           evaluationManager,
+		LiveValidation:       liveValidationManager,
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,
 		discordRuntime:       discordRuntime,
@@ -1015,4 +1041,21 @@ func syncManagedProviderState(ctx context.Context, sqliteStore *store.SQLiteStor
 		}
 	}
 	return nil
+}
+
+func liveValidationToolClasses(items []string) []livevalidation.ToolClass {
+	if len(items) == 0 {
+		return nil
+	}
+	classes := make([]livevalidation.ToolClass, 0, len(items))
+	seen := map[livevalidation.ToolClass]bool{}
+	for _, item := range items {
+		toolClass := livevalidation.ToolClass(strings.TrimSpace(item))
+		if toolClass == "" || seen[toolClass] {
+			continue
+		}
+		seen[toolClass] = true
+		classes = append(classes, toolClass)
+	}
+	return classes
 }

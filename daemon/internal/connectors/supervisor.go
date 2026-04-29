@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
 	"github.com/dopejs/dope-agent/daemon/internal/secrets"
 )
 
@@ -75,6 +76,10 @@ func NewSupervisor() *Supervisor {
 	return &Supervisor{
 		byID: make(map[string]Connector),
 	}
+}
+
+func (s *Supervisor) RunLiveValidationOutcome(outcome livevalidation.FakeOutcome) livevalidation.FakeOutcomeResult {
+	return livevalidation.FakeOutcomeResultFor(outcome, livevalidation.SafetyClassNonIdempotentMutation)
 }
 
 func (s *Supervisor) Register(input RegisterInput) (Connector, bool, error) {

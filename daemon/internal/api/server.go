@@ -31,6 +31,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
@@ -49,34 +50,35 @@ import (
 )
 
 type Dependencies struct {
-	Config       config.Config
-	Logger       *slog.Logger
-	EventBus     *events.Bus
-	Policy       *policy.Engine
-	Auth         *auth.Manager
-	Identity     *identity.Manager
-	Router       *router.SessionRouter
-	Runtime      *runtime.Manager
-	LLM          *llm.Dispatcher
-	Chat         *chat.Service
-	Providers    *providers.Manager
-	Skills       *skills.Registry
-	Sandboxes    *sandbox.Manager
-	Secrets      *secrets.Manager
-	MCP          *mcp.Manager
-	Integrations *integrations.Manager
-	Calendar     *calendar.Manager
-	Mail         *mail.Manager
-	Reminders    *reminders.Manager
-	Connectors   *connectors.Supervisor
-	Capabilities *capabilities.Supervisor
-	ComputerUse  *computeruse.Manager
-	Scheduler    *scheduler.Scheduler
-	Delivery     *delivery.Manager
-	Billing      *billing.Manager
-	Store        *store.SQLiteStore
-	Checkpoints  *checkpoints.Manager
-	Evaluation   *evaluation.Manager
+	Config         config.Config
+	Logger         *slog.Logger
+	EventBus       *events.Bus
+	Policy         *policy.Engine
+	Auth           *auth.Manager
+	Identity       *identity.Manager
+	Router         *router.SessionRouter
+	Runtime        *runtime.Manager
+	LLM            *llm.Dispatcher
+	Chat           *chat.Service
+	Providers      *providers.Manager
+	Skills         *skills.Registry
+	Sandboxes      *sandbox.Manager
+	Secrets        *secrets.Manager
+	MCP            *mcp.Manager
+	Integrations   *integrations.Manager
+	Calendar       *calendar.Manager
+	Mail           *mail.Manager
+	Reminders      *reminders.Manager
+	Connectors     *connectors.Supervisor
+	Capabilities   *capabilities.Supervisor
+	ComputerUse    *computeruse.Manager
+	Scheduler      *scheduler.Scheduler
+	Delivery       *delivery.Manager
+	Billing        *billing.Manager
+	Store          *store.SQLiteStore
+	Checkpoints    *checkpoints.Manager
+	Evaluation     *evaluation.Manager
+	LiveValidation *livevalidation.Manager
 	// Roadmap 35 (T040+): emitter used by route handlers to publish
 	// `audit.cross_tenant_access_denied` when a request resolves to a
 	// tenant context that does not own the targeted resource. Optional;
@@ -129,6 +131,7 @@ type Server struct {
 	store           *store.SQLiteStore
 	checkpoints     *checkpoints.Manager
 	evaluation      *evaluation.Manager
+	liveValidation  *livevalidation.Manager
 	auditEmitter    *audit.Emitter
 	migrationStatus MigrationStatus
 	server          *http.Server
@@ -280,7 +283,13 @@ func NewServer(deps Dependencies) *Server {
 		handleEvents(deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/evaluation/", protected(func(w http.ResponseWriter, r *http.Request) {
-		handleEvaluationRoutes(deps.Evaluation, deps.EventBus, deps.Store, w, r)
+		handleEvaluationRoutes(deps.Evaluation, deps.LiveValidation, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/live-validations", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleLiveValidationRoutes(deps.LiveValidation, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/live-validations/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleLiveValidationRoutes(deps.LiveValidation, deps.EventBus, deps.Store, w, r)
 	}))
 	mux.HandleFunc("/v1/runs", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleRuns(deps.Config, deps.Router, deps.Runtime, deps.EventBus, deps.Delivery, deps.Billing, deps.Store, deps.Checkpoints, w, r)
@@ -499,6 +508,7 @@ func NewServer(deps Dependencies) *Server {
 		store:           deps.Store,
 		checkpoints:     deps.Checkpoints,
 		evaluation:      deps.Evaluation,
+		liveValidation:  deps.LiveValidation,
 		auditEmitter:    resolveAuditEmitter(deps),
 		migrationStatus: deps.TenantMigrationStatus,
 		server: &http.Server{

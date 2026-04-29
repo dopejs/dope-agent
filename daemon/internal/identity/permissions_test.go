@@ -9,7 +9,7 @@ func TestPermissionsForRoleUsesTieredLeastPrivilege(t *testing.T) {
 		want []Permission
 	}{
 		{name: "owner", role: RoleOwner, want: AllSensitivePermissions},
-		{name: "admin", role: RoleAdmin, want: []Permission{PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionEvaluationManage, PermissionBillingView, PermissionBillingManage}},
+		{name: "admin", role: RoleAdmin, want: []Permission{PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionLiveValidationReconcile, PermissionEvaluationManage, PermissionBillingView, PermissionBillingManage}},
 		{name: "operator", role: RoleOperator, want: []Permission{PermissionRunsExecute, PermissionApprovalsResolve, PermissionLiveValidationExecute}},
 		{name: "viewer", role: RoleViewer, want: []Permission{PermissionReadOnlyInspect}},
 	}
@@ -40,7 +40,7 @@ func TestPermissionsDeniedForInactiveLifecycle(t *testing.T) {
 func TestPermissionEvaluatorCoversSensitiveCapabilities(t *testing.T) {
 	rolePermissions := map[Role][]Permission{
 		RoleOwner:    AllSensitivePermissions,
-		RoleAdmin:    {PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionEvaluationManage, PermissionBillingView, PermissionBillingManage},
+		RoleAdmin:    {PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionLiveValidationReconcile, PermissionEvaluationManage, PermissionBillingView, PermissionBillingManage},
 		RoleOperator: {PermissionRunsExecute, PermissionApprovalsResolve, PermissionLiveValidationExecute},
 		RoleViewer:   {PermissionReadOnlyInspect},
 	}
@@ -57,5 +57,70 @@ func TestPermissionEvaluatorCoversSensitiveCapabilities(t *testing.T) {
 				t.Fatalf("role %s permission %s allowed=%v, want %v", role, permission, evaluation.Allowed, wantAllowed)
 			}
 		}
+	}
+}
+
+func TestCanResolveLiveValidationReconciliationRequiresOwnerAdminOrPermission(t *testing.T) {
+	tests := []struct {
+		name    string
+		context TenantContext
+		want    bool
+	}{
+		{
+			name: "owner role",
+			context: TenantContext{
+				PrincipalID: "prn_owner",
+				TenantID:    "ten_1",
+				Role:        RoleOwner,
+				Permissions: PermissionsForRole(RoleOwner, StatusActive),
+			},
+			want: true,
+		},
+		{
+			name: "admin role",
+			context: TenantContext{
+				PrincipalID: "prn_admin",
+				TenantID:    "ten_1",
+				Role:        RoleAdmin,
+				Permissions: PermissionsForRole(RoleAdmin, StatusActive),
+			},
+			want: true,
+		},
+		{
+			name: "explicit permission",
+			context: TenantContext{
+				PrincipalID: "prn_reconciler",
+				TenantID:    "ten_1",
+				Role:        RoleOperator,
+				Permissions: []Permission{PermissionLiveValidationReconcile},
+			},
+			want: true,
+		},
+		{
+			name: "operator execute only",
+			context: TenantContext{
+				PrincipalID: "prn_operator",
+				TenantID:    "ten_1",
+				Role:        RoleOperator,
+				Permissions: PermissionsForRole(RoleOperator, StatusActive),
+			},
+			want: false,
+		},
+		{
+			name: "missing tenant context",
+			context: TenantContext{
+				PrincipalID: "prn_owner",
+				Role:        RoleOwner,
+				Permissions: PermissionsForRole(RoleOwner, StatusActive),
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanResolveLiveValidationReconciliation(tt.context); got != tt.want {
+				t.Fatalf("CanResolveLiveValidationReconciliation()=%v, want %v", got, tt.want)
+			}
+		})
 	}
 }

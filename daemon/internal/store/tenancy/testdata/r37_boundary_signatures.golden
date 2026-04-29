@@ -612,6 +612,7 @@ func (*websocketSession) ID() string
 func (*websocketSession) ListTools(ctx context.Context) ([]Tool, error)
 func (*websocketTransport) Open(ctx context.Context, server Server, _ SessionPipes) (Session, error)
 func IsTerminalStatus(status LifecycleStatus) bool
+func LiveValidationMatrixRows() []livevalidation.MatrixRow
 func NewManager(cfg config.Config, sqliteStore *store.SQLiteStore, eventBus *events.Bus, sandboxManager attachedExecutionStarter, policyEngine *policy.Engine, transport Transport) *Manager
 func NewStdioTransport() Transport
 func NewStreamableHTTPTransport(client *http.Client) Transport
@@ -1031,6 +1032,7 @@ func (*Supervisor) ReportFailure(connectorID string, input ReportFailureInput) (
 func (*Supervisor) ReportHealth(connectorID string, input ReportHealthInput) (Connector, error)
 func (*Supervisor) Restart(connectorID string) (Connector, error)
 func (*Supervisor) Restore(items []Connector)
+func (*Supervisor) RunLiveValidationOutcome(outcome livevalidation.FakeOutcome) livevalidation.FakeOutcomeResult
 func NewSupervisor() *Supervisor
 type Connector struct {
     TenantID          string                          `json:"tenantId,omitempty"`

@@ -11,6 +11,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
 
@@ -42,7 +43,7 @@ type ReplayFixtureListResponse struct {
 type CreateReplayAttemptRequest = evaluation.CreateReplayAttemptInput
 type CreateReplayComparisonRequest = evaluation.CreateComparisonInput
 
-func handleEvaluationRoutes(manager *evaluation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+func handleEvaluationRoutes(manager *evaluation.Manager, liveValidationManager *livevalidation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil {
 		writeError(w, http.StatusInternalServerError, "evaluation manager is not configured")
 		return
@@ -54,7 +55,7 @@ func handleEvaluationRoutes(manager *evaluation.Manager, eventBus *events.Bus, s
 	case path == "replay-candidates":
 		handleEvaluationReplayCandidates(manager, w, r)
 	case strings.HasPrefix(path, "replay-candidates/"):
-		handleEvaluationReplayCandidateRoutes(manager, eventBus, sqliteStore, strings.TrimPrefix(path, "replay-candidates/"), w, r)
+		handleEvaluationReplayCandidateRoutes(manager, liveValidationManager, eventBus, sqliteStore, strings.TrimPrefix(path, "replay-candidates/"), w, r)
 	case path == "replay-attempts":
 		handleEvaluationReplayAttempts(manager, w, r)
 	case strings.HasPrefix(path, "replay-attempts/"):
@@ -119,7 +120,7 @@ func handleEvaluationReplayCandidates(manager *evaluation.Manager, w http.Respon
 	writeJSON(w, http.StatusOK, ReplayCandidateListResponse{EnvironmentScope: events.EnvironmentScopeFromContext(r.Context()), Items: items})
 }
 
-func handleEvaluationReplayCandidateRoutes(manager *evaluation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, path string, w http.ResponseWriter, r *http.Request) {
+func handleEvaluationReplayCandidateRoutes(manager *evaluation.Manager, liveValidationManager *livevalidation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, path string, w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) == 1 && r.Method == http.MethodGet {
 		item, ok, err := manager.GetReplayCandidate(r.Context(), parts[0])
@@ -134,10 +135,18 @@ func handleEvaluationReplayCandidateRoutes(manager *evaluation.Manager, eventBus
 		writeJSON(w, http.StatusOK, item)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "live-validations" && r.Method == http.MethodPost {
+		handleEvaluationReplayCandidateLiveValidation(manager, liveValidationManager, eventBus, sqliteStore, parts[0], w, r)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "attempts" && r.Method == http.MethodPost {
 		var input CreateReplayAttemptRequest
 		if err := decodeOptionalJSON(r, &input); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if input.Mode == evaluation.ReplayModeLiveValidation {
+			writeError(w, http.StatusBadRequest, "live validation attempts must use /v1/live-validations")
 			return
 		}
 		attempt, err := manager.CreateReplayAttempt(r.Context(), parts[0], input)
@@ -163,6 +172,66 @@ func handleEvaluationReplayCandidateRoutes(manager *evaluation.Manager, eventBus
 		return
 	}
 	writeError(w, http.StatusNotFound, "replay candidate route not found")
+}
+
+func handleEvaluationReplayCandidateLiveValidation(manager *evaluation.Manager, liveValidationManager *livevalidation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, candidateID string, w http.ResponseWriter, r *http.Request) {
+	if liveValidationManager == nil {
+		writeError(w, http.StatusInternalServerError, "live validation manager is not configured")
+		return
+	}
+	candidate, err := manager.PrepareLiveValidationHandoff(r.Context(), candidateID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var input CreateLiveValidationRequest
+	if err := decodeOptionalJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if input.CandidateID != "" && input.CandidateID != candidateID {
+		writeError(w, http.StatusBadRequest, "candidateId must match the replay candidate route")
+		return
+	}
+	input.CandidateID = candidateID
+	if len(input.CandidateToolClasses) == 0 {
+		input.CandidateToolClasses = liveValidationToolClasses(candidate.ToolClasses)
+	}
+	result, err := liveValidationManager.Start(r.Context(), input)
+	if err != nil {
+		if errors.Is(err, livevalidation.ErrLiveValidationDisabled) {
+			writeError(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		if errors.Is(err, livevalidation.ErrLiveValidationBlocked) {
+			publishLiveValidationStartEvent(r.Context(), eventBus, sqliteStore, result)
+			recordLiveValidationAudit(r.Context(), sqliteStore, result, "denied")
+			writeJSON(w, http.StatusConflict, result)
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	publishLiveValidationStartEvent(r.Context(), eventBus, sqliteStore, result)
+	recordLiveValidationAudit(r.Context(), sqliteStore, result, "succeeded")
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+func liveValidationToolClasses(items []string) []livevalidation.ToolClass {
+	if len(items) == 0 {
+		return nil
+	}
+	classes := make([]livevalidation.ToolClass, 0, len(items))
+	seen := map[livevalidation.ToolClass]bool{}
+	for _, item := range items {
+		toolClass := livevalidation.ToolClass(strings.TrimSpace(item))
+		if toolClass == "" || seen[toolClass] {
+			continue
+		}
+		seen[toolClass] = true
+		classes = append(classes, toolClass)
+	}
+	return classes
 }
 
 func handleEvaluationReplayAttempts(manager *evaluation.Manager, w http.ResponseWriter, r *http.Request) {

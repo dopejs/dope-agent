@@ -1,6 +1,10 @@
 package integrations
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
+)
 
 type FakeFaultType string
 
@@ -69,6 +73,10 @@ func (FakeBackend) RunFaultDrill(resource Resource, faultType FakeFaultType) Fak
 		ObservedClassification: classification,
 		OperatorActionNeeded:   operatorActionNeeded,
 	}
+}
+
+func (FakeBackend) RunLiveValidationOutcome(outcome livevalidation.FakeOutcome) livevalidation.FakeOutcomeResult {
+	return livevalidation.FakeOutcomeResultFor(outcome, livevalidation.SafetyClassIdempotentMutation)
 }
 
 func (FakeBackend) supportsDomainKind(domainKind string) bool {

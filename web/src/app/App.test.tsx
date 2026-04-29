@@ -24,6 +24,15 @@ const mockClient = {
   listReplayComparisons: vi.fn(),
   getReplayComparison: vi.fn(),
   listReplayFixtures: vi.fn(),
+  startLiveValidation: vi.fn(),
+  listLiveValidations: vi.fn(),
+  listLiveValidationSupportMatrix: vi.fn(),
+  listLiveValidationLedger: vi.fn(),
+  getLiveValidationRetention: vi.fn(),
+  listLiveValidationKillSwitches: vi.fn(),
+  updateLiveValidationKillSwitch: vi.fn(),
+  getLiveValidation: vi.fn(),
+  abortLiveValidation: vi.fn(),
   listMemberships: vi.fn(),
   updateMembershipRole: vi.fn(),
   streamEvents: vi.fn()
@@ -67,7 +76,7 @@ function tenantFixtureBase() {
     updatedAt: "2026-04-24T10:00:00Z",
     callerMembershipRole: "owner",
     callerMembershipStatus: "active",
-    callerPermissions: ["tenant.manage", "runs.execute", "approvals.resolve", "evaluation.manage"],
+    callerPermissions: ["tenant.manage", "runs.execute", "approvals.resolve", "evaluation.manage", "live_validation.execute"],
     defaultForCurrentToken: true,
     defaultForCurrentPrincipal: true
   };
@@ -214,6 +223,15 @@ describe("App", () => {
     mockClient.listReplayComparisons.mockReset().mockResolvedValue({ environmentScope: "test", items: [] });
     mockClient.getReplayComparison.mockReset();
     mockClient.listReplayFixtures.mockReset().mockResolvedValue({ environmentScope: "test", items: [] });
+    mockClient.startLiveValidation.mockReset();
+    mockClient.listLiveValidations.mockReset().mockResolvedValue({ environmentScope: "test", items: [] });
+    mockClient.listLiveValidationSupportMatrix.mockReset().mockResolvedValue({ environmentScope: "test", version: "v1", items: [] });
+    mockClient.listLiveValidationLedger.mockReset().mockResolvedValue({ validationId: "lv_1", items: [] });
+    mockClient.getLiveValidationRetention.mockReset().mockResolvedValue({ policyId: "ret_1", appliesTo: "all", mode: "indefinite", createdByPrincipalId: "prn_1", createdAt: "2026-04-29T10:00:00Z" });
+    mockClient.listLiveValidationKillSwitches.mockReset().mockResolvedValue({ items: [] });
+    mockClient.updateLiveValidationKillSwitch.mockReset();
+    mockClient.getLiveValidation.mockReset();
+    mockClient.abortLiveValidation.mockReset();
     mockClient.listMemberships.mockReset().mockResolvedValue({ items: [membershipFixture()] });
     mockClient.updateMembershipRole.mockReset();
     emptySubscription.close.mockClear();
@@ -580,6 +598,142 @@ describe("App", () => {
     await waitFor(() => {
       expect(mockClient.createReplayComparison).toHaveBeenCalledWith("attempt_1", {}, { tenantId: "ten_personal" });
       expect(screen.getByText(/Comparison comparison_1 matched/i)).not.toBeNull();
+    });
+  });
+
+  it("loads live validation gate state and starts with explicit scope selection", async () => {
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-04-24T10:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-04-24T10:00:00Z" });
+    mockClient.listReplayCandidates.mockResolvedValue({
+      environmentScope: "test",
+      items: [
+        {
+          candidateId: "candidate_live",
+          candidateKind: "fixture",
+          displayName: "Live Schedule Fixture",
+	          sourceKind: "fixture",
+	          sourceId: "fixture_live",
+	          sourceRefs: [],
+	          toolClasses: ["read_only", "idempotent_mutation", "mcp.tool_call"],
+	          environmentScope: "test",
+          readinessStatus: "fully_replayable",
+          readinessReasons: ["fixture has evidence"],
+          limitations: [],
+          defaultReplayMode: "non_live",
+          createdAt: "2026-04-24T10:00:00Z",
+          updatedAt: "2026-04-24T10:00:00Z"
+        }
+      ]
+    });
+    const blockedAttempt = {
+      validationId: "lv_existing",
+      tenantId: "ten_personal",
+      candidateId: "candidate_live",
+      requestedBy: "prn_1",
+      environmentScope: "test",
+      requestedScope: {
+        scopeId: "scope_existing",
+        validationId: "lv_existing",
+        includedToolClasses: ["read_only"],
+        approvalMode: "scope_level",
+        declaredBy: "prn_1",
+        declaredAt: "2026-04-24T10:00:00Z"
+      },
+      status: "blocked",
+      permissionDecision: { allowed: true, checkedAt: "2026-04-24T10:00:00Z" },
+      quotaDecision: { allowed: false, reasonCode: "quota_state_unavailable", checkedAt: "2026-04-24T10:00:00Z" },
+      killSwitchDecision: { allowed: true, checkedAt: "2026-04-24T10:00:00Z" },
+      approvalSummary: { required: 1, approved: 0, denied: 0, expired: 0, pending: 1 },
+      ledgerSummary: {},
+      createdAt: "2026-04-24T10:00:00Z",
+      updatedAt: "2026-04-24T10:00:00Z"
+    };
+    mockClient.listLiveValidations.mockResolvedValue({ environmentScope: "test", items: [blockedAttempt] });
+    mockClient.listLiveValidationLedger.mockResolvedValue({
+      validationId: "lv_existing",
+      items: [{
+        ledgerEntryId: "ledger_1",
+        validationId: "lv_existing",
+        candidateId: "candidate_live",
+        sourceRef: "tool_1",
+        toolClass: "mail.send",
+        safetyClass: "non_idempotent_mutation",
+        actionRef: "send_1",
+        outcome: "operator_action_needed",
+        reasonCode: "live_validation.ambiguous_commit",
+        updatedAt: "2026-04-29T10:00:00Z",
+        retryCount: 0,
+        ambiguousCommit: true
+      }]
+    });
+    mockClient.listLiveValidationKillSwitches.mockResolvedValue({ items: [{ killSwitchId: "kill_1", scope: "tenant", tenantId: "ten_personal", enabled: true, reason: "containment", changedBy: "prn_owner", changedAt: "2026-04-29T10:00:00Z" }] });
+    mockClient.updateLiveValidationKillSwitch.mockResolvedValue({ killSwitchId: "kill_1", scope: "tenant", tenantId: "ten_personal", enabled: true, reason: "containment", changedBy: "prn_owner", changedAt: "2026-04-29T10:00:00Z" });
+    mockClient.listLiveValidationSupportMatrix.mockResolvedValue({
+      environmentScope: "test",
+      version: "v1",
+      items: [{
+        toolClass: "mcp.tool_call",
+        safetyClass: "unsupported",
+        approval: "unsupported",
+        retryPolicy: "no_retry",
+        compensation: "unsupported",
+        ledgerEvents: ["skipped", "denied"],
+        testCase: "MCP unsupported completeness test",
+        version: "v1"
+      }]
+    });
+    mockClient.startLiveValidation.mockResolvedValue({
+      attempt: {
+        ...blockedAttempt,
+        validationId: "lv_new",
+        requestedScope: { ...blockedAttempt.requestedScope, validationId: "lv_new", scopeId: "lv_new_scope", includedToolClasses: ["read_only", "idempotent_mutation"] }
+      },
+      denials: [{ gate: "quota", reasonCode: "quota_state_unavailable", message: "quota unavailable" }]
+    });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    await waitFor(() => {
+      expect(mockClient.listLiveValidations).toHaveBeenCalledWith({ limit: 20 }, { tenantId: "ten_personal" });
+      expect(mockClient.listLiveValidationSupportMatrix).toHaveBeenCalledWith({ tenantId: "ten_personal" });
+      expect(screen.getByText("Live Validation Scope")).not.toBeNull();
+      expect(screen.getByText(/quota: quota_state_unavailable/i)).not.toBeNull();
+      expect(screen.getByText(/1 classes .* 1 unsupported/i)).not.toBeNull();
+      expect(screen.getByText("mcp.tool_call")).not.toBeNull();
+      expect(screen.getByText(/1 entries .* retention indefinite/i)).not.toBeNull();
+      expect(screen.getByText("mail.send")).not.toBeNull();
+      expect(screen.getByText(/1 active/i)).not.toBeNull();
+    });
+
+    await user.clear(screen.getByLabelText("Included tool classes"));
+    await user.type(screen.getByLabelText("Included tool classes"), "read_only, idempotent_mutation");
+    await user.selectOptions(screen.getByLabelText("Live validation approval mode"), "mixed");
+    await user.click(screen.getByRole("button", { name: "Start Live Validation" }));
+
+    await waitFor(() => {
+	      expect(mockClient.startLiveValidation).toHaveBeenCalledWith(expect.objectContaining({
+	        candidateId: "candidate_live",
+	        candidateToolClasses: ["read_only", "idempotent_mutation", "mcp.tool_call"],
+	        requestedScope: expect.objectContaining({
+          includedToolClasses: ["read_only", "idempotent_mutation"],
+          approvalMode: "mixed",
+          declaredBy: "prn_1"
+        })
+      }), { tenantId: "ten_personal" });
+      expect(screen.getByText(/Live validation lv_new blocked with 1 denial/i)).not.toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Enable Tenant Kill Switch" }));
+    await waitFor(() => {
+      expect(mockClient.updateLiveValidationKillSwitch).toHaveBeenCalledWith({
+        scope: "tenant",
+        enabled: true,
+        reason: "Enabled from operator shell."
+      }, { tenantId: "ten_personal" });
     });
   });
 

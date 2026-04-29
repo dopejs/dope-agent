@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/live-validation-support-matrix-resource.schema.json",
+  "title": "LiveValidationSupportMatrixResource",
+  "type": "object",
+  "required": ["toolClass", "safetyClass", "approval", "retryPolicy", "compensation", "ledgerEvents", "testCase", "version"],
+  "additionalProperties": true,
+  "properties": {
+    "toolClass": { "type": "string" },
+    "safetyClass": { "type": "string", "enum": ["read_only", "idempotent_mutation", "non_idempotent_mutation", "unsupported"] },
+    "permission": { "type": "string" },
+    "approval": { "type": "string", "enum": ["not_required", "scope_level", "per_action", "unsupported"] },
+    "approvalAction": { "type": "string" },
+    "idempotency": { "type": "string" },
+    "retryPolicy": { "type": "string", "enum": ["automatic_retry", "manual_retry", "no_retry"] },
+    "ambiguousCommitBehavior": { "type": "string" },
+    "compensation": { "type": "string", "enum": ["not_applicable", "automatic_compensation", "manual_confirmation", "unsupported"] },
+    "ledgerEvents": { "type": "array", "items": { "type": "string", "enum": ["attempted", "skipped", "completed", "failed", "aborted", "denied", "operator_action_needed"] } },
+    "testCase": { "type": "string" },
+    "version": { "type": "string" }
+  }
+}

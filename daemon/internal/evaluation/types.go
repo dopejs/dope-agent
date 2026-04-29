@@ -120,6 +120,7 @@ type ReplayCandidate struct {
 	SourceKind           SourceKind      `json:"sourceKind"`
 	SourceID             string          `json:"sourceId"`
 	SourceRefs           []SourceRef     `json:"sourceRefs"`
+	ToolClasses          []string        `json:"toolClasses,omitempty"`
 	EnvironmentScope     string          `json:"environmentScope"`
 	ReadinessStatus      ReadinessStatus `json:"readinessStatus"`
 	ReadinessReasons     []string        `json:"readinessReasons"`

@@ -12,6 +12,7 @@
     "sourceKind": { "type": "string", "enum": ["run", "workflow", "schedule", "integration", "computer_use", "fixture"] },
     "sourceId": { "type": "string" },
     "sourceRefs": { "type": "array", "items": { "$ref": "#/$defs/sourceRef" } },
+    "toolClasses": { "type": "array", "items": { "type": "string" } },
     "environmentScope": { "type": "string", "enum": ["test", "prod"] },
     "readinessStatus": { "type": "string", "enum": ["fully_replayable", "partially_replayable", "blocked", "unreplayable"] },
     "readinessReasons": { "type": "array", "items": { "type": "string" } },

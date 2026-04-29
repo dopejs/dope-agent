@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/live-validation-side-effect-recorded.event.schema.json",
+  "title": "LiveValidationSideEffectRecordedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": { "const": "live_validation.side_effect_recorded" },
+        "payload": { "$ref": "#/$defs/payload" }
+      }
+    }
+  ],
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "required": ["validationId", "tenantId", "ledgerEntryId", "toolClass", "outcome"],
+      "properties": {
+        "validationId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "ledgerEntryId": { "type": "string" },
+        "toolClass": { "type": "string" },
+        "actionRef": { "type": "string" },
+        "outcome": { "type": "string", "enum": ["attempted", "skipped", "completed", "failed", "aborted", "denied", "operator_action_needed"] },
+        "ambiguousCommit": { "type": "boolean" }
+      }
+    }
+  }
+}

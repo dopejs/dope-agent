@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/live-validation-blocked.event.schema.json",
+  "title": "LiveValidationBlockedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": { "const": "live_validation.blocked" },
+        "payload": { "$ref": "#/$defs/payload" }
+      }
+    }
+  ],
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "required": ["validationId", "tenantId", "candidateId", "gate", "reasonCode"],
+      "properties": {
+        "validationId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "gate": { "type": "string" },
+        "reasonCode": { "type": "string" },
+        "denials": { "type": "array", "items": { "$ref": "../api/live-validation-denial.schema.json" } }
+      }
+    }
+  }
+}

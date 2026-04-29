@@ -171,6 +171,7 @@ export type ReplayCandidateResource = {
   sourceKind: "run" | "workflow" | "schedule" | "integration" | "computer_use" | "fixture";
   sourceId: string;
   sourceRefs: ReplaySourceRef[];
+  toolClasses?: string[];
   environmentScope: EnvironmentScope;
   readinessStatus: "fully_replayable" | "partially_replayable" | "blocked" | "unreplayable";
   readinessReasons: string[];
@@ -331,6 +332,242 @@ export type ReplayFixtureQuery = {
   limit?: number;
 };
 
+export type LiveValidationAttemptStatus =
+  | "queued"
+  | "awaiting_approval"
+  | "running"
+  | "completed"
+  | "blocked"
+  | "aborted"
+  | "failed"
+  | "operator_action_needed";
+
+export type LiveValidationLedgerOutcome =
+  | "attempted"
+  | "skipped"
+  | "completed"
+  | "failed"
+  | "aborted"
+  | "denied"
+  | "operator_action_needed";
+
+export type LiveValidationSafetyClass =
+  | "read_only"
+  | "idempotent_mutation"
+  | "non_idempotent_mutation"
+  | "unsupported";
+
+export type LiveValidationGateDecision = {
+  allowed: boolean;
+  reasonCode?: string;
+  reference?: string;
+  checkedAt: string;
+};
+
+export type LiveValidationSideEffectScope = {
+  scopeId: string;
+  validationId: string;
+  includedToolClasses?: string[];
+  excludedToolClasses?: string[];
+  includedActions?: string[];
+  excludedActions?: string[];
+  approvalMode: "scope_level" | "per_action" | "mixed";
+  declaredBy: string;
+  declaredAt: string;
+};
+
+export type LiveValidationAttemptResource = {
+  validationId: string;
+  tenantId?: string;
+  candidateId: string;
+  sourceAttemptId?: string;
+  requestedBy: string;
+  environmentScope: EnvironmentScope | string;
+  requestedScope: LiveValidationSideEffectScope;
+  status: LiveValidationAttemptStatus;
+  permissionDecision: LiveValidationGateDecision;
+  quotaDecision: LiveValidationGateDecision;
+  killSwitchDecision: LiveValidationGateDecision;
+  approvalSummary: {
+    required: number;
+    approved: number;
+    denied: number;
+    expired: number;
+    pending: number;
+  };
+  ledgerSummary: Partial<Record<LiveValidationLedgerOutcome, number>>;
+  comparisonId?: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  updatedAt: string;
+};
+
+export type LiveValidationAttemptListResponse = {
+  tenantId?: string;
+  environmentScope?: EnvironmentScope | string;
+  items: LiveValidationAttemptResource[];
+};
+
+export type LiveValidationApprovalEvidence = {
+  approvalId: string;
+  validationId: string;
+  tenantId?: string;
+  approvalTarget: "scope" | "action";
+  toolClass: string;
+  safetyClass: LiveValidationSafetyClass;
+  actionRef?: string;
+  approvedScope?: string;
+  status: "pending" | "approved" | "denied" | "expired";
+  requestedBy: string;
+  resolvedBy?: string;
+  requestedAt: string;
+  resolvedAt?: string;
+};
+
+export type CreateLiveValidationInput = {
+  validationId?: string;
+  candidateId: string;
+  sourceAttemptId?: string;
+  candidateToolClasses?: string[];
+  requestedScope: LiveValidationSideEffectScope;
+  freshApprovals?: LiveValidationApprovalEvidence[];
+  clientKey?: string;
+  changeWindowLabel?: string;
+};
+
+export type CreateLiveValidationResponse = {
+  attempt: LiveValidationAttemptResource;
+  denials?: Array<{
+    gate: "permission" | "quota" | "kill_switch" | "support_matrix" | "approval" | "scope" | string;
+    reasonCode: string;
+    message: string;
+    reference?: string;
+  }>;
+};
+
+export type LiveValidationAttemptQuery = {
+  candidateId?: string;
+  status?: LiveValidationAttemptStatus;
+  limit?: number;
+};
+
+export type LiveValidationLedgerResource = {
+  ledgerEntryId: string;
+  validationId: string;
+  tenantId?: string;
+  candidateId: string;
+  sourceRef: string;
+  toolClass: string;
+  safetyClass: LiveValidationSafetyClass;
+  actionRef: string;
+  approvalId?: string;
+  correlationKey?: string;
+  downstreamRef?: string;
+  outcome: LiveValidationLedgerOutcome;
+  reasonCode?: string;
+  attemptedAt?: string;
+  completedAt?: string;
+  updatedAt: string;
+  evidenceRefs?: string[];
+  retryCount: number;
+  ambiguousCommit: boolean;
+  reconciliationId?: string;
+};
+
+export type LiveValidationLedgerListResponse = {
+  validationId: string;
+  tenantId?: string;
+  items: LiveValidationLedgerResource[];
+};
+
+export type LiveValidationSupportMatrixResource = {
+  toolClass: string;
+  safetyClass: LiveValidationSafetyClass;
+  permission?: TenantPermission | string;
+  approval: "not_required" | "scope_level" | "per_action" | "unsupported";
+  approvalAction?: string;
+  idempotency?: string;
+  retryPolicy: "automatic_retry" | "manual_retry" | "no_retry";
+  ambiguousCommitBehavior?: string;
+  compensation: "not_applicable" | "automatic_compensation" | "manual_confirmation" | "unsupported";
+  ledgerEvents: LiveValidationLedgerOutcome[];
+  testCase: string;
+  version: string;
+};
+
+export type LiveValidationSupportMatrixResponse = {
+  environmentScope?: EnvironmentScope | string;
+  version: string;
+  items: LiveValidationSupportMatrixResource[];
+};
+
+export type LiveValidationComparisonResource = {
+  comparisonId: string;
+  validationId: string;
+  candidateId: string;
+  baselineRef: string;
+  terminalStatus: "matched" | "drifted" | "blocked" | "unsupported" | "operator_action_needed";
+  ledgerSummary: Partial<Record<LiveValidationLedgerOutcome, number>>;
+  unsupportedClasses?: string[];
+  denials?: string[];
+  ambiguousCommits?: string[];
+  driftFindings?: string[];
+  generatedAt: string;
+};
+
+export type ResolveLiveValidationReconciliationInput = {
+  resolution: "confirmed_committed" | "confirmed_not_committed" | "compensated" | "accepted_manual_state" | "unsupported_unresolved";
+  reason: string;
+  evidenceRefs?: string[];
+};
+
+export type LiveValidationReconciliationResource = {
+  reconciliationId: string;
+  ambiguousCommitId: string;
+  tenantId?: string;
+  resolvedBy: string;
+  resolution: ResolveLiveValidationReconciliationInput["resolution"];
+  reason: string;
+  evidenceRefs?: string[];
+  resolvedAt: string;
+};
+
+export type LiveValidationRetentionResource = {
+  policyId: string;
+  tenantId?: string;
+  appliesTo: "attempts" | "ledger_entries" | "reconciliation_decisions" | "comparisons" | "all";
+  mode: "indefinite" | "explicit";
+  retentionPeriod?: string;
+  createdByPrincipalId: string;
+  createdAt: string;
+  expiresAt?: string;
+};
+
+export type UpdateLiveValidationKillSwitchInput = {
+  scope: "tenant" | "global";
+  tenantId?: string;
+  enabled: boolean;
+  reason: string;
+  expiresAt?: string;
+};
+
+export type LiveValidationKillSwitchResource = {
+  killSwitchId: string;
+  scope: "tenant" | "global";
+  tenantId?: string;
+  enabled: boolean;
+  reason: string;
+  changedBy: string;
+  changedAt: string;
+  expiresAt?: string;
+};
+
+export type LiveValidationKillSwitchListResponse = {
+  tenantId?: string;
+  items: LiveValidationKillSwitchResource[];
+};
+
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 
 export type ApprovalResource = {
@@ -483,6 +720,7 @@ export type TenantPermission =
   | "runs.execute"
   | "approvals.resolve"
   | "live_validation.execute"
+  | "live_validation.reconcile"
   | "evaluation.manage"
   | "billing.view"
   | "billing.manage"
@@ -1094,6 +1332,68 @@ export class DopeClient {
 
   async listReplayFixtures(query: ReplayFixtureQuery = {}, tenantOptions?: TenantRequestOptions): Promise<ReplayFixtureListResponse> {
     return this.requestJSON<ReplayFixtureListResponse>("/v1/evaluation/fixtures", { query, tenant: tenantOptions });
+  }
+
+  async startLiveValidation(input: CreateLiveValidationInput, tenantOptions?: TenantRequestOptions): Promise<CreateLiveValidationResponse> {
+    return this.requestJSON<CreateLiveValidationResponse>("/v1/live-validations", {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async listLiveValidations(query: LiveValidationAttemptQuery = {}, tenantOptions?: TenantRequestOptions): Promise<LiveValidationAttemptListResponse> {
+    return this.requestJSON<LiveValidationAttemptListResponse>("/v1/live-validations", { query, tenant: tenantOptions });
+  }
+
+  async getLiveValidation(validationId: string, tenantOptions?: TenantRequestOptions): Promise<LiveValidationAttemptResource> {
+    return this.requestJSON<LiveValidationAttemptResource>(`/v1/live-validations/${validationId.trim()}`, { tenant: tenantOptions });
+  }
+
+  async abortLiveValidation(validationId: string, tenantOptions?: TenantRequestOptions): Promise<LiveValidationAttemptResource> {
+    return this.requestJSON<LiveValidationAttemptResource>(`/v1/live-validations/${validationId.trim()}/abort`, {
+      method: "POST",
+      tenant: tenantOptions
+    });
+  }
+
+  async listLiveValidationSupportMatrix(tenantOptions?: TenantRequestOptions): Promise<LiveValidationSupportMatrixResponse> {
+    return this.requestJSON<LiveValidationSupportMatrixResponse>("/v1/live-validations/support-matrix", { tenant: tenantOptions });
+  }
+
+  async listLiveValidationLedger(validationId: string, query: { outcome?: LiveValidationLedgerOutcome; toolClass?: string; limit?: number } = {}, tenantOptions?: TenantRequestOptions): Promise<LiveValidationLedgerListResponse> {
+    return this.requestJSON<LiveValidationLedgerListResponse>(`/v1/live-validations/${validationId.trim()}/ledger`, { query, tenant: tenantOptions });
+  }
+
+  async resolveLiveValidationReconciliation(validationId: string, ambiguousCommitId: string, input: ResolveLiveValidationReconciliationInput, tenantOptions?: TenantRequestOptions): Promise<LiveValidationReconciliationResource> {
+    return this.requestJSON<LiveValidationReconciliationResource>(`/v1/live-validations/${validationId.trim()}/reconciliations/${ambiguousCommitId.trim()}/resolve`, {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async getLiveValidationRetention(validationId: string, tenantOptions?: TenantRequestOptions): Promise<LiveValidationRetentionResource> {
+    return this.requestJSON<LiveValidationRetentionResource>(`/v1/live-validations/${validationId.trim()}/retention`, { tenant: tenantOptions });
+  }
+
+  async createLiveValidationComparison(validationId: string, tenantOptions?: TenantRequestOptions): Promise<LiveValidationComparisonResource> {
+    return this.requestJSON<LiveValidationComparisonResource>(`/v1/live-validations/${validationId.trim()}/compare`, {
+      method: "POST",
+      tenant: tenantOptions
+    });
+  }
+
+  async listLiveValidationKillSwitches(query: { tenantId?: string; scope?: "tenant" | "global"; limit?: number } = {}, tenantOptions?: TenantRequestOptions): Promise<LiveValidationKillSwitchListResponse> {
+    return this.requestJSON<LiveValidationKillSwitchListResponse>("/v1/live-validations/kill-switches", { query, tenant: tenantOptions });
+  }
+
+  async updateLiveValidationKillSwitch(input: UpdateLiveValidationKillSwitchInput, tenantOptions?: TenantRequestOptions): Promise<LiveValidationKillSwitchResource> {
+    return this.requestJSON<LiveValidationKillSwitchResource>("/v1/live-validations/kill-switches", {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
   }
 
   async listApprovals(status?: ApprovalStatus, tenantOptions?: TenantRequestOptions): Promise<ApprovalListResponse> {

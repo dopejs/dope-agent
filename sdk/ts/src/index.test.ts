@@ -180,13 +180,13 @@ describe("DopeClient", () => {
       .fn<typeof fetch>()
       .mockResolvedValueOnce(mockJSONResponse(200, {
         environmentScope: "test",
-        items: [{ candidateId: "candidate_1", candidateKind: "fixture", displayName: "Fixture", sourceKind: "fixture", sourceId: "fixture_1", sourceRefs: [], environmentScope: "test", readinessStatus: "fully_replayable", readinessReasons: [], limitations: [], defaultReplayMode: "non_live", createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z" }]
+        items: [{ candidateId: "candidate_1", candidateKind: "fixture", displayName: "Fixture", sourceKind: "fixture", sourceId: "fixture_1", sourceRefs: [], toolClasses: ["daemon.inspection.read"], environmentScope: "test", readinessStatus: "fully_replayable", readinessReasons: [], limitations: [], defaultReplayMode: "non_live", createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z" }]
       }))
       .mockResolvedValueOnce(mockJSONResponse(200, {
-        candidateId: "candidate_1", candidateKind: "fixture", displayName: "Fixture", sourceKind: "fixture", sourceId: "fixture_1", sourceRefs: [], environmentScope: "test", readinessStatus: "fully_replayable", readinessReasons: [], limitations: [], defaultReplayMode: "non_live", createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z"
+        candidateId: "candidate_1", candidateKind: "fixture", displayName: "Fixture", sourceKind: "fixture", sourceId: "fixture_1", sourceRefs: [], toolClasses: ["daemon.inspection.read"], environmentScope: "test", readinessStatus: "fully_replayable", readinessReasons: [], limitations: [], defaultReplayMode: "non_live", createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z"
       }))
       .mockResolvedValueOnce(mockJSONResponse(201, {
-        candidateId: "candidate_curated", candidateKind: "curated_work", displayName: "Curated", sourceKind: "run", sourceId: "run_1", sourceRefs: [], environmentScope: "test", readinessStatus: "partially_replayable", readinessReasons: ["curated"], limitations: ["evidence-only"], defaultReplayMode: "non_live", createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z"
+        candidateId: "candidate_curated", candidateKind: "curated_work", displayName: "Curated", sourceKind: "run", sourceId: "run_1", sourceRefs: [], toolClasses: ["daemon.inspection.read"], environmentScope: "test", readinessStatus: "partially_replayable", readinessReasons: ["curated"], limitations: ["evidence-only"], defaultReplayMode: "non_live", createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z"
       }))
       .mockResolvedValueOnce(mockJSONResponse(202, {
         attemptId: "attempt_1", candidateId: "candidate_1", sourceRefs: [], environmentScope: "test", mode: "non_live", status: "completed", safetyScope: { mode: "non_live" }, approvalHandling: "evidence_only", sideEffectHandling: "evidence_only", evidenceRefs: [], blockedReasons: [], createdAt: "2026-04-24T10:00:00Z", updatedAt: "2026-04-24T10:00:00Z"
@@ -228,6 +228,7 @@ describe("DopeClient", () => {
       sourceKind: "run",
       sourceId: "run_1",
       sourceRefs: [],
+      toolClasses: ["daemon.inspection.read"],
       environmentScope: "test",
       readinessStatus: "partially_replayable",
       readinessReasons: ["curated"],
@@ -248,6 +249,99 @@ describe("DopeClient", () => {
     expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/evaluation/replay-candidates/candidate_1/attempts", expect.objectContaining({ method: "POST" }));
     expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/evaluation/replay-attempts/attempt_1/compare", expect.objectContaining({ method: "POST" }));
     expect(fetchImpl).toHaveBeenNthCalledWith(10, "http://127.0.0.1:19192/v1/evaluation/fixtures?domainClass=schedule", expect.anything());
+  });
+
+  it("calls live validation surfaces", async () => {
+    const attempt = {
+      validationId: "lv_1",
+      candidateId: "candidate_1",
+      requestedBy: "prn_1",
+      environmentScope: "test",
+      requestedScope: {
+        scopeId: "scope_1",
+        validationId: "lv_1",
+        includedToolClasses: ["daemon.inspection.read"],
+        approvalMode: "scope_level",
+        declaredBy: "prn_1",
+        declaredAt: "2026-04-29T10:00:00Z"
+      },
+      status: "awaiting_approval",
+      permissionDecision: { allowed: true, checkedAt: "2026-04-29T10:00:00Z" },
+      quotaDecision: { allowed: true, checkedAt: "2026-04-29T10:00:00Z" },
+      killSwitchDecision: { allowed: true, checkedAt: "2026-04-29T10:00:00Z" },
+      approvalSummary: { required: 1, approved: 0, denied: 0, expired: 0, pending: 1 },
+      ledgerSummary: {},
+      createdAt: "2026-04-29T10:00:00Z",
+      updatedAt: "2026-04-29T10:00:00Z"
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(202, { attempt }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { items: [attempt], environmentScope: "test" }))
+      .mockResolvedValueOnce(mockJSONResponse(200, attempt))
+      .mockResolvedValueOnce(mockJSONResponse(200, { ...attempt, status: "aborted" }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        environmentScope: "test",
+        version: "v1",
+        items: [{
+          toolClass: "mcp.tool_call",
+          safetyClass: "unsupported",
+          approval: "unsupported",
+          retryPolicy: "no_retry",
+          compensation: "unsupported",
+          ledgerEvents: ["skipped", "denied"],
+          testCase: "MCP unsupported completeness test",
+          version: "v1"
+        }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { validationId: "lv_1", items: [{ ledgerEntryId: "ledger_1", validationId: "lv_1", candidateId: "candidate_1", sourceRef: "tool_1", toolClass: "mail.send", safetyClass: "non_idempotent_mutation", actionRef: "send_1", outcome: "operator_action_needed", updatedAt: "2026-04-29T10:00:00Z", retryCount: 0, ambiguousCommit: true }] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { reconciliationId: "rec_1", ambiguousCommitId: "amb_1", resolvedBy: "prn_admin", resolution: "confirmed_committed", reason: "checked", resolvedAt: "2026-04-29T10:01:00Z" }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { policyId: "ret_1", appliesTo: "all", mode: "indefinite", createdByPrincipalId: "prn_admin", createdAt: "2026-04-29T10:00:00Z" }))
+      .mockResolvedValueOnce(mockJSONResponse(202, { comparisonId: "cmp_1", validationId: "lv_1", candidateId: "candidate_1", baselineRef: "attempt_1", terminalStatus: "operator_action_needed", ledgerSummary: { operator_action_needed: 1 }, generatedAt: "2026-04-29T10:02:00Z" }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { items: [{ killSwitchId: "kill_1", scope: "tenant", tenantId: "ten_1", enabled: true, reason: "containment", changedBy: "prn_admin", changedAt: "2026-04-29T10:00:00Z" }] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { killSwitchId: "kill_1", scope: "tenant", tenantId: "ten_1", enabled: true, reason: "containment", changedBy: "prn_admin", changedAt: "2026-04-29T10:00:00Z" }));
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192/",
+      accessToken: "token",
+      fetchImpl
+    });
+
+    await client.startLiveValidation({
+      candidateId: "candidate_1",
+      candidateToolClasses: ["daemon.inspection.read"],
+      requestedScope: {
+        scopeId: "scope_1",
+        validationId: "lv_1",
+        includedToolClasses: ["daemon.inspection.read"],
+        approvalMode: "scope_level",
+        declaredBy: "prn_1",
+        declaredAt: "2026-04-29T10:00:00Z"
+      }
+    });
+    await client.listLiveValidations({ status: "awaiting_approval", limit: 5 });
+    await client.getLiveValidation("lv_1");
+    await client.abortLiveValidation("lv_1");
+    const matrix = await client.listLiveValidationSupportMatrix();
+    await client.listLiveValidationLedger("lv_1", { outcome: "operator_action_needed" });
+    await client.resolveLiveValidationReconciliation("lv_1", "amb_1", { resolution: "confirmed_committed", reason: "checked" });
+    await client.getLiveValidationRetention("lv_1");
+    await client.createLiveValidationComparison("lv_1");
+    await client.listLiveValidationKillSwitches({ scope: "tenant" });
+    await client.updateLiveValidationKillSwitch({ scope: "tenant", enabled: true, reason: "containment" });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/live-validations", expect.objectContaining({ method: "POST" }));
+    expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))).toMatchObject({ candidateToolClasses: ["daemon.inspection.read"] });
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/live-validations?status=awaiting_approval&limit=5", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/live-validations/lv_1", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/live-validations/lv_1/abort", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(5, "http://127.0.0.1:19192/v1/live-validations/support-matrix", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/live-validations/lv_1/ledger?outcome=operator_action_needed", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/live-validations/lv_1/reconciliations/amb_1/resolve", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(8, "http://127.0.0.1:19192/v1/live-validations/lv_1/retention", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(9, "http://127.0.0.1:19192/v1/live-validations/lv_1/compare", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(10, "http://127.0.0.1:19192/v1/live-validations/kill-switches?scope=tenant", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(11, "http://127.0.0.1:19192/v1/live-validations/kill-switches", expect.objectContaining({ method: "POST" }));
+    expect(matrix.items[0].safetyClass).toBe("unsupported");
   });
 
   it("streams chat events until terminal response", async () => {

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/live-validation-completed.event.schema.json",
+  "title": "LiveValidationCompletedEvent",
+  "type": "object",
+  "required": ["eventId", "sequence", "category", "name", "occurredAt", "resource", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "name": { "const": "live_validation.completed" },
+    "payload": {
+      "type": "object",
+      "required": ["validationId", "tenantId", "status"],
+      "additionalProperties": true,
+      "properties": {
+        "validationId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    }
+  }
+}

@@ -15,6 +15,7 @@ func PermissionsForRole(role Role, lifecycle LifecycleStatus) []Permission {
 			PermissionIntegrationsManage,
 			PermissionConnectorsManage,
 			PermissionMCPManage,
+			PermissionLiveValidationReconcile,
 			PermissionEvaluationManage,
 			PermissionBillingView,
 			PermissionBillingManage,
@@ -45,6 +46,16 @@ func CanInspectCredentials(tenantContext TenantContext, managePermissions ...Per
 		}
 	}
 	return false
+}
+
+func CanResolveLiveValidationReconciliation(tenantContext TenantContext) bool {
+	if tenantContext.PrincipalID == "" || tenantContext.TenantID == "" {
+		return false
+	}
+	if tenantContext.Role == RoleOwner || tenantContext.Role == RoleAdmin {
+		return true
+	}
+	return HasPermission(tenantContext.Permissions, PermissionLiveValidationReconcile)
 }
 
 func HasPermission(perms []Permission, permission Permission) bool {

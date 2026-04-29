@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
 )
 
 type fakeState struct {
@@ -25,6 +26,10 @@ type FakeBackend struct {
 
 func NewFakeBackend() *FakeBackend {
 	return &FakeBackend{states: make(map[string]*fakeState)}
+}
+
+func (b *FakeBackend) RunLiveValidationOutcome(outcome livevalidation.FakeOutcome) livevalidation.FakeOutcomeResult {
+	return livevalidation.FakeOutcomeResultFor(outcome, livevalidation.SafetyClassNonIdempotentMutation)
 }
 
 func (b *FakeBackend) SupportsResource(resource integrations.Resource) bool {

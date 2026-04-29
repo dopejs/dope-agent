@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/live-validation-denial.schema.json",
+  "title": "LiveValidationDenial",
+  "type": "object",
+  "required": ["reasonCode", "gate", "message"],
+  "additionalProperties": true,
+  "properties": {
+    "reasonCode": { "type": "string" },
+    "gate": { "type": "string", "enum": ["permission", "quota", "kill_switch", "support_matrix", "approval", "scope"] },
+    "message": { "type": "string" },
+    "reference": { "type": "string" },
+    "validationId": { "type": "string" },
+    "checkedAt": { "type": "string", "format": "date-time" }
+  }
+}

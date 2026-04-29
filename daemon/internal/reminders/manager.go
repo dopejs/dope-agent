@@ -13,6 +13,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
+	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
@@ -70,6 +71,10 @@ func NewManager(deps Dependencies) *Manager {
 		tickInterval: interval,
 		overdueAfter: interval,
 	}
+}
+
+func (m *Manager) RunLiveValidationOutcome(outcome livevalidation.FakeOutcome) livevalidation.FakeOutcomeResult {
+	return livevalidation.FakeOutcomeResultFor(outcome, livevalidation.SafetyClassIdempotentMutation)
 }
 
 func (m *Manager) Start(ctx context.Context) error {

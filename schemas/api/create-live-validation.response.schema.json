@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-live-validation.response.schema.json",
+  "title": "CreateLiveValidationResponse",
+  "type": "object",
+  "required": ["attempt"],
+  "additionalProperties": true,
+  "properties": {
+    "attempt": { "$ref": "./live-validation-attempt-resource.schema.json" },
+    "denials": { "type": "array", "items": { "$ref": "./live-validation-denial.schema.json" } }
+  }
+}

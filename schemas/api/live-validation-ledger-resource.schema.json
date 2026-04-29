@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/live-validation-ledger-resource.schema.json",
+  "title": "LiveValidationLedgerResource",
+  "type": "object",
+  "required": ["ledgerEntryId", "validationId", "candidateId", "sourceRef", "toolClass", "safetyClass", "actionRef", "outcome", "updatedAt", "retryCount", "ambiguousCommit"],
+  "additionalProperties": true,
+  "properties": {
+    "ledgerEntryId": { "type": "string" },
+    "validationId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "candidateId": { "type": "string" },
+    "sourceRef": { "type": "string" },
+    "toolClass": { "type": "string" },
+    "safetyClass": { "type": "string", "enum": ["read_only", "idempotent_mutation", "non_idempotent_mutation", "unsupported"] },
+    "actionRef": { "type": "string" },
+    "approvalId": { "type": "string" },
+    "correlationKey": { "type": "string" },
+    "downstreamRef": { "type": "string" },
+    "outcome": { "$ref": "#/$defs/ledgerOutcome" },
+    "reasonCode": { "type": "string" },
+    "attemptedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "evidenceRefs": { "type": "array", "items": { "type": "string" } },
+    "retryCount": { "type": "integer", "minimum": 0 },
+    "ambiguousCommit": { "type": "boolean" },
+    "reconciliationId": { "type": "string" }
+  },
+  "$defs": {
+    "ledgerOutcome": { "type": "string", "enum": ["attempted", "skipped", "completed", "failed", "aborted", "denied", "operator_action_needed"] }
+  }
+}

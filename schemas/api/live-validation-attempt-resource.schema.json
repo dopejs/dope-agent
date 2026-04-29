@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/live-validation-attempt-resource.schema.json",
+  "title": "LiveValidationAttemptResource",
+  "type": "object",
+  "required": ["validationId", "candidateId", "requestedBy", "environmentScope", "requestedScope", "status", "permissionDecision", "quotaDecision", "killSwitchDecision", "approvalSummary", "ledgerSummary", "createdAt", "updatedAt"],
+  "additionalProperties": true,
+  "properties": {
+    "validationId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "candidateId": { "type": "string" },
+    "sourceAttemptId": { "type": "string" },
+    "requestedBy": { "type": "string" },
+    "environmentScope": { "type": "string" },
+    "requestedScope": { "$ref": "#/$defs/sideEffectScope" },
+    "status": { "$ref": "#/$defs/attemptStatus" },
+    "permissionDecision": { "$ref": "#/$defs/gateDecision" },
+    "quotaDecision": { "$ref": "#/$defs/gateDecision" },
+    "killSwitchDecision": { "$ref": "#/$defs/gateDecision" },
+    "approvalSummary": { "$ref": "#/$defs/approvalSummary" },
+    "ledgerSummary": { "$ref": "#/$defs/ledgerSummary" },
+    "comparisonId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "attemptStatus": { "type": "string", "enum": ["queued", "awaiting_approval", "running", "completed", "blocked", "aborted", "failed", "operator_action_needed"] },
+    "gateDecision": {
+      "type": "object",
+      "required": ["allowed", "checkedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "allowed": { "type": "boolean" },
+        "reasonCode": { "type": "string" },
+        "reference": { "type": "string" },
+        "checkedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "sideEffectScope": {
+      "type": "object",
+      "required": ["scopeId", "validationId", "approvalMode", "declaredBy", "declaredAt"],
+      "additionalProperties": true,
+      "properties": {
+        "scopeId": { "type": "string" },
+        "validationId": { "type": "string" },
+        "includedToolClasses": { "type": "array", "items": { "type": "string" } },
+        "excludedToolClasses": { "type": "array", "items": { "type": "string" } },
+        "includedActions": { "type": "array", "items": { "type": "string" } },
+        "excludedActions": { "type": "array", "items": { "type": "string" } },
+        "approvalMode": { "type": "string", "enum": ["scope_level", "per_action", "mixed"] },
+        "declaredBy": { "type": "string" },
+        "declaredAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "approvalSummary": {
+      "type": "object",
+      "required": ["required", "approved", "denied", "expired", "pending"],
+      "properties": {
+        "required": { "type": "integer", "minimum": 0 },
+        "approved": { "type": "integer", "minimum": 0 },
+        "denied": { "type": "integer", "minimum": 0 },
+        "expired": { "type": "integer", "minimum": 0 },
+        "pending": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "ledgerSummary": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    }
+  }
+}

@@ -245,21 +245,5 @@ func beginIntegrationOperationQuota(ctx context.Context, cfg config.Config, mana
 }
 
 func reserveLiveValidationPreflight(ctx context.Context, manager *billing.Manager, tenantID, validationID, clientKey string, hosted bool) (billing.ReserveResult, error) {
-	if manager == nil {
-		if hosted {
-			operationKey := billing.LiveValidationOperationKey(tenantID, validationID, clientKey)
-			denial := billing.NewQuotaStateUnavailableDenial(tenantID, operationKey).Payload
-			return billing.ReserveResult{Allowed: false, Denial: &denial}, billing.ErrQuotaStateUnavailable
-		}
-		return billing.ReserveResult{Allowed: true}, nil
-	}
-	return manager.Reserve(ctx, billing.ReserveInput{
-		TenantID:          tenantID,
-		Category:          billing.CategoryLiveValidationAttempts,
-		Amount:            1,
-		OperationKey:      billing.LiveValidationOperationKey(tenantID, validationID, clientKey),
-		ReservationPoint:  "Roadmap 38 live-validation preflight gate",
-		GuardedEntryPoint: "Roadmap 38 live-validation preflight gate",
-		Hosted:            hosted,
-	})
+	return billing.ReserveLiveValidationPreflight(ctx, manager, tenantID, validationID, clientKey, hosted)
 }
