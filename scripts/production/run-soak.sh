@@ -73,6 +73,34 @@ MAX_LOG_BYTES=0
 MAX_DB_BYTES=0
 QUEUE_BACKLOG_MINUTES=0
 
+file_size_bytes() {
+  local path="$1"
+  if stat -c '%s' "$path" >/dev/null 2>&1; then
+    stat -c '%s' "$path"
+    return
+  fi
+  if stat -f '%z' "$path" >/dev/null 2>&1; then
+    stat -f '%z' "$path"
+    return
+  fi
+  printf '0\n'
+}
+
+sum_file_sizes() {
+  local total=0
+  local path size
+  while IFS= read -r -d '' path; do
+    size="$(file_size_bytes "$path")"
+    case "$size" in
+      ''|*[!0-9]*)
+        size=0
+        ;;
+    esac
+    total=$(( total + size ))
+  done
+  printf '%s\n' "$total"
+}
+
 while :; do
   NOW_EPOCH="$(date -u +%s)"
   ELAPSED_SECONDS=$(( NOW_EPOCH - START_EPOCH ))
@@ -84,13 +112,13 @@ while :; do
   fi
 
   if [[ -d "$DOPE_DATA_DIR" ]]; then
-    LOG_BYTES="$(find "$DOPE_DATA_DIR" -type f -name '*.log' -print0 2>/dev/null | xargs -0 stat -f '%z' 2>/dev/null | awk '{s += $1} END {print s+0}')"
+    LOG_BYTES="$(find "$DOPE_DATA_DIR" -type f -name '*.log' -print0 2>/dev/null | sum_file_sizes)"
   else
     LOG_BYTES=0
   fi
   DB_PATH="$DOPE_DATA_DIR/daemon.sqlite"
   if [[ -f "$DB_PATH" ]]; then
-    DB_BYTES="$(stat -f '%z' "$DB_PATH" 2>/dev/null || printf 0)"
+    DB_BYTES="$(file_size_bytes "$DB_PATH")"
   else
     DB_BYTES=0
   fi

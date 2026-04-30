@@ -1,6 +1,7 @@
 package contracts_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,10 +38,20 @@ func TestProductionOpsPlanningContractsRemainComplete(t *testing.T) {
 
 func TestProductionSoakRunnerGeneratesReportArtifact(t *testing.T) {
 	root := contractRepoRoot(t)
+	dataDir := t.TempDir()
+	dbBytes := []byte("sqlite-size-sample")
+	logBytes := []byte("log-size-sample")
+	if err := os.WriteFile(filepath.Join(dataDir, "daemon.sqlite"), dbBytes, 0o644); err != nil {
+		t.Fatalf("write db size fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "daemon.log"), logBytes, 0o644); err != nil {
+		t.Fatalf("write log size fixture: %v", err)
+	}
 	reportPath := filepath.Join(t.TempDir(), "soak-report.json")
 	cmd := exec.Command("bash", filepath.Join(root, "scripts/production/run-soak.sh"))
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(),
+		"DOPE_DATA_DIR="+dataDir,
 		"DOPE_SOAK_DURATION=targeted-validation",
 		"DOPE_SOAK_REPORT="+reportPath,
 	)
@@ -56,6 +67,11 @@ func TestProductionSoakRunnerGeneratesReportArtifact(t *testing.T) {
 	for _, needle := range []string{"\"reportId\"", "\"elapsedSeconds\"", "\"workloadCoverage\"", "\"faultDrills\"", "\"resourceObservations\"", "\"followUpFullRerun\": true", "\"finalResult\""} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("generated soak report missing %s: %s", needle, body)
+		}
+	}
+	for _, needle := range []string{fmt.Sprintf("\"maxLogBytes\": %d", len(logBytes)), fmt.Sprintf("\"maxStoredDataBytes\": %d", len(dbBytes))} {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("generated soak report missing resource sample %s: %s", needle, body)
 		}
 	}
 }
