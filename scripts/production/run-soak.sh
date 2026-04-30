@@ -6,6 +6,7 @@ DOPE_DATA_DIR="${DOPE_DATA_DIR:-$HOME/.dope-test}"
 REPORT="${DOPE_SOAK_REPORT:-specs/024-production-ops-soak/fixtures/soak-report.latest.json}"
 DAEMON_HEALTH_URL="${DOPE_DAEMON_HEALTH_URL:-http://127.0.0.1:19192/healthz}"
 SAMPLE_SECONDS="${DOPE_SOAK_SAMPLE_SECONDS:-60}"
+BRANCH_OR_VERSION="${DOPE_SOAK_BRANCH_OR_VERSION:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf unknown)}"
 
 if [[ "$DOPE_DATA_DIR" == "$HOME/.dope" && "${DOPE_LIVE_OPT_IN:-}" != "yes" ]]; then
   printf 'refusing to soak production data without DOPE_LIVE_OPT_IN=yes\n' >&2
@@ -162,7 +163,7 @@ mkdir -p "$(dirname "$REPORT")"
 cat >"$REPORT" <<JSON
 {
   "reportId": "soak_r39_$(date -u +%Y%m%dT%H%M%SZ)",
-  "branchOrVersion": "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf unknown)",
+  "branchOrVersion": "$BRANCH_OR_VERSION",
   "environment": "test",
   "dataDirectory": "$DOPE_DATA_DIR",
   "daemonHealth": "$DAEMON_HEALTH",

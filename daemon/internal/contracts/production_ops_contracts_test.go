@@ -54,6 +54,7 @@ func TestProductionSoakRunnerGeneratesReportArtifact(t *testing.T) {
 		"DOPE_DATA_DIR="+dataDir,
 		"DOPE_SOAK_DURATION=targeted-validation",
 		"DOPE_SOAK_REPORT="+reportPath,
+		"DOPE_SOAK_BRANCH_OR_VERSION=test-version",
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -64,7 +65,7 @@ func TestProductionSoakRunnerGeneratesReportArtifact(t *testing.T) {
 		t.Fatalf("read generated report: %v\n%s", err, output)
 	}
 	body := string(data)
-	for _, needle := range []string{"\"reportId\"", "\"elapsedSeconds\"", "\"workloadCoverage\"", "\"faultDrills\"", "\"resourceObservations\"", "\"followUpFullRerun\": true", "\"finalResult\""} {
+	for _, needle := range []string{"\"reportId\"", "\"branchOrVersion\": \"test-version\"", "\"elapsedSeconds\"", "\"workloadCoverage\"", "\"faultDrills\"", "\"resourceObservations\"", "\"followUpFullRerun\": true", "\"finalResult\""} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("generated soak report missing %s: %s", needle, body)
 		}
