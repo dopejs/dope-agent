@@ -43,31 +43,20 @@ The daemon now has a closed P0 control plane slice:
 - contract tests
 - versioned migrations
 
-The next execution focus is provider-stream hardening for SSE-style upstreams.
-
-The current execution focus after that is repository-safe local development workflow, so agents default to the test environment instead of production state.
-
-The next execution focus is first-class skill loading and prompt support, including support for user-level assets under `~/.agents`.
-
-The sandbox execution plane is now closed as the first harness control-plane slice.
-
-The sandbox prerequisite slice is now implemented for the current in-scope consumers:
-
-- shared requirement declarations
-- secret scope and redaction policy
-- durable execution provenance
-- convergence of managed providers, the current skill registry and explicit skill-selection surfaces, and the current high-risk local tool-call path
-
-The remaining roadmap work is narrow operator-surface closure; the next major sandbox-backed harness subsystem is MCP.
+The sandbox, MCP, tool-call orchestration, personal-agent non-knowledge surfaces,
+tenant foundation, hosted credential isolation, quota enforcement, production operations
+baseline, live validation, and evaluation product expansion are now implemented through
+Roadmap 41, subject to the release-evidence notes below.
 
 Roadmap 39 is implemented as the production operations baseline: install,
 upgrade, backup, restore, migration verification, rollback guidance, a reusable
 24-hour test-environment soak harness, fake-backend fault drills, real-account
 smoke skip policy, resource-growth checks, and release readiness gates. Its
 operator entry point is `docs/runtime/production-operations.md`. The roadmap is
-not final release evidence for Roadmaps 40 or 41; those roadmaps must rerun the
-Roadmap 39 soak gate after their live-validation and evaluation-product changes
-land.
+not final release evidence for Roadmaps 40 or 41 by itself; those roadmaps must rerun
+the Roadmap 39 soak gate after their live-validation and evaluation-product changes land.
+That combined 24-hour rerun is tracked by Roadmap 41 T153 and the local acceptance
+runbook `docs/harness/roadmap41-soak-acceptance-runbook.md`.
 
 ## Roadmap 1: Runtime Closure
 
@@ -1676,7 +1665,7 @@ Explicitly out of scope:
 
 ### Roadmap 38: Billing, Quotas, And Usage Accounting
 
-Status: `[ ] planned`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/023-billing-quotas-and-usage-accounting.md](../specs/023-billing-quotas-and-usage-accounting.md)
 
@@ -1690,6 +1679,13 @@ Roadmap definition of done:
 - quotas are enforced before expensive or side-effecting work starts
 - quota denial and plan changes are auditable
 
+Closure notes:
+
+- Roadmap 38 implementation and verification evidence are recorded in
+  `specs/023-billing-quotas-usage/quickstart.md`.
+- Final verification on 2026-04-29 included full daemon tests, module tidy,
+  contract tests, client tests, client build, and test-daemon smoke.
+
 Explicitly out of scope:
 
 - external payment-provider checkout by default
@@ -1698,7 +1694,7 @@ Explicitly out of scope:
 
 ### Roadmap 39: Production Install, Upgrade, Backup, And Soak
 
-Status: `[ ] planned`
+Status: `[~] implementation complete; final release soak evidence pending`
 
 Detailed spec: [docs/specs/024-production-install-upgrade-backup-and-soak.md](../specs/024-production-install-upgrade-backup-and-soak.md)
 
@@ -1713,6 +1709,13 @@ Roadmap definition of done:
 - long-running soak exercises runtime, scheduler, integrations, delivery, and evaluation
 - external-service fault drills classify retry, recovery, and operator-action-needed states
 
+Closure notes:
+
+- Roadmap 39 production operation scripts, runbooks, validators, and smoke evidence are
+  implemented and recorded in `specs/024-production-ops-soak/quickstart.md`.
+- The Roadmap 39 harness remains the reusable final release gate for later Roadmaps.
+  Roadmaps 40 and 41 must rerun the 24-hour soak after their changes land.
+
 Explicitly out of scope:
 
 - new integration domains
@@ -1721,7 +1724,7 @@ Explicitly out of scope:
 
 ### Roadmap 40: Live Validation And Side-Effect Replay
 
-Status: `[ ] planned`
+Status: `[x] implementation complete`
 
 Detailed spec: [docs/specs/025-live-validation-and-side-effect-replay.md](../specs/025-live-validation-and-side-effect-replay.md)
 
@@ -1738,6 +1741,13 @@ Roadmap definition of done:
 - operator-action-needed, comparison, reconciliation, retention, SDK, web, contract, and
   fake-backend verification artifacts are linked from `specs/025-live-validation-replay`
 
+Closure notes:
+
+- Roadmap 40 implementation and verification evidence are recorded in
+  `specs/025-live-validation-replay/quickstart.md`.
+- Optional real-account smoke was skipped because no explicit safe live credentials or
+  operator-selected side-effect scope were provided; fake-backend coverage passed.
+
 Explicitly out of scope:
 
 - autonomous optimization
@@ -1746,7 +1756,7 @@ Explicitly out of scope:
 
 ### Roadmap 41: Evaluation Product Expansion
 
-Status: `[ ] planned`
+Status: `[~] implementation complete; final soak evidence pending`
 
 Detailed spec: [docs/specs/026-evaluation-product-expansion.md](../specs/026-evaluation-product-expansion.md)
 
@@ -1762,6 +1772,15 @@ Roadmap definition of done:
 - final Phase 8 verification records targeted tests, full daemon/client checks, local
   daemon smoke, Roadmap 41 product smoke, and Roadmap 39 soak rerun evidence in
   `specs/026-evaluation-product-expansion/quickstart.md`
+
+Closure notes:
+
+- Roadmap 41 implementation and targeted verification evidence are recorded in
+  `specs/026-evaluation-product-expansion/quickstart.md`.
+- Final completion is intentionally blocked on T153 until the Roadmap 39 24-hour rerun
+  report with Roadmap 40 and 41 workload coverage passes.
+- The current acceptance runbook is
+  `docs/harness/roadmap41-soak-acceptance-runbook.md`.
 
 Explicitly out of scope:
 

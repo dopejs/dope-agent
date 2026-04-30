@@ -39,3 +39,18 @@ If dashboard reads are unavailable, pagination is nondeterministic, or linked
 campaign/inspection evidence cannot be opened for the reviewed tenant, the
 Roadmap 41 release-readiness gate is incomplete even if older replay harness
 soak evidence passed.
+
+## Active Roadmap 41 Evidence Closure
+
+Roadmap 41 is implementation-complete but not release-complete until the combined
+Roadmap 39/40/41 24-hour rerun passes. The local acceptance runbook is:
+
+```text
+docs/harness/roadmap41-soak-acceptance-runbook.md
+```
+
+The current rerun was started on `zentalk-1` on 2026-04-30 Asia/Shanghai against commit
+`5ad95ba`. Do not mark Roadmap 41 complete from targeted-validation evidence or from a
+pre-Roadmap-40/41 soak. Completion requires the generated full-duration report to pass the
+runbook criteria and then updating the Roadmap 41 tasks, quickstart, upstream spec, and
+daemon roadmap status in one evidence commit.

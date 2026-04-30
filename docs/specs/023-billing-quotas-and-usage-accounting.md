@@ -1,6 +1,9 @@
 # Billing, Quotas, And Usage Accounting
 
-Status: proposed
+Status: implemented
+
+Implementation evidence: Roadmap 38 tasks and verification results are recorded in
+`specs/023-billing-quotas-usage/quickstart.md`.
 
 Authority: This document is the authoritative upstream spec for Roadmap 38, the hosted
 billing, quota, and usage-accounting layer.

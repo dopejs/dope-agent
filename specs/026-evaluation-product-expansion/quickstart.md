@@ -141,14 +141,22 @@ Asia/Shanghai against the default test environment.
 - Roadmap 41 product smoke: `/usr/bin/time -p env GOCACHE=/tmp/dope-go-build go test ./internal/api -run 'TestEvaluationProduct(DiscoveryAPIRoutes|FixturePermissionDenialsAndLifecycleRoutes|CampaignAPIRoutes|DashboardAPIRequiresReadPermissionAndListsTenantProjections|InspectionAPIRoutes)' -count=1` passed in 1.98 seconds real time. This covers discovery, suppression/fixture lifecycle, campaign start/transitions, dashboard projection reads, and tool-call inspection reads. The automated smoke is below the SC-001 two-minute candidate review and SC-005 five-minute fixture create/edit thresholds.
 - Roadmap 39 targeted rerun evidence: `/usr/bin/time -p env DOPE_SOAK_DURATION=targeted-validation DOPE_SOAK_REPORT=specs/026-evaluation-product-expansion/fixtures/roadmap39-rerun-targeted.json scripts/production/run-soak.sh` passed in 0.04 seconds real time with `daemonHealth: "pass"`, `crossTenantLeakage: false`, `monotonicResourceGrowth: false`, and `finalResult: "pass"`.
 
-Full Roadmap 39 soak rerun status: blocked for final release readiness. The required
+Full Roadmap 39 soak rerun status: in progress for final release readiness. The required
 24-hour `DOPE_ENV=test` rerun with Roadmap 40 live validation and Roadmap 41 evaluation
-product workflows included was not completed in this implementation window. Owner:
-release owner. Blocker date: 2026-04-30 Asia/Shanghai. Unblock path: seed the combined
-Roadmap 40/41 workload on a stable always-on test host, run
-`scripts/production/run-soak.sh` with the default `DOPE_SOAK_DURATION=24h`, attach the
-generated report, and keep Roadmap 41 in `implementation complete; final soak evidence
-pending` status until that report passes.
+product workflows included was started on stable host `zentalk-1` on 2026-04-30
+Asia/Shanghai against commit `5ad95ba`. The acceptance runbook is
+`docs/harness/roadmap41-soak-acceptance-runbook.md`; it is the authoritative local
+checklist for the final pass/fail decision and must be used without relying on prior chat
+context.
+
+Expected report path:
+
+```text
+/root/dope-agent-r41-artifacts/roadmap39-full-5ad95ba.json
+```
+
+Keep Roadmap 41 in `implementation complete; final soak evidence pending` status until
+that report exists and passes all runbook criteria.
 
 The targeted-validation report is intentionally not release-gate evidence. A developer
 laptop or other movable local machine is not an acceptable environment for the 24-hour

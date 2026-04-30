@@ -6,7 +6,7 @@ inspection, schemas, fake-backend coverage, kill-switch containment, and verific
 notes. Historical evidence remains inspectable when new live validation starts are
 disabled.
 
-Status: proposed
+Status: implemented
 
 Authority: This document is the authoritative upstream spec for Roadmap 40, the live
 validation executor and full side-effect replay safety boundary.

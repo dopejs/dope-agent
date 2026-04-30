@@ -262,7 +262,7 @@
 - [X] T151 Run the test daemon smoke with `make daemon-run-test` and `make daemon-test-status`, then record health and shutdown evidence in `specs/026-evaluation-product-expansion/quickstart.md`
 - [X] T152 Run the Roadmap 41 product smoke flow for discovery, suppression, product fixture editing, campaign start, dashboard projection, tool-call inspection, SC-001 two-minute candidate review, and SC-005 five-minute fixture create/edit; record timed results in `specs/026-evaluation-product-expansion/quickstart.md`
 - [ ] T153 Run the Roadmap 39 soak rerun with Roadmap 40 live validation and Roadmap 41 evaluation product workflows included; record pass/fail evidence in `specs/026-evaluation-product-expansion/quickstart.md` and leave Roadmap 41 incomplete if the rerun is blocked
-  - Blocked 2026-04-30 Asia/Shanghai: targeted-validation rerun passed, but the required 24-hour rerun was not completed in this implementation window and must not be run as release evidence on a movable developer laptop. Owner: release owner. Unblock path: seed the combined Roadmap 40/41 workload on a stable always-on test host and run `scripts/production/run-soak.sh` with `DOPE_SOAK_DURATION=24h`.
+  - In progress 2026-04-30 Asia/Shanghai: targeted-validation rerun passed, and the required 24-hour rerun was started on stable host `zentalk-1` against commit `5ad95ba`. Acceptance runbook: `docs/harness/roadmap41-soak-acceptance-runbook.md`. Report path: `/root/dope-agent-r41-artifacts/roadmap39-full-5ad95ba.json`. Keep this task incomplete until the generated report exists and passes all runbook criteria.
 
 ---
 

@@ -2,6 +2,11 @@
 
 Status: implementation complete; final soak evidence pending
 
+Release-evidence closure is tracked by
+`docs/harness/roadmap41-soak-acceptance-runbook.md` and T153 in
+`specs/026-evaluation-product-expansion/tasks.md`. Do not mark Roadmap 41 complete until
+the combined Roadmap 39/40/41 24-hour rerun report exists and passes the runbook criteria.
+
 Authority: This document is the authoritative upstream spec for Roadmap 41, the evaluation
 product expansion that completes the remaining Roadmap 33 out-of-scope product gaps.
 
