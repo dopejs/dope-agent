@@ -8,6 +8,10 @@ Roadmap 39 production upgrade evidence reuses this rollback boundary: in-place
 rollback is acceptable only when persisted state remains compatible with the
 previous binary. If migration changed persisted state in a way that cannot be
 safely reversed, restore from a verified backup is the canonical rollback path.
+Roadmap 43 hosted evidence records that decision in a rollback decision record
+linked from the release evidence index; the record must state whether in-place
+rollback is safe, restore from backup is required, no rollback is needed, or
+rollback is blocked.
 
 This document describes (a) the **hard prerequisite** before upgrading the daemon to a release that crosses schema v22+, (b) the **rollback procedure** when the upgrade refuses to start or fails part-way, and (c) the **boundary conventions** that the regression suite enforces for the lifetime of Roadmap 35.
 

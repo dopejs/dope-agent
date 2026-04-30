@@ -1,0 +1,11 @@
+{
+  "backup": {"backupId": "backup_hosted_1", "tenantCount": 3, "redactionStatus": "passed"},
+  "restore": {"restoreResultId": "restore_hosted_1", "targetIsAlternate": true, "tenantCount": 3, "result": "pass"},
+  "rollback": {"rollbackDecisionId": "rollback_hosted_1", "decision": "restore_from_backup_required"},
+  "failures": [
+    {"name": "active_target_restore", "targetIsAlternate": false},
+    {"name": "two_tenants", "tenantCount": 2},
+    {"name": "raw_credential", "rawCredentialScanResult": "fail"}
+  ]
+}
+

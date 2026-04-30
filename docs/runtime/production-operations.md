@@ -11,6 +11,8 @@ Operator artifacts:
 - [Backup and restore](./backup-restore.md)
 - [Release readiness](./release-readiness.md)
 - [Tenant migration rollback](./tenant-migration-rollback.md)
+- [Hosted operational profile](./hosted-operational-profile.md)
+- [Hosted stable-host evidence](../harness/hosted-operational-profile.md)
 - [Production soak harness](../harness/production-soak.md)
 - [Real-account smoke policy](../providers/real-account-smoke.md)
 

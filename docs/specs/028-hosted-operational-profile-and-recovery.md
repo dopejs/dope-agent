@@ -1,6 +1,8 @@
 # Hosted Operational Profile And Recovery
 
-Status: proposed
+Status: implemented locally in `specs/028-hosted-operational-profile/`; stable-host
+supervisor smoke has been recorded on `zentalk-1`. Full release readiness still requires
+an operator-run full-duration hosted daemon soak on an always-on test host or VPS.
 
 Authority: This document is the authoritative upstream spec for Roadmap 43, the hosted
 test-host and operational recovery profile required before long-lived personal-agent
@@ -15,6 +17,9 @@ Primary source documents:
 - `docs/runtime/backup-restore.md`
 - `docs/runtime/release-readiness.md`
 - `docs/harness/production-soak.md`
+- `docs/runtime/hosted-operational-profile.md`
+- `docs/harness/hosted-operational-profile.md`
+- `specs/028-hosted-operational-profile/`
 
 ## Background
 
@@ -74,7 +79,7 @@ collection.
 - operational observability baseline for daemon health, database size, log size, memory,
   goroutines, file descriptors, queue or backlog, connector health, MCP health, and
   integration diagnostic state
-- release evidence bundle generation or index linking all required artifacts
+- release evidence index generation linking all required artifacts
 - runbook updates for hosted/test-host operation
 
 ## Out Of Scope
@@ -127,7 +132,7 @@ collection.
 - Observability collection MUST include daemon health, database size, log size, memory,
   goroutines, file descriptors when available, queue/backlog, connector health, MCP
   health, and integration diagnostic state.
-- Release evidence MUST be linkable from a single index or bundle.
+- Release evidence MUST be linkable from a single index.
 - The release checklist MUST identify missing required evidence and failed thresholds as
   no-ship conditions.
 
@@ -156,6 +161,15 @@ collection.
   soak, integration diagnostics, logs, and resource observations.
 - Manual smoke on a stable test host or VPS demonstrating the profile can run without
   relying on a movable developer laptop.
+
+## Implemented Artifacts
+
+- `scripts/production/hosted-profile.sh`
+- `daemon/internal/opsreadiness/hosted_*.go`
+- `daemon/internal/contracts/hosted_*_test.go`
+- `daemon/internal/opsreadiness/testdata/hosted/`
+- `docs/runtime/hosted-operational-profile.md`
+- `docs/harness/hosted-operational-profile.md`
 
 ## Definition Of Done
 

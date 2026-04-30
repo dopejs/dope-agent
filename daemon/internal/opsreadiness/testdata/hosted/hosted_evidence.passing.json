@@ -1,0 +1,9 @@
+{
+  "profileId": "profile_hosted_test",
+  "runId": "hosted_run_20260430",
+  "commitOrVersion": "028-hosted-operational-profile",
+  "decision": "ship",
+  "retentionDays": 90,
+  "redactionStatus": "passed"
+}
+

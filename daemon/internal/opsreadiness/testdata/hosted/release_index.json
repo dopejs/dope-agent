@@ -1,0 +1,8 @@
+{
+  "passing": {"releaseIndexId": "release_hosted_run_20260430", "decision": "ship"},
+  "missingEvidence": {"releaseIndexId": "release_missing", "decision": "no_ship"},
+  "mismatchedIdentity": {"releaseIndexId": "release_mismatch", "decision": "no_ship"},
+  "expired": {"releaseIndexId": "release_expired", "decision": "no_ship"},
+  "redactionFailed": {"releaseIndexId": "release_redaction_failed", "decision": "no_ship"}
+}
+

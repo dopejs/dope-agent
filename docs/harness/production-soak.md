@@ -45,6 +45,12 @@ fault drills, recovery times, retry exhaustion, queue backlog, resource growth,
 cross-tenant leakage checks, real-account smoke summary or skips, and final
 pass/fail status.
 
+For Roadmap 43 hosted evidence, the report also records hosted profile
+identity, hosted run identity, connector health, MCP health, integration
+diagnostic state, unsupported observation markers, and failure-owner
+classification. Unsupported observations must be explicitly listed; missing
+observations without an unsupported marker block release readiness.
+
 Set `DOPE_SOAK_REPORT` to choose the JSON output path. `DOPE_SOAK_DURATION=24h`
 performs a real 86400-second run and records elapsed time. Shorter values such
 as `targeted-validation`, `30s`, or `5m` are treated as temporary validation and

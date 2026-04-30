@@ -17,7 +17,9 @@ rollout, clustering, and distributed failover are outside Roadmap 39.
    ```
 
 4. Record tenant integrity, required config, quota/accounting state, schema
-   version, and backup integrity.
+   version, backup integrity, hosted deployment identity, data location,
+   artifact location, daemon health, configuration readiness, and blocking
+   findings.
 
 ## Upgrade
 
@@ -33,7 +35,10 @@ scripts/production/upgrade-postflight.sh
 ```
 
 Record tenant data counts, quota/accounting consistency, credential remediation
-state, health checks, and elapsed time.
+state, health checks, operational diagnostics, rollback guidance, and elapsed
+time. When `DOPE_HOSTED_RUN_ID` is set, the preflight and postflight helpers
+write `upgrade-preflight.json` and `upgrade-postflight.json` under the hosted
+run artifact directory.
 
 ## Rollback Decision
 

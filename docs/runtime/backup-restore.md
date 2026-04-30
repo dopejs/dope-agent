@@ -46,3 +46,19 @@ revalidation.
 
 Invalid, incomplete, or incompatible backups must fail clearly. Partial restore
 must not be reported as success.
+
+## Hosted Alternate-Target Rehearsal
+
+For Roadmap 43 hosted evidence, set a run identity and restore into an
+alternate target:
+
+```bash
+DOPE_HOSTED_RUN_ID=hosted_$(date -u +%Y%m%dT%H%M%SZ) \
+DOPE_RESTORE_TARGET_DIR=~/.dope-test-restore \
+scripts/production/restore-test-state.sh <backup-artifact>
+```
+
+The hosted restore evidence records `targetIsAlternate`, tenant count, tenant
+state, migration state, credential remediation, quota state, daemon health,
+cross-tenant leakage, and raw-credential scan result. Release readiness requires
+at least three tenants with distinct credential, quota, and work states.

@@ -1790,7 +1790,7 @@ Explicitly out of scope:
 
 ### Roadmap 42: Integration Health And Permission Diagnostics
 
-Status: `[ ] planned`
+Status: `[ ] implemented locally; stable-host smoke evidence pending`
 
 Detailed spec: [docs/specs/027-integration-health-and-permission-diagnostics.md](../specs/027-integration-health-and-permission-diagnostics.md)
 
@@ -1821,6 +1821,11 @@ Status: `[ ] planned`
 
 Detailed spec: [docs/specs/028-hosted-operational-profile-and-recovery.md](../specs/028-hosted-operational-profile-and-recovery.md)
 
+Implementation artifacts: [spec plan](../../specs/028-hosted-operational-profile/plan.md),
+[hosted profile runbook](./hosted-operational-profile.md), [stable-host evidence
+guide](../harness/hosted-operational-profile.md), and
+`scripts/production/hosted-profile.sh`.
+
 Goal: define and verify a hosted/test-host operational profile for deployment, process
 supervision, backup, restore, upgrade, rollback, observability, and release evidence
 collection.
@@ -1835,7 +1840,7 @@ Roadmap definition of done:
 - operational observability covers daemon health, database size, log size, memory,
   goroutines, file descriptors where available, queue/backlog, connector health, MCP
   health, and integration diagnostic state
-- release evidence is linked from a single index or bundle that supports a 30-minute
+- release evidence is linked from a single index that supports a 30-minute
   ship/no-ship review
 
 Explicitly out of scope:

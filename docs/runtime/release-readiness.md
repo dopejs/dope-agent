@@ -19,6 +19,8 @@ Required evidence:
 - real-account smoke result or explicit skip reason for every supported domain
 - Roadmap 40 and Roadmap 41 rerun gate
 - Roadmap 42 integration diagnostic latest-state and smoke evidence
+- Roadmap 43 hosted release evidence index when hosted/test-host operation is
+  in scope for the reviewed release
 
 Safe real-account credentials are optional. Missing safe credentials do not
 block release readiness when fake-backend coverage passes and every affected
@@ -29,6 +31,23 @@ diagnostics passed, failed, were blocked, were skipped, were limited, or were
 deliberately unsupported. Diagnostic runs and smoke reports use 90-day default
 retention and must remain tenant-scoped and redacted. Risky smoke probes require
 both tenant administrator and authorized operator approval.
+
+## Hosted Operational Evidence
+
+Hosted release readiness uses
+`scripts/production/hosted-profile.sh evidence-index`. The command runs
+`daemon/cmd/hosted-evidence-validate` after generating the index. The index must link the
+deployment manifest, configuration profile, health checks, logs, soak report,
+backup evidence, restore evidence, upgrade preflight, upgrade postflight,
+rollback decision, integration diagnostics, resource observations, redaction
+check, and retention metadata.
+
+Every linked artifact must match the reviewed commit or version, hosted
+profile, and run identity. Evidence expires after 90 days for normal inspection
+unless an authorized longer-retention policy is recorded in the index. Missing,
+stale, mismatched, failed, expired, or secret-exposing hosted evidence is a
+no-ship condition. Reviewers must be able to reach a defensible decision from
+the index in 30 minutes or less.
 
 Any final release that includes Roadmap 40 live side-effect validation or
 Roadmap 41 evaluation-product expansion must rerun the Roadmap 39 soak harness

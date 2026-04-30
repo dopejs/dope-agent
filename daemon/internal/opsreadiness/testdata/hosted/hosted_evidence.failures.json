@@ -1,0 +1,9 @@
+{
+  "cases": [
+    {"name": "mismatched_identity", "decision": "no_ship"},
+    {"name": "expired_retention", "decision": "no_ship"},
+    {"name": "redaction_failed", "decision": "no_ship"},
+    {"name": "unsupported_without_marker", "decision": "no_ship"}
+  ]
+}
+
