@@ -1654,7 +1654,7 @@ Explicitly out of scope:
 
 ### Roadmap 37: Hosted Secrets, Integrations, And Connector Isolation
 
-Status: `[ ] planned`
+Status: `[~] implementation complete; final soak evidence pending`
 
 Detailed spec: [docs/specs/022-hosted-secrets-integrations-and-connector-isolation.md](../specs/022-hosted-secrets-integrations-and-connector-isolation.md)
 
@@ -1759,6 +1759,9 @@ Roadmap definition of done:
 - in-product fixture editing is permission-gated and preserves provenance
 - replay campaigns group attempts, comparisons, and live validation outcomes
 - dashboards expose drift, failure, unsupported replay, and tool-call replay evidence
+- final Phase 8 verification records targeted tests, full daemon/client checks, local
+  daemon smoke, Roadmap 41 product smoke, and Roadmap 39 soak rerun evidence in
+  `specs/026-evaluation-product-expansion/quickstart.md`
 
 Explicitly out of scope:
 

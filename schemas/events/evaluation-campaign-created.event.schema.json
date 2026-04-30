@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/evaluation-campaign-created.event.schema.json",
+  "title": "EvaluationCampaignLifecycleEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": {
+          "enum": [
+            "evaluation.campaign.created",
+            "evaluation.campaign.started",
+            "evaluation.campaign.cancelled",
+            "evaluation.campaign.completed",
+            "evaluation.campaign.failed",
+            "evaluation.campaign.results_published",
+            "evaluation.campaign.redaction_failed"
+          ]
+        },
+        "payload": { "$ref": "#/$defs/campaignPayload" }
+      }
+    }
+  ],
+  "$defs": {
+    "campaignPayload": {
+      "type": "object",
+      "required": ["tenantId", "campaignId", "status"],
+      "additionalProperties": true,
+      "properties": {
+        "tenantId": { "type": "string" },
+        "actorId": { "type": "string" },
+        "campaignId": { "type": "string" },
+        "campaignItemId": { "type": "string" },
+        "attemptGroupId": { "type": "string" },
+        "status": { "type": "string" },
+        "outcome": { "type": "string" },
+        "reasonCode": { "type": "string" },
+        "redactionStatus": { "type": "string", "enum": ["clean", "redacted", "failed"] }
+      }
+    }
+  }
+}

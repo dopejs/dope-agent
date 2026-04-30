@@ -1,0 +1,33 @@
+{
+  "reportId": "soak_r39_20260430T011714Z",
+  "branchOrVersion": "026-evaluation-product-expansion",
+  "environment": "test",
+  "dataDirectory": "/Users/John/.dope-test",
+  "daemonHealth": "pass",
+  "baselineTopology": "tenant_scoped_single_node",
+  "startedAt": "2026-04-30T01:17:14Z",
+  "completedAt": "2026-04-30T01:17:14Z",
+  "durationHours": 0.000000,
+  "elapsedSeconds": 0,
+  "sampleCount": 1,
+  "temporaryShorterDuration": true,
+  "temporaryDurationReason": "targeted validation run; full 24-hour soak remains mandatory before release readiness",
+  "followUpFullRerun": true,
+  "tenantSetSummary": ["ten_ops_alpha", "ten_ops_beta", "ten_ops_gamma"],
+  "workloadCoverage": ["runtime", "scheduler", "integrations", "delivery", "approvals", "quotas", "tenant_switching", "evaluation"],
+  "restartEvents": [
+    {"restartId": "restart_1", "classification": "recovered", "recoverySeconds": 60},
+    {"restartId": "restart_2", "classification": "retried", "recoverySeconds": 120},
+    {"restartId": "restart_3", "classification": "operator_action_needed", "recoverySeconds": 180}
+  ],
+  "restartCount": 3,
+  "faultDrills": ["transient_5xx", "rate_limit", "auth_expiry", "provider_unavailable", "slow_response", "malformed_response"],
+  "faultClassifications": ["recovered", "recovered", "operator_action_needed", "retry_exhausted", "recovered", "operator_action_needed"],
+  "resourceObservations": ["logs", "stored_data_size", "active_work_or_queue_backlog", "memory", "open_handles_or_file_descriptors", "goroutines"],
+  "resourceSamples": {"maxLogBytes": 0, "maxStoredDataBytes": 129294336},
+  "queueBacklogMinutes": 0,
+  "monotonicResourceGrowth": false,
+  "crossTenantLeakage": false,
+  "unclassifiedFailures": [],
+  "finalResult": "pass"
+}

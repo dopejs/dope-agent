@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/evaluation-product-pagination.schema.json",
+  "title": "EvaluationProductSharedContracts",
+  "type": "object",
+  "additionalProperties": true,
+  "oneOf": [
+    { "$ref": "#/$defs/cursorPage" },
+    { "$ref": "#/$defs/suppressionRecord" },
+    { "$ref": "#/$defs/redactionMetadata" },
+    { "$ref": "#/$defs/retentionApplicationOutcome" }
+  ],
+  "$defs": {
+    "cursorPage": {
+      "type": "object",
+      "required": ["limit"],
+      "additionalProperties": false,
+      "properties": {
+        "cursor": { "type": "string" },
+        "nextCursor": { "type": "string" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
+      }
+    },
+    "suppressionRecord": {
+      "type": "object",
+      "required": ["suppressionId", "tenantId", "targetKind", "reasonCode", "active", "createdAt"],
+      "additionalProperties": true,
+      "properties": {
+        "suppressionId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "targetKind": { "$ref": "#/$defs/productResourceKind" },
+        "targetId": { "type": "string" },
+        "targetSourceRef": { "type": "string" },
+        "reasonCode": { "type": "string" },
+        "reason": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "active": { "type": "boolean" }
+      }
+    },
+    "redactionMetadata": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": true,
+      "properties": {
+        "status": { "type": "string", "enum": ["clean", "redacted", "failed"] },
+        "rulesApplied": { "type": "array", "items": { "type": "string" } },
+        "sensitiveFieldsExcluded": { "type": "array", "items": { "type": "string" } },
+        "failureReasonCode": { "type": "string" }
+      }
+    },
+    "retentionApplicationOutcome": {
+      "type": "object",
+      "required": ["applicationId", "tenantId", "resourceKind", "dryRun", "outcome", "appliedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "applicationId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "resourceKind": { "$ref": "#/$defs/productResourceKind" },
+        "resourceId": { "type": "string" },
+        "dryRun": { "type": "boolean" },
+        "outcome": { "type": "string", "enum": ["retained", "expired", "deleted", "tombstoned", "dry_run", "failed"] },
+        "reasonCode": { "type": "string" },
+        "affectedCount": { "type": "integer", "minimum": 0 },
+        "appliedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "retentionState": {
+      "type": "string",
+      "enum": ["active", "expired", "deleted", "tombstone"]
+    },
+    "productResourceKind": {
+      "type": "string",
+      "enum": [
+        "discovery_policy",
+        "discovery_run",
+        "discovered_candidate",
+        "candidate_evidence",
+        "suppression",
+        "product_fixture",
+        "fixture_revision",
+        "campaign",
+        "campaign_item",
+        "campaign_attempt_group",
+        "dashboard_projection",
+        "tool_call_inspection",
+        "retention_application"
+      ]
+    }
+  }
+}

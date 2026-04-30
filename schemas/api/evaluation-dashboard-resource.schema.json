@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/evaluation-dashboard-resource.schema.json",
+  "title": "EvaluationDashboardProjectionResource",
+  "type": "object",
+  "required": ["projectionId", "windowStart", "windowEnd", "generatedAt"],
+  "additionalProperties": true,
+  "properties": {
+    "projectionId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "windowStart": { "type": "string", "format": "date-time" },
+    "windowEnd": { "type": "string", "format": "date-time" },
+    "campaignStatusCounts": { "$ref": "#/$defs/countMap" },
+    "driftSummary": { "$ref": "#/$defs/countMap" },
+    "failureSummary": { "$ref": "#/$defs/countMap" },
+    "unsupportedSummary": { "$ref": "#/$defs/countMap" },
+    "operatorActionNeededSummary": { "$ref": "#/$defs/countMap" },
+    "liveValidationSummary": { "$ref": "#/$defs/countMap" },
+    "candidateSummary": { "$ref": "#/$defs/countMap" },
+    "fixtureSummary": { "$ref": "#/$defs/countMap" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "cursor": { "type": "string" },
+    "retentionState": { "type": "string", "enum": ["active", "expired", "deleted", "tombstone"] }
+  },
+  "$defs": {
+    "countMap": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    }
+  }
+}

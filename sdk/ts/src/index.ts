@@ -155,6 +155,400 @@ export type ReplaySourceRef = {
   route?: string;
 };
 
+export type EvaluationProductResourceKind =
+  | "discovery_policy"
+  | "discovery_run"
+  | "discovered_candidate"
+  | "candidate_evidence"
+  | "suppression"
+  | "product_fixture"
+  | "fixture_revision"
+  | "campaign"
+  | "campaign_item"
+  | "campaign_attempt_group"
+  | "dashboard_projection"
+  | "tool_call_inspection"
+  | "retention_application";
+
+export type EvaluationProductLifecycleStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "partial"
+  | "failed"
+  | "cancelled"
+  | "draft"
+  | "in_review"
+  | "approved"
+  | "rejected"
+  | "published"
+  | "archived"
+  | "deleted"
+  | "expired"
+  | "suppressed";
+
+export type EvaluationProductRetentionState = "active" | "expired" | "deleted" | "tombstone";
+export type EvaluationProductSuppressionState = "none" | "suppressed" | "expired" | "revoked";
+export type EvaluationProductRedactionStatus = "clean" | "redacted" | "failed";
+export type EvaluationProductScoreBand = "high" | "medium" | "low";
+
+export type EvaluationProductTenantOptions = {
+  tenantId?: string;
+  cursor?: string;
+  limit?: number;
+};
+
+export type EvaluationProductCursorPage = {
+  cursor?: string;
+  nextCursor?: string;
+  limit: number;
+};
+
+export type EvaluationProductDenial = {
+  code: string;
+  message: string;
+  reasonCode: string;
+  permission?: string;
+  tenantId?: string;
+  resourceKind?: EvaluationProductResourceKind;
+  resourceId?: string;
+  checkedAt?: string;
+};
+
+export type EvaluationProductRedactionMetadata = {
+  status: EvaluationProductRedactionStatus;
+  rulesApplied?: string[];
+  sensitiveFieldsExcluded?: string[];
+  failureReasonCode?: string;
+};
+
+export type EvaluationProductRetentionOutcome = {
+  applicationId: string;
+  tenantId: string;
+  resourceKind: EvaluationProductResourceKind;
+  resourceId?: string;
+  dryRun: boolean;
+  outcome: "retained" | "expired" | "deleted" | "tombstoned" | "dry_run" | "failed";
+  reasonCode?: string;
+  affectedCount?: number;
+  appliedAt: string;
+};
+
+export type EvaluationDiscoveryPolicyResource = {
+  policyId: string;
+  tenantId: string;
+  enabled: boolean;
+  sourceKinds: ReplayCandidateResource["sourceKind"][];
+  windowStart: string;
+  windowEnd: string;
+  maxInspectedRecords: number;
+  maxEmittedCandidates: number;
+  costBudget: number;
+  sensitiveFieldRules?: string[];
+  retentionPolicyRef?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EvaluationDiscoveryRunResource = {
+  discoveryRunId: string;
+  tenantId: string;
+  policyId?: string;
+  status: EvaluationProductLifecycleStatus;
+  cursor?: string;
+  sourceKinds: ReplayCandidateResource["sourceKind"][];
+  windowStart: string;
+  windowEnd: string;
+  maxInspectedRecords: number;
+  maxEmittedCandidates: number;
+  costBudget: number;
+  inspectedRecords: number;
+  emittedCandidates: number;
+  partialReason?: string;
+  startedBy?: string;
+  startedAt: string;
+  completedAt?: string;
+  updatedAt: string;
+  idempotencyKey?: string;
+};
+
+export type EvaluationDiscoveredCandidateResource = {
+  discoveredCandidateId: string;
+  tenantId: string;
+  discoveryRunId: string;
+  sourceKind: ReplayCandidateResource["sourceKind"];
+  sourceId: string;
+  sourceRefs?: ReplaySourceRef[];
+  score: number;
+  scoreBand: EvaluationProductScoreBand;
+  explanationFields?: Record<string, unknown>;
+  redactionStatus: EvaluationProductRedactionStatus;
+  evidenceRef?: string;
+  readinessStatus: ReplayCandidateResource["readinessStatus"];
+  suppressionState: EvaluationProductSuppressionState;
+  retentionState: EvaluationProductRetentionState;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt?: string;
+};
+
+export type EvaluationSuppressionRecord = {
+  suppressionId: string;
+  tenantId: string;
+  targetKind: EvaluationProductResourceKind;
+  targetId?: string;
+  targetSourceRef?: string;
+  reasonCode: string;
+  reason?: string;
+  createdBy?: string;
+  createdAt: string;
+  expiresAt?: string;
+  active: boolean;
+};
+
+export type EvaluationProductListResponse<T> = {
+  tenantId: string;
+  page: EvaluationProductCursorPage;
+  items: T[];
+};
+
+export type EvaluationDiscoveryPolicyQuery = {
+  enabled?: boolean;
+  cursor?: string;
+  limit?: number;
+};
+
+export type UpsertEvaluationDiscoveryPolicyInput = {
+  enabled: boolean;
+  sourceKinds: ReplayCandidateResource["sourceKind"][];
+  windowStart: string;
+  windowEnd: string;
+  maxInspectedRecords: number;
+  maxEmittedCandidates: number;
+  costBudget: number;
+  sensitiveFieldRules?: string[];
+  retentionPolicyRef?: string;
+  idempotencyKey?: string;
+};
+
+export type StartEvaluationDiscoveryRunInput = {
+  policyId?: string;
+  windowStart?: string;
+  windowEnd?: string;
+  sourceKinds?: ReplayCandidateResource["sourceKind"][];
+  maxInspectedRecords?: number;
+  maxEmittedCandidates?: number;
+  costBudget?: number;
+  cursor?: string;
+  idempotencyKey?: string;
+};
+
+export type EvaluationDiscoveryRunQuery = {
+  status?: EvaluationDiscoveryRunResource["status"];
+  sourceKind?: ReplayCandidateResource["sourceKind"];
+  cursor?: string;
+  limit?: number;
+};
+
+export type EvaluationDiscoveredCandidateQuery = {
+  discoveryRunId?: string;
+  sourceKind?: ReplayCandidateResource["sourceKind"];
+  readinessStatus?: ReplayCandidateResource["readinessStatus"];
+  suppressionState?: EvaluationProductSuppressionState;
+  scoreBand?: EvaluationProductScoreBand;
+  cursor?: string;
+  limit?: number;
+};
+
+export type CreateEvaluationSuppressionInput = {
+  suppressionId?: string;
+  targetKind: EvaluationProductResourceKind;
+  targetId?: string;
+  targetSourceRef?: string;
+  reasonCode: string;
+  reason?: string;
+  expiresAt?: string;
+  idempotencyKey?: string;
+};
+
+export type ProductFixtureDomainClass = "schedule" | "integration" | "computer_use";
+
+export type ProductFixtureResource = {
+  fixtureId: string;
+  tenantId: string;
+  displayName: string;
+  domainClass: ProductFixtureDomainClass;
+  sourceKind: string;
+  sourceRefs?: ReplaySourceRef[];
+  sourceCandidateId?: string;
+  currentRevisionId: string;
+  reviewState: EvaluationProductLifecycleStatus;
+  suppressionState: EvaluationProductSuppressionState;
+  retentionState: EvaluationProductRetentionState;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FixtureRevisionResource = {
+  revisionId: string;
+  fixtureId: string;
+  tenantId: string;
+  revisionNumber: number;
+  contentSummary?: string;
+  fixturePayload?: Record<string, unknown>;
+  changeSummary?: string;
+  sourceEvidenceRefs?: string[];
+  redactionStatus: EvaluationProductRedactionStatus;
+  createdBy?: string;
+  createdAt: string;
+};
+
+export type ProductFixtureMutationResponse = {
+  fixture: ProductFixtureResource;
+  revision?: FixtureRevisionResource;
+};
+
+export type ProductFixtureQuery = {
+  domainClass?: ProductFixtureDomainClass;
+  reviewState?: EvaluationProductLifecycleStatus;
+  suppressionState?: EvaluationProductSuppressionState;
+  cursor?: string;
+  limit?: number;
+};
+
+export type CreateProductFixtureInput = {
+  fixtureId?: string;
+  displayName: string;
+  domainClass: ProductFixtureDomainClass;
+  fixturePayload?: Record<string, unknown>;
+  changeSummary?: string;
+  idempotencyKey?: string;
+};
+
+export type CreateFixtureRevisionInput = {
+  revisionId?: string;
+  fixturePayload?: Record<string, unknown>;
+  contentSummary?: string;
+  changeSummary?: string;
+  sourceEvidenceRefs?: string[];
+  idempotencyKey?: string;
+};
+
+export type ReviewProductFixtureInput = {
+  revisionId: string;
+  decision: "approved" | "rejected" | "needs_changes";
+  reason?: string;
+};
+
+export type EvaluationCampaignResource = {
+  campaignId: string;
+  tenantId: string;
+  displayName: string;
+  status: EvaluationProductLifecycleStatus;
+  scopeSummary?: string;
+  startedBy?: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  publishedAt?: string;
+  retentionState: EvaluationProductRetentionState;
+  idempotencyKey?: string;
+};
+
+export type EvaluationCampaignItemResource = {
+  campaignItemId: string;
+  campaignId: string;
+  tenantId: string;
+  sourceType: EvaluationProductResourceKind;
+  sourceId: string;
+  sourceSnapshot?: Record<string, unknown>;
+  selectionReason?: string;
+  suppressionCheckedAt: string;
+  createdAt: string;
+};
+
+export type EvaluationCampaignAttemptGroupResource = {
+  attemptGroupId: string;
+  campaignId: string;
+  campaignItemId: string;
+  tenantId: string;
+  replayAttemptIds?: string[];
+  comparisonIds?: string[];
+  liveValidationIds?: string[];
+  status: EvaluationProductLifecycleStatus;
+  driftCount: number;
+  failureCount: number;
+  unsupportedCount: number;
+  operatorActionNeededCount: number;
+  summary?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateEvaluationCampaignInput = {
+  campaignId?: string;
+  displayName: string;
+  scopeSummary?: string;
+  sourceSelections?: Array<{
+    sourceType: EvaluationProductResourceKind;
+    sourceId: string;
+    sourceSnapshot?: Record<string, unknown>;
+    selectionReason?: string;
+  }>;
+  startImmediately?: boolean;
+  idempotencyKey?: string;
+};
+
+export type EvaluationDashboardProjectionResource = {
+  projectionId: string;
+  tenantId: string;
+  windowStart: string;
+  windowEnd: string;
+  campaignStatusCounts?: Record<string, number>;
+  driftSummary?: Record<string, number>;
+  failureSummary?: Record<string, number>;
+  unsupportedSummary?: Record<string, number>;
+  operatorActionNeededSummary?: Record<string, number>;
+  liveValidationSummary?: Record<string, number>;
+  candidateSummary?: Record<string, number>;
+  fixtureSummary?: Record<string, number>;
+  generatedAt: string;
+  cursor?: string;
+  retentionState?: EvaluationProductRetentionState;
+};
+
+export type EvaluationToolCallInspectionClassification =
+  | "matched"
+  | "drifted"
+  | "failed"
+  | "unsupported"
+  | "missing_original_evidence"
+  | "missing_replay_evidence"
+  | "live_validation_denied"
+  | "live_validation_aborted"
+  | "live_validation_failed"
+  | "live_validation_operator_action_needed"
+  | "live_validation_completed";
+
+export type EvaluationToolCallInspectionResource = {
+  inspectionId: string;
+  tenantId: string;
+  campaignId: string;
+  campaignItemId: string;
+  toolCallRef: string;
+  originalEvidenceRef?: string;
+  nonLiveReplayEvidenceRef?: string;
+  liveValidationLedgerRefs?: string[];
+  classification: EvaluationToolCallInspectionClassification;
+  diffSummary?: string;
+  redactionStatus: EvaluationProductRedactionStatus;
+  retentionState?: EvaluationProductRetentionState;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PlaneSummaries = {
   runtime?: string;
   policy?: string;
@@ -1332,6 +1726,146 @@ export class DopeClient {
 
   async listReplayFixtures(query: ReplayFixtureQuery = {}, tenantOptions?: TenantRequestOptions): Promise<ReplayFixtureListResponse> {
     return this.requestJSON<ReplayFixtureListResponse>("/v1/evaluation/fixtures", { query, tenant: tenantOptions });
+  }
+
+  async listEvaluationDiscoveryPolicies(query: EvaluationDiscoveryPolicyQuery = {}, tenantOptions?: TenantRequestOptions): Promise<EvaluationProductListResponse<EvaluationDiscoveryPolicyResource>> {
+    return this.requestJSON<EvaluationProductListResponse<EvaluationDiscoveryPolicyResource>>("/v1/evaluation/discovery-policies", { query, tenant: tenantOptions });
+  }
+
+  async getEvaluationDiscoveryPolicy(policyId: string, tenantOptions?: TenantRequestOptions): Promise<EvaluationDiscoveryPolicyResource> {
+    return this.requestJSON<EvaluationDiscoveryPolicyResource>(`/v1/evaluation/discovery-policies/${policyId.trim()}`, { tenant: tenantOptions });
+  }
+
+  async upsertEvaluationDiscoveryPolicy(policyId: string, input: UpsertEvaluationDiscoveryPolicyInput, tenantOptions?: TenantRequestOptions): Promise<EvaluationDiscoveryPolicyResource> {
+    return this.requestJSON<EvaluationDiscoveryPolicyResource>(`/v1/evaluation/discovery-policies/${policyId.trim()}`, {
+      method: "PUT",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async startEvaluationDiscoveryRun(input: StartEvaluationDiscoveryRunInput = {}, tenantOptions?: TenantRequestOptions): Promise<EvaluationDiscoveryRunResource> {
+    return this.requestJSON<EvaluationDiscoveryRunResource>("/v1/evaluation/discovery-runs", {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async listEvaluationDiscoveryRuns(query: EvaluationDiscoveryRunQuery = {}, tenantOptions?: TenantRequestOptions): Promise<EvaluationProductListResponse<EvaluationDiscoveryRunResource>> {
+    return this.requestJSON<EvaluationProductListResponse<EvaluationDiscoveryRunResource>>("/v1/evaluation/discovery-runs", { query, tenant: tenantOptions });
+  }
+
+  async getEvaluationDiscoveryRun(discoveryRunId: string, tenantOptions?: TenantRequestOptions): Promise<EvaluationDiscoveryRunResource> {
+    return this.requestJSON<EvaluationDiscoveryRunResource>(`/v1/evaluation/discovery-runs/${discoveryRunId.trim()}`, { tenant: tenantOptions });
+  }
+
+  async listEvaluationDiscoveredCandidates(query: EvaluationDiscoveredCandidateQuery = {}, tenantOptions?: TenantRequestOptions): Promise<EvaluationProductListResponse<EvaluationDiscoveredCandidateResource>> {
+    return this.requestJSON<EvaluationProductListResponse<EvaluationDiscoveredCandidateResource>>("/v1/evaluation/discovered-candidates", { query, tenant: tenantOptions });
+  }
+
+  async getEvaluationDiscoveredCandidate(discoveredCandidateId: string, tenantOptions?: TenantRequestOptions): Promise<EvaluationDiscoveredCandidateResource> {
+    return this.requestJSON<EvaluationDiscoveredCandidateResource>(`/v1/evaluation/discovered-candidates/${discoveredCandidateId.trim()}`, { tenant: tenantOptions });
+  }
+
+  async createEvaluationSuppression(input: CreateEvaluationSuppressionInput, tenantOptions?: TenantRequestOptions): Promise<EvaluationSuppressionRecord> {
+    return this.requestJSON<EvaluationSuppressionRecord>("/v1/evaluation/suppressions", {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async materializeProductFixture(discoveredCandidateId: string, input: CreateProductFixtureInput, tenantOptions?: TenantRequestOptions): Promise<ProductFixtureMutationResponse> {
+    return this.requestJSON<ProductFixtureMutationResponse>(`/v1/evaluation/discovered-candidates/${discoveredCandidateId.trim()}/product-fixtures`, {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async listProductFixtures(query: ProductFixtureQuery = {}, tenantOptions?: TenantRequestOptions): Promise<EvaluationProductListResponse<ProductFixtureResource>> {
+    return this.requestJSON<EvaluationProductListResponse<ProductFixtureResource>>("/v1/evaluation/product-fixtures", { query, tenant: tenantOptions });
+  }
+
+  async getProductFixture(fixtureId: string, tenantOptions?: TenantRequestOptions): Promise<ProductFixtureResource> {
+    return this.requestJSON<ProductFixtureResource>(`/v1/evaluation/product-fixtures/${fixtureId.trim()}`, { tenant: tenantOptions });
+  }
+
+  async listProductFixtureRevisions(fixtureId: string, query: EvaluationProductTenantOptions = {}, tenantOptions?: TenantRequestOptions): Promise<EvaluationProductListResponse<FixtureRevisionResource>> {
+    return this.requestJSON<EvaluationProductListResponse<FixtureRevisionResource>>(`/v1/evaluation/product-fixtures/${fixtureId.trim()}/revisions`, { query, tenant: tenantOptions });
+  }
+
+  async createProductFixtureRevision(fixtureId: string, input: CreateFixtureRevisionInput, tenantOptions?: TenantRequestOptions): Promise<ProductFixtureMutationResponse> {
+    return this.requestJSON<ProductFixtureMutationResponse>(`/v1/evaluation/product-fixtures/${fixtureId.trim()}/revisions`, {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async reviewProductFixture(fixtureId: string, input: ReviewProductFixtureInput, tenantOptions?: TenantRequestOptions): Promise<ProductFixtureMutationResponse> {
+    return this.requestJSON<ProductFixtureMutationResponse>(`/v1/evaluation/product-fixtures/${fixtureId.trim()}/review`, {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async suppressProductFixture(fixtureId: string, input: Partial<Pick<CreateEvaluationSuppressionInput, "reasonCode" | "reason" | "expiresAt">> = {}, tenantOptions?: TenantRequestOptions): Promise<ProductFixtureMutationResponse> {
+    return this.requestJSON<ProductFixtureMutationResponse>(`/v1/evaluation/product-fixtures/${fixtureId.trim()}/suppress`, {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async createEvaluationCampaign(input: CreateEvaluationCampaignInput, tenantOptions?: TenantRequestOptions): Promise<EvaluationCampaignResource> {
+    return this.requestJSON<EvaluationCampaignResource>("/v1/evaluation/campaigns", {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async listEvaluationCampaigns(query: EvaluationProductTenantOptions = {}, tenantOptions?: TenantRequestOptions): Promise<EvaluationProductListResponse<EvaluationCampaignResource>> {
+    return this.requestJSON<EvaluationProductListResponse<EvaluationCampaignResource>>("/v1/evaluation/campaigns", { query, tenant: tenantOptions });
+  }
+
+  async getEvaluationCampaign(campaignId: string, tenantOptions?: TenantRequestOptions): Promise<EvaluationCampaignResource> {
+    return this.requestJSON<EvaluationCampaignResource>(`/v1/evaluation/campaigns/${campaignId.trim()}`, { tenant: tenantOptions });
+  }
+
+  async startEvaluationCampaign(campaignId: string, tenantOptions?: TenantRequestOptions): Promise<EvaluationCampaignResource> {
+    return this.requestJSON<EvaluationCampaignResource>(`/v1/evaluation/campaigns/${campaignId.trim()}/start`, { method: "POST", tenant: tenantOptions });
+  }
+
+  async cancelEvaluationCampaign(campaignId: string, tenantOptions?: TenantRequestOptions): Promise<EvaluationCampaignResource> {
+    return this.requestJSON<EvaluationCampaignResource>(`/v1/evaluation/campaigns/${campaignId.trim()}/cancel`, { method: "POST", tenant: tenantOptions });
+  }
+
+  async publishEvaluationCampaignResults(campaignId: string, tenantOptions?: TenantRequestOptions): Promise<EvaluationCampaignResource> {
+    return this.requestJSON<EvaluationCampaignResource>(`/v1/evaluation/campaigns/${campaignId.trim()}/publish-results`, { method: "POST", tenant: tenantOptions });
+  }
+
+  async listEvaluationCampaignItems(campaignId: string, query: EvaluationProductTenantOptions = {}, tenantOptions?: TenantRequestOptions): Promise<EvaluationProductListResponse<EvaluationCampaignItemResource>> {
+    return this.requestJSON<EvaluationProductListResponse<EvaluationCampaignItemResource>>(`/v1/evaluation/campaigns/${campaignId.trim()}/items`, { query, tenant: tenantOptions });
+  }
+
+  async listEvaluationCampaignAttemptGroups(campaignId: string, query: EvaluationProductTenantOptions = {}, tenantOptions?: TenantRequestOptions): Promise<EvaluationProductListResponse<EvaluationCampaignAttemptGroupResource>> {
+    return this.requestJSON<EvaluationProductListResponse<EvaluationCampaignAttemptGroupResource>>(`/v1/evaluation/campaigns/${campaignId.trim()}/attempt-groups`, { query, tenant: tenantOptions });
+  }
+
+  async listEvaluationDashboard(query: EvaluationProductTenantOptions = {}, tenantOptions?: TenantRequestOptions): Promise<EvaluationProductListResponse<EvaluationDashboardProjectionResource>> {
+    return this.requestJSON<EvaluationProductListResponse<EvaluationDashboardProjectionResource>>("/v1/evaluation/dashboard", { query, tenant: tenantOptions });
+  }
+
+  async listEvaluationToolCallInspections(campaignId: string, query: EvaluationProductTenantOptions = {}, tenantOptions?: TenantRequestOptions): Promise<EvaluationProductListResponse<EvaluationToolCallInspectionResource>> {
+    return this.requestJSON<EvaluationProductListResponse<EvaluationToolCallInspectionResource>>(`/v1/evaluation/campaigns/${campaignId.trim()}/tool-call-inspections`, { query, tenant: tenantOptions });
+  }
+
+  async getEvaluationToolCallInspection(inspectionId: string, tenantOptions?: TenantRequestOptions): Promise<EvaluationToolCallInspectionResource> {
+    return this.requestJSON<EvaluationToolCallInspectionResource>(`/v1/evaluation/tool-call-inspections/${inspectionId.trim()}`, { tenant: tenantOptions });
   }
 
   async startLiveValidation(input: CreateLiveValidationInput, tenantOptions?: TenantRequestOptions): Promise<CreateLiveValidationResponse> {

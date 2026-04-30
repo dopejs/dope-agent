@@ -27,3 +27,15 @@ Any final release that includes Roadmap 40 live side-effect validation or
 Roadmap 41 evaluation-product expansion must rerun the Roadmap 39 soak harness
 after those changes land. A pre-Roadmap-40/41 soak result is not sufficient
 final release evidence.
+
+Roadmap 41 dashboard evidence must include the tenant id, projection id,
+projection time window, generated timestamp, campaign status counts, drift and
+failure totals, unsupported replay totals, live-validation linkage count, and
+operator-action-needed count. A dashboard projection is acceptable only when it
+links back to stored campaigns, campaign attempt groups, replay comparisons,
+and Roadmap 40 ledger entries for inspection.
+
+If dashboard reads are unavailable, pagination is nondeterministic, or linked
+campaign/inspection evidence cannot be opened for the reviewed tenant, the
+Roadmap 41 release-readiness gate is incomplete even if older replay harness
+soak evidence passed.

@@ -7,6 +7,14 @@ mandatory follow-up full-duration rerun.
 The soak must cover runtime work, scheduler dispatch, integrations, delivery,
 approvals, quota enforcement, tenant switching, and evaluation behavior.
 
+Run full-duration release-gate soaks only on a stable always-on test host, such
+as a fixed-power lab machine, cloud VM, or long-running CI runner with sleep
+disabled and stable networking. A developer laptop or other movable local
+machine is acceptable for `targeted-validation` harness checks only; it is not
+acceptable 24-hour release evidence because sleep, power events, network
+changes, VPN changes, OS updates, and Wi-Fi instability make failures difficult
+to attribute to product behavior.
+
 ## Required Faults
 
 Fake-backend fault drills must cover transient 5xx, rate limit, auth expiry,

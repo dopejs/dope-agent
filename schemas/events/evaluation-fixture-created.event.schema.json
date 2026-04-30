@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/evaluation-fixture-created.event.schema.json",
+  "title": "EvaluationFixtureLifecycleEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": {
+          "enum": [
+            "evaluation.fixture.created",
+            "evaluation.fixture.revision_created",
+            "evaluation.fixture.reviewed",
+            "evaluation.fixture.redaction_failed",
+            "evaluation.fixture.suppressed",
+            "evaluation.fixture.archived",
+            "evaluation.fixture.deleted",
+            "evaluation.fixture.denied"
+          ]
+        },
+        "payload": { "$ref": "#/$defs/fixturePayload" }
+      }
+    }
+  ],
+  "$defs": {
+    "fixturePayload": {
+      "type": "object",
+      "required": ["tenantId", "fixtureId", "outcome"],
+      "additionalProperties": true,
+      "properties": {
+        "tenantId": { "type": "string" },
+        "actorId": { "type": "string" },
+        "fixtureId": { "type": "string" },
+        "revisionId": { "type": "string" },
+        "sourceCandidateId": { "type": "string" },
+        "sourceEvidenceRefs": { "type": "array", "items": { "type": "string" } },
+        "reviewState": { "type": "string" },
+        "redactionStatus": { "type": "string", "enum": ["clean", "redacted", "failed"] },
+        "outcome": { "type": "string" },
+        "reasonCode": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/evaluation-discovery-started.event.schema.json",
+  "title": "EvaluationDiscoveryLifecycleEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": {
+          "enum": [
+            "evaluation.discovery_policy_changed",
+            "evaluation.discovery_started",
+            "evaluation.discovery_completed",
+            "evaluation.discovery_partial",
+            "evaluation.discovery_failed",
+            "evaluation.discovery_candidate_suggested",
+            "evaluation.discovery_suppressed",
+            "evaluation.discovery_redaction_failed",
+            "evaluation.discovery_retention_applied"
+          ]
+        },
+        "payload": { "$ref": "#/$defs/discoveryPayload" }
+      }
+    }
+  ],
+  "$defs": {
+    "discoveryPayload": {
+      "type": "object",
+      "required": ["tenantId", "discoveryRunId", "status"],
+      "additionalProperties": true,
+      "properties": {
+        "tenantId": { "type": "string" },
+        "policyId": { "type": "string" },
+        "discoveryRunId": { "type": "string" },
+        "discoveredCandidateId": { "type": "string" },
+        "suppressionId": { "type": "string" },
+        "status": { "type": "string" },
+        "reasonCode": { "type": "string" },
+        "redactionStatus": { "type": "string", "enum": ["clean", "redacted", "failed"] },
+        "retentionApplicationId": { "type": "string" }
+      }
+    }
+  }
+}

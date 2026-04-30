@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/evaluation-product-audit-recorded.event.schema.json",
+  "title": "EvaluationProductAuditRecordedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": { "enum": ["evaluation.product_audit_recorded", "evaluation.product_redaction_failed", "evaluation.product_retention_applied"] },
+        "payload": { "$ref": "#/$defs/productAuditPayload" }
+      }
+    }
+  ],
+  "$defs": {
+    "productAuditPayload": {
+      "type": "object",
+      "required": ["tenantId", "action", "targetKind", "outcome", "createdAt"],
+      "additionalProperties": true,
+      "properties": {
+        "auditEventId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "actorId": { "type": "string" },
+        "action": { "type": "string" },
+        "targetKind": {
+          "type": "string",
+          "enum": [
+            "discovery_policy",
+            "discovery_run",
+            "discovered_candidate",
+            "candidate_evidence",
+            "suppression",
+            "product_fixture",
+            "fixture_revision",
+            "campaign",
+            "campaign_item",
+            "campaign_attempt_group",
+            "dashboard_projection",
+            "tool_call_inspection",
+            "retention_application"
+          ]
+        },
+        "targetId": { "type": "string" },
+        "outcome": { "type": "string", "enum": ["allowed", "denied", "recorded", "redaction_failed", "retention_applied", "failed"] },
+        "reasonCode": { "type": "string" },
+        "evidenceRefs": { "type": "array", "items": { "type": "string" } },
+        "redaction": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "status": { "type": "string", "enum": ["clean", "redacted", "failed"] },
+            "failureReasonCode": { "type": "string" }
+          }
+        },
+        "retentionApplicationId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

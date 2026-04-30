@@ -11,6 +11,52 @@ function mockJSONResponse(status: number, payload: unknown): Response {
   });
 }
 
+function productFixtureMutationFixture(overrides: Record<string, unknown> = {}) {
+  const revisionId = String(overrides.revisionId ?? "revision_1");
+  const reviewState = String(overrides.reviewState ?? "draft");
+  const suppressionState = String(overrides.suppressionState ?? "none");
+  const revisionNumber = Number(overrides.revisionNumber ?? 1);
+  return {
+    fixture: {
+      fixtureId: "product_fixture_1",
+      tenantId: "ten_eval",
+      displayName: "Product Fixture",
+      domainClass: "schedule",
+      sourceKind: "discovered_candidate",
+      sourceCandidateId: "candidate_1",
+      currentRevisionId: revisionId,
+      reviewState,
+      suppressionState,
+      retentionState: "active",
+      createdAt: "2026-04-29T10:00:00Z",
+      updatedAt: "2026-04-29T10:00:00Z"
+    },
+    revision: {
+      revisionId,
+      fixtureId: "product_fixture_1",
+      tenantId: "ten_eval",
+      revisionNumber,
+      fixturePayload: { goal: "safe" },
+      redactionStatus: "redacted",
+      createdAt: "2026-04-29T10:00:00Z"
+    }
+  };
+}
+
+function campaignFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    campaignId: "campaign_1",
+    tenantId: "ten_eval",
+    displayName: "Campaign",
+    status: overrides.status ?? "queued",
+    scopeSummary: "release gate",
+    startedBy: "prn_eval",
+    createdAt: "2026-04-29T10:00:00Z",
+    retentionState: "active",
+    ...overrides
+  };
+}
+
 function tenantResource(overrides: Partial<TenantResource> = {}): TenantResource {
   return {
     tenantId: "ten_personal",
@@ -249,6 +295,139 @@ describe("DopeClient", () => {
     expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/evaluation/replay-candidates/candidate_1/attempts", expect.objectContaining({ method: "POST" }));
     expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/evaluation/replay-attempts/attempt_1/compare", expect.objectContaining({ method: "POST" }));
     expect(fetchImpl).toHaveBeenNthCalledWith(10, "http://127.0.0.1:19192/v1/evaluation/fixtures?domainClass=schedule", expect.anything());
+  });
+
+  it("calls evaluation product discovery surfaces", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_eval",
+        page: { limit: 5 },
+        items: [{ policyId: "policy_1", tenantId: "ten_eval", enabled: true, sourceKinds: ["run"], windowStart: "2026-04-29T09:00:00Z", windowEnd: "2026-04-29T10:00:00Z", maxInspectedRecords: 10, maxEmittedCandidates: 2, costBudget: 5, createdAt: "2026-04-29T10:00:00Z", updatedAt: "2026-04-29T10:00:00Z" }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        policyId: "policy_1", tenantId: "ten_eval", enabled: true, sourceKinds: ["run"], windowStart: "2026-04-29T09:00:00Z", windowEnd: "2026-04-29T10:00:00Z", maxInspectedRecords: 10, maxEmittedCandidates: 2, costBudget: 5, createdAt: "2026-04-29T10:00:00Z", updatedAt: "2026-04-29T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        policyId: "policy_1", tenantId: "ten_eval", enabled: true, sourceKinds: ["run"], windowStart: "2026-04-29T09:00:00Z", windowEnd: "2026-04-29T10:00:00Z", maxInspectedRecords: 10, maxEmittedCandidates: 2, costBudget: 5, createdAt: "2026-04-29T10:00:00Z", updatedAt: "2026-04-29T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(202, {
+        discoveryRunId: "discovery_run_1", tenantId: "ten_eval", policyId: "policy_1", status: "queued", sourceKinds: ["run"], windowStart: "2026-04-29T09:00:00Z", windowEnd: "2026-04-29T10:00:00Z", maxInspectedRecords: 10, maxEmittedCandidates: 2, costBudget: 5, inspectedRecords: 0, emittedCandidates: 0, startedAt: "2026-04-29T10:00:00Z", updatedAt: "2026-04-29T10:00:00Z", idempotencyKey: "idem_1"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { tenantId: "ten_eval", page: { limit: 5 }, items: [] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        discoveryRunId: "discovery_run_1", tenantId: "ten_eval", policyId: "policy_1", status: "queued", sourceKinds: ["run"], windowStart: "2026-04-29T09:00:00Z", windowEnd: "2026-04-29T10:00:00Z", maxInspectedRecords: 10, maxEmittedCandidates: 2, costBudget: 5, inspectedRecords: 0, emittedCandidates: 0, startedAt: "2026-04-29T10:00:00Z", updatedAt: "2026-04-29T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { tenantId: "ten_eval", page: { limit: 5 }, items: [] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        discoveredCandidateId: "candidate_1", tenantId: "ten_eval", discoveryRunId: "discovery_run_1", sourceKind: "run", sourceId: "run_1", score: 0.9, scoreBand: "high", redactionStatus: "redacted", readinessStatus: "fully_replayable", suppressionState: "none", retentionState: "active", createdAt: "2026-04-29T10:00:00Z", updatedAt: "2026-04-29T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(201, {
+        suppressionId: "suppression_1", tenantId: "ten_eval", targetKind: "discovered_candidate", targetId: "candidate_1", reasonCode: "operator_hidden", createdAt: "2026-04-29T10:00:00Z", active: true
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(201, productFixtureMutationFixture()))
+      .mockResolvedValueOnce(mockJSONResponse(200, { tenantId: "ten_eval", page: { limit: 5 }, items: [productFixtureMutationFixture().fixture] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, productFixtureMutationFixture().fixture))
+      .mockResolvedValueOnce(mockJSONResponse(200, { tenantId: "ten_eval", page: { limit: 5 }, items: [productFixtureMutationFixture().revision] }))
+      .mockResolvedValueOnce(mockJSONResponse(201, productFixtureMutationFixture({ revisionId: "revision_2", revisionNumber: 2 })))
+      .mockResolvedValueOnce(mockJSONResponse(200, productFixtureMutationFixture({ reviewState: "approved" })))
+      .mockResolvedValueOnce(mockJSONResponse(200, productFixtureMutationFixture({ suppressionState: "suppressed" })));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192/",
+      accessToken: "token",
+      defaultTenantId: "ten_eval",
+      fetchImpl
+    });
+
+    await client.listEvaluationDiscoveryPolicies({ enabled: true, limit: 5 });
+    await client.getEvaluationDiscoveryPolicy("policy_1");
+    await client.upsertEvaluationDiscoveryPolicy("policy_1", { enabled: true, sourceKinds: ["run"], windowStart: "2026-04-29T09:00:00Z", windowEnd: "2026-04-29T10:00:00Z", maxInspectedRecords: 10, maxEmittedCandidates: 2, costBudget: 5 });
+    await client.startEvaluationDiscoveryRun({ policyId: "policy_1", idempotencyKey: "idem_1" });
+    await client.listEvaluationDiscoveryRuns({ status: "queued", limit: 5 });
+    await client.getEvaluationDiscoveryRun("discovery_run_1");
+    await client.listEvaluationDiscoveredCandidates({ discoveryRunId: "discovery_run_1", scoreBand: "high" });
+    await client.getEvaluationDiscoveredCandidate("candidate_1");
+    await client.createEvaluationSuppression({ suppressionId: "suppression_1", targetKind: "discovered_candidate", targetId: "candidate_1", reasonCode: "operator_hidden" });
+    await client.materializeProductFixture("candidate_1", { fixtureId: "product_fixture_1", displayName: "Product Fixture", domainClass: "schedule", fixturePayload: { goal: "safe" } });
+    await client.listProductFixtures({ reviewState: "draft", limit: 5 });
+    await client.getProductFixture("product_fixture_1");
+    await client.listProductFixtureRevisions("product_fixture_1", { limit: 5 });
+    await client.createProductFixtureRevision("product_fixture_1", { fixturePayload: { goal: "updated" } });
+    await client.reviewProductFixture("product_fixture_1", { revisionId: "revision_2", decision: "approved" });
+    await client.suppressProductFixture("product_fixture_1", { reasonCode: "operator_hidden" });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/evaluation/discovery-policies?enabled=true&limit=5", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/evaluation/discovery-policies/policy_1", expect.objectContaining({ method: "PUT" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/evaluation/discovery-runs", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/evaluation/discovered-candidates?discoveryRunId=discovery_run_1&scoreBand=high", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(9, "http://127.0.0.1:19192/v1/evaluation/suppressions", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(10, "http://127.0.0.1:19192/v1/evaluation/discovered-candidates/candidate_1/product-fixtures", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(11, "http://127.0.0.1:19192/v1/evaluation/product-fixtures?reviewState=draft&limit=5", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(14, "http://127.0.0.1:19192/v1/evaluation/product-fixtures/product_fixture_1/revisions", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(15, "http://127.0.0.1:19192/v1/evaluation/product-fixtures/product_fixture_1/review", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(16, "http://127.0.0.1:19192/v1/evaluation/product-fixtures/product_fixture_1/suppress", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("calls evaluation campaign dashboard and tool-call inspection surfaces", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(201, campaignFixture()))
+      .mockResolvedValueOnce(mockJSONResponse(200, { tenantId: "ten_eval", page: { limit: 5 }, items: [campaignFixture()] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, campaignFixture()))
+      .mockResolvedValueOnce(mockJSONResponse(200, campaignFixture({ status: "running" })))
+      .mockResolvedValueOnce(mockJSONResponse(200, campaignFixture({ status: "cancelled" })))
+      .mockResolvedValueOnce(mockJSONResponse(200, campaignFixture({ status: "published" })))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_eval",
+        page: { limit: 5 },
+        items: [{ campaignItemId: "campaign_item_1", campaignId: "campaign_1", tenantId: "ten_eval", sourceType: "product_fixture", sourceId: "product_fixture_1", sourceSnapshot: { currentRevisionId: "revision_1" }, suppressionCheckedAt: "2026-04-29T10:00:00Z", createdAt: "2026-04-29T10:00:00Z" }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_eval",
+        page: { limit: 5 },
+        items: [{ attemptGroupId: "attempt_group_1", campaignId: "campaign_1", campaignItemId: "campaign_item_1", tenantId: "ten_eval", replayAttemptIds: ["attempt_1"], comparisonIds: ["comparison_1"], liveValidationIds: ["ledger_1"], status: "completed", driftCount: 1, failureCount: 0, unsupportedCount: 0, operatorActionNeededCount: 1, createdAt: "2026-04-29T10:00:00Z", updatedAt: "2026-04-29T10:00:00Z" }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_eval",
+        page: { limit: 5 },
+        items: [{ projectionId: "projection_1", tenantId: "ten_eval", windowStart: "2026-04-29T09:00:00Z", windowEnd: "2026-04-29T10:00:00Z", campaignStatusCounts: { completed: 1 }, driftSummary: { total: 1 }, generatedAt: "2026-04-29T10:00:00Z" }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_eval",
+        page: { limit: 5 },
+        items: [{ inspectionId: "inspection_1", tenantId: "ten_eval", campaignId: "campaign_1", campaignItemId: "campaign_item_1", toolCallRef: "tool_call_1", originalEvidenceRef: "original_1", nonLiveReplayEvidenceRef: "replay_1", liveValidationLedgerRefs: ["ledger_1"], classification: "live_validation_completed", redactionStatus: "redacted", createdAt: "2026-04-29T10:00:00Z", updatedAt: "2026-04-29T10:00:00Z" }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { inspectionId: "inspection_1", tenantId: "ten_eval", campaignId: "campaign_1", campaignItemId: "campaign_item_1", toolCallRef: "tool_call_1", classification: "live_validation_completed", redactionStatus: "redacted", createdAt: "2026-04-29T10:00:00Z", updatedAt: "2026-04-29T10:00:00Z" }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192/",
+      accessToken: "token",
+      defaultTenantId: "ten_eval",
+      fetchImpl
+    });
+
+    await client.createEvaluationCampaign({ campaignId: "campaign_1", displayName: "Campaign", sourceSelections: [{ sourceType: "product_fixture", sourceId: "product_fixture_1" }], startImmediately: true });
+    await client.listEvaluationCampaigns({ limit: 5 });
+    await client.getEvaluationCampaign("campaign_1");
+    await client.startEvaluationCampaign("campaign_1");
+    await client.cancelEvaluationCampaign("campaign_1");
+    await client.publishEvaluationCampaignResults("campaign_1");
+    await client.listEvaluationCampaignItems("campaign_1", { limit: 5 });
+    await client.listEvaluationCampaignAttemptGroups("campaign_1", { limit: 5 });
+    await client.listEvaluationDashboard({ limit: 5 });
+    await client.listEvaluationToolCallInspections("campaign_1", { limit: 5 });
+    await client.getEvaluationToolCallInspection("inspection_1");
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/evaluation/campaigns", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/evaluation/campaigns?limit=5", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/evaluation/campaigns/campaign_1/start", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/evaluation/campaigns/campaign_1/publish-results", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/evaluation/campaigns/campaign_1/items?limit=5", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(8, "http://127.0.0.1:19192/v1/evaluation/campaigns/campaign_1/attempt-groups?limit=5", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(9, "http://127.0.0.1:19192/v1/evaluation/dashboard?limit=5", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(10, "http://127.0.0.1:19192/v1/evaluation/campaigns/campaign_1/tool-call-inspections?limit=5", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(11, "http://127.0.0.1:19192/v1/evaluation/tool-call-inspections/inspection_1", expect.anything());
   });
 
   it("calls live validation surfaces", async () => {

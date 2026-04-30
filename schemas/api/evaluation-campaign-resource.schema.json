@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/evaluation-campaign-resource.schema.json",
+  "title": "EvaluationCampaignContracts",
+  "oneOf": [
+    { "$ref": "#/$defs/replayCampaignResource" },
+    { "$ref": "#/$defs/campaignItemResource" },
+    { "$ref": "#/$defs/campaignAttemptGroupResource" }
+  ],
+  "$defs": {
+    "retentionState": {
+      "type": "string",
+      "enum": ["active", "expired", "deleted", "tombstone"]
+    },
+    "lifecycleStatus": {
+      "type": "string",
+      "enum": ["draft", "queued", "running", "completed", "published", "failed", "cancelled", "expired", "deleted"]
+    },
+    "sourceSnapshot": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "replayCampaignResource": {
+      "type": "object",
+      "required": ["campaignId", "displayName", "status", "createdAt", "retentionState"],
+      "additionalProperties": true,
+      "properties": {
+        "campaignId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "status": { "$ref": "#/$defs/lifecycleStatus" },
+        "scopeSummary": { "type": "string" },
+        "startedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "retentionState": { "$ref": "#/$defs/retentionState" },
+        "idempotencyKey": { "type": "string" }
+      }
+    },
+    "campaignItemResource": {
+      "type": "object",
+      "required": ["campaignItemId", "campaignId", "sourceType", "sourceId", "suppressionCheckedAt", "createdAt"],
+      "additionalProperties": true,
+      "properties": {
+        "campaignItemId": { "type": "string" },
+        "campaignId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "sourceType": { "type": "string", "enum": ["discovered_candidate", "product_fixture", "campaign_item"] },
+        "sourceId": { "type": "string" },
+        "sourceSnapshot": { "$ref": "#/$defs/sourceSnapshot" },
+        "selectionReason": { "type": "string" },
+        "suppressionCheckedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "campaignAttemptGroupResource": {
+      "type": "object",
+      "required": ["attemptGroupId", "campaignId", "campaignItemId", "status", "driftCount", "failureCount", "unsupportedCount", "operatorActionNeededCount", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "attemptGroupId": { "type": "string" },
+        "campaignId": { "type": "string" },
+        "campaignItemId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "replayAttemptIds": { "type": "array", "items": { "type": "string" } },
+        "comparisonIds": { "type": "array", "items": { "type": "string" } },
+        "liveValidationIds": { "type": "array", "items": { "type": "string" } },
+        "status": { "$ref": "#/$defs/lifecycleStatus" },
+        "driftCount": { "type": "integer", "minimum": 0 },
+        "failureCount": { "type": "integer", "minimum": 0 },
+        "unsupportedCount": { "type": "integer", "minimum": 0 },
+        "operatorActionNeededCount": { "type": "integer", "minimum": 0 },
+        "summary": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

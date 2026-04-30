@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/evaluation-dashboard-projection-generated.event.schema.json",
+  "title": "EvaluationDashboardProjectionGeneratedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": { "const": "evaluation.dashboard.projection_generated" },
+        "payload": {
+          "type": "object",
+          "required": ["tenantId", "projectionId", "generatedAt"],
+          "additionalProperties": true,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "projectionId": { "type": "string" },
+            "windowStart": { "type": "string", "format": "date-time" },
+            "windowEnd": { "type": "string", "format": "date-time" },
+            "generatedAt": { "type": "string", "format": "date-time" },
+            "outcome": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

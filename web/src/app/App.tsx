@@ -5,6 +5,14 @@ import {
   type ApprovalResource,
   type AuthMeResponse,
   type EventStreamSubscription,
+  type EvaluationCampaignAttemptGroupResource,
+  type EvaluationCampaignItemResource,
+  type EvaluationCampaignResource,
+  type EvaluationDashboardProjectionResource,
+  type EvaluationDiscoveredCandidateResource,
+  type EvaluationDiscoveryPolicyResource,
+  type EvaluationDiscoveryRunResource,
+  type EvaluationToolCallInspectionResource,
   type LiveValidationAttemptResource,
   type LiveValidationLedgerResource,
   type LiveValidationRetentionResource,
@@ -17,6 +25,7 @@ import {
   type OperatorDiagnosticListResponse,
   type OperatorFirstUsefulAction,
   type OperatorOnboardingResponse,
+  type ProductFixtureResource,
   type ReplayAttemptResource,
   type ReplayCandidateResource,
   type ReplayComparisonResource,
@@ -42,9 +51,18 @@ type ShellSnapshot = {
   activity: OperatorActivityListResponse | null;
   diagnostics: OperatorDiagnosticListResponse | null;
   replayCandidates: ReplayCandidateResource[];
+  discoveryPolicies: EvaluationDiscoveryPolicyResource[];
+  discoveryRuns: EvaluationDiscoveryRunResource[];
+  discoveredCandidates: EvaluationDiscoveredCandidateResource[];
+  campaigns: EvaluationCampaignResource[];
+  campaignItems: EvaluationCampaignItemResource[];
+  campaignAttemptGroups: EvaluationCampaignAttemptGroupResource[];
+  dashboardProjections: EvaluationDashboardProjectionResource[];
+  toolCallInspections: EvaluationToolCallInspectionResource[];
   replayAttempts: ReplayAttemptResource[];
   replayComparisons: ReplayComparisonResource[];
   replayFixtures: ReplayFixtureResource[];
+  productFixtures: ProductFixtureResource[];
   liveValidations: LiveValidationAttemptResource[];
   supportMatrix: LiveValidationSupportMatrixResource[];
   liveValidationLedger: LiveValidationLedgerResource[];
@@ -73,9 +91,18 @@ const EMPTY_SHELL: ShellSnapshot = {
   activity: null,
   diagnostics: null,
   replayCandidates: [],
+  discoveryPolicies: [],
+  discoveryRuns: [],
+  discoveredCandidates: [],
+  campaigns: [],
+  campaignItems: [],
+  campaignAttemptGroups: [],
+  dashboardProjections: [],
+  toolCallInspections: [],
   replayAttempts: [],
   replayComparisons: [],
   replayFixtures: [],
+  productFixtures: [],
   liveValidations: [],
   supportMatrix: [],
   liveValidationLedger: [],
@@ -220,9 +247,15 @@ export function App() {
         activity,
         diagnostics,
         replayCandidates,
+        discoveryPolicies,
+        discoveryRuns,
+        discoveredCandidates,
+        campaigns,
+        dashboardProjections,
         replayAttempts,
         replayComparisons,
         replayFixtures,
+        productFixtures,
         liveValidations,
         supportMatrix,
         killSwitches,
@@ -236,19 +269,29 @@ export function App() {
           severity: diagnosticSeverity ? (diagnosticSeverity as OperatorDiagnosticFinding["severity"]) : undefined
         }, scopedOptions),
         scopedClient.listReplayCandidates({ limit: 20 }, scopedOptions),
+        scopedClient.listEvaluationDiscoveryPolicies({ limit: 20 }, scopedOptions),
+        scopedClient.listEvaluationDiscoveryRuns({ limit: 20 }, scopedOptions),
+        scopedClient.listEvaluationDiscoveredCandidates({ limit: 20 }, scopedOptions),
+        scopedClient.listEvaluationCampaigns({ limit: 20 }, scopedOptions),
+        scopedClient.listEvaluationDashboard({ limit: 20 }, scopedOptions),
         scopedClient.listReplayAttempts({ limit: 20 }, scopedOptions),
         scopedClient.listReplayComparisons({ limit: 20 }, scopedOptions),
         scopedClient.listReplayFixtures({}, scopedOptions),
+        scopedClient.listProductFixtures({ limit: 20 }, scopedOptions),
         scopedClient.listLiveValidations({ limit: 20 }, scopedOptions),
         scopedClient.listLiveValidationSupportMatrix(scopedOptions),
         scopedClient.listLiveValidationKillSwitches({}, scopedOptions),
         membershipPromise
       ]);
       const latestValidation = liveValidations.items[0] ?? null;
-      const [liveValidationLedger, liveValidationRetention] = latestValidation ? await Promise.all([
-        scopedClient.listLiveValidationLedger(latestValidation.validationId, { limit: 20 }, scopedOptions).then((response) => response.items),
-        scopedClient.getLiveValidationRetention(latestValidation.validationId, scopedOptions)
-      ]) : [[], null] as const;
+      const latestCampaign = campaigns.items[0] ?? null;
+      const [liveValidationLedger, liveValidationRetention, campaignItems, campaignAttemptGroups, toolCallInspections] = await Promise.all([
+        latestValidation ? scopedClient.listLiveValidationLedger(latestValidation.validationId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
+        latestValidation ? scopedClient.getLiveValidationRetention(latestValidation.validationId, scopedOptions) : Promise.resolve(null),
+        latestCampaign ? scopedClient.listEvaluationCampaignItems(latestCampaign.campaignId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
+        latestCampaign ? scopedClient.listEvaluationCampaignAttemptGroups(latestCampaign.campaignId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
+        latestCampaign ? scopedClient.listEvaluationToolCallInspections(latestCampaign.campaignId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([])
+      ]);
 
       if (generation !== generationRef.current || activeTenantRef.current !== tenant.tenantId) {
         return;
@@ -260,9 +303,18 @@ export function App() {
         activity,
         diagnostics,
         replayCandidates: replayCandidates.items,
+        discoveryPolicies: discoveryPolicies.items,
+        discoveryRuns: discoveryRuns.items,
+        discoveredCandidates: discoveredCandidates.items,
+        campaigns: campaigns.items,
+        campaignItems,
+        campaignAttemptGroups,
+        dashboardProjections: dashboardProjections.items,
+        toolCallInspections,
         replayAttempts: replayAttempts.items,
         replayComparisons: replayComparisons.items,
         replayFixtures: replayFixtures.items,
+        productFixtures: productFixtures.items,
         liveValidations: liveValidations.items,
         supportMatrix: supportMatrix.items,
         liveValidationLedger,
@@ -521,6 +573,265 @@ export function App() {
       setError(errorMessage(caught));
     } finally {
       if (activeTenantRef.current === tenantId) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleSuppressCandidate(candidate: EvaluationDiscoveredCandidateResource) {
+    if (!activeTenantId) {
+      setError("Tenant context is required to suppress a discovered candidate.");
+      return;
+    }
+    const tenantId = activeTenantId;
+    const generation = generationRef.current;
+    setActiveActionId(`suppress-${candidate.discoveredCandidateId}`);
+    setError("");
+    try {
+      const client = buildClient(tenantId);
+      await client.createEvaluationSuppression({
+        targetKind: "discovered_candidate",
+        targetId: candidate.discoveredCandidateId,
+        reasonCode: "operator_hidden",
+        reason: "Suppressed from evaluation product review."
+      }, { tenantId });
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Suppressed ${candidate.discoveredCandidateId}.`);
+      await refreshShell({ soft: true, tenantId });
+    } catch (err) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleCreateProductFixture(candidate: EvaluationDiscoveredCandidateResource) {
+    if (!activeTenantId) {
+      setError("Tenant context is required to create a product fixture.");
+      return;
+    }
+    const tenantId = activeTenantId;
+    const generation = generationRef.current;
+    setActiveActionId(`fixture-${candidate.discoveredCandidateId}`);
+    setError("");
+    try {
+      const response = await buildClient(tenantId).materializeProductFixture(candidate.discoveredCandidateId, {
+        fixtureId: `product_fixture_${candidate.discoveredCandidateId}`,
+        displayName: `${candidate.sourceKind}:${candidate.sourceId}`,
+        domainClass: "schedule",
+        fixturePayload: {
+          sourceKind: candidate.sourceKind,
+          sourceId: candidate.sourceId
+        },
+        changeSummary: "Created from candidate discovery review."
+      }, { tenantId });
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Created product fixture ${response.fixture.fixtureId}.`);
+      await refreshShell({ soft: true, tenantId });
+    } catch (err) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleReviewProductFixture(fixture: ProductFixtureResource) {
+    if (!activeTenantId) {
+      setError("Tenant context is required to review a product fixture.");
+      return;
+    }
+    const tenantId = activeTenantId;
+    const generation = generationRef.current;
+    setActiveActionId(`review-${fixture.fixtureId}`);
+    setError("");
+    try {
+      await buildClient(tenantId).reviewProductFixture(fixture.fixtureId, {
+        revisionId: fixture.currentRevisionId,
+        decision: "approved",
+        reason: "Approved from operator shell."
+      }, { tenantId });
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Approved product fixture ${fixture.fixtureId}.`);
+      await refreshShell({ soft: true, tenantId });
+    } catch (err) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleReviseProductFixture(fixture: ProductFixtureResource) {
+    if (!activeTenantId) {
+      setError("Tenant context is required to revise a product fixture.");
+      return;
+    }
+    const tenantId = activeTenantId;
+    const generation = generationRef.current;
+    setActiveActionId(`revise-${fixture.fixtureId}`);
+    setError("");
+    try {
+      const response = await buildClient(tenantId).createProductFixtureRevision(fixture.fixtureId, {
+        fixturePayload: {
+          fixtureId: fixture.fixtureId,
+          sourceKind: fixture.sourceKind,
+          previousRevisionId: fixture.currentRevisionId
+        },
+        contentSummary: fixture.displayName,
+        changeSummary: "Revised from operator shell."
+      }, { tenantId });
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Created product fixture revision ${response.revision?.revisionId ?? fixture.fixtureId}.`);
+      await refreshShell({ soft: true, tenantId });
+    } catch (err) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleSuppressProductFixture(fixture: ProductFixtureResource) {
+    if (!activeTenantId) {
+      setError("Tenant context is required to suppress a product fixture.");
+      return;
+    }
+    const tenantId = activeTenantId;
+    const generation = generationRef.current;
+    setActiveActionId(`fixture-suppress-${fixture.fixtureId}`);
+    setError("");
+    try {
+      await buildClient(tenantId).suppressProductFixture(fixture.fixtureId, {
+        reasonCode: "operator_hidden",
+        reason: "Suppressed from operator shell."
+      }, { tenantId });
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Suppressed product fixture ${fixture.fixtureId}.`);
+      await refreshShell({ soft: true, tenantId });
+    } catch (err) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleCreateCampaign() {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const source = shell.productFixtures.find((fixture) => fixture.reviewState === "approved" && fixture.suppressionState !== "suppressed" && fixture.retentionState === "active") ?? shell.discoveredCandidates.find((candidate) => candidate.suppressionState !== "suppressed" && candidate.retentionState === "active");
+    if (!source) {
+      setError("Create or approve a selectable fixture or candidate before starting a campaign.");
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    setActiveActionId("campaign-create");
+    setError("");
+    try {
+      const sourceType = "fixtureId" in source ? "product_fixture" : "discovered_candidate";
+      const sourceId = "fixtureId" in source ? source.fixtureId : source.discoveredCandidateId;
+      const campaign = await buildClient(tenantId).createEvaluationCampaign({
+        campaignId: `campaign_${Date.now()}`,
+        displayName: `Evaluation Campaign ${shell.campaigns.length + 1}`,
+        scopeSummary: "Operator shell campaign",
+        sourceSelections: [{ sourceType, sourceId, selectionReason: "Selected from operator shell." }],
+        startImmediately: true
+      }, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Created campaign ${campaign.campaignId}.`);
+      await refreshShell({ soft: true, tenantId });
+    } catch (err) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleStartCampaign(campaign: EvaluationCampaignResource) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    setActiveActionId(`campaign-start-${campaign.campaignId}`);
+    setError("");
+    try {
+      const updated = await buildClient(tenantId).startEvaluationCampaign(campaign.campaignId, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Started campaign ${updated.campaignId}.`);
+      await refreshShell({ soft: true, tenantId });
+    } catch (err) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handlePublishCampaign(campaign: EvaluationCampaignResource) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    setActiveActionId(`campaign-publish-${campaign.campaignId}`);
+    setError("");
+    try {
+      const updated = await buildClient(tenantId).publishEvaluationCampaignResults(campaign.campaignId, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Published campaign ${updated.campaignId}.`);
+      await refreshShell({ soft: true, tenantId });
+    } catch (err) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (isCurrentTenantWork(generation, tenantId)) {
         setActiveActionId("");
       }
     }
@@ -974,6 +1285,63 @@ export function App() {
             <span className="count-chip">{shell.replayCandidates.length}</span>
           </div>
 
+          <div className="discovery-box" aria-label="candidate discovery review">
+            <div className="stack-head">
+              <div>
+                <p className="section-kicker">Candidate Discovery</p>
+                <strong>Product Candidates</strong>
+              </div>
+              <span className="count-chip">{shell.discoveredCandidates.length}</span>
+            </div>
+            {shell.discoveryPolicies.length ? (
+              <div className="mini-grid">
+                {shell.discoveryPolicies.map((policy) => (
+                  <div className="mini-metric" key={policy.policyId}>
+                    <span>{policy.enabled ? "enabled" : "disabled"}</span>
+                    <strong>{policy.maxInspectedRecords}/{policy.maxEmittedCandidates}</strong>
+                    <small>{policy.policyId}</small>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">No discovery policy is configured for this tenant.</div>
+            )}
+            {shell.discoveredCandidates.length ? (
+              <div className="stack-list">
+                {shell.discoveredCandidates.map((candidate) => (
+                  <article className="stack-card" key={candidate.discoveredCandidateId}>
+                    <div className="stack-head">
+                      <strong>{candidate.sourceKind}:{candidate.sourceId}</strong>
+                      <span className={`status-chip status-${candidate.scoreBand}`}>{candidate.scoreBand}</span>
+                    </div>
+                    <p>{candidate.redactionStatus} evidence · {candidate.readinessStatus} · {candidate.suppressionState}</p>
+                    <small>{candidate.discoveryRunId} · {candidate.retentionState}</small>
+                    <div className="inline-actions">
+                      <button disabled={!canUseTenantActions} type="button" onClick={() => {
+                        void inspectRoute(`/v1/evaluation/discovered-candidates/${candidate.discoveredCandidateId}`, candidate.discoveredCandidateId);
+                      }}>
+                        Inspect
+                      </button>
+                      <button disabled={!canUseTenantActions || candidate.suppressionState === "suppressed" || activeActionId === `suppress-${candidate.discoveredCandidateId}`} type="button" onClick={() => {
+                        void handleSuppressCandidate(candidate);
+                      }}>
+                        Suppress
+                      </button>
+                      <button disabled={!canUseTenantActions || candidate.suppressionState === "suppressed" || activeActionId === `fixture-${candidate.discoveredCandidateId}`} type="button" onClick={() => {
+                        void handleCreateProductFixture(candidate);
+                      }}>
+                        Create Fixture
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">No discovered candidates are awaiting review.</div>
+            )}
+            {shell.discoveryRuns.length ? <p className="muted-line">{shell.discoveryRuns.length} bounded discovery runs recorded.</p> : null}
+          </div>
+
           {shell.replayCandidates.length ? (
             <div className="stack-list">
               {shell.replayCandidates.map((candidate) => (
@@ -1008,6 +1376,131 @@ export function App() {
           ) : (
             <div className="empty-state">No curated replay candidates or fixtures are available in this environment.</div>
           )}
+
+          <div className="campaign-box" aria-label="evaluation campaigns">
+            <div className="stack-head">
+              <div>
+                <p className="section-kicker">Campaigns</p>
+                <strong>Replay Campaigns</strong>
+              </div>
+              <span className="count-chip">{shell.campaigns.length}</span>
+            </div>
+            <div className="inline-actions">
+              <button className="primary" disabled={!canUseTenantActions || activeActionId === "campaign-create"} type="button" onClick={() => {
+                void handleCreateCampaign();
+              }}>
+                Create Campaign
+              </button>
+            </div>
+            {shell.campaigns.length ? (
+              <div className="stack-list">
+                {shell.campaigns.map((campaign) => (
+                  <article className="stack-card" key={campaign.campaignId}>
+                    <div className="stack-head">
+                      <strong>{campaign.displayName}</strong>
+                      <span className={`status-chip status-${campaign.status}`}>{campaign.status}</span>
+                    </div>
+                    <p>{campaign.scopeSummary || "No campaign scope summary."}</p>
+                    <small>{campaign.campaignId} · {campaign.retentionState}</small>
+                    <div className="inline-actions">
+                      <button disabled={!canUseTenantActions || !["draft", "queued"].includes(campaign.status) || activeActionId === `campaign-start-${campaign.campaignId}`} type="button" onClick={() => {
+                        void handleStartCampaign(campaign);
+                      }}>
+                        Start Campaign
+                      </button>
+                      <button disabled={!canUseTenantActions || campaign.status !== "completed" || activeActionId === `campaign-publish-${campaign.campaignId}`} type="button" onClick={() => {
+                        void handlePublishCampaign(campaign);
+                      }}>
+                        Publish Results
+                      </button>
+                      <button disabled={!canUseTenantActions} type="button" onClick={() => {
+                        void inspectRoute(`/v1/evaluation/campaigns/${campaign.campaignId}`, campaign.displayName);
+                      }}>
+                        Inspect Campaign
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">No replay campaigns have been started for this tenant.</div>
+            )}
+            {shell.campaignAttemptGroups.length ? (
+              <div className="mini-card-grid">
+                {shell.campaignAttemptGroups.map((group) => (
+                  <article className="mini-card" key={group.attemptGroupId}>
+                    <strong>{group.attemptGroupId}</strong>
+                    <small>{group.status}</small>
+                    <p>{group.driftCount} drift · {group.failureCount} failures · {group.unsupportedCount} unsupported · {group.operatorActionNeededCount} action</p>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="dashboard-box" aria-label="evaluation dashboard">
+            <div className="stack-head">
+              <div>
+                <p className="section-kicker">Dashboard</p>
+                <strong>Evaluation Signals</strong>
+              </div>
+              <span className="count-chip">{shell.dashboardProjections.length}</span>
+            </div>
+            {shell.dashboardProjections[0] ? (
+              <div className="mini-grid">
+                <div className="mini-metric">
+                  <span>drift</span>
+                  <strong>{shell.dashboardProjections[0].driftSummary?.total ?? 0}</strong>
+                  <small>latest projection</small>
+                </div>
+                <div className="mini-metric">
+                  <span>failures</span>
+                  <strong>{shell.dashboardProjections[0].failureSummary?.total ?? 0}</strong>
+                  <small>campaign evidence</small>
+                </div>
+                <div className="mini-metric">
+                  <span>live links</span>
+                  <strong>{shell.dashboardProjections[0].liveValidationSummary?.linked ?? 0}</strong>
+                  <small>ledger references</small>
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state">No dashboard projection is available yet.</div>
+            )}
+          </div>
+
+          <div className="inspection-box" aria-label="tool-call inspections">
+            <div className="stack-head">
+              <div>
+                <p className="section-kicker">Inspection</p>
+                <strong>Tool Calls</strong>
+              </div>
+              <span className="count-chip">{shell.toolCallInspections.length}</span>
+            </div>
+            {shell.toolCallInspections.length ? (
+              <div className="stack-list">
+                {shell.toolCallInspections.map((inspection) => (
+                  <article className="stack-card" key={inspection.inspectionId}>
+                    <div className="stack-head">
+                      <strong>{inspection.toolCallRef}</strong>
+                      <span className={`status-chip status-${inspection.classification}`}>{inspection.classification}</span>
+                    </div>
+                    <p>{inspection.diffSummary || "No diff summary recorded."}</p>
+                    <small>{inspection.redactionStatus} · {(inspection.liveValidationLedgerRefs ?? []).join(", ") || "no live ledger"}</small>
+                    <div className="inline-actions">
+                      <button disabled={!canUseTenantActions} type="button" onClick={() => {
+                        void inspectRoute(`/v1/evaluation/tool-call-inspections/${inspection.inspectionId}`, inspection.inspectionId);
+                      }}>
+                        Inspect Tool Call
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">No tool-call inspections are linked to the latest campaign.</div>
+            )}
+          </div>
 
           <div className="live-validation-box" aria-label="live validation controls">
             <div className="stack-head">
@@ -1116,6 +1609,44 @@ export function App() {
             <strong>Fixtures</strong>
             <span>Fixtures are engineer-managed and repo-backed; this shell intentionally does not expose fixture editing controls.</span>
           </div>
+          {shell.productFixtures.length ? (
+            <div className="stack-list">
+              {shell.productFixtures.map((fixture) => (
+                <article className="stack-card" key={fixture.fixtureId}>
+                  <div className="stack-head">
+                    <strong>{fixture.displayName}</strong>
+                    <span className={`status-chip status-${fixture.reviewState}`}>{fixture.reviewState}</span>
+                  </div>
+                  <p>{fixture.sourceKind} · {fixture.suppressionState} · {fixture.retentionState}</p>
+                  <small>{fixture.fixtureId} · {fixture.currentRevisionId}</small>
+                  <div className="inline-actions">
+                    <button disabled={!canUseTenantActions || fixture.reviewState === "approved" || activeActionId === `review-${fixture.fixtureId}`} type="button" onClick={() => {
+                      void handleReviewProductFixture(fixture);
+                    }}>
+                      Approve Fixture
+                    </button>
+                    <button disabled={!canUseTenantActions || activeActionId === `revise-${fixture.fixtureId}`} type="button" onClick={() => {
+                      void handleReviseProductFixture(fixture);
+                    }}>
+                      Revise Fixture
+                    </button>
+                    <button disabled={!canUseTenantActions || fixture.suppressionState === "suppressed" || activeActionId === `fixture-suppress-${fixture.fixtureId}`} type="button" onClick={() => {
+                      void handleSuppressProductFixture(fixture);
+                    }}>
+                      Suppress Fixture
+                    </button>
+                    <button disabled={!canUseTenantActions} type="button" onClick={() => {
+                      void inspectRoute(`/v1/evaluation/product-fixtures/${fixture.fixtureId}`, fixture.displayName);
+                    }}>
+                      Inspect Fixture
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">No product-managed fixtures have been created yet.</div>
+          )}
           {shell.replayFixtures.length ? (
             <div className="mini-card-grid">
               {shell.replayFixtures.map((fixture) => (

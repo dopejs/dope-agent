@@ -1,6 +1,6 @@
 # Evaluation Product Expansion
 
-Status: proposed
+Status: implementation complete; final soak evidence pending
 
 Authority: This document is the authoritative upstream spec for Roadmap 41, the evaluation
 product expansion that completes the remaining Roadmap 33 out-of-scope product gaps.
@@ -147,6 +147,10 @@ The implementation plan MUST define campaign and dashboard resource shapes with:
   unbounded full-history scans.
 - Campaign contract tests proving live validation outcomes link to side-effect ledger
   records without replacing underlying runtime truth.
+- Phase 8 evidence is recorded in
+  `specs/026-evaluation-product-expansion/quickstart.md`, including targeted Go tests,
+  full daemon verification, contract tests, client tests/build, local daemon smoke,
+  Roadmap 41 product smoke, and Roadmap 39 soak rerun status.
 
 ## Definition Of Done
 

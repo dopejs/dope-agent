@@ -16,6 +16,27 @@ const mockClient = {
   createRun: vi.fn(),
   queryChat: vi.fn(),
   listReplayCandidates: vi.fn(),
+  listEvaluationDiscoveryPolicies: vi.fn(),
+  listEvaluationDiscoveryRuns: vi.fn(),
+  listEvaluationDiscoveredCandidates: vi.fn(),
+  getEvaluationDiscoveredCandidate: vi.fn(),
+  createEvaluationSuppression: vi.fn(),
+  materializeProductFixture: vi.fn(),
+  listProductFixtures: vi.fn(),
+  createProductFixtureRevision: vi.fn(),
+  reviewProductFixture: vi.fn(),
+  suppressProductFixture: vi.fn(),
+  createEvaluationCampaign: vi.fn(),
+  listEvaluationCampaigns: vi.fn(),
+  getEvaluationCampaign: vi.fn(),
+  startEvaluationCampaign: vi.fn(),
+  cancelEvaluationCampaign: vi.fn(),
+  publishEvaluationCampaignResults: vi.fn(),
+  listEvaluationCampaignItems: vi.fn(),
+  listEvaluationCampaignAttemptGroups: vi.fn(),
+  listEvaluationDashboard: vi.fn(),
+  listEvaluationToolCallInspections: vi.fn(),
+  getEvaluationToolCallInspection: vi.fn(),
   getReplayCandidate: vi.fn(),
   createReplayAttempt: vi.fn(),
   listReplayAttempts: vi.fn(),
@@ -131,6 +152,37 @@ function membershipFixtureBase() {
   };
 }
 
+function productFixtureMutationFixture(overrides: Record<string, unknown> = {}) {
+  const reviewState = String(overrides.reviewState ?? "draft");
+  const suppressionState = String(overrides.suppressionState ?? "none");
+  const revisionId = String(overrides.revisionId ?? "revision_product_fixture_candidate_product_1_1");
+  return {
+    fixture: {
+      fixtureId: "product_fixture_candidate_product_1",
+      tenantId: "ten_personal",
+      displayName: "run:run_source_1",
+      domainClass: "schedule",
+      sourceKind: "discovered_candidate",
+      sourceCandidateId: "candidate_product_1",
+      currentRevisionId: revisionId,
+      reviewState,
+      suppressionState,
+      retentionState: "active",
+      createdAt: "2026-04-29T10:00:00Z",
+      updatedAt: "2026-04-29T10:00:00Z"
+    },
+    revision: {
+      revisionId,
+      fixtureId: "product_fixture_candidate_product_1",
+      tenantId: "ten_personal",
+      revisionNumber: 1,
+      fixturePayload: { sourceKind: "run", sourceId: "run_source_1" },
+      redactionStatus: "redacted",
+      createdAt: "2026-04-29T10:00:00Z"
+    }
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -215,6 +267,48 @@ describe("App", () => {
     mockClient.createRun.mockReset();
     mockClient.queryChat.mockReset();
     mockClient.listReplayCandidates.mockReset().mockResolvedValue({ environmentScope: "test", items: [] });
+    mockClient.listEvaluationDiscoveryPolicies.mockReset().mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [] });
+    mockClient.listEvaluationDiscoveryRuns.mockReset().mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [] });
+    mockClient.listEvaluationDiscoveredCandidates.mockReset().mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [] });
+    mockClient.getEvaluationDiscoveredCandidate.mockReset();
+    mockClient.createEvaluationSuppression.mockReset().mockResolvedValue({ suppressionId: "suppression_1", tenantId: "ten_personal", targetKind: "discovered_candidate", targetId: "candidate_1", reasonCode: "operator_hidden", createdAt: "2026-04-29T10:00:00Z", active: true });
+    mockClient.materializeProductFixture.mockReset().mockResolvedValue(productFixtureMutationFixture());
+    mockClient.listProductFixtures.mockReset().mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [] });
+    mockClient.createProductFixtureRevision.mockReset().mockResolvedValue(productFixtureMutationFixture({ revisionId: "revision_product_fixture_candidate_product_1_2" }));
+    mockClient.reviewProductFixture.mockReset().mockResolvedValue(productFixtureMutationFixture({ reviewState: "approved" }));
+    mockClient.suppressProductFixture.mockReset().mockResolvedValue(productFixtureMutationFixture({ suppressionState: "suppressed" }));
+    mockClient.createEvaluationCampaign.mockReset().mockResolvedValue({
+      campaignId: "campaign_1",
+      tenantId: "ten_personal",
+      displayName: "Campaign",
+      status: "queued",
+      createdAt: "2026-04-29T10:00:00Z",
+      retentionState: "active"
+    });
+    mockClient.listEvaluationCampaigns.mockReset().mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [] });
+    mockClient.getEvaluationCampaign.mockReset();
+    mockClient.startEvaluationCampaign.mockReset().mockResolvedValue({
+      campaignId: "campaign_1",
+      tenantId: "ten_personal",
+      displayName: "Campaign",
+      status: "running",
+      createdAt: "2026-04-29T10:00:00Z",
+      retentionState: "active"
+    });
+    mockClient.cancelEvaluationCampaign.mockReset();
+    mockClient.publishEvaluationCampaignResults.mockReset().mockResolvedValue({
+      campaignId: "campaign_1",
+      tenantId: "ten_personal",
+      displayName: "Campaign",
+      status: "published",
+      createdAt: "2026-04-29T10:00:00Z",
+      retentionState: "active"
+    });
+    mockClient.listEvaluationCampaignItems.mockReset().mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [] });
+    mockClient.listEvaluationCampaignAttemptGroups.mockReset().mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [] });
+    mockClient.listEvaluationDashboard.mockReset().mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [] });
+    mockClient.listEvaluationToolCallInspections.mockReset().mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [] });
+    mockClient.getEvaluationToolCallInspection.mockReset();
     mockClient.getReplayCandidate.mockReset();
     mockClient.createReplayAttempt.mockReset();
     mockClient.listReplayAttempts.mockReset().mockResolvedValue({ environmentScope: "test", items: [] });
@@ -598,6 +692,324 @@ describe("App", () => {
     await waitFor(() => {
       expect(mockClient.createReplayComparison).toHaveBeenCalledWith("attempt_1", {}, { tenantId: "ten_personal" });
       expect(screen.getByText(/Comparison comparison_1 matched/i)).not.toBeNull();
+    });
+  });
+
+  it("loads candidate discovery review state and suppresses discovered candidates", async () => {
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-04-29T10:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-04-29T10:00:00Z" });
+    mockClient.listEvaluationDiscoveryPolicies.mockResolvedValue({
+      tenantId: "ten_personal",
+      page: { limit: 20 },
+      items: [{
+        policyId: "policy_1",
+        tenantId: "ten_personal",
+        enabled: true,
+        sourceKinds: ["run"],
+        windowStart: "2026-04-29T09:00:00Z",
+        windowEnd: "2026-04-29T10:00:00Z",
+        maxInspectedRecords: 20,
+        maxEmittedCandidates: 3,
+        costBudget: 5,
+        createdAt: "2026-04-29T10:00:00Z",
+        updatedAt: "2026-04-29T10:00:00Z"
+      }]
+    });
+    mockClient.listEvaluationDiscoveryRuns.mockResolvedValue({
+      tenantId: "ten_personal",
+      page: { limit: 20 },
+      items: [{
+        discoveryRunId: "discovery_run_1",
+        tenantId: "ten_personal",
+        policyId: "policy_1",
+        status: "partial",
+        sourceKinds: ["run"],
+        windowStart: "2026-04-29T09:00:00Z",
+        windowEnd: "2026-04-29T10:00:00Z",
+        maxInspectedRecords: 20,
+        maxEmittedCandidates: 3,
+        costBudget: 5,
+        inspectedRecords: 20,
+        emittedCandidates: 1,
+        partialReason: "max_inspected_records",
+        startedAt: "2026-04-29T10:00:00Z",
+        updatedAt: "2026-04-29T10:00:00Z"
+      }]
+    });
+    mockClient.listEvaluationDiscoveredCandidates
+      .mockResolvedValueOnce({
+        tenantId: "ten_personal",
+        page: { limit: 20 },
+        items: [{
+          discoveredCandidateId: "candidate_product_1",
+          tenantId: "ten_personal",
+          discoveryRunId: "discovery_run_1",
+          sourceKind: "run",
+          sourceId: "run_source_1",
+          score: 0.92,
+          scoreBand: "high",
+          redactionStatus: "redacted",
+          readinessStatus: "fully_replayable",
+          suppressionState: "none",
+          retentionState: "active",
+          createdAt: "2026-04-29T10:00:00Z",
+          updatedAt: "2026-04-29T10:00:00Z"
+        }]
+      })
+      .mockResolvedValue({
+        tenantId: "ten_personal",
+        page: { limit: 20 },
+        items: [{
+          discoveredCandidateId: "candidate_product_1",
+          tenantId: "ten_personal",
+          discoveryRunId: "discovery_run_1",
+          sourceKind: "run",
+          sourceId: "run_source_1",
+          score: 0.92,
+          scoreBand: "high",
+          redactionStatus: "redacted",
+          readinessStatus: "fully_replayable",
+          suppressionState: "suppressed",
+          retentionState: "active",
+          createdAt: "2026-04-29T10:00:00Z",
+          updatedAt: "2026-04-29T10:01:00Z"
+        }]
+      });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    await waitFor(() => {
+      expect(screen.getByText("Candidate Discovery")).not.toBeNull();
+      expect(screen.getByText("Product Candidates")).not.toBeNull();
+      expect(screen.getByText("policy_1")).not.toBeNull();
+      expect(screen.getByText("run:run_source_1")).not.toBeNull();
+      expect(screen.getByText(/redacted evidence .* fully_replayable .* none/i)).not.toBeNull();
+      expect(screen.getByText(/1 bounded discovery runs recorded/i)).not.toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Suppress" }));
+
+    await waitFor(() => {
+      expect(mockClient.createEvaluationSuppression).toHaveBeenCalledWith({
+        targetKind: "discovered_candidate",
+        targetId: "candidate_product_1",
+        reasonCode: "operator_hidden",
+        reason: "Suppressed from evaluation product review."
+      }, { tenantId: "ten_personal" });
+      expect(screen.getByText(/Suppressed candidate_product_1/i)).not.toBeNull();
+      expect(screen.getByText(/redacted evidence .* fully_replayable .* suppressed/i)).not.toBeNull();
+    });
+  });
+
+  it("creates, reviews, and suppresses product fixtures from discovered candidates", async () => {
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-04-29T10:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-04-29T10:00:00Z" });
+    mockClient.listEvaluationDiscoveryPolicies.mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [] });
+    mockClient.listEvaluationDiscoveryRuns.mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [] });
+    mockClient.listEvaluationDiscoveredCandidates.mockResolvedValue({
+      tenantId: "ten_personal",
+      page: { limit: 20 },
+      items: [{
+        discoveredCandidateId: "candidate_product_1",
+        tenantId: "ten_personal",
+        discoveryRunId: "discovery_run_1",
+        sourceKind: "run",
+        sourceId: "run_source_1",
+        score: 0.92,
+        scoreBand: "high",
+        redactionStatus: "redacted",
+        readinessStatus: "fully_replayable",
+        suppressionState: "none",
+        retentionState: "active",
+        createdAt: "2026-04-29T10:00:00Z",
+        updatedAt: "2026-04-29T10:00:00Z"
+      }]
+    });
+    mockClient.listProductFixtures
+      .mockResolvedValueOnce({ tenantId: "ten_personal", page: { limit: 20 }, items: [] })
+      .mockResolvedValueOnce({ tenantId: "ten_personal", page: { limit: 20 }, items: [productFixtureMutationFixture().fixture] })
+      .mockResolvedValueOnce({ tenantId: "ten_personal", page: { limit: 20 }, items: [productFixtureMutationFixture({ revisionId: "revision_product_fixture_candidate_product_1_2" }).fixture] })
+      .mockResolvedValueOnce({ tenantId: "ten_personal", page: { limit: 20 }, items: [productFixtureMutationFixture({ reviewState: "approved", revisionId: "revision_product_fixture_candidate_product_1_2" }).fixture] })
+      .mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [productFixtureMutationFixture({ reviewState: "approved", suppressionState: "suppressed", revisionId: "revision_product_fixture_candidate_product_1_2" }).fixture] });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    await screen.findByRole("button", { name: "Create Fixture" });
+    await user.click(screen.getByRole("button", { name: "Create Fixture" }));
+
+    await waitFor(() => {
+      expect(mockClient.materializeProductFixture).toHaveBeenCalledWith("candidate_product_1", expect.objectContaining({
+        fixtureId: "product_fixture_candidate_product_1",
+        displayName: "run:run_source_1",
+        domainClass: "schedule"
+      }), { tenantId: "ten_personal" });
+      expect(screen.getByText(/Created product fixture product_fixture_candidate_product_1/i)).not.toBeNull();
+      expect(screen.getAllByText(/product_fixture_candidate_product_1/i).length).toBeGreaterThan(0);
+    });
+
+    await user.click(screen.getByRole("button", { name: "Revise Fixture" }));
+    await waitFor(() => {
+      expect(mockClient.createProductFixtureRevision).toHaveBeenCalledWith("product_fixture_candidate_product_1", expect.objectContaining({
+        contentSummary: "run:run_source_1",
+        changeSummary: "Revised from operator shell."
+      }), { tenantId: "ten_personal" });
+      expect(screen.getByText(/Created product fixture revision revision_product_fixture_candidate_product_1_2/i)).not.toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Approve Fixture" }));
+    await waitFor(() => {
+      expect(mockClient.reviewProductFixture).toHaveBeenCalledWith("product_fixture_candidate_product_1", {
+        revisionId: "revision_product_fixture_candidate_product_1_2",
+        decision: "approved",
+        reason: "Approved from operator shell."
+      }, { tenantId: "ten_personal" });
+      expect(screen.getByText(/Approved product fixture product_fixture_candidate_product_1/i)).not.toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Suppress Fixture" }));
+    await waitFor(() => {
+      expect(mockClient.suppressProductFixture).toHaveBeenCalledWith("product_fixture_candidate_product_1", {
+        reasonCode: "operator_hidden",
+        reason: "Suppressed from operator shell."
+      }, { tenantId: "ten_personal" });
+      expect(screen.getByText(/Suppressed product fixture product_fixture_candidate_product_1/i)).not.toBeNull();
+    });
+  });
+
+  it("loads campaigns dashboard and tool-call inspections", async () => {
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-04-29T10:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-04-29T10:00:00Z" });
+    mockClient.listProductFixtures.mockResolvedValue({ tenantId: "ten_personal", page: { limit: 20 }, items: [productFixtureMutationFixture({ reviewState: "approved" }).fixture] });
+    mockClient.listEvaluationCampaigns
+      .mockResolvedValueOnce({
+        tenantId: "ten_personal",
+        page: { limit: 20 },
+        items: [{
+          campaignId: "campaign_product_1",
+          tenantId: "ten_personal",
+          displayName: "Campaign Product",
+          status: "completed",
+          scopeSummary: "release gate",
+          createdAt: "2026-04-29T10:00:00Z",
+          retentionState: "active"
+        }]
+      })
+      .mockResolvedValue({
+        tenantId: "ten_personal",
+        page: { limit: 20 },
+        items: [{
+          campaignId: "campaign_product_1",
+          tenantId: "ten_personal",
+          displayName: "Campaign Product",
+          status: "published",
+          scopeSummary: "release gate",
+          createdAt: "2026-04-29T10:00:00Z",
+          retentionState: "active"
+        }]
+      });
+    mockClient.listEvaluationCampaignItems.mockResolvedValue({
+      tenantId: "ten_personal",
+      page: { limit: 20 },
+      items: [{
+        campaignItemId: "campaign_item_1",
+        campaignId: "campaign_product_1",
+        tenantId: "ten_personal",
+        sourceType: "product_fixture",
+        sourceId: "product_fixture_candidate_product_1",
+        sourceSnapshot: { currentRevisionId: "revision_1" },
+        suppressionCheckedAt: "2026-04-29T10:00:00Z",
+        createdAt: "2026-04-29T10:00:00Z"
+      }]
+    });
+    mockClient.listEvaluationCampaignAttemptGroups.mockResolvedValue({
+      tenantId: "ten_personal",
+      page: { limit: 20 },
+      items: [{
+        attemptGroupId: "attempt_group_1",
+        campaignId: "campaign_product_1",
+        campaignItemId: "campaign_item_1",
+        tenantId: "ten_personal",
+        replayAttemptIds: ["attempt_1"],
+        comparisonIds: ["comparison_1"],
+        liveValidationIds: ["ledger_1"],
+        status: "completed",
+        driftCount: 2,
+        failureCount: 1,
+        unsupportedCount: 0,
+        operatorActionNeededCount: 1,
+        createdAt: "2026-04-29T10:00:00Z",
+        updatedAt: "2026-04-29T10:00:00Z"
+      }]
+    });
+    mockClient.listEvaluationDashboard.mockResolvedValue({
+      tenantId: "ten_personal",
+      page: { limit: 20 },
+      items: [{
+        projectionId: "projection_1",
+        tenantId: "ten_personal",
+        windowStart: "2026-04-29T09:00:00Z",
+        windowEnd: "2026-04-29T10:00:00Z",
+        driftSummary: { total: 2 },
+        failureSummary: { total: 1 },
+        liveValidationSummary: { linked: 1 },
+        generatedAt: "2026-04-29T10:00:00Z"
+      }]
+    });
+    mockClient.listEvaluationToolCallInspections.mockResolvedValue({
+      tenantId: "ten_personal",
+      page: { limit: 20 },
+      items: [{
+        inspectionId: "inspection_1",
+        tenantId: "ten_personal",
+        campaignId: "campaign_product_1",
+        campaignItemId: "campaign_item_1",
+        toolCallRef: "tool_call_1",
+        liveValidationLedgerRefs: ["ledger_1"],
+        classification: "live_validation_completed",
+        diffSummary: "redacted matched",
+        redactionStatus: "redacted",
+        createdAt: "2026-04-29T10:00:00Z",
+        updatedAt: "2026-04-29T10:00:00Z"
+      }]
+    });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    await waitFor(() => {
+      expect(screen.getByText("Replay Campaigns")).not.toBeNull();
+      expect(screen.getByText("Campaign Product")).not.toBeNull();
+      expect(screen.getByText(/2 drift .* 1 failures .* 0 unsupported .* 1 action/i)).not.toBeNull();
+      expect(screen.getByText("Evaluation Signals")).not.toBeNull();
+      expect(screen.getAllByText("2").length).toBeGreaterThan(0);
+      expect(screen.getByText("tool_call_1")).not.toBeNull();
+      expect(screen.getByText(/redacted matched/i)).not.toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Publish Results" }));
+    await waitFor(() => {
+      expect(mockClient.publishEvaluationCampaignResults).toHaveBeenCalledWith("campaign_product_1", { tenantId: "ten_personal" });
+      expect(screen.getByText(/Published campaign campaign_1/i)).not.toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Create Campaign" }));
+    await waitFor(() => {
+      expect(mockClient.createEvaluationCampaign).toHaveBeenCalledWith(expect.objectContaining({
+        displayName: "Evaluation Campaign 2",
+        sourceSelections: [expect.objectContaining({ sourceType: "product_fixture", sourceId: "product_fixture_candidate_product_1" })],
+        startImmediately: true
+      }), { tenantId: "ten_personal" });
     });
   });
 

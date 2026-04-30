@@ -282,6 +282,9 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/events", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleEvents(deps.EventBus, deps.Store, w, r)
 	}))
+	// Roadmap 41 evaluation product routes are scaffolded under this
+	// prefix. Mutating product routes return 501 until their domain
+	// handlers are enabled by the user-story tasks.
 	mux.HandleFunc("/v1/evaluation/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleEvaluationRoutes(deps.Evaluation, deps.LiveValidation, deps.EventBus, deps.Store, w, r)
 	}))

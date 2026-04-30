@@ -44,11 +44,14 @@ type CreateReplayAttemptRequest = evaluation.CreateReplayAttemptInput
 type CreateReplayComparisonRequest = evaluation.CreateComparisonInput
 
 func handleEvaluationRoutes(manager *evaluation.Manager, liveValidationManager *livevalidation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/v1/evaluation/")
+	if handleEvaluationProductRoutes(sqliteStore, path, w, r) {
+		return
+	}
 	if manager == nil {
 		writeError(w, http.StatusInternalServerError, "evaluation manager is not configured")
 		return
 	}
-	path := strings.TrimPrefix(r.URL.Path, "/v1/evaluation/")
 	switch {
 	case path == "fixtures":
 		handleEvaluationFixtures(manager, w, r)

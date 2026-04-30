@@ -1,30 +1,33 @@
 package evaluation
 
 import (
-	"path/filepath"
+	"errors"
 	"testing"
+	"time"
 )
 
-func TestLoadRegressionFixturesRequiresRequiredDomainClasses(t *testing.T) {
-	fixtures, err := LoadRegressionFixtures(filepath.Join("testdata", "fixtures"), "test")
-	if err != nil {
-		t.Fatalf("LoadRegressionFixtures returned error: %v", err)
+func TestRepoManagedFixtureCannotBeEditedThroughProductPath(t *testing.T) {
+	now := time.Date(2026, 4, 29, 10, 0, 0, 0, time.UTC)
+	repoFixture := ProductManagedFixture{
+		FixtureID:        "fixture_repo_schedule",
+		TenantID:         "ten_eval",
+		DisplayName:      "Repo Fixture",
+		DomainClass:      FixtureDomainSchedule,
+		SourceKind:       string(SourceKindFixture),
+		ReviewState:      ProductStatusApproved,
+		SuppressionState: SuppressionStateNone,
+		RetentionState:   RetentionStateActive,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 
-	seen := map[FixtureDomainClass]bool{}
-	for _, fixture := range fixtures {
-		seen[fixture.DomainClass] = true
-		if fixture.FixtureID == "" || fixture.ManifestPath == "" {
-			t.Fatalf("expected fixture identity and manifest path, got %+v", fixture)
-		}
-		if len(fixture.SourceRefs) == 0 || len(fixture.CapturedEvidenceRefs) == 0 {
-			t.Fatalf("expected provenance and evidence refs for %+v", fixture)
-		}
+	if err := EnsureProductFixtureEditable(repoFixture); !errors.Is(err, ErrEvaluationRepoFixtureImmutable) {
+		t.Fatalf("err=%v, want repo fixture immutable", err)
 	}
-
-	for _, domain := range []FixtureDomainClass{FixtureDomainSchedule, FixtureDomainIntegration, FixtureDomainComputerUse} {
-		if !seen[domain] {
-			t.Fatalf("expected fixture for domain %s", domain)
-		}
+	if err := RejectRepoManagedFixtureEdit("repo_fixture"); !errors.Is(err, ErrEvaluationRepoFixtureImmutable) {
+		t.Fatalf("err=%v, want repo fixture immutable", err)
+	}
+	if _, _, err := CreateProductFixtureRevision(repoFixture, FixtureRevisionInput{FixturePayload: map[string]any{}}, 2, now); !errors.Is(err, ErrEvaluationRepoFixtureImmutable) {
+		t.Fatalf("err=%v, want repo fixture immutable", err)
 	}
 }

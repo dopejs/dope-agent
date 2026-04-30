@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/evaluation-discovery-policy-resource.schema.json",
+  "title": "EvaluationDiscoveryPolicyResource",
+  "type": "object",
+  "required": ["policyId", "enabled", "sourceKinds", "windowStart", "windowEnd", "maxInspectedRecords", "maxEmittedCandidates", "costBudget", "createdAt", "updatedAt"],
+  "additionalProperties": true,
+  "properties": {
+    "policyId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "enabled": { "type": "boolean" },
+    "sourceKinds": { "type": "array", "items": { "type": "string" } },
+    "windowStart": { "type": "string", "format": "date-time" },
+    "windowEnd": { "type": "string", "format": "date-time" },
+    "maxInspectedRecords": { "type": "integer", "minimum": 1 },
+    "maxEmittedCandidates": { "type": "integer", "minimum": 1 },
+    "costBudget": { "type": "integer", "minimum": 1 },
+    "sensitiveFieldRules": { "type": "array", "items": { "type": "string" } },
+    "retentionPolicyRef": { "type": "string" },
+    "createdBy": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

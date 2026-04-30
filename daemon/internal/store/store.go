@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 37
+	CurrentSchemaVersion = 38
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -2247,6 +2247,241 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_live_validation_reconciliations_tenant ON live_validation_reconciliation_resolutions(tenant_id, resolved_at DESC, reconciliation_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_live_validation_comparisons_validation ON live_validation_comparisons(tenant_id, validation_id, generated_at DESC, comparison_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_live_validation_retention_tenant ON live_validation_retention_policies(tenant_id, applies_to, created_at DESC, policy_id DESC);`,
+		},
+	},
+	{
+		Version: 38,
+		Name:    "r41_evaluation_product_expansion",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_discovery_policies (
+				policy_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				enabled INTEGER NOT NULL,
+				window_start TEXT NOT NULL,
+				window_end TEXT NOT NULL,
+				max_inspected_records INTEGER NOT NULL,
+				max_emitted_candidates INTEGER NOT NULL,
+				cost_budget INTEGER NOT NULL,
+				created_by TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_discovery_runs (
+				discovery_run_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				policy_id TEXT,
+				status TEXT NOT NULL,
+				cursor TEXT,
+				window_start TEXT NOT NULL,
+				window_end TEXT NOT NULL,
+				max_inspected_records INTEGER NOT NULL,
+				max_emitted_candidates INTEGER NOT NULL,
+				cost_budget INTEGER NOT NULL,
+				inspected_records INTEGER NOT NULL,
+				emitted_candidates INTEGER NOT NULL,
+				started_by TEXT,
+				started_at TEXT NOT NULL,
+				completed_at TEXT,
+				updated_at TEXT NOT NULL,
+				idempotency_key TEXT,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(policy_id) REFERENCES evaluation_discovery_policies(policy_id) ON DELETE SET NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_discovered_candidates (
+				discovered_candidate_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				discovery_run_id TEXT NOT NULL,
+				source_kind TEXT NOT NULL,
+				source_id TEXT NOT NULL,
+				score REAL NOT NULL,
+				score_band TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				evidence_ref TEXT,
+				readiness_status TEXT NOT NULL,
+				suppression_state TEXT NOT NULL,
+				retention_state TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				expires_at TEXT,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(discovery_run_id) REFERENCES evaluation_discovery_runs(discovery_run_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_candidate_evidence (
+				evidence_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				discovered_candidate_id TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				materialization_allowed INTEGER NOT NULL,
+				retention_state TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				expires_at TEXT,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(discovered_candidate_id) REFERENCES evaluation_discovered_candidates(discovered_candidate_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_suppressions (
+				suppression_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				target_kind TEXT NOT NULL,
+				target_id TEXT,
+				target_source_ref TEXT,
+				reason_code TEXT NOT NULL,
+				created_by TEXT,
+				active INTEGER NOT NULL,
+				created_at TEXT NOT NULL,
+				expires_at TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_product_fixtures (
+				fixture_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				display_name TEXT NOT NULL,
+				domain_class TEXT NOT NULL,
+				source_kind TEXT,
+				source_candidate_id TEXT,
+				current_revision_id TEXT,
+				review_state TEXT NOT NULL,
+				suppression_state TEXT NOT NULL,
+				retention_state TEXT NOT NULL,
+				created_by TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_fixture_revisions (
+				revision_id TEXT PRIMARY KEY,
+				fixture_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				revision_number INTEGER NOT NULL,
+				redaction_status TEXT NOT NULL,
+				created_by TEXT,
+				created_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(fixture_id) REFERENCES evaluation_product_fixtures(fixture_id) ON DELETE CASCADE,
+				UNIQUE(fixture_id, revision_number)
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_campaigns (
+				campaign_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				display_name TEXT NOT NULL,
+				status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				started_at TEXT,
+				completed_at TEXT,
+				published_at TEXT,
+				retention_state TEXT NOT NULL,
+				idempotency_key TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_campaign_items (
+				campaign_item_id TEXT PRIMARY KEY,
+				campaign_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				source_type TEXT NOT NULL,
+				source_id TEXT NOT NULL,
+				suppression_checked_at TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(campaign_id) REFERENCES evaluation_campaigns(campaign_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_campaign_attempt_groups (
+				attempt_group_id TEXT PRIMARY KEY,
+				campaign_id TEXT NOT NULL,
+				campaign_item_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				status TEXT NOT NULL,
+				drift_count INTEGER NOT NULL,
+				failure_count INTEGER NOT NULL,
+				unsupported_count INTEGER NOT NULL,
+				operator_action_needed_count INTEGER NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(campaign_id) REFERENCES evaluation_campaigns(campaign_id) ON DELETE CASCADE,
+				FOREIGN KEY(campaign_item_id) REFERENCES evaluation_campaign_items(campaign_item_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_dashboard_projections (
+				projection_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				window_start TEXT NOT NULL,
+				window_end TEXT NOT NULL,
+				generated_at TEXT NOT NULL,
+				cursor TEXT,
+				retention_state TEXT NOT NULL DEFAULT 'active',
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_tool_call_inspections (
+				inspection_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				campaign_id TEXT NOT NULL,
+				campaign_item_id TEXT NOT NULL,
+				tool_call_ref TEXT NOT NULL,
+				classification TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				retention_state TEXT NOT NULL DEFAULT 'active',
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(campaign_id) REFERENCES evaluation_campaigns(campaign_id) ON DELETE CASCADE,
+				FOREIGN KEY(campaign_item_id) REFERENCES evaluation_campaign_items(campaign_item_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS evaluation_retention_applications (
+				application_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				resource_kind TEXT NOT NULL,
+				resource_id TEXT,
+				dry_run INTEGER NOT NULL,
+				outcome TEXT NOT NULL,
+				applied_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_discovery_policies_tenant_enabled ON evaluation_discovery_policies(tenant_id, enabled, updated_at DESC, policy_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_discovery_runs_tenant_status ON evaluation_discovery_runs(tenant_id, status, updated_at DESC, discovery_run_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_discovery_runs_tenant_policy ON evaluation_discovery_runs(tenant_id, policy_id, updated_at DESC, discovery_run_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_discovered_candidates_tenant_ready ON evaluation_discovered_candidates(tenant_id, readiness_status, updated_at DESC, discovered_candidate_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_discovered_candidates_tenant_source ON evaluation_discovered_candidates(tenant_id, source_kind, source_id, updated_at DESC, discovered_candidate_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_discovered_candidates_tenant_run ON evaluation_discovered_candidates(tenant_id, discovery_run_id, updated_at DESC, discovered_candidate_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_candidate_evidence_tenant_candidate ON evaluation_candidate_evidence(tenant_id, discovered_candidate_id, created_at DESC, evidence_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_suppressions_tenant_target ON evaluation_suppressions(tenant_id, target_kind, target_id, active, created_at DESC, suppression_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_product_fixtures_tenant_review ON evaluation_product_fixtures(tenant_id, review_state, updated_at DESC, fixture_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_product_fixtures_tenant_source ON evaluation_product_fixtures(tenant_id, source_kind, source_candidate_id, updated_at DESC, fixture_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_fixture_revisions_tenant_fixture ON evaluation_fixture_revisions(tenant_id, fixture_id, revision_number DESC, revision_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_campaigns_tenant_status ON evaluation_campaigns(tenant_id, status, created_at DESC, campaign_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_campaigns_tenant_idempotency ON evaluation_campaigns(tenant_id, idempotency_key, created_at DESC, campaign_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_campaign_items_tenant_campaign ON evaluation_campaign_items(tenant_id, campaign_id, created_at DESC, campaign_item_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_campaign_items_tenant_source ON evaluation_campaign_items(tenant_id, source_type, source_id, created_at DESC, campaign_item_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_campaign_attempt_groups_tenant_campaign ON evaluation_campaign_attempt_groups(tenant_id, campaign_id, updated_at DESC, attempt_group_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_campaign_attempt_groups_tenant_item ON evaluation_campaign_attempt_groups(tenant_id, campaign_item_id, updated_at DESC, attempt_group_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_dashboard_projections_tenant_generated ON evaluation_dashboard_projections(tenant_id, generated_at DESC, projection_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_tool_call_inspections_tenant_campaign ON evaluation_tool_call_inspections(tenant_id, campaign_id, updated_at DESC, inspection_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_tool_call_inspections_tenant_item ON evaluation_tool_call_inspections(tenant_id, campaign_item_id, updated_at DESC, inspection_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_eval_retention_applications_tenant_resource ON evaluation_retention_applications(tenant_id, resource_kind, resource_id, applied_at DESC, application_id DESC);`,
 		},
 	},
 }

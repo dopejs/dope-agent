@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/evaluation-discovery-run-resource.schema.json",
+  "title": "EvaluationDiscoveryRunResource",
+  "type": "object",
+  "required": ["discoveryRunId", "status", "sourceKinds", "windowStart", "windowEnd", "maxInspectedRecords", "maxEmittedCandidates", "costBudget", "inspectedRecords", "emittedCandidates", "startedAt", "updatedAt"],
+  "additionalProperties": true,
+  "properties": {
+    "discoveryRunId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "policyId": { "type": "string" },
+    "status": { "type": "string", "enum": ["queued", "running", "completed", "partial", "failed", "cancelled"] },
+    "cursor": { "type": "string" },
+    "sourceKinds": { "type": "array", "items": { "type": "string" } },
+    "windowStart": { "type": "string", "format": "date-time" },
+    "windowEnd": { "type": "string", "format": "date-time" },
+    "maxInspectedRecords": { "type": "integer", "minimum": 1 },
+    "maxEmittedCandidates": { "type": "integer", "minimum": 1 },
+    "costBudget": { "type": "integer", "minimum": 1 },
+    "inspectedRecords": { "type": "integer", "minimum": 0 },
+    "emittedCandidates": { "type": "integer", "minimum": 0 },
+    "partialReason": { "type": "string" },
+    "startedBy": { "type": "string" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "idempotencyKey": { "type": "string" }
+  }
+}

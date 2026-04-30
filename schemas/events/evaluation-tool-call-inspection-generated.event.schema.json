@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/evaluation-tool-call-inspection-generated.event.schema.json",
+  "title": "EvaluationToolCallInspectionEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "evaluation" },
+        "name": {
+          "enum": [
+            "evaluation.tool_call_inspection.generated",
+            "evaluation.tool_call_inspection.redaction_failed",
+            "evaluation.tool_call_inspection.retention_applied"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "required": ["tenantId", "inspectionId", "campaignId", "classification"],
+          "additionalProperties": true,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "inspectionId": { "type": "string" },
+            "campaignId": { "type": "string" },
+            "campaignItemId": { "type": "string" },
+            "classification": { "type": "string" },
+            "redactionStatus": { "type": "string", "enum": ["clean", "redacted", "failed"] },
+            "retentionApplicationId": { "type": "string" },
+            "outcome": { "type": "string" },
+            "reasonCode": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

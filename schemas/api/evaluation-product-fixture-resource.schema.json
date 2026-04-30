@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/evaluation-product-fixture-resource.schema.json",
+  "title": "EvaluationProductFixtureContracts",
+  "oneOf": [
+    { "$ref": "#/$defs/productFixtureResource" },
+    { "$ref": "#/$defs/fixtureRevisionResource" },
+    { "$ref": "#/$defs/productFixtureMutationResponse" }
+  ],
+  "$defs": {
+    "sourceRef": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "type": "string" },
+        "id": { "type": "string" },
+        "route": { "type": "string" }
+      }
+    },
+    "productFixtureResource": {
+      "type": "object",
+      "required": ["fixtureId", "displayName", "domainClass", "sourceKind", "currentRevisionId", "reviewState", "suppressionState", "retentionState", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "fixtureId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "domainClass": { "type": "string", "enum": ["schedule", "integration", "computer_use"] },
+        "sourceKind": { "type": "string" },
+        "sourceRefs": { "type": "array", "items": { "$ref": "#/$defs/sourceRef" } },
+        "sourceCandidateId": { "type": "string" },
+        "currentRevisionId": { "type": "string" },
+        "reviewState": { "type": "string", "enum": ["draft", "in_review", "approved", "rejected", "archived", "deleted"] },
+        "suppressionState": { "type": "string", "enum": ["none", "suppressed", "expired", "revoked"] },
+        "retentionState": { "type": "string", "enum": ["active", "expired", "deleted", "tombstone"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "fixtureRevisionResource": {
+      "type": "object",
+      "required": ["revisionId", "fixtureId", "revisionNumber", "redactionStatus", "createdAt"],
+      "additionalProperties": true,
+      "properties": {
+        "revisionId": { "type": "string" },
+        "fixtureId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "revisionNumber": { "type": "integer", "minimum": 1 },
+        "contentSummary": { "type": "string" },
+        "fixturePayload": { "type": "object", "additionalProperties": true },
+        "changeSummary": { "type": "string" },
+        "sourceEvidenceRefs": { "type": "array", "items": { "type": "string" } },
+        "redactionStatus": { "type": "string", "enum": ["clean", "redacted", "failed"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "productFixtureMutationResponse": {
+      "type": "object",
+      "required": ["fixture"],
+      "additionalProperties": false,
+      "properties": {
+        "fixture": { "$ref": "#/$defs/productFixtureResource" },
+        "revision": { "$ref": "#/$defs/fixtureRevisionResource" }
+      }
+    }
+  }
+}

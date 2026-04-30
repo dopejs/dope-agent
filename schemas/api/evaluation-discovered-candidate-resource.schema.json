@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/evaluation-discovered-candidate-resource.schema.json",
+  "title": "EvaluationDiscoveredCandidateResource",
+  "type": "object",
+  "required": ["discoveredCandidateId", "discoveryRunId", "sourceKind", "sourceId", "score", "scoreBand", "redactionStatus", "readinessStatus", "suppressionState", "retentionState", "createdAt", "updatedAt"],
+  "additionalProperties": true,
+  "properties": {
+    "discoveredCandidateId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "discoveryRunId": { "type": "string" },
+    "sourceKind": { "type": "string" },
+    "sourceId": { "type": "string" },
+    "sourceRefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "id"],
+        "additionalProperties": true,
+        "properties": {
+          "kind": { "type": "string" },
+          "id": { "type": "string" },
+          "route": { "type": "string" }
+        }
+      }
+    },
+    "score": { "type": "number", "minimum": 0 },
+    "scoreBand": { "type": "string", "enum": ["high", "medium", "low"] },
+    "explanationFields": { "type": "object", "additionalProperties": true },
+    "redactionStatus": { "type": "string", "enum": ["clean", "redacted", "failed"] },
+    "evidenceRef": { "type": "string" },
+    "readinessStatus": { "type": "string", "enum": ["fully_replayable", "partially_replayable", "blocked", "unreplayable"] },
+    "suppressionState": { "type": "string", "enum": ["none", "suppressed", "expired", "revoked"] },
+    "retentionState": { "type": "string", "enum": ["active", "expired", "deleted", "tombstone"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "candidateEvidenceResource": {
+      "type": "object",
+      "required": ["evidenceId", "tenantId", "discoveredCandidateId", "redactedPayload", "materializationAllowed", "retentionState", "createdAt"],
+      "additionalProperties": true,
+      "properties": {
+        "evidenceId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "discoveredCandidateId": { "type": "string" },
+        "sourceRefs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "id"],
+            "additionalProperties": true,
+            "properties": {
+              "kind": { "type": "string" },
+              "id": { "type": "string" },
+              "route": { "type": "string" }
+            }
+          }
+        },
+        "summary": { "type": "string" },
+        "redactedPayload": { "type": "object", "additionalProperties": true },
+        "redactionRulesApplied": { "type": "array", "items": { "type": "string" } },
+        "sensitiveFieldsExcluded": { "type": "array", "items": { "type": "string" } },
+        "materializationAllowed": { "type": "boolean" },
+        "retentionState": { "type": "string", "enum": ["active", "expired", "deleted", "tombstone"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

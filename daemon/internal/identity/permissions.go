@@ -17,6 +17,18 @@ func PermissionsForRole(role Role, lifecycle LifecycleStatus) []Permission {
 			PermissionMCPManage,
 			PermissionLiveValidationReconcile,
 			PermissionEvaluationManage,
+			PermissionEvaluationDiscoveryRead,
+			PermissionEvaluationDiscoveryRun,
+			PermissionEvaluationDiscoverySuppress,
+			PermissionEvaluationFixtureRead,
+			PermissionEvaluationFixtureManage,
+			PermissionEvaluationFixtureReview,
+			PermissionEvaluationFixtureSuppress,
+			PermissionEvaluationCampaignRead,
+			PermissionEvaluationCampaignManage,
+			PermissionEvaluationDashboardRead,
+			PermissionEvaluationInspectionRead,
+			PermissionEvaluationRetentionManage,
 			PermissionBillingView,
 			PermissionBillingManage,
 		}
@@ -25,9 +37,23 @@ func PermissionsForRole(role Role, lifecycle LifecycleStatus) []Permission {
 			PermissionRunsExecute,
 			PermissionApprovalsResolve,
 			PermissionLiveValidationExecute,
+			PermissionEvaluationDiscoveryRead,
+			PermissionEvaluationDiscoveryRun,
+			PermissionEvaluationDiscoverySuppress,
+			PermissionEvaluationFixtureRead,
+			PermissionEvaluationFixtureSuppress,
+			PermissionEvaluationCampaignRead,
+			PermissionEvaluationCampaignManage,
+			PermissionEvaluationDashboardRead,
+			PermissionEvaluationInspectionRead,
 		}
 	case RoleViewer:
-		return []Permission{PermissionReadOnlyInspect}
+		return []Permission{
+			PermissionReadOnlyInspect,
+			PermissionEvaluationCampaignRead,
+			PermissionEvaluationDashboardRead,
+			PermissionEvaluationInspectionRead,
+		}
 	default:
 		return nil
 	}

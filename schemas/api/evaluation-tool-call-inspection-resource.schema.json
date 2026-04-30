@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/evaluation-tool-call-inspection-resource.schema.json",
+  "title": "EvaluationToolCallInspectionResource",
+  "type": "object",
+  "required": ["inspectionId", "campaignId", "campaignItemId", "toolCallRef", "classification", "redactionStatus", "createdAt", "updatedAt"],
+  "additionalProperties": true,
+  "properties": {
+    "inspectionId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "campaignId": { "type": "string" },
+    "campaignItemId": { "type": "string" },
+    "toolCallRef": { "type": "string" },
+    "originalEvidenceRef": { "type": "string" },
+    "nonLiveReplayEvidenceRef": { "type": "string" },
+    "liveValidationLedgerRefs": { "type": "array", "items": { "type": "string" } },
+    "classification": {
+      "type": "string",
+      "enum": [
+        "matched",
+        "drifted",
+        "failed",
+        "unsupported",
+        "missing_original_evidence",
+        "missing_replay_evidence",
+        "live_validation_denied",
+        "live_validation_aborted",
+        "live_validation_failed",
+        "live_validation_operator_action_needed",
+        "live_validation_completed"
+      ]
+    },
+    "diffSummary": { "type": "string" },
+    "redactionStatus": { "type": "string", "enum": ["clean", "redacted", "failed"] },
+    "retentionState": { "type": "string", "enum": ["active", "expired", "deleted", "tombstone"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

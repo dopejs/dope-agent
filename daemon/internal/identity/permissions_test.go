@@ -9,9 +9,9 @@ func TestPermissionsForRoleUsesTieredLeastPrivilege(t *testing.T) {
 		want []Permission
 	}{
 		{name: "owner", role: RoleOwner, want: AllSensitivePermissions},
-		{name: "admin", role: RoleAdmin, want: []Permission{PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionLiveValidationReconcile, PermissionEvaluationManage, PermissionBillingView, PermissionBillingManage}},
-		{name: "operator", role: RoleOperator, want: []Permission{PermissionRunsExecute, PermissionApprovalsResolve, PermissionLiveValidationExecute}},
-		{name: "viewer", role: RoleViewer, want: []Permission{PermissionReadOnlyInspect}},
+		{name: "admin", role: RoleAdmin, want: []Permission{PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionLiveValidationReconcile, PermissionEvaluationManage, PermissionEvaluationDiscoveryRead, PermissionEvaluationDiscoveryRun, PermissionEvaluationDiscoverySuppress, PermissionEvaluationFixtureRead, PermissionEvaluationFixtureManage, PermissionEvaluationFixtureReview, PermissionEvaluationFixtureSuppress, PermissionEvaluationCampaignRead, PermissionEvaluationCampaignManage, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead, PermissionEvaluationRetentionManage, PermissionBillingView, PermissionBillingManage}},
+		{name: "operator", role: RoleOperator, want: []Permission{PermissionRunsExecute, PermissionApprovalsResolve, PermissionLiveValidationExecute, PermissionEvaluationDiscoveryRead, PermissionEvaluationDiscoveryRun, PermissionEvaluationDiscoverySuppress, PermissionEvaluationFixtureRead, PermissionEvaluationFixtureSuppress, PermissionEvaluationCampaignRead, PermissionEvaluationCampaignManage, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead}},
+		{name: "viewer", role: RoleViewer, want: []Permission{PermissionReadOnlyInspect, PermissionEvaluationCampaignRead, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -40,9 +40,9 @@ func TestPermissionsDeniedForInactiveLifecycle(t *testing.T) {
 func TestPermissionEvaluatorCoversSensitiveCapabilities(t *testing.T) {
 	rolePermissions := map[Role][]Permission{
 		RoleOwner:    AllSensitivePermissions,
-		RoleAdmin:    {PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionLiveValidationReconcile, PermissionEvaluationManage, PermissionBillingView, PermissionBillingManage},
-		RoleOperator: {PermissionRunsExecute, PermissionApprovalsResolve, PermissionLiveValidationExecute},
-		RoleViewer:   {PermissionReadOnlyInspect},
+		RoleAdmin:    {PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionConnectorsManage, PermissionMCPManage, PermissionLiveValidationReconcile, PermissionEvaluationManage, PermissionEvaluationDiscoveryRead, PermissionEvaluationDiscoveryRun, PermissionEvaluationDiscoverySuppress, PermissionEvaluationFixtureRead, PermissionEvaluationFixtureManage, PermissionEvaluationFixtureReview, PermissionEvaluationFixtureSuppress, PermissionEvaluationCampaignRead, PermissionEvaluationCampaignManage, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead, PermissionEvaluationRetentionManage, PermissionBillingView, PermissionBillingManage},
+		RoleOperator: {PermissionRunsExecute, PermissionApprovalsResolve, PermissionLiveValidationExecute, PermissionEvaluationDiscoveryRead, PermissionEvaluationDiscoveryRun, PermissionEvaluationDiscoverySuppress, PermissionEvaluationFixtureRead, PermissionEvaluationFixtureSuppress, PermissionEvaluationCampaignRead, PermissionEvaluationCampaignManage, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead},
+		RoleViewer:   {PermissionReadOnlyInspect, PermissionEvaluationCampaignRead, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead},
 	}
 	for role, allowed := range rolePermissions {
 		for _, permission := range append(AllSensitivePermissions, PermissionReadOnlyInspect) {
@@ -122,5 +122,74 @@ func TestCanResolveLiveValidationReconciliationRequiresOwnerAdminOrPermission(t 
 				t.Fatalf("CanResolveLiveValidationReconciliation()=%v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestEvaluationProductPermissionsForRoles(t *testing.T) {
+	readOnlyProductPermissions := []Permission{
+		PermissionEvaluationCampaignRead,
+		PermissionEvaluationDashboardRead,
+		PermissionEvaluationInspectionRead,
+	}
+	adminProductPermissions := []Permission{
+		PermissionEvaluationDiscoveryRead,
+		PermissionEvaluationDiscoveryRun,
+		PermissionEvaluationDiscoverySuppress,
+		PermissionEvaluationFixtureRead,
+		PermissionEvaluationFixtureManage,
+		PermissionEvaluationFixtureReview,
+		PermissionEvaluationFixtureSuppress,
+		PermissionEvaluationCampaignRead,
+		PermissionEvaluationCampaignManage,
+		PermissionEvaluationDashboardRead,
+		PermissionEvaluationInspectionRead,
+		PermissionEvaluationRetentionManage,
+	}
+	operatorProductPermissions := []Permission{
+		PermissionEvaluationDiscoveryRead,
+		PermissionEvaluationDiscoveryRun,
+		PermissionEvaluationDiscoverySuppress,
+		PermissionEvaluationFixtureRead,
+		PermissionEvaluationFixtureSuppress,
+		PermissionEvaluationCampaignRead,
+		PermissionEvaluationCampaignManage,
+		PermissionEvaluationDashboardRead,
+		PermissionEvaluationInspectionRead,
+	}
+
+	for _, permission := range adminProductPermissions {
+		if !Can(RoleOwner, StatusActive, permission) {
+			t.Fatalf("owner missing product permission %s", permission)
+		}
+		if !Can(RoleAdmin, StatusActive, permission) {
+			t.Fatalf("admin missing product permission %s", permission)
+		}
+	}
+	for _, permission := range operatorProductPermissions {
+		if !Can(RoleOperator, StatusActive, permission) {
+			t.Fatalf("operator missing product permission %s", permission)
+		}
+	}
+	for _, permission := range readOnlyProductPermissions {
+		if !Can(RoleViewer, StatusActive, permission) {
+			t.Fatalf("viewer missing read-only product permission %s", permission)
+		}
+	}
+
+	deniedForOperator := []Permission{
+		PermissionEvaluationFixtureManage,
+		PermissionEvaluationFixtureReview,
+		PermissionEvaluationRetentionManage,
+	}
+	for _, permission := range deniedForOperator {
+		if Can(RoleOperator, StatusActive, permission) {
+			t.Fatalf("operator unexpectedly has product permission %s", permission)
+		}
+	}
+	if Can(RoleViewer, StatusActive, PermissionEvaluationCampaignManage) {
+		t.Fatal("viewer unexpectedly has campaign manage permission")
+	}
+	if Can(RoleViewer, StatusActive, PermissionEvaluationDiscoveryRun) {
+		t.Fatal("viewer unexpectedly has discovery run permission")
 	}
 }

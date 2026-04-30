@@ -14,6 +14,8 @@
   --critical-soft: #f6d8cf;
   --success: #2f6b4d;
   --success-soft: #dcebdd;
+  --muted: #625f58;
+  --panel: rgba(255, 250, 242, 0.92);
 }
 
 * {
@@ -270,8 +272,12 @@ label span {
 .status-ready,
 .status-completed,
 .status-running,
+.status-published,
+.status-live_validation_completed,
 .status-fully_replayable,
-.status-matched {
+.status-matched,
+.status-high,
+.status-approved {
   background: var(--success-soft);
   color: var(--success);
 }
@@ -289,19 +295,35 @@ label span {
 .status-ready_for_action,
 .status-awaiting_approval,
 .status-operator_action_needed,
+.status-live_validation_operator_action_needed,
 .status-partially_replayable,
-.status-drifted {
+.status-drifted,
+.status-medium,
+.status-partial,
+.status-draft,
+.status-in_review,
+.status-archived {
   background: var(--warning-soft);
   color: var(--warning);
 }
 
 .status-blocked,
 .status-aborted,
+.status-cancelled,
 .status-critical,
 .status-error,
 .status-failed,
+.status-unsupported,
+.status-missing_original_evidence,
+.status-missing_replay_evidence,
+.status-live_validation_denied,
+.status-live_validation_aborted,
+.status-live_validation_failed,
 .status-rejected,
-.status-unreplayable {
+.status-unreplayable,
+.status-low,
+.status-deleted,
+.status-suppressed {
   background: var(--critical-soft);
   color: var(--critical);
 }
@@ -347,6 +369,43 @@ label span {
 
 .muted-line {
   color: var(--muted);
+}
+
+.discovery-box,
+.campaign-box,
+.dashboard-box,
+.inspection-box {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  padding-top: 14px;
+}
+
+.mini-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mini-metric {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.mini-metric span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.mini-metric strong,
+.mini-metric small {
+  overflow-wrap: anywhere;
 }
 
 .fixture-strip,
@@ -527,6 +586,7 @@ pre {
   .action-grid,
   .action-inputs,
   .live-validation-form,
+  .mini-grid,
   .mini-card-grid,
   .banner-strip,
   .tenant-strip,
