@@ -20,6 +20,8 @@ func ValidateReleaseReadiness(evidence ReleaseReadinessEvidence) error {
 		"fake-backend coverage":  evidence.FakeBackendCoveragePassed,
 		"Roadmap 40 rerun gate":  evidence.Roadmap40RerunGatePresent,
 		"Roadmap 41 rerun gate":  evidence.Roadmap41RerunGatePresent,
+		"Roadmap 42 diagnostics": evidence.Roadmap42DiagnosticsPresent,
+		"Roadmap 42 smoke":       evidence.Roadmap42SmokeEvidencePresent,
 	}
 	for label, ok := range required {
 		if !ok {
@@ -28,6 +30,9 @@ func ValidateReleaseReadiness(evidence ReleaseReadinessEvidence) error {
 	}
 	if evidence.Decision != ResultShip && evidence.Decision != ResultShipWithRecordedSkips {
 		errs = append(errs, fmt.Errorf("release decision must be ship or ship_with_recorded_skips when evidence passes"))
+	}
+	if evidence.Roadmap42SmokeEvidencePresent && len(evidence.DiagnosticSmokeReports) == 0 {
+		errs = append(errs, fmt.Errorf("Roadmap 42 smoke evidence requires at least one diagnostic smoke report"))
 	}
 	return JoinErrors(errs...)
 }

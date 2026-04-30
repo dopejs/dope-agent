@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/mail"
 )
 
@@ -140,31 +141,32 @@ type DeliveryAttempt struct {
 }
 
 type DeliveryOutcome struct {
-	DeliveryID                 string                      `json:"deliveryId"`
-	EnvironmentScope           string                      `json:"environmentScope"`
-	SourceKind                 string                      `json:"sourceKind"`
-	SourceID                   string                      `json:"sourceId"`
-	RunID                      string                      `json:"runId,omitempty"`
-	WorkflowID                 string                      `json:"workflowId,omitempty"`
-	ScheduleID                 string                      `json:"scheduleId,omitempty"`
-	ScheduleAttemptID          string                      `json:"scheduleAttemptId,omitempty"`
-	IntegrationID              string                      `json:"integrationId,omitempty"`
-	ResultClass                ResultClass                 `json:"resultClass"`
-	Mode                       DeliveryMode                `json:"mode"`
-	Status                     OutcomeStatus               `json:"status"`
-	ChosenTargetID             string                      `json:"chosenTargetId,omitempty"`
-	PreferenceID               string                      `json:"preferenceId,omitempty"`
-	SummaryWindowID            string                      `json:"summaryWindowId,omitempty"`
-	PayloadPreview             string                      `json:"payloadPreview,omitempty"`
-	SuppressionReason          string                      `json:"suppressionReason,omitempty"`
-	CalendarOperationIDs       []string                    `json:"calendarOperationIds,omitempty"`
-	CalendarOperationSummaries []calendar.OperationSummary `json:"calendarOperationSummaries,omitempty"`
-	MailOperationIDs           []string                    `json:"mailOperationIds,omitempty"`
-	MailOperationSummaries     []mail.OperationSummary     `json:"mailOperationSummaries,omitempty"`
-	Attempts                   []DeliveryAttempt           `json:"attempts,omitempty"`
-	CreatedAt                  time.Time                   `json:"createdAt"`
-	UpdatedAt                  time.Time                   `json:"updatedAt"`
-	FinalizedAt                *time.Time                  `json:"finalizedAt,omitempty"`
+	DeliveryID                 string                                    `json:"deliveryId"`
+	EnvironmentScope           string                                    `json:"environmentScope"`
+	SourceKind                 string                                    `json:"sourceKind"`
+	SourceID                   string                                    `json:"sourceId"`
+	RunID                      string                                    `json:"runId,omitempty"`
+	WorkflowID                 string                                    `json:"workflowId,omitempty"`
+	ScheduleID                 string                                    `json:"scheduleId,omitempty"`
+	ScheduleAttemptID          string                                    `json:"scheduleAttemptId,omitempty"`
+	IntegrationID              string                                    `json:"integrationId,omitempty"`
+	ResultClass                ResultClass                               `json:"resultClass"`
+	Mode                       DeliveryMode                              `json:"mode"`
+	Status                     OutcomeStatus                             `json:"status"`
+	ChosenTargetID             string                                    `json:"chosenTargetId,omitempty"`
+	PreferenceID               string                                    `json:"preferenceId,omitempty"`
+	SummaryWindowID            string                                    `json:"summaryWindowId,omitempty"`
+	PayloadPreview             string                                    `json:"payloadPreview,omitempty"`
+	SuppressionReason          string                                    `json:"suppressionReason,omitempty"`
+	CalendarOperationIDs       []string                                  `json:"calendarOperationIds,omitempty"`
+	CalendarOperationSummaries []calendar.OperationSummary               `json:"calendarOperationSummaries,omitempty"`
+	MailOperationIDs           []string                                  `json:"mailOperationIds,omitempty"`
+	MailOperationSummaries     []mail.OperationSummary                   `json:"mailOperationSummaries,omitempty"`
+	Attempts                   []DeliveryAttempt                         `json:"attempts,omitempty"`
+	DiagnosticFailure          *integrations.DiagnosticFailureProjection `json:"diagnosticFailure,omitempty"`
+	CreatedAt                  time.Time                                 `json:"createdAt"`
+	UpdatedAt                  time.Time                                 `json:"updatedAt"`
+	FinalizedAt                *time.Time                                `json:"finalizedAt,omitempty"`
 }
 
 type SummaryWindow struct {

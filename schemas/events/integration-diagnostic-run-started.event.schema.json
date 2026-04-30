@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/integration-diagnostic-run-started.event.schema.json",
+  "title": "IntegrationDiagnosticRunStartedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "integration" },
+        "name": { "const": "integration_diagnostic.run_started" },
+        "payload": {
+          "type": "object",
+          "required": ["tenantId", "diagnosticRunId", "integrationId", "requestedBy", "status"],
+          "additionalProperties": false,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "diagnosticRunId": { "type": "string" },
+            "integrationId": { "type": "string" },
+            "requestedBy": { "type": "string" },
+            "status": { "type": "string", "enum": ["queued", "running"] }
+          }
+        }
+      }
+    }
+  ]
+}

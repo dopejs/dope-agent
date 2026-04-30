@@ -25,6 +25,8 @@ func BackendKindSupportsDomain(kind BackendKind, domainKind string) bool {
 	switch kind {
 	case BackendKindFakeLocal:
 		return FakeBackend{}.supportsDomainKind(trimmed)
+	case BackendKindFeishuLark:
+		return FeishuLarkDiagnosticBackend{}.supportsDomainKind(trimmed)
 	default:
 		return false
 	}

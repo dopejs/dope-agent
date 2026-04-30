@@ -175,6 +175,22 @@ Mutation requires the provider/integration management permission. A tenant-scope
 operator with `credentials.inspect` can inspect redacted auth status for that tenant;
 viewers cannot inspect provider credential state.
 
+## Roadmap 42 Integration Diagnostics
+
+Integration diagnostics expose provider health and permission state without exposing
+credential material. Feishu/Lark is the full diagnostic proof domain for app or bot
+authorization, user authorization, tenant approval, provider scopes, token freshness,
+rate limits, provider availability, and network reachability. Other domains return
+structured limited or unsupported diagnostic classifications instead of silent absence.
+
+Operators with `integrations.diagnostics.read` can inspect latest diagnostic state.
+Operators with `integrations.diagnostics.run` can start tenant-scoped diagnostic runs.
+Smoke execution requires `integrations.diagnostics.smoke`, and non-idempotent or
+externally visible smoke probes additionally require risky-smoke authorization plus
+tenant administrator approval. Diagnostic payloads, smoke evidence, events, and audit
+records redact secrets, OAuth tokens, refresh tokens, app secrets, and authorization
+headers; redaction uncertainty fails closed.
+
 ## Local Bridge Behavior
 
 On startup, the hosted credential bridge imports legacy local credential files into

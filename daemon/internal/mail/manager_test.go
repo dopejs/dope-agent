@@ -100,6 +100,12 @@ func TestManagerBlocksUnsafeNewOutboundSend(t *testing.T) {
 	if operation.Status != OperationStatusBlocked || operation.FailureClass != "send_permission_required" {
 		t.Fatalf("expected blocked background send operation, got %+v", operation)
 	}
+	if operation.DiagnosticFailure == nil {
+		t.Fatalf("expected diagnostic failure projection on blocked send operation: %+v", operation)
+	}
+	if operation.DiagnosticFailure.ReasonCode != integrations.ReasonUnsafeToRetry || operation.DiagnosticFailure.RemediationHint == "" {
+		t.Fatalf("expected unsafe-to-retry diagnostic projection, got %+v", operation.DiagnosticFailure)
+	}
 }
 
 func TestManagerPreservesSendPathAndReplyLinkage(t *testing.T) {

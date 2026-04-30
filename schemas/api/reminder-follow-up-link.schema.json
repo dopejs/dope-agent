@@ -16,6 +16,7 @@
     "sourceSummary": { "type": "string" },
     "sourceDisplayState": { "type": "string" },
     "stale": { "type": "boolean" },
-    "lastCheckedAt": { "type": "string", "format": "date-time" }
+    "lastCheckedAt": { "type": "string", "format": "date-time" },
+    "diagnosticFailure": { "$ref": "./integration-diagnostic-failure-projection.schema.json" }
   }
 }

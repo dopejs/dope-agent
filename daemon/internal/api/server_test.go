@@ -1178,6 +1178,54 @@ func TestIntegrationRoutesProjectReadinessAndCanonicalDefault(t *testing.T) {
 	}
 }
 
+func TestIntegrationCreateEnablesFeishuLarkProbeReads(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope-data"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+
+	integrationManager := integrations.NewManager("test")
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			Environment: config.EnvironmentTest,
+			BindAddr:    "127.0.0.1:19191",
+			DataDir:     "~/.dope",
+			LogLevel:    "info",
+			Version:     "test",
+		},
+		Logger:       telemetry.New("error").Slog(),
+		EventBus:     events.NewBus(),
+		Integrations: integrationManager,
+		Store:        sqliteStore,
+	})
+
+	createRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, "/v1/integrations", strings.NewReader(`{
+		"integrationId":"calendar-feishu",
+		"domainKind":"calendar",
+		"displayName":"Feishu Calendar",
+		"backendKind":"feishu_lark",
+		"accountBinding":{"accountKey":"acct_feishu","accountLabel":"Primary Calendar"}
+	}`)))
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for Feishu/Lark integration, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	created := decodeStrictResponse[integrations.Resource](t, createRec.Body.Bytes())
+	if !created.BackendBinding.SupportsProbeRead {
+		t.Fatalf("expected Feishu/Lark integration to support read probes, got %+v", created.BackendBinding)
+	}
+	if created.BackendBinding.SupportsProbeMutation {
+		t.Fatalf("expected Feishu/Lark integration mutation probes to remain opt-in, got %+v", created.BackendBinding)
+	}
+}
+
 func TestIntegrationProbeRoutesLinkRuntimeApprovalAndProvenance(t *testing.T) {
 	t.Parallel()
 

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/integration-diagnostic-run.schema.json",
+  "title": "IntegrationDiagnosticRun",
+  "type": "object",
+  "required": [
+    "diagnosticRunId",
+    "integrationId",
+    "status",
+    "trigger",
+    "requestedBy",
+    "startedAt",
+    "checkedCapabilities",
+    "resultIds",
+    "redactionStatus",
+    "retentionExpiresAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "diagnosticRunId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "integrationId": { "type": "string" },
+    "integrationAccountId": { "type": "string" },
+    "domainKind": { "type": "string" },
+    "providerKind": { "type": "string" },
+    "status": { "type": "string", "enum": ["queued", "running", "completed", "failed", "blocked"] },
+    "trigger": { "type": "string", "enum": ["operator_inspection", "user_failure", "smoke", "scheduled", "release_readiness"] },
+    "requestedBy": { "type": "string" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "checkedCapabilities": { "type": "array", "items": { "type": "string" } },
+    "resultIds": { "type": "array", "items": { "type": "string" } },
+    "failureReasonCode": { "$ref": "./integration-diagnostic-reason-code.schema.json#/$defs/reasonCodeValue" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "failed_closed"] },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "auditEventIds": { "type": "array", "items": { "type": "string" } }
+  }
+}

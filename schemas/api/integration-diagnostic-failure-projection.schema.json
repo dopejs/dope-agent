@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/integration-diagnostic-failure-projection.schema.json",
+  "title": "IntegrationDiagnosticFailureProjection",
+  "type": "object",
+  "required": ["reasonCode", "remediationOwner", "remediationHint", "retrySafety", "freshnessState", "checkedAt", "redactionStatus"],
+  "additionalProperties": false,
+  "properties": {
+    "reasonCode": { "$ref": "./integration-diagnostic-reason-code.schema.json#/$defs/reasonCodeValue" },
+    "remediationOwner": {
+      "type": "string",
+      "enum": ["product_user", "tenant_admin", "operator", "provider", "none_required"]
+    },
+    "remediationHint": { "type": "string" },
+    "retrySafety": {
+      "type": "string",
+      "enum": ["no_action_needed", "retryable", "blocked", "unsafe_to_retry", "operator_action_needed"]
+    },
+    "freshnessState": {
+      "type": "string",
+      "enum": ["fresh", "stale"]
+    },
+    "checkedAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "failed_closed"]
+    }
+  }
+}

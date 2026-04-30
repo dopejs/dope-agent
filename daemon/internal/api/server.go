@@ -409,6 +409,23 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/integrations/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/integrations/", "integrations", "integration_id", "integration", func(w http.ResponseWriter, r *http.Request) {
 		handleIntegrationRoutes(deps.Config, deps.Integrations, deps.EventBus, deps.Store, w, r)
 	})))
+	mux.HandleFunc("/v1/integration-diagnostics/runs", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleIntegrationDiagnosticRuns(deps.Store, w, r, []string{"runs"})
+	}))
+	mux.HandleFunc("/v1/integration-diagnostics/runs/", protected(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/v1/integration-diagnostics/")
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		handleIntegrationDiagnosticRuns(deps.Store, w, r, parts)
+	}))
+	mux.HandleFunc("/v1/integration-diagnostics/smoke", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleIntegrationDiagnosticSmoke(deps.Integrations, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/integration-diagnostics/retention/apply", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleIntegrationDiagnosticRetentionApply(deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/integration-diagnostics/reason-codes", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleIntegrationDiagnosticReasonCodes(w, r)
+	}))
 	mux.HandleFunc("/v1/calendar/accounts", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleCalendarAccounts(deps.Config, deps.Calendar, deps.Integrations, deps.EventBus, deps.Store, w, r)
 	}))

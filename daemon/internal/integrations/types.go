@@ -39,6 +39,7 @@ const (
 	BackendKindManagedProvider BackendKind = "managed_provider"
 	BackendKindNative          BackendKind = "native"
 	BackendKindFakeLocal       BackendKind = "fake_local"
+	BackendKindFeishuLark      BackendKind = "feishu_lark"
 )
 
 type ProbeKind string

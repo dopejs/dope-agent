@@ -643,6 +643,8 @@ func (m *Manager) failOperation(operation Operation, failureClass, reason string
 	operation.ResultMode = ResultModeFailed
 	operation.FailureClass = strings.TrimSpace(failureClass)
 	operation.FailureReason = strings.TrimSpace(reason)
+	diagnostic := integrations.DiagnosticFailureForOperationFailure("mail", "", operation.IntegrationID, string(operation.OperationClass), operation.FailureClass, operation.FailureReason, mailOperationSideEffecting(operation.OperationClass), now)
+	operation.DiagnosticFailure = &diagnostic
 	operation.CompletedAt = &now
 	operation.UpdatedAt = now
 	m.StoreOperation(operation)
@@ -655,10 +657,21 @@ func (m *Manager) blockOperation(operation Operation, resultMode ResultMode, fai
 	operation.ResultMode = resultMode
 	operation.FailureClass = strings.TrimSpace(failureClass)
 	operation.FailureReason = strings.TrimSpace(reason)
+	diagnostic := integrations.DiagnosticFailureForOperationFailure("mail", "", operation.IntegrationID, string(operation.OperationClass), operation.FailureClass, operation.FailureReason, mailOperationSideEffecting(operation.OperationClass), now)
+	operation.DiagnosticFailure = &diagnostic
 	operation.CompletedAt = &now
 	operation.UpdatedAt = now
 	m.StoreOperation(operation)
 	return operation
+}
+
+func mailOperationSideEffecting(class OperationClass) bool {
+	switch class {
+	case OperationClassSendMessage, OperationClassSendDraft, OperationClassReplyMessage, OperationClassForwardMessage:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *Manager) resolveAndBlockOnAttachments(operation Operation, backend Backend, resource integrations.Resource, account AccountProjection, refs []AttachmentRefInput, parentKind, parentID string) (Operation, []Artifact) {

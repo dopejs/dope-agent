@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/integration-diagnostic-reason-code.schema.json",
+  "title": "IntegrationDiagnosticReasonCode",
+  "type": "object",
+  "required": [
+    "reasonCode",
+    "category",
+    "defaultRetrySafety",
+    "defaultRemediationOwner",
+    "userMessageKey",
+    "operatorMessageKey"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "reasonCode": { "$ref": "#/$defs/reasonCodeValue" },
+    "category": {
+      "type": "string",
+      "enum": [
+        "healthy",
+        "authorization",
+        "tenant_approval",
+        "scope",
+        "token",
+        "tenant_mismatch",
+        "quota",
+        "provider",
+        "network",
+        "retry_safety",
+        "unsupported",
+        "redaction",
+        "unknown"
+      ]
+    },
+    "defaultRetrySafety": { "$ref": "#/$defs/retrySafety" },
+    "defaultRemediationOwner": { "$ref": "#/$defs/remediationOwner" },
+    "userMessageKey": { "type": "string" },
+    "operatorMessageKey": { "type": "string" },
+    "supportedDomains": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "reasonCodeValue": {
+      "type": "string",
+      "enum": [
+        "healthy",
+        "app_authorization_missing",
+        "bot_authorization_missing",
+        "user_authorization_missing",
+        "tenant_approval_pending",
+        "scope_missing",
+        "token_missing",
+        "token_expired",
+        "token_revoked",
+        "refresh_credentials_missing",
+        "token_refresh_failed",
+        "tenant_mismatch",
+        "rate_limited",
+        "provider_unavailable",
+        "transient_provider_failure",
+        "network_failed",
+        "ambiguous_downstream_commit",
+        "unsafe_to_retry",
+        "operator_action_needed",
+        "limited_diagnostic",
+        "unsupported_diagnostic",
+        "redaction_failed_closed",
+        "unknown_provider_error"
+      ]
+    },
+    "retrySafety": {
+      "type": "string",
+      "enum": ["no_action_needed", "retryable", "blocked", "unsafe_to_retry", "operator_action_needed"]
+    },
+    "remediationOwner": {
+      "type": "string",
+      "enum": ["product_user", "tenant_admin", "operator", "provider", "none_required"]
+    }
+  }
+}

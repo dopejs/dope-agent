@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 )
@@ -104,13 +105,14 @@ type WorkflowLaunchConfig struct {
 }
 
 type FollowUpLink struct {
-	LinkKind           FollowUpLinkKind `json:"linkKind"`
-	SourceID           string           `json:"sourceId"`
-	EnvironmentScope   string           `json:"environmentScope,omitempty"`
-	SourceSummary      string           `json:"sourceSummary,omitempty"`
-	SourceDisplayState string           `json:"sourceDisplayState,omitempty"`
-	Stale              bool             `json:"stale,omitempty"`
-	LastCheckedAt      *time.Time       `json:"lastCheckedAt,omitempty"`
+	LinkKind           FollowUpLinkKind                          `json:"linkKind"`
+	SourceID           string                                    `json:"sourceId"`
+	EnvironmentScope   string                                    `json:"environmentScope,omitempty"`
+	SourceSummary      string                                    `json:"sourceSummary,omitempty"`
+	SourceDisplayState string                                    `json:"sourceDisplayState,omitempty"`
+	Stale              bool                                      `json:"stale,omitempty"`
+	LastCheckedAt      *time.Time                                `json:"lastCheckedAt,omitempty"`
+	DiagnosticFailure  *integrations.DiagnosticFailureProjection `json:"diagnosticFailure,omitempty"`
 }
 
 type Occurrence struct {

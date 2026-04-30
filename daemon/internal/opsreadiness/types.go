@@ -184,19 +184,22 @@ type RealAccountSmokeStatus struct {
 }
 
 type ReleaseReadinessEvidence struct {
-	InstallRunbookPassed        bool
-	UpgradeRunbookPassed        bool
-	BackupArtifactPassed        bool
-	RestoreVerificationPassed   bool
-	MigrationVerificationPassed bool
-	RollbackGuidancePresent     bool
-	SoakReportPassed            bool
-	ResourceGrowthChecksPassed  bool
-	CredentialRedactionPassed   bool
-	FakeBackendCoveragePassed   bool
-	Roadmap40RerunGatePresent   bool
-	Roadmap41RerunGatePresent   bool
-	ReviewElapsed               time.Duration
-	RealAccountSmoke            []RealAccountSmokeStatus
-	Decision                    string
+	InstallRunbookPassed          bool
+	UpgradeRunbookPassed          bool
+	BackupArtifactPassed          bool
+	RestoreVerificationPassed     bool
+	MigrationVerificationPassed   bool
+	RollbackGuidancePresent       bool
+	SoakReportPassed              bool
+	ResourceGrowthChecksPassed    bool
+	CredentialRedactionPassed     bool
+	FakeBackendCoveragePassed     bool
+	Roadmap40RerunGatePresent     bool
+	Roadmap41RerunGatePresent     bool
+	Roadmap42DiagnosticsPresent   bool
+	Roadmap42SmokeEvidencePresent bool
+	ReviewElapsed                 time.Duration
+	RealAccountSmoke              []RealAccountSmokeStatus
+	DiagnosticSmokeReports        []SmokeMatrixReport
+	Decision                      string
 }

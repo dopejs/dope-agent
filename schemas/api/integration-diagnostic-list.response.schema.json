@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/integration-diagnostic-list.response.schema.json",
+  "title": "IntegrationDiagnosticListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "integrationId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "freshnessSummary": { "type": "string" },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "./integration-diagnostic-result.schema.json" }
+    },
+    "nextCursor": { "type": "string" }
+  }
+}

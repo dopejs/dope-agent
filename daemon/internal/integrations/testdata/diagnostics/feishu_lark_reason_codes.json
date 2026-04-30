@@ -1,0 +1,141 @@
+{
+  "providerKind": "feishu_lark",
+  "fixtures": [
+    {
+      "name": "healthy readiness",
+      "domainKind": "calendar",
+      "providerEvidence": { "status": "ok" },
+      "expectedReasonCode": "healthy",
+      "expectedRetrySafety": "no_action_needed",
+      "expectedRemediationOwner": "none_required"
+    },
+	    {
+	      "name": "tenant approval pending",
+	      "domainKind": "calendar",
+	      "providerEvidence": { "code": "tenant_access_token_invalid", "approval": "pending" },
+	      "expectedReasonCode": "tenant_approval_pending",
+	      "expectedRetrySafety": "blocked",
+	      "expectedRemediationOwner": "tenant_admin"
+	    },
+	    {
+	      "name": "app authorization missing",
+	      "domainKind": "calendar",
+	      "providerEvidence": { "code": "app_access_token_invalid" },
+	      "expectedReasonCode": "app_authorization_missing",
+	      "expectedRetrySafety": "blocked",
+	      "expectedRemediationOwner": "operator"
+	    },
+	    {
+	      "name": "bot authorization missing",
+	      "domainKind": "mail",
+	      "providerEvidence": { "code": "bot_not_installed" },
+	      "expectedReasonCode": "bot_authorization_missing",
+	      "expectedRetrySafety": "blocked",
+	      "expectedRemediationOwner": "operator"
+	    },
+	    {
+	      "name": "user authorization missing",
+	      "domainKind": "mail",
+	      "providerEvidence": { "code": "user_access_token_invalid" },
+	      "expectedReasonCode": "user_authorization_missing",
+	      "expectedRetrySafety": "blocked",
+	      "expectedRemediationOwner": "product_user"
+	    },
+	    {
+	      "name": "scope missing",
+	      "domainKind": "calendar",
+	      "providerEvidence": { "code": "scope_not_granted" },
+	      "expectedReasonCode": "scope_missing",
+	      "expectedRetrySafety": "blocked",
+	      "expectedRemediationOwner": "tenant_admin"
+	    },
+	    {
+	      "name": "token missing",
+	      "domainKind": "mail",
+	      "providerEvidence": { "code": "access_token_missing" },
+	      "expectedReasonCode": "token_missing",
+	      "expectedRetrySafety": "blocked",
+	      "expectedRemediationOwner": "product_user"
+	    },
+	    {
+	      "name": "token expired",
+	      "domainKind": "calendar",
+	      "providerEvidence": { "code": "access_token_expired" },
+	      "expectedReasonCode": "token_expired",
+	      "expectedRetrySafety": "blocked",
+	      "expectedRemediationOwner": "product_user"
+	    },
+	    {
+	      "name": "token revoked",
+	      "domainKind": "calendar",
+	      "providerEvidence": { "code": "user_token_revoked" },
+	      "expectedReasonCode": "token_revoked",
+	      "expectedRetrySafety": "blocked",
+	      "expectedRemediationOwner": "product_user"
+	    },
+	    {
+	      "name": "refresh credentials missing",
+	      "domainKind": "mail",
+	      "providerEvidence": { "code": "refresh_token_missing" },
+	      "expectedReasonCode": "refresh_credentials_missing",
+	      "expectedRetrySafety": "blocked",
+	      "expectedRemediationOwner": "operator"
+	    },
+	    {
+	      "name": "token refresh failed",
+	      "domainKind": "mail",
+	      "providerEvidence": { "code": "refresh_token_failed" },
+	      "expectedReasonCode": "token_refresh_failed",
+	      "expectedRetrySafety": "blocked",
+	      "expectedRemediationOwner": "operator"
+	    },
+	    {
+	      "name": "tenant mismatch",
+	      "domainKind": "calendar",
+	      "providerEvidence": { "code": "tenant_mismatch" },
+	      "expectedReasonCode": "tenant_mismatch",
+	      "expectedRetrySafety": "blocked",
+	      "expectedRemediationOwner": "operator"
+	    },
+	    {
+	      "name": "rate limited",
+	      "domainKind": "mail",
+	      "providerEvidence": { "code": "rate_limited", "status": "429" },
+	      "expectedReasonCode": "rate_limited",
+	      "expectedRetrySafety": "retryable",
+	      "expectedRemediationOwner": "provider"
+	    },
+	    {
+	      "name": "provider unavailable",
+	      "domainKind": "mail",
+	      "providerEvidence": { "statusClass": "5xx" },
+	      "expectedReasonCode": "provider_unavailable",
+	      "expectedRetrySafety": "retryable",
+	      "expectedRemediationOwner": "provider"
+	    },
+	    {
+	      "name": "network failed",
+	      "domainKind": "calendar",
+	      "providerEvidence": { "code": "network_failed" },
+	      "expectedReasonCode": "network_failed",
+	      "expectedRetrySafety": "retryable",
+	      "expectedRemediationOwner": "operator"
+	    },
+	    {
+	      "name": "transient provider failure",
+	      "domainKind": "calendar",
+	      "providerEvidence": { "code": "temporary_failure" },
+	      "expectedReasonCode": "transient_provider_failure",
+	      "expectedRetrySafety": "retryable",
+	      "expectedRemediationOwner": "provider"
+	    },
+	    {
+	      "name": "redaction uncertain fails closed",
+	      "domainKind": "calendar",
+      "providerEvidence": { "redactionConfidence": "uncertain" },
+      "expectedReasonCode": "redaction_failed_closed",
+      "expectedRetrySafety": "blocked",
+      "expectedRemediationOwner": "operator"
+    }
+  ]
+}

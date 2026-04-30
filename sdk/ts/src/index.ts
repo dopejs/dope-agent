@@ -1109,6 +1109,10 @@ export type TenantPermission =
   | "secrets.manage"
   | "credentials.inspect"
   | "integrations.manage"
+  | "integrations.diagnostics.read"
+  | "integrations.diagnostics.run"
+  | "integrations.diagnostics.smoke"
+  | "integrations.diagnostics.smoke_risky"
   | "connectors.manage"
   | "mcp.manage"
   | "runs.execute"
@@ -1119,6 +1123,180 @@ export type TenantPermission =
   | "billing.view"
   | "billing.manage"
   | "read_only.inspect";
+
+export type IntegrationDiagnosticStatus = "unknown" | "healthy" | "degraded" | "blocked" | "unsupported";
+export type IntegrationDiagnosticFreshnessState = "fresh" | "stale";
+export type IntegrationDiagnosticRetrySafety = "no_action_needed" | "retryable" | "blocked" | "unsafe_to_retry" | "operator_action_needed";
+export type IntegrationDiagnosticRemediationOwner = "product_user" | "tenant_admin" | "operator" | "provider" | "none_required";
+export type IntegrationDiagnosticRedactionStatus = "redacted" | "suppressed" | "failed_closed";
+
+export type IntegrationDiagnosticReasonCode =
+  | "healthy"
+  | "app_authorization_missing"
+  | "bot_authorization_missing"
+  | "user_authorization_missing"
+  | "tenant_approval_pending"
+  | "scope_missing"
+  | "token_missing"
+  | "token_expired"
+  | "token_revoked"
+  | "refresh_credentials_missing"
+  | "token_refresh_failed"
+  | "tenant_mismatch"
+  | "rate_limited"
+  | "provider_unavailable"
+  | "transient_provider_failure"
+  | "network_failed"
+  | "ambiguous_downstream_commit"
+  | "unsafe_to_retry"
+  | "operator_action_needed"
+  | "limited_diagnostic"
+  | "unsupported_diagnostic"
+  | "redaction_failed_closed"
+  | "unknown_provider_error";
+
+export type IntegrationDiagnosticResultResource = {
+  diagnosticResultId: string;
+  tenantId: string;
+  integrationId: string;
+  integrationAccountId?: string;
+  domainKind: string;
+  providerKind: string;
+  capability: string;
+  status: IntegrationDiagnosticStatus;
+  reasonCode: IntegrationDiagnosticReasonCode;
+  remediationOwner: IntegrationDiagnosticRemediationOwner;
+  remediationHint?: string;
+  retrySafety: IntegrationDiagnosticRetrySafety;
+  checkedAt: string;
+  staleAfter: string;
+  freshnessState: IntegrationDiagnosticFreshnessState;
+  runId?: string;
+  redactionStatus: IntegrationDiagnosticRedactionStatus;
+  evidenceSummary?: string;
+  retentionExpiresAt: string;
+  smokeReportId?: string;
+  artifactRefs?: string[];
+};
+
+export type IntegrationDiagnosticRunResource = {
+  diagnosticRunId: string;
+  tenantId: string;
+  integrationId: string;
+  integrationAccountId?: string;
+  domainKind?: string;
+  providerKind?: string;
+  requestedBy: string;
+  trigger: string;
+  status: "queued" | "running" | "completed" | "failed" | "blocked";
+  startedAt: string;
+  completedAt?: string;
+  checkedCapabilities: string[];
+  resultIds: string[];
+  failureReasonCode?: IntegrationDiagnosticReasonCode;
+  redactionStatus: IntegrationDiagnosticRedactionStatus;
+  retentionExpiresAt: string;
+  idempotencyKey?: string;
+};
+
+export type IntegrationDiagnosticReasonCodeResource = {
+  reasonCode: IntegrationDiagnosticReasonCode;
+  category: string;
+  defaultRetrySafety: IntegrationDiagnosticRetrySafety;
+  defaultRemediationOwner: IntegrationDiagnosticRemediationOwner;
+  userMessageKey: string;
+  operatorMessageKey: string;
+  supportedDomains?: string[];
+};
+
+export type IntegrationDiagnosticListResponse = {
+  integrationId?: string;
+  tenantId?: string;
+  freshnessSummary?: string;
+  items: IntegrationDiagnosticResultResource[];
+  nextCursor?: string;
+};
+
+export type CreateIntegrationDiagnosticRunInput = {
+  capabilities?: string[];
+  forceRefresh?: boolean;
+  clientKey: string;
+  reason?: string;
+};
+
+export type SmokeProbeResult = "passed" | "failed" | "blocked" | "skipped";
+export type SmokeReportStatus = "draft" | "running" | "completed" | "blocked" | "failed" | "published";
+
+export type SmokeProbeOutcomeResource = {
+  probeOutcomeId: string;
+  tenantId: string;
+  smokeReportId: string;
+  integrationId: string;
+  integrationAccountId?: string;
+  domainKind: string;
+  providerKind: string;
+  probeAction: string;
+  result: SmokeProbeResult;
+  reasonCode: IntegrationDiagnosticReasonCode;
+  remediationHint: string;
+  retrySafety: IntegrationDiagnosticRetrySafety;
+  blockedOrSkippedReason?: string;
+  approvalRefs?: string[];
+  artifactRefs?: string[];
+  checkedAt: string;
+  redactionStatus: IntegrationDiagnosticRedactionStatus;
+  retentionExpiresAt: string;
+};
+
+export type SmokeMatrixReportResource = {
+  smokeReportId: string;
+  tenantId: string;
+  reportKind: string;
+  requestedBy: string;
+  status: SmokeReportStatus;
+  domainSummary: Record<string, string>;
+  startedAt: string;
+  completedAt?: string;
+  publishedAt?: string;
+  artifactRefs: string[];
+  retentionExpiresAt: string;
+  probeOutcomes?: SmokeProbeOutcomeResource[];
+};
+
+export type CreateIntegrationDiagnosticSmokeInput = {
+  reportId?: string;
+  integrationId: string;
+  probes?: Array<{
+    integrationId?: string;
+    domainKind?: string;
+    probeAction: string;
+    safeCredentialsAvailable: boolean;
+    tenantApprovalAvailable: boolean;
+    providerAvailable: boolean;
+    supported: boolean;
+    readOnlyOrReversible: boolean;
+    tenantAdminApproved?: boolean;
+    operatorApproved?: boolean;
+    operatorDeferred?: boolean;
+    reasonCode?: IntegrationDiagnosticReasonCode;
+    providerEvidence?: Record<string, unknown>;
+    artifactRefs?: string[];
+  }>;
+};
+
+export type DiagnosticRetentionRecordResource = {
+  retentionRecordId: string;
+  tenantId: string;
+  targetKind: string;
+  targetId: string;
+  policyRef?: string;
+  defaultExpiresAt: string;
+  effectiveExpiresAt: string;
+  retentionState: "active" | "expired" | "purged";
+  appliedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type TenantResource = {
   tenantId: string;
@@ -1920,6 +2098,46 @@ export class DopeClient {
 
   async listLiveValidationKillSwitches(query: { tenantId?: string; scope?: "tenant" | "global"; limit?: number } = {}, tenantOptions?: TenantRequestOptions): Promise<LiveValidationKillSwitchListResponse> {
     return this.requestJSON<LiveValidationKillSwitchListResponse>("/v1/live-validations/kill-switches", { query, tenant: tenantOptions });
+  }
+
+  async listIntegrationDiagnostics(integrationId: string, query: { capability?: string; includeStale?: boolean; limit?: number; cursor?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<IntegrationDiagnosticListResponse> {
+    return this.requestJSON<IntegrationDiagnosticListResponse>(`/v1/integrations/${integrationId.trim()}/diagnostics`, { query, tenant: tenantOptions });
+  }
+
+  async startIntegrationDiagnosticRun(integrationId: string, input: CreateIntegrationDiagnosticRunInput, tenantOptions?: TenantRequestOptions): Promise<IntegrationDiagnosticRunResource> {
+    return this.requestJSON<IntegrationDiagnosticRunResource>(`/v1/integrations/${integrationId.trim()}/diagnostics/runs`, {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async listIntegrationDiagnosticRuns(query: { integrationId?: string; providerKind?: string; domainKind?: string; status?: string; reasonCode?: IntegrationDiagnosticReasonCode; limit?: number; cursor?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<{ items: IntegrationDiagnosticRunResource[]; nextCursor?: string }> {
+    return this.requestJSON<{ items: IntegrationDiagnosticRunResource[]; nextCursor?: string }>("/v1/integration-diagnostics/runs", { query, tenant: tenantOptions });
+  }
+
+  async getIntegrationDiagnosticRun(runId: string, tenantOptions?: TenantRequestOptions): Promise<IntegrationDiagnosticRunResource> {
+    return this.requestJSON<IntegrationDiagnosticRunResource>(`/v1/integration-diagnostics/runs/${runId.trim()}`, { tenant: tenantOptions });
+  }
+
+  async createIntegrationDiagnosticSmoke(input: CreateIntegrationDiagnosticSmokeInput, tenantOptions?: TenantRequestOptions): Promise<SmokeMatrixReportResource> {
+    return this.requestJSON<SmokeMatrixReportResource>("/v1/integration-diagnostics/smoke", {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async applyIntegrationDiagnosticRetention(query: { limit?: number } = {}, tenantOptions?: TenantRequestOptions): Promise<{ items: DiagnosticRetentionRecordResource[] }> {
+    return this.requestJSON<{ items: DiagnosticRetentionRecordResource[] }>("/v1/integration-diagnostics/retention/apply", {
+      method: "POST",
+      query,
+      tenant: tenantOptions
+    });
+  }
+
+  async listIntegrationDiagnosticReasonCodes(tenantOptions?: TenantRequestOptions): Promise<{ items: IntegrationDiagnosticReasonCodeResource[] }> {
+    return this.requestJSON<{ items: IntegrationDiagnosticReasonCodeResource[] }>("/v1/integration-diagnostics/reason-codes", { tenant: tenantOptions });
   }
 
   async updateLiveValidationKillSwitch(input: UpdateLiveValidationKillSwitchInput, tenantOptions?: TenantRequestOptions): Promise<LiveValidationKillSwitchResource> {

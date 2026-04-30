@@ -9,6 +9,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
@@ -389,6 +390,9 @@ func TestManagerRefreshesFollowUpLinkStaleness(t *testing.T) {
 	}
 	if refreshedWorkflowReminder.FollowUpLink.SourceDisplayState != "stale" || refreshedWorkflowReminder.FollowUpLink.LastCheckedAt == nil {
 		t.Fatalf("expected stale projection metadata, got %+v", refreshedWorkflowReminder.FollowUpLink)
+	}
+	if refreshedWorkflowReminder.FollowUpLink.DiagnosticFailure == nil || refreshedWorkflowReminder.FollowUpLink.DiagnosticFailure.ReasonCode != integrations.ReasonOperatorActionNeeded {
+		t.Fatalf("expected stale follow-up diagnostic projection, got %+v", refreshedWorkflowReminder.FollowUpLink.DiagnosticFailure)
 	}
 }
 

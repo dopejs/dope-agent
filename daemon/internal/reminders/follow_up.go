@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
@@ -67,6 +68,10 @@ func refreshFollowUpLink(ctx context.Context, sqliteStore *store.SQLiteStore, en
 	out.Stale = stale
 	if stale && out.SourceDisplayState == "" {
 		out.SourceDisplayState = "stale"
+	}
+	if stale {
+		diagnostic := integrations.DiagnosticFailureForReason(integrations.ReasonOperatorActionNeeded, now)
+		out.DiagnosticFailure = &diagnostic
 	}
 	return out, nil
 }

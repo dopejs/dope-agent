@@ -1,6 +1,10 @@
 package calendar
 
-import "time"
+import (
+	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+)
 
 type OperationClass string
 
@@ -121,32 +125,33 @@ type Artifact struct {
 }
 
 type Operation struct {
-	OperationID         string          `json:"operationId"`
-	OperationClass      OperationClass  `json:"operationClass"`
-	Status              OperationStatus `json:"status"`
-	IntegrationID       string          `json:"integrationId"`
-	CalendarAccountID   string          `json:"calendarAccountId"`
-	EnvironmentScope    string          `json:"environmentScope"`
-	CalendarRef         string          `json:"calendarRef,omitempty"`
-	SelectionMode       string          `json:"selectionMode,omitempty"`
-	TimezoneUsed        string          `json:"timezoneUsed,omitempty"`
-	RequestSummary      string          `json:"requestSummary,omitempty"`
-	ExternalEventID     string          `json:"externalEventId,omitempty"`
-	FailureClass        string          `json:"failureClass,omitempty"`
-	FailureReason       string          `json:"failureReason,omitempty"`
-	RunID               string          `json:"runId,omitempty"`
-	StepID              string          `json:"stepId,omitempty"`
-	ToolCallID          string          `json:"toolCallId,omitempty"`
-	WorkflowID          string          `json:"workflowId,omitempty"`
-	WorkflowStepID      string          `json:"workflowStepId,omitempty"`
-	ScheduleID          string          `json:"scheduleId,omitempty"`
-	ScheduleAttemptID   string          `json:"scheduleAttemptId,omitempty"`
-	DeliveryID          string          `json:"deliveryId,omitempty"`
-	ArtifactIDs         []string        `json:"artifactIds,omitempty"`
-	AvailabilityQueryID string          `json:"availabilityQueryId,omitempty"`
-	CreatedAt           time.Time       `json:"createdAt"`
-	CompletedAt         *time.Time      `json:"completedAt,omitempty"`
-	UpdatedAt           time.Time       `json:"updatedAt"`
+	OperationID         string                                    `json:"operationId"`
+	OperationClass      OperationClass                            `json:"operationClass"`
+	Status              OperationStatus                           `json:"status"`
+	IntegrationID       string                                    `json:"integrationId"`
+	CalendarAccountID   string                                    `json:"calendarAccountId"`
+	EnvironmentScope    string                                    `json:"environmentScope"`
+	CalendarRef         string                                    `json:"calendarRef,omitempty"`
+	SelectionMode       string                                    `json:"selectionMode,omitempty"`
+	TimezoneUsed        string                                    `json:"timezoneUsed,omitempty"`
+	RequestSummary      string                                    `json:"requestSummary,omitempty"`
+	ExternalEventID     string                                    `json:"externalEventId,omitempty"`
+	FailureClass        string                                    `json:"failureClass,omitempty"`
+	FailureReason       string                                    `json:"failureReason,omitempty"`
+	DiagnosticFailure   *integrations.DiagnosticFailureProjection `json:"diagnosticFailure,omitempty"`
+	RunID               string                                    `json:"runId,omitempty"`
+	StepID              string                                    `json:"stepId,omitempty"`
+	ToolCallID          string                                    `json:"toolCallId,omitempty"`
+	WorkflowID          string                                    `json:"workflowId,omitempty"`
+	WorkflowStepID      string                                    `json:"workflowStepId,omitempty"`
+	ScheduleID          string                                    `json:"scheduleId,omitempty"`
+	ScheduleAttemptID   string                                    `json:"scheduleAttemptId,omitempty"`
+	DeliveryID          string                                    `json:"deliveryId,omitempty"`
+	ArtifactIDs         []string                                  `json:"artifactIds,omitempty"`
+	AvailabilityQueryID string                                    `json:"availabilityQueryId,omitempty"`
+	CreatedAt           time.Time                                 `json:"createdAt"`
+	CompletedAt         *time.Time                                `json:"completedAt,omitempty"`
+	UpdatedAt           time.Time                                 `json:"updatedAt"`
 }
 
 type OperationSummary struct {

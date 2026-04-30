@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-integration-diagnostic-smoke.request.schema.json",
+  "title": "CreateIntegrationDiagnosticSmokeRequest",
+  "type": "object",
+  "required": ["integrationId"],
+  "additionalProperties": false,
+  "properties": {
+    "reportId": { "type": "string" },
+    "integrationId": { "type": "string" },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "probeAction",
+          "safeCredentialsAvailable",
+          "tenantApprovalAvailable",
+          "providerAvailable",
+          "supported",
+          "readOnlyOrReversible"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "integrationId": { "type": "string" },
+          "domainKind": { "type": "string" },
+          "probeAction": { "type": "string" },
+          "safeCredentialsAvailable": { "type": "boolean" },
+          "tenantApprovalAvailable": { "type": "boolean" },
+          "providerAvailable": { "type": "boolean" },
+          "supported": { "type": "boolean" },
+          "readOnlyOrReversible": { "type": "boolean" },
+          "tenantAdminApproved": { "type": "boolean" },
+          "operatorApproved": { "type": "boolean" },
+          "operatorDeferred": { "type": "boolean" },
+          "reasonCode": { "$ref": "./integration-diagnostic-reason-code.schema.json#/$defs/reasonCodeValue" },
+          "providerEvidence": {
+            "type": "object",
+            "additionalProperties": {
+              "type": ["string", "number", "boolean", "null"]
+            }
+          },
+          "artifactRefs": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

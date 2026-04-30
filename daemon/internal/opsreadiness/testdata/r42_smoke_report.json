@@ -1,0 +1,57 @@
+{
+  "smokeReportId": "smoke_r42_1",
+  "tenantId": "ten_r42",
+  "reportKind": "diagnostic",
+  "requestedBy": "operator_r42",
+  "status": "completed",
+  "startedAt": "2026-04-30T10:00:00Z",
+  "completedAt": "2026-04-30T10:03:00Z",
+  "publishedAt": "2026-04-30T10:03:10Z",
+  "domainSummary": {
+    "calendar": "passed",
+    "mail": "blocked",
+    "reminders": "unsupported"
+  },
+  "probeOutcomes": [
+    {
+      "probeOutcomeId": "probe_r42_calendar",
+      "smokeReportId": "smoke_r42_1",
+      "tenantId": "ten_r42",
+      "integrationId": "integration_calendar_feishu",
+      "integrationAccountId": "acct_calendar_redacted",
+      "domainKind": "calendar",
+      "providerKind": "feishu_lark",
+      "probeAction": "calendar.read",
+      "result": "passed",
+      "reasonCode": "healthy",
+      "remediationHint": "No action needed.",
+      "retrySafety": "no_action_needed",
+      "artifactRefs": ["artifact_r42_calendar"],
+      "checkedAt": "2026-04-30T10:01:00Z",
+      "redactionStatus": "redacted",
+      "retentionExpiresAt": "2026-07-29T10:01:00Z"
+    },
+    {
+      "probeOutcomeId": "probe_r42_mail",
+      "smokeReportId": "smoke_r42_1",
+      "tenantId": "ten_r42",
+      "integrationId": "integration_mail_feishu",
+      "integrationAccountId": "acct_mail_redacted",
+      "domainKind": "mail",
+      "providerKind": "feishu_lark",
+      "probeAction": "mail.send_external",
+      "result": "blocked",
+      "reasonCode": "operator_action_needed",
+      "remediationHint": "Risky probe requires tenant administrator and operator approval.",
+      "retrySafety": "operator_action_needed",
+      "blockedOrSkippedReason": "missing_tenant_admin_approval",
+      "approvalRefs": ["operator_approval_r42"],
+      "artifactRefs": [],
+      "checkedAt": "2026-04-30T10:02:00Z",
+      "redactionStatus": "redacted",
+      "retentionExpiresAt": "2026-07-29T10:02:00Z"
+    }
+  ],
+  "artifactRefs": ["artifact_r42_summary"],
+  "retentionExpiresAt": "2026-07-29T10:03:10Z"
+}

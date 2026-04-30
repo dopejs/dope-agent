@@ -47,32 +47,36 @@ const (
 type Permission string
 
 const (
-	PermissionTenantManage                Permission = "tenant.manage"
-	PermissionSecretsManage               Permission = "secrets.manage"
-	PermissionCredentialsInspect          Permission = "credentials.inspect"
-	PermissionIntegrationsManage          Permission = "integrations.manage"
-	PermissionConnectorsManage            Permission = "connectors.manage"
-	PermissionMCPManage                   Permission = "mcp.manage"
-	PermissionRunsExecute                 Permission = "runs.execute"
-	PermissionApprovalsResolve            Permission = "approvals.resolve"
-	PermissionLiveValidationExecute       Permission = "live_validation.execute"
-	PermissionLiveValidationReconcile     Permission = "live_validation.reconcile"
-	PermissionEvaluationManage            Permission = "evaluation.manage"
-	PermissionEvaluationDiscoveryRead     Permission = "evaluation.discovery.read"
-	PermissionEvaluationDiscoveryRun      Permission = "evaluation.discovery.run"
-	PermissionEvaluationDiscoverySuppress Permission = "evaluation.discovery.suppress"
-	PermissionEvaluationFixtureRead       Permission = "evaluation.fixture.read"
-	PermissionEvaluationFixtureManage     Permission = "evaluation.fixture.manage"
-	PermissionEvaluationFixtureReview     Permission = "evaluation.fixture.review"
-	PermissionEvaluationFixtureSuppress   Permission = "evaluation.fixture.suppress"
-	PermissionEvaluationCampaignRead      Permission = "evaluation.campaign.read"
-	PermissionEvaluationCampaignManage    Permission = "evaluation.campaign.manage"
-	PermissionEvaluationDashboardRead     Permission = "evaluation.dashboard.read"
-	PermissionEvaluationInspectionRead    Permission = "evaluation.inspection.read"
-	PermissionEvaluationRetentionManage   Permission = "evaluation.retention.manage"
-	PermissionBillingView                 Permission = "billing.view"
-	PermissionBillingManage               Permission = "billing.manage"
-	PermissionReadOnlyInspect             Permission = "read_only.inspect"
+	PermissionTenantManage                     Permission = "tenant.manage"
+	PermissionSecretsManage                    Permission = "secrets.manage"
+	PermissionCredentialsInspect               Permission = "credentials.inspect"
+	PermissionIntegrationsManage               Permission = "integrations.manage"
+	PermissionIntegrationDiagnosticsRead       Permission = "integrations.diagnostics.read"
+	PermissionIntegrationDiagnosticsRun        Permission = "integrations.diagnostics.run"
+	PermissionIntegrationDiagnosticsSmoke      Permission = "integrations.diagnostics.smoke"
+	PermissionIntegrationDiagnosticsSmokeRisky Permission = "integrations.diagnostics.smoke_risky"
+	PermissionConnectorsManage                 Permission = "connectors.manage"
+	PermissionMCPManage                        Permission = "mcp.manage"
+	PermissionRunsExecute                      Permission = "runs.execute"
+	PermissionApprovalsResolve                 Permission = "approvals.resolve"
+	PermissionLiveValidationExecute            Permission = "live_validation.execute"
+	PermissionLiveValidationReconcile          Permission = "live_validation.reconcile"
+	PermissionEvaluationManage                 Permission = "evaluation.manage"
+	PermissionEvaluationDiscoveryRead          Permission = "evaluation.discovery.read"
+	PermissionEvaluationDiscoveryRun           Permission = "evaluation.discovery.run"
+	PermissionEvaluationDiscoverySuppress      Permission = "evaluation.discovery.suppress"
+	PermissionEvaluationFixtureRead            Permission = "evaluation.fixture.read"
+	PermissionEvaluationFixtureManage          Permission = "evaluation.fixture.manage"
+	PermissionEvaluationFixtureReview          Permission = "evaluation.fixture.review"
+	PermissionEvaluationFixtureSuppress        Permission = "evaluation.fixture.suppress"
+	PermissionEvaluationCampaignRead           Permission = "evaluation.campaign.read"
+	PermissionEvaluationCampaignManage         Permission = "evaluation.campaign.manage"
+	PermissionEvaluationDashboardRead          Permission = "evaluation.dashboard.read"
+	PermissionEvaluationInspectionRead         Permission = "evaluation.inspection.read"
+	PermissionEvaluationRetentionManage        Permission = "evaluation.retention.manage"
+	PermissionBillingView                      Permission = "billing.view"
+	PermissionBillingManage                    Permission = "billing.manage"
+	PermissionReadOnlyInspect                  Permission = "read_only.inspect"
 )
 
 var AllSensitivePermissions = []Permission{
@@ -80,6 +84,10 @@ var AllSensitivePermissions = []Permission{
 	PermissionSecretsManage,
 	PermissionCredentialsInspect,
 	PermissionIntegrationsManage,
+	PermissionIntegrationDiagnosticsRead,
+	PermissionIntegrationDiagnosticsRun,
+	PermissionIntegrationDiagnosticsSmoke,
+	PermissionIntegrationDiagnosticsSmokeRisky,
 	PermissionConnectorsManage,
 	PermissionMCPManage,
 	PermissionRunsExecute,

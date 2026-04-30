@@ -60,7 +60,7 @@ func handleIntegrations(cfg config.Config, manager *integrations.Manager, eventB
 				BackendKind:           input.BackendKind,
 				BackendRefID:          input.BackendRefID,
 				BackendDisplayName:    input.BackendDisplayName,
-				SupportsProbeRead:     input.BackendKind == integrations.BackendKindFakeLocal,
+				SupportsProbeRead:     input.BackendKind == integrations.BackendKindFakeLocal || integrations.BackendKindSupportsDomain(input.BackendKind, input.DomainKind),
 				SupportsProbeMutation: input.BackendKind == integrations.BackendKindFakeLocal,
 			},
 		})
@@ -134,6 +134,10 @@ func handleIntegrationRoutes(cfg config.Config, manager *integrations.Manager, e
 	}
 	if len(parts) == 2 && parts[1] == "readiness" {
 		handleIntegrationReadiness(manager, eventBus, sqliteStore, w, r, parts[0])
+		return
+	}
+	if len(parts) >= 2 && parts[1] == "diagnostics" {
+		handleIntegrationDiagnostics(manager, eventBus, sqliteStore, w, r, parts[0], parts[1:])
 		return
 	}
 	if len(parts) == 2 && parts[1] == "default" {

@@ -111,6 +111,49 @@ type ConfigDiscordConnectorResponse struct {
 	BotTokenEnv        string   `json:"botTokenEnv,omitempty"`
 }
 
+type CreateIntegrationDiagnosticRunRequest struct {
+	Capabilities []string `json:"capabilities,omitempty"`
+	ForceRefresh bool     `json:"forceRefresh,omitempty"`
+	ClientKey    string   `json:"clientKey"`
+	Reason       string   `json:"reason,omitempty"`
+}
+
+type IntegrationDiagnosticListResponse struct {
+	IntegrationID    string                          `json:"integrationId,omitempty"`
+	TenantID         string                          `json:"tenantId,omitempty"`
+	FreshnessSummary string                          `json:"freshnessSummary,omitempty"`
+	Items            []integrations.DiagnosticResult `json:"items"`
+	NextCursor       string                          `json:"nextCursor,omitempty"`
+}
+
+type IntegrationDiagnosticRunListResponse struct {
+	Items      []integrations.DiagnosticRun `json:"items"`
+	NextCursor string                       `json:"nextCursor,omitempty"`
+}
+
+type CreateIntegrationDiagnosticSmokeRequest struct {
+	ReportID      string                                  `json:"reportId,omitempty"`
+	IntegrationID string                                  `json:"integrationId"`
+	Probes        []CreateIntegrationDiagnosticSmokeProbe `json:"probes,omitempty"`
+}
+
+type CreateIntegrationDiagnosticSmokeProbe struct {
+	IntegrationID            string         `json:"integrationId,omitempty"`
+	DomainKind               string         `json:"domainKind,omitempty"`
+	ProbeAction              string         `json:"probeAction"`
+	SafeCredentialsAvailable bool           `json:"safeCredentialsAvailable"`
+	TenantApprovalAvailable  bool           `json:"tenantApprovalAvailable"`
+	ProviderAvailable        bool           `json:"providerAvailable"`
+	Supported                bool           `json:"supported"`
+	ReadOnlyOrReversible     bool           `json:"readOnlyOrReversible"`
+	TenantAdminApproved      bool           `json:"tenantAdminApproved,omitempty"`
+	OperatorApproved         bool           `json:"operatorApproved,omitempty"`
+	OperatorDeferred         bool           `json:"operatorDeferred,omitempty"`
+	ReasonCode               string         `json:"reasonCode,omitempty"`
+	ProviderEvidence         map[string]any `json:"providerEvidence,omitempty"`
+	ArtifactRefs             []string       `json:"artifactRefs,omitempty"`
+}
+
 type ChatQueryResponse struct {
 	DispatchID     string           `json:"dispatchId"`
 	Provider       string           `json:"provider"`

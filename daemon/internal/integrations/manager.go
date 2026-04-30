@@ -20,7 +20,8 @@ func NewManager(environmentScope string) *Manager {
 		byID:  make(map[string]Resource),
 		order: make([]string, 0),
 		backends: map[BackendKind]Backend{
-			BackendKindFakeLocal: FakeBackend{},
+			BackendKindFakeLocal:  FakeBackend{},
+			BackendKindFeishuLark: FeishuLarkDiagnosticBackend{},
 		},
 		env: strings.TrimSpace(environmentScope),
 	}

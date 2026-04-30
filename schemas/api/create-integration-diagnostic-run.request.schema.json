@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-integration-diagnostic-run.request.schema.json",
+  "title": "CreateIntegrationDiagnosticRunRequest",
+  "type": "object",
+  "required": ["clientKey"],
+  "additionalProperties": false,
+  "properties": {
+    "capabilities": { "type": "array", "items": { "type": "string" } },
+    "forceRefresh": { "type": "boolean" },
+    "clientKey": { "type": "string", "minLength": 1 },
+    "reason": { "type": "string" }
+  }
+}

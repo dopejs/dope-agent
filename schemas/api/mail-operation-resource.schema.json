@@ -22,6 +22,7 @@
     "requestSummary": { "type": "string" },
     "failureClass": { "type": "string" },
     "failureReason": { "type": "string" },
+    "diagnosticFailure": { "$ref": "./integration-diagnostic-failure-projection.schema.json" },
     "backgroundSendPermitted": { "type": "boolean" },
     "runId": { "type": "string" },
     "stepId": { "type": "string" },

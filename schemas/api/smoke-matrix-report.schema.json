@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/smoke-matrix-report.schema.json",
+  "title": "SmokeMatrixReport",
+  "type": "object",
+  "required": [
+    "smokeReportId",
+    "reportKind",
+    "requestedBy",
+    "status",
+    "startedAt",
+    "domainSummary",
+    "artifactRefs",
+    "retentionExpiresAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "smokeReportId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "reportKind": { "type": "string", "enum": ["diagnostic", "release_readiness"] },
+    "requestedBy": { "type": "string" },
+    "status": { "type": "string", "enum": ["draft", "running", "completed", "blocked", "failed", "published"] },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "domainSummary": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["passed", "failed", "blocked", "skipped", "limited", "unsupported"]
+      }
+    },
+    "probeOutcomes": {
+      "type": "array",
+      "items": { "$ref": "./smoke-probe-outcome.schema.json" }
+    },
+    "artifactRefs": { "type": "array", "items": { "type": "string" } },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" }
+  }
+}

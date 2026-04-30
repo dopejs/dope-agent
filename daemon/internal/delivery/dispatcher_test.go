@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
 
@@ -154,6 +155,41 @@ func TestDeliveryRestoreResumesQueuedAttempt(t *testing.T) {
 	}
 	if final.Attempts[1].TargetID != target.TargetID {
 		t.Fatalf("expected resumed attempt to stay on target %s, got %+v", target.TargetID, final.Attempts[1])
+	}
+}
+
+func TestDeliveryTerminalFailureProjectsDiagnosticFailure(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	manager := NewManager("test", events.NewBus(), sqliteStore, &scriptedAdapter{
+		targetKind: TargetKindTestSink,
+		results:    []error{errors.New("network timeout")},
+	})
+	manager.maxAttempts = 1
+	seedDeliveryPreferenceState(t, context.Background(), manager, "terminal-target")
+
+	outcome, err := manager.EmitOutcome(context.Background(), OutcomeInput{
+		SourceKind:     "run",
+		SourceID:       "run_terminal",
+		RunID:          "run_terminal",
+		ResultClass:    ResultClassFailure,
+		IntegrationID:  "delivery-integration",
+		PayloadPreview: "terminal failure",
+	})
+	if err != nil {
+		t.Fatalf("EmitOutcome returned error: %v", err)
+	}
+	if outcome.Status != OutcomeStatusFailed {
+		t.Fatalf("expected failed outcome, got %+v", outcome)
+	}
+	if outcome.DiagnosticFailure == nil || outcome.DiagnosticFailure.ReasonCode != integrations.ReasonNetworkFailed {
+		t.Fatalf("expected network diagnostic failure projection, got %+v", outcome.DiagnosticFailure)
 	}
 }
 

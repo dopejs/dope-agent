@@ -157,6 +157,49 @@ func TestManagerRunProbeAllowsDegradedAndBlocksUnavailable(t *testing.T) {
 	}
 }
 
+func TestManagerRunProbeUsesFeishuLarkDiagnosticBackend(t *testing.T) {
+	t.Parallel()
+
+	manager := NewManager("test")
+	created, err := manager.Create(CreateInput{
+		IntegrationID:    "calendar-feishu",
+		DomainKind:       "calendar",
+		DisplayName:      "Feishu Calendar",
+		EnvironmentScope: "test",
+		AccountBinding: AccountBinding{
+			AccountKey: "acct_feishu",
+		},
+		BackendBinding: BackendBinding{
+			BackendKind:       BackendKindFeishuLark,
+			SupportsProbeRead: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if _, err := manager.UpdateReadiness(created.IntegrationID, UpdateReadinessInput{
+		ReadinessStatus: ReadinessStatusHealthy,
+		AuthState:       AuthStateAuthorized,
+		HealthState:     HealthStateHealthy,
+	}); err != nil {
+		t.Fatalf("UpdateReadiness returned error: %v", err)
+	}
+
+	_, result, summary, err := manager.RunProbe(created.IntegrationID, ProbeKindInspect, map[string]any{
+		"providerEvidence": map[string]any{"code": "scope_not_granted"},
+		"operationClass":   "calendar.read",
+	})
+	if err != nil {
+		t.Fatalf("RunProbe returned error: %v", err)
+	}
+	if result.Status != "failed" || result.FailureClass != "scope_not_granted" {
+		t.Fatalf("expected Feishu/Lark probe failure evidence, got %+v", result)
+	}
+	if summary.BackendKind != BackendKindFeishuLark || summary.IntegrationID != created.IntegrationID {
+		t.Fatalf("expected Feishu/Lark binding summary, got %+v", summary)
+	}
+}
+
 func TestManagerNormalizesBackendBindingAndBindingSummary(t *testing.T) {
 	t.Parallel()
 

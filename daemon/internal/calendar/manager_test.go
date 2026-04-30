@@ -169,3 +169,24 @@ func TestCalendarManagerPreservesEventIdentityAcrossUpdateAndCancel(t *testing.T
 		t.Fatalf("expected cancelled lifecycle state, got %+v", cancelled)
 	}
 }
+
+func TestCalendarManagerProjectsDiagnosticFailureOnBackendFailure(t *testing.T) {
+	t.Parallel()
+
+	manager := NewManager("test")
+	resources := calendarTestResources()
+
+	_, _, operation, _, err := manager.GetEvent(resources, GetEventInput{
+		Selection:       Selection{IntegrationID: "calendar-a"},
+		ExternalEventID: "missing_event",
+	})
+	if !errors.Is(err, ErrCalendarEventNotFound) {
+		t.Fatalf("expected event not found error, got %v", err)
+	}
+	if operation.DiagnosticFailure == nil {
+		t.Fatalf("expected diagnostic failure projection on failed operation: %+v", operation)
+	}
+	if operation.DiagnosticFailure.ReasonCode == "" || operation.DiagnosticFailure.RemediationHint == "" || operation.DiagnosticFailure.CheckedAt.IsZero() {
+		t.Fatalf("expected actionable diagnostic failure projection, got %+v", operation.DiagnosticFailure)
+	}
+}

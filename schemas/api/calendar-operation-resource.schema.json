@@ -35,6 +35,7 @@
     "externalEventId": { "type": "string" },
     "failureClass": { "type": "string" },
     "failureReason": { "type": "string" },
+    "diagnosticFailure": { "$ref": "./integration-diagnostic-failure-projection.schema.json" },
     "runId": { "type": "string" },
     "stepId": { "type": "string" },
     "toolCallId": { "type": "string" },

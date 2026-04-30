@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/integration-diagnostic-redaction-failed.event.schema.json",
+  "title": "IntegrationDiagnosticRedactionFailedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "integration" },
+        "name": { "const": "integration_diagnostic.redaction_failed_closed" },
+        "payload": {
+          "type": "object",
+          "required": ["tenantId", "targetKind", "targetId", "reasonCode", "redactionStatus"],
+          "additionalProperties": false,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "targetKind": { "type": "string" },
+            "targetId": { "type": "string" },
+            "reasonCode": { "const": "redaction_failed_closed" },
+            "redactionStatus": { "const": "failed_closed" }
+          }
+        }
+      }
+    }
+  ]
+}

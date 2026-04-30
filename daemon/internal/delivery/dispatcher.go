@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 )
 
 func (m *Manager) dispatchImmediate(ctx context.Context, outcome DeliveryOutcome, target DeliveryTarget) (DeliveryOutcome, error) {
@@ -110,6 +112,7 @@ func (m *Manager) handleAttemptFailure(ctx context.Context, outcome DeliveryOutc
 	outcome.Status = OutcomeStatusFailed
 	outcome.UpdatedAt = completedAt
 	outcome.FinalizedAt = &completedAt
+	outcome.DiagnosticFailure = deliveryDiagnosticFailure(outcome, attempt.FailureClass, attempt.FailureReason, true, completedAt)
 	if strings.TrimSpace(outcome.PayloadPreview) == "" {
 		outcome.PayloadPreview = sendErr.Error()
 	}
@@ -146,6 +149,7 @@ func (m *Manager) failOutcomeWithoutRetry(ctx context.Context, outcome DeliveryO
 	outcome.Status = OutcomeStatusFailed
 	outcome.UpdatedAt = now
 	outcome.FinalizedAt = &now
+	outcome.DiagnosticFailure = deliveryDiagnosticFailure(outcome, failureClass, failureReason, false, now)
 	if strings.TrimSpace(outcome.PayloadPreview) == "" {
 		outcome.PayloadPreview = failureReason
 	}
@@ -157,6 +161,11 @@ func (m *Manager) failOutcomeWithoutRetry(ctx context.Context, outcome DeliveryO
 	}
 	m.clearRetrySchedule(outcome.DeliveryID)
 	return m.attachAttempts(ctx, outcome)
+}
+
+func deliveryDiagnosticFailure(outcome DeliveryOutcome, failureClass, failureReason string, sideEffecting bool, checkedAt time.Time) *integrations.DiagnosticFailureProjection {
+	diagnostic := integrations.DiagnosticFailureForOperationFailure("delivery", "", outcome.IntegrationID, string(outcome.Mode), failureClass, failureReason, sideEffecting, checkedAt)
+	return &diagnostic
 }
 
 func (m *Manager) nextAttemptNumber(ctx context.Context, deliveryID string) int {

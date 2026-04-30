@@ -1,6 +1,10 @@
 package mail
 
-import "time"
+import (
+	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+)
 
 type OperationClass string
 
@@ -209,34 +213,35 @@ type Artifact struct {
 }
 
 type Operation struct {
-	OperationID             string          `json:"operationId"`
-	OperationClass          OperationClass  `json:"operationClass"`
-	Status                  OperationStatus `json:"status"`
-	ResultMode              ResultMode      `json:"resultMode"`
-	SendPath                SendPath        `json:"sendPath,omitempty"`
-	IntegrationID           string          `json:"integrationId"`
-	MailAccountID           string          `json:"mailAccountId"`
-	EnvironmentScope        string          `json:"environmentScope"`
-	SelectionMode           string          `json:"selectionMode,omitempty"`
-	ThreadID                string          `json:"threadId,omitempty"`
-	MessageID               string          `json:"messageId,omitempty"`
-	DraftID                 string          `json:"draftId,omitempty"`
-	RequestSummary          string          `json:"requestSummary,omitempty"`
-	FailureClass            string          `json:"failureClass,omitempty"`
-	FailureReason           string          `json:"failureReason,omitempty"`
-	BackgroundSendPermitted bool            `json:"backgroundSendPermitted,omitempty"`
-	RunID                   string          `json:"runId,omitempty"`
-	StepID                  string          `json:"stepId,omitempty"`
-	ToolCallID              string          `json:"toolCallId,omitempty"`
-	WorkflowID              string          `json:"workflowId,omitempty"`
-	WorkflowStepID          string          `json:"workflowStepId,omitempty"`
-	ScheduleID              string          `json:"scheduleId,omitempty"`
-	ScheduleAttemptID       string          `json:"scheduleAttemptId,omitempty"`
-	DeliveryID              string          `json:"deliveryId,omitempty"`
-	ArtifactIDs             []string        `json:"artifactIds,omitempty"`
-	CreatedAt               time.Time       `json:"createdAt"`
-	CompletedAt             *time.Time      `json:"completedAt,omitempty"`
-	UpdatedAt               time.Time       `json:"updatedAt"`
+	OperationID             string                                    `json:"operationId"`
+	OperationClass          OperationClass                            `json:"operationClass"`
+	Status                  OperationStatus                           `json:"status"`
+	ResultMode              ResultMode                                `json:"resultMode"`
+	SendPath                SendPath                                  `json:"sendPath,omitempty"`
+	IntegrationID           string                                    `json:"integrationId"`
+	MailAccountID           string                                    `json:"mailAccountId"`
+	EnvironmentScope        string                                    `json:"environmentScope"`
+	SelectionMode           string                                    `json:"selectionMode,omitempty"`
+	ThreadID                string                                    `json:"threadId,omitempty"`
+	MessageID               string                                    `json:"messageId,omitempty"`
+	DraftID                 string                                    `json:"draftId,omitempty"`
+	RequestSummary          string                                    `json:"requestSummary,omitempty"`
+	FailureClass            string                                    `json:"failureClass,omitempty"`
+	FailureReason           string                                    `json:"failureReason,omitempty"`
+	DiagnosticFailure       *integrations.DiagnosticFailureProjection `json:"diagnosticFailure,omitempty"`
+	BackgroundSendPermitted bool                                      `json:"backgroundSendPermitted,omitempty"`
+	RunID                   string                                    `json:"runId,omitempty"`
+	StepID                  string                                    `json:"stepId,omitempty"`
+	ToolCallID              string                                    `json:"toolCallId,omitempty"`
+	WorkflowID              string                                    `json:"workflowId,omitempty"`
+	WorkflowStepID          string                                    `json:"workflowStepId,omitempty"`
+	ScheduleID              string                                    `json:"scheduleId,omitempty"`
+	ScheduleAttemptID       string                                    `json:"scheduleAttemptId,omitempty"`
+	DeliveryID              string                                    `json:"deliveryId,omitempty"`
+	ArtifactIDs             []string                                  `json:"artifactIds,omitempty"`
+	CreatedAt               time.Time                                 `json:"createdAt"`
+	CompletedAt             *time.Time                                `json:"completedAt,omitempty"`
+	UpdatedAt               time.Time                                 `json:"updatedAt"`
 }
 
 type OperationSummary struct {

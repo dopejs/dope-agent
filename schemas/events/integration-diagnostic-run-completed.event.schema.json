@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/integration-diagnostic-run-completed.event.schema.json",
+  "title": "IntegrationDiagnosticRunCompletedEvent",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "category": { "const": "integration" },
+        "name": { "const": "integration_diagnostic.run_completed" },
+        "payload": {
+          "type": "object",
+          "required": ["tenantId", "diagnosticRunId", "integrationId", "status", "resultIds", "redactionStatus"],
+          "additionalProperties": false,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "diagnosticRunId": { "type": "string" },
+            "integrationId": { "type": "string" },
+            "status": { "type": "string", "enum": ["completed", "failed", "blocked"] },
+            "resultIds": { "type": "array", "items": { "type": "string" } },
+            "reasonCode": { "$ref": "../api/integration-diagnostic-reason-code.schema.json#/$defs/reasonCodeValue" },
+            "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "failed_closed"] }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 38
+	CurrentSchemaVersion = 39
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -2482,6 +2482,130 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_eval_tool_call_inspections_tenant_campaign ON evaluation_tool_call_inspections(tenant_id, campaign_id, updated_at DESC, inspection_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_eval_tool_call_inspections_tenant_item ON evaluation_tool_call_inspections(tenant_id, campaign_item_id, updated_at DESC, inspection_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_eval_retention_applications_tenant_resource ON evaluation_retention_applications(tenant_id, resource_kind, resource_id, applied_at DESC, application_id DESC);`,
+		},
+	},
+	{
+		Version: 39,
+		Name:    "r42_integration_diagnostics",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS integration_diagnostic_runs (
+				diagnostic_run_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				integration_id TEXT NOT NULL,
+				integration_account_id TEXT,
+				domain_kind TEXT,
+				provider_kind TEXT,
+				requested_by TEXT NOT NULL,
+				trigger TEXT NOT NULL,
+				status TEXT NOT NULL,
+				started_at TEXT NOT NULL,
+				completed_at TEXT,
+				failure_reason_code TEXT,
+				redaction_status TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				idempotency_key TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS integration_diagnostic_results (
+				diagnostic_result_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				integration_id TEXT NOT NULL,
+				integration_account_id TEXT,
+				domain_kind TEXT NOT NULL,
+				provider_kind TEXT NOT NULL,
+				capability TEXT NOT NULL,
+				status TEXT NOT NULL,
+				reason_code TEXT NOT NULL,
+				remediation_owner TEXT NOT NULL,
+				retry_safety TEXT NOT NULL,
+				checked_at TEXT NOT NULL,
+				stale_after TEXT NOT NULL,
+				freshness_state TEXT NOT NULL,
+				run_id TEXT,
+				redaction_status TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(run_id) REFERENCES integration_diagnostic_runs(diagnostic_run_id) ON DELETE SET NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS integration_provider_classifications (
+				classification_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				provider_kind TEXT NOT NULL,
+				domain_kind TEXT NOT NULL,
+				integration_id TEXT,
+				operation_class TEXT,
+				reason_code TEXT NOT NULL,
+				retry_safety TEXT NOT NULL,
+				remediation_owner TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS integration_smoke_reports (
+				smoke_report_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				report_kind TEXT NOT NULL,
+				requested_by TEXT NOT NULL,
+				status TEXT NOT NULL,
+				started_at TEXT NOT NULL,
+				completed_at TEXT,
+				published_at TEXT,
+				retention_expires_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS integration_smoke_probe_outcomes (
+				probe_outcome_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				smoke_report_id TEXT NOT NULL,
+				integration_id TEXT NOT NULL,
+				integration_account_id TEXT,
+				domain_kind TEXT NOT NULL,
+				provider_kind TEXT NOT NULL,
+				probe_action TEXT NOT NULL,
+				result TEXT NOT NULL,
+				reason_code TEXT NOT NULL,
+				retry_safety TEXT NOT NULL,
+				checked_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(smoke_report_id) REFERENCES integration_smoke_reports(smoke_report_id) ON DELETE CASCADE
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS integration_diagnostic_retention (
+				retention_record_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				target_kind TEXT NOT NULL,
+				target_id TEXT NOT NULL,
+				policy_ref TEXT,
+				default_expires_at TEXT NOT NULL,
+				effective_expires_at TEXT NOT NULL,
+				retention_state TEXT NOT NULL,
+				applied_at TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_integration_diagnostic_runs_tenant_status ON integration_diagnostic_runs(tenant_id, status, started_at DESC, diagnostic_run_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_integration_diagnostic_runs_tenant_integration ON integration_diagnostic_runs(tenant_id, integration_id, started_at DESC, diagnostic_run_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_integration_diagnostic_runs_tenant_idempotency ON integration_diagnostic_runs(tenant_id, idempotency_key, started_at DESC, diagnostic_run_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_integration_diagnostic_results_tenant_latest ON integration_diagnostic_results(tenant_id, integration_id, domain_kind, capability, checked_at DESC, diagnostic_result_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_integration_diagnostic_results_tenant_reason ON integration_diagnostic_results(tenant_id, reason_code, checked_at DESC, diagnostic_result_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_integration_provider_classifications_tenant_reason ON integration_provider_classifications(tenant_id, reason_code, created_at DESC, classification_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_integration_smoke_reports_tenant_status ON integration_smoke_reports(tenant_id, status, started_at DESC, smoke_report_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_integration_smoke_outcomes_tenant_report ON integration_smoke_probe_outcomes(tenant_id, smoke_report_id, checked_at DESC, probe_outcome_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_integration_diagnostic_retention_tenant_target ON integration_diagnostic_retention(tenant_id, target_kind, target_id, effective_expires_at DESC);`,
 		},
 	},
 }

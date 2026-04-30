@@ -221,6 +221,174 @@ describe("DopeClient", () => {
     expect(detail.runId).toBe("run_1");
   });
 
+  it("calls integration diagnostic inspection routes", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        integrationId: "integration_feishu",
+        tenantId: "ten_diag",
+        freshnessSummary: "latest diagnostic state",
+        items: [{
+          diagnosticResultId: "diag_result_1",
+          tenantId: "ten_diag",
+          integrationId: "integration_feishu",
+          domainKind: "calendar",
+          providerKind: "feishu_lark",
+          capability: "calendar.read",
+          status: "blocked",
+          reasonCode: "scope_missing",
+          remediationOwner: "tenant_admin",
+          retrySafety: "blocked",
+          checkedAt: "2026-04-30T10:00:00Z",
+          staleAfter: "2026-04-30T10:15:00Z",
+          freshnessState: "fresh",
+          redactionStatus: "redacted",
+          retentionExpiresAt: "2026-07-29T10:00:00Z"
+        }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(201, {
+        diagnosticRunId: "diag_run_client_key",
+        tenantId: "ten_diag",
+        integrationId: "integration_feishu",
+        domainKind: "calendar",
+        providerKind: "feishu_lark",
+        requestedBy: "prn_operator",
+        trigger: "operator_inspection",
+        status: "completed",
+        startedAt: "2026-04-30T10:00:00Z",
+        completedAt: "2026-04-30T10:00:01Z",
+        checkedCapabilities: ["calendar.read"],
+        resultIds: ["diag_result_1"],
+        redactionStatus: "redacted",
+        retentionExpiresAt: "2026-07-29T10:00:00Z",
+        idempotencyKey: "client-key"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        items: [{
+          diagnosticRunId: "diag_run_client_key",
+          tenantId: "ten_diag",
+          integrationId: "integration_feishu",
+          requestedBy: "prn_operator",
+          trigger: "operator_inspection",
+          status: "completed",
+          startedAt: "2026-04-30T10:00:00Z",
+          checkedCapabilities: ["calendar.read"],
+          resultIds: ["diag_result_1"],
+          redactionStatus: "redacted",
+          retentionExpiresAt: "2026-07-29T10:00:00Z"
+        }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        diagnosticRunId: "diag_run_client_key",
+        tenantId: "ten_diag",
+        integrationId: "integration_feishu",
+        requestedBy: "prn_operator",
+        trigger: "operator_inspection",
+        status: "completed",
+        startedAt: "2026-04-30T10:00:00Z",
+        checkedCapabilities: ["calendar.read"],
+        resultIds: ["diag_result_1"],
+        redactionStatus: "redacted",
+        retentionExpiresAt: "2026-07-29T10:00:00Z"
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(201, {
+        smokeReportId: "smoke_feishu_probe",
+        tenantId: "ten_diag",
+        reportKind: "diagnostic",
+        requestedBy: "prn_operator",
+        status: "failed",
+        domainSummary: { calendar: "failed" },
+        startedAt: "2026-04-30T10:00:00Z",
+        completedAt: "2026-04-30T10:01:00Z",
+        publishedAt: "2026-04-30T10:01:00Z",
+        artifactRefs: ["probe:integration_feishu:inspect"],
+        retentionExpiresAt: "2026-07-29T10:00:00Z",
+        probeOutcomes: [{
+          probeOutcomeId: "probe_1",
+          tenantId: "ten_diag",
+          smokeReportId: "smoke_feishu_probe",
+          integrationId: "integration_feishu",
+          domainKind: "calendar",
+          providerKind: "feishu_lark",
+          probeAction: "calendar.read",
+          result: "failed",
+          reasonCode: "scope_missing",
+          remediationHint: "Ask a tenant administrator to grant the missing provider scope.",
+          retrySafety: "blocked",
+          checkedAt: "2026-04-30T10:00:00Z",
+          redactionStatus: "redacted",
+          retentionExpiresAt: "2026-07-29T10:00:00Z"
+        }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        items: [{
+          retentionRecordId: "retention_1",
+          tenantId: "ten_diag",
+          targetKind: "diagnostic_run",
+          targetId: "diag_run_client_key",
+          defaultExpiresAt: "2026-07-29T10:00:00Z",
+          effectiveExpiresAt: "2026-07-29T10:00:00Z",
+          retentionState: "expired",
+          appliedAt: "2026-07-30T10:00:00Z",
+          createdAt: "2026-04-30T10:00:00Z",
+          updatedAt: "2026-07-30T10:00:00Z"
+        }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        items: [{
+          reasonCode: "scope_missing",
+          category: "scope",
+          defaultRetrySafety: "blocked",
+          defaultRemediationOwner: "tenant_admin",
+          userMessageKey: "integration.diagnostic.scope_missing",
+          operatorMessageKey: "integration.diagnostic.scope_missing"
+        }]
+      }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      accessToken: "token",
+      defaultTenantId: "ten_diag",
+      fetchImpl
+    });
+
+    const diagnostics = await client.listIntegrationDiagnostics(" integration_feishu ", { limit: 1 });
+    const run = await client.startIntegrationDiagnosticRun("integration_feishu", { clientKey: "client-key", capabilities: ["calendar.read"] });
+    const runs = await client.listIntegrationDiagnosticRuns({ integrationId: "integration_feishu" });
+    const runDetail = await client.getIntegrationDiagnosticRun("diag_run_client_key");
+    const smoke = await client.createIntegrationDiagnosticSmoke({
+      reportId: "smoke_feishu_probe",
+      integrationId: "integration_feishu",
+      probes: [{
+        domainKind: "calendar",
+        probeAction: "calendar.read",
+        safeCredentialsAvailable: true,
+        tenantApprovalAvailable: true,
+        providerAvailable: true,
+        supported: true,
+        readOnlyOrReversible: true,
+        providerEvidence: { code: "scope_not_granted" }
+      }]
+    });
+    const retention = await client.applyIntegrationDiagnosticRetention({ limit: 10 });
+    const reasonCodes = await client.listIntegrationDiagnosticReasonCodes();
+
+    expect(diagnostics.items[0].reasonCode).toBe("scope_missing");
+    expect(run.status).toBe("completed");
+    expect(runs.items).toHaveLength(1);
+    expect(runDetail.diagnosticRunId).toBe("diag_run_client_key");
+    expect(smoke.probeOutcomes?.[0]?.reasonCode).toBe("scope_missing");
+    expect(retention.items[0].retentionState).toBe("expired");
+    expect(reasonCodes.items[0].defaultRemediationOwner).toBe("tenant_admin");
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/integrations/integration_feishu/diagnostics?limit=1", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/integrations/integration_feishu/diagnostics/runs", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/integration-diagnostics/runs?integrationId=integration_feishu", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/integration-diagnostics/runs/diag_run_client_key", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(5, "http://127.0.0.1:19192/v1/integration-diagnostics/smoke", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/integration-diagnostics/retention/apply?limit=10", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/integration-diagnostics/reason-codes", expect.anything());
+  });
+
   it("calls evaluation replay and comparison surfaces", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

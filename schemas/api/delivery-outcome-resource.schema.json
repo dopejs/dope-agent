@@ -44,6 +44,7 @@
       "type": "array",
       "items": { "$ref": "./delivery-attempt-resource.schema.json" }
     },
+    "diagnosticFailure": { "$ref": "./integration-diagnostic-failure-projection.schema.json" },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" },
     "finalizedAt": { "type": "string", "format": "date-time" }

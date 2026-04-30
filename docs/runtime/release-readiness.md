@@ -18,10 +18,17 @@ Required evidence:
 - credential redaction checks
 - real-account smoke result or explicit skip reason for every supported domain
 - Roadmap 40 and Roadmap 41 rerun gate
+- Roadmap 42 integration diagnostic latest-state and smoke evidence
 
 Safe real-account credentials are optional. Missing safe credentials do not
 block release readiness when fake-backend coverage passes and every affected
 integration domain records an explicit skip reason.
+
+Roadmap 42 evidence must show, for each supported integration domain, whether
+diagnostics passed, failed, were blocked, were skipped, were limited, or were
+deliberately unsupported. Diagnostic runs and smoke reports use 90-day default
+retention and must remain tenant-scoped and redacted. Risky smoke probes require
+both tenant administrator and authorized operator approval.
 
 Any final release that includes Roadmap 40 live side-effect validation or
 Roadmap 41 evaluation-product expansion must rerun the Roadmap 39 soak harness

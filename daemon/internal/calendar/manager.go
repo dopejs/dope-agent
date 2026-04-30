@@ -400,12 +400,23 @@ func (m *Manager) failOperation(operation Operation, class, reason string) Opera
 	operation.Status = OperationStatusFailed
 	operation.FailureClass = class
 	operation.FailureReason = reason
+	diagnostic := integrations.DiagnosticFailureForOperationFailure("calendar", "", operation.IntegrationID, string(operation.OperationClass), class, reason, calendarOperationSideEffecting(operation.OperationClass), now)
+	operation.DiagnosticFailure = &diagnostic
 	operation.CompletedAt = &now
 	operation.UpdatedAt = now
 	m.mu.Lock()
 	m.operations[operation.OperationID] = operation
 	m.mu.Unlock()
 	return operation
+}
+
+func calendarOperationSideEffecting(class OperationClass) bool {
+	switch class {
+	case OperationClassCreateEvent, OperationClassUpdateEvent, OperationClassCancelEvent:
+		return true
+	default:
+		return false
+	}
 }
 
 func summarizeWindow(startsAt, endsAt *time.Time) string {
