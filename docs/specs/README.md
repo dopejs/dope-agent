@@ -50,6 +50,8 @@ Do not rely on the short roadmap heading alone when a `docs/specs` document exis
 - `024` -> Roadmap 39: Production Install, Upgrade, Backup, And Soak
 - `025` -> Roadmap 40: Live Validation And Side-Effect Replay
 - `026` -> Roadmap 41: Evaluation Product Expansion
+- `027` -> Roadmap 42: Integration Health And Permission Diagnostics
+- `028` -> Roadmap 43: Hosted Operational Profile And Recovery
 
 ## Authoring Standard
 

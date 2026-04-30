@@ -256,10 +256,18 @@ readiness before context and memory become the main differentiators:
 - Roadmap 39: production install, upgrade, backup, and soak
 - Roadmap 40: live validation and side-effect replay
 - Roadmap 41: evaluation product expansion
+- Roadmap 42: integration health and permission diagnostics
+- Roadmap 43: hosted operational profile and recovery
 
 This is the bridge from a strong local-first personal-agent daemon to a hosted product. It
 does not replace knowledge-plane work; it creates the tenant, safety, operational, and
 evaluation boundaries that knowledge-plane work should rely on.
+
+Roadmaps 42 and 43 are the stabilization layer after the first hosted-productization
+closure. Roadmap 42 makes real external integration failures diagnosable through product
+truth instead of ad hoc provider-console investigation. Roadmap 43 turns hosted/test-host
+operation into a fixed profile with deployment, supervision, backup, restore, rollback,
+observability, and release-evidence collection.
 
 ### Phase 5: Context Engineering
 

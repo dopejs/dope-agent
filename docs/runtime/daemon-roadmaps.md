@@ -1788,6 +1788,64 @@ Explicitly out of scope:
 - autonomous self-improvement
 - unreviewed fixture mutation by the agent
 
+### Roadmap 42: Integration Health And Permission Diagnostics
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/027-integration-health-and-permission-diagnostics.md](../specs/027-integration-health-and-permission-diagnostics.md)
+
+Goal: make real external integration health, authorization state, provider error
+classification, and operator remediation inspectable through stable product surfaces.
+
+Roadmap definition of done:
+
+- integration diagnostics expose stable reason codes and remediation hints
+- bot or app authorization, user OAuth, tenant approval, provider scope, token freshness,
+  provider availability, rate limit, network failure, and tenant mismatch are
+  distinguishable where provider evidence permits
+- Feishu/Lark is covered as the first proof domain
+- real-account smoke produces structured pass, fail, blocked, and skipped evidence
+- diagnostics, logs, events, smoke reports, and evaluation artifacts do not expose raw
+  credential material
+
+Explicitly out of scope:
+
+- adding new integration domains
+- bypassing provider approval or tenant administrator controls
+- autonomous remediation without operator approval
+- memory or context engineering
+
+### Roadmap 43: Hosted Operational Profile And Recovery
+
+Status: `[ ] planned`
+
+Detailed spec: [docs/specs/028-hosted-operational-profile-and-recovery.md](../specs/028-hosted-operational-profile-and-recovery.md)
+
+Goal: define and verify a hosted/test-host operational profile for deployment, process
+supervision, backup, restore, upgrade, rollback, observability, and release evidence
+collection.
+
+Roadmap definition of done:
+
+- hosted/test-host code, data, log, artifact, backup, and report paths are fixed and
+  documented
+- daemon start, stop, restart, status, health check, and crash recovery behavior are
+  covered by a supervisor contract
+- backup/restore and upgrade preflight/postflight rehearsals produce structured evidence
+- operational observability covers daemon health, database size, log size, memory,
+  goroutines, file descriptors where available, queue/backlog, connector health, MCP
+  health, and integration diagnostic state
+- release evidence is linked from a single index or bundle that supports a 30-minute
+  ship/no-ship review
+
+Explicitly out of scope:
+
+- Kubernetes or multi-region deployment
+- external managed secret-manager integration
+- payment-provider production launch
+- enterprise SSO
+- memory or context engineering
+
 ## Roadmap 13: Provider Streaming Timeout Semantics
 
 Status: `[x] complete`
@@ -2706,3 +2764,5 @@ Task definition of done:
 39. Roadmap 39: Production Install, Upgrade, Backup, And Soak
 40. Roadmap 40: Live Validation And Side-Effect Replay
 41. Roadmap 41: Evaluation Product Expansion
+42. Roadmap 42: Integration Health And Permission Diagnostics
+43. Roadmap 43: Hosted Operational Profile And Recovery
