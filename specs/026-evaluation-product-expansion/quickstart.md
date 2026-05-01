@@ -141,27 +141,36 @@ Asia/Shanghai against the default test environment.
 - Roadmap 41 product smoke: `/usr/bin/time -p env GOCACHE=/tmp/dope-go-build go test ./internal/api -run 'TestEvaluationProduct(DiscoveryAPIRoutes|FixturePermissionDenialsAndLifecycleRoutes|CampaignAPIRoutes|DashboardAPIRequiresReadPermissionAndListsTenantProjections|InspectionAPIRoutes)' -count=1` passed in 1.98 seconds real time. This covers discovery, suppression/fixture lifecycle, campaign start/transitions, dashboard projection reads, and tool-call inspection reads. The automated smoke is below the SC-001 two-minute candidate review and SC-005 five-minute fixture create/edit thresholds.
 - Roadmap 39 targeted rerun evidence: `/usr/bin/time -p env DOPE_SOAK_DURATION=targeted-validation DOPE_SOAK_REPORT=specs/026-evaluation-product-expansion/fixtures/roadmap39-rerun-targeted.json scripts/production/run-soak.sh` passed in 0.04 seconds real time with `daemonHealth: "pass"`, `crossTenantLeakage: false`, `monotonicResourceGrowth: false`, and `finalResult: "pass"`.
 
-Full Roadmap 39 soak rerun status: in progress for final release readiness. The required
-24-hour `DOPE_ENV=test` rerun with Roadmap 40 live validation and Roadmap 41 evaluation
-product workflows included was started on stable host `zentalk-1` on 2026-04-30
-Asia/Shanghai against commit `5ad95ba`. The acceptance runbook is
-`docs/harness/roadmap41-soak-acceptance-runbook.md`; it is the authoritative local
-checklist for the final pass/fail decision and must be used without relying on prior chat
-context.
+Full Roadmap 39 soak rerun evidence: completed and accepted on 2026-05-01
+Asia/Shanghai using `docs/harness/roadmap41-soak-acceptance-runbook.md`.
 
-Expected report path:
+- Stable host: `zentalk-1`
+- Deployment directory: `/root/dope-agent-r41-5ad95ba`
+- Commit under test: `5ad95ba`
+- Daemon data directory: `/root/.dope-r41-soak`
+- Full report: `/root/dope-agent-r41-artifacts/roadmap39-full-5ad95ba.json`
+- Soak log: `/root/dope-agent-r41-artifacts/roadmap39-full-5ad95ba.log`
+- Daemon log: `/root/dope-agent-r41-artifacts/daemon-5ad95ba.log`
+- Acceptance query time: `2026-05-01T10:58:07+0800`
 
-```text
-/root/dope-agent-r41-artifacts/roadmap39-full-5ad95ba.json
-```
+The final report passed all runbook criteria:
 
-Keep Roadmap 41 in `implementation complete; final soak evidence pending` status until
-that report exists and passes all runbook criteria.
-
-The targeted-validation report is intentionally not release-gate evidence. A developer
-laptop or other movable local machine is not an acceptable environment for the 24-hour
-Roadmap 39 rerun because sleep, power events, network changes, VPN changes, OS updates,
-and Wi-Fi instability make failures difficult to attribute. The full rerun must execute
-on a fixed-power, no-sleep, stable-network test machine or long-running CI/VM runner with
-the commit, data directory, daemon config, workload seed, logs, and generated report
-captured as artifacts.
+- `branchOrVersion: "5ad95ba"`
+- `environment: "test"`
+- `dataDirectory: "/root/.dope-r41-soak"`
+- `durationHours: 24`
+- `elapsedSeconds: 86400`
+- `temporaryShorterDuration: false`
+- `followUpFullRerun: false`
+- `daemonHealth: "pass"`
+- `finalResult: "pass"`
+- `crossTenantLeakage: false`
+- `monotonicResourceGrowth: false`
+- `unclassifiedFailures: []`
+- `restartCount: 3`
+- workload coverage includes runtime, scheduler, integrations, delivery, approvals,
+  quotas, tenant switching, and evaluation
+- fault drills include transient 5xx, rate limit, auth expiry, provider unavailable,
+  slow response, and malformed response
+- resource observations include logs, stored data size, queue/backlog, memory, open
+  handles or file descriptors, and goroutines

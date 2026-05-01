@@ -45,18 +45,17 @@ The daemon now has a closed P0 control plane slice:
 
 The sandbox, MCP, tool-call orchestration, personal-agent non-knowledge surfaces,
 tenant foundation, hosted credential isolation, quota enforcement, production operations
-baseline, live validation, and evaluation product expansion are now implemented through
-Roadmap 41, subject to the release-evidence notes below.
+baseline, live validation, and evaluation product expansion are now complete through
+Roadmap 41.
 
 Roadmap 39 is implemented as the production operations baseline: install,
 upgrade, backup, restore, migration verification, rollback guidance, a reusable
 24-hour test-environment soak harness, fake-backend fault drills, real-account
 smoke skip policy, resource-growth checks, and release readiness gates. Its
-operator entry point is `docs/runtime/production-operations.md`. The roadmap is
-not final release evidence for Roadmaps 40 or 41 by itself; those roadmaps must rerun
-the Roadmap 39 soak gate after their live-validation and evaluation-product changes land.
-That combined 24-hour rerun is tracked by Roadmap 41 T153 and the local acceptance
-runbook `docs/harness/roadmap41-soak-acceptance-runbook.md`.
+operator entry point is `docs/runtime/production-operations.md`. The combined Roadmap
+39/40/41 24-hour rerun for commit `5ad95ba` passed on `zentalk-1` on 2026-05-01
+Asia/Shanghai and is recorded in
+`specs/026-evaluation-product-expansion/quickstart.md`.
 
 ## Roadmap 1: Runtime Closure
 
@@ -1756,7 +1755,7 @@ Explicitly out of scope:
 
 ### Roadmap 41: Evaluation Product Expansion
 
-Status: `[~] implementation complete; final soak evidence pending`
+Status: `[x] complete`
 
 Detailed spec: [docs/specs/026-evaluation-product-expansion.md](../specs/026-evaluation-product-expansion.md)
 
@@ -1777,10 +1776,9 @@ Closure notes:
 
 - Roadmap 41 implementation and targeted verification evidence are recorded in
   `specs/026-evaluation-product-expansion/quickstart.md`.
-- Final completion is intentionally blocked on T153 until the Roadmap 39 24-hour rerun
-  report with Roadmap 40 and 41 workload coverage passes.
-- The current acceptance runbook is
-  `docs/harness/roadmap41-soak-acceptance-runbook.md`.
+- Final completion evidence is recorded by T153: the Roadmap 39/40/41 24-hour rerun on
+  stable host `zentalk-1` passed all
+  `docs/harness/roadmap41-soak-acceptance-runbook.md` criteria for commit `5ad95ba`.
 
 Explicitly out of scope:
 

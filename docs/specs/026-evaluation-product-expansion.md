@@ -1,11 +1,12 @@
 # Evaluation Product Expansion
 
-Status: implementation complete; final soak evidence pending
+Status: complete
 
 Release-evidence closure is tracked by
 `docs/harness/roadmap41-soak-acceptance-runbook.md` and T153 in
-`specs/026-evaluation-product-expansion/tasks.md`. Do not mark Roadmap 41 complete until
-the combined Roadmap 39/40/41 24-hour rerun report exists and passes the runbook criteria.
+`specs/026-evaluation-product-expansion/tasks.md`. The combined Roadmap 39/40/41
+24-hour rerun report exists and passed the runbook criteria on 2026-05-01
+Asia/Shanghai for commit `5ad95ba`.
 
 Authority: This document is the authoritative upstream spec for Roadmap 41, the evaluation
 product expansion that completes the remaining Roadmap 33 out-of-scope product gaps.
@@ -155,7 +156,7 @@ The implementation plan MUST define campaign and dashboard resource shapes with:
 - Phase 8 evidence is recorded in
   `specs/026-evaluation-product-expansion/quickstart.md`, including targeted Go tests,
   full daemon verification, contract tests, client tests/build, local daemon smoke,
-  Roadmap 41 product smoke, and Roadmap 39 soak rerun status.
+  Roadmap 41 product smoke, and the accepted Roadmap 39/40/41 24-hour soak rerun.
 
 ## Definition Of Done
 
