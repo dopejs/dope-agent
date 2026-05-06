@@ -228,6 +228,64 @@ label span {
   border-color: rgba(15, 88, 105, 0.35);
 }
 
+.setup-panel {
+  background:
+    linear-gradient(135deg, rgba(250, 245, 236, 0.94), rgba(235, 244, 240, 0.9)),
+    var(--panel);
+}
+
+.setup-list,
+.setup-diagnostics {
+  display: grid;
+  gap: 12px;
+}
+
+.setup-row {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.setup-row-main {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.setup-row-main p {
+  color: var(--muted);
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.setup-meta {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setup-meta span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 9px;
+}
+
+.setup-secret-form {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.setup-secret-form label {
+  display: grid;
+  gap: 8px;
+}
+
 .activation-summary {
   display: grid;
   gap: 12px;
@@ -653,6 +711,7 @@ pre {
   .action-grid,
   .action-inputs,
   .live-validation-form,
+  .setup-secret-form,
   .mini-grid,
   .mini-card-grid,
   .banner-strip,

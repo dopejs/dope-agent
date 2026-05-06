@@ -11,6 +11,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 )
 
 var (
@@ -189,6 +190,23 @@ func NewManager(cfg config.Config, dispatcher *llm.Dispatcher, registries ...Man
 	}
 	manager.loadProfiles()
 	return manager
+}
+
+func (m *Manager) setupDependentUseDecision(ctx context.Context, session setupwizard.SetupSession, capability string) setupwizard.DependentUseDecision {
+	return setupwizard.NewService(setupwizard.ServiceDependencies{}).DependentUseDecision(ctx, session, capability)
+}
+
+func (m *Manager) resolveWithSetupGate(providerID, model string, timeoutMs, maxRetries int, session setupwizard.SetupSession, capability string) (ResolvedDispatch, setupwizard.DependentUseDecision, error) {
+	decision := m.setupDependentUseDecision(context.Background(), session, capability)
+	if decision.SafeUseMode == setupwizard.SafeUseBlocked {
+		effectiveProvider := strings.TrimSpace(providerID)
+		if effectiveProvider == "" {
+			effectiveProvider = m.defaultProviderID()
+		}
+		return ResolvedDispatch{}, decision, fmt.Errorf("%w: %s", ErrProviderAuthUnavailable, effectiveProvider)
+	}
+	resolved, err := m.ResolveForTenant(providerID, model, timeoutMs, maxRetries, session.TenantID)
+	return resolved, decision, err
 }
 
 func (m *Manager) ListProfiles() []Profile {

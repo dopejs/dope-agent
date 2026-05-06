@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 40
+	CurrentSchemaVersion = 41
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -2638,6 +2638,52 @@ var schemaMigrations = []schemaMigration{
 			`,
 			`CREATE INDEX IF NOT EXISTS idx_activation_states_tenant_status ON activation_states(tenant_id, status, updated_at DESC, activation_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_activation_states_principal_updated ON activation_states(principal_id, updated_at DESC, activation_id DESC);`,
+		},
+	},
+	{
+		Version: 41,
+		Name:    "r46_setup_wizard_sessions",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS setup_sessions (
+				setup_session_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				actor_principal_id TEXT,
+				target_id TEXT NOT NULL,
+				target_kind TEXT NOT NULL,
+				setup_style TEXT NOT NULL,
+				state TEXT NOT NULL,
+				reason_code TEXT,
+				diagnostic_result_id TEXT,
+				redaction_status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				last_transition_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				UNIQUE(tenant_id, target_id, setup_style)
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS setup_attempts (
+				attempt_id TEXT PRIMARY KEY,
+				setup_session_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				actor_principal_id TEXT,
+				operation TEXT NOT NULL,
+				from_state TEXT,
+				to_state TEXT NOT NULL,
+				reason_code TEXT,
+				diagnostic_result_id TEXT,
+				redaction_status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(setup_session_id) REFERENCES setup_sessions(setup_session_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_setup_sessions_tenant_state ON setup_sessions(tenant_id, state, updated_at DESC, setup_session_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_setup_sessions_tenant_updated ON setup_sessions(tenant_id, updated_at DESC, setup_session_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_setup_sessions_tenant_target ON setup_sessions(tenant_id, target_id, setup_style);`,
+			`CREATE INDEX IF NOT EXISTS idx_setup_attempts_tenant_session ON setup_attempts(tenant_id, setup_session_id, created_at ASC, attempt_id ASC);`,
 		},
 	},
 }

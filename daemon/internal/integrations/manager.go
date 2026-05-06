@@ -1,10 +1,13 @@
 package integrations
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 )
 
 type Manager struct {
@@ -25,6 +28,20 @@ func NewManager(environmentScope string) *Manager {
 		},
 		env: strings.TrimSpace(environmentScope),
 	}
+}
+
+func (m *Manager) setupDependentUseDecision(ctx context.Context, session setupwizard.SetupSession, capability string) setupwizard.DependentUseDecision {
+	return setupwizard.NewService(setupwizard.ServiceDependencies{}).DependentUseDecision(ctx, session, capability)
+}
+
+func (m *Manager) runProbeWithSetupGate(integrationID string, probeKind ProbeKind, input map[string]any, session setupwizard.SetupSession, capability string) (Resource, ProbeResult, setupwizard.DependentUseDecision, error) {
+	decision := m.setupDependentUseDecision(context.Background(), session, capability)
+	if decision.SafeUseMode == setupwizard.SafeUseBlocked {
+		resource, _ := m.GetForTenant(integrationID, session.TenantID)
+		return resource, ProbeResult{}, decision, ErrProbeBlocked
+	}
+	resource, result, _, err := m.RunProbe(integrationID, probeKind, input)
+	return resource, result, decision, err
 }
 
 func (m *Manager) Restore(items []Resource) {

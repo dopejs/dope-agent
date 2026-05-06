@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
@@ -24,6 +26,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
+	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
 )
@@ -587,6 +590,85 @@ func TestOperatorDiagnosticsRouteIncludesActivationFailures(t *testing.T) {
 		}
 	}
 	t.Fatalf("expected activation diagnostic finding, got %+v", response.Items)
+}
+
+func TestOperatorDiagnosticsProjectionIncludesTenantScopedSetupFindings(t *testing.T) {
+	t.Parallel()
+
+	h := newOperatorHarness(t)
+	now := time.Date(2026, 5, 6, 11, 0, 0, 0, time.UTC)
+	ctx := withTenantContext(context.Background(), identity.TenantContext{
+		TenantID:    "ten_setup_operator",
+		PrincipalID: "prn_setup_operator",
+		Permissions: []identity.Permission{
+			identity.PermissionCredentialsInspect,
+		},
+	})
+	if err := h.store.SaveSetupSession(ctx, setupwizard.SetupSession{
+		SetupSessionID:      "setup_operator_lark",
+		TenantID:            "ten_setup_operator",
+		ActorPrincipalID:    "prn_setup_operator",
+		TargetID:            setupwizard.TargetFeishuLark,
+		TargetKind:          setupwizard.TargetKindIntegration,
+		SetupStyle:          setupwizard.SetupStyleOAuth,
+		State:               setupwizard.StateActionRequired,
+		ReasonCode:          setupwizard.ReasonOAuthDenied,
+		Retryable:           true,
+		RemediationOwner:    setupwizard.OwnerTenantAdmin,
+		SafeUseMode:         setupwizard.SafeUseBlocked,
+		AllowedCapabilities: []string{},
+		DiagnosticResultID:  "diag_setup_operator_lark",
+		RedactionStatus:     setupwizard.RedactionRedacted,
+		CreatedAt:           now.Add(-time.Minute),
+		UpdatedAt:           now,
+		LastTransitionAt:    now,
+	}); err != nil {
+		t.Fatalf("SaveSetupSession returned error: %v", err)
+	}
+	if err := h.store.SaveSetupSession(context.Background(), setupwizard.SetupSession{
+		SetupSessionID:   "setup_other_tenant",
+		TenantID:         "ten_other",
+		TargetID:         setupwizard.TargetOpenAICompatible,
+		TargetKind:       setupwizard.TargetKindProvider,
+		SetupStyle:       setupwizard.SetupStyleSubmittedSecret,
+		State:            setupwizard.StateUnavailable,
+		ReasonCode:       setupwizard.ReasonProviderUnavailable,
+		Retryable:        true,
+		RemediationOwner: setupwizard.OwnerProvider,
+		SafeUseMode:      setupwizard.SafeUseBlocked,
+		RedactionStatus:  setupwizard.RedactionRedacted,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		LastTransitionAt: now,
+	}); err != nil {
+		t.Fatalf("SaveSetupSession other tenant returned error: %v", err)
+	}
+
+	builder := newOperatorProjectionBuilder(config.Config{Environment: config.EnvironmentTest}, h.store, nil, h.integrations, h.connectors, h.capabilities, h.policy, h.runtime, h.scheduler, h.delivery, nil)
+	response, err := builder.buildDiagnostics(ctx)
+	if err != nil {
+		t.Fatalf("buildDiagnostics returned error: %v", err)
+	}
+	for _, item := range response.Items {
+		if item.SourceKind != "credential_setup" {
+			continue
+		}
+		if item.SourceID != "setup_operator_lark" || item.Plane != "readiness" || item.Status != string(setupwizard.StateActionRequired) || item.Reason != setupwizard.ReasonOAuthDenied {
+			t.Fatalf("unexpected setup diagnostic finding: %+v", item)
+		}
+		if item.DetailRoute != "/v1/setup/sessions/setup_operator_lark/diagnostics" || !strings.Contains(item.RecommendedAction, "permissions") {
+			t.Fatalf("unexpected setup diagnostic action or route: %+v", item)
+		}
+		encoded, err := json.Marshal(item)
+		if err != nil {
+			t.Fatalf("json.Marshal returned error: %v", err)
+		}
+		if strings.Contains(string(encoded), "setup_other_tenant") || strings.Contains(string(encoded), "R46_FAKE_OPENAI_COMPATIBLE_KEY_DO_NOT_LEAK") {
+			t.Fatalf("setup diagnostic leaked cross-tenant or credential evidence: %s", string(encoded))
+		}
+		return
+	}
+	t.Fatalf("expected setup diagnostic finding, got %+v", response.Items)
 }
 
 func TestOperatorRoutesAllowLocalWebOriginCORS(t *testing.T) {

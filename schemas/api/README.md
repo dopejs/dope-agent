@@ -80,6 +80,22 @@ metadata-only for test chat evidence and stay covered by daemon contract fixture
 - activation test chat response
 - activation diagnostic list response
 
+Hosted credential and OAuth setup schemas are additive Roadmap 46 contracts.
+Setup state, diagnostics, audit evidence, and error payloads must remain
+metadata-only; raw submitted secrets, OAuth codes, access tokens, refresh tokens,
+and provider bearer material are only accepted on the inbound mutation request
+that needs them:
+
+- setup target list response
+- setup session resource
+- setup session response
+- setup session list response
+- setup secret submit request
+- setup OAuth start request
+- setup OAuth callback request
+- setup diagnostic list response
+- setup error response
+
 Evaluation and replay schemas should stay in sync with daemon-owned evaluation resources,
 SDK types, web-shell behavior, and contract fixtures:
 

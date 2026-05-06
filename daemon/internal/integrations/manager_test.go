@@ -1,9 +1,12 @@
 package integrations
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 )
 
 func TestManagerTracksReadinessTransitionsAndCanonicalDefault(t *testing.T) {
@@ -95,6 +98,96 @@ func TestManagerTracksReadinessTransitionsAndCanonicalDefault(t *testing.T) {
 	}
 	if second.CanonicalDefault {
 		t.Fatalf("expected second integration to be demoted after swap, got %+v", second)
+	}
+}
+
+func TestManagerSetupDependentUseDecisionBlocksDisabledAndUnconfirmedDegradedUse(t *testing.T) {
+	t.Parallel()
+
+	manager := NewManager("test")
+	disabled := manager.setupDependentUseDecision(context.Background(), setupwizard.SetupSession{
+		TenantID:         "ten_setup",
+		TargetID:         setupwizard.TargetFeishuLark,
+		State:            setupwizard.StateDisabled,
+		ReasonCode:       setupwizard.ReasonDisabledByUser,
+		RedactionStatus:  setupwizard.RedactionRedacted,
+		RemediationOwner: setupwizard.OwnerProductUser,
+	}, "metadata_read")
+	if disabled.SafeUseMode != setupwizard.SafeUseBlocked {
+		t.Fatalf("expected disabled integration setup to block dependent use, got %+v", disabled)
+	}
+
+	limited := manager.setupDependentUseDecision(context.Background(), setupwizard.SetupSession{
+		TenantID:             "ten_setup",
+		TargetID:             setupwizard.TargetFeishuLark,
+		State:                setupwizard.StateDegraded,
+		AllowedCapabilities:  []string{"metadata_read"},
+		DiagnosticAllowedUse: []string{"metadata_read"},
+		ReasonCode:           setupwizard.ReasonScopeMissing,
+		RedactionStatus:      setupwizard.RedactionRedacted,
+	}, "metadata_read")
+	if limited.SafeUseMode != setupwizard.SafeUseLimited {
+		t.Fatalf("expected diagnostic-confirmed degraded integration setup to allow limited use, got %+v", limited)
+	}
+}
+
+func TestManagerRunProbeWithSetupGateBlocksUnsafeIntegrationUse(t *testing.T) {
+	t.Parallel()
+
+	manager := NewManager("test")
+	created, err := manager.Create(CreateInput{
+		TenantID:      "ten_setup",
+		IntegrationID: "lark-a",
+		DomainKind:    "mail",
+		DisplayName:   "Lark A",
+		BackendBinding: BackendBinding{
+			BackendKind:           BackendKindFakeLocal,
+			SupportsProbeRead:     true,
+			SupportsProbeMutation: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	_, err = manager.UpdateReadinessForTenant(created.IntegrationID, "ten_setup", UpdateReadinessInput{
+		ReadinessStatus: ReadinessStatusHealthy,
+		AuthState:       AuthStateAuthorized,
+		HealthState:     HealthStateHealthy,
+	})
+	if err != nil {
+		t.Fatalf("UpdateReadinessForTenant returned error: %v", err)
+	}
+
+	_, _, decision, err := manager.runProbeWithSetupGate(created.IntegrationID, ProbeKindInspect, nil, setupwizard.SetupSession{
+		TenantID:        "ten_setup",
+		TargetID:        setupwizard.TargetFeishuLark,
+		TargetKind:      setupwizard.TargetKindIntegration,
+		State:           setupwizard.StateDisabled,
+		ReasonCode:      setupwizard.ReasonDisabledByUser,
+		RedactionStatus: setupwizard.RedactionRedacted,
+	}, "metadata_read")
+	if err == nil || !errors.Is(err, ErrProbeBlocked) {
+		t.Fatalf("runProbeWithSetupGate error=%v, want ErrProbeBlocked", err)
+	}
+	if decision.SafeUseMode != setupwizard.SafeUseBlocked {
+		t.Fatalf("unexpected blocked decision: %+v", decision)
+	}
+
+	_, result, decision, err := manager.runProbeWithSetupGate(created.IntegrationID, ProbeKindInspect, nil, setupwizard.SetupSession{
+		TenantID:             "ten_setup",
+		TargetID:             setupwizard.TargetFeishuLark,
+		TargetKind:           setupwizard.TargetKindIntegration,
+		State:                setupwizard.StateDegraded,
+		AllowedCapabilities:  []string{"metadata_read"},
+		DiagnosticAllowedUse: []string{"metadata_read"},
+		ReasonCode:           setupwizard.ReasonRateLimited,
+		RedactionStatus:      setupwizard.RedactionRedacted,
+	}, "metadata_read")
+	if err != nil {
+		t.Fatalf("runProbeWithSetupGate limited returned error: %v", err)
+	}
+	if decision.SafeUseMode != setupwizard.SafeUseLimited || result.ProbeKind != ProbeKindInspect {
+		t.Fatalf("unexpected limited result=%+v decision=%+v", result, decision)
 	}
 }
 

@@ -1400,6 +1400,10 @@ export type TenantRequestOptions = {
   tenantId?: string;
 };
 
+function isTenantRequestOptions(value: unknown): value is TenantRequestOptions {
+  return typeof value === "object" && value !== null && "tenantId" in value;
+}
+
 export type ActivationStatus = "not_started" | "in_progress" | "blocked" | "active" | "first_action_completed";
 
 export type ActivationReasonCode =
@@ -1542,6 +1546,137 @@ export type ActivationFailurePayload = {
   stage: ActivationDiagnostic["stage"];
   retryable: boolean;
   remediationOwner: ActivationRemediationOwner;
+};
+
+export type SetupState = "not_started" | "in_progress" | "ready" | "degraded" | "unavailable" | "cancelled" | "action_required" | "disabled";
+export type SetupStyle = "submitted_secret" | "oauth" | "unsupported";
+export type SetupTargetKind = "provider" | "integration" | "channel" | "connector";
+export type SetupSupportStatus = "supported" | "unsupported" | "action_required";
+export type SetupSafeUseMode = "normal" | "limited_safe" | "blocked";
+export type SetupRemediationOwner = "product_user" | "tenant_admin" | "operator" | "provider" | "none_required";
+export type SetupRedactionStatus = "redacted" | "suppressed" | "failed_closed";
+export type SetupRetrySafety = "no_action_needed" | "retryable" | "blocked" | "unsafe_to_retry";
+export type SetupOAuthResult = "completed" | "denied" | "abandoned" | "expired" | "replay" | "tenant_mismatch" | "provider_error";
+
+export type SetupResourceRef = {
+  kind: string;
+  id: string;
+  route?: string;
+};
+
+export type SetupTargetResource = {
+  targetId: string;
+  tenantId?: string;
+  targetKind: SetupTargetKind;
+  setupStyle: SetupStyle;
+  displayName: string;
+  proofTarget: boolean;
+  supportStatus: SetupSupportStatus;
+  requiredPermissions?: TenantPermission[];
+  limitedSafeCapabilities?: string[];
+  currentSessionId?: string;
+  currentState?: SetupState;
+  diagnosticResultId?: string;
+};
+
+export type SetupSessionResource = {
+  setupSessionId: string;
+  tenantId?: string;
+  actorPrincipalId?: string;
+  targetId: string;
+  targetKind: SetupTargetKind;
+  setupStyle: SetupStyle;
+  state: SetupState;
+  reasonCode?: string;
+  retryable: boolean;
+  remediationOwner: SetupRemediationOwner;
+  safeUseMode: SetupSafeUseMode;
+  allowedCapabilities: string[];
+  currentAttemptId?: string;
+  diagnosticResultId?: string;
+  diagnosticRunId?: string;
+  diagnosticStage?: string;
+  diagnosticSourceKind?: string;
+  diagnosticSourceId?: string;
+  diagnosticAllowedCapabilities?: string[];
+  redactionStatus: SetupRedactionStatus;
+  resourceRefs?: SetupResourceRef[];
+  redactedEvidence?: Record<string, string>;
+  oauthStateRef?: string;
+  createdAt: string;
+  updatedAt: string;
+  lastTransitionAt: string;
+  lastTransitionAuditEventId?: string;
+  operatorRemediation?: string;
+  userRemediation?: string;
+  unsupportedReasonCode?: string;
+};
+
+export type SetupDiagnosticResource = {
+  setupSessionId: string;
+  targetId: string;
+  diagnosticResultId: string;
+  diagnosticRunId?: string;
+  diagnosticStage?: string;
+  diagnosticSourceKind?: string;
+  diagnosticSourceId?: string;
+  status: SetupState;
+  reasonCode: string;
+  retrySafety: SetupRetrySafety;
+  remediationOwner: SetupRemediationOwner;
+  allowedCapabilities?: string[];
+  checkedAt: string;
+  staleAfter: string;
+  redactionStatus: SetupRedactionStatus;
+};
+
+export type SetupTargetListResponse = {
+  items: SetupTargetResource[];
+};
+
+export type SetupSessionListResponse = {
+  items: SetupSessionResource[];
+};
+
+export type SetupSessionResponse = {
+  session: SetupSessionResource;
+};
+
+export type StartSetupInput = {
+  targetId: string;
+  setupStyle: SetupStyle;
+  source?: string;
+};
+
+export type SubmitSetupSecretInput = {
+  secretRef: string;
+  value: string;
+  displayName?: string;
+};
+
+export type StartSetupOAuthInput = {
+  redirectRoute?: string;
+};
+
+export type SetupOAuthStartResponse = SetupSessionResponse & {
+  authorizationUrl: string;
+  state: string;
+};
+
+export type CompleteSetupOAuthInput = {
+  state: string;
+  result: SetupOAuthResult;
+  accountLabel?: string;
+};
+
+export type DisableSetupInput = {
+  disabledReason?: string;
+};
+
+export type ReplaceSetupInput = Record<string, never>;
+
+export type SetupDiagnosticListResponse = {
+  items: SetupDiagnosticResource[];
 };
 
 export type BillingEnforcementMode = "enforced" | "unlimited" | "not_measurable";
@@ -1907,6 +2042,94 @@ export class DopeClient {
 
   async getActivationDiagnostics(tenantOptions?: TenantRequestOptions): Promise<ActivationDiagnosticListResponse> {
     return this.requestJSON<ActivationDiagnosticListResponse>("/v1/activation/diagnostics", { tenant: tenantOptions });
+  }
+
+  async listSetupTargets(tenantOptions?: TenantRequestOptions): Promise<SetupTargetListResponse> {
+    return this.requestJSON<SetupTargetListResponse>("/v1/setup/targets", { tenant: tenantOptions });
+  }
+
+  async listSetupSessions(tenantOptions?: TenantRequestOptions): Promise<SetupSessionListResponse> {
+    return this.requestJSON<SetupSessionListResponse>("/v1/setup/sessions", { tenant: tenantOptions });
+  }
+
+  async startSetup(input: StartSetupInput, tenantOptions?: TenantRequestOptions): Promise<SetupSessionResponse> {
+    return this.requestJSON<SetupSessionResponse>("/v1/setup/sessions", {
+      method: "POST",
+      body: normalizeStartSetupInput(input),
+      tenant: tenantOptions
+    });
+  }
+
+  async getSetupSession(setupSessionId: string, tenantOptions?: TenantRequestOptions): Promise<SetupSessionResponse> {
+    return this.requestJSON<SetupSessionResponse>(`/v1/setup/sessions/${encodePathComponent(setupSessionId)}`, { tenant: tenantOptions });
+  }
+
+  async submitSetupSecret(setupSessionId: string, input: SubmitSetupSecretInput, tenantOptions?: TenantRequestOptions): Promise<SetupSessionResponse> {
+    return this.requestJSON<SetupSessionResponse>(`/v1/setup/sessions/${encodePathComponent(setupSessionId)}/submit-secret`, {
+      method: "POST",
+      body: {
+        secretRef: input.secretRef.trim(),
+        value: input.value,
+        displayName: input.displayName?.trim() || undefined
+      },
+      tenant: tenantOptions
+    });
+  }
+
+  async startSetupOAuth(setupSessionId: string, input: StartSetupOAuthInput = {}, tenantOptions?: TenantRequestOptions): Promise<SetupOAuthStartResponse> {
+    return this.requestJSON<SetupOAuthStartResponse>(`/v1/setup/sessions/${encodePathComponent(setupSessionId)}/oauth/start`, {
+      method: "POST",
+      body: { redirectRoute: input.redirectRoute?.trim() || undefined },
+      tenant: tenantOptions
+    });
+  }
+
+  async completeSetupOAuth(setupSessionId: string, input: CompleteSetupOAuthInput, tenantOptions?: TenantRequestOptions): Promise<SetupSessionResponse> {
+    return this.requestJSON<SetupSessionResponse>(`/v1/setup/sessions/${encodePathComponent(setupSessionId)}/oauth/callback`, {
+      method: "POST",
+      body: {
+        state: input.state.trim(),
+        result: input.result,
+        accountLabel: input.accountLabel?.trim() || undefined
+      },
+      tenant: tenantOptions
+    });
+  }
+
+  async retrySetup(setupSessionId: string, tenantOptions?: TenantRequestOptions): Promise<SetupSessionResponse> {
+    return this.requestJSON<SetupSessionResponse>(`/v1/setup/sessions/${encodePathComponent(setupSessionId)}/retry`, {
+      method: "POST",
+      tenant: tenantOptions
+    });
+  }
+
+  async replaceSetup(setupSessionId: string, inputOrTenantOptions?: ReplaceSetupInput | TenantRequestOptions, tenantOptions?: TenantRequestOptions): Promise<SetupSessionResponse> {
+    const tenant = tenantOptions ?? (isTenantRequestOptions(inputOrTenantOptions) ? inputOrTenantOptions : undefined);
+    return this.requestJSON<SetupSessionResponse>(`/v1/setup/sessions/${encodePathComponent(setupSessionId)}/replace`, {
+      method: "POST",
+      tenant
+    });
+  }
+
+  async cancelSetup(setupSessionId: string, tenantOptions?: TenantRequestOptions): Promise<SetupSessionResponse> {
+    return this.requestJSON<SetupSessionResponse>(`/v1/setup/sessions/${encodePathComponent(setupSessionId)}/cancel`, {
+      method: "POST",
+      tenant: tenantOptions
+    });
+  }
+
+  async disableSetup(setupSessionId: string, input: DisableSetupInput = {}, tenantOptions?: TenantRequestOptions): Promise<SetupSessionResponse> {
+    return this.requestJSON<SetupSessionResponse>(`/v1/setup/sessions/${encodePathComponent(setupSessionId)}/disable`, {
+      method: "POST",
+      body: { disabledReason: input.disabledReason?.trim() || undefined },
+      tenant: tenantOptions
+    });
+  }
+
+  async getSetupDiagnostics(setupSessionId: string, tenantOptions?: TenantRequestOptions): Promise<SetupDiagnosticListResponse> {
+    return this.requestJSON<SetupDiagnosticListResponse>(`/v1/setup/sessions/${encodePathComponent(setupSessionId)}/diagnostics`, {
+      tenant: tenantOptions
+    });
   }
 
   async assignBillingPlan(tenantId: string, input: BillingPlanAssignmentInput, tenantOptions?: TenantRequestOptions): Promise<BillingPlanResource> {
@@ -2500,6 +2723,14 @@ function normalizeActivationTestChatInput(input: RunActivationTestChatInput): Ru
   };
 }
 
+function normalizeStartSetupInput(input: StartSetupInput): StartSetupInput {
+  return {
+    targetId: input.targetId.trim(),
+    setupStyle: input.setupStyle,
+    source: input.source?.trim() || undefined
+  };
+}
+
 async function toClientError(response: Response): Promise<DopeClientError> {
   let message = `request failed with status ${response.status}`;
   let code: string | undefined;
@@ -2564,7 +2795,7 @@ async function toClientError(response: Response): Promise<DopeClientError> {
 }
 
 function isTenantDenialCode(code: string | undefined): boolean {
-  return code === "tenant_access_denied" || code === "tenant_permission_denied" || code === "tenant_ownership_denied" || code?.startsWith("credential_denied:") === true;
+  return code === "tenant_access_denied" || code === "tenant_permission_denied" || code === "tenant_ownership_denied" || code?.startsWith("credential_denied:") === true || code?.startsWith("setup_denied:") === true;
 }
 
 type SSEEvent = {

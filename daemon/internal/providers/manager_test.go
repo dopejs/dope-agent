@@ -8,6 +8,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 )
 
 func TestManagerListsProfiles(t *testing.T) {
@@ -45,6 +46,84 @@ func TestManagerListsProfiles(t *testing.T) {
 	}
 	if openAIProfile.RequestURL != "https://example.com/v1/chat/completions" {
 		t.Fatalf("unexpected request URL %q", openAIProfile.RequestURL)
+	}
+}
+
+func TestManagerSetupDependentUseDecisionAllowsOnlyDiagnosticConfirmedDegradedCapabilities(t *testing.T) {
+	t.Parallel()
+
+	manager := NewManager(config.Config{}, llm.NewDispatcher())
+	decision := manager.setupDependentUseDecision(context.Background(), setupwizard.SetupSession{
+		TenantID:             "ten_setup",
+		TargetID:             setupwizard.TargetOpenAICompatible,
+		State:                setupwizard.StateDegraded,
+		SafeUseMode:          setupwizard.SafeUseLimited,
+		AllowedCapabilities:  []string{"metadata_read"},
+		DiagnosticAllowedUse: []string{"metadata_read"},
+		ReasonCode:           setupwizard.ReasonRateLimited,
+		RedactionStatus:      setupwizard.RedactionRedacted,
+	}, "metadata_read")
+	if decision.SafeUseMode != setupwizard.SafeUseLimited || len(decision.AllowedCapabilities) != 1 {
+		t.Fatalf("expected limited safe provider decision, got %+v", decision)
+	}
+	blocked := manager.setupDependentUseDecision(context.Background(), setupwizard.SetupSession{
+		TenantID:             "ten_setup",
+		TargetID:             setupwizard.TargetOpenAICompatible,
+		State:                setupwizard.StateDegraded,
+		SafeUseMode:          setupwizard.SafeUseLimited,
+		AllowedCapabilities:  []string{"metadata_read"},
+		DiagnosticAllowedUse: []string{},
+		ReasonCode:           setupwizard.ReasonRateLimited,
+		RedactionStatus:      setupwizard.RedactionRedacted,
+	}, "metadata_read")
+	if blocked.SafeUseMode != setupwizard.SafeUseBlocked {
+		t.Fatalf("expected degraded provider decision to block without diagnostic confirmation, got %+v", blocked)
+	}
+}
+
+func TestManagerResolveWithSetupGateBlocksUnsafeProviderUse(t *testing.T) {
+	t.Parallel()
+
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&providerTestLLM{name: llm.OpenAICompatibleProviderName})
+	manager := NewManager(config.Config{
+		LLM: config.LLMConfig{
+			DefaultProvider: "openai_compatible",
+			OpenAICompatible: config.OpenAICompatibleProviderConfig{
+				BaseURL: "https://example.com",
+				APIKey:  "secret",
+				Model:   "gpt-4.1-mini",
+			},
+		},
+	}, dispatcher)
+
+	_, decision, err := manager.resolveWithSetupGate("", "", 0, 0, setupwizard.SetupSession{
+		TenantID:        "ten_setup",
+		TargetID:        setupwizard.TargetOpenAICompatible,
+		TargetKind:      setupwizard.TargetKindProvider,
+		State:           setupwizard.StateActionRequired,
+		ReasonCode:      setupwizard.ReasonCredentialMissing,
+		RedactionStatus: setupwizard.RedactionRedacted,
+	}, "chat")
+	if err == nil || !errors.Is(err, ErrProviderAuthUnavailable) {
+		t.Fatalf("resolveWithSetupGate error=%v, want ErrProviderAuthUnavailable", err)
+	}
+	if decision.SafeUseMode != setupwizard.SafeUseBlocked || decision.ReasonCode != setupwizard.ReasonCredentialMissing {
+		t.Fatalf("unexpected dependent-use decision: %+v", decision)
+	}
+
+	resolved, decision, err := manager.resolveWithSetupGate("", "", 0, 0, setupwizard.SetupSession{
+		TenantID:        "ten_setup",
+		TargetID:        setupwizard.TargetOpenAICompatible,
+		TargetKind:      setupwizard.TargetKindProvider,
+		State:           setupwizard.StateReady,
+		RedactionStatus: setupwizard.RedactionRedacted,
+	}, "chat")
+	if err != nil {
+		t.Fatalf("resolveWithSetupGate ready returned error: %v", err)
+	}
+	if decision.SafeUseMode != setupwizard.SafeUseNormal || resolved.ProviderID != llm.OpenAICompatibleProviderName {
+		t.Fatalf("unexpected ready resolution: resolved=%+v decision=%+v", resolved, decision)
 	}
 }
 

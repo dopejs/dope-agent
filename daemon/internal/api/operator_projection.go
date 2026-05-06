@@ -21,6 +21,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
+	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
 
@@ -615,6 +616,11 @@ func (b operatorProjectionBuilder) buildDiagnostics(ctx context.Context) (Operat
 		return OperatorDiagnosticListResponse{}, err
 	}
 	findings = append(findings, activationFindings...)
+	setupFindings, err := b.setupWizardFindings(ctx)
+	if err != nil {
+		return OperatorDiagnosticListResponse{}, err
+	}
+	findings = append(findings, setupFindings...)
 	sort.Slice(findings, func(i, j int) bool { return findings[i].CapturedAt.After(findings[j].CapturedAt) })
 	return OperatorDiagnosticListResponse{
 		EnvironmentScope: b.environment,
@@ -656,6 +662,77 @@ func (b operatorProjectionBuilder) activationFindings(ctx context.Context) ([]Op
 		})
 	}
 	return items, nil
+}
+
+func (b operatorProjectionBuilder) setupWizardFindings(ctx context.Context) ([]OperatorDiagnosticFinding, error) {
+	if b.store == nil {
+		return nil, nil
+	}
+	tenantID, _ := b.store.ResolveActiveTenantBinding(ctx).(string)
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return nil, nil
+	}
+	sessions, err := b.store.ListSetupSessions(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]OperatorDiagnosticFinding, 0)
+	for _, session := range sessions {
+		if !needsSetupWizardFinding(session) {
+			continue
+		}
+		items = append(items, OperatorDiagnosticFinding{
+			FindingID:         "credential-setup-" + session.SetupSessionID,
+			SourceKind:        "credential_setup",
+			SourceID:          session.SetupSessionID,
+			Plane:             "readiness",
+			Severity:          setupWizardSeverity(session),
+			Status:            string(session.State),
+			Reason:            firstOperatorNonEmpty(session.ReasonCode, string(session.State)),
+			RecommendedAction: setupWizardRecommendedAction(session),
+			DetailRoute:       "/v1/setup/sessions/" + session.SetupSessionID + "/diagnostics",
+			RelatedResourceRefs: []OperatorResourceRef{
+				{Kind: "tenant", ID: session.TenantID},
+				{Kind: string(session.TargetKind), ID: session.TargetID},
+			},
+			EnvironmentScope: b.environment,
+			CapturedAt:       session.UpdatedAt,
+		})
+	}
+	return items, nil
+}
+
+func needsSetupWizardFinding(session setupwizard.SetupSession) bool {
+	if session.RedactionStatus == setupwizard.RedactionFailedClosed {
+		return true
+	}
+	switch session.State {
+	case setupwizard.StateActionRequired, setupwizard.StateUnavailable, setupwizard.StateDegraded, setupwizard.StateDisabled:
+		return true
+	default:
+		return false
+	}
+}
+
+func setupWizardSeverity(session setupwizard.SetupSession) string {
+	if session.RedactionStatus == setupwizard.RedactionFailedClosed || session.State == setupwizard.StateUnavailable || session.State == setupwizard.StateDisabled {
+		return "critical"
+	}
+	return "warning"
+}
+
+func setupWizardRecommendedAction(session setupwizard.SetupSession) string {
+	switch session.RemediationOwner {
+	case setupwizard.OwnerProductUser:
+		return "Ask the product user to retry setup with corrected credential or authorization input."
+	case setupwizard.OwnerTenantAdmin:
+		return "Review tenant permissions, scopes, and approval state before retrying setup."
+	case setupwizard.OwnerProvider:
+		return "Wait for provider recovery or inspect provider diagnostic status before retrying setup."
+	default:
+		return "Inspect setup diagnostics and retry, replace, cancel, or disable after remediation."
+	}
 }
 
 func activationFailureForOperator(state activation.State) (activation.FailureReason, bool) {

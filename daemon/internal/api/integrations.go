@@ -14,6 +14,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
+	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/store/tenancy"
 )
@@ -471,6 +472,12 @@ func handleRunIntegrationProbes(cfg config.Config, runtimeManager *runtime.Manag
 		return
 	}
 
+	if resource, ok := integrationsManager.Get(integrationID); ok && resource.BackendBinding.BackendKind == integrations.BackendKindFeishuLark {
+		if err := enforceIntegrationSetupGate(r.Context(), sqliteStore, setupwizard.TargetFeishuLark, "metadata_read"); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+	}
 	resource, result, binding, err := integrationsManager.RunProbe(integrationID, input.ProbeKind, input.Input)
 	if err != nil {
 		if integrations.IsUnavailableProbeError(err) {
@@ -559,4 +566,29 @@ func persistIntegration(ctx context.Context, sqliteStore *store.SQLiteStore, ite
 		return tenancy.NewIntegrations(sqliteStore, nil).UpsertIntegrationForTenant(ctx, item)
 	}
 	return sqliteStore.UpsertIntegration(ctx, item)
+}
+
+func enforceIntegrationSetupGate(ctx context.Context, sqliteStore *store.SQLiteStore, targetID, capability string) error {
+	if sqliteStore == nil || strings.TrimSpace(targetID) == "" {
+		return nil
+	}
+	tenantContext, ok := tenantContextFromContext(ctx)
+	if !ok || strings.TrimSpace(tenantContext.TenantID) == "" {
+		return nil
+	}
+	sessions, err := sqliteStore.ListSetupSessions(ctx, tenantContext.TenantID)
+	if err != nil {
+		return err
+	}
+	for _, session := range sessions {
+		if session.TargetID != targetID {
+			continue
+		}
+		decision := setupwizard.NewService(setupwizard.ServiceDependencies{}).DependentUseDecision(ctx, session, capability)
+		if decision.SafeUseMode == setupwizard.SafeUseBlocked {
+			return integrations.ErrProbeBlocked
+		}
+		return nil
+	}
+	return nil
 }

@@ -45,6 +45,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/secrets"
+	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/store/tenancy"
@@ -77,6 +78,7 @@ type Dependencies struct {
 	Delivery       *delivery.Manager
 	Billing        *billing.Manager
 	Activation     *activation.Service
+	SetupWizard    *setupwizard.Service
 	Store          *store.SQLiteStore
 	Checkpoints    *checkpoints.Manager
 	Evaluation     *evaluation.Manager
@@ -131,6 +133,7 @@ type Server struct {
 	delivery        *delivery.Manager
 	billing         *billing.Manager
 	activation      *activation.Service
+	setupWizard     *setupwizard.Service
 	store           *store.SQLiteStore
 	checkpoints     *checkpoints.Manager
 	evaluation      *evaluation.Manager
@@ -142,6 +145,14 @@ type Server struct {
 
 func NewServer(deps Dependencies) *Server {
 	mux := http.NewServeMux()
+	setupWizardService := deps.SetupWizard
+	if setupWizardService == nil {
+		setupWizardService = setupwizard.NewService(setupwizard.ServiceDependencies{
+			Store:   deps.Store,
+			Secrets: deps.Secrets,
+			Audit:   setupwizard.NewTenantAuditRecorder(deps.Store),
+		})
+	}
 	withEnvironment := func(handler http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			r = r.WithContext(events.WithEnvironmentScope(r.Context(), string(deps.Config.Environment)))
@@ -271,6 +282,15 @@ func NewServer(deps Dependencies) *Server {
 	}))
 	mux.HandleFunc("/v1/tenant-secrets/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleTenantSecretRoutes(deps.Secrets, w, r)
+	}))
+	mux.HandleFunc("/v1/setup/targets", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleSetupTargets(setupWizardService, w, r)
+	}))
+	mux.HandleFunc("/v1/setup/sessions", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleSetupSessions(setupWizardService, w, r)
+	}))
+	mux.HandleFunc("/v1/setup/sessions/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleSetupSessionRoutes(setupWizardService, w, r)
 	}))
 	mux.HandleFunc("/v1/config", protected(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -538,6 +558,7 @@ func NewServer(deps Dependencies) *Server {
 		delivery:        deps.Delivery,
 		billing:         deps.Billing,
 		activation:      deps.Activation,
+		setupWizard:     setupWizardService,
 		store:           deps.Store,
 		checkpoints:     deps.Checkpoints,
 		evaluation:      deps.Evaluation,
@@ -1916,6 +1937,10 @@ func handleLLMDispatches(dispatcher *llm.Dispatcher, providerManager *providers.
 			writeError(w, llmPrepareStatusCode(err), err.Error())
 			return
 		}
+		if err := enforceLLMProviderSetupGate(r.Context(), sqliteStore, resolvedInput.Provider, "chat"); err != nil {
+			writeError(w, llmPrepareStatusCode(err), err.Error())
+			return
+		}
 
 		dispatch, err := dispatcher.Prepare(resolvedInput, false)
 		if err != nil {
@@ -1961,6 +1986,35 @@ func resolveProviderDispatchInput(manager *providers.Manager, input llm.CreateDi
 		return llm.CreateDispatchInput{}, err
 	}
 	return effective, nil
+}
+
+func enforceLLMProviderSetupGate(ctx context.Context, sqliteStore *store.SQLiteStore, providerID, capability string) error {
+	if sqliteStore == nil || strings.TrimSpace(providerID) != llm.OpenAICompatibleProviderName {
+		return nil
+	}
+	tenantContext, ok := tenantContextFromContext(ctx)
+	if !ok || strings.TrimSpace(tenantContext.TenantID) == "" {
+		return nil
+	}
+	sessions, err := sqliteStore.ListSetupSessions(ctx, tenantContext.TenantID)
+	if err != nil {
+		return err
+	}
+	for _, session := range sessions {
+		if session.TargetID != setupwizard.TargetOpenAICompatible {
+			continue
+		}
+		decision := setupwizard.NewService(setupwizard.ServiceDependencies{}).DependentUseDecision(ctx, session, capability)
+		if decision.SafeUseMode == setupwizard.SafeUseBlocked {
+			reason := decision.ReasonCode
+			if reason == "" {
+				reason = string(session.State)
+			}
+			return fmt.Errorf("%w: %s", providers.ErrProviderAuthUnavailable, reason)
+		}
+		return nil
+	}
+	return nil
 }
 
 func handleLLMDispatchRoutes(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
@@ -2080,6 +2134,10 @@ func handleChatQuery(chatService *chat.Service, w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	tenantID := ""
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok {
+		tenantID = tenantContext.TenantID
+	}
 
 	result, err := chatService.Query(r.Context(), chat.QueryInput{
 		Query:      strings.TrimSpace(input.Query),
@@ -2088,6 +2146,7 @@ func handleChatQuery(chatService *chat.Service, w http.ResponseWriter, r *http.R
 		Skills:     append([]string(nil), input.Skills...),
 		TimeoutMs:  input.TimeoutMs,
 		MaxRetries: input.MaxRetries,
+		TenantID:   tenantID,
 	})
 	if err != nil {
 		if result.Dispatch.DispatchID == "" {
@@ -2116,6 +2175,10 @@ func handleChatQueryStream(chatService *chat.Service, w http.ResponseWriter, r *
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	tenantID := ""
+	if tenantContext, ok := tenantContextFromContext(r.Context()); ok {
+		tenantID = tenantContext.TenantID
+	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -2136,6 +2199,7 @@ func handleChatQueryStream(chatService *chat.Service, w http.ResponseWriter, r *
 		Skills:     append([]string(nil), input.Skills...),
 		TimeoutMs:  input.TimeoutMs,
 		MaxRetries: input.MaxRetries,
+		TenantID:   tenantID,
 	}, func(chunk chat.StreamChunk) error {
 		if !started {
 			started = true

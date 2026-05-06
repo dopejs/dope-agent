@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/setup-session.response.schema.json",
+  "title": "SetupSessionResponse",
+  "type": "object",
+  "required": ["session"],
+  "additionalProperties": false,
+  "properties": {
+    "session": { "$ref": "./setup-session-resource.schema.json" }
+  }
+}

@@ -135,6 +135,7 @@ var inventoryTenantOwnedTablesWithListPath = []string{
 	"connector_messages",
 	"delivery_targets",
 	"delivery_preferences",
+	"setup_sessions",
 }
 
 // TestQueryPlanCoverageMatchesInventory fails if a tenant_owned table
@@ -230,6 +231,12 @@ var queryPlanCases = []queryPlanCase{
 		sql:           `SELECT event_id FROM events WHERE tenant_id = ? AND category = ? AND name = ? ORDER BY occurred_at DESC LIMIT 50`,
 		args:          []any{"ten_owner", "runtime", "run-created"},
 		expectedIndex: "idx_events_tenant_category_time",
+	},
+	{
+		name:          "setup_sessions_list_by_tenant_updated",
+		sql:           `SELECT setup_session_id FROM setup_sessions WHERE tenant_id = ? ORDER BY updated_at DESC, setup_session_id DESC LIMIT 50`,
+		args:          []any{"ten_owner"},
+		expectedIndex: "idx_setup_sessions_tenant_updated",
 	},
 	{
 		name:          "schedules_list_by_tenant_status_due",

@@ -98,8 +98,8 @@ func TestAllRoutesGoThroughTenantContext(t *testing.T) {
 	}
 
 	var (
-		unprotected         []string
-		misuseEnvironment   []string
+		unprotected       []string
+		misuseEnvironment []string
 	)
 	for _, m := range matches {
 		path := string(m[1])

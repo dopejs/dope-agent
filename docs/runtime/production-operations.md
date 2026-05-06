@@ -13,6 +13,7 @@ Operator artifacts:
 - [Tenant migration rollback](./tenant-migration-rollback.md)
 - [Hosted operational profile](./hosted-operational-profile.md)
 - [Hosted tenant activation](./hosted-tenant-activation.md)
+- [Hosted credential setup](./hosted-credential-setup.md)
 - [Hosted stable-host evidence](../harness/hosted-operational-profile.md)
 - [Production soak harness](../harness/production-soak.md)
 - [Real-account smoke policy](../providers/real-account-smoke.md)

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/setup-session-resource.schema.json",
+  "title": "SetupSessionResource",
+  "type": "object",
+  "required": [
+    "setupSessionId",
+    "targetId",
+    "targetKind",
+    "setupStyle",
+    "state",
+    "retryable",
+    "remediationOwner",
+    "safeUseMode",
+    "allowedCapabilities",
+    "redactionStatus",
+    "createdAt",
+    "updatedAt",
+    "lastTransitionAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "setupSessionId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "actorPrincipalId": { "type": "string" },
+    "targetId": { "type": "string" },
+    "targetKind": { "type": "string", "enum": ["provider", "integration", "channel", "connector"] },
+    "setupStyle": { "type": "string", "enum": ["submitted_secret", "oauth", "unsupported"] },
+    "state": { "$ref": "#/$defs/setupState" },
+    "reasonCode": { "type": "string" },
+    "retryable": { "type": "boolean" },
+    "remediationOwner": { "$ref": "#/$defs/remediationOwner" },
+    "safeUseMode": { "type": "string", "enum": ["normal", "limited_safe", "blocked"] },
+    "allowedCapabilities": { "type": "array", "items": { "type": "string" } },
+    "currentAttemptId": { "type": "string" },
+    "diagnosticResultId": { "type": "string" },
+    "diagnosticRunId": { "type": "string" },
+    "diagnosticStage": { "type": "string" },
+    "diagnosticSourceKind": { "type": "string" },
+    "diagnosticSourceId": { "type": "string" },
+    "diagnosticAllowedCapabilities": { "type": "array", "items": { "type": "string" } },
+    "redactionStatus": { "$ref": "#/$defs/redactionStatus" },
+    "resourceRefs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/resourceRef" }
+    },
+    "redactedEvidence": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "oauthStateRef": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "lastTransitionAt": { "type": "string", "format": "date-time" },
+    "lastTransitionAuditEventId": { "type": "string" },
+    "operatorRemediation": { "type": "string" },
+    "userRemediation": { "type": "string" },
+    "unsupportedReasonCode": { "type": "string" }
+  },
+  "$defs": {
+    "setupState": {
+      "type": "string",
+      "enum": ["not_started", "in_progress", "ready", "degraded", "unavailable", "cancelled", "action_required", "disabled"]
+    },
+    "remediationOwner": {
+      "type": "string",
+      "enum": ["product_user", "tenant_admin", "operator", "provider", "none_required"]
+    },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "failed_closed"]
+    },
+    "resourceRef": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string" },
+        "id": { "type": "string" },
+        "route": { "type": "string" }
+      }
+    }
+  }
+}

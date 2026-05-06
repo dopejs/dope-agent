@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/setup-oauth-callback.request.schema.json",
+  "title": "SetupOAuthCallbackRequest",
+  "type": "object",
+  "required": ["state", "result"],
+  "additionalProperties": false,
+  "properties": {
+    "state": { "type": "string", "minLength": 1 },
+    "result": {
+      "type": "string",
+      "enum": ["completed", "denied", "abandoned", "expired", "replay", "tenant_mismatch", "provider_error"]
+    },
+    "accountLabel": { "type": "string" }
+  }
+}

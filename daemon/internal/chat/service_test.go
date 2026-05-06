@@ -2,12 +2,16 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/providers"
+	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
@@ -122,6 +126,51 @@ func TestStreamEmitsSelectedSkillContractsOnChunks(t *testing.T) {
 	}
 	if len(result.SkillContracts) != 1 {
 		t.Fatalf("expected query result skill contracts, got %+v", result.SkillContracts)
+	}
+}
+
+func TestQueryBlocksOpenAICompatibleWhenSetupSessionBlocksDependentUse(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer sqliteStore.Close()
+
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&testProvider{name: llm.OpenAICompatibleProviderName})
+	providerManager := providers.NewManager(config.Config{LLM: config.LLMConfig{
+		DefaultProvider: llm.OpenAICompatibleProviderName,
+		OpenAICompatible: config.OpenAICompatibleProviderConfig{
+			BaseURL: "https://example.com",
+			APIKey:  "secret",
+			Model:   "gpt-4.1-mini",
+		},
+	}}, dispatcher)
+	service := NewService(dispatcher, providerManager, nil, events.NewBus(), sqliteStore)
+	if err := sqliteStore.SaveSetupSession(context.Background(), setupwizard.SetupSession{
+		SetupSessionID:   "setup_blocked_openai",
+		TenantID:         "ten_chat_setup",
+		TargetID:         setupwizard.TargetOpenAICompatible,
+		TargetKind:       setupwizard.TargetKindProvider,
+		SetupStyle:       setupwizard.SetupStyleSubmittedSecret,
+		State:            setupwizard.StateActionRequired,
+		ReasonCode:       setupwizard.ReasonCredentialMissing,
+		Retryable:        true,
+		RemediationOwner: setupwizard.OwnerTenantAdmin,
+		SafeUseMode:      setupwizard.SafeUseBlocked,
+		RedactionStatus:  setupwizard.RedactionRedacted,
+	}); err != nil {
+		t.Fatalf("SaveSetupSession returned error: %v", err)
+	}
+
+	_, err = service.Query(context.Background(), QueryInput{
+		TenantID: "ten_chat_setup",
+		Query:    "hello",
+	})
+	if !errors.Is(err, providers.ErrProviderAuthUnavailable) {
+		t.Fatalf("Query error=%v, want ErrProviderAuthUnavailable", err)
 	}
 }
 

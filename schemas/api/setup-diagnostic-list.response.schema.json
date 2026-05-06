@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/setup-diagnostic-list.response.schema.json",
+  "title": "SetupDiagnosticListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["setupSessionId", "targetId", "diagnosticResultId", "status", "reasonCode", "retrySafety", "remediationOwner", "checkedAt", "staleAfter", "redactionStatus"],
+        "additionalProperties": false,
+        "properties": {
+          "setupSessionId": { "type": "string" },
+          "targetId": { "type": "string" },
+          "diagnosticResultId": { "type": "string" },
+          "diagnosticRunId": { "type": "string" },
+          "diagnosticStage": { "type": "string" },
+          "diagnosticSourceKind": { "type": "string" },
+          "diagnosticSourceId": { "type": "string" },
+          "status": { "$ref": "./setup-session-resource.schema.json#/$defs/setupState" },
+          "reasonCode": { "type": "string" },
+          "retrySafety": { "type": "string", "enum": ["no_action_needed", "retryable", "blocked", "unsafe_to_retry"] },
+          "remediationOwner": { "$ref": "./setup-session-resource.schema.json#/$defs/remediationOwner" },
+          "allowedCapabilities": { "type": "array", "items": { "type": "string" } },
+          "checkedAt": { "type": "string", "format": "date-time" },
+          "staleAfter": { "type": "string", "format": "date-time" },
+          "redactionStatus": { "$ref": "./setup-session-resource.schema.json#/$defs/redactionStatus" }
+        }
+      }
+    }
+  }
+}

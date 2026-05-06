@@ -32,6 +32,9 @@ import {
   type ReplayCandidateResource,
   type ReplayComparisonResource,
   type ReplayFixtureResource,
+  type SetupDiagnosticResource,
+  type SetupSessionResource,
+  type SetupTargetResource,
   type TenantPermission,
   type TenantRequestOptions,
   type TenantResource,
@@ -52,6 +55,9 @@ type ShellSnapshot = {
   onboarding: OperatorOnboardingResponse | null;
   activation: ActivationStateResource | null;
   activationDiagnostics: ActivationDiagnosticListResponse | null;
+  setupTargets: SetupTargetResource[];
+  setupSessions: SetupSessionResource[];
+  setupDiagnostics: SetupDiagnosticResource[];
   approvals: ApprovalResource[];
   activity: OperatorActivityListResponse | null;
   diagnostics: OperatorDiagnosticListResponse | null;
@@ -94,6 +100,9 @@ const EMPTY_SHELL: ShellSnapshot = {
   onboarding: null,
   activation: null,
   activationDiagnostics: null,
+  setupTargets: [],
+  setupSessions: [],
+  setupDiagnostics: [],
   approvals: [],
   activity: null,
   diagnostics: null,
@@ -132,6 +141,8 @@ export function App() {
   const [activeActionId, setActiveActionId] = useState("");
   const [runGoal, setRunGoal] = useState(DEFAULT_RUN_GOAL);
   const [testQuery, setTestQuery] = useState(DEFAULT_TEST_QUERY);
+  const [setupSecretRef, setSetupSecretRef] = useState("provider/openai-compatible");
+  const [setupSecretValue, setSetupSecretValue] = useState("");
   const [liveValidationCandidateId, setLiveValidationCandidateId] = useState("");
   const [liveValidationToolClasses, setLiveValidationToolClasses] = useState("read_only");
   const [liveValidationApprovalMode, setLiveValidationApprovalMode] = useState<"scope_level" | "per_action" | "mixed">("scope_level");
@@ -264,6 +275,8 @@ export function App() {
         onboarding,
         activation,
         activationDiagnostics,
+        setupTargets,
+        setupSessions,
         approvals,
         activity,
         diagnostics,
@@ -285,6 +298,8 @@ export function App() {
         scopedClient.getOnboarding(scopedOptions),
         scopedClient.getActivation(scopedOptions).then((response) => response.activation).catch(() => null),
         scopedClient.getActivationDiagnostics(scopedOptions).catch(() => ({ items: [] })),
+        scopedClient.listSetupTargets(scopedOptions).catch(() => ({ items: [] })),
+        scopedClient.listSetupSessions(scopedOptions).catch(() => ({ items: [] })),
         scopedClient.listApprovals("pending", scopedOptions),
         scopedClient.getActivity({ attentionOnly: true, limit: 20 }, scopedOptions),
         scopedClient.getDiagnostics({
@@ -308,7 +323,9 @@ export function App() {
       ]);
       const latestValidation = liveValidations.items[0] ?? null;
       const latestCampaign = campaigns.items[0] ?? null;
-      const [liveValidationLedger, liveValidationRetention, campaignItems, campaignAttemptGroups, toolCallInspections] = await Promise.all([
+      const firstSetupSession = setupSessions.items[0] ?? null;
+      const [setupDiagnostics, liveValidationLedger, liveValidationRetention, campaignItems, campaignAttemptGroups, toolCallInspections] = await Promise.all([
+        firstSetupSession ? scopedClient.getSetupDiagnostics(firstSetupSession.setupSessionId, scopedOptions).then((response) => response.items).catch(() => []) : Promise.resolve([]),
         latestValidation ? scopedClient.listLiveValidationLedger(latestValidation.validationId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
         latestValidation ? scopedClient.getLiveValidationRetention(latestValidation.validationId, scopedOptions) : Promise.resolve(null),
         latestCampaign ? scopedClient.listEvaluationCampaignItems(latestCampaign.campaignId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
@@ -324,6 +341,9 @@ export function App() {
         onboarding,
         activation,
         activationDiagnostics,
+        setupTargets: setupTargets.items,
+        setupSessions: setupSessions.items,
+        setupDiagnostics,
         approvals: approvals.items,
         activity,
         diagnostics,
@@ -1032,6 +1052,197 @@ export function App() {
     }
   }
 
+  async function handleStartSetup(target: SetupTargetResource) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    const actionId = `setup-start-${target.targetId}`;
+    setActiveActionId(actionId);
+    setError("");
+    try {
+      const response = await buildClient(tenantId).startSetup({ targetId: target.targetId, setupStyle: target.setupStyle, source: "operator_shell" }, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Setup started for ${target.displayName}.`);
+      setDetail({ title: `Setup ${target.displayName}`, route: `/v1/setup/sessions/${response.session.setupSessionId}`, tenantId, generation, payload: response });
+      await refreshShell({ soft: true, tenantId });
+    } catch (caught) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(errorMessage(caught));
+      }
+    } finally {
+      if (activeTenantRef.current === tenantId) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleSubmitSetupSecret(target: SetupTargetResource, session: SetupSessionResource | null) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    const actionId = `setup-secret-${target.targetId}`;
+    setActiveActionId(actionId);
+    setError("");
+    try {
+      const client = buildClient(tenantId);
+      const activeSession = session ?? (await client.startSetup({ targetId: target.targetId, setupStyle: target.setupStyle, source: "operator_shell" }, scoped)).session;
+      const response = await client.submitSetupSecret(activeSession.setupSessionId, {
+        secretRef: setupSecretRef.trim() || "provider/openai-compatible",
+        displayName: target.displayName,
+        value: setupSecretValue
+      }, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setSetupSecretValue("");
+      setActionMessage(`Submitted redacted credential metadata for ${target.displayName}.`);
+      setDetail({ title: `Setup ${target.displayName}`, route: `/v1/setup/sessions/${response.session.setupSessionId}`, tenantId, generation, payload: response });
+      await refreshShell({ soft: true, tenantId });
+    } catch (caught) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(errorMessage(caught));
+      }
+    } finally {
+      if (activeTenantRef.current === tenantId) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleStartSetupOAuth(target: SetupTargetResource, session: SetupSessionResource | null) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    const actionId = `setup-oauth-start-${target.targetId}`;
+    setActiveActionId(actionId);
+    setError("");
+    try {
+      const client = buildClient(tenantId);
+      const activeSession = session ?? (await client.startSetup({ targetId: target.targetId, setupStyle: target.setupStyle, source: "operator_shell" }, scoped)).session;
+      const response = await client.startSetupOAuth(activeSession.setupSessionId, { redirectRoute: "/setup/oauth/feishu-lark/callback" }, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`OAuth fixture started for ${target.displayName}.`);
+      setDetail({ title: `OAuth ${target.displayName}`, route: `/v1/setup/sessions/${response.session.setupSessionId}`, tenantId, generation, payload: response });
+      await refreshShell({ soft: true, tenantId });
+    } catch (caught) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(errorMessage(caught));
+      }
+    } finally {
+      if (activeTenantRef.current === tenantId) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleCompleteSetupOAuth(target: SetupTargetResource, session: SetupSessionResource | null) {
+    const scoped = currentTenantOptions();
+    if (!scoped || !session) {
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    const actionId = `setup-oauth-complete-${target.targetId}`;
+    setActiveActionId(actionId);
+    setError("");
+    try {
+      const response = await buildClient(tenantId).completeSetupOAuth(session.setupSessionId, {
+        state: session.oauthStateRef || "oauth_state_ref_1",
+        result: "completed",
+        accountLabel: activeTenant?.displayName
+      }, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`OAuth fixture completed for ${target.displayName}.`);
+      setDetail({ title: `OAuth ${target.displayName}`, route: `/v1/setup/sessions/${response.session.setupSessionId}`, tenantId, generation, payload: response });
+      await refreshShell({ soft: true, tenantId });
+    } catch (caught) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(errorMessage(caught));
+      }
+    } finally {
+      if (activeTenantRef.current === tenantId) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleSetupTransition(session: SetupSessionResource, action: "retry" | "replace" | "cancel" | "disable") {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    const actionId = `setup-${action}-${session.setupSessionId}`;
+    setActiveActionId(actionId);
+    setError("");
+    try {
+      const client = buildClient(tenantId);
+      const response = action === "retry"
+        ? await client.retrySetup(session.setupSessionId, scoped)
+        : action === "replace"
+          ? await client.replaceSetup(session.setupSessionId, scoped)
+          : action === "cancel"
+            ? await client.cancelSetup(session.setupSessionId, scoped)
+            : await client.disableSetup(session.setupSessionId, { disabledReason: "operator_shell" }, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Setup ${action} moved ${session.targetId} to ${response.session.state}.`);
+      setDetail({ title: `Setup ${session.targetId}`, route: `/v1/setup/sessions/${response.session.setupSessionId}`, tenantId, generation, payload: response });
+      await refreshShell({ soft: true, tenantId });
+    } catch (caught) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(errorMessage(caught));
+      }
+    } finally {
+      if (activeTenantRef.current === tenantId) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleSetupDiagnostics(session: SetupSessionResource) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    setDetailLoading(true);
+    setError("");
+    try {
+      const payload = await buildClient(tenantId).getSetupDiagnostics(session.setupSessionId, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setDetail({ title: `Setup Diagnostics ${session.targetId}`, route: `/v1/setup/sessions/${session.setupSessionId}/diagnostics`, tenantId, generation, payload });
+    } catch (caught) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(errorMessage(caught));
+      }
+    } finally {
+      if (activeTenantRef.current === tenantId) {
+        setDetailLoading(false);
+      }
+    }
+  }
+
   function currentTenantOptions(): TenantRequestOptions | null {
     if (!canUseTenantActions || !activeTenantId) {
       setError("Resolve an active tenant before performing tenant-scoped work.");
@@ -1043,6 +1254,7 @@ export function App() {
   const onboarding = shell.onboarding;
   const activation = shell.activation;
   const activationDiagnosticItems = shell.activationDiagnostics?.items ?? [];
+  const setupDiagnostics = shell.setupDiagnostics;
   const activationStale = activeTenantStatus === "stale" && Boolean(activation);
   const activityItems = shell.activity?.items ?? [];
   const diagnosticItems = shell.diagnostics?.items ?? [];
@@ -1301,6 +1513,132 @@ export function App() {
             <div className="empty-state">
               {activeTenantStatus === "stale" ? "Activation state is refreshing for the active tenant." : "Activation state has not loaded for the active tenant."}
             </div>
+          )}
+        </section>
+
+        <section className="panel setup-panel">
+          <div className="panel-head">
+            <div>
+              <p className="section-kicker">Hosted Setup</p>
+              <h2>Credentials</h2>
+            </div>
+            <span className="count-chip">{shell.setupTargets.length}</span>
+          </div>
+
+          {shell.setupTargets.length ? (
+            <div className="setup-list">
+              {shell.setupTargets.map((target) => {
+                const session = shell.setupSessions.find((item) => item.targetId === target.targetId && item.setupStyle === target.setupStyle) ?? null;
+                const state = session?.state ?? target.currentState ?? "not_started";
+                const actionBase = session?.setupSessionId ?? target.targetId;
+                return (
+                  <article className="setup-row" key={`${target.targetId}-${target.setupStyle}`}>
+                    <div className="setup-row-main">
+                      <div>
+                        <strong>{target.displayName}</strong>
+                        <p>{target.targetId}</p>
+                      </div>
+                      <span className={`status-chip status-${state}`}>{state}</span>
+                    </div>
+                    <div className="setup-meta">
+                      <span>{target.setupStyle}</span>
+                      <span>{session?.reasonCode ?? target.supportStatus}</span>
+                      <span>{session?.redactionStatus ?? "redacted"}</span>
+                      {session?.safeUseMode === "limited_safe" ? <span>{session.allowedCapabilities.join(", ") || "limited safe use"}</span> : null}
+                    </div>
+                    {target.setupStyle === "submitted_secret" ? (
+                      <div className="setup-secret-form">
+                        <label>
+                          <span>Secret Ref</span>
+                          <input value={setupSecretRef} onChange={(event) => setSetupSecretRef(event.target.value)} />
+                        </label>
+                        <label>
+                          <span>Secret Value</span>
+                          <input value={setupSecretValue} onChange={(event) => setSetupSecretValue(event.target.value)} type="password" />
+                        </label>
+                        <button
+                          className="primary"
+                          disabled={!canUseTenantActions || !setupSecretValue || activeActionId === `setup-secret-${target.targetId}`}
+                          type="button"
+                          onClick={() => {
+                            void handleSubmitSetupSecret(target, session);
+                          }}
+                        >
+                          {activeActionId === `setup-secret-${target.targetId}` ? "Submitting..." : "Submit Secret"}
+                        </button>
+                      </div>
+                    ) : null}
+                    <div className="inline-actions">
+                      {target.setupStyle === "oauth" ? (
+                        <>
+                          <button disabled={!canUseTenantActions || activeActionId === `setup-oauth-start-${target.targetId}`} type="button" onClick={() => {
+                            void handleStartSetupOAuth(target, session);
+                          }}>
+                            Start OAuth
+                          </button>
+                          <button className="primary" disabled={!canUseTenantActions || !session || activeActionId === `setup-oauth-complete-${target.targetId}`} type="button" onClick={() => {
+                            void handleCompleteSetupOAuth(target, session);
+                          }}>
+                            Complete Fixture
+                          </button>
+                        </>
+                      ) : (
+                        <button disabled={!canUseTenantActions || Boolean(session) || activeActionId === `setup-start-${target.targetId}`} type="button" onClick={() => {
+                          void handleStartSetup(target);
+                        }}>
+                          Start Setup
+                        </button>
+                      )}
+                      {session ? (
+                        <>
+                          <button disabled={!canUseTenantActions || activeActionId === `setup-retry-${actionBase}`} type="button" onClick={() => {
+                            void handleSetupTransition(session, "retry");
+                          }}>
+                            Retry
+                          </button>
+                          <button disabled={!canUseTenantActions || activeActionId === `setup-replace-${actionBase}`} type="button" onClick={() => {
+                            void handleSetupTransition(session, "replace");
+                          }}>
+                            Replace
+                          </button>
+                          <button disabled={!canUseTenantActions || activeActionId === `setup-cancel-${actionBase}`} type="button" onClick={() => {
+                            void handleSetupTransition(session, "cancel");
+                          }}>
+                            Cancel
+                          </button>
+                          <button disabled={!canUseTenantActions || activeActionId === `setup-disable-${actionBase}`} type="button" onClick={() => {
+                            void handleSetupTransition(session, "disable");
+                          }}>
+                            Disable
+                          </button>
+                          <button disabled={!canUseTenantActions || detailLoading} type="button" onClick={() => {
+                            void handleSetupDiagnostics(session);
+                          }}>
+                            Diagnostics
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+              {setupDiagnostics.length ? (
+                <div className="setup-diagnostics">
+                  {setupDiagnostics.map((item) => (
+                    <article className="readiness-card" key={`${item.setupSessionId}-${item.diagnosticResultId}`}>
+                      <div className="readiness-head">
+                        <strong>{item.reasonCode}</strong>
+                        <span className={`status-chip status-${item.status}`}>{item.retrySafety}</span>
+                      </div>
+                      <p>{item.remediationOwner} remediation · {item.redactionStatus}</p>
+                      {item.allowedCapabilities?.length ? <small>{item.allowedCapabilities.join(", ")}</small> : null}
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="empty-state">No credential setup targets are available for the active tenant.</div>
           )}
         </section>
 

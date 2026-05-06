@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/setup-oauth-start.request.schema.json",
+  "title": "SetupOAuthStartRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "redirectRoute": { "type": "string" }
+  }
+}

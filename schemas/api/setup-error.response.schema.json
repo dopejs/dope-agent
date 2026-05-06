@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/setup-error.response.schema.json",
+  "title": "SetupErrorResponse",
+  "type": "object",
+  "required": ["error", "code", "reasonCode", "stage", "retryable", "remediationOwner"],
+  "additionalProperties": false,
+  "properties": {
+    "error": { "type": "string" },
+    "code": { "type": "string" },
+    "reasonCode": { "type": "string" },
+    "stage": { "type": "string" },
+    "retryable": { "type": "boolean" },
+    "remediationOwner": { "$ref": "./setup-session-resource.schema.json#/$defs/remediationOwner" }
+  }
+}

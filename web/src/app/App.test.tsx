@@ -12,6 +12,18 @@ const mockClient = {
   activate: vi.fn(),
   runActivationTestChat: vi.fn(),
   getActivationDiagnostics: vi.fn(),
+  listSetupTargets: vi.fn(),
+  listSetupSessions: vi.fn(),
+  startSetup: vi.fn(),
+  getSetupSession: vi.fn(),
+  submitSetupSecret: vi.fn(),
+  startSetupOAuth: vi.fn(),
+  completeSetupOAuth: vi.fn(),
+  retrySetup: vi.fn(),
+  replaceSetup: vi.fn(),
+  cancelSetup: vi.fn(),
+  disableSetup: vi.fn(),
+  getSetupDiagnostics: vi.fn(),
   listApprovals: vi.fn(),
   getActivity: vi.fn(),
   getDiagnostics: vi.fn(),
@@ -200,6 +212,42 @@ function activationFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function setupTargetFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    targetId: "provider.openai_compatible",
+    tenantId: "ten_personal",
+    targetKind: "provider",
+    setupStyle: "submitted_secret",
+    displayName: "OpenAI-compatible provider",
+    proofTarget: true,
+    supportStatus: "supported",
+    requiredPermissions: ["secrets.manage", "integrations.manage"],
+    limitedSafeCapabilities: ["metadata_read"],
+    ...overrides
+  };
+}
+
+function setupSessionFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    setupSessionId: "setup_1",
+    tenantId: "ten_personal",
+    actorPrincipalId: "prn_1",
+    targetId: "provider.openai_compatible",
+    targetKind: "provider",
+    setupStyle: "submitted_secret",
+    state: "in_progress",
+    retryable: true,
+    remediationOwner: "product_user",
+    safeUseMode: "blocked",
+    allowedCapabilities: [],
+    redactionStatus: "redacted",
+    createdAt: "2026-05-06T00:00:00Z",
+    updatedAt: "2026-05-06T00:00:00Z",
+    lastTransitionAt: "2026-05-06T00:00:00Z",
+    ...overrides
+  };
+}
+
 function membershipFixture(overrides: Partial<ReturnType<typeof membershipFixtureBase>> = {}) {
   return {
     ...membershipFixtureBase(),
@@ -333,6 +381,18 @@ describe("App", () => {
       testChat: { status: "completed", dispatchId: "dispatch_1", provider: "test", model: "test-chat" }
     });
     mockClient.getActivationDiagnostics.mockReset().mockResolvedValue({ items: [] });
+    mockClient.listSetupTargets.mockReset().mockResolvedValue({ items: [] });
+    mockClient.listSetupSessions.mockReset().mockResolvedValue({ items: [] });
+    mockClient.startSetup.mockReset().mockResolvedValue({ session: setupSessionFixture() });
+    mockClient.getSetupSession.mockReset().mockResolvedValue({ session: setupSessionFixture() });
+    mockClient.submitSetupSecret.mockReset().mockResolvedValue({ session: setupSessionFixture({ state: "ready", reasonCode: "healthy", retryable: false, remediationOwner: "none_required", safeUseMode: "normal", redactedEvidence: { secretRef: "provider/openai-compatible", secretVersionId: "secver_1" } }) });
+    mockClient.startSetupOAuth.mockReset().mockResolvedValue({ session: setupSessionFixture({ setupSessionId: "setup_oauth_1", targetId: "integration.feishu_lark", targetKind: "integration", setupStyle: "oauth", oauthStateRef: "oauth_state_ref_1" }), authorizationUrl: "https://oauth.example.test/authorize", state: "oauth_state_ref_1" });
+    mockClient.completeSetupOAuth.mockReset().mockResolvedValue({ session: setupSessionFixture({ setupSessionId: "setup_oauth_1", targetId: "integration.feishu_lark", targetKind: "integration", setupStyle: "oauth", state: "ready", retryable: false, remediationOwner: "none_required", safeUseMode: "normal" }) });
+    mockClient.retrySetup.mockReset().mockResolvedValue({ session: setupSessionFixture({ state: "in_progress" }) });
+    mockClient.replaceSetup.mockReset().mockResolvedValue({ session: setupSessionFixture({ state: "in_progress" }) });
+    mockClient.cancelSetup.mockReset().mockResolvedValue({ session: setupSessionFixture({ state: "cancelled", reasonCode: "user_cancelled" }) });
+    mockClient.disableSetup.mockReset().mockResolvedValue({ session: setupSessionFixture({ state: "disabled", reasonCode: "disabled_by_user" }) });
+    mockClient.getSetupDiagnostics.mockReset().mockResolvedValue({ items: [] });
     mockClient.listApprovals.mockReset();
     mockClient.getActivity.mockReset();
     mockClient.getDiagnostics.mockReset();
@@ -448,6 +508,53 @@ describe("App", () => {
       }, { tenantId: "ten_personal" });
       expect(screen.getByText(/Created test run run_1/i)).not.toBeNull();
       expect(screen.getAllByText("completed").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("renders setup proof targets, submits secrets without rendering raw values, and drives OAuth fixtures", async () => {
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+    mockClient.listSetupTargets.mockResolvedValue({
+      items: [
+        setupTargetFixture(),
+        setupTargetFixture({
+          targetId: "integration.feishu_lark",
+          targetKind: "integration",
+          setupStyle: "oauth",
+          displayName: "Feishu/Lark OAuth"
+        })
+      ]
+    });
+    mockClient.listSetupSessions.mockResolvedValue({ items: [] });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    await waitFor(() => {
+      expect(screen.getByText("OpenAI-compatible provider")).not.toBeNull();
+      expect(screen.getByText("Feishu/Lark OAuth")).not.toBeNull();
+    });
+
+    await user.type(screen.getByLabelText(/secret value/i), "R46_FAKE_OPENAI_COMPATIBLE_KEY_DO_NOT_LEAK");
+    await user.click(screen.getByRole("button", { name: /submit secret/i }));
+
+    await waitFor(() => {
+      expect(mockClient.submitSetupSecret).toHaveBeenCalledWith("setup_1", {
+        secretRef: "provider/openai-compatible",
+        displayName: "OpenAI-compatible provider",
+        value: "R46_FAKE_OPENAI_COMPATIBLE_KEY_DO_NOT_LEAK"
+      }, { tenantId: "ten_personal" });
+      expect(document.body.textContent).not.toContain("R46_FAKE_OPENAI_COMPATIBLE_KEY_DO_NOT_LEAK");
+    });
+
+    await user.click(screen.getByRole("button", { name: /start oauth/i }));
+
+    await waitFor(() => {
+      expect(mockClient.startSetupOAuth).toHaveBeenCalledWith("setup_1", { redirectRoute: "/setup/oauth/feishu-lark/callback" }, { tenantId: "ten_personal" });
+      expect(screen.getByText(/OAuth fixture started/i)).not.toBeNull();
     });
   });
 

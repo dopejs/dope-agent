@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { DopeClientError, createDopeClient, type MembershipResource, type TenantResource, type TenantSecretResource } from "./index.js";
+import { DopeClientError, createDopeClient, type MembershipResource, type SetupSessionResource, type TenantResource, type TenantSecretResource } from "./index.js";
 
 function mockJSONResponse(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -99,6 +99,27 @@ function tenantSecretResource(overrides: Partial<TenantSecretResource> = {}): Te
     updatedAt: "2026-04-24T10:00:00Z",
     rotatedAt: "2026-04-24T10:00:00Z",
     secretRefs: [{ secretRef: "provider/api-key", resolution: "unavailable", redactionRule: "secret_ref_only" }],
+    ...overrides
+  };
+}
+
+function setupSessionResource(overrides: Partial<SetupSessionResource> = {}): SetupSessionResource {
+  return {
+    setupSessionId: "setup_1",
+    tenantId: "ten_personal",
+    actorPrincipalId: "prn_1",
+    targetId: "provider.openai_compatible",
+    targetKind: "provider",
+    setupStyle: "submitted_secret",
+    state: "in_progress",
+    retryable: true,
+    remediationOwner: "product_user",
+    safeUseMode: "blocked",
+    allowedCapabilities: [],
+    redactionStatus: "redacted",
+    createdAt: "2026-05-06T00:00:00Z",
+    updatedAt: "2026-05-06T00:00:00Z",
+    lastTransitionAt: "2026-05-06T00:00:00Z",
     ...overrides
   };
 }
@@ -1024,6 +1045,103 @@ describe("DopeClient", () => {
       name: "DopeClientError",
       status: 403,
       code: "credential_denied:missing_permission",
+      tenantDenied: true
+    });
+  });
+
+  it("calls setup wizard helper routes with redacted response resources and tenant intent", async () => {
+    const readySession = setupSessionResource({
+      state: "ready",
+      retryable: false,
+      remediationOwner: "none_required",
+      safeUseMode: "normal",
+      reasonCode: "healthy",
+      diagnosticResultId: "diag_openai_setup",
+      resourceRefs: [{ kind: "tenant_secret", id: "provider/openai-compatible" }],
+      redactedEvidence: { secretRef: "provider/openai-compatible", secretVersionId: "secver_1" }
+    });
+    const oauthSession = setupSessionResource({
+      setupSessionId: "setup_oauth_1",
+      targetId: "integration.feishu_lark",
+      targetKind: "integration",
+      setupStyle: "oauth",
+      oauthStateRef: "oauth_state_ref_1"
+    });
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, { items: [{ targetId: "provider.openai_compatible", targetKind: "provider", setupStyle: "submitted_secret", displayName: "OpenAI-compatible provider", proofTarget: true, supportStatus: "supported" }] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { items: [readySession] }))
+      .mockResolvedValueOnce(mockJSONResponse(201, { session: setupSessionResource() }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { session: readySession }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { session: readySession }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { session: oauthSession, authorizationUrl: "https://oauth.example.test/authorize?state=opaque", state: "oauth_state_ref_1" }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { session: { ...oauthSession, state: "action_required", reasonCode: "oauth_denied" } }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { session: setupSessionResource({ state: "in_progress" }) }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { session: setupSessionResource({ state: "in_progress" }) }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { session: setupSessionResource({ state: "cancelled", reasonCode: "user_cancelled" }) }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { session: setupSessionResource({ state: "disabled", reasonCode: "disabled_by_user" }) }))
+      .mockResolvedValueOnce(mockJSONResponse(200, { items: [{ setupSessionId: "setup_1", targetId: "provider.openai_compatible", diagnosticResultId: "diag_openai_setup", diagnosticRunId: "diag_run_openai_setup", diagnosticStage: "credential_probe", diagnosticSourceKind: "provider_check", diagnosticSourceId: "provider.openai_compatible", status: "ready", reasonCode: "healthy", retrySafety: "no_action_needed", remediationOwner: "none_required", checkedAt: "2026-05-06T00:01:00Z", staleAfter: "2026-05-06T00:11:00Z", redactionStatus: "redacted" }] }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      fetchImpl,
+      defaultTenantId: "ten_personal"
+    });
+
+    await expect(client.listSetupTargets()).resolves.toMatchObject({ items: [{ targetId: "provider.openai_compatible" }] });
+    await expect(client.listSetupSessions()).resolves.toMatchObject({ items: [{ setupSessionId: "setup_1", redactedEvidence: { secretVersionId: "secver_1" } }] });
+    await client.startSetup({ targetId: " provider.openai_compatible ", setupStyle: "submitted_secret", source: " operator_shell " });
+    await client.getSetupSession(" setup_1 ");
+    await client.submitSetupSecret("setup_1", { secretRef: " provider/openai-compatible ", displayName: " Provider key ", value: "R46_FAKE_OPENAI_COMPATIBLE_KEY_DO_NOT_LEAK" });
+    await client.startSetupOAuth("setup_oauth_1", { redirectRoute: " /setup/oauth/feishu-lark/callback " });
+    await client.completeSetupOAuth("setup_oauth_1", { state: " oauth_state_ref_1 ", result: "denied", accountLabel: " Workspace " });
+    await client.retrySetup("setup_1");
+    await client.replaceSetup("setup_1", {}, { tenantId: "ten_personal" });
+    await client.cancelSetup("setup_1");
+    await client.disableSetup("setup_1", { disabledReason: " operator request " });
+    await client.getSetupDiagnostics("setup_1");
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/setup/sessions", expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" }),
+      body: JSON.stringify({ targetId: "provider.openai_compatible", setupStyle: "submitted_secret", source: "operator_shell" })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(5, "http://127.0.0.1:19192/v1/setup/sessions/setup_1/submit-secret", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ secretRef: "provider/openai-compatible", value: "R46_FAKE_OPENAI_COMPATIBLE_KEY_DO_NOT_LEAK", displayName: "Provider key" })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/setup/sessions/setup_oauth_1/oauth/start", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ redirectRoute: "/setup/oauth/feishu-lark/callback" })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/setup/sessions/setup_oauth_1/oauth/callback", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ state: "oauth_state_ref_1", result: "denied", accountLabel: "Workspace" })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(11, "http://127.0.0.1:19192/v1/setup/sessions/setup_1/disable", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ disabledReason: "operator request" })
+    }));
+  });
+
+  it("maps setup inspection denials without disclosing tenant credential existence", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(mockJSONResponse(403, {
+      error: "setup permission denied",
+      code: "setup_denied:missing_permission",
+      reasonCode: "setup_denied:missing_permission",
+      stage: "permission",
+      retryable: false,
+      remediationOwner: "tenant_admin"
+    }));
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      fetchImpl
+    });
+
+    await expect(client.listSetupTargets({ tenantId: "ten_personal" })).rejects.toMatchObject({
+      name: "DopeClientError",
+      status: 403,
+      code: "setup_denied:missing_permission",
       tenantDenied: true
     });
   });

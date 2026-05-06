@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
+	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
@@ -23,6 +25,7 @@ type QueryInput struct {
 	Skills     []string
 	TimeoutMs  int
 	MaxRetries int
+	TenantID   string
 	Scope      events.Scope
 }
 
@@ -78,6 +81,9 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 			return QueryResult{}, err
 		}
 	}
+	if err := s.enforceProviderSetupGate(ctx, input.TenantID, dispatchInput.Provider, "chat"); err != nil {
+		return QueryResult{}, err
+	}
 
 	dispatch, err := s.dispatcher.Prepare(dispatchInput, false)
 	if err != nil {
@@ -125,6 +131,9 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 			return QueryResult{}, err
 		}
 	}
+	if err := s.enforceProviderSetupGate(ctx, input.TenantID, dispatchInput.Provider, "chat"); err != nil {
+		return QueryResult{}, err
+	}
 
 	dispatch, err := s.dispatcher.Prepare(dispatchInput, true)
 	if err != nil {
@@ -170,6 +179,31 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 		return result, execErr
 	}
 	return result, nil
+}
+
+func (s *Service) enforceProviderSetupGate(ctx context.Context, tenantID, providerID, capability string) error {
+	if s == nil || s.store == nil || strings.TrimSpace(tenantID) == "" || strings.TrimSpace(providerID) != llm.OpenAICompatibleProviderName {
+		return nil
+	}
+	sessions, err := s.store.ListSetupSessions(ctx, strings.TrimSpace(tenantID))
+	if err != nil {
+		return err
+	}
+	for _, session := range sessions {
+		if session.TargetID != setupwizard.TargetOpenAICompatible {
+			continue
+		}
+		decision := setupwizard.NewService(setupwizard.ServiceDependencies{}).DependentUseDecision(ctx, session, capability)
+		if decision.SafeUseMode == setupwizard.SafeUseBlocked {
+			reason := decision.ReasonCode
+			if reason == "" {
+				reason = string(session.State)
+			}
+			return fmt.Errorf("%w: %s", providers.ErrProviderAuthUnavailable, reason)
+		}
+		return nil
+	}
+	return nil
 }
 
 func (s *Service) buildDispatchInput(input QueryInput) (llm.CreateDispatchInput, []skills.Skill, error) {

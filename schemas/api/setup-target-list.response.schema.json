@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/setup-target-list.response.schema.json",
+  "title": "SetupTargetListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["targetId", "targetKind", "setupStyle", "displayName", "proofTarget", "supportStatus"],
+        "additionalProperties": false,
+        "properties": {
+          "targetId": { "type": "string" },
+          "tenantId": { "type": "string" },
+          "targetKind": { "type": "string", "enum": ["provider", "integration", "channel", "connector"] },
+          "setupStyle": { "type": "string", "enum": ["submitted_secret", "oauth", "unsupported"] },
+          "displayName": { "type": "string" },
+          "proofTarget": { "type": "boolean" },
+          "supportStatus": { "type": "string", "enum": ["supported", "unsupported", "action_required"] },
+          "requiredPermissions": { "type": "array", "items": { "type": "string" } },
+          "limitedSafeCapabilities": { "type": "array", "items": { "type": "string" } },
+          "currentSessionId": { "type": "string" },
+          "currentState": { "$ref": "./setup-session-resource.schema.json#/$defs/setupState" },
+          "diagnosticResultId": { "type": "string" }
+        }
+      }
+    }
+  }
+}
