@@ -52,6 +52,34 @@ Do not rely on the short roadmap heading alone when a `docs/specs` document exis
 - `026` -> Roadmap 41: Evaluation Product Expansion
 - `027` -> Roadmap 42: Integration Health And Permission Diagnostics
 - `028` -> Roadmap 43: Hosted Operational Profile And Recovery
+- `029` -> Roadmap 44: Roadmap Authority And Release Truth Reconciliation
+- `030` -> Roadmap 45: Hosted Signup And Tenant Activation
+- `031` -> Roadmap 46: Hosted Credential And OAuth Setup Wizard
+- `032` -> Roadmap 47: Public Quota Abuse And Billing UX
+- `033` -> Roadmap 48: Channel Connector Conformance Contract
+- `034` -> Roadmap 49: Discord Production Channel Hardening
+- `035` -> Roadmap 50: Telegram Channel Connector
+- `036` -> Roadmap 51: Slack Channel Connector
+- `037` -> Roadmap 52: WhatsApp Or Matrix Channel Connector
+- `038` -> Roadmap 53: Channel Management And Repair UX
+- `039` -> Roadmap 54: Daemon-Owned Thread And Session Lifecycle
+- `040` -> Roadmap 55: Non-Knowledge Multi-Turn Continuity
+- `041` -> Roadmap 56: Group Room Reset And Handoff Semantics
+- `042` -> Roadmap 57: Agent Profile And Persona Configuration
+- `043` -> Roadmap 58: Workspace And Capability Binding
+- `044` -> Roadmap 59: Real Calendar Provider Closure
+- `045` -> Roadmap 60: Calendar Attendee And RSVP Workflows
+- `046` -> Roadmap 61: Calendar Recurrence And All-Day Depth
+- `047` -> Roadmap 62: Real Mail Provider Closure
+- `048` -> Roadmap 63: Mail Attachment Transfer
+- `049` -> Roadmap 64: Inbox Triage MVP Without Memory
+- `050` -> Roadmap 65: Routine Builder
+- `051` -> Roadmap 66: Webhook And External Trigger Plane
+- `052` -> Roadmap 67: Operator-Managed Skill And Capability Catalog
+- `053` -> Roadmap 68: Execution Backend And Sandbox Profile UX
+- `054` -> Roadmap 69: Operator Shell Productization
+- `055` -> Roadmap 70: Support Diagnostics And Evidence Bundle
+- `056` -> Roadmap 71: Public Release Soak And Launch Gate
 
 ## Authoring Standard
 
@@ -68,6 +96,11 @@ Each `docs/specs` document should include:
 - verification expectations
 - definition of done
 - a recommended `/speckit-specify` prompt
+
+When a `docs/specs` document is expanded into a branch-local speckit feature, the resulting
+`tasks.md` should stay below 50 tasks. If the scope naturally wants more than 50 tasks,
+split the upstream spec before implementation planning rather than shipping a lower-focus
+oversized spec.
 
 ## Relationship To Other Planning Artifacts
 

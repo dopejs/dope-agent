@@ -1815,7 +1815,7 @@ Explicitly out of scope:
 
 ### Roadmap 43: Hosted Operational Profile And Recovery
 
-Status: `[ ] planned`
+Status: `[x] implemented locally; full-duration hosted daemon release soak pending`
 
 Detailed spec: [docs/specs/028-hosted-operational-profile-and-recovery.md](../specs/028-hosted-operational-profile-and-recovery.md)
 
@@ -1848,6 +1848,117 @@ Explicitly out of scope:
 - payment-provider production launch
 - enterprise SSO
 - memory or context engineering
+
+## Planned Non-Knowledge Parity Roadmaps Before Context And Memory
+
+The next roadmap family closes OpenClaw/HermesAgent product parity outside the
+context/knowledge/memory differentiator. These roadmap slices intentionally stay below the
+standard spec size limit of 50 tasks each. Context engineering, knowledge retrieval,
+memory write policy, agent-managed skills, and self-improvement remain out of scope until
+this family reaches the public release gate.
+
+### Roadmap 44: Roadmap Authority And Release Truth Reconciliation
+
+Status: `[ ] proposed`
+
+Detailed spec: [docs/specs/029-roadmap-authority-and-release-truth-reconciliation.md](../specs/029-roadmap-authority-and-release-truth-reconciliation.md)
+
+Goal: reconcile roadmap status, upstream specs, branch-local quickstarts, and release
+evidence so future work starts from one accurate implementation and validation truth.
+
+### Roadmaps 45-47: Hosted Activation, Credential Setup, And Quota UX
+
+Status: `[ ] proposed`
+
+Detailed specs:
+
+- [docs/specs/030-hosted-signup-and-tenant-activation.md](../specs/030-hosted-signup-and-tenant-activation.md)
+- [docs/specs/031-hosted-credential-and-oauth-setup-wizard.md](../specs/031-hosted-credential-and-oauth-setup-wizard.md)
+- [docs/specs/032-public-quota-abuse-and-billing-ux.md](../specs/032-public-quota-abuse-and-billing-ux.md)
+
+Goal: make hosted signup, tenant activation, credential setup, OAuth repair, quota
+visibility, abuse-limit messaging, and billing-plan projection usable from product
+surfaces rather than raw daemon APIs.
+
+### Roadmaps 48-53: Channel Parity And Repair
+
+Status: `[ ] proposed`
+
+Detailed specs:
+
+- [docs/specs/033-channel-connector-conformance-contract.md](../specs/033-channel-connector-conformance-contract.md)
+- [docs/specs/034-discord-production-channel-hardening.md](../specs/034-discord-production-channel-hardening.md)
+- [docs/specs/035-telegram-channel-connector.md](../specs/035-telegram-channel-connector.md)
+- [docs/specs/036-slack-channel-connector.md](../specs/036-slack-channel-connector.md)
+- [docs/specs/037-whatsapp-or-matrix-channel-connector.md](../specs/037-whatsapp-or-matrix-channel-connector.md)
+- [docs/specs/038-channel-management-and-repair-ux.md](../specs/038-channel-management-and-repair-ux.md)
+
+Goal: establish a shared connector conformance contract, harden Discord, add Telegram,
+Slack, and one additional materially different channel, then provide channel management
+and repair UX.
+
+### Roadmaps 54-58: Session, Persona, Workspace, And Capability Binding
+
+Status: `[ ] proposed`
+
+Detailed specs:
+
+- [docs/specs/039-daemon-owned-thread-and-session-lifecycle.md](../specs/039-daemon-owned-thread-and-session-lifecycle.md)
+- [docs/specs/040-non-knowledge-multi-turn-continuity.md](../specs/040-non-knowledge-multi-turn-continuity.md)
+- [docs/specs/041-group-room-reset-and-handoff-semantics.md](../specs/041-group-room-reset-and-handoff-semantics.md)
+- [docs/specs/042-agent-profile-and-persona-configuration.md](../specs/042-agent-profile-and-persona-configuration.md)
+- [docs/specs/043-workspace-and-capability-binding.md](../specs/043-workspace-and-capability-binding.md)
+
+Goal: make conversation threads, bounded non-memory continuity, group/reset/handoff,
+structured persona, workspace, and capability bindings product-visible and auditable
+before later context and memory systems consume them.
+
+### Roadmaps 59-64: Real Calendar, Mail, Attachments, And Inbox Triage
+
+Status: `[ ] proposed`
+
+Detailed specs:
+
+- [docs/specs/044-real-calendar-provider-closure.md](../specs/044-real-calendar-provider-closure.md)
+- [docs/specs/045-calendar-attendee-and-rsvp-workflows.md](../specs/045-calendar-attendee-and-rsvp-workflows.md)
+- [docs/specs/046-calendar-recurrence-and-all-day-depth.md](../specs/046-calendar-recurrence-and-all-day-depth.md)
+- [docs/specs/047-real-mail-provider-closure.md](../specs/047-real-mail-provider-closure.md)
+- [docs/specs/048-mail-attachment-transfer.md](../specs/048-mail-attachment-transfer.md)
+- [docs/specs/049-inbox-triage-mvp-without-memory.md](../specs/049-inbox-triage-mvp-without-memory.md)
+
+Goal: replace fake-provider-only confidence with real calendar and mail closure, deepen
+calendar and mail domain capability, and add explicit-rule inbox triage without memory.
+
+### Roadmaps 65-68: Proactive Routines, Webhooks, Catalog, And Execution UX
+
+Status: `[ ] proposed`
+
+Detailed specs:
+
+- [docs/specs/050-routine-builder.md](../specs/050-routine-builder.md)
+- [docs/specs/051-webhook-and-external-trigger-plane.md](../specs/051-webhook-and-external-trigger-plane.md)
+- [docs/specs/052-operator-managed-skill-and-capability-catalog.md](../specs/052-operator-managed-skill-and-capability-catalog.md)
+- [docs/specs/053-execution-backend-and-sandbox-profile-ux.md](../specs/053-execution-backend-and-sandbox-profile-ux.md)
+
+Goal: expose proactive routines, external event triggers, operator-managed skills and
+capabilities, and sandbox/execution profile state without agent-managed skill generation
+or memory-driven optimization.
+
+### Roadmaps 69-71: Product Shell, Support Evidence, And Public Launch Gate
+
+Status: `[ ] proposed`
+
+Detailed specs:
+
+- [docs/specs/054-operator-shell-productization.md](../specs/054-operator-shell-productization.md)
+- [docs/specs/055-support-diagnostics-and-evidence-bundle.md](../specs/055-support-diagnostics-and-evidence-bundle.md)
+- [docs/specs/056-public-release-soak-and-launch-gate.md](../specs/056-public-release-soak-and-launch-gate.md)
+
+Goal: turn the web shell into a public-product control console, add redacted support
+evidence bundles, and run the final non-knowledge public release gate.
+
+Roadmap 71 is the explicit entry gate for context engineering, knowledge retrieval,
+memory write policy, agent-managed skills, and self-improvement design.
 
 ## Roadmap 13: Provider Streaming Timeout Semantics
 

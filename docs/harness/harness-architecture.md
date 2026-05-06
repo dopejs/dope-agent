@@ -269,9 +269,32 @@ truth instead of ad hoc provider-console investigation. Roadmap 43 turns hosted/
 operation into a fixed profile with deployment, supervision, backup, restore, rollback,
 observability, and release-evidence collection.
 
+### Post-Roadmap 43: Non-Knowledge Parity Before Context And Memory
+
+After hosted productization, DopeAgent still needs one final non-knowledge parity family
+before context, knowledge, and memory should become the main differentiators:
+
+- Roadmap 44: roadmap authority and release truth reconciliation
+- Roadmaps 45-47: hosted activation, credential/OAuth setup, quota and abuse UX
+- Roadmaps 48-53: channel connector conformance, Discord hardening, Telegram, Slack, one
+  additional channel, and channel repair UX
+- Roadmaps 54-58: daemon-owned threads, bounded non-knowledge continuity, group/reset/
+  handoff semantics, structured agent profiles, workspace and capability binding
+- Roadmaps 59-64: real calendar provider, calendar attendee/RSVP, calendar recurrence and
+  all-day depth, real mail provider, mail attachments, and explicit-rule inbox triage
+- Roadmaps 65-68: routine builder, webhook trigger plane, operator-managed catalog, and
+  execution backend/sandbox profile UX
+- Roadmaps 69-71: productized operator shell, support evidence bundle, and public release
+  soak or launch gate
+
+This family is deliberately outside the knowledge plane. Its purpose is to make the
+hosted public product comparable to OpenClaw and HermesAgent on activation, channels,
+sessions, real providers, routines, extensibility, supportability, and release evidence.
+Roadmap 71 is the entry gate for context, knowledge, and memory design.
+
 ### Phase 5: Context Engineering
 
-After hosted productization and production validation:
+After hosted productization, non-knowledge parity, and public release-gate evidence:
 
 - context sources
 - packing and truncation rules
@@ -472,22 +495,24 @@ Follow-on work should stay separate from this closed phase:
 
 The right next step is:
 
-- Roadmaps 22 through 25 are now closed
-- Roadmap 26 is now closed
-- the next implementation roadmap should start at Roadmap 27: personal integrations
-  platform
+- Roadmaps 22 through 43 have the core runtime, hosted productization, diagnostics, and
+  hosted operational profile foundations needed for the next program
+- before context, knowledge, and memory design begins, complete the non-knowledge parity
+  specs now recorded as `docs/specs/029` through `docs/specs/056`
+- keep each implementation spec below 50 tasks so the standard spec remains focused and
+  independently deliverable
 
 Then continue in this order:
 
-1. personal integrations platform
-2. delivery and notifications
-3. calendar integration
-4. mail integration
-5. tasks and reminders
-6. operator shell and onboarding
-7. evaluation and replay harness
+1. release truth reconciliation
+2. hosted activation, credential setup, quota, and abuse UX
+3. channel parity and repair
+4. thread/session/persona/workspace/capability binding
+5. real calendar and mail providers plus domain-depth closure
+6. proactive routines, webhooks, operator-managed catalog, and execution profile UX
+7. productized operator shell, support evidence, and public release gate
 8. context engineering
-9. memory
+9. memory and knowledge plane
 10. agent-managed skills
 11. dreaming / self-improve
 
