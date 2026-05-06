@@ -1,6 +1,6 @@
 # Roadmap Authority And Release Truth Reconciliation
 
-Status: proposed
+Status: implementation and local verification complete in `specs/029-roadmap-release-truth/`
 
 Authority: This document is the authoritative upstream spec for Roadmap 44, the planning
 and release-evidence reconciliation slice that must close before the remaining
@@ -9,8 +9,10 @@ non-knowledge parity program continues.
 Primary source documents:
 - `docs/runtime/daemon-roadmaps.md`
 - `docs/harness/harness-architecture.md`
+- `docs/runtime/release-truth-checklist.md`
 - `docs/specs/028-hosted-operational-profile-and-recovery.md`
 - `specs/028-hosted-operational-profile/`
+- `specs/029-roadmap-release-truth/`
 
 ## Background
 
@@ -31,7 +33,7 @@ requires hosted or real-account release evidence.
 - Completion labels must distinguish implementation complete, local verification complete,
   stable-host dry-run complete, full hosted soak pending, and real-account smoke pending.
 - No roadmap may claim public readiness without linked release evidence.
-- Future specs in this program must target fewer than 50 tasks.
+- Future spec sizing follows the planning boundary in Functional Requirements.
 
 ## Dependencies On Completed Phases
 
@@ -76,6 +78,7 @@ requires hosted or real-account release evidence.
 - Roadmap 42 and 43 status MUST reflect current implementation evidence and remaining
   hosted/full-duration validation gaps.
 - The docs MUST state that future standard specs should remain under 50 tasks.
+- The standalone release-truth checklist MUST be linked from roadmap and spec materials.
 
 ## Compatibility And Operational Notes
 
@@ -86,6 +89,7 @@ classify it consistently.
 
 - `rg` checks for stale Roadmap 42/43 status contradictions.
 - Manual review of links from roadmap summary to branch-local quickstart evidence.
+- Apply `docs/runtime/release-truth-checklist.md` to Roadmaps 42 and 43.
 - No code tests are required unless scripts or validators change.
 
 ## Definition Of Done

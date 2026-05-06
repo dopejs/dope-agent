@@ -1,6 +1,8 @@
 # Integration Health And Permission Diagnostics
 
-Status: proposed
+Status: implementation and local verification complete in
+`specs/027-integration-diagnostics/`; stable-host or real-account release evidence remains
+pending unless current evidence is linked from release readiness.
 
 Authority: This document is the authoritative upstream spec for Roadmap 42, the
 integration reliability diagnostics layer for real external systems.
@@ -12,6 +14,8 @@ Primary source documents:
 - `docs/specs/024-production-install-upgrade-backup-and-soak.md`
 - `docs/specs/025-live-validation-and-side-effect-replay.md`
 - `docs/runtime/release-readiness.md`
+- `docs/runtime/release-truth-checklist.md`
+- `specs/027-integration-diagnostics/quickstart.md`
 
 ## Background
 
@@ -137,6 +141,8 @@ remediation inspectable through stable product surfaces and repeatable smoke evi
   provider mutations require explicit operator-selected scope and approval.
 - Diagnostic classifications should be reusable by live validation, delivery, campaigns,
   and release-readiness reports.
+- Release-truth classification treats remaining stable-host or real-account smoke as a
+  release evidence gap rather than an implementation gap.
 
 ## Verification Expectations
 
@@ -152,6 +158,8 @@ remediation inspectable through stable product surfaces and repeatable smoke evi
 - Real-account smoke report fixture covering passed, failed, blocked, and skipped domains.
 - Manual `DOPE_ENV=test` smoke for at least one Feishu/Lark diagnostic path when safe
   credentials and tenant approval are available.
+- Release-truth checklist review classifies missing safe credentials, tenant approval, or
+  operator-deferred smoke as explicit residual release work.
 
 ## Definition Of Done
 

@@ -1788,9 +1788,13 @@ Explicitly out of scope:
 
 ### Roadmap 42: Integration Health And Permission Diagnostics
 
-Status: `[ ] implemented locally; stable-host smoke evidence pending`
+Status: `[~] implementation complete; local verification complete; stable-host or real-account release evidence pending`
 
 Detailed spec: [docs/specs/027-integration-health-and-permission-diagnostics.md](../specs/027-integration-health-and-permission-diagnostics.md)
+
+Implementation artifacts: [spec plan](../../specs/027-integration-diagnostics/plan.md),
+[quickstart evidence](../../specs/027-integration-diagnostics/quickstart.md), and
+[release truth checklist](./release-truth-checklist.md).
 
 Goal: make real external integration health, authorization state, provider error
 classification, and operator remediation inspectable through stable product surfaces.
@@ -1806,6 +1810,16 @@ Roadmap definition of done:
 - diagnostics, logs, events, smoke reports, and evaluation artifacts do not expose raw
   credential material
 
+Release truth:
+
+- implementation and local verification are complete in
+  `specs/027-integration-diagnostics/quickstart.md`
+- remaining public-readiness evidence is a release evidence gap, not an implementation
+  gap
+- blocker class: `real_account_credentials_unavailable`, `tenant_approval_unavailable`,
+  `operator_deferred`, or `evidence_stale` until current safe real-account or
+  stable-host release evidence is linked
+
 Explicitly out of scope:
 
 - adding new integration domains
@@ -1815,14 +1829,15 @@ Explicitly out of scope:
 
 ### Roadmap 43: Hosted Operational Profile And Recovery
 
-Status: `[x] implemented locally; full-duration hosted daemon release soak pending`
+Status: `[~] implementation complete; local verification complete; stable-host dry-run complete; full-duration hosted daemon release soak pending`
 
 Detailed spec: [docs/specs/028-hosted-operational-profile-and-recovery.md](../specs/028-hosted-operational-profile-and-recovery.md)
 
 Implementation artifacts: [spec plan](../../specs/028-hosted-operational-profile/plan.md),
+[quickstart evidence](../../specs/028-hosted-operational-profile/quickstart.md),
 [hosted profile runbook](./hosted-operational-profile.md), [stable-host evidence
-guide](../harness/hosted-operational-profile.md), and
-`scripts/production/hosted-profile.sh`.
+guide](../harness/hosted-operational-profile.md), [release truth
+checklist](./release-truth-checklist.md), and `scripts/production/hosted-profile.sh`.
 
 Goal: define and verify a hosted/test-host operational profile for deployment, process
 supervision, backup, restore, upgrade, rollback, observability, and release evidence
@@ -1841,6 +1856,14 @@ Roadmap definition of done:
 - release evidence is linked from a single index that supports a 30-minute
   ship/no-ship review
 
+Release truth:
+
+- implementation and local verification are complete in
+  `specs/028-hosted-operational-profile/quickstart.md`
+- stable-host dry-run evidence has been recorded on `zentalk-1`
+- remaining public-readiness blocker class: `hosted_soak_pending` for the full-duration
+  hosted daemon release soak
+
 Explicitly out of scope:
 
 - Kubernetes or multi-region deployment
@@ -1852,19 +1875,32 @@ Explicitly out of scope:
 ## Planned Non-Knowledge Parity Roadmaps Before Context And Memory
 
 The next roadmap family closes OpenClaw/HermesAgent product parity outside the
-context/knowledge/memory differentiator. These roadmap slices intentionally stay below the
-standard spec size limit of 50 tasks each. Context engineering, knowledge retrieval,
-memory write policy, agent-managed skills, and self-improvement remain out of scope until
-this family reaches the public release gate.
+context/knowledge/memory differentiator. These roadmap slices intentionally stay within
+the standard branch-local task budget. Context engineering, knowledge retrieval, memory
+write policy, agent-managed skills, and self-improvement remain out of scope until this
+family reaches the public release gate.
 
 ### Roadmap 44: Roadmap Authority And Release Truth Reconciliation
 
-Status: `[ ] proposed`
+Status: `[x] implementation complete; local verification complete`
 
 Detailed spec: [docs/specs/029-roadmap-authority-and-release-truth-reconciliation.md](../specs/029-roadmap-authority-and-release-truth-reconciliation.md)
 
+Implementation artifacts: [spec plan](../../specs/029-roadmap-release-truth/plan.md),
+[tasks](../../specs/029-roadmap-release-truth/tasks.md), and
+[release truth checklist](./release-truth-checklist.md).
+
 Goal: reconcile roadmap status, upstream specs, branch-local quickstarts, and release
 evidence so future work starts from one accurate implementation and validation truth.
+
+Roadmap definition of done:
+
+- Roadmap 41, 42, and 43 implementation and release-evidence states are linked and
+  classified
+- stable-host dry-run, full hosted soak, real-account smoke, skipped, blocked, stale, and
+  pending evidence states are not collapsed into implementation status
+- future standard branch-local specs in this program remain below 50 tasks or are split
+  before implementation planning
 
 ### Roadmaps 45-47: Hosted Activation, Credential Setup, And Quota UX
 

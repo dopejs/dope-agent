@@ -4,6 +4,10 @@ Release readiness review must be completable in 30 minutes or less using the
 produced evidence. Missing required evidence or failed thresholds produce a
 no-ship decision.
 
+Use [Release Truth Checklist](./release-truth-checklist.md) to classify roadmap closure,
+residual release evidence gaps, and public-readiness claims before accepting ship-ready
+status.
+
 Required evidence:
 
 - clean install result
@@ -68,15 +72,24 @@ soak evidence passed.
 
 ## Active Roadmap 41 Evidence Closure
 
-Roadmap 41 is implementation-complete but not release-complete until the combined
-Roadmap 39/40/41 24-hour rerun passes. The local acceptance runbook is:
+Roadmap 41 release evidence closure is complete for commit `5ad95ba`. The combined
+Roadmap 39/40/41 24-hour rerun passed on stable host `zentalk-1` on 2026-05-01
+Asia/Shanghai and met all
+[`docs/harness/roadmap41-soak-acceptance-runbook.md`](../harness/roadmap41-soak-acceptance-runbook.md)
+criteria.
 
-```text
-docs/harness/roadmap41-soak-acceptance-runbook.md
-```
+Authoritative evidence links:
 
-The current rerun was started on `zentalk-1` on 2026-04-30 Asia/Shanghai against commit
-`5ad95ba`. Do not mark Roadmap 41 complete from targeted-validation evidence or from a
-pre-Roadmap-40/41 soak. Completion requires the generated full-duration report to pass the
-runbook criteria and then updating the Roadmap 41 tasks, quickstart, upstream spec, and
-daemon roadmap status in one evidence commit.
+- Roadmap 41 implementation and verification summary:
+  [`specs/026-evaluation-product-expansion/quickstart.md`](../../specs/026-evaluation-product-expansion/quickstart.md)
+- Roadmap 41 task closure, including T153:
+  [`specs/026-evaluation-product-expansion/tasks.md`](../../specs/026-evaluation-product-expansion/tasks.md)
+- Upstream Roadmap 41 spec status:
+  [`docs/specs/026-evaluation-product-expansion.md`](../specs/026-evaluation-product-expansion.md)
+- Daemon roadmap closure:
+  [`docs/runtime/daemon-roadmaps.md`](./daemon-roadmaps.md)
+
+Do not mark a future release complete from targeted-validation evidence or from a
+pre-Roadmap-40/41 soak. Any later release that changes Roadmap 40 live validation or
+Roadmap 41 evaluation-product behavior must rerun the required soak and link fresh
+evidence for the reviewed commit.

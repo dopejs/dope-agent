@@ -253,3 +253,11 @@ Residual risk: the stable-host smoke validates the repo-owned supervisor with a
 controlled long-running process. It still does not run the full Dope daemon on
 the remote host for a 24-hour release soak; that remains a release-readiness
 operation, not a local implementation test.
+
+## Release Truth Status
+
+Roadmap 43 is implementation and local verification complete, with stable-host dry-run
+evidence recorded on `zentalk-1`. Public readiness still has a `hosted_soak_pending`
+release evidence gap until a full-duration hosted daemon release soak is linked and
+current. Use `docs/runtime/release-truth-checklist.md` before accepting any public
+readiness claim.

@@ -1,8 +1,9 @@
 # Hosted Operational Profile And Recovery
 
-Status: implemented locally in `specs/028-hosted-operational-profile/`; stable-host
-supervisor smoke has been recorded on `zentalk-1`. Full release readiness still requires
-an operator-run full-duration hosted daemon soak on an always-on test host or VPS.
+Status: implementation and local verification complete in
+`specs/028-hosted-operational-profile/`; stable-host dry-run evidence has been recorded
+on `zentalk-1`. Full release readiness still requires an operator-run full-duration
+hosted daemon soak on an always-on test host or VPS.
 
 Authority: This document is the authoritative upstream spec for Roadmap 43, the hosted
 test-host and operational recovery profile required before long-lived personal-agent
@@ -16,6 +17,7 @@ Primary source documents:
 - `docs/runtime/production-upgrade.md`
 - `docs/runtime/backup-restore.md`
 - `docs/runtime/release-readiness.md`
+- `docs/runtime/release-truth-checklist.md`
 - `docs/harness/production-soak.md`
 - `docs/runtime/hosted-operational-profile.md`
 - `docs/harness/hosted-operational-profile.md`
@@ -147,6 +149,8 @@ collection.
 - Evidence paths should be stable across reruns and include commit or run identifiers to
   avoid overwriting prior evidence.
 - Operational reports must avoid raw secrets and credential-bearing environment dumps.
+- Release-truth classification treats stable-host dry-run evidence separately from the
+  pending full-duration hosted daemon soak.
 
 ## Verification Expectations
 
@@ -161,6 +165,8 @@ collection.
   soak, integration diagnostics, logs, and resource observations.
 - Manual smoke on a stable test host or VPS demonstrating the profile can run without
   relying on a movable developer laptop.
+- Release-truth checklist review must classify the remaining full-duration hosted daemon
+  soak as `hosted_soak_pending` until current evidence is linked.
 
 ## Implemented Artifacts
 

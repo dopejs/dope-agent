@@ -53,6 +53,7 @@ Do not rely on the short roadmap heading alone when a `docs/specs` document exis
 - `027` -> Roadmap 42: Integration Health And Permission Diagnostics
 - `028` -> Roadmap 43: Hosted Operational Profile And Recovery
 - `029` -> Roadmap 44: Roadmap Authority And Release Truth Reconciliation
+  (`docs/runtime/release-truth-checklist.md` is the reusable release-closure checklist)
 - `030` -> Roadmap 45: Hosted Signup And Tenant Activation
 - `031` -> Roadmap 46: Hosted Credential And OAuth Setup Wizard
 - `032` -> Roadmap 47: Public Quota Abuse And Billing UX
@@ -98,9 +99,11 @@ Each `docs/specs` document should include:
 - a recommended `/speckit-specify` prompt
 
 When a `docs/specs` document is expanded into a branch-local speckit feature, the resulting
-`tasks.md` should stay below 50 tasks. If the scope naturally wants more than 50 tasks,
-split the upstream spec before implementation planning rather than shipping a lower-focus
-oversized spec.
+`tasks.md` should stay below 50 tasks. If the scope naturally exceeds that branch-local
+budget, split the upstream spec before implementation planning rather than shipping a
+lower-focus oversized spec. Release-closure claims should use
+[`docs/runtime/release-truth-checklist.md`](../runtime/release-truth-checklist.md) when
+implementation state and release evidence state could diverge.
 
 ## Relationship To Other Planning Artifacts
 

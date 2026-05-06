@@ -264,17 +264,20 @@ does not replace knowledge-plane work; it creates the tenant, safety, operationa
 evaluation boundaries that knowledge-plane work should rely on.
 
 Roadmaps 42 and 43 are the stabilization layer after the first hosted-productization
-closure. Roadmap 42 makes real external integration failures diagnosable through product
-truth instead of ad hoc provider-console investigation. Roadmap 43 turns hosted/test-host
-operation into a fixed profile with deployment, supervision, backup, restore, rollback,
-observability, and release-evidence collection.
+closure. Roadmap 42 is implementation and local verification complete, with stable-host or
+real-account release evidence still classified separately from implementation status.
+Roadmap 43 is implementation and local verification complete with stable-host dry-run
+evidence recorded, while full-duration hosted daemon release soak remains a
+`hosted_soak_pending` release evidence gap. These states should be reviewed through
+`docs/runtime/release-truth-checklist.md` before public-readiness claims.
 
 ### Post-Roadmap 43: Non-Knowledge Parity Before Context And Memory
 
 After hosted productization, DopeAgent still needs one final non-knowledge parity family
 before context, knowledge, and memory should become the main differentiators:
 
-- Roadmap 44: roadmap authority and release truth reconciliation
+- Roadmap 44: roadmap authority and release truth reconciliation using the standalone
+  `docs/runtime/release-truth-checklist.md`
 - Roadmaps 45-47: hosted activation, credential/OAuth setup, quota and abuse UX
 - Roadmaps 48-53: channel connector conformance, Discord hardening, Telegram, Slack, one
   additional channel, and channel repair UX
@@ -499,8 +502,9 @@ The right next step is:
   hosted operational profile foundations needed for the next program
 - before context, knowledge, and memory design begins, complete the non-knowledge parity
   specs now recorded as `docs/specs/029` through `docs/specs/056`
-- keep each implementation spec below 50 tasks so the standard spec remains focused and
-  independently deliverable
+- keep each standard branch-local implementation spec below 50 tasks so the standard spec
+  remains focused and independently deliverable; split oversized upstream specs before
+  implementation planning
 
 Then continue in this order:
 

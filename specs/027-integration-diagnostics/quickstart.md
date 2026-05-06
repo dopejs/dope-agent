@@ -113,3 +113,11 @@ classification fixtures, diagnostic failure projections, real-account smoke evid
 audit/event builders, and retention records. Local verification completed with targeted
 daemon tests, schema contracts, client tests/build, full daemon tests, `go mod tidy`, and
 isolated test daemon health. The test daemon was stopped after health verification.
+
+## Release Truth Status
+
+Roadmap 42 is implementation and local verification complete. Remaining stable-host or
+real-account release evidence is tracked as release residual work, not as missing
+implementation. Use `docs/runtime/release-truth-checklist.md` to classify missing safe
+credentials, unavailable tenant approval, operator-deferred smoke, stale evidence, and
+public-readiness claims.
