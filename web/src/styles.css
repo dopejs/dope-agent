@@ -145,7 +145,7 @@ label span {
 .banner-strip {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .tenant-strip {
@@ -216,6 +216,73 @@ label span {
 
 .membership-panel {
   align-content: start;
+}
+
+.activation-panel {
+  background:
+    linear-gradient(135deg, rgba(223, 239, 242, 0.9), rgba(255, 250, 242, 0.92)),
+    var(--panel);
+}
+
+.activation-panel.is-stale {
+  border-color: rgba(15, 88, 105, 0.35);
+}
+
+.activation-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.activation-metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.activation-metrics div {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.68);
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.activation-metrics strong {
+  overflow-wrap: anywhere;
+}
+
+.activation-action-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.activation-quota-list,
+.activation-readiness-list,
+.activation-diagnostic-list {
+  display: grid;
+  gap: 10px;
+}
+
+.activation-quota-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.activation-quota-list div {
+  align-items: start;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.activation-quota-list strong,
+.activation-quota-list span {
+  overflow-wrap: anywhere;
 }
 
 .action-inputs {
@@ -589,6 +656,8 @@ pre {
   .mini-grid,
   .mini-card-grid,
   .banner-strip,
+  .activation-metrics,
+  .activation-quota-list,
   .tenant-strip,
   .membership-row,
   .config-panel {

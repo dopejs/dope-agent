@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/activation-state-resource.schema.json",
+  "title": "ActivationStateResource",
+  "type": "object",
+  "required": [
+    "activationId",
+    "principalId",
+    "environmentScope",
+    "status",
+    "currentStepId",
+    "completedStepIds",
+    "blockingReasonCodes",
+    "readinessItems",
+    "firstAction",
+    "lastEvaluatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "activationId": { "type": "string", "minLength": 1 },
+    "principalId": { "type": "string", "minLength": 1 },
+    "tenantId": { "type": "string", "minLength": 1 },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "status": {
+      "type": "string",
+      "enum": ["not_started", "in_progress", "blocked", "active", "first_action_completed"]
+    },
+    "currentStepId": { "type": "string" },
+    "completedStepIds": { "type": "array", "items": { "type": "string" } },
+    "blockingReasonCodes": { "type": "array", "items": { "type": "string" } },
+    "readinessItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["itemId", "itemKind", "status", "requiredForActivation", "retryable", "remediationOwner", "updatedAt"],
+        "additionalProperties": true,
+        "properties": {
+          "itemId": { "type": "string" },
+          "itemKind": { "type": "string" },
+          "status": { "type": "string" },
+          "reasonCode": { "type": "string" },
+          "displayName": { "type": "string" },
+          "requiredForActivation": { "type": "boolean" },
+          "retryable": { "type": "boolean" },
+          "remediationOwner": { "type": "string" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "quotaBaseline": {
+      "type": "object",
+      "required": ["tenantId", "planKey", "enforcementMode", "status", "quotas"],
+      "additionalProperties": true,
+      "properties": {
+        "tenantId": { "type": "string" },
+        "planKey": { "type": "string" },
+        "enforcementMode": { "type": "string" },
+        "status": { "type": "string", "enum": ["available", "unavailable"] },
+        "reasonCode": { "type": "string" },
+        "quotas": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+      }
+    },
+    "firstAction": {
+      "type": "object",
+      "required": ["actionId", "actionKind", "recommended", "available", "blockingItemIds", "invokeRoute", "resultRoute"],
+      "additionalProperties": true,
+      "properties": {
+        "actionId": { "type": "string", "const": "test_chat" },
+        "actionKind": { "type": "string", "const": "test_chat" },
+        "displayName": { "type": "string" },
+        "recommended": { "type": "boolean" },
+        "available": { "type": "boolean" },
+        "blockingItemIds": { "type": "array", "items": { "type": "string" } },
+        "invokeRoute": { "type": "string" },
+        "resultRoute": { "type": "string" }
+      }
+    },
+    "testChat": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "activationId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "dispatchId": { "type": "string" },
+        "status": { "type": "string", "enum": ["completed", "failed", "cancelled"] },
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "finishReason": { "type": "string" },
+        "usage": { "type": "object", "additionalProperties": true },
+        "reasonCode": { "type": "string" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "failureReason": {
+      "type": "object",
+      "required": ["reasonCode", "stage", "retryable", "remediationOwner"],
+      "additionalProperties": true,
+      "properties": {
+        "reasonCode": { "type": "string" },
+        "stage": { "type": "string" },
+        "retryable": { "type": "boolean" },
+        "remediationOwner": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "firstActionCompletedAt": { "type": "string", "format": "date-time" },
+    "lastEvaluatedAt": { "type": "string", "format": "date-time" }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/activation-test-chat.request.schema.json",
+  "title": "ActivationTestChatRequest",
+  "type": "object",
+  "required": ["message"],
+  "additionalProperties": false,
+  "properties": {
+    "message": { "type": "string", "minLength": 1 }
+  }
+}

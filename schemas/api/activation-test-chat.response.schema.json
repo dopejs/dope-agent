@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/activation-test-chat.response.schema.json",
+  "title": "ActivationTestChatResponse",
+  "type": "object",
+  "required": ["activation", "testChat"],
+  "additionalProperties": false,
+  "properties": {
+    "activation": { "$ref": "./activation-state-resource.schema.json" },
+    "testChat": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "activationId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "dispatchId": { "type": "string" },
+        "status": { "type": "string", "enum": ["completed", "failed", "cancelled"] },
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "finishReason": { "type": "string" },
+        "usage": { "type": "object", "additionalProperties": true },
+        "reasonCode": { "type": "string" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

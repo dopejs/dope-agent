@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/activation-diagnostic-list.response.schema.json",
+  "title": "ActivationDiagnosticListResponse",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["activationId", "principalId", "status", "stage", "reasonCode", "retryable", "remediationOwner", "lastTransitionAt"],
+        "additionalProperties": false,
+        "properties": {
+          "activationId": { "type": "string" },
+          "tenantId": { "type": "string" },
+          "principalId": { "type": "string" },
+          "status": { "type": "string" },
+          "stage": { "type": "string" },
+          "reasonCode": { "type": "string" },
+          "retryable": { "type": "boolean" },
+          "remediationOwner": { "type": "string" },
+          "lastTransitionAt": { "type": "string", "format": "date-time" },
+          "readinessItemIds": { "type": "array", "items": { "type": "string" } },
+          "quotaBaselineStatus": { "type": "string" },
+          "testChat": { "type": "object", "additionalProperties": true }
+        }
+      }
+    }
+  }
+}

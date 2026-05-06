@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 39
+	CurrentSchemaVersion = 40
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -2606,6 +2606,38 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_integration_smoke_reports_tenant_status ON integration_smoke_reports(tenant_id, status, started_at DESC, smoke_report_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_integration_smoke_outcomes_tenant_report ON integration_smoke_probe_outcomes(tenant_id, smoke_report_id, checked_at DESC, probe_outcome_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_integration_diagnostic_retention_tenant_target ON integration_diagnostic_retention(tenant_id, target_kind, target_id, effective_expires_at DESC);`,
+		},
+	},
+	{
+		Version: 40,
+		Name:    activationStatesMigrationName,
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS activation_states (
+				activation_id TEXT PRIMARY KEY,
+				principal_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				environment_scope TEXT NOT NULL,
+				status TEXT NOT NULL,
+				current_step_id TEXT NOT NULL,
+				completed_step_ids_json TEXT NOT NULL,
+				blocking_reason_codes_json TEXT NOT NULL,
+				readiness_items_json TEXT NOT NULL,
+				quota_baseline_json TEXT,
+				first_action_json TEXT NOT NULL,
+				test_chat_json TEXT,
+				failure_reason_json TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				first_action_completed_at TEXT,
+				last_evaluated_at TEXT NOT NULL,
+				last_transition_audit_event_id TEXT,
+				metadata_json TEXT,
+				UNIQUE(principal_id, tenant_id)
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_activation_states_tenant_status ON activation_states(tenant_id, status, updated_at DESC, activation_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_activation_states_principal_updated ON activation_states(principal_id, updated_at DESC, activation_id DESC);`,
 		},
 	},
 }

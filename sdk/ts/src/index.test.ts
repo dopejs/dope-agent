@@ -103,6 +103,47 @@ function tenantSecretResource(overrides: Partial<TenantSecretResource> = {}): Te
   };
 }
 
+function activationResponseFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    activation: {
+      activationId: "act_1",
+      principalId: "prn_1",
+      tenantId: "ten_personal",
+      environmentScope: "test",
+      status: "active",
+      currentStepId: "test_chat",
+      completedStepIds: ["tenant_resolved", "quota_baseline_ready"],
+      blockingReasonCodes: [],
+      readinessItems: [],
+      quotaBaseline: {
+        tenantId: "ten_personal",
+        planKey: "free",
+        enforcementMode: "enforced",
+        status: "available",
+        quotas: [{
+          category: "run_launches",
+          unit: "count",
+          limit: 10,
+          used: 2,
+          remaining: 8,
+          period: "2026-05-01T00:00:00Z/2026-06-01T00:00:00Z"
+        }]
+      },
+      firstAction: {
+        actionId: "test_chat",
+        actionKind: "test_chat",
+        recommended: true,
+        available: true,
+        blockingItemIds: [],
+        invokeRoute: "/v1/activation/test-chat",
+        resultRoute: "/v1/activation"
+      },
+      lastEvaluatedAt: "2026-05-06T00:00:00Z",
+      ...overrides
+    }
+  };
+}
+
 describe("DopeClient", () => {
   it("sends a non-stream chat request", async () => {
     let url = "";
@@ -1067,6 +1108,99 @@ describe("DopeClient", () => {
     expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/quota-overrides", expect.objectContaining({ method: "POST" }));
     expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/manual-adjustments", expect.objectContaining({ method: "POST" }));
     expect(fetchImpl).toHaveBeenNthCalledWith(8, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/reservations/reservation_1/resolve", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("calls activation routes with tenant headers and metadata-only responses", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, activationResponseFixture()))
+      .mockResolvedValueOnce(mockJSONResponse(200, activationResponseFixture({ status: "in_progress" })))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        ...activationResponseFixture({ status: "first_action_completed", currentStepId: "completed" }),
+        testChat: {
+          dispatchId: "dispatch_1",
+          status: "completed",
+          provider: "test",
+          model: "test-chat",
+          finishReason: "stop",
+          usage: {},
+          completedAt: "2026-05-06T00:00:00Z"
+        }
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        items: [{
+          activationId: "act_1",
+          tenantId: "ten_personal",
+          principalId: "prn_1",
+          status: "blocked",
+          stage: "quota_baseline",
+          reasonCode: "activation_blocked:quota_baseline_unavailable",
+          retryable: true,
+          remediationOwner: "operator",
+          lastTransitionAt: "2026-05-06T00:00:00Z",
+          readinessItemIds: ["quota-baseline"],
+          quotaBaselineStatus: "unavailable"
+        }]
+      }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192/",
+      accessToken: "token",
+      defaultTenantId: "ten_personal",
+      fetchImpl
+    });
+
+    const current = await client.getActivation();
+    const started = await client.activate({ source: " signup " });
+    const testChat = await client.runActivationTestChat({ message: " Run a safe hosted activation test. " });
+    const diagnostics = await client.getActivationDiagnostics();
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/activation", expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: "Bearer token", "X-Dope-Tenant-ID": "ten_personal" })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/activation", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ source: "signup" })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/activation/test-chat", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ message: "Run a safe hosted activation test." })
+    }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/activation/diagnostics", expect.anything());
+    expect(current.activation.status).toBe("active");
+    expect(current.activation.quotaBaseline?.quotas[0].remaining).toBe(8);
+    expect(started.activation.status).toBe("in_progress");
+    expect(testChat.testChat.status).toBe("completed");
+    expect(JSON.stringify(testChat)).not.toContain("Run a safe hosted activation test.");
+    expect(diagnostics.items[0].reasonCode).toBe("activation_blocked:quota_baseline_unavailable");
+  });
+
+  it("maps activation blocked payloads into DopeClientError metadata", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(mockJSONResponse(403, {
+      error: "quota baseline is unavailable",
+      code: "activation_blocked:quota_baseline_unavailable",
+      reasonCode: "activation_blocked:quota_baseline_unavailable",
+      stage: "quota_baseline",
+      retryable: true,
+      remediationOwner: "operator"
+    }));
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192/",
+      accessToken: "token",
+      defaultTenantId: "ten_personal",
+      fetchImpl
+    });
+
+    await expect(client.runActivationTestChat({ message: "safe test" })).rejects.toMatchObject({
+      status: 403,
+      code: "activation_blocked:quota_baseline_unavailable",
+      activationFailure: {
+        reasonCode: "activation_blocked:quota_baseline_unavailable",
+        stage: "quota_baseline",
+        retryable: true,
+        remediationOwner: "operator"
+      }
+    });
   });
 
   it("maps quota denial payloads into DopeClientError", async () => {

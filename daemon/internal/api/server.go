@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/activation"
 	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/billing"
@@ -75,6 +76,7 @@ type Dependencies struct {
 	Scheduler      *scheduler.Scheduler
 	Delivery       *delivery.Manager
 	Billing        *billing.Manager
+	Activation     *activation.Service
 	Store          *store.SQLiteStore
 	Checkpoints    *checkpoints.Manager
 	Evaluation     *evaluation.Manager
@@ -128,6 +130,7 @@ type Server struct {
 	scheduler       *scheduler.Scheduler
 	delivery        *delivery.Manager
 	billing         *billing.Manager
+	activation      *activation.Service
 	store           *store.SQLiteStore
 	checkpoints     *checkpoints.Manager
 	evaluation      *evaluation.Manager
@@ -253,6 +256,15 @@ func NewServer(deps Dependencies) *Server {
 	}))
 	mux.HandleFunc("/v1/admin/billing/tenants/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleHostedBillingAdmin(deps.Billing, w, r)
+	}))
+	mux.HandleFunc("/v1/activation/test-chat", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleActivationTestChat(deps.Activation, w, r)
+	}))
+	mux.HandleFunc("/v1/activation/diagnostics", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleActivationDiagnostics(deps.Activation, w, r)
+	}))
+	mux.HandleFunc("/v1/activation", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleActivation(deps.Activation, w, r)
 	}))
 	mux.HandleFunc("/v1/tenant-secrets", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleTenantSecrets(deps.Secrets, w, r)
@@ -525,6 +537,7 @@ func NewServer(deps Dependencies) *Server {
 		scheduler:       deps.Scheduler,
 		delivery:        deps.Delivery,
 		billing:         deps.Billing,
+		activation:      deps.Activation,
 		store:           deps.Store,
 		checkpoints:     deps.Checkpoints,
 		evaluation:      deps.Evaluation,

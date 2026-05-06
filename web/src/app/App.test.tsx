@@ -8,6 +8,10 @@ const mockClient = {
   getMe: vi.fn(),
   listTenants: vi.fn(),
   getOnboarding: vi.fn(),
+  getActivation: vi.fn(),
+  activate: vi.fn(),
+  runActivationTestChat: vi.fn(),
+  getActivationDiagnostics: vi.fn(),
   listApprovals: vi.fn(),
   getActivity: vi.fn(),
   getDiagnostics: vi.fn(),
@@ -129,6 +133,69 @@ function authMeFixture(tenants = [tenantFixture()]) {
       role: tenants[0].callerMembershipRole,
       permissions: tenants[0].callerPermissions,
       resolvedAt: "2026-04-24T10:00:00Z"
+    }
+  };
+}
+
+function authMeWithoutTenantFixture() {
+  return {
+    token: { tokenId: "tok_1" },
+    principal: {
+      principalId: "prn_1",
+      principalKind: "local_operator",
+      displayName: "Local Operator",
+      status: "active",
+      defaultTenantId: "",
+      createdAt: "2026-04-24T10:00:00Z",
+      updatedAt: "2026-04-24T10:00:00Z"
+    },
+    defaultTenant: null,
+    currentTenant: null,
+    allowedTenants: [],
+    tokenGrants: [],
+    permissions: [],
+    tenantContext: null
+  };
+}
+
+function activationFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    activation: {
+      activationId: "act_1",
+      principalId: "prn_1",
+      tenantId: "ten_personal",
+      environmentScope: "test",
+      status: "active",
+      currentStepId: "test_chat",
+      completedStepIds: ["tenant_resolved", "quota_baseline_ready"],
+      blockingReasonCodes: [],
+      readinessItems: [],
+      quotaBaseline: {
+        tenantId: "ten_personal",
+        planKey: "free",
+        enforcementMode: "enforced",
+        status: "available",
+        quotas: [{
+          category: "run_launches",
+          unit: "count",
+          limit: 10,
+          used: 2,
+          remaining: 8,
+          period: "2026-05-01T00:00:00Z/2026-06-01T00:00:00Z"
+        }]
+      },
+      firstAction: {
+        actionId: "test_chat",
+        actionKind: "test_chat",
+        displayName: "Test chat",
+        recommended: true,
+        available: true,
+        blockingItemIds: [],
+        invokeRoute: "/v1/activation/test-chat",
+        resultRoute: "/v1/activation"
+      },
+      lastEvaluatedAt: "2026-05-06T00:00:00Z",
+      ...overrides
     }
   };
 }
@@ -259,6 +326,13 @@ describe("App", () => {
     mockClient.getMe.mockReset().mockResolvedValue(authMeFixture(tenants));
     mockClient.listTenants.mockReset().mockResolvedValue({ items: tenants });
     mockClient.getOnboarding.mockReset();
+    mockClient.getActivation.mockReset().mockResolvedValue(activationFixture());
+    mockClient.activate.mockReset().mockResolvedValue(activationFixture({ status: "in_progress" }));
+    mockClient.runActivationTestChat.mockReset().mockResolvedValue({
+      ...activationFixture({ status: "first_action_completed", currentStepId: "completed" }),
+      testChat: { status: "completed", dispatchId: "dispatch_1", provider: "test", model: "test-chat" }
+    });
+    mockClient.getActivationDiagnostics.mockReset().mockResolvedValue({ items: [] });
     mockClient.listApprovals.mockReset();
     mockClient.getActivity.mockReset();
     mockClient.getDiagnostics.mockReset();
@@ -374,6 +448,223 @@ describe("App", () => {
       }, { tenantId: "ten_personal" });
       expect(screen.getByText(/Created test run run_1/i)).not.toBeNull();
       expect(screen.getAllByText("completed").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("loads activation state with the tenant batch and shows stale activation placeholders while refreshing", async () => {
+    const refreshActivation = deferred<ReturnType<typeof activationFixture>>();
+    mockClient.getActivation
+      .mockResolvedValueOnce(activationFixture())
+      .mockReturnValueOnce(refreshActivation.promise);
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    await waitFor(() => {
+      expect(mockClient.getActivation).toHaveBeenCalledWith({ tenantId: "ten_personal" });
+      expect(mockClient.getActivationDiagnostics).toHaveBeenCalledWith({ tenantId: "ten_personal" });
+      expect(screen.getAllByText("Activation").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("active").length).toBeGreaterThan(0);
+      expect(screen.getByText(/Quota baseline free/i)).not.toBeNull();
+    });
+
+    act(() => {
+      mockClient.streamEvents.mock.calls[0][1].onEvent({ name: "tenant.activation_started", sequence: 2 });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Activation state is refreshing/i)).not.toBeNull();
+    });
+  });
+
+  it("renders activation readiness, quota baseline, environment, and the test chat action", async () => {
+    mockClient.getActivation.mockResolvedValue(activationFixture({
+      quotaBaseline: {
+        tenantId: "ten_personal",
+        planKey: "hosted-free",
+        enforcementMode: "enforced",
+        status: "available",
+        quotas: [{
+          category: "run_launches",
+          unit: "count",
+          limit: 10,
+          used: 2,
+          remaining: 8,
+          period: "2026-05-01T00:00:00Z/2026-06-01T00:00:00Z"
+        }]
+      },
+      readinessItems: [
+        {
+          itemId: "environment",
+          itemKind: "environment",
+          status: "ready",
+          displayName: "Hosted environment",
+          requiredForActivation: true,
+          retryable: false,
+          remediationOwner: "none_required",
+          updatedAt: "2026-05-06T00:00:00Z"
+        },
+        {
+          itemId: "quota-baseline",
+          itemKind: "quota_baseline",
+          status: "ready",
+          displayName: "Quota baseline",
+          requiredForActivation: true,
+          retryable: false,
+          remediationOwner: "none_required",
+          updatedAt: "2026-05-06T00:00:00Z"
+        }
+      ]
+    }));
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Personal Tenant \(personal\)/)).not.toBeNull();
+      expect(screen.getByText(/Quota baseline hosted-free/i)).not.toBeNull();
+      expect(screen.getByText(/run_launches/i)).not.toBeNull();
+      expect(screen.getByText(/8 remaining/i)).not.toBeNull();
+      expect(screen.getByText("Hosted environment")).not.toBeNull();
+      expect((screen.getByRole("button", { name: /test chat/i }) as HTMLButtonElement).disabled).toBe(false);
+    });
+  });
+
+  it("bootstraps activation when signup has no tenant yet", async () => {
+    const tenants = [tenantFixture()];
+    mockClient.getMe
+      .mockResolvedValueOnce(authMeWithoutTenantFixture())
+      .mockResolvedValueOnce(authMeFixture(tenants));
+    mockClient.listTenants
+      .mockResolvedValueOnce({ items: [] })
+      .mockResolvedValueOnce({ items: tenants });
+    mockClient.activate.mockResolvedValue(activationFixture());
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    await waitFor(() => {
+      expect(mockClient.activate).toHaveBeenCalledWith({ source: "signup" });
+      expect(screen.getByText(/Personal Tenant \(personal\)/)).not.toBeNull();
+      expect(screen.getByText(/Quota baseline free/i)).not.toBeNull();
+    });
+  });
+
+  it("renders quota-blocked activation with disabled first action and diagnostics", async () => {
+    mockClient.getActivation.mockResolvedValue(activationFixture({
+      status: "blocked",
+      currentStepId: "quota_baseline",
+      completedStepIds: ["tenant_resolved"],
+      blockingReasonCodes: ["activation_blocked:quota_baseline_unavailable"],
+      readinessItems: [{
+        itemId: "quota-baseline",
+        itemKind: "quota_baseline",
+        status: "blocked",
+        reasonCode: "activation_blocked:quota_baseline_unavailable",
+        displayName: "Quota baseline",
+        requiredForActivation: true,
+        retryable: true,
+        remediationOwner: "operator",
+        updatedAt: "2026-05-06T00:00:00Z"
+      }],
+      quotaBaseline: {
+        tenantId: "ten_personal",
+        planKey: "unknown",
+        enforcementMode: "not_measurable",
+        status: "unavailable",
+        reasonCode: "activation_blocked:quota_baseline_unavailable",
+        quotas: []
+      },
+      firstAction: {
+        actionId: "test_chat",
+        actionKind: "test_chat",
+        displayName: "Test chat",
+        recommended: true,
+        available: false,
+        blockingItemIds: ["quota-baseline"],
+        invokeRoute: "/v1/activation/test-chat",
+        resultRoute: "/v1/activation"
+      }
+    }));
+    mockClient.getActivationDiagnostics.mockResolvedValue({
+      items: [{
+        activationId: "act_1",
+        tenantId: "ten_personal",
+        principalId: "prn_1",
+        status: "blocked",
+        stage: "quota_baseline",
+        reasonCode: "activation_blocked:quota_baseline_unavailable",
+        retryable: true,
+        remediationOwner: "operator",
+        lastTransitionAt: "2026-05-06T00:00:00Z",
+        readinessItemIds: ["quota-baseline"],
+        quotaBaselineStatus: "unavailable"
+      }]
+    });
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Blocked by activation_blocked:quota_baseline_unavailable/i)).not.toBeNull();
+      expect(screen.getAllByText("activation_blocked:quota_baseline_unavailable").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("quota_baseline").length).toBeGreaterThan(0);
+      expect(screen.getByText(/Retryable - operator/i)).not.toBeNull();
+      expect((screen.getByRole("button", { name: /test chat/i }) as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getAllByText(/quota-baseline/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it("runs activation test chat and refreshes completion state without rendering message content", async () => {
+    mockClient.getActivation
+      .mockResolvedValueOnce(activationFixture())
+      .mockResolvedValueOnce(activationFixture({ status: "first_action_completed", currentStepId: "completed" }));
+    mockClient.runActivationTestChat.mockResolvedValue({
+      ...activationFixture({ status: "first_action_completed", currentStepId: "completed" }),
+      testChat: {
+        status: "completed",
+        dispatchId: "dispatch_activation",
+        provider: "test",
+        model: "test-chat",
+        usage: { totalTokens: 2 }
+      }
+    });
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-06T00:00:00Z" });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    await user.click(await screen.findByRole("button", { name: /test chat/i }));
+
+    await waitFor(() => {
+      expect(mockClient.runActivationTestChat).toHaveBeenCalledWith({ message: "Run a safe hosted activation test." }, { tenantId: "ten_personal" });
+      expect(screen.getByText(/Activation test chat completed/i)).not.toBeNull();
+      expect(screen.getAllByText("first_action_completed").length).toBeGreaterThan(0);
+      expect(screen.queryByText("Run a safe hosted activation test.")).toBeNull();
     });
   });
 

@@ -1400,6 +1400,150 @@ export type TenantRequestOptions = {
   tenantId?: string;
 };
 
+export type ActivationStatus = "not_started" | "in_progress" | "blocked" | "active" | "first_action_completed";
+
+export type ActivationReasonCode =
+  | "activation_denied:principal_disabled"
+  | "activation_denied:principal_denied"
+  | "activation_denied:tenant_access_revoked"
+  | "activation_blocked:quota_baseline_unavailable"
+  | "activation_blocked:environment_unavailable"
+  | "activation_blocked:test_chat_unavailable"
+  | "activation_failed:tenant_resolution"
+  | "activation_failed:test_chat"
+  | "activation_failed:audit_write"
+  | "activation_failed:persistence"
+  | "activation_failed:unexpected"
+  | string;
+
+export type ActivationRemediationOwner = "product_user" | "operator" | "tenant_admin" | "system" | "none_required";
+
+export type ActivationReadinessItem = {
+  itemId: string;
+  itemKind: "tenant_access" | "environment" | "quota_baseline" | "test_chat" | string;
+  status: "ready" | "blocked" | "degraded" | "missing_configuration" | "optional";
+  reasonCode?: ActivationReasonCode;
+  displayName?: string;
+  requiredForActivation: boolean;
+  retryable: boolean;
+  remediationOwner: ActivationRemediationOwner;
+  updatedAt?: string;
+};
+
+export type ActivationQuotaProjection = {
+  category?: string;
+  unit?: string;
+  limit?: number;
+  used?: number;
+  remaining?: number;
+  period?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type ActivationQuotaBaseline = {
+  tenantId: string;
+  planKey: string;
+  enforcementMode: BillingEnforcementMode | string;
+  status: "available" | "unavailable";
+  quotas: ActivationQuotaProjection[];
+  projectedAt?: string;
+  projectionSource?: string;
+  reasonCode?: ActivationReasonCode;
+};
+
+export type ActivationFirstAction = {
+  actionId: "test_chat" | string;
+  actionKind: "test_chat" | string;
+  displayName?: string;
+  recommended: boolean;
+  available: boolean;
+  blockingItemIds: string[];
+  invokeRoute: string;
+  resultRoute: string;
+};
+
+export type ActivationTestChatMetadata = {
+  activationId?: string;
+  tenantId?: string;
+  dispatchId?: string;
+  status: "completed" | "failed" | "cancelled";
+  provider?: string;
+  model?: string;
+  usage?: Record<string, unknown>;
+  finishReason?: string;
+  reasonCode?: ActivationReasonCode;
+  completedAt?: string;
+};
+
+export type ActivationStateResource = {
+  activationId: string;
+  principalId: string;
+  tenantId: string;
+  environmentScope: EnvironmentScope;
+  status: ActivationStatus;
+  currentStepId: string;
+  completedStepIds: string[];
+  blockingReasonCodes: ActivationReasonCode[];
+  readinessItems: ActivationReadinessItem[];
+  quotaBaseline?: ActivationQuotaBaseline;
+  firstAction: ActivationFirstAction;
+  testChat?: ActivationTestChatMetadata;
+  failureReason?: {
+    reasonCode: ActivationReasonCode;
+    stage: ActivationDiagnostic["stage"];
+    retryable: boolean;
+    remediationOwner: ActivationRemediationOwner;
+    message?: string;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+  firstActionCompletedAt?: string;
+  lastEvaluatedAt: string;
+};
+
+export type ActivationResponse = {
+  activation: ActivationStateResource;
+};
+
+export type RunActivationInput = {
+  source?: "signup" | "invite_acceptance" | "returning_user" | "operator_retry" | string;
+};
+
+export type RunActivationTestChatInput = {
+  message: string;
+};
+
+export type ActivationTestChatResponse = ActivationResponse & {
+  testChat: ActivationTestChatMetadata;
+};
+
+export type ActivationDiagnostic = {
+  activationId: string;
+  tenantId?: string;
+  principalId: string;
+  status: ActivationStatus;
+  stage: "tenant_resolution" | "eligibility" | "quota_baseline" | "authorization" | "test_chat" | "audit" | "persistence" | "unexpected" | string;
+  reasonCode: ActivationReasonCode;
+  retryable: boolean;
+  remediationOwner: ActivationRemediationOwner;
+  lastTransitionAt: string;
+  readinessItemIds?: string[];
+  quotaBaselineStatus?: "available" | "unavailable";
+  testChat?: ActivationTestChatMetadata;
+};
+
+export type ActivationDiagnosticListResponse = {
+  items: ActivationDiagnostic[];
+};
+
+export type ActivationFailurePayload = {
+  code?: ActivationReasonCode;
+  reasonCode: ActivationReasonCode;
+  stage: ActivationDiagnostic["stage"];
+  retryable: boolean;
+  remediationOwner: ActivationRemediationOwner;
+};
+
 export type BillingEnforcementMode = "enforced" | "unlimited" | "not_measurable";
 
 export type BillingPlanResource = {
@@ -1593,8 +1737,9 @@ export class DopeClientError extends Error {
   readonly tenantDenied?: boolean;
   readonly denial?: TenantDenialResource;
   readonly quotaDenial?: BillingQuotaDenialPayload;
+  readonly activationFailure?: ActivationFailurePayload;
 
-  constructor(message: string, options: { status: number; code?: string; tenantDenied?: boolean; denial?: TenantDenialResource; quotaDenial?: BillingQuotaDenialPayload }) {
+  constructor(message: string, options: { status: number; code?: string; tenantDenied?: boolean; denial?: TenantDenialResource; quotaDenial?: BillingQuotaDenialPayload; activationFailure?: ActivationFailurePayload }) {
     super(message);
     this.name = "DopeClientError";
     this.status = options.status;
@@ -1602,6 +1747,7 @@ export class DopeClientError extends Error {
     this.tenantDenied = options.tenantDenied;
     this.denial = options.denial;
     this.quotaDenial = options.quotaDenial;
+    this.activationFailure = options.activationFailure;
   }
 }
 
@@ -1737,6 +1883,30 @@ export class DopeClient {
 
   async listBillingDenials(tenantOptions?: TenantRequestOptions): Promise<{ items: BillingDenialResource[] }> {
     return this.requestJSON<{ items: BillingDenialResource[] }>("/v1/billing/denials", { tenant: tenantOptions });
+  }
+
+  async getActivation(tenantOptions?: TenantRequestOptions): Promise<ActivationResponse> {
+    return this.requestJSON<ActivationResponse>("/v1/activation", { tenant: tenantOptions });
+  }
+
+  async activate(input: RunActivationInput = {}, tenantOptions?: TenantRequestOptions): Promise<ActivationResponse> {
+    return this.requestJSON<ActivationResponse>("/v1/activation", {
+      method: "POST",
+      body: normalizeActivationInput(input),
+      tenant: tenantOptions
+    });
+  }
+
+  async runActivationTestChat(input: RunActivationTestChatInput, tenantOptions?: TenantRequestOptions): Promise<ActivationTestChatResponse> {
+    return this.requestJSON<ActivationTestChatResponse>("/v1/activation/test-chat", {
+      method: "POST",
+      body: normalizeActivationTestChatInput(input),
+      tenant: tenantOptions
+    });
+  }
+
+  async getActivationDiagnostics(tenantOptions?: TenantRequestOptions): Promise<ActivationDiagnosticListResponse> {
+    return this.requestJSON<ActivationDiagnosticListResponse>("/v1/activation/diagnostics", { tenant: tenantOptions });
   }
 
   async assignBillingPlan(tenantId: string, input: BillingPlanAssignmentInput, tenantOptions?: TenantRequestOptions): Promise<BillingPlanResource> {
@@ -2318,23 +2488,41 @@ function normalizeChatInput(input: ChatQueryInput): ChatQueryInput {
   };
 }
 
+function normalizeActivationInput(input: RunActivationInput): RunActivationInput {
+  return {
+    source: input.source?.trim() || undefined
+  };
+}
+
+function normalizeActivationTestChatInput(input: RunActivationTestChatInput): RunActivationTestChatInput {
+  return {
+    message: input.message.trim()
+  };
+}
+
 async function toClientError(response: Response): Promise<DopeClientError> {
   let message = `request failed with status ${response.status}`;
   let code: string | undefined;
   let denial: TenantDenialResource | undefined;
   let quotaDenial: BillingQuotaDenialPayload | undefined;
+  let activationFailure: ActivationFailurePayload | undefined;
 
   try {
     const payload = (await response.json()) as {
       error?: string;
       errorCode?: string;
       requestId?: string;
+      code?: string;
+      reasonCode?: string;
+      stage?: string;
+      retryable?: boolean;
+      remediationOwner?: string;
     } & Partial<BillingQuotaDenialPayload>;
     if (payload.error) {
       message = payload.error;
     }
-    if (payload.errorCode || payload.reasonCode) {
-      code = payload.errorCode ?? payload.reasonCode;
+    if (payload.errorCode || payload.reasonCode || payload.code) {
+      code = payload.errorCode ?? payload.reasonCode ?? payload.code;
     }
     if (isTenantDenialCode(payload.errorCode) && payload.errorCode) {
       denial = {
@@ -2357,12 +2545,22 @@ async function toClientError(response: Response): Promise<DopeClientError> {
       };
       code = payload.reasonCode;
     }
+    if (payload.reasonCode?.startsWith("activation_") && payload.stage && typeof payload.retryable === "boolean" && payload.remediationOwner) {
+      activationFailure = {
+        code: payload.code as ActivationReasonCode | undefined,
+        reasonCode: payload.reasonCode as ActivationReasonCode,
+        stage: payload.stage,
+        retryable: payload.retryable,
+        remediationOwner: payload.remediationOwner as ActivationRemediationOwner
+      };
+      code = payload.reasonCode;
+    }
   } catch {
     // Ignore non-json failure bodies.
   }
 
   const tenantDenied = Boolean(denial) || isTenantDenialCode(code);
-  return new DopeClientError(message, { status: response.status, code, tenantDenied: tenantDenied || undefined, denial, quotaDenial });
+  return new DopeClientError(message, { status: response.status, code, tenantDenied: tenantDenied || undefined, denial, quotaDenial, activationFailure });
 }
 
 function isTenantDenialCode(code: string | undefined): boolean {

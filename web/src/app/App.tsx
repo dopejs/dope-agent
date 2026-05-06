@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   createDopeClient,
+  type ActivationDiagnosticListResponse,
+  type ActivationStateResource,
   type ApprovalResource,
   type AuthMeResponse,
   type EventStreamSubscription,
@@ -39,6 +41,7 @@ import {
 const DEFAULT_DAEMON_URL = "http://127.0.0.1:19192";
 const DEFAULT_RUN_GOAL = "Run an operator shell smoke check.";
 const DEFAULT_TEST_QUERY = "Return one bounded readiness confirmation.";
+const DEFAULT_ACTIVATION_TEST_CHAT = "Run a safe hosted activation test.";
 
 type ShellStatus = "idle" | "loading" | "ready" | "error";
 type EventStatus = "disconnected" | "connected" | "error";
@@ -47,6 +50,8 @@ type MembershipStatus = "hidden" | "loading" | "ready" | "empty" | "denied" | "e
 
 type ShellSnapshot = {
   onboarding: OperatorOnboardingResponse | null;
+  activation: ActivationStateResource | null;
+  activationDiagnostics: ActivationDiagnosticListResponse | null;
   approvals: ApprovalResource[];
   activity: OperatorActivityListResponse | null;
   diagnostics: OperatorDiagnosticListResponse | null;
@@ -87,6 +92,8 @@ type MembershipPanelState = {
 
 const EMPTY_SHELL: ShellSnapshot = {
   onboarding: null,
+  activation: null,
+  activationDiagnostics: null,
   approvals: [],
   activity: null,
   diagnostics: null,
@@ -202,13 +209,25 @@ export function App() {
 
     try {
       const bootstrapClient = buildClient("");
-      const me = await bootstrapClient.getMe();
-      const tenantList = await bootstrapClient.listTenants();
+      let me = await bootstrapClient.getMe();
+      let tenantList = await bootstrapClient.listTenants();
       if (generation !== generationRef.current) {
         return;
       }
 
-      const allowed = tenantList.items.length ? tenantList.items : me.allowedTenants;
+      let allowed = tenantList.items.length ? tenantList.items : me.allowedTenants;
+      if (allowed.length === 0 && !options.explicitSelection) {
+        await bootstrapClient.activate({ source: "signup" });
+        if (generation !== generationRef.current) {
+          return;
+        }
+        me = await bootstrapClient.getMe();
+        tenantList = await bootstrapClient.listTenants();
+        if (generation !== generationRef.current) {
+          return;
+        }
+        allowed = tenantList.items.length ? tenantList.items : me.allowedTenants;
+      }
       setAuthMe(me);
       setAllowedTenants(allowed);
 
@@ -243,6 +262,8 @@ export function App() {
 
       const [
         onboarding,
+        activation,
+        activationDiagnostics,
         approvals,
         activity,
         diagnostics,
@@ -262,6 +283,8 @@ export function App() {
         membershipItems
       ] = await Promise.all([
         scopedClient.getOnboarding(scopedOptions),
+        scopedClient.getActivation(scopedOptions).then((response) => response.activation).catch(() => null),
+        scopedClient.getActivationDiagnostics(scopedOptions).catch(() => ({ items: [] })),
         scopedClient.listApprovals("pending", scopedOptions),
         scopedClient.getActivity({ attentionOnly: true, limit: 20 }, scopedOptions),
         scopedClient.getDiagnostics({
@@ -299,6 +322,8 @@ export function App() {
 
       setShell({
         onboarding,
+        activation,
+        activationDiagnostics,
         approvals: approvals.items,
         activity,
         diagnostics,
@@ -487,6 +512,44 @@ export function App() {
         setActionMessage(`Test query completed with ${response.usage.totalTokens} total tokens.`);
         setDetail({ title: "Test Query Result", route: action.resultRoute, tenantId, generation, payload: response });
       }
+      setActiveActionId("");
+      await refreshShell({ soft: true, tenantId });
+    } catch (caught) {
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      if (isTenantDenied(caught)) {
+        markActiveTenantDenied("Tenant access was denied. Choose another allowed tenant before continuing.");
+        return;
+      }
+      setError(errorMessage(caught));
+    } finally {
+      if (activeTenantRef.current === tenantId) {
+        setActiveActionId("");
+      }
+    }
+  }
+
+  async function handleActivationFirstAction() {
+    const activation = shell.activation;
+    if (!activation) {
+      return;
+    }
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    setActiveActionId(activation.firstAction.actionId);
+    setError("");
+    try {
+      const response = await buildClient(tenantId).runActivationTestChat({ message: DEFAULT_ACTIVATION_TEST_CHAT }, scoped);
+      if (generation !== generationRef.current || activeTenantRef.current !== tenantId) {
+        return;
+      }
+      setActionMessage(`Activation test chat ${response.testChat.status}.`);
+      setDetail({ title: "Activation Test Chat", route: activation.firstAction.resultRoute, tenantId, generation, payload: response });
       setActiveActionId("");
       await refreshShell({ soft: true, tenantId });
     } catch (caught) {
@@ -978,6 +1041,9 @@ export function App() {
   }
 
   const onboarding = shell.onboarding;
+  const activation = shell.activation;
+  const activationDiagnosticItems = shell.activationDiagnostics?.items ?? [];
+  const activationStale = activeTenantStatus === "stale" && Boolean(activation);
   const activityItems = shell.activity?.items ?? [];
   const diagnosticItems = shell.diagnostics?.items ?? [];
   const selectedLiveValidationCandidateId = liveValidationCandidateId || shell.replayCandidates[0]?.candidateId || "";
@@ -1051,6 +1117,10 @@ export function App() {
         <div className="banner-card">
           <span className="banner-label">Onboarding</span>
           <strong>{onboarding?.status ?? status}</strong>
+        </div>
+        <div className="banner-card">
+          <span className="banner-label">Activation</span>
+          <strong>{activation?.status ?? "not loaded"}</strong>
         </div>
         <div className="banner-card">
           <span className="banner-label">Event Stream</span>
@@ -1135,6 +1205,102 @@ export function App() {
             </>
           ) : (
             <div className="empty-state">{activeTenantStatus === "denied" ? "Tenant access is denied. Choose another allowed tenant." : "Load the shell to project readiness and bounded first-use actions."}</div>
+          )}
+        </section>
+
+        <section className={`panel activation-panel${activationStale ? " is-stale" : ""}`}>
+          <div className="panel-head">
+            <div>
+              <p className="section-kicker">Hosted Tenant</p>
+              <h2>Activation</h2>
+            </div>
+            {activation ? <span className={`status-chip status-${activation.status}`}>{activation.status}</span> : null}
+          </div>
+
+          {activation ? (
+            <div className="activation-summary">
+              {activationStale ? <div className="empty-state">Activation state is refreshing for the active tenant.</div> : null}
+              <div className="activation-metrics">
+                <div>
+                  <span className="banner-label">Step</span>
+                  <strong>{activation.currentStepId}</strong>
+                </div>
+                <div>
+                  <span className="banner-label">Environment</span>
+                  <strong>{activation.environmentScope}</strong>
+                </div>
+                <div>
+                  <span className="banner-label">Quota</span>
+                  <strong>
+                    {activation.quotaBaseline
+                      ? `Quota baseline ${activation.quotaBaseline.planKey}`
+                      : "Quota baseline unavailable"}
+                  </strong>
+                </div>
+                <div>
+                  <span className="banner-label">Action</span>
+                  <strong>{activation.firstAction.displayName || activation.firstAction.actionKind}</strong>
+                </div>
+              </div>
+              <div className="activation-action-row">
+                <button
+                  className="primary"
+                  disabled={!canUseTenantActions || activationStale || !activation.firstAction.available || activeActionId === activation.firstAction.actionId}
+                  type="button"
+                  onClick={() => {
+                    void handleActivationFirstAction();
+                  }}
+                >
+                  {activeActionId === activation.firstAction.actionId ? "Running..." : activation.firstAction.displayName || activation.firstAction.actionKind}
+                </button>
+                {activation.firstAction.blockingItemIds.length ? <small>Blocked by {activation.firstAction.blockingItemIds.join(", ")}</small> : null}
+              </div>
+              {activation.quotaBaseline?.quotas.length ? (
+                <div className="activation-quota-list">
+                  {activation.quotaBaseline.quotas.map((quota, index) => (
+                    <div key={`${quota.category ?? "quota"}-${quota.period ?? index}`}>
+                      <strong>{quota.category ?? "quota"}</strong>
+                      <span>{formatActivationQuota(quota.remaining, quota.unit)} remaining</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {activation.readinessItems.length ? (
+                <div className="activation-readiness-list">
+                  {activation.readinessItems.map((item) => (
+                    <article className="readiness-card" key={item.itemId}>
+                      <div className="readiness-head">
+                        <strong>{item.displayName || item.itemId}</strong>
+                        <span className={`status-chip status-${item.status}`}>{item.status}</span>
+                      </div>
+                      <p>{item.reasonCode || `${item.remediationOwner} remediation`}</p>
+                      <small>{item.retryable ? "Retryable readiness check." : "Required readiness check."}</small>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+              {activation.blockingReasonCodes.length ? (
+                <p className="muted-line">Blocked by {activation.blockingReasonCodes.join(", ")}</p>
+              ) : null}
+              {activationDiagnosticItems.length ? (
+                <div className="activation-diagnostic-list">
+                  {activationDiagnosticItems.map((item) => (
+                    <article className="readiness-card" key={`${item.activationId}-${item.reasonCode}`}>
+                      <div className="readiness-head">
+                        <strong>{item.reasonCode}</strong>
+                        <span className={`status-chip status-${item.status}`}>{item.stage}</span>
+                      </div>
+                      <p>{item.retryable ? "Retryable" : "Not retryable"} - {item.remediationOwner}</p>
+                      {item.readinessItemIds?.length ? <small>{item.readinessItemIds.join(", ")}</small> : null}
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="empty-state">
+              {activeTenantStatus === "stale" ? "Activation state is refreshing for the active tenant." : "Activation state has not loaded for the active tenant."}
+            </div>
           )}
         </section>
 
@@ -1930,6 +2096,13 @@ function writeTenantPreference(daemonURL: string, principalId: string, tenantId:
 
 function splitCSV(value: string): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function formatActivationQuota(value: number | undefined, _unit?: string): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "unknown";
+  }
+  return new Intl.NumberFormat("en-US").format(value);
 }
 
 function errorMessage(caught: unknown): string {

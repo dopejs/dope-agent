@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/activation"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
@@ -178,8 +179,21 @@ func (b operatorProjectionBuilder) buildOnboarding(token auth.AccessToken, authe
 	if !authenticated {
 		testRunAction.BlockingItemIDs = []string{"auth-token"}
 	}
+	activationAction := OperatorFirstUsefulAction{
+		ActionID:    "test_chat",
+		ActionKind:  "test_chat",
+		DisplayName: "Run activation test chat",
+		Recommended: false,
+		Available:   authenticated,
+		Summary:     "Complete the hosted personal-tenant activation first action without live connectors or production secrets.",
+		InvokeRoute: "/v1/activation/test-chat",
+		ResultRoute: "/v1/activation",
+	}
+	if !authenticated {
+		activationAction.BlockingItemIDs = []string{"auth-token"}
+	}
 
-	firstUsefulActions := []OperatorFirstUsefulAction{testRunAction}
+	firstUsefulActions := []OperatorFirstUsefulAction{testRunAction, activationAction}
 	if b.providers != nil {
 		firstUsefulActions = append(firstUsefulActions, queryAction)
 	}
@@ -596,12 +610,109 @@ func (b operatorProjectionBuilder) buildDiagnostics(ctx context.Context) (Operat
 			})
 		}
 	}
+	activationFindings, err := b.activationFindings(ctx)
+	if err != nil {
+		return OperatorDiagnosticListResponse{}, err
+	}
+	findings = append(findings, activationFindings...)
 	sort.Slice(findings, func(i, j int) bool { return findings[i].CapturedAt.After(findings[j].CapturedAt) })
 	return OperatorDiagnosticListResponse{
 		EnvironmentScope: b.environment,
 		Items:            findings,
 		GeneratedAt:      now,
 	}, nil
+}
+
+func (b operatorProjectionBuilder) activationFindings(ctx context.Context) ([]OperatorDiagnosticFinding, error) {
+	if b.store == nil {
+		return nil, nil
+	}
+	states, err := b.store.ListActivationStates(ctx, b.environment)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]OperatorDiagnosticFinding, 0)
+	for _, state := range states {
+		reason, ok := activationFailureForOperator(state)
+		if !ok {
+			continue
+		}
+		items = append(items, OperatorDiagnosticFinding{
+			FindingID:         "activation-" + state.ActivationID,
+			SourceKind:        "activation",
+			SourceID:          state.ActivationID,
+			Plane:             "readiness",
+			Severity:          activationSeverity(state, reason),
+			Status:            string(state.Status),
+			Reason:            string(reason.ReasonCode),
+			RecommendedAction: activationRecommendedAction(reason),
+			DetailRoute:       "/v1/activation/diagnostics",
+			RelatedResourceRefs: []OperatorResourceRef{{
+				Kind: "tenant",
+				ID:   state.TenantID,
+			}},
+			EnvironmentScope: b.environment,
+			CapturedAt:       state.UpdatedAt,
+		})
+	}
+	return items, nil
+}
+
+func activationFailureForOperator(state activation.State) (activation.FailureReason, bool) {
+	if state.FailureReason != nil {
+		return *state.FailureReason, true
+	}
+	if len(state.BlockingReasonCodes) == 0 {
+		return activation.FailureReason{}, false
+	}
+	reasonCode := state.BlockingReasonCodes[0]
+	return activation.FailureReason{
+		ReasonCode:       reasonCode,
+		Stage:            activationStageForOperator(reasonCode),
+		Retryable:        reasonCode == activation.ReasonQuotaBaselineUnavailable || reasonCode == activation.ReasonTestChatUnavailable,
+		RemediationOwner: activation.RemediationOwnerOperator,
+	}, true
+}
+
+func activationStageForOperator(reason activation.ReasonCode) activation.FailureStage {
+	switch reason {
+	case activation.ReasonQuotaBaselineUnavailable:
+		return activation.FailureStageQuotaBaseline
+	case activation.ReasonTenantAccessRevoked:
+		return activation.FailureStageAuthorization
+	case activation.ReasonPrincipalDenied, activation.ReasonPrincipalDisabled:
+		return activation.FailureStageEligibility
+	case activation.ReasonTestChatFailed, activation.ReasonTestChatUnavailable:
+		return activation.FailureStageTestChat
+	case activation.ReasonAuditWriteFailed:
+		return activation.FailureStageAudit
+	case activation.ReasonPersistenceFailed:
+		return activation.FailureStagePersistence
+	case activation.ReasonTenantResolutionFailed:
+		return activation.FailureStageTenantResolution
+	default:
+		return activation.FailureStageUnexpected
+	}
+}
+
+func activationSeverity(state activation.State, reason activation.FailureReason) string {
+	if state.Status == activation.StatusBlocked || reason.Retryable {
+		return "warning"
+	}
+	return "critical"
+}
+
+func activationRecommendedAction(reason activation.FailureReason) string {
+	switch reason.RemediationOwner {
+	case activation.RemediationOwnerProductUser:
+		return "Ask the user to retry activation from an allowed active tenant context."
+	case activation.RemediationOwnerTenantAdmin:
+		return "Review tenant membership and invitation state before retrying activation."
+	case activation.RemediationOwnerSystem:
+		return "Inspect system health and retry activation after recovery."
+	default:
+		return "Inspect activation diagnostics and retry after the blocked stage is resolved."
+	}
 }
 
 func (b operatorProjectionBuilder) computerUseFindings(ctx context.Context, runID string, workflow orchestration.Workflow) []OperatorDiagnosticFinding {

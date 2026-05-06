@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/activation.response.schema.json",
+  "title": "ActivationResponse",
+  "type": "object",
+  "required": ["activation"],
+  "additionalProperties": false,
+  "properties": {
+    "activation": { "$ref": "./activation-state-resource.schema.json" }
+  }
+}

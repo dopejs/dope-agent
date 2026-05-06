@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/activation"
 	"github.com/dopejs/dope-agent/daemon/internal/api"
 	"github.com/dopejs/dope-agent/daemon/internal/artifacts"
 	"github.com/dopejs/dope-agent/daemon/internal/audit"
@@ -75,6 +76,7 @@ type App struct {
 	Scheduler            *scheduler.Scheduler
 	Delivery             *delivery.Manager
 	Billing              *billing.Manager
+	Activation           *activation.Service
 	Evaluation           *evaluation.Manager
 	LiveValidation       *livevalidation.Manager
 	ConnectorSupervisor  *connectors.Supervisor
@@ -162,6 +164,15 @@ func New() (*App, error) {
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
 	chatService := chat.NewService(llmDispatcher, providerManager, skillRegistry, eventBus, sqliteStore)
+	activationService := activation.NewService(activation.Dependencies{
+		StateStore:       sqliteStore,
+		Identity:         sqliteStore,
+		Billing:          billingManager,
+		Chat:             activationChatRunner{service: chatService},
+		Audit:            sqliteStore,
+		EnvironmentScope: string(cfg.Environment),
+		Hosted:           cfg.Environment == config.EnvironmentProd,
+	})
 	artifactService := artifacts.NewService(cfg.DataDir)
 	artifactService.ConfigureBilling(billingManager, cfg.Environment == config.EnvironmentProd)
 	computerUseManager := computeruse.NewManager(computeruse.Dependencies{
@@ -312,6 +323,7 @@ func New() (*App, error) {
 		Scheduler:             scheduleManager,
 		Delivery:              deliveryManager,
 		Billing:               billingManager,
+		Activation:            activationService,
 		Store:                 sqliteStore,
 		Checkpoints:           checkpointManager,
 		Evaluation:            evaluationManager,
@@ -345,6 +357,7 @@ func New() (*App, error) {
 		Scheduler:            scheduleManager,
 		Delivery:             deliveryManager,
 		Billing:              billingManager,
+		Activation:           activationService,
 		Evaluation:           evaluationManager,
 		LiveValidation:       liveValidationManager,
 		ConnectorSupervisor:  connectorSupervisor,

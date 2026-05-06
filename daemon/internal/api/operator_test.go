@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/activation"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
@@ -334,12 +335,16 @@ func TestOperatorOnboardingRouteProjectsReadinessAndFirstActions(t *testing.T) {
 	}
 
 	foundQueryAction := false
+	foundActivationAction := false
 	foundConnectorFollowUp := false
 	foundCapabilityFollowUp := false
 	foundIntegrationFollowUp := false
 	for _, action := range response.FirstUsefulActions {
 		if action.ActionID == "test_query" {
 			foundQueryAction = action.Available
+		}
+		if action.ActionID == "test_chat" {
+			foundActivationAction = action.Available && action.InvokeRoute == "/v1/activation/test-chat"
 		}
 	}
 	for _, itemID := range response.OptionalFollowUpItemIDs {
@@ -352,7 +357,7 @@ func TestOperatorOnboardingRouteProjectsReadinessAndFirstActions(t *testing.T) {
 			foundIntegrationFollowUp = true
 		}
 	}
-	if !foundQueryAction || !foundConnectorFollowUp || !foundCapabilityFollowUp || !foundIntegrationFollowUp {
+	if !foundQueryAction || !foundActivationAction || !foundConnectorFollowUp || !foundCapabilityFollowUp || !foundIntegrationFollowUp {
 		t.Fatalf("expected projected query action and optional follow-up ids, got %+v", response)
 	}
 	if len(response.CompletedStepIDs) == 0 || response.CompletedStepIDs[len(response.CompletedStepIDs)-1] != "test-run-recorded" {
@@ -518,6 +523,70 @@ func TestOperatorDiagnosticsRouteSupportsPlaneAndSeverityFilters(t *testing.T) {
 	if item.DetailRoute != "/v1/deliveries/"+failedOutcome.DeliveryID {
 		t.Fatalf("expected delivery detail route, got %+v", item)
 	}
+}
+
+func TestOperatorDiagnosticsRouteIncludesActivationFailures(t *testing.T) {
+	t.Parallel()
+
+	h := newOperatorHarness(t)
+	now := time.Date(2026, 5, 6, 10, 0, 0, 0, time.UTC)
+	if err := h.store.UpsertActivationState(context.Background(), activation.State{
+		ActivationID:        "act_operator_gap",
+		PrincipalID:         "prn_operator_gap",
+		TenantID:            "ten_operator_gap",
+		EnvironmentScope:    "test",
+		Status:              activation.StatusBlocked,
+		CurrentStepID:       activation.StepQuotaBaseline,
+		CompletedStepIDs:    []string{activation.StepTenantResolved},
+		BlockingReasonCodes: []activation.ReasonCode{activation.ReasonQuotaBaselineUnavailable},
+		ReadinessItems: []activation.ReadinessItem{{
+			ItemID:                "quota-baseline",
+			ItemKind:              activation.ReadinessKindQuotaBaseline,
+			Status:                activation.ReadinessStatusBlocked,
+			ReasonCode:            activation.ReasonQuotaBaselineUnavailable,
+			DisplayName:           "Quota baseline",
+			RequiredForActivation: true,
+			Retryable:             true,
+			RemediationOwner:      activation.RemediationOwnerOperator,
+			UpdatedAt:             now,
+		}},
+		QuotaBaseline: &activation.QuotaBaseline{
+			TenantID:         "ten_operator_gap",
+			PlanKey:          "unknown",
+			EnforcementMode:  "not_measurable",
+			Status:           activation.QuotaBaselineStatusUnavailable,
+			Quotas:           []activation.QuotaProjection{},
+			ProjectedAt:      now,
+			ProjectionSource: "billing_usage_summary",
+			ReasonCode:       activation.ReasonQuotaBaselineUnavailable,
+		},
+		FirstAction:     activation.DefaultTestChatFirstAction(false, []string{"quota-baseline"}),
+		FailureReason:   &activation.FailureReason{ReasonCode: activation.ReasonQuotaBaselineUnavailable, Stage: activation.FailureStageQuotaBaseline, Retryable: true, RemediationOwner: activation.RemediationOwnerOperator},
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		LastEvaluatedAt: now,
+	}); err != nil {
+		t.Fatalf("UpsertActivationState returned error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/operator/diagnostics?plane=readiness", nil)
+	req.Header.Set("Authorization", h.authHeader)
+	rec := httptest.NewRecorder()
+	h.server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	response := decodeStrictResponse[OperatorDiagnosticListResponse](t, rec.Body.Bytes())
+	for _, item := range response.Items {
+		if item.SourceKind == "activation" && item.SourceID == "act_operator_gap" {
+			if item.Status != string(activation.StatusBlocked) || !strings.Contains(item.Reason, string(activation.ReasonQuotaBaselineUnavailable)) || item.DetailRoute != "/v1/activation/diagnostics" {
+				t.Fatalf("unexpected activation diagnostic item: %+v", item)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected activation diagnostic finding, got %+v", response.Items)
 }
 
 func TestOperatorRoutesAllowLocalWebOriginCORS(t *testing.T) {

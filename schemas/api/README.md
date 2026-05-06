@@ -71,6 +71,15 @@ Operator shell schemas should also stay in sync with implementation and fixtures
 - operator diagnostic finding
 - operator diagnostic list response
 
+Hosted activation schemas are additive Roadmap 45 contracts. They must remain
+metadata-only for test chat evidence and stay covered by daemon contract fixtures:
+
+- activation state resource
+- activation response
+- activation test chat request
+- activation test chat response
+- activation diagnostic list response
+
 Evaluation and replay schemas should stay in sync with daemon-owned evaluation resources,
 SDK types, web-shell behavior, and contract fixtures:
 
