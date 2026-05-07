@@ -211,3 +211,187 @@ type AuditRetentionPolicy struct {
 	CreatedAt            time.Time  `json:"createdAt"`
 	ExpiresAt            *time.Time `json:"expiresAt,omitempty"`
 }
+
+type QuotaStatus string
+
+const (
+	QuotaStatusAvailable     QuotaStatus = "available"
+	QuotaStatusNearLimit     QuotaStatus = "near_limit"
+	QuotaStatusExhausted     QuotaStatus = "exhausted"
+	QuotaStatusUnlimited     QuotaStatus = "unlimited"
+	QuotaStatusNotMeasurable QuotaStatus = "not_measurable"
+	QuotaStatusRestricted    QuotaStatus = "restricted"
+	QuotaStatusUnavailable   QuotaStatus = "unavailable"
+)
+
+type NearLimitReason string
+
+const (
+	NearLimitReasonNone                     NearLimitReason = ""
+	NearLimitReasonPercentThreshold         NearLimitReason = "percent_threshold"
+	NearLimitReasonBelowOneTypicalOperation NearLimitReason = "below_one_typical_operation"
+)
+
+type RecoveryAction string
+
+const (
+	RecoveryActionWait                       RecoveryAction = "wait"
+	RecoveryActionReduceScope                RecoveryAction = "reduce_scope"
+	RecoveryActionRequestOverride            RecoveryAction = "request_override"
+	RecoveryActionContactSupport             RecoveryAction = "contact_support"
+	RecoveryActionOperatorResolutionRequired RecoveryAction = "operator_resolution_required"
+	RecoveryActionRetryLater                 RecoveryAction = "retry_later"
+)
+
+type DenialClassification string
+
+const (
+	DenialClassificationQuotaExhaustion       DenialClassification = "quota_exhaustion"
+	DenialClassificationAbuseRestriction      DenialClassification = "abuse_restriction"
+	DenialClassificationQuotaStateUnavailable DenialClassification = "quota_state_unavailable"
+	DenialClassificationUnauthorized          DenialClassification = "unauthorized"
+	DenialClassificationOperatorActionNeeded  DenialClassification = "operator_action_needed"
+)
+
+type AbuseRestrictionStatus string
+
+const (
+	AbuseRestrictionStatusActive  AbuseRestrictionStatus = "active"
+	AbuseRestrictionStatusExpired AbuseRestrictionStatus = "expired"
+)
+
+type PlanSummary struct {
+	PlanKey           string          `json:"planKey"`
+	EnforcementMode   EnforcementMode `json:"enforcementMode"`
+	Status            PlanStatus      `json:"status,omitempty"`
+	EffectiveAt       time.Time       `json:"effectiveAt"`
+	BasePlanLabel     string          `json:"basePlanLabel,omitempty"`
+	CheckoutAvailable bool            `json:"checkoutAvailable"`
+}
+
+type UsagePeriodSummary struct {
+	PeriodStart      time.Time `json:"periodStart"`
+	PeriodEnd        time.Time `json:"periodEnd"`
+	PeriodAnchor     string    `json:"periodAnchor"`
+	ConsumedAmount   int64     `json:"consumedAmount"`
+	ReservedAmount   int64     `json:"reservedAmount"`
+	AdjustedAmount   int64     `json:"adjustedAmount"`
+	CarryoverApplied int64     `json:"carryoverApplied"`
+	RemainingAmount  int64     `json:"remainingAmount"`
+	OverLimit        bool      `json:"overLimit"`
+}
+
+type QuotaOverrideSummary struct {
+	BaseLimit      int64      `json:"baseLimit"`
+	EffectiveLimit int64      `json:"effectiveLimit"`
+	Reason         string     `json:"reason,omitempty"`
+	EffectiveAt    time.Time  `json:"effectiveAt"`
+	ExpiresAt      *time.Time `json:"expiresAt,omitempty"`
+}
+
+type AbuseRestrictionSummary struct {
+	RestrictionID         string                 `json:"restrictionId,omitempty"`
+	Status                AbuseRestrictionStatus `json:"status"`
+	AffectedCategory      Category               `json:"affectedCategory,omitempty"`
+	RecoveryAction        RecoveryAction         `json:"recoveryAction"`
+	VisibleReasonCode     string                 `json:"visibleReasonCode,omitempty"`
+	SourceAuditRef        string                 `json:"sourceAuditRef,omitempty"`
+	SupportContactAllowed bool                   `json:"supportContactAllowed"`
+	StartedAt             time.Time              `json:"startedAt,omitempty"`
+	ExpiresAt             *time.Time             `json:"expiresAt,omitempty"`
+}
+
+type AbuseRestrictionRecord struct {
+	RestrictionID         string                 `json:"restrictionId"`
+	TenantID              string                 `json:"tenantId"`
+	Status                AbuseRestrictionStatus `json:"status"`
+	AffectedCategory      Category               `json:"affectedCategory"`
+	RecoveryAction        RecoveryAction         `json:"recoveryAction"`
+	VisibleReasonCode     string                 `json:"visibleReasonCode"`
+	SourceAuditRef        string                 `json:"sourceAuditRef,omitempty"`
+	SupportContactAllowed bool                   `json:"supportContactAllowed"`
+	StartedAt             time.Time              `json:"startedAt"`
+	ExpiresAt             *time.Time             `json:"expiresAt,omitempty"`
+	Document              map[string]any         `json:"document,omitempty"`
+}
+
+func (record AbuseRestrictionRecord) Summary() AbuseRestrictionSummary {
+	return AbuseRestrictionSummary{
+		RestrictionID:         record.RestrictionID,
+		Status:                record.Status,
+		AffectedCategory:      record.AffectedCategory,
+		RecoveryAction:        record.RecoveryAction,
+		VisibleReasonCode:     record.VisibleReasonCode,
+		SourceAuditRef:        record.SourceAuditRef,
+		SupportContactAllowed: record.SupportContactAllowed,
+		StartedAt:             record.StartedAt,
+		ExpiresAt:             record.ExpiresAt,
+	}
+}
+
+type QuotaStatusItem struct {
+	Category               Category                 `json:"category"`
+	Unit                   Unit                     `json:"unit"`
+	Status                 QuotaStatus              `json:"status"`
+	CurrentPeriod          UsagePeriodSummary       `json:"currentPeriod"`
+	PreviousPeriod         *UsagePeriodSummary      `json:"previousPeriod,omitempty"`
+	Limit                  int64                    `json:"limit"`
+	RemainingAmount        int64                    `json:"remainingAmount"`
+	NearLimit              bool                     `json:"nearLimit"`
+	NearLimitReason        NearLimitReason          `json:"nearLimitReason,omitempty"`
+	TypicalOperationAmount int64                    `json:"typicalOperationAmount"`
+	BaseLimit              int64                    `json:"baseLimit"`
+	EffectiveLimit         int64                    `json:"effectiveLimit"`
+	Override               *QuotaOverrideSummary    `json:"override,omitempty"`
+	Restriction            *AbuseRestrictionSummary `json:"restriction,omitempty"`
+	RecoveryActions        []RecoveryAction         `json:"recoveryActions"`
+}
+
+type QuotaSection struct {
+	SectionKey string            `json:"sectionKey"`
+	Label      string            `json:"label"`
+	Items      []QuotaStatusItem `json:"items"`
+}
+
+type TenantQuotaDashboard struct {
+	TenantID    string         `json:"tenantId"`
+	Plan        PlanSummary    `json:"plan"`
+	Sections    []QuotaSection `json:"sections"`
+	GeneratedAt time.Time      `json:"generatedAt"`
+	Permission  map[string]any `json:"permission,omitempty"`
+}
+
+type QuotaDenialDetail struct {
+	DenialID          string                   `json:"denialId"`
+	TenantID          string                   `json:"tenantId"`
+	OperationRef      string                   `json:"operationRef"`
+	OperationKey      string                   `json:"operationKey"`
+	GuardedEntryPoint string                   `json:"guardedEntryPoint"`
+	Category          Category                 `json:"category,omitempty"`
+	ReasonCode        string                   `json:"reasonCode"`
+	Classification    DenialClassification     `json:"classification"`
+	RequestedAmount   int64                    `json:"requestedAmount"`
+	RemainingAmount   int64                    `json:"remainingAmount"`
+	RecoveryActions   []RecoveryAction         `json:"recoveryActions"`
+	Restriction       *AbuseRestrictionSummary `json:"restriction,omitempty"`
+	CreatedAt         time.Time                `json:"createdAt"`
+}
+
+type BillingEvidenceRedaction struct {
+	Path        string `json:"path"`
+	Reason      string `json:"reason"`
+	Replacement string `json:"replacement"`
+}
+
+type BillingEvidenceExport struct {
+	SchemaVersion          string                     `json:"schemaVersion"`
+	ExportID               string                     `json:"exportId"`
+	TenantID               string                     `json:"tenantId"`
+	GeneratedAt            time.Time                  `json:"generatedAt"`
+	GeneratedByPrincipalID string                     `json:"generatedByPrincipalId"`
+	Denial                 QuotaDenialDetail          `json:"denial"`
+	UsageSnapshot          []QuotaStatusItem          `json:"usageSnapshot"`
+	EffectiveLimitState    map[string]any             `json:"effectiveLimitState"`
+	AuditRefs              []string                   `json:"auditRefs"`
+	Redactions             []BillingEvidenceRedaction `json:"redactions"`
+}

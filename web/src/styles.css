@@ -234,6 +234,60 @@ label span {
     var(--panel);
 }
 
+.quota-panel {
+  align-content: start;
+}
+
+.quota-dashboard,
+.quota-section,
+.quota-item-list,
+.quota-denials {
+  display: grid;
+  gap: 12px;
+}
+
+.quota-plan-row,
+.quota-meta,
+.quota-denial {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.quota-plan-row > div,
+.quota-item,
+.quota-denial {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.quota-plan-row > div {
+  flex: 1 1 180px;
+}
+
+.quota-meter {
+  background: rgba(42, 49, 55, 0.08);
+  height: 8px;
+  overflow: hidden;
+}
+
+.quota-meter span {
+  background: #2f7a5d;
+  display: block;
+  height: 100%;
+}
+
+.quota-meta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .setup-list,
 .setup-diagnostics {
   display: grid;
@@ -410,7 +464,9 @@ label span {
 .status-optional,
 .status-idle,
 .status-info,
-.status-connected {
+.status-connected,
+.status-unlimited,
+.status-not_measurable {
   background: #e2edf2;
   color: #29556b;
 }
@@ -427,7 +483,8 @@ label span {
 .status-partial,
 .status-draft,
 .status-in_review,
-.status-archived {
+.status-archived,
+.status-near_limit {
   background: var(--warning-soft);
   color: var(--warning);
 }
@@ -448,7 +505,10 @@ label span {
 .status-unreplayable,
 .status-low,
 .status-deleted,
-.status-suppressed {
+.status-suppressed,
+.status-exhausted,
+.status-restricted,
+.status-unavailable {
   background: var(--critical-soft);
   color: var(--critical);
 }

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/billing-evidence-export.response.schema.json",
+  "title": "BillingEvidenceExportResponse",
+  "type": "object",
+  "required": ["schemaVersion", "exportId", "generatedAt", "generatedByPrincipalId", "denial", "usageSnapshot", "effectiveLimitState", "auditRefs", "redactions"],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "exportId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "generatedByPrincipalId": { "type": "string" },
+    "denial": { "$ref": "billing-denial-detail.response.schema.json" },
+    "usageSnapshot": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "effectiveLimitState": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "auditRefs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "redactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "reason", "replacement"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" },
+          "reason": { "type": "string" },
+          "replacement": { "type": "string" }
+        }
+      }
+    }
+  }
+}

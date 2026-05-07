@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 41
+	CurrentSchemaVersion = 42
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -2684,6 +2684,28 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_setup_sessions_tenant_updated ON setup_sessions(tenant_id, updated_at DESC, setup_session_id DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_setup_sessions_tenant_target ON setup_sessions(tenant_id, target_id, setup_style);`,
 			`CREATE INDEX IF NOT EXISTS idx_setup_attempts_tenant_session ON setup_attempts(tenant_id, setup_session_id, created_at ASC, attempt_id ASC);`,
+		},
+	},
+	{
+		Version: 42,
+		Name:    "r47_billing_abuse_restrictions",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS billing_abuse_restrictions (
+				restriction_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				status TEXT NOT NULL,
+				affected_category TEXT NOT NULL,
+				recovery_action TEXT NOT NULL,
+				visible_reason_code TEXT NOT NULL,
+				source_audit_ref TEXT,
+				support_contact_allowed INTEGER NOT NULL DEFAULT 0,
+				started_at TEXT NOT NULL,
+				expires_at TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_billing_abuse_restrictions_tenant_active ON billing_abuse_restrictions(tenant_id, status, affected_category, started_at DESC, restriction_id DESC);`,
 		},
 	},
 }

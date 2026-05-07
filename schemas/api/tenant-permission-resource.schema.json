@@ -24,6 +24,7 @@
         "live_validation.execute",
         "evaluation.manage",
         "billing.view",
+        "billing.evidence_export",
         "read_only.inspect"
       ]
     }

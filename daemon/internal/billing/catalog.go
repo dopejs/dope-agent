@@ -43,6 +43,7 @@ func InitialCatalog(now time.Time) []CatalogEntry {
 			entry := catalogEntry(CategoryArtifactStorageBytes, UnitBytes, PeriodMonthly, 0, "artifact write service before writing bytes using estimate", "actual bytes known after write", "write failure before consumption or smaller actual refund", "tenant:{tenantId}:artifact:{artifactId|storageKey|clientKey}", "quota_denied:artifact_storage_bytes_exhausted", append(commonTests, "actual_smaller_refund", "actual_larger_over_limit_commit", "future_denial_after_over_limit_commit"), now)
 			entry.OverLimitCommit = true
 			entry.FutureDenialOnOver = true
+			entry.Definition.Document = map[string]any{"artifactWriteReservationEstimateBytes": int64(4096)}
 			return entry
 		}(),
 		catalogEntry(CategoryReplayEvaluationAttempts, UnitAttempts, PeriodMonthly, 1, "replay/evaluation attempt creation before work starts", "attempt persisted as accepted/started/completed", "denial or preflight unreplayable before attempt consumption", "tenant:{tenantId}:evaluation:{candidateId}:{attemptId|clientKey}", "quota_denied:replay_evaluation_attempts_exhausted", append(commonTests, "concurrent_attempt"), now),

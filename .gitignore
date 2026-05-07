@@ -9,6 +9,7 @@ Thumbs.db
 *.out
 *.log
 *.exe
+.gocache/
 .env
 .env.*
 .vscode/

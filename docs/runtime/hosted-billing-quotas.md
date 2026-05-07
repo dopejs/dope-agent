@@ -26,9 +26,19 @@ Tenant owners and administrators with `billing.view` can call:
 - `GET /v1/billing/usage`
 - `GET /v1/billing/quotas`
 - `GET /v1/billing/denials`
+- `GET /v1/billing/quota-dashboard`
+- `GET /v1/billing/denials/{denialId}`
 
 Responses are scoped to the resolved tenant context. Billing schemas keep `tenantId`
 additive for legacy-client compatibility.
+
+`quota-dashboard` is a user-readable projection over the Roadmap 38 catalog. It includes
+every enforced category, readable sections, current active period usage, immediately
+previous completed period usage when available, finite/unlimited/not-measurable state,
+near-limit warnings, base versus effective limits, visible overrides, and explicit abuse
+restriction summaries. Near-limit is true at 80% consumed or when remaining allowance is
+less than one category-defined typical operation. Count and attempt categories use `1`;
+artifact byte quotas use the catalog's artifact write reservation estimate.
 
 ## Administration
 
@@ -50,6 +60,30 @@ Ambiguous pending reservations are marked `operator_action_needed` during restar
 recovery; duplicate work for the same operation key is denied until an operator resolves
 the reservation.
 
+Denial detail classifies records as `quota_exhaustion`, `abuse_restriction`,
+`quota_state_unavailable`, `unauthorized`, or `operator_action_needed`. Detail responses
+show safe operation references, guarded entry points, measured amount, remaining amount,
+and recovery actions such as wait, reduce scope, request override, contact support, or
+operator resolution. Abuse restriction visibility is intentionally limited to explicit
+restriction status, affected category, visible reason, duration when available, support
+contact state, and source audit reference; detection signals, thresholds, raw trigger
+events, and evasion-relevant patterns are not exposed.
+
+Support operators with explicit `billing.evidence_export` can call:
+
+- `POST /v1/billing/denials/{denialId}/evidence-export`
+
+The export is structured redacted JSON for an associated denial. It includes schema
+version, export id, denial detail, usage snapshot, effective limit state, audit
+references, and redaction records. It excludes secrets, connector payloads, unrelated run
+content, and cross-tenant data. `billing.view` alone is insufficient for export.
+
+For local operator verification, start the test daemon and run
+`scripts/phase47-public-quota-walkthrough.sh`. The script seeds only
+`~/.dope-test/daemon.sqlite`, then validates quota dashboard projection, ordinary and
+abuse denial detail, evidence export redactions, cross-tenant hiding, and unauthorized
+no-partial-data behavior.
+
 ## Audit And Retention
 
 Billing audit evidence records actor, tenant, category, operation key, amount, reason,
@@ -68,4 +102,5 @@ shipping.
 
 Storage rollback is backup-restore. Logical enforcement rollback should assign affected
 tenants an explicit `unlimited` or development plan rather than deleting usage or audit
-records.
+records. Product rollback for Roadmap 47 can hide the new SDK/web surfaces and disable the
+new projection/export routes while leaving Roadmap 38 enforcement intact.

@@ -135,6 +135,7 @@ func TestExplainReturnsUnsupportedForDockerAccessRuleMismatch(t *testing.T) {
 func TestStartDockerExecutionUsesFakeDockerRunner(t *testing.T) {
 	fakeDockerOnPath(t, "available")
 	manager := newSandboxManagerForTest(t)
+	setBackendCapabilityForTest(t, manager, BackendKindDocker, testAvailableDockerCapability())
 	cwd := t.TempDir()
 	execution, err := manager.StartExecution(context.Background(), ExecutionRequest{
 		ProfileID: ProfileIDDockerDefault,
@@ -166,6 +167,7 @@ func TestStartDockerExecutionUsesFakeDockerRunner(t *testing.T) {
 func TestExplainBackendSelectionStaysUnder100ms(t *testing.T) {
 	fakeDockerOnPath(t, "available")
 	manager := newSandboxManagerForTest(t)
+	setBackendCapabilityForTest(t, manager, BackendKindDocker, testAvailableDockerCapability())
 	cwd := t.TempDir()
 
 	started := time.Now()
@@ -888,6 +890,20 @@ func setBackendCapabilityForTest(t *testing.T, manager *Manager, kind BackendKin
 		}
 		profile.BackendCapability = cloneBackendCapability(capability)
 		manager.profiles[profileID] = profile
+	}
+}
+
+func testAvailableDockerCapability() BackendCapabilityProfile {
+	return BackendCapabilityProfile{
+		BackendKind:           BackendKindDocker,
+		DisplayName:           "Docker",
+		FilesystemEnforcement: "container_mount_scoped",
+		NetworkEnforcement:    "container_network_mode",
+		EnvInjectionMode:      "container_env_injection",
+		ApprovalBehavior:      "profile_and_command_policy",
+		RestartBehavior:       "interrupted_execution_recovers_as_cancelled",
+		HostPrerequisites:     []string{"docker CLI available on PATH"},
+		AvailabilityStatus:    BackendAvailabilityStatusAvailable,
 	}
 }
 

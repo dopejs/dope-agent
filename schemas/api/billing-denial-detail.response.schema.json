@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/billing-denial-detail.response.schema.json",
+  "title": "BillingDenialDetailResponse",
+  "type": "object",
+  "required": ["denialId", "operationRef", "operationKey", "guardedEntryPoint", "reasonCode", "classification", "requestedAmount", "remainingAmount", "recoveryActions", "createdAt"],
+  "additionalProperties": true,
+  "properties": {
+    "denialId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "operationRef": { "type": "string" },
+    "operationKey": { "type": "string" },
+    "guardedEntryPoint": { "type": "string" },
+    "category": { "type": "string" },
+    "reasonCode": { "type": "string" },
+    "classification": {
+      "type": "string",
+      "enum": ["quota_exhaustion", "abuse_restriction", "quota_state_unavailable", "unauthorized", "operator_action_needed"]
+    },
+    "requestedAmount": { "type": "integer" },
+    "remainingAmount": { "type": "integer" },
+    "recoveryActions": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["wait", "reduce_scope", "request_override", "contact_support", "operator_resolution_required", "retry_later"] }
+    },
+    "restriction": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

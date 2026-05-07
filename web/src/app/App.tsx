@@ -6,6 +6,9 @@ import {
   type ActivationStateResource,
   type ApprovalResource,
   type AuthMeResponse,
+  type BillingDenialResource,
+  type BillingQuotaDashboardResponse,
+  type BillingQuotaStatusItem,
   type EventStreamSubscription,
   type EvaluationCampaignAttemptGroupResource,
   type EvaluationCampaignItemResource,
@@ -79,6 +82,8 @@ type ShellSnapshot = {
   liveValidationLedger: LiveValidationLedgerResource[];
   liveValidationRetention: LiveValidationRetentionResource | null;
   liveValidationKillSwitches: LiveValidationKillSwitchResource[];
+  billingDashboard: BillingQuotaDashboardResponse | null;
+  billingDenials: BillingDenialResource[];
 };
 
 type DetailView = {
@@ -123,7 +128,9 @@ const EMPTY_SHELL: ShellSnapshot = {
   supportMatrix: [],
   liveValidationLedger: [],
   liveValidationRetention: null,
-  liveValidationKillSwitches: []
+  liveValidationKillSwitches: [],
+  billingDashboard: null,
+  billingDenials: []
 };
 
 const ROLE_OPTIONS: TenantRole[] = ["owner", "admin", "operator", "viewer"];
@@ -168,6 +175,8 @@ export function App() {
   const tenantOptions = activeTenantId ? { tenantId: activeTenantId } : undefined;
   const canUseTenantActions = status === "ready" && activeTenantStatus === "active" && Boolean(activeTenantId);
   const canManageMemberships = hasPermission(activeTenant, "tenant.manage");
+  const canViewBilling = hasPermission(activeTenant, "billing.view");
+  const canExportBillingEvidence = hasPermission(activeTenant, "billing.evidence_export");
 
   function buildClient(defaultTenantId = activeTenantId) {
     return createDopeClient({
@@ -270,6 +279,12 @@ export function App() {
       const membershipPromise = hasPermission(tenant, "tenant.manage")
         ? scopedClient.listMemberships(tenant.tenantId, {}, scopedOptions).then((response) => response.items)
         : Promise.resolve<MembershipResource[]>([]);
+      const billingDashboardPromise = hasPermission(tenant, "billing.view")
+        ? scopedClient.getBillingQuotaDashboard(scopedOptions).catch(() => null)
+        : Promise.resolve(null);
+      const billingDenialsPromise = hasPermission(tenant, "billing.view")
+        ? scopedClient.listBillingDenials(scopedOptions).then((response) => response.items).catch(() => [])
+        : Promise.resolve<BillingDenialResource[]>([]);
 
       const [
         onboarding,
@@ -293,6 +308,8 @@ export function App() {
         liveValidations,
         supportMatrix,
         killSwitches,
+        billingDashboard,
+        billingDenials,
         membershipItems
       ] = await Promise.all([
         scopedClient.getOnboarding(scopedOptions),
@@ -319,6 +336,8 @@ export function App() {
         scopedClient.listLiveValidations({ limit: 20 }, scopedOptions),
         scopedClient.listLiveValidationSupportMatrix(scopedOptions),
         scopedClient.listLiveValidationKillSwitches({}, scopedOptions),
+        billingDashboardPromise,
+        billingDenialsPromise,
         membershipPromise
       ]);
       const latestValidation = liveValidations.items[0] ?? null;
@@ -364,7 +383,9 @@ export function App() {
         supportMatrix: supportMatrix.items,
         liveValidationLedger,
         liveValidationRetention,
-        liveValidationKillSwitches: killSwitches.items
+        liveValidationKillSwitches: killSwitches.items,
+        billingDashboard,
+        billingDenials
       });
       setMemberships({
         status: hasPermission(tenant, "tenant.manage") ? membershipStatusFor(membershipItems) : "hidden",
@@ -1243,6 +1264,63 @@ export function App() {
     }
   }
 
+  async function handleBillingDenialDetail(denial: BillingDenialResource) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    setDetailLoading(true);
+    setError("");
+    try {
+      const payload = await buildClient(tenantId).getBillingDenialDetail(denial.denialId, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setDetail({ title: `Billing Denial ${denial.denialId}`, route: `/v1/billing/denials/${denial.denialId}`, tenantId, generation, payload });
+    } catch (caught) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(errorMessage(caught));
+      }
+    } finally {
+      if (activeTenantRef.current === tenantId) {
+        setDetailLoading(false);
+      }
+    }
+  }
+
+  async function handleBillingEvidenceExport(denial: BillingDenialResource) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    if (!canExportBillingEvidence) {
+      setError("billing.evidence_export is required to export denial evidence.");
+      return;
+    }
+    const tenantId = scoped.tenantId!;
+    const generation = generationRef.current;
+    setActiveActionId(`billing-export-${denial.denialId}`);
+    setError("");
+    try {
+      const payload = await buildClient(tenantId).exportBillingDenialEvidence(denial.denialId, scoped);
+      if (!isCurrentTenantWork(generation, tenantId)) {
+        return;
+      }
+      setActionMessage(`Exported redacted billing evidence ${payload.exportId}.`);
+      setDetail({ title: `Billing Evidence ${denial.denialId}`, route: `/v1/billing/denials/${denial.denialId}/evidence-export`, tenantId, generation, payload });
+    } catch (caught) {
+      if (isCurrentTenantWork(generation, tenantId)) {
+        setError(errorMessage(caught));
+      }
+    } finally {
+      if (activeTenantRef.current === tenantId) {
+        setActiveActionId("");
+      }
+    }
+  }
+
   function currentTenantOptions(): TenantRequestOptions | null {
     if (!canUseTenantActions || !activeTenantId) {
       setError("Resolve an active tenant before performing tenant-scoped work.");
@@ -1261,6 +1339,8 @@ export function App() {
   const selectedLiveValidationCandidateId = liveValidationCandidateId || shell.replayCandidates[0]?.candidateId || "";
   const latestLiveValidation = shell.liveValidations[0] ?? null;
   const unsupportedMatrixRows = shell.supportMatrix.filter((row) => row.safetyClass === "unsupported");
+  const billingDashboard = shell.billingDashboard;
+  const latestBillingDenials = shell.billingDenials.slice(0, 4);
 
   return (
     <main className="operator-shell">
@@ -1417,6 +1497,89 @@ export function App() {
             </>
           ) : (
             <div className="empty-state">{activeTenantStatus === "denied" ? "Tenant access is denied. Choose another allowed tenant." : "Load the shell to project readiness and bounded first-use actions."}</div>
+          )}
+        </section>
+
+        <section className="panel quota-panel">
+          <div className="panel-head">
+            <div>
+              <p className="section-kicker">Hosted Billing</p>
+              <h2>Quota Dashboard</h2>
+            </div>
+            {billingDashboard ? <span className={`status-chip status-${billingDashboard.plan.enforcementMode}`}>{billingDashboard.plan.enforcementMode}</span> : null}
+          </div>
+
+          {canViewBilling && billingDashboard ? (
+            <div className="quota-dashboard">
+              <div className="quota-plan-row">
+                <div>
+                  <span className="banner-label">Plan</span>
+                  <strong>{billingDashboard.plan.basePlanLabel || billingDashboard.plan.planKey}</strong>
+                </div>
+                <div>
+                  <span className="banner-label">Generated</span>
+                  <strong>{formatDateTime(billingDashboard.generatedAt)}</strong>
+                </div>
+              </div>
+              {billingDashboard.sections.map((section) => (
+                <div className="quota-section" key={section.sectionKey}>
+                  <div className="stack-head">
+                    <strong>{section.label}</strong>
+                    <span className="count-chip">{section.items.length}</span>
+                  </div>
+                  <div className="quota-item-list">
+                    {section.items.map((item) => (
+                      <article className="quota-item" key={item.category}>
+                        <div className="stack-head">
+                          <strong>{formatLabel(item.category)}</strong>
+                          <span className={`status-chip status-${item.status}`}>{item.status}</span>
+                        </div>
+                        <div className="quota-meter" aria-label={`${item.category} usage`}>
+                          <span style={{ width: `${quotaPercent(item)}%` }} />
+                        </div>
+                        <div className="quota-meta">
+                          <span>{item.currentPeriod.consumedAmount + item.currentPeriod.reservedAmount} used</span>
+                          <span>{item.remainingAmount} remaining</span>
+                          <span>{item.limit} limit</span>
+                        </div>
+                        {item.previousPeriod ? <small>Previous: {item.previousPeriod.consumedAmount} used, {item.previousPeriod.remainingAmount} remaining</small> : null}
+                        {item.override ? <small>Override: {item.override.baseLimit} to {item.override.effectiveLimit}{item.override.reason ? `, ${item.override.reason}` : ""}</small> : null}
+                        {item.restriction ? <small>Restriction: {item.restriction.visibleReasonCode || item.restriction.status}</small> : null}
+                        {item.recoveryActions.length ? <small>Actions: {item.recoveryActions.join(", ")}</small> : null}
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div className="quota-denials">
+                <div className="stack-head">
+                  <strong>Recent Denials</strong>
+                  <span className="count-chip">{latestBillingDenials.length}</span>
+                </div>
+                {latestBillingDenials.length ? latestBillingDenials.map((denial) => (
+                  <article className="quota-denial" key={denial.denialId}>
+                    <div>
+                      <strong>{formatLabel(denial.category || "quota_denial")}</strong>
+                      <small>{denial.reasonCode}</small>
+                    </div>
+                    <div className="inline-actions">
+                      <button disabled={!canUseTenantActions || detailLoading} type="button" onClick={() => {
+                        void handleBillingDenialDetail(denial);
+                      }}>
+                        Detail
+                      </button>
+                      <button disabled={!canUseTenantActions || !canExportBillingEvidence || activeActionId === `billing-export-${denial.denialId}`} type="button" onClick={() => {
+                        void handleBillingEvidenceExport(denial);
+                      }}>
+                        {activeActionId === `billing-export-${denial.denialId}` ? "Exporting..." : "Export"}
+                      </button>
+                    </div>
+                  </article>
+                )) : <div className="empty-state">No recent quota denials.</div>}
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state">{canViewBilling ? "Quota dashboard is unavailable." : "Billing visibility is not granted for this tenant."}</div>
           )}
         </section>
 
@@ -2441,6 +2604,29 @@ function formatActivationQuota(value: number | undefined, _unit?: string): strin
     return "unknown";
   }
   return new Intl.NumberFormat("en-US").format(value);
+}
+
+function formatDateTime(value: string | undefined): string {
+  if (!value) {
+    return "unknown";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
+}
+
+function formatLabel(value: string): string {
+  return value.replace(/[_:.-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function quotaPercent(item: BillingQuotaStatusItem): number {
+  if (!Number.isFinite(item.limit) || item.limit <= 0 || item.status === "unlimited" || item.status === "not_measurable") {
+    return 0;
+  }
+  const used = item.currentPeriod.consumedAmount + item.currentPeriod.reservedAmount + item.currentPeriod.adjustedAmount - item.currentPeriod.carryoverApplied;
+  return Math.max(0, Math.min(100, Math.round((used / item.limit) * 100)));
 }
 
 function errorMessage(caught: unknown): string {

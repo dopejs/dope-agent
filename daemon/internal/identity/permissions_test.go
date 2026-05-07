@@ -193,3 +193,26 @@ func TestEvaluationProductPermissionsForRoles(t *testing.T) {
 		t.Fatal("viewer unexpectedly has discovery run permission")
 	}
 }
+
+func TestBillingEvidenceExportPermissionIsCanonicalAndSeparateFromBillingView(t *testing.T) {
+	if !Can(RoleOwner, StatusActive, PermissionBillingEvidenceExport) {
+		t.Fatal("owner should have billing evidence export permission")
+	}
+	if Can(RoleAdmin, StatusActive, PermissionBillingEvidenceExport) {
+		t.Fatal("admin should not receive billing evidence export by role-only billing.view/billing.manage permissions")
+	}
+	viewOnly := TenantContext{
+		PrincipalID: "prn_view",
+		TenantID:    "ten_1",
+		Role:        RoleAdmin,
+		Permissions: []Permission{PermissionBillingView},
+	}
+	if EvaluatePermission(viewOnly, PermissionBillingEvidenceExport).Allowed {
+		t.Fatal("billing.view alone must not authorize evidence export")
+	}
+	explicit := viewOnly
+	explicit.Permissions = append(explicit.Permissions, PermissionBillingEvidenceExport)
+	if !EvaluatePermission(explicit, PermissionBillingEvidenceExport).Allowed {
+		t.Fatal("explicit billing.evidence_export permission should authorize evidence export")
+	}
+}

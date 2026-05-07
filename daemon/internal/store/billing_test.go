@@ -89,6 +89,154 @@ func TestSQLiteStoreBillingUsageSummaryProjectsCounterAmounts(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreBillingDashboardProjectsExplicitAbuseRestrictions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sqliteStore, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+	if err := sqliteStore.EnsureBillingCatalog(ctx); err != nil {
+		t.Fatalf("EnsureBillingCatalog returned error: %v", err)
+	}
+	now := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
+	tenantID := "ten_billing_abuse_restriction"
+	if err := sqliteStore.SavePlan(ctx, billing.TenantPlan{
+		PlanID:          "plan_abuse_restriction",
+		TenantID:        tenantID,
+		PlanKey:         "finite",
+		Status:          billing.PlanStatusActive,
+		EnforcementMode: billing.EnforcementModeEnforced,
+		EffectiveAt:     now.Add(-24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("SavePlan returned error: %v", err)
+	}
+	expiresAt := now.Add(time.Hour)
+	if err := sqliteStore.SaveAbuseRestriction(ctx, billing.AbuseRestrictionRecord{
+		RestrictionID:         "restriction_active",
+		TenantID:              tenantID,
+		Status:                billing.AbuseRestrictionStatusActive,
+		AffectedCategory:      billing.CategoryRuntimeToolCalls,
+		RecoveryAction:        billing.RecoveryActionContactSupport,
+		VisibleReasonCode:     "abuse_restriction:temporary",
+		SourceAuditRef:        "audit_1",
+		SupportContactAllowed: true,
+		StartedAt:             now.Add(-time.Minute),
+		ExpiresAt:             &expiresAt,
+		Document:              map[string]any{"internalDetectionSignals": "not projected"},
+	}); err != nil {
+		t.Fatalf("SaveAbuseRestriction returned error: %v", err)
+	}
+
+	manager := billing.NewManagerWithClock(sqliteStore, func() time.Time { return now })
+	dashboard, err := manager.QuotaDashboard(ctx, tenantID, true)
+	if err != nil {
+		t.Fatalf("QuotaDashboard returned error: %v", err)
+	}
+	for _, section := range dashboard.Sections {
+		for _, item := range section.Items {
+			if item.Category != billing.CategoryRuntimeToolCalls {
+				continue
+			}
+			if item.Status != billing.QuotaStatusRestricted || item.Restriction == nil {
+				t.Fatalf("expected restricted runtime tool calls item, got %+v", item)
+			}
+			if item.Restriction.VisibleReasonCode != "abuse_restriction:temporary" || item.Restriction.SourceAuditRef != "audit_1" {
+				t.Fatalf("unexpected restriction summary: %+v", item.Restriction)
+			}
+			return
+		}
+	}
+	t.Fatal("runtime tool calls quota item not found")
+}
+
+func TestSQLiteStoreListsTenantScopedUsageEvidenceRefs(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sqliteStore, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+	now := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
+	for _, tenantID := range []string{"ten_evidence_a", "ten_evidence_b"} {
+		if err := sqliteStore.AppendUsageEvent(ctx, billing.UsageEvent{
+			UsageEventID: "usage_event_" + tenantID,
+			TenantID:     tenantID,
+			Category:     billing.CategoryRunLaunches,
+			OperationKey: "tenant:ten_evidence_a:run:client_1",
+			EventKind:    billing.UsageEventDenial,
+			ReasonCode:   "quota_denied:run_launches_exhausted",
+			Outcome:      "denied",
+			CreatedAt:    now,
+		}); err != nil {
+			t.Fatalf("AppendUsageEvent(%s) returned error: %v", tenantID, err)
+		}
+	}
+	refs, err := sqliteStore.ListUsageEvidenceRefs(ctx, "ten_evidence_a", "tenant:ten_evidence_a:run:client_1", 10)
+	if err != nil {
+		t.Fatalf("ListUsageEvidenceRefs returned error: %v", err)
+	}
+	if len(refs) != 1 || refs[0] != "billing_usage_event:usage_event_ten_evidence_a" {
+		t.Fatalf("expected tenant A-only evidence ref, got %+v", refs)
+	}
+}
+
+func TestSQLiteStorePreviousQuotaPeriodRequiresImmediateClosedPeriod(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sqliteStore, err := NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+	tenantID := "ten_previous_closed"
+	currentStart := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	immediateStart := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	olderStart := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	olderEnd := immediateStart
+	for _, period := range []billing.QuotaPeriod{
+		{QuotaPeriodID: "period_current", TenantID: tenantID, Category: billing.CategoryRunLaunches, PeriodKind: billing.PeriodMonthly, PeriodStart: currentStart, PeriodEnd: currentEnd, Status: "open"},
+		{QuotaPeriodID: "period_immediate_open", TenantID: tenantID, Category: billing.CategoryRunLaunches, PeriodKind: billing.PeriodMonthly, PeriodStart: immediateStart, PeriodEnd: currentStart, Status: "open"},
+		{QuotaPeriodID: "period_older_closed", TenantID: tenantID, Category: billing.CategoryRunLaunches, PeriodKind: billing.PeriodMonthly, PeriodStart: olderStart, PeriodEnd: olderEnd, Status: "closed"},
+	} {
+		if _, err := sqliteStore.db.ExecContext(ctx, `
+			INSERT INTO billing_quota_periods (
+				quota_period_id, tenant_id, category, period_kind, period_start, period_end,
+				carryover_from_period_id, status
+			) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
+		`, period.QuotaPeriodID, period.TenantID, period.Category, period.PeriodKind,
+			period.PeriodStart.UTC().Format(time.RFC3339Nano), period.PeriodEnd.UTC().Format(time.RFC3339Nano), period.Status); err != nil {
+			t.Fatalf("insert period %s: %v", period.QuotaPeriodID, err)
+		}
+	}
+
+	period, _, found, err := sqliteStore.PreviousQuotaPeriod(ctx, tenantID, billing.CategoryRunLaunches, currentStart)
+	if err != nil {
+		t.Fatalf("PreviousQuotaPeriod returned error: %v", err)
+	}
+	if found {
+		t.Fatalf("expected no previous period when immediate predecessor is not closed, got %+v", period)
+	}
+}
+
 func TestSQLiteStoreReserveUsageSerializesConcurrentLastUnit(t *testing.T) {
 	t.Parallel()
 

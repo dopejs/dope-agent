@@ -779,6 +779,40 @@ func (s *SQLiteStore) UsageCounter(ctx context.Context, tenantID string, categor
 	return counter, true, nil
 }
 
+func (s *SQLiteStore) PreviousQuotaPeriod(ctx context.Context, tenantID string, category billing.Category, before time.Time) (billing.QuotaPeriod, billing.UsageCounter, bool, error) {
+	if s == nil {
+		return billing.QuotaPeriod{}, billing.UsageCounter{}, false, nil
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT quota_period_id, tenant_id, category, period_kind, period_start, period_end,
+		       carryover_from_period_id, status
+		FROM billing_quota_periods
+		WHERE tenant_id = ? AND category = ? AND period_end = ? AND status = ?
+		ORDER BY period_end DESC, quota_period_id DESC
+		LIMIT 1
+	`, tenantID, category, before.UTC().Format(time.RFC3339Nano), "closed")
+	period, err := scanBillingQuotaPeriod(row)
+	if err == sql.ErrNoRows {
+		return billing.QuotaPeriod{}, billing.UsageCounter{}, false, nil
+	}
+	if err != nil {
+		return billing.QuotaPeriod{}, billing.UsageCounter{}, false, err
+	}
+	counter, found, err := s.UsageCounter(ctx, tenantID, category, period.QuotaPeriodID)
+	if err != nil {
+		return billing.QuotaPeriod{}, billing.UsageCounter{}, false, err
+	}
+	if !found {
+		counter = billing.UsageCounter{
+			TenantID:      tenantID,
+			Category:      category,
+			QuotaPeriodID: period.QuotaPeriodID,
+			UpdatedAt:     before.UTC(),
+		}
+	}
+	return period, counter, true, nil
+}
+
 func (s *SQLiteStore) SaveUsageCounter(ctx context.Context, counter billing.UsageCounter) error {
 	if s == nil {
 		return nil
@@ -923,6 +957,35 @@ func (s *SQLiteStore) AppendUsageEvent(ctx context.Context, event billing.UsageE
 	return nil
 }
 
+func (s *SQLiteStore) ListUsageEvidenceRefs(ctx context.Context, tenantID string, operationKey string, limit int) ([]string, error) {
+	if s == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT usage_event_id
+		FROM billing_usage_events
+		WHERE tenant_id = ? AND operation_key = ?
+		ORDER BY created_at ASC, usage_event_id ASC
+		LIMIT ?
+	`, tenantID, operationKey, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list billing usage evidence refs: %w", err)
+	}
+	defer rows.Close()
+	refs := make([]string, 0)
+	for rows.Next() {
+		var usageEventID string
+		if err := rows.Scan(&usageEventID); err != nil {
+			return nil, err
+		}
+		refs = append(refs, "billing_usage_event:"+usageEventID)
+	}
+	return refs, rows.Err()
+}
+
 func (s *SQLiteStore) AppendQuotaDenial(ctx context.Context, denial billing.QuotaDenial) error {
 	if s == nil {
 		return nil
@@ -1028,6 +1091,101 @@ func (s *SQLiteStore) ListQuotaDenials(ctx context.Context, tenantID string, lim
 	items := make([]billing.QuotaDenial, 0)
 	for rows.Next() {
 		item, err := scanBillingQuotaDenial(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *SQLiteStore) QuotaDenialByID(ctx context.Context, tenantID string, denialID string) (billing.QuotaDenial, bool, error) {
+	if s == nil {
+		return billing.QuotaDenial{}, false, nil
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT denial_id, tenant_id, category, quota_period_id, operation_key, reason_code,
+		       requested_amount, remaining_amount, guarded_entry_point, created_at
+		FROM billing_quota_denials
+		WHERE tenant_id = ? AND denial_id = ?
+		LIMIT 1
+	`, tenantID, denialID)
+	denial, err := scanBillingQuotaDenial(row)
+	if err == sql.ErrNoRows {
+		return billing.QuotaDenial{}, false, nil
+	}
+	if err != nil {
+		return billing.QuotaDenial{}, false, err
+	}
+	return denial, true, nil
+}
+
+func (s *SQLiteStore) SaveAbuseRestriction(ctx context.Context, record billing.AbuseRestrictionRecord) error {
+	if s == nil {
+		return nil
+	}
+	if record.RestrictionID == "" {
+		record.RestrictionID = newBillingID("abuse_restriction")
+	}
+	if record.Status == "" {
+		record.Status = billing.AbuseRestrictionStatusActive
+	}
+	if record.RecoveryAction == "" {
+		record.RecoveryAction = billing.RecoveryActionContactSupport
+	}
+	if record.StartedAt.IsZero() {
+		record.StartedAt = time.Now().UTC()
+	}
+	documentJSON, err := marshalJSON(record.Document)
+	if err != nil {
+		return fmt.Errorf("encode billing abuse restriction %s document: %w", record.RestrictionID, err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO billing_abuse_restrictions (
+			restriction_id, tenant_id, status, affected_category, recovery_action, visible_reason_code,
+			source_audit_ref, support_contact_allowed, started_at, expires_at, document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(restriction_id) DO UPDATE SET
+			tenant_id = excluded.tenant_id,
+			status = excluded.status,
+			affected_category = excluded.affected_category,
+			recovery_action = excluded.recovery_action,
+			visible_reason_code = excluded.visible_reason_code,
+			source_audit_ref = excluded.source_audit_ref,
+			support_contact_allowed = excluded.support_contact_allowed,
+			started_at = excluded.started_at,
+			expires_at = excluded.expires_at,
+			document_json = excluded.document_json
+	`, record.RestrictionID, record.TenantID, record.Status, record.AffectedCategory, record.RecoveryAction,
+		record.VisibleReasonCode, nullString(record.SourceAuditRef), boolToInt(record.SupportContactAllowed),
+		record.StartedAt.UTC().Format(time.RFC3339Nano), nullableTimeString(record.ExpiresAt), documentJSON)
+	if err != nil {
+		return fmt.Errorf("save billing abuse restriction %s: %w", record.RestrictionID, err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListAbuseRestrictions(ctx context.Context, tenantID string, at time.Time) ([]billing.AbuseRestrictionRecord, error) {
+	if s == nil {
+		return nil, nil
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT restriction_id, tenant_id, status, affected_category, recovery_action, visible_reason_code,
+		       source_audit_ref, support_contact_allowed, started_at, expires_at, document_json
+		FROM billing_abuse_restrictions
+		WHERE tenant_id = ? AND status = ? AND started_at <= ? AND (expires_at IS NULL OR expires_at > ?)
+		ORDER BY started_at DESC, restriction_id DESC
+	`, tenantID, billing.AbuseRestrictionStatusActive, at.UTC().Format(time.RFC3339Nano), at.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return nil, fmt.Errorf("list billing abuse restrictions: %w", err)
+	}
+	defer rows.Close()
+	items := make([]billing.AbuseRestrictionRecord, 0)
+	for rows.Next() {
+		item, err := scanBillingAbuseRestriction(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -1234,6 +1392,34 @@ func scanBillingManualAdjustment(scanner interface{ Scan(dest ...any) error }) (
 		return billing.ManualAdjustment{}, fmt.Errorf("parse billing manual adjustment created_at: %w", err)
 	}
 	item.CreatedAt = parsed
+	return item, nil
+}
+
+func scanBillingAbuseRestriction(scanner interface{ Scan(dest ...any) error }) (billing.AbuseRestrictionRecord, error) {
+	var item billing.AbuseRestrictionRecord
+	var sourceAuditRef sql.NullString
+	var supportContactAllowed int
+	var startedAt string
+	var expiresAt sql.NullString
+	var documentJSON sql.NullString
+	if err := scanner.Scan(&item.RestrictionID, &item.TenantID, &item.Status, &item.AffectedCategory,
+		&item.RecoveryAction, &item.VisibleReasonCode, &sourceAuditRef, &supportContactAllowed,
+		&startedAt, &expiresAt, &documentJSON); err != nil {
+		return billing.AbuseRestrictionRecord{}, err
+	}
+	parsedStarted, err := time.Parse(time.RFC3339Nano, startedAt)
+	if err != nil {
+		return billing.AbuseRestrictionRecord{}, fmt.Errorf("parse billing abuse restriction started_at: %w", err)
+	}
+	item.StartedAt = parsedStarted
+	item.SourceAuditRef = sourceAuditRef.String
+	item.SupportContactAllowed = supportContactAllowed != 0
+	if err := assignOptionalTime(&item.ExpiresAt, expiresAt); err != nil {
+		return billing.AbuseRestrictionRecord{}, fmt.Errorf("parse billing abuse restriction expires_at: %w", err)
+	}
+	if err := unmarshalNullableJSON(documentJSON, &item.Document); err != nil {
+		return billing.AbuseRestrictionRecord{}, fmt.Errorf("decode billing abuse restriction document: %w", err)
+	}
 	return item, nil
 }
 

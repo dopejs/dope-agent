@@ -17,6 +17,7 @@ type fixtureRepo struct {
 	events       []UsageEvent
 	denials      []QuotaDenial
 	adjustments  []ManualAdjustment
+	restrictions []AbuseRestrictionRecord
 }
 
 func newFixtureRepo(t *testing.T, now time.Time) *fixtureRepo {
@@ -116,6 +117,45 @@ func (r *fixtureRepo) AppendQuotaDenial(_ context.Context, denial QuotaDenial) e
 	defer r.mu.Unlock()
 	r.denials = append(r.denials, denial)
 	return nil
+}
+
+func (r *fixtureRepo) QuotaDenialByID(_ context.Context, tenantID string, denialID string) (QuotaDenial, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, item := range r.denials {
+		if item.TenantID == tenantID && item.DenialID == denialID {
+			return item, true, nil
+		}
+	}
+	return QuotaDenial{}, false, nil
+}
+
+func (r *fixtureRepo) ListAbuseRestrictions(_ context.Context, tenantID string, at time.Time) ([]AbuseRestrictionRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []AbuseRestrictionRecord
+	for _, item := range r.restrictions {
+		if item.TenantID != tenantID || item.Status != AbuseRestrictionStatusActive || item.StartedAt.After(at) {
+			continue
+		}
+		if item.ExpiresAt != nil && !item.ExpiresAt.After(at) {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func (r *fixtureRepo) ListUsageEvidenceRefs(_ context.Context, tenantID string, operationKey string, _ int) ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []string
+	for _, item := range r.events {
+		if item.TenantID == tenantID && item.OperationKey == operationKey {
+			out = append(out, "usage_event:"+item.UsageEventID)
+		}
+	}
+	return out, nil
 }
 
 func (r *fixtureRepo) ListPendingReservations(_ context.Context) ([]UsageReservation, error) {

@@ -9,6 +9,10 @@ const mockClient = {
   listTenants: vi.fn(),
   getOnboarding: vi.fn(),
   getActivation: vi.fn(),
+  getBillingQuotaDashboard: vi.fn(),
+  listBillingDenials: vi.fn(),
+  getBillingDenialDetail: vi.fn(),
+  exportBillingDenialEvidence: vi.fn(),
   activate: vi.fn(),
   runActivationTestChat: vi.fn(),
   getActivationDiagnostics: vi.fn(),
@@ -212,6 +216,89 @@ function activationFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function billingQuotaDashboardFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    tenantId: "ten_personal",
+    plan: {
+      planKey: "finite",
+      enforcementMode: "enforced",
+      status: "active",
+      effectiveAt: "2026-05-07T10:00:00Z",
+      basePlanLabel: "Finite",
+      checkoutAvailable: false
+    },
+    sections: [{
+      sectionKey: "launches",
+      label: "Launches",
+      items: [{
+        category: "run_launches",
+        unit: "count",
+        status: "near_limit",
+        currentPeriod: {
+          periodStart: "2026-05-01T00:00:00Z",
+          periodEnd: "2026-06-01T00:00:00Z",
+          periodAnchor: "UTC",
+          consumedAmount: 8,
+          reservedAmount: 0,
+          adjustedAmount: 0,
+          carryoverApplied: 0,
+          remainingAmount: 2,
+          overLimit: false
+        },
+        previousPeriod: {
+          periodStart: "2026-04-01T00:00:00Z",
+          periodEnd: "2026-05-01T00:00:00Z",
+          periodAnchor: "UTC",
+          consumedAmount: 5,
+          reservedAmount: 0,
+          adjustedAmount: 0,
+          carryoverApplied: 0,
+          remainingAmount: 5,
+          overLimit: false
+        },
+        limit: 10,
+        remainingAmount: 2,
+        nearLimit: true,
+        nearLimitReason: "percent_threshold",
+        typicalOperationAmount: 1,
+        override: {
+          baseLimit: 10,
+          effectiveLimit: 8,
+          reason: "support override",
+          effectiveAt: "2026-05-07T09:00:00Z"
+        },
+        restriction: {
+          restrictionId: "restriction_1",
+          status: "active",
+          affectedCategory: "run_launches",
+          recoveryAction: "contact_support",
+          visibleReasonCode: "abuse_restriction:temporary",
+          supportContactAllowed: true
+        },
+        recoveryActions: ["wait", "reduce_scope"]
+      }]
+    }],
+    generatedAt: "2026-05-07T10:00:00Z",
+    ...overrides
+  };
+}
+
+function billingDenialFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    denialId: "denial_1",
+    tenantId: "ten_personal",
+    category: "run_launches",
+    quotaPeriodId: "period_1",
+    operationKey: "tenant:ten_personal:run:client_1",
+    reasonCode: "quota_denied:run_launches_exhausted",
+    requestedAmount: 1,
+    remainingAmount: 0,
+    guardedEntryPoint: "POST /v1/runs",
+    createdAt: "2026-05-07T10:00:00Z",
+    ...overrides
+  };
+}
+
 function setupTargetFixture(overrides: Record<string, unknown> = {}) {
   return {
     targetId: "provider.openai_compatible",
@@ -375,6 +462,10 @@ describe("App", () => {
     mockClient.listTenants.mockReset().mockResolvedValue({ items: tenants });
     mockClient.getOnboarding.mockReset();
     mockClient.getActivation.mockReset().mockResolvedValue(activationFixture());
+    mockClient.getBillingQuotaDashboard.mockReset().mockResolvedValue(billingQuotaDashboardFixture());
+    mockClient.listBillingDenials.mockReset().mockResolvedValue({ items: [] });
+    mockClient.getBillingDenialDetail.mockReset().mockResolvedValue({ ...billingDenialFixture(), operationRef: "run:client_1", classification: "quota_exhaustion", recoveryActions: ["wait"] });
+    mockClient.exportBillingDenialEvidence.mockReset().mockResolvedValue({ schemaVersion: "2026-05-07", exportId: "evidence_denial_1", tenantId: "ten_personal", generatedAt: "2026-05-07T10:00:01Z", generatedByPrincipalId: "prn_support", denial: {}, usageSnapshot: [], effectiveLimitState: {}, auditRefs: [], redactions: [] });
     mockClient.activate.mockReset().mockResolvedValue(activationFixture({ status: "in_progress" }));
     mockClient.runActivationTestChat.mockReset().mockResolvedValue({
       ...activationFixture({ status: "first_action_completed", currentStepId: "completed" }),
@@ -509,6 +600,60 @@ describe("App", () => {
       expect(screen.getByText(/Created test run run_1/i)).not.toBeNull();
       expect(screen.getAllByText("completed").length).toBeGreaterThan(0);
     });
+  });
+
+  it("renders quota dashboard, denial detail, and support evidence export states", async () => {
+    const billingTenant = tenantFixture({
+      callerPermissions: ["tenant.manage", "runs.execute", "billing.view", "billing.evidence_export"]
+    });
+    mockClient.getMe.mockResolvedValue(authMeFixture([billingTenant]));
+    mockClient.listTenants.mockResolvedValue({ items: [billingTenant] });
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-07T10:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-07T10:00:00Z" });
+    mockClient.getBillingQuotaDashboard.mockResolvedValue(billingQuotaDashboardFixture());
+    mockClient.listBillingDenials.mockResolvedValue({ items: [billingDenialFixture()] });
+    mockClient.getBillingDenialDetail.mockResolvedValue({
+      ...billingDenialFixture(),
+      operationRef: "run:client_1",
+      classification: "quota_exhaustion",
+      recoveryActions: ["wait", "reduce_scope"]
+    });
+    mockClient.exportBillingDenialEvidence.mockResolvedValue({
+      schemaVersion: "2026-05-07",
+      exportId: "evidence_denial_1",
+      tenantId: "ten_personal",
+      generatedAt: "2026-05-07T10:01:00Z",
+      generatedByPrincipalId: "prn_support",
+      denial: {},
+      usageSnapshot: [],
+      effectiveLimitState: {},
+      auditRefs: ["audit_1"],
+      redactions: [{ path: "$.secret", reason: "secret", replacement: "[REDACTED]" }]
+    });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    expect(await screen.findByRole("heading", { name: "Quota Dashboard" })).not.toBeNull();
+    expect(screen.getAllByText("Run Launches").length).toBeGreaterThan(0);
+    expect(screen.getByText("Previous: 5 used, 5 remaining")).not.toBeNull();
+    expect(screen.getByText("Override: 10 to 8, support override")).not.toBeNull();
+    expect(screen.getByText("Restriction: abuse_restriction:temporary")).not.toBeNull();
+    expect(screen.getByText("Actions: wait, reduce_scope")).not.toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Detail" }));
+    await waitFor(() => {
+      expect(mockClient.getBillingDenialDetail).toHaveBeenCalledWith("denial_1", { tenantId: "ten_personal" });
+    });
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await waitFor(() => {
+      expect(mockClient.exportBillingDenialEvidence).toHaveBeenCalledWith("denial_1", { tenantId: "ten_personal" });
+    });
+    expect(await screen.findByText("Exported redacted billing evidence evidence_denial_1.")).not.toBeNull();
   });
 
   it("renders setup proof targets, submits secrets without rendering raw values, and drives OAuth fixtures", async () => {

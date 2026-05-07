@@ -51,6 +51,64 @@ func r38BillingRequest(method, target string, tenantContext identity.TenantConte
 	return req.WithContext(withTenantContext(req.Context(), tenantContext))
 }
 
+func r47BillingSeedTenant(t *testing.T, ctx context.Context, sqliteStore *store.SQLiteStore, tenantID string, now time.Time) {
+	t.Helper()
+	if err := sqliteStore.SavePlan(ctx, billing.TenantPlan{
+		PlanID:          "plan_" + tenantID,
+		TenantID:        tenantID,
+		PlanKey:         "finite",
+		Status:          billing.PlanStatusActive,
+		EnforcementMode: billing.EnforcementModeEnforced,
+		EffectiveAt:     now.Add(-time.Hour),
+	}); err != nil {
+		t.Fatalf("SavePlan(%s) returned error: %v", tenantID, err)
+	}
+}
+
+func r47BillingSeedDenial(t *testing.T, ctx context.Context, sqliteStore *store.SQLiteStore, tenantID string, category billing.Category, denialID string, reasonCode string, now time.Time) billing.QuotaDenial {
+	t.Helper()
+	definition, ok := billing.DefinitionFor(category)
+	if !ok {
+		t.Fatalf("missing definition for %s", category)
+	}
+	period, err := sqliteStore.OpenPeriod(ctx, tenantID, definition, now)
+	if err != nil {
+		t.Fatalf("OpenPeriod(%s, %s) returned error: %v", tenantID, category, err)
+	}
+	denial := billing.QuotaDenial{
+		DenialID:          denialID,
+		TenantID:          tenantID,
+		Category:          category,
+		QuotaPeriodID:     period.QuotaPeriodID,
+		OperationKey:      "tenant:" + tenantID + ":" + string(category) + ":client_1",
+		ReasonCode:        reasonCode,
+		RequestedAmount:   1,
+		RemainingAmount:   0,
+		GuardedEntryPoint: definition.ReservationRule,
+		CreatedAt:         now,
+	}
+	if denial.ReasonCode == "" {
+		denial.ReasonCode = definition.DenialReasonCode
+	}
+	if err := sqliteStore.AppendQuotaDenial(ctx, denial); err != nil {
+		t.Fatalf("AppendQuotaDenial(%s) returned error: %v", denialID, err)
+	}
+	if err := sqliteStore.AppendUsageEvent(ctx, billing.UsageEvent{
+		UsageEventID:  "usage_event_" + denialID,
+		TenantID:      tenantID,
+		Category:      category,
+		QuotaPeriodID: period.QuotaPeriodID,
+		OperationKey:  denial.OperationKey,
+		EventKind:     billing.UsageEventDenial,
+		ReasonCode:    denial.ReasonCode,
+		Outcome:       "denied",
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("AppendUsageEvent(%s) returned error: %v", denialID, err)
+	}
+	return denial
+}
+
 func TestHostedBillingInspectionIsTenantScoped(t *testing.T) {
 	t.Parallel()
 
@@ -229,6 +287,279 @@ func TestHostedBillingInspectionListsOnlyCurrentTenantEvidence(t *testing.T) {
 	}
 	if !bytes.Contains(denialRec.Body.Bytes(), []byte(`denial_ten_r38_evidence_a`)) || bytes.Contains(denialRec.Body.Bytes(), []byte(`denial_ten_r38_evidence_b`)) {
 		t.Fatalf("expected tenant A-only denial list, got %s", denialRec.Body.String())
+	}
+}
+
+func TestHostedBillingPublicQuotaUXRoutesAreTenantScopedAndPermissionGated(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+	if err := sqliteStore.EnsureBillingCatalog(ctx); err != nil {
+		t.Fatalf("EnsureBillingCatalog returned error: %v", err)
+	}
+	now := time.Now().UTC().Add(-time.Minute)
+	for _, tenantID := range []string{"ten_r47_a", "ten_r47_b"} {
+		if err := sqliteStore.SavePlan(ctx, billing.TenantPlan{PlanID: "plan_" + tenantID, TenantID: tenantID, PlanKey: "finite", Status: billing.PlanStatusActive, EnforcementMode: billing.EnforcementModeEnforced, EffectiveAt: now}); err != nil {
+			t.Fatalf("SavePlan(%s) returned error: %v", tenantID, err)
+		}
+		definition, _ := billing.DefinitionFor(billing.CategoryRunLaunches)
+		period, err := sqliteStore.OpenPeriod(ctx, tenantID, definition, now)
+		if err != nil {
+			t.Fatalf("OpenPeriod(%s) returned error: %v", tenantID, err)
+		}
+		if err := sqliteStore.AppendQuotaDenial(ctx, billing.QuotaDenial{
+			DenialID:          "denial_" + tenantID,
+			TenantID:          tenantID,
+			Category:          billing.CategoryRunLaunches,
+			QuotaPeriodID:     period.QuotaPeriodID,
+			OperationKey:      "tenant:" + tenantID + ":run:client_1",
+			ReasonCode:        "quota_denied:run_launches_exhausted",
+			RequestedAmount:   1,
+			RemainingAmount:   0,
+			GuardedEntryPoint: "POST /v1/runs",
+			CreatedAt:         now,
+		}); err != nil {
+			t.Fatalf("AppendQuotaDenial(%s) returned error: %v", tenantID, err)
+		}
+	}
+	manager := billing.NewManager(sqliteStore)
+
+	dashboardRec := httptest.NewRecorder()
+	handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, manager, dashboardRec, r38BillingRequest(http.MethodGet, "/v1/billing/quota-dashboard", r38BillingOwnerContext("ten_r47_a"), ""))
+	if dashboardRec.Code != http.StatusOK {
+		t.Fatalf("expected dashboard status 200, got %d: %s", dashboardRec.Code, dashboardRec.Body.String())
+	}
+	var dashboard billing.TenantQuotaDashboard
+	if err := json.Unmarshal(dashboardRec.Body.Bytes(), &dashboard); err != nil {
+		t.Fatalf("decode dashboard: %v", err)
+	}
+	if dashboard.TenantID != "ten_r47_a" || len(dashboard.Sections) == 0 {
+		t.Fatalf("unexpected dashboard response: %+v", dashboard)
+	}
+
+	detailRec := httptest.NewRecorder()
+	handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, manager, detailRec, r38BillingRequest(http.MethodGet, "/v1/billing/denials/denial_ten_r47_a", r38BillingOwnerContext("ten_r47_a"), ""))
+	if detailRec.Code != http.StatusOK {
+		t.Fatalf("expected denial detail status 200, got %d: %s", detailRec.Code, detailRec.Body.String())
+	}
+	if bytes.Contains(detailRec.Body.Bytes(), []byte("ten_r47_b")) {
+		t.Fatalf("detail leaked other tenant data: %s", detailRec.Body.String())
+	}
+
+	crossTenantRec := httptest.NewRecorder()
+	handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, manager, crossTenantRec, r38BillingRequest(http.MethodGet, "/v1/billing/denials/denial_ten_r47_b", r38BillingOwnerContext("ten_r47_a"), ""))
+	if crossTenantRec.Code != http.StatusNotFound {
+		t.Fatalf("expected cross-tenant denial lookup to hide record, got %d: %s", crossTenantRec.Code, crossTenantRec.Body.String())
+	}
+
+	viewOnlyRec := httptest.NewRecorder()
+	handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, manager, viewOnlyRec, r38BillingRequest(http.MethodPost, "/v1/billing/denials/denial_ten_r47_a/evidence-export", r38BillingTenantContext("ten_r47_a", identity.RoleAdmin, identity.PermissionBillingView), ""))
+	if viewOnlyRec.Code != http.StatusForbidden {
+		t.Fatalf("expected billing.view-only evidence export denial, got %d: %s", viewOnlyRec.Code, viewOnlyRec.Body.String())
+	}
+
+	exportRec := httptest.NewRecorder()
+	handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, manager, exportRec, r38BillingRequest(http.MethodPost, "/v1/billing/denials/denial_ten_r47_a/evidence-export", r38BillingTenantContext("ten_r47_a", identity.RoleOperator, identity.PermissionBillingEvidenceExport), ""))
+	if exportRec.Code != http.StatusOK {
+		t.Fatalf("expected evidence export status 200, got %d: %s", exportRec.Code, exportRec.Body.String())
+	}
+	if !bytes.Contains(exportRec.Body.Bytes(), []byte(`"redactions"`)) || bytes.Contains(exportRec.Body.Bytes(), []byte("ten_r47_b")) {
+		t.Fatalf("unexpected evidence export body: %s", exportRec.Body.String())
+	}
+}
+
+func TestHostedBillingDenialDetailCoversGuardedCategoriesAndStableClassifications(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+	if err := sqliteStore.EnsureBillingCatalog(ctx); err != nil {
+		t.Fatalf("EnsureBillingCatalog returned error: %v", err)
+	}
+	now := time.Now().UTC().Add(-time.Minute)
+	tenantID := "ten_r47_detail"
+	r47BillingSeedTenant(t, ctx, sqliteStore, tenantID, now)
+	for _, category := range billing.RequiredCategories() {
+		denial := r47BillingSeedDenial(t, ctx, sqliteStore, tenantID, category, "denial_"+string(category), "", now)
+		rec := httptest.NewRecorder()
+		handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, billing.NewManager(sqliteStore), rec, r38BillingRequest(http.MethodGet, "/v1/billing/denials/"+denial.DenialID, r38BillingOwnerContext(tenantID), ""))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected denial detail status 200 for %s, got %d: %s", category, rec.Code, rec.Body.String())
+		}
+		var detail billing.QuotaDenialDetail
+		if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+			t.Fatalf("decode denial detail for %s: %v", category, err)
+		}
+		if detail.Category != category || detail.Classification != billing.DenialClassificationQuotaExhaustion || detail.OperationRef == detail.OperationKey {
+			t.Fatalf("unexpected detail for %s: %+v", category, detail)
+		}
+	}
+	for _, item := range []struct {
+		denialID string
+		reason   string
+		want     billing.DenialClassification
+	}{
+		{denialID: "denial_unavailable", reason: billing.ReasonQuotaStateUnavailable, want: billing.DenialClassificationQuotaStateUnavailable},
+		{denialID: "denial_operator", reason: "quota_denied:operator_action_needed", want: billing.DenialClassificationOperatorActionNeeded},
+		{denialID: "denial_abuse", reason: "abuse_restriction:temporary", want: billing.DenialClassificationAbuseRestriction},
+	} {
+		denial := r47BillingSeedDenial(t, ctx, sqliteStore, tenantID, billing.CategoryRunLaunches, item.denialID, item.reason, now)
+		rec := httptest.NewRecorder()
+		handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, billing.NewManager(sqliteStore), rec, r38BillingRequest(http.MethodGet, "/v1/billing/denials/"+denial.DenialID, r38BillingOwnerContext(tenantID), ""))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected denial detail status 200 for %s, got %d: %s", item.denialID, rec.Code, rec.Body.String())
+		}
+		var detail billing.QuotaDenialDetail
+		if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+			t.Fatalf("decode denial detail %s: %v", item.denialID, err)
+		}
+		if detail.Classification != item.want {
+			t.Fatalf("classification=%s, want %s: %+v", detail.Classification, item.want, detail)
+		}
+	}
+	viewerRec := httptest.NewRecorder()
+	handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, billing.NewManager(sqliteStore), viewerRec, r38BillingRequest(http.MethodGet, "/v1/billing/denials/denial_run_launches", r38BillingViewerContext(tenantID), ""))
+	if viewerRec.Code != http.StatusForbidden {
+		t.Fatalf("expected unauthorized denial detail status 403, got %d: %s", viewerRec.Code, viewerRec.Body.String())
+	}
+}
+
+func TestHostedBillingQuotaDashboardProjectsOverridesAndExplicitRestrictions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+	if err := sqliteStore.EnsureBillingCatalog(ctx); err != nil {
+		t.Fatalf("EnsureBillingCatalog returned error: %v", err)
+	}
+	now := time.Now().UTC().Add(-time.Minute)
+	tenantID := "ten_r47_overrides"
+	r47BillingSeedTenant(t, ctx, sqliteStore, tenantID, now)
+	loweredLimit := int64(3)
+	if err := sqliteStore.SaveQuotaOverride(ctx, billing.QuotaOverride{
+		QuotaOverrideID: "override_lowered",
+		TenantID:        tenantID,
+		Category:        billing.CategoryRunLaunches,
+		Limit:           &loweredLimit,
+		Reason:          "temporary lowered limit",
+		EffectiveAt:     now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("SaveQuotaOverride returned error: %v", err)
+	}
+	if err := sqliteStore.SaveAbuseRestriction(ctx, billing.AbuseRestrictionRecord{
+		RestrictionID:         "restriction_runtime",
+		TenantID:              tenantID,
+		Status:                billing.AbuseRestrictionStatusActive,
+		AffectedCategory:      billing.CategoryRuntimeToolCalls,
+		RecoveryAction:        billing.RecoveryActionContactSupport,
+		VisibleReasonCode:     "abuse_restriction:temporary",
+		SupportContactAllowed: true,
+		StartedAt:             now.Add(-time.Minute),
+		Document:              map[string]any{"detectionSignals": "must not render"},
+	}); err != nil {
+		t.Fatalf("SaveAbuseRestriction returned error: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, billing.NewManager(sqliteStore), rec, r38BillingRequest(http.MethodGet, "/v1/billing/quota-dashboard", r38BillingOwnerContext(tenantID), ""))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected dashboard status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte("detectionSignals")) || bytes.Contains(rec.Body.Bytes(), []byte("must not render")) {
+		t.Fatalf("dashboard leaked restriction internals: %s", rec.Body.String())
+	}
+	var dashboard billing.TenantQuotaDashboard
+	if err := json.Unmarshal(rec.Body.Bytes(), &dashboard); err != nil {
+		t.Fatalf("decode dashboard: %v", err)
+	}
+	var sawOverride bool
+	var sawRestriction bool
+	for _, section := range dashboard.Sections {
+		for _, item := range section.Items {
+			if item.Category == billing.CategoryRunLaunches && item.Override != nil && item.Override.EffectiveLimit == loweredLimit {
+				sawOverride = true
+			}
+			if item.Category == billing.CategoryRuntimeToolCalls && item.Restriction != nil && item.Status == billing.QuotaStatusRestricted {
+				sawRestriction = true
+			}
+		}
+	}
+	if !sawOverride || !sawRestriction {
+		t.Fatalf("expected override and restriction in dashboard: %+v", dashboard)
+	}
+}
+
+func TestHostedBillingEvidenceExportIsPermissionedStructuredAndTenantScoped(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}()
+	if err := sqliteStore.EnsureBillingCatalog(ctx); err != nil {
+		t.Fatalf("EnsureBillingCatalog returned error: %v", err)
+	}
+	now := time.Now().UTC().Add(-time.Minute)
+	r47BillingSeedTenant(t, ctx, sqliteStore, "ten_r47_export_a", now)
+	r47BillingSeedTenant(t, ctx, sqliteStore, "ten_r47_export_b", now)
+	r47BillingSeedDenial(t, ctx, sqliteStore, "ten_r47_export_a", billing.CategoryRunLaunches, "denial_export_a", "", now)
+	r47BillingSeedDenial(t, ctx, sqliteStore, "ten_r47_export_b", billing.CategoryRunLaunches, "denial_export_b", "", now)
+	manager := billing.NewManager(sqliteStore)
+
+	forbiddenRec := httptest.NewRecorder()
+	handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, manager, forbiddenRec, r38BillingRequest(http.MethodPost, "/v1/billing/denials/denial_export_a/evidence-export", r38BillingTenantContext("ten_r47_export_a", identity.RoleAdmin, identity.PermissionBillingView), ""))
+	if forbiddenRec.Code != http.StatusForbidden {
+		t.Fatalf("expected billing.view-only export denial, got %d: %s", forbiddenRec.Code, forbiddenRec.Body.String())
+	}
+	crossTenantRec := httptest.NewRecorder()
+	handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, manager, crossTenantRec, r38BillingRequest(http.MethodPost, "/v1/billing/denials/denial_export_b/evidence-export", r38BillingTenantContext("ten_r47_export_a", identity.RoleOperator, identity.PermissionBillingEvidenceExport), ""))
+	if crossTenantRec.Code != http.StatusNotFound {
+		t.Fatalf("expected cross-tenant export to hide record, got %d: %s", crossTenantRec.Code, crossTenantRec.Body.String())
+	}
+	rec := httptest.NewRecorder()
+	handleHostedBilling(config.Config{Environment: config.EnvironmentTest}, manager, rec, r38BillingRequest(http.MethodPost, "/v1/billing/denials/denial_export_a/evidence-export", r38BillingTenantContext("ten_r47_export_a", identity.RoleOperator, identity.PermissionBillingEvidenceExport), ""))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected export status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var export billing.BillingEvidenceExport
+	if err := json.Unmarshal(rec.Body.Bytes(), &export); err != nil {
+		t.Fatalf("decode evidence export: %v", err)
+	}
+	if export.SchemaVersion == "" || export.Denial.DenialID != "denial_export_a" || len(export.UsageSnapshot) == 0 || len(export.AuditRefs) < 2 {
+		t.Fatalf("unexpected export: %+v", export)
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte("ten_r47_export_b")) {
+		t.Fatalf("export leaked other tenant data: %s", rec.Body.String())
 	}
 }
 

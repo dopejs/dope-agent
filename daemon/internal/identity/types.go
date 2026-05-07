@@ -76,6 +76,7 @@ const (
 	PermissionEvaluationRetentionManage        Permission = "evaluation.retention.manage"
 	PermissionBillingView                      Permission = "billing.view"
 	PermissionBillingManage                    Permission = "billing.manage"
+	PermissionBillingEvidenceExport            Permission = "billing.evidence_export"
 	PermissionReadOnlyInspect                  Permission = "read_only.inspect"
 )
 
@@ -109,6 +110,7 @@ var AllSensitivePermissions = []Permission{
 	PermissionEvaluationRetentionManage,
 	PermissionBillingView,
 	PermissionBillingManage,
+	PermissionBillingEvidenceExport,
 }
 
 var (

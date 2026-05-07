@@ -165,6 +165,97 @@ function activationResponseFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function billingQuotaDashboardFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    tenantId: "ten_personal",
+    plan: {
+      planKey: "finite",
+      enforcementMode: "enforced",
+      status: "active",
+      effectiveAt: "2026-05-07T10:00:00Z",
+      basePlanLabel: "finite",
+      checkoutAvailable: false
+    },
+    sections: [{
+      sectionKey: "launches",
+      label: "Launches",
+      items: [{
+        category: "run_launches",
+        unit: "count",
+        status: "near_limit",
+        currentPeriod: {
+          periodStart: "2026-05-01T00:00:00Z",
+          periodEnd: "2026-06-01T00:00:00Z",
+          periodAnchor: "UTC",
+          consumedAmount: 8,
+          reservedAmount: 0,
+          adjustedAmount: 0,
+          carryoverApplied: 0,
+          remainingAmount: 2,
+          overLimit: false
+        },
+        limit: 10,
+        remainingAmount: 2,
+        nearLimit: true,
+        nearLimitReason: "percent_threshold",
+        typicalOperationAmount: 1,
+        override: {
+          baseLimit: 10,
+          effectiveLimit: 8,
+          reason: "support override",
+          effectiveAt: "2026-05-07T09:00:00Z"
+        },
+        restriction: {
+          restrictionId: "restriction_1",
+          status: "active",
+          affectedCategory: "run_launches",
+          recoveryAction: "contact_support",
+          visibleReasonCode: "abuse_restriction:temporary",
+          supportContactAllowed: true
+        },
+        recoveryActions: ["wait", "reduce_scope"]
+      }]
+    }],
+    generatedAt: "2026-05-07T10:00:00Z",
+    ...overrides
+  };
+}
+
+function billingDenialDetailFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    denialId: "denial_1",
+    tenantId: "ten_personal",
+    operationRef: "run:client_1",
+    operationKey: "tenant:ten_personal:run:client_1",
+    guardedEntryPoint: "POST /v1/runs",
+    category: "run_launches",
+    reasonCode: "quota_denied:run_launches_exhausted",
+    classification: "quota_exhaustion",
+    requestedAmount: 1,
+    remainingAmount: 0,
+    recoveryActions: ["wait", "reduce_scope"],
+    createdAt: "2026-05-07T10:00:00Z",
+    ...overrides
+  };
+}
+
+function billingEvidenceExportFixture(overrides: Record<string, unknown> = {}) {
+  const denial = billingDenialDetailFixture();
+  return {
+    schemaVersion: "2026-05-07",
+    exportId: "evidence_denial_1",
+    tenantId: "ten_personal",
+    generatedAt: "2026-05-07T10:01:00Z",
+    generatedByPrincipalId: "prn_support",
+    denial,
+    usageSnapshot: [],
+    effectiveLimitState: {},
+    auditRefs: ["audit_1"],
+    redactions: [{ path: "$.secret", reason: "secret", replacement: "[REDACTED]" }],
+    ...overrides
+  };
+}
+
 describe("DopeClient", () => {
   it("sends a non-stream chat request", async () => {
     let url = "";
@@ -1165,6 +1256,9 @@ describe("DopeClient", () => {
       }))
       .mockResolvedValueOnce(mockJSONResponse(200, { items: [] }))
       .mockResolvedValueOnce(mockJSONResponse(200, { items: [] }))
+      .mockResolvedValueOnce(mockJSONResponse(200, billingQuotaDashboardFixture()))
+      .mockResolvedValueOnce(mockJSONResponse(200, billingDenialDetailFixture({ classification: "abuse_restriction" })))
+      .mockResolvedValueOnce(mockJSONResponse(200, billingEvidenceExportFixture()))
       .mockResolvedValueOnce(mockJSONResponse(200, {
         planId: "plan_2",
         tenantId: "ten_personal",
@@ -1213,19 +1307,29 @@ describe("DopeClient", () => {
     await client.getBillingUsage();
     await client.listBillingQuotas();
     await client.listBillingDenials();
+    const dashboard = await client.getBillingQuotaDashboard({ tenantId: "ten_support" });
+    const denial = await client.getBillingDenialDetail(" denial_1 ", { tenantId: "ten_support" });
+    await client.exportBillingDenialEvidence(" denial_1 ", { tenantId: "ten_support" });
     await client.assignBillingPlan("ten_personal", { planKey: " unlimited ", enforcementMode: "unlimited", reason: " operator request " });
     await client.createBillingQuotaOverride("ten_personal", { category: "run_launches", limit: 10, reason: " temporary increase " });
     await client.createBillingManualAdjustment("ten_personal", { category: "run_launches", quotaPeriodId: " period_1 ", amountDelta: -1, reason: " operator correction " });
     await client.resolveBillingReservation("ten_personal", " reservation_1 ", { outcome: "released", reason: " operator verified no work started ", amount: 1 });
+    expect(dashboard.sections[0]?.items[0]?.nearLimitReason).toBe("percent_threshold");
+    expect(dashboard.sections[0]?.items[0]?.override?.effectiveLimit).toBe(8);
+    expect(dashboard.sections[0]?.items[0]?.restriction?.visibleReasonCode).toBe("abuse_restriction:temporary");
+    expect(denial.classification).toBe("abuse_restriction");
 
     expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/billing/plan", expect.objectContaining({ headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" }) }));
     expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/billing/usage", expect.anything());
     expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/billing/quotas", expect.anything());
     expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/billing/denials", expect.anything());
-    expect(fetchImpl).toHaveBeenNthCalledWith(5, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/plan", expect.objectContaining({ method: "POST" }));
-    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/quota-overrides", expect.objectContaining({ method: "POST" }));
-    expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/manual-adjustments", expect.objectContaining({ method: "POST" }));
-    expect(fetchImpl).toHaveBeenNthCalledWith(8, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/reservations/reservation_1/resolve", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(5, "http://127.0.0.1:19192/v1/billing/quota-dashboard", expect.objectContaining({ headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_support" }) }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/billing/denials/denial_1", expect.objectContaining({ headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_support" }) }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/billing/denials/denial_1/evidence-export", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_support" }) }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(8, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/plan", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(9, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/quota-overrides", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(10, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/manual-adjustments", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(11, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/reservations/reservation_1/resolve", expect.objectContaining({ method: "POST" }));
   });
 
   it("calls activation routes with tenant headers and metadata-only responses", async () => {

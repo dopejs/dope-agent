@@ -1122,6 +1122,7 @@ export type TenantPermission =
   | "evaluation.manage"
   | "billing.view"
   | "billing.manage"
+  | "billing.evidence_export"
   | "read_only.inspect";
 
 export type IntegrationDiagnosticStatus = "unknown" | "healthy" | "degraded" | "blocked" | "unsupported";
@@ -1680,6 +1681,10 @@ export type SetupDiagnosticListResponse = {
 };
 
 export type BillingEnforcementMode = "enforced" | "unlimited" | "not_measurable";
+export type BillingQuotaStatus = "available" | "near_limit" | "exhausted" | "unlimited" | "not_measurable" | "restricted" | "unavailable";
+export type BillingNearLimitReason = "percent_threshold" | "below_one_typical_operation";
+export type BillingRecoveryAction = "wait" | "reduce_scope" | "request_override" | "contact_support" | "operator_resolution_required" | "retry_later";
+export type BillingDenialClassification = "quota_exhaustion" | "abuse_restriction" | "quota_state_unavailable" | "unauthorized" | "operator_action_needed";
 
 export type BillingPlanResource = {
   planId: string;
@@ -1744,6 +1749,112 @@ export type BillingUsageResponse = {
   quotas: BillingQuotaResource[];
   manualAdjustments?: BillingManualAdjustmentResource[];
   denials?: BillingDenialResource[];
+};
+
+export type BillingUsagePeriodSummary = {
+  periodStart: string;
+  periodEnd: string;
+  periodAnchor: string;
+  consumedAmount: number;
+  reservedAmount: number;
+  adjustedAmount: number;
+  carryoverApplied: number;
+  remainingAmount: number;
+  overLimit?: boolean;
+};
+
+export type BillingQuotaOverrideSummary = {
+  baseLimit: number;
+  effectiveLimit: number;
+  reason?: string;
+  effectiveAt?: string;
+  expiresAt?: string;
+};
+
+export type BillingAbuseRestrictionSummary = {
+  restrictionId?: string;
+  status: "active" | "expired" | string;
+  affectedCategory?: string;
+  recoveryAction?: BillingRecoveryAction | string;
+  visibleReasonCode?: string;
+  sourceAuditRef?: string;
+  supportContactAllowed?: boolean;
+  startedAt?: string;
+  expiresAt?: string;
+};
+
+export type BillingQuotaStatusItem = {
+  category: string;
+  unit: "count" | "bytes" | "attempts" | string;
+  status: BillingQuotaStatus;
+  currentPeriod: BillingUsagePeriodSummary;
+  previousPeriod?: BillingUsagePeriodSummary;
+  limit: number;
+  remainingAmount: number;
+  nearLimit: boolean;
+  nearLimitReason?: BillingNearLimitReason;
+  typicalOperationAmount: number;
+  baseLimit?: number;
+  effectiveLimit?: number;
+  override?: BillingQuotaOverrideSummary;
+  restriction?: BillingAbuseRestrictionSummary;
+  recoveryActions: BillingRecoveryAction[];
+};
+
+export type BillingQuotaSection = {
+  sectionKey: string;
+  label: string;
+  items: BillingQuotaStatusItem[];
+};
+
+export type BillingQuotaDashboardResponse = {
+  tenantId: string;
+  plan: {
+    planKey: string;
+    enforcementMode: BillingEnforcementMode;
+    status?: string;
+    effectiveAt: string;
+    basePlanLabel?: string;
+    checkoutAvailable: boolean;
+  };
+  sections: BillingQuotaSection[];
+  generatedAt: string;
+  permission?: { allowed: boolean; reasonCode?: string };
+};
+
+export type BillingDenialDetailResponse = {
+  denialId: string;
+  tenantId: string;
+  operationRef: string;
+  operationKey: string;
+  guardedEntryPoint: string;
+  category?: string;
+  reasonCode: string;
+  classification: BillingDenialClassification;
+  requestedAmount: number;
+  remainingAmount: number;
+  recoveryActions: BillingRecoveryAction[];
+  restriction?: BillingAbuseRestrictionSummary;
+  createdAt: string;
+};
+
+export type BillingEvidenceRedaction = {
+  path: string;
+  reason: string;
+  replacement: string;
+};
+
+export type BillingEvidenceExportResponse = {
+  schemaVersion: string;
+  exportId: string;
+  tenantId: string;
+  generatedAt: string;
+  generatedByPrincipalId: string;
+  denial: BillingDenialDetailResponse;
+  usageSnapshot: BillingQuotaStatusItem[];
+  effectiveLimitState: Record<string, unknown>;
+  auditRefs: string[];
+  redactions: BillingEvidenceRedaction[];
 };
 
 export type BillingPlanAssignmentInput = {
@@ -2018,6 +2129,21 @@ export class DopeClient {
 
   async listBillingDenials(tenantOptions?: TenantRequestOptions): Promise<{ items: BillingDenialResource[] }> {
     return this.requestJSON<{ items: BillingDenialResource[] }>("/v1/billing/denials", { tenant: tenantOptions });
+  }
+
+  async getBillingQuotaDashboard(tenantOptions?: TenantRequestOptions): Promise<BillingQuotaDashboardResponse> {
+    return this.requestJSON<BillingQuotaDashboardResponse>("/v1/billing/quota-dashboard", { tenant: tenantOptions });
+  }
+
+  async getBillingDenialDetail(denialId: string, tenantOptions?: TenantRequestOptions): Promise<BillingDenialDetailResponse> {
+    return this.requestJSON<BillingDenialDetailResponse>(`/v1/billing/denials/${encodePathComponent(denialId.trim())}`, { tenant: tenantOptions });
+  }
+
+  async exportBillingDenialEvidence(denialId: string, tenantOptions?: TenantRequestOptions): Promise<BillingEvidenceExportResponse> {
+    return this.requestJSON<BillingEvidenceExportResponse>(`/v1/billing/denials/${encodePathComponent(denialId.trim())}/evidence-export`, {
+      method: "POST",
+      tenant: tenantOptions
+    });
   }
 
   async getActivation(tenantOptions?: TenantRequestOptions): Promise<ActivationResponse> {

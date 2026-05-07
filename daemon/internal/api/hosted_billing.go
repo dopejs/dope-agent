@@ -41,6 +41,31 @@ func handleHostedBilling(cfg config.Config, manager *billing.Manager, w http.Res
 		writeError(w, http.StatusInternalServerError, "billing manager is not configured")
 		return
 	}
+	hosted := cfg.Environment == config.EnvironmentProd
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/billing/"), "/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 3 && parts[0] == "denials" && parts[1] != "" && parts[2] == "evidence-export" {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		tenantContext, err := RequirePermission(r.Context(), identity.PermissionBillingEvidenceExport)
+		if err != nil {
+			writeTenantDenial(w, http.StatusForbidden)
+			return
+		}
+		export, found, err := manager.EvidenceExport(r.Context(), tenantContext.TenantID, parts[1], tenantContext.PrincipalID, hosted)
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		if !found {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, export)
+		return
+	}
 	tenantContext, err := RequirePermission(r.Context(), identity.PermissionBillingView)
 	if err != nil {
 		writeTenantDenial(w, http.StatusForbidden)
@@ -50,8 +75,7 @@ func handleHostedBilling(cfg config.Config, manager *billing.Manager, w http.Res
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	hosted := cfg.Environment == config.EnvironmentProd
-	switch strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/billing/"), "/") {
+	switch path {
 	case "plan":
 		plan, err := manager.ActivePlan(r.Context(), tenantContext.TenantID, hosted)
 		if err != nil {
@@ -73,6 +97,13 @@ func handleHostedBilling(cfg config.Config, manager *billing.Manager, w http.Res
 			return
 		}
 		writeJSON(w, http.StatusOK, ListResponse[billing.EffectiveQuota]{Items: summary.Quotas})
+	case "quota-dashboard":
+		dashboard, err := manager.QuotaDashboard(r.Context(), tenantContext.TenantID, hosted)
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, dashboard)
 	case "denials":
 		summary, err := manager.UsageSummary(r.Context(), tenantContext.TenantID, hosted)
 		if err != nil {
@@ -81,6 +112,19 @@ func handleHostedBilling(cfg config.Config, manager *billing.Manager, w http.Res
 		}
 		writeJSON(w, http.StatusOK, ListResponse[billing.QuotaDenial]{Items: summary.Denials})
 	default:
+		if len(parts) == 2 && parts[0] == "denials" && parts[1] != "" {
+			detail, found, err := manager.DenialDetail(r.Context(), tenantContext.TenantID, parts[1])
+			if err != nil {
+				writeError(w, http.StatusServiceUnavailable, err.Error())
+				return
+			}
+			if !found {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, http.StatusOK, detail)
+			return
+		}
 		http.NotFound(w, r)
 	}
 }
