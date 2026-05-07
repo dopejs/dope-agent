@@ -374,6 +374,136 @@ describe("DopeClient", () => {
     expect(detail.runId).toBe("run_1");
   });
 
+  it("calls Discord hosted setup and config routes", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        environment: "test",
+        bindAddr: "127.0.0.1:19192",
+        dataDir: "/tmp/dope",
+        configFilePath: "/tmp/dope/config.json",
+        logLevel: "info",
+        version: "dev",
+        llm: {},
+        connectors: {
+          discord: {
+            enabled: true,
+            configured: true,
+            connectorId: "discord-main",
+            displayName: "Discord Main",
+            deliveryMode: "gateway",
+            requireMention: true,
+            respondInDM: true,
+            allowedGuildIds: ["guild_redacted"],
+            allowedChannelIds: ["channel_redacted"],
+            botTokenConfigured: true,
+            hostedReadiness: {
+              connectorId: "discord-main",
+              displayName: "Discord Main",
+              deliveryMode: "gateway",
+              readinessState: "degraded_needs_repair",
+              hostedReady: false,
+              localCompatible: true,
+              reasonCode: "destination_validation_required",
+              requireMention: true,
+              respondInDM: true,
+              allowedGuildIds: ["guild_redacted"],
+              allowedChannelIds: ["channel_redacted"],
+              botTokenConfigured: true,
+              redactionStatus: "redacted"
+            }
+          }
+        },
+        mcp: {},
+        sandbox: {},
+        redactedFields: ["connectors.discord.botToken"]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_discord",
+        connectorId: "discord-main",
+        connectorKind: "discord",
+        displayName: "Discord Main",
+        status: "degraded",
+        readinessState: "degraded_needs_repair",
+        hostedReady: false,
+        credentialState: "valid",
+        respondInDM: true,
+        requireMention: true,
+        deliveryMode: "gateway",
+        reasonCode: "destination_validation_failed",
+        redactionStatus: "redacted",
+        createdAt: "2026-05-07T10:00:00Z",
+        updatedAt: "2026-05-07T10:01:00Z",
+        validatedAt: "2026-05-07T10:01:00Z",
+        retentionExpiresAt: "2026-08-05T10:01:00Z",
+        destinations: [{
+          tenantId: "ten_discord",
+          connectorId: "discord-main",
+          destinationId: "channel_redacted",
+          destinationType: "channel",
+          selected: true,
+          validationState: "missing_permission",
+          reasonCode: "permission_missing",
+          validatedAt: "2026-05-07T10:01:00Z",
+          redactionStatus: "redacted",
+          safeEvidence: { permission: "send_messages" }
+        }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        smokeEvidenceId: "discord_smoke_1",
+        tenantId: "ten_discord",
+        connectorId: "discord-main",
+        status: "skipped",
+        credentialMode: "unavailable",
+        owner: "operator",
+        reason: "safe_credentials_unavailable",
+        remainingRisk: "No live Discord hosted smoke was run in this release validation.",
+        validatedAt: "2026-05-07T10:02:00Z",
+        retentionExpiresAt: "2026-08-05T10:02:00Z",
+        redactionStatus: "redacted",
+        safeEvidence: { policy: "structured_skip" }
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_discord",
+        connectorId: "discord-main",
+        items: [{
+          conformanceResultId: "conf_1",
+          tenantId: "ten_discord",
+          connectorKind: "discord",
+          connectorId: "discord-main",
+          scenarioId: "discord_hosted_setup_discord-main",
+          area: "tenant_ownership",
+          result: "pass",
+          reasonCode: "matched",
+          redactionStatus: "redacted",
+          evidenceTimestamp: "2026-05-07T10:02:00Z",
+          retentionExpiresAt: "2026-08-05T10:02:00Z"
+        }]
+      }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      accessToken: "token",
+      defaultTenantId: "ten_discord",
+      fetchImpl
+    });
+
+    const config = await client.getConfig();
+    const setup = await client.getDiscordSetup(" discord-main ");
+    const smoke = await client.getDiscordSmokeEvidence("discord-main");
+    const conformance = await client.getDiscordConformanceEvidence("discord-main");
+
+    expect(config.connectors.discord.hostedReadiness.hostedReady).toBe(false);
+    expect(config.connectors.discord.hostedReadiness.reasonCode).toBe("destination_validation_required");
+    expect(setup.destinations?.[0]?.reasonCode).toBe("permission_missing");
+    expect(smoke.reason).toBe("safe_credentials_unavailable");
+    expect(conformance.items[0]?.area).toBe("tenant_ownership");
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/config", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/connectors/discord-main/discord-setup", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/connectors/discord-main/discord-smoke", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/live-validations/discord-conformance?connectorId=discord-main", expect.anything());
+  });
+
   it("calls integration diagnostic inspection routes", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

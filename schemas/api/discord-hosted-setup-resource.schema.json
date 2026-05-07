@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/discord-hosted-setup-resource.schema.json",
+  "title": "DiscordHostedSetupResource",
+  "type": "object",
+  "required": [
+    "connectorId",
+    "connectorKind",
+    "displayName",
+    "status",
+    "readinessState",
+    "hostedReady",
+    "credentialState",
+    "respondInDM",
+    "requireMention",
+    "deliveryMode",
+    "redactionStatus",
+    "createdAt",
+    "updatedAt",
+    "retentionExpiresAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "connectorKind": { "const": "discord" },
+    "displayName": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["configured", "healthy", "degraded", "failed", "permission_blocked", "rate_limited", "unsupported_capability"]
+    },
+    "readinessState": {
+      "type": "string",
+      "enum": ["hosted_ready", "degraded_needs_repair", "failed", "disabled"]
+    },
+    "hostedReady": { "type": "boolean" },
+    "credentialState": {
+      "type": "string",
+      "enum": ["missing", "submitted", "valid", "invalid", "revoked", "redaction_suppressed"]
+    },
+    "respondInDM": { "type": "boolean" },
+    "requireMention": { "type": "boolean" },
+    "deliveryMode": { "const": "gateway" },
+    "reasonCode": { "type": "string" },
+    "destinations": {
+      "type": "array",
+      "items": { "$ref": "./discord-destination-validation-resource.schema.json" }
+    },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "validatedAt": { "type": "string", "format": "date-time" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" }
+  }
+}

@@ -1133,6 +1133,13 @@ export type IntegrationDiagnosticRedactionStatus = "redacted" | "suppressed" | "
 
 export type IntegrationDiagnosticReasonCode =
   | "healthy"
+  | "auth_missing"
+  | "permission_missing"
+  | "blocked_route"
+  | "duplicate_inbound"
+  | "reply_failed"
+  | "unsupported_capability"
+  | "unknown_connector_failure"
   | "app_authorization_missing"
   | "bot_authorization_missing"
   | "user_authorization_missing"
@@ -1155,6 +1162,128 @@ export type IntegrationDiagnosticReasonCode =
   | "unsupported_diagnostic"
   | "redaction_failed_closed"
   | "unknown_provider_error";
+
+export type DiscordReadinessState = "hosted_ready" | "degraded_needs_repair" | "failed" | "disabled";
+export type DiscordCredentialState = "missing" | "submitted" | "valid" | "invalid" | "revoked" | "redaction_suppressed";
+export type DiscordRedactionStatus = "redacted" | "suppressed" | "redaction_failed";
+
+export type DiscordDestinationValidationResource = {
+  tenantId?: string;
+  connectorId: string;
+  destinationId: string;
+  destinationType: "guild" | "channel" | "direct_message";
+  providerLabel?: string;
+  selected: boolean;
+  validationState: "valid" | "invalid" | "missing_permission" | "message_content_missing" | "bot_not_member" | "not_found" | "dm_restricted" | "stale";
+  reasonCode?: string;
+  validatedAt: string;
+  redactionStatus: DiscordRedactionStatus;
+  safeEvidence?: Record<string, string>;
+};
+
+export type DiscordHostedSetupResource = {
+  tenantId?: string;
+  connectorId: string;
+  connectorKind: "discord";
+  displayName: string;
+  status: "configured" | "healthy" | "degraded" | "failed" | "permission_blocked" | "rate_limited" | "unsupported_capability";
+  readinessState: DiscordReadinessState;
+  hostedReady: boolean;
+  credentialState: DiscordCredentialState;
+  respondInDM: boolean;
+  requireMention: boolean;
+  deliveryMode: "gateway";
+  reasonCode?: string;
+  destinations?: DiscordDestinationValidationResource[];
+  redactionStatus: DiscordRedactionStatus;
+  createdAt: string;
+  updatedAt: string;
+  validatedAt?: string;
+  retentionExpiresAt: string;
+};
+
+export type DiscordSmokeEvidenceResource = {
+  smokeEvidenceId: string;
+  tenantId?: string;
+  connectorId: string;
+  status: "passed" | "failed" | "skipped";
+  credentialMode: "safe_live" | "fake" | "unavailable";
+  owner: string;
+  reason: string;
+  remainingRisk?: string;
+  validatedAt: string;
+  retentionExpiresAt: string;
+  redactionStatus: DiscordRedactionStatus;
+  safeEvidence?: Record<string, string>;
+};
+
+export type ConnectorConformanceResultResource = {
+  conformanceResultId: string;
+  tenantId?: string;
+  connectorKind: string;
+  connectorId?: string;
+  scenarioId: string;
+  area: string;
+  result: "pass" | "fail" | "supported" | "limited" | "unsupported";
+  reasonCode?: string;
+  redactionStatus: DiscordRedactionStatus;
+  evidenceTimestamp: string;
+  retentionExpiresAt: string;
+};
+
+export type DiscordConformanceEvidenceResponse = {
+  tenantId: string;
+  connectorId: string;
+  items: ConnectorConformanceResultResource[];
+};
+
+export type DiscordHostedReadinessProjection = {
+  tenantId?: string;
+  connectorId: string;
+  displayName: string;
+  deliveryMode: "gateway";
+  readinessState: DiscordReadinessState;
+  hostedReady: boolean;
+  localCompatible: boolean;
+  reasonCode?: string;
+  requireMention: boolean;
+  respondInDM: boolean;
+  allowedGuildIds?: string[];
+  allowedChannelIds?: string[];
+  botTokenConfigured: boolean;
+  redactionStatus: DiscordRedactionStatus;
+};
+
+export type ConfigDiscordConnectorResponse = {
+  enabled: boolean;
+  configured: boolean;
+  connectorId: string;
+  displayName: string;
+  deliveryMode: "gateway";
+  requireMention: boolean;
+  respondInDM: boolean;
+  allowedGuildIds: string[];
+  allowedChannelIds: string[];
+  botTokenConfigured: boolean;
+  botTokenEnv?: string;
+  hostedReadiness: DiscordHostedReadinessProjection;
+};
+
+export type ConfigResponse = {
+  environment: EnvironmentScope;
+  bindAddr: string;
+  dataDir: string;
+  configFilePath: string;
+  logLevel: "debug" | "info" | "warn" | "error";
+  version: string;
+  llm: Record<string, unknown>;
+  connectors: {
+    discord: ConfigDiscordConnectorResponse;
+  };
+  mcp: Record<string, unknown>;
+  sandbox: Record<string, unknown>;
+  redactedFields: string[];
+};
 
 export type IntegrationDiagnosticResultResource = {
   diagnosticResultId: string;
@@ -2066,6 +2195,25 @@ export class DopeClient {
     }
 
     return terminal;
+  }
+
+  async getConfig(tenantOptions?: TenantRequestOptions): Promise<ConfigResponse> {
+    return this.requestJSON<ConfigResponse>("/v1/config", { tenant: tenantOptions });
+  }
+
+  async getDiscordSetup(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<DiscordHostedSetupResource> {
+    return this.requestJSON<DiscordHostedSetupResource>(`/v1/connectors/${encodePathComponent(connectorId.trim())}/discord-setup`, { tenant: tenantOptions });
+  }
+
+  async getDiscordSmokeEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<DiscordSmokeEvidenceResource> {
+    return this.requestJSON<DiscordSmokeEvidenceResource>(`/v1/connectors/${encodePathComponent(connectorId.trim())}/discord-smoke`, { tenant: tenantOptions });
+  }
+
+  async getDiscordConformanceEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<DiscordConformanceEvidenceResponse> {
+    return this.requestJSON<DiscordConformanceEvidenceResponse>("/v1/live-validations/discord-conformance", {
+      query: { connectorId: connectorId.trim() },
+      tenant: tenantOptions
+    });
   }
 
   async getMe(tenantOptions?: TenantRequestOptions): Promise<AuthMeResponse> {

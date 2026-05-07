@@ -73,6 +73,66 @@ type DiscordConnectorConfig struct {
 	AllowedChannelIDs []string
 }
 
+type DiscordHostedReadinessProjection struct {
+	TenantID           string   `json:"tenantId,omitempty"`
+	ConnectorID        string   `json:"connectorId"`
+	DisplayName        string   `json:"displayName"`
+	DeliveryMode       string   `json:"deliveryMode"`
+	ReadinessState     string   `json:"readinessState"`
+	HostedReady        bool     `json:"hostedReady"`
+	LocalCompatible    bool     `json:"localCompatible"`
+	ReasonCode         string   `json:"reasonCode,omitempty"`
+	RequireMention     bool     `json:"requireMention"`
+	RespondInDM        bool     `json:"respondInDM"`
+	AllowedGuildIDs    []string `json:"allowedGuildIds,omitempty"`
+	AllowedChannelIDs  []string `json:"allowedChannelIds,omitempty"`
+	BotTokenConfigured bool     `json:"botTokenConfigured"`
+	BotToken           string   `json:"-"`
+	RedactionStatus    string   `json:"redactionStatus"`
+}
+
+func (cfg DiscordConnectorConfig) ProjectHostedReadiness(tenantID string) DiscordHostedReadinessProjection {
+	mode := strings.TrimSpace(cfg.DeliveryMode)
+	if mode == "" {
+		mode = "gateway"
+	}
+	projection := DiscordHostedReadinessProjection{
+		TenantID:           strings.TrimSpace(tenantID),
+		ConnectorID:        strings.TrimSpace(cfg.ConnectorID),
+		DisplayName:        strings.TrimSpace(cfg.DisplayName),
+		DeliveryMode:       mode,
+		ReadinessState:     "degraded_needs_repair",
+		HostedReady:        false,
+		LocalCompatible:    cfg.Enabled && strings.TrimSpace(cfg.BotToken) != "",
+		RequireMention:     cfg.RequireMention,
+		RespondInDM:        cfg.RespondInDM,
+		AllowedGuildIDs:    append([]string(nil), cfg.AllowedGuildIDs...),
+		AllowedChannelIDs:  append([]string(nil), cfg.AllowedChannelIDs...),
+		BotTokenConfigured: strings.TrimSpace(cfg.BotToken) != "",
+		RedactionStatus:    "redacted",
+	}
+	if !cfg.Enabled {
+		projection.ReadinessState = "disabled"
+		projection.HostedReady = false
+		projection.ReasonCode = "disabled"
+		return projection
+	}
+	if strings.TrimSpace(cfg.BotToken) == "" {
+		projection.ReadinessState = "failed"
+		projection.HostedReady = false
+		projection.ReasonCode = "auth_missing"
+		return projection
+	}
+	if len(cfg.AllowedGuildIDs) == 0 && len(cfg.AllowedChannelIDs) == 0 {
+		projection.ReadinessState = "degraded_needs_repair"
+		projection.HostedReady = false
+		projection.ReasonCode = "missing_explicit_destination"
+		return projection
+	}
+	projection.ReasonCode = "destination_validation_required"
+	return projection
+}
+
 type fileConfig struct {
 	Environment string               `json:"environment"`
 	BindAddr    string               `json:"bindAddr"`

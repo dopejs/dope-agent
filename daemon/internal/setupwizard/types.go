@@ -8,6 +8,7 @@ import (
 const (
 	TargetOpenAICompatible = "provider.openai_compatible"
 	TargetFeishuLark       = "integration.feishu_lark"
+	TargetDiscordConnector = "connector.discord"
 )
 
 type TargetKind string
@@ -110,26 +111,28 @@ const (
 )
 
 const (
-	ReasonHealthy                 = "healthy"
-	ReasonCredentialMissing       = "credential_missing"
-	ReasonScopeMissing            = "scope_missing"
-	ReasonTenantApprovalPending   = "tenant_approval_pending"
-	ReasonTokenMissing            = "token_missing"
-	ReasonTokenExpired            = "token_expired"
-	ReasonTokenRevoked            = "token_revoked"
-	ReasonOAuthDenied             = "oauth_denied"
-	ReasonOAuthAbandoned          = "oauth_abandoned"
-	ReasonOAuthExpired            = "oauth_expired"
-	ReasonOAuthReplay             = "oauth_replay"
-	ReasonTenantMismatch          = "tenant_mismatch"
-	ReasonProviderUnavailable     = "provider_unavailable"
-	ReasonNetworkFailed           = "network_failed"
-	ReasonRateLimited             = "rate_limited"
-	ReasonUnsupportedTarget       = "unsupported_target"
-	ReasonRedactionFailedClosed   = "redaction_failed_closed"
-	ReasonUserCancelled           = "user_cancelled"
-	ReasonDisabledByUser          = "disabled_by_user"
-	ReasonSetupPersistenceFailure = "setup_failed:persistence"
+	ReasonHealthy                   = "healthy"
+	ReasonCredentialMissing         = "credential_missing"
+	ReasonScopeMissing              = "scope_missing"
+	ReasonTenantApprovalPending     = "tenant_approval_pending"
+	ReasonTokenMissing              = "token_missing"
+	ReasonTokenExpired              = "token_expired"
+	ReasonTokenRevoked              = "token_revoked"
+	ReasonOAuthDenied               = "oauth_denied"
+	ReasonOAuthAbandoned            = "oauth_abandoned"
+	ReasonOAuthExpired              = "oauth_expired"
+	ReasonOAuthReplay               = "oauth_replay"
+	ReasonTenantMismatch            = "tenant_mismatch"
+	ReasonProviderUnavailable       = "provider_unavailable"
+	ReasonNetworkFailed             = "network_failed"
+	ReasonRateLimited               = "rate_limited"
+	ReasonUnsupportedTarget         = "unsupported_target"
+	ReasonRedactionFailedClosed     = "redaction_failed_closed"
+	ReasonUserCancelled             = "user_cancelled"
+	ReasonDisabledByUser            = "disabled_by_user"
+	ReasonSetupPersistenceFailure   = "setup_failed:persistence"
+	ReasonDiscordDestinationMissing = "discord_destination_missing"
+	ReasonDiscordDestinationInvalid = "discord_destination_invalid"
 )
 
 var (

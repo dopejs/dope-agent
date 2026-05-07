@@ -306,6 +306,30 @@ func TestMessageLoopMarksFailureWhenReplySendFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected send failure to be returned")
 	}
+	connectorEvents := eventBus.List(events.Filter{Category: "connector"})
+	if len(connectorEvents) == 0 {
+		t.Fatal("expected connector reply failure event")
+	}
+	last := connectorEvents[len(connectorEvents)-1]
+	if last.Name != "connector.reply_failed" {
+		t.Fatalf("expected connector.reply_failed, got %s", last.Name)
+	}
+	if _, ok := last.Payload["error"]; ok {
+		t.Fatalf("reply failure event must not expose raw provider error: %+v", last.Payload)
+	}
+	if got := last.Payload["reasonCode"]; got != "reply_failed" {
+		t.Fatalf("reasonCode=%#v, want reply_failed", got)
+	}
+	if got := last.Payload["redactionStatus"]; got != "redacted" {
+		t.Fatalf("redactionStatus=%#v, want redacted", got)
+	}
+	inbound, ok, err := sqliteStore.GetConnectorMessageByExternalID(context.Background(), "discord-main", imtypes.DeliveryDirectionInbound, "discord_msg_fail_1")
+	if err != nil || !ok {
+		t.Fatalf("GetConnectorMessageByExternalID inbound ok=%v err=%v", ok, err)
+	}
+	if strings.Contains(inbound.Error, "discord send failed") {
+		t.Fatalf("persisted inbound error exposed raw provider error: %q", inbound.Error)
+	}
 }
 
 func TestMessageLoopStreamsReplyWhenProgressionIsSupported(t *testing.T) {

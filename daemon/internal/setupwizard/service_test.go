@@ -130,6 +130,41 @@ func TestDefaultDiagnosticProbeRequiresReadableSubmittedSecret(t *testing.T) {
 	}
 }
 
+func TestDefaultDiagnosticProbeDiscordUsesCredentialAndDestinationEvidence(t *testing.T) {
+	missingCredential, err := (DefaultDiagnosticProbe{Secrets: missingSecretManager{}}).ProbeSetup(context.Background(), SetupSession{
+		SetupSessionID: "setup_discord_missing_secret",
+		TenantID:       "ten_discord_probe",
+		TargetID:       TargetDiscordConnector,
+		TargetKind:     TargetKindConnector,
+		ResourceRefs: []ResourceRef{
+			{Kind: "tenant_secret", ID: "DISCORD_BOT_TOKEN"},
+		},
+	}, OperationSubmitSecret)
+	if err != nil {
+		t.Fatalf("ProbeSetup missing credential returned error: %v", err)
+	}
+	if missingCredential.State != StateActionRequired || missingCredential.ReasonCode != ReasonCredentialMissing {
+		t.Fatalf("discord missing credential probe=%+v, want credential_missing before destination checks", missingCredential)
+	}
+
+	ready, err := (DefaultDiagnosticProbe{}).ProbeSetup(context.Background(), SetupSession{
+		SetupSessionID: "setup_discord_ready",
+		TenantID:       "ten_discord_probe",
+		TargetID:       TargetDiscordConnector,
+		TargetKind:     TargetKindConnector,
+		ResourceRefs: []ResourceRef{
+			{Kind: "tenant_secret", ID: "DISCORD_BOT_TOKEN"},
+			{Kind: "discord_destination_validation", ID: "discord-main/channel_redacted"},
+		},
+	}, OperationSubmitSecret)
+	if err != nil {
+		t.Fatalf("ProbeSetup ready returned error: %v", err)
+	}
+	if ready.State != StateReady || ready.ReasonCode != ReasonHealthy {
+		t.Fatalf("discord ready probe=%+v, want healthy once validated destination evidence is linked", ready)
+	}
+}
+
 func TestCompleteOAuthReadyRequiresDiagnosticProbeConfirmation(t *testing.T) {
 	probe := &recordingDiagnosticProbe{
 		result: SetupDiagnosticProbeResult{

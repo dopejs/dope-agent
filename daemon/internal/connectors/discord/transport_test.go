@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 
+	baseconnectors "github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 )
@@ -230,5 +232,107 @@ func TestGatewayTransportEditReplyShapesDiscordRequest(t *testing.T) {
 	}
 	if capturedEdit.Content == nil || *capturedEdit.Content != "updated reply" {
 		t.Fatalf("expected updated content, got %#v", capturedEdit.Content)
+	}
+}
+
+func TestGatewayTransportValidateDestinationsRequiresChannelPermissions(t *testing.T) {
+	t.Parallel()
+
+	valid := &GatewayTransport{
+		cfg:       Config{ConnectorID: "discord-main"},
+		session:   &discordgo.Session{State: discordgo.NewState(), StateEnabled: true},
+		botUserID: "bot_1",
+	}
+	addGuildWithBotChannelPermissions(t, valid.session.State, "guild_1", "channel_1", discordgo.PermissionViewChannel|discordgo.PermissionSendMessages|discordgo.PermissionReadMessageHistory)
+
+	validated, err := valid.ValidateDestinations(context.Background(), []DestinationValidation{
+		{ConnectorID: "discord-main", DestinationID: "channel_1", DestinationType: DestinationChannel, Selected: true},
+	})
+	if err != nil {
+		t.Fatalf("ValidateDestinations valid returned error: %v", err)
+	}
+	if len(validated) != 1 || validated[0].ValidationState != DestinationValid {
+		t.Fatalf("validated=%+v, want channel valid with send/read permissions", validated)
+	}
+
+	blocked := &GatewayTransport{
+		cfg:       Config{ConnectorID: "discord-main"},
+		session:   &discordgo.Session{State: discordgo.NewState(), StateEnabled: true},
+		botUserID: "bot_1",
+	}
+	addGuildWithBotChannelPermissions(t, blocked.session.State, "guild_1", "channel_1", discordgo.PermissionViewChannel)
+
+	degraded, err := blocked.ValidateDestinations(context.Background(), []DestinationValidation{
+		{ConnectorID: "discord-main", DestinationID: "channel_1", DestinationType: DestinationChannel, Selected: true},
+	})
+	if err != nil {
+		t.Fatalf("ValidateDestinations blocked returned error: %v", err)
+	}
+	if len(degraded) != 1 || degraded[0].ValidationState != DestinationMissingPermission || degraded[0].ReasonCode != "permission_missing" {
+		t.Fatalf("validated=%+v, want missing_permission when send/read permissions are absent", degraded)
+	}
+	if degraded[0].SafeEvidence["missingPermissions"] == "" {
+		t.Fatalf("expected missing permission evidence, got %+v", degraded[0].SafeEvidence)
+	}
+}
+
+func TestGatewayTransportLifecycleObserverRecordsGatewayAndRateLimitEvidence(t *testing.T) {
+	t.Parallel()
+
+	transport := &GatewayTransport{cfg: Config{ConnectorID: "discord-main"}}
+	events := make([]TransportLifecycleEvent, 0)
+	transport.SetLifecycleObserver(func(_ context.Context, event TransportLifecycleEvent) {
+		events = append(events, event)
+	})
+
+	transport.emitLifecycle(context.Background(), TransportLifecycleEvent{
+		ReasonCode: baseconnectors.DiagnosticNetworkFailed,
+		Evidence:   map[string]string{"stage": "gateway_disconnect"},
+		Degraded:   true,
+	})
+	transport.emitLifecycle(context.Background(), TransportLifecycleEvent{
+		ReasonCode: baseconnectors.DiagnosticNetworkFailed,
+		Evidence:   map[string]string{"stage": "gateway_resumed"},
+	})
+	transport.emitLifecycle(context.Background(), TransportLifecycleEvent{
+		ReasonCode: baseconnectors.DiagnosticRateLimited,
+		Evidence: map[string]string{
+			"stage":      "rate_limit",
+			"bucket":     "messages",
+			"retryAfter": (5 * time.Second).String(),
+		},
+		Degraded: true,
+	})
+
+	if len(events) != 3 {
+		t.Fatalf("expected 3 lifecycle events, got %+v", events)
+	}
+	if events[0].ReasonCode != baseconnectors.DiagnosticNetworkFailed || events[0].Evidence["stage"] != "gateway_disconnect" || !events[0].Degraded {
+		t.Fatalf("unexpected disconnect evidence: %+v", events[0])
+	}
+	if events[1].ReasonCode != baseconnectors.DiagnosticNetworkFailed || events[1].Evidence["stage"] != "gateway_resumed" {
+		t.Fatalf("unexpected resume evidence: %+v", events[1])
+	}
+	if events[2].ReasonCode != baseconnectors.DiagnosticRateLimited || events[2].Evidence["retryAfter"] == "" || !events[2].Degraded {
+		t.Fatalf("unexpected rate limit evidence: %+v", events[2])
+	}
+}
+
+func addGuildWithBotChannelPermissions(t *testing.T, state *discordgo.State, guildID, channelID string, permissions int64) {
+	t.Helper()
+	if err := state.GuildAdd(&discordgo.Guild{
+		ID: guildID,
+		Roles: []*discordgo.Role{
+			{ID: guildID, Permissions: 0},
+			{ID: "role_bot", Permissions: permissions},
+		},
+		Members: []*discordgo.Member{
+			{User: &discordgo.User{ID: "bot_1"}, Roles: []string{"role_bot"}},
+		},
+		Channels: []*discordgo.Channel{
+			{ID: channelID, GuildID: guildID, Type: discordgo.ChannelTypeGuildText},
+		},
+	}); err != nil {
+		t.Fatalf("GuildAdd returned error: %v", err)
 	}
 }

@@ -14,6 +14,35 @@
         },
         "name": {
           "const": "connector.reply_failed"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "messageId",
+            "assistantExecutionOutcome",
+            "discordDeliveryOutcome"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "connectorId": { "type": "string" },
+            "messageId": { "type": "string" },
+            "replyMessageId": { "type": "string" },
+            "assistantExecutionOutcome": {
+              "type": "string",
+              "enum": ["succeeded", "failed", "cancelled"]
+            },
+            "discordDeliveryOutcome": {
+              "type": "string",
+              "enum": ["sent", "edited", "failed", "degraded_to_final_only", "not_attempted"]
+            },
+            "errorClass": { "type": "string" },
+            "reasonCode": { "type": "string" },
+            "redactionStatus": {
+              "type": "string",
+              "enum": ["redacted", "suppressed", "redaction_failed"]
+            }
+          }
         }
       }
     }

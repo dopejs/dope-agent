@@ -155,7 +155,8 @@
             "respondInDM",
             "allowedGuildIds",
             "allowedChannelIds",
-            "botTokenConfigured"
+            "botTokenConfigured",
+            "hostedReadiness"
           ],
           "additionalProperties": false,
           "properties": {
@@ -175,7 +176,51 @@
               "items": { "type": "string" }
             },
             "botTokenConfigured": { "type": "boolean" },
-            "botTokenEnv": { "type": "string" }
+            "botTokenEnv": { "type": "string" },
+            "hostedReadiness": {
+              "type": "object",
+              "required": [
+                "connectorId",
+                "displayName",
+                "deliveryMode",
+                "readinessState",
+                "hostedReady",
+                "localCompatible",
+                "requireMention",
+                "respondInDM",
+                "botTokenConfigured",
+                "redactionStatus"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "tenantId": { "type": "string" },
+                "connectorId": { "type": "string" },
+                "displayName": { "type": "string" },
+                "deliveryMode": { "type": "string", "enum": ["gateway"] },
+                "readinessState": {
+                  "type": "string",
+                  "enum": ["hosted_ready", "degraded_needs_repair", "failed", "disabled"]
+                },
+                "hostedReady": { "type": "boolean" },
+                "localCompatible": { "type": "boolean" },
+                "reasonCode": { "type": "string" },
+                "requireMention": { "type": "boolean" },
+                "respondInDM": { "type": "boolean" },
+                "allowedGuildIds": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "allowedChannelIds": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "botTokenConfigured": { "type": "boolean" },
+                "redactionStatus": {
+                  "type": "string",
+                  "enum": ["redacted", "suppressed", "redaction_failed"]
+                }
+              }
+            }
           }
         }
       }

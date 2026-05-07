@@ -193,9 +193,11 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 	if sendErr != nil {
 		stopThinking()
 		partialReply := queryResult.Dispatch.Partial || outboundRecord.Status == imtypes.DeliveryStatusPartial
+		safeReason := safeReplyFailureReason(sendErr)
+		errorClass := classifyError(sendErr)
 		if outboundRecord.DeliveryID != "" && !partialReply {
 			outboundRecord.Status = imtypes.DeliveryStatusFailed
-			outboundRecord.Error = sendErr.Error()
+			outboundRecord.Error = safeReason
 			outboundRecord.UpdatedAt = time.Now().UTC()
 			_ = l.store.UpsertConnectorMessage(ctx, outboundRecord)
 		}
@@ -205,22 +207,26 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 				"reply":       queryResult.Dispatch.Output,
 				"partial":     partialReply,
 				"replyStatus": outboundRecord.Status,
-				"error":       sendErr.Error(),
+				"reasonCode":  safeReason,
+				"errorClass":  errorClass,
 			},
 		})
 		persistedInbound.Status = imtypes.DeliveryStatusFailed
 		if partialReply {
 			persistedInbound.Status = imtypes.DeliveryStatusPartial
 		}
-		persistedInbound.Error = sendErr.Error()
+		persistedInbound.Error = safeReason
 		persistedInbound.UpdatedAt = time.Now().UTC()
 		_ = l.store.UpsertConnectorMessage(ctx, persistedInbound)
 		if !partialReply {
 			_, _ = l.publishConnectorEvent(ctx, "connector.reply_failed", connector, session, run.RunID, step.StepID, map[string]any{
-				"messageId":      inbound.ExternalMessageID,
-				"replyMessageId": outboundRecord.ExternalMessageID,
-				"error":          sendErr.Error(),
-				"errorClass":     classifyError(sendErr),
+				"messageId":                 inbound.ExternalMessageID,
+				"replyMessageId":            outboundRecord.ExternalMessageID,
+				"assistantExecutionOutcome": "succeeded",
+				"discordDeliveryOutcome":    "failed",
+				"reasonCode":                safeReason,
+				"errorClass":                errorClass,
+				"redactionStatus":           "redacted",
 			})
 		}
 		if refreshedRun, ok := l.runtime.GetRun(run.RunID); ok {
@@ -703,6 +709,13 @@ func classifyError(err error) string {
 		return ""
 	}
 	return strings.TrimSpace(classified.ErrorClass())
+}
+
+func safeReplyFailureReason(err error) string {
+	if class := classifyError(err); class != "" {
+		return class
+	}
+	return "reply_failed"
 }
 
 type streamReplyProgress struct {

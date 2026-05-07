@@ -36,6 +36,20 @@ func (p DefaultDiagnosticProbe) ProbeSetup(ctx context.Context, session SetupSes
 				}
 			}
 		}
+		if session.TargetID == TargetDiscordConnector && reason == ReasonHealthy {
+			switch {
+			case resourceRefID(session.ResourceRefs, "discord_destination_validation") != "":
+				state, owner, retry = ClassifyDiagnosticReason(ReasonHealthy)
+				reason = ReasonHealthy
+			case resourceRefID(session.ResourceRefs, "discord_destination_invalid") != "":
+				state, owner, retry = ClassifyDiagnosticReason(ReasonDiscordDestinationInvalid)
+				reason = ReasonDiscordDestinationInvalid
+			default:
+				state, owner, retry = ClassifyDiagnosticReason(ReasonDiscordDestinationMissing)
+				reason = ReasonDiscordDestinationMissing
+			}
+			break
+		}
 	case OperationOAuthCallback:
 		if resourceRefID(session.ResourceRefs, "provider_auth_state") == "" {
 			state, owner, retry = ClassifyDiagnosticReason(ReasonTokenMissing)

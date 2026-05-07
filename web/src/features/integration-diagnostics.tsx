@@ -13,6 +13,16 @@ const STATUS_LABELS: Record<IntegrationDiagnosticResultResource["status"], strin
   unsupported: "Unsupported"
 };
 
+const DISCORD_REASON_LABELS: Partial<Record<IntegrationDiagnosticResultResource["reasonCode"], string>> = {
+  auth_missing: "Discord auth missing",
+  permission_missing: "Discord permission missing",
+  blocked_route: "Discord route blocked",
+  duplicate_inbound: "Discord duplicate inbound",
+  reply_failed: "Discord reply failed",
+  unsupported_capability: "Discord capability unsupported",
+  unknown_connector_failure: "Discord connector failure"
+};
+
 export function IntegrationDiagnosticsView({ results, smokeReports = [] }: IntegrationDiagnosticsViewProps) {
   if (!results.length && !smokeReports.length) {
     return <div className="empty-state">No integration diagnostics available.</div>;
@@ -51,7 +61,7 @@ export function IntegrationDiagnosticsView({ results, smokeReports = [] }: Integ
           <dl className="diagnostic-card__facts">
             <div>
               <dt>Reason</dt>
-              <dd>{result.reasonCode}</dd>
+              <dd>{DISCORD_REASON_LABELS[result.reasonCode] ?? result.reasonCode}</dd>
             </div>
             <div>
               <dt>Owner</dt>

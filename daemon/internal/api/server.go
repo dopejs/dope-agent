@@ -3063,12 +3063,92 @@ func handleConnectorRoutes(supervisor *connectors.Supervisor, sessionRouter *rou
 		handleConnectorRestart(supervisor, eventBus, sqliteStore, w, r, parts[0])
 		return
 	}
+	if len(parts) == 2 && parts[1] == "discord-setup" {
+		handleConnectorDiscordSetup(supervisor, sqliteStore, w, r, parts[0])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "discord-smoke" {
+		handleConnectorDiscordSmoke(supervisor, sqliteStore, w, r, parts[0])
+		return
+	}
 	if len(parts) == 3 && parts[1] == "ingress" && parts[2] == "messages" {
 		handleConnectorIngressMessages(supervisor, sessionRouter, manager, eventBus, sqliteStore, checkpointManager, w, r, parts[0])
 		return
 	}
 
 	http.NotFound(w, r)
+}
+
+func handleConnectorDiscordSetup(supervisor *connectors.Supervisor, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector setup store is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantContextFromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	if supervisor != nil {
+		if _, ok := supervisor.GetForTenant(connectorID, tenantContext.TenantID); !ok {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	setup, found, err := sqliteStore.GetDiscordHostedSetup(r.Context(), tenantContext.TenantID, connectorID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, setup)
+}
+
+func handleConnectorDiscordSmoke(supervisor *connectors.Supervisor, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector smoke evidence store is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantContextFromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	if supervisor != nil {
+		if _, ok := supervisor.GetForTenant(connectorID, tenantContext.TenantID); !ok {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	evidence, found, err := sqliteStore.LatestDiscordSmokeEvidence(r.Context(), tenantContext.TenantID, connectorID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, evidence)
 }
 
 func handleConnectorByID(supervisor *connectors.Supervisor, w http.ResponseWriter, r *http.Request, connectorID string) {

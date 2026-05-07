@@ -17,6 +17,7 @@ type GatewayTransport struct {
 	cfg       Config
 	session   *discordgo.Session
 	botUserID string
+	lifecycle func(context.Context, TransportLifecycleEvent)
 	mu        sync.RWMutex
 }
 
@@ -91,6 +92,35 @@ func (t *GatewayTransport) Start(ctx context.Context, handle func(context.Contex
 		t.botUserID = ready.User.ID
 		t.mu.Unlock()
 	})
+	t.session.AddHandler(func(s *discordgo.Session, _ *discordgo.Disconnect) {
+		t.emitLifecycle(ctx, TransportLifecycleEvent{
+			ReasonCode: "network_failed",
+			Evidence:   map[string]string{"stage": "gateway_disconnect"},
+			Degraded:   true,
+		})
+	})
+	t.session.AddHandler(func(s *discordgo.Session, _ *discordgo.Resumed) {
+		t.emitLifecycle(ctx, TransportLifecycleEvent{
+			ReasonCode: "network_failed",
+			Evidence:   map[string]string{"stage": "gateway_resumed"},
+			Degraded:   false,
+		})
+	})
+	t.session.AddHandler(func(s *discordgo.Session, rateLimit *discordgo.RateLimit) {
+		evidence := map[string]string{"stage": "rate_limit"}
+		if rateLimit != nil {
+			evidence["url"] = redactDiscordRoute(rateLimit.URL)
+			if rateLimit.TooManyRequests != nil {
+				evidence["bucket"] = rateLimit.TooManyRequests.Bucket
+				evidence["retryAfter"] = rateLimit.TooManyRequests.RetryAfter.String()
+			}
+		}
+		t.emitLifecycle(ctx, TransportLifecycleEvent{
+			ReasonCode: "rate_limited",
+			Evidence:   evidence,
+			Degraded:   true,
+		})
+	})
 	t.session.AddHandler(func(s *discordgo.Session, message *discordgo.MessageCreate) {
 		inbound, ok := t.normalizeMessage(message)
 		if !ok {
@@ -164,6 +194,74 @@ func (t *GatewayTransport) Close(_ context.Context) error {
 		return nil
 	}
 	return t.session.Close()
+}
+
+func (t *GatewayTransport) SetLifecycleObserver(observer func(context.Context, TransportLifecycleEvent)) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.lifecycle = observer
+}
+
+func (t *GatewayTransport) emitLifecycle(ctx context.Context, event TransportLifecycleEvent) {
+	t.mu.RLock()
+	observer := t.lifecycle
+	t.mu.RUnlock()
+	if observer != nil {
+		observer(ctx, event)
+	}
+}
+
+func (t *GatewayTransport) ValidateDestinations(ctx context.Context, destinations []DestinationValidation) ([]DestinationValidation, error) {
+	if t.session == nil {
+		return nil, fmt.Errorf("discord session is not configured")
+	}
+	now := time.Now().UTC()
+	validated := make([]DestinationValidation, 0, len(destinations))
+	for _, destination := range destinations {
+		destination.ValidatedAt = now
+		destination.RedactionStatus = "redacted"
+		destination.SafeEvidence = map[string]string{"source": "gateway_state"}
+		switch destination.DestinationType {
+		case DestinationGuild:
+			if guild, err := t.session.State.Guild(destination.DestinationID); err == nil && guild != nil {
+				destination.ValidationState = DestinationValid
+				destination.ReasonCode = "healthy"
+				destination.ProviderLabel = redactedDiscordLabel(guild.ID)
+			} else {
+				destination.ValidationState = DestinationBotNotMember
+				destination.ReasonCode = "bot_not_member"
+			}
+		case DestinationChannel:
+			if channel, err := t.session.State.Channel(destination.DestinationID); err == nil && channel != nil {
+				permissions, err := t.session.UserChannelPermissions(t.currentBotUserID(), destination.DestinationID, discordgo.WithContext(ctx))
+				if err != nil {
+					destination.ValidationState = DestinationMissingPermission
+					destination.ReasonCode = "permission_missing"
+					destination.ProviderLabel = redactedDiscordLabel(channel.ID)
+					destination.SafeEvidence["permissionCheck"] = "failed"
+					destination.SafeEvidence["errorClass"] = classifyDiscordError(err)
+				} else if missing := missingDiscordChannelPermissions(permissions); missing != "" {
+					destination.ValidationState = DestinationMissingPermission
+					destination.ReasonCode = "permission_missing"
+					destination.ProviderLabel = redactedDiscordLabel(channel.ID)
+					destination.SafeEvidence["missingPermissions"] = missing
+				} else {
+					destination.ValidationState = DestinationValid
+					destination.ReasonCode = "healthy"
+					destination.ProviderLabel = redactedDiscordLabel(channel.ID)
+					destination.SafeEvidence["permissionCheck"] = "send_read"
+				}
+			} else {
+				destination.ValidationState = DestinationNotFound
+				destination.ReasonCode = "not_found"
+			}
+		default:
+			destination.ValidationState = DestinationInvalid
+			destination.ReasonCode = "unsupported_destination"
+		}
+		validated = append(validated, destination)
+	}
+	return validated, nil
 }
 
 func (t *GatewayTransport) normalizeMessage(message *discordgo.MessageCreate) (imtypes.InboundMessage, bool) {
@@ -243,6 +341,57 @@ func stripBotMention(content, userID string) string {
 	content = strings.ReplaceAll(content, "<@"+userID+">", "")
 	content = strings.ReplaceAll(content, "<@!"+userID+">", "")
 	return strings.TrimSpace(content)
+}
+
+func redactDiscordRoute(route string) string {
+	route = strings.TrimSpace(route)
+	if route == "" {
+		return ""
+	}
+	parts := strings.Split(route, "/")
+	for index, part := range parts {
+		if looksLikeDiscordID(part) {
+			parts[index] = "redacted_id"
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
+func redactedDiscordLabel(id string) string {
+	if strings.TrimSpace(id) == "" {
+		return ""
+	}
+	return "discord_resource_redacted"
+}
+
+func looksLikeDiscordID(value string) bool {
+	if len(value) < 12 {
+		return false
+	}
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func missingDiscordChannelPermissions(permissions int64) string {
+	required := []struct {
+		name string
+		bit  int64
+	}{
+		{name: "view_channel", bit: discordgo.PermissionViewChannel},
+		{name: "send_messages", bit: discordgo.PermissionSendMessages},
+		{name: "read_message_history", bit: discordgo.PermissionReadMessageHistory},
+	}
+	missing := make([]string, 0)
+	for _, permission := range required {
+		if permissions&permission.bit == 0 {
+			missing = append(missing, permission.name)
+		}
+	}
+	return strings.Join(missing, ",")
 }
 
 func wrapDiscordError(prefix string, err error) error {

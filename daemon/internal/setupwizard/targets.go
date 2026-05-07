@@ -29,6 +29,17 @@ func CatalogTargets(tenantID string) []SetupTarget {
 			RequiredPermissions:     []string{PermissionSecretsManage, PermissionIntegrationsManage},
 			LimitedSafeCapabilities: []string{"metadata_read"},
 		},
+		{
+			TargetID:                TargetDiscordConnector,
+			TenantID:                strings.TrimSpace(tenantID),
+			TargetKind:              TargetKindConnector,
+			SetupStyle:              SetupStyleSubmittedSecret,
+			DisplayName:             "Discord connector",
+			ProofTarget:             true,
+			SupportStatus:           SupportStatusSupported,
+			RequiredPermissions:     []string{PermissionSecretsManage, PermissionIntegrationsManage},
+			LimitedSafeCapabilities: []string{"metadata_read", "destination_validation"},
+		},
 	}
 	sort.Slice(targets, func(i, j int) bool { return targets[i].TargetID < targets[j].TargetID })
 	return targets

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dopejs/dope-agent/daemon/internal/audit"
+	baseconnectors "github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
@@ -26,6 +27,12 @@ type LiveValidationSupportMatrixResponse struct {
 	EnvironmentScope string                     `json:"environmentScope,omitempty"`
 	Version          string                     `json:"version"`
 	Items            []livevalidation.MatrixRow `json:"items"`
+}
+
+type LiveValidationDiscordConformanceResponse struct {
+	TenantID    string                             `json:"tenantId"`
+	ConnectorID string                             `json:"connectorId"`
+	Items       []baseconnectors.ConformanceResult `json:"items"`
 }
 
 type CreateLiveValidationRequest = livevalidation.StartInput
@@ -62,7 +69,89 @@ func handleLiveValidationRoutes(manager *livevalidation.Manager, eventBus *event
 		handleLiveValidationKillSwitches(manager, eventBus, sqliteStore, w, r)
 		return
 	}
+	if path == "discord-smoke" {
+		handleLiveValidationDiscordSmoke(sqliteStore, w, r)
+		return
+	}
+	if path == "discord-conformance" {
+		handleLiveValidationDiscordConformance(sqliteStore, w, r)
+		return
+	}
 	handleLiveValidationItem(manager, eventBus, sqliteStore, path, w, r)
+}
+
+func handleLiveValidationDiscordConformance(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector conformance store is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantctx.FromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	connectorID := strings.TrimSpace(r.URL.Query().Get("connectorId"))
+	if connectorID == "" {
+		writeError(w, http.StatusBadRequest, "connectorId is required")
+		return
+	}
+	items, err := sqliteStore.ListConnectorConformanceResults(r.Context(), tenantContext.TenantID, connectorID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if len(items) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, LiveValidationDiscordConformanceResponse{
+		TenantID:    tenantContext.TenantID,
+		ConnectorID: connectorID,
+		Items:       items,
+	})
+}
+
+func handleLiveValidationDiscordSmoke(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector smoke evidence store is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantctx.FromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	connectorID := strings.TrimSpace(r.URL.Query().Get("connectorId"))
+	if connectorID == "" {
+		writeError(w, http.StatusBadRequest, "connectorId is required")
+		return
+	}
+	evidence, found, err := sqliteStore.LatestDiscordSmokeEvidence(r.Context(), tenantContext.TenantID, connectorID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, evidence)
 }
 
 func handleLiveValidationKillSwitches(manager *livevalidation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {

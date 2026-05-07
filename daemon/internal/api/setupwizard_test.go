@@ -32,6 +32,15 @@ func TestSetupWizardAPICoversProofTargetLifecycleAndDenials(t *testing.T) {
 	if len(targets.Items) < 2 {
 		t.Fatalf("expected proof targets, got %+v", targets.Items)
 	}
+	foundDiscord := false
+	for _, target := range targets.Items {
+		if target.TargetID == setupwizard.TargetDiscordConnector && target.TargetKind == setupwizard.TargetKindConnector {
+			foundDiscord = true
+		}
+	}
+	if !foundDiscord {
+		t.Fatalf("expected Discord connector setup target, got %+v", targets.Items)
+	}
 
 	startRec := exerciseSetupWizardRoute(service, actor, http.MethodPost, "/v1/setup/sessions", `{"targetId":"provider.openai_compatible","setupStyle":"submitted_secret","source":"wizard"}`)
 	if startRec.Code != http.StatusCreated {
@@ -75,6 +84,27 @@ func TestSetupWizardAPICoversProofTargetLifecycleAndDenials(t *testing.T) {
 	callback := exerciseSetupWizardRoute(service, actor, http.MethodPost, "/v1/setup/sessions/"+oauthBody.Session.SetupSessionID+"/oauth/callback", `{"state":"`+stateBody.State+`","result":"denied"}`)
 	if callback.Code != http.StatusOK || !bytes.Contains(callback.Body.Bytes(), []byte(`"state":"action_required"`)) {
 		t.Fatalf("callback status=%d body=%s", callback.Code, callback.Body.String())
+	}
+
+	discordStart := exerciseSetupWizardRoute(service, actor, http.MethodPost, "/v1/setup/sessions", `{"targetId":"connector.discord","setupStyle":"submitted_secret","source":"wizard"}`)
+	if discordStart.Code != http.StatusCreated {
+		t.Fatalf("discord session status=%d body=%s", discordStart.Code, discordStart.Body.String())
+	}
+	var discordBody struct {
+		Session setupwizard.SetupSession `json:"session"`
+	}
+	if err := json.Unmarshal(discordStart.Body.Bytes(), &discordBody); err != nil {
+		t.Fatalf("decode discord start: %v", err)
+	}
+	discordSubmit := exerciseSetupWizardRoute(service, actor, http.MethodPost, "/v1/setup/sessions/"+discordBody.Session.SetupSessionID+"/submit-secret", `{"secretRef":"DISCORD_BOT_TOKEN","value":"R49_FAKE_DISCORD_BOT_TOKEN_DO_NOT_LEAK","displayName":"Discord bot token"}`)
+	if discordSubmit.Code != http.StatusOK {
+		t.Fatalf("discord submit status=%d body=%s", discordSubmit.Code, discordSubmit.Body.String())
+	}
+	if !bytes.Contains(discordSubmit.Body.Bytes(), []byte(`"state":"degraded"`)) || !bytes.Contains(discordSubmit.Body.Bytes(), []byte(setupwizard.ReasonDiscordDestinationMissing)) {
+		t.Fatalf("expected Discord setup to save degraded until explicit destinations validate, got %s", discordSubmit.Body.String())
+	}
+	if bytes.Contains(discordSubmit.Body.Bytes(), []byte("R49_FAKE_DISCORD_BOT_TOKEN_DO_NOT_LEAK")) {
+		t.Fatalf("discord setup leaked token: %s", discordSubmit.Body.String())
 	}
 
 	denied := setupWizardAPITenantContext("ten_setup_api", identity.PermissionSecretsManage, identity.PermissionIntegrationsManage)

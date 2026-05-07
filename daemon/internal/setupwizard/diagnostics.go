@@ -45,6 +45,8 @@ func ClassifyDiagnosticReason(reason string) (SetupState, RemediationOwner, Retr
 		return StateReady, OwnerNoneRequired, RetryNoActionNeeded
 	case ReasonScopeMissing, ReasonTenantApprovalPending, ReasonCredentialMissing, ReasonTokenMissing, ReasonTokenExpired, ReasonTokenRevoked, ReasonOAuthDenied, ReasonOAuthExpired, ReasonOAuthReplay, ReasonTenantMismatch:
 		return StateActionRequired, OwnerTenantAdmin, RetryRetryable
+	case ReasonDiscordDestinationMissing, ReasonDiscordDestinationInvalid:
+		return StateDegraded, OwnerTenantAdmin, RetryRetryable
 	case ReasonProviderUnavailable, ReasonNetworkFailed, ReasonRateLimited:
 		return StateUnavailable, OwnerProvider, RetryRetryable
 	case ReasonUnsupportedTarget:

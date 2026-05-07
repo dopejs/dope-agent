@@ -98,17 +98,18 @@ type ConfigSandboxResponse struct {
 }
 
 type ConfigDiscordConnectorResponse struct {
-	Enabled            bool     `json:"enabled"`
-	Configured         bool     `json:"configured"`
-	ConnectorID        string   `json:"connectorId"`
-	DisplayName        string   `json:"displayName"`
-	DeliveryMode       string   `json:"deliveryMode"`
-	RequireMention     bool     `json:"requireMention"`
-	RespondInDM        bool     `json:"respondInDM"`
-	AllowedGuildIDs    []string `json:"allowedGuildIds"`
-	AllowedChannelIDs  []string `json:"allowedChannelIds"`
-	BotTokenConfigured bool     `json:"botTokenConfigured"`
-	BotTokenEnv        string   `json:"botTokenEnv,omitempty"`
+	Enabled            bool                                    `json:"enabled"`
+	Configured         bool                                    `json:"configured"`
+	ConnectorID        string                                  `json:"connectorId"`
+	DisplayName        string                                  `json:"displayName"`
+	DeliveryMode       string                                  `json:"deliveryMode"`
+	RequireMention     bool                                    `json:"requireMention"`
+	RespondInDM        bool                                    `json:"respondInDM"`
+	AllowedGuildIDs    []string                                `json:"allowedGuildIds"`
+	AllowedChannelIDs  []string                                `json:"allowedChannelIds"`
+	BotTokenConfigured bool                                    `json:"botTokenConfigured"`
+	BotTokenEnv        string                                  `json:"botTokenEnv,omitempty"`
+	HostedReadiness    config.DiscordHostedReadinessProjection `json:"hostedReadiness"`
 }
 
 type CreateIntegrationDiagnosticRunRequest struct {
@@ -993,6 +994,7 @@ func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager, sandboxMana
 				AllowedChannelIDs:  cloneStringSlice(cfg.Connectors.Discord.AllowedChannelIDs),
 				BotTokenConfigured: cfg.Connectors.Discord.BotToken != "",
 				BotTokenEnv:        cfg.Connectors.Discord.BotTokenEnv,
+				HostedReadiness:    cfg.Connectors.Discord.ProjectHostedReadiness(""),
 			},
 		},
 		MCP: ConfigMCPResponse{

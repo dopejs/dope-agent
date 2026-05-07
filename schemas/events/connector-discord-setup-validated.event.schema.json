@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/connector-discord-setup-validated.event.schema.json",
+  "title": "ConnectorDiscordSetupValidatedEvent",
+  "type": "object",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "properties": {
+        "category": { "const": "connector" },
+        "name": { "const": "connector.discord_setup_validated" },
+        "resource": {
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "discord_hosted_setup" },
+            "id": { "type": "string" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "connectorId",
+            "readinessState",
+            "hostedReady",
+            "credentialState",
+            "reasonCode",
+            "redactionStatus",
+            "validatedAt"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "connectorId": { "type": "string" },
+            "readinessState": {
+              "type": "string",
+              "enum": ["hosted_ready", "degraded_needs_repair", "failed", "disabled"]
+            },
+            "hostedReady": { "type": "boolean" },
+            "credentialState": {
+              "type": "string",
+              "enum": ["missing", "submitted", "valid", "invalid", "revoked", "redaction_suppressed"]
+            },
+            "reasonCode": { "type": "string" },
+            "redactionStatus": {
+              "type": "string",
+              "enum": ["redacted", "suppressed", "redaction_failed"]
+            },
+            "validatedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

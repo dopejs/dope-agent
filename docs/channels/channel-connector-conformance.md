@@ -22,6 +22,28 @@ Provider-specific surfaces such as rooms, threads, rich media, thinking visibili
 incremental updates may be supported, limited, or unsupported only when explicit. An
 unsupported surface cannot weaken a core invariant.
 
+## Discord Phase 49 Handoff
+
+Discord now specializes this contract through hosted setup, diagnostic, route/reply, and
+live-smoke evidence:
+
+- hosted-ready requires a tenant-owned Discord bot credential and explicit selected
+  guild/channel or DM behavior with redacted validation evidence
+- local gateway configuration remains compatible, but projects as
+  `degraded_needs_repair` for hosted readiness when it lacks explicit hosted evidence
+- direct messages are supported when enabled and validated; group channels are supported
+  only for explicit validated guild/channel destinations; thread replies and incremental
+  updates are limited; voice, rooms, broad rich media, marketplace listing, and
+  memory-based recall are unsupported for this phase
+- Discord maps auth, permission, blocked route, duplicate inbound, reply failure,
+  rate-limit, gateway/network, provider, unsupported, and unknown failures into the
+  shared connector diagnostic vocabulary
+- reply events keep assistant execution outcome separate from Discord foreground reply
+  delivery outcome, and connector-backed background delivery remains a separate truth
+- release review accepts either redacted safe-live smoke evidence or a structured skip
+  that names the owner, reason, validation date, remaining risk, retention expiry, and
+  redaction status
+
 Default verification uses fake connectors and fake credentials in `~/.dope-test`.
 Live connector credentials and production tenants are out of scope unless an operator
 chooses a separate live validation path.

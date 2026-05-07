@@ -16,6 +16,11 @@ Current reply progression level:
 
 - `thinking + streaming`
 
+Hosted production readiness is gated separately from local compatibility. A local gateway
+configuration may continue to run, but hosted-ready requires a submitted tenant-owned bot
+credential plus explicit selected guild/channel or DM behavior that has redacted
+validation evidence.
+
 ## What The Daemon Does
 
 For an accepted Discord inbound message, the daemon now performs one closed single-turn loop:
@@ -99,7 +104,25 @@ Current `deliveryMode` support:
 Reply progression support:
 
 - `thinking`: supported
-- `incremental output`: supported
+- `incremental output`: supported only when the hosted conformance profile has explicit
+  rate-limit and degradation evidence; otherwise the connector degrades toward final-only
+  replies
+
+Hosted readiness projection is exposed in `GET /v1/config` under
+`connectors.discord.hostedReadiness`. Detailed tenant-scoped setup evidence is exposed
+through `GET /v1/connectors/{connectorId}/discord-setup` for authorized operators. These
+responses are redacted: token material, authorization headers, raw provider payloads, and
+inaccessible message content must not appear in API output, events, logs, fixtures, or
+support evidence.
+
+Hosted readiness states:
+
+- `hosted_ready`: valid credential plus explicit selected destinations and passing
+  destination validation
+- `degraded_needs_repair`: valid credential but missing explicit destinations, or at
+  least one selected destination is invalid
+- `failed`: missing, invalid, revoked, or unusable credential
+- `disabled`: connector disabled
 
 ## Behavior Rules
 
@@ -124,6 +147,9 @@ Reply progression rules:
 - the daemon sends an initial reply and then edits the same message
 - edits are throttled rather than emitted for every token
 - if progression is not available, the daemon falls back to final-only reply behavior
+- assistant execution success and Discord reply delivery success are separate outcomes;
+  a failed Discord send/edit after assistant completion emits `connector.reply_failed`
+  with `assistantExecutionOutcome` and `discordDeliveryOutcome`
 
 ## Observability
 
@@ -139,6 +165,9 @@ Key daemon surfaces:
 
 Important event names:
 
+- `connector.discord_setup_validated`
+- `connector.diagnostic_state_changed`
+- `connector.route_outcome_recorded`
 - `connector.healthy`
 - `connector.failed`
 - `connector.ingress_accepted`
@@ -160,28 +189,44 @@ Important event names:
 
 ## Failure Visibility
 
-Current failure classes for Discord transport:
+Discord failures are mapped into stable connector diagnostic reason codes:
 
-- `auth_error`
-- `transport_error`
+- `auth_missing`: missing, invalid, revoked, or unusable bot credential
+- `permission_missing`: missing guild/channel read/send permission or Message Content
+  Intent when message content is required
+- `blocked_route`: selected guild/channel/DM behavior blocks the message
+- `rate_limited`: Discord rate limit on send, edit, or gateway operation
+- `provider_unavailable`: Discord provider outage or 5xx-class failure
+- `network_failed`: gateway disconnect, reconnect failure, or network failure
+- `duplicate_inbound`: duplicate gateway event or replay suppressed
+- `reply_failed`: assistant work completed but Discord reply delivery failed
+- `unsupported_capability`: optional Discord surface is explicitly unsupported
+- `unknown_connector_failure`: unclassified connector failure
 
-They currently appear in connector failure event payloads.
-
-Examples:
-
-- invalid or revoked bot token -> `auth_error`
-- gateway or send failure that is not auth-related -> `transport_error`
+Diagnostics older than 15 minutes are stale. Redacted setup, diagnostic, conformance, and
+smoke evidence uses the 90-day default retention window. If evidence cannot be safely
+redacted, details are suppressed and a safe generic classification remains inspectable.
 
 When reply sending fails:
 
 - the outbound delivery record is marked failed
 - the step is marked failed
-- a `connector.reply_failed` event is emitted
+- a `connector.reply_failed` event is emitted with separate assistant execution and
+  Discord delivery outcome fields
 
 When thinking fails:
 
 - the daemon emits `connector.thinking_failed`
 - the daemon still continues toward a final reply if the rest of the path remains healthy
+
+## Live Smoke Policy
+
+Automated release validation does not require real Discord credentials. When safe live
+credentials are available, they must belong to a non-production Discord application, be
+scoped to a test tenant and test destinations, and be explicitly approved by an operator.
+When safe credentials are unavailable or unsafe, Discord records a structured skip with
+owner, reason, validation date, remaining risk, retention expiry, and redaction status.
+The skip is evidence of residual release risk; it is not a silent pass.
 
 ## Current Boundaries
 
@@ -189,7 +234,7 @@ This roadmap intentionally does not include:
 
 - multiple channel implementations
 - rich media replies
-- attachments, reactions, voice, or typing indicators
+- attachments, reactions, voice, or broad rich media
 - daemon-managed multi-turn chat history
 - memory or context engineering for IM
 

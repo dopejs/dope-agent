@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/discord-destination-validation-resource.schema.json",
+  "title": "DiscordDestinationValidationResource",
+  "type": "object",
+  "required": [
+    "connectorId",
+    "destinationId",
+    "destinationType",
+    "selected",
+    "validationState",
+    "validatedAt",
+    "redactionStatus"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "destinationId": { "type": "string" },
+    "destinationType": {
+      "type": "string",
+      "enum": ["guild", "channel", "direct_message"]
+    },
+    "providerLabel": { "type": "string" },
+    "selected": { "type": "boolean" },
+    "validationState": {
+      "type": "string",
+      "enum": [
+        "valid",
+        "invalid",
+        "missing_permission",
+        "message_content_missing",
+        "bot_not_member",
+        "not_found",
+        "dm_restricted",
+        "stale"
+      ]
+    },
+    "reasonCode": { "type": "string" },
+    "validatedAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "safeEvidence": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

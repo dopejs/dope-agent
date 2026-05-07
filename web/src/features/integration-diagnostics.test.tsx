@@ -34,6 +34,7 @@ describe("IntegrationDiagnosticsView", () => {
           diagnostic({ status: "healthy", reasonCode: "healthy", remediationOwner: "none_required" }),
           diagnostic({ status: "blocked", reasonCode: "scope_missing", remediationOwner: "tenant_admin", retrySafety: "blocked" }),
           diagnostic({ status: "degraded", reasonCode: "limited_diagnostic", remediationOwner: "operator", retrySafety: "no_action_needed" }),
+          diagnostic({ status: "degraded", reasonCode: "blocked_route", remediationOwner: "tenant_admin", retrySafety: "blocked" }),
           diagnostic({ status: "unsupported", reasonCode: "unsupported_diagnostic", remediationOwner: "operator" }),
           diagnostic({ status: "blocked", reasonCode: "token_expired", remediationOwner: "product_user", freshnessState: "stale" }),
           diagnostic({ status: "unknown", reasonCode: "redaction_failed_closed", remediationOwner: "operator", redactionStatus: "failed_closed" })
@@ -43,10 +44,11 @@ describe("IntegrationDiagnosticsView", () => {
 
     expect(screen.getByText("Healthy")).toBeTruthy();
     expect(screen.getAllByText("Blocked")).toHaveLength(2);
-    expect(screen.getByText("Limited")).toBeTruthy();
+    expect(screen.getAllByText("Limited")).toHaveLength(2);
+    expect(screen.getByText("Discord route blocked")).toBeTruthy();
     expect(screen.getByText("Unsupported")).toBeTruthy();
     expect(screen.getByText("stale")).toBeTruthy();
     expect(screen.getByText("Diagnostic detail suppressed.")).toBeTruthy();
-    expect(screen.getByText("tenant_admin")).toBeTruthy();
+    expect(screen.getAllByText("tenant_admin")).toHaveLength(2);
   });
 });

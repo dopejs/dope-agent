@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 44
+	CurrentSchemaVersion = 45
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -2797,6 +2797,69 @@ var schemaMigrations = []schemaMigration{
 			`DROP INDEX IF EXISTS idx_connector_messages_external;`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_messages_external_tenant_unique ON connector_messages(tenant_id, connector_id, direction, external_message_id) WHERE external_message_id IS NOT NULL;`,
 			`CREATE INDEX IF NOT EXISTS idx_connector_messages_external_lookup ON connector_messages(tenant_id, connector_id, direction, external_message_id) WHERE external_message_id IS NOT NULL;`,
+		},
+	},
+	{
+		Version: 45,
+		Name:    "r49_discord_production_hardening",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS discord_hosted_setups (
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				connector_kind TEXT NOT NULL,
+				display_name TEXT NOT NULL,
+				status TEXT NOT NULL,
+				readiness_state TEXT NOT NULL,
+				credential_state TEXT NOT NULL,
+				respond_in_dm INTEGER NOT NULL,
+				require_mention INTEGER NOT NULL,
+				delivery_mode TEXT NOT NULL,
+				reason_code TEXT,
+				redaction_status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				validated_at TEXT,
+				retention_expires_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				PRIMARY KEY (tenant_id, connector_id)
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS discord_destination_validations (
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				destination_id TEXT NOT NULL,
+				destination_type TEXT NOT NULL,
+				provider_label TEXT,
+				selected INTEGER NOT NULL,
+				validation_state TEXT NOT NULL,
+				reason_code TEXT,
+				validated_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				PRIMARY KEY (tenant_id, connector_id, destination_type, destination_id)
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS discord_smoke_evidence (
+				smoke_evidence_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				status TEXT NOT NULL,
+				credential_mode TEXT NOT NULL,
+				owner TEXT NOT NULL,
+				reason TEXT NOT NULL,
+				remaining_risk TEXT,
+				validated_at TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_discord_hosted_setups_tenant_state ON discord_hosted_setups(tenant_id, readiness_state, updated_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_discord_destinations_tenant_connector ON discord_destination_validations(tenant_id, connector_id, validated_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_discord_smoke_tenant_connector ON discord_smoke_evidence(tenant_id, connector_id, validated_at DESC);`,
 		},
 	},
 }
