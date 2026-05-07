@@ -40,6 +40,9 @@ func TestGatewayTransportNormalizeDirectMessage(t *testing.T) {
 	if inbound.Content != "hello from dm" {
 		t.Fatalf("expected direct content preserved, got %q", inbound.Content)
 	}
+	if inbound.ConnectorAccountID != "bot_1" || inbound.ChannelOrConversationID != "dm_1" || inbound.ProviderMessageID != "msg_1" {
+		t.Fatalf("expected standard identity fields, got account=%q channel=%q provider=%q", inbound.ConnectorAccountID, inbound.ChannelOrConversationID, inbound.ProviderMessageID)
+	}
 }
 
 func TestGatewayTransportNormalizeGuildMentionStripsBotMention(t *testing.T) {
@@ -80,6 +83,9 @@ func TestGatewayTransportNormalizeGuildMentionStripsBotMention(t *testing.T) {
 	}
 	if inbound.PeerID != "channel_1" || inbound.ThreadID != "channel_1" {
 		t.Fatalf("expected channel scoped peer/thread ids, got peer=%q thread=%q", inbound.PeerID, inbound.ThreadID)
+	}
+	if inbound.ConnectorAccountID != "bot_1" || inbound.ChannelOrConversationID != "channel_1" || inbound.ProviderMessageID != "msg_2" || inbound.EquivalentRuleID != "discord_message_id" {
+		t.Fatalf("expected standard identity fields, got account=%q channel=%q provider=%q rule=%q", inbound.ConnectorAccountID, inbound.ChannelOrConversationID, inbound.ProviderMessageID, inbound.EquivalentRuleID)
 	}
 }
 

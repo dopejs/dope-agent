@@ -64,6 +64,9 @@ foreground replies, diagnostics, and background delivery target reuse.
 ## Functional Requirements
 
 - Telegram MUST satisfy the shared channel conformance suite.
+- Telegram MUST reference `docs/channels/channel-connector-conformance.md` for shared
+  routing, dedupe, diagnostics, redaction, and delivery-boundary behavior instead of
+  redefining those contracts.
 - The connector MUST preserve tenant, chat, message, and thread identity.
 - Duplicate updates MUST not create duplicate runs or replies.
 - Background delivery through Telegram MUST be recorded separately from foreground replies.

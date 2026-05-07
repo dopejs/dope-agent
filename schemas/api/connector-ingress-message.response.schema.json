@@ -3,7 +3,7 @@
   "$id": "https://dope.local/schemas/api/connector-ingress-message.response.schema.json",
   "title": "ConnectorIngressMessageResponse",
   "type": "object",
-  "required": ["ingressId", "connectorId", "acceptedAt", "session", "sessionCreated", "runCreated"],
+  "required": ["ingressId", "connectorId", "outcome", "reasonCode", "redactionStatus", "acceptedAt", "sessionCreated", "runCreated"],
   "additionalProperties": false,
   "properties": {
     "tenantId": { "type": "string" },
@@ -12,6 +12,17 @@
     },
     "connectorId": {
       "type": "string"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["accepted", "ignored", "blocked", "duplicate", "unsupported", "failed"]
+    },
+    "reasonCode": {
+      "type": "string"
+    },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
     },
     "acceptedAt": {
       "type": "string",

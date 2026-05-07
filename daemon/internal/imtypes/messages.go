@@ -33,9 +33,14 @@ type ReplyCapabilities struct {
 
 type MessageRecord struct {
 	DeliveryID               string            `json:"deliveryId"`
+	TenantID                 string            `json:"tenantId,omitempty"`
 	ConnectorID              string            `json:"connectorId"`
 	Direction                DeliveryDirection `json:"direction"`
 	ExternalMessageID        string            `json:"externalMessageId,omitempty"`
+	ConnectorAccountID       string            `json:"connectorAccountId,omitempty"`
+	ChannelOrConversationID  string            `json:"channelOrConversationId,omitempty"`
+	ProviderMessageID        string            `json:"providerMessageId,omitempty"`
+	EquivalentRuleID         string            `json:"equivalentRuleId,omitempty"`
 	SessionID                string            `json:"sessionId,omitempty"`
 	RunID                    string            `json:"runId,omitempty"`
 	ChannelID                string            `json:"channelId"`
@@ -47,26 +52,34 @@ type MessageRecord struct {
 	Error                    string            `json:"error,omitempty"`
 	ReplyToExternalMessageID string            `json:"replyToExternalMessageId,omitempty"`
 	ResponseToDeliveryID     string            `json:"responseToDeliveryId,omitempty"`
+	ForegroundOutcomeStatus  string            `json:"foregroundOutcomeStatus,omitempty"`
+	BackgroundDeliveryID     string            `json:"backgroundDeliveryId,omitempty"`
+	DeliveryBoundaryKind     string            `json:"deliveryBoundaryKind,omitempty"`
 	CreatedAt                time.Time         `json:"createdAt"`
 	UpdatedAt                time.Time         `json:"updatedAt"`
 }
 
 type InboundMessage struct {
-	ConnectorID       string
-	ConnectorKind     string
-	ExternalMessageID string
-	AccountID         string
-	ChannelID         string
-	GuildID           string
-	PeerID            string
-	ThreadID          string
-	AuthorID          string
-	Content           string
-	Kind              router.SessionKind
-	ReplyToMessageID  string
-	Direct            bool
-	Mentioned         bool
-	ReceivedAt        time.Time
+	ConnectorID             string
+	ConnectorKind           string
+	ExternalMessageID       string
+	TenantID                string
+	AccountID               string
+	ConnectorAccountID      string
+	ChannelOrConversationID string
+	ProviderMessageID       string
+	EquivalentRuleID        string
+	ChannelID               string
+	GuildID                 string
+	PeerID                  string
+	ThreadID                string
+	AuthorID                string
+	Content                 string
+	Kind                    router.SessionKind
+	ReplyToMessageID        string
+	Direct                  bool
+	Mentioned               bool
+	ReceivedAt              time.Time
 }
 
 type OutboundReply struct {

@@ -243,6 +243,20 @@ func TestRuntimeIgnoresGuildMessageWithoutMentionWhenRequired(t *testing.T) {
 	if len(transport.sent) != 0 {
 		t.Fatalf("expected guild message without mention to be ignored, got %d replies", len(transport.sent))
 	}
+	connectorEvents := eventBus.List(events.Filter{Category: "connector"})
+	if len(connectorEvents) == 0 {
+		t.Fatal("expected route outcome event")
+	}
+	last := connectorEvents[len(connectorEvents)-1]
+	if last.Name != "connector.route_outcome_recorded" {
+		t.Fatalf("expected route outcome event, got %s", last.Name)
+	}
+	if got := last.Payload["outcome"]; got != "ignored" {
+		t.Fatalf("expected ignored outcome, got %#v", got)
+	}
+	if got := last.Payload["reasonCode"]; got != "mention_required" {
+		t.Fatalf("expected mention_required reason, got %#v", got)
+	}
 }
 
 func TestNewRuntimeRejectsMissingBotToken(t *testing.T) {
@@ -306,5 +320,28 @@ func TestRuntimePublishesClassifiedFailureWhenTransportStartFails(t *testing.T) 
 	}
 	if got := last.Payload["errorClass"]; got != "auth_error" {
 		t.Fatalf("expected auth_error classification, got %#v", got)
+	}
+}
+
+func TestDiscordConformanceProfileDeclaresSurfacesWithoutSyntheticCorePasses(t *testing.T) {
+	t.Parallel()
+
+	profile := ConformanceProfile(Config{
+		ConnectorID:    "discord-main",
+		RequireMention: true,
+		RespondInDM:    true,
+	}, time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC))
+
+	if err := baseconnectors.ValidateCapabilityProfile(profile); err == nil {
+		t.Fatal("expected declared Discord profile without matrix evidence to fail core invariant validation")
+	}
+	if got := profile.ProviderSurfaceResults["direct_message"]; got != baseconnectors.SurfaceSupported {
+		t.Fatalf("direct_message support=%s, want supported", got)
+	}
+	if got := profile.ProviderSurfaceResults["thread_reply"]; got != baseconnectors.SurfaceLimited {
+		t.Fatalf("thread_reply support=%s, want limited", got)
+	}
+	if got := profile.ProviderSurfaceResults["incremental_visible_updates"]; got != baseconnectors.SurfaceUnsupported {
+		t.Fatalf("incremental_visible_updates support=%s, want unsupported", got)
 	}
 }

@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -67,6 +68,8 @@ func (a *ConnectorAdapter) Send(ctx context.Context, target DeliveryTarget, outc
 		Content:              outcome.PayloadPreview,
 		Status:               imtypes.DeliveryStatusProcessing,
 		ResponseToDeliveryID: outcome.DeliveryID,
+		BackgroundDeliveryID: outcome.DeliveryID,
+		DeliveryBoundaryKind: "background_delivery",
 		CreatedAt:            time.Now().UTC(),
 		UpdatedAt:            time.Now().UTC(),
 	}
@@ -96,11 +99,38 @@ func (a *ConnectorAdapter) Send(ctx context.Context, target DeliveryTarget, outc
 		if err := a.sqliteStore.UpsertConnectorMessage(ctx, record); err != nil {
 			return SendResult{TransportKind: string(TargetKindConnectorRoute)}, err
 		}
+		boundaryID := "boundary_" + record.DeliveryID
+		boundary := store.ConnectorDeliveryBoundaryRecord{
+			BoundaryID:               boundaryID,
+			ConnectorID:              record.ConnectorID,
+			ForegroundReplyOutcomeID: outcome.DeliveryID,
+			BackgroundDeliveryID:     record.DeliveryID,
+			TransportKind:            string(TargetKindConnectorRoute),
+			SeparationStatus:         "separate_truths",
+			CreatedAt:                record.UpdatedAt,
+		}
+		if document, err := json.Marshal(map[string]any{
+			"boundaryId":               boundary.BoundaryID,
+			"connectorId":              boundary.ConnectorID,
+			"foregroundReplyOutcomeId": boundary.ForegroundReplyOutcomeID,
+			"backgroundDeliveryId":     boundary.BackgroundDeliveryID,
+			"transportKind":            boundary.TransportKind,
+			"separationStatus":         boundary.SeparationStatus,
+			"connectorMessageId":       record.DeliveryID,
+			"externalMessageId":        record.ExternalMessageID,
+		}); err == nil {
+			boundary.Document = document
+		}
+		if err := a.sqliteStore.SaveConnectorDeliveryBoundary(ctx, boundary); err != nil {
+			return SendResult{TransportKind: string(TargetKindConnectorRoute)}, err
+		}
 	}
 	return SendResult{
-		TransportKind:              string(TargetKindConnectorRoute),
-		ReceiptSummary:             "connector reply persisted",
-		ConnectorMessageDeliveryID: record.DeliveryID,
+		TransportKind:               string(TargetKindConnectorRoute),
+		ReceiptSummary:              "connector reply persisted",
+		ConnectorMessageDeliveryID:  record.DeliveryID,
+		ConnectorDeliveryBoundaryID: "boundary_" + record.DeliveryID,
+		SeparationStatus:            "separate_truths",
 	}, nil
 }
 

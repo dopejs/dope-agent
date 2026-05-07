@@ -207,7 +207,9 @@ type OutcomeFilter struct {
 }
 
 type SendResult struct {
-	TransportKind              string
-	ReceiptSummary             string
-	ConnectorMessageDeliveryID string
+	TransportKind               string
+	ReceiptSummary              string
+	ConnectorMessageDeliveryID  string
+	ConnectorDeliveryBoundaryID string
+	SeparationStatus            string
 }

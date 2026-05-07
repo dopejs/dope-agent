@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/connector-diagnostic-state-changed.event.schema.json",
+  "title": "ConnectorDiagnosticStateChangedEvent",
+  "type": "object",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "properties": {
+        "category": { "const": "connector" },
+        "name": { "const": "connector.diagnostic_state_changed" },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "diagnosticStateId",
+            "connectorId",
+            "status",
+            "reasonCode",
+            "remediationOwner",
+            "retrySafety",
+            "freshnessState",
+            "redactionStatus"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "diagnosticStateId": { "type": "string" },
+            "connectorId": { "type": "string" },
+            "previousStatus": { "type": "string" },
+            "status": { "type": "string" },
+            "reasonCode": { "type": "string" },
+            "remediationOwner": { "type": "string" },
+            "retrySafety": { "type": "string" },
+            "freshnessState": { "type": "string" },
+            "redactionStatus": {
+              "type": "string",
+              "enum": ["redacted", "suppressed", "redaction_failed"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/connector-foreground-reply-failed.event.schema.json",
+  "title": "ConnectorForegroundReplyFailedEvent",
+  "type": "object",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "properties": {
+        "category": { "const": "connector" },
+        "name": { "const": "connector.foreground_reply_failed" },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "connectorId",
+            "messageDeliveryId",
+            "status",
+            "reasonCode",
+            "retrySafety",
+            "separationStatus",
+            "redactionStatus"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "connectorId": { "type": "string" },
+            "messageDeliveryId": { "type": "string" },
+            "status": {
+              "type": "string",
+              "enum": ["failed", "partial"]
+            },
+            "reasonCode": { "type": "string" },
+            "retrySafety": { "type": "string" },
+            "backgroundDeliveryId": { "type": "string" },
+            "separationStatus": { "type": "string" },
+            "redactionStatus": {
+              "type": "string",
+              "enum": ["redacted", "suppressed", "redaction_failed"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

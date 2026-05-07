@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/connector-diagnostic-redaction-failed.event.schema.json",
+  "title": "ConnectorDiagnosticRedactionFailedEvent",
+  "type": "object",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "properties": {
+        "category": { "const": "connector" },
+        "name": { "const": "connector.diagnostic_redaction_failed" },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "connectorId",
+            "targetKind",
+            "targetId",
+            "reasonCode",
+            "redactionStatus",
+            "retentionExpiresAt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "connectorId": { "type": "string" },
+            "targetKind": { "type": "string" },
+            "targetId": { "type": "string" },
+            "reasonCode": { "type": "string" },
+            "redactionStatus": {
+              "type": "string",
+              "enum": ["suppressed", "redaction_failed"]
+            },
+            "retentionExpiresAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

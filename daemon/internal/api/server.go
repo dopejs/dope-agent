@@ -31,6 +31,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
+	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
@@ -3100,6 +3101,15 @@ func projectConnectorResources(items []connectors.Connector) []connectors.Connec
 
 func projectConnectorResource(connector connectors.Connector) connectors.Connector {
 	connector.SecretSummary = secrets.RedactSecretRefs(connector.SecretRefs)
+	if connector.AccountBinding == nil && connector.TenantID != "" {
+		connector.AccountBinding = map[string]any{
+			"tenantId":           connector.TenantID,
+			"connectorId":        connector.ConnectorID,
+			"connectorAccountId": connector.ConnectorID,
+			"redactionStatus":    "redacted",
+			"updatedAt":          connector.UpdatedAt,
+		}
+	}
 	return connector
 }
 
@@ -3295,9 +3305,40 @@ func handleConnectorIngressMessages(supervisor *connectors.Supervisor, sessionRo
 		return
 	}
 
+	ingressID := newIngressID()
+	acceptedAt := time.Now().UTC()
+	tenantID := firstNonEmpty(request.TenantID, connector.TenantID)
+	if tenantContext, tenantOK := tenantContextFromContext(r.Context()); tenantOK && tenantContext.TenantID != "" {
+		tenantID = tenantContext.TenantID
+	}
+
 	routeInput, err := resolveConnectorRouteInput(connector, request.Route)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		if _, publishErr := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+			Category: "connector",
+			Name:     "connector.route_outcome_recorded",
+			Scope:    events.Scope{ConnectorID: connector.ConnectorID},
+			Resource: events.Resource{Kind: "connector", ID: connector.ConnectorID},
+			Payload: map[string]any{
+				"tenantId":        tenantID,
+				"messageId":       request.Message.MessageID,
+				"outcome":         "blocked",
+				"reasonCode":      "blocked_route",
+				"error":           err.Error(),
+				"redactionStatus": "redacted",
+			},
+		}); publishErr != nil {
+			writeError(w, http.StatusInternalServerError, publishErr.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, ConnectorIngressMessageResponse{
+			IngressID:       ingressID,
+			ConnectorID:     connector.ConnectorID,
+			Outcome:         "blocked",
+			ReasonCode:      "blocked_route",
+			RedactionStatus: "redacted",
+			AcceptedAt:      acceptedAt,
+		})
 		return
 	}
 
@@ -3316,6 +3357,66 @@ func handleConnectorIngressMessages(supervisor *connectors.Supervisor, sessionRo
 		"messageId":   request.Message.MessageID,
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	now := time.Now().UTC()
+	channelOrConversationID := firstNonEmpty(request.Message.ChannelOrConversationID, routeInput.ThreadID, routeInput.PeerID)
+	providerMessageID := firstNonEmpty(request.Message.ProviderMessageID, request.Message.MessageID)
+	messageRecord, createdMessage, err := sqliteStore.CreateConnectorMessageIfAbsent(r.Context(), imtypes.MessageRecord{
+		DeliveryID:              ingressID,
+		TenantID:                tenantID,
+		ConnectorID:             connector.ConnectorID,
+		Direction:               imtypes.DeliveryDirectionInbound,
+		ExternalMessageID:       request.Message.MessageID,
+		ConnectorAccountID:      firstNonEmpty(request.Message.ConnectorAccountID, routeInput.AccountID),
+		ChannelOrConversationID: channelOrConversationID,
+		ProviderMessageID:       providerMessageID,
+		EquivalentRuleID:        firstNonEmpty(request.Message.EquivalentRuleID, "standard_provider_message_id"),
+		SessionID:               session.SessionID,
+		ChannelID:               firstNonEmpty(routeInput.ThreadID, routeInput.PeerID, channelOrConversationID),
+		PeerID:                  routeInput.PeerID,
+		ThreadID:                routeInput.ThreadID,
+		Content:                 request.Message.Text,
+		Status:                  imtypes.DeliveryStatusReceived,
+		CreatedAt:               now,
+		UpdatedAt:               now,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !createdMessage {
+		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
+			Category: "connector",
+			Name:     "connector.inbound_duplicate_detected",
+			Scope: events.Scope{
+				SessionID:   messageRecord.SessionID,
+				ConnectorID: connector.ConnectorID,
+			},
+			Resource: events.Resource{Kind: "connector_message", ID: messageRecord.DeliveryID},
+			Payload: map[string]any{
+				"tenantId":           tenantID,
+				"messageId":          request.Message.MessageID,
+				"providerMessageId":  providerMessageID,
+				"existingDeliveryId": messageRecord.DeliveryID,
+				"outcome":            "duplicate",
+				"reasonCode":         "duplicate_inbound",
+				"redactionStatus":    "redacted",
+			},
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, ConnectorIngressMessageResponse{
+			IngressID:       ingressID,
+			ConnectorID:     connector.ConnectorID,
+			Outcome:         "duplicate",
+			ReasonCode:      "duplicate_inbound",
+			RedactionStatus: "redacted",
+			AcceptedAt:      acceptedAt,
+			Session:         &session,
+		})
 		return
 	}
 
@@ -3368,15 +3469,17 @@ func handleConnectorIngressMessages(supervisor *connectors.Supervisor, sessionRo
 		runCreated = true
 	}
 
-	acceptedAt := time.Now().UTC()
 	response := ConnectorIngressMessageResponse{
-		IngressID:      newIngressID(),
-		ConnectorID:    connector.ConnectorID,
-		AcceptedAt:     acceptedAt,
-		Session:        session,
-		SessionCreated: createdSession,
-		Run:            run,
-		RunCreated:     runCreated,
+		IngressID:       ingressID,
+		ConnectorID:     connector.ConnectorID,
+		Outcome:         "accepted",
+		ReasonCode:      "accepted",
+		RedactionStatus: "redacted",
+		AcceptedAt:      acceptedAt,
+		Session:         &session,
+		SessionCreated:  createdSession,
+		Run:             run,
+		RunCreated:      runCreated,
 	}
 	if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
 		Category: "connector",
@@ -3391,12 +3494,19 @@ func handleConnectorIngressMessages(supervisor *connectors.Supervisor, sessionRo
 			ID:   connector.ConnectorID,
 		},
 		Payload: map[string]any{
-			"ingressId":      response.IngressID,
-			"kind":           session.Kind,
-			"channel":        session.Channel,
-			"messageId":      request.Message.MessageID,
-			"sessionCreated": createdSession,
-			"runCreated":     runCreated,
+			"ingressId":               response.IngressID,
+			"outcome":                 response.Outcome,
+			"reasonCode":              response.ReasonCode,
+			"kind":                    session.Kind,
+			"channel":                 session.Channel,
+			"messageId":               request.Message.MessageID,
+			"connectorAccountId":      firstNonEmpty(request.Message.ConnectorAccountID, request.Route.AccountID),
+			"channelOrConversationId": firstNonEmpty(request.Message.ChannelOrConversationID, request.Route.ThreadID, request.Route.PeerID),
+			"providerMessageId":       firstNonEmpty(request.Message.ProviderMessageID, request.Message.MessageID),
+			"equivalentRuleId":        request.Message.EquivalentRuleID,
+			"redactionStatus":         response.RedactionStatus,
+			"sessionCreated":          createdSession,
+			"runCreated":              runCreated,
 		},
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

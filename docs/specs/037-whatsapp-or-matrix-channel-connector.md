@@ -65,6 +65,9 @@ preserving conformance, tenant isolation, and diagnostics.
 
 - The spec implementation MUST record the provider choice and rejected alternative.
 - The chosen connector MUST satisfy shared conformance.
+- The chosen connector MUST reference `docs/channels/channel-connector-conformance.md`
+  for shared routing, dedupe, diagnostics, redaction, and delivery-boundary behavior
+  instead of redefining those contracts.
 - The setup path MUST be tenant-scoped and redacted.
 - Diagnostics MUST classify auth, permission, rate-limit, provider, and network failures.
 

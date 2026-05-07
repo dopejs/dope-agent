@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/connector-diagnostic-state.schema.json",
+  "title": "ConnectorDiagnosticState",
+  "type": "object",
+  "required": [
+    "diagnosticStateId",
+    "connectorId",
+    "status",
+    "reasonCode",
+    "remediationOwner",
+    "userVisibleSeverity",
+    "retrySafety",
+    "freshnessState",
+    "evidenceTimestamp",
+    "redactionStatus",
+    "retentionExpiresAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "diagnosticStateId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "connectorAccountId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["healthy", "degraded", "failed", "disabled", "blocked", "unknown", "stale"]
+    },
+    "reasonCode": { "type": "string", "minLength": 1 },
+    "remediationOwner": {
+      "type": "string",
+      "enum": ["none_required", "operator", "tenant_admin", "provider", "platform"]
+    },
+    "userVisibleSeverity": {
+      "type": "string",
+      "enum": ["info", "warning", "error"]
+    },
+    "retrySafety": {
+      "type": "string",
+      "enum": ["no_action_needed", "retryable", "retry_after", "blocked", "unsafe"]
+    },
+    "freshnessState": {
+      "type": "string",
+      "enum": ["fresh", "stale", "expired"]
+    },
+    "evidenceTimestamp": { "type": "string", "format": "date-time" },
+    "staleAfter": { "type": "string", "format": "date-time" },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "redactionFailureId": { "type": "string" },
+    "remediationHint": { "type": "string" }
+  }
+}

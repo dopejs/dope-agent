@@ -200,20 +200,24 @@ func (t *GatewayTransport) normalizeMessage(message *discordgo.MessageCreate) (i
 	}
 
 	return imtypes.InboundMessage{
-		ConnectorID:       t.cfg.ConnectorID,
-		ConnectorKind:     "discord",
-		ExternalMessageID: message.ID,
-		AccountID:         botUserID,
-		ChannelID:         message.ChannelID,
-		GuildID:           message.GuildID,
-		PeerID:            peerID,
-		ThreadID:          threadID,
-		AuthorID:          message.Author.ID,
-		Content:           content,
-		Kind:              kind,
-		Direct:            direct,
-		Mentioned:         direct || mentioned,
-		ReceivedAt:        time.Now().UTC(),
+		ConnectorID:             t.cfg.ConnectorID,
+		ConnectorKind:           "discord",
+		ExternalMessageID:       message.ID,
+		AccountID:               botUserID,
+		ConnectorAccountID:      botUserID,
+		ChannelOrConversationID: message.ChannelID,
+		ProviderMessageID:       message.ID,
+		EquivalentRuleID:        "discord_message_id",
+		ChannelID:               message.ChannelID,
+		GuildID:                 message.GuildID,
+		PeerID:                  peerID,
+		ThreadID:                threadID,
+		AuthorID:                message.Author.ID,
+		Content:                 content,
+		Kind:                    kind,
+		Direct:                  direct,
+		Mentioned:               direct || mentioned,
+		ReceivedAt:              time.Now().UTC(),
 	}, true
 }
 

@@ -45,11 +45,13 @@ type MessageLoop struct {
 }
 
 type ProcessResult struct {
-	Session   router.Session
-	Run       runtime.Run
-	Step      runtime.Step
-	Reply     string
-	Duplicate bool
+	Session    router.Session
+	Run        runtime.Run
+	Step       runtime.Step
+	Reply      string
+	Outcome    string
+	ReasonCode string
+	Duplicate  bool
 }
 
 func NewMessageLoop(sessionRouter *router.SessionRouter, runtimeManager *runtime.Manager, checkpointManager *checkpoints.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, chatService *chat.Service) *MessageLoop {
@@ -81,9 +83,14 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 
 	inboundRecord := imtypes.MessageRecord{
 		DeliveryID:               newDeliveryID(),
+		TenantID:                 inbound.TenantID,
 		ConnectorID:              connector.ConnectorID,
 		Direction:                imtypes.DeliveryDirectionInbound,
 		ExternalMessageID:        inbound.ExternalMessageID,
+		ConnectorAccountID:       inboundConnectorAccountID(inbound),
+		ChannelOrConversationID:  inboundChannelOrConversationID(inbound),
+		ProviderMessageID:        inboundProviderMessageID(inbound),
+		EquivalentRuleID:         inbound.EquivalentRuleID,
 		ChannelID:                inbound.ChannelID,
 		PeerID:                   inbound.PeerID,
 		ThreadID:                 inbound.ThreadID,
@@ -99,7 +106,17 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		return ProcessResult{}, err
 	}
 	if !created {
-		return ProcessResult{Duplicate: true}, nil
+		_, _ = l.publishConnectorEvent(ctx, "connector.inbound_duplicate_detected", connector, router.Session{}, "", "", map[string]any{
+			"tenantId":                persistedInbound.TenantID,
+			"connectorId":             connector.ConnectorID,
+			"connectorAccountId":      persistedInbound.ConnectorAccountID,
+			"channelOrConversationId": persistedInbound.ChannelOrConversationID,
+			"providerMessageId":       persistedInbound.ProviderMessageID,
+			"equivalentRuleId":        persistedInbound.EquivalentRuleID,
+			"existingDeliveryId":      persistedInbound.DeliveryID,
+			"redactionStatus":         "redacted",
+		})
+		return ProcessResult{Outcome: "duplicate", ReasonCode: "duplicate_inbound", Duplicate: true}, nil
 	}
 
 	session, createdSession, err := l.routeSession(inbound)
@@ -231,11 +248,34 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 	}
 	run, _ = l.runtime.GetRun(run.RunID)
 	return ProcessResult{
-		Session: session,
-		Run:     run,
-		Step:    finalStep,
-		Reply:   queryResult.Dispatch.Output,
+		Session:    session,
+		Run:        run,
+		Step:       finalStep,
+		Reply:      queryResult.Dispatch.Output,
+		Outcome:    "accepted",
+		ReasonCode: "accepted",
 	}, nil
+}
+
+func inboundConnectorAccountID(inbound imtypes.InboundMessage) string {
+	return coalesceTrimmed(inbound.ConnectorAccountID, inbound.AccountID)
+}
+
+func inboundChannelOrConversationID(inbound imtypes.InboundMessage) string {
+	return coalesceTrimmed(inbound.ChannelOrConversationID, inbound.ChannelID, inbound.PeerID)
+}
+
+func inboundProviderMessageID(inbound imtypes.InboundMessage) string {
+	return coalesceTrimmed(inbound.ProviderMessageID, inbound.ExternalMessageID)
+}
+
+func coalesceTrimmed(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func (l *MessageLoop) executeReplyPath(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, replies ReplySender, progressor ReplyProgressor, capabilities imtypes.ReplyCapabilities, scope events.Scope, stopThinking func()) (chat.QueryResult, imtypes.MessageRecord, error) {
@@ -290,6 +330,7 @@ func (l *MessageLoop) executeFinalReply(ctx context.Context, connector connector
 
 		record.ExternalMessageID = sentReply.ExternalMessageID
 		record.Status = imtypes.DeliveryStatusReplied
+		record.ForegroundOutcomeStatus = foregroundReplyOutcomeStatus(record.Status)
 		record.UpdatedAt = time.Now().UTC()
 		if err := l.store.UpsertConnectorMessage(ctx, record); err != nil {
 			return chat.QueryResult{}, imtypes.MessageRecord{}, err
@@ -371,10 +412,24 @@ func (l *MessageLoop) newOutboundRecord(connector connectors.Connector, session 
 		ThreadID:                 inbound.ThreadID,
 		Content:                  content,
 		Status:                   imtypes.DeliveryStatusProcessing,
+		ForegroundOutcomeStatus:  foregroundReplyOutcomeStatus(imtypes.DeliveryStatusProcessing),
 		ResponseToDeliveryID:     responseToDeliveryID,
 		ReplyToExternalMessageID: inbound.ExternalMessageID,
 		CreatedAt:                now,
 		UpdatedAt:                now,
+	}
+}
+
+func foregroundReplyOutcomeStatus(status imtypes.DeliveryStatus) string {
+	switch status {
+	case imtypes.DeliveryStatusReplied:
+		return "sent"
+	case imtypes.DeliveryStatusPartial:
+		return "partial"
+	case imtypes.DeliveryStatusFailed:
+		return "failed"
+	default:
+		return "processing"
 	}
 }
 

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/connector-capability-profile.schema.json",
+  "title": "ConnectorCapabilityProfile",
+  "type": "object",
+  "required": [
+    "connectorKind",
+    "lifecycleState",
+    "surfaces",
+    "identityRules",
+    "coreInvariants",
+    "generatedAt",
+    "retentionExpiresAt",
+    "redactionStatus"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "connectorKind": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "lifecycleState": {
+      "type": "string",
+      "enum": [
+        "configured",
+        "disabled",
+        "starting",
+        "healthy",
+        "degraded",
+        "failed",
+        "permission_blocked",
+        "rate_limited",
+        "unsupported_capability"
+      ]
+    },
+    "surfaces": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["supported", "limited", "unsupported"]
+      }
+    },
+    "identityRules": {
+      "type": "object",
+      "required": ["durableIdentity"],
+      "additionalProperties": false,
+      "properties": {
+        "durableIdentity": { "type": "string", "minLength": 1 },
+        "equivalentIdentity": { "type": "string" },
+        "dedupeWindow": { "type": "string" }
+      }
+    },
+    "coreInvariants": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["pass", "fail", "supported", "limited", "unsupported"]
+      }
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    }
+  }
+}

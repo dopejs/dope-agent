@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/connector-route-outcome-recorded.event.schema.json",
+  "title": "ConnectorRouteOutcomeRecordedEvent",
+  "type": "object",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "properties": {
+        "category": { "const": "connector" },
+        "name": { "const": "connector.route_outcome_recorded" },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "connectorId",
+            "outcome",
+            "reasonCode",
+            "surface",
+            "redactionStatus"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "connectorId": { "type": "string" },
+            "outcome": {
+              "type": "string",
+              "enum": ["accepted", "ignored", "blocked", "unsupported", "duplicate", "failed"]
+            },
+            "reasonCode": { "type": "string" },
+            "surface": { "type": "string" },
+            "messageDeliveryId": { "type": "string" },
+            "redactionStatus": {
+              "type": "string",
+              "enum": ["redacted", "suppressed", "redaction_failed"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 42
+	CurrentSchemaVersion = 44
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -2708,6 +2708,97 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_billing_abuse_restrictions_tenant_active ON billing_abuse_restrictions(tenant_id, status, affected_category, started_at DESC, restriction_id DESC);`,
 		},
 	},
+	{
+		Version: 43,
+		Name:    "r48_connector_conformance",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS connector_conformance_results (
+				conformance_result_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_kind TEXT NOT NULL,
+				connector_id TEXT,
+				scenario_id TEXT NOT NULL,
+				area TEXT NOT NULL,
+				result TEXT NOT NULL,
+				reason_code TEXT,
+				redaction_status TEXT NOT NULL,
+				evidence_timestamp TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_connector_conformance_tenant_connector ON connector_conformance_results(tenant_id, connector_id, evidence_timestamp DESC, conformance_result_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_connector_conformance_kind_area ON connector_conformance_results(connector_kind, area, result);`,
+			`
+			CREATE TABLE IF NOT EXISTS connector_diagnostic_states (
+				diagnostic_state_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				connector_account_id TEXT,
+				status TEXT NOT NULL,
+				reason_code TEXT NOT NULL,
+				remediation_owner TEXT NOT NULL,
+				user_visible_severity TEXT NOT NULL,
+				retry_safety TEXT NOT NULL,
+				evidence_timestamp TEXT NOT NULL,
+				stale_after TEXT,
+				freshness_state TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				redaction_failure_id TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_connector_diagnostic_states_current ON connector_diagnostic_states(tenant_id, connector_id, evidence_timestamp DESC, diagnostic_state_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_connector_diagnostic_states_reason ON connector_diagnostic_states(tenant_id, reason_code, freshness_state);`,
+			`
+			CREATE TABLE IF NOT EXISTS connector_diagnostic_redaction_failures (
+				redaction_failure_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				diagnostic_state_id TEXT,
+				reason_code TEXT NOT NULL,
+				occurred_at TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_connector_diagnostic_redaction_failures_tenant ON connector_diagnostic_redaction_failures(tenant_id, connector_id, occurred_at DESC, redaction_failure_id DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS connector_delivery_boundaries (
+				boundary_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				foreground_reply_outcome_id TEXT,
+				background_delivery_id TEXT,
+				transport_kind TEXT NOT NULL,
+				separation_status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_connector_delivery_boundaries_tenant ON connector_delivery_boundaries(tenant_id, connector_id, created_at DESC, boundary_id DESC);`,
+			`ALTER TABLE connector_messages ADD COLUMN connector_account_id TEXT;`,
+			`ALTER TABLE connector_messages ADD COLUMN channel_or_conversation_id TEXT;`,
+			`ALTER TABLE connector_messages ADD COLUMN provider_message_id TEXT;`,
+			`ALTER TABLE connector_messages ADD COLUMN equivalent_rule_id TEXT;`,
+			`ALTER TABLE connector_messages ADD COLUMN foreground_outcome_status TEXT;`,
+			`ALTER TABLE connector_messages ADD COLUMN background_delivery_id TEXT;`,
+			`ALTER TABLE connector_messages ADD COLUMN delivery_boundary_kind TEXT;`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_messages_standard_identity_unique ON connector_messages(tenant_id, connector_account_id, channel_or_conversation_id, provider_message_id, direction, equivalent_rule_id) WHERE provider_message_id IS NOT NULL;`,
+			`CREATE INDEX IF NOT EXISTS idx_connector_messages_standard_identity ON connector_messages(tenant_id, connector_account_id, channel_or_conversation_id, provider_message_id, direction) WHERE provider_message_id IS NOT NULL;`,
+		},
+	},
+	{
+		Version: 44,
+		Name:    "connector_message_external_identity_tenant_scope",
+		Statements: []string{
+			`DROP INDEX IF EXISTS idx_connector_messages_external;`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_messages_external_tenant_unique ON connector_messages(tenant_id, connector_id, direction, external_message_id) WHERE external_message_id IS NOT NULL;`,
+			`CREATE INDEX IF NOT EXISTS idx_connector_messages_external_lookup ON connector_messages(tenant_id, connector_id, direction, external_message_id) WHERE external_message_id IS NOT NULL;`,
+		},
+	},
 }
 
 type SQLiteStore struct {
@@ -2723,6 +2814,18 @@ type SQLiteStore struct {
 	// warning. nil means use slog.Default(). Override via
 	// SetColdPathLogger from tests that need to capture the warning.
 	coldPathLogger *slog.Logger
+}
+
+type ConnectorDeliveryBoundaryRecord struct {
+	BoundaryID               string    `json:"boundaryId"`
+	TenantID                 string    `json:"tenantId"`
+	ConnectorID              string    `json:"connectorId"`
+	ForegroundReplyOutcomeID string    `json:"foregroundReplyOutcomeId,omitempty"`
+	BackgroundDeliveryID     string    `json:"backgroundDeliveryId,omitempty"`
+	TransportKind            string    `json:"transportKind"`
+	SeparationStatus         string    `json:"separationStatus"`
+	CreatedAt                time.Time `json:"createdAt"`
+	Document                 []byte    `json:"-"`
 }
 
 // SetColdPathLogger overrides the slog.Logger used by the C4 cold-path
@@ -3987,13 +4090,20 @@ func (s *SQLiteStore) CreateConnectorMessageIfAbsent(ctx context.Context, messag
 	if s == nil {
 		return message, true, nil
 	}
+	tenantID := coalesceString(message.TenantID, tenantBindingString(s.ResolveActiveTenantBinding(ctx)))
+	equivalentRuleID := connectorMessageEquivalentRuleID(message)
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO connector_messages (
 			delivery_id,
+			tenant_id,
 			connector_id,
 			direction,
 			external_message_id,
+			connector_account_id,
+			channel_or_conversation_id,
+			provider_message_id,
+			equivalent_rule_id,
 			session_id,
 			run_id,
 			channel_id,
@@ -4005,14 +4115,22 @@ func (s *SQLiteStore) CreateConnectorMessageIfAbsent(ctx context.Context, messag
 			error_text,
 			reply_to_external_message_id,
 			response_to_delivery_id,
+			foreground_outcome_status,
+			background_delivery_id,
+			delivery_boundary_kind,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		message.DeliveryID,
+		tenantID,
 		message.ConnectorID,
 		string(message.Direction),
 		nullString(message.ExternalMessageID),
+		nullString(message.ConnectorAccountID),
+		nullString(message.ChannelOrConversationID),
+		nullString(message.ProviderMessageID),
+		nullString(equivalentRuleID),
 		nullString(message.SessionID),
 		nullString(message.RunID),
 		message.ChannelID,
@@ -4024,12 +4142,24 @@ func (s *SQLiteStore) CreateConnectorMessageIfAbsent(ctx context.Context, messag
 		nullString(message.Error),
 		nullString(message.ReplyToExternalMessageID),
 		nullString(message.ResponseToDeliveryID),
+		nullString(message.ForegroundOutcomeStatus),
+		nullString(message.BackgroundDeliveryID),
+		nullString(message.DeliveryBoundaryKind),
 		message.CreatedAt.UTC().Format(time.RFC3339Nano),
 		message.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	)
 	if err != nil {
+		if strings.TrimSpace(message.ProviderMessageID) != "" && isUniqueConstraintError(err) {
+			existing, ok, lookupErr := s.GetConnectorMessageByStandardIdentity(ctx, tenantID, message.ConnectorAccountID, message.ChannelOrConversationID, message.ProviderMessageID, message.Direction, equivalentRuleID)
+			if lookupErr != nil {
+				return imtypes.MessageRecord{}, false, lookupErr
+			}
+			if ok {
+				return existing, false, nil
+			}
+		}
 		if strings.TrimSpace(message.ExternalMessageID) != "" && isUniqueConstraintError(err) {
-			existing, ok, lookupErr := s.GetConnectorMessageByExternalID(ctx, message.ConnectorID, message.Direction, message.ExternalMessageID)
+			existing, ok, lookupErr := s.GetConnectorMessageByExternalIDForTenant(ctx, tenantID, message.ConnectorID, message.Direction, message.ExternalMessageID)
 			if lookupErr != nil {
 				return imtypes.MessageRecord{}, false, lookupErr
 			}
@@ -4040,7 +4170,16 @@ func (s *SQLiteStore) CreateConnectorMessageIfAbsent(ctx context.Context, messag
 		return imtypes.MessageRecord{}, false, fmt.Errorf("insert connector message %s: %w", message.DeliveryID, err)
 	}
 
-	if existing, ok, err := s.GetConnectorMessageByExternalID(ctx, message.ConnectorID, message.Direction, message.ExternalMessageID); err != nil {
+	if strings.TrimSpace(message.ProviderMessageID) != "" {
+		existing, ok, err := s.GetConnectorMessageByStandardIdentity(ctx, tenantID, message.ConnectorAccountID, message.ChannelOrConversationID, message.ProviderMessageID, message.Direction, equivalentRuleID)
+		if err != nil {
+			return imtypes.MessageRecord{}, false, err
+		}
+		if ok {
+			return existing, existing.DeliveryID == message.DeliveryID, nil
+		}
+	}
+	if existing, ok, err := s.GetConnectorMessageByExternalIDForTenant(ctx, tenantID, message.ConnectorID, message.Direction, message.ExternalMessageID); err != nil {
 		return imtypes.MessageRecord{}, false, err
 	} else if ok {
 		return existing, existing.DeliveryID == message.DeliveryID, nil
@@ -4053,6 +4192,8 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 	if s == nil {
 		return nil
 	}
+	tenantID := coalesceString(message.TenantID, tenantBindingString(s.ResolveActiveTenantBinding(ctx)))
+	equivalentRuleID := connectorMessageEquivalentRuleID(message)
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO connector_messages (
@@ -4060,6 +4201,10 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 			connector_id,
 			direction,
 			external_message_id,
+			connector_account_id,
+			channel_or_conversation_id,
+			provider_message_id,
+			equivalent_rule_id,
 			session_id,
 			run_id,
 			channel_id,
@@ -4071,14 +4216,21 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 			error_text,
 			reply_to_external_message_id,
 			response_to_delivery_id,
+			foreground_outcome_status,
+			background_delivery_id,
+			delivery_boundary_kind,
 			created_at,
 			updated_at,
 			tenant_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(delivery_id) DO UPDATE SET
 			connector_id = excluded.connector_id,
 			direction = excluded.direction,
 			external_message_id = excluded.external_message_id,
+			connector_account_id = excluded.connector_account_id,
+			channel_or_conversation_id = excluded.channel_or_conversation_id,
+			provider_message_id = excluded.provider_message_id,
+			equivalent_rule_id = excluded.equivalent_rule_id,
 			session_id = excluded.session_id,
 			run_id = excluded.run_id,
 			channel_id = excluded.channel_id,
@@ -4090,6 +4242,9 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 			error_text = excluded.error_text,
 			reply_to_external_message_id = excluded.reply_to_external_message_id,
 			response_to_delivery_id = excluded.response_to_delivery_id,
+			foreground_outcome_status = excluded.foreground_outcome_status,
+			background_delivery_id = excluded.background_delivery_id,
+			delivery_boundary_kind = excluded.delivery_boundary_kind,
 			created_at = excluded.created_at,
 			updated_at = excluded.updated_at,
 			tenant_id = COALESCE(connector_messages.tenant_id, excluded.tenant_id)
@@ -4098,6 +4253,10 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 		message.ConnectorID,
 		string(message.Direction),
 		nullString(message.ExternalMessageID),
+		nullString(message.ConnectorAccountID),
+		nullString(message.ChannelOrConversationID),
+		nullString(message.ProviderMessageID),
+		nullString(equivalentRuleID),
 		nullString(message.SessionID),
 		nullString(message.RunID),
 		message.ChannelID,
@@ -4109,9 +4268,12 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 		nullString(message.Error),
 		nullString(message.ReplyToExternalMessageID),
 		nullString(message.ResponseToDeliveryID),
+		nullString(message.ForegroundOutcomeStatus),
+		nullString(message.BackgroundDeliveryID),
+		nullString(message.DeliveryBoundaryKind),
 		message.CreatedAt.UTC().Format(time.RFC3339Nano),
 		message.UpdatedAt.UTC().Format(time.RFC3339Nano),
-		s.ResolveDefaultTenantBinding(ctx),
+		tenantID,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert connector message %s: %w", message.DeliveryID, err)
@@ -4120,16 +4282,81 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 	return nil
 }
 
+func (s *SQLiteStore) SaveConnectorDeliveryBoundary(ctx context.Context, record ConnectorDeliveryBoundaryRecord) error {
+	if s == nil {
+		return nil
+	}
+	if strings.TrimSpace(record.BoundaryID) == "" {
+		record.BoundaryID = newStoreID("connector_delivery_boundary")
+	}
+	record.TenantID = coalesceString(record.TenantID, tenantBindingString(s.ResolveActiveTenantBinding(ctx)))
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = time.Now().UTC()
+	}
+	if strings.TrimSpace(record.SeparationStatus) == "" {
+		record.SeparationStatus = "separate_truths"
+	}
+	document := record.Document
+	if len(document) == 0 {
+		var err error
+		document, err = json.Marshal(record)
+		if err != nil {
+			return fmt.Errorf("marshal connector delivery boundary: %w", err)
+		}
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO connector_delivery_boundaries (
+			boundary_id, tenant_id, connector_id, foreground_reply_outcome_id, background_delivery_id,
+			transport_kind, separation_status, created_at, document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(boundary_id) DO UPDATE SET
+			tenant_id = excluded.tenant_id,
+			connector_id = excluded.connector_id,
+			foreground_reply_outcome_id = excluded.foreground_reply_outcome_id,
+			background_delivery_id = excluded.background_delivery_id,
+			transport_kind = excluded.transport_kind,
+			separation_status = excluded.separation_status,
+			created_at = excluded.created_at,
+			document_json = excluded.document_json
+	`, record.BoundaryID,
+		record.TenantID,
+		record.ConnectorID,
+		nullString(record.ForegroundReplyOutcomeID),
+		nullString(record.BackgroundDeliveryID),
+		record.TransportKind,
+		record.SeparationStatus,
+		record.CreatedAt.UTC().Format(time.RFC3339Nano),
+		string(document),
+	)
+	if err != nil {
+		return fmt.Errorf("save connector delivery boundary %s: %w", record.BoundaryID, err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) GetConnectorMessageByExternalID(ctx context.Context, connectorID string, direction imtypes.DeliveryDirection, externalMessageID string) (imtypes.MessageRecord, bool, error) {
 	if s == nil {
 		return imtypes.MessageRecord{}, false, nil
 	}
+	tenantID := tenantBindingString(s.ResolveActiveTenantBinding(ctx))
+	return s.GetConnectorMessageByExternalIDForTenant(ctx, tenantID, connectorID, direction, externalMessageID)
+}
+
+func (s *SQLiteStore) GetConnectorMessageByExternalIDForTenant(ctx context.Context, tenantID, connectorID string, direction imtypes.DeliveryDirection, externalMessageID string) (imtypes.MessageRecord, bool, error) {
+	if s == nil {
+		return imtypes.MessageRecord{}, false, nil
+	}
+	if strings.TrimSpace(externalMessageID) == "" {
+		return imtypes.MessageRecord{}, false, nil
+	}
+	tenantID = coalesceString(tenantID, tenantBindingString(s.ResolveActiveTenantBinding(ctx)))
 
 	row := s.db.QueryRowContext(ctx, `
-		SELECT delivery_id, connector_id, direction, external_message_id, session_id, run_id, channel_id, peer_id, thread_id, author_id, content, status, error_text, reply_to_external_message_id, response_to_delivery_id, created_at, updated_at
+		SELECT delivery_id, tenant_id, connector_id, direction, external_message_id, connector_account_id, channel_or_conversation_id, provider_message_id, equivalent_rule_id, session_id, run_id, channel_id, peer_id, thread_id, author_id, content, status, error_text, reply_to_external_message_id, response_to_delivery_id, foreground_outcome_status, background_delivery_id, delivery_boundary_kind, created_at, updated_at
 		FROM connector_messages
-		WHERE connector_id = ? AND direction = ? AND external_message_id = ?
+		WHERE tenant_id = ? AND connector_id = ? AND direction = ? AND external_message_id = ?
 	`,
+		tenantID,
 		connectorID,
 		string(direction),
 		externalMessageID,
@@ -4143,6 +4370,255 @@ func (s *SQLiteStore) GetConnectorMessageByExternalID(ctx context.Context, conne
 		return imtypes.MessageRecord{}, false, err
 	}
 	return item, true, nil
+}
+
+func (s *SQLiteStore) GetConnectorMessageByStandardIdentity(ctx context.Context, tenantID, connectorAccountID, channelOrConversationID, providerMessageID string, direction imtypes.DeliveryDirection, equivalentRuleID string) (imtypes.MessageRecord, bool, error) {
+	if s == nil {
+		return imtypes.MessageRecord{}, false, nil
+	}
+	equivalentRuleID = coalesceString(equivalentRuleID, "standard_provider_message_id")
+	row := s.db.QueryRowContext(ctx, `
+		SELECT delivery_id, tenant_id, connector_id, direction, external_message_id, connector_account_id, channel_or_conversation_id, provider_message_id, equivalent_rule_id, session_id, run_id, channel_id, peer_id, thread_id, author_id, content, status, error_text, reply_to_external_message_id, response_to_delivery_id, foreground_outcome_status, background_delivery_id, delivery_boundary_kind, created_at, updated_at
+		FROM connector_messages
+		WHERE tenant_id = ? AND connector_account_id = ? AND channel_or_conversation_id = ? AND provider_message_id = ? AND direction = ? AND equivalent_rule_id = ?
+	`,
+		tenantID,
+		connectorAccountID,
+		channelOrConversationID,
+		providerMessageID,
+		string(direction),
+		equivalentRuleID,
+	)
+
+	item, err := scanConnectorMessage(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return imtypes.MessageRecord{}, false, nil
+		}
+		return imtypes.MessageRecord{}, false, err
+	}
+	return item, true, nil
+}
+
+func (s *SQLiteStore) SaveConnectorConformanceResult(ctx context.Context, result connectors.ConformanceResult) error {
+	if strings.TrimSpace(result.ConformanceResultID) == "" {
+		result.ConformanceResultID = newStoreID("conformance_result")
+	}
+	if strings.TrimSpace(result.TenantID) == "" {
+		result.TenantID = tenantBindingString(s.ResolveActiveTenantBinding(ctx))
+	}
+	if result.EvidenceTimestamp.IsZero() {
+		result.EvidenceTimestamp = time.Now().UTC()
+	}
+	if result.RetentionExpiresAt.IsZero() {
+		result.RetentionExpiresAt = result.EvidenceTimestamp.Add(90 * 24 * time.Hour)
+	}
+	if result.RedactionStatus == "" {
+		result.RedactionStatus = connectors.RedactionStatusRedacted
+	}
+	document, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("marshal connector conformance result: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO connector_conformance_results (
+			conformance_result_id,
+			tenant_id,
+			connector_kind,
+			connector_id,
+			scenario_id,
+			area,
+			result,
+			reason_code,
+			redaction_status,
+			evidence_timestamp,
+			retention_expires_at,
+			document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(conformance_result_id) DO UPDATE SET
+			tenant_id = excluded.tenant_id,
+			connector_kind = excluded.connector_kind,
+			connector_id = excluded.connector_id,
+			scenario_id = excluded.scenario_id,
+			area = excluded.area,
+			result = excluded.result,
+			reason_code = excluded.reason_code,
+			redaction_status = excluded.redaction_status,
+			evidence_timestamp = excluded.evidence_timestamp,
+			retention_expires_at = excluded.retention_expires_at,
+			document_json = excluded.document_json
+	`, result.ConformanceResultID,
+		result.TenantID,
+		result.ConnectorKind,
+		sql.NullString{String: result.ConnectorID, Valid: strings.TrimSpace(result.ConnectorID) != ""},
+		result.ScenarioID,
+		result.Area,
+		string(result.Result),
+		sql.NullString{String: result.ReasonCode, Valid: strings.TrimSpace(result.ReasonCode) != ""},
+		string(result.RedactionStatus),
+		result.EvidenceTimestamp.UTC().Format(time.RFC3339Nano),
+		result.RetentionExpiresAt.UTC().Format(time.RFC3339Nano),
+		string(document),
+	)
+	if err != nil {
+		return fmt.Errorf("save connector conformance result: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListConnectorConformanceResults(ctx context.Context, tenantID, connectorID string, now time.Time) ([]connectors.ConformanceResult, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT conformance_result_id, tenant_id, connector_kind, COALESCE(connector_id, ''), scenario_id, area, result, COALESCE(reason_code, ''), redaction_status, evidence_timestamp, retention_expires_at
+		FROM connector_conformance_results
+		WHERE tenant_id = ? AND connector_id = ? AND retention_expires_at > ?
+		ORDER BY evidence_timestamp DESC, conformance_result_id DESC
+	`, tenantID, connectorID, now.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return nil, fmt.Errorf("list connector conformance results: %w", err)
+	}
+	defer rows.Close()
+
+	var results []connectors.ConformanceResult
+	for rows.Next() {
+		result, err := scanConnectorConformanceResult(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, result)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate connector conformance results: %w", err)
+	}
+	return results, nil
+}
+
+func (s *SQLiteStore) SaveConnectorDiagnosticState(ctx context.Context, state connectors.ConnectorDiagnosticState) error {
+	if strings.TrimSpace(state.DiagnosticStateID) == "" {
+		state.DiagnosticStateID = newStoreID("connector_diagnostic")
+	}
+	if strings.TrimSpace(state.TenantID) == "" {
+		state.TenantID = tenantBindingString(s.ResolveActiveTenantBinding(ctx))
+	}
+	if state.EvidenceTimestamp.IsZero() {
+		state.EvidenceTimestamp = time.Now().UTC()
+	}
+	if state.RetentionExpiresAt.IsZero() {
+		state.RetentionExpiresAt = state.EvidenceTimestamp.Add(90 * 24 * time.Hour)
+	}
+	if state.RedactionStatus == "" {
+		state.RedactionStatus = connectors.RedactionStatusRedacted
+	}
+	if (state.RedactionStatus == connectors.RedactionStatusSuppressed || state.RedactionStatus == connectors.RedactionStatusFailed) && strings.TrimSpace(state.RedactionFailureID) == "" {
+		state.RedactionFailureID = newStoreID("connector_diagnostic_redaction_failure")
+	}
+	document, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("marshal connector diagnostic state: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO connector_diagnostic_states (
+			diagnostic_state_id, tenant_id, connector_id, connector_account_id, status, reason_code,
+			remediation_owner, user_visible_severity, retry_safety, evidence_timestamp, stale_after,
+			freshness_state, redaction_status, retention_expires_at, redaction_failure_id, document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(diagnostic_state_id) DO UPDATE SET
+			tenant_id = excluded.tenant_id,
+			connector_id = excluded.connector_id,
+			connector_account_id = excluded.connector_account_id,
+			status = excluded.status,
+			reason_code = excluded.reason_code,
+			remediation_owner = excluded.remediation_owner,
+			user_visible_severity = excluded.user_visible_severity,
+			retry_safety = excluded.retry_safety,
+			evidence_timestamp = excluded.evidence_timestamp,
+			stale_after = excluded.stale_after,
+			freshness_state = excluded.freshness_state,
+			redaction_status = excluded.redaction_status,
+			retention_expires_at = excluded.retention_expires_at,
+			redaction_failure_id = excluded.redaction_failure_id,
+			document_json = excluded.document_json
+	`, state.DiagnosticStateID,
+		state.TenantID,
+		state.ConnectorID,
+		nullString(state.ConnectorAccountID),
+		string(state.Status),
+		string(state.ReasonCode),
+		string(state.RemediationOwner),
+		state.UserVisibleSeverity,
+		string(state.RetrySafety),
+		state.EvidenceTimestamp.UTC().Format(time.RFC3339Nano),
+		nullString(state.EvidenceTimestamp.Add(15*time.Minute).UTC().Format(time.RFC3339Nano)),
+		string(state.FreshnessState),
+		string(state.RedactionStatus),
+		state.RetentionExpiresAt.UTC().Format(time.RFC3339Nano),
+		nullString(state.RedactionFailureID),
+		string(document),
+	)
+	if err != nil {
+		return fmt.Errorf("save connector diagnostic state: %w", err)
+	}
+	if strings.TrimSpace(state.RedactionFailureID) != "" {
+		_, err = s.db.ExecContext(ctx, `
+			INSERT INTO connector_diagnostic_redaction_failures (
+				redaction_failure_id, tenant_id, connector_id, diagnostic_state_id, reason_code,
+				occurred_at, retention_expires_at, document_json
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(redaction_failure_id) DO UPDATE SET
+				tenant_id = excluded.tenant_id,
+				connector_id = excluded.connector_id,
+				diagnostic_state_id = excluded.diagnostic_state_id,
+				reason_code = excluded.reason_code,
+				occurred_at = excluded.occurred_at,
+				retention_expires_at = excluded.retention_expires_at,
+				document_json = excluded.document_json
+		`, state.RedactionFailureID,
+			state.TenantID,
+			state.ConnectorID,
+			nullString(state.DiagnosticStateID),
+			string(state.ReasonCode),
+			state.EvidenceTimestamp.UTC().Format(time.RFC3339Nano),
+			state.RetentionExpiresAt.UTC().Format(time.RFC3339Nano),
+			string(document),
+		)
+		if err != nil {
+			return fmt.Errorf("save connector diagnostic redaction failure %s: %w", state.RedactionFailureID, err)
+		}
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListConnectorDiagnosticStates(ctx context.Context, tenantID, connectorID string, now time.Time) ([]connectors.ConnectorDiagnosticState, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT diagnostic_state_id, tenant_id, connector_id, COALESCE(connector_account_id, ''), status, reason_code,
+			remediation_owner, user_visible_severity, retry_safety, evidence_timestamp, freshness_state,
+			redaction_status, retention_expires_at, COALESCE(redaction_failure_id, '')
+		FROM connector_diagnostic_states
+		WHERE tenant_id = ? AND connector_id = ? AND retention_expires_at > ?
+		ORDER BY evidence_timestamp DESC, diagnostic_state_id DESC
+	`, tenantID, connectorID, now.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return nil, fmt.Errorf("list connector diagnostic states: %w", err)
+	}
+	defer rows.Close()
+
+	var items []connectors.ConnectorDiagnosticState
+	for rows.Next() {
+		item, err := scanConnectorDiagnosticState(rows, now)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate connector diagnostic states: %w", err)
+	}
+	return items, nil
 }
 
 func (s *SQLiteStore) UpsertCapability(ctx context.Context, capability capabilities.Capability) error {
@@ -9885,9 +10361,14 @@ func scanConnectorMessage(scanner interface {
 }) (imtypes.MessageRecord, error) {
 	var (
 		item                     imtypes.MessageRecord
+		tenantID                 sql.NullString
 		direction                string
 		status                   string
 		externalMessageID        sql.NullString
+		connectorAccountID       sql.NullString
+		channelOrConversationID  sql.NullString
+		providerMessageID        sql.NullString
+		equivalentRuleID         sql.NullString
 		sessionID                sql.NullString
 		runID                    sql.NullString
 		peerID                   sql.NullString
@@ -9896,15 +10377,23 @@ func scanConnectorMessage(scanner interface {
 		errorText                sql.NullString
 		replyToExternalMessageID sql.NullString
 		responseToDeliveryID     sql.NullString
+		foregroundOutcomeStatus  sql.NullString
+		backgroundDeliveryID     sql.NullString
+		deliveryBoundaryKind     sql.NullString
 		createdAt                string
 		updatedAt                string
 	)
 
 	if err := scanner.Scan(
 		&item.DeliveryID,
+		&tenantID,
 		&item.ConnectorID,
 		&direction,
 		&externalMessageID,
+		&connectorAccountID,
+		&channelOrConversationID,
+		&providerMessageID,
+		&equivalentRuleID,
 		&sessionID,
 		&runID,
 		&item.ChannelID,
@@ -9916,6 +10405,9 @@ func scanConnectorMessage(scanner interface {
 		&errorText,
 		&replyToExternalMessageID,
 		&responseToDeliveryID,
+		&foregroundOutcomeStatus,
+		&backgroundDeliveryID,
+		&deliveryBoundaryKind,
 		&createdAt,
 		&updatedAt,
 	); err != nil {
@@ -9923,7 +10415,12 @@ func scanConnectorMessage(scanner interface {
 	}
 
 	item.Direction = imtypes.DeliveryDirection(direction)
+	item.TenantID = tenantID.String
 	item.ExternalMessageID = externalMessageID.String
+	item.ConnectorAccountID = connectorAccountID.String
+	item.ChannelOrConversationID = channelOrConversationID.String
+	item.ProviderMessageID = providerMessageID.String
+	item.EquivalentRuleID = equivalentRuleID.String
 	item.SessionID = sessionID.String
 	item.RunID = runID.String
 	item.PeerID = peerID.String
@@ -9933,6 +10430,9 @@ func scanConnectorMessage(scanner interface {
 	item.Error = errorText.String
 	item.ReplyToExternalMessageID = replyToExternalMessageID.String
 	item.ResponseToDeliveryID = responseToDeliveryID.String
+	item.ForegroundOutcomeStatus = foregroundOutcomeStatus.String
+	item.BackgroundDeliveryID = backgroundDeliveryID.String
+	item.DeliveryBoundaryKind = deliveryBoundaryKind.String
 
 	if err := assignRequiredTime(&item.CreatedAt, createdAt); err != nil {
 		return imtypes.MessageRecord{}, fmt.Errorf("parse connector message created_at: %w", err)
@@ -9942,6 +10442,90 @@ func scanConnectorMessage(scanner interface {
 	}
 
 	return item, nil
+}
+
+func scanConnectorConformanceResult(scanner interface {
+	Scan(dest ...any) error
+}) (connectors.ConformanceResult, error) {
+	var (
+		result             connectors.ConformanceResult
+		resultStatus       string
+		redactionStatus    string
+		evidenceTimestamp  string
+		retentionExpiresAt string
+	)
+	if err := scanner.Scan(
+		&result.ConformanceResultID,
+		&result.TenantID,
+		&result.ConnectorKind,
+		&result.ConnectorID,
+		&result.ScenarioID,
+		&result.Area,
+		&resultStatus,
+		&result.ReasonCode,
+		&redactionStatus,
+		&evidenceTimestamp,
+		&retentionExpiresAt,
+	); err != nil {
+		return connectors.ConformanceResult{}, fmt.Errorf("scan connector conformance result: %w", err)
+	}
+	result.Result = connectors.ConformanceResultStatus(resultStatus)
+	result.RedactionStatus = connectors.RedactionStatus(redactionStatus)
+	if err := assignRequiredTime(&result.EvidenceTimestamp, evidenceTimestamp); err != nil {
+		return connectors.ConformanceResult{}, fmt.Errorf("parse conformance evidence timestamp: %w", err)
+	}
+	if err := assignRequiredTime(&result.RetentionExpiresAt, retentionExpiresAt); err != nil {
+		return connectors.ConformanceResult{}, fmt.Errorf("parse conformance retention expiry: %w", err)
+	}
+	return result, nil
+}
+
+func scanConnectorDiagnosticState(scanner interface {
+	Scan(dest ...any) error
+}, now time.Time) (connectors.ConnectorDiagnosticState, error) {
+	var (
+		state              connectors.ConnectorDiagnosticState
+		status             string
+		reasonCode         string
+		remediationOwner   string
+		retrySafety        string
+		evidenceTimestamp  string
+		freshnessState     string
+		redactionStatus    string
+		retentionExpiresAt string
+	)
+	if err := scanner.Scan(
+		&state.DiagnosticStateID,
+		&state.TenantID,
+		&state.ConnectorID,
+		&state.ConnectorAccountID,
+		&status,
+		&reasonCode,
+		&remediationOwner,
+		&state.UserVisibleSeverity,
+		&retrySafety,
+		&evidenceTimestamp,
+		&freshnessState,
+		&redactionStatus,
+		&retentionExpiresAt,
+		&state.RedactionFailureID,
+	); err != nil {
+		return connectors.ConnectorDiagnosticState{}, fmt.Errorf("scan connector diagnostic state: %w", err)
+	}
+	state.Status = connectors.LifecycleState(status)
+	state.ReasonCode = connectors.DiagnosticReasonCode(reasonCode)
+	state.RemediationOwner = connectors.RemediationOwner(remediationOwner)
+	state.RetrySafety = connectors.RetrySafety(retrySafety)
+	state.FreshnessState = connectors.FreshnessState(freshnessState)
+	state.RedactionStatus = connectors.RedactionStatus(redactionStatus)
+	if err := assignRequiredTime(&state.EvidenceTimestamp, evidenceTimestamp); err != nil {
+		return connectors.ConnectorDiagnosticState{}, fmt.Errorf("parse diagnostic evidence timestamp: %w", err)
+	}
+	if err := assignRequiredTime(&state.RetentionExpiresAt, retentionExpiresAt); err != nil {
+		return connectors.ConnectorDiagnosticState{}, fmt.Errorf("parse diagnostic retention expiry: %w", err)
+	}
+	state.FreshnessState = connectors.FreshnessAt(state.EvidenceTimestamp, now)
+	return state, nil
 }
 
 func scanCapability(scanner interface {
@@ -11497,6 +12081,13 @@ func tenantBindingString(value any) string {
 	return ""
 }
 
+func connectorMessageEquivalentRuleID(message imtypes.MessageRecord) string {
+	if strings.TrimSpace(message.ProviderMessageID) == "" {
+		return ""
+	}
+	return coalesceString(message.EquivalentRuleID, "standard_provider_message_id")
+}
+
 func isUniqueConstraintError(err error) bool {
 	if err == nil {
 		return false
@@ -11519,4 +12110,13 @@ func newTenantAuditEventID() string {
 		return "audit_fallback"
 	}
 	return "audit_" + hex.EncodeToString(buf)
+}
+
+func newStoreID(prefix string) string {
+	trimmed := strings.TrimSpace(prefix)
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return trimmed + "_fallback"
+	}
+	return trimmed + "_" + hex.EncodeToString(buf)
 }

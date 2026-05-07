@@ -50,6 +50,18 @@
         "messageId": {
           "type": "string"
         },
+        "connectorAccountId": {
+          "type": "string"
+        },
+        "channelOrConversationId": {
+          "type": "string"
+        },
+        "providerMessageId": {
+          "type": "string"
+        },
+        "equivalentRuleId": {
+          "type": "string"
+        },
         "text": {
           "type": "string"
         },

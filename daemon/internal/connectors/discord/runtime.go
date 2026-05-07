@@ -93,6 +93,50 @@ func NewRuntime(cfg Config, logger *slog.Logger, supervisor *baseconnectors.Supe
 	}, nil
 }
 
+func ConformanceProfile(cfg Config, declaredAt time.Time) baseconnectors.CapabilityProfile {
+	if declaredAt.IsZero() {
+		declaredAt = time.Now().UTC()
+	}
+	core := map[baseconnectors.ConformanceArea]baseconnectors.ConformanceResultStatus{}
+	for _, area := range baseconnectors.CoreInvariantAreas() {
+		core[area] = baseconnectors.ConformanceResultFail
+	}
+	surfaces := map[string]baseconnectors.SurfaceSupport{
+		"direct_message":               supportFlag(cfg.RespondInDM),
+		"group_channel":                baseconnectors.SurfaceSupported,
+		"mention_gating":               supportFlag(cfg.RequireMention),
+		"room":                         baseconnectors.SurfaceUnsupported,
+		"thread_reply":                 baseconnectors.SurfaceLimited,
+		"thinking_visibility":          baseconnectors.SurfaceSupported,
+		"incremental_visible_updates":  baseconnectors.SurfaceUnsupported,
+		"rich_media":                   baseconnectors.SurfaceUnsupported,
+		"placeholder_card_update":      baseconnectors.SurfaceUnsupported,
+		"provider_specific_stop":       baseconnectors.SurfaceUnsupported,
+		"connector_backed_delivery":    baseconnectors.SurfaceSupported,
+		"final_only_foreground_reply":  baseconnectors.SurfaceSupported,
+		"thinking_plus_final_reply":    baseconnectors.SurfaceSupported,
+		"thinking_plus_incremental":    baseconnectors.SurfaceUnsupported,
+		"equivalent_durable_identity":  baseconnectors.SurfaceUnsupported,
+		"standard_durable_identity":    baseconnectors.SurfaceSupported,
+		"blocked_route_classification": baseconnectors.SurfaceSupported,
+	}
+	return baseconnectors.CapabilityProfile{
+		ProfileID:              "profile_discord_" + cfg.ConnectorID,
+		ConnectorID:            cfg.ConnectorID,
+		ConnectorKind:          "discord",
+		CoreInvariantResults:   core,
+		ProviderSurfaceResults: surfaces,
+		DeclaredAt:             declaredAt,
+	}
+}
+
+func supportFlag(enabled bool) baseconnectors.SurfaceSupport {
+	if enabled {
+		return baseconnectors.SurfaceSupported
+	}
+	return baseconnectors.SurfaceUnsupported
+}
+
 func (r *Runtime) Start(ctx context.Context) error {
 	if r == nil {
 		return nil
@@ -168,6 +212,18 @@ func (r *Runtime) Close(ctx context.Context) error {
 
 func (r *Runtime) handleInbound(ctx context.Context, inbound imtypes.InboundMessage) {
 	if !r.shouldHandle(inbound) {
+		_, _ = r.publishEvent(ctx, "connector.route_outcome_recorded", map[string]any{
+			"tenantId":                inbound.TenantID,
+			"connectorId":             r.cfg.ConnectorID,
+			"outcome":                 discordRouteOutcome(r.cfg, inbound),
+			"reasonCode":              discordRouteReason(r.cfg, inbound),
+			"surface":                 discordRouteSurface(inbound),
+			"connectorAccountId":      inboundConnectorAccountID(inbound),
+			"channelOrConversationId": inboundChannelOrConversationID(inbound),
+			"providerMessageId":       inboundProviderMessageID(inbound),
+			"equivalentRuleId":        inbound.EquivalentRuleID,
+			"redactionStatus":         "redacted",
+		})
 		return
 	}
 	if connector, err := r.supervisor.ReportHealth(r.cfg.ConnectorID, baseconnectors.ReportHealthInput{Status: baseconnectors.StatusHealthy}); err == nil {
@@ -195,6 +251,59 @@ func (r *Runtime) handleInbound(ctx context.Context, inbound imtypes.InboundMess
 	if result.Duplicate && r.logger != nil {
 		r.logger.Info("discord duplicate message ignored", "connector_id", r.cfg.ConnectorID, "message_id", inbound.ExternalMessageID)
 	}
+}
+
+func discordRouteOutcome(cfg Config, inbound imtypes.InboundMessage) string {
+	if !inbound.Direct && cfg.RequireMention && !inbound.Mentioned {
+		return "ignored"
+	}
+	return "blocked"
+}
+
+func discordRouteReason(cfg Config, inbound imtypes.InboundMessage) string {
+	switch {
+	case inbound.Direct && !cfg.RespondInDM:
+		return "direct_message_disabled"
+	case len(cfg.AllowedGuildIDs) > 0 && !contains(cfg.AllowedGuildIDs, inbound.GuildID):
+		return "blocked_guild"
+	case len(cfg.AllowedChannelIDs) > 0 && !contains(cfg.AllowedChannelIDs, inbound.ChannelID):
+		return "blocked_channel"
+	case !inbound.Direct && cfg.RequireMention && !inbound.Mentioned:
+		return "mention_required"
+	default:
+		return "blocked_route"
+	}
+}
+
+func discordRouteSurface(inbound imtypes.InboundMessage) string {
+	if inbound.Direct {
+		return "direct_message"
+	}
+	if strings.TrimSpace(inbound.ThreadID) != "" && inbound.ThreadID != inbound.ChannelID {
+		return "thread_reply"
+	}
+	return "group_channel"
+}
+
+func inboundConnectorAccountID(inbound imtypes.InboundMessage) string {
+	return firstNonEmpty(inbound.ConnectorAccountID, inbound.AccountID)
+}
+
+func inboundChannelOrConversationID(inbound imtypes.InboundMessage) string {
+	return firstNonEmpty(inbound.ChannelOrConversationID, inbound.ChannelID, inbound.PeerID)
+}
+
+func inboundProviderMessageID(inbound imtypes.InboundMessage) string {
+	return firstNonEmpty(inbound.ProviderMessageID, inbound.ExternalMessageID)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func (r *Runtime) shouldHandle(inbound imtypes.InboundMessage) bool {

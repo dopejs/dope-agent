@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/connector-account-binding-summary.schema.json",
+  "title": "ConnectorAccountBindingSummary",
+  "type": "object",
+  "required": [
+    "connectorId",
+    "connectorAccountId",
+    "redactionStatus",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "connectorAccountId": { "type": "string" },
+    "displayName": { "type": "string" },
+    "providerAccountHint": { "type": "string" },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

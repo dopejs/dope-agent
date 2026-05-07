@@ -65,6 +65,9 @@ gating, diagnostics, and conformance evidence.
 ## Functional Requirements
 
 - Slack MUST satisfy shared channel conformance.
+- Slack MUST reference `docs/channels/channel-connector-conformance.md` for shared
+  routing, dedupe, diagnostics, redaction, and delivery-boundary behavior instead of
+  redefining those contracts.
 - Slack workspace and channel identity MUST be tenant-scoped.
 - The connector MUST support durable dedupe and retry-safe reply truth.
 - Diagnostics MUST classify missing scopes, installation missing, rate limits, and event

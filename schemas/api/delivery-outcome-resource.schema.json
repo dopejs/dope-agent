@@ -45,6 +45,23 @@
       "items": { "$ref": "./delivery-attempt-resource.schema.json" }
     },
     "diagnosticFailure": { "$ref": "./integration-diagnostic-failure-projection.schema.json" },
+    "connectorDeliveryLinkage": {
+      "type": "object",
+      "required": ["connectorId", "transportKind", "separationStatus"],
+      "additionalProperties": false,
+      "properties": {
+        "connectorId": { "type": "string" },
+        "connectorMessageDeliveryId": { "type": "string" },
+        "foregroundReplyOutcomeId": { "type": "string" },
+        "backgroundDeliveryId": { "type": "string" },
+        "transportKind": { "type": "string" },
+        "separationStatus": { "type": "string" },
+        "redactionStatus": {
+          "type": "string",
+          "enum": ["redacted", "suppressed", "redaction_failed"]
+        }
+      }
+    },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" },
     "finalizedAt": { "type": "string", "format": "date-time" }

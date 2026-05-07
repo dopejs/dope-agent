@@ -2214,7 +2214,7 @@ func TestAppRestartRestoresConnectorIngressBoundRuns(t *testing.T) {
 	if err := json.Unmarshal(ingressRec.Body.Bytes(), &ingressResponse); err != nil {
 		t.Fatalf("failed to decode ingress response: %v", err)
 	}
-	if ingressResponse.Run == nil {
+	if ingressResponse.Run == nil || ingressResponse.Session == nil {
 		t.Fatal("expected ingress-created run")
 	}
 

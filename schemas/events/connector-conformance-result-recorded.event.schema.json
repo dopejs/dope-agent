@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/connector-conformance-result-recorded.event.schema.json",
+  "title": "ConnectorConformanceResultRecordedEvent",
+  "type": "object",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "properties": {
+        "category": { "const": "connector" },
+        "name": { "const": "connector.conformance_result_recorded" },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "conformanceResultId",
+            "connectorKind",
+            "scenarioId",
+            "area",
+            "result",
+            "redactionStatus",
+            "retentionExpiresAt"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "conformanceResultId": { "type": "string" },
+            "connectorKind": { "type": "string" },
+            "connectorId": { "type": "string" },
+            "scenarioId": { "type": "string" },
+            "area": { "type": "string" },
+            "result": {
+              "type": "string",
+              "enum": ["pass", "fail", "supported", "limited", "unsupported"]
+            },
+            "redactionStatus": {
+              "type": "string",
+              "enum": ["redacted", "suppressed", "redaction_failed"]
+            },
+            "retentionExpiresAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -206,6 +206,9 @@ type OperatorReadinessItem struct {
 	Status                    string    `json:"status"`
 	HealthState               string    `json:"healthState,omitempty"`
 	Reason                    string    `json:"reason,omitempty"`
+	DiagnosticFreshness       string    `json:"diagnosticFreshness,omitempty"`
+	RemediationOwner          string    `json:"remediationOwner,omitempty"`
+	RetrySafety               string    `json:"retrySafety,omitempty"`
 	RequiredOperatorAction    string    `json:"requiredOperatorAction,omitempty"`
 	RequiredForSelectedAction bool      `json:"requiredForSelectedAction"`
 	DetailRoute               string    `json:"detailRoute,omitempty"`
@@ -721,9 +724,13 @@ func applyLatestDeliveryToSchedule(schedule scheduler.Schedule, summaries map[st
 }
 
 type ConnectorIngressMessage struct {
-	MessageID string `json:"messageId"`
-	Text      string `json:"text,omitempty"`
-	Payload   any    `json:"payload,omitempty"`
+	MessageID               string `json:"messageId"`
+	ConnectorAccountID      string `json:"connectorAccountId,omitempty"`
+	ChannelOrConversationID string `json:"channelOrConversationId,omitempty"`
+	ProviderMessageID       string `json:"providerMessageId,omitempty"`
+	EquivalentRuleID        string `json:"equivalentRuleId,omitempty"`
+	Text                    string `json:"text,omitempty"`
+	Payload                 any    `json:"payload,omitempty"`
 }
 
 type ConnectorIngressRunRequest struct {
@@ -732,19 +739,23 @@ type ConnectorIngressRunRequest struct {
 }
 
 type ConnectorIngressMessageRequest struct {
-	Route   SessionRouteRequest         `json:"route"`
-	Message ConnectorIngressMessage     `json:"message"`
-	Run     *ConnectorIngressRunRequest `json:"run,omitempty"`
+	TenantID string                      `json:"tenantId,omitempty"`
+	Route    SessionRouteRequest         `json:"route"`
+	Message  ConnectorIngressMessage     `json:"message"`
+	Run      *ConnectorIngressRunRequest `json:"run,omitempty"`
 }
 
 type ConnectorIngressMessageResponse struct {
-	IngressID      string         `json:"ingressId"`
-	ConnectorID    string         `json:"connectorId"`
-	AcceptedAt     time.Time      `json:"acceptedAt"`
-	Session        router.Session `json:"session"`
-	SessionCreated bool           `json:"sessionCreated"`
-	Run            *runtime.Run   `json:"run,omitempty"`
-	RunCreated     bool           `json:"runCreated"`
+	IngressID       string          `json:"ingressId"`
+	ConnectorID     string          `json:"connectorId"`
+	Outcome         string          `json:"outcome"`
+	ReasonCode      string          `json:"reasonCode"`
+	RedactionStatus string          `json:"redactionStatus"`
+	AcceptedAt      time.Time       `json:"acceptedAt"`
+	Session         *router.Session `json:"session,omitempty"`
+	SessionCreated  bool            `json:"sessionCreated"`
+	Run             *runtime.Run    `json:"run,omitempty"`
+	RunCreated      bool            `json:"runCreated"`
 }
 
 type EventListResponse struct {

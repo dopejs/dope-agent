@@ -62,6 +62,26 @@ func (a *Harness) UpsertConnectorMessageForTenant(ctx context.Context, message i
 	return nil
 }
 
+func (a *Harness) CreateConnectorMessageIfAbsentForTenant(ctx context.Context, message imtypes.MessageRecord) (imtypes.MessageRecord, bool, error) {
+	tenantID, err := Require(ctx)
+	if err != nil {
+		return imtypes.MessageRecord{}, false, err
+	}
+	message.TenantID = tenantID
+	record, created, err := a.store.CreateConnectorMessageIfAbsent(ctx, message)
+	if err != nil {
+		return imtypes.MessageRecord{}, false, err
+	}
+	if err := a.store.BindRowTenant(ctx, "connector_messages", "delivery_id", record.DeliveryID, tenantID); err != nil {
+		if errors.Is(err, store.ErrCrossTenantRow) {
+			a.emit(ctx, "store:CreateConnectorMessageIfAbsentForTenant", "connector_message")
+			return imtypes.MessageRecord{}, false, ErrCrossTenantWrite
+		}
+		return imtypes.MessageRecord{}, false, err
+	}
+	return record, created, nil
+}
+
 func (a *Harness) UpsertSandboxExecutionForTenant(ctx context.Context, record store.SandboxExecutionRecord) error {
 	tenantID, err := Require(ctx)
 	if err != nil {

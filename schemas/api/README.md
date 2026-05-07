@@ -116,3 +116,16 @@ Evaluation routes are additive under `/v1/evaluation/*`. Replay attempts default
 `non_live`; comparison terminal status is separate from replay execution status; fixture
 resources describe repo-managed fixture provenance and must not imply browser-side
 fixture editing support.
+
+Connector conformance schemas are additive Phase 48 contracts:
+
+- connector capability profile
+- connector conformance result
+- connector diagnostic state
+- connector account binding summary
+- connector ingress message request and response identity/outcome fields
+- delivery outcome connector linkage
+
+Connector schemas must preserve backward-compatible required fields while adding only
+redacted, tenant-scoped projections for capability, diagnostics, identity, routing
+outcomes, and foreground/background delivery boundaries.

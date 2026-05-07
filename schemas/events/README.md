@@ -19,3 +19,17 @@ Evaluation events currently include:
 
 These events are additive audit and refresh facts. Clients should fetch
 `/v1/evaluation/*` resources for authoritative replay attempt and comparison state.
+
+Connector conformance events added for Phase 48:
+
+- `connector.conformance_result_recorded`
+- `connector.diagnostic_state_changed`
+- `connector.diagnostic_redaction_failed`
+- `connector.inbound_duplicate_detected`
+- `connector.route_outcome_recorded`
+- `connector.foreground_reply_failed`
+- `connector.delivery_separation_recorded`
+
+Connector event payloads must stay tenant-scoped and redacted. Provider tokens,
+authorization headers, raw provider payloads, and cross-tenant identifiers are not valid
+event evidence.

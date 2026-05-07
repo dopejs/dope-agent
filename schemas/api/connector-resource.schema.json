@@ -40,6 +40,10 @@
     "lastRestartAt": { "type": "string", "format": "date-time" },
     "lastHeartbeatAt": { "type": "string", "format": "date-time" },
     "lastFailureReason": { "type": "string" },
+    "capabilityProfile": { "$ref": "./connector-capability-profile.schema.json" },
+    "diagnosticState": { "$ref": "./connector-diagnostic-state.schema.json" },
+    "conformanceResult": { "$ref": "./connector-conformance-result.schema.json" },
+    "accountBinding": { "$ref": "./connector-account-binding-summary.schema.json" },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }
   }

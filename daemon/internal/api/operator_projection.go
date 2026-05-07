@@ -260,6 +260,13 @@ func (b operatorProjectionBuilder) optionalConnectorReadiness(now time.Time) []O
 	}
 	items := make([]OperatorReadinessItem, 0)
 	for _, item := range b.connectors.List() {
+		diagnosticFreshness := "fresh"
+		remediationOwner := "none_required"
+		retrySafety := "no_action_needed"
+		if item.Status != connectors.StatusHealthy {
+			remediationOwner = "operator"
+			retrySafety = "blocked"
+		}
 		items = append(items, OperatorReadinessItem{
 			ItemID:                    "connector-" + item.ConnectorID,
 			ItemKind:                  "connector",
@@ -268,6 +275,9 @@ func (b operatorProjectionBuilder) optionalConnectorReadiness(now time.Time) []O
 			Status:                    mapConnectorStatus(item.Status),
 			HealthState:               string(item.Status),
 			Reason:                    firstOperatorNonEmpty(item.LastFailureReason, "Connector health is projected from the supervisor."),
+			DiagnosticFreshness:       diagnosticFreshness,
+			RemediationOwner:          remediationOwner,
+			RetrySafety:               retrySafety,
 			RequiredOperatorAction:    connectorOperatorAction(item),
 			RequiredForSelectedAction: false,
 			DetailRoute:               "/v1/connectors/" + item.ConnectorID,

@@ -1919,6 +1919,9 @@ func TestConnectorIngressRoutesSessionAndCreatesRun(t *testing.T) {
 	if !response.RunCreated || response.Run == nil {
 		t.Fatal("expected ingress to create a run")
 	}
+	if response.Session == nil {
+		t.Fatal("expected accepted ingress to include session")
+	}
 	if response.Session.Channel != "telegram" {
 		t.Fatalf("expected ingress session channel telegram, got %s", response.Session.Channel)
 	}
@@ -1950,6 +1953,43 @@ func TestConnectorIngressRoutesSessionAndCreatesRun(t *testing.T) {
 	}
 	if connectorEvents[1].Name != "connector.ingress_accepted" {
 		t.Fatalf("expected connector.ingress_accepted, got %s", connectorEvents[1].Name)
+	}
+
+	duplicateReq := httptest.NewRequest(http.MethodPost, "/v1/connectors/telegram-main/ingress/messages", strings.NewReader(`{
+		"route":{
+			"kind":"direct",
+			"accountId":"bot-main",
+			"peerId":"dm-1"
+		},
+		"message":{
+			"messageId":"transport_retry_1",
+			"providerMessageId":"msg_1",
+			"text":"hello again"
+		},
+		"run":{
+			"entrypoint":"connector.message",
+			"goal":"handle duplicate inbound message"
+		}
+	}`))
+	duplicateRec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(duplicateRec, duplicateReq)
+	if duplicateRec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 for duplicate connector ingress, got %d body=%s", duplicateRec.Code, duplicateRec.Body.String())
+	}
+	duplicateResponse := decodeStrictResponse[ConnectorIngressMessageResponse](t, duplicateRec.Body.Bytes())
+	if duplicateResponse.Outcome != "duplicate" || duplicateResponse.RunCreated || duplicateResponse.Run != nil {
+		t.Fatalf("expected duplicate outcome without run creation, got %+v", duplicateResponse)
+	}
+	persistedRuns, err = sqliteStore.ListRunsAllTenantsForTest(context.Background())
+	if err != nil {
+		t.Fatalf("ListRuns after duplicate returned error: %v", err)
+	}
+	if len(persistedRuns) != 1 {
+		t.Fatalf("expected duplicate ingress to preserve one run, got %d", len(persistedRuns))
+	}
+	connectorEvents = eventBus.List(events.Filter{Category: "connector"})
+	if connectorEvents[len(connectorEvents)-1].Name != "connector.inbound_duplicate_detected" {
+		t.Fatalf("expected connector.inbound_duplicate_detected, got %s", connectorEvents[len(connectorEvents)-1].Name)
 	}
 
 	sessionEvents := eventBus.List(events.Filter{SessionID: response.Session.SessionID})
@@ -5369,10 +5409,7 @@ func TestWorkflowExecutionPublishesScopedWorkflowTransitionEvents(t *testing.T) 
 		t.Fatalf("expected completed workflow, got %+v", final)
 	}
 
-	events := harness.eventBus.List(events.Filter{Category: "workflow", RunID: harness.run.RunID})
-	if len(events) < 4 {
-		t.Fatalf("expected workflow lifecycle events, got %+v", events)
-	}
+	events := waitForWorkflowEvents(t, harness.eventBus, harness.run.RunID, "workflow.planned", "workflow.started", "workflow.step_status_changed", "workflow.status_changed")
 
 	planned := findNamedEvent(t, events, "workflow.planned")
 	if planned.Scope.WorkflowID != created.WorkflowID {
@@ -5706,4 +5743,30 @@ func findNamedEvent(t *testing.T, items []events.Event, name string) events.Even
 	}
 	t.Fatalf("expected event %s in %+v", name, items)
 	return events.Event{}
+}
+
+func waitForWorkflowEvents(t *testing.T, eventBus *events.Bus, runID string, names ...string) []events.Event {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	var items []events.Event
+	for time.Now().Before(deadline) {
+		items = eventBus.List(events.Filter{Category: "workflow", RunID: runID})
+		found := map[string]bool{}
+		for _, item := range items {
+			found[item.Name] = true
+		}
+		complete := true
+		for _, name := range names {
+			if !found[name] {
+				complete = false
+				break
+			}
+		}
+		if complete {
+			return items
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("expected workflow events %v, got %+v", names, items)
+	return nil
 }

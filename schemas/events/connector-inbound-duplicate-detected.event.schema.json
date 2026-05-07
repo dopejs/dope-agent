@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/connector-inbound-duplicate-detected.event.schema.json",
+  "title": "ConnectorInboundDuplicateDetectedEvent",
+  "type": "object",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "properties": {
+        "category": { "const": "connector" },
+        "name": { "const": "connector.inbound_duplicate_detected" },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "connectorId",
+            "connectorAccountId",
+            "channelOrConversationId",
+            "providerMessageId",
+            "equivalentRuleId",
+            "existingDeliveryId",
+            "redactionStatus"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "connectorId": { "type": "string" },
+            "connectorAccountId": { "type": "string" },
+            "channelOrConversationId": { "type": "string" },
+            "providerMessageId": { "type": "string" },
+            "equivalentRuleId": { "type": "string" },
+            "existingDeliveryId": { "type": "string" },
+            "redactionStatus": {
+              "type": "string",
+              "enum": ["redacted", "suppressed", "redaction_failed"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

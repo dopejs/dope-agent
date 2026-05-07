@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/connector-conformance-result.schema.json",
+  "title": "ConnectorConformanceResult",
+  "type": "object",
+  "required": [
+    "conformanceResultId",
+    "connectorKind",
+    "scenarioId",
+    "area",
+    "result",
+    "evidenceTimestamp",
+    "redactionStatus",
+    "retentionExpiresAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "conformanceResultId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "connectorKind": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "scenarioId": { "type": "string", "minLength": 1 },
+    "area": { "type": "string", "minLength": 1 },
+    "result": {
+      "type": "string",
+      "enum": ["pass", "fail", "supported", "limited", "unsupported"]
+    },
+    "reasonCode": { "type": "string" },
+    "evidenceTimestamp": { "type": "string", "format": "date-time" },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "evidenceSummary": { "type": "string" },
+    "artifactRefs": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

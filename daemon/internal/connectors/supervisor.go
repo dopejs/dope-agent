@@ -46,6 +46,10 @@ type Connector struct {
 	LastRestartAt     *time.Time                      `json:"lastRestartAt,omitempty"`
 	LastHeartbeatAt   *time.Time                      `json:"lastHeartbeatAt,omitempty"`
 	LastFailureReason string                          `json:"lastFailureReason,omitempty"`
+	CapabilityProfile map[string]any                  `json:"capabilityProfile,omitempty"`
+	DiagnosticState   map[string]any                  `json:"diagnosticState,omitempty"`
+	ConformanceResult map[string]any                  `json:"conformanceResult,omitempty"`
+	AccountBinding    map[string]any                  `json:"accountBinding,omitempty"`
 	CreatedAt         time.Time                       `json:"createdAt"`
 	UpdatedAt         time.Time                       `json:"updatedAt"`
 }

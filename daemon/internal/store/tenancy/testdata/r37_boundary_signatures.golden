@@ -1016,12 +1016,65 @@ var ErrTransportUnavailable = errors.New("mcp transport is unavailable")
 var ErrUnsupportedTransport = errors.New("mcp transport kind is unsupported")
 
 ## package internal/connectors
+const ConformanceAreaActiveTenantAccountBinding ConformanceArea = "active_tenant_account_binding"
+const ConformanceAreaDeliverySeparation ConformanceArea = "delivery_separation"
+const ConformanceAreaDiagnostics ConformanceArea = "required_diagnostics"
+const ConformanceAreaDurableDedupe ConformanceArea = "durable_dedupe"
+const ConformanceAreaInboundIdentity ConformanceArea = "inbound_identity"
+const ConformanceAreaMinimumForegroundReply ConformanceArea = "minimum_foreground_reply"
+const ConformanceAreaPermissionGating ConformanceArea = "permission_gating"
+const ConformanceAreaRedaction ConformanceArea = "redaction"
+const ConformanceAreaStableRouting ConformanceArea = "stable_routing_decisions"
+const ConformanceAreaTenantOwnership ConformanceArea = "tenant_ownership"
+const ConformanceResultFail ConformanceResultStatus = "fail"
+const ConformanceResultLimited ConformanceResultStatus = "limited"
+const ConformanceResultPass ConformanceResultStatus = "pass"
+const ConformanceResultSupported ConformanceResultStatus = "supported"
+const ConformanceResultUnsupported ConformanceResultStatus = "unsupported"
+const DiagnosticAuthMissing DiagnosticReasonCode = "auth_missing"
+const DiagnosticBlockedRoute DiagnosticReasonCode = "blocked_route"
+const DiagnosticDuplicateInbound DiagnosticReasonCode = "duplicate_inbound"
+const DiagnosticNetworkFailed DiagnosticReasonCode = "network_failed"
+const DiagnosticPermissionMissing DiagnosticReasonCode = "permission_missing"
+const DiagnosticProviderUnavailable DiagnosticReasonCode = "provider_unavailable"
+const DiagnosticRateLimited DiagnosticReasonCode = "rate_limited"
+const DiagnosticReplyFailed DiagnosticReasonCode = "reply_failed"
+const DiagnosticUnknownConnectorFailure DiagnosticReasonCode = "unknown_connector_failure"
+const DiagnosticUnsupportedCapability DiagnosticReasonCode = "unsupported_capability"
+const FreshnessFresh FreshnessState = "fresh"
+const FreshnessStale FreshnessState = "stale"
+const LifecycleStateConfigured LifecycleState = "configured"
+const LifecycleStateDegraded LifecycleState = "degraded"
+const LifecycleStateDisabled LifecycleState = "disabled"
+const LifecycleStateFailed LifecycleState = "failed"
+const LifecycleStateHealthy LifecycleState = "healthy"
+const LifecycleStatePermissionBlocked LifecycleState = "permission_blocked"
+const LifecycleStateRateLimited LifecycleState = "rate_limited"
+const LifecycleStateStarting LifecycleState = "starting"
+const LifecycleStateUnsupportedCapability LifecycleState = "unsupported_capability"
+const RedactionStatusFailed RedactionStatus = "redaction_failed"
+const RedactionStatusRedacted RedactionStatus = "redacted"
+const RedactionStatusSuppressed RedactionStatus = "suppressed"
+const RemediationOwnerAdmin RemediationOwner = "tenant_admin"
+const RemediationOwnerNone RemediationOwner = RemediationOwnerNoneRequired
+const RemediationOwnerNoneRequired RemediationOwner = "none_required"
+const RemediationOwnerOperator RemediationOwner = "operator"
+const RemediationOwnerProvider RemediationOwner = "provider"
+const RemediationOwnerUser RemediationOwner = "product_user"
+const RetrySafetyBlocked RetrySafety = "blocked"
+const RetrySafetyNoActionNeeded RetrySafety = "no_action_needed"
+const RetrySafetyRetryAfter RetrySafety = "retry_after"
+const RetrySafetyRetryable RetrySafety = "retryable"
+const RetrySafetyUnsafe RetrySafety = "unsafe"
 const StatusBackingOff Status = "backing_off"
 const StatusDegraded Status = "degraded"
 const StatusDisabled Status = "disabled"
 const StatusFailed Status = "failed"
 const StatusHealthy Status = "healthy"
 const StatusRegistered Status = "registered"
+const SurfaceLimited SurfaceSupport = "limited"
+const SurfaceSupported SurfaceSupport = "supported"
+const SurfaceUnsupported SurfaceSupport = "unsupported"
 func (*Supervisor) Disable(connectorID string, reason string) (Connector, error)
 func (*Supervisor) Get(connectorID string) (Connector, bool)
 func (*Supervisor) GetForTenant(connectorID, tenantID string) (Connector, bool)
@@ -1033,7 +1086,47 @@ func (*Supervisor) ReportHealth(connectorID string, input ReportHealthInput) (Co
 func (*Supervisor) Restart(connectorID string) (Connector, error)
 func (*Supervisor) Restore(items []Connector)
 func (*Supervisor) RunLiveValidationOutcome(outcome livevalidation.FakeOutcome) livevalidation.FakeOutcomeResult
+func ClassifyDiagnostic(input DiagnosticInput) (ConnectorDiagnosticState, error)
+func CoreInvariantAreas() []ConformanceArea
+func CurrentDiagnosticTruth(input DiagnosticInput, failureTime time.Time) (ConnectorDiagnosticState, error)
+func FreshnessAt(evidenceTimestamp, now time.Time) FreshnessState
 func NewSupervisor() *Supervisor
+func RunMatrixCase(input MatrixCase) ([]ConformanceResult, CapabilityProfile, error)
+func ValidateCapabilityProfile(profile CapabilityProfile) error
+type AccountBindingSummary struct {
+    TenantID             string          `json:"tenantId,omitempty"`
+    ConnectorID          string          `json:"connectorId,omitempty"`
+    ConnectorAccountID   string          `json:"connectorAccountId"`
+    ProviderAccountLabel string          `json:"providerAccountLabel,omitempty"`
+    PermissionState      string          `json:"permissionState"`
+    RedactionStatus      RedactionStatus `json:"redactionStatus"`
+}
+type CapabilityProfile struct {
+    ProfileID                       string                                      `json:"profileId"`
+    TenantID                        string                                      `json:"tenantId,omitempty"`
+    ConnectorID                     string                                      `json:"connectorId"`
+    ConnectorKind                   string                                      `json:"connectorKind"`
+    CoreInvariantResults            map[ConformanceArea]ConformanceResultStatus `json:"coreInvariantResults"`
+    ProviderSurfaceResults          map[string]SurfaceSupport                   `json:"providerSurfaceResults,omitempty"`
+    EquivalentDurableIdentityRuleID string                                      `json:"equivalentDurableIdentityRuleId,omitempty"`
+    EquivalentDurableIdentityRule   string                                      `json:"equivalentDurableIdentityRule,omitempty"`
+    DeclaredAt                      time.Time                                   `json:"declaredAt"`
+}
+type ConformanceArea string
+type ConformanceResult struct {
+    ConformanceResultID string                  `json:"conformanceResultId"`
+    TenantID            string                  `json:"tenantId,omitempty"`
+    ConnectorKind       string                  `json:"connectorKind"`
+    ConnectorID         string                  `json:"connectorId,omitempty"`
+    ScenarioID          string                  `json:"scenarioId"`
+    Area                string                  `json:"area"`
+    Result              ConformanceResultStatus `json:"result"`
+    ReasonCode          string                  `json:"reasonCode,omitempty"`
+    RedactionStatus     RedactionStatus         `json:"redactionStatus"`
+    EvidenceTimestamp   time.Time               `json:"evidenceTimestamp"`
+    RetentionExpiresAt  time.Time               `json:"retentionExpiresAt"`
+}
+type ConformanceResultStatus string
 type Connector struct {
     TenantID          string                          `json:"tenantId,omitempty"`
     ConnectorID       string                          `json:"connectorId"`
@@ -1050,9 +1143,57 @@ type Connector struct {
     LastRestartAt     *time.Time                      `json:"lastRestartAt,omitempty"`
     LastHeartbeatAt   *time.Time                      `json:"lastHeartbeatAt,omitempty"`
     LastFailureReason string                          `json:"lastFailureReason,omitempty"`
+    CapabilityProfile map[string]any                  `json:"capabilityProfile,omitempty"`
+    DiagnosticState   map[string]any                  `json:"diagnosticState,omitempty"`
+    ConformanceResult map[string]any                  `json:"conformanceResult,omitempty"`
+    AccountBinding    map[string]any                  `json:"accountBinding,omitempty"`
     CreatedAt         time.Time                       `json:"createdAt"`
     UpdatedAt         time.Time                       `json:"updatedAt"`
 }
+type ConnectorDiagnosticState struct {
+    DiagnosticStateID   string               `json:"diagnosticStateId"`
+    TenantID            string               `json:"tenantId,omitempty"`
+    ConnectorID         string               `json:"connectorId"`
+    ConnectorAccountID  string               `json:"connectorAccountId,omitempty"`
+    Status              LifecycleState       `json:"status"`
+    ReasonCode          DiagnosticReasonCode `json:"reasonCode"`
+    RemediationOwner    RemediationOwner     `json:"remediationOwner"`
+    UserVisibleSeverity string               `json:"userVisibleSeverity"`
+    RetrySafety         RetrySafety          `json:"retrySafety"`
+    EvidenceTimestamp   time.Time            `json:"evidenceTimestamp"`
+    FreshnessState      FreshnessState       `json:"freshnessState"`
+    RedactionStatus     RedactionStatus      `json:"redactionStatus"`
+    RetentionExpiresAt  time.Time            `json:"retentionExpiresAt"`
+    SafeEvidence        map[string]string    `json:"safeEvidence,omitempty"`
+    RedactionFailureID  string               `json:"redactionFailureId,omitempty"`
+}
+type DiagnosticInput struct {
+    DiagnosticStateID  string
+    TenantID           string
+    ConnectorID        string
+    ConnectorAccountID string
+    ReasonCode         DiagnosticReasonCode
+    EvidenceTimestamp  time.Time
+    RedactionReliable  bool
+    SafeEvidence       map[string]string
+}
+type DiagnosticReasonCode string
+type FreshnessState string
+type LifecycleState string
+type MatrixCase struct {
+    ScenarioID                      string
+    ConnectorKind                   string
+    ConnectorID                     string
+    TenantID                        string
+    CoreInvariantResults            map[ConformanceArea]ConformanceResultStatus
+    ProviderSurfaceResults          map[string]SurfaceSupport
+    EquivalentDurableIdentityRuleID string
+    EquivalentDurableIdentityRule   string
+    UnsafeIncrementalUpdateDegraded bool
+    RedactionStatus                 RedactionStatus
+    Now                             time.Time
+}
+type RedactionStatus string
 type RegisterInput struct {
     TenantID    string   `json:"tenantId,omitempty"`
     ConnectorID string   `json:"connectorId"`
@@ -1060,22 +1201,31 @@ type RegisterInput struct {
     DisplayName string   `json:"displayName"`
     SecretRefs  []string `json:"secretRefs,omitempty"`
 }
+type RemediationOwner string
 type ReportFailureInput struct {
     Reason string `json:"reason"`
 }
 type ReportHealthInput struct {
     Status Status `json:"status"`
 }
+type RetrySafety string
 type Status string
 type Supervisor struct {
     mu    sync.RWMutex
     byID  map[string]Connector
     order []string
 }
+type SurfaceSupport string
+var ErrConformanceKindRequired = errors.New("connector kind is required")
+var ErrConformanceScenarioRequired = errors.New("conformance scenario id is required")
 var ErrConnectorDisabled = errors.New("connector is disabled")
 var ErrConnectorFailureRequired = errors.New("connector failure reason is required")
 var ErrConnectorIDRequired = errors.New("connector id is required")
 var ErrConnectorKindRequired = errors.New("connector kind is required")
 var ErrConnectorNotFound = errors.New("connector not found")
+var ErrCoreInvariantFailed = errors.New("core invariant failed")
+var ErrDiagnosticConnectorRequired = errors.New("connector id is required")
+var ErrDiagnosticReasonRequired = errors.New("diagnostic reason code is required")
+var ErrEquivalentIdentityRequired = errors.New("equivalent durable identity rule is required")
 var ErrInvalidConnectorHealth = errors.New("invalid connector health status")
 
