@@ -9,6 +9,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	baseconnectors "github.com/dopejs/dope-agent/daemon/internal/connectors"
+	telegramconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/telegram"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
@@ -50,6 +51,17 @@ type UpdateLiveValidationKillSwitchRequest struct {
 	ExpiresAt *time.Time                     `json:"expiresAt,omitempty"`
 }
 
+type RecordTelegramSmokeRequest struct {
+	ConnectorID    string            `json:"connectorId"`
+	Status         string            `json:"status"`
+	CredentialMode string            `json:"credentialMode"`
+	Owner          string            `json:"owner,omitempty"`
+	Reason         string            `json:"reason,omitempty"`
+	RemainingRisk  string            `json:"remainingRisk,omitempty"`
+	ValidatedAt    *time.Time        `json:"validatedAt,omitempty"`
+	SafeEvidence   map[string]string `json:"safeEvidence,omitempty"`
+}
+
 func handleLiveValidationRoutes(manager *livevalidation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil {
 		writeError(w, http.StatusInternalServerError, "live validation manager is not configured")
@@ -77,10 +89,22 @@ func handleLiveValidationRoutes(manager *livevalidation.Manager, eventBus *event
 		handleLiveValidationDiscordConformance(sqliteStore, w, r)
 		return
 	}
+	if path == "telegram-smoke" {
+		handleLiveValidationTelegramSmoke(sqliteStore, w, r)
+		return
+	}
+	if path == "telegram-conformance" {
+		handleLiveValidationConnectorConformance(sqliteStore, w, r)
+		return
+	}
 	handleLiveValidationItem(manager, eventBus, sqliteStore, path, w, r)
 }
 
 func handleLiveValidationDiscordConformance(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	handleLiveValidationConnectorConformance(sqliteStore, w, r)
+}
+
+func handleLiveValidationConnectorConformance(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if sqliteStore == nil {
 		writeError(w, http.StatusInternalServerError, "connector conformance store is not configured")
 		return
@@ -152,6 +176,134 @@ func handleLiveValidationDiscordSmoke(sqliteStore *store.SQLiteStore, w http.Res
 		return
 	}
 	writeJSON(w, http.StatusOK, evidence)
+}
+
+func handleLiveValidationTelegramSmoke(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector smoke evidence store is not configured")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+	case http.MethodPost:
+		recordTelegramSmokeEvidence(sqliteStore, w, r)
+		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantctx.FromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	connectorID := strings.TrimSpace(r.URL.Query().Get("connectorId"))
+	if connectorID == "" {
+		writeError(w, http.StatusBadRequest, "connectorId is required")
+		return
+	}
+	evidence, found, err := sqliteStore.LatestTelegramSmokeEvidence(r.Context(), tenantContext.TenantID, connectorID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, evidence)
+}
+
+func recordTelegramSmokeEvidence(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	tenantContext, ok := tenantctx.FromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if !identity.HasPermission(tenantContext.Permissions, identity.PermissionLiveValidationExecute) {
+		writeCredentialDenial(w, http.StatusForbidden, "live_validation_execute_required")
+		return
+	}
+	var input RecordTelegramSmokeRequest
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(input.ConnectorID) == "" {
+		input.ConnectorID = strings.TrimSpace(r.URL.Query().Get("connectorId"))
+	}
+	if strings.TrimSpace(input.ConnectorID) == "" {
+		writeError(w, http.StatusBadRequest, "connectorId is required")
+		return
+	}
+	smokeInput, err := telegramSmokeInputFromRequest(tenantContext.TenantID, input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	evidence := telegramconnector.BuildSmokeEvidence(smokeInput)
+	record := store.TelegramSmokeEvidenceRecord{
+		SmokeEvidenceID:    evidence.SmokeEvidenceID,
+		TenantID:           evidence.TenantID,
+		ConnectorID:        evidence.ConnectorID,
+		Status:             string(evidence.Status),
+		CredentialMode:     string(evidence.CredentialMode),
+		Owner:              evidence.Owner,
+		Reason:             evidence.Reason,
+		RemainingRisk:      evidence.RemainingRisk,
+		ValidatedAt:        evidence.ValidatedAt,
+		RetentionExpiresAt: evidence.RetentionExpiresAt,
+		RedactionStatus:    string(evidence.RedactionStatus),
+		SafeEvidence:       evidence.SafeEvidence,
+	}
+	if err := sqliteStore.SaveTelegramSmokeEvidence(r.Context(), record); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, record)
+}
+
+func telegramSmokeInputFromRequest(tenantID string, input RecordTelegramSmokeRequest) (telegramconnector.SmokeInput, error) {
+	mode := telegramconnector.CredentialMode(strings.TrimSpace(input.CredentialMode))
+	status := telegramconnector.SmokeStatus(strings.TrimSpace(input.Status))
+	if status == "" {
+		status = telegramconnector.SmokeSkipped
+	}
+	if mode == "" {
+		mode = telegramconnector.CredentialModeUnavailable
+	}
+	switch status {
+	case telegramconnector.SmokeSkipped:
+		if mode != telegramconnector.CredentialModeUnavailable {
+			return telegramconnector.SmokeInput{}, errors.New("skipped Telegram smoke must use unavailable credential mode")
+		}
+	case telegramconnector.SmokePassed, telegramconnector.SmokeFailed:
+		if mode != telegramconnector.CredentialModeFake && mode != telegramconnector.CredentialModeSafeLive {
+			return telegramconnector.SmokeInput{}, errors.New("passed or failed Telegram smoke requires fake or safe_live credential mode")
+		}
+	default:
+		return telegramconnector.SmokeInput{}, errors.New("status must be passed, failed, or skipped")
+	}
+	validatedAt := time.Time{}
+	if input.ValidatedAt != nil {
+		validatedAt = *input.ValidatedAt
+	}
+	return telegramconnector.SmokeInput{
+		TenantID:       tenantID,
+		ConnectorID:    input.ConnectorID,
+		SafeCredential: mode == telegramconnector.CredentialModeSafeLive,
+		FakeSafePass:   mode == telegramconnector.CredentialModeFake,
+		Passed:         status == telegramconnector.SmokePassed,
+		Owner:          input.Owner,
+		Reason:         input.Reason,
+		RemainingRisk:  input.RemainingRisk,
+		ValidatedAt:    validatedAt,
+		SafeEvidence:   input.SafeEvidence,
+	}, nil
 }
 
 func handleLiveValidationKillSwitches(manager *livevalidation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {

@@ -140,7 +140,7 @@
     },
     "connectors": {
       "type": "object",
-      "required": ["discord"],
+      "required": ["discord", "telegram"],
       "additionalProperties": false,
       "properties": {
         "discord": {
@@ -215,6 +215,85 @@
                   "items": { "type": "string" }
                 },
                 "botTokenConfigured": { "type": "boolean" },
+                "redactionStatus": {
+                  "type": "string",
+                  "enum": ["redacted", "suppressed", "redaction_failed"]
+                }
+              }
+            }
+          }
+        },
+        "telegram": {
+          "type": "object",
+          "required": [
+            "enabled",
+            "configured",
+            "connectorId",
+            "displayName",
+            "botTokenConfigured",
+            "allowedUserIds",
+            "allowedDirectChatIds",
+            "allowedGroupIds",
+            "hostedReadiness"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "configured": { "type": "boolean" },
+            "connectorId": { "type": "string" },
+            "displayName": { "type": "string" },
+            "botTokenConfigured": { "type": "boolean" },
+            "botTokenEnv": { "type": "string" },
+            "botUsername": { "type": "string" },
+            "allowedUserIds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "allowedDirectChatIds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "allowedGroupIds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "hostedReadiness": {
+              "type": "object",
+              "required": [
+                "connectorId",
+                "displayName",
+                "terminalState",
+                "hostedReady",
+                "localCompatible",
+                "botTokenConfigured",
+                "redactionStatus"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "tenantId": { "type": "string" },
+                "connectorId": { "type": "string" },
+                "displayName": { "type": "string" },
+                "terminalState": {
+                  "type": "string",
+                  "enum": ["ready", "degraded", "unavailable", "cancelled", "action-required"]
+                },
+                "hostedReady": { "type": "boolean" },
+                "localCompatible": { "type": "boolean" },
+                "reasonCode": { "type": "string" },
+                "botTokenConfigured": { "type": "boolean" },
+                "botUsername": { "type": "string" },
+                "allowedUserIds": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "allowedDirectChatIds": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "allowedGroupIds": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
                 "redactionStatus": {
                   "type": "string",
                   "enum": ["redacted", "suppressed", "redaction_failed"]

@@ -45,7 +45,7 @@ describe("IntegrationDiagnosticsView", () => {
     expect(screen.getByText("Healthy")).toBeTruthy();
     expect(screen.getAllByText("Blocked")).toHaveLength(2);
     expect(screen.getAllByText("Limited")).toHaveLength(2);
-    expect(screen.getByText("Discord route blocked")).toBeTruthy();
+    expect(screen.getByText("Connector route blocked")).toBeTruthy();
     expect(screen.getByText("Unsupported")).toBeTruthy();
     expect(screen.getByText("stale")).toBeTruthy();
     expect(screen.getByText("Diagnostic detail suppressed.")).toBeTruthy();

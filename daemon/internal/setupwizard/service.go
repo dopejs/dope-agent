@@ -32,24 +32,34 @@ type DiagnosticProbe interface {
 	ProbeSetup(ctx context.Context, session SetupSession, operation SetupOperation) (SetupDiagnosticProbeResult, error)
 }
 
+type SubmittedSecretDiagnosticProbe interface {
+	ProbeSubmittedSecret(ctx context.Context, session SetupSession, input SubmitSecretInput) (SetupDiagnosticProbeResult, error)
+}
+
 type AuditRecorder interface {
 	RecordSetupAudit(ctx context.Context, record SetupAuditRecord) (string, error)
 }
 
+type SubmittedSecretRecorder interface {
+	RecordSubmittedSecretSetup(ctx context.Context, session SetupSession, input SubmitSecretInput) error
+}
+
 type ServiceDependencies struct {
-	Store       Store
-	Secrets     SecretManager
-	Diagnostics DiagnosticProbe
-	Audit       AuditRecorder
-	Now         func() time.Time
+	Store                   Store
+	Secrets                 SecretManager
+	Diagnostics             DiagnosticProbe
+	Audit                   AuditRecorder
+	SubmittedSecretRecorder SubmittedSecretRecorder
+	Now                     func() time.Time
 }
 
 type Service struct {
-	store       Store
-	secrets     SecretManager
-	diagnostics DiagnosticProbe
-	audit       AuditRecorder
-	now         func() time.Time
+	store                   Store
+	secrets                 SecretManager
+	diagnostics             DiagnosticProbe
+	audit                   AuditRecorder
+	submittedSecretRecorder SubmittedSecretRecorder
+	now                     func() time.Time
 }
 
 func NewService(deps ServiceDependencies) *Service {
@@ -65,7 +75,7 @@ func NewService(deps ServiceDependencies) *Service {
 	if diagnostics == nil {
 		diagnostics = DefaultDiagnosticProbe{Secrets: deps.Secrets}
 	}
-	return &Service{store: store, secrets: deps.Secrets, diagnostics: diagnostics, audit: deps.Audit, now: now}
+	return &Service{store: store, secrets: deps.Secrets, diagnostics: diagnostics, audit: deps.Audit, submittedSecretRecorder: deps.SubmittedSecretRecorder, now: now}
 }
 
 type ListTargetsInput struct {
@@ -85,6 +95,7 @@ type SubmitSecretInput struct {
 	SecretRef     string
 	Value         string
 	DisplayName   string
+	ResourceRefs  []ResourceRef
 }
 
 type OAuthStartInput struct {

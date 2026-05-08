@@ -47,11 +47,26 @@ func (s *Service) SubmitSecret(ctx context.Context, input SubmitSecretInput) (Se
 		versionID = secret.ActiveVersionID
 	}
 	session.ResourceRefs = upsertResourceRef(session.ResourceRefs, ResourceRef{Kind: "tenant_secret", ID: secretRef, Route: "/v1/tenant-secrets/" + secretRef})
+	for _, ref := range input.ResourceRefs {
+		if strings.TrimSpace(ref.Kind) == "" || strings.TrimSpace(ref.ID) == "" {
+			continue
+		}
+		session.ResourceRefs = upsertResourceRef(session.ResourceRefs, ref)
+	}
 	session.RedactedEvidence = RedactedSecretEvidence(secretRef, input.DisplayName)
 	session.RedactedEvidence["secretVersionId"] = versionID
-	session, state, reason, err := s.probeReadiness(ctx, session, OperationSubmitSecret)
+	session, state, reason, err := s.probeSubmittedSecretReadiness(ctx, session, input)
 	if err != nil {
 		return SetupSession{}, err
 	}
-	return s.transition(ctx, session, OperationSubmitSecret, state, reason, session.RedactedEvidence)
+	session, err = s.transition(ctx, session, OperationSubmitSecret, state, reason, session.RedactedEvidence)
+	if err != nil {
+		return SetupSession{}, err
+	}
+	if s.submittedSecretRecorder != nil {
+		if err := s.submittedSecretRecorder.RecordSubmittedSecretSetup(ctx, session, input); err != nil {
+			return SetupSession{}, err
+		}
+	}
+	return session, nil
 }

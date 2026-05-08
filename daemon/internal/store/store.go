@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 45
+	CurrentSchemaVersion = 46
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -2860,6 +2860,88 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_discord_hosted_setups_tenant_state ON discord_hosted_setups(tenant_id, readiness_state, updated_at DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_discord_destinations_tenant_connector ON discord_destination_validations(tenant_id, connector_id, validated_at DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_discord_smoke_tenant_connector ON discord_smoke_evidence(tenant_id, connector_id, validated_at DESC);`,
+		},
+	},
+	{
+		Version: 46,
+		Name:    "r50_telegram_channel_connector",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS telegram_hosted_setups (
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				connector_kind TEXT NOT NULL,
+				display_name TEXT NOT NULL,
+				status TEXT NOT NULL,
+				terminal_state TEXT NOT NULL,
+				credential_state TEXT NOT NULL,
+				allowment_state TEXT NOT NULL,
+				group_behavior TEXT NOT NULL,
+				delivery_eligible INTEGER NOT NULL,
+				reason_code TEXT,
+				redaction_status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				validated_at TEXT,
+				retention_expires_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				PRIMARY KEY (tenant_id, connector_id)
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS telegram_allowments (
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				allowment_id TEXT NOT NULL,
+				scope_type TEXT NOT NULL,
+				scope_id TEXT NOT NULL,
+				provider_label TEXT,
+				enabled INTEGER NOT NULL,
+				group_gate TEXT NOT NULL,
+				validation_state TEXT NOT NULL,
+				reason_code TEXT,
+				validated_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				PRIMARY KEY (tenant_id, connector_id, allowment_id)
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS telegram_smoke_evidence (
+				smoke_evidence_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				status TEXT NOT NULL,
+				credential_mode TEXT NOT NULL,
+				owner TEXT NOT NULL,
+				reason TEXT NOT NULL,
+				remaining_risk TEXT,
+				validated_at TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`
+			CREATE TABLE IF NOT EXISTS telegram_update_evidence (
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				chat_id TEXT NOT NULL,
+				message_id TEXT NOT NULL,
+				update_id TEXT NOT NULL,
+				route_outcome TEXT NOT NULL,
+				reason_code TEXT,
+				received_at TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				PRIMARY KEY (tenant_id, connector_id, chat_id, message_id, update_id)
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_telegram_hosted_setups_tenant_state ON telegram_hosted_setups(tenant_id, terminal_state, updated_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_telegram_allowments_tenant_connector ON telegram_allowments(tenant_id, connector_id, validated_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_telegram_smoke_tenant_connector ON telegram_smoke_evidence(tenant_id, connector_id, validated_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_telegram_update_evidence_tenant_connector ON telegram_update_evidence(tenant_id, connector_id, received_at DESC);`,
 		},
 	},
 }

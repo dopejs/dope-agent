@@ -31,6 +31,17 @@ func TestConnectorConformanceSchemasAcceptCanonicalFixtures(t *testing.T) {
 	mustValidateFixtures(t, validator, connectorConformanceContractFixtures())
 }
 
+func TestConnectorConformanceSchemasAcceptTelegramFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	mustValidateFixtures(t, validator, map[string]string{
+		"schemas/api/connector-capability-profile.schema.json": `{"connectorKind":"telegram","connectorId":"telegram-main","lifecycleState":"healthy","surfaces":{"direct_message":"supported","group_message":"supported","mention_gating":"supported","command_gating":"supported","attachments":"unsupported","voice":"unsupported","payments":"unsupported","mini_apps":"unsupported","background_delivery":"supported"},"identityRules":{"durableIdentity":"tenant_id + connector_account_id + telegram_chat_id + telegram_message_id","equivalentIdentity":"telegram_update_id retained only as redacted evidence"},"coreInvariants":{"tenant_scoped_identity":"pass","dedupe":"pass","foreground_background_separation":"pass","redacted_diagnostics":"pass"},"generatedAt":"2026-05-08T10:00:00Z","retentionExpiresAt":"2026-08-06T10:00:00Z","redactionStatus":"redacted"}`,
+		"schemas/api/connector-conformance-result.schema.json": `{"conformanceResultId":"conformance_telegram_1","tenantId":"ten_telegram","connectorKind":"telegram","connectorId":"telegram-main","scenarioId":"telegram.group.command.accepted","area":"command_gating","result":"pass","reasonCode":"matched","evidenceTimestamp":"2026-05-08T10:00:00Z","redactionStatus":"redacted","retentionExpiresAt":"2026-08-06T10:00:00Z","evidenceSummary":"Allowed Telegram group command gating accepted one redacted text update."}`,
+		"schemas/api/connector-resource.schema.json":           `{"tenantId":"ten_telegram","connectorId":"telegram-main","kind":"telegram","displayName":"Telegram Main","status":"healthy","failureCount":0,"restartCount":0,"backoffSeconds":0,"createdAt":"2026-05-08T09:00:00Z","updatedAt":"2026-05-08T10:00:00Z","capabilityProfile":{"connectorKind":"telegram","connectorId":"telegram-main","lifecycleState":"healthy","surfaces":{"direct_message":"supported","group_message":"supported","attachments":"unsupported"},"identityRules":{"durableIdentity":"tenant_id + connector_account_id + telegram_chat_id + telegram_message_id"},"coreInvariants":{"tenant_scoped_identity":"pass"},"generatedAt":"2026-05-08T10:00:00Z","retentionExpiresAt":"2026-08-06T10:00:00Z","redactionStatus":"redacted"},"conformanceResult":{"conformanceResultId":"conformance_telegram_1","tenantId":"ten_telegram","connectorKind":"telegram","connectorId":"telegram-main","scenarioId":"telegram.direct.pass","area":"direct_message","result":"pass","evidenceTimestamp":"2026-05-08T10:00:00Z","redactionStatus":"redacted","retentionExpiresAt":"2026-08-06T10:00:00Z"}}`,
+	})
+}
+
 func TestConnectorRedactionFailureFixtureSuppressesProviderSecrets(t *testing.T) {
 	t.Parallel()
 

@@ -48,6 +48,29 @@ Default verification uses fake connectors and fake credentials in `~/.dope-test`
 Live connector credentials and production tenants are out of scope unless an operator
 chooses a separate live validation path.
 
+## Telegram Phase 50 Handoff
+
+Telegram specializes this contract through bot-token hosted setup, explicit allowment,
+route/reply diagnostics, delivery separation, and smoke evidence:
+
+- hosted-ready requires a valid Telegram bot credential, redacted bot account binding,
+  explicit user/chat/group allowment, and passing connector conformance gates
+- valid credentials without explicit allowment remain `action-required` and cannot
+  accept ingress, send replies, or become background-delivery eligible
+- direct messages are supported only for explicitly allowed users or direct chats; group
+  messages are supported only for explicitly allowed groups with bot mention or command
+  gating
+- text and commands are the only supported ingress payloads; attachments, voice,
+  payments, mini apps, media transfer, thinking visibility, and incremental visible
+  updates are unsupported for phase 50
+- durable duplicate suppression uses tenant, connector account, Telegram chat ID, and
+  Telegram message ID; Telegram update ID is retained as redacted delivery evidence
+- foreground replies are final-only, and connector-backed background delivery remains
+  separate from foreground reply and assistant execution truth
+- release review accepts fake safe-live pass evidence plus either safe live smoke
+  evidence or a structured skip that names owner, reason, date, remaining risk, and
+  redaction status
+
 ## Provider-Specific Handoff
 
 Future provider specs must reference this document for shared connector behavior and

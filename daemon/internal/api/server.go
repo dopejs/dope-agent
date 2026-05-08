@@ -148,10 +148,20 @@ func NewServer(deps Dependencies) *Server {
 	mux := http.NewServeMux()
 	setupWizardService := deps.SetupWizard
 	if setupWizardService == nil {
+		defaultSetupProbe := setupwizard.DefaultDiagnosticProbe{Secrets: deps.Secrets}
+		var submittedSecretRecorder setupwizard.SubmittedSecretRecorder
+		diagnostics := setupwizard.DiagnosticProbe(defaultSetupProbe)
+		if deps.Store != nil {
+			telegramSetup := newTelegramSetupWizardIntegration(deps.Store, deps.Config.Connectors.Telegram)
+			diagnostics = setupWizardDiagnosticProbe{Default: defaultSetupProbe, Telegram: telegramSetup}
+			submittedSecretRecorder = telegramSetup
+		}
 		setupWizardService = setupwizard.NewService(setupwizard.ServiceDependencies{
-			Store:   deps.Store,
-			Secrets: deps.Secrets,
-			Audit:   setupwizard.NewTenantAuditRecorder(deps.Store),
+			Store:                   deps.Store,
+			Secrets:                 deps.Secrets,
+			Diagnostics:             diagnostics,
+			Audit:                   setupwizard.NewTenantAuditRecorder(deps.Store),
+			SubmittedSecretRecorder: submittedSecretRecorder,
 		})
 	}
 	withEnvironment := func(handler http.HandlerFunc) http.HandlerFunc {
@@ -3055,6 +3065,10 @@ func handleConnectorRoutes(supervisor *connectors.Supervisor, sessionRouter *rou
 		handleConnectorHealth(supervisor, eventBus, sqliteStore, w, r, parts[0])
 		return
 	}
+	if len(parts) == 2 && parts[1] == "diagnostics" {
+		handleConnectorDiagnostics(supervisor, sqliteStore, w, r, parts[0])
+		return
+	}
 	if len(parts) == 2 && parts[1] == "fail" {
 		handleConnectorFail(supervisor, eventBus, sqliteStore, w, r, parts[0])
 		return
@@ -3069,6 +3083,14 @@ func handleConnectorRoutes(supervisor *connectors.Supervisor, sessionRouter *rou
 	}
 	if len(parts) == 2 && parts[1] == "discord-smoke" {
 		handleConnectorDiscordSmoke(supervisor, sqliteStore, w, r, parts[0])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "telegram-setup" {
+		handleConnectorTelegramSetup(supervisor, sqliteStore, w, r, parts[0])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "telegram-smoke" {
+		handleConnectorTelegramSmoke(supervisor, sqliteStore, w, r, parts[0])
 		return
 	}
 	if len(parts) == 3 && parts[1] == "ingress" && parts[2] == "messages" {
@@ -3151,6 +3173,78 @@ func handleConnectorDiscordSmoke(supervisor *connectors.Supervisor, sqliteStore 
 	writeJSON(w, http.StatusOK, evidence)
 }
 
+func handleConnectorTelegramSetup(supervisor *connectors.Supervisor, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector setup store is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantContextFromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	if supervisor != nil {
+		if _, ok := supervisor.GetForTenant(connectorID, tenantContext.TenantID); !ok {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	setup, found, err := sqliteStore.GetTelegramHostedSetup(r.Context(), tenantContext.TenantID, connectorID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, setup)
+}
+
+func handleConnectorTelegramSmoke(supervisor *connectors.Supervisor, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector smoke evidence store is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantContextFromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	if supervisor != nil {
+		if _, ok := supervisor.GetForTenant(connectorID, tenantContext.TenantID); !ok {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	evidence, found, err := sqliteStore.LatestTelegramSmokeEvidence(r.Context(), tenantContext.TenantID, connectorID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, evidence)
+}
+
 func handleConnectorByID(supervisor *connectors.Supervisor, w http.ResponseWriter, r *http.Request, connectorID string) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -3169,6 +3263,38 @@ func handleConnectorByID(supervisor *connectors.Supervisor, w http.ResponseWrite
 		return
 	}
 	writeJSON(w, http.StatusOK, projectConnectorResource(connector))
+}
+
+func handleConnectorDiagnostics(supervisor *connectors.Supervisor, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector diagnostic store is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantContextFromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	if supervisor != nil {
+		if _, ok := supervisor.GetForTenant(connectorID, tenantContext.TenantID); !ok {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	items, err := sqliteStore.ListConnectorDiagnosticStates(r.Context(), tenantContext.TenantID, connectorID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, ListResponse[connectors.ConnectorDiagnosticState]{Items: items})
 }
 
 func projectConnectorResources(items []connectors.Connector) []connectors.Connector {

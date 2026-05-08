@@ -1166,6 +1166,9 @@ export type IntegrationDiagnosticReasonCode =
 export type DiscordReadinessState = "hosted_ready" | "degraded_needs_repair" | "failed" | "disabled";
 export type DiscordCredentialState = "missing" | "submitted" | "valid" | "invalid" | "revoked" | "redaction_suppressed";
 export type DiscordRedactionStatus = "redacted" | "suppressed" | "redaction_failed";
+export type TelegramTerminalState = "ready" | "degraded" | "unavailable" | "cancelled" | "action-required";
+export type TelegramCredentialState = DiscordCredentialState;
+export type TelegramRedactionStatus = DiscordRedactionStatus;
 
 export type DiscordDestinationValidationResource = {
   tenantId?: string;
@@ -1217,6 +1220,58 @@ export type DiscordSmokeEvidenceResource = {
   safeEvidence?: Record<string, string>;
 };
 
+export type TelegramAllowmentResource = {
+  tenantId?: string;
+  connectorId: string;
+  allowmentId: string;
+  telegramScopeType: "user" | "direct_chat" | "group";
+  telegramScopeId: string;
+  providerLabel?: string;
+  enabled: boolean;
+  groupGate: "not_applicable" | "mention_or_command_required";
+  validationState: "valid" | "invalid" | "blocked" | "stale" | "missing_permission" | "not_found";
+  reasonCode?: string;
+  validatedAt: string;
+  redactionStatus: TelegramRedactionStatus;
+  safeEvidence?: Record<string, string>;
+};
+
+export type TelegramHostedSetupResource = {
+  tenantId?: string;
+  connectorId: string;
+  connectorKind: "telegram";
+  displayName: string;
+  status: "configured" | "healthy" | "degraded" | "failed" | "permission_blocked" | "rate_limited" | "unsupported_capability";
+  terminalState: TelegramTerminalState;
+  hostedReady: boolean;
+  credentialState: TelegramCredentialState;
+  allowmentState: "none" | "partial" | "valid" | "stale";
+  groupBehavior: "disabled" | "mention_or_command_required";
+  deliveryEligible: boolean;
+  reasonCode?: string;
+  allowments?: TelegramAllowmentResource[];
+  redactionStatus: TelegramRedactionStatus;
+  createdAt: string;
+  updatedAt: string;
+  validatedAt?: string;
+  retentionExpiresAt: string;
+};
+
+export type TelegramSmokeEvidenceResource = {
+  smokeEvidenceId: string;
+  tenantId?: string;
+  connectorId: string;
+  status: "passed" | "failed" | "skipped";
+  credentialMode: "safe_live" | "fake" | "unavailable";
+  owner: string;
+  reason: string;
+  remainingRisk?: string;
+  validatedAt: string;
+  retentionExpiresAt: string;
+  redactionStatus: TelegramRedactionStatus;
+  safeEvidence?: Record<string, string>;
+};
+
 export type ConnectorConformanceResultResource = {
   conformanceResultId: string;
   tenantId?: string;
@@ -1236,6 +1291,7 @@ export type DiscordConformanceEvidenceResponse = {
   connectorId: string;
   items: ConnectorConformanceResultResource[];
 };
+export type TelegramConformanceEvidenceResponse = DiscordConformanceEvidenceResponse;
 
 export type DiscordHostedReadinessProjection = {
   tenantId?: string;
@@ -1254,6 +1310,22 @@ export type DiscordHostedReadinessProjection = {
   redactionStatus: DiscordRedactionStatus;
 };
 
+export type TelegramHostedReadinessProjection = {
+  tenantId?: string;
+  connectorId: string;
+  displayName: string;
+  terminalState: TelegramTerminalState;
+  hostedReady: boolean;
+  localCompatible: boolean;
+  reasonCode?: string;
+  botTokenConfigured: boolean;
+  botUsername?: string;
+  allowedUserIds?: string[];
+  allowedDirectChatIds?: string[];
+  allowedGroupIds?: string[];
+  redactionStatus: TelegramRedactionStatus;
+};
+
 export type ConfigDiscordConnectorResponse = {
   enabled: boolean;
   configured: boolean;
@@ -1269,6 +1341,20 @@ export type ConfigDiscordConnectorResponse = {
   hostedReadiness: DiscordHostedReadinessProjection;
 };
 
+export type ConfigTelegramConnectorResponse = {
+  enabled: boolean;
+  configured: boolean;
+  connectorId: string;
+  displayName: string;
+  botTokenConfigured: boolean;
+  botTokenEnv?: string;
+  botUsername?: string;
+  allowedUserIds: string[];
+  allowedDirectChatIds: string[];
+  allowedGroupIds: string[];
+  hostedReadiness: TelegramHostedReadinessProjection;
+};
+
 export type ConfigResponse = {
   environment: EnvironmentScope;
   bindAddr: string;
@@ -1279,6 +1365,7 @@ export type ConfigResponse = {
   llm: Record<string, unknown>;
   connectors: {
     discord: ConfigDiscordConnectorResponse;
+    telegram: ConfigTelegramConnectorResponse;
   };
   mcp: Record<string, unknown>;
   sandbox: Record<string, unknown>;
@@ -1782,6 +1869,7 @@ export type SubmitSetupSecretInput = {
   secretRef: string;
   value: string;
   displayName?: string;
+  resourceRefs?: SetupResourceRef[];
 };
 
 export type StartSetupOAuthInput = {
@@ -2209,8 +2297,23 @@ export class DopeClient {
     return this.requestJSON<DiscordSmokeEvidenceResource>(`/v1/connectors/${encodePathComponent(connectorId.trim())}/discord-smoke`, { tenant: tenantOptions });
   }
 
+  async getTelegramSetup(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<TelegramHostedSetupResource> {
+    return this.requestJSON<TelegramHostedSetupResource>(`/v1/connectors/${encodePathComponent(connectorId.trim())}/telegram-setup`, { tenant: tenantOptions });
+  }
+
+  async getTelegramSmokeEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<TelegramSmokeEvidenceResource> {
+    return this.requestJSON<TelegramSmokeEvidenceResource>(`/v1/connectors/${encodePathComponent(connectorId.trim())}/telegram-smoke`, { tenant: tenantOptions });
+  }
+
   async getDiscordConformanceEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<DiscordConformanceEvidenceResponse> {
     return this.requestJSON<DiscordConformanceEvidenceResponse>("/v1/live-validations/discord-conformance", {
+      query: { connectorId: connectorId.trim() },
+      tenant: tenantOptions
+    });
+  }
+
+  async getTelegramConformanceEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<TelegramConformanceEvidenceResponse> {
+    return this.requestJSON<TelegramConformanceEvidenceResponse>("/v1/live-validations/telegram-conformance", {
       query: { connectorId: connectorId.trim() },
       tenant: tenantOptions
     });
@@ -2344,7 +2447,8 @@ export class DopeClient {
       body: {
         secretRef: input.secretRef.trim(),
         value: input.value,
-        displayName: input.displayName?.trim() || undefined
+        displayName: input.displayName?.trim() || undefined,
+        resourceRefs: input.resourceRefs
       },
       tenant: tenantOptions
     });

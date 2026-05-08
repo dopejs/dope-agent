@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/telegram-hosted-setup-resource.schema.json",
+  "title": "TelegramHostedSetupResource",
+  "type": "object",
+  "required": [
+    "connectorId",
+    "connectorKind",
+    "displayName",
+    "status",
+    "terminalState",
+    "hostedReady",
+    "credentialState",
+    "allowmentState",
+    "groupBehavior",
+    "deliveryEligible",
+    "redactionStatus",
+    "createdAt",
+    "updatedAt",
+    "retentionExpiresAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "connectorKind": { "const": "telegram" },
+    "displayName": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["configured", "healthy", "degraded", "failed", "permission_blocked", "rate_limited", "unsupported_capability"]
+    },
+    "terminalState": {
+      "type": "string",
+      "enum": ["ready", "degraded", "unavailable", "cancelled", "action-required"]
+    },
+    "hostedReady": { "type": "boolean" },
+    "credentialState": {
+      "type": "string",
+      "enum": ["missing", "submitted", "valid", "invalid", "revoked", "redaction_suppressed"]
+    },
+    "allowmentState": {
+      "type": "string",
+      "enum": ["none", "partial", "valid", "stale"]
+    },
+    "groupBehavior": {
+      "type": "string",
+      "enum": ["disabled", "mention_or_command_required"]
+    },
+    "deliveryEligible": { "type": "boolean" },
+    "reasonCode": { "type": "string" },
+    "accountBinding": { "$ref": "./connector-account-binding-summary.schema.json" },
+    "allowments": {
+      "type": "array",
+      "items": { "$ref": "./telegram-allowment-resource.schema.json" }
+    },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "validatedAt": { "type": "string", "format": "date-time" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" }
+  }
+}

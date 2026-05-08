@@ -255,6 +255,57 @@ func TestLoadDiscordConnectorConfig(t *testing.T) {
 	}
 }
 
+func TestLoadTelegramConnectorConfig(t *testing.T) {
+	homeDir := t.TempDir()
+	dataDir := filepath.Join(homeDir, ".dope-test")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte(`{
+		"connectors": {
+			"telegram": {
+				"enabled": true,
+				"connectorId": "telegram-bot",
+				"displayName": "Telegram Bot",
+				"botTokenEnv": "TELEGRAM_TEST_TOKEN",
+				"botUsername": "dope_test_bot",
+				"allowedUserIds": ["user_1"],
+				"allowedDirectChatIds": ["chat_1"],
+				"allowedGroupIds": ["group_1"]
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	setBaseEnv(t, homeDir)
+	t.Setenv("TELEGRAM_TEST_TOKEN", "telegram-secret")
+	t.Setenv("DOPE_CONNECTORS_TELEGRAM_ALLOWED_GROUP_IDS", "group_2,group_3")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !cfg.Connectors.Telegram.Enabled {
+		t.Fatal("expected telegram connector enabled")
+	}
+	if cfg.Connectors.Telegram.ConnectorID != "telegram-bot" {
+		t.Fatalf("expected telegram connector id telegram-bot, got %s", cfg.Connectors.Telegram.ConnectorID)
+	}
+	if cfg.Connectors.Telegram.BotToken != "telegram-secret" {
+		t.Fatalf("expected telegram bot token from env ref, got %q", cfg.Connectors.Telegram.BotToken)
+	}
+	if cfg.Connectors.Telegram.BotUsername != "dope_test_bot" {
+		t.Fatalf("expected telegram bot username from file, got %q", cfg.Connectors.Telegram.BotUsername)
+	}
+	if got := cfg.Connectors.Telegram.AllowedDirectChatIDs; len(got) != 1 || got[0] != "chat_1" {
+		t.Fatalf("expected allowed direct chat IDs from file config, got %#v", got)
+	}
+	if got := cfg.Connectors.Telegram.AllowedGroupIDs; len(got) != 2 || got[0] != "group_2" || got[1] != "group_3" {
+		t.Fatalf("expected allowed group IDs from env override, got %#v", got)
+	}
+}
+
 func TestLoadRejectsInvalidConfigFile(t *testing.T) {
 	homeDir := t.TempDir()
 	dataDir := filepath.Join(homeDir, ".dope-test")

@@ -50,6 +50,20 @@ func (p DefaultDiagnosticProbe) ProbeSetup(ctx context.Context, session SetupSes
 			}
 			break
 		}
+		if session.TargetID == TargetTelegramConnector && reason == ReasonHealthy {
+			switch {
+			case resourceRefID(session.ResourceRefs, "telegram_allowment_validation") != "":
+				state, owner, retry = ClassifyDiagnosticReason(ReasonHealthy)
+				reason = ReasonHealthy
+			case resourceRefID(session.ResourceRefs, "telegram_allowment_invalid") != "":
+				state, owner, retry = ClassifyDiagnosticReason(ReasonTelegramAllowmentInvalid)
+				reason = ReasonTelegramAllowmentInvalid
+			default:
+				state, owner, retry = ClassifyDiagnosticReason(ReasonTelegramAllowmentMissing)
+				reason = ReasonTelegramAllowmentMissing
+			}
+			break
+		}
 	case OperationOAuthCallback:
 		if resourceRefID(session.ResourceRefs, "provider_auth_state") == "" {
 			state, owner, retry = ClassifyDiagnosticReason(ReasonTokenMissing)
@@ -85,6 +99,21 @@ func (s *Service) probeReadiness(ctx context.Context, session SetupSession, oper
 		return SetupSession{}, "", "", ErrDiagnosticLinkNeeded
 	}
 	result, err := s.diagnostics.ProbeSetup(ctx, session, operation)
+	return s.applyProbeResult(ctx, session, operation, result, err)
+}
+
+func (s *Service) probeSubmittedSecretReadiness(ctx context.Context, session SetupSession, input SubmitSecretInput) (SetupSession, SetupState, string, error) {
+	if s.diagnostics == nil {
+		return SetupSession{}, "", "", ErrDiagnosticLinkNeeded
+	}
+	if probe, ok := s.diagnostics.(SubmittedSecretDiagnosticProbe); ok {
+		result, err := probe.ProbeSubmittedSecret(ctx, session, input)
+		return s.applyProbeResult(ctx, session, OperationSubmitSecret, result, err)
+	}
+	return s.probeReadiness(ctx, session, OperationSubmitSecret)
+}
+
+func (s *Service) applyProbeResult(ctx context.Context, session SetupSession, operation SetupOperation, result SetupDiagnosticProbeResult, err error) (SetupSession, SetupState, string, error) {
 	if err != nil {
 		state, owner, retry := ClassifyDiagnosticReason(ReasonProviderUnavailable)
 		result = SetupDiagnosticProbeResult{

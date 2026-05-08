@@ -3,19 +3,36 @@ package delivery
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 type fakeConnectorSender struct {
-	replies []imtypes.OutboundReply
+	externalID string
+	replies    []imtypes.OutboundReply
 }
 
 func (s *fakeConnectorSender) SendReply(_ context.Context, reply imtypes.OutboundReply) (imtypes.SentReply, error) {
 	s.replies = append(s.replies, reply)
-	return imtypes.SentReply{ExternalMessageID: "discord_reply_1"}, nil
+	externalID := s.externalID
+	if externalID == "" {
+		externalID = "discord_reply_1"
+	}
+	return imtypes.SentReply{ExternalMessageID: externalID}, nil
+}
+
+type kindedFakeConnectorSender struct {
+	*fakeConnectorSender
+	kind string
+}
+
+func (s *kindedFakeConnectorSender) ConnectorKind() string {
+	return s.kind
 }
 
 func TestConnectorAdapterPersistsOutboundTransportEvidence(t *testing.T) {
@@ -84,5 +101,112 @@ func TestConnectorAdapterPersistsOutboundTransportEvidence(t *testing.T) {
 	}
 	if boundaryCount != 1 {
 		t.Fatalf("expected persisted connector delivery boundary row, got %d", boundaryCount)
+	}
+}
+
+func TestConnectorAdapterSupportsTelegramBackgroundDeliveryBoundary(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	sender := &kindedFakeConnectorSender{fakeConnectorSender: &fakeConnectorSender{externalID: "telegram_reply_1"}, kind: "telegram"}
+	adapter := NewConnectorAdapter(sqliteStore)
+	adapter.Register("telegram-main", sender)
+	ctx := tenantctx.WithContext(context.Background(), identity.TenantContext{TenantID: "ten_telegram_delivery"})
+	now := time.Now().UTC()
+	if err := sqliteStore.SaveTelegramHostedSetup(ctx, store.TelegramHostedSetupRecord{
+		TenantID:           "ten_telegram_delivery",
+		ConnectorID:        "telegram-main",
+		ConnectorKind:      "telegram",
+		DisplayName:        "Telegram Main",
+		Status:             "healthy",
+		TerminalState:      "ready",
+		HostedReady:        true,
+		CredentialState:    "valid",
+		AllowmentState:     "valid",
+		GroupBehavior:      "mention_or_command_required",
+		DeliveryEligible:   true,
+		RedactionStatus:    "redacted",
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		ValidatedAt:        now,
+		RetentionExpiresAt: now.Add(90 * 24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("SaveTelegramHostedSetup returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(ctx, runtime.Run{
+		RunID:      "run_telegram_delivery",
+		Entrypoint: "operator",
+		Status:     runtime.RunStatusCompleted,
+		Goal:       "telegram connector delivery",
+	}); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	result, err := adapter.Send(ctx, DeliveryTarget{
+		TargetID:   "telegram-target",
+		TargetKind: TargetKindConnectorRoute,
+		ConnectorBinding: &ConnectorBinding{
+			ConnectorID: "telegram-main",
+			ChannelID:   "telegram_chat_1",
+			PeerID:      "telegram_user_1",
+		},
+	}, DeliveryOutcome{
+		DeliveryID:     "delivery_telegram",
+		RunID:          "run_telegram_delivery",
+		PayloadPreview: "hello telegram",
+	})
+	if err != nil {
+		t.Fatalf("Send returned error: %v", err)
+	}
+	if len(sender.replies) != 1 || sender.replies[0].ConnectorID != "telegram-main" {
+		t.Fatalf("expected one Telegram outbound reply, got %+v", sender.replies)
+	}
+	if result.SeparationStatus != "separate_truths" || result.ConnectorDeliveryBoundaryID == "" {
+		t.Fatalf("expected separate Telegram delivery truth, got %+v", result)
+	}
+	record, ok, err := sqliteStore.GetConnectorMessageByExternalID(ctx, "telegram-main", imtypes.DeliveryDirectionOutbound, "telegram_reply_1")
+	if err != nil || !ok {
+		t.Fatalf("GetConnectorMessageByExternalID returned ok=%v err=%v", ok, err)
+	}
+	if record.BackgroundDeliveryID != "delivery_telegram" || record.DeliveryBoundaryKind != "background_delivery" {
+		t.Fatalf("expected Telegram background delivery boundary fields, got %+v", record)
+	}
+}
+
+func TestConnectorAdapterBlocksTelegramDeliveryUntilHostedSetupIsReady(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	sender := &fakeConnectorSender{externalID: "telegram_reply_1"}
+	adapter := NewConnectorAdapter(sqliteStore)
+	adapter.RegisterConnector("telegram-main", "telegram", sender)
+
+	_, err = adapter.Send(context.Background(), DeliveryTarget{
+		TargetID:   "telegram-target",
+		TargetKind: TargetKindConnectorRoute,
+		ConnectorBinding: &ConnectorBinding{
+			ConnectorID: "telegram-main",
+			ChannelID:   "telegram_chat_1",
+		},
+	}, DeliveryOutcome{
+		DeliveryID:     "delivery_telegram_blocked",
+		RunID:          "run_telegram_delivery",
+		PayloadPreview: "hello telegram",
+	})
+	if err == nil {
+		t.Fatal("expected Telegram delivery to be blocked before hosted setup is ready")
+	}
+	if len(sender.replies) != 0 {
+		t.Fatalf("blocked Telegram delivery should not send replies, got %+v", sender.replies)
 	}
 }

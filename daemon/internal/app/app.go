@@ -27,6 +27,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	discordconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/discord"
+	telegramconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/telegram"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
@@ -82,6 +83,7 @@ type App struct {
 	ConnectorSupervisor  *connectors.Supervisor
 	CapabilitySupervisor *capabilities.Supervisor
 	discordRuntime       managedConnectorRuntime
+	telegramRuntime      managedConnectorRuntime
 	Server               *api.Server
 	mu                   sync.Mutex
 	closed               bool
@@ -199,7 +201,23 @@ func New() (*App, error) {
 		if err != nil {
 			return nil, err
 		}
-		connectorAdapter.Register(cfg.Connectors.Discord.ConnectorID, discordTransport)
+		connectorAdapter.RegisterConnector(cfg.Connectors.Discord.ConnectorID, "discord", discordTransport)
+	}
+	var telegramTransport telegramconnector.Transport
+	if cfg.Connectors.Telegram.Enabled {
+		if strings.TrimSpace(cfg.Connectors.Telegram.BotToken) == "" {
+			return nil, fmt.Errorf("telegram connector enabled but bot token is not configured")
+		}
+		telegramTransport, err = telegramconnector.NewBotAPITransport(telegramconnector.BotAPITransportConfig{
+			ConnectorID: cfg.Connectors.Telegram.ConnectorID,
+			BotToken:    cfg.Connectors.Telegram.BotToken,
+			BotUsername: cfg.Connectors.Telegram.BotUsername,
+			BaseURL:     cfg.Connectors.Telegram.BotAPIBaseURL,
+		})
+		if err != nil {
+			return nil, err
+		}
+		connectorAdapter.RegisterConnector(cfg.Connectors.Telegram.ConnectorID, "telegram", telegramTransport)
 	}
 	deliveryManager := delivery.NewManager(string(cfg.Environment), eventBus, sqliteStore, delivery.NewTestSinkAdapter(), connectorAdapter)
 	envCtx := events.WithEnvironmentScope(context.Background(), string(cfg.Environment))
@@ -296,6 +314,17 @@ func New() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	telegramRuntime, err := telegramconnector.NewRuntime(telegramconnector.Config{
+		Enabled:     cfg.Connectors.Telegram.Enabled,
+		ConnectorID: cfg.Connectors.Telegram.ConnectorID,
+		DisplayName: cfg.Connectors.Telegram.DisplayName,
+		BotToken:    cfg.Connectors.Telegram.BotToken,
+		BotUsername: cfg.Connectors.Telegram.BotUsername,
+		Allowments:  telegramAllowmentsFromConfig(cfg.Connectors.Telegram),
+	}, logger.Slog(), connectorSupervisor, im.NewMessageLoop(sessionRouter, runtimeManager, checkpointManager, eventBus, sqliteStore, chatService), sqliteStore, eventBus, telegramTransport)
+	if err != nil {
+		return nil, err
+	}
 
 	server := api.NewServer(api.Dependencies{
 		Config:                cfg,
@@ -363,8 +392,50 @@ func New() (*App, error) {
 		ConnectorSupervisor:  connectorSupervisor,
 		CapabilitySupervisor: capabilitySupervisor,
 		discordRuntime:       discordRuntime,
+		telegramRuntime:      telegramRuntime,
 		Server:               server,
 	}, nil
+}
+
+func telegramAllowmentsFromConfig(cfg config.TelegramConnectorConfig) []telegramconnector.AllowmentValidation {
+	items := make([]telegramconnector.AllowmentValidation, 0, len(cfg.AllowedUserIDs)+len(cfg.AllowedDirectChatIDs)+len(cfg.AllowedGroupIDs))
+	for _, id := range cfg.AllowedUserIDs {
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		items = append(items, telegramconnector.AllowmentValidation{
+			ScopeType:       telegramconnector.ScopeUser,
+			ScopeID:         strings.TrimSpace(id),
+			Enabled:         true,
+			GroupGate:       telegramconnector.GroupGateNotApplicable,
+			ValidationState: telegramconnector.AllowmentValid,
+		})
+	}
+	for _, id := range cfg.AllowedDirectChatIDs {
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		items = append(items, telegramconnector.AllowmentValidation{
+			ScopeType:       telegramconnector.ScopeDirectChat,
+			ScopeID:         strings.TrimSpace(id),
+			Enabled:         true,
+			GroupGate:       telegramconnector.GroupGateNotApplicable,
+			ValidationState: telegramconnector.AllowmentValid,
+		})
+	}
+	for _, id := range cfg.AllowedGroupIDs {
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		items = append(items, telegramconnector.AllowmentValidation{
+			ScopeType:       telegramconnector.ScopeGroup,
+			ScopeID:         strings.TrimSpace(id),
+			Enabled:         true,
+			GroupGate:       telegramconnector.GroupGateMentionOrCommandRequired,
+			ValidationState: telegramconnector.AllowmentValid,
+		})
+	}
+	return items
 }
 
 func defaultEvaluationFixturesDir() string {
@@ -468,6 +539,15 @@ func (a *App) Run(ctx context.Context) error {
 			return err
 		}
 	}
+	if a.telegramRuntime != nil {
+		starter, ok := a.telegramRuntime.(interface{ Start(context.Context) error })
+		if !ok {
+			return fmt.Errorf("telegram runtime is not startable")
+		}
+		if err := starter.Start(ctx); err != nil {
+			return err
+		}
+	}
 	if a.Scheduler != nil {
 		if err := a.Scheduler.Start(ctx); err != nil {
 			return err
@@ -533,6 +613,11 @@ func (a *App) Close(_ context.Context) error {
 
 	if a.discordRuntime != nil {
 		if err := a.discordRuntime.Close(context.Background()); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if a.telegramRuntime != nil {
+		if err := a.telegramRuntime.Close(context.Background()); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}

@@ -57,7 +57,8 @@ type ManagedCLIProviderConfig struct {
 }
 
 type ConnectorConfig struct {
-	Discord DiscordConnectorConfig
+	Discord  DiscordConnectorConfig
+	Telegram TelegramConnectorConfig
 }
 
 type DiscordConnectorConfig struct {
@@ -71,6 +72,35 @@ type DiscordConnectorConfig struct {
 	RespondInDM       bool
 	AllowedGuildIDs   []string
 	AllowedChannelIDs []string
+}
+
+type TelegramConnectorConfig struct {
+	Enabled              bool
+	ConnectorID          string
+	DisplayName          string
+	BotToken             string
+	BotTokenEnv          string
+	BotAPIBaseURL        string
+	BotUsername          string
+	AllowedUserIDs       []string
+	AllowedDirectChatIDs []string
+	AllowedGroupIDs      []string
+}
+
+type TelegramHostedReadinessProjection struct {
+	TenantID             string   `json:"tenantId,omitempty"`
+	ConnectorID          string   `json:"connectorId"`
+	DisplayName          string   `json:"displayName"`
+	TerminalState        string   `json:"terminalState"`
+	HostedReady          bool     `json:"hostedReady"`
+	LocalCompatible      bool     `json:"localCompatible"`
+	ReasonCode           string   `json:"reasonCode,omitempty"`
+	BotTokenConfigured   bool     `json:"botTokenConfigured"`
+	BotUsername          string   `json:"botUsername,omitempty"`
+	AllowedUserIDs       []string `json:"allowedUserIds,omitempty"`
+	AllowedDirectChatIDs []string `json:"allowedDirectChatIds,omitempty"`
+	AllowedGroupIDs      []string `json:"allowedGroupIds,omitempty"`
+	RedactionStatus      string   `json:"redactionStatus"`
 }
 
 type DiscordHostedReadinessProjection struct {
@@ -133,6 +163,38 @@ func (cfg DiscordConnectorConfig) ProjectHostedReadiness(tenantID string) Discor
 	return projection
 }
 
+func (cfg TelegramConnectorConfig) ProjectHostedReadiness(tenantID string) TelegramHostedReadinessProjection {
+	projection := TelegramHostedReadinessProjection{
+		TenantID:             strings.TrimSpace(tenantID),
+		ConnectorID:          strings.TrimSpace(cfg.ConnectorID),
+		DisplayName:          strings.TrimSpace(cfg.DisplayName),
+		TerminalState:        "action-required",
+		HostedReady:          false,
+		LocalCompatible:      cfg.Enabled && strings.TrimSpace(cfg.BotToken) != "",
+		BotTokenConfigured:   strings.TrimSpace(cfg.BotToken) != "",
+		BotUsername:          strings.TrimSpace(cfg.BotUsername),
+		AllowedUserIDs:       append([]string(nil), cfg.AllowedUserIDs...),
+		AllowedDirectChatIDs: append([]string(nil), cfg.AllowedDirectChatIDs...),
+		AllowedGroupIDs:      append([]string(nil), cfg.AllowedGroupIDs...),
+		RedactionStatus:      "redacted",
+	}
+	if !cfg.Enabled {
+		projection.TerminalState = "cancelled"
+		projection.ReasonCode = "disabled"
+		return projection
+	}
+	if strings.TrimSpace(cfg.BotToken) == "" {
+		projection.ReasonCode = "auth_missing"
+		return projection
+	}
+	if len(cfg.AllowedUserIDs) == 0 && len(cfg.AllowedDirectChatIDs) == 0 && len(cfg.AllowedGroupIDs) == 0 {
+		projection.ReasonCode = "telegram_allowment_missing"
+		return projection
+	}
+	projection.ReasonCode = "telegram_allowment_validation_required"
+	return projection
+}
+
 type fileConfig struct {
 	Environment string               `json:"environment"`
 	BindAddr    string               `json:"bindAddr"`
@@ -170,7 +232,8 @@ type fileManagedCLIProviderConfig struct {
 }
 
 type fileConnectorConfig struct {
-	Discord *fileDiscordConnectorConfig `json:"discord"`
+	Discord  *fileDiscordConnectorConfig  `json:"discord"`
+	Telegram *fileTelegramConnectorConfig `json:"telegram"`
 }
 
 type fileDiscordConnectorConfig struct {
@@ -184,6 +247,19 @@ type fileDiscordConnectorConfig struct {
 	RespondInDM       *bool    `json:"respondInDM"`
 	AllowedGuildIDs   []string `json:"allowedGuildIds"`
 	AllowedChannelIDs []string `json:"allowedChannelIds"`
+}
+
+type fileTelegramConnectorConfig struct {
+	Enabled              *bool    `json:"enabled"`
+	ConnectorID          string   `json:"connectorId"`
+	DisplayName          string   `json:"displayName"`
+	BotToken             string   `json:"botToken"`
+	BotTokenEnv          string   `json:"botTokenEnv"`
+	BotAPIBaseURL        string   `json:"botApiBaseUrl"`
+	BotUsername          string   `json:"botUsername"`
+	AllowedUserIDs       []string `json:"allowedUserIds"`
+	AllowedDirectChatIDs []string `json:"allowedDirectChatIds"`
+	AllowedGroupIDs      []string `json:"allowedGroupIds"`
 }
 
 func Load() (Config, error) {
@@ -226,6 +302,10 @@ func Load() (Config, error) {
 				DeliveryMode:   "gateway",
 				RequireMention: true,
 				RespondInDM:    true,
+			},
+			Telegram: TelegramConnectorConfig{
+				ConnectorID: "telegram-main",
+				DisplayName: "Telegram Main",
 			},
 		},
 	}
@@ -362,10 +442,12 @@ func applyFileManagedCLIConfig(cfg *ManagedCLIProviderConfig, fileCfg fileManage
 }
 
 func applyFileConnectorConfig(cfg *ConnectorConfig, fileCfg fileConnectorConfig) {
-	if fileCfg.Discord == nil {
-		return
+	if fileCfg.Discord != nil {
+		applyFileDiscordConnectorConfig(&cfg.Discord, *fileCfg.Discord)
 	}
-	applyFileDiscordConnectorConfig(&cfg.Discord, *fileCfg.Discord)
+	if fileCfg.Telegram != nil {
+		applyFileTelegramConnectorConfig(&cfg.Telegram, *fileCfg.Telegram)
+	}
 }
 
 func applyFileDiscordConnectorConfig(cfg *DiscordConnectorConfig, fileCfg fileDiscordConnectorConfig) {
@@ -398,6 +480,39 @@ func applyFileDiscordConnectorConfig(cfg *DiscordConnectorConfig, fileCfg fileDi
 	}
 	if fileCfg.AllowedChannelIDs != nil {
 		cfg.AllowedChannelIDs = append([]string(nil), fileCfg.AllowedChannelIDs...)
+	}
+}
+
+func applyFileTelegramConnectorConfig(cfg *TelegramConnectorConfig, fileCfg fileTelegramConnectorConfig) {
+	if fileCfg.Enabled != nil {
+		cfg.Enabled = *fileCfg.Enabled
+	}
+	if fileCfg.ConnectorID != "" {
+		cfg.ConnectorID = fileCfg.ConnectorID
+	}
+	if fileCfg.DisplayName != "" {
+		cfg.DisplayName = fileCfg.DisplayName
+	}
+	if fileCfg.BotToken != "" {
+		cfg.BotToken = fileCfg.BotToken
+	}
+	if fileCfg.BotTokenEnv != "" {
+		cfg.BotTokenEnv = fileCfg.BotTokenEnv
+	}
+	if fileCfg.BotAPIBaseURL != "" {
+		cfg.BotAPIBaseURL = fileCfg.BotAPIBaseURL
+	}
+	if fileCfg.BotUsername != "" {
+		cfg.BotUsername = fileCfg.BotUsername
+	}
+	if fileCfg.AllowedUserIDs != nil {
+		cfg.AllowedUserIDs = append([]string(nil), fileCfg.AllowedUserIDs...)
+	}
+	if fileCfg.AllowedDirectChatIDs != nil {
+		cfg.AllowedDirectChatIDs = append([]string(nil), fileCfg.AllowedDirectChatIDs...)
+	}
+	if fileCfg.AllowedGroupIDs != nil {
+		cfg.AllowedGroupIDs = append([]string(nil), fileCfg.AllowedGroupIDs...)
 	}
 }
 
@@ -440,6 +555,17 @@ func applyEnvOverrides(cfg *Config) {
 	cfg.Connectors.Discord.RespondInDM = getenvBool("DOPE_CONNECTORS_DISCORD_RESPOND_IN_DM", cfg.Connectors.Discord.RespondInDM)
 	cfg.Connectors.Discord.AllowedGuildIDs = getenvCSV("DOPE_CONNECTORS_DISCORD_ALLOWED_GUILD_IDS", cfg.Connectors.Discord.AllowedGuildIDs)
 	cfg.Connectors.Discord.AllowedChannelIDs = getenvCSV("DOPE_CONNECTORS_DISCORD_ALLOWED_CHANNEL_IDS", cfg.Connectors.Discord.AllowedChannelIDs)
+
+	cfg.Connectors.Telegram.Enabled = getenvBool("DOPE_CONNECTORS_TELEGRAM_ENABLED", cfg.Connectors.Telegram.Enabled)
+	cfg.Connectors.Telegram.ConnectorID = getenv("DOPE_CONNECTORS_TELEGRAM_CONNECTOR_ID", cfg.Connectors.Telegram.ConnectorID)
+	cfg.Connectors.Telegram.DisplayName = getenv("DOPE_CONNECTORS_TELEGRAM_DISPLAY_NAME", cfg.Connectors.Telegram.DisplayName)
+	cfg.Connectors.Telegram.BotToken = getenv("DOPE_CONNECTORS_TELEGRAM_BOT_TOKEN", cfg.Connectors.Telegram.BotToken)
+	cfg.Connectors.Telegram.BotTokenEnv = getenv("DOPE_CONNECTORS_TELEGRAM_BOT_TOKEN_ENV", cfg.Connectors.Telegram.BotTokenEnv)
+	cfg.Connectors.Telegram.BotAPIBaseURL = getenv("DOPE_CONNECTORS_TELEGRAM_BOT_API_BASE_URL", cfg.Connectors.Telegram.BotAPIBaseURL)
+	cfg.Connectors.Telegram.BotUsername = getenv("DOPE_CONNECTORS_TELEGRAM_BOT_USERNAME", cfg.Connectors.Telegram.BotUsername)
+	cfg.Connectors.Telegram.AllowedUserIDs = getenvCSV("DOPE_CONNECTORS_TELEGRAM_ALLOWED_USER_IDS", cfg.Connectors.Telegram.AllowedUserIDs)
+	cfg.Connectors.Telegram.AllowedDirectChatIDs = getenvCSV("DOPE_CONNECTORS_TELEGRAM_ALLOWED_DIRECT_CHAT_IDS", cfg.Connectors.Telegram.AllowedDirectChatIDs)
+	cfg.Connectors.Telegram.AllowedGroupIDs = getenvCSV("DOPE_CONNECTORS_TELEGRAM_ALLOWED_GROUP_IDS", cfg.Connectors.Telegram.AllowedGroupIDs)
 }
 
 func resolveSecretRefs(cfg *Config) {
@@ -448,6 +574,9 @@ func resolveSecretRefs(cfg *Config) {
 	}
 	if cfg.Connectors.Discord.BotToken == "" && cfg.Connectors.Discord.BotTokenEnv != "" {
 		cfg.Connectors.Discord.BotToken = os.Getenv(cfg.Connectors.Discord.BotTokenEnv)
+	}
+	if cfg.Connectors.Telegram.BotToken == "" && cfg.Connectors.Telegram.BotTokenEnv != "" {
+		cfg.Connectors.Telegram.BotToken = os.Getenv(cfg.Connectors.Telegram.BotTokenEnv)
 	}
 }
 

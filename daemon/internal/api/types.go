@@ -84,7 +84,8 @@ type ConfigManagedCLIProviderResponse struct {
 }
 
 type ConfigConnectorsResponse struct {
-	Discord ConfigDiscordConnectorResponse `json:"discord"`
+	Discord  ConfigDiscordConnectorResponse  `json:"discord"`
+	Telegram ConfigTelegramConnectorResponse `json:"telegram"`
 }
 
 type ConfigMCPResponse struct {
@@ -110,6 +111,20 @@ type ConfigDiscordConnectorResponse struct {
 	BotTokenConfigured bool                                    `json:"botTokenConfigured"`
 	BotTokenEnv        string                                  `json:"botTokenEnv,omitempty"`
 	HostedReadiness    config.DiscordHostedReadinessProjection `json:"hostedReadiness"`
+}
+
+type ConfigTelegramConnectorResponse struct {
+	Enabled              bool                                     `json:"enabled"`
+	Configured           bool                                     `json:"configured"`
+	ConnectorID          string                                   `json:"connectorId"`
+	DisplayName          string                                   `json:"displayName"`
+	BotTokenConfigured   bool                                     `json:"botTokenConfigured"`
+	BotTokenEnv          string                                   `json:"botTokenEnv,omitempty"`
+	BotUsername          string                                   `json:"botUsername,omitempty"`
+	AllowedUserIDs       []string                                 `json:"allowedUserIds"`
+	AllowedDirectChatIDs []string                                 `json:"allowedDirectChatIds"`
+	AllowedGroupIDs      []string                                 `json:"allowedGroupIds"`
+	HostedReadiness      config.TelegramHostedReadinessProjection `json:"hostedReadiness"`
 }
 
 type CreateIntegrationDiagnosticRunRequest struct {
@@ -922,6 +937,9 @@ func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager, sandboxMana
 	if cfg.Connectors.Discord.BotToken != "" {
 		redactedFields = append(redactedFields, "connectors.discord.botToken")
 	}
+	if cfg.Connectors.Telegram.BotToken != "" {
+		redactedFields = append(redactedFields, "connectors.telegram.botToken")
+	}
 	defaultTimeoutMs := cfg.LLM.DefaultTimeoutMs
 	if defaultTimeoutMs <= 0 {
 		defaultTimeoutMs = 30000
@@ -995,6 +1013,19 @@ func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager, sandboxMana
 				BotTokenConfigured: cfg.Connectors.Discord.BotToken != "",
 				BotTokenEnv:        cfg.Connectors.Discord.BotTokenEnv,
 				HostedReadiness:    cfg.Connectors.Discord.ProjectHostedReadiness(""),
+			},
+			Telegram: ConfigTelegramConnectorResponse{
+				Enabled:              cfg.Connectors.Telegram.Enabled,
+				Configured:           cfg.Connectors.Telegram.BotToken != "",
+				ConnectorID:          cfg.Connectors.Telegram.ConnectorID,
+				DisplayName:          cfg.Connectors.Telegram.DisplayName,
+				BotTokenConfigured:   cfg.Connectors.Telegram.BotToken != "",
+				BotTokenEnv:          cfg.Connectors.Telegram.BotTokenEnv,
+				BotUsername:          cfg.Connectors.Telegram.BotUsername,
+				AllowedUserIDs:       cloneStringSlice(cfg.Connectors.Telegram.AllowedUserIDs),
+				AllowedDirectChatIDs: cloneStringSlice(cfg.Connectors.Telegram.AllowedDirectChatIDs),
+				AllowedGroupIDs:      cloneStringSlice(cfg.Connectors.Telegram.AllowedGroupIDs),
+				HostedReadiness:      cfg.Connectors.Telegram.ProjectHostedReadiness(""),
 			},
 		},
 		MCP: ConfigMCPResponse{

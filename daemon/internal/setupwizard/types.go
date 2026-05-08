@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	TargetOpenAICompatible = "provider.openai_compatible"
-	TargetFeishuLark       = "integration.feishu_lark"
-	TargetDiscordConnector = "connector.discord"
+	TargetOpenAICompatible  = "provider.openai_compatible"
+	TargetFeishuLark        = "integration.feishu_lark"
+	TargetDiscordConnector  = "connector.discord"
+	TargetTelegramConnector = "connector.telegram"
 )
 
 type TargetKind string
@@ -133,6 +134,8 @@ const (
 	ReasonSetupPersistenceFailure   = "setup_failed:persistence"
 	ReasonDiscordDestinationMissing = "discord_destination_missing"
 	ReasonDiscordDestinationInvalid = "discord_destination_invalid"
+	ReasonTelegramAllowmentMissing  = "telegram_allowment_missing"
+	ReasonTelegramAllowmentInvalid  = "telegram_allowment_invalid"
 )
 
 var (

@@ -15,9 +15,10 @@ type setupStartRequest struct {
 }
 
 type setupSecretSubmitRequest struct {
-	SecretRef   string `json:"secretRef"`
-	Value       string `json:"value"`
-	DisplayName string `json:"displayName,omitempty"`
+	SecretRef    string                    `json:"secretRef"`
+	Value        string                    `json:"value"`
+	DisplayName  string                    `json:"displayName,omitempty"`
+	ResourceRefs []setupwizard.ResourceRef `json:"resourceRefs,omitempty"`
 }
 
 type setupOAuthStartRequest struct {
@@ -136,6 +137,7 @@ func handleSetupSessionRoutes(service *setupwizard.Service, w http.ResponseWrite
 			SecretRef:     request.SecretRef,
 			Value:         request.Value,
 			DisplayName:   request.DisplayName,
+			ResourceRefs:  request.ResourceRefs,
 		})
 		if err != nil {
 			writeSetupError(w, err)

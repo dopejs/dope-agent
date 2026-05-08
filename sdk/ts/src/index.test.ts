@@ -504,6 +504,94 @@ describe("DopeClient", () => {
     expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/live-validations/discord-conformance?connectorId=discord-main", expect.anything());
   });
 
+  it("calls Telegram hosted setup and live validation routes", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_telegram",
+        connectorId: "telegram-main",
+        connectorKind: "telegram",
+        displayName: "Telegram Main",
+        status: "healthy",
+        terminalState: "ready",
+        hostedReady: true,
+        credentialState: "valid",
+        allowmentState: "valid",
+        groupBehavior: "mention_or_command_required",
+        deliveryEligible: true,
+        reasonCode: "healthy",
+        redactionStatus: "redacted",
+        createdAt: "2026-05-08T10:00:00Z",
+        updatedAt: "2026-05-08T10:01:00Z",
+        validatedAt: "2026-05-08T10:01:00Z",
+        retentionExpiresAt: "2026-08-06T10:01:00Z",
+        allowments: [{
+          tenantId: "ten_telegram",
+          connectorId: "telegram-main",
+          allowmentId: "allow_dm",
+          telegramScopeType: "direct_chat",
+          telegramScopeId: "chat_redacted",
+          enabled: true,
+          groupGate: "not_applicable",
+          validationState: "valid",
+          reasonCode: "healthy",
+          validatedAt: "2026-05-08T10:01:00Z",
+          redactionStatus: "redacted",
+          safeEvidence: { scope: "direct_chat" }
+        }]
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        smokeEvidenceId: "telegram_smoke_1",
+        tenantId: "ten_telegram",
+        connectorId: "telegram-main",
+        status: "skipped",
+        credentialMode: "unavailable",
+        owner: "operator",
+        reason: "safe_credentials_unavailable",
+        remainingRisk: "No live Telegram hosted smoke was run in this release validation.",
+        validatedAt: "2026-05-08T10:02:00Z",
+        retentionExpiresAt: "2026-08-06T10:02:00Z",
+        redactionStatus: "redacted",
+        safeEvidence: { policy: "structured_skip" }
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_telegram",
+        connectorId: "telegram-main",
+        items: [{
+          conformanceResultId: "conf_telegram_1",
+          tenantId: "ten_telegram",
+          connectorKind: "telegram",
+          connectorId: "telegram-main",
+          scenarioId: "telegram_hosted_setup",
+          area: "tenant_ownership",
+          result: "pass",
+          reasonCode: "matched",
+          redactionStatus: "redacted",
+          evidenceTimestamp: "2026-05-08T10:02:00Z",
+          retentionExpiresAt: "2026-08-06T10:02:00Z"
+        }]
+      }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      accessToken: "token",
+      defaultTenantId: "ten_telegram",
+      fetchImpl
+    });
+
+    const setup = await client.getTelegramSetup(" telegram-main ");
+    const smoke = await client.getTelegramSmokeEvidence("telegram-main");
+    const conformance = await client.getTelegramConformanceEvidence("telegram-main");
+
+    expect(setup.terminalState).toBe("ready");
+    expect(setup.allowments?.[0]?.telegramScopeType).toBe("direct_chat");
+    expect(smoke.reason).toBe("safe_credentials_unavailable");
+    expect(conformance.items[0]?.connectorKind).toBe("telegram");
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/connectors/telegram-main/telegram-setup", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/connectors/telegram-main/telegram-smoke", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/live-validations/telegram-conformance?connectorId=telegram-main", expect.anything());
+  });
+
   it("calls integration diagnostic inspection routes", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
@@ -1313,7 +1401,12 @@ describe("DopeClient", () => {
     await expect(client.listSetupSessions()).resolves.toMatchObject({ items: [{ setupSessionId: "setup_1", redactedEvidence: { secretVersionId: "secver_1" } }] });
     await client.startSetup({ targetId: " provider.openai_compatible ", setupStyle: "submitted_secret", source: " operator_shell " });
     await client.getSetupSession(" setup_1 ");
-    await client.submitSetupSecret("setup_1", { secretRef: " provider/openai-compatible ", displayName: " Provider key ", value: "R46_FAKE_OPENAI_COMPATIBLE_KEY_DO_NOT_LEAK" });
+    await client.submitSetupSecret("setup_1", {
+      secretRef: " provider/openai-compatible ",
+      displayName: " Provider key ",
+      value: "R46_FAKE_OPENAI_COMPATIBLE_KEY_DO_NOT_LEAK",
+      resourceRefs: [{ kind: "telegram_allowment_validation", id: "direct_chat:chat_redacted" }]
+    });
     await client.startSetupOAuth("setup_oauth_1", { redirectRoute: " /setup/oauth/feishu-lark/callback " });
     await client.completeSetupOAuth("setup_oauth_1", { state: " oauth_state_ref_1 ", result: "denied", accountLabel: " Workspace " });
     await client.retrySetup("setup_1");
@@ -1329,7 +1422,7 @@ describe("DopeClient", () => {
     }));
     expect(fetchImpl).toHaveBeenNthCalledWith(5, "http://127.0.0.1:19192/v1/setup/sessions/setup_1/submit-secret", expect.objectContaining({
       method: "POST",
-      body: JSON.stringify({ secretRef: "provider/openai-compatible", value: "R46_FAKE_OPENAI_COMPATIBLE_KEY_DO_NOT_LEAK", displayName: "Provider key" })
+      body: JSON.stringify({ secretRef: "provider/openai-compatible", value: "R46_FAKE_OPENAI_COMPATIBLE_KEY_DO_NOT_LEAK", displayName: "Provider key", resourceRefs: [{ kind: "telegram_allowment_validation", id: "direct_chat:chat_redacted" }] })
     }));
     expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/setup/sessions/setup_oauth_1/oauth/start", expect.objectContaining({
       method: "POST",

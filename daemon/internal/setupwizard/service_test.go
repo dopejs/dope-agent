@@ -165,6 +165,58 @@ func TestDefaultDiagnosticProbeDiscordUsesCredentialAndDestinationEvidence(t *te
 	}
 }
 
+func TestSubmitSecretIncludesConnectorEvidenceAndRecordsTelegramSetup(t *testing.T) {
+	store := NewMemoryStore()
+	probe := &recordingSubmittedSecretProbe{
+		result: SetupDiagnosticProbeResult{
+			State:              StateReady,
+			ReasonCode:         ReasonHealthy,
+			RemediationOwner:   OwnerNoneRequired,
+			RetrySafety:        RetryNoActionNeeded,
+			DiagnosticResultID: "diag_telegram_ready",
+			DiagnosticRunID:    "run_telegram_ready",
+			DiagnosticStage:    "credential_probe",
+			DiagnosticSource:   DiagnosticSource{Kind: "telegram_bot_api", ID: TargetTelegramConnector},
+		},
+	}
+	recorder := &recordingSubmittedSecretRecorder{}
+	service := NewService(ServiceDependencies{Store: store, Diagnostics: probe, SubmittedSecretRecorder: recorder})
+	actor := setupActor("ten_telegram_setup")
+
+	session, err := service.Start(context.Background(), StartInput{TenantContext: actor, TargetID: TargetTelegramConnector, SetupStyle: SetupStyleSubmittedSecret, Source: "wizard"})
+	if err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	session, err = service.SubmitSecret(context.Background(), SubmitSecretInput{
+		TenantContext: actor,
+		SessionID:     session.SetupSessionID,
+		SecretRef:     "TELEGRAM_BOT_TOKEN",
+		Value:         "R50_FAKE_TELEGRAM_BOT_TOKEN_DO_NOT_LEAK",
+		DisplayName:   "Telegram bot token",
+		ResourceRefs: []ResourceRef{
+			{Kind: "telegram_allowment_validation", ID: "direct_chat:chat_redacted"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitSecret returned error: %v", err)
+	}
+	if session.State != StateReady || session.DiagnosticSourceKind != "telegram_bot_api" {
+		t.Fatalf("expected Telegram setup to be ready from submitted-secret probe, got %+v", session)
+	}
+	if resourceRefID(session.ResourceRefs, "telegram_allowment_validation") != "direct_chat:chat_redacted" {
+		t.Fatalf("expected submitted allowment resource ref to be retained, got %+v", session.ResourceRefs)
+	}
+	if len(probe.submittedCalls) != 1 || probe.submittedCalls[0].Input.Value == "" {
+		t.Fatalf("expected submitted-secret probe to receive input, got %+v", probe.submittedCalls)
+	}
+	if len(recorder.records) != 1 || recorder.records[0].Session.State != StateReady {
+		t.Fatalf("expected Telegram setup recorder to run after transition, got %+v", recorder.records)
+	}
+	if ContainsForbiddenEvidence(session, []string{"R50_FAKE_TELEGRAM_BOT_TOKEN_DO_NOT_LEAK"}) {
+		t.Fatalf("session leaked submitted token: %+v", session)
+	}
+}
+
 func TestCompleteOAuthReadyRequiresDiagnosticProbeConfirmation(t *testing.T) {
 	probe := &recordingDiagnosticProbe{
 		result: SetupDiagnosticProbeResult{
@@ -298,6 +350,41 @@ type recordingDiagnosticProbe struct {
 func (p *recordingDiagnosticProbe) ProbeSetup(_ context.Context, session SetupSession, operation SetupOperation) (SetupDiagnosticProbeResult, error) {
 	p.calls = append(p.calls, diagnosticProbeCall{SessionID: session.SetupSessionID, Operation: operation})
 	return p.result, nil
+}
+
+type submittedSecretProbeCall struct {
+	Session SetupSession
+	Input   SubmitSecretInput
+}
+
+type recordingSubmittedSecretProbe struct {
+	result         SetupDiagnosticProbeResult
+	calls          []diagnosticProbeCall
+	submittedCalls []submittedSecretProbeCall
+}
+
+func (p *recordingSubmittedSecretProbe) ProbeSetup(_ context.Context, session SetupSession, operation SetupOperation) (SetupDiagnosticProbeResult, error) {
+	p.calls = append(p.calls, diagnosticProbeCall{SessionID: session.SetupSessionID, Operation: operation})
+	return p.result, nil
+}
+
+func (p *recordingSubmittedSecretProbe) ProbeSubmittedSecret(_ context.Context, session SetupSession, input SubmitSecretInput) (SetupDiagnosticProbeResult, error) {
+	p.submittedCalls = append(p.submittedCalls, submittedSecretProbeCall{Session: session, Input: input})
+	return p.result, nil
+}
+
+type submittedSecretRecorderCall struct {
+	Session SetupSession
+	Input   SubmitSecretInput
+}
+
+type recordingSubmittedSecretRecorder struct {
+	records []submittedSecretRecorderCall
+}
+
+func (r *recordingSubmittedSecretRecorder) RecordSubmittedSecretSetup(_ context.Context, session SetupSession, input SubmitSecretInput) error {
+	r.records = append(r.records, submittedSecretRecorderCall{Session: session, Input: input})
+	return nil
 }
 
 type recordingSetupAuditSink struct {

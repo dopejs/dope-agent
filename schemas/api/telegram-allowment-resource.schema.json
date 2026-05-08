@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/telegram-allowment-resource.schema.json",
+  "title": "TelegramAllowmentResource",
+  "type": "object",
+  "required": [
+    "connectorId",
+    "allowmentId",
+    "telegramScopeType",
+    "telegramScopeId",
+    "enabled",
+    "groupGate",
+    "validationState",
+    "validatedAt",
+    "redactionStatus"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "allowmentId": { "type": "string" },
+    "telegramScopeType": {
+      "type": "string",
+      "enum": ["user", "direct_chat", "group"]
+    },
+    "telegramScopeId": { "type": "string" },
+    "providerLabel": { "type": "string" },
+    "enabled": { "type": "boolean" },
+    "groupGate": {
+      "type": "string",
+      "enum": ["not_applicable", "mention_or_command_required"]
+    },
+    "validationState": {
+      "type": "string",
+      "enum": ["valid", "invalid", "blocked", "stale", "missing_permission", "not_found"]
+    },
+    "reasonCode": { "type": "string" },
+    "validatedAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "safeEvidence": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

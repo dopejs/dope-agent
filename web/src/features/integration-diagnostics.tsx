@@ -13,14 +13,14 @@ const STATUS_LABELS: Record<IntegrationDiagnosticResultResource["status"], strin
   unsupported: "Unsupported"
 };
 
-const DISCORD_REASON_LABELS: Partial<Record<IntegrationDiagnosticResultResource["reasonCode"], string>> = {
-  auth_missing: "Discord auth missing",
-  permission_missing: "Discord permission missing",
-  blocked_route: "Discord route blocked",
-  duplicate_inbound: "Discord duplicate inbound",
-  reply_failed: "Discord reply failed",
-  unsupported_capability: "Discord capability unsupported",
-  unknown_connector_failure: "Discord connector failure"
+const CONNECTOR_REASON_LABELS: Partial<Record<IntegrationDiagnosticResultResource["reasonCode"], string>> = {
+  auth_missing: "Connector auth missing",
+  permission_missing: "Connector permission missing",
+  blocked_route: "Connector route blocked",
+  duplicate_inbound: "Connector duplicate inbound",
+  reply_failed: "Connector reply failed",
+  unsupported_capability: "Connector capability unsupported",
+  unknown_connector_failure: "Connector failure"
 };
 
 export function IntegrationDiagnosticsView({ results, smokeReports = [] }: IntegrationDiagnosticsViewProps) {
@@ -61,7 +61,7 @@ export function IntegrationDiagnosticsView({ results, smokeReports = [] }: Integ
           <dl className="diagnostic-card__facts">
             <div>
               <dt>Reason</dt>
-              <dd>{DISCORD_REASON_LABELS[result.reasonCode] ?? result.reasonCode}</dd>
+              <dd>{CONNECTOR_REASON_LABELS[result.reasonCode] ?? result.reasonCode}</dd>
             </div>
             <div>
               <dt>Owner</dt>

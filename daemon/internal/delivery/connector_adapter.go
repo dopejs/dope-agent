@@ -16,26 +16,45 @@ type connectorReplySender interface {
 	SendReply(ctx context.Context, reply imtypes.OutboundReply) (imtypes.SentReply, error)
 }
 
+type connectorKindReporter interface {
+	ConnectorKind() string
+}
+
 type ConnectorAdapter struct {
 	sqliteStore *store.SQLiteStore
 	mu          sync.RWMutex
 	senders     map[string]connectorReplySender
+	kinds       map[string]string
 }
 
 func NewConnectorAdapter(sqliteStore *store.SQLiteStore) *ConnectorAdapter {
 	return &ConnectorAdapter{
 		sqliteStore: sqliteStore,
 		senders:     map[string]connectorReplySender{},
+		kinds:       map[string]string{},
 	}
 }
 
 func (a *ConnectorAdapter) Register(connectorID string, sender connectorReplySender) {
+	a.RegisterConnector(connectorID, "", sender)
+}
+
+func (a *ConnectorAdapter) RegisterConnector(connectorID, connectorKind string, sender connectorReplySender) {
 	if a == nil || strings.TrimSpace(connectorID) == "" || sender == nil {
 		return
 	}
+	if strings.TrimSpace(connectorKind) == "" {
+		if reporter, ok := sender.(connectorKindReporter); ok {
+			connectorKind = reporter.ConnectorKind()
+		}
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.senders[strings.TrimSpace(connectorID)] = sender
+	connectorID = strings.TrimSpace(connectorID)
+	a.senders[connectorID] = sender
+	if strings.TrimSpace(connectorKind) != "" {
+		a.kinds[connectorID] = strings.TrimSpace(connectorKind)
+	}
 }
 
 func (a *ConnectorAdapter) Supports(kind TargetKind) bool {
@@ -52,9 +71,12 @@ func (a *ConnectorAdapter) Send(ctx context.Context, target DeliveryTarget, outc
 	if strings.TrimSpace(target.ConnectorBinding.ChannelID) == "" {
 		return SendResult{TransportKind: string(TargetKindConnectorRoute)}, fmt.Errorf("connector-backed delivery target %s is missing channel id", target.TargetID)
 	}
-	sender, ok := a.senderFor(target.ConnectorBinding.ConnectorID)
+	sender, connectorKind, ok := a.senderFor(target.ConnectorBinding.ConnectorID)
 	if !ok {
 		return SendResult{TransportKind: string(TargetKindConnectorRoute)}, fmt.Errorf("connector %s is not available for delivery", target.ConnectorBinding.ConnectorID)
+	}
+	if err := a.requireConnectorDeliveryReady(ctx, connectorKind, target.ConnectorBinding.ConnectorID); err != nil {
+		return SendResult{TransportKind: string(TargetKindConnectorRoute)}, err
 	}
 
 	record := imtypes.MessageRecord{
@@ -134,9 +156,33 @@ func (a *ConnectorAdapter) Send(ctx context.Context, target DeliveryTarget, outc
 	}, nil
 }
 
-func (a *ConnectorAdapter) senderFor(connectorID string) (connectorReplySender, bool) {
+func (a *ConnectorAdapter) senderFor(connectorID string) (connectorReplySender, string, bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	sender, ok := a.senders[strings.TrimSpace(connectorID)]
-	return sender, ok
+	connectorID = strings.TrimSpace(connectorID)
+	sender, ok := a.senders[connectorID]
+	return sender, a.kinds[connectorID], ok
+}
+
+func (a *ConnectorAdapter) requireConnectorDeliveryReady(ctx context.Context, connectorKind, connectorID string) error {
+	if a == nil || a.sqliteStore == nil || strings.TrimSpace(connectorKind) != "telegram" {
+		return nil
+	}
+	tenantID := ""
+	if binding, ok := a.sqliteStore.ResolveActiveTenantBinding(ctx).(string); ok {
+		tenantID = binding
+	}
+	if strings.TrimSpace(tenantID) == "" {
+		if defaultTenant, err := a.sqliteStore.ResolveDefaultPersonalTenantID(ctx); err == nil {
+			tenantID = defaultTenant
+		}
+	}
+	setup, ok, err := a.sqliteStore.GetTelegramHostedSetup(ctx, tenantID, connectorID)
+	if err != nil {
+		return err
+	}
+	if !ok || !setup.HostedReady || !setup.DeliveryEligible {
+		return fmt.Errorf("telegram connector %s is not delivery eligible", connectorID)
+	}
+	return nil
 }
