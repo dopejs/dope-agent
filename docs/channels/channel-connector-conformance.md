@@ -71,6 +71,34 @@ route/reply diagnostics, delivery separation, and smoke evidence:
   evidence or a structured skip that names owner, reason, date, remaining risk, and
   redaction status
 
+## Slack Phase 51 Handoff
+
+Slack specializes this contract through hosted Slack OAuth, workspace binding, explicit
+route policy, thread-rooted channel replies, delivery separation, diagnostics, and smoke
+evidence:
+
+- hosted-ready requires a valid Slack OAuth installation, exactly one tenant-owned
+  workspace binding, required scopes, and at least one selected channel or explicit DM
+  user/user-group allowment
+- submitted bot tokens, signing secrets, local-only credentials, marketplace
+  publication, enterprise grid administration, memory-based team context, files, voice
+  clips, huddles, canvases, workflow buttons, interactive blocks, rich media, thinking
+  visibility, and incremental visible updates are unsupported for phase 51
+- direct messages are supported only for explicitly allowed Slack users or user-group
+  members; selected channel messages are accepted only when they mention the agent or
+  use an explicitly supported invocation signal
+- durable duplicate suppression uses tenant, connector, Slack workspace, conversation,
+  and Slack message ID; Slack event ID is retained only as redacted delivery evidence
+- foreground replies are final-only; channel replies are rooted at the triggering Slack
+  message thread; connector-backed background delivery remains separate from assistant
+  execution and foreground reply truth
+- Slack maps auth, permission, blocked route, duplicate inbound, reply failure,
+  rate-limit, provider, network/event-delivery, unsupported, and unknown failures into
+  the shared connector diagnostic vocabulary
+- release review accepts redacted fake or safe-live smoke evidence, or a structured skip
+  that names owner, reason, validation date, remaining risk, retention expiry, and
+  redaction status
+
 ## Provider-Specific Handoff
 
 Future provider specs must reference this document for shared connector behavior and

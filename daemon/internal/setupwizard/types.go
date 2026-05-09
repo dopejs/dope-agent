@@ -10,6 +10,7 @@ const (
 	TargetFeishuLark        = "integration.feishu_lark"
 	TargetDiscordConnector  = "connector.discord"
 	TargetTelegramConnector = "connector.telegram"
+	TargetSlackConnector    = "connector.slack"
 )
 
 type TargetKind string
@@ -136,6 +137,8 @@ const (
 	ReasonDiscordDestinationInvalid = "discord_destination_invalid"
 	ReasonTelegramAllowmentMissing  = "telegram_allowment_missing"
 	ReasonTelegramAllowmentInvalid  = "telegram_allowment_invalid"
+	ReasonSlackRoutePolicyMissing   = "slack_route_policy_missing"
+	ReasonSlackRoutePolicyInvalid   = "slack_route_policy_invalid"
 )
 
 var (

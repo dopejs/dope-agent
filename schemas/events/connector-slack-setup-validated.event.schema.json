@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/connector-slack-setup-validated.event.schema.json",
+  "title": "ConnectorSlackSetupValidatedEvent",
+  "type": "object",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "properties": {
+        "category": { "const": "connector" },
+        "name": { "const": "connector.slack_setup_validated" },
+        "resource": {
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "slack_hosted_setup" },
+            "id": { "type": "string" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "connectorId",
+            "workspaceBindingId",
+            "terminalState",
+            "oauthState",
+            "routePolicyState",
+            "deliveryEligible",
+            "reasonCode",
+            "slackCondition",
+            "redactionStatus",
+            "validatedAt"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "connectorId": { "type": "string" },
+            "workspaceBindingId": { "type": "string" },
+            "terminalState": {
+              "type": "string",
+              "enum": ["ready", "degraded", "unavailable", "cancelled", "action-required"]
+            },
+            "oauthState": {
+              "type": "string",
+              "enum": ["not_started", "started", "callback_received", "grant_valid", "grant_missing", "scope_missing", "approval_required", "revoked", "redaction_suppressed"]
+            },
+            "routePolicyState": {
+              "type": "string",
+              "enum": ["none", "partial", "valid", "stale"]
+            },
+            "deliveryEligible": { "type": "boolean" },
+            "reasonCode": { "type": "string" },
+            "slackCondition": { "type": "string" },
+            "redactionStatus": {
+              "type": "string",
+              "enum": ["redacted", "suppressed", "redaction_failed"]
+            },
+            "validatedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

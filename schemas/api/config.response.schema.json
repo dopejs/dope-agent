@@ -140,7 +140,7 @@
     },
     "connectors": {
       "type": "object",
-      "required": ["discord", "telegram"],
+      "required": ["discord", "telegram", "slack"],
       "additionalProperties": false,
       "properties": {
         "discord": {
@@ -291,6 +291,86 @@
                   "items": { "type": "string" }
                 },
                 "allowedGroupIds": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "redactionStatus": {
+                  "type": "string",
+                  "enum": ["redacted", "suppressed", "redaction_failed"]
+                }
+              }
+            }
+          }
+        },
+        "slack": {
+          "type": "object",
+          "required": [
+            "enabled",
+            "configured",
+            "connectorId",
+            "displayName",
+            "allowedChannelIds",
+            "allowedDMUserIds",
+            "allowedDMUserGroups",
+            "hostedReadiness"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "configured": { "type": "boolean" },
+            "connectorId": { "type": "string" },
+            "displayName": { "type": "string" },
+            "apiBaseURL": { "type": "string" },
+            "botTokenSecretRef": { "type": "string" },
+            "workspaceBindingId": { "type": "string" },
+            "workspaceId": { "type": "string" },
+            "botUserId": { "type": "string" },
+            "allowedChannelIds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "allowedDMUserIds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "allowedDMUserGroups": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "hostedReadiness": {
+              "type": "object",
+              "required": [
+                "connectorId",
+                "displayName",
+                "terminalState",
+                "hostedReady",
+                "localCompatible",
+                "redactionStatus"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "tenantId": { "type": "string" },
+                "connectorId": { "type": "string" },
+                "displayName": { "type": "string" },
+                "terminalState": {
+                  "type": "string",
+                  "enum": ["ready", "degraded", "unavailable", "cancelled", "action-required"]
+                },
+                "hostedReady": { "type": "boolean" },
+                "localCompatible": { "type": "boolean" },
+                "reasonCode": { "type": "string" },
+                "workspaceBindingId": { "type": "string" },
+                "workspaceId": { "type": "string" },
+                "botUserId": { "type": "string" },
+                "allowedChannelIds": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "allowedDMUserIds": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "allowedDMUserGroups": {
                   "type": "array",
                   "items": { "type": "string" }
                 },

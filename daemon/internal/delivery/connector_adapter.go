@@ -165,7 +165,11 @@ func (a *ConnectorAdapter) senderFor(connectorID string) (connectorReplySender, 
 }
 
 func (a *ConnectorAdapter) requireConnectorDeliveryReady(ctx context.Context, connectorKind, connectorID string) error {
-	if a == nil || a.sqliteStore == nil || strings.TrimSpace(connectorKind) != "telegram" {
+	if a == nil || a.sqliteStore == nil {
+		return nil
+	}
+	connectorKind = strings.TrimSpace(connectorKind)
+	if connectorKind != "telegram" && connectorKind != "slack" {
 		return nil
 	}
 	tenantID := ""
@@ -176,6 +180,16 @@ func (a *ConnectorAdapter) requireConnectorDeliveryReady(ctx context.Context, co
 		if defaultTenant, err := a.sqliteStore.ResolveDefaultPersonalTenantID(ctx); err == nil {
 			tenantID = defaultTenant
 		}
+	}
+	if connectorKind == "slack" {
+		setup, ok, err := a.sqliteStore.GetSlackHostedSetup(ctx, tenantID, connectorID)
+		if err != nil {
+			return err
+		}
+		if !ok || setup.TerminalState != "ready" || !setup.DeliveryEligible {
+			return fmt.Errorf("slack connector %s is not delivery eligible", connectorID)
+		}
+		return nil
 	}
 	setup, ok, err := a.sqliteStore.GetTelegramHostedSetup(ctx, tenantID, connectorID)
 	if err != nil {

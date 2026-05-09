@@ -74,3 +74,37 @@ func TestFreshnessAtMarksDiagnosticsStaleAfterFifteenMinutes(t *testing.T) {
 		t.Fatalf("freshness after boundary=%s, want stale", got)
 	}
 }
+
+func TestSlackDiagnosticFreshnessAndRetentionContract(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+	state, err := ClassifyDiagnostic(DiagnosticInput{
+		DiagnosticStateID:  "diag_slack_reply_failed",
+		TenantID:           "ten_slack",
+		ConnectorID:        "slack-main",
+		ConnectorAccountID: "workspace_binding_redacted",
+		ReasonCode:         DiagnosticReplyFailed,
+		EvidenceTimestamp:  now,
+		RedactionReliable:  true,
+		SafeEvidence: map[string]string{
+			"stage":       "message_loop",
+			"workspaceId": "workspace_redacted",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ClassifyDiagnostic returned error: %v", err)
+	}
+	if state.FreshnessState != FreshnessFresh {
+		t.Fatalf("freshness=%s, want fresh", state.FreshnessState)
+	}
+	if got, want := state.RetentionExpiresAt, now.Add(90*24*time.Hour); !got.Equal(want) {
+		t.Fatalf("retention=%s, want %s", got, want)
+	}
+	if got := FreshnessAt(state.EvidenceTimestamp, now.Add(2*time.Minute)); got != FreshnessFresh {
+		t.Fatalf("Slack diagnostics must remain fresh for 2-minute support inspection bound, got %s", got)
+	}
+	if got := FreshnessAt(state.EvidenceTimestamp, now.Add(16*time.Minute)); got != FreshnessStale {
+		t.Fatalf("Slack diagnostic should be stale after freshness window, got %s", got)
+	}
+}

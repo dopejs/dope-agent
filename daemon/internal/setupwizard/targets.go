@@ -51,6 +51,17 @@ func CatalogTargets(tenantID string) []SetupTarget {
 			RequiredPermissions:     []string{PermissionSecretsManage, PermissionIntegrationsManage},
 			LimitedSafeCapabilities: []string{"metadata_read", "allowment_validation"},
 		},
+		{
+			TargetID:                TargetSlackConnector,
+			TenantID:                strings.TrimSpace(tenantID),
+			TargetKind:              TargetKindConnector,
+			SetupStyle:              SetupStyleOAuth,
+			DisplayName:             "Slack connector",
+			ProofTarget:             true,
+			SupportStatus:           SupportStatusSupported,
+			RequiredPermissions:     []string{PermissionSecretsManage, PermissionIntegrationsManage},
+			LimitedSafeCapabilities: []string{"metadata_read", "route_policy_validation", "workspace_validation"},
+		},
 	}
 	sort.Slice(targets, func(i, j int) bool { return targets[i].TargetID < targets[j].TargetID })
 	return targets

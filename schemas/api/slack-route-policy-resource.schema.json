@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/slack-route-policy-resource.schema.json",
+  "title": "SlackRoutePolicyResource",
+  "type": "object",
+  "required": [
+    "connectorId",
+    "workspaceBindingId",
+    "selectedChannels",
+    "allowedDMUsers",
+    "allowedDMUserGroups",
+    "mentionGate",
+    "threadReplyMode",
+    "validationState",
+    "validatedAt",
+    "redactionStatus"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "workspaceBindingId": { "type": "string" },
+    "selectedChannels": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/slackConversationRoute" }
+    },
+    "allowedDMUsers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "allowedDMUserGroups": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "mentionGate": { "const": "agent_mention_required" },
+    "threadReplyMode": { "const": "channel_mentions_thread_rooted" },
+    "validationState": {
+      "type": "string",
+      "enum": ["valid", "partial", "stale", "blocked", "missing_permission"]
+    },
+    "reasonCode": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "validatedAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "safeEvidence": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "slackConversationRoute": {
+      "type": "object",
+      "required": [
+        "conversationId",
+        "conversationType",
+        "selectedChannelState",
+        "validationState"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "conversationId": { "type": "string" },
+        "conversationType": {
+          "type": "string",
+          "enum": ["direct_message", "channel"]
+        },
+        "selectedChannelState": {
+          "type": "string",
+          "enum": ["selected", "not_selected", "stale", "archived", "missing_membership", "not_applicable"]
+        },
+        "validationState": {
+          "type": "string",
+          "enum": ["valid", "partial", "stale", "blocked", "missing_permission"]
+        },
+        "reasonCode": { "type": "string" },
+        "redactionStatus": {
+          "type": "string",
+          "enum": ["redacted", "suppressed", "redaction_failed"]
+        },
+        "safeEvidence": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -68,6 +68,18 @@ func (p DefaultDiagnosticProbe) ProbeSetup(ctx context.Context, session SetupSes
 		if resourceRefID(session.ResourceRefs, "provider_auth_state") == "" {
 			state, owner, retry = ClassifyDiagnosticReason(ReasonTokenMissing)
 			reason = ReasonTokenMissing
+		} else if session.TargetID == TargetSlackConnector {
+			switch {
+			case resourceRefID(session.ResourceRefs, "slack_route_policy_validation") != "":
+				state, owner, retry = ClassifyDiagnosticReason(ReasonHealthy)
+				reason = ReasonHealthy
+			case resourceRefID(session.ResourceRefs, "slack_route_policy_invalid") != "":
+				state, owner, retry = ClassifyDiagnosticReason(ReasonSlackRoutePolicyInvalid)
+				reason = ReasonSlackRoutePolicyInvalid
+			default:
+				state, owner, retry = ClassifyDiagnosticReason(ReasonSlackRoutePolicyMissing)
+				reason = ReasonSlackRoutePolicyMissing
+			}
 		}
 	}
 	return SetupDiagnosticProbeResult{

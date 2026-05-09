@@ -2510,6 +2510,59 @@ func TestConfigRouteRedactsProviderSecrets(t *testing.T) {
 	}
 }
 
+func TestConfigRouteProjectsSlackConnectorConfig(t *testing.T) {
+	server := NewServer(Dependencies{
+		Config: config.Config{
+			BindAddr: "127.0.0.1:19191",
+			DataDir:  "/tmp/dope",
+			LogLevel: "info",
+			Version:  "test",
+			Connectors: config.ConnectorConfig{
+				Slack: config.SlackConnectorConfig{
+					Enabled:             true,
+					ConnectorID:         "slack-main",
+					DisplayName:         "Slack Main",
+					APIBaseURL:          "https://slack.test",
+					BotTokenSecretRef:   "slack/slack-main/bot_token",
+					WorkspaceBindingID:  "workspace_binding_redacted",
+					WorkspaceID:         "workspace_redacted",
+					BotUserID:           "bot_redacted",
+					AllowedChannelIDs:   []string{"channel_selected"},
+					AllowedDMUserIDs:    []string{"user_allowed"},
+					AllowedDMUserGroups: []string{"group_allowed"},
+				},
+			},
+		},
+		Logger:   telemetry.New("error").Slog(),
+		EventBus: events.NewBus(),
+		Router:   router.NewSessionRouter(),
+		Runtime:  runtime.NewManager(),
+	})
+
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/config", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	response := decodeStrictResponse[ConfigResponse](t, rec.Body.Bytes())
+	if !response.Connectors.Slack.Enabled || response.Connectors.Slack.ConnectorID != "slack-main" {
+		t.Fatalf("expected Slack config projection, got %+v", response.Connectors.Slack)
+	}
+	if response.Connectors.Slack.WorkspaceID != "workspace_redacted" || response.Connectors.Slack.BotUserID != "bot_redacted" {
+		t.Fatalf("expected Slack workspace and bot ids, got %+v", response.Connectors.Slack)
+	}
+	if response.Connectors.Slack.APIBaseURL != "https://slack.test" || response.Connectors.Slack.BotTokenSecretRef != "slack/slack-main/bot_token" {
+		t.Fatalf("expected Slack transport config projection, got %+v", response.Connectors.Slack)
+	}
+	if got := response.Connectors.Slack.AllowedChannelIDs; len(got) != 1 || got[0] != "channel_selected" {
+		t.Fatalf("expected Slack allowed channels, got %#v", got)
+	}
+	if response.Connectors.Slack.HostedReadiness.ConnectorID != "slack-main" || response.Connectors.Slack.HostedReadiness.RedactionStatus == "" {
+		t.Fatalf("expected Slack hosted readiness projection, got %+v", response.Connectors.Slack.HostedReadiness)
+	}
+}
+
 func TestConfigRouteProjectsManagedProviderSandboxByEnvironment(t *testing.T) {
 	for _, tc := range []struct {
 		name        string

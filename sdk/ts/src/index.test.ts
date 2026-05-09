@@ -592,6 +592,107 @@ describe("DopeClient", () => {
     expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/live-validations/telegram-conformance?connectorId=telegram-main", expect.anything());
   });
 
+  it("calls Slack hosted setup, smoke, and conformance routes", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_slack",
+        connectorId: "slack-main",
+        connectorKind: "slack",
+        displayName: "Slack Main",
+        status: "healthy",
+        terminalState: "ready",
+        oauthState: "grant_valid",
+        routePolicyState: "valid",
+        deliveryEligible: true,
+        workspaceBindingId: "slack_workspace_binding_1",
+        redactionStatus: "redacted",
+        createdAt: "2026-05-08T10:00:00Z",
+        updatedAt: "2026-05-08T10:01:00Z",
+        validatedAt: "2026-05-08T10:01:00Z",
+        retentionExpiresAt: "2026-08-06T10:01:00Z",
+        routePolicy: {
+          connectorId: "slack-main",
+          workspaceBindingId: "slack_workspace_binding_1",
+          selectedChannels: [{ conversationId: "channel_redacted", conversationType: "channel", selectedChannelState: "selected", validationState: "valid" }],
+          allowedDMUsers: ["user_hash_1"],
+          allowedDMUserGroups: ["group_hash_1"],
+          mentionGate: "agent_mention_required",
+          threadReplyMode: "channel_mentions_thread_rooted",
+          validationState: "valid",
+          validatedAt: "2026-05-08T10:01:00Z",
+          redactionStatus: "redacted"
+        }
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        smokeEvidenceId: "slack_smoke_1",
+        tenantId: "ten_slack",
+        connectorId: "slack-main",
+        workspaceBindingId: "slack_workspace_binding_1",
+        status: "skipped",
+        authorizationMode: "unavailable",
+        owner: "operator",
+        reason: "safe_slack_authorization_unavailable",
+        remainingRisk: "No live Slack hosted smoke was run in this release validation.",
+        validatedAt: "2026-05-08T10:02:00Z",
+        retentionExpiresAt: "2026-08-06T10:02:00Z",
+        redactionStatus: "redacted",
+        safeEvidence: { policy: "structured_skip" }
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        smokeEvidenceId: "slack_smoke_live_1",
+        tenantId: "ten_slack",
+        connectorId: "slack-main",
+        workspaceBindingId: "slack_workspace_binding_1",
+        status: "passed",
+        authorizationMode: "fake_oauth",
+        owner: "operator",
+        reason: "healthy",
+        remainingRisk: "",
+        validatedAt: "2026-05-08T10:02:30Z",
+        retentionExpiresAt: "2026-08-06T10:02:30Z",
+        redactionStatus: "redacted",
+        safeEvidence: { mode: "fake" }
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_slack",
+        connectorId: "slack-main",
+        items: [{
+          conformanceResultId: "conf_slack_1",
+          tenantId: "ten_slack",
+          connectorKind: "slack",
+          connectorId: "slack-main",
+          scenarioId: "slack_hosted_setup",
+          area: "tenant_ownership",
+          result: "pass",
+          redactionStatus: "redacted",
+          evidenceTimestamp: "2026-05-08T10:02:00Z",
+          retentionExpiresAt: "2026-08-06T10:02:00Z"
+        }]
+      }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      accessToken: "token",
+      defaultTenantId: "ten_slack",
+      fetchImpl
+    });
+
+    const setup = await client.getSlackSetup(" slack-main ");
+    const smoke = await client.getSlackSmokeEvidence("slack-main");
+    const liveSmoke = await client.getSlackLiveValidationSmokeEvidence("slack-main");
+    const conformance = await client.getSlackConformanceEvidence("slack-main");
+
+    expect(setup.routePolicy?.selectedChannels[0]?.conversationType).toBe("channel");
+    expect(smoke.authorizationMode).toBe("unavailable");
+    expect(liveSmoke.authorizationMode).toBe("fake_oauth");
+    expect(conformance.items[0]?.connectorKind).toBe("slack");
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/connectors/slack-main/slack-setup", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/connectors/slack-main/slack-smoke", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/live-validations/slack-smoke?connectorId=slack-main", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/live-validations/slack-conformance?connectorId=slack-main", expect.anything());
+  });
+
   it("calls integration diagnostic inspection routes", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
@@ -1408,7 +1509,7 @@ describe("DopeClient", () => {
       resourceRefs: [{ kind: "telegram_allowment_validation", id: "direct_chat:chat_redacted" }]
     });
     await client.startSetupOAuth("setup_oauth_1", { redirectRoute: " /setup/oauth/feishu-lark/callback " });
-    await client.completeSetupOAuth("setup_oauth_1", { state: " oauth_state_ref_1 ", result: "denied", accountLabel: " Workspace " });
+    await client.completeSetupOAuth("setup_oauth_1", { state: " oauth_state_ref_1 ", result: "denied", accountLabel: " Workspace ", code: " code_1 ", redirectUri: " https://dope.test/callback " });
     await client.retrySetup("setup_1");
     await client.replaceSetup("setup_1", {}, { tenantId: "ten_personal" });
     await client.cancelSetup("setup_1");
@@ -1430,7 +1531,7 @@ describe("DopeClient", () => {
     }));
     expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/setup/sessions/setup_oauth_1/oauth/callback", expect.objectContaining({
       method: "POST",
-      body: JSON.stringify({ state: "oauth_state_ref_1", result: "denied", accountLabel: "Workspace" })
+      body: JSON.stringify({ state: "oauth_state_ref_1", result: "denied", accountLabel: "Workspace", code: "code_1", redirectUri: "https://dope.test/callback" })
     }));
     expect(fetchImpl).toHaveBeenNthCalledWith(11, "http://127.0.0.1:19192/v1/setup/sessions/setup_1/disable", expect.objectContaining({
       method: "POST",

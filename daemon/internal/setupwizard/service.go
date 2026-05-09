@@ -44,12 +44,22 @@ type SubmittedSecretRecorder interface {
 	RecordSubmittedSecretSetup(ctx context.Context, session SetupSession, input SubmitSecretInput) error
 }
 
+type OAuthCallbackRecorder interface {
+	RecordOAuthSetup(ctx context.Context, session SetupSession, input OAuthCallbackInput) error
+}
+
+type OAuthStartURLProvider interface {
+	AuthorizationURL(ctx context.Context, session SetupSession, input OAuthStartInput, defaultURL string) (string, error)
+}
+
 type ServiceDependencies struct {
 	Store                   Store
 	Secrets                 SecretManager
 	Diagnostics             DiagnosticProbe
 	Audit                   AuditRecorder
 	SubmittedSecretRecorder SubmittedSecretRecorder
+	OAuthCallbackRecorder   OAuthCallbackRecorder
+	OAuthStartURLProvider   OAuthStartURLProvider
 	Now                     func() time.Time
 }
 
@@ -59,6 +69,8 @@ type Service struct {
 	diagnostics             DiagnosticProbe
 	audit                   AuditRecorder
 	submittedSecretRecorder SubmittedSecretRecorder
+	oauthCallbackRecorder   OAuthCallbackRecorder
+	oauthStartURLProvider   OAuthStartURLProvider
 	now                     func() time.Time
 }
 
@@ -75,7 +87,7 @@ func NewService(deps ServiceDependencies) *Service {
 	if diagnostics == nil {
 		diagnostics = DefaultDiagnosticProbe{Secrets: deps.Secrets}
 	}
-	return &Service{store: store, secrets: deps.Secrets, diagnostics: diagnostics, audit: deps.Audit, submittedSecretRecorder: deps.SubmittedSecretRecorder, now: now}
+	return &Service{store: store, secrets: deps.Secrets, diagnostics: diagnostics, audit: deps.Audit, submittedSecretRecorder: deps.SubmittedSecretRecorder, oauthCallbackRecorder: deps.OAuthCallbackRecorder, oauthStartURLProvider: deps.OAuthStartURLProvider, now: now}
 }
 
 type ListTargetsInput struct {
@@ -116,6 +128,8 @@ type OAuthCallbackInput struct {
 	State         string
 	Result        OAuthResult
 	AccountLabel  string
+	Code          string
+	RedirectURI   string
 }
 
 type ReplaceInput struct {

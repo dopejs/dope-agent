@@ -703,6 +703,51 @@ describe("App", () => {
     });
   });
 
+  it("starts Slack OAuth setup with the Slack callback route", async () => {
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-08T00:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-08T00:00:00Z" });
+    mockClient.listSetupTargets.mockResolvedValue({
+      items: [
+        setupTargetFixture({
+          targetId: "connector.slack",
+          targetKind: "connector",
+          setupStyle: "oauth",
+          displayName: "Slack OAuth"
+        })
+      ]
+    });
+    mockClient.listSetupSessions.mockResolvedValue({ items: [] });
+    mockClient.startSetupOAuth.mockResolvedValue({
+      session: setupSessionFixture({
+        setupSessionId: "setup_slack_oauth_1",
+        targetId: "connector.slack",
+        targetKind: "connector",
+        setupStyle: "oauth",
+        oauthStateRef: "oauth_state_ref_slack"
+      }),
+      authorizationUrl: "https://slack.example.test/oauth",
+      state: "oauth_state_ref_slack"
+    });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    expect(await screen.findByText("Slack OAuth")).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: /start oauth/i }));
+
+    await waitFor(() => {
+      expect(mockClient.startSetup).toHaveBeenCalledWith({
+        targetId: "connector.slack",
+        setupStyle: "oauth",
+        source: "operator_shell"
+      }, { tenantId: "ten_personal" });
+      expect(mockClient.startSetupOAuth).toHaveBeenCalledWith("setup_1", { redirectRoute: "/setup/oauth/slack/callback" }, { tenantId: "ten_personal" });
+    });
+  });
+
   it("loads activation state with the tenant batch and shows stale activation placeholders while refreshing", async () => {
     const refreshActivation = deferred<ReturnType<typeof activationFixture>>();
     mockClient.getActivation

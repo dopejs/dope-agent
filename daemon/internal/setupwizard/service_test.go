@@ -250,6 +250,56 @@ func TestCompleteOAuthReadyRequiresDiagnosticProbeConfirmation(t *testing.T) {
 	}
 }
 
+func TestSlackHostedOAuthRequiresRoutePolicyValidation(t *testing.T) {
+	store := NewMemoryStore()
+	service := NewService(ServiceDependencies{Store: store})
+	actor := setupActor("ten_slack_setup")
+
+	session, err := service.Start(context.Background(), StartInput{TenantContext: actor, TargetID: TargetSlackConnector, SetupStyle: SetupStyleOAuth, Source: "wizard"})
+	if err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	started, err := service.StartOAuth(context.Background(), OAuthStartInput{TenantContext: actor, SessionID: session.SetupSessionID, RedirectRoute: "/setup/oauth/slack/callback"})
+	if err != nil {
+		t.Fatalf("StartOAuth returned error: %v", err)
+	}
+	session, err = service.CompleteOAuth(context.Background(), OAuthCallbackInput{TenantContext: actor, SessionID: session.SetupSessionID, State: started.StateRef, Result: OAuthResultCompleted})
+	if err != nil {
+		t.Fatalf("CompleteOAuth missing route policy returned error: %v", err)
+	}
+	if session.State != StateActionRequired || session.ReasonCode != ReasonSlackRoutePolicyMissing {
+		t.Fatalf("session=%s/%s, want action_required/slack_route_policy_missing", session.State, session.ReasonCode)
+	}
+
+	session.ResourceRefs = upsertResourceRef(session.ResourceRefs, ResourceRef{Kind: "slack_route_policy_validation", ID: "slack-main/workspace_redacted"})
+	if err := store.SaveSetupSession(context.Background(), session); err != nil {
+		t.Fatalf("SaveSetupSession returned error: %v", err)
+	}
+	session, err = service.CompleteOAuth(context.Background(), OAuthCallbackInput{TenantContext: actor, SessionID: session.SetupSessionID, State: started.StateRef, Result: OAuthResultCompleted})
+	if err != nil {
+		t.Fatalf("CompleteOAuth validated route policy returned error: %v", err)
+	}
+	if session.State != StateReady || resourceRefID(session.ResourceRefs, "slack_route_policy_validation") == "" {
+		t.Fatalf("expected Slack setup ready with validated route policy ref, got %+v", session)
+	}
+}
+
+func TestSlackSubmittedRawCredentialSetupIsUnsupported(t *testing.T) {
+	service := NewService(ServiceDependencies{Store: NewMemoryStore()})
+	actor := setupActor("ten_slack_raw")
+
+	if _, err := service.Start(context.Background(), StartInput{TenantContext: actor, TargetID: TargetSlackConnector, SetupStyle: SetupStyleSubmittedSecret, Source: "wizard"}); err == nil {
+		t.Fatal("Slack submitted raw credential setup unexpectedly started")
+	}
+	session, err := service.Start(context.Background(), StartInput{TenantContext: actor, TargetID: TargetSlackConnector, SetupStyle: SetupStyleOAuth, Source: "wizard"})
+	if err != nil {
+		t.Fatalf("Start OAuth returned error: %v", err)
+	}
+	if _, err := service.SubmitSecret(context.Background(), SubmitSecretInput{TenantContext: actor, SessionID: session.SetupSessionID, SecretRef: "SLACK_BOT_TOKEN", Value: "xoxb-do-not-leak", DisplayName: "Slack bot token"}); err == nil {
+		t.Fatal("Slack OAuth session accepted submitted raw token")
+	}
+}
+
 func TestOAuthNegativeOutcomesNeverCreateFailedState(t *testing.T) {
 	service := NewService(ServiceDependencies{Store: NewMemoryStore()})
 	actor := setupActor("ten_oauth_negative")

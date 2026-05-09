@@ -219,15 +219,20 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		persistedInbound.UpdatedAt = time.Now().UTC()
 		_ = l.store.UpsertConnectorMessage(ctx, persistedInbound)
 		if !partialReply {
-			_, _ = l.publishConnectorEvent(ctx, "connector.reply_failed", connector, session, run.RunID, step.StepID, map[string]any{
+			payload := map[string]any{
 				"messageId":                 inbound.ExternalMessageID,
 				"replyMessageId":            outboundRecord.ExternalMessageID,
 				"assistantExecutionOutcome": "succeeded",
-				"discordDeliveryOutcome":    "failed",
+				"connectorDeliveryOutcome":  "failed",
+				"connectorKind":             connector.Kind,
 				"reasonCode":                safeReason,
 				"errorClass":                errorClass,
 				"redactionStatus":           "redacted",
-			})
+			}
+			if connector.Kind == "discord" {
+				payload["discordDeliveryOutcome"] = "failed"
+			}
+			_, _ = l.publishConnectorEvent(ctx, "connector.reply_failed", connector, session, run.RunID, step.StepID, payload)
 		}
 		if refreshedRun, ok := l.runtime.GetRun(run.RunID); ok {
 			run = refreshedRun
@@ -246,7 +251,7 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 			"llmProvider":              queryResult.Dispatch.Provider,
 			"llmModel":                 queryResult.Dispatch.Model,
 			"llmUsage":                 queryResult.Dispatch.Usage,
-			"replyToExternalMessageId": inbound.ExternalMessageID,
+			"replyToExternalMessageId": replyToExternalMessageID(inbound),
 		},
 	})
 	if err != nil {
@@ -323,7 +328,7 @@ func (l *MessageLoop) executeFinalReply(ctx context.Context, connector connector
 			ConnectorID:              connector.ConnectorID,
 			ChannelID:                inbound.ChannelID,
 			Content:                  replyPart,
-			ReplyToExternalMessageID: inbound.ExternalMessageID,
+			ReplyToExternalMessageID: replyToExternalMessageID(inbound),
 		})
 		if sendErr != nil {
 			return queryResult, record, sendErr
@@ -420,7 +425,7 @@ func (l *MessageLoop) newOutboundRecord(connector connectors.Connector, session 
 		Status:                   imtypes.DeliveryStatusProcessing,
 		ForegroundOutcomeStatus:  foregroundReplyOutcomeStatus(imtypes.DeliveryStatusProcessing),
 		ResponseToDeliveryID:     responseToDeliveryID,
-		ReplyToExternalMessageID: inbound.ExternalMessageID,
+		ReplyToExternalMessageID: replyToExternalMessageID(inbound),
 		CreatedAt:                now,
 		UpdatedAt:                now,
 	}
@@ -437,6 +442,13 @@ func foregroundReplyOutcomeStatus(status imtypes.DeliveryStatus) string {
 	default:
 		return "processing"
 	}
+}
+
+func replyToExternalMessageID(inbound imtypes.InboundMessage) string {
+	if strings.TrimSpace(inbound.ReplyToMessageID) != "" {
+		return strings.TrimSpace(inbound.ReplyToMessageID)
+	}
+	return inbound.ExternalMessageID
 }
 
 func (l *MessageLoop) startThinkingProgress(ctx context.Context, connector connectors.Connector, session router.Session, runID, stepID string, inbound imtypes.InboundMessage, progressor ReplyProgressor, capabilities imtypes.ReplyCapabilities) func() {
@@ -798,7 +810,7 @@ func (p *streamReplyProgress) flush(ctx context.Context, reply string, mode stre
 				ConnectorID:              p.connector.ConnectorID,
 				ChannelID:                p.inbound.ChannelID,
 				Content:                  replyPart,
-				ReplyToExternalMessageID: p.inbound.ExternalMessageID,
+				ReplyToExternalMessageID: replyToExternalMessageID(p.inbound),
 			})
 			if err != nil {
 				p.err = err

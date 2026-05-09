@@ -10,6 +10,7 @@ export type TUIOptions = {
   model?: string;
   stream: boolean;
   query?: string;
+  slackSetupConnectorId?: string;
 };
 
 type CLIIO = {
@@ -30,6 +31,22 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
     baseURL: options.daemonURL,
     accessToken: options.accessToken
   });
+
+  if (options.slackSetupConnectorId) {
+    try {
+      const setup = await client.getSlackSetup(options.slackSetupConnectorId);
+      io.stdout.write(`Slack Setup: ${setup.connectorId}\n`);
+      io.stdout.write(`State: ${setup.terminalState}\n`);
+      io.stdout.write(`OAuth: ${setup.oauthState}\n`);
+      io.stdout.write(`Route Policy: ${setup.routePolicyState}\n`);
+      io.stdout.write(`Delivery Eligible: ${setup.deliveryEligible ? "yes" : "no"}\n`);
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
 
   const query = options.query?.trim() || (await promptQuery(io));
   if (!query) {
@@ -107,6 +124,9 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
       case "--stream":
         options.stream = true;
         break;
+      case "--slack-setup":
+        options.slackSetupConnectorId = argv[++index] ?? options.slackSetupConnectorId;
+        break;
       case "--help":
         throw new Error(helpText());
       default:
@@ -128,6 +148,7 @@ export function helpText(): string {
     "  --model <name>      Optional model override",
     "  --query <text>      Single-turn query",
     "  --stream            Use streaming mode",
+    "  --slack-setup <id>  Print Slack hosted setup state",
     "  --help              Show this help"
   ].join("\n");
 }

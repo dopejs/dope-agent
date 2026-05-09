@@ -1151,7 +1151,7 @@ export function App() {
     try {
       const client = buildClient(tenantId);
       const activeSession = session ?? (await client.startSetup({ targetId: target.targetId, setupStyle: target.setupStyle, source: "operator_shell" }, scoped)).session;
-      const response = await client.startSetupOAuth(activeSession.setupSessionId, { redirectRoute: "/setup/oauth/feishu-lark/callback" }, scoped);
+      const response = await client.startSetupOAuth(activeSession.setupSessionId, { redirectRoute: setupOAuthRedirectRoute(target) }, scoped);
       if (!isCurrentTenantWork(generation, tenantId)) {
         return;
       }
@@ -2593,6 +2593,17 @@ function writeTenantPreference(daemonURL: string, principalId: string, tenantId:
   } catch {
     // Browser storage is continuity only; failing closed to no preference is acceptable.
   }
+}
+
+function setupOAuthRedirectRoute(target: SetupTargetResource): string {
+  const normalized = `${target.targetId} ${target.displayName}`.toLowerCase();
+  if (normalized.includes("slack")) {
+    return "/setup/oauth/slack/callback";
+  }
+  if (normalized.includes("feishu") || normalized.includes("lark")) {
+    return "/setup/oauth/feishu-lark/callback";
+  }
+  return "/setup/oauth/callback";
 }
 
 function splitCSV(value: string): string[] {

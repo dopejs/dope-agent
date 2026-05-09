@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
@@ -139,6 +141,68 @@ func TestIntegrationSetupGateBlocksFeishuDependentUse(t *testing.T) {
 
 	if err := enforceIntegrationSetupGate(ctx, sqliteStore, setupwizard.TargetFeishuLark, "metadata_read"); !errors.Is(err, integrations.ErrProbeBlocked) {
 		t.Fatalf("enforceIntegrationSetupGate error=%v, want ErrProbeBlocked", err)
+	}
+}
+
+func TestSlackRoutePolicyProjectionRequiresTenantAuthorization(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	supervisor := connectors.NewSupervisor()
+	if _, _, err := supervisor.Register(connectors.RegisterInput{TenantID: "ten_slack_route", ConnectorID: "slack-main", Kind: "slack", DisplayName: "Slack Main"}); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+	now := time.Date(2026, 5, 8, 12, 45, 0, 0, time.UTC)
+	if err := sqliteStore.SaveSlackHostedSetup(context.Background(), store.SlackHostedSetupRecord{
+		TenantID:           "ten_slack_route",
+		ConnectorID:        "slack-main",
+		ConnectorKind:      "slack",
+		DisplayName:        "Slack Main",
+		Status:             "healthy",
+		TerminalState:      "ready",
+		OAuthState:         "grant_valid",
+		RoutePolicyState:   "valid",
+		DeliveryEligible:   true,
+		WorkspaceBindingID: "slack_workspace_binding_route",
+		RedactionStatus:    "redacted",
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		ValidatedAt:        now,
+		RetentionExpiresAt: now.Add(90 * 24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("SaveSlackHostedSetup returned error: %v", err)
+	}
+	if err := sqliteStore.SaveSlackRoutePolicy(context.Background(), store.SlackRoutePolicyRecord{
+		TenantID:           "ten_slack_route",
+		ConnectorID:        "slack-main",
+		WorkspaceBindingID: "slack_workspace_binding_route",
+		SelectedChannels:   []store.SlackConversationRouteRecord{{ConversationID: "channel_redacted", ConversationType: "channel", SelectedChannelState: "selected", ValidationState: "valid"}},
+		MentionGate:        "agent_mention_required",
+		ThreadReplyMode:    "channel_mentions_thread_rooted",
+		ValidationState:    "valid",
+		ValidatedAt:        now,
+		RedactionStatus:    "redacted",
+	}); err != nil {
+		t.Fatalf("SaveSlackRoutePolicy returned error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/connectors/slack-main/slack-setup", nil)
+	req = req.WithContext(withTenantContext(req.Context(), setupWizardAPITenantContext("ten_slack_route", identity.PermissionConnectorsManage, identity.PermissionCredentialsInspect)))
+	rec := httptest.NewRecorder()
+	handleConnectorRoutes(supervisor, nil, nil, nil, sqliteStore, nil, rec, req)
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"selectedChannels"`)) {
+		t.Fatalf("authorized status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	deniedReq := httptest.NewRequest(http.MethodGet, "/v1/connectors/slack-main/slack-setup", nil)
+	deniedReq = deniedReq.WithContext(withTenantContext(deniedReq.Context(), setupWizardAPITenantContext("ten_other", identity.PermissionConnectorsManage, identity.PermissionCredentialsInspect)))
+	deniedRec := httptest.NewRecorder()
+	handleConnectorRoutes(supervisor, nil, nil, nil, sqliteStore, nil, deniedRec, deniedReq)
+	if deniedRec.Code != http.StatusNotFound {
+		t.Fatalf("cross-tenant status=%d body=%s, want 404", deniedRec.Code, deniedRec.Body.String())
 	}
 }
 

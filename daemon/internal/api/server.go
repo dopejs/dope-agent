@@ -150,11 +150,16 @@ func NewServer(deps Dependencies) *Server {
 	if setupWizardService == nil {
 		defaultSetupProbe := setupwizard.DefaultDiagnosticProbe{Secrets: deps.Secrets}
 		var submittedSecretRecorder setupwizard.SubmittedSecretRecorder
+		var oauthCallbackRecorder setupwizard.OAuthCallbackRecorder
+		var oauthStartURLProvider setupwizard.OAuthStartURLProvider
 		diagnostics := setupwizard.DiagnosticProbe(defaultSetupProbe)
 		if deps.Store != nil {
 			telegramSetup := newTelegramSetupWizardIntegration(deps.Store, deps.Config.Connectors.Telegram)
+			slackSetup := newSlackSetupWizardIntegration(deps.Store, deps.Secrets, deps.Config.Connectors.Slack)
 			diagnostics = setupWizardDiagnosticProbe{Default: defaultSetupProbe, Telegram: telegramSetup}
 			submittedSecretRecorder = telegramSetup
+			oauthCallbackRecorder = slackSetup
+			oauthStartURLProvider = slackSetup
 		}
 		setupWizardService = setupwizard.NewService(setupwizard.ServiceDependencies{
 			Store:                   deps.Store,
@@ -162,6 +167,8 @@ func NewServer(deps Dependencies) *Server {
 			Diagnostics:             diagnostics,
 			Audit:                   setupwizard.NewTenantAuditRecorder(deps.Store),
 			SubmittedSecretRecorder: submittedSecretRecorder,
+			OAuthCallbackRecorder:   oauthCallbackRecorder,
+			OAuthStartURLProvider:   oauthStartURLProvider,
 		})
 	}
 	withEnvironment := func(handler http.HandlerFunc) http.HandlerFunc {
@@ -3093,6 +3100,14 @@ func handleConnectorRoutes(supervisor *connectors.Supervisor, sessionRouter *rou
 		handleConnectorTelegramSmoke(supervisor, sqliteStore, w, r, parts[0])
 		return
 	}
+	if len(parts) == 2 && parts[1] == "slack-setup" {
+		handleConnectorSlackSetup(supervisor, sqliteStore, w, r, parts[0])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "slack-smoke" {
+		handleConnectorSlackSmoke(supervisor, sqliteStore, w, r, parts[0])
+		return
+	}
 	if len(parts) == 3 && parts[1] == "ingress" && parts[2] == "messages" {
 		handleConnectorIngressMessages(supervisor, sessionRouter, manager, eventBus, sqliteStore, checkpointManager, w, r, parts[0])
 		return
@@ -3243,6 +3258,78 @@ func handleConnectorTelegramSmoke(supervisor *connectors.Supervisor, sqliteStore
 		return
 	}
 	writeJSON(w, http.StatusOK, evidence)
+}
+
+func handleConnectorSlackSetup(supervisor *connectors.Supervisor, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector setup store is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantContextFromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	if supervisor != nil {
+		if _, ok := supervisor.GetForTenant(connectorID, tenantContext.TenantID); !ok {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	setup, found, err := sqliteStore.GetSlackHostedSetup(r.Context(), tenantContext.TenantID, connectorID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, projectSlackHostedSetupResource(setup))
+}
+
+func handleConnectorSlackSmoke(supervisor *connectors.Supervisor, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, connectorID string) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector smoke evidence store is not configured")
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantContextFromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	if supervisor != nil {
+		if _, ok := supervisor.GetForTenant(connectorID, tenantContext.TenantID); !ok {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	evidence, found, err := sqliteStore.LatestSlackSmokeEvidence(r.Context(), tenantContext.TenantID, connectorID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, projectSlackSmokeEvidenceResource(evidence))
 }
 
 func handleConnectorByID(supervisor *connectors.Supervisor, w http.ResponseWriter, r *http.Request, connectorID string) {

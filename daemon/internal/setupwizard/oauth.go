@@ -15,6 +15,14 @@ func (s *Service) StartOAuth(ctx context.Context, input OAuthStartInput) (OAuthS
 	}
 	stateRef := oauthStateRef(session)
 	session.OAuthStateRef = stateRef
+	authorizationURL := "https://oauth.test/authorize?state=" + stateRef
+	if s.oauthStartURLProvider != nil {
+		var err error
+		authorizationURL, err = s.oauthStartURLProvider.AuthorizationURL(ctx, session, input, authorizationURL)
+		if err != nil {
+			return OAuthStartResult{}, err
+		}
+	}
 	evidence := map[string]string{
 		"redactionRule": "oauth_start_metadata_only",
 		"redirectRoute": strings.TrimSpace(input.RedirectRoute),
@@ -25,7 +33,7 @@ func (s *Service) StartOAuth(ctx context.Context, input OAuthStartInput) (OAuthS
 	}
 	return OAuthStartResult{
 		Session:          updated,
-		AuthorizationURL: "https://oauth.test/authorize?state=" + stateRef,
+		AuthorizationURL: authorizationURL,
 		StateRef:         stateRef,
 	}, nil
 }
@@ -55,7 +63,16 @@ func (s *Service) CompleteOAuth(ctx context.Context, input OAuthCallbackInput) (
 			return SetupSession{}, err
 		}
 	}
-	return s.transition(ctx, session, OperationOAuthCallback, state, reason, evidence)
+	updated, err := s.transition(ctx, session, OperationOAuthCallback, state, reason, evidence)
+	if err != nil {
+		return SetupSession{}, err
+	}
+	if s.oauthCallbackRecorder != nil {
+		if err := s.oauthCallbackRecorder.RecordOAuthSetup(ctx, updated, input); err != nil {
+			return SetupSession{}, err
+		}
+	}
+	return updated, nil
 }
 
 func mapOAuthResult(result OAuthResult) (SetupState, string) {

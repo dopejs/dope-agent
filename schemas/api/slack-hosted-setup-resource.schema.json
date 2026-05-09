@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/slack-hosted-setup-resource.schema.json",
+  "title": "SlackHostedSetupResource",
+  "type": "object",
+  "required": [
+    "connectorId",
+    "connectorKind",
+    "displayName",
+    "status",
+    "terminalState",
+    "oauthState",
+    "routePolicyState",
+    "deliveryEligible",
+    "workspaceBindingId",
+    "redactionStatus",
+    "createdAt",
+    "updatedAt",
+    "retentionExpiresAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "connectorKind": { "const": "slack" },
+    "displayName": { "type": "string" },
+    "workspaceBindingId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["configured", "healthy", "degraded", "failed", "permission_blocked", "rate_limited", "unsupported_capability"]
+    },
+    "terminalState": {
+      "type": "string",
+      "enum": ["ready", "degraded", "unavailable", "cancelled", "action-required"]
+    },
+    "oauthState": {
+      "type": "string",
+      "enum": ["not_started", "started", "callback_received", "grant_valid", "grant_missing", "scope_missing", "approval_required", "revoked", "redaction_suppressed"]
+    },
+    "routePolicyState": {
+      "type": "string",
+      "enum": ["none", "partial", "valid", "stale"]
+    },
+    "deliveryEligible": { "type": "boolean" },
+    "workspaceBinding": { "$ref": "#/$defs/workspaceBinding" },
+    "routePolicy": { "$ref": "./slack-route-policy-resource.schema.json" },
+    "diagnostic": { "$ref": "#/$defs/slackDiagnosticSummary" },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "validatedAt": { "type": "string", "format": "date-time" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "workspaceBinding": {
+      "type": "object",
+      "required": [
+        "workspaceId",
+        "installationId",
+        "oauthGrantState",
+        "requiredScopeState",
+        "validatedAt",
+        "redactionStatus"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "workspaceId": { "type": "string" },
+        "workspaceLabel": { "type": "string" },
+        "installationId": { "type": "string" },
+        "oauthGrantState": {
+          "type": "string",
+          "enum": ["valid", "missing", "revoked", "scope_missing", "approval_required", "workspace_mismatch", "provider_unavailable", "network_failed", "unknown"]
+        },
+        "requiredScopeState": {
+          "type": "string",
+          "enum": ["valid", "missing", "stale", "unknown"]
+        },
+        "validatedAt": { "type": "string", "format": "date-time" },
+        "redactionStatus": {
+          "type": "string",
+          "enum": ["redacted", "suppressed", "redaction_failed"]
+        },
+        "safeEvidence": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "slackDiagnosticSummary": {
+      "type": "object",
+      "required": ["reasonCode", "slackCondition", "remediationOwner", "freshnessState"],
+      "additionalProperties": false,
+      "properties": {
+        "reasonCode": { "type": "string" },
+        "slackCondition": { "type": "string" },
+        "remediationOwner": {
+          "type": "string",
+          "enum": ["product_user", "tenant_admin", "operator", "provider", "none_required"]
+        },
+        "freshnessState": {
+          "type": "string",
+          "enum": ["fresh", "stale"]
+        }
+      }
+    }
+  }
+}

@@ -167,6 +167,69 @@
               }
             }
           }
+        },
+        "slack": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "connectorId": {
+              "type": "string",
+              "default": "slack-main"
+            },
+            "displayName": {
+              "type": "string",
+              "default": "Slack Main"
+            },
+            "apiBaseUrl": {
+              "type": "string"
+            },
+            "botTokenSecretRef": {
+              "type": "string"
+            },
+            "oauthClientId": {
+              "type": "string"
+            },
+            "oauthClientSecret": {
+              "type": "string"
+            },
+            "oauthClientSecretEnv": {
+              "type": "string"
+            },
+            "oauthApiBaseUrl": {
+              "type": "string"
+            },
+            "workspaceBindingId": {
+              "type": "string"
+            },
+            "workspaceId": {
+              "type": "string"
+            },
+            "botUserId": {
+              "type": "string"
+            },
+            "allowedChannelIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "allowedDMUserIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "allowedDMUserGroups": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     }

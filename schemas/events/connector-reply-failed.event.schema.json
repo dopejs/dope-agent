@@ -19,8 +19,11 @@
           "type": "object",
           "required": [
             "messageId",
-            "assistantExecutionOutcome",
-            "discordDeliveryOutcome"
+            "assistantExecutionOutcome"
+          ],
+          "oneOf": [
+            { "required": ["discordDeliveryOutcome"] },
+            { "required": ["connectorDeliveryOutcome"] }
           ],
           "additionalProperties": true,
           "properties": {
@@ -36,6 +39,11 @@
               "type": "string",
               "enum": ["sent", "edited", "failed", "degraded_to_final_only", "not_attempted"]
             },
+            "connectorDeliveryOutcome": {
+              "type": "string",
+              "enum": ["sent", "edited", "failed", "degraded_to_final_only", "not_attempted"]
+            },
+            "connectorKind": { "type": "string" },
             "errorClass": { "type": "string" },
             "reasonCode": { "type": "string" },
             "redactionStatus": {

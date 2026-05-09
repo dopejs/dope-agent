@@ -178,6 +178,112 @@ func TestConnectorAdapterSupportsTelegramBackgroundDeliveryBoundary(t *testing.T
 	}
 }
 
+func TestConnectorAdapterSupportsSlackBackgroundDeliveryBoundary(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	sender := &kindedFakeConnectorSender{fakeConnectorSender: &fakeConnectorSender{externalID: "slack_reply_1"}, kind: "slack"}
+	adapter := NewConnectorAdapter(sqliteStore)
+	adapter.RegisterConnector("slack-main", "slack", sender)
+	ctx := tenantctx.WithContext(context.Background(), identity.TenantContext{TenantID: "ten_slack_delivery"})
+	now := time.Now().UTC()
+	if err := sqliteStore.SaveSlackHostedSetup(ctx, store.SlackHostedSetupRecord{
+		TenantID:           "ten_slack_delivery",
+		ConnectorID:        "slack-main",
+		ConnectorKind:      "slack",
+		DisplayName:        "Slack Main",
+		Status:             "healthy",
+		TerminalState:      "ready",
+		OAuthState:         "grant_valid",
+		RoutePolicyState:   "valid",
+		DeliveryEligible:   true,
+		WorkspaceBindingID: "slack_workspace_binding_delivery",
+		RedactionStatus:    "redacted",
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		ValidatedAt:        now,
+		RetentionExpiresAt: now.Add(90 * 24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("SaveSlackHostedSetup returned error: %v", err)
+	}
+	if err := sqliteStore.UpsertRun(ctx, runtime.Run{
+		RunID:      "run_slack_delivery",
+		Entrypoint: "operator",
+		Status:     runtime.RunStatusCompleted,
+		Goal:       "slack connector delivery",
+	}); err != nil {
+		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+
+	result, err := adapter.Send(ctx, DeliveryTarget{
+		TargetID:   "slack-target",
+		TargetKind: TargetKindConnectorRoute,
+		ConnectorBinding: &ConnectorBinding{
+			ConnectorID: "slack-main",
+			ChannelID:   "slack_channel_1",
+			PeerID:      "slack_user_1",
+		},
+	}, DeliveryOutcome{
+		DeliveryID:     "delivery_slack",
+		RunID:          "run_slack_delivery",
+		PayloadPreview: "hello slack",
+	})
+	if err != nil {
+		t.Fatalf("Send returned error: %v", err)
+	}
+	if len(sender.replies) != 1 || sender.replies[0].ConnectorID != "slack-main" {
+		t.Fatalf("expected one Slack outbound reply, got %+v", sender.replies)
+	}
+	if result.SeparationStatus != "separate_truths" || result.ConnectorDeliveryBoundaryID == "" {
+		t.Fatalf("expected separate Slack delivery truth, got %+v", result)
+	}
+	record, ok, err := sqliteStore.GetConnectorMessageByExternalID(ctx, "slack-main", imtypes.DeliveryDirectionOutbound, "slack_reply_1")
+	if err != nil || !ok {
+		t.Fatalf("GetConnectorMessageByExternalID returned ok=%v err=%v", ok, err)
+	}
+	if record.BackgroundDeliveryID != "delivery_slack" || record.DeliveryBoundaryKind != "background_delivery" {
+		t.Fatalf("expected Slack background delivery boundary fields, got %+v", record)
+	}
+}
+
+func TestConnectorAdapterBlocksSlackDeliveryUntilHostedSetupIsReady(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	sender := &fakeConnectorSender{externalID: "slack_reply_1"}
+	adapter := NewConnectorAdapter(sqliteStore)
+	adapter.RegisterConnector("slack-main", "slack", sender)
+
+	_, err = adapter.Send(context.Background(), DeliveryTarget{
+		TargetID:   "slack-target",
+		TargetKind: TargetKindConnectorRoute,
+		ConnectorBinding: &ConnectorBinding{
+			ConnectorID: "slack-main",
+			ChannelID:   "slack_channel_1",
+		},
+	}, DeliveryOutcome{
+		DeliveryID:     "delivery_slack_blocked",
+		RunID:          "run_slack_delivery",
+		PayloadPreview: "hello slack",
+	})
+	if err == nil {
+		t.Fatal("expected Slack delivery to be blocked before hosted setup is ready")
+	}
+	if len(sender.replies) != 0 {
+		t.Fatalf("blocked Slack delivery should not send replies, got %+v", sender.replies)
+	}
+}
+
 func TestConnectorAdapterBlocksTelegramDeliveryUntilHostedSetupIsReady(t *testing.T) {
 	t.Parallel()
 

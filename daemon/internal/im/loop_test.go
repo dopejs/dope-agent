@@ -256,6 +256,57 @@ func TestMessageLoopProcessesSingleTurnAndDeduplicates(t *testing.T) {
 	}
 }
 
+func TestMessageLoopSlackWorkspaceConversationMessageIdentityDedupesReplay(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	now := time.Date(2026, 5, 8, 12, 30, 0, 0, time.UTC)
+	first, created, err := sqliteStore.CreateConnectorMessageIfAbsent(context.Background(), imtypes.MessageRecord{
+		DeliveryID:              "slack_delivery_1",
+		TenantID:                "ten_slack",
+		ConnectorID:             "slack-main",
+		Direction:               imtypes.DeliveryDirectionInbound,
+		ExternalMessageID:       "message_redacted",
+		ConnectorAccountID:      "workspace_redacted",
+		ChannelOrConversationID: "channel_redacted",
+		ProviderMessageID:       "message_redacted",
+		EquivalentRuleID:        "slack_workspace_conversation_message_id",
+		Content:                 "hello",
+		Status:                  imtypes.DeliveryStatusReceived,
+		CreatedAt:               now,
+		UpdatedAt:               now,
+	})
+	if err != nil || !created {
+		t.Fatalf("first CreateConnectorMessageIfAbsent created=%v err=%v", created, err)
+	}
+	replay, created, err := sqliteStore.CreateConnectorMessageIfAbsent(context.Background(), imtypes.MessageRecord{
+		DeliveryID:              "slack_delivery_2",
+		TenantID:                "ten_slack",
+		ConnectorID:             "slack-main",
+		Direction:               imtypes.DeliveryDirectionInbound,
+		ExternalMessageID:       "message_redacted",
+		ConnectorAccountID:      "workspace_redacted",
+		ChannelOrConversationID: "channel_redacted",
+		ProviderMessageID:       "message_redacted",
+		EquivalentRuleID:        "slack_workspace_conversation_message_id",
+		Content:                 "hello again",
+		Status:                  imtypes.DeliveryStatusReceived,
+		CreatedAt:               now.Add(time.Second),
+		UpdatedAt:               now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("replay CreateConnectorMessageIfAbsent returned error: %v", err)
+	}
+	if created || replay.DeliveryID != first.DeliveryID {
+		t.Fatalf("expected Slack replay to resolve existing delivery, created=%v first=%+v replay=%+v", created, first, replay)
+	}
+}
+
 func TestMessageLoopMarksFailureWhenReplySendFails(t *testing.T) {
 	t.Parallel()
 
@@ -329,6 +380,82 @@ func TestMessageLoopMarksFailureWhenReplySendFails(t *testing.T) {
 	}
 	if strings.Contains(inbound.Error, "discord send failed") {
 		t.Fatalf("persisted inbound error exposed raw provider error: %q", inbound.Error)
+	}
+}
+
+func TestMessageLoopSlackReplyFailureUsesConnectorDeliveryOutcome(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	eventBus := events.NewBus()
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&loopTestProvider{})
+	if err := dispatcher.SetDefaultProvider("echo"); err != nil {
+		t.Fatalf("SetDefaultProvider returned error: %v", err)
+	}
+	dispatcher.SetDefaultModel("echo-v1")
+	chatService := chat.NewService(dispatcher, providers.NewManager(config.Config{
+		LLM: config.LLMConfig{
+			DefaultProvider: "echo",
+			DefaultModel:    "echo-v1",
+		},
+	}, dispatcher, nil), nil, eventBus, sqliteStore)
+
+	runtimeManager := runtime.NewManager()
+	loop := NewMessageLoop(router.NewSessionRouter(), runtimeManager, checkpoints.NewManager(sqliteStore, runtimeManager), eventBus, sqliteStore, chatService)
+	replySender := &loopTestReplySender{err: errors.New("slack send failed")}
+
+	_, err = loop.ProcessSingleTurn(context.Background(), connectors.Connector{
+		ConnectorID: "slack-main",
+		Kind:        "slack",
+		DisplayName: "Slack Main",
+		Status:      connectors.StatusHealthy,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}, imtypes.InboundMessage{
+		ConnectorID:       "slack-main",
+		ConnectorKind:     "slack",
+		ExternalMessageID: "slack_msg_fail_1",
+		TenantID:          "ten_slack",
+		AccountID:         "workspace_redacted",
+		ChannelID:         "channel_selected",
+		PeerID:            "channel_selected",
+		ThreadID:          "slack_thread_root_1",
+		AuthorID:          "user_1",
+		Content:           "hello",
+		Kind:              router.SessionKindGroup,
+		ReplyToMessageID:  "slack_thread_root_1",
+		ReceivedAt:        time.Now().UTC(),
+	}, replySender)
+	if err == nil {
+		t.Fatal("expected send failure to be returned")
+	}
+	if replySender.last.ConnectorID != "slack-main" {
+		t.Fatalf("expected Slack reply sender to be reached, err=%v got %+v", err, replySender.last)
+	}
+	connectorEvents := eventBus.List(events.Filter{Category: "connector"})
+	var failed events.Event
+	for _, event := range connectorEvents {
+		if event.Name == "connector.reply_failed" {
+			failed = event
+		}
+	}
+	if failed.Name == "" {
+		t.Fatalf("expected connector.reply_failed event, got %+v", connectorEvents)
+	}
+	if _, ok := failed.Payload["discordDeliveryOutcome"]; ok {
+		t.Fatalf("Slack reply failure must not use Discord-specific outcome key: %+v", failed.Payload)
+	}
+	if failed.Payload["connectorDeliveryOutcome"] != "failed" || failed.Payload["connectorKind"] != "slack" {
+		t.Fatalf("unexpected Slack reply failure payload: %+v", failed.Payload)
+	}
+	if replySender.last.ReplyToExternalMessageID != "slack_thread_root_1" {
+		t.Fatalf("expected Slack reply to target thread root, got %+v", replySender.last)
 	}
 }
 

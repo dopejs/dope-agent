@@ -59,6 +59,7 @@ type ManagedCLIProviderConfig struct {
 type ConnectorConfig struct {
 	Discord  DiscordConnectorConfig
 	Telegram TelegramConnectorConfig
+	Slack    SlackConnectorConfig
 }
 
 type DiscordConnectorConfig struct {
@@ -85,6 +86,74 @@ type TelegramConnectorConfig struct {
 	AllowedUserIDs       []string
 	AllowedDirectChatIDs []string
 	AllowedGroupIDs      []string
+}
+
+type SlackConnectorConfig struct {
+	Enabled              bool
+	ConnectorID          string
+	DisplayName          string
+	APIBaseURL           string
+	BotTokenSecretRef    string
+	OAuthClientID        string
+	OAuthClientSecret    string
+	OAuthClientSecretEnv string
+	OAuthAPIBaseURL      string
+	WorkspaceBindingID   string
+	WorkspaceID          string
+	BotUserID            string
+	AllowedChannelIDs    []string
+	AllowedDMUserIDs     []string
+	AllowedDMUserGroups  []string
+}
+
+type SlackHostedReadinessProjection struct {
+	TenantID            string   `json:"tenantId,omitempty"`
+	ConnectorID         string   `json:"connectorId"`
+	DisplayName         string   `json:"displayName"`
+	TerminalState       string   `json:"terminalState"`
+	HostedReady         bool     `json:"hostedReady"`
+	LocalCompatible     bool     `json:"localCompatible"`
+	ReasonCode          string   `json:"reasonCode,omitempty"`
+	WorkspaceBindingID  string   `json:"workspaceBindingId,omitempty"`
+	WorkspaceID         string   `json:"workspaceId,omitempty"`
+	BotUserID           string   `json:"botUserId,omitempty"`
+	AllowedChannelIDs   []string `json:"allowedChannelIds,omitempty"`
+	AllowedDMUserIDs    []string `json:"allowedDMUserIds,omitempty"`
+	AllowedDMUserGroups []string `json:"allowedDMUserGroups,omitempty"`
+	RedactionStatus     string   `json:"redactionStatus"`
+}
+
+func (cfg SlackConnectorConfig) ProjectHostedReadiness(tenantID string) SlackHostedReadinessProjection {
+	projection := SlackHostedReadinessProjection{
+		TenantID:            strings.TrimSpace(tenantID),
+		ConnectorID:         strings.TrimSpace(cfg.ConnectorID),
+		DisplayName:         strings.TrimSpace(cfg.DisplayName),
+		TerminalState:       "action-required",
+		HostedReady:         false,
+		LocalCompatible:     cfg.Enabled && strings.TrimSpace(cfg.WorkspaceID) != "",
+		WorkspaceBindingID:  strings.TrimSpace(cfg.WorkspaceBindingID),
+		WorkspaceID:         strings.TrimSpace(cfg.WorkspaceID),
+		BotUserID:           strings.TrimSpace(cfg.BotUserID),
+		AllowedChannelIDs:   append([]string(nil), cfg.AllowedChannelIDs...),
+		AllowedDMUserIDs:    append([]string(nil), cfg.AllowedDMUserIDs...),
+		AllowedDMUserGroups: append([]string(nil), cfg.AllowedDMUserGroups...),
+		RedactionStatus:     "redacted",
+	}
+	if !projection.LocalCompatible {
+		if !cfg.Enabled {
+			projection.TerminalState = "cancelled"
+			projection.ReasonCode = "disabled"
+			return projection
+		}
+		projection.ReasonCode = "slack_workspace_binding_missing"
+		return projection
+	}
+	if len(cfg.AllowedChannelIDs) == 0 && len(cfg.AllowedDMUserIDs) == 0 && len(cfg.AllowedDMUserGroups) == 0 {
+		projection.ReasonCode = "slack_route_policy_missing"
+		return projection
+	}
+	projection.ReasonCode = "slack_route_policy_validation_required"
+	return projection
 }
 
 type TelegramHostedReadinessProjection struct {
@@ -234,6 +303,7 @@ type fileManagedCLIProviderConfig struct {
 type fileConnectorConfig struct {
 	Discord  *fileDiscordConnectorConfig  `json:"discord"`
 	Telegram *fileTelegramConnectorConfig `json:"telegram"`
+	Slack    *fileSlackConnectorConfig    `json:"slack"`
 }
 
 type fileDiscordConnectorConfig struct {
@@ -260,6 +330,24 @@ type fileTelegramConnectorConfig struct {
 	AllowedUserIDs       []string `json:"allowedUserIds"`
 	AllowedDirectChatIDs []string `json:"allowedDirectChatIds"`
 	AllowedGroupIDs      []string `json:"allowedGroupIds"`
+}
+
+type fileSlackConnectorConfig struct {
+	Enabled              *bool    `json:"enabled"`
+	ConnectorID          string   `json:"connectorId"`
+	DisplayName          string   `json:"displayName"`
+	APIBaseURL           string   `json:"apiBaseUrl"`
+	BotTokenSecretRef    string   `json:"botTokenSecretRef"`
+	OAuthClientID        string   `json:"oauthClientId"`
+	OAuthClientSecret    string   `json:"oauthClientSecret"`
+	OAuthClientSecretEnv string   `json:"oauthClientSecretEnv"`
+	OAuthAPIBaseURL      string   `json:"oauthApiBaseUrl"`
+	WorkspaceBindingID   string   `json:"workspaceBindingId"`
+	WorkspaceID          string   `json:"workspaceId"`
+	BotUserID            string   `json:"botUserId"`
+	AllowedChannelIDs    []string `json:"allowedChannelIds"`
+	AllowedDMUserIDs     []string `json:"allowedDMUserIds"`
+	AllowedDMUserGroups  []string `json:"allowedDMUserGroups"`
 }
 
 func Load() (Config, error) {
@@ -306,6 +394,10 @@ func Load() (Config, error) {
 			Telegram: TelegramConnectorConfig{
 				ConnectorID: "telegram-main",
 				DisplayName: "Telegram Main",
+			},
+			Slack: SlackConnectorConfig{
+				ConnectorID: "slack-main",
+				DisplayName: "Slack Main",
 			},
 		},
 	}
@@ -448,6 +540,9 @@ func applyFileConnectorConfig(cfg *ConnectorConfig, fileCfg fileConnectorConfig)
 	if fileCfg.Telegram != nil {
 		applyFileTelegramConnectorConfig(&cfg.Telegram, *fileCfg.Telegram)
 	}
+	if fileCfg.Slack != nil {
+		applyFileSlackConnectorConfig(&cfg.Slack, *fileCfg.Slack)
+	}
 }
 
 func applyFileDiscordConnectorConfig(cfg *DiscordConnectorConfig, fileCfg fileDiscordConnectorConfig) {
@@ -516,6 +611,54 @@ func applyFileTelegramConnectorConfig(cfg *TelegramConnectorConfig, fileCfg file
 	}
 }
 
+func applyFileSlackConnectorConfig(cfg *SlackConnectorConfig, fileCfg fileSlackConnectorConfig) {
+	if fileCfg.Enabled != nil {
+		cfg.Enabled = *fileCfg.Enabled
+	}
+	if fileCfg.ConnectorID != "" {
+		cfg.ConnectorID = fileCfg.ConnectorID
+	}
+	if fileCfg.DisplayName != "" {
+		cfg.DisplayName = fileCfg.DisplayName
+	}
+	if fileCfg.APIBaseURL != "" {
+		cfg.APIBaseURL = fileCfg.APIBaseURL
+	}
+	if fileCfg.BotTokenSecretRef != "" {
+		cfg.BotTokenSecretRef = fileCfg.BotTokenSecretRef
+	}
+	if fileCfg.OAuthClientID != "" {
+		cfg.OAuthClientID = fileCfg.OAuthClientID
+	}
+	if fileCfg.OAuthClientSecret != "" {
+		cfg.OAuthClientSecret = fileCfg.OAuthClientSecret
+	}
+	if fileCfg.OAuthClientSecretEnv != "" {
+		cfg.OAuthClientSecretEnv = fileCfg.OAuthClientSecretEnv
+	}
+	if fileCfg.OAuthAPIBaseURL != "" {
+		cfg.OAuthAPIBaseURL = fileCfg.OAuthAPIBaseURL
+	}
+	if fileCfg.WorkspaceBindingID != "" {
+		cfg.WorkspaceBindingID = fileCfg.WorkspaceBindingID
+	}
+	if fileCfg.WorkspaceID != "" {
+		cfg.WorkspaceID = fileCfg.WorkspaceID
+	}
+	if fileCfg.BotUserID != "" {
+		cfg.BotUserID = fileCfg.BotUserID
+	}
+	if fileCfg.AllowedChannelIDs != nil {
+		cfg.AllowedChannelIDs = append([]string(nil), fileCfg.AllowedChannelIDs...)
+	}
+	if fileCfg.AllowedDMUserIDs != nil {
+		cfg.AllowedDMUserIDs = append([]string(nil), fileCfg.AllowedDMUserIDs...)
+	}
+	if fileCfg.AllowedDMUserGroups != nil {
+		cfg.AllowedDMUserGroups = append([]string(nil), fileCfg.AllowedDMUserGroups...)
+	}
+}
+
 func applyEnvOverrides(cfg *Config) {
 	if envName := resolveEnvironment(getenv("DOPE_ENV", ""), cfg.Version); envName != "" {
 		cfg.Environment = envName
@@ -566,6 +709,22 @@ func applyEnvOverrides(cfg *Config) {
 	cfg.Connectors.Telegram.AllowedUserIDs = getenvCSV("DOPE_CONNECTORS_TELEGRAM_ALLOWED_USER_IDS", cfg.Connectors.Telegram.AllowedUserIDs)
 	cfg.Connectors.Telegram.AllowedDirectChatIDs = getenvCSV("DOPE_CONNECTORS_TELEGRAM_ALLOWED_DIRECT_CHAT_IDS", cfg.Connectors.Telegram.AllowedDirectChatIDs)
 	cfg.Connectors.Telegram.AllowedGroupIDs = getenvCSV("DOPE_CONNECTORS_TELEGRAM_ALLOWED_GROUP_IDS", cfg.Connectors.Telegram.AllowedGroupIDs)
+
+	cfg.Connectors.Slack.Enabled = getenvBool("DOPE_CONNECTORS_SLACK_ENABLED", cfg.Connectors.Slack.Enabled)
+	cfg.Connectors.Slack.ConnectorID = getenv("DOPE_CONNECTORS_SLACK_CONNECTOR_ID", cfg.Connectors.Slack.ConnectorID)
+	cfg.Connectors.Slack.DisplayName = getenv("DOPE_CONNECTORS_SLACK_DISPLAY_NAME", cfg.Connectors.Slack.DisplayName)
+	cfg.Connectors.Slack.APIBaseURL = getenv("DOPE_CONNECTORS_SLACK_API_BASE_URL", cfg.Connectors.Slack.APIBaseURL)
+	cfg.Connectors.Slack.BotTokenSecretRef = getenv("DOPE_CONNECTORS_SLACK_BOT_TOKEN_SECRET_REF", cfg.Connectors.Slack.BotTokenSecretRef)
+	cfg.Connectors.Slack.OAuthClientID = getenv("DOPE_CONNECTORS_SLACK_OAUTH_CLIENT_ID", cfg.Connectors.Slack.OAuthClientID)
+	cfg.Connectors.Slack.OAuthClientSecret = getenv("DOPE_CONNECTORS_SLACK_OAUTH_CLIENT_SECRET", cfg.Connectors.Slack.OAuthClientSecret)
+	cfg.Connectors.Slack.OAuthClientSecretEnv = getenv("DOPE_CONNECTORS_SLACK_OAUTH_CLIENT_SECRET_ENV", cfg.Connectors.Slack.OAuthClientSecretEnv)
+	cfg.Connectors.Slack.OAuthAPIBaseURL = getenv("DOPE_CONNECTORS_SLACK_OAUTH_API_BASE_URL", cfg.Connectors.Slack.OAuthAPIBaseURL)
+	cfg.Connectors.Slack.WorkspaceBindingID = getenv("DOPE_CONNECTORS_SLACK_WORKSPACE_BINDING_ID", cfg.Connectors.Slack.WorkspaceBindingID)
+	cfg.Connectors.Slack.WorkspaceID = getenv("DOPE_CONNECTORS_SLACK_WORKSPACE_ID", cfg.Connectors.Slack.WorkspaceID)
+	cfg.Connectors.Slack.BotUserID = getenv("DOPE_CONNECTORS_SLACK_BOT_USER_ID", cfg.Connectors.Slack.BotUserID)
+	cfg.Connectors.Slack.AllowedChannelIDs = getenvCSV("DOPE_CONNECTORS_SLACK_ALLOWED_CHANNEL_IDS", cfg.Connectors.Slack.AllowedChannelIDs)
+	cfg.Connectors.Slack.AllowedDMUserIDs = getenvCSV("DOPE_CONNECTORS_SLACK_ALLOWED_DM_USER_IDS", cfg.Connectors.Slack.AllowedDMUserIDs)
+	cfg.Connectors.Slack.AllowedDMUserGroups = getenvCSV("DOPE_CONNECTORS_SLACK_ALLOWED_DM_USER_GROUPS", cfg.Connectors.Slack.AllowedDMUserGroups)
 }
 
 func resolveSecretRefs(cfg *Config) {
@@ -577,6 +736,9 @@ func resolveSecretRefs(cfg *Config) {
 	}
 	if cfg.Connectors.Telegram.BotToken == "" && cfg.Connectors.Telegram.BotTokenEnv != "" {
 		cfg.Connectors.Telegram.BotToken = os.Getenv(cfg.Connectors.Telegram.BotTokenEnv)
+	}
+	if cfg.Connectors.Slack.OAuthClientSecret == "" && cfg.Connectors.Slack.OAuthClientSecretEnv != "" {
+		cfg.Connectors.Slack.OAuthClientSecret = os.Getenv(cfg.Connectors.Slack.OAuthClientSecretEnv)
 	}
 }
 

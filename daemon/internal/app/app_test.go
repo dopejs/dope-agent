@@ -467,6 +467,31 @@ func TestRecoverPersistedStateBridgesLocalCredentialsIntoDefaultTenant(t *testin
 	}
 }
 
+func TestAppNewWiresEnabledSlackRuntime(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("DOPE_ENV", "test")
+	t.Setenv("DOPE_DATA_DIR", dataDir)
+	t.Setenv("DOPE_BIND_ADDR", "127.0.0.1:0")
+	t.Setenv("DOPE_LOG_LEVEL", "error")
+	t.Setenv("DOPE_VERSION", "test")
+	t.Setenv("DOPE_CONNECTORS_SLACK_ENABLED", "true")
+	t.Setenv("DOPE_CONNECTORS_SLACK_CONNECTOR_ID", "slack-main")
+	t.Setenv("DOPE_CONNECTORS_SLACK_DISPLAY_NAME", "Slack Main")
+	t.Setenv("DOPE_CONNECTORS_SLACK_WORKSPACE_BINDING_ID", "workspace_binding_redacted")
+	t.Setenv("DOPE_CONNECTORS_SLACK_WORKSPACE_ID", "workspace_redacted")
+	t.Setenv("DOPE_CONNECTORS_SLACK_ALLOWED_DM_USER_IDS", "user_allowed")
+
+	application, err := New()
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = application.Close(context.Background()) })
+
+	if application.slackRuntime == nil {
+		t.Fatal("expected enabled Slack connector to create runtime")
+	}
+}
+
 func TestRecoverPersistedStateRestoresTokenLifecycleAndTenantGrants(t *testing.T) {
 	t.Parallel()
 

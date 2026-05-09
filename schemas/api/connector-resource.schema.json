@@ -44,6 +44,9 @@
     "diagnosticState": { "$ref": "./connector-diagnostic-state.schema.json" },
     "conformanceResult": { "$ref": "./connector-conformance-result.schema.json" },
     "accountBinding": { "$ref": "./connector-account-binding-summary.schema.json" },
+    "slackSetup": { "$ref": "./slack-hosted-setup-resource.schema.json" },
+    "slackRoutePolicy": { "$ref": "./slack-route-policy-resource.schema.json" },
+    "slackSmokeEvidence": { "$ref": "./slack-smoke-evidence-resource.schema.json" },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }
   }

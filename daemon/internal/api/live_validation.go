@@ -9,6 +9,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	baseconnectors "github.com/dopejs/dope-agent/daemon/internal/connectors"
+	slackconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/slack"
 	telegramconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/telegram"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
@@ -62,6 +63,18 @@ type RecordTelegramSmokeRequest struct {
 	SafeEvidence   map[string]string `json:"safeEvidence,omitempty"`
 }
 
+type RecordSlackSmokeRequest struct {
+	ConnectorID        string            `json:"connectorId"`
+	WorkspaceBindingID string            `json:"workspaceBindingId,omitempty"`
+	Status             string            `json:"status"`
+	AuthorizationMode  string            `json:"authorizationMode"`
+	Owner              string            `json:"owner,omitempty"`
+	Reason             string            `json:"reason,omitempty"`
+	RemainingRisk      string            `json:"remainingRisk,omitempty"`
+	ValidatedAt        *time.Time        `json:"validatedAt,omitempty"`
+	SafeEvidence       map[string]string `json:"safeEvidence,omitempty"`
+}
+
 func handleLiveValidationRoutes(manager *livevalidation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil {
 		writeError(w, http.StatusInternalServerError, "live validation manager is not configured")
@@ -95,6 +108,14 @@ func handleLiveValidationRoutes(manager *livevalidation.Manager, eventBus *event
 	}
 	if path == "telegram-conformance" {
 		handleLiveValidationConnectorConformance(sqliteStore, w, r)
+		return
+	}
+	if path == "slack-conformance" {
+		handleLiveValidationConnectorConformance(sqliteStore, w, r)
+		return
+	}
+	if path == "slack-smoke" {
+		handleLiveValidationSlackSmoke(sqliteStore, w, r)
 		return
 	}
 	handleLiveValidationItem(manager, eventBus, sqliteStore, path, w, r)
@@ -216,6 +237,136 @@ func handleLiveValidationTelegramSmoke(sqliteStore *store.SQLiteStore, w http.Re
 		return
 	}
 	writeJSON(w, http.StatusOK, evidence)
+}
+
+func handleLiveValidationSlackSmoke(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector smoke evidence store is not configured")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+	case http.MethodPost:
+		recordSlackSmokeEvidence(sqliteStore, w, r)
+		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantctx.FromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	connectorID := strings.TrimSpace(r.URL.Query().Get("connectorId"))
+	if connectorID == "" {
+		writeError(w, http.StatusBadRequest, "connectorId is required")
+		return
+	}
+	evidence, found, err := sqliteStore.LatestSlackSmokeEvidence(r.Context(), tenantContext.TenantID, connectorID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, projectSlackSmokeEvidenceResource(evidence))
+}
+
+func recordSlackSmokeEvidence(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	tenantContext, ok := tenantctx.FromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if !identity.HasPermission(tenantContext.Permissions, identity.PermissionLiveValidationExecute) {
+		writeCredentialDenial(w, http.StatusForbidden, "live_validation_execute_required")
+		return
+	}
+	var input RecordSlackSmokeRequest
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(input.ConnectorID) == "" {
+		input.ConnectorID = strings.TrimSpace(r.URL.Query().Get("connectorId"))
+	}
+	if strings.TrimSpace(input.ConnectorID) == "" {
+		writeError(w, http.StatusBadRequest, "connectorId is required")
+		return
+	}
+	smokeInput, err := slackSmokeInputFromRequest(tenantContext.TenantID, input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	evidence := slackconnector.BuildSmokeEvidence(smokeInput)
+	record := store.SlackSmokeEvidenceRecord{
+		SmokeEvidenceID:    evidence.SmokeEvidenceID,
+		TenantID:           evidence.TenantID,
+		ConnectorID:        evidence.ConnectorID,
+		WorkspaceBindingID: evidence.WorkspaceBindingID,
+		Status:             string(evidence.Status),
+		AuthorizationMode:  string(evidence.AuthorizationMode),
+		Owner:              evidence.Owner,
+		Reason:             evidence.Reason,
+		RemainingRisk:      evidence.RemainingRisk,
+		ValidatedAt:        evidence.ValidatedAt,
+		RetentionExpiresAt: evidence.RetentionExpiresAt,
+		RedactionStatus:    string(evidence.RedactionStatus),
+		SafeEvidence:       evidence.SafeEvidence,
+	}
+	if err := sqliteStore.SaveSlackSmokeEvidence(r.Context(), record); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, projectSlackSmokeEvidenceResource(record))
+}
+
+func slackSmokeInputFromRequest(tenantID string, input RecordSlackSmokeRequest) (slackconnector.SmokeInput, error) {
+	mode := slackconnector.AuthorizationMode(strings.TrimSpace(input.AuthorizationMode))
+	status := slackconnector.SmokeStatus(strings.TrimSpace(input.Status))
+	if status == "" {
+		status = slackconnector.SmokeSkipped
+	}
+	if mode == "" {
+		mode = slackconnector.AuthorizationModeUnavailable
+	}
+	switch status {
+	case slackconnector.SmokeSkipped:
+		if mode != slackconnector.AuthorizationModeUnavailable {
+			return slackconnector.SmokeInput{}, errors.New("skipped Slack smoke must use unavailable authorization mode")
+		}
+	case slackconnector.SmokePassed, slackconnector.SmokeFailed:
+		if mode != slackconnector.AuthorizationModeFakeOAuth && mode != slackconnector.AuthorizationModeSafeLive {
+			return slackconnector.SmokeInput{}, errors.New("passed or failed Slack smoke requires fake_oauth or safe_live authorization mode")
+		}
+	default:
+		return slackconnector.SmokeInput{}, errors.New("status must be passed, failed, or skipped")
+	}
+	validatedAt := time.Time{}
+	if input.ValidatedAt != nil {
+		validatedAt = *input.ValidatedAt
+	}
+	return slackconnector.SmokeInput{
+		TenantID:           tenantID,
+		ConnectorID:        input.ConnectorID,
+		WorkspaceBindingID: input.WorkspaceBindingID,
+		SafeLiveApproved:   mode == slackconnector.AuthorizationModeSafeLive,
+		FakeOAuth:          mode == slackconnector.AuthorizationModeFakeOAuth,
+		Passed:             status == slackconnector.SmokePassed,
+		Owner:              input.Owner,
+		Reason:             input.Reason,
+		RemainingRisk:      input.RemainingRisk,
+		ValidatedAt:        validatedAt,
+		SafeEvidence:       input.SafeEvidence,
+	}, nil
 }
 
 func recordTelegramSmokeEvidence(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {

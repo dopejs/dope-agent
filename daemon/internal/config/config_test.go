@@ -306,6 +306,70 @@ func TestLoadTelegramConnectorConfig(t *testing.T) {
 	}
 }
 
+func TestLoadSlackConnectorConfig(t *testing.T) {
+	homeDir := t.TempDir()
+	dataDir := filepath.Join(homeDir, ".dope-test")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte(`{
+		"connectors": {
+			"slack": {
+				"enabled": true,
+				"connectorId": "slack-bot",
+				"displayName": "Slack Bot",
+				"apiBaseUrl": "https://slack.test",
+				"botTokenSecretRef": "slack/slack-bot/bot_token",
+				"oauthClientId": "client_file",
+				"oauthClientSecretEnv": "SLACK_CLIENT_SECRET",
+				"oauthApiBaseUrl": "https://slack-oauth.test",
+				"workspaceBindingId": "workspace_binding_file",
+				"workspaceId": "workspace_file",
+				"botUserId": "bot_file",
+				"allowedChannelIds": ["channel_file"],
+				"allowedDMUserIds": ["user_file"],
+				"allowedDMUserGroups": ["group_file"]
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	setBaseEnv(t, homeDir)
+	t.Setenv("DOPE_CONNECTORS_SLACK_ALLOWED_CHANNEL_IDS", "channel_env_1,channel_env_2")
+	t.Setenv("DOPE_CONNECTORS_SLACK_BOT_USER_ID", "bot_env")
+	t.Setenv("SLACK_CLIENT_SECRET", "secret-from-env")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !cfg.Connectors.Slack.Enabled {
+		t.Fatal("expected slack connector enabled")
+	}
+	if cfg.Connectors.Slack.ConnectorID != "slack-bot" {
+		t.Fatalf("expected slack connector id slack-bot, got %s", cfg.Connectors.Slack.ConnectorID)
+	}
+	if cfg.Connectors.Slack.WorkspaceBindingID != "workspace_binding_file" || cfg.Connectors.Slack.WorkspaceID != "workspace_file" {
+		t.Fatalf("unexpected slack workspace config: %+v", cfg.Connectors.Slack)
+	}
+	if cfg.Connectors.Slack.APIBaseURL != "https://slack.test" || cfg.Connectors.Slack.BotTokenSecretRef != "slack/slack-bot/bot_token" {
+		t.Fatalf("unexpected slack transport config: %+v", cfg.Connectors.Slack)
+	}
+	if cfg.Connectors.Slack.OAuthClientID != "client_file" || cfg.Connectors.Slack.OAuthClientSecret != "secret-from-env" || cfg.Connectors.Slack.OAuthAPIBaseURL != "https://slack-oauth.test" {
+		t.Fatalf("unexpected slack oauth config: %+v", cfg.Connectors.Slack)
+	}
+	if cfg.Connectors.Slack.BotUserID != "bot_env" {
+		t.Fatalf("expected bot user id env override, got %q", cfg.Connectors.Slack.BotUserID)
+	}
+	if got := cfg.Connectors.Slack.AllowedChannelIDs; len(got) != 2 || got[0] != "channel_env_1" || got[1] != "channel_env_2" {
+		t.Fatalf("expected env channel allowlist, got %#v", got)
+	}
+	if got := cfg.Connectors.Slack.AllowedDMUserGroups; len(got) != 1 || got[0] != "group_file" {
+		t.Fatalf("expected file DM user groups, got %#v", got)
+	}
+}
+
 func TestLoadRejectsInvalidConfigFile(t *testing.T) {
 	homeDir := t.TempDir()
 	dataDir := filepath.Join(homeDir, ".dope-test")

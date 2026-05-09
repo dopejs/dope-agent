@@ -111,6 +111,35 @@ describe("tui cli", () => {
     expect(code).toBe(1);
     expect(stderr.contents).toContain("Error: bad key");
   });
+
+  it("prints Slack setup projection output", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const getSlackSetup = vi.fn().mockResolvedValue({
+      connectorId: "slack-main",
+      terminalState: "ready",
+      oauthState: "grant_valid",
+      routePolicyState: "valid",
+      deliveryEligible: true
+    });
+
+    const options = parseArgs(["--slack-setup", "slack-main"], {});
+    const code = await runCLI(options, {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () =>
+        ({
+          getSlackSetup,
+          queryChat: vi.fn(),
+          streamChatQuery: vi.fn()
+        }) as any
+    });
+
+    expect(code).toBe(0);
+    expect(getSlackSetup).toHaveBeenCalledWith("slack-main");
+    expect(stdout.contents).toContain("Slack Setup: slack-main");
+    expect(stdout.contents).toContain("Delivery Eligible: yes");
+    expect(stderr.contents).toBe("");
+  });
 });
 
 function createMemoryWriter() {

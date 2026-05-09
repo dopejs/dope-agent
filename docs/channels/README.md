@@ -12,6 +12,7 @@ This module defines IM/channel ingestion, reply behavior, and channel-specific U
 1. [26-first-im-channel-loop.md](/Users/John/Code/agent-os/docs/channels/first-im-channel-loop.md)
 2. [27-discord-channel-loop.md](/Users/John/Code/agent-os/docs/channels/discord-channel-loop.md)
 3. [28-channel-reply-progression.md](/Users/John/Code/agent-os/docs/channels/channel-reply-progression.md)
+4. [slack-channel-loop.md](./slack-channel-loop.md)
 
 ## Add New Docs Here When
 

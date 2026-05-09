@@ -86,6 +86,7 @@ type ConfigManagedCLIProviderResponse struct {
 type ConfigConnectorsResponse struct {
 	Discord  ConfigDiscordConnectorResponse  `json:"discord"`
 	Telegram ConfigTelegramConnectorResponse `json:"telegram"`
+	Slack    ConfigSlackConnectorResponse    `json:"slack"`
 }
 
 type ConfigMCPResponse struct {
@@ -125,6 +126,22 @@ type ConfigTelegramConnectorResponse struct {
 	AllowedDirectChatIDs []string                                 `json:"allowedDirectChatIds"`
 	AllowedGroupIDs      []string                                 `json:"allowedGroupIds"`
 	HostedReadiness      config.TelegramHostedReadinessProjection `json:"hostedReadiness"`
+}
+
+type ConfigSlackConnectorResponse struct {
+	Enabled             bool                                  `json:"enabled"`
+	Configured          bool                                  `json:"configured"`
+	ConnectorID         string                                `json:"connectorId"`
+	DisplayName         string                                `json:"displayName"`
+	APIBaseURL          string                                `json:"apiBaseURL,omitempty"`
+	BotTokenSecretRef   string                                `json:"botTokenSecretRef,omitempty"`
+	WorkspaceBindingID  string                                `json:"workspaceBindingId,omitempty"`
+	WorkspaceID         string                                `json:"workspaceId,omitempty"`
+	BotUserID           string                                `json:"botUserId,omitempty"`
+	AllowedChannelIDs   []string                              `json:"allowedChannelIds"`
+	AllowedDMUserIDs    []string                              `json:"allowedDMUserIds"`
+	AllowedDMUserGroups []string                              `json:"allowedDMUserGroups"`
+	HostedReadiness     config.SlackHostedReadinessProjection `json:"hostedReadiness"`
 }
 
 type CreateIntegrationDiagnosticRunRequest struct {
@@ -940,6 +957,9 @@ func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager, sandboxMana
 	if cfg.Connectors.Telegram.BotToken != "" {
 		redactedFields = append(redactedFields, "connectors.telegram.botToken")
 	}
+	if cfg.Connectors.Slack.OAuthClientSecret != "" {
+		redactedFields = append(redactedFields, "connectors.slack.oauthClientSecret")
+	}
 	defaultTimeoutMs := cfg.LLM.DefaultTimeoutMs
 	if defaultTimeoutMs <= 0 {
 		defaultTimeoutMs = 30000
@@ -1026,6 +1046,21 @@ func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager, sandboxMana
 				AllowedDirectChatIDs: cloneStringSlice(cfg.Connectors.Telegram.AllowedDirectChatIDs),
 				AllowedGroupIDs:      cloneStringSlice(cfg.Connectors.Telegram.AllowedGroupIDs),
 				HostedReadiness:      cfg.Connectors.Telegram.ProjectHostedReadiness(""),
+			},
+			Slack: ConfigSlackConnectorResponse{
+				Enabled:             cfg.Connectors.Slack.Enabled,
+				Configured:          cfg.Connectors.Slack.WorkspaceID != "" || len(cfg.Connectors.Slack.AllowedChannelIDs) > 0 || len(cfg.Connectors.Slack.AllowedDMUserIDs) > 0 || len(cfg.Connectors.Slack.AllowedDMUserGroups) > 0,
+				ConnectorID:         cfg.Connectors.Slack.ConnectorID,
+				DisplayName:         cfg.Connectors.Slack.DisplayName,
+				APIBaseURL:          cfg.Connectors.Slack.APIBaseURL,
+				BotTokenSecretRef:   cfg.Connectors.Slack.BotTokenSecretRef,
+				WorkspaceBindingID:  cfg.Connectors.Slack.WorkspaceBindingID,
+				WorkspaceID:         cfg.Connectors.Slack.WorkspaceID,
+				BotUserID:           cfg.Connectors.Slack.BotUserID,
+				AllowedChannelIDs:   cloneStringSlice(cfg.Connectors.Slack.AllowedChannelIDs),
+				AllowedDMUserIDs:    cloneStringSlice(cfg.Connectors.Slack.AllowedDMUserIDs),
+				AllowedDMUserGroups: cloneStringSlice(cfg.Connectors.Slack.AllowedDMUserGroups),
+				HostedReadiness:     cfg.Connectors.Slack.ProjectHostedReadiness(""),
 			},
 		},
 		MCP: ConfigMCPResponse{

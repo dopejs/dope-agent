@@ -196,6 +196,15 @@ event-schema-file prefixes from `schemas/events/` (flat layout).
 | telegram_smoke_evidence | tenant_owned | column tenant_id (smoke evidence belongs to the connector tenant) | leave_existing | Telegram release-readiness smoke evidence projections | connector-diagnostic-state-changed | store Telegram smoke evidence helpers | PRIMARY KEY smoke_evidence_id, (tenant_id, connector_id, validated_at DESC) | Telegram smoke retention and tenant isolation suite | backup_restore |
 | telegram_update_evidence | tenant_owned | column tenant_id plus retained Telegram chat/message/update identity | leave_existing | Telegram route evidence and support diagnostics | connector-route-outcome-recorded, connector-inbound-duplicate-detected | store Telegram update evidence helpers | PRIMARY KEY (tenant_id, connector_id, chat_id, message_id, update_id), (tenant_id, connector_id, received_at DESC) | Telegram retained update evidence tenant isolation suite | backup_restore |
 
+## Persisted Tables — Roadmap 51 Slack channel connector
+
+| name | classification | tenantIdSource | migrationAction | affectedAPIs | affectedEvents | storeAccess | indexesAndUniqueness | isolationTests | rollback |
+|------|----------------|----------------|-----------------|--------------|----------------|-------------|----------------------|----------------|----------|
+| slack_hosted_setups | tenant_owned | column tenant_id (hosted setup belongs to the connector tenant) | leave_existing | Slack connector setup projection route | connector-slack-setup-validated | store Slack setup helpers; tenancy.SlackSetup | UNIQUE (tenant_id, connector_id), (tenant_id, terminal_state, updated_at DESC) | Slack setup API and store tenant isolation suite | backup_restore |
+| slack_route_policies | tenant_owned | column tenant_id plus parent Slack connector setup tenant | leave_existing | Slack setup and route policy projection routes | connector-slack-setup-validated, connector-route-outcome-recorded | store Slack route policy helpers | UNIQUE (tenant_id, connector_id), (tenant_id, connector_id, validated_at DESC) | Slack route policy tenant isolation suite | backup_restore |
+| slack_smoke_evidence | tenant_owned | column tenant_id (smoke evidence belongs to the connector tenant) | leave_existing | Slack release-readiness smoke evidence projections | connector-diagnostic-state-changed | store Slack smoke evidence helpers | PRIMARY KEY smoke_evidence_id, (tenant_id, connector_id, validated_at DESC) | Slack smoke retention and tenant isolation suite | backup_restore |
+| slack_event_evidence | tenant_owned | column tenant_id plus retained Slack workspace/conversation/message/event identity | leave_existing | Slack route evidence and support diagnostics | connector-route-outcome-recorded, connector-inbound-duplicate-detected | store Slack event evidence helpers | PRIMARY KEY (tenant_id, connector_id, workspace_id, conversation_id, message_id, event_id), (tenant_id, connector_id, received_at DESC) | Slack retained event evidence tenant isolation suite | backup_restore |
+
 ## Event Sources
 
 Event categories whose payloads gain server-side tenant scoping. Where the event

@@ -49,6 +49,8 @@ func ClassifyDiagnosticReason(reason string) (SetupState, RemediationOwner, Retr
 		return StateDegraded, OwnerTenantAdmin, RetryRetryable
 	case ReasonTelegramAllowmentMissing, ReasonTelegramAllowmentInvalid:
 		return StateActionRequired, OwnerTenantAdmin, RetryBlocked
+	case ReasonSlackRoutePolicyMissing, ReasonSlackRoutePolicyInvalid:
+		return StateActionRequired, OwnerTenantAdmin, RetryBlocked
 	case ReasonProviderUnavailable, ReasonNetworkFailed, ReasonRateLimited:
 		return StateUnavailable, OwnerProvider, RetryRetryable
 	case ReasonUnsupportedTarget:

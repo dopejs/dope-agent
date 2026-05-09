@@ -27,6 +27,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	discordconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/discord"
+	slackconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/slack"
 	telegramconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/telegram"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
@@ -50,6 +51,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 type App struct {
@@ -84,6 +86,7 @@ type App struct {
 	CapabilitySupervisor *capabilities.Supervisor
 	discordRuntime       managedConnectorRuntime
 	telegramRuntime      managedConnectorRuntime
+	slackRuntime         managedConnectorRuntime
 	Server               *api.Server
 	mu                   sync.Mutex
 	closed               bool
@@ -219,6 +222,18 @@ func New() (*App, error) {
 		}
 		connectorAdapter.RegisterConnector(cfg.Connectors.Telegram.ConnectorID, "telegram", telegramTransport)
 	}
+	var slackTransport slackconnector.Transport
+	if cfg.Connectors.Slack.Enabled {
+		slackTransport = slackconnector.NewWebAPITransport(slackconnector.WebAPITransportConfig{
+			ConnectorID: cfg.Connectors.Slack.ConnectorID,
+			BaseURL:     cfg.Connectors.Slack.APIBaseURL,
+			TokenProvider: slackBotTokenProvider{
+				secrets:   secretManager,
+				secretRef: slackBotTokenSecretRef(cfg.Connectors.Slack),
+			},
+		})
+		connectorAdapter.RegisterConnector(cfg.Connectors.Slack.ConnectorID, "slack", slackTransport)
+	}
 	deliveryManager := delivery.NewManager(string(cfg.Environment), eventBus, sqliteStore, delivery.NewTestSinkAdapter(), connectorAdapter)
 	envCtx := events.WithEnvironmentScope(context.Background(), string(cfg.Environment))
 	replayRecorder := evaluation.NewRuntimeReplayRecorder(runtimeManager, sqliteStore)
@@ -325,6 +340,20 @@ func New() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	slackRuntime, err := slackconnector.NewRuntime(slackconnector.Config{
+		Enabled:             cfg.Connectors.Slack.Enabled,
+		ConnectorID:         cfg.Connectors.Slack.ConnectorID,
+		DisplayName:         cfg.Connectors.Slack.DisplayName,
+		WorkspaceBindingID:  cfg.Connectors.Slack.WorkspaceBindingID,
+		WorkspaceID:         cfg.Connectors.Slack.WorkspaceID,
+		BotUserID:           cfg.Connectors.Slack.BotUserID,
+		AllowedChannelIDs:   append([]string(nil), cfg.Connectors.Slack.AllowedChannelIDs...),
+		AllowedDMUserIDs:    append([]string(nil), cfg.Connectors.Slack.AllowedDMUserIDs...),
+		AllowedDMUserGroups: append([]string(nil), cfg.Connectors.Slack.AllowedDMUserGroups...),
+	}, logger.Slog(), connectorSupervisor, im.NewMessageLoop(sessionRouter, runtimeManager, checkpointManager, eventBus, sqliteStore, chatService), sqliteStore, eventBus, slackTransport)
+	if err != nil {
+		return nil, err
+	}
 
 	server := api.NewServer(api.Dependencies{
 		Config:                cfg,
@@ -393,6 +422,7 @@ func New() (*App, error) {
 		CapabilitySupervisor: capabilitySupervisor,
 		discordRuntime:       discordRuntime,
 		telegramRuntime:      telegramRuntime,
+		slackRuntime:         slackRuntime,
 		Server:               server,
 	}, nil
 }
@@ -436,6 +466,37 @@ func telegramAllowmentsFromConfig(cfg config.TelegramConnectorConfig) []telegram
 		})
 	}
 	return items
+}
+
+type slackBotTokenProvider struct {
+	secrets   *secrets.Manager
+	secretRef string
+}
+
+func (p slackBotTokenProvider) BotToken(ctx context.Context, connectorID string) (string, error) {
+	if p.secrets == nil {
+		return "", fmt.Errorf("slack bot token secret manager is not configured")
+	}
+	tenantID, err := tenantctx.Require(ctx)
+	if err != nil {
+		return "", err
+	}
+	ref := strings.TrimSpace(p.secretRef)
+	if ref == "" {
+		ref = "slack/" + strings.TrimSpace(connectorID) + "/bot_token"
+	}
+	resolved, err := p.secrets.Resolve(ctx, secrets.ResolveInput{TenantID: tenantID, SecretRef: ref})
+	if err != nil {
+		return "", err
+	}
+	return resolved.Value, nil
+}
+
+func slackBotTokenSecretRef(cfg config.SlackConnectorConfig) string {
+	if strings.TrimSpace(cfg.BotTokenSecretRef) != "" {
+		return strings.TrimSpace(cfg.BotTokenSecretRef)
+	}
+	return "slack/" + strings.TrimSpace(cfg.ConnectorID) + "/bot_token"
 }
 
 func defaultEvaluationFixturesDir() string {
@@ -548,6 +609,15 @@ func (a *App) Run(ctx context.Context) error {
 			return err
 		}
 	}
+	if a.slackRuntime != nil {
+		starter, ok := a.slackRuntime.(interface{ Start(context.Context) error })
+		if !ok {
+			return fmt.Errorf("slack runtime is not startable")
+		}
+		if err := starter.Start(ctx); err != nil {
+			return err
+		}
+	}
 	if a.Scheduler != nil {
 		if err := a.Scheduler.Start(ctx); err != nil {
 			return err
@@ -618,6 +688,11 @@ func (a *App) Close(_ context.Context) error {
 	}
 	if a.telegramRuntime != nil {
 		if err := a.telegramRuntime.Close(context.Background()); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if a.slackRuntime != nil {
+		if err := a.slackRuntime.Close(context.Background()); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}

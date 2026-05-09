@@ -317,6 +317,52 @@ func TestLiveValidationSupportMatrixRoute(t *testing.T) {
 	}
 }
 
+func TestLiveValidationSlackSmokeProjectsTenantSafeEvidence(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	manager := livevalidation.NewManager(livevalidation.Dependencies{Enabled: true})
+	tenantContext := identity.TenantContext{
+		TenantID:    "ten_slack",
+		PrincipalID: "prn_operator",
+		Permissions: []identity.Permission{
+			identity.PermissionLiveValidationExecute,
+			identity.PermissionConnectorsManage,
+			identity.PermissionCredentialsInspect,
+		},
+	}
+	validatedAt := time.Date(2026, 5, 8, 14, 0, 0, 0, time.UTC)
+	postBody := `{"connectorId":"slack-main","workspaceBindingId":"workspace_binding_redacted","status":"passed","authorizationMode":"fake_oauth","validatedAt":"` + validatedAt.Format(time.RFC3339) + `","safeEvidence":{"mode":"fake"}}`
+	postReq := httptest.NewRequest(http.MethodPost, "/v1/live-validations/slack-smoke", bytes.NewBufferString(postBody))
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq = postReq.WithContext(tenantctx.WithContext(postReq.Context(), tenantContext))
+	postRec := httptest.NewRecorder()
+	handleLiveValidationRoutes(manager, nil, sqliteStore, postRec, postReq)
+	if postRec.Code != http.StatusCreated {
+		t.Fatalf("POST slack-smoke status=%d body=%s", postRec.Code, postRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/live-validations/slack-smoke?connectorId=slack-main", nil)
+	getReq = getReq.WithContext(tenantctx.WithContext(getReq.Context(), tenantContext))
+	getRec := httptest.NewRecorder()
+	handleLiveValidationRoutes(manager, nil, sqliteStore, getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("GET slack-smoke status=%d body=%s", getRec.Code, getRec.Body.String())
+	}
+	body := getRec.Body.String()
+	if !bytes.Contains([]byte(body), []byte(`"status":"passed"`)) || !bytes.Contains([]byte(body), []byte(`"authorizationMode":"fake_oauth"`)) {
+		t.Fatalf("Slack smoke projection missing expected fields: %s", body)
+	}
+	if bytes.Contains([]byte(body), []byte("xoxb-")) || bytes.Contains([]byte(body), []byte("secret")) {
+		t.Fatalf("Slack smoke projection leaked unsafe evidence: %s", body)
+	}
+}
+
 func liveValidationOperatorTenantContext() identity.TenantContext {
 	return identity.TenantContext{
 		TenantID:    "ten_1",

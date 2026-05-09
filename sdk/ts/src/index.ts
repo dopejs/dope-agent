@@ -1169,6 +1169,8 @@ export type DiscordRedactionStatus = "redacted" | "suppressed" | "redaction_fail
 export type TelegramTerminalState = "ready" | "degraded" | "unavailable" | "cancelled" | "action-required";
 export type TelegramCredentialState = DiscordCredentialState;
 export type TelegramRedactionStatus = DiscordRedactionStatus;
+export type SlackTerminalState = TelegramTerminalState;
+export type SlackRedactionStatus = DiscordRedactionStatus;
 
 export type DiscordDestinationValidationResource = {
   tenantId?: string;
@@ -1272,6 +1274,80 @@ export type TelegramSmokeEvidenceResource = {
   safeEvidence?: Record<string, string>;
 };
 
+export type SlackWorkspaceBindingResource = {
+  workspaceId: string;
+  workspaceLabel?: string;
+  installationId: string;
+  oauthGrantState: "valid" | "missing" | "revoked" | "scope_missing" | "approval_required" | "workspace_mismatch" | "provider_unavailable" | "network_failed" | "unknown";
+  requiredScopeState: "valid" | "missing" | "stale" | "unknown";
+  validatedAt: string;
+  redactionStatus: SlackRedactionStatus;
+  safeEvidence?: Record<string, string>;
+};
+
+export type SlackConversationRouteResource = {
+  conversationId: string;
+  conversationType: "direct_message" | "channel";
+  selectedChannelState: "selected" | "not_selected" | "stale" | "archived" | "missing_membership" | "not_applicable";
+  validationState: "valid" | "partial" | "stale" | "blocked" | "missing_permission";
+  reasonCode?: string;
+  redactionStatus?: SlackRedactionStatus;
+  safeEvidence?: Record<string, string>;
+};
+
+export type SlackRoutePolicyResource = {
+  tenantId?: string;
+  connectorId: string;
+  workspaceBindingId: string;
+  selectedChannels: SlackConversationRouteResource[];
+  allowedDMUsers: string[];
+  allowedDMUserGroups: string[];
+  mentionGate: "agent_mention_required";
+  threadReplyMode: "channel_mentions_thread_rooted";
+  validationState: "valid" | "partial" | "stale" | "blocked" | "missing_permission";
+  reasonCode?: string;
+  validatedAt: string;
+  redactionStatus: SlackRedactionStatus;
+  safeEvidence?: Record<string, string>;
+};
+
+export type SlackHostedSetupResource = {
+  tenantId?: string;
+  connectorId: string;
+  connectorKind: "slack";
+  displayName: string;
+  status: "configured" | "healthy" | "degraded" | "failed" | "permission_blocked" | "rate_limited" | "unsupported_capability";
+  terminalState: SlackTerminalState;
+  oauthState: "not_started" | "started" | "callback_received" | "grant_valid" | "grant_missing" | "scope_missing" | "approval_required" | "revoked" | "redaction_suppressed";
+  routePolicyState: "none" | "partial" | "valid" | "stale";
+  deliveryEligible: boolean;
+  workspaceBindingId: string;
+  workspaceBinding?: SlackWorkspaceBindingResource;
+  routePolicy?: SlackRoutePolicyResource;
+  reasonCode?: string;
+  redactionStatus: SlackRedactionStatus;
+  createdAt: string;
+  updatedAt: string;
+  validatedAt?: string;
+  retentionExpiresAt: string;
+};
+
+export type SlackSmokeEvidenceResource = {
+  smokeEvidenceId: string;
+  tenantId?: string;
+  connectorId: string;
+  workspaceBindingId: string;
+  status: "passed" | "failed" | "skipped";
+  authorizationMode: "safe_live" | "fake_oauth" | "unavailable";
+  owner: string;
+  reason: string;
+  remainingRisk?: string;
+  validatedAt: string;
+  retentionExpiresAt: string;
+  redactionStatus: SlackRedactionStatus;
+  safeEvidence?: Record<string, string>;
+};
+
 export type ConnectorConformanceResultResource = {
   conformanceResultId: string;
   tenantId?: string;
@@ -1292,6 +1368,7 @@ export type DiscordConformanceEvidenceResponse = {
   items: ConnectorConformanceResultResource[];
 };
 export type TelegramConformanceEvidenceResponse = DiscordConformanceEvidenceResponse;
+export type SlackConformanceEvidenceResponse = DiscordConformanceEvidenceResponse;
 
 export type DiscordHostedReadinessProjection = {
   tenantId?: string;
@@ -1355,6 +1432,37 @@ export type ConfigTelegramConnectorResponse = {
   hostedReadiness: TelegramHostedReadinessProjection;
 };
 
+export type ConfigSlackConnectorResponse = {
+  enabled: boolean;
+  configured: boolean;
+  connectorId: string;
+  displayName: string;
+  apiBaseURL?: string;
+  botTokenSecretRef?: string;
+  workspaceId?: string;
+  workspaceBindingId?: string;
+  botUserId?: string;
+  allowedChannelIds: string[];
+  allowedDMUserIds: string[];
+  allowedDMUserGroups: string[];
+  hostedReadiness: {
+    tenantId?: string;
+    connectorId: string;
+    displayName: string;
+    terminalState: SlackTerminalState;
+    hostedReady: boolean;
+    localCompatible: boolean;
+    reasonCode?: string;
+    workspaceBindingId?: string;
+    workspaceId?: string;
+    botUserId?: string;
+    allowedChannelIds?: string[];
+    allowedDMUserIds?: string[];
+    allowedDMUserGroups?: string[];
+    redactionStatus: SlackRedactionStatus;
+  };
+};
+
 export type ConfigResponse = {
   environment: EnvironmentScope;
   bindAddr: string;
@@ -1366,6 +1474,7 @@ export type ConfigResponse = {
   connectors: {
     discord: ConfigDiscordConnectorResponse;
     telegram: ConfigTelegramConnectorResponse;
+    slack: ConfigSlackConnectorResponse;
   };
   mcp: Record<string, unknown>;
   sandbox: Record<string, unknown>;
@@ -1885,6 +1994,8 @@ export type CompleteSetupOAuthInput = {
   state: string;
   result: SetupOAuthResult;
   accountLabel?: string;
+  code?: string;
+  redirectUri?: string;
 };
 
 export type DisableSetupInput = {
@@ -2305,6 +2416,21 @@ export class DopeClient {
     return this.requestJSON<TelegramSmokeEvidenceResource>(`/v1/connectors/${encodePathComponent(connectorId.trim())}/telegram-smoke`, { tenant: tenantOptions });
   }
 
+  async getSlackSetup(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<SlackHostedSetupResource> {
+    return this.requestJSON<SlackHostedSetupResource>(`/v1/connectors/${encodePathComponent(connectorId.trim())}/slack-setup`, { tenant: tenantOptions });
+  }
+
+  async getSlackSmokeEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<SlackSmokeEvidenceResource> {
+    return this.requestJSON<SlackSmokeEvidenceResource>(`/v1/connectors/${encodePathComponent(connectorId.trim())}/slack-smoke`, { tenant: tenantOptions });
+  }
+
+  async getSlackLiveValidationSmokeEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<SlackSmokeEvidenceResource> {
+    return this.requestJSON<SlackSmokeEvidenceResource>("/v1/live-validations/slack-smoke", {
+      query: { connectorId: connectorId.trim() },
+      tenant: tenantOptions
+    });
+  }
+
   async getDiscordConformanceEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<DiscordConformanceEvidenceResponse> {
     return this.requestJSON<DiscordConformanceEvidenceResponse>("/v1/live-validations/discord-conformance", {
       query: { connectorId: connectorId.trim() },
@@ -2314,6 +2440,13 @@ export class DopeClient {
 
   async getTelegramConformanceEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<TelegramConformanceEvidenceResponse> {
     return this.requestJSON<TelegramConformanceEvidenceResponse>("/v1/live-validations/telegram-conformance", {
+      query: { connectorId: connectorId.trim() },
+      tenant: tenantOptions
+    });
+  }
+
+  async getSlackConformanceEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<SlackConformanceEvidenceResponse> {
+    return this.requestJSON<SlackConformanceEvidenceResponse>("/v1/live-validations/slack-conformance", {
       query: { connectorId: connectorId.trim() },
       tenant: tenantOptions
     });
@@ -2468,7 +2601,9 @@ export class DopeClient {
       body: {
         state: input.state.trim(),
         result: input.result,
-        accountLabel: input.accountLabel?.trim() || undefined
+        accountLabel: input.accountLabel?.trim() || undefined,
+        code: input.code?.trim() || undefined,
+        redirectUri: input.redirectUri?.trim() || undefined
       },
       tenant: tenantOptions
     });
