@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/matrix-route-policy-resource.schema.json",
+  "title": "MatrixRoutePolicyResource",
+  "type": "object",
+  "required": ["connectorId", "homeserverBindingId", "roomInvocationGate", "encryptedRoomPolicy", "validationState", "validatedAt", "redactionStatus"],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "homeserverBindingId": { "type": "string" },
+    "selectedRooms": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/conversationRoute" }
+    },
+    "allowedDirectUsers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "roomInvocationGate": { "const": "bot_mention_or_command_required" },
+    "configuredCommands": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "encryptedRoomPolicy": { "const": "unsupported" },
+    "validationState": {
+      "type": "string",
+      "enum": ["valid", "partial", "stale", "blocked", "missing_permission"]
+    },
+    "reasonCode": { "type": "string" },
+    "validatedAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "safeEvidence": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "conversationRoute": {
+      "type": "object",
+      "required": ["conversationId", "conversationType", "roomSelectionState", "validationState", "redactionStatus"],
+      "additionalProperties": false,
+      "properties": {
+        "conversationId": { "type": "string" },
+        "conversationType": { "type": "string", "enum": ["direct_message", "room"] },
+        "roomSelectionState": {
+          "type": "string",
+          "enum": ["selected", "not_selected", "stale", "left", "banned", "missing_membership", "encrypted_unsupported", "not_applicable"]
+        },
+        "validationState": {
+          "type": "string",
+          "enum": ["valid", "partial", "stale", "blocked", "missing_permission"]
+        },
+        "reasonCode": { "type": "string" },
+        "redactionStatus": {
+          "type": "string",
+          "enum": ["redacted", "suppressed", "redaction_failed"]
+        },
+        "safeEvidence": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+

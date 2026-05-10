@@ -11,6 +11,7 @@ export type TUIOptions = {
   stream: boolean;
   query?: string;
   slackSetupConnectorId?: string;
+  matrixSetupConnectorId?: string;
 };
 
 type CLIIO = {
@@ -38,6 +39,22 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
       io.stdout.write(`Slack Setup: ${setup.connectorId}\n`);
       io.stdout.write(`State: ${setup.terminalState}\n`);
       io.stdout.write(`OAuth: ${setup.oauthState}\n`);
+      io.stdout.write(`Route Policy: ${setup.routePolicyState}\n`);
+      io.stdout.write(`Delivery Eligible: ${setup.deliveryEligible ? "yes" : "no"}\n`);
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.matrixSetupConnectorId) {
+    try {
+      const setup = await client.getMatrixSetup(options.matrixSetupConnectorId);
+      io.stdout.write(`Matrix Setup: ${setup.connectorId}\n`);
+      io.stdout.write(`State: ${setup.terminalState}\n`);
+      io.stdout.write(`Homeserver: ${setup.homeserverState}\n`);
       io.stdout.write(`Route Policy: ${setup.routePolicyState}\n`);
       io.stdout.write(`Delivery Eligible: ${setup.deliveryEligible ? "yes" : "no"}\n`);
       return 0;
@@ -127,6 +144,9 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
       case "--slack-setup":
         options.slackSetupConnectorId = argv[++index] ?? options.slackSetupConnectorId;
         break;
+      case "--matrix-setup":
+        options.matrixSetupConnectorId = argv[++index] ?? options.matrixSetupConnectorId;
+        break;
       case "--help":
         throw new Error(helpText());
       default:
@@ -149,6 +169,7 @@ export function helpText(): string {
     "  --query <text>      Single-turn query",
     "  --stream            Use streaming mode",
     "  --slack-setup <id>  Print Slack hosted setup state",
+    "  --matrix-setup <id> Print Matrix hosted setup state",
     "  --help              Show this help"
   ].join("\n");
 }

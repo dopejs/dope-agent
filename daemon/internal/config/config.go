@@ -60,6 +60,7 @@ type ConnectorConfig struct {
 	Discord  DiscordConnectorConfig
 	Telegram TelegramConnectorConfig
 	Slack    SlackConnectorConfig
+	Matrix   MatrixConnectorConfig
 }
 
 type DiscordConnectorConfig struct {
@@ -104,6 +105,20 @@ type SlackConnectorConfig struct {
 	AllowedChannelIDs    []string
 	AllowedDMUserIDs     []string
 	AllowedDMUserGroups  []string
+}
+
+type MatrixConnectorConfig struct {
+	Enabled              bool
+	ConnectorID          string
+	DisplayName          string
+	HomeserverURL        string
+	HomeserverID         string
+	BotUserID            string
+	BotAccessToken       string
+	BotAccessTokenEnv    string
+	SelectedRoomIDs      []string
+	AllowedDirectUserIDs []string
+	ConfiguredCommands   []string
 }
 
 type SlackHostedReadinessProjection struct {
@@ -153,6 +168,64 @@ func (cfg SlackConnectorConfig) ProjectHostedReadiness(tenantID string) SlackHos
 		return projection
 	}
 	projection.ReasonCode = "slack_route_policy_validation_required"
+	return projection
+}
+
+type MatrixHostedReadinessProjection struct {
+	TenantID               string   `json:"tenantId,omitempty"`
+	ConnectorID            string   `json:"connectorId"`
+	DisplayName            string   `json:"displayName"`
+	TerminalState          string   `json:"terminalState"`
+	HostedReady            bool     `json:"hostedReady"`
+	LocalCompatible        bool     `json:"localCompatible"`
+	ReasonCode             string   `json:"reasonCode,omitempty"`
+	HomeserverURL          string   `json:"homeserverUrl,omitempty"`
+	HomeserverID           string   `json:"homeserverId,omitempty"`
+	BotUserID              string   `json:"botUserId,omitempty"`
+	BotAccessTokenSet      bool     `json:"botAccessTokenSet"`
+	SelectedRoomIDs        []string `json:"selectedRoomIds,omitempty"`
+	AllowedDirectUserIDs   []string `json:"allowedDirectUserIds,omitempty"`
+	ConfiguredCommands     []string `json:"configuredCommands,omitempty"`
+	HostedHomeserverPolicy string   `json:"hostedHomeserverPolicy"`
+	RedactionStatus        string   `json:"redactionStatus"`
+}
+
+func (cfg MatrixConnectorConfig) ProjectHostedReadiness(tenantID string) MatrixHostedReadinessProjection {
+	projection := MatrixHostedReadinessProjection{
+		TenantID:               strings.TrimSpace(tenantID),
+		ConnectorID:            strings.TrimSpace(cfg.ConnectorID),
+		DisplayName:            strings.TrimSpace(cfg.DisplayName),
+		TerminalState:          "action-required",
+		HostedReady:            false,
+		LocalCompatible:        cfg.Enabled && strings.TrimSpace(cfg.HomeserverURL) != "" && strings.TrimSpace(cfg.BotAccessToken) != "" && strings.TrimSpace(cfg.BotUserID) != "",
+		HomeserverURL:          strings.TrimSpace(cfg.HomeserverURL),
+		HomeserverID:           strings.TrimSpace(cfg.HomeserverID),
+		BotUserID:              strings.TrimSpace(cfg.BotUserID),
+		BotAccessTokenSet:      strings.TrimSpace(cfg.BotAccessToken) != "",
+		SelectedRoomIDs:        append([]string(nil), cfg.SelectedRoomIDs...),
+		AllowedDirectUserIDs:   append([]string(nil), cfg.AllowedDirectUserIDs...),
+		ConfiguredCommands:     append([]string(nil), cfg.ConfiguredCommands...),
+		HostedHomeserverPolicy: "unsupported",
+		RedactionStatus:        "redacted",
+	}
+	if !cfg.Enabled {
+		projection.TerminalState = "cancelled"
+		projection.ReasonCode = "disabled"
+		return projection
+	}
+	if strings.TrimSpace(cfg.HomeserverURL) == "" {
+		projection.ReasonCode = "matrix_homeserver_missing"
+		return projection
+	}
+	if strings.TrimSpace(cfg.BotAccessToken) == "" || strings.TrimSpace(cfg.BotUserID) == "" {
+		projection.ReasonCode = "matrix_bot_credential_missing"
+		return projection
+	}
+	if len(cfg.SelectedRoomIDs) == 0 && len(cfg.AllowedDirectUserIDs) == 0 {
+		projection.ReasonCode = "matrix_route_policy_missing"
+		return projection
+	}
+	projection.ReasonCode = "matrix_route_policy_validation_required"
 	return projection
 }
 
@@ -304,6 +377,7 @@ type fileConnectorConfig struct {
 	Discord  *fileDiscordConnectorConfig  `json:"discord"`
 	Telegram *fileTelegramConnectorConfig `json:"telegram"`
 	Slack    *fileSlackConnectorConfig    `json:"slack"`
+	Matrix   *fileMatrixConnectorConfig   `json:"matrix"`
 }
 
 type fileDiscordConnectorConfig struct {
@@ -348,6 +422,20 @@ type fileSlackConnectorConfig struct {
 	AllowedChannelIDs    []string `json:"allowedChannelIds"`
 	AllowedDMUserIDs     []string `json:"allowedDMUserIds"`
 	AllowedDMUserGroups  []string `json:"allowedDMUserGroups"`
+}
+
+type fileMatrixConnectorConfig struct {
+	Enabled              *bool    `json:"enabled"`
+	ConnectorID          string   `json:"connectorId"`
+	DisplayName          string   `json:"displayName"`
+	HomeserverURL        string   `json:"homeserverUrl"`
+	HomeserverID         string   `json:"homeserverId"`
+	BotUserID            string   `json:"botUserId"`
+	BotAccessToken       string   `json:"botAccessToken"`
+	BotAccessTokenEnv    string   `json:"botAccessTokenEnv"`
+	SelectedRoomIDs      []string `json:"selectedRoomIds"`
+	AllowedDirectUserIDs []string `json:"allowedDirectUserIds"`
+	ConfiguredCommands   []string `json:"configuredCommands"`
 }
 
 func Load() (Config, error) {
@@ -398,6 +486,10 @@ func Load() (Config, error) {
 			Slack: SlackConnectorConfig{
 				ConnectorID: "slack-main",
 				DisplayName: "Slack Main",
+			},
+			Matrix: MatrixConnectorConfig{
+				ConnectorID: "matrix-main",
+				DisplayName: "Matrix Main",
 			},
 		},
 	}
@@ -543,6 +635,9 @@ func applyFileConnectorConfig(cfg *ConnectorConfig, fileCfg fileConnectorConfig)
 	if fileCfg.Slack != nil {
 		applyFileSlackConnectorConfig(&cfg.Slack, *fileCfg.Slack)
 	}
+	if fileCfg.Matrix != nil {
+		applyFileMatrixConnectorConfig(&cfg.Matrix, *fileCfg.Matrix)
+	}
 }
 
 func applyFileDiscordConnectorConfig(cfg *DiscordConnectorConfig, fileCfg fileDiscordConnectorConfig) {
@@ -659,6 +754,42 @@ func applyFileSlackConnectorConfig(cfg *SlackConnectorConfig, fileCfg fileSlackC
 	}
 }
 
+func applyFileMatrixConnectorConfig(cfg *MatrixConnectorConfig, fileCfg fileMatrixConnectorConfig) {
+	if fileCfg.Enabled != nil {
+		cfg.Enabled = *fileCfg.Enabled
+	}
+	if fileCfg.ConnectorID != "" {
+		cfg.ConnectorID = fileCfg.ConnectorID
+	}
+	if fileCfg.DisplayName != "" {
+		cfg.DisplayName = fileCfg.DisplayName
+	}
+	if fileCfg.HomeserverURL != "" {
+		cfg.HomeserverURL = fileCfg.HomeserverURL
+	}
+	if fileCfg.HomeserverID != "" {
+		cfg.HomeserverID = fileCfg.HomeserverID
+	}
+	if fileCfg.BotUserID != "" {
+		cfg.BotUserID = fileCfg.BotUserID
+	}
+	if fileCfg.BotAccessToken != "" {
+		cfg.BotAccessToken = fileCfg.BotAccessToken
+	}
+	if fileCfg.BotAccessTokenEnv != "" {
+		cfg.BotAccessTokenEnv = fileCfg.BotAccessTokenEnv
+	}
+	if fileCfg.SelectedRoomIDs != nil {
+		cfg.SelectedRoomIDs = append([]string(nil), fileCfg.SelectedRoomIDs...)
+	}
+	if fileCfg.AllowedDirectUserIDs != nil {
+		cfg.AllowedDirectUserIDs = append([]string(nil), fileCfg.AllowedDirectUserIDs...)
+	}
+	if fileCfg.ConfiguredCommands != nil {
+		cfg.ConfiguredCommands = append([]string(nil), fileCfg.ConfiguredCommands...)
+	}
+}
+
 func applyEnvOverrides(cfg *Config) {
 	if envName := resolveEnvironment(getenv("DOPE_ENV", ""), cfg.Version); envName != "" {
 		cfg.Environment = envName
@@ -725,6 +856,18 @@ func applyEnvOverrides(cfg *Config) {
 	cfg.Connectors.Slack.AllowedChannelIDs = getenvCSV("DOPE_CONNECTORS_SLACK_ALLOWED_CHANNEL_IDS", cfg.Connectors.Slack.AllowedChannelIDs)
 	cfg.Connectors.Slack.AllowedDMUserIDs = getenvCSV("DOPE_CONNECTORS_SLACK_ALLOWED_DM_USER_IDS", cfg.Connectors.Slack.AllowedDMUserIDs)
 	cfg.Connectors.Slack.AllowedDMUserGroups = getenvCSV("DOPE_CONNECTORS_SLACK_ALLOWED_DM_USER_GROUPS", cfg.Connectors.Slack.AllowedDMUserGroups)
+
+	cfg.Connectors.Matrix.Enabled = getenvBool("DOPE_CONNECTORS_MATRIX_ENABLED", cfg.Connectors.Matrix.Enabled)
+	cfg.Connectors.Matrix.ConnectorID = getenv("DOPE_CONNECTORS_MATRIX_CONNECTOR_ID", cfg.Connectors.Matrix.ConnectorID)
+	cfg.Connectors.Matrix.DisplayName = getenv("DOPE_CONNECTORS_MATRIX_DISPLAY_NAME", cfg.Connectors.Matrix.DisplayName)
+	cfg.Connectors.Matrix.HomeserverURL = getenv("DOPE_CONNECTORS_MATRIX_HOMESERVER_URL", cfg.Connectors.Matrix.HomeserverURL)
+	cfg.Connectors.Matrix.HomeserverID = getenv("DOPE_CONNECTORS_MATRIX_HOMESERVER_ID", cfg.Connectors.Matrix.HomeserverID)
+	cfg.Connectors.Matrix.BotUserID = getenv("DOPE_CONNECTORS_MATRIX_BOT_USER_ID", cfg.Connectors.Matrix.BotUserID)
+	cfg.Connectors.Matrix.BotAccessToken = getenv("DOPE_CONNECTORS_MATRIX_BOT_ACCESS_TOKEN", cfg.Connectors.Matrix.BotAccessToken)
+	cfg.Connectors.Matrix.BotAccessTokenEnv = getenv("DOPE_CONNECTORS_MATRIX_BOT_ACCESS_TOKEN_ENV", cfg.Connectors.Matrix.BotAccessTokenEnv)
+	cfg.Connectors.Matrix.SelectedRoomIDs = getenvCSV("DOPE_CONNECTORS_MATRIX_SELECTED_ROOM_IDS", cfg.Connectors.Matrix.SelectedRoomIDs)
+	cfg.Connectors.Matrix.AllowedDirectUserIDs = getenvCSV("DOPE_CONNECTORS_MATRIX_ALLOWED_DIRECT_USER_IDS", cfg.Connectors.Matrix.AllowedDirectUserIDs)
+	cfg.Connectors.Matrix.ConfiguredCommands = getenvCSV("DOPE_CONNECTORS_MATRIX_CONFIGURED_COMMANDS", cfg.Connectors.Matrix.ConfiguredCommands)
 }
 
 func resolveSecretRefs(cfg *Config) {
@@ -739,6 +882,9 @@ func resolveSecretRefs(cfg *Config) {
 	}
 	if cfg.Connectors.Slack.OAuthClientSecret == "" && cfg.Connectors.Slack.OAuthClientSecretEnv != "" {
 		cfg.Connectors.Slack.OAuthClientSecret = os.Getenv(cfg.Connectors.Slack.OAuthClientSecretEnv)
+	}
+	if cfg.Connectors.Matrix.BotAccessToken == "" && cfg.Connectors.Matrix.BotAccessTokenEnv != "" {
+		cfg.Connectors.Matrix.BotAccessToken = os.Getenv(cfg.Connectors.Matrix.BotAccessTokenEnv)
 	}
 }
 

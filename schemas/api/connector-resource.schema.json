@@ -47,6 +47,9 @@
     "slackSetup": { "$ref": "./slack-hosted-setup-resource.schema.json" },
     "slackRoutePolicy": { "$ref": "./slack-route-policy-resource.schema.json" },
     "slackSmokeEvidence": { "$ref": "./slack-smoke-evidence-resource.schema.json" },
+    "matrixSetup": { "$ref": "./matrix-hosted-setup-resource.schema.json" },
+    "matrixRoutePolicy": { "$ref": "./matrix-route-policy-resource.schema.json" },
+    "matrixSmokeEvidence": { "$ref": "./matrix-smoke-evidence-resource.schema.json" },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }
   }

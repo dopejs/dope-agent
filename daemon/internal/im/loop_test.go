@@ -256,6 +256,119 @@ func TestMessageLoopProcessesSingleTurnAndDeduplicates(t *testing.T) {
 	}
 }
 
+func TestMessageLoopProcessesMatrixInboundAndPublishesMatrixRouteEvidence(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	eventBus := events.NewBus()
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&loopTestProvider{})
+	if err := dispatcher.SetDefaultProvider("echo"); err != nil {
+		t.Fatalf("SetDefaultProvider returned error: %v", err)
+	}
+	dispatcher.SetDefaultModel("echo-v1")
+	providerManager := providers.NewManager(config.Config{
+		LLM: config.LLMConfig{
+			DefaultProvider: "echo",
+			DefaultModel:    "echo-v1",
+		},
+	}, dispatcher, nil)
+	chatService := chat.NewService(dispatcher, providerManager, nil, eventBus, sqliteStore)
+	runtimeManager := runtime.NewManager()
+	loop := NewMessageLoop(router.NewSessionRouter(), runtimeManager, checkpoints.NewManager(sqliteStore, runtimeManager), eventBus, sqliteStore, chatService)
+	replySender := &loopTestReplySender{}
+
+	connector := connectors.Connector{
+		TenantID:    "ten_matrix",
+		ConnectorID: "matrix-main",
+		Kind:        "matrix",
+		DisplayName: "Matrix Main",
+		Status:      connectors.StatusHealthy,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	inbound := imtypes.InboundMessage{
+		TenantID:                "ten_matrix",
+		ConnectorID:             "matrix-main",
+		ConnectorKind:           "matrix",
+		ExternalMessageID:       "$event_redacted",
+		AccountID:               "@bot:example.org",
+		ConnectorAccountID:      "matrix.example.org",
+		ChannelID:               "!room:example.org",
+		PeerID:                  "!room:example.org",
+		ThreadID:                "!room:example.org",
+		ChannelOrConversationID: "!room:example.org",
+		ProviderMessageID:       "$event_redacted",
+		EquivalentRuleID:        "matrix_homeserver_conversation_event_id",
+		AuthorID:                "@alice:example.org",
+		Content:                 "hello matrix",
+		Kind:                    router.SessionKindGroup,
+		ReplyToMessageID:        "$event_redacted",
+		ReceivedAt:              time.Now().UTC(),
+	}
+
+	result, err := loop.ProcessSingleTurn(context.Background(), connector, inbound, replySender)
+	if err != nil {
+		t.Fatalf("ProcessSingleTurn returned error: %v", err)
+	}
+	if result.Run.Entrypoint != "matrix.message" || result.Session.Channel != "matrix" {
+		t.Fatalf("unexpected Matrix run/session: run=%+v session=%+v", result.Run, result.Session)
+	}
+	if replySender.last.ConnectorID != "matrix-main" || replySender.last.ReplyToExternalMessageID != "$event_redacted" {
+		t.Fatalf("unexpected Matrix reply target: %+v", replySender.last)
+	}
+
+	persisted, ok, err := sqliteStore.GetConnectorMessageByExternalIDForTenant(context.Background(), "ten_matrix", "matrix-main", imtypes.DeliveryDirectionInbound, "$event_redacted")
+	if err != nil || !ok {
+		t.Fatalf("GetConnectorMessageByExternalID ok=%v err=%v", ok, err)
+	}
+	if persisted.ConnectorAccountID != "matrix.example.org" || persisted.ChannelOrConversationID != "!room:example.org" || persisted.ProviderMessageID != "$event_redacted" {
+		t.Fatalf("Matrix inbound identity was not retained: %+v", persisted)
+	}
+
+	var routeEvent events.Event
+	var runCreated events.Event
+	for _, event := range eventBus.List(events.Filter{}) {
+		if event.Name == events.ConnectorEventRouteOutcomeRecorded && event.Scope.ConnectorID == "matrix-main" {
+			routeEvent = event
+		}
+		if event.Name == "run.created" && event.Scope.RunID == result.Run.RunID {
+			runCreated = event
+		}
+	}
+	if routeEvent.Name == "" {
+		t.Fatalf("expected Matrix route outcome event, got %+v", eventBus.List(events.Filter{}))
+	}
+	if routeEvent.Payload["homeserverId"] != "matrix.example.org" || routeEvent.Payload["matrixEventId"] != "$event_redacted" || routeEvent.Payload["redactionStatus"] != "redacted" {
+		t.Fatalf("unexpected Matrix route outcome payload: %+v", routeEvent.Payload)
+	}
+	if runCreated.Payload["source"] != "connector.matrix" {
+		t.Fatalf("expected Matrix run source, got %+v", runCreated.Payload)
+	}
+
+	duplicate, err := loop.ProcessSingleTurn(context.Background(), connector, inbound, replySender)
+	if err != nil {
+		t.Fatalf("ProcessSingleTurn duplicate returned error: %v", err)
+	}
+	if !duplicate.Duplicate {
+		t.Fatal("expected Matrix duplicate to be suppressed")
+	}
+	var duplicateRoute events.Event
+	for _, event := range eventBus.List(events.Filter{Category: "connector"}) {
+		if event.Name == events.ConnectorEventRouteOutcomeRecorded && event.Payload["outcome"] == "duplicate" {
+			duplicateRoute = event
+		}
+	}
+	if duplicateRoute.Payload["reasonCode"] != "duplicate_inbound" {
+		t.Fatalf("expected duplicate Matrix route evidence, got %+v", duplicateRoute)
+	}
+}
+
 func TestMessageLoopSlackWorkspaceConversationMessageIdentityDedupesReplay(t *testing.T) {
 	t.Parallel()
 

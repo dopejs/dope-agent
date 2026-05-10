@@ -35,6 +35,7 @@ describe("IntegrationDiagnosticsView", () => {
           diagnostic({ status: "blocked", reasonCode: "scope_missing", remediationOwner: "tenant_admin", retrySafety: "blocked" }),
           diagnostic({ status: "degraded", reasonCode: "limited_diagnostic", remediationOwner: "operator", retrySafety: "no_action_needed" }),
           diagnostic({ status: "degraded", reasonCode: "blocked_route", remediationOwner: "tenant_admin", retrySafety: "blocked" }),
+          diagnostic({ status: "degraded", providerKind: "matrix", capability: "matrix.reply", reasonCode: "rate_limited", remediationOwner: "provider", retrySafety: "retryable" }),
           diagnostic({ status: "unsupported", reasonCode: "unsupported_diagnostic", remediationOwner: "operator" }),
           diagnostic({ status: "blocked", reasonCode: "token_expired", remediationOwner: "product_user", freshnessState: "stale" }),
           diagnostic({ status: "unknown", reasonCode: "redaction_failed_closed", remediationOwner: "operator", redactionStatus: "failed_closed" })
@@ -44,8 +45,9 @@ describe("IntegrationDiagnosticsView", () => {
 
     expect(screen.getByText("Healthy")).toBeTruthy();
     expect(screen.getAllByText("Blocked")).toHaveLength(2);
-    expect(screen.getAllByText("Limited")).toHaveLength(2);
+    expect(screen.getAllByText("Limited")).toHaveLength(3);
     expect(screen.getByText("Connector route blocked")).toBeTruthy();
+    expect(screen.getByText("Connector rate limited")).toBeTruthy();
     expect(screen.getByText("Unsupported")).toBeTruthy();
     expect(screen.getByText("stale")).toBeTruthy();
     expect(screen.getByText("Diagnostic detail suppressed.")).toBeTruthy();

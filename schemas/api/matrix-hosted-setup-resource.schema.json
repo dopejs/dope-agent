@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/matrix-hosted-setup-resource.schema.json",
+  "title": "MatrixHostedSetupResource",
+  "type": "object",
+  "required": ["connectorId", "connectorKind", "displayName", "status", "terminalState", "botCredentialState", "homeserverState", "routePolicyState", "deliveryEligible", "homeserverBindingId", "redactionStatus", "createdAt", "updatedAt", "retentionExpiresAt"],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "connectorKind": { "const": "matrix" },
+    "displayName": { "type": "string" },
+    "homeserverBindingId": { "type": "string" },
+    "status": { "type": "string", "enum": ["configured", "healthy", "degraded", "failed", "permission_blocked", "rate_limited", "unsupported_capability", "disabled"] },
+    "terminalState": { "type": "string", "enum": ["ready", "degraded", "unavailable", "cancelled", "action-required"] },
+    "botCredentialState": { "type": "string", "enum": ["not_started", "submitted", "valid", "invalid", "revoked", "permission_missing", "redaction_suppressed", "unknown"] },
+    "homeserverState": { "type": "string", "enum": ["reachable", "unreachable", "unsupported", "rate_limited", "federation_failed", "network_failed", "unknown"] },
+    "routePolicyState": { "type": "string", "enum": ["none", "partial", "valid", "stale", "blocked"] },
+    "deliveryEligible": { "type": "boolean" },
+    "homeserverBinding": { "$ref": "#/$defs/homeserverBinding" },
+    "routePolicy": { "$ref": "./matrix-route-policy-resource.schema.json" },
+    "diagnostic": { "$ref": "#/$defs/matrixDiagnosticSummary" },
+    "reasonCode": { "type": "string" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "validatedAt": { "type": "string", "format": "date-time" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "homeserverBinding": {
+      "type": "object",
+      "required": ["homeserverUrl", "botUserId", "authorizationState", "homeserverCapabilityState", "validatedAt", "redactionStatus"],
+      "additionalProperties": false,
+      "properties": {
+        "homeserverUrl": { "type": "string" },
+        "homeserverName": { "type": "string" },
+        "botUserId": { "type": "string" },
+        "botDeviceId": { "type": "string" },
+        "authorizationState": { "type": "string", "enum": ["valid", "missing", "revoked", "permission_missing", "ownership_mismatch", "provider_unavailable", "network_failed", "unknown"] },
+        "homeserverCapabilityState": { "type": "string", "enum": ["valid", "unsupported", "stale", "rate_limited", "unknown"] },
+        "validatedAt": { "type": "string", "format": "date-time" },
+        "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] },
+        "safeEvidence": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "matrixDiagnosticSummary": {
+      "type": "object",
+      "required": ["reasonCode", "matrixCondition", "remediationOwner", "freshnessState"],
+      "additionalProperties": false,
+      "properties": {
+        "reasonCode": { "type": "string" },
+        "matrixCondition": { "type": "string" },
+        "remediationOwner": { "type": "string", "enum": ["product_user", "tenant_admin", "operator", "provider", "none_required"] },
+        "freshnessState": { "type": "string", "enum": ["fresh", "stale"] }
+      }
+    }
+  }
+}

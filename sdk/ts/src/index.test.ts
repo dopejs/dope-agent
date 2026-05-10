@@ -693,6 +693,113 @@ describe("DopeClient", () => {
     expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/live-validations/slack-conformance?connectorId=slack-main", expect.anything());
   });
 
+  it("calls Matrix hosted setup, smoke, live smoke, and conformance routes", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_matrix",
+        connectorId: "matrix-main",
+        connectorKind: "matrix",
+        displayName: "Matrix Main",
+        status: "degraded",
+        terminalState: "action-required",
+        botCredentialState: "valid",
+        homeserverState: "reachable",
+        routePolicyState: "valid",
+        deliveryEligible: false,
+        homeserverBindingId: "matrix_hs_1",
+        reasonCode: "blocked_route",
+        redactionStatus: "redacted",
+        homeserverBinding: {
+          homeserverUrl: "https://matrix.example.org",
+          botUserId: "@bot:example.org",
+          authorizationState: "valid",
+          homeserverCapabilityState: "valid",
+          validatedAt: "2026-05-10T10:01:00Z",
+          redactionStatus: "redacted"
+        },
+        routePolicy: {
+          connectorId: "matrix-main",
+          homeserverBindingId: "matrix_hs_1",
+          selectedRooms: [{ conversationId: "!room:example.org", conversationType: "room", roomSelectionState: "selected", validationState: "valid", redactionStatus: "redacted" }],
+          allowedDirectUsers: ["@alice:example.org"],
+          roomInvocationGate: "bot_mention_or_command_required",
+          configuredCommands: ["!dope"],
+          encryptedRoomPolicy: "unsupported",
+          validationState: "valid",
+          validatedAt: "2026-05-10T10:01:00Z",
+          redactionStatus: "redacted"
+        }
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        smokeEvidenceId: "matrix_smoke_1",
+        tenantId: "ten_matrix",
+        connectorId: "matrix-main",
+        homeserverBindingId: "matrix_hs_1",
+        status: "skipped",
+        authorizationMode: "unavailable",
+        owner: "operator",
+        reason: "safe_matrix_authorization_unavailable",
+        remainingRisk: "No live Matrix hosted smoke was run in this release validation.",
+        validatedAt: "2026-05-10T10:02:00Z",
+        retentionExpiresAt: "2026-08-08T10:02:00Z",
+        redactionStatus: "redacted",
+        safeEvidence: { policy: "structured_skip" }
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        smokeEvidenceId: "matrix_smoke_live_1",
+        tenantId: "ten_matrix",
+        connectorId: "matrix-main",
+        homeserverBindingId: "matrix_hs_1",
+        status: "passed",
+        authorizationMode: "fake_matrix",
+        owner: "operator",
+        reason: "healthy",
+        validatedAt: "2026-05-10T10:03:00Z",
+        retentionExpiresAt: "2026-08-08T10:03:00Z",
+        redactionStatus: "redacted",
+        safeEvidence: { mode: "fake" }
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        tenantId: "ten_matrix",
+        connectorId: "matrix-main",
+        items: [{
+          conformanceResultId: "conf_matrix_1",
+          tenantId: "ten_matrix",
+          connectorKind: "matrix",
+          connectorId: "matrix-main",
+          scenarioId: "matrix_hosted_setup",
+          area: "tenant_ownership",
+          result: "pass",
+          redactionStatus: "redacted",
+          evidenceTimestamp: "2026-05-10T10:02:00Z",
+          retentionExpiresAt: "2026-08-08T10:02:00Z"
+        }]
+      }));
+
+    const client = createDopeClient({
+      baseURL: "http://127.0.0.1:19192",
+      accessToken: "token",
+      defaultTenantId: "ten_matrix",
+      fetchImpl
+    });
+
+    const setup = await client.getMatrixSetup(" matrix-main ");
+    const smoke = await client.getMatrixSmokeEvidence("matrix-main");
+    const liveSmoke = await client.getMatrixLiveValidationSmokeEvidence("matrix-main");
+    const conformance = await client.getMatrixConformanceEvidence("matrix-main");
+
+    expect(setup.connectorKind).toBe("matrix");
+    expect(setup.routePolicy?.encryptedRoomPolicy).toBe("unsupported");
+    expect(smoke.authorizationMode).toBe("unavailable");
+    expect(liveSmoke.authorizationMode).toBe("fake_matrix");
+    expect(conformance.items[0]?.connectorKind).toBe("matrix");
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/connectors/matrix-main/matrix-setup", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/connectors/matrix-main/matrix-smoke", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/live-validations/matrix-smoke?connectorId=matrix-main", expect.anything());
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/live-validations/matrix-conformance?connectorId=matrix-main", expect.anything());
+  });
+
   it("calls integration diagnostic inspection routes", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

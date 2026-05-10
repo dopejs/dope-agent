@@ -9,6 +9,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	baseconnectors "github.com/dopejs/dope-agent/daemon/internal/connectors"
+	matrixconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/matrix"
 	slackconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/slack"
 	telegramconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/telegram"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
@@ -75,7 +76,27 @@ type RecordSlackSmokeRequest struct {
 	SafeEvidence       map[string]string `json:"safeEvidence,omitempty"`
 }
 
-func handleLiveValidationRoutes(manager *livevalidation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+type RecordMatrixSmokeRequest struct {
+	ConnectorID         string            `json:"connectorId"`
+	HomeserverBindingID string            `json:"homeserverBindingId,omitempty"`
+	Status              string            `json:"status"`
+	AuthorizationMode   string            `json:"authorizationMode"`
+	Owner               string            `json:"owner,omitempty"`
+	Reason              string            `json:"reason,omitempty"`
+	RemainingRisk       string            `json:"remainingRisk,omitempty"`
+	ValidatedAt         *time.Time        `json:"validatedAt,omitempty"`
+	SafeEvidence        map[string]string `json:"safeEvidence,omitempty"`
+}
+
+type matrixSmokeExecutor interface {
+	ExecuteMatrixSmoke(ctx context.Context, tenantID string, input RecordMatrixSmokeRequest) (store.MatrixSmokeEvidenceRecord, error)
+}
+
+func handleLiveValidationRoutes(manager *livevalidation.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, matrixExecutors ...matrixSmokeExecutor) {
+	var matrixExecutor matrixSmokeExecutor
+	if len(matrixExecutors) > 0 {
+		matrixExecutor = matrixExecutors[0]
+	}
 	if manager == nil {
 		writeError(w, http.StatusInternalServerError, "live validation manager is not configured")
 		return
@@ -116,6 +137,14 @@ func handleLiveValidationRoutes(manager *livevalidation.Manager, eventBus *event
 	}
 	if path == "slack-smoke" {
 		handleLiveValidationSlackSmoke(sqliteStore, w, r)
+		return
+	}
+	if path == "matrix-conformance" {
+		handleLiveValidationConnectorConformance(sqliteStore, w, r)
+		return
+	}
+	if path == "matrix-smoke" {
+		handleLiveValidationMatrixSmoke(sqliteStore, matrixExecutor, w, r)
 		return
 	}
 	handleLiveValidationItem(manager, eventBus, sqliteStore, path, w, r)
@@ -277,6 +306,140 @@ func handleLiveValidationSlackSmoke(sqliteStore *store.SQLiteStore, w http.Respo
 		return
 	}
 	writeJSON(w, http.StatusOK, projectSlackSmokeEvidenceResource(evidence))
+}
+
+func handleLiveValidationMatrixSmoke(sqliteStore *store.SQLiteStore, executor matrixSmokeExecutor, w http.ResponseWriter, r *http.Request) {
+	if sqliteStore == nil {
+		writeError(w, http.StatusInternalServerError, "connector smoke evidence store is not configured")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+	case http.MethodPost:
+		recordMatrixSmokeEvidence(sqliteStore, executor, w, r)
+		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	tenantContext, ok := tenantctx.FromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if _, reason := requireHostedCredentialReadAny(r, identity.PermissionConnectorsManage); reason != "" {
+		writeCredentialDenial(w, http.StatusForbidden, reason)
+		return
+	}
+	connectorID := strings.TrimSpace(r.URL.Query().Get("connectorId"))
+	if connectorID == "" {
+		writeError(w, http.StatusBadRequest, "connectorId is required")
+		return
+	}
+	evidence, found, err := sqliteStore.LatestMatrixSmokeEvidence(r.Context(), tenantContext.TenantID, connectorID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, evidence)
+}
+
+func recordMatrixSmokeEvidence(sqliteStore *store.SQLiteStore, executor matrixSmokeExecutor, w http.ResponseWriter, r *http.Request) {
+	tenantContext, ok := tenantctx.FromContext(r.Context())
+	if !ok || tenantContext.TenantID == "" {
+		writeCredentialDenial(w, http.StatusForbidden, "tenant_context_missing")
+		return
+	}
+	if !identity.HasPermission(tenantContext.Permissions, identity.PermissionLiveValidationExecute) {
+		writeCredentialDenial(w, http.StatusForbidden, "live_validation_execute_required")
+		return
+	}
+	var input RecordMatrixSmokeRequest
+	if err := decodeJSONBody(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(input.ConnectorID) == "" {
+		input.ConnectorID = strings.TrimSpace(r.URL.Query().Get("connectorId"))
+	}
+	if strings.TrimSpace(input.ConnectorID) == "" {
+		writeError(w, http.StatusBadRequest, "connectorId is required")
+		return
+	}
+	var record store.MatrixSmokeEvidenceRecord
+	var err error
+	if matrixconnector.SmokeAuthorizationMode(strings.TrimSpace(input.AuthorizationMode)) == matrixconnector.SmokeAuthorizationSafeLive {
+		if executor == nil {
+			writeError(w, http.StatusBadRequest, "matrix safe-live smoke executor is not configured")
+			return
+		}
+		record, err = executor.ExecuteMatrixSmoke(r.Context(), tenantContext.TenantID, input)
+	} else {
+		record, err = matrixSmokeRecordFromRequest(tenantContext.TenantID, input)
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := sqliteStore.SaveMatrixSmokeEvidence(r.Context(), record); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, record)
+}
+
+func matrixSmokeRecordFromRequest(tenantID string, input RecordMatrixSmokeRequest) (store.MatrixSmokeEvidenceRecord, error) {
+	mode := matrixconnector.SmokeAuthorizationMode(strings.TrimSpace(input.AuthorizationMode))
+	status := matrixconnector.SmokeStatus(strings.TrimSpace(input.Status))
+	if status == "" {
+		status = matrixconnector.SmokeSkipped
+	}
+	if mode == "" {
+		mode = matrixconnector.SmokeAuthorizationUnavailable
+	}
+	switch status {
+	case matrixconnector.SmokeSkipped:
+		if mode != matrixconnector.SmokeAuthorizationUnavailable {
+			return store.MatrixSmokeEvidenceRecord{}, errors.New("skipped Matrix smoke must use unavailable authorization mode")
+		}
+	case matrixconnector.SmokePassed, matrixconnector.SmokeFailed:
+		if mode != matrixconnector.SmokeAuthorizationFakeMatrix && mode != matrixconnector.SmokeAuthorizationSafeLive {
+			return store.MatrixSmokeEvidenceRecord{}, errors.New("passed or failed Matrix smoke requires fake_matrix or safe_live authorization mode")
+		}
+	default:
+		return store.MatrixSmokeEvidenceRecord{}, errors.New("status must be passed, failed, or skipped")
+	}
+	validatedAt := time.Now().UTC()
+	if input.ValidatedAt != nil {
+		validatedAt = input.ValidatedAt.UTC()
+	}
+	connectorID := strings.TrimSpace(input.ConnectorID)
+	bindingID := firstNonEmptyString(input.HomeserverBindingID, "matrix_homeserver_"+connectorID)
+	owner := firstNonEmptyString(input.Owner, "operator")
+	reason := firstNonEmptyString(input.Reason, "safe_matrix_authorization_unavailable")
+	remainingRisk := input.RemainingRisk
+	if strings.TrimSpace(remainingRisk) == "" && status == matrixconnector.SmokeSkipped {
+		remainingRisk = "No live Matrix hosted smoke was run; release review must consume this structured skip."
+	}
+	return store.MatrixSmokeEvidenceRecord{
+		SmokeEvidenceID:     "matrix_smoke_" + connectorID,
+		TenantID:            tenantID,
+		ConnectorID:         connectorID,
+		HomeserverBindingID: bindingID,
+		Status:              string(status),
+		AuthorizationMode:   string(mode),
+		Owner:               owner,
+		Reason:              reason,
+		RemainingRisk:       remainingRisk,
+		ValidatedAt:         validatedAt,
+		RetentionExpiresAt:  validatedAt.Add(90 * 24 * time.Hour),
+		RedactionStatus:     string(baseconnectors.RedactionStatusRedacted),
+		SafeEvidence:        input.SafeEvidence,
+	}, nil
 }
 
 func recordSlackSmokeEvidence(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {

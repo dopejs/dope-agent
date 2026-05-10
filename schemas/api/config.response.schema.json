@@ -140,7 +140,7 @@
     },
     "connectors": {
       "type": "object",
-      "required": ["discord", "telegram", "slack"],
+      "required": ["discord", "telegram", "slack", "matrix"],
       "additionalProperties": false,
       "properties": {
         "discord": {
@@ -374,6 +374,91 @@
                   "type": "array",
                   "items": { "type": "string" }
                 },
+                "redactionStatus": {
+                  "type": "string",
+                  "enum": ["redacted", "suppressed", "redaction_failed"]
+                }
+              }
+            }
+          }
+        },
+        "matrix": {
+          "type": "object",
+          "required": [
+            "enabled",
+            "configured",
+            "connectorId",
+            "displayName",
+            "botAccessTokenSet",
+            "selectedRoomIds",
+            "allowedDirectUserIds",
+            "configuredCommands",
+            "hostedReadiness"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "configured": { "type": "boolean" },
+            "connectorId": { "type": "string" },
+            "displayName": { "type": "string" },
+            "homeserverUrl": { "type": "string" },
+            "homeserverId": { "type": "string" },
+            "botUserId": { "type": "string" },
+            "botAccessTokenSet": { "type": "boolean" },
+            "botAccessTokenEnv": { "type": "string" },
+            "selectedRoomIds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "allowedDirectUserIds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "configuredCommands": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "hostedReadiness": {
+              "type": "object",
+              "required": [
+                "connectorId",
+                "displayName",
+                "terminalState",
+                "hostedReady",
+                "localCompatible",
+                "botAccessTokenSet",
+                "hostedHomeserverPolicy",
+                "redactionStatus"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "tenantId": { "type": "string" },
+                "connectorId": { "type": "string" },
+                "displayName": { "type": "string" },
+                "terminalState": {
+                  "type": "string",
+                  "enum": ["ready", "degraded", "unavailable", "cancelled", "action-required"]
+                },
+                "hostedReady": { "type": "boolean" },
+                "localCompatible": { "type": "boolean" },
+                "reasonCode": { "type": "string" },
+                "homeserverUrl": { "type": "string" },
+                "homeserverId": { "type": "string" },
+                "botUserId": { "type": "string" },
+                "botAccessTokenSet": { "type": "boolean" },
+                "selectedRoomIds": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "allowedDirectUserIds": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "configuredCommands": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "hostedHomeserverPolicy": { "const": "unsupported" },
                 "redactionStatus": {
                   "type": "string",
                   "enum": ["redacted", "suppressed", "redaction_failed"]

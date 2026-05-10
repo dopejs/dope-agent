@@ -106,7 +106,7 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		return ProcessResult{}, err
 	}
 	if !created {
-		_, _ = l.publishConnectorEvent(ctx, "connector.inbound_duplicate_detected", connector, router.Session{}, "", "", map[string]any{
+		_, _ = l.publishConnectorEvent(ctx, events.ConnectorEventInboundDuplicateDetected, connector, router.Session{}, "", "", map[string]any{
 			"tenantId":                persistedInbound.TenantID,
 			"connectorId":             connector.ConnectorID,
 			"connectorAccountId":      persistedInbound.ConnectorAccountID,
@@ -116,6 +116,7 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 			"existingDeliveryId":      persistedInbound.DeliveryID,
 			"redactionStatus":         "redacted",
 		})
+		_ = l.publishMatrixRouteOutcome(ctx, connector, router.Session{}, persistedInbound, "duplicate", "duplicate_inbound")
 		return ProcessResult{Outcome: "duplicate", ReasonCode: "duplicate_inbound", Duplicate: true}, nil
 	}
 
@@ -140,6 +141,9 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		return ProcessResult{}, err
 	}
 	if err := l.publishSessionRouteEvents(ctx, connector, session, createdSession, inbound); err != nil {
+		return ProcessResult{}, err
+	}
+	if err := l.publishMatrixRouteOutcome(ctx, connector, session, persistedInbound, "accepted", "accepted"); err != nil {
 		return ProcessResult{}, err
 	}
 	if _, err := l.publishConnectorEvent(ctx, "connector.ingress_accepted", connector, session, "", "", map[string]any{
@@ -534,7 +538,7 @@ func (l *MessageLoop) createRunAndStep(ctx context.Context, connector connectors
 		"entrypoint": run.Entrypoint,
 		"goal":       run.Goal,
 		"status":     run.Status,
-		"source":     "connector.discord",
+		"source":     connectorSource(connector.Kind),
 		"messageId":  inbound.ExternalMessageID,
 	}); err != nil {
 		return runtime.Run{}, runtime.Step{}, err
@@ -626,7 +630,7 @@ func (l *MessageLoop) publishSessionRouteEvents(ctx context.Context, connector c
 			"channel":     session.Channel,
 			"routingKey":  session.RoutingKey,
 			"generation":  session.Generation,
-			"source":      "connector.discord",
+			"source":      connectorSource(connector.Kind),
 			"connectorId": connector.ConnectorID,
 			"messageId":   inbound.ExternalMessageID,
 		}); err != nil {
@@ -638,11 +642,49 @@ func (l *MessageLoop) publishSessionRouteEvents(ctx context.Context, connector c
 		"channel":     session.Channel,
 		"routingKey":  session.RoutingKey,
 		"generation":  session.Generation,
-		"source":      "connector.discord",
+		"source":      connectorSource(connector.Kind),
 		"connectorId": connector.ConnectorID,
 		"messageId":   inbound.ExternalMessageID,
 	})
 	return err
+}
+
+func (l *MessageLoop) publishMatrixRouteOutcome(ctx context.Context, connector connectors.Connector, session router.Session, record imtypes.MessageRecord, outcome, reasonCode string) error {
+	if connector.Kind != "matrix" {
+		return nil
+	}
+	_, err := l.publishConnectorEvent(ctx, events.ConnectorEventRouteOutcomeRecorded, connector, session, "", "", map[string]any{
+		"tenantId":                record.TenantID,
+		"connectorId":             connector.ConnectorID,
+		"homeserverId":            record.ConnectorAccountID,
+		"conversationId":          record.ChannelOrConversationID,
+		"matrixEventId":           record.ProviderMessageID,
+		"outcome":                 outcome,
+		"reasonCode":              reasonCode,
+		"surface":                 matrixRouteSurface(record),
+		"messageDeliveryId":       record.DeliveryID,
+		"connectorAccountId":      record.ConnectorAccountID,
+		"channelOrConversationId": record.ChannelOrConversationID,
+		"providerMessageId":       record.ProviderMessageID,
+		"equivalentRuleId":        record.EquivalentRuleID,
+		"redactionStatus":         "redacted",
+	})
+	return err
+}
+
+func matrixRouteSurface(record imtypes.MessageRecord) string {
+	if strings.TrimSpace(record.PeerID) != "" && strings.TrimSpace(record.ChannelID) == "" {
+		return "direct"
+	}
+	return "room"
+}
+
+func connectorSource(kind string) string {
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return "connector"
+	}
+	return "connector." + kind
 }
 
 func (l *MessageLoop) publishConnectorEvent(ctx context.Context, name string, connector connectors.Connector, session router.Session, runID, stepID string, payload map[string]any) (events.Event, error) {

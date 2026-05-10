@@ -370,6 +370,60 @@ func TestLoadSlackConnectorConfig(t *testing.T) {
 	}
 }
 
+func TestLoadMatrixConnectorConfig(t *testing.T) {
+	homeDir := t.TempDir()
+	dataDir := filepath.Join(homeDir, ".dope-test")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte(`{
+		"connectors": {
+			"matrix": {
+				"enabled": true,
+				"connectorId": "matrix-bot",
+				"displayName": "Matrix Bot",
+				"homeserverUrl": "https://matrix.example.org",
+				"homeserverId": "example.org",
+				"botUserId": "@bot:example.org",
+				"botAccessTokenEnv": "MATRIX_BOT_TOKEN",
+				"selectedRoomIds": ["!room_file:example.org"],
+				"allowedDirectUserIds": ["@alice:example.org"],
+				"configuredCommands": ["!dope"]
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	setBaseEnv(t, homeDir)
+	t.Setenv("MATRIX_BOT_TOKEN", "matrix-secret")
+	t.Setenv("DOPE_CONNECTORS_MATRIX_SELECTED_ROOM_IDS", "!room_env_1:example.org,!room_env_2:example.org")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !cfg.Connectors.Matrix.Enabled {
+		t.Fatal("expected matrix connector enabled")
+	}
+	if cfg.Connectors.Matrix.ConnectorID != "matrix-bot" || cfg.Connectors.Matrix.DisplayName != "Matrix Bot" {
+		t.Fatalf("unexpected matrix connector identity: %+v", cfg.Connectors.Matrix)
+	}
+	if cfg.Connectors.Matrix.HomeserverURL != "https://matrix.example.org" || cfg.Connectors.Matrix.HomeserverID != "example.org" {
+		t.Fatalf("unexpected matrix homeserver config: %+v", cfg.Connectors.Matrix)
+	}
+	if cfg.Connectors.Matrix.BotAccessToken != "matrix-secret" {
+		t.Fatalf("expected matrix token from env, got %q", cfg.Connectors.Matrix.BotAccessToken)
+	}
+	if got := cfg.Connectors.Matrix.SelectedRoomIDs; len(got) != 2 || got[0] != "!room_env_1:example.org" || got[1] != "!room_env_2:example.org" {
+		t.Fatalf("expected env selected room IDs, got %#v", got)
+	}
+	readiness := cfg.Connectors.Matrix.ProjectHostedReadiness("ten_matrix")
+	if readiness.HostedReady || readiness.HostedHomeserverPolicy != "unsupported" || readiness.BotAccessTokenSet != true {
+		t.Fatalf("unexpected matrix hosted readiness: %+v", readiness)
+	}
+}
+
 func TestLoadRejectsInvalidConfigFile(t *testing.T) {
 	homeDir := t.TempDir()
 	dataDir := filepath.Join(homeDir, ".dope-test")

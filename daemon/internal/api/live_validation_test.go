@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
@@ -360,6 +361,166 @@ func TestLiveValidationSlackSmokeProjectsTenantSafeEvidence(t *testing.T) {
 	}
 	if bytes.Contains([]byte(body), []byte("xoxb-")) || bytes.Contains([]byte(body), []byte("secret")) {
 		t.Fatalf("Slack smoke projection leaked unsafe evidence: %s", body)
+	}
+}
+
+func TestLiveValidationMatrixSmokeRecordsStructuredSkipEvidence(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	manager := livevalidation.NewManager(livevalidation.Dependencies{Enabled: true})
+	tenantContext := identity.TenantContext{
+		TenantID:    "ten_matrix",
+		PrincipalID: "prn_operator",
+		Permissions: []identity.Permission{
+			identity.PermissionLiveValidationExecute,
+			identity.PermissionConnectorsManage,
+			identity.PermissionCredentialsInspect,
+		},
+	}
+	validatedAt := time.Date(2026, 5, 10, 14, 0, 0, 0, time.UTC)
+	postBody := `{"connectorId":"matrix-main","homeserverBindingId":"matrix_hs_1","status":"skipped","authorizationMode":"unavailable","owner":"operator","reason":"safe Matrix credentials unavailable","validatedAt":"` + validatedAt.Format(time.RFC3339) + `","safeEvidence":{"policy":"structured_skip"}}`
+	postReq := httptest.NewRequest(http.MethodPost, "/v1/live-validations/matrix-smoke", bytes.NewBufferString(postBody))
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq = postReq.WithContext(tenantctx.WithContext(postReq.Context(), tenantContext))
+	postRec := httptest.NewRecorder()
+	handleLiveValidationRoutes(manager, nil, sqliteStore, postRec, postReq)
+	if postRec.Code != http.StatusCreated {
+		t.Fatalf("POST matrix-smoke status=%d body=%s", postRec.Code, postRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/live-validations/matrix-smoke?connectorId=matrix-main", nil)
+	getReq = getReq.WithContext(tenantctx.WithContext(getReq.Context(), tenantContext))
+	getRec := httptest.NewRecorder()
+	handleLiveValidationRoutes(manager, nil, sqliteStore, getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("GET matrix-smoke status=%d body=%s", getRec.Code, getRec.Body.String())
+	}
+	body := getRec.Body.String()
+	if !bytes.Contains([]byte(body), []byte(`"status":"skipped"`)) || !bytes.Contains([]byte(body), []byte(`"authorizationMode":"unavailable"`)) {
+		t.Fatalf("Matrix smoke projection missing expected fields: %s", body)
+	}
+	if bytes.Contains([]byte(body), []byte("matrix-token-do-not-leak")) || bytes.Contains([]byte(body), []byte("accessToken")) {
+		t.Fatalf("Matrix smoke projection leaked unsafe evidence: %s", body)
+	}
+}
+
+func TestLiveValidationMatrixSmokeSafeLiveExecutesProviderProbe(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+	var sentBody map[string]string
+	matrixServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.EscapedPath() {
+		case "/_matrix/client/v3/account/whoami":
+			_, _ = w.Write([]byte(`{"user_id":"@bot:example.org","device_id":"DEVICE1"}`))
+		case "/_matrix/client/v3/rooms/%21room:example.org/state/m.room.member/@bot:example.org":
+			_, _ = w.Write([]byte(`{"membership":"join"}`))
+		default:
+			if r.Method != http.MethodPut {
+				t.Fatalf("unexpected Matrix smoke request: %s %s", r.Method, r.URL.String())
+			}
+			if err := json.NewDecoder(r.Body).Decode(&sentBody); err != nil {
+				t.Fatalf("decode Matrix smoke send body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"event_id":"$smoke_reply"}`))
+		}
+	}))
+	t.Cleanup(matrixServer.Close)
+
+	now := time.Date(2026, 5, 10, 14, 0, 0, 0, time.UTC)
+	if err := sqliteStore.SaveMatrixRoutePolicy(context.Background(), store.MatrixRoutePolicyRecord{
+		TenantID:            "ten_matrix",
+		ConnectorID:         "matrix-main",
+		HomeserverBindingID: "matrix_hs_1",
+		SelectedRooms: []store.MatrixConversationRouteRecord{{
+			ConversationID:     "!room:example.org",
+			ConversationType:   "room",
+			RoomSelectionState: "selected",
+			ValidationState:    "valid",
+			RedactionStatus:    "redacted",
+		}},
+		RoomInvocationGate:  "bot_mention_or_command_required",
+		ConfiguredCommands:  []string{"!dope"},
+		EncryptedRoomPolicy: "unsupported",
+		ValidationState:     "valid",
+		ValidatedAt:         now,
+		RedactionStatus:     "redacted",
+	}); err != nil {
+		t.Fatalf("SaveMatrixRoutePolicy returned error: %v", err)
+	}
+	if err := sqliteStore.SaveMatrixHostedSetup(context.Background(), store.MatrixHostedSetupRecord{
+		TenantID:            "ten_matrix",
+		ConnectorID:         "matrix-main",
+		ConnectorKind:       "matrix",
+		DisplayName:         "Matrix Main",
+		Status:              "healthy",
+		TerminalState:       "ready",
+		BotCredentialState:  "valid",
+		HomeserverState:     "reachable",
+		RoutePolicyState:    "valid",
+		DeliveryEligible:    true,
+		HomeserverBindingID: "matrix_hs_1",
+		ReasonCode:          "healthy",
+		RedactionStatus:     "redacted",
+		CreatedAt:           now,
+		UpdatedAt:           now,
+		ValidatedAt:         now,
+		RetentionExpiresAt:  now.Add(90 * 24 * time.Hour),
+		HomeserverBinding: &store.MatrixHomeserverBindingRecord{
+			HomeserverBindingID:       "matrix_hs_1",
+			HomeserverURL:             matrixServer.URL,
+			BotUserID:                 "@bot:example.org",
+			AuthorizationState:        "valid",
+			HomeserverCapabilityState: "valid",
+			ValidatedAt:               now,
+			RedactionStatus:           "redacted",
+		},
+	}); err != nil {
+		t.Fatalf("SaveMatrixHostedSetup returned error: %v", err)
+	}
+
+	manager := livevalidation.NewManager(livevalidation.Dependencies{Enabled: true})
+	executor := newMatrixSmokeExecutor(sqliteStore, nil, config.MatrixConnectorConfig{
+		ConnectorID:     "matrix-main",
+		HomeserverURL:   matrixServer.URL,
+		BotAccessToken:  "matrix-token-do-not-leak",
+		BotUserID:       "@bot:example.org",
+		SelectedRoomIDs: []string{"!room:example.org"},
+	})
+	tenantContext := identity.TenantContext{
+		TenantID:    "ten_matrix",
+		PrincipalID: "prn_operator",
+		Permissions: []identity.Permission{
+			identity.PermissionLiveValidationExecute,
+			identity.PermissionConnectorsManage,
+			identity.PermissionCredentialsInspect,
+		},
+	}
+	postBody := `{"connectorId":"matrix-main","homeserverBindingId":"matrix_hs_1","status":"passed","authorizationMode":"safe_live","owner":"operator","validatedAt":"` + now.Format(time.RFC3339) + `"}`
+	postReq := httptest.NewRequest(http.MethodPost, "/v1/live-validations/matrix-smoke", bytes.NewBufferString(postBody))
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq = postReq.WithContext(tenantctx.WithContext(postReq.Context(), tenantContext))
+	postRec := httptest.NewRecorder()
+	handleLiveValidationRoutes(manager, nil, sqliteStore, postRec, postReq, executor)
+	if postRec.Code != http.StatusCreated {
+		t.Fatalf("POST matrix safe-live smoke status=%d body=%s", postRec.Code, postRec.Body.String())
+	}
+	if sentBody["msgtype"] != "m.text" || sentBody["body"] == "" {
+		t.Fatalf("expected Matrix safe-live smoke to send m.text body, got %+v", sentBody)
+	}
+	if !bytes.Contains(postRec.Body.Bytes(), []byte(`"authorizationMode":"safe_live"`)) || !bytes.Contains(postRec.Body.Bytes(), []byte(`"$smoke_reply"`)) {
+		t.Fatalf("safe-live Matrix smoke response missing execution evidence: %s", postRec.Body.String())
 	}
 }
 

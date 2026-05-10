@@ -99,6 +99,32 @@ evidence:
   that names owner, reason, validation date, remaining risk, retention expiry, and
   redaction status
 
+## Matrix Phase 52 Handoff
+
+Matrix specializes this contract through tenant-provided bot setup, homeserver binding,
+explicit direct or selected-room route policy, final-only replies, delivery separation,
+diagnostics, and smoke or structured skip evidence:
+
+- phase 52 chooses Matrix and explicitly rejects WhatsApp fallback, hosted homeserver
+  operation, Matrix account provisioning, bridge automation, and E2EE key/session
+  management
+- hosted-ready requires a valid tenant-provided Matrix bot credential, reachable and
+  supported homeserver, passing conformance profile, and at least one allowed direct user
+  or selected room route
+- direct messages are supported only for explicitly allowed Matrix users; room messages
+  are supported only in selected rooms and only when a bot mention or configured command
+  invokes the agent
+- unencrypted text is the only supported message payload; encrypted rooms,
+  undecryptable events, media, calls, voice, reactions, bridge metadata, thinking
+  visibility, and incremental visible updates are unsupported for phase 52
+- durable duplicate suppression uses tenant, connector, homeserver, conversation, and
+  Matrix event id; sync batch and transaction ids are retained as redacted delivery
+  evidence only
+- foreground replies are final-only Matrix replies, and connector-backed background
+  delivery remains separate from assistant execution and foreground reply truth
+- release review accepts safe-live Matrix smoke evidence, or a structured skip that names
+  owner, reason, validation date, remaining risk, retention expiry, and redaction status
+
 ## Provider-Specific Handoff
 
 Future provider specs must reference this document for shared connector behavior and

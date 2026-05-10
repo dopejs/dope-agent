@@ -1171,6 +1171,8 @@ export type TelegramCredentialState = DiscordCredentialState;
 export type TelegramRedactionStatus = DiscordRedactionStatus;
 export type SlackTerminalState = TelegramTerminalState;
 export type SlackRedactionStatus = DiscordRedactionStatus;
+export type MatrixTerminalState = TelegramTerminalState;
+export type MatrixRedactionStatus = DiscordRedactionStatus;
 
 export type DiscordDestinationValidationResource = {
   tenantId?: string;
@@ -1191,7 +1193,7 @@ export type DiscordHostedSetupResource = {
   connectorId: string;
   connectorKind: "discord";
   displayName: string;
-  status: "configured" | "healthy" | "degraded" | "failed" | "permission_blocked" | "rate_limited" | "unsupported_capability";
+  status: "configured" | "healthy" | "degraded" | "failed" | "permission_blocked" | "rate_limited" | "unsupported_capability" | "disabled";
   readinessState: DiscordReadinessState;
   hostedReady: boolean;
   credentialState: DiscordCredentialState;
@@ -1333,8 +1335,8 @@ export type SlackHostedSetupResource = {
 };
 
 export type SlackSmokeEvidenceResource = {
-  smokeEvidenceId: string;
-  tenantId?: string;
+ smokeEvidenceId: string;
+ tenantId?: string;
   connectorId: string;
   workspaceBindingId: string;
   status: "passed" | "failed" | "skipped";
@@ -1345,6 +1347,90 @@ export type SlackSmokeEvidenceResource = {
   validatedAt: string;
   retentionExpiresAt: string;
   redactionStatus: SlackRedactionStatus;
+ safeEvidence?: Record<string, string>;
+};
+
+export type MatrixHomeserverBindingResource = {
+  homeserverUrl: string;
+  homeserverName?: string;
+  botUserId: string;
+  botDeviceId?: string;
+  authorizationState: "valid" | "missing" | "revoked" | "permission_missing" | "ownership_mismatch" | "provider_unavailable" | "network_failed" | "unknown";
+  homeserverCapabilityState: "valid" | "unsupported" | "stale" | "rate_limited" | "unknown";
+  validatedAt: string;
+  redactionStatus: MatrixRedactionStatus;
+  safeEvidence?: Record<string, string>;
+};
+
+export type MatrixConversationRouteResource = {
+  conversationId: string;
+  conversationType: "direct_message" | "room";
+  roomSelectionState: "selected" | "not_selected" | "stale" | "left" | "banned" | "missing_membership" | "encrypted_unsupported" | "not_applicable";
+  validationState: "valid" | "partial" | "stale" | "blocked" | "missing_permission";
+  reasonCode?: string;
+  redactionStatus?: MatrixRedactionStatus;
+  safeEvidence?: Record<string, string>;
+};
+
+export type MatrixRoutePolicyResource = {
+  tenantId?: string;
+  connectorId: string;
+  homeserverBindingId: string;
+  selectedRooms: MatrixConversationRouteResource[];
+  allowedDirectUsers: string[];
+  roomInvocationGate: "bot_mention_or_command_required";
+  configuredCommands: string[];
+  encryptedRoomPolicy: "unsupported";
+  validationState: "valid" | "partial" | "stale" | "blocked" | "missing_permission";
+  reasonCode?: string;
+  validatedAt: string;
+  redactionStatus: MatrixRedactionStatus;
+  safeEvidence?: Record<string, string>;
+};
+
+export type MatrixHostedSetupResource = {
+  tenantId?: string;
+  connectorId: string;
+  connectorKind: "matrix";
+  displayName: string;
+  status: "configured" | "healthy" | "degraded" | "failed" | "permission_blocked" | "rate_limited" | "unsupported_capability" | "disabled";
+  terminalState: MatrixTerminalState;
+  botCredentialState: MatrixCredentialState;
+  homeserverState: "reachable" | "unreachable" | "unsupported" | "rate_limited" | "federation_failed" | "network_failed" | "unknown";
+  routePolicyState: "none" | "partial" | "valid" | "stale" | "blocked";
+  deliveryEligible: boolean;
+  homeserverBindingId: string;
+  homeserverBinding?: MatrixHomeserverBindingResource;
+  routePolicy?: MatrixRoutePolicyResource;
+  diagnostic?: {
+    reasonCode?: string;
+    matrixCondition?: string;
+    remediationOwner?: string;
+    freshnessState?: string;
+  };
+  reasonCode?: string;
+  redactionStatus: MatrixRedactionStatus;
+  createdAt: string;
+  updatedAt: string;
+  validatedAt?: string;
+  retentionExpiresAt: string;
+};
+
+export type MatrixCredentialState = DiscordCredentialState;
+
+export type MatrixSmokeEvidenceResource = {
+  smokeEvidenceId: string;
+  tenantId?: string;
+  connectorId: string;
+  homeserverBindingId: string;
+  status: "passed" | "failed" | "skipped";
+  authorizationMode: "safe_live" | "fake_matrix" | "unavailable";
+  owner: string;
+  reason: string;
+  remainingRisk?: string;
+  validatedAt: string;
+  retentionExpiresAt: string;
+  redactionStatus: MatrixRedactionStatus;
   safeEvidence?: Record<string, string>;
 };
 
@@ -1369,6 +1455,7 @@ export type DiscordConformanceEvidenceResponse = {
 };
 export type TelegramConformanceEvidenceResponse = DiscordConformanceEvidenceResponse;
 export type SlackConformanceEvidenceResponse = DiscordConformanceEvidenceResponse;
+export type MatrixConformanceEvidenceResponse = DiscordConformanceEvidenceResponse;
 
 export type DiscordHostedReadinessProjection = {
   tenantId?: string;
@@ -1463,6 +1550,39 @@ export type ConfigSlackConnectorResponse = {
   };
 };
 
+export type MatrixHostedReadinessProjection = {
+  tenantId?: string;
+  connectorId: string;
+  displayName: string;
+  terminalState: MatrixTerminalState;
+  hostedReady: boolean;
+  localCompatible: boolean;
+  reasonCode?: string;
+  homeserverId?: string;
+  homeserverUrl?: string;
+  botUserId?: string;
+  selectedRoomIds?: string[];
+  allowedDirectUserIds?: string[];
+  configuredCommands?: string[];
+  redactionStatus: MatrixRedactionStatus;
+};
+
+export type ConfigMatrixConnectorResponse = {
+  enabled: boolean;
+  configured: boolean;
+  connectorId: string;
+  displayName: string;
+  homeserverUrl?: string;
+  homeserverId?: string;
+  botUserId?: string;
+  botAccessTokenSet: boolean;
+  botAccessTokenEnv?: string;
+  selectedRoomIds: string[];
+  allowedDirectUserIds: string[];
+  configuredCommands: string[];
+  hostedReadiness: MatrixHostedReadinessProjection;
+};
+
 export type ConfigResponse = {
   environment: EnvironmentScope;
   bindAddr: string;
@@ -1475,6 +1595,7 @@ export type ConfigResponse = {
     discord: ConfigDiscordConnectorResponse;
     telegram: ConfigTelegramConnectorResponse;
     slack: ConfigSlackConnectorResponse;
+    matrix: ConfigMatrixConnectorResponse;
   };
   mcp: Record<string, unknown>;
   sandbox: Record<string, unknown>;
@@ -2424,8 +2545,23 @@ export class DopeClient {
     return this.requestJSON<SlackSmokeEvidenceResource>(`/v1/connectors/${encodePathComponent(connectorId.trim())}/slack-smoke`, { tenant: tenantOptions });
   }
 
+  async getMatrixSetup(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<MatrixHostedSetupResource> {
+    return this.requestJSON<MatrixHostedSetupResource>(`/v1/connectors/${encodePathComponent(connectorId.trim())}/matrix-setup`, { tenant: tenantOptions });
+  }
+
+  async getMatrixSmokeEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<MatrixSmokeEvidenceResource> {
+    return this.requestJSON<MatrixSmokeEvidenceResource>(`/v1/connectors/${encodePathComponent(connectorId.trim())}/matrix-smoke`, { tenant: tenantOptions });
+  }
+
   async getSlackLiveValidationSmokeEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<SlackSmokeEvidenceResource> {
     return this.requestJSON<SlackSmokeEvidenceResource>("/v1/live-validations/slack-smoke", {
+      query: { connectorId: connectorId.trim() },
+      tenant: tenantOptions
+    });
+  }
+
+  async getMatrixLiveValidationSmokeEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<MatrixSmokeEvidenceResource> {
+    return this.requestJSON<MatrixSmokeEvidenceResource>("/v1/live-validations/matrix-smoke", {
       query: { connectorId: connectorId.trim() },
       tenant: tenantOptions
     });
@@ -2447,6 +2583,13 @@ export class DopeClient {
 
   async getSlackConformanceEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<SlackConformanceEvidenceResponse> {
     return this.requestJSON<SlackConformanceEvidenceResponse>("/v1/live-validations/slack-conformance", {
+      query: { connectorId: connectorId.trim() },
+      tenant: tenantOptions
+    });
+  }
+
+  async getMatrixConformanceEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<MatrixConformanceEvidenceResponse> {
+    return this.requestJSON<MatrixConformanceEvidenceResponse>("/v1/live-validations/matrix-conformance", {
       query: { connectorId: connectorId.trim() },
       tenant: tenantOptions
     });

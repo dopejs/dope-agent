@@ -11,6 +11,7 @@ const (
 	TargetDiscordConnector  = "connector.discord"
 	TargetTelegramConnector = "connector.telegram"
 	TargetSlackConnector    = "connector.slack"
+	TargetMatrixConnector   = "connector.matrix"
 )
 
 type TargetKind string
@@ -139,6 +140,9 @@ const (
 	ReasonTelegramAllowmentInvalid  = "telegram_allowment_invalid"
 	ReasonSlackRoutePolicyMissing   = "slack_route_policy_missing"
 	ReasonSlackRoutePolicyInvalid   = "slack_route_policy_invalid"
+	ReasonMatrixRoutePolicyMissing  = "matrix_route_policy_missing"
+	ReasonMatrixRoutePolicyInvalid  = "matrix_route_policy_invalid"
+	ReasonMatrixOwnershipMismatch   = "matrix_ownership_mismatch"
 )
 
 var (

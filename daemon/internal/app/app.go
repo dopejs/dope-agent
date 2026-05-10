@@ -27,6 +27,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	discordconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/discord"
+	matrixconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/matrix"
 	slackconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/slack"
 	telegramconnector "github.com/dopejs/dope-agent/daemon/internal/connectors/telegram"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
@@ -87,6 +88,7 @@ type App struct {
 	discordRuntime       managedConnectorRuntime
 	telegramRuntime      managedConnectorRuntime
 	slackRuntime         managedConnectorRuntime
+	matrixRuntime        managedConnectorRuntime
 	Server               *api.Server
 	mu                   sync.Mutex
 	closed               bool
@@ -234,6 +236,21 @@ func New() (*App, error) {
 		})
 		connectorAdapter.RegisterConnector(cfg.Connectors.Slack.ConnectorID, "slack", slackTransport)
 	}
+	var matrixTransport matrixconnector.Transport
+	if cfg.Connectors.Matrix.Enabled {
+		matrixTransport, err = matrixconnector.NewClientTransport(matrixconnector.ClientTransportConfig{
+			ConnectorID:          cfg.Connectors.Matrix.ConnectorID,
+			HomeserverURL:        cfg.Connectors.Matrix.HomeserverURL,
+			BotAccessToken:       cfg.Connectors.Matrix.BotAccessToken,
+			AccessTokenSource:    matrixBotAccessTokenProvider{secrets: secretManager},
+			SelectedRoomIDs:      append([]string(nil), cfg.Connectors.Matrix.SelectedRoomIDs...),
+			AllowedDirectUserIDs: append([]string(nil), cfg.Connectors.Matrix.AllowedDirectUserIDs...),
+		})
+		if err != nil {
+			return nil, err
+		}
+		connectorAdapter.RegisterConnector(cfg.Connectors.Matrix.ConnectorID, "matrix", matrixTransport)
+	}
 	deliveryManager := delivery.NewManager(string(cfg.Environment), eventBus, sqliteStore, delivery.NewTestSinkAdapter(), connectorAdapter)
 	envCtx := events.WithEnvironmentScope(context.Background(), string(cfg.Environment))
 	replayRecorder := evaluation.NewRuntimeReplayRecorder(runtimeManager, sqliteStore)
@@ -354,6 +371,20 @@ func New() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	matrixRuntime, err := matrixconnector.NewRuntime(matrixconnector.Config{
+		Enabled:              cfg.Connectors.Matrix.Enabled,
+		ConnectorID:          cfg.Connectors.Matrix.ConnectorID,
+		DisplayName:          cfg.Connectors.Matrix.DisplayName,
+		HomeserverURL:        cfg.Connectors.Matrix.HomeserverURL,
+		HomeserverID:         cfg.Connectors.Matrix.HomeserverID,
+		BotUserID:            cfg.Connectors.Matrix.BotUserID,
+		SelectedRoomIDs:      append([]string(nil), cfg.Connectors.Matrix.SelectedRoomIDs...),
+		AllowedDirectUserIDs: append([]string(nil), cfg.Connectors.Matrix.AllowedDirectUserIDs...),
+		ConfiguredCommands:   append([]string(nil), cfg.Connectors.Matrix.ConfiguredCommands...),
+	}, logger.Slog(), connectorSupervisor, im.NewMessageLoop(sessionRouter, runtimeManager, checkpointManager, eventBus, sqliteStore, chatService), sqliteStore, eventBus, matrixTransport)
+	if err != nil {
+		return nil, err
+	}
 
 	server := api.NewServer(api.Dependencies{
 		Config:                cfg,
@@ -423,6 +454,7 @@ func New() (*App, error) {
 		discordRuntime:       discordRuntime,
 		telegramRuntime:      telegramRuntime,
 		slackRuntime:         slackRuntime,
+		matrixRuntime:        matrixRuntime,
 		Server:               server,
 	}, nil
 }
@@ -497,6 +529,26 @@ func slackBotTokenSecretRef(cfg config.SlackConnectorConfig) string {
 		return strings.TrimSpace(cfg.BotTokenSecretRef)
 	}
 	return "slack/" + strings.TrimSpace(cfg.ConnectorID) + "/bot_token"
+}
+
+type matrixBotAccessTokenProvider struct {
+	secrets *secrets.Manager
+}
+
+func (p matrixBotAccessTokenProvider) MatrixAccessToken(ctx context.Context, connectorID string) (string, error) {
+	if p.secrets == nil {
+		return "", fmt.Errorf("matrix bot access token secret manager is not configured")
+	}
+	tenantID, err := tenantctx.Require(ctx)
+	if err != nil {
+		return "", err
+	}
+	ref := "matrix/" + strings.TrimSpace(connectorID) + "/bot_access_token"
+	resolved, err := p.secrets.Resolve(ctx, secrets.ResolveInput{TenantID: tenantID, SecretRef: ref})
+	if err != nil {
+		return "", err
+	}
+	return resolved.Value, nil
 }
 
 func defaultEvaluationFixturesDir() string {
@@ -618,6 +670,15 @@ func (a *App) Run(ctx context.Context) error {
 			return err
 		}
 	}
+	if a.matrixRuntime != nil {
+		starter, ok := a.matrixRuntime.(interface{ Start(context.Context) error })
+		if !ok {
+			return fmt.Errorf("matrix runtime is not startable")
+		}
+		if err := starter.Start(ctx); err != nil {
+			return err
+		}
+	}
 	if a.Scheduler != nil {
 		if err := a.Scheduler.Start(ctx); err != nil {
 			return err
@@ -693,6 +754,11 @@ func (a *App) Close(_ context.Context) error {
 	}
 	if a.slackRuntime != nil {
 		if err := a.slackRuntime.Close(context.Background()); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if a.matrixRuntime != nil {
+		if err := a.matrixRuntime.Close(context.Background()); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}

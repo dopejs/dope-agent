@@ -62,6 +62,17 @@ func CatalogTargets(tenantID string) []SetupTarget {
 			RequiredPermissions:     []string{PermissionSecretsManage, PermissionIntegrationsManage},
 			LimitedSafeCapabilities: []string{"metadata_read", "route_policy_validation", "workspace_validation"},
 		},
+		{
+			TargetID:                TargetMatrixConnector,
+			TenantID:                strings.TrimSpace(tenantID),
+			TargetKind:              TargetKindConnector,
+			SetupStyle:              SetupStyleSubmittedSecret,
+			DisplayName:             "Matrix connector",
+			ProofTarget:             true,
+			SupportStatus:           SupportStatusSupported,
+			RequiredPermissions:     []string{PermissionSecretsManage, PermissionIntegrationsManage},
+			LimitedSafeCapabilities: []string{"metadata_read", "route_policy_validation", "homeserver_validation"},
+		},
 	}
 	sort.Slice(targets, func(i, j int) bool { return targets[i].TargetID < targets[j].TargetID })
 	return targets

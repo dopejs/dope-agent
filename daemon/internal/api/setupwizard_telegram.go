@@ -16,6 +16,7 @@ import (
 type setupWizardDiagnosticProbe struct {
 	Default  setupwizard.DefaultDiagnosticProbe
 	Telegram *telegramSetupWizardIntegration
+	Matrix   *matrixSetupWizardIntegration
 }
 
 func (p setupWizardDiagnosticProbe) ProbeSetup(ctx context.Context, session setupwizard.SetupSession, operation setupwizard.SetupOperation) (setupwizard.SetupDiagnosticProbeResult, error) {
@@ -26,7 +27,24 @@ func (p setupWizardDiagnosticProbe) ProbeSubmittedSecret(ctx context.Context, se
 	if session.TargetID == setupwizard.TargetTelegramConnector && p.Telegram != nil {
 		return p.Telegram.ProbeSubmittedSecret(ctx, session, input)
 	}
+	if session.TargetID == setupwizard.TargetMatrixConnector && p.Matrix != nil {
+		return p.Matrix.ProbeSubmittedSecret(ctx, session, input)
+	}
 	return p.Default.ProbeSetup(ctx, session, setupwizard.OperationSubmitSecret)
+}
+
+type setupWizardSubmittedSecretRecorders []setupwizard.SubmittedSecretRecorder
+
+func (r setupWizardSubmittedSecretRecorders) RecordSubmittedSecretSetup(ctx context.Context, session setupwizard.SetupSession, input setupwizard.SubmitSecretInput) error {
+	for _, recorder := range r {
+		if recorder == nil {
+			continue
+		}
+		if err := recorder.RecordSubmittedSecretSetup(ctx, session, input); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type telegramSetupWizardIntegration struct {

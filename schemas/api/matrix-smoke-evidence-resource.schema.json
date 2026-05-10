@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/matrix-smoke-evidence-resource.schema.json",
+  "title": "MatrixSmokeEvidenceResource",
+  "type": "object",
+  "required": ["smokeEvidenceId", "connectorId", "homeserverBindingId", "status", "authorizationMode", "owner", "reason", "validatedAt", "retentionExpiresAt", "redactionStatus"],
+  "additionalProperties": false,
+  "properties": {
+    "smokeEvidenceId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "homeserverBindingId": { "type": "string" },
+    "status": { "type": "string", "enum": ["passed", "failed", "skipped"] },
+    "authorizationMode": { "type": "string", "enum": ["safe_live", "fake_matrix", "unavailable"] },
+    "owner": { "type": "string" },
+    "reason": { "type": "string" },
+    "remainingRisk": { "type": "string" },
+    "validatedAt": { "type": "string", "format": "date-time" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] },
+    "safeEvidence": { "type": "object", "additionalProperties": { "type": "string" } }
+  }
+}

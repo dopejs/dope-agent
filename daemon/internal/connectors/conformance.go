@@ -44,6 +44,25 @@ const (
 	SurfaceUnsupported SurfaceSupport = "unsupported"
 )
 
+const (
+	ConnectorKindMatrix = "matrix"
+
+	MatrixDurableIdentityRuleID = "matrix_homeserver_conversation_event_id"
+	MatrixDurableIdentityRule   = "tenant_id + connector_id + homeserver_id + conversation_id + matrix_event_id"
+
+	MatrixSurfaceTenantProvidedBotSetup   = "tenant_provided_bot_setup"
+	MatrixSurfaceHostedHomeserver         = "dopeagent_hosted_homeserver"
+	MatrixSurfaceAccountProvisioning      = "matrix_account_provisioning"
+	MatrixSurfaceDirectMessage            = "direct_message"
+	MatrixSurfaceAllowedRoomMention       = "allowed_room_mention"
+	MatrixSurfaceAllowedRoomCommand       = "allowed_room_command"
+	MatrixSurfaceUnencryptedText          = "unencrypted_text"
+	MatrixSurfaceEncryptedRooms           = "encrypted_rooms"
+	MatrixSurfaceUndecryptableEvents      = "undecryptable_events"
+	MatrixSurfaceFinalOnlyForegroundReply = "final_only_foreground_reply"
+	MatrixSurfaceConnectorBackedDelivery  = "connector_backed_delivery"
+)
+
 type ConformanceResultStatus string
 
 const (

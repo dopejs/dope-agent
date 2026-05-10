@@ -5,6 +5,8 @@ The default proof targets are:
 
 - `provider.openai_compatible` using `submitted_secret`
 - `integration.feishu_lark` using `oauth`
+- `connector.matrix` using tenant-provided bot credentials and tenant-selected
+  homeserver metadata
 
 Mutation requires both `secrets.manage` and `integrations.manage`. Redacted inspection
 requires `credentials.inspect`. Permission denials must not disclose whether a tenant,
@@ -34,6 +36,10 @@ headers, provider client secrets, or derived credential material.
 If evidence cannot be proven safe, set `redactionStatus=failed_closed`, block ready state,
 and require operator remediation.
 
+Matrix setup stores only redacted readiness evidence. Bot access tokens, authorization
+headers, raw Matrix sync payloads, event bodies, and room content are never rendered in
+setup state, diagnostics, fixtures, logs, or smoke evidence.
+
 ## Rollback
 
 Rollback is additive and should not delete existing tenant secrets, provider records,
@@ -44,6 +50,10 @@ integration records, or audit history.
 3. Keep authorized read and diagnostic routes available when support needs redacted state.
 4. Leave setup tables intact for recovery and audit review.
 5. Use existing tenant secret/provider/integration paths as the source of truth.
+
+For Matrix rollback, additionally disable Matrix ingress and delivery eligibility while
+retaining Matrix setup, route policy, event evidence, smoke evidence, and diagnostics for
+authorized support inspection.
 
 ## Verification
 

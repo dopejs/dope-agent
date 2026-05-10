@@ -25,3 +25,6 @@ Current additive contract groups include:
   sandbox, and workflow resources
 - evaluation and replay resources, including replay candidates, replay attempts,
   comparisons, drift findings, fixtures, and `evaluation.*` events
+- Matrix channel connector resources for hosted setup, route policy, smoke evidence, and
+  setup validation events. Matrix schemas intentionally keep tenant id additive and keep
+  token, raw payload, event body, and room content fields out of public fixtures.

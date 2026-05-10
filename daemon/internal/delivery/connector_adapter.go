@@ -169,7 +169,7 @@ func (a *ConnectorAdapter) requireConnectorDeliveryReady(ctx context.Context, co
 		return nil
 	}
 	connectorKind = strings.TrimSpace(connectorKind)
-	if connectorKind != "telegram" && connectorKind != "slack" {
+	if connectorKind != "telegram" && connectorKind != "slack" && connectorKind != matrixConnectorKind {
 		return nil
 	}
 	tenantID := ""
@@ -188,6 +188,16 @@ func (a *ConnectorAdapter) requireConnectorDeliveryReady(ctx context.Context, co
 		}
 		if !ok || setup.TerminalState != "ready" || !setup.DeliveryEligible {
 			return fmt.Errorf("slack connector %s is not delivery eligible", connectorID)
+		}
+		return nil
+	}
+	if connectorKind == matrixConnectorKind {
+		setup, ok, err := a.sqliteStore.GetMatrixHostedSetup(ctx, tenantID, connectorID)
+		if err != nil {
+			return err
+		}
+		if !ok || setup.TerminalState != "ready" || !setup.DeliveryEligible {
+			return fmt.Errorf("matrix connector %s is not delivery eligible", connectorID)
 		}
 		return nil
 	}

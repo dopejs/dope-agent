@@ -205,6 +205,15 @@ event-schema-file prefixes from `schemas/events/` (flat layout).
 | slack_smoke_evidence | tenant_owned | column tenant_id (smoke evidence belongs to the connector tenant) | leave_existing | Slack release-readiness smoke evidence projections | connector-diagnostic-state-changed | store Slack smoke evidence helpers | PRIMARY KEY smoke_evidence_id, (tenant_id, connector_id, validated_at DESC) | Slack smoke retention and tenant isolation suite | backup_restore |
 | slack_event_evidence | tenant_owned | column tenant_id plus retained Slack workspace/conversation/message/event identity | leave_existing | Slack route evidence and support diagnostics | connector-route-outcome-recorded, connector-inbound-duplicate-detected | store Slack event evidence helpers | PRIMARY KEY (tenant_id, connector_id, workspace_id, conversation_id, message_id, event_id), (tenant_id, connector_id, received_at DESC) | Slack retained event evidence tenant isolation suite | backup_restore |
 
+## Persisted Tables — Roadmap 52 Matrix channel connector
+
+| name | classification | tenantIdSource | migrationAction | affectedAPIs | affectedEvents | storeAccess | indexesAndUniqueness | isolationTests | rollback |
+|------|----------------|----------------|-----------------|--------------|----------------|-------------|----------------------|----------------|----------|
+| matrix_hosted_setups | tenant_owned | column tenant_id (hosted setup belongs to the connector tenant) | leave_existing | Matrix connector setup projection route | connector-matrix-setup-validated | store Matrix setup helpers | UNIQUE (tenant_id, connector_id), (tenant_id, terminal_state, updated_at DESC) | Matrix setup API and store tenant isolation suite | backup_restore |
+| matrix_route_policies | tenant_owned | column tenant_id plus parent Matrix connector setup tenant | leave_existing | Matrix setup and route policy projection routes | connector-matrix-setup-validated, connector-route-outcome-recorded | store Matrix route policy helpers | UNIQUE (tenant_id, connector_id), (tenant_id, connector_id, validated_at DESC) | Matrix route policy tenant isolation suite | backup_restore |
+| matrix_smoke_evidence | tenant_owned | column tenant_id (smoke evidence belongs to the connector tenant) | leave_existing | Matrix release-readiness smoke evidence projections | connector-diagnostic-state-changed | store Matrix smoke evidence helpers | PRIMARY KEY smoke_evidence_id, (tenant_id, connector_id, validated_at DESC) | Matrix smoke retention and tenant isolation suite | backup_restore |
+| matrix_event_evidence | tenant_owned | column tenant_id plus retained Matrix homeserver/conversation/event identity | leave_existing | Matrix route evidence and support diagnostics | connector-route-outcome-recorded, connector-inbound-duplicate-detected | store Matrix event evidence helpers | PRIMARY KEY (tenant_id, connector_id, homeserver_id, conversation_id, matrix_event_id), (tenant_id, connector_id, received_at DESC) | Matrix retained event evidence tenant isolation suite | backup_restore |
+
 ## Event Sources
 
 Event categories whose payloads gain server-side tenant scoping. Where the event

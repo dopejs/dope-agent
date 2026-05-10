@@ -20,6 +20,9 @@ const CONNECTOR_REASON_LABELS: Partial<Record<IntegrationDiagnosticResultResourc
   duplicate_inbound: "Connector duplicate inbound",
   reply_failed: "Connector reply failed",
   unsupported_capability: "Connector capability unsupported",
+  rate_limited: "Connector rate limited",
+  provider_unavailable: "Connector provider unavailable",
+  network_failed: "Connector network failed",
   unknown_connector_failure: "Connector failure"
 };
 

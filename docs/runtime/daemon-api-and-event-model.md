@@ -129,6 +129,12 @@ Examples:
 - `POST /v1/integrations/{integrationId}/default`
 - `POST /v1/runs/{runId}/integrations/{integrationId}/probes`
 
+Matrix connector projections are additive to this surface. They expose redacted setup,
+route policy, smoke, and diagnostic state for tenant-provided Matrix bot credentials,
+selected homeservers, allowed direct users, selected rooms, final-only foreground
+replies, and connector-backed delivery boundaries. They do not expose bot access tokens,
+raw Matrix sync payloads, event bodies, room content, or WhatsApp bridge state.
+
 ## 5. Delivery API
 
 Purpose:
@@ -151,6 +157,10 @@ The delivery plane is additive:
 - it does not redefine execution truth for runs, workflows, or schedules
 - `latestDeliveryId`, `latestDeliveryStatus`, and `latestDeliveryTargetId` are lookup
   hints on source resources, not the authoritative delivery ledger
+
+Matrix background delivery uses the connector route target kind and requires a ready,
+delivery-eligible Matrix setup. Its delivery outcome remains separate from the Matrix
+foreground reply event and assistant execution outcome.
 
 ## 5.5 Calendar Domain API
 

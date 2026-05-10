@@ -51,6 +51,10 @@ func ClassifyDiagnosticReason(reason string) (SetupState, RemediationOwner, Retr
 		return StateActionRequired, OwnerTenantAdmin, RetryBlocked
 	case ReasonSlackRoutePolicyMissing, ReasonSlackRoutePolicyInvalid:
 		return StateActionRequired, OwnerTenantAdmin, RetryBlocked
+	case ReasonMatrixRoutePolicyMissing, ReasonMatrixRoutePolicyInvalid:
+		return StateActionRequired, OwnerTenantAdmin, RetryBlocked
+	case ReasonMatrixOwnershipMismatch:
+		return StateActionRequired, OwnerTenantAdmin, RetryBlocked
 	case ReasonProviderUnavailable, ReasonNetworkFailed, ReasonRateLimited:
 		return StateUnavailable, OwnerProvider, RetryRetryable
 	case ReasonUnsupportedTarget:

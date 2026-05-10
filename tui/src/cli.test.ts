@@ -140,6 +140,35 @@ describe("tui cli", () => {
     expect(stdout.contents).toContain("Delivery Eligible: yes");
     expect(stderr.contents).toBe("");
   });
+
+  it("prints Matrix setup projection output", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const getMatrixSetup = vi.fn().mockResolvedValue({
+      connectorId: "matrix-main",
+      terminalState: "action-required",
+      homeserverState: "reachable",
+      routePolicyState: "valid",
+      deliveryEligible: false
+    });
+
+    const options = parseArgs(["--matrix-setup", "matrix-main"], {});
+    const code = await runCLI(options, {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () =>
+        ({
+          getMatrixSetup,
+          queryChat: vi.fn(),
+          streamChatQuery: vi.fn()
+        }) as any
+    });
+
+    expect(code).toBe(0);
+    expect(getMatrixSetup).toHaveBeenCalledWith("matrix-main");
+    expect(stdout.contents).toContain("Matrix Setup: matrix-main");
+    expect(stdout.contents).toContain("Delivery Eligible: no");
+    expect(stderr.contents).toBe("");
+  });
 });
 
 function createMemoryWriter() {

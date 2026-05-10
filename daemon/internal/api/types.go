@@ -87,6 +87,7 @@ type ConfigConnectorsResponse struct {
 	Discord  ConfigDiscordConnectorResponse  `json:"discord"`
 	Telegram ConfigTelegramConnectorResponse `json:"telegram"`
 	Slack    ConfigSlackConnectorResponse    `json:"slack"`
+	Matrix   ConfigMatrixConnectorResponse   `json:"matrix"`
 }
 
 type ConfigMCPResponse struct {
@@ -142,6 +143,22 @@ type ConfigSlackConnectorResponse struct {
 	AllowedDMUserIDs    []string                              `json:"allowedDMUserIds"`
 	AllowedDMUserGroups []string                              `json:"allowedDMUserGroups"`
 	HostedReadiness     config.SlackHostedReadinessProjection `json:"hostedReadiness"`
+}
+
+type ConfigMatrixConnectorResponse struct {
+	Enabled              bool                                   `json:"enabled"`
+	Configured           bool                                   `json:"configured"`
+	ConnectorID          string                                 `json:"connectorId"`
+	DisplayName          string                                 `json:"displayName"`
+	HomeserverURL        string                                 `json:"homeserverUrl,omitempty"`
+	HomeserverID         string                                 `json:"homeserverId,omitempty"`
+	BotUserID            string                                 `json:"botUserId,omitempty"`
+	BotAccessTokenSet    bool                                   `json:"botAccessTokenSet"`
+	BotAccessTokenEnv    string                                 `json:"botAccessTokenEnv,omitempty"`
+	SelectedRoomIDs      []string                               `json:"selectedRoomIds"`
+	AllowedDirectUserIDs []string                               `json:"allowedDirectUserIds"`
+	ConfiguredCommands   []string                               `json:"configuredCommands"`
+	HostedReadiness      config.MatrixHostedReadinessProjection `json:"hostedReadiness"`
 }
 
 type CreateIntegrationDiagnosticRunRequest struct {
@@ -960,6 +977,9 @@ func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager, sandboxMana
 	if cfg.Connectors.Slack.OAuthClientSecret != "" {
 		redactedFields = append(redactedFields, "connectors.slack.oauthClientSecret")
 	}
+	if cfg.Connectors.Matrix.BotAccessToken != "" {
+		redactedFields = append(redactedFields, "connectors.matrix.botAccessToken")
+	}
 	defaultTimeoutMs := cfg.LLM.DefaultTimeoutMs
 	if defaultTimeoutMs <= 0 {
 		defaultTimeoutMs = 30000
@@ -1061,6 +1081,21 @@ func buildConfigResponse(cfg config.Config, mcpManager *mcp.Manager, sandboxMana
 				AllowedDMUserIDs:    cloneStringSlice(cfg.Connectors.Slack.AllowedDMUserIDs),
 				AllowedDMUserGroups: cloneStringSlice(cfg.Connectors.Slack.AllowedDMUserGroups),
 				HostedReadiness:     cfg.Connectors.Slack.ProjectHostedReadiness(""),
+			},
+			Matrix: ConfigMatrixConnectorResponse{
+				Enabled:              cfg.Connectors.Matrix.Enabled,
+				Configured:           cfg.Connectors.Matrix.HomeserverURL != "" || cfg.Connectors.Matrix.BotAccessToken != "" || len(cfg.Connectors.Matrix.SelectedRoomIDs) > 0 || len(cfg.Connectors.Matrix.AllowedDirectUserIDs) > 0,
+				ConnectorID:          cfg.Connectors.Matrix.ConnectorID,
+				DisplayName:          cfg.Connectors.Matrix.DisplayName,
+				HomeserverURL:        cfg.Connectors.Matrix.HomeserverURL,
+				HomeserverID:         cfg.Connectors.Matrix.HomeserverID,
+				BotUserID:            cfg.Connectors.Matrix.BotUserID,
+				BotAccessTokenSet:    cfg.Connectors.Matrix.BotAccessToken != "",
+				BotAccessTokenEnv:    cfg.Connectors.Matrix.BotAccessTokenEnv,
+				SelectedRoomIDs:      cloneStringSlice(cfg.Connectors.Matrix.SelectedRoomIDs),
+				AllowedDirectUserIDs: cloneStringSlice(cfg.Connectors.Matrix.AllowedDirectUserIDs),
+				ConfiguredCommands:   cloneStringSlice(cfg.Connectors.Matrix.ConfiguredCommands),
+				HostedReadiness:      cfg.Connectors.Matrix.ProjectHostedReadiness(""),
 			},
 		},
 		MCP: ConfigMCPResponse{

@@ -30,3 +30,18 @@ Rollback for connector-backed delivery is to disable or remove the connector del
 target while leaving active foreground connector replies untouched. Debugging should
 compare connector message records, delivery attempts, and connector delivery-boundary
 events by delivery id instead of merging the two product truths.
+
+## Matrix Diagnostics
+
+Matrix diagnostics add provider-specific condition labels while retaining the shared
+reason-code vocabulary. Bot auth invalid or revoked maps to `auth_missing`; room
+permission and ownership mismatch map to `permission_missing`; unsupported homeserver,
+encrypted room, undecryptable event, and unsupported surface map to
+`unsupported_capability`; homeserver, federation, and network failures map to
+`network_failed`; duplicate Matrix events map to `duplicate_inbound`.
+
+Support inspection should return the latest setup, route, smoke, event, and reply state
+within two minutes for current-truth workflows. Older evidence remains retained for
+audit but projects as stale. If Matrix evidence cannot be safely redacted, support output
+must suppress detailed homeserver, room, user, event, and payload fields and expose only
+the safe condition, reason code, owner, freshness, retention, and redaction status.
