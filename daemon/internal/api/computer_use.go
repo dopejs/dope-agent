@@ -179,6 +179,10 @@ func handleRunComputerUseActions(manager *computeruse.Manager, eventBus *events.
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
+			if err := recordThreadApprovalProjection(r.Context(), eventBus, sqliteStore, *approval, "policy.approval_requested"); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
 		}
 		if decision != nil {
 			if err := persistDecision(r.Context(), sqliteStore, *decision); err != nil {

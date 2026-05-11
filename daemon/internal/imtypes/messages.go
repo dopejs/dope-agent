@@ -42,6 +42,7 @@ type MessageRecord struct {
 	ProviderMessageID        string            `json:"providerMessageId,omitempty"`
 	EquivalentRuleID         string            `json:"equivalentRuleId,omitempty"`
 	SessionID                string            `json:"sessionId,omitempty"`
+	ThreadSessionSegmentID   string            `json:"threadSessionSegmentId,omitempty"`
 	RunID                    string            `json:"runId,omitempty"`
 	ChannelID                string            `json:"channelId"`
 	PeerID                   string            `json:"peerId,omitempty"`

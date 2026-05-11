@@ -14,6 +14,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
+	"github.com/dopejs/dope-agent/daemon/internal/threads"
 )
 
 type Manager struct {
@@ -569,6 +570,9 @@ func (m *Manager) storeWindow(ctx context.Context, window SummaryWindow) error {
 }
 
 func (m *Manager) publishOutcomeCreated(ctx context.Context, outcome DeliveryOutcome) error {
+	if err := m.recordThreadDeliveryProjection(ctx, outcome, "delivery.outcome_created"); err != nil {
+		return err
+	}
 	return m.publishEvent(ctx, "delivery.outcome_created", events.Resource{Kind: "delivery", ID: outcome.DeliveryID}, map[string]any{
 		"deliveryId":        outcome.DeliveryID,
 		"sourceKind":        outcome.SourceKind,
@@ -607,6 +611,9 @@ func (m *Manager) publishAttemptRecorded(ctx context.Context, outcome DeliveryOu
 }
 
 func (m *Manager) publishOutcomeStatusChanged(ctx context.Context, outcome DeliveryOutcome) error {
+	if err := m.recordThreadDeliveryProjection(ctx, outcome, "delivery.outcome_status_changed"); err != nil {
+		return err
+	}
 	return m.publishEvent(ctx, "delivery.outcome_status_changed", events.Resource{Kind: "delivery", ID: outcome.DeliveryID}, map[string]any{
 		"sourceKind":        outcome.SourceKind,
 		"sourceId":          outcome.SourceID,
@@ -622,6 +629,39 @@ func (m *Manager) publishOutcomeStatusChanged(ctx context.Context, outcome Deliv
 		"chosenTargetId":    outcome.ChosenTargetID,
 		"suppressionReason": outcome.SuppressionReason,
 	})
+}
+
+func (m *Manager) recordThreadDeliveryProjection(ctx context.Context, outcome DeliveryOutcome, reasonCode string) error {
+	if m == nil || m.sqliteStore == nil || outcome.DeliveryID == "" || outcome.RunID == "" {
+		return nil
+	}
+	projection, found, err := m.sqliteStore.SaveThreadRuntimeProjectionForRun(ctx, outcome.RunID, threads.RuntimeProjectionInput{
+		ProjectionID:    "rtp_background_delivery_" + outcome.DeliveryID,
+		ResourceKind:    threads.RuntimeResourceBackgroundDelivery,
+		ResourceID:      outcome.DeliveryID,
+		Status:          string(outcome.Status),
+		ReasonCode:      reasonCode,
+		OccurredAt:      outcome.UpdatedAt,
+		Route:           "/v1/delivery/outcomes/" + outcome.DeliveryID,
+		SafeSummary:     "Background delivery " + string(outcome.Status),
+		RedactionStatus: threads.RedactionStatusRedacted,
+	})
+	if err != nil || !found {
+		return err
+	}
+	if m.eventBus != nil {
+		event := m.eventBus.Publish(events.ThreadRuntimeProjectionEvent(projection))
+		var err error
+		if projection.TenantID != "" {
+			_, err = m.sqliteStore.AppendEventForTenantRaw(ctx, event, projection.TenantID)
+		} else {
+			_, err = m.sqliteStore.AppendEvent(ctx, event)
+		}
+		if err != nil {
+			return fmt.Errorf("append thread delivery projection event: %w", err)
+		}
+	}
+	return nil
 }
 
 func (m *Manager) publishEvent(ctx context.Context, name string, resource events.Resource, payload map[string]any) error {

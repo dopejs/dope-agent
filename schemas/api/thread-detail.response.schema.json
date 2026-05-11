@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-detail.response.schema.json",
+  "title": "ThreadDetailResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["thread", "sessionSegments", "sourceLinkages", "runtimeProjections", "lifecycleActions"],
+  "properties": {
+    "thread": { "$ref": "thread-resource.schema.json" },
+    "sessionSegments": { "type": "array", "items": { "type": "object" } },
+    "sourceLinkages": { "type": "array", "items": { "$ref": "thread-source-linkage.schema.json" } },
+    "runtimeProjections": { "type": "array", "items": { "$ref": "thread-runtime-projection.schema.json" } },
+    "lifecycleActions": { "type": "array", "items": { "type": "object" } }
+  }
+}

@@ -850,6 +850,13 @@ func recoverPersistedStateWithSecrets(ctx context.Context, dataDir string, envir
 		return fmt.Errorf("load persisted sessions: %w", err)
 	}
 	sessionRouter.RestoreSessions(persistedSessions)
+	if stats, err := sqliteStore.RecoverThreadLifecycleAfterRestart(ctx); err != nil {
+		return fmt.Errorf("recover thread lifecycle state: %w", err)
+	} else if eventBus != nil && (stats.ProjectedLegacySessions > 0 || stats.PartialThreadStates > 0) {
+		for _, tenantID := range stats.Tenants {
+			eventBus.Publish(events.ThreadRestartRecoveryEvent(tenantID, stats.CheckedThreads, stats.ProjectedLegacySessions, stats.PartialThreadStates))
+		}
+	}
 
 	if _, err := checkpointManager.Restore(ctx); err != nil {
 		return fmt.Errorf("restore runtime checkpoints: %w", err)

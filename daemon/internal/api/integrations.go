@@ -416,6 +416,10 @@ func handleRunIntegrationProbes(cfg config.Config, runtimeManager *runtime.Manag
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
+			if err := recordThreadApprovalProjection(r.Context(), eventBus, sqliteStore, approval, "policy.approval_requested"); err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
 			if err := persistDecision(r.Context(), sqliteStore, decision); err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return

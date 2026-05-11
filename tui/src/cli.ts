@@ -12,6 +12,12 @@ export type TUIOptions = {
   query?: string;
   slackSetupConnectorId?: string;
   matrixSetupConnectorId?: string;
+  listThreads?: boolean;
+  inspectThreadId?: string;
+  traceThreadId?: string;
+  resetThreadId?: string;
+  archiveThreadId?: string;
+  reopenThreadId?: string;
 };
 
 type CLIIO = {
@@ -57,6 +63,97 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
       io.stdout.write(`Homeserver: ${setup.homeserverState}\n`);
       io.stdout.write(`Route Policy: ${setup.routePolicyState}\n`);
       io.stdout.write(`Delivery Eligible: ${setup.deliveryEligible ? "yes" : "no"}\n`);
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.listThreads) {
+    try {
+      const list = await client.listThreads();
+      io.stdout.write(`Threads: ${list.tenantId}\n`);
+      for (const thread of list.items) {
+        io.stdout.write(`${thread.threadId} ${thread.lifecycleState} ${thread.sourceKind} ${thread.sourceSummary ?? ""}\n`);
+      }
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.inspectThreadId) {
+    try {
+      const detail = await client.getThread(options.inspectThreadId);
+      const thread = detail.thread;
+      io.stdout.write(`Thread: ${thread.threadId}\n`);
+      io.stdout.write(`Tenant: ${thread.tenantId}\n`);
+      io.stdout.write(`State: ${thread.lifecycleState}\n`);
+      io.stdout.write(`Source: ${thread.sourceKind} ${thread.sourceSummary ?? ""}\n`);
+      io.stdout.write(`Current Session: ${thread.currentSessionId ?? thread.currentSessionSegmentId ?? "unavailable"}\n`);
+      io.stdout.write("Evidence: lifecycle metadata, not assistant memory\n");
+      io.stdout.write(`Retention: ${thread.retentionExpiresAt ?? "policy default"}\n`);
+      io.stdout.write(`Redaction: ${thread.redactionStatus}\n`);
+      io.stdout.write(`Segments: ${detail.sessionSegments.length}\n`);
+      io.stdout.write(`Source Linkages: ${detail.sourceLinkages.length}\n`);
+      io.stdout.write(`Runtime Projections: ${detail.runtimeProjections.length}\n`);
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.traceThreadId) {
+    try {
+      const detail = await client.getThread(options.traceThreadId);
+      const thread = detail.thread;
+      io.stdout.write(`Thread Trace: ${thread.threadId}\n`);
+      io.stdout.write(`State: ${thread.lifecycleState}\n`);
+      io.stdout.write("Evidence: lifecycle metadata, not assistant memory\n");
+      io.stdout.write(`Retention: ${thread.retentionExpiresAt ?? "policy default"}\n`);
+      io.stdout.write(`Redaction: ${thread.redactionStatus}\n`);
+      io.stdout.write("Source Trace:\n");
+      for (const linkage of detail.sourceLinkages) {
+        io.stdout.write(`- ${linkage.routingOutcome} ${linkage.connectorKind ?? linkage.sourceKind} ${linkage.sourceConversationId ?? "conversation redacted"} redaction=${linkage.redactionStatus} retention=${linkage.retentionExpiresAt ?? "policy default"}\n`);
+      }
+      if (detail.sourceLinkages.length === 0) {
+        io.stdout.write("- none\n");
+      }
+      io.stdout.write("Runtime Trace:\n");
+      for (const projection of detail.runtimeProjections) {
+        io.stdout.write(`- ${projection.resourceKind} ${projection.status} ${projection.safeSummary ?? projection.reasonCode ?? "metadata only"} redaction=${projection.redactionStatus} retention=${projection.retentionExpiresAt ?? "policy default"}\n`);
+      }
+      if (detail.runtimeProjections.length === 0) {
+        io.stdout.write("- none\n");
+      }
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  const lifecycleCommand = options.resetThreadId
+    ? { threadId: options.resetThreadId, action: "reset" as const, run: client.resetThread.bind(client) }
+    : options.archiveThreadId
+      ? { threadId: options.archiveThreadId, action: "archive" as const, run: client.archiveThread.bind(client) }
+      : options.reopenThreadId
+        ? { threadId: options.reopenThreadId, action: "reopen" as const, run: client.reopenThread.bind(client) }
+        : null;
+  if (lifecycleCommand) {
+    try {
+      const response = await lifecycleCommand.run(lifecycleCommand.threadId, { reasonCode: `tui_${lifecycleCommand.action}` });
+      io.stdout.write(`Thread ${response.threadId} ${lifecycleCommand.action} completed.\n`);
+      io.stdout.write(`State: ${response.lifecycleState}\n`);
+      io.stdout.write(`Audit: ${response.auditEventId}\n`);
+      io.stdout.write(`Current Segment: ${response.currentSessionSegmentId ?? "unchanged"}\n`);
       return 0;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -147,6 +244,24 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
       case "--matrix-setup":
         options.matrixSetupConnectorId = argv[++index] ?? options.matrixSetupConnectorId;
         break;
+      case "--threads":
+        options.listThreads = true;
+        break;
+      case "--thread":
+        options.inspectThreadId = argv[++index] ?? options.inspectThreadId;
+        break;
+      case "--thread-trace":
+        options.traceThreadId = argv[++index] ?? options.traceThreadId;
+        break;
+      case "--thread-reset":
+        options.resetThreadId = argv[++index] ?? options.resetThreadId;
+        break;
+      case "--thread-archive":
+        options.archiveThreadId = argv[++index] ?? options.archiveThreadId;
+        break;
+      case "--thread-reopen":
+        options.reopenThreadId = argv[++index] ?? options.reopenThreadId;
+        break;
       case "--help":
         throw new Error(helpText());
       default:
@@ -170,6 +285,12 @@ export function helpText(): string {
     "  --stream            Use streaming mode",
     "  --slack-setup <id>  Print Slack hosted setup state",
     "  --matrix-setup <id> Print Matrix hosted setup state",
+    "  --threads           List tenant thread lifecycle metadata",
+    "  --thread <id>       Inspect one tenant thread",
+    "  --thread-trace <id> Print source-to-runtime trace evidence",
+    "  --thread-reset <id> Reset one tenant thread",
+    "  --thread-archive <id> Archive one tenant thread",
+    "  --thread-reopen <id> Reopen one tenant thread",
     "  --help              Show this help"
   ].join("\n");
 }

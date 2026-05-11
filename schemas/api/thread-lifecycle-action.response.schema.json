@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-lifecycle-action.response.schema.json",
+  "title": "ThreadLifecycleActionResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["threadId", "lifecycleState", "auditEventId", "changedAt", "action", "availableActions"],
+  "properties": {
+    "threadId": { "type": "string", "minLength": 1 },
+    "lifecycleState": { "type": "string", "enum": ["active", "reset", "archived", "reopened"] },
+    "previousSessionSegmentId": { "type": "string" },
+    "currentSessionSegmentId": { "type": "string" },
+    "auditEventId": { "type": "string", "minLength": 1 },
+    "changedAt": { "type": "string", "format": "date-time" },
+    "action": { "type": "string", "enum": ["reset", "archive", "reopen"] },
+    "availableActions": { "type": "array", "items": { "type": "string", "enum": ["reset", "archive", "reopen"] } }
+  }
+}

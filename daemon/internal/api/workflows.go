@@ -26,6 +26,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
+	"github.com/dopejs/dope-agent/daemon/internal/threads"
 )
 
 type mcpPlanningAdapter struct {
@@ -539,6 +540,9 @@ func executeWorkflowComputerUseStep(ctx context.Context, cfg config.Config, mana
 		}
 		if approval != nil {
 			if err := persistApproval(ctx, sqliteStore, *approval); err != nil {
+				return workflow, false, err
+			}
+			if err := recordThreadApprovalProjection(ctx, eventBus, sqliteStore, *approval, "policy.approval_requested"); err != nil {
 				return workflow, false, err
 			}
 		}
@@ -1113,7 +1117,7 @@ func publishWorkflowEvent(ctx context.Context, eventBus *events.Bus, sqliteStore
 	for key, value := range extra {
 		payload[key] = value
 	}
-	return publishEvent(ctx, eventBus, sqliteStore, events.Event{
+	published, err := publishEvent(ctx, eventBus, sqliteStore, events.Event{
 		Category: "workflow",
 		Name:     name,
 		Scope: events.Scope{
@@ -1124,6 +1128,80 @@ func publishWorkflowEvent(ctx context.Context, eventBus *events.Bus, sqliteStore
 		Resource: events.Resource{Kind: "workflow", ID: workflow.WorkflowID},
 		Payload:  payload,
 	})
+	if err != nil {
+		return events.Event{}, err
+	}
+	if err := recordThreadWorkflowProjection(ctx, eventBus, sqliteStore, workflow, name); err != nil {
+		return events.Event{}, err
+	}
+	return published, nil
+}
+
+func recordThreadWorkflowProjection(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, workflow orchestration.Workflow, reasonCode string) error {
+	if sqliteStore == nil || workflow.WorkflowID == "" || workflow.RunID == "" {
+		return nil
+	}
+	projection, found, err := sqliteStore.SaveThreadRuntimeProjectionForRun(ctx, workflow.RunID, threads.RuntimeProjectionInput{
+		ProjectionID:    "rtp_workflow_" + workflow.WorkflowID,
+		ResourceKind:    threads.RuntimeResourceWorkflow,
+		ResourceID:      workflow.WorkflowID,
+		Status:          string(workflow.Status),
+		ReasonCode:      reasonCode,
+		OccurredAt:      time.Now().UTC(),
+		Route:           "/v1/runs/" + workflow.RunID + "/workflows/" + workflow.WorkflowID,
+		SafeSummary:     "Workflow " + string(workflow.Status),
+		RedactionStatus: threads.RedactionStatusRedacted,
+	})
+	if err != nil || !found {
+		return err
+	}
+	if eventBus != nil {
+		if _, err := publishEvent(ctx, eventBus, sqliteStore, events.ThreadRuntimeProjectionEvent(projection)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func recordThreadApprovalProjection(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, approval policy.Approval, reasonCode string) error {
+	if sqliteStore == nil || approval.ApprovalID == "" {
+		return nil
+	}
+	input := threads.RuntimeProjectionInput{
+		ProjectionID:    "rtp_approval_" + approval.ApprovalID,
+		ResourceKind:    threads.RuntimeResourceApproval,
+		ResourceID:      approval.ApprovalID,
+		Status:          string(approval.Status),
+		ReasonCode:      reasonCode,
+		OccurredAt:      approval.UpdatedAt,
+		Route:           "/v1/policy/approvals/" + approval.ApprovalID,
+		SafeSummary:     "Approval " + string(approval.Status),
+		RedactionStatus: threads.RedactionStatusRedacted,
+	}
+	var projection threads.RuntimeProjection
+	var found bool
+	var err error
+	switch {
+	case approval.ResourceKind == "run" && approval.ResourceID != "":
+		projection, found, err = sqliteStore.SaveThreadRuntimeProjectionForRun(ctx, approval.ResourceID, input)
+	case approval.ResourceKind == "workflow" && approval.ResourceID != "":
+		projection, found, err = sqliteStore.SaveThreadRuntimeProjectionForWorkflow(ctx, approval.ResourceID, input)
+	case strings.HasPrefix(approval.RequestedBy, "workflow:"):
+		projection, found, err = sqliteStore.SaveThreadRuntimeProjectionForWorkflow(ctx, strings.TrimPrefix(approval.RequestedBy, "workflow:"), input)
+	case strings.HasPrefix(approval.RequestedBy, "run:"):
+		projection, found, err = sqliteStore.SaveThreadRuntimeProjectionForRun(ctx, strings.TrimPrefix(approval.RequestedBy, "run:"), input)
+	default:
+		return nil
+	}
+	if err != nil || !found {
+		return err
+	}
+	if eventBus != nil {
+		if _, err := publishEvent(ctx, eventBus, sqliteStore, events.ThreadRuntimeProjectionEvent(projection)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func publishComputerUseArtifacts(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, action computeruse.Action) {

@@ -43,11 +43,13 @@ import {
   type TenantRequestOptions,
   type TenantResource,
   type TenantRole,
+  type ThreadListResponse,
   type ChannelConnectorListResponse,
   type ChannelManagementActionInput,
   type ChannelManagementSupportEvidence
 } from "@dope/client";
 import { ChannelManagementView } from "../features/channel-management";
+import { ThreadLifecycleView } from "../features/thread-lifecycle";
 
 const DEFAULT_DAEMON_URL = "http://127.0.0.1:19192";
 const DEFAULT_RUN_GOAL = "Run an operator shell smoke check.";
@@ -92,6 +94,7 @@ type ShellSnapshot = {
   channelConnectors: ChannelConnectorListResponse | null;
   selectedChannelConnector: ChannelConnectorDetailResource | null;
   channelSupportEvidence: ChannelManagementSupportEvidence | null;
+  threads: ThreadListResponse | null;
 };
 
 type DetailView = {
@@ -141,7 +144,8 @@ const EMPTY_SHELL: ShellSnapshot = {
   billingDenials: [],
   channelConnectors: null,
   selectedChannelConnector: null,
-  channelSupportEvidence: null
+  channelSupportEvidence: null,
+  threads: null
 };
 
 const ROLE_OPTIONS: TenantRole[] = ["owner", "admin", "operator", "viewer"];
@@ -299,6 +303,9 @@ export function App() {
       const channelConnectorsPromise = hasPermission(tenant, "credentials.inspect")
         ? scopedClient.listChannelConnectors({ limit: 20 }, scopedOptions).catch(() => null)
         : Promise.resolve(null);
+      const threadsPromise = hasPermission(tenant, "credentials.inspect")
+        ? scopedClient.listThreads({ limit: 20 }, scopedOptions).catch(() => null)
+        : Promise.resolve(null);
 
       const [
         onboarding,
@@ -325,7 +332,8 @@ export function App() {
         billingDashboard,
         billingDenials,
         membershipItems,
-        channelConnectors
+        channelConnectors,
+        threads
       ] = await Promise.all([
         scopedClient.getOnboarding(scopedOptions),
         scopedClient.getActivation(scopedOptions).then((response) => response.activation).catch(() => null),
@@ -354,7 +362,8 @@ export function App() {
         billingDashboardPromise,
         billingDenialsPromise,
         membershipPromise,
-        channelConnectorsPromise
+        channelConnectorsPromise,
+        threadsPromise
       ]);
       const latestValidation = liveValidations.items[0] ?? null;
       const latestCampaign = campaigns.items[0] ?? null;
@@ -413,7 +422,8 @@ export function App() {
         billingDenials,
         channelConnectors,
         selectedChannelConnector,
-        channelSupportEvidence
+        channelSupportEvidence,
+        threads
       });
       setMemberships({
         status: hasPermission(tenant, "tenant.manage") ? membershipStatusFor(membershipItems) : "hidden",
@@ -1536,6 +1546,17 @@ export function App() {
         onReEnableConnector={handleChannelConnectorReEnable}
         onStartRepair={handleChannelConnectorRepair}
         onUpdateRoutePolicy={handleChannelRoutePolicyUpdate}
+      />
+
+      <ThreadLifecycleView
+        threads={shell.threads}
+        loading={status === "loading"}
+        denied={activeTenantStatus === "denied"}
+        stalePermission={activeTenantStatus === "stale"}
+        error={activeTenantStatus === "denied" ? "Thread inspection unavailable until tenant access is restored." : ""}
+        onRefresh={() => {
+          void refreshShell({ tenantId: activeTenantId });
+        }}
       />
 
       <section className={`dashboard-grid tenant-${activeTenantStatus}`}>

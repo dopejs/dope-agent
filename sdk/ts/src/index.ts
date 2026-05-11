@@ -2554,6 +2554,107 @@ export type ChannelManagementSupportEvidence = {
   safeEvidence?: Record<string, string>;
 };
 
+export type ThreadLifecycleState = "active" | "reset" | "archived" | "reopened";
+export type ThreadSourceKind = "chat" | "channel" | "workflow" | "schedule" | "shell" | "legacy";
+export type ThreadLifecycleActionKind = "reset" | "archive" | "reopen";
+export type ThreadRedactionStatus = "redacted" | "suppressed" | "redaction_failed";
+
+// Thread lifecycle responses are inspection metadata only. They do not model
+// assistant memory recall, semantic summaries, context packing, or pruning.
+export type ThreadResource = {
+  threadId: string;
+  tenantId: string;
+  lifecycleState: ThreadLifecycleState;
+  sourceKind: ThreadSourceKind;
+  sourceSummary?: string;
+  currentSessionSegmentId?: string;
+  currentSessionId?: string;
+  lastActivityAt: string;
+  availableActions: ThreadLifecycleActionKind[];
+  redactionStatus: ThreadRedactionStatus;
+  retentionExpiresAt?: string;
+  updatedAt: string;
+};
+
+export type ThreadListResponse = {
+  tenantId: string;
+  page: {
+    limit: number;
+    nextCursor?: string;
+    order: string;
+  };
+  items: ThreadResource[];
+};
+
+export type ThreadSourceLinkage = {
+  sourceLinkageId: string;
+  sourceKind: ThreadSourceKind;
+  connectorId?: string;
+  connectorKind?: string;
+  sourceAccountId?: string;
+  sourceConversationId?: string;
+  sourceMessageId?: string;
+  routingOutcome:
+    | "accepted"
+    | "ignored"
+    | "blocked"
+    | "duplicate"
+    | "disabled"
+    | "unsupported"
+    | "failed"
+    | "unknown_source"
+    | "stale_source"
+    | "inaccessible_tenant_binding";
+  current: boolean;
+  linkedAt?: string;
+  retentionExpiresAt?: string;
+  redactionStatus: ThreadRedactionStatus;
+};
+
+export type ThreadRuntimeProjection = {
+  runtimeProjectionId: string;
+  resourceKind: "session" | "run" | "workflow" | "approval" | "foreground_reply" | "background_delivery" | "connector_message";
+  resourceId: string;
+  status: string;
+  reasonCode?: string;
+  occurredAt: string;
+  route?: string;
+  safeSummary?: string;
+  retentionExpiresAt?: string;
+  redactionStatus: ThreadRedactionStatus;
+};
+
+export type ThreadDetailResponse = {
+  thread: ThreadResource;
+  sessionSegments: Record<string, unknown>[];
+  sourceLinkages: ThreadSourceLinkage[];
+  runtimeProjections: ThreadRuntimeProjection[];
+  lifecycleActions: Record<string, unknown>[];
+};
+
+export type ThreadListQuery = {
+  limit?: number;
+  cursor?: string;
+  state?: ThreadLifecycleState;
+  sourceKind?: ThreadSourceKind;
+};
+
+export type ThreadLifecycleActionInput = {
+  reasonCode?: string;
+  note?: string;
+};
+
+export type ThreadLifecycleActionResponse = {
+  threadId: string;
+  lifecycleState: ThreadLifecycleState;
+  previousSessionSegmentId?: string;
+  currentSessionSegmentId?: string;
+  auditEventId: string;
+  changedAt: string;
+  action: ThreadLifecycleActionKind;
+  availableActions: ThreadLifecycleActionKind[];
+};
+
 export type DopeClientOptions = {
   baseURL: string;
   accessToken?: string;
@@ -2658,6 +2759,26 @@ export class DopeClient {
 
   async listChannelConnectors(query: { limit?: number; cursor?: string; state?: string; kind?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<ChannelConnectorListResponse> {
     return this.requestJSON<ChannelConnectorListResponse>("/v1/channel-management/connectors", { query, tenant: tenantOptions });
+  }
+
+  async listThreads(query: ThreadListQuery = {}, tenantOptions?: TenantRequestOptions): Promise<ThreadListResponse> {
+    return this.requestJSON<ThreadListResponse>("/v1/threads", { query, tenant: tenantOptions });
+  }
+
+  async getThread(threadId: string, tenantOptions?: TenantRequestOptions): Promise<ThreadDetailResponse> {
+    return this.requestJSON<ThreadDetailResponse>(`/v1/threads/${encodePathComponent(threadId.trim())}`, { tenant: tenantOptions });
+  }
+
+  async resetThread(threadId: string, input: ThreadLifecycleActionInput = {}, tenantOptions?: TenantRequestOptions): Promise<ThreadLifecycleActionResponse> {
+    return this.requestJSON<ThreadLifecycleActionResponse>(`/v1/threads/${encodePathComponent(threadId.trim())}/reset`, { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async archiveThread(threadId: string, input: ThreadLifecycleActionInput = {}, tenantOptions?: TenantRequestOptions): Promise<ThreadLifecycleActionResponse> {
+    return this.requestJSON<ThreadLifecycleActionResponse>(`/v1/threads/${encodePathComponent(threadId.trim())}/archive`, { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async reopenThread(threadId: string, input: ThreadLifecycleActionInput = {}, tenantOptions?: TenantRequestOptions): Promise<ThreadLifecycleActionResponse> {
+    return this.requestJSON<ThreadLifecycleActionResponse>(`/v1/threads/${encodePathComponent(threadId.trim())}/reopen`, { method: "POST", body: input, tenant: tenantOptions });
   }
 
   async getChannelConnector(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<ChannelConnectorDetailResource> {

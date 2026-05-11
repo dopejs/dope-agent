@@ -12,11 +12,15 @@ Hosted-ready connectors must prove these core invariants:
 - redacted APIs, events, logs, fixtures, support output, and conformance evidence
 - durable inbound identity using tenant, connector account, channel or conversation, and
   provider message ID, or a documented equivalent durable rule
+- daemon-owned thread source linkage for accepted, duplicate, blocked, and replayed
+  inbound messages
 - stable routing decisions: accepted, ignored, blocked, duplicate, unsupported, or failed
 - at least final-only foreground replies for accepted messages
 - required diagnostic classifications with freshness, remediation, redaction, and
   retention evidence
 - separation between foreground reply outcomes and background delivery outcomes
+- source-to-runtime trace evidence that remains metadata-only and explicitly separate
+  from memory recall or context packing
 
 Provider-specific surfaces such as rooms, threads, rich media, thinking visibility, and
 incremental updates may be supported, limited, or unsupported only when explicit. An
@@ -133,6 +137,12 @@ surface-specific tests for rooms, threads, media, cards, edits, stop controls, o
 limits, but it must not redefine tenant ownership, active-tenant account binding,
 durable inbound identity, dedupe, routing outcome meanings, redaction, diagnostics, or
 foreground/background delivery separation.
+
+Roadmap 54 adds one more shared rule: connector-local conversation state is never the
+source of truth for continuation after restart. Providers must attach accepted inbound
+messages to the daemon-owned current thread for `(tenant, connector, source account,
+source conversation)`, preserve duplicate evidence on replay, and respect archived
+thread blocking unless the thread is explicitly reopened.
 
 Each provider handoff must include:
 

@@ -169,6 +169,163 @@ describe("tui cli", () => {
     expect(stdout.contents).toContain("Delivery Eligible: no");
     expect(stderr.contents).toBe("");
   });
+
+  it("prints thread list output", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const listThreads = vi.fn().mockResolvedValue({
+      tenantId: "ten_threads",
+      page: { limit: 20, order: "active_recent_archived_id" },
+      items: [{ threadId: "thr_1", lifecycleState: "active", sourceKind: "channel", sourceSummary: "Slack Main / #support", lastActivityAt: "2026-05-11T10:00:00Z", availableActions: ["reset"], redactionStatus: "redacted", updatedAt: "2026-05-11T10:00:00Z" }]
+    });
+    const options = parseArgs(["--threads"], {});
+    const code = await runCLI(options, {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () =>
+        ({
+          listThreads,
+          queryChat: vi.fn(),
+          streamChatQuery: vi.fn()
+        }) as any
+    });
+
+    expect(code).toBe(0);
+    expect(stdout.contents).toContain("Threads: ten_threads");
+    expect(stdout.contents).toContain("thr_1 active channel Slack Main / #support");
+  });
+
+  it("prints thread detail output and reauthorizes each command", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const getThread = vi.fn().mockResolvedValue({
+      thread: {
+        threadId: "thr_1",
+        tenantId: "ten_threads",
+        lifecycleState: "active",
+        sourceKind: "channel",
+        sourceSummary: "Slack Main / #support",
+        currentSessionId: "sess_1",
+        lastActivityAt: "2026-05-11T10:00:00Z",
+        availableActions: ["reset"],
+        redactionStatus: "redacted",
+        retentionExpiresAt: "2026-08-09T10:00:00Z",
+        updatedAt: "2026-05-11T10:00:00Z"
+      },
+      sessionSegments: [{}],
+      sourceLinkages: [],
+      runtimeProjections: [],
+      lifecycleActions: []
+    });
+    const options = parseArgs(["--thread", "thr_1"], {});
+    const code = await runCLI(options, {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () =>
+        ({
+          getThread,
+          queryChat: vi.fn(),
+          streamChatQuery: vi.fn()
+        }) as any
+    });
+
+    expect(code).toBe(0);
+    expect(getThread).toHaveBeenCalledWith("thr_1");
+    expect(stdout.contents).toContain("Thread: thr_1");
+    expect(stdout.contents).toContain("Current Session: sess_1");
+    expect(stdout.contents).toContain("Evidence: lifecycle metadata, not assistant memory");
+    expect(stdout.contents).toContain("Retention: 2026-08-09T10:00:00Z");
+    expect(stderr.contents).toBe("");
+  });
+
+  it("prints thread trace source and runtime evidence", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const getThread = vi.fn().mockResolvedValue({
+      thread: {
+        threadId: "thr_1",
+        tenantId: "ten_threads",
+        lifecycleState: "active",
+        sourceKind: "channel",
+        sourceSummary: "Slack Main / #support",
+        currentSessionId: "sess_1",
+        lastActivityAt: "2026-05-11T10:00:00Z",
+        availableActions: ["reset"],
+        redactionStatus: "redacted",
+        retentionExpiresAt: "2026-08-09T10:00:00Z",
+        updatedAt: "2026-05-11T10:00:00Z"
+      },
+      sessionSegments: [],
+      sourceLinkages: [{
+        sourceLinkageId: "src_1",
+        sourceKind: "channel",
+        connectorKind: "slack",
+        sourceConversationId: "channel_redacted",
+        routingOutcome: "accepted",
+        current: true,
+        retentionExpiresAt: "2026-08-09T10:00:00Z",
+        redactionStatus: "redacted"
+      }],
+      runtimeProjections: [{
+        runtimeProjectionId: "rtp_1",
+        resourceKind: "foreground_reply",
+        resourceId: "delivery_1",
+        status: "replied",
+        reasonCode: "accepted",
+        occurredAt: "2026-05-11T10:00:00Z",
+        safeSummary: "Foreground reply replied",
+        retentionExpiresAt: "2026-08-09T10:00:00Z",
+        redactionStatus: "redacted"
+      }],
+      lifecycleActions: []
+    });
+    const options = parseArgs(["--thread-trace", "thr_1"], {});
+    const code = await runCLI(options, {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () =>
+        ({
+          getThread,
+          queryChat: vi.fn(),
+          streamChatQuery: vi.fn()
+        }) as any
+    });
+
+    expect(code).toBe(0);
+    expect(getThread).toHaveBeenCalledWith("thr_1");
+    expect(stdout.contents).toContain("Thread Trace: thr_1");
+    expect(stdout.contents).toContain("Evidence: lifecycle metadata, not assistant memory");
+    expect(stdout.contents).toContain("Source Trace:");
+    expect(stdout.contents).toContain("- accepted slack channel_redacted");
+    expect(stdout.contents).toContain("retention=2026-08-09T10:00:00Z");
+    expect(stdout.contents).toContain("- foreground_reply replied Foreground reply replied");
+    expect(stderr.contents).toBe("");
+  });
+
+  it("runs thread lifecycle mutation commands", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const archiveThread = vi.fn().mockResolvedValue({
+      threadId: "thr_1",
+      lifecycleState: "archived",
+      auditEventId: "audit_1",
+      changedAt: "2026-05-11T10:00:00Z",
+      action: "archive",
+      availableActions: ["reopen"]
+    });
+    const options = parseArgs(["--thread-archive", "thr_1"], {});
+    const code = await runCLI(options, {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () =>
+        ({
+          archiveThread,
+          queryChat: vi.fn(),
+          streamChatQuery: vi.fn()
+        }) as any
+    });
+
+    expect(code).toBe(0);
+    expect(archiveThread).toHaveBeenCalledWith("thr_1", { reasonCode: "tui_archive" });
+    expect(stdout.contents).toContain("Thread thr_1 archive completed.");
+    expect(stdout.contents).toContain("Audit: audit_1");
+  });
 });
 
 function createMemoryWriter() {

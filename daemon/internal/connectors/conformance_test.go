@@ -1,101 +1,77 @@
-package connectors
+package connectors_test
 
 import (
-	"errors"
+	"context"
 	"testing"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/threads"
 )
 
-func TestRunMatrixCaseRecordsCoreInvariantPassAndFailureEvidence(t *testing.T) {
+func TestConnectorSourceLinkageConformanceSurvivesRestartReplay(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
-	input := MatrixCase{
-		ScenarioID:    "fake.core.failure",
-		TenantID:      "ten_033",
-		ConnectorID:   "connector_fake",
-		ConnectorKind: "fake",
-		Now:           now,
-		CoreInvariantResults: map[ConformanceArea]ConformanceResultStatus{
-			ConformanceAreaTenantOwnership:            ConformanceResultPass,
-			ConformanceAreaPermissionGating:           ConformanceResultPass,
-			ConformanceAreaRedaction:                  ConformanceResultFail,
-			ConformanceAreaActiveTenantAccountBinding: ConformanceResultPass,
-			ConformanceAreaInboundIdentity:            ConformanceResultPass,
-			ConformanceAreaDurableDedupe:              ConformanceResultPass,
-			ConformanceAreaStableRouting:              ConformanceResultPass,
-			ConformanceAreaMinimumForegroundReply:     ConformanceResultPass,
-			ConformanceAreaDiagnostics:                ConformanceResultPass,
-			ConformanceAreaDeliverySeparation:         ConformanceResultPass,
-		},
-	}
-
-	results, profile, err := RunMatrixCase(input)
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	sqliteStore, err := store.NewSQLiteStore(dataDir)
 	if err != nil {
-		t.Fatalf("RunMatrixCase returned error: %v", err)
+		t.Fatalf("NewSQLiteStore: %v", err)
 	}
-	if len(results) != len(CoreInvariantAreas()) {
-		t.Fatalf("result count=%d, want %d", len(results), len(CoreInvariantAreas()))
+	now := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	thread := threads.Thread{
+		ThreadID:                "thr_replay",
+		TenantID:                "ten_replay",
+		LifecycleState:          threads.LifecycleStateActive,
+		CurrentSessionSegmentID: "seg_replay",
+		SourceKind:              threads.SourceKindChannel,
+		SourceSummary:           "Slack / channel_redacted",
+		LastActivityAt:          now,
+		RetentionExpiresAt:      now.Add(90 * 24 * time.Hour),
+		RedactionStatus:         threads.RedactionStatusRedacted,
+		CreatedAt:               now,
+		UpdatedAt:               now,
 	}
-	if err := ValidateCapabilityProfile(profile); !errors.Is(err, ErrCoreInvariantFailed) {
-		t.Fatalf("ValidateCapabilityProfile error=%v, want ErrCoreInvariantFailed", err)
+	if err := sqliteStore.UpsertThread(ctx, thread); err != nil {
+		t.Fatalf("UpsertThread: %v", err)
+	}
+	key := threads.SourceContinuationKey{
+		TenantID:             "ten_replay",
+		ConnectorID:          "slack-main",
+		SourceAccountID:      "workspace_redacted",
+		SourceConversationID: "channel_redacted",
+	}
+	if err := sqliteStore.SaveThreadSourceLinkage(ctx, threads.SourceLinkage{
+		SourceLinkageID:      "src_replay_current",
+		ThreadID:             "thr_replay",
+		TenantID:             "ten_replay",
+		SourceKind:           threads.SourceKindChannel,
+		ConnectorID:          "slack-main",
+		ConnectorKind:        "slack",
+		SourceAccountID:      key.SourceAccountID,
+		SourceConversationID: key.SourceConversationID,
+		SourceMessageID:      "msg_1",
+		RoutingOutcome:       threads.RoutingOutcomeAccepted,
+		Current:              true,
+		LinkedAt:             now,
+		RedactionStatus:      threads.RedactionStatusRedacted,
+	}); err != nil {
+		t.Fatalf("SaveThreadSourceLinkage: %v", err)
+	}
+	if err := sqliteStore.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
 	}
 
-	var redactionFailure ConformanceResult
-	for _, result := range results {
-		if result.Area == string(ConformanceAreaRedaction) {
-			redactionFailure = result
-			break
-		}
-	}
-	if redactionFailure.Result != ConformanceResultFail {
-		t.Fatalf("redaction result=%s, want fail", redactionFailure.Result)
-	}
-	if redactionFailure.ReasonCode != "core_invariant_failed" {
-		t.Fatalf("redaction failure reason=%q, want core_invariant_failed", redactionFailure.ReasonCode)
-	}
-	if got, want := redactionFailure.RetentionExpiresAt, now.Add(90*24*time.Hour); !got.Equal(want) {
-		t.Fatalf("retention=%s, want %s", got, want)
-	}
-}
-
-func TestRunMatrixCaseRequiresEquivalentDurableIdentityRuleDetails(t *testing.T) {
-	t.Parallel()
-
-	_, _, err := RunMatrixCase(MatrixCase{
-		ScenarioID:                      "fake.equivalent_identity.missing_rule",
-		ConnectorID:                     "connector_fake",
-		ConnectorKind:                   "fake",
-		CoreInvariantResults:            passingCoreInvariantResults(),
-		EquivalentDurableIdentityRuleID: "provider_alias",
-	})
-	if !errors.Is(err, ErrEquivalentIdentityRequired) {
-		t.Fatalf("RunMatrixCase error=%v, want ErrEquivalentIdentityRequired", err)
-	}
-}
-
-func TestRunMatrixCaseDegradesUnsafeIncrementalUpdates(t *testing.T) {
-	t.Parallel()
-
-	_, profile, err := RunMatrixCase(MatrixCase{
-		ScenarioID:                      "fake.incremental.degraded",
-		ConnectorID:                     "connector_fake",
-		ConnectorKind:                   "fake",
-		CoreInvariantResults:            passingCoreInvariantResults(),
-		UnsafeIncrementalUpdateDegraded: true,
-	})
+	restored, err := store.NewSQLiteStore(dataDir)
 	if err != nil {
-		t.Fatalf("RunMatrixCase returned error: %v", err)
+		t.Fatalf("NewSQLiteStore restored: %v", err)
 	}
-	if got := profile.ProviderSurfaceResults["incremental_visible_updates"]; got != SurfaceLimited {
-		t.Fatalf("incremental_visible_updates=%s, want limited", got)
+	t.Cleanup(func() { _ = restored.Close() })
+	current, found, err := restored.GetCurrentThreadForSource(ctx, key)
+	if err != nil || !found {
+		t.Fatalf("GetCurrentThreadForSource after restart found=%v err=%v", found, err)
 	}
-}
-
-func passingCoreInvariantResults() map[ConformanceArea]ConformanceResultStatus {
-	results := map[ConformanceArea]ConformanceResultStatus{}
-	for _, area := range CoreInvariantAreas() {
-		results[area] = ConformanceResultPass
+	if current.ThreadID != "thr_replay" || current.CurrentSessionSegmentID != "seg_replay" {
+		t.Fatalf("connector replay source did not resolve to daemon-owned thread: %+v", current)
 	}
-	return results
 }

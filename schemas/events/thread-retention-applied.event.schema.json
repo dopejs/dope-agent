@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/events/thread-retention-applied.event.schema.json",
+  "title": "ThreadRetentionAppliedEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["threadId", "retentionExpiresAt", "redactionStatus"],
+  "properties": {
+    "tenantId": { "type": "string", "minLength": 1 },
+    "threadId": { "type": "string", "minLength": 1 },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "policySource": { "type": "string", "enum": ["default", "tenant_policy"] },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] }
+  }
+}

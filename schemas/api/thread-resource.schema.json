@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-resource.schema.json",
+  "title": "ThreadResource",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["threadId", "lifecycleState", "sourceKind", "lastActivityAt", "availableActions", "redactionStatus", "updatedAt"],
+  "properties": {
+    "threadId": { "type": "string", "minLength": 1 },
+    "tenantId": { "type": "string", "minLength": 1 },
+    "lifecycleState": { "type": "string", "enum": ["active", "reset", "archived", "reopened"] },
+    "sourceKind": { "type": "string", "enum": ["chat", "channel", "workflow", "schedule", "shell", "legacy"] },
+    "sourceSummary": { "type": "string" },
+    "currentSessionSegmentId": { "type": "string" },
+    "currentSessionId": { "type": "string" },
+    "lastActivityAt": { "type": "string", "format": "date-time" },
+    "availableActions": { "type": "array", "items": { "type": "string", "enum": ["reset", "archive", "reopen"] } },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

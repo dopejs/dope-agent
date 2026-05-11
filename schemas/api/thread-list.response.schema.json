@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-list.response.schema.json",
+  "title": "ThreadListResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["page", "items"],
+  "properties": {
+    "tenantId": { "type": "string", "minLength": 1 },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["limit", "order"],
+      "properties": {
+        "limit": { "type": "integer", "minimum": 1 },
+        "nextCursor": { "type": "string" },
+        "order": { "type": "string", "minLength": 1 }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "thread-resource.schema.json" }
+    }
+  }
+}

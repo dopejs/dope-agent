@@ -20,6 +20,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
+	"github.com/dopejs/dope-agent/daemon/internal/threads"
 )
 
 type Clock interface {
@@ -462,6 +463,11 @@ func (s *Scheduler) dispatchAttempt(ctx context.Context, schedule *Schedule, att
 
 	switch target.Kind {
 	case TargetKindRun:
+		if blocked, err := s.threadContinuationArchived(ctx, target.Run.SessionID); err != nil {
+			return err
+		} else if blocked {
+			return s.recordDispatchFailure(ctx, schedule, attempt, "thread_archived", "scheduled run target is attached to an archived thread", true)
+		}
 		input := runtime.CreateRunInput{
 			SessionID:         target.Run.SessionID,
 			ScheduleID:        schedule.ScheduleID,
@@ -504,6 +510,19 @@ func (s *Scheduler) dispatchAttempt(ctx context.Context, schedule *Schedule, att
 			releaseSchedulerBillingReservation(ctx, s.billing, reservation, "scheduled run persistence failed before commit")
 			return err
 		}
+		if _, _, err := s.store.SaveThreadRuntimeProjectionForRun(ctx, run.RunID, threads.RuntimeProjectionInput{
+			ProjectionID:    "rtp_run_" + run.RunID,
+			ResourceKind:    threads.RuntimeResourceRun,
+			ResourceID:      run.RunID,
+			Status:          string(run.Status),
+			ReasonCode:      "scheduled_run",
+			OccurredAt:      run.CreatedAt,
+			Route:           "/v1/runs/" + run.RunID,
+			SafeSummary:     "Scheduled run " + string(run.Status),
+			RedactionStatus: threads.RedactionStatusRedacted,
+		}); err != nil {
+			return err
+		}
 		if err := commitSchedulerBillingReservation(ctx, s.billing, reservation, "scheduled run persisted"); err != nil {
 			return err
 		}
@@ -515,6 +534,11 @@ func (s *Scheduler) dispatchAttempt(ctx context.Context, schedule *Schedule, att
 	case TargetKindWorkflow:
 		if s.workflow == nil {
 			return s.recordDispatchFailure(ctx, schedule, attempt, "workflow_launcher_unavailable", "scheduler workflow launcher is not configured", true)
+		}
+		if blocked, err := s.threadContinuationArchived(ctx, target.Workflow.SessionID); err != nil {
+			return err
+		} else if blocked {
+			return s.recordDispatchFailure(ctx, schedule, attempt, "thread_archived", "scheduled workflow target is attached to an archived thread", true)
 		}
 		result, launchErr := s.workflow.LaunchScheduledWorkflow(ctx, *target.Workflow, schedule.ScheduleID, attempt.AttemptID)
 		if launchErr != nil {
@@ -543,6 +567,17 @@ func (s *Scheduler) dispatchAttempt(ctx context.Context, schedule *Schedule, att
 		"runId":                  attempt.RunID,
 		"workflowId":             attempt.WorkflowID,
 	})
+}
+
+func (s *Scheduler) threadContinuationArchived(ctx context.Context, sessionID string) (bool, error) {
+	if s == nil || s.store == nil || strings.TrimSpace(sessionID) == "" {
+		return false, nil
+	}
+	thread, _, found, err := s.store.GetThreadForSession(ctx, strings.TrimSpace(sessionID))
+	if err != nil || !found {
+		return false, err
+	}
+	return thread.LifecycleState == threads.LifecycleStateArchived, nil
 }
 
 func (s *Scheduler) recordDispatchFailure(ctx context.Context, schedule *Schedule, attempt *DispatchAttempt, class, reason string, allowRetry bool) error {

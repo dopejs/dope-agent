@@ -77,6 +77,7 @@ const mockClient = {
   listMemberships: vi.fn(),
   updateMembershipRole: vi.fn(),
   listChannelConnectors: vi.fn(),
+  listThreads: vi.fn(),
   getChannelConnector: vi.fn(),
   getChannelConnectorSupportEvidence: vi.fn(),
   disableChannelConnector: vi.fn(),
@@ -631,6 +632,11 @@ describe("App", () => {
       page: { limit: 20, order: "attention_disabled_ready_name_id" },
       items: []
     });
+    mockClient.listThreads.mockReset().mockResolvedValue({
+      tenantId: "ten_personal",
+      page: { limit: 20, order: "active_recent_archived_id" },
+      items: []
+    });
     mockClient.getChannelConnector.mockReset().mockResolvedValue(channelConnectorDetailFixture());
     mockClient.getChannelConnectorSupportEvidence.mockReset().mockResolvedValue(channelSupportEvidenceFixture());
     mockClient.disableChannelConnector.mockReset().mockResolvedValue({
@@ -788,6 +794,21 @@ describe("App", () => {
       page: { limit: 20, order: "attention_disabled_ready_name_id" },
       items: [channelConnectorFixture()]
     });
+    mockClient.listThreads.mockResolvedValue({
+      tenantId: "ten_personal",
+      page: { limit: 20, order: "active_recent_archived_id" },
+      items: [{
+        threadId: "thr_slack",
+        tenantId: "ten_personal",
+        lifecycleState: "active",
+        sourceKind: "channel",
+        sourceSummary: "Slack Main / #support",
+        lastActivityAt: "2026-05-11T10:00:00Z",
+        availableActions: ["reset", "archive"],
+        redactionStatus: "redacted",
+        updatedAt: "2026-05-11T10:00:00Z"
+      }]
+    });
     mockClient.getChannelConnector.mockResolvedValue(channelConnectorDetailFixture());
     mockClient.getChannelConnectorSupportEvidence.mockResolvedValue(channelSupportEvidenceFixture());
 
@@ -796,6 +817,9 @@ describe("App", () => {
     await loadShell(user);
 
     expect((await screen.findAllByRole("heading", { name: "Slack Main" })).length).toBeGreaterThan(0);
+    expect(await screen.findByText("thr_slack")).not.toBeNull();
+    expect(screen.getByText("Slack Main / #support")).not.toBeNull();
+    expect(mockClient.listThreads).toHaveBeenCalledWith({ limit: 20 }, { tenantId: "ten_personal" });
     expect(mockClient.getChannelConnector).toHaveBeenCalledWith("slack-main", { tenantId: "ten_personal" });
     expect(mockClient.getChannelConnectorSupportEvidence).toHaveBeenCalledWith("slack-main", { tenantId: "ten_personal" });
 

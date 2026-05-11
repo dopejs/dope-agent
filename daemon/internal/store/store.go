@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 49
+	CurrentSchemaVersion = 50
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -3249,6 +3249,111 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_channel_support_evidence_tenant_connector ON channel_support_evidence(tenant_id, connector_id, generated_at DESC, support_evidence_id DESC);`,
 		},
 	},
+	{
+		Version: 50,
+		Name:    "r54_thread_session_lifecycle",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS threads (
+				thread_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				lifecycle_state TEXT NOT NULL,
+				current_session_segment_id TEXT,
+				source_kind TEXT NOT NULL,
+				source_summary TEXT,
+				last_activity_at TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				retention_expires_at TEXT,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_threads_tenant_state_activity ON threads(tenant_id, lifecycle_state, last_activity_at DESC, thread_id DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS thread_session_segments (
+				session_segment_id TEXT PRIMARY KEY,
+				thread_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				session_id TEXT,
+				generation INTEGER NOT NULL,
+				state TEXT NOT NULL,
+				started_at TEXT NOT NULL,
+				ended_at TEXT,
+				last_active_at TEXT NOT NULL,
+				reset_from_session_segment_id TEXT,
+				partial_evidence INTEGER NOT NULL DEFAULT 0,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_segments_thread_generation ON thread_session_segments(thread_id, generation ASC, session_segment_id ASC);`,
+			`
+			CREATE TABLE IF NOT EXISTS thread_source_links (
+				source_linkage_id TEXT PRIMARY KEY,
+				thread_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				source_kind TEXT NOT NULL,
+				connector_id TEXT,
+				connector_kind TEXT,
+				source_account_id TEXT,
+				source_conversation_id TEXT,
+				source_message_id TEXT,
+				routing_outcome TEXT NOT NULL,
+				current_flag INTEGER NOT NULL DEFAULT 0,
+				linked_at TEXT NOT NULL,
+				retention_expires_at TEXT,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_source_current_unique ON thread_source_links(tenant_id, connector_id, source_account_id, source_conversation_id) WHERE current_flag = 1;`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_source_thread ON thread_source_links(thread_id, linked_at DESC, source_linkage_id DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS thread_lifecycle_events (
+				lifecycle_event_id TEXT PRIMARY KEY,
+				thread_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				action TEXT NOT NULL,
+				outcome TEXT NOT NULL,
+				audit_event_id TEXT,
+				occurred_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_lifecycle_events_thread ON thread_lifecycle_events(thread_id, occurred_at DESC, lifecycle_event_id DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS thread_runtime_projections (
+				runtime_projection_id TEXT PRIMARY KEY,
+				thread_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				session_segment_id TEXT,
+				resource_kind TEXT NOT NULL,
+				resource_id TEXT NOT NULL,
+				status TEXT NOT NULL,
+				reason_code TEXT,
+				occurred_at TEXT NOT NULL,
+				route TEXT,
+				safe_summary TEXT,
+				retention_expires_at TEXT,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_runtime_projections_thread ON thread_runtime_projections(thread_id, occurred_at DESC, runtime_projection_id DESC);`,
+			`ALTER TABLE connector_messages ADD COLUMN thread_session_segment_id TEXT;`,
+			`
+			CREATE TABLE IF NOT EXISTS thread_retention_policies (
+				tenant_id TEXT PRIMARY KEY,
+				retention_expires_at TEXT NOT NULL
+			);
+			`,
+		},
+	},
 }
 
 type SQLiteStore struct {
@@ -4555,6 +4660,7 @@ func (s *SQLiteStore) CreateConnectorMessageIfAbsent(ctx context.Context, messag
 			provider_message_id,
 			equivalent_rule_id,
 			session_id,
+			thread_session_segment_id,
 			run_id,
 			channel_id,
 			peer_id,
@@ -4570,7 +4676,7 @@ func (s *SQLiteStore) CreateConnectorMessageIfAbsent(ctx context.Context, messag
 			delivery_boundary_kind,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		message.DeliveryID,
 		tenantID,
@@ -4582,6 +4688,7 @@ func (s *SQLiteStore) CreateConnectorMessageIfAbsent(ctx context.Context, messag
 		nullString(message.ProviderMessageID),
 		nullString(equivalentRuleID),
 		nullString(message.SessionID),
+		nullString(message.ThreadSessionSegmentID),
 		nullString(message.RunID),
 		message.ChannelID,
 		nullString(message.PeerID),
@@ -4656,6 +4763,7 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 			provider_message_id,
 			equivalent_rule_id,
 			session_id,
+			thread_session_segment_id,
 			run_id,
 			channel_id,
 			peer_id,
@@ -4672,7 +4780,7 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 			created_at,
 			updated_at,
 			tenant_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(delivery_id) DO UPDATE SET
 			connector_id = excluded.connector_id,
 			direction = excluded.direction,
@@ -4682,6 +4790,7 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 			provider_message_id = excluded.provider_message_id,
 			equivalent_rule_id = excluded.equivalent_rule_id,
 			session_id = excluded.session_id,
+			thread_session_segment_id = excluded.thread_session_segment_id,
 			run_id = excluded.run_id,
 			channel_id = excluded.channel_id,
 			peer_id = excluded.peer_id,
@@ -4708,6 +4817,7 @@ func (s *SQLiteStore) UpsertConnectorMessage(ctx context.Context, message imtype
 		nullString(message.ProviderMessageID),
 		nullString(equivalentRuleID),
 		nullString(message.SessionID),
+		nullString(message.ThreadSessionSegmentID),
 		nullString(message.RunID),
 		message.ChannelID,
 		nullString(message.PeerID),
@@ -4802,7 +4912,7 @@ func (s *SQLiteStore) GetConnectorMessageByExternalIDForTenant(ctx context.Conte
 	tenantID = coalesceString(tenantID, tenantBindingString(s.ResolveActiveTenantBinding(ctx)))
 
 	row := s.db.QueryRowContext(ctx, `
-		SELECT delivery_id, tenant_id, connector_id, direction, external_message_id, connector_account_id, channel_or_conversation_id, provider_message_id, equivalent_rule_id, session_id, run_id, channel_id, peer_id, thread_id, author_id, content, status, error_text, reply_to_external_message_id, response_to_delivery_id, foreground_outcome_status, background_delivery_id, delivery_boundary_kind, created_at, updated_at
+		SELECT delivery_id, tenant_id, connector_id, direction, external_message_id, connector_account_id, channel_or_conversation_id, provider_message_id, equivalent_rule_id, session_id, thread_session_segment_id, run_id, channel_id, peer_id, thread_id, author_id, content, status, error_text, reply_to_external_message_id, response_to_delivery_id, foreground_outcome_status, background_delivery_id, delivery_boundary_kind, created_at, updated_at
 		FROM connector_messages
 		WHERE tenant_id = ? AND connector_id = ? AND direction = ? AND external_message_id = ?
 	`,
@@ -4828,7 +4938,7 @@ func (s *SQLiteStore) GetConnectorMessageByStandardIdentity(ctx context.Context,
 	}
 	equivalentRuleID = coalesceString(equivalentRuleID, "standard_provider_message_id")
 	row := s.db.QueryRowContext(ctx, `
-		SELECT delivery_id, tenant_id, connector_id, direction, external_message_id, connector_account_id, channel_or_conversation_id, provider_message_id, equivalent_rule_id, session_id, run_id, channel_id, peer_id, thread_id, author_id, content, status, error_text, reply_to_external_message_id, response_to_delivery_id, foreground_outcome_status, background_delivery_id, delivery_boundary_kind, created_at, updated_at
+		SELECT delivery_id, tenant_id, connector_id, direction, external_message_id, connector_account_id, channel_or_conversation_id, provider_message_id, equivalent_rule_id, session_id, thread_session_segment_id, run_id, channel_id, peer_id, thread_id, author_id, content, status, error_text, reply_to_external_message_id, response_to_delivery_id, foreground_outcome_status, background_delivery_id, delivery_boundary_kind, created_at, updated_at
 		FROM connector_messages
 		WHERE tenant_id = ? AND connector_account_id = ? AND channel_or_conversation_id = ? AND provider_message_id = ? AND direction = ? AND equivalent_rule_id = ?
 	`,
@@ -10820,6 +10930,7 @@ func scanConnectorMessage(scanner interface {
 		providerMessageID        sql.NullString
 		equivalentRuleID         sql.NullString
 		sessionID                sql.NullString
+		threadSessionSegmentID   sql.NullString
 		runID                    sql.NullString
 		peerID                   sql.NullString
 		threadID                 sql.NullString
@@ -10845,6 +10956,7 @@ func scanConnectorMessage(scanner interface {
 		&providerMessageID,
 		&equivalentRuleID,
 		&sessionID,
+		&threadSessionSegmentID,
 		&runID,
 		&item.ChannelID,
 		&peerID,
@@ -10872,6 +10984,7 @@ func scanConnectorMessage(scanner interface {
 	item.ProviderMessageID = providerMessageID.String
 	item.EquivalentRuleID = equivalentRuleID.String
 	item.SessionID = sessionID.String
+	item.ThreadSessionSegmentID = threadSessionSegmentID.String
 	item.RunID = runID.String
 	item.PeerID = peerID.String
 	item.ThreadID = threadID.String

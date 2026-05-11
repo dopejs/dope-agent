@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-runtime-projection.schema.json",
+  "title": "ThreadRuntimeProjection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runtimeProjectionId", "resourceKind", "resourceId", "status", "occurredAt", "redactionStatus"],
+  "properties": {
+    "runtimeProjectionId": { "type": "string", "minLength": 1 },
+    "resourceKind": { "type": "string", "enum": ["session", "run", "workflow", "approval", "foreground_reply", "background_delivery", "connector_message"] },
+    "resourceId": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "minLength": 1 },
+    "reasonCode": { "type": "string" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "route": { "type": "string" },
+    "safeSummary": { "type": "string" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] }
+  }
+}

@@ -88,3 +88,33 @@ func TestResetSessionIncrementsGeneration(t *testing.T) {
 		t.Fatal("expected LastResetAt to be set")
 	}
 }
+
+func TestRestoreSessionsPreservesRoutingCompatibility(t *testing.T) {
+	r := NewSessionRouter()
+	original, _, err := r.Route(RouteInput{
+		Kind:      SessionKindGroup,
+		Channel:   "slack",
+		AccountID: "workspace_1",
+		PeerID:    "channel_1",
+		ThreadID:  "thread_1",
+	})
+	if err != nil {
+		t.Fatalf("Route returned error: %v", err)
+	}
+
+	restored := NewSessionRouter()
+	restored.RestoreSessions([]Session{original})
+	afterRestart, created, err := restored.Route(RouteInput{
+		Kind:      SessionKindGroup,
+		Channel:   "slack",
+		AccountID: "workspace_1",
+		PeerID:    "channel_1",
+		ThreadID:  "thread_1",
+	})
+	if err != nil {
+		t.Fatalf("Route after restore returned error: %v", err)
+	}
+	if created || afterRestart.SessionID != original.SessionID {
+		t.Fatalf("expected restored route to reuse %s, got created=%v session=%+v", original.SessionID, created, afterRestart)
+	}
+}

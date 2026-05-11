@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/events/thread-source-linked.event.schema.json",
+  "title": "ThreadSourceLinkedEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["threadId", "sourceLinkageId", "routingOutcome", "redactionStatus"],
+  "properties": {
+    "tenantId": { "type": "string", "minLength": 1 },
+    "threadId": { "type": "string", "minLength": 1 },
+    "sessionSegmentId": { "type": "string" },
+    "sourceLinkageId": { "type": "string", "minLength": 1 },
+    "routingOutcome": { "type": "string", "enum": ["accepted", "ignored", "blocked", "duplicate", "disabled", "unsupported", "failed", "unknown_source", "stale_source", "inaccessible_tenant_binding"] },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] }
+  }
+}

@@ -26,6 +26,8 @@ func queryHead(q string) string {
 }
 
 func seedRuntime(ctx context.Context, s *store.SQLiteStore) error {
+	// sess_seed intentionally omits account_id/thread_id so head migrations can
+	// exercise partial legacy session projection without connector-local state.
 	if err := exec(ctx, s, `INSERT INTO sessions (session_id, kind, status, channel, peer_id, routing_key, generation, created_at, updated_at, last_active_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		"sess_seed", "chat", "active", "test", "peer_1", "rk_seed", 1, ts, ts, ts); err != nil {

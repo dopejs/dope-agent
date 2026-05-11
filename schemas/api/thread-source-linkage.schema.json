@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-source-linkage.schema.json",
+  "title": "ThreadSourceLinkage",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sourceLinkageId", "sourceKind", "routingOutcome", "current", "redactionStatus"],
+  "properties": {
+    "sourceLinkageId": { "type": "string", "minLength": 1 },
+    "sourceKind": { "type": "string", "enum": ["chat", "channel", "workflow", "schedule", "shell", "legacy"] },
+    "connectorId": { "type": "string" },
+    "connectorKind": { "type": "string" },
+    "sourceAccountId": { "type": "string" },
+    "sourceConversationId": { "type": "string" },
+    "sourceMessageId": { "type": "string" },
+    "routingOutcome": { "type": "string", "enum": ["accepted", "ignored", "blocked", "duplicate", "disabled", "unsupported", "failed", "unknown_source", "stale_source", "inaccessible_tenant_binding"] },
+    "current": { "type": "boolean" },
+    "linkedAt": { "type": "string", "format": "date-time" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] }
+  }
+}

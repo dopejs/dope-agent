@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/events/thread-lifecycle.event.schema.json",
+  "title": "ThreadLifecycleEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["threadId", "action", "outcome", "auditEventId", "redactionStatus"],
+  "properties": {
+    "tenantId": { "type": "string", "minLength": 1 },
+    "threadId": { "type": "string", "minLength": 1 },
+    "sessionSegmentId": { "type": "string" },
+    "action": { "type": "string", "enum": ["reset", "archive", "reopen", "redaction_failed", "audit_failed_closed"] },
+    "outcome": { "type": "string", "minLength": 1 },
+    "auditEventId": { "type": "string", "minLength": 1 },
+    "reasonCode": { "type": "string" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] }
+  }
+}

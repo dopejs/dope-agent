@@ -3,6 +3,7 @@ package im
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/threads"
 )
 
 type ReplySender interface {
@@ -106,6 +108,7 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		return ProcessResult{}, err
 	}
 	if !created {
+		_ = l.recordDuplicateThreadEvidence(ctx, connector, inbound, persistedInbound)
 		_, _ = l.publishConnectorEvent(ctx, events.ConnectorEventInboundDuplicateDetected, connector, router.Session{}, "", "", map[string]any{
 			"tenantId":                persistedInbound.TenantID,
 			"connectorId":             connector.ConnectorID,
@@ -120,12 +123,19 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		return ProcessResult{Outcome: "duplicate", ReasonCode: "duplicate_inbound", Duplicate: true}, nil
 	}
 
+	if blocked, err := l.blockArchivedSourceContinuation(ctx, connector, inbound, &persistedInbound); err != nil {
+		return ProcessResult{}, err
+	} else if blocked {
+		return ProcessResult{Outcome: "blocked", ReasonCode: "thread_archived"}, nil
+	}
+
 	session, createdSession, err := l.routeSession(inbound)
 	if err != nil {
 		persistedInbound.Status = imtypes.DeliveryStatusFailed
 		persistedInbound.Error = err.Error()
 		persistedInbound.UpdatedAt = time.Now().UTC()
 		_ = l.store.UpsertConnectorMessage(ctx, persistedInbound)
+		_ = l.recordRoutingOnlySourceEvidence(ctx, connector, inbound, persistedInbound, classifyRoutingOutcome(err), classifyError(err))
 		return ProcessResult{}, err
 	}
 	if err := l.persistSession(ctx, session); err != nil {
@@ -135,7 +145,19 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		_ = l.store.UpsertConnectorMessage(ctx, persistedInbound)
 		return ProcessResult{}, err
 	}
+	thread, segmentID, err := l.ensureThreadLifecycleForInbound(ctx, connector, inbound, session, persistedInbound)
+	if err != nil {
+		persistedInbound.Status = imtypes.DeliveryStatusFailed
+		persistedInbound.Error = err.Error()
+		persistedInbound.UpdatedAt = time.Now().UTC()
+		_ = l.store.UpsertConnectorMessage(ctx, persistedInbound)
+		return ProcessResult{}, err
+	}
 	persistedInbound.SessionID = session.SessionID
+	if thread.ThreadID != "" {
+		persistedInbound.ThreadID = thread.ThreadID
+		persistedInbound.ThreadSessionSegmentID = segmentID
+	}
 	persistedInbound.UpdatedAt = time.Now().UTC()
 	if err := l.store.UpsertConnectorMessage(ctx, persistedInbound); err != nil {
 		return ProcessResult{}, err
@@ -222,6 +244,7 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		persistedInbound.Error = safeReason
 		persistedInbound.UpdatedAt = time.Now().UTC()
 		_ = l.store.UpsertConnectorMessage(ctx, persistedInbound)
+		_ = l.recordThreadRuntimeProjections(ctx, thread, segmentID, session, run, persistedInbound, outboundRecord, string(persistedInbound.Status), safeReason)
 		if !partialReply {
 			_ = l.recordChannelForegroundReplyOutcome(ctx, connector, session, outboundRecord, "failed", safeReason, map[string]string{
 				"errorClass": errorClass,
@@ -266,6 +289,9 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		return ProcessResult{}, err
 	}
 	run, _ = l.runtime.GetRun(run.RunID)
+	if err := l.recordThreadRuntimeProjections(ctx, thread, segmentID, session, run, persistedInbound, outboundRecord, string(run.Status), "accepted"); err != nil {
+		return ProcessResult{}, err
+	}
 	return ProcessResult{
 		Session:    session,
 		Run:        run,
@@ -295,6 +321,293 @@ func coalesceTrimmed(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func (l *MessageLoop) blockArchivedSourceContinuation(ctx context.Context, connector connectors.Connector, inbound imtypes.InboundMessage, persistedInbound *imtypes.MessageRecord) (bool, error) {
+	key, err := sourceContinuationKey(connector, inbound)
+	if err != nil {
+		return false, nil
+	}
+	current, found, err := l.store.GetCurrentThreadForSource(ctx, key)
+	if err != nil || !found || current.LifecycleState != threads.LifecycleStateArchived {
+		return false, err
+	}
+	now := time.Now().UTC()
+	persistedInbound.ThreadID = current.ThreadID
+	persistedInbound.ThreadSessionSegmentID = current.CurrentSessionSegmentID
+	persistedInbound.Status = imtypes.DeliveryStatusFailed
+	persistedInbound.Error = "thread_archived"
+	persistedInbound.UpdatedAt = now
+	if err := l.store.UpsertConnectorMessage(ctx, *persistedInbound); err != nil {
+		return false, err
+	}
+	if err := l.saveThreadSourceLinkage(ctx, threads.SourceLinkage{
+		SourceLinkageID:      threadSourceLinkageID(*persistedInbound, threads.RoutingOutcomeBlocked),
+		ThreadID:             current.ThreadID,
+		TenantID:             current.TenantID,
+		SourceKind:           threads.SourceKindChannel,
+		ConnectorID:          connector.ConnectorID,
+		ConnectorKind:        connector.Kind,
+		SourceAccountID:      key.SourceAccountID,
+		SourceConversationID: key.SourceConversationID,
+		SourceMessageID:      inboundProviderMessageID(inbound),
+		RoutingOutcome:       threads.RoutingOutcomeBlocked,
+		Current:              false,
+		LinkedAt:             now,
+		RedactionStatus:      threads.RedactionStatusRedacted,
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (l *MessageLoop) ensureThreadLifecycleForInbound(ctx context.Context, connector connectors.Connector, inbound imtypes.InboundMessage, session router.Session, persistedInbound imtypes.MessageRecord) (threads.Thread, string, error) {
+	key, err := sourceContinuationKey(connector, inbound)
+	if err != nil {
+		return threads.Thread{}, "", nil
+	}
+	now := time.Now().UTC()
+	current, found, err := l.store.GetCurrentThreadForSource(ctx, key)
+	if err != nil {
+		return threads.Thread{}, "", err
+	}
+	segmentID := ""
+	if found {
+		segmentID = current.CurrentSessionSegmentID
+		if segmentID == "" {
+			segmentID = "seg_" + session.SessionID
+			current.CurrentSessionSegmentID = segmentID
+		}
+		current.LastActivityAt = now
+		current.UpdatedAt = now
+		if err := l.store.UpsertThread(ctx, current); err != nil {
+			return threads.Thread{}, "", err
+		}
+	} else {
+		segmentID = "seg_" + session.SessionID
+		current = threads.Thread{
+			ThreadID:                threadIDForSource(key),
+			TenantID:                key.TenantID,
+			LifecycleState:          threads.LifecycleStateActive,
+			CurrentSessionSegmentID: segmentID,
+			SourceKind:              threads.SourceKindChannel,
+			SourceSummary:           connector.DisplayName + " / " + inboundChannelOrConversationID(inbound),
+			LastActivityAt:          now,
+			CreatedAt:               now,
+			UpdatedAt:               now,
+			RetentionExpiresAt:      l.store.ThreadRetentionExpiry(ctx, key.TenantID, now),
+			RedactionStatus:         threads.RedactionStatusRedacted,
+		}
+		if err := l.store.UpsertThread(ctx, current); err != nil {
+			return threads.Thread{}, "", err
+		}
+	}
+	if err := l.store.UpsertThreadSessionSegment(ctx, threads.SessionSegment{
+		SessionSegmentID: segmentID,
+		ThreadID:         current.ThreadID,
+		TenantID:         current.TenantID,
+		SessionID:        session.SessionID,
+		Generation:       session.Generation,
+		State:            "active",
+		StartedAt:        session.CreatedAt,
+		LastActiveAt:     now,
+		PartialEvidence:  false,
+	}); err != nil {
+		return threads.Thread{}, "", err
+	}
+	if err := l.saveThreadSourceLinkage(ctx, threads.SourceLinkage{
+		SourceLinkageID:      threadSourceLinkageID(persistedInbound, threads.RoutingOutcomeAccepted),
+		ThreadID:             current.ThreadID,
+		TenantID:             current.TenantID,
+		SourceKind:           threads.SourceKindChannel,
+		ConnectorID:          connector.ConnectorID,
+		ConnectorKind:        connector.Kind,
+		SourceAccountID:      key.SourceAccountID,
+		SourceConversationID: key.SourceConversationID,
+		SourceMessageID:      inboundProviderMessageID(inbound),
+		RoutingOutcome:       threads.RoutingOutcomeAccepted,
+		Current:              true,
+		LinkedAt:             now,
+		RedactionStatus:      threads.RedactionStatusRedacted,
+	}); err != nil {
+		return threads.Thread{}, "", err
+	}
+	return current, segmentID, nil
+}
+
+func (l *MessageLoop) recordDuplicateThreadEvidence(ctx context.Context, connector connectors.Connector, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord) error {
+	key, err := sourceContinuationKey(connector, inbound)
+	if err != nil {
+		return l.recordRoutingOnlySourceEvidence(ctx, connector, inbound, persistedInbound, threads.RoutingOutcomeUnknownSource, "invalid_source_key")
+	}
+	current, found, err := l.store.GetCurrentThreadForSource(ctx, key)
+	if err != nil || !found {
+		return err
+	}
+	return l.saveThreadSourceLinkage(ctx, threads.SourceLinkage{
+		SourceLinkageID:      threadSourceLinkageID(persistedInbound, threads.RoutingOutcomeDuplicate),
+		ThreadID:             current.ThreadID,
+		TenantID:             current.TenantID,
+		SourceKind:           threads.SourceKindChannel,
+		ConnectorID:          connector.ConnectorID,
+		ConnectorKind:        connector.Kind,
+		SourceAccountID:      key.SourceAccountID,
+		SourceConversationID: key.SourceConversationID,
+		SourceMessageID:      inboundProviderMessageID(inbound),
+		RoutingOutcome:       threads.RoutingOutcomeDuplicate,
+		Current:              false,
+		LinkedAt:             time.Now().UTC(),
+		RedactionStatus:      threads.RedactionStatusRedacted,
+	})
+}
+
+func (l *MessageLoop) recordRoutingOnlySourceEvidence(ctx context.Context, connector connectors.Connector, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, outcome threads.RoutingOutcome, reasonCode string) error {
+	tenantID := coalesceTrimmed(inbound.TenantID, connector.TenantID)
+	if tenantID == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	thread := threads.Thread{
+		ThreadID:           "thr_ingress_" + shortThreadHash(persistedInbound.DeliveryID+string(outcome)),
+		TenantID:           tenantID,
+		LifecycleState:     threads.LifecycleStateActive,
+		SourceKind:         threads.SourceKindChannel,
+		SourceSummary:      connector.DisplayName + " / routing evidence",
+		LastActivityAt:     now,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		RetentionExpiresAt: l.store.ThreadRetentionExpiry(ctx, tenantID, now),
+		RedactionStatus:    threads.RedactionStatusRedacted,
+	}
+	if err := l.store.UpsertThread(ctx, thread); err != nil {
+		return err
+	}
+	return l.saveThreadSourceLinkage(ctx, threads.SourceLinkage{
+		SourceLinkageID:      threadSourceLinkageID(persistedInbound, outcome),
+		ThreadID:             thread.ThreadID,
+		TenantID:             tenantID,
+		SourceKind:           threads.SourceKindChannel,
+		ConnectorID:          connector.ConnectorID,
+		ConnectorKind:        connector.Kind,
+		SourceAccountID:      inboundConnectorAccountID(inbound),
+		SourceConversationID: inboundChannelOrConversationID(inbound),
+		SourceMessageID:      inboundProviderMessageID(inbound),
+		RoutingOutcome:       outcome,
+		Current:              false,
+		LinkedAt:             now,
+		RedactionStatus:      threads.RedactionStatusRedacted,
+	})
+}
+
+func (l *MessageLoop) recordThreadRuntimeProjections(ctx context.Context, thread threads.Thread, segmentID string, session router.Session, run runtime.Run, inboundRecord imtypes.MessageRecord, outboundRecord imtypes.MessageRecord, status, reasonCode string) error {
+	if thread.ThreadID == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	projections := []threads.RuntimeProjection{
+		threads.BuildRuntimeProjection(threads.RuntimeProjectionInput{
+			ProjectionID:     "rtp_session_" + session.SessionID,
+			ThreadID:         thread.ThreadID,
+			TenantID:         thread.TenantID,
+			SessionSegmentID: segmentID,
+			ResourceKind:     threads.RuntimeResourceSession,
+			ResourceID:       session.SessionID,
+			Status:           string(session.Status),
+			ReasonCode:       reasonCode,
+			OccurredAt:       now,
+			Route:            "/v1/sessions/" + session.SessionID,
+			SafeSummary:      "Session routed",
+		}),
+		threads.BuildRuntimeProjection(threads.RuntimeProjectionInput{
+			ProjectionID:     "rtp_connector_message_" + inboundRecord.DeliveryID,
+			ThreadID:         thread.ThreadID,
+			TenantID:         thread.TenantID,
+			SessionSegmentID: segmentID,
+			ResourceKind:     threads.RuntimeResourceConnectorMessage,
+			ResourceID:       inboundRecord.DeliveryID,
+			Status:           string(inboundRecord.Status),
+			ReasonCode:       reasonCode,
+			OccurredAt:       inboundRecord.CreatedAt,
+			SafeSummary:      "Inbound connector message " + status,
+		}),
+	}
+	if run.RunID != "" {
+		projections = append(projections, threads.BuildRuntimeProjection(threads.RuntimeProjectionInput{
+			ProjectionID:     "rtp_run_" + run.RunID,
+			ThreadID:         thread.ThreadID,
+			TenantID:         thread.TenantID,
+			SessionSegmentID: segmentID,
+			ResourceKind:     threads.RuntimeResourceRun,
+			ResourceID:       run.RunID,
+			Status:           string(run.Status),
+			ReasonCode:       reasonCode,
+			OccurredAt:       run.CreatedAt,
+			Route:            "/v1/runs/" + run.RunID,
+			SafeSummary:      "Assistant run " + string(run.Status),
+		}))
+	}
+	if outboundRecord.DeliveryID != "" {
+		projections = append(projections, threads.BuildRuntimeProjection(threads.RuntimeProjectionInput{
+			ProjectionID:     "rtp_foreground_reply_" + outboundRecord.DeliveryID,
+			ThreadID:         thread.ThreadID,
+			TenantID:         thread.TenantID,
+			SessionSegmentID: segmentID,
+			ResourceKind:     threads.RuntimeResourceForegroundReply,
+			ResourceID:       outboundRecord.DeliveryID,
+			Status:           string(outboundRecord.Status),
+			ReasonCode:       reasonCode,
+			OccurredAt:       outboundRecord.CreatedAt,
+			SafeSummary:      "Foreground reply " + string(outboundRecord.Status),
+		}))
+	}
+	for _, projection := range projections {
+		if err := l.saveThreadRuntimeProjection(ctx, projection); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (l *MessageLoop) saveThreadSourceLinkage(ctx context.Context, linkage threads.SourceLinkage) error {
+	if err := l.store.SaveThreadSourceLinkage(ctx, linkage); err != nil {
+		return err
+	}
+	if l.eventBus != nil {
+		l.eventBus.Publish(events.ThreadSourceLinkedEvent(linkage))
+	}
+	return nil
+}
+
+func (l *MessageLoop) saveThreadRuntimeProjection(ctx context.Context, projection threads.RuntimeProjection) error {
+	if err := l.store.SaveThreadRuntimeProjection(ctx, projection); err != nil {
+		return err
+	}
+	if l.eventBus != nil {
+		l.eventBus.Publish(events.ThreadRuntimeProjectionEvent(projection))
+	}
+	return nil
+}
+
+func sourceContinuationKey(connector connectors.Connector, inbound imtypes.InboundMessage) (threads.SourceContinuationKey, error) {
+	return threads.NormalizeSourceContinuationKey(threads.SourceContinuationKey{
+		TenantID:             coalesceTrimmed(inbound.TenantID, connector.TenantID),
+		ConnectorID:          coalesceTrimmed(connector.ConnectorID, inbound.ConnectorID),
+		SourceAccountID:      inboundConnectorAccountID(inbound),
+		SourceConversationID: inboundChannelOrConversationID(inbound),
+	})
+}
+
+func threadIDForSource(key threads.SourceContinuationKey) string {
+	return "thr_src_" + shortThreadHash(key.String())
+}
+
+func threadSourceLinkageID(record imtypes.MessageRecord, outcome threads.RoutingOutcome) string {
+	return "src_" + shortThreadHash(record.DeliveryID+":"+string(outcome))
+}
+
+func shortThreadHash(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])[:24]
 }
 
 func (l *MessageLoop) executeReplyPath(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, replies ReplySender, progressor ReplyProgressor, capabilities imtypes.ReplyCapabilities, scope events.Scope, stopThinking func()) (chat.QueryResult, imtypes.MessageRecord, error) {
@@ -327,7 +640,7 @@ func (l *MessageLoop) executeFinalReply(ctx context.Context, connector connector
 		replyMessageIDs []string
 	)
 	for index, replyPart := range replyParts {
-		record := l.newOutboundRecord(connector, session, run, inbound, persistedInbound.DeliveryID, replyPart)
+		record := l.newOutboundRecord(connector, session, run, inbound, persistedInbound, replyPart)
 		if err := l.store.UpsertConnectorMessage(ctx, record); err != nil {
 			return chat.QueryResult{}, imtypes.MessageRecord{}, err
 		}
@@ -383,7 +696,7 @@ func (l *MessageLoop) executeStreamingReply(ctx context.Context, connector conne
 		runID:          run.RunID,
 		stepID:         step.StepID,
 		inbound:        inbound,
-		responseToID:   persistedInbound.DeliveryID,
+		responseTo:     persistedInbound,
 		flushInterval:  500 * time.Millisecond,
 		maxReplyLength: capabilities.MaxMessageLength,
 		stopThinking:   stopThinking,
@@ -423,21 +736,23 @@ func (l *MessageLoop) executeStreamingReply(ctx context.Context, connector conne
 	return queryResult, progress.record, nil
 }
 
-func (l *MessageLoop) newOutboundRecord(connector connectors.Connector, session router.Session, run runtime.Run, inbound imtypes.InboundMessage, responseToDeliveryID, content string) imtypes.MessageRecord {
+func (l *MessageLoop) newOutboundRecord(connector connectors.Connector, session router.Session, run runtime.Run, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, content string) imtypes.MessageRecord {
 	now := time.Now().UTC()
 	return imtypes.MessageRecord{
 		DeliveryID:               newDeliveryID(),
+		TenantID:                 persistedInbound.TenantID,
 		ConnectorID:              connector.ConnectorID,
 		Direction:                imtypes.DeliveryDirectionOutbound,
 		SessionID:                session.SessionID,
 		RunID:                    run.RunID,
 		ChannelID:                inbound.ChannelID,
 		PeerID:                   inbound.PeerID,
-		ThreadID:                 inbound.ThreadID,
+		ThreadID:                 persistedInbound.ThreadID,
+		ThreadSessionSegmentID:   persistedInbound.ThreadSessionSegmentID,
 		Content:                  content,
 		Status:                   imtypes.DeliveryStatusProcessing,
 		ForegroundOutcomeStatus:  foregroundReplyOutcomeStatus(imtypes.DeliveryStatusProcessing),
-		ResponseToDeliveryID:     responseToDeliveryID,
+		ResponseToDeliveryID:     persistedInbound.DeliveryID,
 		ReplyToExternalMessageID: replyToExternalMessageID(inbound),
 		CreatedAt:                now,
 		UpdatedAt:                now,
@@ -522,6 +837,27 @@ func (l *MessageLoop) routeSession(inbound imtypes.InboundMessage) (router.Sessi
 		PeerID:    inbound.PeerID,
 		ThreadID:  inbound.ThreadID,
 	})
+}
+
+func classifyRoutingOutcome(err error) threads.RoutingOutcome {
+	if err == nil {
+		return threads.RoutingOutcomeAccepted
+	}
+	lower := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(lower, "disabled"):
+		return threads.RoutingOutcomeDisabled
+	case strings.Contains(lower, "unsupported"):
+		return threads.RoutingOutcomeUnsupported
+	case strings.Contains(lower, "stale"):
+		return threads.RoutingOutcomeStaleSource
+	case strings.Contains(lower, "tenant"):
+		return threads.RoutingOutcomeInaccessibleTenantBinding
+	case strings.Contains(lower, "source") || strings.Contains(lower, "routing key"):
+		return threads.RoutingOutcomeUnknownSource
+	default:
+		return threads.RoutingOutcomeFailed
+	}
 }
 
 func (l *MessageLoop) createRunAndStep(ctx context.Context, connector connectors.Connector, session router.Session, inbound imtypes.InboundMessage) (runtime.Run, runtime.Step, error) {
@@ -819,7 +1155,7 @@ type streamReplyProgress struct {
 	runID          string
 	stepID         string
 	inbound        imtypes.InboundMessage
-	responseToID   string
+	responseTo     imtypes.MessageRecord
 	record         imtypes.MessageRecord
 	records        []imtypes.MessageRecord
 	lastFlushed    string
@@ -880,7 +1216,7 @@ func (p *streamReplyProgress) flush(ctx context.Context, reply string, mode stre
 	replyMessageIDs := make([]string, 0, len(replyParts))
 	for index, replyPart := range replyParts {
 		if index >= len(p.records) {
-			record := p.loop.newOutboundRecord(p.connector, p.session, runtime.Run{RunID: p.runID}, p.inbound, p.responseToID, replyPart)
+			record := p.loop.newOutboundRecord(p.connector, p.session, runtime.Run{RunID: p.runID}, p.inbound, p.responseTo, replyPart)
 			record.Status = imtypes.DeliveryStatusStreaming
 			if err := p.loop.store.UpsertConnectorMessage(ctx, record); err != nil {
 				p.err = err

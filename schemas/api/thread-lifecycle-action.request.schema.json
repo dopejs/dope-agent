@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-lifecycle-action.request.schema.json",
+  "title": "ThreadLifecycleActionRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "reasonCode": { "type": "string" },
+    "note": { "type": "string" }
+  }
+}

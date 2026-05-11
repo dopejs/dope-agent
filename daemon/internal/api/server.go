@@ -389,6 +389,12 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/delivery/windows/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/delivery/windows/", "delivery_summary_windows", "summary_window_id", "delivery_summary_window", func(w http.ResponseWriter, r *http.Request) {
 		handleDeliveryWindowRoutes(deps.Delivery, w, r)
 	})))
+	mux.HandleFunc("/v1/threads", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleThreadLifecycleRoutes(deps.Store, deps.EventBus, w, r)
+	}))
+	mux.HandleFunc("/v1/threads/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/threads/", "threads", "thread_id", "thread", func(w http.ResponseWriter, r *http.Request) {
+		handleThreadLifecycleRoutes(deps.Store, deps.EventBus, w, r)
+	})))
 	mux.HandleFunc("/v1/sessions", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSessions(deps.Router, deps.EventBus, deps.Store, w, r)
 	}))
@@ -1313,6 +1319,10 @@ func handlePolicyApprovals(policyEngine *policy.Engine, eventBus *events.Bus, sq
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		if err := recordThreadApprovalProjection(r.Context(), eventBus, sqliteStore, approval, "policy.approval_requested"); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		decisionRecordedPayload := map[string]any{
 			"action":       decision.Action,
 			"resourceKind": decision.ResourceKind,
@@ -1466,6 +1476,10 @@ func handlePolicyApprovalResolve(cfg config.Config, policyEngine *policy.Engine,
 		},
 		Payload: approvalResolvedPayload,
 	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := recordThreadApprovalProjection(r.Context(), eventBus, sqliteStore, approval, "policy.approval_resolved"); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -5159,6 +5173,9 @@ func authorizeToolCallConsumer(ctx context.Context, policyEngine *policy.Engine,
 		}); err != nil {
 			return approvalGateResponse{}, false, err
 		}
+		if err := recordThreadApprovalProjection(ctx, eventBus, sqliteStore, approval, "policy.approval_requested"); err != nil {
+			return approvalGateResponse{}, false, err
+		}
 		if _, err := publishEvent(ctx, eventBus, sqliteStore, events.Event{
 			Category: "policy",
 			Name:     "policy.decision_recorded",
@@ -5999,6 +6016,9 @@ func authorizeHighRiskToolCall(r *http.Request, policyEngine *policy.Engine, sql
 				"sandbox":      consumerPayload,
 			},
 		}); err != nil {
+			return approvalGateResponse{}, false, err
+		}
+		if err := recordThreadApprovalProjection(r.Context(), eventBus, sqliteStore, approval, "policy.approval_requested"); err != nil {
 			return approvalGateResponse{}, false, err
 		}
 		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{

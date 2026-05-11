@@ -25,6 +25,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/threads"
 )
 
 type ScheduleWorkflowLauncherDependencies struct {
@@ -126,6 +127,11 @@ func (l *ScheduleWorkflowLauncher) launchWorkflow(ctx context.Context, target sc
 	if l == nil || l.runtime == nil || l.store == nil {
 		return backgroundWorkflowLaunchResult{}, fmt.Errorf("workflow launcher is not configured")
 	}
+	if blocked, err := l.threadContinuationArchived(ctx, target.SessionID); err != nil {
+		return backgroundWorkflowLaunchResult{}, err
+	} else if blocked {
+		return backgroundWorkflowLaunchResult{}, fmt.Errorf("thread_archived")
+	}
 
 	runInput := runtime.CreateRunInput{
 		SessionID:            target.SessionID,
@@ -184,6 +190,20 @@ func (l *ScheduleWorkflowLauncher) launchWorkflow(ctx context.Context, target sc
 	if err := l.store.UpsertRun(ctx, run); err != nil {
 		releaseBillingReservation(ctx, l.billing, runReservation, "background workflow run persistence failed before commit")
 		releaseBillingReservation(ctx, l.billing, workflowReservation, "background workflow run persistence failed before commit")
+		return backgroundWorkflowLaunchResult{}, err
+	}
+	if _, _, err := l.store.SaveThreadRuntimeProjectionForRun(ctx, run.RunID, threads.RuntimeProjectionInput{
+		ProjectionID:    "rtp_run_" + run.RunID,
+		ResourceKind:    threads.RuntimeResourceRun,
+		ResourceID:      run.RunID,
+		Status:          string(run.Status),
+		ReasonCode:      "background_workflow_launch",
+		OccurredAt:      run.CreatedAt,
+		Route:           "/v1/runs/" + run.RunID,
+		SafeSummary:     "Background workflow run " + string(run.Status),
+		RedactionStatus: threads.RedactionStatusRedacted,
+	}); err != nil {
+		releaseBillingReservation(ctx, l.billing, workflowReservation, "background workflow run projection failed before workflow persistence")
 		return backgroundWorkflowLaunchResult{}, err
 	}
 	if runReservation.ReservationID != "" {
@@ -283,6 +303,17 @@ func (l *ScheduleWorkflowLauncher) launchWorkflow(ctx context.Context, target sc
 		WorkflowID: workflow.WorkflowID,
 		Status:     workflow.Status,
 	}, nil
+}
+
+func (l *ScheduleWorkflowLauncher) threadContinuationArchived(ctx context.Context, sessionID string) (bool, error) {
+	if l == nil || l.store == nil || strings.TrimSpace(sessionID) == "" {
+		return false, nil
+	}
+	thread, _, found, err := l.store.GetThreadForSession(ctx, strings.TrimSpace(sessionID))
+	if err != nil || !found {
+		return false, err
+	}
+	return thread.LifecycleState == threads.LifecycleStateArchived, nil
 }
 
 func backgroundWorkflowClientKey(scheduleID, scheduleAttemptID, reminderID, occurrenceID string) string {

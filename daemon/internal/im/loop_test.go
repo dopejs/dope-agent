@@ -19,6 +19,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/threads"
 )
 
 type loopTestProvider struct{}
@@ -126,6 +127,32 @@ func (p *loopLongProvider) Stream(_ context.Context, request llm.ProviderRequest
 type loopTestReplySender struct {
 	last imtypes.OutboundReply
 	err  error
+}
+
+func newThreadLifecycleLoopForTest(t *testing.T) (*store.SQLiteStore, *MessageLoop, *loopTestReplySender) {
+	t.Helper()
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = sqliteStore.Close() })
+
+	eventBus := events.NewBus()
+	dispatcher := llm.NewDispatcher()
+	dispatcher.RegisterProvider(&loopTestProvider{})
+	if err := dispatcher.SetDefaultProvider("echo"); err != nil {
+		t.Fatalf("SetDefaultProvider returned error: %v", err)
+	}
+	dispatcher.SetDefaultModel("echo-v1")
+	providerManager := providers.NewManager(config.Config{
+		LLM: config.LLMConfig{
+			DefaultProvider: "echo",
+			DefaultModel:    "echo-v1",
+		},
+	}, dispatcher, nil)
+	chatService := chat.NewService(dispatcher, providerManager, nil, eventBus, sqliteStore)
+	runtimeManager := runtime.NewManager()
+	return sqliteStore, NewMessageLoop(router.NewSessionRouter(), runtimeManager, checkpoints.NewManager(sqliteStore, runtimeManager), eventBus, sqliteStore, chatService), &loopTestReplySender{}
 }
 
 func (s *loopTestReplySender) SendReply(_ context.Context, reply imtypes.OutboundReply) (imtypes.SentReply, error) {
@@ -253,6 +280,163 @@ func TestMessageLoopProcessesSingleTurnAndDeduplicates(t *testing.T) {
 	}
 	if !secondResult.Duplicate {
 		t.Fatal("expected duplicate inbound message to be ignored")
+	}
+}
+
+func TestMessageLoopRecordsThreadLifecycleEvidenceForAcceptedDuplicateAndBlocked(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, loop, replySender := newThreadLifecycleLoopForTest(t)
+	connector := connectors.Connector{
+		TenantID:    "ten_thread",
+		ConnectorID: "slack-main",
+		Kind:        "slack",
+		DisplayName: "Slack Main",
+		Status:      connectors.StatusHealthy,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	inbound := imtypes.InboundMessage{
+		TenantID:                "ten_thread",
+		ConnectorID:             "slack-main",
+		ConnectorKind:           "slack",
+		ExternalMessageID:       "slack_msg_thread_1",
+		AccountID:               "workspace_redacted",
+		ConnectorAccountID:      "workspace_redacted",
+		ChannelID:               "channel_redacted",
+		ChannelOrConversationID: "channel_redacted",
+		ProviderMessageID:       "slack_msg_thread_1",
+		EquivalentRuleID:        "slack_workspace_conversation_message_id",
+		PeerID:                  "channel_redacted",
+		ThreadID:                "provider_thread_root",
+		AuthorID:                "user_1",
+		Content:                 "hello",
+		Kind:                    router.SessionKindGroup,
+		ReceivedAt:              time.Now().UTC(),
+	}
+
+	result, err := loop.ProcessSingleTurn(context.Background(), connector, inbound, replySender)
+	if err != nil {
+		t.Fatalf("ProcessSingleTurn accepted: %v", err)
+	}
+	persisted, ok, err := sqliteStore.GetConnectorMessageByExternalIDForTenant(context.Background(), "ten_thread", "slack-main", imtypes.DeliveryDirectionInbound, "slack_msg_thread_1")
+	if err != nil || !ok {
+		t.Fatalf("GetConnectorMessageByExternalIDForTenant ok=%v err=%v", ok, err)
+	}
+	if persisted.ThreadID == "" || persisted.ThreadSessionSegmentID == "" {
+		t.Fatalf("accepted connector message missing thread evidence: %+v", persisted)
+	}
+	detail, found, err := sqliteStore.GetThreadDetailForTenant(context.Background(), "ten_thread", persisted.ThreadID)
+	if err != nil || !found {
+		t.Fatalf("GetThreadDetailForTenant found=%v err=%v", found, err)
+	}
+	if len(detail.SourceLinkages) != 1 || detail.SourceLinkages[0].RoutingOutcome != "accepted" {
+		t.Fatalf("expected accepted source linkage, got %+v", detail.SourceLinkages)
+	}
+	if len(detail.RuntimeProjections) < 3 {
+		t.Fatalf("expected session/run/message runtime projections, got %+v", detail.RuntimeProjections)
+	}
+
+	duplicate, err := loop.ProcessSingleTurn(context.Background(), connector, inbound, replySender)
+	if err != nil || !duplicate.Duplicate {
+		t.Fatalf("duplicate result=%+v err=%v", duplicate, err)
+	}
+	detail, _, err = sqliteStore.GetThreadDetailForTenant(context.Background(), "ten_thread", persisted.ThreadID)
+	if err != nil {
+		t.Fatalf("GetThreadDetailForTenant duplicate: %v", err)
+	}
+	foundDuplicate := false
+	for _, linkage := range detail.SourceLinkages {
+		if linkage.RoutingOutcome == "duplicate" {
+			foundDuplicate = true
+		}
+	}
+	if !foundDuplicate {
+		t.Fatalf("expected duplicate source linkage, got %+v", detail.SourceLinkages)
+	}
+
+	if _, _, err := sqliteStore.ApplyThreadLifecycleAction(context.Background(), "ten_thread", persisted.ThreadID, "archive", threads.LifecycleMutationInput{
+		ActorPrincipalID: "prn_1",
+		AuditEventID:     "audit_archive_thread",
+		Now:              time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("archive current thread: %v", err)
+	}
+	blockedInbound := inbound
+	blockedInbound.ExternalMessageID = "slack_msg_thread_2"
+	blockedInbound.ProviderMessageID = "slack_msg_thread_2"
+	blockedInbound.Content = "blocked"
+	blocked, err := loop.ProcessSingleTurn(context.Background(), connector, blockedInbound, replySender)
+	if err != nil {
+		t.Fatalf("blocked ProcessSingleTurn: %v", err)
+	}
+	if blocked.Outcome != "blocked" || blocked.ReasonCode != "thread_archived" || result.Run.RunID == blocked.Run.RunID {
+		t.Fatalf("expected archived thread to block new continuation, got %+v", blocked)
+	}
+}
+
+func TestMessageLoopRecordsNonAcceptedSourceOutcomes(t *testing.T) {
+	t.Parallel()
+
+	sqliteStore, loop, _ := newThreadLifecycleLoopForTest(t)
+	connector := connectors.Connector{TenantID: "ten_thread", ConnectorID: "slack-main", Kind: "slack", DisplayName: "Slack Main"}
+	inbound := imtypes.InboundMessage{
+		TenantID:                "ten_thread",
+		ConnectorID:             "slack-main",
+		ConnectorKind:           "slack",
+		ExternalMessageID:       "msg_outcome",
+		AccountID:               "workspace_redacted",
+		ConnectorAccountID:      "workspace_redacted",
+		ChannelID:               "channel_redacted",
+		ChannelOrConversationID: "channel_redacted",
+		ProviderMessageID:       "msg_outcome",
+		PeerID:                  "channel_redacted",
+		Content:                 "metadata only",
+		Kind:                    router.SessionKindGroup,
+		ReceivedAt:              time.Now().UTC(),
+	}
+	outcomes := []threads.RoutingOutcome{
+		threads.RoutingOutcomeIgnored,
+		threads.RoutingOutcomeBlocked,
+		threads.RoutingOutcomeDisabled,
+		threads.RoutingOutcomeUnsupported,
+		threads.RoutingOutcomeFailed,
+		threads.RoutingOutcomeUnknownSource,
+		threads.RoutingOutcomeStaleSource,
+		threads.RoutingOutcomeInaccessibleTenantBinding,
+	}
+	for _, outcome := range outcomes {
+		record := imtypes.MessageRecord{
+			DeliveryID:              "delivery_" + string(outcome),
+			TenantID:                "ten_thread",
+			ConnectorID:             "slack-main",
+			Direction:               imtypes.DeliveryDirectionInbound,
+			ExternalMessageID:       "msg_" + string(outcome),
+			ConnectorAccountID:      "workspace_redacted",
+			ChannelOrConversationID: "channel_redacted",
+			ProviderMessageID:       "msg_" + string(outcome),
+			ChannelID:               "channel_redacted",
+			Content:                 "metadata only",
+			Status:                  imtypes.DeliveryStatusFailed,
+			CreatedAt:               time.Now().UTC(),
+			UpdatedAt:               time.Now().UTC(),
+		}
+		if err := loop.recordRoutingOnlySourceEvidence(context.Background(), connector, inbound, record, outcome, string(outcome)); err != nil {
+			t.Fatalf("recordRoutingOnlySourceEvidence(%s): %v", outcome, err)
+		}
+	}
+	for _, outcome := range outcomes {
+		var count int
+		if err := sqliteStore.DB().QueryRowContext(context.Background(), `
+			SELECT COUNT(*)
+			FROM thread_source_links
+			WHERE tenant_id = ? AND routing_outcome = ? AND current_flag = 0
+		`, "ten_thread", string(outcome)).Scan(&count); err != nil {
+			t.Fatalf("count source linkage outcome %s: %v", outcome, err)
+		}
+		if count != 1 {
+			t.Fatalf("expected one source linkage outcome %s, got %d", outcome, count)
+		}
 	}
 }
 
