@@ -76,6 +76,13 @@ const mockClient = {
   abortLiveValidation: vi.fn(),
   listMemberships: vi.fn(),
   updateMembershipRole: vi.fn(),
+  listChannelConnectors: vi.fn(),
+  getChannelConnector: vi.fn(),
+  getChannelConnectorSupportEvidence: vi.fn(),
+  disableChannelConnector: vi.fn(),
+  reEnableChannelConnector: vi.fn(),
+  startChannelConnectorRepair: vi.fn(),
+  updateChannelRoutePolicy: vi.fn(),
   streamEvents: vi.fn()
 };
 
@@ -335,6 +342,72 @@ function setupSessionFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function channelConnectorFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    connectorId: "slack-main",
+    connectorKind: "slack",
+    displayName: "Slack Main",
+    enablementState: "ready",
+    setupState: "ready",
+    healthStatus: "healthy",
+    diagnosticFreshness: "fresh",
+    deliveryEligible: true,
+    capabilities: {
+      disable: "supported",
+      "re-enable": "supported",
+      repair: "supported",
+      "route-edit": "supported"
+    },
+    redactionStatus: "redacted",
+    updatedAt: "2026-05-10T10:00:00Z",
+    nextAction: { actionKind: "repair", label: "Repair" },
+    ...overrides
+  };
+}
+
+function channelConnectorDetailFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    ...channelConnectorFixture(),
+    routePolicy: {
+      tenantId: "ten_personal",
+      connectorId: "slack-main",
+      eligibleRooms: [],
+      eligibleChannels: ["C123"],
+      eligibleConversations: [],
+      eligibleSenders: [],
+      backgroundDeliveryEligible: true,
+      validationState: "valid",
+      validatedAt: "2026-05-10T10:00:00Z",
+      redactionStatus: "redacted"
+    },
+    recentRouteDecisions: [],
+    foregroundReplyOutcomes: [],
+    backgroundDeliveryOutcomes: [],
+    repairActions: [],
+    supportEvidenceAvailable: true,
+    ...overrides
+  };
+}
+
+function channelSupportEvidenceFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    supportEvidenceId: "support_slack_main",
+    tenantId: "ten_personal",
+    connectorId: "slack-main",
+    generatedAt: "2026-05-10T10:00:00Z",
+    currentState: "ready",
+    retentionExpiresAt: "2026-08-08T10:00:00Z",
+    redactionStatus: "redacted",
+    diagnosticRefs: [],
+    repairRefs: [],
+    routingDecisionRefs: [],
+    replyOutcomeRefs: [],
+    deliveryOutcomeRefs: [],
+    auditRefs: [],
+    ...overrides
+  };
+}
+
 function membershipFixture(overrides: Partial<ReturnType<typeof membershipFixtureBase>> = {}) {
   return {
     ...membershipFixtureBase(),
@@ -553,6 +626,50 @@ describe("App", () => {
     mockClient.abortLiveValidation.mockReset();
     mockClient.listMemberships.mockReset().mockResolvedValue({ items: [membershipFixture()] });
     mockClient.updateMembershipRole.mockReset();
+    mockClient.listChannelConnectors.mockReset().mockResolvedValue({
+      tenantId: "ten_personal",
+      page: { limit: 20, order: "attention_disabled_ready_name_id" },
+      items: []
+    });
+    mockClient.getChannelConnector.mockReset().mockResolvedValue(channelConnectorDetailFixture());
+    mockClient.getChannelConnectorSupportEvidence.mockReset().mockResolvedValue(channelSupportEvidenceFixture());
+    mockClient.disableChannelConnector.mockReset().mockResolvedValue({
+      connectorId: "slack-main",
+      enablementState: "disabled",
+      deliveryEligible: false,
+      auditEventId: "audit_disable_1",
+      changedAt: "2026-05-10T10:01:00Z"
+    });
+    mockClient.reEnableChannelConnector.mockReset().mockResolvedValue({
+      connectorId: "slack-main",
+      enablementState: "ready",
+      deliveryEligible: true,
+      auditEventId: "audit_enable_1",
+      changedAt: "2026-05-10T10:02:00Z"
+    });
+    mockClient.startChannelConnectorRepair.mockReset().mockResolvedValue({
+      repairActionId: "repair_slack_main",
+      tenantId: "ten_personal",
+      connectorId: "slack-main",
+      connectorKind: "slack",
+      actionKind: "repair",
+      status: "ready",
+      startedAt: "2026-05-10T10:03:00Z",
+      auditEventId: "audit_repair_1",
+      redactionStatus: "redacted"
+    });
+    mockClient.updateChannelRoutePolicy.mockReset().mockResolvedValue({
+      tenantId: "ten_personal",
+      connectorId: "slack-main",
+      eligibleRooms: [],
+      eligibleChannels: ["C123"],
+      eligibleConversations: [],
+      eligibleSenders: [],
+      backgroundDeliveryEligible: true,
+      validationState: "valid",
+      validatedAt: "2026-05-10T10:04:00Z",
+      redactionStatus: "redacted"
+    });
     emptySubscription.close.mockClear();
     mockClient.streamEvents.mockReset().mockReturnValue(emptySubscription);
   });
@@ -654,6 +771,57 @@ describe("App", () => {
       expect(mockClient.exportBillingDenialEvidence).toHaveBeenCalledWith("denial_1", { tenantId: "ten_personal" });
     });
     expect(await screen.findByText("Exported redacted billing evidence evidence_denial_1.")).not.toBeNull();
+  });
+
+  it("loads channel detail and wires management actions", async () => {
+    const channelTenant = tenantFixture({
+      callerPermissions: ["tenant.manage", "runs.execute", "credentials.inspect", "connectors.manage"]
+    });
+    mockClient.getMe.mockResolvedValue(authMeFixture([channelTenant]));
+    mockClient.listTenants.mockResolvedValue({ items: [channelTenant] });
+    mockClient.getOnboarding.mockResolvedValue(onboardingFixture());
+    mockClient.listApprovals.mockResolvedValue({ items: [] });
+    mockClient.getActivity.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-10T10:00:00Z" });
+    mockClient.getDiagnostics.mockResolvedValue({ environmentScope: "test", items: [], generatedAt: "2026-05-10T10:00:00Z" });
+    mockClient.listChannelConnectors.mockResolvedValue({
+      tenantId: "ten_personal",
+      page: { limit: 20, order: "attention_disabled_ready_name_id" },
+      items: [channelConnectorFixture()]
+    });
+    mockClient.getChannelConnector.mockResolvedValue(channelConnectorDetailFixture());
+    mockClient.getChannelConnectorSupportEvidence.mockResolvedValue(channelSupportEvidenceFixture());
+
+    render(<App />);
+    const user = userEvent.setup();
+    await loadShell(user);
+
+    expect((await screen.findAllByRole("heading", { name: "Slack Main" })).length).toBeGreaterThan(0);
+    expect(mockClient.getChannelConnector).toHaveBeenCalledWith("slack-main", { tenantId: "ten_personal" });
+    expect(mockClient.getChannelConnectorSupportEvidence).toHaveBeenCalledWith("slack-main", { tenantId: "ten_personal" });
+
+    await user.click(screen.getByRole("button", { name: "Disable" }));
+    await waitFor(() => {
+      expect(mockClient.disableChannelConnector).toHaveBeenCalledWith("slack-main", {}, { tenantId: "ten_personal" });
+      expect(screen.getByText("Channel connector slack-main disable completed.")).not.toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Repair" }));
+    await waitFor(() => {
+      expect(mockClient.startChannelConnectorRepair).toHaveBeenCalledWith("slack-main", { actionKind: "repair" }, { tenantId: "ten_personal" });
+    });
+
+    await user.clear(screen.getByLabelText("Eligible channels"));
+    await user.type(screen.getByLabelText("Eligible channels"), "C999");
+    await user.click(screen.getByRole("button", { name: "Save route policy" }));
+    await waitFor(() => {
+      expect(mockClient.updateChannelRoutePolicy).toHaveBeenCalledWith("slack-main", {
+        eligibleRooms: [],
+        eligibleChannels: ["C999"],
+        eligibleConversations: [],
+        eligibleSenders: [],
+        backgroundDeliveryEligible: true
+      }, { tenantId: "ten_personal" });
+    });
   });
 
   it("renders setup proof targets, submits secrets without rendering raw values, and drives OAuth fixtures", async () => {

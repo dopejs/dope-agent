@@ -13,6 +13,9 @@ const (
 	ConnectorEventDiagnosticRedactionFailed    = "connector.diagnostic_redaction_failed"
 	ConnectorEventConnectorDiagnosticRecorded  = "connector.diagnostic_recorded"
 	ConnectorEventConnectorSetupRepairRequired = "connector.setup_repair_required"
+	ConnectorEventManagementRedactionFailed    = "connector.management_redaction_failed"
+	ConnectorEventSupportEvidenceGenerated     = "connector.management_support_evidence_generated"
+	ConnectorEventManagementRetentionApplied   = "connector.management_retention_applied"
 )
 
 var MatrixConnectorEventNames = []string{

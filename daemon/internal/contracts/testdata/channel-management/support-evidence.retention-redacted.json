@@ -1,0 +1,18 @@
+{
+  "supportEvidenceId": "support_slack_main",
+  "tenantId": "ten_channel_management",
+  "connectorId": "slack-main",
+  "generatedByPrincipalId": "prn_support",
+  "generatedAt": "2026-05-10T10:00:00Z",
+  "currentState": "action-required",
+  "diagnosticRefs": ["diag_slack_permission"],
+  "repairRefs": ["repair_slack_reconnect"],
+  "auditRefs": ["audit_slack_reconnect"],
+  "redactions": ["message_body", "raw_provider_payload", "credentials", "authorization_grants"],
+  "retentionExpiresAt": "2026-08-08T10:00:00Z",
+  "redactionStatus": "redacted",
+  "safeEvidence": {
+    "connectorKind": "slack",
+    "displayName": "Slack Main"
+  }
+}

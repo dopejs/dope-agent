@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/channel-management-support-evidence.schema.json",
+  "title": "ChannelManagementSupportEvidence",
+  "type": "object",
+  "required": [
+    "supportEvidenceId",
+    "connectorId",
+    "generatedAt",
+    "currentState",
+    "retentionExpiresAt",
+    "redactionStatus"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "supportEvidenceId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "generatedByPrincipalId": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "currentState": { "type": "string" },
+    "stateTransitions": { "type": "array", "items": { "type": "string" } },
+    "diagnosticRefs": { "type": "array", "items": { "type": "string" } },
+    "repairRefs": { "type": "array", "items": { "type": "string" } },
+    "routingDecisionRefs": { "type": "array", "items": { "type": "string" } },
+    "replyOutcomeRefs": { "type": "array", "items": { "type": "string" } },
+    "deliveryOutcomeRefs": { "type": "array", "items": { "type": "string" } },
+    "auditRefs": { "type": "array", "items": { "type": "string" } },
+    "redactions": { "type": "array", "items": { "type": "string" } },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "safeEvidence": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/channel-management-action.schema.json",
+  "title": "ChannelManagementAction",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "reasonCode": { "type": "string" },
+    "note": { "type": "string" },
+    "actionKind": {
+      "type": "string",
+      "enum": ["repair", "reconnect", "credential-rotation", "route-revalidate", "diagnostic-rerun", "disable"]
+    },
+    "sourceDiagnosticStateId": { "type": "string" },
+    "eligibleSenders": { "type": "array", "items": { "type": "string" } },
+    "eligibleConversations": { "type": "array", "items": { "type": "string" } },
+    "eligibleRooms": { "type": "array", "items": { "type": "string" } },
+    "eligibleChannels": { "type": "array", "items": { "type": "string" } },
+    "invocationGates": { "type": "array", "items": { "type": "string" } },
+    "backgroundDeliveryEligible": { "type": "boolean" }
+  }
+}

@@ -538,6 +538,12 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/providers/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleProviderRoutes(deps.Providers, deps.EventBus, deps.Store, w, r)
 	}))
+	mux.HandleFunc("/v1/channel-management/connectors", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleChannelManagementRoutes(deps.Connectors, deps.EventBus, deps.Store, w, r)
+	}))
+	mux.HandleFunc("/v1/channel-management/connectors/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleChannelManagementRoutes(deps.Connectors, deps.EventBus, deps.Store, w, r)
+	}))
 	mux.HandleFunc("/v1/connectors", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleConnectors(deps.Connectors, deps.EventBus, deps.Store, w, r)
 	}))
@@ -3649,23 +3655,6 @@ func handleConnectorIngressMessages(supervisor *connectors.Supervisor, sessionRo
 		return
 	}
 
-	connector, ok := supervisor.Get(connectorID)
-	if tenantContext, tenantOK := tenantContextFromContext(r.Context()); tenantOK && tenantContext.TenantID != "" {
-		connector, ok = supervisor.GetForTenant(connectorID, tenantContext.TenantID)
-	}
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	if connector.Status == connectors.StatusDisabled {
-		writeError(w, http.StatusConflict, "connector is disabled")
-		return
-	}
-	if connector.Status == connectors.StatusFailed || connector.Status == connectors.StatusBackingOff {
-		writeError(w, http.StatusConflict, "connector is not accepting ingress")
-		return
-	}
-
 	var request ConnectorIngressMessageRequest
 	if err := decodeJSONBody(r, &request); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -3680,15 +3669,52 @@ func handleConnectorIngressMessages(supervisor *connectors.Supervisor, sessionRo
 		return
 	}
 
+	tenantID := firstNonEmpty(request.TenantID)
+	if tenantContext, tenantOK := tenantContextFromContext(r.Context()); tenantOK && tenantContext.TenantID != "" {
+		tenantID = tenantContext.TenantID
+	}
+	connector, err := supervisor.RequireInboundReady(connectorID, tenantID)
+	if errors.Is(err, connectors.ErrConnectorNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if errors.Is(err, connectors.ErrConnectorDisabled) {
+		if found, ok := supervisor.GetForTenant(connectorID, tenantID); ok {
+			connector = found
+		}
+		if err := persistChannelRoutingDecision(r.Context(), sqliteStore, tenantID, connector, connectors.RouteDecisionDisabled, "connector_disabled", router.RouteInput{}, request.Message.MessageID); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeError(w, http.StatusConflict, "connector is disabled")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if connector.Status == connectors.StatusFailed || connector.Status == connectors.StatusBackingOff {
+		if err := persistChannelRoutingDecision(r.Context(), sqliteStore, firstNonEmpty(tenantID, connector.TenantID), connector, connectors.RouteDecisionFailed, "connector_not_accepting_ingress", router.RouteInput{}, request.Message.MessageID); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeError(w, http.StatusConflict, "connector is not accepting ingress")
+		return
+	}
+
 	ingressID := newIngressID()
 	acceptedAt := time.Now().UTC()
-	tenantID := firstNonEmpty(request.TenantID, connector.TenantID)
+	tenantID = firstNonEmpty(request.TenantID, connector.TenantID)
 	if tenantContext, tenantOK := tenantContextFromContext(r.Context()); tenantOK && tenantContext.TenantID != "" {
 		tenantID = tenantContext.TenantID
 	}
 
 	routeInput, err := resolveConnectorRouteInput(connector, request.Route)
 	if err != nil {
+		if persistErr := persistChannelRoutingDecision(r.Context(), sqliteStore, tenantID, connector, connectors.RouteDecisionBlocked, "blocked_route", router.RouteInput{}, request.Message.MessageID); persistErr != nil {
+			writeError(w, http.StatusInternalServerError, persistErr.Error())
+			return
+		}
 		if _, publishErr := publishEvent(r.Context(), eventBus, sqliteStore, events.Event{
 			Category: "connector",
 			Name:     "connector.route_outcome_recorded",
@@ -3714,6 +3740,28 @@ func handleConnectorIngressMessages(supervisor *connectors.Supervisor, sessionRo
 			RedactionStatus: "redacted",
 			AcceptedAt:      acceptedAt,
 		})
+		return
+	}
+	if allowed, reasonCode, err := channelRoutePolicyAllows(r.Context(), sqliteStore, tenantID, connector.ConnectorID, routeInput, request); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	} else if !allowed {
+		if persistErr := persistChannelRoutingDecision(r.Context(), sqliteStore, tenantID, connector, connectors.RouteDecisionBlocked, reasonCode, routeInput, request.Message.MessageID); persistErr != nil {
+			writeError(w, http.StatusInternalServerError, persistErr.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, ConnectorIngressMessageResponse{
+			IngressID:       ingressID,
+			ConnectorID:     connector.ConnectorID,
+			Outcome:         "blocked",
+			ReasonCode:      reasonCode,
+			RedactionStatus: "redacted",
+			AcceptedAt:      acceptedAt,
+		})
+		return
+	}
+	if err := persistChannelRoutingDecision(r.Context(), sqliteStore, tenantID, connector, connectors.RouteDecisionAccepted, "accepted", routeInput, request.Message.MessageID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -6804,6 +6852,73 @@ func resolveConnectorRouteInput(connector connectors.Connector, request SessionR
 		PeerID:    request.PeerID,
 		ThreadID:  request.ThreadID,
 	}, nil
+}
+
+func channelRoutePolicyAllows(ctx context.Context, sqliteStore *store.SQLiteStore, tenantID, connectorID string, routeInput router.RouteInput, request ConnectorIngressMessageRequest) (bool, string, error) {
+	if sqliteStore == nil {
+		return true, "", nil
+	}
+	policy, found, err := sqliteStore.GetChannelRoutePolicy(ctx, tenantID, connectorID)
+	if err != nil || !found {
+		return true, "", err
+	}
+	if policy.ValidationState != "valid" {
+		return false, "route_policy_invalid", nil
+	}
+	if len(policy.EligibleSenders) > 0 && !containsRouteValue(policy.EligibleSenders, routeInput.PeerID, request.Message.ConnectorAccountID) {
+		return false, "sender_not_allowed", nil
+	}
+	if len(policy.EligibleConversations) > 0 && !containsRouteValue(policy.EligibleConversations, request.Message.ChannelOrConversationID, routeInput.ThreadID, routeInput.PeerID) {
+		return false, "conversation_not_allowed", nil
+	}
+	if len(policy.EligibleRooms) > 0 && !containsRouteValue(policy.EligibleRooms, routeInput.ThreadID, request.Message.ChannelOrConversationID) {
+		return false, "room_not_allowed", nil
+	}
+	if len(policy.EligibleChannels) > 0 && !containsRouteValue(policy.EligibleChannels, request.Message.ChannelOrConversationID, routeInput.ThreadID, routeInput.PeerID) {
+		return false, "channel_not_allowed", nil
+	}
+	return true, "", nil
+}
+
+func persistChannelRoutingDecision(ctx context.Context, sqliteStore *store.SQLiteStore, tenantID string, connector connectors.Connector, outcome connectors.RouteDecisionOutcome, reasonCode string, routeInput router.RouteInput, messageID string) error {
+	if sqliteStore == nil || connector.ConnectorID == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	_, err := sqliteStore.SaveChannelRoutingDecision(ctx, connectors.RoutingDecision{
+		TenantID:      firstNonEmpty(tenantID, connector.TenantID),
+		ConnectorID:   connector.ConnectorID,
+		ConnectorKind: connector.Kind,
+		Outcome:       outcome,
+		ReasonCode:    reasonCode,
+		OccurredAt:    now,
+		SafeEvidence: map[string]string{
+			"messageId": messageID,
+			"kind":      string(routeInput.Kind),
+			"channel":   routeInput.Channel,
+			"peerId":    routeInput.PeerID,
+			"threadId":  routeInput.ThreadID,
+		},
+		RedactionStatus:    connectors.RedactionStatusRedacted,
+		RetentionExpiresAt: now.Add(90 * 24 * time.Hour),
+	})
+	return err
+}
+
+func containsRouteValue(allowed []string, values ...string) bool {
+	allowedSet := map[string]struct{}{}
+	for _, item := range allowed {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			allowedSet[item] = struct{}{}
+		}
+	}
+	for _, value := range values {
+		if _, ok := allowedSet[strings.TrimSpace(value)]; ok {
+			return true
+		}
+	}
+	return len(allowedSet) == 0
 }
 
 func publishSessionRouteEvents(ctx context.Context, eventBus *events.Bus, sqliteStore *store.SQLiteStore, session router.Session, createdSession bool, extraPayload map[string]any) error {

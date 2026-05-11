@@ -1016,6 +1016,9 @@ var ErrTransportUnavailable = errors.New("mcp transport is unavailable")
 var ErrUnsupportedTransport = errors.New("mcp transport kind is unsupported")
 
 ## package internal/connectors
+const CapabilityLimited CapabilitySupport = "limited"
+const CapabilitySupported CapabilitySupport = "supported"
+const CapabilityUnsupported CapabilitySupport = "unsupported"
 const ConformanceAreaActiveTenantAccountBinding ConformanceArea = "active_tenant_account_binding"
 const ConformanceAreaDeliverySeparation ConformanceArea = "delivery_separation"
 const ConformanceAreaDiagnostics ConformanceArea = "required_diagnostics"
@@ -1035,6 +1038,8 @@ const ConnectorKindMatrix = "matrix"
 const DiagnosticAuthMissing DiagnosticReasonCode = "auth_missing"
 const DiagnosticBlockedRoute DiagnosticReasonCode = "blocked_route"
 const DiagnosticDuplicateInbound DiagnosticReasonCode = "duplicate_inbound"
+const DiagnosticFreshnessFresh DiagnosticFreshness = "fresh"
+const DiagnosticFreshnessStale DiagnosticFreshness = "stale"
 const DiagnosticNetworkFailed DiagnosticReasonCode = "network_failed"
 const DiagnosticPermissionMissing DiagnosticReasonCode = "permission_missing"
 const DiagnosticProviderUnavailable DiagnosticReasonCode = "provider_unavailable"
@@ -1053,6 +1058,24 @@ const LifecycleStatePermissionBlocked LifecycleState = "permission_blocked"
 const LifecycleStateRateLimited LifecycleState = "rate_limited"
 const LifecycleStateStarting LifecycleState = "starting"
 const LifecycleStateUnsupportedCapability LifecycleState = "unsupported_capability"
+const ManagementActionCredentialRotation ManagementActionKind = "credential-rotation"
+const ManagementActionDiagnosticRerun ManagementActionKind = "diagnostic-rerun"
+const ManagementActionDisable ManagementActionKind = "disable"
+const ManagementActionReEnable ManagementActionKind = "re-enable"
+const ManagementActionReconnect ManagementActionKind = "reconnect"
+const ManagementActionRepair ManagementActionKind = "repair"
+const ManagementActionRouteRevalidate ManagementActionKind = "route-revalidate"
+const ManagementStateActionRequired ManagementState = "action-required"
+const ManagementStateDegraded ManagementState = "degraded"
+const ManagementStateDisabled ManagementState = "disabled"
+const ManagementStateReady ManagementState = "ready"
+const ManagementStateUnavailable ManagementState = "unavailable"
+const ManagementTerminalActionRequired ManagementTerminalState = "action-required"
+const ManagementTerminalCancelled ManagementTerminalState = "cancelled"
+const ManagementTerminalDegraded ManagementTerminalState = "degraded"
+const ManagementTerminalDisabled ManagementTerminalState = "disabled"
+const ManagementTerminalReady ManagementTerminalState = "ready"
+const ManagementTerminalUnavailable ManagementTerminalState = "unavailable"
 const MatrixDurableIdentityRule = "tenant_id + connector_id + homeserver_id + conversation_id + matrix_event_id"
 const MatrixDurableIdentityRuleID = "matrix_homeserver_conversation_event_id"
 const MatrixSurfaceAccountProvisioning = "matrix_account_provisioning"
@@ -1080,6 +1103,13 @@ const RetrySafetyNoActionNeeded RetrySafety = "no_action_needed"
 const RetrySafetyRetryAfter RetrySafety = "retry_after"
 const RetrySafetyRetryable RetrySafety = "retryable"
 const RetrySafetyUnsafe RetrySafety = "unsafe"
+const RouteDecisionAccepted RouteDecisionOutcome = "accepted"
+const RouteDecisionBlocked RouteDecisionOutcome = "blocked"
+const RouteDecisionDisabled RouteDecisionOutcome = "disabled"
+const RouteDecisionDuplicate RouteDecisionOutcome = "duplicate"
+const RouteDecisionFailed RouteDecisionOutcome = "failed"
+const RouteDecisionIgnored RouteDecisionOutcome = "ignored"
+const RouteDecisionUnsupported RouteDecisionOutcome = "unsupported"
 const StatusBackingOff Status = "backing_off"
 const StatusDegraded Status = "degraded"
 const StatusDisabled Status = "disabled"
@@ -1094,18 +1124,31 @@ func (*Supervisor) Get(connectorID string) (Connector, bool)
 func (*Supervisor) GetForTenant(connectorID, tenantID string) (Connector, bool)
 func (*Supervisor) List() []Connector
 func (*Supervisor) ListForTenant(tenantID string) []Connector
+func (*Supervisor) ReEnable(connectorID string) (Connector, error)
 func (*Supervisor) Register(input RegisterInput) (Connector, bool, error)
 func (*Supervisor) ReportFailure(connectorID string, input ReportFailureInput) (Connector, error)
 func (*Supervisor) ReportHealth(connectorID string, input ReportHealthInput) (Connector, error)
+func (*Supervisor) RequireInboundReady(connectorID, tenantID string) (Connector, error)
 func (*Supervisor) Restart(connectorID string) (Connector, error)
 func (*Supervisor) Restore(items []Connector)
 func (*Supervisor) RunLiveValidationOutcome(outcome livevalidation.FakeOutcome) livevalidation.FakeOutcomeResult
+func (*Supervisor) WithConnectorMutation(connectorID string, fn func() error) error
+func BuildConnectorPage(input ProjectionInput) ChannelConnectorListResponse
+func BuildConnectorProjection(connector Connector, diagnostic *ConnectorDiagnosticState, now time.Time) ChannelConnectorProjection
+func BuildSupportEvidenceBundle(input ProjectionInput, connector Connector, principalID string, now time.Time) SupportEvidenceBundle
+func CapabilityProfileForKind(kind string) map[string]CapabilitySupport
 func ClassifyDiagnostic(input DiagnosticInput) (ConnectorDiagnosticState, error)
 func CoreInvariantAreas() []ConformanceArea
 func CurrentDiagnosticTruth(input DiagnosticInput, failureTime time.Time) (ConnectorDiagnosticState, error)
+func DefaultRoutePolicy(tenantID, connectorID string, now time.Time) RoutePolicy
 func FreshnessAt(evidenceTimestamp, now time.Time) FreshnessState
+func ManagementStateForConnector(connector Connector, diagnostic *ConnectorDiagnosticState) ManagementState
 func NewSupervisor() *Supervisor
+func NormalizeRoutePolicy(policy RoutePolicy, now time.Time) RoutePolicy
+func RetrySafetyForRepairAction(actionKind ManagementActionKind) RetrySafety
 func RunMatrixCase(input MatrixCase) ([]ConformanceResult, CapabilityProfile, error)
+func SortConnectorProjections(items []ChannelConnectorProjection)
+func TerminalStateForRepairAction(actionKind ManagementActionKind, disabled bool) ManagementTerminalState
 func ValidateCapabilityProfile(profile CapabilityProfile) error
 type AccountBindingSummary struct {
     TenantID             string          `json:"tenantId,omitempty"`
@@ -1114,6 +1157,18 @@ type AccountBindingSummary struct {
     ProviderAccountLabel string          `json:"providerAccountLabel,omitempty"`
     PermissionState      string          `json:"permissionState"`
     RedactionStatus      RedactionStatus `json:"redactionStatus"`
+}
+type BackgroundDeliveryOutcome struct {
+    DeliveryOutcomeID  string            `json:"deliveryOutcomeId"`
+    TenantID           string            `json:"tenantId"`
+    ConnectorID        string            `json:"connectorId"`
+    DeliveryTargetID   string            `json:"deliveryTargetId,omitempty"`
+    Status             string            `json:"status"`
+    ReasonCode         string            `json:"reasonCode,omitempty"`
+    OccurredAt         time.Time         `json:"occurredAt"`
+    SafeEvidence       map[string]string `json:"safeEvidence,omitempty"`
+    RedactionStatus    RedactionStatus   `json:"redactionStatus"`
+    RetentionExpiresAt time.Time         `json:"retentionExpiresAt"`
 }
 type CapabilityProfile struct {
     ProfileID                       string                                      `json:"profileId"`
@@ -1125,6 +1180,49 @@ type CapabilityProfile struct {
     EquivalentDurableIdentityRuleID string                                      `json:"equivalentDurableIdentityRuleId,omitempty"`
     EquivalentDurableIdentityRule   string                                      `json:"equivalentDurableIdentityRule,omitempty"`
     DeclaredAt                      time.Time                                   `json:"declaredAt"`
+}
+type CapabilitySupport string
+type ChannelConnectorDetail struct {
+    ChannelConnectorProjection
+    DiagnosticSummary        *ConnectorDiagnosticState   `json:"diagnosticSummary,omitempty"`
+    RoutePolicy              *RoutePolicy                `json:"routePolicy,omitempty"`
+    RecentRouteDecisions     []RoutingDecision           `json:"recentRouteDecisions,omitempty"`
+    ForegroundReplyOutcomes  []ForegroundReplyOutcome    `json:"foregroundReplyOutcomes,omitempty"`
+    BackgroundDelivery       []BackgroundDeliveryOutcome `json:"backgroundDeliveryOutcomes,omitempty"`
+    RepairActions            []RepairAction              `json:"repairActions,omitempty"`
+    SupportEvidenceAvailable bool                        `json:"supportEvidenceAvailable"`
+    Retention                map[string]string           `json:"retention,omitempty"`
+    SupportEvidence          *SupportEvidenceBundle      `json:"supportEvidence,omitempty"`
+}
+type ChannelConnectorListResponse struct {
+    TenantID string                       `json:"tenantId,omitempty"`
+    Page     ChannelManagementPage        `json:"page"`
+    Items    []ChannelConnectorProjection `json:"items"`
+}
+type ChannelConnectorProjection struct {
+    ConnectorID         string                       `json:"connectorId"`
+    ConnectorKind       string                       `json:"connectorKind"`
+    DisplayName         string                       `json:"displayName"`
+    EnablementState     ManagementState              `json:"enablementState"`
+    SetupState          string                       `json:"setupState"`
+    HealthStatus        string                       `json:"healthStatus"`
+    DiagnosticFreshness DiagnosticFreshness          `json:"diagnosticFreshness"`
+    DeliveryEligible    bool                         `json:"deliveryEligible"`
+    NextAction          *ChannelManagementNextAction `json:"nextAction,omitempty"`
+    Capabilities        map[string]CapabilitySupport `json:"capabilities"`
+    RedactionStatus     RedactionStatus              `json:"redactionStatus"`
+    UpdatedAt           time.Time                    `json:"updatedAt"`
+}
+type ChannelManagementNextAction struct {
+    ActionKind       ManagementActionKind `json:"actionKind"`
+    Label            string               `json:"label"`
+    ReasonCode       DiagnosticReasonCode `json:"reasonCode,omitempty"`
+    RemediationOwner RemediationOwner     `json:"remediationOwner,omitempty"`
+}
+type ChannelManagementPage struct {
+    Limit      int    `json:"limit"`
+    NextCursor string `json:"nextCursor,omitempty"`
+    Order      string `json:"order"`
 }
 type ConformanceArea string
 type ConformanceResult struct {
@@ -1164,6 +1262,18 @@ type Connector struct {
     CreatedAt         time.Time                       `json:"createdAt"`
     UpdatedAt         time.Time                       `json:"updatedAt"`
 }
+type ConnectorAuditRecord struct {
+    AuditEventID    string          `json:"auditEventId"`
+    TenantID        string          `json:"tenantId"`
+    ConnectorID     string          `json:"connectorId"`
+    PrincipalID     string          `json:"principalId,omitempty"`
+    Action          string          `json:"action"`
+    PermissionGate  string          `json:"permissionGate"`
+    Outcome         string          `json:"outcome"`
+    ReasonCode      string          `json:"reasonCode,omitempty"`
+    CreatedAt       time.Time       `json:"createdAt"`
+    RedactionStatus RedactionStatus `json:"redactionStatus"`
+}
 type ConnectorDiagnosticState struct {
     DiagnosticStateID   string               `json:"diagnosticStateId"`
     TenantID            string               `json:"tenantId,omitempty"`
@@ -1181,6 +1291,7 @@ type ConnectorDiagnosticState struct {
     SafeEvidence        map[string]string    `json:"safeEvidence,omitempty"`
     RedactionFailureID  string               `json:"redactionFailureId,omitempty"`
 }
+type DiagnosticFreshness string
 type DiagnosticInput struct {
     DiagnosticStateID  string
     TenantID           string
@@ -1192,8 +1303,40 @@ type DiagnosticInput struct {
     SafeEvidence       map[string]string
 }
 type DiagnosticReasonCode string
+type EnablementMutationResult struct {
+    ConnectorID      string          `json:"connectorId"`
+    EnablementState  ManagementState `json:"enablementState"`
+    DeliveryEligible bool            `json:"deliveryEligible"`
+    AuditEventID     string          `json:"auditEventId"`
+    ChangedAt        time.Time       `json:"changedAt"`
+}
+type EnablementState struct {
+    TenantID             string     `json:"tenantId"`
+    ConnectorID          string     `json:"connectorId"`
+    State                string     `json:"state"`
+    ReasonCode           string     `json:"reasonCode,omitempty"`
+    ChangedByPrincipalID string     `json:"changedByPrincipalId,omitempty"`
+    ChangedAt            time.Time  `json:"changedAt"`
+    ValidatedAt          *time.Time `json:"validatedAt,omitempty"`
+    AuditEventID         string     `json:"auditEventId"`
+}
+type ForegroundReplyOutcome struct {
+    ReplyOutcomeID     string            `json:"replyOutcomeId"`
+    TenantID           string            `json:"tenantId"`
+    ConnectorID        string            `json:"connectorId"`
+    RoutingDecisionID  string            `json:"routingDecisionId,omitempty"`
+    Status             string            `json:"status"`
+    ReasonCode         string            `json:"reasonCode,omitempty"`
+    OccurredAt         time.Time         `json:"occurredAt"`
+    SafeEvidence       map[string]string `json:"safeEvidence,omitempty"`
+    RedactionStatus    RedactionStatus   `json:"redactionStatus"`
+    RetentionExpiresAt time.Time         `json:"retentionExpiresAt"`
+}
 type FreshnessState string
 type LifecycleState string
+type ManagementActionKind string
+type ManagementState string
+type ManagementTerminalState string
 type MatrixCase struct {
     ScenarioID                      string
     ConnectorKind                   string
@@ -1207,6 +1350,16 @@ type MatrixCase struct {
     RedactionStatus                 RedactionStatus
     Now                             time.Time
 }
+type ProjectionInput struct {
+    TenantID    string
+    Connectors  []Connector
+    Diagnostics map[string][]ConnectorDiagnosticState
+    Now         time.Time
+    Limit       int
+    Cursor      string
+    StateFilter string
+    KindFilter  string
+}
 type RedactionStatus string
 type RegisterInput struct {
     TenantID    string   `json:"tenantId,omitempty"`
@@ -1216,6 +1369,23 @@ type RegisterInput struct {
     SecretRefs  []string `json:"secretRefs,omitempty"`
 }
 type RemediationOwner string
+type RepairAction struct {
+    RepairActionID          string                  `json:"repairActionId"`
+    TenantID                string                  `json:"tenantId"`
+    ConnectorID             string                  `json:"connectorId"`
+    ConnectorKind           string                  `json:"connectorKind"`
+    ActorPrincipalID        string                  `json:"actorPrincipalId,omitempty"`
+    ActionKind              ManagementActionKind    `json:"actionKind"`
+    SourceDiagnosticStateID string                  `json:"sourceDiagnosticStateId,omitempty"`
+    SetupSessionID          string                  `json:"setupSessionId,omitempty"`
+    Status                  ManagementTerminalState `json:"status"`
+    RetrySafety             RetrySafety             `json:"retrySafety,omitempty"`
+    RemediationOwner        RemediationOwner        `json:"remediationOwner,omitempty"`
+    StartedAt               time.Time               `json:"startedAt"`
+    CompletedAt             *time.Time              `json:"completedAt,omitempty"`
+    AuditEventID            string                  `json:"auditEventId"`
+    RedactionStatus         RedactionStatus         `json:"redactionStatus"`
+}
 type ReportFailureInput struct {
     Reason string `json:"reason"`
 }
@@ -1223,11 +1393,60 @@ type ReportHealthInput struct {
     Status Status `json:"status"`
 }
 type RetrySafety string
+type RouteDecisionOutcome string
+type RoutePolicy struct {
+    RoutePolicyID              string          `json:"routePolicyId"`
+    TenantID                   string          `json:"tenantId"`
+    ConnectorID                string          `json:"connectorId"`
+    EligibleSenders            []string        `json:"eligibleSenders,omitempty"`
+    EligibleConversations      []string        `json:"eligibleConversations,omitempty"`
+    EligibleRooms              []string        `json:"eligibleRooms,omitempty"`
+    EligibleChannels           []string        `json:"eligibleChannels,omitempty"`
+    InvocationGates            []string        `json:"invocationGates,omitempty"`
+    BackgroundDeliveryEligible bool            `json:"backgroundDeliveryEligible"`
+    ValidationState            string          `json:"validationState"`
+    ReasonCode                 string          `json:"reasonCode,omitempty"`
+    ValidatedAt                time.Time       `json:"validatedAt"`
+    AuditEventID               string          `json:"auditEventId,omitempty"`
+    RedactionStatus            RedactionStatus `json:"redactionStatus"`
+}
+type RoutingDecision struct {
+    RoutingDecisionID  string               `json:"routingDecisionId"`
+    TenantID           string               `json:"tenantId"`
+    ConnectorID        string               `json:"connectorId"`
+    ConnectorKind      string               `json:"connectorKind"`
+    Outcome            RouteDecisionOutcome `json:"outcome"`
+    ReasonCode         string               `json:"reasonCode,omitempty"`
+    OccurredAt         time.Time            `json:"occurredAt"`
+    SafeEvidence       map[string]string    `json:"safeEvidence,omitempty"`
+    RedactionStatus    RedactionStatus      `json:"redactionStatus"`
+    RetentionExpiresAt time.Time            `json:"retentionExpiresAt"`
+}
 type Status string
 type Supervisor struct {
-    mu    sync.RWMutex
-    byID  map[string]Connector
-    order []string
+    mu            sync.RWMutex
+    byID          map[string]Connector
+    order         []string
+    mutationLocks map[string]*sync.Mutex
+}
+type SupportEvidenceBundle struct {
+    SupportEvidenceID      string            `json:"supportEvidenceId"`
+    TenantID               string            `json:"tenantId"`
+    ConnectorID            string            `json:"connectorId"`
+    GeneratedByPrincipalID string            `json:"generatedByPrincipalId,omitempty"`
+    GeneratedAt            time.Time         `json:"generatedAt"`
+    CurrentState           ManagementState   `json:"currentState"`
+    StateTransitions       []string          `json:"stateTransitions,omitempty"`
+    DiagnosticRefs         []string          `json:"diagnosticRefs,omitempty"`
+    RepairRefs             []string          `json:"repairRefs,omitempty"`
+    RoutingDecisionRefs    []string          `json:"routingDecisionRefs,omitempty"`
+    ReplyOutcomeRefs       []string          `json:"replyOutcomeRefs,omitempty"`
+    DeliveryOutcomeRefs    []string          `json:"deliveryOutcomeRefs,omitempty"`
+    AuditRefs              []string          `json:"auditRefs,omitempty"`
+    Redactions             []string          `json:"redactions,omitempty"`
+    RetentionExpiresAt     time.Time         `json:"retentionExpiresAt"`
+    RedactionStatus        RedactionStatus   `json:"redactionStatus"`
+    SafeEvidence           map[string]string `json:"safeEvidence,omitempty"`
 }
 type SurfaceSupport string
 var ErrConformanceKindRequired = errors.New("connector kind is required")

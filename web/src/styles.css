@@ -748,6 +748,104 @@ button:disabled {
   opacity: 0.62;
 }
 
+.channel-management {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 18px;
+  padding: 20px;
+}
+
+.channel-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 16px;
+}
+
+.channel-list {
+  display: grid;
+  gap: 10px;
+}
+
+.channel-row {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.channel-row h3,
+.channel-detail h3,
+.channel-detail h4 {
+  margin: 0;
+}
+
+.channel-detail {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.channel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.channel-detail dl {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px 12px;
+}
+
+.channel-detail dt {
+  color: var(--muted);
+}
+
+.route-policy-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.route-policy-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.route-policy-form textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+}
+
+.route-policy-form .checkbox-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.outcome-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.outcome-list li {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.outcome-list small {
+  color: var(--muted);
+}
+
 .empty-state,
 pre,
 .stack-card p,
@@ -768,9 +866,11 @@ pre {
 
 @media (max-width: 1120px) {
   .dashboard-grid,
+  .channel-grid,
   .action-grid,
   .action-inputs,
   .live-validation-form,
+  .route-policy-form,
   .setup-secret-form,
   .mini-grid,
   .mini-card-grid,

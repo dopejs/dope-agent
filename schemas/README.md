@@ -28,3 +28,5 @@ Current additive contract groups include:
 - Matrix channel connector resources for hosted setup, route policy, smoke evidence, and
   setup validation events. Matrix schemas intentionally keep tenant id additive and keep
   token, raw payload, event body, and room content fields out of public fixtures.
+- Channel management and repair resources for cross-connector list/detail projections,
+  management actions, metadata-only support evidence, and connector management events.

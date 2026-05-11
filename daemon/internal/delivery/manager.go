@@ -10,8 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
 )
 
 type Manager struct {
@@ -454,6 +456,56 @@ func (m *Manager) adapterFor(kind TargetKind) Adapter {
 		}
 	}
 	return nil
+}
+
+func (m *Manager) connectorDeliveryDisabled(ctx context.Context, target DeliveryTarget) (bool, error) {
+	if m == nil || m.sqliteStore == nil || target.TargetKind != TargetKindConnectorRoute || target.ConnectorBinding == nil {
+		return false, nil
+	}
+	connectorID := strings.TrimSpace(target.ConnectorBinding.ConnectorID)
+	if connectorID == "" {
+		return false, nil
+	}
+	tenantID, err := tenantctx.Require(ctx)
+	if err != nil {
+		return false, nil
+	}
+	state, ok, err := m.sqliteStore.GetChannelConnectorEnablementState(ctx, tenantID, connectorID)
+	if err != nil || !ok {
+		return false, err
+	}
+	return state.State == "disabled", nil
+}
+
+func (m *Manager) recordChannelBackgroundDeliveryOutcome(ctx context.Context, outcome DeliveryOutcome, target DeliveryTarget, reasonCode string) error {
+	if m == nil || m.sqliteStore == nil || target.TargetKind != TargetKindConnectorRoute || target.ConnectorBinding == nil {
+		return nil
+	}
+	connectorID := strings.TrimSpace(target.ConnectorBinding.ConnectorID)
+	if connectorID == "" {
+		return nil
+	}
+	tenantID, err := tenantctx.Require(ctx)
+	if err != nil {
+		return nil
+	}
+	occurredAt := outcome.UpdatedAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+	_, err = m.sqliteStore.SaveChannelBackgroundDeliveryOutcome(ctx, connectors.BackgroundDeliveryOutcome{
+		DeliveryOutcomeID:  outcome.DeliveryID,
+		TenantID:           tenantID,
+		ConnectorID:        connectorID,
+		DeliveryTargetID:   target.TargetID,
+		Status:             string(outcome.Status),
+		ReasonCode:         reasonCode,
+		OccurredAt:         occurredAt,
+		SafeEvidence:       map[string]string{"sourceKind": outcome.SourceKind, "sourceId": outcome.SourceID, "resultClass": string(outcome.ResultClass)},
+		RedactionStatus:    connectors.RedactionStatusRedacted,
+		RetentionExpiresAt: occurredAt.Add(90 * 24 * time.Hour),
+	})
+	return err
 }
 
 func (m *Manager) attachAttempts(ctx context.Context, outcome DeliveryOutcome) (DeliveryOutcome, error) {

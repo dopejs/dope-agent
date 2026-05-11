@@ -14,6 +14,7 @@ This module defines IM/channel ingestion, reply behavior, and channel-specific U
 3. [28-channel-reply-progression.md](/Users/John/Code/agent-os/docs/channels/channel-reply-progression.md)
 4. [slack-channel-loop.md](./slack-channel-loop.md)
 5. [matrix-channel-loop.md](./matrix-channel-loop.md)
+6. [channel-management-repair.md](./channel-management-repair.md)
 
 ## Add New Docs Here When
 

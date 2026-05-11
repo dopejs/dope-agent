@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/channel-management-connector-list.response.schema.json",
+  "title": "ChannelManagementConnectorListResponse",
+  "type": "object",
+  "required": ["page", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "page": {
+      "type": "object",
+      "required": ["limit", "order"],
+      "additionalProperties": false,
+      "properties": {
+        "limit": { "type": "integer", "minimum": 1 },
+        "nextCursor": { "type": "string" },
+        "order": { "const": "attention_disabled_ready_name_id" }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "./channel-management-connector-resource.schema.json" }
+    }
+  }
+}

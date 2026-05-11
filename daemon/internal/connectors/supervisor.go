@@ -71,14 +71,16 @@ type ReportFailureInput struct {
 }
 
 type Supervisor struct {
-	mu    sync.RWMutex
-	byID  map[string]Connector
-	order []string
+	mu            sync.RWMutex
+	byID          map[string]Connector
+	order         []string
+	mutationLocks map[string]*sync.Mutex
 }
 
 func NewSupervisor() *Supervisor {
 	return &Supervisor{
-		byID: make(map[string]Connector),
+		byID:          make(map[string]Connector),
+		mutationLocks: make(map[string]*sync.Mutex),
 	}
 }
 
@@ -171,6 +173,38 @@ func (s *Supervisor) GetForTenant(connectorID, tenantID string) (Connector, bool
 		return Connector{}, false
 	}
 	return connector, true
+}
+
+func (s *Supervisor) RequireInboundReady(connectorID, tenantID string) (Connector, error) {
+	connector, ok := s.GetForTenant(connectorID, tenantID)
+	if !ok {
+		return Connector{}, ErrConnectorNotFound
+	}
+	if connector.Status == StatusDisabled {
+		return Connector{}, ErrConnectorDisabled
+	}
+	return connector, nil
+}
+
+func (s *Supervisor) WithConnectorMutation(connectorID string, fn func() error) error {
+	lock := s.connectorMutationLock(connectorID)
+	lock.Lock()
+	defer lock.Unlock()
+	return fn()
+}
+
+func (s *Supervisor) connectorMutationLock(connectorID string) *sync.Mutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.mutationLocks == nil {
+		s.mutationLocks = make(map[string]*sync.Mutex)
+	}
+	lock, ok := s.mutationLocks[connectorID]
+	if !ok {
+		lock = &sync.Mutex{}
+		s.mutationLocks[connectorID] = lock
+	}
+	return lock
 }
 
 func (s *Supervisor) ReportHealth(connectorID string, input ReportHealthInput) (Connector, error) {
@@ -282,12 +316,31 @@ func (s *Supervisor) Disable(connectorID string, reason string) (Connector, erro
 	return connector, nil
 }
 
+func (s *Supervisor) ReEnable(connectorID string) (Connector, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	connector, ok := s.byID[connectorID]
+	if !ok {
+		return Connector{}, ErrConnectorNotFound
+	}
+	now := time.Now().UTC()
+	connector.Status = StatusRegistered
+	connector.DisabledReason = ""
+	connector.UpdatedAt = now
+	s.byID[connectorID] = connector
+	return connector, nil
+}
+
 func (s *Supervisor) Restore(items []Connector) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.byID = make(map[string]Connector, len(items))
 	s.order = make([]string, 0, len(items))
+	if s.mutationLocks == nil {
+		s.mutationLocks = make(map[string]*sync.Mutex)
+	}
 	for _, item := range items {
 		s.byID[item.ConnectorID] = item
 		s.order = append(s.order, item.ConnectorID)

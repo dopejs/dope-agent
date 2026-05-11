@@ -9,6 +9,7 @@ import {
   type BillingDenialResource,
   type BillingQuotaDashboardResponse,
   type BillingQuotaStatusItem,
+  type ChannelConnectorDetailResource,
   type EventStreamSubscription,
   type EvaluationCampaignAttemptGroupResource,
   type EvaluationCampaignItemResource,
@@ -41,8 +42,12 @@ import {
   type TenantPermission,
   type TenantRequestOptions,
   type TenantResource,
-  type TenantRole
+  type TenantRole,
+  type ChannelConnectorListResponse,
+  type ChannelManagementActionInput,
+  type ChannelManagementSupportEvidence
 } from "@dope/client";
+import { ChannelManagementView } from "../features/channel-management";
 
 const DEFAULT_DAEMON_URL = "http://127.0.0.1:19192";
 const DEFAULT_RUN_GOAL = "Run an operator shell smoke check.";
@@ -84,6 +89,9 @@ type ShellSnapshot = {
   liveValidationKillSwitches: LiveValidationKillSwitchResource[];
   billingDashboard: BillingQuotaDashboardResponse | null;
   billingDenials: BillingDenialResource[];
+  channelConnectors: ChannelConnectorListResponse | null;
+  selectedChannelConnector: ChannelConnectorDetailResource | null;
+  channelSupportEvidence: ChannelManagementSupportEvidence | null;
 };
 
 type DetailView = {
@@ -130,7 +138,10 @@ const EMPTY_SHELL: ShellSnapshot = {
   liveValidationRetention: null,
   liveValidationKillSwitches: [],
   billingDashboard: null,
-  billingDenials: []
+  billingDenials: [],
+  channelConnectors: null,
+  selectedChannelConnector: null,
+  channelSupportEvidence: null
 };
 
 const ROLE_OPTIONS: TenantRole[] = ["owner", "admin", "operator", "viewer"];
@@ -285,6 +296,9 @@ export function App() {
       const billingDenialsPromise = hasPermission(tenant, "billing.view")
         ? scopedClient.listBillingDenials(scopedOptions).then((response) => response.items).catch(() => [])
         : Promise.resolve<BillingDenialResource[]>([]);
+      const channelConnectorsPromise = hasPermission(tenant, "credentials.inspect")
+        ? scopedClient.listChannelConnectors({ limit: 20 }, scopedOptions).catch(() => null)
+        : Promise.resolve(null);
 
       const [
         onboarding,
@@ -310,7 +324,8 @@ export function App() {
         killSwitches,
         billingDashboard,
         billingDenials,
-        membershipItems
+        membershipItems,
+        channelConnectors
       ] = await Promise.all([
         scopedClient.getOnboarding(scopedOptions),
         scopedClient.getActivation(scopedOptions).then((response) => response.activation).catch(() => null),
@@ -338,18 +353,28 @@ export function App() {
         scopedClient.listLiveValidationKillSwitches({}, scopedOptions),
         billingDashboardPromise,
         billingDenialsPromise,
-        membershipPromise
+        membershipPromise,
+        channelConnectorsPromise
       ]);
       const latestValidation = liveValidations.items[0] ?? null;
       const latestCampaign = campaigns.items[0] ?? null;
       const firstSetupSession = setupSessions.items[0] ?? null;
-      const [setupDiagnostics, liveValidationLedger, liveValidationRetention, campaignItems, campaignAttemptGroups, toolCallInspections] = await Promise.all([
+      const firstChannelConnectorID = channelConnectors?.items[0]?.connectorId ?? "";
+      const channelConnectorDetailPromise = firstChannelConnectorID
+        ? scopedClient.getChannelConnector(firstChannelConnectorID, scopedOptions).catch(() => null)
+        : Promise.resolve(null);
+      const channelSupportEvidencePromise = firstChannelConnectorID
+        ? scopedClient.getChannelConnectorSupportEvidence(firstChannelConnectorID, scopedOptions).catch(() => null)
+        : Promise.resolve(null);
+      const [setupDiagnostics, liveValidationLedger, liveValidationRetention, campaignItems, campaignAttemptGroups, toolCallInspections, selectedChannelConnector, channelSupportEvidence] = await Promise.all([
         firstSetupSession ? scopedClient.getSetupDiagnostics(firstSetupSession.setupSessionId, scopedOptions).then((response) => response.items).catch(() => []) : Promise.resolve([]),
         latestValidation ? scopedClient.listLiveValidationLedger(latestValidation.validationId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
         latestValidation ? scopedClient.getLiveValidationRetention(latestValidation.validationId, scopedOptions) : Promise.resolve(null),
         latestCampaign ? scopedClient.listEvaluationCampaignItems(latestCampaign.campaignId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
         latestCampaign ? scopedClient.listEvaluationCampaignAttemptGroups(latestCampaign.campaignId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
-        latestCampaign ? scopedClient.listEvaluationToolCallInspections(latestCampaign.campaignId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([])
+        latestCampaign ? scopedClient.listEvaluationToolCallInspections(latestCampaign.campaignId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
+        channelConnectorDetailPromise,
+        channelSupportEvidencePromise
       ]);
 
       if (generation !== generationRef.current || activeTenantRef.current !== tenant.tenantId) {
@@ -385,7 +410,10 @@ export function App() {
         liveValidationRetention,
         liveValidationKillSwitches: killSwitches.items,
         billingDashboard,
-        billingDenials
+        billingDenials,
+        channelConnectors,
+        selectedChannelConnector,
+        channelSupportEvidence
       });
       setMemberships({
         status: hasPermission(tenant, "tenant.manage") ? membershipStatusFor(membershipItems) : "hidden",
@@ -1329,6 +1357,76 @@ export function App() {
     return { tenantId: activeTenantId };
   }
 
+  async function refreshChannelConnectorDetail(connectorId: string, tenantId: string, scoped: TenantRequestOptions) {
+    const client = buildClient(tenantId);
+    const [channelConnectors, selectedChannelConnector, channelSupportEvidence] = await Promise.all([
+      client.listChannelConnectors({ limit: 20 }, scoped).catch(() => shell.channelConnectors),
+      client.getChannelConnector(connectorId, scoped),
+      client.getChannelConnectorSupportEvidence(connectorId, scoped).catch(() => null)
+    ]);
+    setShell((previous) => ({
+      ...previous,
+      channelConnectors,
+      selectedChannelConnector,
+      channelSupportEvidence
+    }));
+  }
+
+  async function handleChannelConnectorSelect(connectorId: string) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId ?? activeTenantId;
+    setError("");
+    setActionMessage("");
+    setActiveActionId(`channel-select-${connectorId}`);
+    try {
+      await refreshChannelConnectorDetail(connectorId, tenantId, scoped);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setActiveActionId("");
+    }
+  }
+
+  async function runChannelConnectorAction(connectorId: string, actionKind: string, action: (client: ReturnType<typeof buildClient>, scoped: TenantRequestOptions) => Promise<unknown>) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId ?? activeTenantId;
+    setError("");
+    setActionMessage("");
+    setActiveActionId(`channel-${actionKind}-${connectorId}`);
+    try {
+      const client = buildClient(tenantId);
+      await action(client, scoped);
+      await refreshChannelConnectorDetail(connectorId, tenantId, scoped);
+      setActionMessage(`Channel connector ${connectorId} ${actionKind} completed.`);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setActiveActionId("");
+    }
+  }
+
+  function handleChannelConnectorDisable(connectorId: string) {
+    void runChannelConnectorAction(connectorId, "disable", (client, scoped) => client.disableChannelConnector(connectorId, {}, scoped));
+  }
+
+  function handleChannelConnectorReEnable(connectorId: string) {
+    void runChannelConnectorAction(connectorId, "re-enable", (client, scoped) => client.reEnableChannelConnector(connectorId, {}, scoped));
+  }
+
+  function handleChannelConnectorRepair(connectorId: string) {
+    void runChannelConnectorAction(connectorId, "repair", (client, scoped) => client.startChannelConnectorRepair(connectorId, { actionKind: "repair" }, scoped));
+  }
+
+  function handleChannelRoutePolicyUpdate(connectorId: string, input: ChannelManagementActionInput) {
+    void runChannelConnectorAction(connectorId, "route-policy", (client, scoped) => client.updateChannelRoutePolicy(connectorId, input, scoped));
+  }
+
   const onboarding = shell.onboarding;
   const activation = shell.activation;
   const activationDiagnosticItems = shell.activationDiagnostics?.items ?? [];
@@ -1426,6 +1524,19 @@ export function App() {
 
       {error ? <div className="error-box" role="alert">{error}</div> : null}
       {actionMessage ? <div className="message-box">{actionMessage}</div> : null}
+
+      <ChannelManagementView
+        connectors={shell.channelConnectors}
+        selected={shell.selectedChannelConnector}
+        supportEvidence={shell.channelSupportEvidence}
+        loading={status === "loading"}
+        error={activeTenantStatus === "denied" ? "Channel management unavailable until tenant access is restored." : ""}
+        onSelectConnector={handleChannelConnectorSelect}
+        onDisableConnector={handleChannelConnectorDisable}
+        onReEnableConnector={handleChannelConnectorReEnable}
+        onStartRepair={handleChannelConnectorRepair}
+        onUpdateRoutePolicy={handleChannelRoutePolicyUpdate}
+      />
 
       <section className={`dashboard-grid tenant-${activeTenantStatus}`}>
         <section className="panel onboarding-panel">

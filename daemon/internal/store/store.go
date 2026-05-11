@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 48
+	CurrentSchemaVersion = 49
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -3102,6 +3102,151 @@ var schemaMigrations = []schemaMigration{
 			`CREATE INDEX IF NOT EXISTS idx_matrix_route_policies_tenant_connector ON matrix_route_policies(tenant_id, connector_id, validated_at DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_matrix_smoke_tenant_connector ON matrix_smoke_evidence(tenant_id, connector_id, validated_at DESC);`,
 			`CREATE INDEX IF NOT EXISTS idx_matrix_event_evidence_tenant_connector ON matrix_event_evidence(tenant_id, connector_id, received_at DESC);`,
+		},
+	},
+	{
+		Version: 49,
+		Name:    "r53_channel_management_repair",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS channel_connector_enablement_states (
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				state TEXT NOT NULL,
+				reason_code TEXT,
+				changed_by_principal_id TEXT,
+				changed_at TEXT NOT NULL,
+				validated_at TEXT,
+				audit_event_id TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				PRIMARY KEY (tenant_id, connector_id)
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_channel_connector_enablement_changed ON channel_connector_enablement_states(tenant_id, changed_at DESC, connector_id ASC);`,
+			`
+			CREATE TABLE IF NOT EXISTS channel_management_audit_records (
+				audit_event_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				principal_id TEXT,
+				action TEXT NOT NULL,
+				permission_gate TEXT NOT NULL,
+				outcome TEXT NOT NULL,
+				reason_code TEXT,
+				created_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_channel_management_audit_tenant_connector ON channel_management_audit_records(tenant_id, connector_id, created_at DESC, audit_event_id DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS channel_repair_actions (
+				repair_action_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				connector_kind TEXT NOT NULL,
+				actor_principal_id TEXT,
+				action_kind TEXT NOT NULL,
+				source_diagnostic_state_id TEXT,
+				setup_session_id TEXT,
+				status TEXT NOT NULL,
+				retry_safety TEXT,
+				remediation_owner TEXT,
+				started_at TEXT NOT NULL,
+				completed_at TEXT,
+				audit_event_id TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_channel_repair_actions_tenant_connector ON channel_repair_actions(tenant_id, connector_id, started_at DESC, repair_action_id DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS channel_route_policies (
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				route_policy_id TEXT NOT NULL,
+				validation_state TEXT NOT NULL,
+				reason_code TEXT,
+				background_delivery_eligible INTEGER NOT NULL DEFAULT 0,
+				validated_at TEXT NOT NULL,
+				audit_event_id TEXT,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				PRIMARY KEY (tenant_id, connector_id)
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_channel_route_policies_tenant_connector ON channel_route_policies(tenant_id, connector_id, validated_at DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS channel_route_policy_snapshots (
+				route_policy_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				validated_at TEXT NOT NULL,
+				audit_event_id TEXT,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_channel_route_policy_snapshots_tenant_connector ON channel_route_policy_snapshots(tenant_id, connector_id, validated_at DESC, route_policy_id DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS channel_routing_decisions (
+				routing_decision_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				connector_kind TEXT NOT NULL,
+				outcome TEXT NOT NULL,
+				reason_code TEXT,
+				occurred_at TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_channel_routing_decisions_tenant_connector ON channel_routing_decisions(tenant_id, connector_id, occurred_at DESC, routing_decision_id DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS channel_reply_outcomes (
+				reply_outcome_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				routing_decision_id TEXT,
+				status TEXT NOT NULL,
+				reason_code TEXT,
+				occurred_at TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_channel_reply_outcomes_tenant_connector ON channel_reply_outcomes(tenant_id, connector_id, occurred_at DESC, reply_outcome_id DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS channel_delivery_outcomes (
+				delivery_outcome_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				delivery_target_id TEXT,
+				status TEXT NOT NULL,
+				reason_code TEXT,
+				occurred_at TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_channel_delivery_outcomes_tenant_connector ON channel_delivery_outcomes(tenant_id, connector_id, occurred_at DESC, delivery_outcome_id DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS channel_support_evidence (
+				support_evidence_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				connector_id TEXT NOT NULL,
+				generated_by_principal_id TEXT,
+				generated_at TEXT NOT NULL,
+				current_state TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_channel_support_evidence_tenant_connector ON channel_support_evidence(tenant_id, connector_id, generated_at DESC, support_evidence_id DESC);`,
 		},
 	},
 }

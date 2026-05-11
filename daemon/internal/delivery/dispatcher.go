@@ -24,6 +24,16 @@ func (m *Manager) dispatchAttempt(ctx context.Context, outcome DeliveryOutcome, 
 	if target.Status != TargetStatusActive {
 		return m.failOutcomeWithoutRetry(ctx, outcome, target.TargetID, attemptNumber, "target_unavailable", fmt.Sprintf("target %s is %s", target.TargetID, target.Status))
 	}
+	if disabled, err := m.connectorDeliveryDisabled(ctx, target); err != nil {
+		return DeliveryOutcome{}, err
+	} else if disabled {
+		connectorID := target.ConnectorBinding.ConnectorID
+		failed, err := m.failOutcomeWithoutRetry(ctx, outcome, target.TargetID, attemptNumber, "connector_disabled", fmt.Sprintf("connector %s is disabled", connectorID))
+		if err == nil {
+			err = m.recordChannelBackgroundDeliveryOutcome(ctx, failed, target, "connector_disabled")
+		}
+		return failed, err
+	}
 
 	adapter := m.adapterFor(target.TargetKind)
 	if adapter == nil {
@@ -51,7 +61,11 @@ func (m *Manager) dispatchAttempt(ctx context.Context, outcome DeliveryOutcome, 
 	attempt.CompletedAt = &completedAt
 
 	if err != nil {
-		return m.handleAttemptFailure(ctx, outcome, attempt, err)
+		failed, failureErr := m.handleAttemptFailure(ctx, outcome, attempt, err)
+		if failureErr == nil {
+			failureErr = m.recordChannelBackgroundDeliveryOutcome(ctx, failed, target, attempt.FailureClass)
+		}
+		return failed, failureErr
 	}
 
 	attempt.Status = AttemptStatusDelivered
@@ -69,6 +83,9 @@ func (m *Manager) dispatchAttempt(ctx context.Context, outcome DeliveryOutcome, 
 		return DeliveryOutcome{}, err
 	}
 	if err := m.publishOutcomeStatusChanged(ctx, outcome); err != nil {
+		return DeliveryOutcome{}, err
+	}
+	if err := m.recordChannelBackgroundDeliveryOutcome(ctx, outcome, target, "delivered"); err != nil {
 		return DeliveryOutcome{}, err
 	}
 	m.clearRetrySchedule(outcome.DeliveryID)

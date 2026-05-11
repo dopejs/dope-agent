@@ -350,6 +350,13 @@ func TestMessageLoopProcessesMatrixInboundAndPublishesMatrixRouteEvidence(t *tes
 	if runCreated.Payload["source"] != "connector.matrix" {
 		t.Fatalf("expected Matrix run source, got %+v", runCreated.Payload)
 	}
+	replyOutcomes, err := sqliteStore.ListChannelForegroundReplyOutcomes(context.Background(), "ten_matrix", "matrix-main", time.Now().UTC())
+	if err != nil {
+		t.Fatalf("ListChannelForegroundReplyOutcomes: %v", err)
+	}
+	if len(replyOutcomes) != 1 || replyOutcomes[0].Status != "sent" || replyOutcomes[0].ReasonCode != "reply_sent" {
+		t.Fatalf("expected sent foreground reply outcome, got %+v", replyOutcomes)
+	}
 
 	duplicate, err := loop.ProcessSingleTurn(context.Background(), connector, inbound, replySender)
 	if err != nil {
@@ -448,6 +455,7 @@ func TestMessageLoopMarksFailureWhenReplySendFails(t *testing.T) {
 	replySender := &loopTestReplySender{err: errors.New("discord send failed")}
 
 	_, err = loop.ProcessSingleTurn(context.Background(), connectors.Connector{
+		TenantID:    "ten_discord",
 		ConnectorID: "discord-main",
 		Kind:        "discord",
 		DisplayName: "Discord Main",
@@ -455,6 +463,7 @@ func TestMessageLoopMarksFailureWhenReplySendFails(t *testing.T) {
 		CreatedAt:   time.Now().UTC(),
 		UpdatedAt:   time.Now().UTC(),
 	}, imtypes.InboundMessage{
+		TenantID:          "ten_discord",
 		ConnectorID:       "discord-main",
 		ConnectorKind:     "discord",
 		ExternalMessageID: "discord_msg_fail_1",
@@ -487,12 +496,19 @@ func TestMessageLoopMarksFailureWhenReplySendFails(t *testing.T) {
 	if got := last.Payload["redactionStatus"]; got != "redacted" {
 		t.Fatalf("redactionStatus=%#v, want redacted", got)
 	}
-	inbound, ok, err := sqliteStore.GetConnectorMessageByExternalID(context.Background(), "discord-main", imtypes.DeliveryDirectionInbound, "discord_msg_fail_1")
+	inbound, ok, err := sqliteStore.GetConnectorMessageByExternalIDForTenant(context.Background(), "ten_discord", "discord-main", imtypes.DeliveryDirectionInbound, "discord_msg_fail_1")
 	if err != nil || !ok {
-		t.Fatalf("GetConnectorMessageByExternalID inbound ok=%v err=%v", ok, err)
+		t.Fatalf("GetConnectorMessageByExternalIDForTenant inbound ok=%v err=%v", ok, err)
 	}
 	if strings.Contains(inbound.Error, "discord send failed") {
 		t.Fatalf("persisted inbound error exposed raw provider error: %q", inbound.Error)
+	}
+	replyOutcomes, err := sqliteStore.ListChannelForegroundReplyOutcomes(context.Background(), "ten_discord", "discord-main", time.Now().UTC())
+	if err != nil {
+		t.Fatalf("ListChannelForegroundReplyOutcomes: %v", err)
+	}
+	if len(replyOutcomes) != 1 || replyOutcomes[0].Status != "failed" || replyOutcomes[0].ReasonCode != "reply_failed" {
+		t.Fatalf("expected failed foreground reply outcome, got %+v", replyOutcomes)
 	}
 }
 

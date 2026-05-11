@@ -223,6 +223,10 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 		persistedInbound.UpdatedAt = time.Now().UTC()
 		_ = l.store.UpsertConnectorMessage(ctx, persistedInbound)
 		if !partialReply {
+			_ = l.recordChannelForegroundReplyOutcome(ctx, connector, session, outboundRecord, "failed", safeReason, map[string]string{
+				"errorClass": errorClass,
+				"messageId":  inbound.ExternalMessageID,
+			})
 			payload := map[string]any{
 				"messageId":                 inbound.ExternalMessageID,
 				"replyMessageId":            outboundRecord.ExternalMessageID,
@@ -361,6 +365,11 @@ func (l *MessageLoop) executeFinalReply(ctx context.Context, connector connector
 		"replyMessageId":  outboundRecord.ExternalMessageID,
 		"replyMessageIds": replyMessageIDs,
 		"partCount":       len(replyMessageIDs),
+	})
+	_ = l.recordChannelForegroundReplyOutcome(ctx, connector, session, outboundRecord, "sent", "reply_sent", map[string]string{
+		"messageId":       inbound.ExternalMessageID,
+		"replyMessageId":  outboundRecord.ExternalMessageID,
+		"replyMessageIds": strings.Join(replyMessageIDs, ","),
 	})
 	return queryResult, outboundRecord, nil
 }
@@ -697,6 +706,36 @@ func (l *MessageLoop) publishConnectorEvent(ctx context.Context, name string, co
 	return l.publishEvent(ctx, "connector", name, "connector", connector.ConnectorID, scope, payload)
 }
 
+func (l *MessageLoop) recordChannelForegroundReplyOutcome(ctx context.Context, connector connectors.Connector, session router.Session, record imtypes.MessageRecord, status, reasonCode string, safeEvidence map[string]string) error {
+	if l == nil || l.store == nil {
+		return nil
+	}
+	tenantID := strings.TrimSpace(record.TenantID)
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(connector.TenantID)
+	}
+	if tenantID == "" {
+		return nil
+	}
+	outcomeID := strings.TrimSpace(record.DeliveryID)
+	if outcomeID == "" {
+		outcomeID = newDeliveryID()
+	}
+	now := time.Now().UTC()
+	_, err := l.store.SaveChannelForegroundReplyOutcome(ctx, connectors.ForegroundReplyOutcome{
+		ReplyOutcomeID:     outcomeID,
+		TenantID:           tenantID,
+		ConnectorID:        connector.ConnectorID,
+		Status:             status,
+		ReasonCode:         reasonCode,
+		OccurredAt:         now,
+		SafeEvidence:       safeEvidence,
+		RedactionStatus:    connectors.RedactionStatusRedacted,
+		RetentionExpiresAt: now.Add(90 * 24 * time.Hour),
+	})
+	return err
+}
+
 func (l *MessageLoop) publishRuntimeEvent(ctx context.Context, name, resourceKind, resourceID string, scope events.Scope, payload map[string]any) (events.Event, error) {
 	category := "run"
 	if resourceKind == "session" {
@@ -936,6 +975,18 @@ func (p *streamReplyProgress) flush(ctx context.Context, reply string, mode stre
 		payload["errorClass"] = classifyError(p.partialErr)
 	}
 	_, _ = p.loop.publishConnectorEvent(ctx, eventName, p.connector, p.session, p.runID, p.stepID, payload)
+	if mode == streamReplyModeComplete {
+		_ = p.loop.recordChannelForegroundReplyOutcome(ctx, p.connector, p.session, p.record, "sent", "reply_sent", map[string]string{
+			"messageId":       p.inbound.ExternalMessageID,
+			"replyMessageId":  p.record.ExternalMessageID,
+			"replyMessageIds": strings.Join(replyMessageIDs, ","),
+		})
+	} else if mode == streamReplyModePartial {
+		_ = p.loop.recordChannelForegroundReplyOutcome(ctx, p.connector, p.session, p.record, "partial", safeReplyFailureReason(p.partialErr), map[string]string{
+			"errorClass": classifyError(p.partialErr),
+			"messageId":  p.inbound.ExternalMessageID,
+		})
+	}
 	p.lastFlushed = reply
 	p.lastFlushAt = now
 	return nil

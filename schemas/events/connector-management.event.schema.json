@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/events/connector-management.event.schema.json",
+  "title": "ConnectorManagementEvent",
+  "type": "object",
+  "allOf": [
+    { "$ref": "./runtime-event.schema.json" },
+    {
+      "properties": {
+        "category": { "const": "connector" },
+        "name": {
+          "type": "string",
+          "enum": [
+            "connector.management_disabled",
+            "connector.management_reenabled",
+            "connector.management_repair_started",
+            "connector.management_repair_completed",
+            "connector.management_route_policy_updated",
+            "connector.management_support_evidence_generated",
+            "connector.management_retention_applied",
+            "connector.management_redaction_failed",
+            "connector.management_audit_failed_closed"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "required": ["tenantId", "connectorId", "action", "outcome", "redactionStatus"],
+          "additionalProperties": true,
+          "properties": {
+            "tenantId": { "type": "string" },
+            "connectorId": { "type": "string" },
+            "action": { "type": "string" },
+            "outcome": { "type": "string" },
+            "auditEventId": { "type": "string" },
+            "reasonCode": { "type": "string" },
+            "redactionStatus": {
+              "type": "string",
+              "enum": ["redacted", "suppressed", "redaction_failed"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/channel-management-connector-resource.schema.json",
+  "title": "ChannelManagementConnectorResource",
+  "type": "object",
+  "required": [
+    "connectorId",
+    "connectorKind",
+    "displayName",
+    "enablementState",
+    "setupState",
+    "healthStatus",
+    "diagnosticFreshness",
+    "deliveryEligible",
+    "capabilities",
+    "redactionStatus",
+    "updatedAt"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "connectorId": { "type": "string" },
+    "connectorKind": { "type": "string" },
+    "displayName": { "type": "string" },
+    "enablementState": {
+      "type": "string",
+      "enum": ["ready", "disabled", "degraded", "unavailable", "action-required"]
+    },
+    "setupState": { "type": "string" },
+    "healthStatus": { "type": "string" },
+    "diagnosticFreshness": { "type": "string", "enum": ["fresh", "stale"] },
+    "deliveryEligible": { "type": "boolean" },
+    "nextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actionKind": { "type": "string" },
+        "label": { "type": "string" },
+        "reasonCode": { "type": "string" },
+        "remediationOwner": { "type": "string" }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["supported", "limited", "unsupported"]
+      }
+    },
+    "redactionStatus": {
+      "type": "string",
+      "enum": ["redacted", "suppressed", "redaction_failed"]
+    },
+    "diagnosticSummary": { "$ref": "./connector-diagnostic-state.schema.json" },
+    "routePolicy": { "type": "object" },
+    "recentRouteDecisions": { "type": "array", "items": { "type": "object" } },
+    "foregroundReplyOutcomes": { "type": "array", "items": { "type": "object" } },
+    "backgroundDeliveryOutcomes": { "type": "array", "items": { "type": "object" } },
+    "repairActions": { "type": "array", "items": { "type": "object" } },
+    "supportEvidenceAvailable": { "type": "boolean" },
+    "retention": { "type": "object" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

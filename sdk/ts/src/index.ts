@@ -2419,6 +2419,141 @@ export type TenantSecretResponse = {
   secret: TenantSecretResource;
 };
 
+export type ChannelManagementState = "ready" | "disabled" | "degraded" | "unavailable" | "action-required";
+export type ChannelManagementCapabilitySupport = "supported" | "limited" | "unsupported";
+export type ChannelManagementActionKind = "repair" | "reconnect" | "credential-rotation" | "route-revalidate" | "diagnostic-rerun" | "disable";
+
+export type ChannelConnectorResource = {
+  connectorId: string;
+  connectorKind: string;
+  displayName: string;
+  enablementState: ChannelManagementState;
+  setupState: string;
+  healthStatus: string;
+  diagnosticFreshness: "fresh" | "stale";
+  deliveryEligible: boolean;
+  nextAction?: {
+    actionKind: ChannelManagementActionKind | "re-enable";
+    label: string;
+    reasonCode?: string;
+    remediationOwner?: string;
+  };
+  capabilities: Record<string, ChannelManagementCapabilitySupport>;
+  redactionStatus: "redacted" | "suppressed" | "redaction_failed";
+  updatedAt: string;
+};
+
+export type ChannelConnectorListResponse = {
+  tenantId?: string;
+  page: {
+    limit: number;
+    nextCursor?: string;
+    order: "attention_disabled_ready_name_id";
+  };
+  items: ChannelConnectorResource[];
+};
+
+export type ChannelConnectorDetailResource = ChannelConnectorResource & {
+  diagnosticSummary?: ConnectorDiagnosticStateResource;
+  routePolicy?: ChannelRoutePolicyResource;
+  recentRouteDecisions?: unknown[];
+  foregroundReplyOutcomes?: unknown[];
+  backgroundDeliveryOutcomes?: unknown[];
+  repairActions?: ChannelRepairActionResource[];
+  supportEvidenceAvailable?: boolean;
+  retention?: Record<string, string>;
+};
+
+export type ConnectorDiagnosticStateResource = {
+  diagnosticStateId: string;
+  tenantId?: string;
+  connectorId: string;
+  status: string;
+  reasonCode: string;
+  remediationOwner: string;
+  retrySafety: string;
+  evidenceTimestamp: string;
+  freshnessState: "fresh" | "stale";
+  redactionStatus: "redacted" | "suppressed" | "redaction_failed";
+  retentionExpiresAt: string;
+  safeEvidence?: Record<string, string>;
+};
+
+export type ChannelRoutePolicyResource = {
+  routePolicyId?: string;
+  tenantId: string;
+  connectorId: string;
+  eligibleSenders?: string[];
+  eligibleConversations?: string[];
+  eligibleRooms?: string[];
+  eligibleChannels?: string[];
+  invocationGates?: string[];
+  backgroundDeliveryEligible: boolean;
+  validationState: string;
+  reasonCode?: string;
+  validatedAt: string;
+  auditEventId?: string;
+  redactionStatus: "redacted" | "suppressed" | "redaction_failed";
+};
+
+export type ChannelManagementActionInput = {
+  reasonCode?: string;
+  note?: string;
+  actionKind?: ChannelManagementActionKind;
+  sourceDiagnosticStateId?: string;
+  eligibleSenders?: string[];
+  eligibleConversations?: string[];
+  eligibleRooms?: string[];
+  eligibleChannels?: string[];
+  invocationGates?: string[];
+  backgroundDeliveryEligible?: boolean;
+};
+
+export type ChannelEnablementMutationResponse = {
+  connectorId: string;
+  enablementState: ChannelManagementState;
+  deliveryEligible: boolean;
+  auditEventId: string;
+  changedAt: string;
+};
+
+export type ChannelRepairActionResource = {
+  repairActionId: string;
+  tenantId: string;
+  connectorId: string;
+  connectorKind: string;
+  actionKind: ChannelManagementActionKind;
+  sourceDiagnosticStateId?: string;
+  setupSessionId?: string;
+  status: "ready" | "degraded" | "unavailable" | "disabled" | "cancelled" | "action-required";
+  retrySafety?: string;
+  remediationOwner?: string;
+  startedAt: string;
+  completedAt?: string;
+  auditEventId: string;
+  redactionStatus: "redacted" | "suppressed" | "redaction_failed";
+};
+
+export type ChannelManagementSupportEvidence = {
+  supportEvidenceId: string;
+  tenantId: string;
+  connectorId: string;
+  generatedByPrincipalId?: string;
+  generatedAt: string;
+  currentState: ChannelManagementState;
+  stateTransitions?: string[];
+  diagnosticRefs?: string[];
+  repairRefs?: string[];
+  routingDecisionRefs?: string[];
+  replyOutcomeRefs?: string[];
+  deliveryOutcomeRefs?: string[];
+  auditRefs?: string[];
+  redactions?: string[];
+  retentionExpiresAt: string;
+  redactionStatus: "redacted" | "suppressed" | "redaction_failed";
+  safeEvidence?: Record<string, string>;
+};
+
 export type DopeClientOptions = {
   baseURL: string;
   accessToken?: string;
@@ -2519,6 +2654,74 @@ export class DopeClient {
 
   async getConfig(tenantOptions?: TenantRequestOptions): Promise<ConfigResponse> {
     return this.requestJSON<ConfigResponse>("/v1/config", { tenant: tenantOptions });
+  }
+
+  async listChannelConnectors(query: { limit?: number; cursor?: string; state?: string; kind?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<ChannelConnectorListResponse> {
+    return this.requestJSON<ChannelConnectorListResponse>("/v1/channel-management/connectors", { query, tenant: tenantOptions });
+  }
+
+  async getChannelConnector(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<ChannelConnectorDetailResource> {
+    return this.requestJSON<ChannelConnectorDetailResource>(`/v1/channel-management/connectors/${encodePathComponent(connectorId.trim())}`, { tenant: tenantOptions });
+  }
+
+  async getChannelConnectorDiagnostics(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<{ items: ConnectorDiagnosticStateResource[] }> {
+    return this.requestJSON<{ items: ConnectorDiagnosticStateResource[] }>(`/v1/channel-management/connectors/${encodePathComponent(connectorId.trim())}/diagnostics`, { tenant: tenantOptions });
+  }
+
+  async disableChannelConnector(connectorId: string, input: ChannelManagementActionInput = {}, tenantOptions?: TenantRequestOptions): Promise<ChannelEnablementMutationResponse> {
+    return this.requestJSON<ChannelEnablementMutationResponse>(`/v1/channel-management/connectors/${encodePathComponent(connectorId.trim())}/disable`, {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async reEnableChannelConnector(connectorId: string, input: ChannelManagementActionInput = {}, tenantOptions?: TenantRequestOptions): Promise<ChannelEnablementMutationResponse> {
+    return this.requestJSON<ChannelEnablementMutationResponse>(`/v1/channel-management/connectors/${encodePathComponent(connectorId.trim())}/re-enable`, {
+      method: "POST",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async startChannelConnectorRepair(connectorId: string, input: ChannelManagementActionInput = { actionKind: "repair" }, tenantOptions?: TenantRequestOptions): Promise<ChannelRepairActionResource> {
+    return this.requestJSON<ChannelRepairActionResource>(`/v1/channel-management/connectors/${encodePathComponent(connectorId.trim())}/repair-actions`, {
+      method: "POST",
+      body: { ...input, actionKind: input.actionKind ?? "repair" },
+      tenant: tenantOptions
+    });
+  }
+
+  async reconnectChannelConnector(connectorId: string, input: ChannelManagementActionInput = {}, tenantOptions?: TenantRequestOptions): Promise<ChannelRepairActionResource> {
+    return this.startChannelConnectorRepair(connectorId, { ...input, actionKind: "reconnect" }, tenantOptions);
+  }
+
+  async rotateChannelConnectorCredentials(connectorId: string, input: ChannelManagementActionInput = {}, tenantOptions?: TenantRequestOptions): Promise<ChannelRepairActionResource> {
+    return this.startChannelConnectorRepair(connectorId, { ...input, actionKind: "credential-rotation" }, tenantOptions);
+  }
+
+  async getChannelRoutePolicy(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<ChannelRoutePolicyResource> {
+    return this.requestJSON<ChannelRoutePolicyResource>(`/v1/channel-management/connectors/${encodePathComponent(connectorId.trim())}/route-policy`, { tenant: tenantOptions });
+  }
+
+  async updateChannelRoutePolicy(connectorId: string, input: ChannelManagementActionInput, tenantOptions?: TenantRequestOptions): Promise<ChannelRoutePolicyResource> {
+    return this.requestJSON<ChannelRoutePolicyResource>(`/v1/channel-management/connectors/${encodePathComponent(connectorId.trim())}/route-policy`, {
+      method: "PUT",
+      body: input,
+      tenant: tenantOptions
+    });
+  }
+
+  async listChannelReplyOutcomes(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<{ items: unknown[] }> {
+    return this.requestJSON<{ items: unknown[] }>(`/v1/channel-management/connectors/${encodePathComponent(connectorId.trim())}/reply-outcomes`, { tenant: tenantOptions });
+  }
+
+  async listChannelDeliveryOutcomes(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<{ items: unknown[] }> {
+    return this.requestJSON<{ items: unknown[] }>(`/v1/channel-management/connectors/${encodePathComponent(connectorId.trim())}/delivery-outcomes`, { tenant: tenantOptions });
+  }
+
+  async getChannelConnectorSupportEvidence(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<ChannelManagementSupportEvidence> {
+    return this.requestJSON<ChannelManagementSupportEvidence>(`/v1/channel-management/connectors/${encodePathComponent(connectorId.trim())}/support-evidence`, { tenant: tenantOptions });
   }
 
   async getDiscordSetup(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<DiscordHostedSetupResource> {
