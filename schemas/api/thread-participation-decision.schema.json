@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-participation-decision.schema.json",
+  "title": "ThreadParticipationDecision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["conversationShape", "decision", "reasonCode", "createdAssistantWork", "redactionStatus"],
+  "properties": {
+    "participationDecisionId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "threadId": { "type": "string" },
+    "sessionSegmentId": { "type": "string" },
+    "connectorId": { "type": "string" },
+    "connectorKind": { "type": "string" },
+    "sourceAccountId": { "type": "string" },
+    "sourceConversationId": { "type": "string" },
+    "sourceMessageId": { "type": "string" },
+    "conversationShape": { "type": "string", "enum": ["group", "room", "unknown", "unsupported"] },
+    "policyId": { "type": "string" },
+    "mentionStatus": { "type": "string", "enum": ["qualified", "missing", "ambiguous", "unsupported", "failed"] },
+    "allowlistStatus": { "type": "string", "enum": ["eligible", "not_allowlisted", "unsupported", "failed"] },
+    "decision": { "type": "string", "enum": ["accepted", "ignored", "blocked", "denied", "duplicate", "unsupported", "failed"] },
+    "reasonCode": { "type": "string", "minLength": 1 },
+    "createdAssistantWork": { "type": "boolean" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] },
+    "safeSummary": { "type": "string" }
+  }
+}

@@ -72,7 +72,7 @@ func TestChannelManagementSupportEvidenceAggregatesIncidentReferences(t *testing
 	t.Cleanup(func() { _ = sqliteStore.Close() })
 	supervisor := connectors.NewSupervisor()
 	registerChannelManagementTestConnector(t, supervisor, "ten_channels", "matrix-main", "matrix", "Matrix Main")
-	now := time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	if _, err := sqliteStore.SaveChannelRepairAction(context.Background(), connectors.RepairAction{
 		RepairActionID:   "repair_1",
 		TenantID:         "ten_channels",
@@ -127,7 +127,7 @@ func TestChannelManagementSupportEvidenceEmitsRedactionAndRetentionEvents(t *tes
 	t.Cleanup(func() { _ = sqliteStore.Close() })
 	supervisor := connectors.NewSupervisor()
 	registerChannelManagementTestConnector(t, supervisor, "ten_channels", "slack-main", "slack", "Slack Main")
-	now := time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	if err := sqliteStore.SaveConnectorDiagnosticState(context.Background(), connectors.ConnectorDiagnosticState{
 		DiagnosticStateID:  "diagnostic_redaction_failed",
 		TenantID:           "ten_channels",

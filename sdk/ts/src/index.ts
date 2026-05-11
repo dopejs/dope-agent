@@ -2665,11 +2665,12 @@ export type ThreadContinuityPreviewItem = {
   continuityPreviewId?: string;
   tenantId?: string;
   threadId?: string;
-  itemKind: "turn" | "artifact_excerpt";
+  itemKind: "turn" | "artifact_excerpt" | "handoff_source_reference";
   continuityTurnId?: string;
   role?: "user" | "assistant";
   artifactRef?: string;
   artifactExcerptId?: string;
+  handoffSourceReferenceId?: string;
   decision: "included" | "excluded";
   reasonCode: string;
   acceptanceSequence?: number;
@@ -2684,6 +2685,79 @@ export type ThreadContinuityPreviewDetail = {
   items: ThreadContinuityPreviewItem[];
 };
 
+export type ThreadConversationShape = {
+  conversationShapeId?: string;
+  tenantId?: string;
+  threadId?: string;
+  sessionSegmentId?: string;
+  shape: "direct_message" | "group" | "room" | "web" | "unknown" | "unsupported";
+  sourceKind?: ThreadSourceKind;
+  connectorId?: string;
+  connectorKind?: string;
+  sourceAccountId?: string;
+  sourceConversationId?: string;
+  sourceConversationSummary?: string;
+  participantSummary?: string;
+  shapeEvidenceStatus: "proven" | "partial" | "unsupported" | "failed";
+  recordedAt?: string;
+  updatedAt?: string;
+  retentionExpiresAt?: string;
+  redactionStatus: ThreadRedactionStatus;
+};
+
+export type ThreadParticipationDecision = {
+  participationDecisionId?: string;
+  tenantId?: string;
+  threadId?: string;
+  sessionSegmentId?: string;
+  conversationShape: "group" | "room" | "unknown" | "unsupported";
+  decision: "accepted" | "ignored" | "blocked" | "denied" | "duplicate" | "unsupported" | "failed";
+  reasonCode: string;
+  createdAssistantWork: boolean;
+  safeSummary?: string;
+  redactionStatus: ThreadRedactionStatus;
+};
+
+export type ThreadResetEvent = {
+  resetEventId?: string;
+  tenantId?: string;
+  threadId?: string;
+  conversationShape: ThreadConversationShape["shape"];
+  sourceConversationId?: string;
+  actorPrincipalId?: string;
+  permissionGate: "connectors.manage";
+  priorSessionSegmentId?: string;
+  resultingSessionSegmentId?: string;
+  status: "succeeded" | "denied" | "failed_closed" | "unsupported";
+  reasonCode: string;
+  requestedAt?: string;
+  completedAt?: string;
+  auditEventId?: string;
+  retentionExpiresAt?: string;
+  redactionStatus: ThreadRedactionStatus;
+};
+
+export type ThreadHandoffLink = {
+  handoffLinkId?: string;
+  sourceThreadId: string;
+  destinationThreadId: string;
+  sourceConversationShape: ThreadConversationShape["shape"];
+  destinationConversationShape: ThreadConversationShape["shape"];
+  status: "succeeded" | "denied" | "failed_closed" | "unsupported" | "expired";
+  sourceReferenceStatus: "available" | "consumed" | "blocked" | "expired" | "none";
+  permissionGate: "connectors.manage";
+  redactionStatus: ThreadRedactionStatus;
+};
+
+export type ThreadHandoffDestinationInput =
+  | { surface: "web"; connectorId?: null; sourceAccountId?: null; sourceConversationId?: null; conversationShape?: "web" }
+  | { surface: "channel"; connectorId: string; sourceAccountId: string; sourceConversationId: string; conversationShape: "direct_message" | "group" | "room" };
+
+export type ThreadHandoffInput = {
+  destination: ThreadHandoffDestinationInput;
+  reasonCode?: string;
+};
+
 export type ThreadDetailResponse = {
   thread: ThreadResource;
   sessionSegments: Record<string, unknown>[];
@@ -2691,6 +2765,10 @@ export type ThreadDetailResponse = {
   runtimeProjections: ThreadRuntimeProjection[];
   continuityPreviews?: ThreadContinuityPreview[];
   lifecycleActions: Record<string, unknown>[];
+  conversationShape?: ThreadConversationShape;
+  participationDecisions?: ThreadParticipationDecision[];
+  resetEvents?: ThreadResetEvent[];
+  handoffLinks?: ThreadHandoffLink[];
 };
 
 export type ThreadListQuery = {
@@ -2844,6 +2922,10 @@ export class DopeClient {
 
   async reopenThread(threadId: string, input: ThreadLifecycleActionInput = {}, tenantOptions?: TenantRequestOptions): Promise<ThreadLifecycleActionResponse> {
     return this.requestJSON<ThreadLifecycleActionResponse>(`/v1/threads/${encodePathComponent(threadId.trim())}/reopen`, { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async createThreadHandoff(threadId: string, input: ThreadHandoffInput, tenantOptions?: TenantRequestOptions): Promise<ThreadHandoffLink> {
+    return this.requestJSON<ThreadHandoffLink>(`/v1/threads/${encodePathComponent(threadId.trim())}/handoffs`, { method: "POST", body: input, tenant: tenantOptions });
   }
 
   async getChannelConnector(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<ChannelConnectorDetailResource> {

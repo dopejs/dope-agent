@@ -29,6 +29,7 @@ describe("thread lifecycle SDK skeleton", () => {
         sessionSegments: [],
         sourceLinkages: [{ sourceLinkageId: "src_1", sourceKind: "channel", routingOutcome: "accepted", current: true, linkedAt: "2026-05-11T10:00:00Z", retentionExpiresAt: "2026-08-09T10:00:00Z", redactionStatus: "redacted" }],
         runtimeProjections: [{ runtimeProjectionId: "rtp_1", resourceKind: "run", resourceId: "run_1", status: "completed", occurredAt: "2026-05-11T10:00:00Z", safeSummary: "metadata only", retentionExpiresAt: "2026-08-09T10:00:00Z", redactionStatus: "redacted" }],
+        conversationShape: { shape: "room", shapeEvidenceStatus: "proven", sourceConversationSummary: "Slack Main / #support", redactionStatus: "redacted" },
         lifecycleActions: []
       }));
     const client = createDopeClient({ baseURL: "http://127.0.0.1:19192", accessToken: "token", defaultTenantId: "ten_threads", fetchImpl });
@@ -40,6 +41,7 @@ describe("thread lifecycle SDK skeleton", () => {
     expect(fetchImpl.mock.calls[1]?.[0]).toBe("http://127.0.0.1:19192/v1/threads/thr_1");
     expect(fetchImpl.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: "Bearer token", "X-Dope-Tenant-ID": "ten_threads" });
     expect(detail.thread.retentionExpiresAt).toBe("2026-08-09T10:00:00Z");
+    expect(detail.conversationShape?.shape).toBe("room");
     expect(detail.sourceLinkages[0]?.redactionStatus).toBe("redacted");
     expect(JSON.stringify(detail)).not.toMatch(/semanticSummary|recalledMemory|contextPacking|autonomousPruning/);
   });

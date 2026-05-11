@@ -51,6 +51,7 @@ type ContinuityItemKind string
 const (
 	ContinuityItemTurn            ContinuityItemKind = "turn"
 	ContinuityItemArtifactExcerpt ContinuityItemKind = "artifact_excerpt"
+	ContinuityItemHandoffSource   ContinuityItemKind = "handoff_source_reference"
 )
 
 type ContinuityReason string
@@ -150,6 +151,7 @@ type ContinuityPreviewItem struct {
 	Role                ContinuityRole     `json:"role,omitempty"`
 	ArtifactRef         string             `json:"artifactRef,omitempty"`
 	ArtifactExcerptID   string             `json:"artifactExcerptId,omitempty"`
+	HandoffSourceRefID  string             `json:"handoffSourceReferenceId,omitempty"`
 	Decision            ContinuityDecision `json:"decision"`
 	ReasonCode          ContinuityReason   `json:"reasonCode"`
 	AcceptanceSequence  int64              `json:"acceptanceSequence,omitempty"`

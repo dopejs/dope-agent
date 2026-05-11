@@ -93,6 +93,23 @@ CLI flags:
 - `--model`
 - `--query`
 - `--stream`
+- `--thread-id`
+- `--threads`
+- `--thread`
+- `--thread-trace`
+- `--thread-reset`
+- `--thread-handoff-web`
+
+## Roadmap 56 Thread Inspection And Handoff
+
+Web and TUI use `@dope/client` for thread lifecycle, reset, and handoff calls. They render
+conversation shape, participation decisions, reset events, handoff links, and continuity
+preview evidence as metadata-only operator evidence.
+
+`POST /v1/threads/{threadId}/handoffs` is exposed through
+`createThreadHandoff`. The current client surface supports channel-to-web handoff and
+prints the separate destination thread id plus source-reference status. Labels must call
+this traceable continuation, not memory.
 
 ## Operator Flow
 

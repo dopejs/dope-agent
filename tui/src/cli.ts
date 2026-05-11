@@ -20,6 +20,7 @@ export type TUIOptions = {
   resetThreadId?: string;
   archiveThreadId?: string;
   reopenThreadId?: string;
+  handoffWebThreadId?: string;
 };
 
 type CLIIO = {
@@ -104,6 +105,9 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
       io.stdout.write(`Source Linkages: ${detail.sourceLinkages.length}\n`);
       io.stdout.write(`Runtime Projections: ${detail.runtimeProjections.length}\n`);
       io.stdout.write(`Continuity Previews: ${detail.continuityPreviews?.length ?? 0}\n`);
+      io.stdout.write(`Conversation Shape: ${detail.conversationShape?.shape ?? "unavailable"}\n`);
+      io.stdout.write(`Participation Decisions: ${detail.participationDecisions?.length ?? 0}\n`);
+      io.stdout.write(`Reset Events: ${detail.resetEvents?.length ?? 0}\n`);
       return 0;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -121,6 +125,28 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
       io.stdout.write("Evidence: lifecycle metadata, not assistant memory\n");
       io.stdout.write(`Retention: ${thread.retentionExpiresAt ?? "policy default"}\n`);
       io.stdout.write(`Redaction: ${thread.redactionStatus}\n`);
+      io.stdout.write(`Conversation Shape: ${detail.conversationShape?.shape ?? "unavailable"}\n`);
+      io.stdout.write("Participation Decisions:\n");
+      for (const decision of detail.participationDecisions ?? []) {
+        io.stdout.write(`- ${decision.decision} ${decision.reasonCode} work=${decision.createdAssistantWork ? "yes" : "no"} ${decision.safeSummary ?? "metadata only"} redaction=${decision.redactionStatus}\n`);
+      }
+      if ((detail.participationDecisions?.length ?? 0) === 0) {
+        io.stdout.write("- none\n");
+      }
+      io.stdout.write("Reset Events:\n");
+      for (const event of detail.resetEvents ?? []) {
+        io.stdout.write(`- ${event.status} ${event.conversationShape} ${event.reasonCode} prior=${event.priorSessionSegmentId ?? "unavailable"} current=${event.resultingSessionSegmentId ?? "unavailable"} redaction=${event.redactionStatus}\n`);
+      }
+      if ((detail.resetEvents?.length ?? 0) === 0) {
+        io.stdout.write("- none\n");
+      }
+      io.stdout.write("Handoff Links:\n");
+      for (const link of detail.handoffLinks ?? []) {
+        io.stdout.write(`- ${link.status} ${link.sourceConversationShape}->${link.destinationConversationShape} refs=${link.sourceReferenceStatus} source=${link.sourceThreadId} destination=${link.destinationThreadId} redaction=${link.redactionStatus}\n`);
+      }
+      if ((detail.handoffLinks?.length ?? 0) === 0) {
+        io.stdout.write("- none\n");
+      }
       io.stdout.write("Source Trace:\n");
       for (const linkage of detail.sourceLinkages) {
         io.stdout.write(`- ${linkage.routingOutcome} ${linkage.connectorKind ?? linkage.sourceKind} ${linkage.sourceConversationId ?? "conversation redacted"} redaction=${linkage.redactionStatus} retention=${linkage.retentionExpiresAt ?? "policy default"}\n`);
@@ -184,6 +210,21 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
       io.stdout.write(`State: ${response.lifecycleState}\n`);
       io.stdout.write(`Audit: ${response.auditEventId}\n`);
       io.stdout.write(`Current Segment: ${response.currentSessionSegmentId ?? "unchanged"}\n`);
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.handoffWebThreadId) {
+    try {
+      const response = await client.createThreadHandoff(options.handoffWebThreadId, { destination: { surface: "web" }, reasonCode: "tui_handoff_web" });
+      io.stdout.write(`Thread ${response.sourceThreadId} handoff completed.\n`);
+      io.stdout.write(`Destination Thread: ${response.destinationThreadId}\n`);
+      io.stdout.write(`Status: ${response.status}\n`);
+      io.stdout.write(`Source References: ${response.sourceReferenceStatus}\n`);
       return 0;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -303,6 +344,9 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
       case "--thread-reopen":
         options.reopenThreadId = argv[++index] ?? options.reopenThreadId;
         break;
+      case "--thread-handoff-web":
+        options.handoffWebThreadId = argv[++index] ?? options.handoffWebThreadId;
+        break;
       case "--help":
         throw new Error(helpText());
       default:
@@ -334,6 +378,7 @@ export function helpText(): string {
     "  --thread-reset <id> Reset one tenant thread",
     "  --thread-archive <id> Archive one tenant thread",
     "  --thread-reopen <id> Reopen one tenant thread",
+    "  --thread-handoff-web <id> Hand off one tenant thread to web",
     "  --help              Show this help"
   ].join("\n");
 }

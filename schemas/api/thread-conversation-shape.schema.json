@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-conversation-shape.schema.json",
+  "title": "ThreadConversationShape",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["shape", "shapeEvidenceStatus", "redactionStatus"],
+  "properties": {
+    "conversationShapeId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "threadId": { "type": "string" },
+    "sessionSegmentId": { "type": "string" },
+    "shape": { "type": "string", "enum": ["direct_message", "group", "room", "web", "unknown", "unsupported"] },
+    "sourceKind": { "type": "string", "enum": ["chat", "channel", "shell", "workflow", "schedule", "legacy"] },
+    "connectorId": { "type": "string" },
+    "connectorKind": { "type": "string" },
+    "sourceAccountId": { "type": "string" },
+    "sourceConversationId": { "type": "string" },
+    "sourceConversationSummary": { "type": "string" },
+    "participantSummary": { "type": "string" },
+    "shapeEvidenceStatus": { "type": "string", "enum": ["proven", "partial", "unsupported", "failed"] },
+    "recordedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] }
+  }
+}

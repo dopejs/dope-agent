@@ -403,6 +403,228 @@ func TestMessageLoopRecordsThreadLifecycleEvidenceForAcceptedDuplicateAndBlocked
 	}
 }
 
+func TestMessageLoopRecordsConversationShapeForConnectorIngress(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		connector connectors.Connector
+		inbound   imtypes.InboundMessage
+		wantShape threads.ConversationShape
+	}{
+		{
+			name:      "direct message",
+			connector: connectors.Connector{TenantID: "ten_shape_direct", ConnectorID: "discord-main", Kind: "discord", DisplayName: "Discord Main"},
+			inbound: imtypes.InboundMessage{
+				TenantID:          "ten_shape_direct",
+				ConnectorID:       "discord-main",
+				ConnectorKind:     "discord",
+				ExternalMessageID: "direct_msg_1",
+				AccountID:         "bot_1",
+				ChannelID:         "dm_1",
+				PeerID:            "user_1",
+				AuthorID:          "user_1",
+				Content:           "hello direct",
+				Kind:              router.SessionKindDirect,
+				Direct:            true,
+				ReceivedAt:        time.Now().UTC(),
+			},
+			wantShape: threads.ConversationShapeDirectMessage,
+		},
+		{
+			name:      "group message",
+			connector: connectors.Connector{TenantID: "ten_shape_group", ConnectorID: "telegram-main", Kind: "telegram", DisplayName: "Telegram Main"},
+			inbound: imtypes.InboundMessage{
+				TenantID:                "ten_shape_group",
+				ConnectorID:             "telegram-main",
+				ConnectorKind:           "telegram",
+				ExternalMessageID:       "group_msg_1",
+				AccountID:               "bot_1",
+				ConnectorAccountID:      "telegram_bot_1",
+				ChannelID:               "group_1",
+				ChannelOrConversationID: "group_1",
+				PeerID:                  "group_1",
+				ThreadID:                "group_thread_1",
+				AuthorID:                "user_1",
+				Content:                 "hello group",
+				Kind:                    router.SessionKindGroup,
+				ReceivedAt:              time.Now().UTC(),
+			},
+			wantShape: threads.ConversationShapeGroup,
+		},
+		{
+			name:      "room message",
+			connector: connectors.Connector{TenantID: "ten_shape_room", ConnectorID: "slack-main", Kind: "slack", DisplayName: "Slack Main"},
+			inbound: imtypes.InboundMessage{
+				TenantID:                "ten_shape_room",
+				ConnectorID:             "slack-main",
+				ConnectorKind:           "slack",
+				ExternalMessageID:       "room_msg_1",
+				AccountID:               "workspace_redacted",
+				ConnectorAccountID:      "workspace_redacted",
+				ChannelID:               "channel_redacted",
+				ChannelOrConversationID: "channel_redacted",
+				PeerID:                  "channel_redacted",
+				ThreadID:                "channel_thread_1",
+				AuthorID:                "user_1",
+				Content:                 "hello room",
+				Kind:                    router.SessionKindGroup,
+				ReceivedAt:              time.Now().UTC(),
+			},
+			wantShape: threads.ConversationShapeRoom,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			sqliteStore, loop, replySender := newThreadLifecycleLoopForTest(t)
+			result, err := loop.ProcessSingleTurn(context.Background(), tc.connector, tc.inbound, replySender)
+			if err != nil {
+				t.Fatalf("ProcessSingleTurn: %v", err)
+			}
+			persisted, ok, err := sqliteStore.GetConnectorMessageByExternalIDForTenant(context.Background(), tc.inbound.TenantID, tc.connector.ConnectorID, imtypes.DeliveryDirectionInbound, tc.inbound.ExternalMessageID)
+			if err != nil || !ok {
+				t.Fatalf("GetConnectorMessageByExternalIDForTenant ok=%v err=%v", ok, err)
+			}
+			if persisted.ThreadID == "" || result.Session.SessionID == "" {
+				t.Fatalf("expected ingress to bind a thread and session, persisted=%+v result=%+v", persisted, result)
+			}
+			shape, found, err := sqliteStore.GetConversationShapeForThread(context.Background(), tc.inbound.TenantID, persisted.ThreadID)
+			if err != nil || !found {
+				t.Fatalf("GetConversationShapeForThread found=%v err=%v", found, err)
+			}
+			if shape.Shape != tc.wantShape || shape.ShapeEvidenceStatus != threads.ShapeEvidenceStatusProven {
+				t.Fatalf("shape evidence=%+v, want shape=%s proven", shape, tc.wantShape)
+			}
+			if shape.SourceKind != threads.SourceKindChannel || shape.SourceConversationID != inboundChannelOrConversationID(tc.inbound) {
+				t.Fatalf("shape source evidence did not preserve connector identity: %+v", shape)
+			}
+		})
+	}
+}
+
+func TestConversationShapeForIngressSourceMapsWebOriginatedSurface(t *testing.T) {
+	t.Parallel()
+
+	got := conversationShapeForIngressSource(threads.SourceKindShell, "web", imtypes.InboundMessage{})
+	if got != threads.ConversationShapeWeb {
+		t.Fatalf("web-originated shape = %s, want %s", got, threads.ConversationShapeWeb)
+	}
+}
+
+func TestMessageLoopAppliesGroupRoomParticipationPolicyBeforeAssistantWork(t *testing.T) {
+	t.Parallel()
+
+	connector := connectors.Connector{
+		TenantID:    "ten_participation",
+		ConnectorID: "slack-main",
+		Kind:        "slack",
+		DisplayName: "Slack Main",
+		CapabilityProfile: map[string]any{
+			connectors.GroupRoomSurfaceMentionEvidence:   string(connectors.SurfaceSupported),
+			connectors.GroupRoomSurfaceAllowlistEvidence: string(connectors.SurfaceSupported),
+		},
+	}
+	inbound := imtypes.InboundMessage{
+		TenantID:                "ten_participation",
+		ConnectorID:             "slack-main",
+		ConnectorKind:           "slack",
+		ExternalMessageID:       "room_policy_msg_1",
+		AccountID:               "workspace_redacted",
+		ConnectorAccountID:      "workspace_redacted",
+		ChannelID:               "channel_redacted",
+		ChannelOrConversationID: "channel_redacted",
+		PeerID:                  "channel_redacted",
+		ThreadID:                "channel_thread_1",
+		AuthorID:                "user_1",
+		Content:                 "ambient room chatter",
+		Kind:                    router.SessionKindGroup,
+		ReceivedAt:              time.Now().UTC(),
+	}
+
+	sqliteStore, loop, replySender := newThreadLifecycleLoopForTest(t)
+	if err := sqliteStore.SaveChannelRoutePolicy(context.Background(), connectors.RoutePolicy{
+		RoutePolicyID:    "route_policy_participation",
+		TenantID:         "ten_participation",
+		ConnectorID:      "slack-main",
+		EligibleRooms:    []string{"channel_redacted"},
+		EligibleChannels: []string{"channel_redacted"},
+		ValidationState:  "valid",
+		ValidatedAt:      time.Now().UTC(),
+		RedactionStatus:  connectors.RedactionStatusRedacted,
+	}); err != nil {
+		t.Fatalf("SaveChannelRoutePolicy: %v", err)
+	}
+	ignored, err := loop.ProcessSingleTurn(context.Background(), connector, inbound, replySender)
+	if err != nil {
+		t.Fatalf("ProcessSingleTurn ignored: %v", err)
+	}
+	if ignored.Outcome != string(threads.ParticipationDecisionIgnored) || ignored.ReasonCode != threads.GroupRoomReasonMissingQualifyingMention {
+		t.Fatalf("expected missing-mention ignored outcome, got %+v", ignored)
+	}
+	if ignored.Run.RunID != "" || replySender.last.Content != "" {
+		t.Fatalf("ignored group/room message must not create assistant work, result=%+v reply=%+v", ignored, replySender.last)
+	}
+	persistedIgnored, ok, err := sqliteStore.GetConnectorMessageByExternalIDForTenant(context.Background(), "ten_participation", "slack-main", imtypes.DeliveryDirectionInbound, "room_policy_msg_1")
+	if err != nil || !ok {
+		t.Fatalf("GetConnectorMessageByExternalIDForTenant ignored ok=%v err=%v", ok, err)
+	}
+	decisions, err := sqliteStore.ListParticipationDecisionsForThread(context.Background(), "ten_participation", persistedIgnored.ThreadID, 10)
+	if err != nil {
+		t.Fatalf("ListParticipationDecisionsForThread ignored: %v", err)
+	}
+	if len(decisions) != 1 || decisions[0].Decision != threads.ParticipationDecisionIgnored || decisions[0].CreatedAssistantWork {
+		t.Fatalf("expected one ignored participation decision without assistant work, got %+v", decisions)
+	}
+
+	mentionedInbound := inbound
+	mentionedInbound.ExternalMessageID = "room_policy_msg_2"
+	mentionedInbound.ProviderMessageID = "room_policy_msg_2"
+	mentionedInbound.Content = "@dope please respond"
+	mentionedInbound.Mentioned = true
+	accepted, err := loop.ProcessSingleTurn(context.Background(), connector, mentionedInbound, replySender)
+	if err != nil {
+		t.Fatalf("ProcessSingleTurn accepted: %v", err)
+	}
+	if accepted.Outcome != "accepted" || accepted.Run.RunID == "" {
+		t.Fatalf("expected mentioned room message to create assistant work, got %+v", accepted)
+	}
+	persistedAccepted, ok, err := sqliteStore.GetConnectorMessageByExternalIDForTenant(context.Background(), "ten_participation", "slack-main", imtypes.DeliveryDirectionInbound, "room_policy_msg_2")
+	if err != nil || !ok {
+		t.Fatalf("GetConnectorMessageByExternalIDForTenant accepted ok=%v err=%v", ok, err)
+	}
+	decisions, err = sqliteStore.ListParticipationDecisionsForThread(context.Background(), "ten_participation", persistedAccepted.ThreadID, 10)
+	if err != nil {
+		t.Fatalf("ListParticipationDecisionsForThread accepted: %v", err)
+	}
+	foundAccepted := false
+	for _, decision := range decisions {
+		if decision.SourceMessageID == "room_policy_msg_2" && decision.Decision == threads.ParticipationDecisionAccepted && decision.CreatedAssistantWork {
+			foundAccepted = true
+		}
+	}
+	if !foundAccepted {
+		t.Fatalf("expected accepted participation decision with assistant work, got %+v", decisions)
+	}
+
+	blockedInbound := mentionedInbound
+	blockedInbound.ExternalMessageID = "room_policy_msg_3"
+	blockedInbound.ProviderMessageID = "room_policy_msg_3"
+	blockedInbound.ChannelID = "channel_not_allowlisted"
+	blockedInbound.ChannelOrConversationID = "channel_not_allowlisted"
+	blockedInbound.PeerID = "channel_not_allowlisted"
+	blocked, err := loop.ProcessSingleTurn(context.Background(), connector, blockedInbound, replySender)
+	if err != nil {
+		t.Fatalf("ProcessSingleTurn blocked: %v", err)
+	}
+	if blocked.Outcome != string(threads.ParticipationDecisionBlocked) || blocked.ReasonCode != threads.GroupRoomReasonNotAllowlisted || blocked.Run.RunID != "" {
+		t.Fatalf("expected not-allowlisted message to be blocked before assistant work, got %+v", blocked)
+	}
+}
+
 func TestMessageLoopRecordsNonAcceptedSourceOutcomes(t *testing.T) {
 	t.Parallel()
 

@@ -10,10 +10,11 @@
     "continuityPreviewId": { "type": "string" },
     "tenantId": { "type": "string" },
     "threadId": { "type": "string" },
-    "itemKind": { "type": "string", "enum": ["turn", "artifact_excerpt"] },
+    "itemKind": { "type": "string", "enum": ["turn", "artifact_excerpt", "handoff_source_reference"] },
     "continuityTurnId": { "type": "string" },
     "artifactRef": { "type": "string" },
     "artifactExcerptId": { "type": "string" },
+    "handoffSourceReferenceId": { "type": "string" },
     "role": { "type": "string", "enum": ["user", "assistant"] },
     "decision": { "type": "string", "enum": ["included", "excluded"] },
     "reasonCode": {

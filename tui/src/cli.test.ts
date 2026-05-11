@@ -240,6 +240,41 @@ describe("tui cli", () => {
         sessionSegmentId: "seg_reset",
         windowPolicyId: "default_recent_12_30d"
       }],
+      conversationShape: {
+        shape: "room",
+        shapeEvidenceStatus: "proven",
+        redactionStatus: "redacted"
+      },
+      participationDecisions: [{
+        participationDecisionId: "part_1",
+        conversationShape: "room",
+        decision: "ignored",
+        reasonCode: "missing_qualifying_mention",
+        createdAssistantWork: false,
+        safeSummary: "Room message ignored by participation policy",
+        redactionStatus: "redacted"
+      }],
+      resetEvents: [{
+        resetEventId: "reset_1",
+        conversationShape: "room",
+        permissionGate: "connectors.manage",
+        priorSessionSegmentId: "seg_old",
+        resultingSessionSegmentId: "seg_reset",
+        status: "succeeded",
+        reasonCode: "scoped_reset_succeeded",
+        redactionStatus: "redacted"
+      }],
+      handoffLinks: [{
+        handoffLinkId: "handoff_1",
+        sourceThreadId: "thr_source",
+        destinationThreadId: "thr_1",
+        sourceConversationShape: "room",
+        destinationConversationShape: "web",
+        status: "succeeded",
+        sourceReferenceStatus: "available",
+        permissionGate: "connectors.manage",
+        redactionStatus: "redacted"
+      }],
       lifecycleActions: []
     });
     const options = parseArgs(["--thread", "thr_1"], {});
@@ -260,6 +295,9 @@ describe("tui cli", () => {
     expect(stdout.contents).toContain("Evidence: lifecycle metadata, not assistant memory");
     expect(stdout.contents).toContain("Retention: 2026-08-09T10:00:00Z");
     expect(stdout.contents).toContain("Continuity Previews: 1");
+    expect(stdout.contents).toContain("Conversation Shape: room");
+    expect(stdout.contents).toContain("Participation Decisions: 1");
+    expect(stdout.contents).toContain("Reset Events: 1");
     expect(stderr.contents).toBe("");
   });
 
@@ -311,6 +349,41 @@ describe("tui cli", () => {
         sessionSegmentId: "seg_reset",
         windowPolicyId: "default_recent_12_30d"
       }],
+      conversationShape: {
+        shape: "room",
+        shapeEvidenceStatus: "proven",
+        redactionStatus: "redacted"
+      },
+      participationDecisions: [{
+        participationDecisionId: "part_1",
+        conversationShape: "room",
+        decision: "ignored",
+        reasonCode: "missing_qualifying_mention",
+        createdAssistantWork: false,
+        safeSummary: "Room message ignored by participation policy",
+        redactionStatus: "redacted"
+      }],
+      resetEvents: [{
+        resetEventId: "reset_1",
+        conversationShape: "room",
+        permissionGate: "connectors.manage",
+        priorSessionSegmentId: "seg_old",
+        resultingSessionSegmentId: "seg_reset",
+        status: "succeeded",
+        reasonCode: "scoped_reset_succeeded",
+        redactionStatus: "redacted"
+      }],
+      handoffLinks: [{
+        handoffLinkId: "handoff_1",
+        sourceThreadId: "thr_source",
+        destinationThreadId: "thr_1",
+        sourceConversationShape: "room",
+        destinationConversationShape: "web",
+        status: "succeeded",
+        sourceReferenceStatus: "available",
+        permissionGate: "connectors.manage",
+        redactionStatus: "redacted"
+      }],
       lifecycleActions: []
     });
     const options = parseArgs(["--thread-trace", "thr_1"], {});
@@ -329,6 +402,10 @@ describe("tui cli", () => {
     expect(stdout.contents).toContain("Thread Trace: thr_1");
     expect(stdout.contents).toContain("Evidence: lifecycle metadata, not assistant memory");
     expect(stdout.contents).toContain("Source Trace:");
+    expect(stdout.contents).toContain("Conversation Shape: room");
+    expect(stdout.contents).toContain("- ignored missing_qualifying_mention work=no Room message ignored by participation policy redaction=redacted");
+    expect(stdout.contents).toContain("- succeeded room scoped_reset_succeeded prior=seg_old current=seg_reset redaction=redacted");
+    expect(stdout.contents).toContain("- succeeded room->web refs=available source=thr_source destination=thr_1 redaction=redacted");
     expect(stdout.contents).toContain("- accepted slack channel_redacted");
     expect(stdout.contents).toContain("retention=2026-08-09T10:00:00Z");
     expect(stdout.contents).toContain("- foreground_reply replied Foreground reply replied");
@@ -403,6 +480,36 @@ describe("tui cli", () => {
     expect(archiveThread).toHaveBeenCalledWith("thr_1", { reasonCode: "tui_archive" });
     expect(stdout.contents).toContain("Thread thr_1 archive completed.");
     expect(stdout.contents).toContain("Audit: audit_1");
+  });
+
+  it("runs thread handoff to web command", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const createThreadHandoff = vi.fn().mockResolvedValue({
+      sourceThreadId: "thr_1",
+      destinationThreadId: "thr_web",
+      sourceConversationShape: "room",
+      destinationConversationShape: "web",
+      status: "succeeded",
+      sourceReferenceStatus: "available",
+      permissionGate: "connectors.manage",
+      redactionStatus: "redacted"
+    });
+    const options = parseArgs(["--thread-handoff-web", "thr_1"], {});
+    const code = await runCLI(options, {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () =>
+        ({
+          createThreadHandoff,
+          queryChat: vi.fn(),
+          streamChatQuery: vi.fn()
+        }) as any
+    });
+
+    expect(code).toBe(0);
+    expect(createThreadHandoff).toHaveBeenCalledWith("thr_1", { destination: { surface: "web" }, reasonCode: "tui_handoff_web" });
+    expect(stdout.contents).toContain("Thread thr_1 handoff completed.");
+    expect(stdout.contents).toContain("Destination Thread: thr_web");
   });
 });
 

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-reset-event.schema.json",
+  "title": "ThreadResetEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["conversationShape", "permissionGate", "status", "reasonCode", "redactionStatus"],
+  "properties": {
+    "resetEventId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "threadId": { "type": "string" },
+    "conversationShape": { "enum": ["direct_message", "group", "room", "web", "unknown", "unsupported"] },
+    "sourceConversationId": { "type": "string" },
+    "actorPrincipalId": { "type": "string" },
+    "permissionGate": { "const": "connectors.manage" },
+    "priorSessionSegmentId": { "type": "string" },
+    "resultingSessionSegmentId": { "type": "string" },
+    "status": { "enum": ["succeeded", "denied", "failed_closed", "unsupported"] },
+    "reasonCode": { "type": "string" },
+    "requestedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "auditEventId": { "type": "string" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": { "enum": ["redacted", "suppressed", "redaction_failed"] }
+  }
+}

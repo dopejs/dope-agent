@@ -1049,6 +1049,15 @@ const DiagnosticUnknownConnectorFailure DiagnosticReasonCode = "unknown_connecto
 const DiagnosticUnsupportedCapability DiagnosticReasonCode = "unsupported_capability"
 const FreshnessFresh FreshnessState = "fresh"
 const FreshnessStale FreshnessState = "stale"
+const GroupRoomSurfaceAllowlistEvidence = "group_room_allowlist_evidence"
+const GroupRoomSurfaceDeletedMessageEvidence = "group_room_deleted_message_evidence"
+const GroupRoomSurfaceDuplicateMessageEvidence = "group_room_duplicate_message_evidence"
+const GroupRoomSurfaceEditedMessageEvidence = "group_room_edited_message_evidence"
+const GroupRoomSurfaceMentionEvidence = "group_room_mention_evidence"
+const GroupRoomSurfaceUnsupportedSourceEvidence = "group_room_unsupported_source_evidence"
+const HandoffSurfaceDestinationSupport = "handoff_destination_support"
+const HandoffSurfaceFirstResponseSourceReferences = "handoff_first_response_source_references"
+const HandoffSurfaceSourceSupport = "handoff_source_support"
 const LifecycleStateConfigured LifecycleState = "configured"
 const LifecycleStateDegraded LifecycleState = "degraded"
 const LifecycleStateDisabled LifecycleState = "disabled"
@@ -1146,6 +1155,9 @@ func ManagementStateForConnector(connector Connector, diagnostic *ConnectorDiagn
 func NewSupervisor() *Supervisor
 func NormalizeRoutePolicy(policy RoutePolicy, now time.Time) RoutePolicy
 func RetrySafetyForRepairAction(actionKind ManagementActionKind) RetrySafety
+func RoutePolicyAllowsConversation(policy RoutePolicy, conversationID string) bool
+func RoutePolicyAllowsSender(policy RoutePolicy, senderID string) bool
+func RoutePolicyIsValid(policy RoutePolicy) bool
 func RunMatrixCase(input MatrixCase) ([]ConformanceResult, CapabilityProfile, error)
 func SortConnectorProjections(items []ChannelConnectorProjection)
 func TerminalStateForRepairAction(actionKind ManagementActionKind, disabled bool) ManagementTerminalState
@@ -1177,6 +1189,8 @@ type CapabilityProfile struct {
     ConnectorKind                   string                                      `json:"connectorKind"`
     CoreInvariantResults            map[ConformanceArea]ConformanceResultStatus `json:"coreInvariantResults"`
     ProviderSurfaceResults          map[string]SurfaceSupport                   `json:"providerSurfaceResults,omitempty"`
+    GroupRoomCapabilities           GroupRoomCapabilities                       `json:"groupRoomCapabilities,omitempty"`
+    HandoffCapabilities             HandoffCapabilities                         `json:"handoffCapabilities,omitempty"`
     EquivalentDurableIdentityRuleID string                                      `json:"equivalentDurableIdentityRuleId,omitempty"`
     EquivalentDurableIdentityRule   string                                      `json:"equivalentDurableIdentityRule,omitempty"`
     DeclaredAt                      time.Time                                   `json:"declaredAt"`
@@ -1333,6 +1347,19 @@ type ForegroundReplyOutcome struct {
     RetentionExpiresAt time.Time         `json:"retentionExpiresAt"`
 }
 type FreshnessState string
+type GroupRoomCapabilities struct {
+    MentionEvidence           SurfaceSupport `json:"mentionEvidence,omitempty"`
+    AllowlistEvidence         SurfaceSupport `json:"allowlistEvidence,omitempty"`
+    UnsupportedSourceEvidence SurfaceSupport `json:"unsupportedSourceEvidence,omitempty"`
+    DuplicateMessageEvidence  SurfaceSupport `json:"duplicateMessageEvidence,omitempty"`
+    EditedMessageEvidence     SurfaceSupport `json:"editedMessageEvidence,omitempty"`
+    DeletedMessageEvidence    SurfaceSupport `json:"deletedMessageEvidence,omitempty"`
+}
+type HandoffCapabilities struct {
+    SourceSupport                 SurfaceSupport `json:"sourceSupport,omitempty"`
+    DestinationSupport            SurfaceSupport `json:"destinationSupport,omitempty"`
+    FirstResponseSourceReferences SurfaceSupport `json:"firstResponseSourceReferences,omitempty"`
+}
 type LifecycleState string
 type ManagementActionKind string
 type ManagementState string
@@ -1344,6 +1371,8 @@ type MatrixCase struct {
     TenantID                        string
     CoreInvariantResults            map[ConformanceArea]ConformanceResultStatus
     ProviderSurfaceResults          map[string]SurfaceSupport
+    GroupRoomCapabilities           GroupRoomCapabilities
+    HandoffCapabilities             HandoffCapabilities
     EquivalentDurableIdentityRuleID string
     EquivalentDurableIdentityRule   string
     UnsafeIncrementalUpdateDegraded bool

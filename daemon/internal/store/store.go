@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 51
+	CurrentSchemaVersion = 52
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -3436,6 +3436,140 @@ var schemaMigrations = []schemaMigration{
 			`,
 			`CREATE INDEX IF NOT EXISTS idx_thread_continuity_preview_items_preview ON thread_continuity_preview_items(continuity_preview_id, item_order ASC, preview_item_id ASC);`,
 			`CREATE INDEX IF NOT EXISTS idx_thread_continuity_preview_items_thread ON thread_continuity_preview_items(tenant_id, thread_id, acceptance_sequence ASC);`,
+		},
+	},
+	{
+		Version: 52,
+		Name:    "r56_group_room_reset_handoff",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS thread_conversation_shapes (
+				conversation_shape_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				thread_id TEXT NOT NULL,
+				session_segment_id TEXT,
+				shape TEXT NOT NULL,
+				source_kind TEXT,
+				connector_id TEXT,
+				connector_kind TEXT,
+				source_account_id TEXT,
+				source_conversation_id TEXT,
+				shape_evidence_status TEXT NOT NULL,
+				recorded_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_conversation_shapes_thread ON thread_conversation_shapes(tenant_id, thread_id, updated_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_conversation_shapes_source ON thread_conversation_shapes(tenant_id, connector_id, source_account_id, source_conversation_id);`,
+			`
+			CREATE TABLE IF NOT EXISTS thread_participation_decisions (
+				participation_decision_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				thread_id TEXT,
+				session_segment_id TEXT,
+				connector_id TEXT,
+				source_account_id TEXT,
+				source_conversation_id TEXT,
+				source_message_id TEXT,
+				conversation_shape TEXT NOT NULL,
+				decision TEXT NOT NULL,
+				reason_code TEXT NOT NULL,
+				created_assistant_work INTEGER NOT NULL,
+				occurred_at TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_participation_decisions_thread ON thread_participation_decisions(tenant_id, thread_id, occurred_at DESC);`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_participation_decisions_source_message ON thread_participation_decisions(tenant_id, connector_id, source_account_id, source_conversation_id, source_message_id) WHERE source_message_id IS NOT NULL AND source_message_id != '';`,
+			`
+			CREATE TABLE IF NOT EXISTS thread_reset_events (
+				reset_event_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				thread_id TEXT NOT NULL,
+				conversation_shape TEXT NOT NULL,
+				source_conversation_id TEXT,
+				actor_principal_id TEXT,
+				permission_gate TEXT NOT NULL,
+				prior_session_segment_id TEXT,
+				resulting_session_segment_id TEXT,
+				status TEXT NOT NULL,
+				reason_code TEXT NOT NULL,
+				requested_at TEXT NOT NULL,
+				completed_at TEXT NOT NULL,
+				audit_event_id TEXT,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_reset_events_thread ON thread_reset_events(tenant_id, thread_id, completed_at DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS thread_handoff_links (
+				handoff_link_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				source_thread_id TEXT NOT NULL,
+				source_session_segment_id TEXT,
+				destination_thread_id TEXT NOT NULL,
+				destination_session_segment_id TEXT,
+				source_conversation_shape TEXT NOT NULL,
+				destination_conversation_shape TEXT NOT NULL,
+				source_kind TEXT,
+				destination_kind TEXT,
+				source_connector_id TEXT,
+				destination_connector_id TEXT,
+				source_conversation_id TEXT,
+				destination_conversation_id TEXT,
+				actor_principal_id TEXT,
+				permission_gate TEXT NOT NULL,
+				status TEXT NOT NULL,
+				reason_code TEXT,
+				first_destination_response_id TEXT,
+				source_reference_status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				consumed_at TEXT,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(source_thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE,
+				FOREIGN KEY(destination_thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE,
+				CHECK(source_thread_id != destination_thread_id)
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_handoff_links_source ON thread_handoff_links(tenant_id, source_thread_id, created_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_handoff_links_destination ON thread_handoff_links(tenant_id, destination_thread_id, created_at DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS thread_handoff_source_references (
+				handoff_source_reference_id TEXT PRIMARY KEY,
+				handoff_link_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				source_thread_id TEXT NOT NULL,
+				source_session_segment_id TEXT,
+				destination_thread_id TEXT NOT NULL,
+				destination_session_segment_id TEXT,
+				continuity_turn_id TEXT,
+				artifact_excerpt_ref TEXT,
+				eligibility_status TEXT NOT NULL,
+				decision TEXT NOT NULL,
+				safe_summary TEXT,
+				redaction_status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				consumed_at TEXT,
+				retention_expires_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(handoff_link_id) REFERENCES thread_handoff_links(handoff_link_id) ON DELETE CASCADE,
+				FOREIGN KEY(destination_thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_handoff_source_refs_link ON thread_handoff_source_references(handoff_link_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_handoff_source_refs_destination ON thread_handoff_source_references(tenant_id, destination_thread_id, destination_session_segment_id);`,
 		},
 	},
 }

@@ -63,6 +63,10 @@ func handleThreadLifecycleRoutes(sqliteStore *store.SQLiteStore, eventBus *event
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		if parts[1] == "handoffs" {
+			handleThreadHandoffCreate(sqliteStore, eventBus, w, r, threadID)
+			return
+		}
 		handleThreadLifecycleAction(sqliteStore, eventBus, w, r, threadID, parts[1])
 		return
 	}
@@ -139,6 +143,19 @@ func handleThreadLifecycleAction(sqliteStore *store.SQLiteStore, eventBus *event
 		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.ThreadLifecycleEvent(result.Action)); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+		if kind == threads.LifecycleActionReset {
+			resetEvents, err := sqliteStore.ListResetEventsForThread(r.Context(), tenantContext.TenantID, threadID, 1)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if len(resetEvents) > 0 {
+				if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.ThreadScopedResetEvidenceEvent(resetEvents[0])); err != nil {
+					writeError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, threadLifecycleActionResponse{

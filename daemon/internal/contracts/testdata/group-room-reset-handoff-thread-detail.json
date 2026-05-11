@@ -1,0 +1,60 @@
+{
+  "thread": {
+    "threadId": "thr_1",
+    "tenantId": "ten_1",
+    "lifecycleState": "reset",
+    "sourceKind": "channel",
+    "sourceSummary": "Slack Main / #support",
+    "currentSessionSegmentId": "seg_new",
+    "lastActivityAt": "2026-05-11T10:00:00Z",
+    "availableActions": ["reset", "archive"],
+    "redactionStatus": "redacted",
+    "retentionExpiresAt": "2026-08-09T10:00:00Z",
+    "updatedAt": "2026-05-11T10:00:00Z"
+  },
+  "sessionSegments": [],
+  "sourceLinkages": [],
+  "runtimeProjections": [],
+  "lifecycleActions": [],
+  "conversationShape": {
+    "shape": "room",
+    "sourceKind": "channel",
+    "connectorId": "slack-main",
+    "connectorKind": "slack",
+    "sourceAccountId": "workspace_redacted",
+    "sourceConversationId": "channel_redacted",
+    "sourceConversationSummary": "Slack Main / #support",
+    "shapeEvidenceStatus": "proven",
+    "redactionStatus": "redacted"
+  },
+  "participationDecisions": [
+    {
+      "conversationShape": "room",
+      "decision": "ignored",
+      "reasonCode": "missing_qualifying_mention",
+      "createdAssistantWork": false,
+      "redactionStatus": "redacted"
+    }
+  ],
+  "resetEvents": [
+    {
+      "conversationShape": "room",
+      "permissionGate": "connectors.manage",
+      "status": "succeeded",
+      "reasonCode": "scoped_reset_succeeded",
+      "redactionStatus": "redacted"
+    }
+  ],
+  "handoffLinks": [
+    {
+      "sourceThreadId": "thr_1",
+      "destinationThreadId": "thr_web",
+      "sourceConversationShape": "room",
+      "destinationConversationShape": "web",
+      "status": "succeeded",
+      "sourceReferenceStatus": "available",
+      "permissionGate": "connectors.manage",
+      "redactionStatus": "redacted"
+    }
+  ]
+}

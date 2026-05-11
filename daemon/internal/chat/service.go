@@ -290,6 +290,8 @@ type continuityAssembly struct {
 	Status           threads.ContinuityStatus
 	Included         []threads.ContinuityTurn
 	ExcludedItems    []threads.ContinuityPreviewItem
+	HandoffLinkIDs   []string
+	HandoffItems     []threads.ContinuityPreviewItem
 	StartedAt        time.Time
 	CompletedAt      time.Time
 }
@@ -358,6 +360,15 @@ func (s *Service) prepareContinuity(ctx context.Context, input QueryInput, dispa
 		}
 		assembly.ExcludedItems = append(assembly.ExcludedItems, threads.ResetBoundaryPreviewItems(resetTurns, len(assembly.ExcludedItems))...)
 	}
+	handoffRefs, handoffLinkIDs, handoffItems, err := s.availableHandoffSourceReferences(ctx, tenantID, threadID)
+	if err != nil {
+		return continuityAssembly{}, err
+	}
+	if len(handoffRefs) > 0 {
+		dispatchInput.Messages = injectHandoffSourceReferenceMessages(dispatchInput.Messages, handoffRefs)
+		assembly.HandoffLinkIDs = handoffLinkIDs
+	}
+	assembly.HandoffItems = handoffItems
 	included, excluded := threads.EligibleContinuityTurns(turns, threads.DefaultContinuityPolicy(), started)
 	assembly.Included = included
 	assembly.ExcludedItems = append(assembly.ExcludedItems, excluded...)
@@ -368,6 +379,118 @@ func (s *Service) prepareContinuity(ctx context.Context, input QueryInput, dispa
 	}
 	assembly.CompletedAt = time.Now().UTC()
 	return assembly, nil
+}
+
+func (s *Service) availableHandoffSourceReferences(ctx context.Context, tenantID, destinationThreadID string) ([]threads.HandoffSourceReference, []string, []threads.ContinuityPreviewItem, error) {
+	links, err := s.store.ListHandoffLinksForThread(ctx, tenantID, destinationThreadID, 20)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	refs := []threads.HandoffSourceReference{}
+	linkIDs := []string{}
+	items := []threads.ContinuityPreviewItem{}
+	now := time.Now().UTC()
+	for _, link := range links {
+		if link.DestinationThreadID != destinationThreadID || link.Status != threads.HandoffStatusSucceeded || link.SourceReferenceStatus != threads.HandoffSourceReferenceAvailable {
+			continue
+		}
+		linkRefs, err := s.store.ListHandoffSourceReferencesForLink(ctx, tenantID, link.HandoffLinkID)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		hasReferenced := false
+		for _, ref := range linkRefs {
+			eligible := ref.Decision == threads.HandoffReferenceDecisionReferenced &&
+				ref.EligibilityStatus == threads.HandoffReferenceEligible &&
+				strings.TrimSpace(ref.SafeSummary) != "" &&
+				(ref.RetentionExpiresAt.IsZero() || ref.RetentionExpiresAt.After(now))
+			items = append(items, previewItemForHandoffSourceReference(ref, eligible, len(items)))
+			if !eligible {
+				continue
+			}
+			refs = append(refs, ref)
+			hasReferenced = true
+		}
+		if hasReferenced {
+			linkIDs = append(linkIDs, link.HandoffLinkID)
+		}
+	}
+	return refs, linkIDs, items, nil
+}
+
+func previewItemForHandoffSourceReference(ref threads.HandoffSourceReference, included bool, order int) threads.ContinuityPreviewItem {
+	decision := threads.ContinuityDecisionExcluded
+	reason := handoffReferenceContinuityReason(ref)
+	if included {
+		decision = threads.ContinuityDecisionIncluded
+		reason = threads.ContinuityReasonIncludedRecent
+	}
+	return threads.ContinuityPreviewItem{
+		TenantID:           ref.TenantID,
+		ThreadID:           ref.DestinationThreadID,
+		ItemKind:           threads.ContinuityItemHandoffSource,
+		ContinuityTurnID:   ref.ContinuityTurnID,
+		HandoffSourceRefID: ref.HandoffSourceReferenceID,
+		Decision:           decision,
+		ReasonCode:         reason,
+		SafeSummary:        ref.SafeSummary,
+		RedactionStatus:    ref.RedactionStatus,
+		ItemOrder:          order,
+	}
+}
+
+func handoffReferenceContinuityReason(ref threads.HandoffSourceReference) threads.ContinuityReason {
+	if !ref.RetentionExpiresAt.IsZero() && !ref.RetentionExpiresAt.After(time.Now().UTC()) {
+		return threads.ContinuityReasonRetentionExpired
+	}
+	switch ref.EligibilityStatus {
+	case threads.HandoffReferencePermissionDenied:
+		return threads.ContinuityReasonPermissionDenied
+	case threads.HandoffReferenceRedactionFailed:
+		return threads.ContinuityReasonRedactionFailed
+	case threads.HandoffReferenceRetentionExpired:
+		return threads.ContinuityReasonRetentionExpired
+	case threads.HandoffReferenceResetBoundary:
+		return threads.ContinuityReasonResetBoundary
+	case threads.HandoffReferenceIncompleteEvidence:
+		return threads.ContinuityReasonIncompleteEvidence
+	case threads.HandoffReferenceUnsupported:
+		return threads.ContinuityReasonUnsupportedSource
+	default:
+		if ref.Decision != threads.HandoffReferenceDecisionReferenced {
+			return threads.ContinuityReasonContinuityUnavailable
+		}
+		return threads.ContinuityReasonIncludedRecent
+	}
+}
+
+func injectHandoffSourceReferenceMessages(messages []llm.Message, refs []threads.HandoffSourceReference) []llm.Message {
+	if len(refs) == 0 {
+		return messages
+	}
+	prior := make([]llm.Message, 0, len(refs))
+	for _, ref := range refs {
+		summary := strings.TrimSpace(ref.SafeSummary)
+		if summary != "" {
+			prior = append(prior, llm.Message{Role: llm.RoleUser, Content: summary})
+		}
+	}
+	if len(prior) == 0 {
+		return messages
+	}
+	out := make([]llm.Message, 0, len(messages)+len(prior))
+	inserted := false
+	for _, message := range messages {
+		if !inserted && message.Role == llm.RoleUser {
+			out = append(out, prior...)
+			inserted = true
+		}
+		out = append(out, message)
+	}
+	if !inserted {
+		out = append(out, prior...)
+	}
+	return out
 }
 
 func injectContinuityMessages(messages []llm.Message, turns []threads.ContinuityTurn) []llm.Message {
@@ -472,7 +595,16 @@ func (s *Service) persistContinuityResponse(ctx context.Context, assembly *conti
 			return err
 		}
 	}
-	items := make([]threads.ContinuityPreviewItem, 0, len(assembly.Included)+len(assembly.ExcludedItems))
+	for _, handoffLinkID := range assembly.HandoffLinkIDs {
+		if err := s.store.MarkHandoffSourceReferencesConsumed(ctx, tenantID, handoffLinkID, assembly.ResponseTurnID, now); err != nil {
+			return err
+		}
+	}
+	items := make([]threads.ContinuityPreviewItem, 0, len(assembly.HandoffItems)+len(assembly.Included)+len(assembly.ExcludedItems))
+	for _, item := range assembly.HandoffItems {
+		item.ItemOrder = len(items)
+		items = append(items, item)
+	}
 	for _, turn := range assembly.Included {
 		items = append(items, threads.PreviewItemForTurn(turn, threads.ContinuityDecisionIncluded, threads.ContinuityReasonIncludedRecent, len(items)))
 		items = append(items, threads.PreviewItemsForArtifactExcerpts(turn, len(items), now)...)

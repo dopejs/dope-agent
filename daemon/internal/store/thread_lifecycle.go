@@ -642,6 +642,22 @@ func (s *SQLiteStore) GetThreadDetailForTenant(ctx context.Context, tenantID, th
 	if err != nil {
 		return threads.ThreadDetailResponse{}, false, err
 	}
+	shape, hasShape, err := s.GetConversationShapeForThread(ctx, tenantID, threadID)
+	if err != nil {
+		return threads.ThreadDetailResponse{}, false, err
+	}
+	participationDecisions, err := s.ListParticipationDecisionsForThread(ctx, tenantID, threadID, 20)
+	if err != nil {
+		return threads.ThreadDetailResponse{}, false, err
+	}
+	resetEvents, err := s.ListResetEventsForThread(ctx, tenantID, threadID, 20)
+	if err != nil {
+		return threads.ThreadDetailResponse{}, false, err
+	}
+	handoffLinks, err := s.ListHandoffLinksForThread(ctx, tenantID, threadID, 20)
+	if err != nil {
+		return threads.ThreadDetailResponse{}, false, err
+	}
 	currentSessionID := ""
 	for _, segment := range segments {
 		if segment.SessionSegmentID == thread.CurrentSessionSegmentID {
@@ -649,14 +665,21 @@ func (s *SQLiteStore) GetThreadDetailForTenant(ctx context.Context, tenantID, th
 			break
 		}
 	}
-	return threads.ThreadDetailResponse{
-		Thread:             threads.BuildThreadResource(thread, currentSessionID),
-		SessionSegments:    segments,
-		SourceLinkages:     sourceLinkages,
-		RuntimeProjections: runtimeProjections,
-		LifecycleActions:   actions,
-		ContinuityPreviews: continuityPreviews,
-	}, true, nil
+	response := threads.ThreadDetailResponse{
+		Thread:                 threads.BuildThreadResource(thread, currentSessionID),
+		SessionSegments:        segments,
+		SourceLinkages:         sourceLinkages,
+		RuntimeProjections:     runtimeProjections,
+		LifecycleActions:       actions,
+		ContinuityPreviews:     continuityPreviews,
+		ParticipationDecisions: participationDecisions,
+		ResetEvents:            resetEvents,
+		HandoffLinks:           handoffLinks,
+	}
+	if hasShape {
+		response.ConversationShape = &shape
+	}
+	return response, true, nil
 }
 
 func (s *SQLiteStore) ApplyThreadLifecycleAction(ctx context.Context, tenantID, threadID string, kind threads.LifecycleActionKind, input threads.LifecycleMutationInput) (ThreadLifecycleMutationResult, bool, error) {
@@ -736,6 +759,20 @@ func (s *SQLiteStore) ApplyThreadLifecycleAction(ctx context.Context, tenantID, 
 	if err := s.insertThreadLifecycleActionTx(ctx, tx, action); err != nil {
 		_ = tx.Rollback()
 		return ThreadLifecycleMutationResult{}, true, err
+	}
+	if kind == threads.LifecycleActionReset {
+		shape, _, err := getConversationShapeForThreadTx(ctx, tx, tenantID, threadID)
+		if err != nil {
+			_ = tx.Rollback()
+			return ThreadLifecycleMutationResult{}, true, err
+		}
+		resetEvent := threads.BuildScopedResetEvent(action, shape)
+		resetEvent.ResetEventID = "reset_" + action.AuditEventID
+		resetEvent.RetentionExpiresAt = retentionExpiresAt
+		if err := insertThreadResetEventTx(ctx, tx, resetEvent); err != nil {
+			_ = tx.Rollback()
+			return ThreadLifecycleMutationResult{}, true, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return ThreadLifecycleMutationResult{}, true, fmt.Errorf("commit thread lifecycle action: %w", err)
@@ -1206,6 +1243,62 @@ func getThreadForTenantTx(ctx context.Context, tx *sql.Tx, tenantID, threadID st
 		return threads.Thread{}, false, fmt.Errorf("decode thread %s/%s: %w", tenantID, threadID, err)
 	}
 	return thread, true, nil
+}
+
+func getConversationShapeForThreadTx(ctx context.Context, tx *sql.Tx, tenantID, threadID string) (threads.ConversationShapeEvidence, bool, error) {
+	var raw string
+	err := tx.QueryRowContext(ctx, `
+		SELECT document_json
+		FROM thread_conversation_shapes
+		WHERE tenant_id = ? AND thread_id = ?
+		ORDER BY updated_at DESC, conversation_shape_id DESC
+		LIMIT 1
+	`, tenantID, threadID).Scan(&raw)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return threads.ConversationShapeEvidence{}, false, nil
+		}
+		return threads.ConversationShapeEvidence{}, false, fmt.Errorf("get reset conversation shape %s/%s: %w", tenantID, threadID, err)
+	}
+	var evidence threads.ConversationShapeEvidence
+	if err := json.Unmarshal([]byte(raw), &evidence); err != nil {
+		return threads.ConversationShapeEvidence{}, false, fmt.Errorf("decode reset conversation shape %s/%s: %w", tenantID, threadID, err)
+	}
+	return evidence, true, nil
+}
+
+func insertThreadResetEventTx(ctx context.Context, tx *sql.Tx, event threads.ResetEvent) error {
+	if event.ResetEventID == "" {
+		event.ResetEventID = newStoreID("reset")
+	}
+	if event.PermissionGate == "" {
+		event.PermissionGate = "connectors.manage"
+	}
+	if event.Status == "" {
+		event.Status = threads.ResetEventStatusSucceeded
+	}
+	if event.ReasonCode == "" {
+		event.ReasonCode = threads.GroupRoomReasonScopedResetSucceeded
+	}
+	if event.RedactionStatus == "" {
+		event.RedactionStatus = threads.RedactionStatusRedacted
+	}
+	document, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("marshal reset event %s: %w", event.ResetEventID, err)
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO thread_reset_events (
+			reset_event_id, tenant_id, thread_id, conversation_shape, source_conversation_id,
+			actor_principal_id, permission_gate, prior_session_segment_id, resulting_session_segment_id,
+			status, reason_code, requested_at, completed_at, audit_event_id,
+			retention_expires_at, redaction_status, document_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, event.ResetEventID, event.TenantID, event.ThreadID, event.ConversationShape, event.SourceConversationID, event.ActorPrincipalID, event.PermissionGate, event.PriorSessionSegmentID, event.ResultingSessionSegmentID, event.Status, event.ReasonCode, formatTime(event.RequestedAt), formatTime(event.CompletedAt), event.AuditEventID, formatTime(event.RetentionExpiresAt), event.RedactionStatus, string(document))
+	if err != nil {
+		return fmt.Errorf("insert reset event %s: %w", event.ResetEventID, err)
+	}
+	return nil
 }
 
 func threadReopenEligibleTx(ctx context.Context, tx *sql.Tx, thread threads.Thread) (bool, error) {

@@ -51,6 +51,7 @@ describe("ThreadLifecycleView", () => {
     const onResetThread = vi.fn();
     const onArchiveThread = vi.fn();
     const onReopenThread = vi.fn();
+    const onHandoffToWeb = vi.fn();
     const user = userEvent.setup();
     const { rerender } = render(<ThreadLifecycleView loading />);
     expect(screen.getByText("Loading threads.")).toBeTruthy();
@@ -133,6 +134,42 @@ describe("ThreadLifecycleView", () => {
             orderedBy: "daemon_acceptance_sequence",
             redactionStatus: "redacted"
           }],
+          conversationShape: {
+            shape: "room",
+            shapeEvidenceStatus: "proven",
+            sourceConversationSummary: "Slack Main / #support",
+            redactionStatus: "redacted"
+          },
+          participationDecisions: [{
+            participationDecisionId: "part_1",
+            conversationShape: "room",
+            decision: "ignored",
+            reasonCode: "missing_qualifying_mention",
+            createdAssistantWork: false,
+            safeSummary: "Room message ignored by participation policy",
+            redactionStatus: "redacted"
+          }],
+          resetEvents: [{
+            resetEventId: "reset_1",
+            conversationShape: "room",
+            permissionGate: "connectors.manage",
+            priorSessionSegmentId: "seg_old",
+            resultingSessionSegmentId: "seg_reset",
+            status: "succeeded",
+            reasonCode: "scoped_reset_succeeded",
+            redactionStatus: "redacted"
+          }],
+          handoffLinks: [{
+            handoffLinkId: "handoff_1",
+            sourceThreadId: "thr_source",
+            destinationThreadId: "thr_2",
+            sourceConversationShape: "room",
+            destinationConversationShape: "web",
+            status: "succeeded",
+            sourceReferenceStatus: "available",
+            permissionGate: "connectors.manage",
+            redactionStatus: "redacted"
+          }],
           lifecycleActions: []
         }}
         continuityPreviewDetail={{
@@ -158,11 +195,21 @@ describe("ThreadLifecycleView", () => {
         onResetThread={onResetThread}
         onArchiveThread={onArchiveThread}
         onReopenThread={onReopenThread}
+        onHandoffToWeb={onHandoffToWeb}
       />
     );
     expect(screen.getByText("legacy")).toBeTruthy();
     expect(screen.getByText("sess_2")).toBeTruthy();
     expect(screen.getByText("Source Trace")).toBeTruthy();
+    expect(screen.getByText("Conversation Shape")).toBeTruthy();
+    expect(screen.getByText("proven")).toBeTruthy();
+    expect(screen.getByText("Participation Decisions")).toBeTruthy();
+    expect(screen.getByText("missing_qualifying_mention")).toBeTruthy();
+    expect(screen.getByText("Reset Events")).toBeTruthy();
+    expect(screen.getByText("scoped_reset_succeeded")).toBeTruthy();
+    expect(screen.getByText("Handoff Links")).toBeTruthy();
+    expect(screen.getByText("room to web")).toBeTruthy();
+    expect(screen.getByText("available")).toBeTruthy();
     expect(screen.getByText("Runtime Trace")).toBeTruthy();
     expect(screen.getByText("Continuity Evidence")).toBeTruthy();
     expect(screen.getByText("Bounded recent-thread evidence, not assistant memory.")).toBeTruthy();
@@ -179,11 +226,13 @@ describe("ThreadLifecycleView", () => {
     await user.click(screen.getByRole("button", { name: "Reset" }));
     await user.click(screen.getByRole("button", { name: "Archive" }));
     await user.click(screen.getByRole("button", { name: "Reopen" }));
+    await user.click(screen.getByRole("button", { name: "Handoff to web" }));
     await user.click(screen.getByRole("button", { name: "Next page" }));
     expect(onSelectThread).toHaveBeenCalledWith("thr_2");
     expect(onResetThread).toHaveBeenCalledWith("thr_2");
     expect(onArchiveThread).toHaveBeenCalledWith("thr_2");
     expect(onReopenThread).toHaveBeenCalledWith("thr_2");
+    expect(onHandoffToWeb).toHaveBeenCalledWith("thr_2");
     expect(onNextPage).toHaveBeenCalled();
   });
 });

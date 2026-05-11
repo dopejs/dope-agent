@@ -61,6 +61,17 @@ const (
 	MatrixSurfaceUndecryptableEvents      = "undecryptable_events"
 	MatrixSurfaceFinalOnlyForegroundReply = "final_only_foreground_reply"
 	MatrixSurfaceConnectorBackedDelivery  = "connector_backed_delivery"
+
+	GroupRoomSurfaceMentionEvidence           = "group_room_mention_evidence"
+	GroupRoomSurfaceAllowlistEvidence         = "group_room_allowlist_evidence"
+	GroupRoomSurfaceUnsupportedSourceEvidence = "group_room_unsupported_source_evidence"
+	GroupRoomSurfaceDuplicateMessageEvidence  = "group_room_duplicate_message_evidence"
+	GroupRoomSurfaceEditedMessageEvidence     = "group_room_edited_message_evidence"
+	GroupRoomSurfaceDeletedMessageEvidence    = "group_room_deleted_message_evidence"
+
+	HandoffSurfaceSourceSupport                 = "handoff_source_support"
+	HandoffSurfaceDestinationSupport            = "handoff_destination_support"
+	HandoffSurfaceFirstResponseSourceReferences = "handoff_first_response_source_references"
 )
 
 type ConformanceResultStatus string
@@ -97,6 +108,8 @@ type CapabilityProfile struct {
 	ConnectorKind                   string                                      `json:"connectorKind"`
 	CoreInvariantResults            map[ConformanceArea]ConformanceResultStatus `json:"coreInvariantResults"`
 	ProviderSurfaceResults          map[string]SurfaceSupport                   `json:"providerSurfaceResults,omitempty"`
+	GroupRoomCapabilities           GroupRoomCapabilities                       `json:"groupRoomCapabilities,omitempty"`
+	HandoffCapabilities             HandoffCapabilities                         `json:"handoffCapabilities,omitempty"`
 	EquivalentDurableIdentityRuleID string                                      `json:"equivalentDurableIdentityRuleId,omitempty"`
 	EquivalentDurableIdentityRule   string                                      `json:"equivalentDurableIdentityRule,omitempty"`
 	DeclaredAt                      time.Time                                   `json:"declaredAt"`
@@ -123,11 +136,65 @@ type MatrixCase struct {
 	TenantID                        string
 	CoreInvariantResults            map[ConformanceArea]ConformanceResultStatus
 	ProviderSurfaceResults          map[string]SurfaceSupport
+	GroupRoomCapabilities           GroupRoomCapabilities
+	HandoffCapabilities             HandoffCapabilities
 	EquivalentDurableIdentityRuleID string
 	EquivalentDurableIdentityRule   string
 	UnsafeIncrementalUpdateDegraded bool
 	RedactionStatus                 RedactionStatus
 	Now                             time.Time
+}
+
+type GroupRoomCapabilities struct {
+	MentionEvidence           SurfaceSupport `json:"mentionEvidence,omitempty"`
+	AllowlistEvidence         SurfaceSupport `json:"allowlistEvidence,omitempty"`
+	UnsupportedSourceEvidence SurfaceSupport `json:"unsupportedSourceEvidence,omitempty"`
+	DuplicateMessageEvidence  SurfaceSupport `json:"duplicateMessageEvidence,omitempty"`
+	EditedMessageEvidence     SurfaceSupport `json:"editedMessageEvidence,omitempty"`
+	DeletedMessageEvidence    SurfaceSupport `json:"deletedMessageEvidence,omitempty"`
+}
+
+type HandoffCapabilities struct {
+	SourceSupport                 SurfaceSupport `json:"sourceSupport,omitempty"`
+	DestinationSupport            SurfaceSupport `json:"destinationSupport,omitempty"`
+	FirstResponseSourceReferences SurfaceSupport `json:"firstResponseSourceReferences,omitempty"`
+}
+
+func (capabilities GroupRoomCapabilities) surfaceResults() map[string]SurfaceSupport {
+	results := map[string]SurfaceSupport{}
+	if capabilities.MentionEvidence != "" {
+		results[GroupRoomSurfaceMentionEvidence] = capabilities.MentionEvidence
+	}
+	if capabilities.AllowlistEvidence != "" {
+		results[GroupRoomSurfaceAllowlistEvidence] = capabilities.AllowlistEvidence
+	}
+	if capabilities.UnsupportedSourceEvidence != "" {
+		results[GroupRoomSurfaceUnsupportedSourceEvidence] = capabilities.UnsupportedSourceEvidence
+	}
+	if capabilities.DuplicateMessageEvidence != "" {
+		results[GroupRoomSurfaceDuplicateMessageEvidence] = capabilities.DuplicateMessageEvidence
+	}
+	if capabilities.EditedMessageEvidence != "" {
+		results[GroupRoomSurfaceEditedMessageEvidence] = capabilities.EditedMessageEvidence
+	}
+	if capabilities.DeletedMessageEvidence != "" {
+		results[GroupRoomSurfaceDeletedMessageEvidence] = capabilities.DeletedMessageEvidence
+	}
+	return results
+}
+
+func (capabilities HandoffCapabilities) surfaceResults() map[string]SurfaceSupport {
+	results := map[string]SurfaceSupport{}
+	if capabilities.SourceSupport != "" {
+		results[HandoffSurfaceSourceSupport] = capabilities.SourceSupport
+	}
+	if capabilities.DestinationSupport != "" {
+		results[HandoffSurfaceDestinationSupport] = capabilities.DestinationSupport
+	}
+	if capabilities.FirstResponseSourceReferences != "" {
+		results[HandoffSurfaceFirstResponseSourceReferences] = capabilities.FirstResponseSourceReferences
+	}
+	return results
 }
 
 var (
@@ -201,6 +268,12 @@ func RunMatrixCase(input MatrixCase) ([]ConformanceResult, CapabilityProfile, er
 	for key, value := range input.ProviderSurfaceResults {
 		surfaces[key] = value
 	}
+	for key, value := range input.GroupRoomCapabilities.surfaceResults() {
+		surfaces[key] = value
+	}
+	for key, value := range input.HandoffCapabilities.surfaceResults() {
+		surfaces[key] = value
+	}
 	if input.UnsafeIncrementalUpdateDegraded {
 		surfaces["incremental_visible_updates"] = SurfaceLimited
 	}
@@ -248,6 +321,8 @@ func RunMatrixCase(input MatrixCase) ([]ConformanceResult, CapabilityProfile, er
 		ConnectorKind:                   input.ConnectorKind,
 		CoreInvariantResults:            core,
 		ProviderSurfaceResults:          surfaces,
+		GroupRoomCapabilities:           input.GroupRoomCapabilities,
+		HandoffCapabilities:             input.HandoffCapabilities,
 		EquivalentDurableIdentityRuleID: input.EquivalentDurableIdentityRuleID,
 		EquivalentDurableIdentityRule:   input.EquivalentDurableIdentityRule,
 		DeclaredAt:                      now,

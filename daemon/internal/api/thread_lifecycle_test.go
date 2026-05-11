@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/threads"
@@ -63,6 +64,41 @@ func TestThreadLifecycleListDetailPaginationAndDenial(t *testing.T) {
 		SafeSummary:      "Assistant run completed",
 	})); err != nil {
 		t.Fatalf("SaveThreadRuntimeProjection: %v", err)
+	}
+	if _, err := sqliteStore.SaveConversationShapeEvidence(context.Background(), threads.ResolveConversationShape(threads.ConversationShapeResolutionInput{
+		TenantID:                  "ten_threads",
+		ThreadID:                  "thr_active",
+		SessionSegmentID:          "seg_active",
+		SourceKind:                threads.SourceKindChannel,
+		ConnectorID:               "slack-main",
+		ConnectorKind:             "slack",
+		SourceAccountID:           "workspace_redacted",
+		SourceConversationID:      "channel_redacted",
+		SourceConversationSummary: "Slack Main / #support",
+		ClaimedShape:              threads.ConversationShapeRoom,
+		Now:                       now,
+	})); err != nil {
+		t.Fatalf("SaveConversationShapeEvidence: %v", err)
+	}
+	if _, err := sqliteStore.SaveParticipationDecision(context.Background(), threads.ParticipationDecision{
+		TenantID:             "ten_threads",
+		ThreadID:             "thr_active",
+		SessionSegmentID:     "seg_active",
+		ConnectorID:          "slack-main",
+		SourceAccountID:      "workspace_redacted",
+		SourceConversationID: "channel_redacted",
+		SourceMessageID:      "msg_redacted",
+		ConversationShape:    threads.ConversationShapeRoom,
+		MentionStatus:        threads.MentionStatusMissing,
+		AllowlistStatus:      threads.AllowlistStatusEligible,
+		Decision:             threads.ParticipationDecisionIgnored,
+		ReasonCode:           threads.GroupRoomReasonMissingQualifyingMention,
+		CreatedAssistantWork: false,
+		OccurredAt:           now,
+		RedactionStatus:      threads.RedactionStatusRedacted,
+		SafeSummary:          "Room message ignored by participation policy",
+	}); err != nil {
+		t.Fatalf("SaveParticipationDecision: %v", err)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/threads?limit=1", nil)
@@ -126,6 +162,12 @@ func TestThreadLifecycleListDetailPaginationAndDenial(t *testing.T) {
 	if len(detail.RuntimeProjections) != 1 || detail.RuntimeProjections[0].ResourceKind != threads.RuntimeResourceRun {
 		t.Fatalf("detail missing runtime trace: %+v", detail.RuntimeProjections)
 	}
+	if detail.ConversationShape == nil || detail.ConversationShape.Shape != threads.ConversationShapeRoom {
+		t.Fatalf("detail missing conversation shape: %+v", detail.ConversationShape)
+	}
+	if len(detail.ParticipationDecisions) != 1 || detail.ParticipationDecisions[0].ReasonCode != threads.GroupRoomReasonMissingQualifyingMention {
+		t.Fatalf("detail missing participation decision: %+v", detail.ParticipationDecisions)
+	}
 	for _, forbidden := range []string{"semanticSummary", "recalledMemory", "contextPacking", "autonomousPruning"} {
 		if bytes.Contains(detailRec.Body.Bytes(), []byte(forbidden)) {
 			t.Fatalf("detail response leaked memory behavior field %s: %s", forbidden, detailRec.Body.String())
@@ -179,6 +221,21 @@ func TestThreadLifecycleMutationsRequireManagePermissionAndPersistAudit(t *testi
 	if err := sqliteStore.SaveThreadSourceLinkage(context.Background(), threads.SourceLinkage{SourceLinkageID: "src_mutate_current", ThreadID: "thr_mutate", TenantID: "ten_threads", SourceKind: threads.SourceKindChannel, ConnectorID: "slack-main", ConnectorKind: "slack", SourceAccountID: "acct_redacted", SourceConversationID: "conv_redacted", RoutingOutcome: threads.RoutingOutcomeAccepted, Current: true, LinkedAt: now, RetentionExpiresAt: now.Add(90 * 24 * time.Hour), RedactionStatus: threads.RedactionStatusRedacted}); err != nil {
 		t.Fatalf("SaveThreadSourceLinkage: %v", err)
 	}
+	if _, err := sqliteStore.SaveConversationShapeEvidence(context.Background(), threads.ResolveConversationShape(threads.ConversationShapeResolutionInput{
+		TenantID:                  "ten_threads",
+		ThreadID:                  "thr_mutate",
+		SessionSegmentID:          "seg_1",
+		SourceKind:                threads.SourceKindChannel,
+		ConnectorID:               "slack-main",
+		ConnectorKind:             "slack",
+		SourceAccountID:           "acct_redacted",
+		SourceConversationID:      "conv_redacted",
+		SourceConversationSummary: "Slack / #support",
+		ClaimedShape:              threads.ConversationShapeRoom,
+		Now:                       now,
+	})); err != nil {
+		t.Fatalf("SaveConversationShapeEvidence: %v", err)
+	}
 
 	deniedReq := httptest.NewRequest(http.MethodPost, "/v1/threads/thr_mutate/archive", bytes.NewBufferString(`{}`))
 	deniedReq = deniedReq.WithContext(withTenantContext(deniedReq.Context(), threadTenantContext(identity.PermissionCredentialsInspect)))
@@ -211,10 +268,11 @@ func TestThreadLifecycleMutationsRequireManagePermissionAndPersistAudit(t *testi
 		t.Fatalf("reopen status=%d body=%s", reopenRec.Code, reopenRec.Body.String())
 	}
 
+	eventBus := events.NewBus()
 	resetReq := httptest.NewRequest(http.MethodPost, "/v1/threads/thr_mutate/reset", bytes.NewBufferString(`{}`))
 	resetReq = resetReq.WithContext(withTenantContext(resetReq.Context(), threadTenantContext(identity.PermissionConnectorsManage)))
 	resetRec := httptest.NewRecorder()
-	handleThreadLifecycleRoutes(sqliteStore, nil, resetRec, resetReq)
+	handleThreadLifecycleRoutes(sqliteStore, eventBus, resetRec, resetReq)
 	if resetRec.Code != http.StatusOK {
 		t.Fatalf("reset status=%d body=%s", resetRec.Code, resetRec.Body.String())
 	}
@@ -224,6 +282,18 @@ func TestThreadLifecycleMutationsRequireManagePermissionAndPersistAudit(t *testi
 	}
 	if detail.Thread.LifecycleState != threads.LifecycleStateReset || len(detail.SessionSegments) != 2 || len(detail.LifecycleActions) != 3 {
 		t.Fatalf("mutation detail not persisted: %+v", detail)
+	}
+	if len(detail.ResetEvents) != 1 || detail.ResetEvents[0].ConversationShape != threads.ConversationShapeRoom || detail.ResetEvents[0].PermissionGate != "connectors.manage" {
+		t.Fatalf("reset scope evidence not persisted: %+v", detail.ResetEvents)
+	}
+	foundScopedResetEvent := false
+	for _, event := range eventBus.List(events.Filter{Category: "thread"}) {
+		if event.Name == events.ThreadResetScopedName && event.Payload["conversationShape"] == "room" {
+			foundScopedResetEvent = true
+		}
+	}
+	if !foundScopedResetEvent {
+		t.Fatalf("expected scoped reset event, got %+v", eventBus.List(events.Filter{}))
 	}
 }
 

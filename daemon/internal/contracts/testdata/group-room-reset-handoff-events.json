@@ -1,0 +1,36 @@
+[
+  {
+    "tenantId": "ten_1",
+    "threadId": "thr_123",
+    "sessionSegmentId": "seg_123",
+    "eventKind": "thread.participation_decision_recorded",
+    "resourceId": "part_123",
+    "status": "ignored",
+    "reasonCode": "missing_qualifying_mention",
+    "redactionStatus": "redacted",
+    "occurredAt": "2026-05-11T10:00:00Z"
+  },
+  {
+    "tenantId": "ten_1",
+    "threadId": "thr_group",
+    "sessionSegmentId": "seg_new",
+    "eventKind": "thread.reset_scoped",
+    "resourceId": "reset_123",
+    "status": "succeeded",
+    "permissionGate": "connectors.manage",
+    "redactionStatus": "redacted",
+    "occurredAt": "2026-05-11T10:00:00Z"
+  },
+  {
+    "tenantId": "ten_1",
+    "threadId": "thr_source",
+    "sessionSegmentId": "seg_destination",
+    "eventKind": "thread.handoff_linked",
+    "resourceId": "handoff_123",
+    "status": "succeeded",
+    "reasonCode": "user_requested_handoff",
+    "permissionGate": "connectors.manage",
+    "redactionStatus": "redacted",
+    "occurredAt": "2026-05-11T10:00:00Z"
+  }
+]

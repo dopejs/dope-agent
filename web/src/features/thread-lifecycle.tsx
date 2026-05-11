@@ -14,6 +14,7 @@ type ThreadLifecycleViewProps = {
   onResetThread?: (threadId: string) => void;
   onArchiveThread?: (threadId: string) => void;
   onReopenThread?: (threadId: string) => void;
+  onHandoffToWeb?: (threadId: string) => void;
 };
 
 export function ThreadLifecycleView({
@@ -29,7 +30,8 @@ export function ThreadLifecycleView({
   onSelectThread,
   onResetThread,
   onArchiveThread,
-  onReopenThread
+  onReopenThread,
+  onHandoffToWeb
 }: ThreadLifecycleViewProps) {
   const items = threads?.items ?? [];
   const detailThread = detail?.thread;
@@ -70,6 +72,7 @@ export function ThreadLifecycleView({
               {thread.availableActions.includes("reset") && onResetThread ? <button className="secondary" type="button" onClick={() => onResetThread(thread.threadId)}>Reset</button> : null}
               {thread.availableActions.includes("archive") && onArchiveThread ? <button className="secondary" type="button" onClick={() => onArchiveThread(thread.threadId)}>Archive</button> : null}
               {thread.availableActions.includes("reopen") && onReopenThread ? <button className="secondary" type="button" onClick={() => onReopenThread(thread.threadId)}>Reopen</button> : null}
+              {onHandoffToWeb ? <button className="secondary" type="button" onClick={() => onHandoffToWeb(thread.threadId)}>Handoff to web</button> : null}
             </div>
           </article>
         ))}
@@ -94,7 +97,73 @@ export function ThreadLifecycleView({
             <dd>{detail.continuityPreviews?.length ?? 0}</dd>
             <dt>Lifecycle actions</dt>
             <dd>{detail.lifecycleActions.length}</dd>
+            <dt>Reset events</dt>
+            <dd>{detail.resetEvents?.length ?? 0}</dd>
+            <dt>Handoff links</dt>
+            <dd>{detail.handoffLinks?.length ?? 0}</dd>
+            <dt>Conversation shape</dt>
+            <dd>{detail.conversationShape?.shape ?? "unavailable"}</dd>
           </dl>
+          {detail.conversationShape ? (
+            <section aria-label="Conversation shape">
+              <h4>Conversation Shape</h4>
+              <ul>
+                <li>
+                  <span>{detail.conversationShape.shape}</span>
+                  <span>{detail.conversationShape.shapeEvidenceStatus}</span>
+                  <span>{detail.conversationShape.sourceConversationSummary || detail.conversationShape.sourceConversationId || "source redacted"}</span>
+                  <span>{detail.conversationShape.redactionStatus}</span>
+                </li>
+              </ul>
+            </section>
+          ) : null}
+          <section aria-label="Participation decisions">
+            <h4>Participation Decisions</h4>
+            {(detail.participationDecisions?.length ?? 0) === 0 ? <p className="muted">No participation decisions.</p> : null}
+            <ul>
+              {detail.participationDecisions?.map((decision, index) => (
+                <li key={decision.participationDecisionId || `${decision.conversationShape}-${index}`}>
+                  <span>{decision.decision}</span>
+                  <span>{decision.reasonCode}</span>
+                  <span>{decision.createdAssistantWork ? "assistant work created" : "no assistant work"}</span>
+                  <span>{decision.safeSummary || "metadata only"}</span>
+                  <span>{decision.redactionStatus}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section aria-label="Reset events">
+            <h4>Reset Events</h4>
+            {(detail.resetEvents?.length ?? 0) === 0 ? <p className="muted">No reset events.</p> : null}
+            <ul>
+              {detail.resetEvents?.map((event, index) => (
+                <li key={event.resetEventId || `${event.threadId}-${index}`}>
+                  <span>{event.status}</span>
+                  <span>{event.conversationShape}</span>
+                  <span>{event.reasonCode}</span>
+                  <span>{event.priorSessionSegmentId || "prior segment unavailable"}</span>
+                  <span>{event.resultingSessionSegmentId || "resulting segment unavailable"}</span>
+                  <span>{event.redactionStatus}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section aria-label="Handoff links">
+            <h4>Handoff Links</h4>
+            {(detail.handoffLinks?.length ?? 0) === 0 ? <p className="muted">No handoff links.</p> : null}
+            <ul>
+              {detail.handoffLinks?.map((link, index) => (
+                <li key={link.handoffLinkId || `${link.sourceThreadId}-${link.destinationThreadId}-${index}`}>
+                  <span>{link.status}</span>
+                  <span>{link.sourceConversationShape} to {link.destinationConversationShape}</span>
+                  <span>{link.sourceReferenceStatus}</span>
+                  <span>{link.sourceThreadId}</span>
+                  <span>{link.destinationThreadId}</span>
+                  <span>{link.redactionStatus}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
           <section aria-label="Continuity evidence">
             <h4>Continuity Evidence</h4>
             <p className="muted">Bounded recent-thread evidence, not assistant memory.</p>

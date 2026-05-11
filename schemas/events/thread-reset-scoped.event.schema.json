@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/events/thread-reset-scoped.event.schema.json",
+  "title": "ThreadResetScopedEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["threadId", "eventKind", "resourceId", "status", "permissionGate", "redactionStatus", "occurredAt"],
+  "properties": {
+    "tenantId": { "type": "string", "minLength": 1 },
+    "threadId": { "type": "string", "minLength": 1 },
+    "sessionSegmentId": { "type": "string" },
+    "eventKind": { "type": "string", "const": "thread.reset_scoped" },
+    "resourceId": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["succeeded", "denied", "failed_closed", "unsupported"] },
+    "reasonCode": { "type": "string" },
+    "permissionGate": { "type": "string", "const": "connectors.manage" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] },
+    "occurredAt": { "type": "string", "format": "date-time" }
+  }
+}

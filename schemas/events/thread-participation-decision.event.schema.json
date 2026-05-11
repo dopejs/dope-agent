@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/events/thread-participation-decision.event.schema.json",
+  "title": "ThreadParticipationDecisionEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["threadId", "eventKind", "resourceId", "status", "reasonCode", "redactionStatus", "occurredAt"],
+  "properties": {
+    "tenantId": { "type": "string", "minLength": 1 },
+    "threadId": { "type": "string" },
+    "sessionSegmentId": { "type": "string" },
+    "eventKind": { "type": "string", "const": "thread.participation_decision_recorded" },
+    "resourceId": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["accepted", "ignored", "blocked", "denied", "duplicate", "unsupported", "failed"] },
+    "reasonCode": { "type": "string", "minLength": 1 },
+    "permissionGate": { "type": "string" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] },
+    "occurredAt": { "type": "string", "format": "date-time" }
+  }
+}

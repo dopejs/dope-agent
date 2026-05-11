@@ -69,3 +69,27 @@ backfill of Roadmap 54 thread/session/runtime rows is required.
 Continuity is still not memory. It must not call memory recall, semantic retrieval,
 knowledge graph, autonomous summary, provider-retained context, client-local history, or
 cross-thread personalization paths.
+
+## Roadmap 56 Group, Reset, And Handoff Evidence
+
+Roadmap 56 adds explicit conversation shape and traceable handoff evidence. Thread detail
+may include `conversationShape`, `participationDecisions`, `resetEvents`, and
+`handoffLinks`.
+
+- Connector ingress records direct-message, group, room, web, unknown, or unsupported
+  shape evidence using stable source identity.
+- Group and room participation is allowed only when a connector declares mention and
+  allowlist evidence support, the source is allowlist-eligible, and the inbound message
+  has a qualifying mention.
+- Reset keeps the thread id, starts a new current session segment, and records scoped
+  reset evidence with shape, source conversation, `connectors.manage`, prior segment,
+  resulting segment, reason, audit id, and redaction status.
+- Handoff creates or selects a separate destination thread and records a handoff link.
+  Source turns are not copied into destination history.
+- First destination response may receive explicit current-segment source references from
+  a successful handoff. Those references are consumed after that response and cannot be
+  reused by later destination turns.
+
+Roadmap 56 still is not memory. Handoff source references are traceable continuation
+evidence, not semantic recall, summaries, personalization, cross-room recall, or team
+knowledge.

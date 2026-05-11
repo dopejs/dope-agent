@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-handoff.request.schema.json",
+  "title": "ThreadHandoffRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["destination"],
+  "properties": {
+    "destination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surface"],
+      "properties": {
+        "surface": { "type": "string", "enum": ["web", "channel"] },
+        "connectorId": { "type": ["string", "null"] },
+        "sourceAccountId": { "type": ["string", "null"] },
+        "sourceConversationId": { "type": ["string", "null"] },
+        "conversationShape": { "type": "string", "enum": ["direct_message", "group", "room", "web", "unknown", "unsupported"] }
+      }
+    },
+    "reasonCode": { "type": "string" }
+  }
+}

@@ -162,6 +162,22 @@ func (l *MessageLoop) ProcessSingleTurn(ctx context.Context, connector connector
 	if err := l.store.UpsertConnectorMessage(ctx, persistedInbound); err != nil {
 		return ProcessResult{}, err
 	}
+	participationDecision, participationEnforced, err := l.applyGroupRoomParticipationPolicy(ctx, connector, inbound, thread, segmentID, persistedInbound)
+	if err != nil {
+		return ProcessResult{}, err
+	}
+	if participationEnforced && participationDecision.Decision != threads.ParticipationDecisionAccepted {
+		persistedInbound.Error = participationDecision.ReasonCode
+		persistedInbound.UpdatedAt = time.Now().UTC()
+		if err := l.store.UpsertConnectorMessage(ctx, persistedInbound); err != nil {
+			return ProcessResult{}, err
+		}
+		return ProcessResult{
+			Session:    session,
+			Outcome:    string(participationDecision.Decision),
+			ReasonCode: participationDecision.ReasonCode,
+		}, nil
+	}
 	if err := l.publishSessionRouteEvents(ctx, connector, session, createdSession, inbound); err != nil {
 		return ProcessResult{}, err
 	}
@@ -314,6 +330,61 @@ func inboundProviderMessageID(inbound imtypes.InboundMessage) string {
 	return coalesceTrimmed(inbound.ProviderMessageID, inbound.ExternalMessageID)
 }
 
+func conversationShapeForIngressSource(sourceKind threads.SourceKind, connectorKind string, inbound imtypes.InboundMessage) threads.ConversationShape {
+	switch sourceKind {
+	case threads.SourceKindShell:
+		return threads.ConversationShapeWeb
+	case threads.SourceKindChannel:
+	default:
+		return ""
+	}
+	if inbound.Direct || inbound.Kind == router.SessionKindDirect {
+		return threads.ConversationShapeDirectMessage
+	}
+	if inbound.Kind != router.SessionKindGroup {
+		return threads.ConversationShapeUnsupported
+	}
+	switch strings.ToLower(strings.TrimSpace(connectorKind)) {
+	case "matrix", "slack":
+		return threads.ConversationShapeRoom
+	case "discord":
+		if strings.TrimSpace(inbound.GuildID) != "" {
+			return threads.ConversationShapeRoom
+		}
+		return threads.ConversationShapeGroup
+	default:
+		if strings.TrimSpace(inbound.GuildID) != "" {
+			return threads.ConversationShapeRoom
+		}
+		return threads.ConversationShapeGroup
+	}
+}
+
+func connectorEnforcesGroupRoomParticipationPolicy(connector connectors.Connector) bool {
+	if len(connector.CapabilityProfile) == 0 {
+		return false
+	}
+	return connectorSurfaceSupported(connector.CapabilityProfile, connectors.GroupRoomSurfaceMentionEvidence) &&
+		connectorSurfaceSupported(connector.CapabilityProfile, connectors.GroupRoomSurfaceAllowlistEvidence)
+}
+
+func connectorSurfaceSupported(profile map[string]any, key string) bool {
+	value, ok := profile[key]
+	if !ok {
+		return false
+	}
+	switch typed := value.(type) {
+	case connectors.SurfaceSupport:
+		return typed == connectors.SurfaceSupported
+	case string:
+		return strings.EqualFold(strings.TrimSpace(typed), string(connectors.SurfaceSupported))
+	case bool:
+		return typed
+	default:
+		return false
+	}
+}
+
 func coalesceTrimmed(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -432,7 +503,81 @@ func (l *MessageLoop) ensureThreadLifecycleForInbound(ctx context.Context, conne
 	}); err != nil {
 		return threads.Thread{}, "", err
 	}
+	shape := threads.ResolveConversationShape(threads.ConversationShapeResolutionInput{
+		TenantID:                  current.TenantID,
+		ThreadID:                  current.ThreadID,
+		SessionSegmentID:          segmentID,
+		SourceKind:                threads.SourceKindChannel,
+		ConnectorID:               connector.ConnectorID,
+		ConnectorKind:             connector.Kind,
+		SourceAccountID:           key.SourceAccountID,
+		SourceConversationID:      key.SourceConversationID,
+		SourceConversationSummary: current.SourceSummary,
+		ClaimedShape:              conversationShapeForIngressSource(threads.SourceKindChannel, connector.Kind, inbound),
+		Now:                       now,
+	})
+	if _, err := l.store.SaveConversationShapeEvidence(ctx, shape); err != nil {
+		return threads.Thread{}, "", err
+	}
 	return current, segmentID, nil
+}
+
+func (l *MessageLoop) applyGroupRoomParticipationPolicy(ctx context.Context, connector connectors.Connector, inbound imtypes.InboundMessage, thread threads.Thread, segmentID string, persistedInbound imtypes.MessageRecord) (threads.ParticipationDecision, bool, error) {
+	shape := conversationShapeForIngressSource(threads.SourceKindChannel, connector.Kind, inbound)
+	if shape != threads.ConversationShapeGroup && shape != threads.ConversationShapeRoom {
+		return threads.ParticipationDecision{}, false, nil
+	}
+	if !connectorEnforcesGroupRoomParticipationPolicy(connector) {
+		return threads.ParticipationDecision{}, false, nil
+	}
+	allowlistEligible, permissionAllowed, policyID, err := l.evaluateGroupRoomRoutePolicy(ctx, connector, inbound)
+	if err != nil {
+		return threads.ParticipationDecision{}, true, err
+	}
+	decision := threads.EvaluateParticipation(threads.ParticipationEvaluationInput{
+		Shape:             shape,
+		AllowlistEligible: allowlistEligible,
+		QualifyingMention: inbound.Mentioned,
+		PermissionAllowed: permissionAllowed,
+		RedactionAllowed:  true,
+		OccurredAt:        persistedInbound.CreatedAt,
+		SafeSummary:       "Group or room message evaluated by participation policy",
+	})
+	decision.TenantID = thread.TenantID
+	decision.ThreadID = thread.ThreadID
+	decision.SessionSegmentID = segmentID
+	decision.PolicyID = policyID
+	decision.ConnectorID = connector.ConnectorID
+	decision.ConnectorKind = connector.Kind
+	decision.SourceAccountID = inboundConnectorAccountID(inbound)
+	decision.SourceConversationID = inboundChannelOrConversationID(inbound)
+	decision.SourceMessageID = inboundProviderMessageID(inbound)
+	saved, err := l.store.SaveParticipationDecision(ctx, decision)
+	if err != nil {
+		return threads.ParticipationDecision{}, true, err
+	}
+	return saved, true, nil
+}
+
+func (l *MessageLoop) evaluateGroupRoomRoutePolicy(ctx context.Context, connector connectors.Connector, inbound imtypes.InboundMessage) (bool, bool, string, error) {
+	if connector.Status == connectors.StatusDisabled || connector.Status == connectors.StatusFailed || connector.Status == connectors.StatusBackingOff {
+		return false, false, "", nil
+	}
+	if l == nil || l.store == nil {
+		return false, false, "", nil
+	}
+	tenantID := coalesceTrimmed(inbound.TenantID, connector.TenantID)
+	policy, found, err := l.store.GetChannelRoutePolicy(ctx, tenantID, connector.ConnectorID)
+	if err != nil {
+		return false, false, "", err
+	}
+	if !found || !connectors.RoutePolicyIsValid(policy) {
+		return false, false, "", nil
+	}
+	sourceConversationID := inboundChannelOrConversationID(inbound)
+	allowlistEligible := connectors.RoutePolicyAllowsConversation(policy, sourceConversationID)
+	permissionAllowed := connectors.RoutePolicyAllowsSender(policy, strings.TrimSpace(inbound.AuthorID))
+	return allowlistEligible, permissionAllowed, policy.RoutePolicyID, nil
 }
 
 func (l *MessageLoop) recordDuplicateThreadEvidence(ctx context.Context, connector connectors.Connector, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord) error {

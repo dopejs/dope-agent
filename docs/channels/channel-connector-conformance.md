@@ -152,6 +152,17 @@ operator-visible exclusion evidence. Continuity previews must expose inclusion l
 reset-boundary exclusions, source identity decisions, and redaction status without raw
 prompt or memory fields.
 
+Roadmap 56 adds group/room and handoff conformance fields. Connectors that participate in
+group or room routing must declare mention evidence, allowlist evidence, unsupported
+source evidence, duplicate-message evidence, and edited/deleted-message behavior as
+supported, limited, or unsupported. Connectors that participate in handoff must declare
+source support, destination support, and first-response source-reference support.
+
+Group/room support does not imply memory. Handoff support does not imply memory. Provider
+profiles must keep memory-based team context, semantic cross-room recall, summaries,
+long-term personalization, and raw provider payload display unsupported unless a future
+roadmap explicitly defines those products and contracts.
+
 Each provider handoff must include:
 
 - a capability profile declaring every core invariant as pass or fail, and every
