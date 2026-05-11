@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/events/thread-continuity-preview-recorded.event.schema.json",
+  "title": "ThreadContinuityPreviewRecordedEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["threadId", "sessionSegmentId", "continuityPreviewId", "action", "outcome", "redactionStatus"],
+  "properties": {
+    "tenantId": { "type": "string", "minLength": 1 },
+    "threadId": { "type": "string", "minLength": 1 },
+    "sessionSegmentId": { "type": "string", "minLength": 1 },
+    "continuityPreviewId": { "type": "string", "minLength": 1 },
+    "dispatchId": { "type": "string" },
+    "action": { "type": "string", "enum": ["preview_recorded"] },
+    "outcome": { "type": "string", "enum": ["applied", "empty", "disabled", "blocked", "partial", "failed"] },
+    "reasonCode": { "type": "string" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] }
+  }
+}

@@ -239,6 +239,14 @@ event-schema-file prefixes from `schemas/events/` (flat layout).
 | thread_runtime_projections | tenant_owned | column tenant_id plus parent thread tenant | leave_existing | thread detail/runtime trace routes | thread-lifecycle, thread-retention-applied | thread lifecycle runtime projection helpers | PRIMARY KEY runtime_projection_id, (thread_id, occurred_at DESC, runtime_projection_id DESC) | runtime projection and retention tests | backup_restore |
 | thread_retention_policies | tenant_owned | column tenant_id (retention policy belongs to tenant) | leave_existing | thread lifecycle retention inspection | thread-retention-applied | thread retention policy helpers | PRIMARY KEY tenant_id | thread retention policy override tests | backup_restore |
 
+## Persisted Tables — Roadmap 55 bounded thread continuity
+
+| name | classification | tenantIdSource | migrationAction | affectedAPIs | affectedEvents | storeAccess | indexesAndUniqueness | isolationTests | rollback |
+|------|----------------|----------------|-----------------|--------------|----------------|-------------|----------------------|----------------|----------|
+| thread_continuity_turns | tenant_owned | column tenant_id plus parent thread/session segment tenant | leave_existing | chat query and stream routes, thread continuity preview routes | thread-continuity-turn-recorded | thread continuity store helpers; tenancy.Threads | PRIMARY KEY continuity_turn_id, (tenant_id, thread_id, session_segment_id, acceptance_sequence DESC), UNIQUE source event (tenant_id, source_event_key) filtered non-empty | continuity store, restart, reset-boundary, and non-memory tests | backup_restore |
+| thread_continuity_previews | tenant_owned | column tenant_id plus parent thread/session segment tenant | leave_existing | thread detail route, thread continuity preview detail route | thread-continuity-preview-recorded | thread continuity preview store helpers; tenancy.Threads | PRIMARY KEY continuity_preview_id, (tenant_id, thread_id, assembly_completed_at DESC, continuity_preview_id DESC), (tenant_id, retention_expires_at) | preview detail, retention, restart, and contract tests | backup_restore |
+| thread_continuity_preview_items | tenant_owned | column tenant_id copied from parent preview and thread | leave_existing | thread continuity preview detail route | thread-continuity-preview-recorded | thread continuity preview item store helpers | PRIMARY KEY preview_item_id, (continuity_preview_id, item_order ASC, preview_item_id ASC), (tenant_id, thread_id, acceptance_sequence ASC) | preview item inclusion/exclusion, artifact, redaction, and reset-boundary tests | backup_restore |
+
 ## Event Sources
 
 Event categories whose payloads gain server-side tenant scoping. Where the event

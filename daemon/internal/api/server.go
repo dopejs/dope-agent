@@ -50,6 +50,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/store/tenancy"
+	"github.com/dopejs/dope-agent/daemon/internal/threads"
 )
 
 type Dependencies struct {
@@ -2157,6 +2158,10 @@ type chatQueryRequest struct {
 	Query      string   `json:"query"`
 	TimeoutMs  int      `json:"timeoutMs"`
 	MaxRetries int      `json:"maxRetries"`
+	ThreadID   string   `json:"threadId"`
+	Continuity struct {
+		Mode string `json:"mode"`
+	} `json:"continuity"`
 }
 
 func handleChatQuery(chatService *chat.Service, w http.ResponseWriter, r *http.Request) {
@@ -2180,13 +2185,15 @@ func handleChatQuery(chatService *chat.Service, w http.ResponseWriter, r *http.R
 	}
 
 	result, err := chatService.Query(r.Context(), chat.QueryInput{
-		Query:      strings.TrimSpace(input.Query),
-		Provider:   strings.TrimSpace(input.Provider),
-		Model:      strings.TrimSpace(input.Model),
-		Skills:     append([]string(nil), input.Skills...),
-		TimeoutMs:  input.TimeoutMs,
-		MaxRetries: input.MaxRetries,
-		TenantID:   tenantID,
+		Query:          strings.TrimSpace(input.Query),
+		Provider:       strings.TrimSpace(input.Provider),
+		Model:          strings.TrimSpace(input.Model),
+		Skills:         append([]string(nil), input.Skills...),
+		TimeoutMs:      input.TimeoutMs,
+		MaxRetries:     input.MaxRetries,
+		TenantID:       tenantID,
+		ThreadID:       strings.TrimSpace(input.ThreadID),
+		ContinuityMode: threads.ContinuityMode(input.Continuity.Mode),
 	})
 	if err != nil {
 		if result.Dispatch.DispatchID == "" {
@@ -2233,23 +2240,31 @@ func handleChatQueryStream(chatService *chat.Service, w http.ResponseWriter, r *
 	var reply strings.Builder
 	started := false
 	result, execErr := chatService.Stream(r.Context(), chat.QueryInput{
-		Query:      strings.TrimSpace(input.Query),
-		Provider:   strings.TrimSpace(input.Provider),
-		Model:      strings.TrimSpace(input.Model),
-		Skills:     append([]string(nil), input.Skills...),
-		TimeoutMs:  input.TimeoutMs,
-		MaxRetries: input.MaxRetries,
-		TenantID:   tenantID,
+		Query:          strings.TrimSpace(input.Query),
+		Provider:       strings.TrimSpace(input.Provider),
+		Model:          strings.TrimSpace(input.Model),
+		Skills:         append([]string(nil), input.Skills...),
+		TimeoutMs:      input.TimeoutMs,
+		MaxRetries:     input.MaxRetries,
+		TenantID:       tenantID,
+		ThreadID:       strings.TrimSpace(input.ThreadID),
+		ContinuityMode: threads.ContinuityMode(input.Continuity.Mode),
 	}, func(chunk chat.StreamChunk) error {
 		if !started {
 			started = true
 			writeSSEEvent(w, "chat.query.started", "", ChatQueryStreamStarted{
-				DispatchID:     chunk.DispatchID,
-				Provider:       chunk.Provider,
-				Model:          chunk.Model,
-				Skills:         cloneStringSlice(chunk.Skills),
-				SkillContracts: cloneSandboxConsumerViews(chunk.SkillContracts),
-				Query:          strings.TrimSpace(input.Query),
+				DispatchID:          chunk.DispatchID,
+				Provider:            chunk.Provider,
+				Model:               chunk.Model,
+				Skills:              cloneStringSlice(chunk.Skills),
+				SkillContracts:      cloneSandboxConsumerViews(chunk.SkillContracts),
+				Query:               strings.TrimSpace(input.Query),
+				ThreadID:            chunk.ThreadID,
+				SessionSegmentID:    chunk.SessionSegmentID,
+				RequestTurnID:       chunk.RequestTurnID,
+				ContinuityPreviewID: chunk.ContinuityPreviewID,
+				ContinuityApplied:   optionalBool(chunk.ContinuityApplied, chunk.ThreadID != ""),
+				ContinuityStatus:    string(chunk.ContinuityStatus),
 			})
 			flusher.Flush()
 		}
@@ -2264,12 +2279,18 @@ func handleChatQueryStream(chatService *chat.Service, w http.ResponseWriter, r *
 	})
 	if !started && result.Dispatch.DispatchID != "" {
 		writeSSEEvent(w, "chat.query.started", "", ChatQueryStreamStarted{
-			DispatchID:     result.Dispatch.DispatchID,
-			Provider:       result.Dispatch.Provider,
-			Model:          result.Dispatch.Model,
-			Skills:         cloneStringSlice(result.Skills),
-			SkillContracts: cloneSandboxConsumerViews(result.SkillContracts),
-			Query:          strings.TrimSpace(input.Query),
+			DispatchID:          result.Dispatch.DispatchID,
+			Provider:            result.Dispatch.Provider,
+			Model:               result.Dispatch.Model,
+			Skills:              cloneStringSlice(result.Skills),
+			SkillContracts:      cloneSandboxConsumerViews(result.SkillContracts),
+			Query:               strings.TrimSpace(input.Query),
+			ThreadID:            result.ThreadID,
+			SessionSegmentID:    result.SessionSegmentID,
+			RequestTurnID:       result.RequestTurnID,
+			ContinuityPreviewID: result.ContinuityPreviewID,
+			ContinuityApplied:   optionalBool(result.ContinuityApplied, result.ThreadID != ""),
+			ContinuityStatus:    string(result.ContinuityStatus),
 		})
 		flusher.Flush()
 	}
@@ -2289,7 +2310,7 @@ func handleChatQueryStream(chatService *chat.Service, w http.ResponseWriter, r *
 }
 
 func buildChatQueryResponse(result chat.QueryResult) ChatQueryResponse {
-	return ChatQueryResponse{
+	response := ChatQueryResponse{
 		DispatchID:     result.Dispatch.DispatchID,
 		Provider:       result.Dispatch.Provider,
 		Model:          result.Dispatch.Model,
@@ -2304,6 +2325,29 @@ func buildChatQueryResponse(result chat.QueryResult) ChatQueryResponse {
 		ErrorCode:      result.Dispatch.ErrorCode,
 		Error:          result.Dispatch.Error,
 	}
+	if result.ThreadID != "" {
+		response.ThreadID = result.ThreadID
+		response.SessionSegmentID = result.SessionSegmentID
+		response.RequestTurnID = result.RequestTurnID
+		response.ResponseTurnID = result.ResponseTurnID
+		response.ContinuityPreviewID = result.ContinuityPreviewID
+		response.ContinuityApplied = optionalBool(result.ContinuityApplied, true)
+		response.ContinuityStatus = string(result.ContinuityStatus)
+		response.ContinuityIncludedCount = optionalInt(result.ContinuityIncludedCount)
+		response.ContinuityExcludedCount = optionalInt(result.ContinuityExcludedCount)
+	}
+	return response
+}
+
+func optionalBool(value bool, include bool) *bool {
+	if !include {
+		return nil
+	}
+	return &value
+}
+
+func optionalInt(value int) *int {
+	return &value
 }
 
 func handleSkills(registry *skills.Registry, w http.ResponseWriter, r *http.Request) {

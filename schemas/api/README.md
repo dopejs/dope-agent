@@ -129,3 +129,14 @@ Connector conformance schemas are additive Phase 48 contracts:
 Connector schemas must preserve backward-compatible required fields while adding only
 redacted, tenant-scoped projections for capability, diagnostics, identity, routing
 outcomes, and foreground/background delivery boundaries.
+
+Roadmap 55 continuity schemas are additive contracts for bounded recent-thread
+continuity. They must remain non-knowledge scoped, metadata/redaction safe, and covered
+by daemon contract fixtures:
+
+- chat query request/response additive `threadId` and continuity metadata
+- chat query stream started continuity metadata
+- thread detail continuity preview summaries
+- continuity preview summary
+- continuity preview item
+- continuity preview detail response

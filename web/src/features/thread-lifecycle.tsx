@@ -1,8 +1,9 @@
-import type { ThreadDetailResponse, ThreadListResponse } from "@dope/client";
+import type { ThreadContinuityPreviewDetail, ThreadDetailResponse, ThreadListResponse } from "@dope/client";
 
 type ThreadLifecycleViewProps = {
   threads?: ThreadListResponse | null;
   detail?: ThreadDetailResponse | null;
+  continuityPreviewDetail?: ThreadContinuityPreviewDetail | null;
   loading?: boolean;
   error?: string;
   denied?: boolean;
@@ -18,6 +19,7 @@ type ThreadLifecycleViewProps = {
 export function ThreadLifecycleView({
   threads,
   detail = null,
+  continuityPreviewDetail = null,
   loading = false,
   error = "",
   denied = false,
@@ -88,9 +90,44 @@ export function ThreadLifecycleView({
             <dd>{detail.sourceLinkages.length}</dd>
             <dt>Runtime projections</dt>
             <dd>{detail.runtimeProjections.length}</dd>
+            <dt>Continuity previews</dt>
+            <dd>{detail.continuityPreviews?.length ?? 0}</dd>
             <dt>Lifecycle actions</dt>
             <dd>{detail.lifecycleActions.length}</dd>
           </dl>
+          <section aria-label="Continuity evidence">
+            <h4>Continuity Evidence</h4>
+            <p className="muted">Bounded recent-thread evidence, not assistant memory.</p>
+            {(detail.continuityPreviews?.length ?? 0) === 0 ? <p className="muted">No continuity evidence.</p> : null}
+            <ul>
+              {detail.continuityPreviews?.map((preview) => (
+                <li key={preview.continuityPreviewId}>
+                  <span>{preview.continuityPreviewId}</span>
+                  <span>{preview.status}</span>
+                  <span>{preview.continuityApplied ? "applied" : "not applied"}</span>
+                  <span>{preview.includedCount} included</span>
+                  <span>{preview.excludedCount} excluded</span>
+                  <span>{preview.sessionSegmentId || "segment unavailable"}</span>
+                  <span>{preview.windowPolicyId || "default policy"}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+          {continuityPreviewDetail ? (
+            <section aria-label="Continuity preview detail">
+              <h4>Continuity Preview Detail</h4>
+              <ul>
+                {continuityPreviewDetail.items.map((item, index) => (
+                  <li key={item.previewItemId || `${item.itemKind}-${index}`}>
+                    <span>{item.decision}</span>
+                    <span>{item.reasonCode}</span>
+                    <span>{item.safeSummary || item.continuityTurnId || item.artifactRef || "metadata only"}</span>
+                    <span>{item.redactionStatus}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <section aria-label="Source trace">
             <h4>Source Trace</h4>
             {detail.sourceLinkages.length === 0 ? <p className="muted">No source evidence.</p> : null}

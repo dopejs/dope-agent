@@ -46,8 +46,16 @@ func handleThreadLifecycleRoutes(sqliteStore *store.SQLiteStore, eventBus *event
 	remaining := strings.Trim(strings.TrimPrefix(r.URL.Path, prefix+"/"), "/")
 	parts := strings.Split(remaining, "/")
 	threadID := parts[0]
-	if threadID == "" || len(parts) > 2 {
+	if threadID == "" || len(parts) > 3 {
 		http.NotFound(w, r)
+		return
+	}
+	if len(parts) == 3 {
+		if parts[1] != "continuity-previews" || r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		handleThreadContinuityPreviewDetail(sqliteStore, w, r, threadID, parts[2])
 		return
 	}
 	if len(parts) == 2 {
@@ -156,6 +164,28 @@ func handleThreadDetail(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r
 		return
 	}
 	response, found, err := sqliteStore.GetThreadDetailForTenant(r.Context(), tenantContext.TenantID, threadID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func handleThreadContinuityPreviewDetail(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, threadID, previewID string) {
+	tenantContext, ok := requireThreadPermission(r, identity.PermissionCredentialsInspect)
+	if !ok {
+		writeCredentialDenial(w, http.StatusForbidden, "permission_missing")
+		return
+	}
+	if sqliteStore == nil {
+		http.NotFound(w, r)
+		return
+	}
+	response, found, err := sqliteStore.GetContinuityPreviewDetail(r.Context(), tenantContext.TenantID, threadID, previewID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

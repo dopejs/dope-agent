@@ -7,6 +7,10 @@ export type ChatQueryInput = {
   query: string;
   timeoutMs?: number;
   maxRetries?: number;
+  threadId?: string;
+  continuity?: {
+    mode?: "auto" | "disabled";
+  };
 };
 
 export type ChatQueryResponse = {
@@ -26,6 +30,15 @@ export type ChatQueryResponse = {
   };
   errorCode?: string;
   error?: string;
+  threadId?: string;
+  sessionSegmentId?: string;
+  requestTurnId?: string;
+  responseTurnId?: string;
+  continuityPreviewId?: string;
+  continuityApplied?: boolean;
+  continuityStatus?: "applied" | "empty" | "disabled" | "blocked" | "partial" | "failed";
+  continuityIncludedCount?: number;
+  continuityExcludedCount?: number;
 };
 
 export type ChatQueryStreamStarted = {
@@ -34,6 +47,12 @@ export type ChatQueryStreamStarted = {
   model: string;
   skills: string[];
   query: string;
+  threadId?: string;
+  sessionSegmentId?: string;
+  requestTurnId?: string;
+  continuityPreviewId?: string;
+  continuityApplied?: boolean;
+  continuityStatus?: "applied" | "empty" | "disabled" | "blocked" | "partial" | "failed";
 };
 
 export type ChatQueryStreamDelta = {
@@ -2624,11 +2643,53 @@ export type ThreadRuntimeProjection = {
   redactionStatus: ThreadRedactionStatus;
 };
 
+export type ThreadContinuityPreview = {
+  continuityPreviewId: string;
+  tenantId?: string;
+  threadId?: string;
+  sessionSegmentId?: string;
+  continuityApplied: boolean;
+  status: "applied" | "empty" | "disabled" | "blocked" | "partial" | "failed";
+  includedCount: number;
+  excludedCount: number;
+  windowPolicyId?: string;
+  maxPriorTurns?: number;
+  activeWindowDays?: number;
+  orderedBy?: string;
+  redactionStatus?: ThreadRedactionStatus;
+  retentionExpiresAt?: string;
+};
+
+export type ThreadContinuityPreviewItem = {
+  previewItemId?: string;
+  continuityPreviewId?: string;
+  tenantId?: string;
+  threadId?: string;
+  itemKind: "turn" | "artifact_excerpt";
+  continuityTurnId?: string;
+  role?: "user" | "assistant";
+  artifactRef?: string;
+  artifactExcerptId?: string;
+  decision: "included" | "excluded";
+  reasonCode: string;
+  acceptanceSequence?: number;
+  sourceTimestamp?: string;
+  safeSummary?: string;
+  redactionStatus: ThreadRedactionStatus;
+  itemOrder?: number;
+};
+
+export type ThreadContinuityPreviewDetail = {
+  preview: ThreadContinuityPreview;
+  items: ThreadContinuityPreviewItem[];
+};
+
 export type ThreadDetailResponse = {
   thread: ThreadResource;
   sessionSegments: Record<string, unknown>[];
   sourceLinkages: ThreadSourceLinkage[];
   runtimeProjections: ThreadRuntimeProjection[];
+  continuityPreviews?: ThreadContinuityPreview[];
   lifecycleActions: Record<string, unknown>[];
 };
 
@@ -2767,6 +2828,10 @@ export class DopeClient {
 
   async getThread(threadId: string, tenantOptions?: TenantRequestOptions): Promise<ThreadDetailResponse> {
     return this.requestJSON<ThreadDetailResponse>(`/v1/threads/${encodePathComponent(threadId.trim())}`, { tenant: tenantOptions });
+  }
+
+  async getThreadContinuityPreview(threadId: string, previewId: string, tenantOptions?: TenantRequestOptions): Promise<ThreadContinuityPreviewDetail> {
+    return this.requestJSON<ThreadContinuityPreviewDetail>(`/v1/threads/${encodePathComponent(threadId.trim())}/continuity-previews/${encodePathComponent(previewId.trim())}`, { tenant: tenantOptions });
   }
 
   async resetThread(threadId: string, input: ThreadLifecycleActionInput = {}, tenantOptions?: TenantRequestOptions): Promise<ThreadLifecycleActionResponse> {
@@ -3687,7 +3752,9 @@ function normalizeChatInput(input: ChatQueryInput): ChatQueryInput {
     skills: input.skills?.map((item) => item.trim()).filter(Boolean),
     query: input.query.trim(),
     timeoutMs: input.timeoutMs,
-    maxRetries: input.maxRetries
+    maxRetries: input.maxRetries,
+    threadId: input.threadId?.trim() || undefined,
+    continuity: input.continuity?.mode ? { mode: input.continuity.mode } : undefined
   };
 }
 

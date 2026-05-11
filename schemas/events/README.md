@@ -33,3 +33,11 @@ Connector conformance events added for Phase 48:
 Connector event payloads must stay tenant-scoped and redacted. Provider tokens,
 authorization headers, raw provider payloads, and cross-tenant identifiers are not valid
 event evidence.
+
+Roadmap 55 continuity events are metadata-only audit facts:
+
+- `thread.continuity_turn_recorded`
+- `thread.continuity_preview_recorded`
+
+These payloads must not include raw prompts, provider payloads, disallowed message
+bodies, secrets, or cross-tenant identifiers.

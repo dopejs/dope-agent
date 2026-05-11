@@ -42,6 +42,7 @@ type ThreadDetailResponse struct {
 	SourceLinkages     []SourceLinkage     `json:"sourceLinkages"`
 	RuntimeProjections []RuntimeProjection `json:"runtimeProjections"`
 	LifecycleActions   []LifecycleAction   `json:"lifecycleActions"`
+	ContinuityPreviews []ContinuityPreview `json:"continuityPreviews,omitempty"`
 }
 
 type ThreadPage struct {

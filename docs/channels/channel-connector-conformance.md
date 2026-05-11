@@ -144,6 +144,14 @@ messages to the daemon-owned current thread for `(tenant, connector, source acco
 source conversation)`, preserve duplicate evidence on replay, and respect archived
 thread blocking unless the thread is explicitly reopened.
 
+Roadmap 55 adds bounded continuity on top of that daemon-owned thread. Providers must
+pass accepted messages through the daemon thread identity so only current-session
+eligible turns can be assembled. Duplicate, replayed, unsupported, missing-source, and
+archived-thread inputs must not infer continuity; they may only record redacted
+operator-visible exclusion evidence. Continuity previews must expose inclusion limits,
+reset-boundary exclusions, source identity decisions, and redaction status without raw
+prompt or memory fields.
+
 Each provider handoff must include:
 
 - a capability profile declaring every core invariant as pass or fail, and every

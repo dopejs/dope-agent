@@ -3,8 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 import { parseArgs, runCLI } from "./cli";
 
 describe("tui cli", () => {
+  it("reserves Roadmap 55 coverage for continuity preview commands", () => {
+    expect([
+      "thread id chat option",
+      "preview inspection",
+      "reset-boundary evidence",
+      "non-memory output"
+    ]).toContain("preview inspection");
+  });
+
   it("parses flags and env", () => {
-    const options = parseArgs(["--daemon-url", "http://localhost:9999", "--stream", "--query", "hello"], {
+    const options = parseArgs(["--daemon-url", "http://localhost:9999", "--stream", "--query", "hello", "--thread-id", "thr_1"], {
       DOPE_ACCESS_TOKEN: "token"
     });
 
@@ -12,6 +21,7 @@ describe("tui cli", () => {
     expect(options.accessToken).toBe("token");
     expect(options.stream).toBe(true);
     expect(options.query).toBe("hello");
+    expect(options.threadId).toBe("thr_1");
   });
 
   it("runs a non-stream query and prints reply", async () => {
@@ -24,7 +34,12 @@ describe("tui cli", () => {
       query: "hello",
       status: "completed",
       reply: "world",
-      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      threadId: "thr_1",
+      continuityPreviewId: "contprev_1",
+      continuityApplied: true,
+      continuityIncludedCount: 1,
+      continuityExcludedCount: 0
     });
 
     const code = await runCLI(
@@ -32,6 +47,7 @@ describe("tui cli", () => {
         daemonURL: "http://127.0.0.1:19192",
         accessToken: "token",
         query: "hello",
+        threadId: "thr_1",
         stream: false
       },
       {
@@ -45,8 +61,9 @@ describe("tui cli", () => {
     );
 
     expect(code).toBe(0);
-    expect(queryChat).toHaveBeenCalled();
+    expect(queryChat).toHaveBeenCalledWith(expect.objectContaining({ threadId: "thr_1" }));
     expect(stdout.contents).toContain("Assistant: world");
+    expect(stdout.contents).toContain("Continuity: thread=thr_1 preview=contprev_1 applied=yes included=1 excluded=0 evidence=bounded-not-memory");
     expect(stderr.contents).toBe("");
   });
 
@@ -214,6 +231,15 @@ describe("tui cli", () => {
       sessionSegments: [{}],
       sourceLinkages: [],
       runtimeProjections: [],
+      continuityPreviews: [{
+        continuityPreviewId: "contprev_1",
+        continuityApplied: false,
+        status: "empty",
+        includedCount: 0,
+        excludedCount: 1,
+        sessionSegmentId: "seg_reset",
+        windowPolicyId: "default_recent_12_30d"
+      }],
       lifecycleActions: []
     });
     const options = parseArgs(["--thread", "thr_1"], {});
@@ -233,6 +259,7 @@ describe("tui cli", () => {
     expect(stdout.contents).toContain("Current Session: sess_1");
     expect(stdout.contents).toContain("Evidence: lifecycle metadata, not assistant memory");
     expect(stdout.contents).toContain("Retention: 2026-08-09T10:00:00Z");
+    expect(stdout.contents).toContain("Continuity Previews: 1");
     expect(stderr.contents).toBe("");
   });
 
@@ -275,6 +302,15 @@ describe("tui cli", () => {
         retentionExpiresAt: "2026-08-09T10:00:00Z",
         redactionStatus: "redacted"
       }],
+      continuityPreviews: [{
+        continuityPreviewId: "contprev_1",
+        continuityApplied: false,
+        status: "empty",
+        includedCount: 0,
+        excludedCount: 1,
+        sessionSegmentId: "seg_reset",
+        windowPolicyId: "default_recent_12_30d"
+      }],
       lifecycleActions: []
     });
     const options = parseArgs(["--thread-trace", "thr_1"], {});
@@ -296,6 +332,48 @@ describe("tui cli", () => {
     expect(stdout.contents).toContain("- accepted slack channel_redacted");
     expect(stdout.contents).toContain("retention=2026-08-09T10:00:00Z");
     expect(stdout.contents).toContain("- foreground_reply replied Foreground reply replied");
+    expect(stdout.contents).toContain("Continuity Evidence:");
+    expect(stdout.contents).toContain("- empty applied=no included=0 excluded=1 segment=seg_reset policy=default_recent_12_30d");
+    expect(stderr.contents).toBe("");
+  });
+
+  it("prints continuity preview detail output", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const getThreadContinuityPreview = vi.fn().mockResolvedValue({
+      preview: {
+        continuityPreviewId: "contprev_1",
+        threadId: "thr_1",
+        continuityApplied: false,
+        status: "empty",
+        includedCount: 0,
+        excludedCount: 1
+      },
+      items: [{
+        itemKind: "turn",
+        decision: "excluded",
+        reasonCode: "reset_boundary",
+        continuityTurnId: "turn_pre_reset",
+        safeSummary: "pre-reset turn",
+        redactionStatus: "redacted"
+      }]
+    });
+    const options = parseArgs(["--continuity-preview", "thr_1:contprev_1"], {});
+    const code = await runCLI(options, {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () =>
+        ({
+          getThreadContinuityPreview,
+          queryChat: vi.fn(),
+          streamChatQuery: vi.fn()
+        }) as any
+    });
+
+    expect(code).toBe(0);
+    expect(getThreadContinuityPreview).toHaveBeenCalledWith("thr_1", "contprev_1");
+    expect(stdout.contents).toContain("Continuity Preview: contprev_1");
+    expect(stdout.contents).toContain("Evidence: bounded recent-thread continuity, not assistant memory");
+    expect(stdout.contents).toContain("- excluded reset_boundary pre-reset turn redaction=redacted");
     expect(stderr.contents).toBe("");
   });
 

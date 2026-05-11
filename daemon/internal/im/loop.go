@@ -619,8 +619,15 @@ func (l *MessageLoop) executeReplyPath(ctx context.Context, connector connectors
 
 func (l *MessageLoop) executeFinalReply(ctx context.Context, connector connectors.Connector, session router.Session, run runtime.Run, step runtime.Step, inbound imtypes.InboundMessage, persistedInbound imtypes.MessageRecord, replies ReplySender, capabilities imtypes.ReplyCapabilities, scope events.Scope, stopThinking func()) (chat.QueryResult, imtypes.MessageRecord, error) {
 	queryResult, queryErr := l.chat.Query(ctx, chat.QueryInput{
-		Query: inbound.Content,
-		Scope: scope,
+		Query:           inbound.Content,
+		TenantID:        persistedInbound.TenantID,
+		ThreadID:        persistedInbound.ThreadID,
+		Scope:           scope,
+		SourceKind:      threads.SourceKindChannel,
+		SourceLinkageID: threadSourceLinkageID(persistedInbound, threads.RoutingOutcomeAccepted),
+		SourceMessageID: inboundProviderMessageID(inbound),
+		SourceTimestamp: &persistedInbound.CreatedAt,
+		SourceEventKey:  "connector:" + persistedInbound.DeliveryID,
 	})
 	if queryErr != nil {
 		return queryResult, imtypes.MessageRecord{}, queryErr
@@ -704,8 +711,15 @@ func (l *MessageLoop) executeStreamingReply(ctx context.Context, connector conne
 
 	var progressErr error
 	queryResult, queryErr := l.chat.Stream(ctx, chat.QueryInput{
-		Query: inbound.Content,
-		Scope: scope,
+		Query:           inbound.Content,
+		TenantID:        persistedInbound.TenantID,
+		ThreadID:        persistedInbound.ThreadID,
+		Scope:           scope,
+		SourceKind:      threads.SourceKindChannel,
+		SourceLinkageID: threadSourceLinkageID(persistedInbound, threads.RoutingOutcomeAccepted),
+		SourceMessageID: inboundProviderMessageID(inbound),
+		SourceTimestamp: &persistedInbound.CreatedAt,
+		SourceEventKey:  "connector:" + persistedInbound.DeliveryID,
 	}, func(chunk chat.StreamChunk) error {
 		if progressErr != nil {
 			return nil

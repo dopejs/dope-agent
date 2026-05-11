@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-continuity-preview-item.schema.json",
+  "title": "ThreadContinuityPreviewItem",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["previewItemId", "itemKind", "decision", "reasonCode", "redactionStatus"],
+  "properties": {
+    "previewItemId": { "type": "string", "minLength": 1 },
+    "continuityPreviewId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "threadId": { "type": "string" },
+    "itemKind": { "type": "string", "enum": ["turn", "artifact_excerpt"] },
+    "continuityTurnId": { "type": "string" },
+    "artifactRef": { "type": "string" },
+    "artifactExcerptId": { "type": "string" },
+    "role": { "type": "string", "enum": ["user", "assistant"] },
+    "decision": { "type": "string", "enum": ["included", "excluded"] },
+    "reasonCode": {
+      "type": "string",
+      "enum": [
+        "included_recent",
+        "no_eligible_turns",
+        "over_limit",
+        "too_old",
+        "reset_boundary",
+        "lifecycle_blocked",
+        "source_mismatch",
+        "permission_denied",
+        "redaction_failed",
+        "retention_expired",
+        "duplicate_source_event",
+        "incomplete_evidence",
+        "unsupported_source",
+        "artifact_reference_only",
+        "continuity_disabled",
+        "continuity_unavailable"
+      ]
+    },
+    "acceptanceSequence": { "type": "integer", "minimum": 0 },
+    "sourceTimestamp": { "type": "string", "format": "date-time" },
+    "safeSummary": { "type": "string" },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] },
+    "itemOrder": { "type": "integer", "minimum": 0 }
+  }
+}

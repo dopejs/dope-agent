@@ -49,3 +49,23 @@ metadata-only recovery evidence for operator review.
 Lifecycle, source, and runtime evidence uses a 90-day default inspection retention period
 unless an authorized tenant policy requires longer retention. Expired evidence is omitted
 from normal thread detail responses; retained audit metadata remains redacted.
+
+## Roadmap 55 Continuity Persistence
+
+Roadmap 55 adds bounded recent-turn continuity as additive persistence on top of this
+lifecycle model. The v51 migration creates `thread_continuity_turns`,
+`thread_continuity_previews`, and `thread_continuity_preview_items`. These tables hold
+redacted turn metadata, deterministic inclusion/exclusion evidence, preview summaries,
+and preview item details. Safe artifact excerpts are embedded as redacted value objects
+on turn/preview documents rather than stored in a standalone artifact excerpt table.
+
+Mixed-version behavior is intentionally conservative. Chat requests without a valid
+thread id remain single-turn, thread lifecycle list/detail remains valid when no
+continuity rows exist, and connectors without valid daemon-owned thread identity must not
+infer continuity. Rollback disables continuity assembly and preview routes while leaving
+already-written metadata rows in place until retention expiry; no destructive rewrite or
+backfill of Roadmap 54 thread/session/runtime rows is required.
+
+Continuity is still not memory. It must not call memory recall, semantic retrieval,
+knowledge graph, autonomous summary, provider-retained context, client-local history, or
+cross-thread personalization paths.

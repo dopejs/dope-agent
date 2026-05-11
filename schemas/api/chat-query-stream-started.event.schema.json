@@ -27,6 +27,25 @@
     },
     "query": {
       "type": "string"
+    },
+    "threadId": {
+      "type": "string"
+    },
+    "sessionSegmentId": {
+      "type": "string"
+    },
+    "requestTurnId": {
+      "type": "string"
+    },
+    "continuityPreviewId": {
+      "type": "string"
+    },
+    "continuityApplied": {
+      "type": "boolean"
+    },
+    "continuityStatus": {
+      "type": "string",
+      "enum": ["applied", "empty", "disabled", "blocked", "partial", "failed"]
     }
   }
 }

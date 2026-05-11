@@ -10,11 +10,13 @@ export type TUIOptions = {
   model?: string;
   stream: boolean;
   query?: string;
+  threadId?: string;
   slackSetupConnectorId?: string;
   matrixSetupConnectorId?: string;
   listThreads?: boolean;
   inspectThreadId?: string;
   traceThreadId?: string;
+  continuityPreview?: { threadId: string; previewId: string };
   resetThreadId?: string;
   archiveThreadId?: string;
   reopenThreadId?: string;
@@ -101,6 +103,7 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
       io.stdout.write(`Segments: ${detail.sessionSegments.length}\n`);
       io.stdout.write(`Source Linkages: ${detail.sourceLinkages.length}\n`);
       io.stdout.write(`Runtime Projections: ${detail.runtimeProjections.length}\n`);
+      io.stdout.write(`Continuity Previews: ${detail.continuityPreviews?.length ?? 0}\n`);
       return 0;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -131,6 +134,33 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
       }
       if (detail.runtimeProjections.length === 0) {
         io.stdout.write("- none\n");
+      }
+      io.stdout.write("Continuity Evidence:\n");
+      for (const preview of detail.continuityPreviews ?? []) {
+        io.stdout.write(`- ${preview.status} applied=${preview.continuityApplied ? "yes" : "no"} included=${preview.includedCount} excluded=${preview.excludedCount} segment=${preview.sessionSegmentId ?? "unavailable"} policy=${preview.windowPolicyId ?? "default"}\n`);
+      }
+      if ((detail.continuityPreviews?.length ?? 0) === 0) {
+        io.stdout.write("- none\n");
+      }
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.continuityPreview) {
+    try {
+      const detail = await client.getThreadContinuityPreview(options.continuityPreview.threadId, options.continuityPreview.previewId);
+      io.stdout.write(`Continuity Preview: ${detail.preview.continuityPreviewId}\n`);
+      io.stdout.write(`Thread: ${detail.preview.threadId ?? options.continuityPreview.threadId}\n`);
+      io.stdout.write(`Status: ${detail.preview.status}\n`);
+      io.stdout.write("Evidence: bounded recent-thread continuity, not assistant memory\n");
+      io.stdout.write(`Applied: ${detail.preview.continuityApplied ? "yes" : "no"}\n`);
+      io.stdout.write(`Items: ${detail.items.length}\n`);
+      for (const item of detail.items) {
+        io.stdout.write(`- ${item.decision} ${item.reasonCode} ${item.safeSummary ?? item.continuityTurnId ?? item.artifactRef ?? "metadata only"} redaction=${item.redactionStatus}\n`);
       }
       return 0;
     } catch (error) {
@@ -175,7 +205,8 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
   const payload: ChatQueryInput = {
     provider: options.provider,
     model: options.model,
-    query
+    query,
+    threadId: options.threadId
   };
 
   try {
@@ -192,6 +223,7 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
         io.stdout.write(terminal.reply);
       }
       io.stdout.write("\n");
+      io.stdout.write(formatContinuity(terminal));
       io.stdout.write(formatUsage(terminal));
       return terminal.status === "completed" ? 0 : 1;
     }
@@ -199,6 +231,7 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
     io.stdout.write("Waiting for reply...\n");
     const response = await client.queryChat(payload);
     io.stdout.write(`Assistant: ${response.reply}\n`);
+    io.stdout.write(formatContinuity(response));
     io.stdout.write(formatUsage(response));
     return response.status === "completed" ? 0 : 1;
   } catch (error) {
@@ -235,6 +268,9 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
       case "--query":
         options.query = argv[++index] ?? options.query;
         break;
+      case "--thread-id":
+        options.threadId = argv[++index] ?? options.threadId;
+        break;
       case "--stream":
         options.stream = true;
         break;
@@ -253,6 +289,11 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
       case "--thread-trace":
         options.traceThreadId = argv[++index] ?? options.traceThreadId;
         break;
+      case "--continuity-preview": {
+        const [threadId = "", previewId = ""] = (argv[++index] ?? "").split(":", 2);
+        options.continuityPreview = { threadId, previewId };
+        break;
+      }
       case "--thread-reset":
         options.resetThreadId = argv[++index] ?? options.resetThreadId;
         break;
@@ -282,12 +323,14 @@ export function helpText(): string {
     "  --provider <name>   Optional provider override",
     "  --model <name>      Optional model override",
     "  --query <text>      Single-turn query",
+    "  --thread-id <id>    Attach chat query to a daemon thread",
     "  --stream            Use streaming mode",
     "  --slack-setup <id>  Print Slack hosted setup state",
     "  --matrix-setup <id> Print Matrix hosted setup state",
     "  --threads           List tenant thread lifecycle metadata",
     "  --thread <id>       Inspect one tenant thread",
     "  --thread-trace <id> Print source-to-runtime trace evidence",
+    "  --continuity-preview <threadId:previewId> Inspect one continuity preview",
     "  --thread-reset <id> Reset one tenant thread",
     "  --thread-archive <id> Archive one tenant thread",
     "  --thread-reopen <id> Reopen one tenant thread",
@@ -297,6 +340,13 @@ export function helpText(): string {
 
 function formatUsage(response: ChatQueryResponse): string {
   return `Usage: in=${response.usage.inputTokens} out=${response.usage.outputTokens} total=${response.usage.totalTokens}\n`;
+}
+
+function formatContinuity(response: ChatQueryResponse): string {
+  if (!response.threadId) {
+    return "";
+  }
+  return `Continuity: thread=${response.threadId} preview=${response.continuityPreviewId ?? "unavailable"} applied=${response.continuityApplied ? "yes" : "no"} included=${response.continuityIncludedCount ?? 0} excluded=${response.continuityExcludedCount ?? 0} evidence=bounded-not-memory\n`;
 }
 
 async function promptQuery(io: CLIIO): Promise<string> {

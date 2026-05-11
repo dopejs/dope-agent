@@ -336,6 +336,34 @@ func TestMessageLoopRecordsThreadLifecycleEvidenceForAcceptedDuplicateAndBlocked
 	if len(detail.RuntimeProjections) < 3 {
 		t.Fatalf("expected session/run/message runtime projections, got %+v", detail.RuntimeProjections)
 	}
+	turns, err := sqliteStore.ListContinuityTurns(context.Background(), store.ContinuityLookupQuery{
+		TenantID:         "ten_thread",
+		ThreadID:         persisted.ThreadID,
+		SessionSegmentID: persisted.ThreadSessionSegmentID,
+		Now:              time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("ListContinuityTurns: %v", err)
+	}
+	if len(turns) < 2 {
+		t.Fatalf("expected accepted connector message to create request/response continuity turns, got %+v", turns)
+	}
+	foundChannelRequest := false
+	for _, turn := range turns {
+		if turn.Role != threads.ContinuityRoleUser {
+			continue
+		}
+		if turn.SourceKind == threads.SourceKindChannel &&
+			turn.SourceLinkageID != "" &&
+			turn.SourceMessageID == "slack_msg_thread_1" &&
+			turn.SourceTimestamp != nil &&
+			turn.SourceEventKey != "" {
+			foundChannelRequest = true
+		}
+	}
+	if !foundChannelRequest {
+		t.Fatalf("expected connector request continuity turn to preserve source identity, got %+v", turns)
+	}
 
 	duplicate, err := loop.ProcessSingleTurn(context.Background(), connector, inbound, replySender)
 	if err != nil || !duplicate.Duplicate {

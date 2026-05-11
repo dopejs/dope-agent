@@ -163,6 +163,7 @@ export function App() {
   const [activeActionId, setActiveActionId] = useState("");
   const [runGoal, setRunGoal] = useState(DEFAULT_RUN_GOAL);
   const [testQuery, setTestQuery] = useState(DEFAULT_TEST_QUERY);
+  const [testThreadId, setTestThreadId] = useState("");
   const [setupSecretRef, setSetupSecretRef] = useState("provider/openai-compatible");
   const [setupSecretValue, setSetupSecretValue] = useState("");
   const [liveValidationCandidateId, setLiveValidationCandidateId] = useState("");
@@ -582,9 +583,11 @@ export function App() {
         setActionMessage(`Created test run ${run.runId}.`);
         setDetail({ title: "Latest Test Run", route: `/v1/runs/${run.runId}`, tenantId, generation, payload: run });
       } else if (action.actionKind === "test_query") {
-        const response = await buildClient(tenantId).queryChat({
-          query: testQuery.trim() || DEFAULT_TEST_QUERY
-        }, scoped);
+        const queryPayload = {
+          query: testQuery.trim() || DEFAULT_TEST_QUERY,
+          ...(testThreadId.trim() ? { threadId: testThreadId.trim() } : {})
+        };
+        const response = await buildClient(tenantId).queryChat(queryPayload, scoped);
         if (generation !== generationRef.current || activeTenantRef.current !== tenantId) {
           return;
         }
@@ -1579,6 +1582,10 @@ export function App() {
                 <label>
                   <span>Test Query</span>
                   <textarea value={testQuery} onChange={(event) => setTestQuery(event.target.value)} rows={4} />
+                </label>
+                <label>
+                  <span>Thread ID</span>
+                  <input value={testThreadId} onChange={(event) => setTestThreadId(event.target.value)} />
                 </label>
               </div>
 

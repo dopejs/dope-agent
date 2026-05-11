@@ -59,6 +59,36 @@
     },
     "error": {
       "type": "string"
+    },
+    "threadId": {
+      "type": "string"
+    },
+    "sessionSegmentId": {
+      "type": "string"
+    },
+    "requestTurnId": {
+      "type": "string"
+    },
+    "responseTurnId": {
+      "type": "string"
+    },
+    "continuityPreviewId": {
+      "type": "string"
+    },
+    "continuityApplied": {
+      "type": "boolean"
+    },
+    "continuityStatus": {
+      "type": "string",
+      "enum": ["applied", "empty", "disabled", "blocked", "partial", "failed"]
+    },
+    "continuityIncludedCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "continuityExcludedCount": {
+      "type": "integer",
+      "minimum": 0
     }
   }
 }

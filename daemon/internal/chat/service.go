@@ -16,36 +16,59 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
+	"github.com/dopejs/dope-agent/daemon/internal/threads"
 )
 
 type QueryInput struct {
-	Query      string
-	Provider   string
-	Model      string
-	Skills     []string
-	TimeoutMs  int
-	MaxRetries int
-	TenantID   string
-	Scope      events.Scope
+	Query           string
+	Provider        string
+	Model           string
+	Skills          []string
+	TimeoutMs       int
+	MaxRetries      int
+	TenantID        string
+	ThreadID        string
+	ContinuityMode  threads.ContinuityMode
+	Scope           events.Scope
+	SourceKind      threads.SourceKind
+	SourceLinkageID string
+	SourceMessageID string
+	SourceTimestamp *time.Time
+	SourceEventKey  string
 }
 
 type QueryResult struct {
-	Query          string
-	Skills         []string
-	SkillContracts []map[string]any
-	Dispatch       llm.Dispatch
+	Query                   string
+	Skills                  []string
+	SkillContracts          []map[string]any
+	Dispatch                llm.Dispatch
+	ThreadID                string
+	SessionSegmentID        string
+	RequestTurnID           string
+	ResponseTurnID          string
+	ContinuityPreviewID     string
+	ContinuityApplied       bool
+	ContinuityStatus        threads.ContinuityStatus
+	ContinuityIncludedCount int
+	ContinuityExcludedCount int
 }
 
 type StreamChunk struct {
-	DispatchID     string
-	Provider       string
-	Model          string
-	Skills         []string
-	SkillContracts []map[string]any
-	Delta          string
-	Reply          string
-	FinishReason   string
-	Usage          *llm.Usage
+	DispatchID          string
+	Provider            string
+	Model               string
+	Skills              []string
+	SkillContracts      []map[string]any
+	Delta               string
+	Reply               string
+	FinishReason        string
+	Usage               *llm.Usage
+	ThreadID            string
+	SessionSegmentID    string
+	RequestTurnID       string
+	ContinuityPreviewID string
+	ContinuityApplied   bool
+	ContinuityStatus    threads.ContinuityStatus
 }
 
 type Service struct {
@@ -84,12 +107,19 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	if err := s.enforceProviderSetupGate(ctx, input.TenantID, dispatchInput.Provider, "chat"); err != nil {
 		return QueryResult{}, err
 	}
+	continuity, err := s.prepareContinuity(ctx, input, &dispatchInput)
+	if err != nil {
+		return QueryResult{}, err
+	}
 
 	dispatch, err := s.dispatcher.Prepare(dispatchInput, false)
 	if err != nil {
 		return QueryResult{}, err
 	}
 	if err := persistDispatch(ctx, s.store, dispatch); err != nil {
+		return QueryResult{}, err
+	}
+	if err := s.persistContinuityRequest(ctx, &continuity, input, dispatch.DispatchID, strings.TrimSpace(input.Query)); err != nil {
 		return QueryResult{}, err
 	}
 	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, dispatch, selectedSkills, "llm.dispatch.requested"); err != nil {
@@ -103,6 +133,9 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, finalDispatch, selectedSkills, terminalDispatchEvent(finalDispatch)); err != nil {
 		return QueryResult{}, err
 	}
+	if err := s.persistContinuityResponse(ctx, &continuity, input, finalDispatch); err != nil {
+		return QueryResult{}, err
+	}
 
 	result := QueryResult{
 		Query:          strings.TrimSpace(input.Query),
@@ -110,6 +143,7 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 		SkillContracts: selectedSkillContracts(selectedSkills),
 		Dispatch:       finalDispatch,
 	}
+	applyContinuityResult(&result, continuity)
 	if execErr != nil {
 		return result, execErr
 	}
@@ -134,12 +168,19 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 	if err := s.enforceProviderSetupGate(ctx, input.TenantID, dispatchInput.Provider, "chat"); err != nil {
 		return QueryResult{}, err
 	}
+	continuity, err := s.prepareContinuity(ctx, input, &dispatchInput)
+	if err != nil {
+		return QueryResult{}, err
+	}
 
 	dispatch, err := s.dispatcher.Prepare(dispatchInput, true)
 	if err != nil {
 		return QueryResult{}, err
 	}
 	if err := persistDispatch(ctx, s.store, dispatch); err != nil {
+		return QueryResult{}, err
+	}
+	if err := s.persistContinuityRequest(ctx, &continuity, input, dispatch.DispatchID, strings.TrimSpace(input.Query)); err != nil {
 		return QueryResult{}, err
 	}
 	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, dispatch, selectedSkills, "llm.dispatch.requested"); err != nil {
@@ -151,21 +192,30 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 			return nil
 		}
 		return emit(StreamChunk{
-			DispatchID:     dispatch.DispatchID,
-			Provider:       dispatch.Provider,
-			Model:          dispatch.Model,
-			Skills:         selectedSkillIDsFromSkills(selectedSkills),
-			SkillContracts: selectedSkillContracts(selectedSkills),
-			Delta:          chunk.Delta,
-			Reply:          chunk.Output,
-			FinishReason:   chunk.FinishReason,
-			Usage:          chunk.Usage,
+			DispatchID:          dispatch.DispatchID,
+			Provider:            dispatch.Provider,
+			Model:               dispatch.Model,
+			Skills:              selectedSkillIDsFromSkills(selectedSkills),
+			SkillContracts:      selectedSkillContracts(selectedSkills),
+			Delta:               chunk.Delta,
+			Reply:               chunk.Output,
+			FinishReason:        chunk.FinishReason,
+			Usage:               chunk.Usage,
+			ThreadID:            continuity.ThreadID,
+			SessionSegmentID:    continuity.SessionSegmentID,
+			RequestTurnID:       continuity.RequestTurnID,
+			ContinuityPreviewID: continuity.PreviewID,
+			ContinuityApplied:   continuity.Applied,
+			ContinuityStatus:    continuity.Status,
 		})
 	})
 	if err := persistDispatch(ctx, s.store, finalDispatch); err != nil {
 		return QueryResult{}, err
 	}
 	if _, err := publishDispatchEvent(ctx, s.eventBus, s.store, input.Scope, finalDispatch, selectedSkills, terminalDispatchEvent(finalDispatch)); err != nil {
+		return QueryResult{}, err
+	}
+	if err := s.persistContinuityResponse(ctx, &continuity, input, finalDispatch); err != nil {
 		return QueryResult{}, err
 	}
 
@@ -175,6 +225,7 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 		SkillContracts: selectedSkillContracts(selectedSkills),
 		Dispatch:       finalDispatch,
 	}
+	applyContinuityResult(&result, continuity)
 	if execErr != nil {
 		return result, execErr
 	}
@@ -225,6 +276,286 @@ func (s *Service) buildDispatchInput(input QueryInput) (llm.CreateDispatchInput,
 		TimeoutMs:  input.TimeoutMs,
 		MaxRetries: input.MaxRetries,
 	}, selectedSkills, nil
+}
+
+type continuityAssembly struct {
+	Enabled          bool
+	TenantID         string
+	ThreadID         string
+	SessionSegmentID string
+	RequestTurnID    string
+	ResponseTurnID   string
+	PreviewID        string
+	Applied          bool
+	Status           threads.ContinuityStatus
+	Included         []threads.ContinuityTurn
+	ExcludedItems    []threads.ContinuityPreviewItem
+	StartedAt        time.Time
+	CompletedAt      time.Time
+}
+
+func (s *Service) prepareContinuity(ctx context.Context, input QueryInput, dispatchInput *llm.CreateDispatchInput) (continuityAssembly, error) {
+	threadID := strings.TrimSpace(input.ThreadID)
+	tenantID := strings.TrimSpace(input.TenantID)
+	if s == nil || s.store == nil || threadID == "" || tenantID == "" {
+		return continuityAssembly{}, nil
+	}
+	started := time.Now().UTC()
+	mode := threads.NormalizeContinuityMode(input.ContinuityMode)
+	thread, found, err := s.store.GetThreadForTenant(ctx, tenantID, threadID)
+	if err != nil {
+		return continuityAssembly{}, err
+	}
+	if !found || strings.TrimSpace(thread.CurrentSessionSegmentID) == "" {
+		return continuityAssembly{}, nil
+	}
+	assembly := continuityAssembly{
+		Enabled:          true,
+		TenantID:         tenantID,
+		ThreadID:         thread.ThreadID,
+		SessionSegmentID: thread.CurrentSessionSegmentID,
+		PreviewID:        newContinuityPreviewID(),
+		Status:           threads.ContinuityStatusEmpty,
+		StartedAt:        started,
+	}
+	if mode == threads.ContinuityModeDisabled {
+		assembly.Status = threads.ContinuityStatusDisabled
+		assembly.CompletedAt = time.Now().UTC()
+		return assembly, nil
+	}
+	if thread.LifecycleState == threads.LifecycleStateArchived {
+		assembly.Status = threads.ContinuityStatusBlocked
+		assembly.ExcludedItems = append(assembly.ExcludedItems, threads.ContinuityPreviewItem{
+			TenantID:        tenantID,
+			ThreadID:        threadID,
+			ItemKind:        threads.ContinuityItemTurn,
+			Decision:        threads.ContinuityDecisionExcluded,
+			ReasonCode:      threads.ContinuityReasonLifecycleBlocked,
+			SafeSummary:     "Continuity blocked while thread is archived",
+			RedactionStatus: threads.RedactionStatusRedacted,
+		})
+		assembly.CompletedAt = time.Now().UTC()
+		return assembly, nil
+	}
+	turns, err := s.store.ListContinuityTurns(ctx, store.ContinuityLookupQuery{
+		TenantID:         tenantID,
+		ThreadID:         threadID,
+		SessionSegmentID: thread.CurrentSessionSegmentID,
+		Now:              started,
+	})
+	if err != nil {
+		return continuityAssembly{}, err
+	}
+	if thread.LifecycleState == threads.LifecycleStateReset {
+		resetTurns, err := s.store.ListContinuityTurnsOutsideSessionSegment(ctx, store.ContinuityLookupQuery{
+			TenantID:         tenantID,
+			ThreadID:         threadID,
+			SessionSegmentID: thread.CurrentSessionSegmentID,
+			Now:              started,
+		})
+		if err != nil {
+			return continuityAssembly{}, err
+		}
+		assembly.ExcludedItems = append(assembly.ExcludedItems, threads.ResetBoundaryPreviewItems(resetTurns, len(assembly.ExcludedItems))...)
+	}
+	included, excluded := threads.EligibleContinuityTurns(turns, threads.DefaultContinuityPolicy(), started)
+	assembly.Included = included
+	assembly.ExcludedItems = append(assembly.ExcludedItems, excluded...)
+	if len(included) > 0 {
+		dispatchInput.Messages = injectContinuityMessages(dispatchInput.Messages, included)
+		assembly.Applied = true
+		assembly.Status = threads.ContinuityStatusApplied
+	}
+	assembly.CompletedAt = time.Now().UTC()
+	return assembly, nil
+}
+
+func injectContinuityMessages(messages []llm.Message, turns []threads.ContinuityTurn) []llm.Message {
+	if len(turns) == 0 {
+		return messages
+	}
+	prior := make([]llm.Message, 0, len(turns))
+	for _, turn := range turns {
+		role := llm.RoleUser
+		if turn.Role == threads.ContinuityRoleAssistant {
+			role = llm.RoleAssistant
+		}
+		content := strings.TrimSpace(turn.SafeContent)
+		if content != "" {
+			prior = append(prior, llm.Message{Role: role, Content: content})
+		}
+		for _, excerpt := range turn.ArtifactExcerptRefs {
+			if excerpt.RedactionStatus != threads.RedactionStatusRedacted {
+				continue
+			}
+			summary := threads.SafeContinuityContent(excerpt.ExcerptText)
+			if summary.Status != threads.RedactionStatusRedacted || strings.TrimSpace(summary.Text) == "" {
+				continue
+			}
+			prior = append(prior, llm.Message{Role: role, Content: summary.Text})
+		}
+	}
+	if len(prior) == 0 {
+		return messages
+	}
+	out := make([]llm.Message, 0, len(messages)+len(prior))
+	inserted := false
+	for _, message := range messages {
+		if !inserted && message.Role == llm.RoleUser {
+			out = append(out, prior...)
+			inserted = true
+		}
+		out = append(out, message)
+	}
+	if !inserted {
+		out = append(out, prior...)
+	}
+	return out
+}
+
+func (s *Service) persistContinuityRequest(ctx context.Context, assembly *continuityAssembly, input QueryInput, dispatchID, query string) error {
+	if assembly == nil || !assembly.Enabled || s == nil || s.store == nil {
+		return nil
+	}
+	now := time.Now().UTC()
+	safeContent := threads.SafeContinuityContent(query)
+	turn, err := s.store.SaveContinuityTurn(ctx, threads.ContinuityTurn{
+		TenantID:               assembly.TenantID,
+		ThreadID:               assembly.ThreadID,
+		SessionSegmentID:       assembly.SessionSegmentID,
+		Role:                   threads.ContinuityRoleUser,
+		SourceKind:             continuitySourceKind(input.SourceKind),
+		SourceLinkageID:        strings.TrimSpace(input.SourceLinkageID),
+		SourceMessageID:        strings.TrimSpace(input.SourceMessageID),
+		SourceTimestamp:        input.SourceTimestamp,
+		DispatchID:             dispatchID,
+		SafeContent:            safeContent.Text,
+		ContentRedactionStatus: safeContent.Status,
+		RecordedAt:             now,
+		SourceEventKey:         strings.TrimSpace(input.SourceEventKey),
+	})
+	if err != nil {
+		return err
+	}
+	assembly.RequestTurnID = turn.ContinuityTurnID
+	return s.publishContinuityEvent(ctx, events.ThreadContinuityTurnRecordedEvent(turn, "recorded"))
+}
+
+func (s *Service) persistContinuityResponse(ctx context.Context, assembly *continuityAssembly, input QueryInput, dispatch llm.Dispatch) error {
+	if assembly == nil || !assembly.Enabled || s == nil || s.store == nil {
+		return nil
+	}
+	tenantID := assembly.TenantID
+	now := time.Now().UTC()
+	if dispatch.Output != "" {
+		safeContent := threads.SafeContinuityContent(dispatch.Output)
+		turn, err := s.store.SaveContinuityTurn(ctx, threads.ContinuityTurn{
+			TenantID:               tenantID,
+			ThreadID:               assembly.ThreadID,
+			SessionSegmentID:       assembly.SessionSegmentID,
+			Role:                   threads.ContinuityRoleAssistant,
+			SourceKind:             continuitySourceKind(input.SourceKind),
+			SourceLinkageID:        strings.TrimSpace(input.SourceLinkageID),
+			SourceTimestamp:        input.SourceTimestamp,
+			DispatchID:             dispatch.DispatchID,
+			ResponseToTurnID:       assembly.RequestTurnID,
+			SafeContent:            safeContent.Text,
+			ContentRedactionStatus: safeContent.Status,
+			RecordedAt:             now,
+			SourceEventKey:         responseContinuitySourceEventKey(input.SourceEventKey),
+		})
+		if err != nil {
+			return err
+		}
+		assembly.ResponseTurnID = turn.ContinuityTurnID
+		if err := s.publishContinuityEvent(ctx, events.ThreadContinuityTurnRecordedEvent(turn, "recorded")); err != nil {
+			return err
+		}
+	}
+	items := make([]threads.ContinuityPreviewItem, 0, len(assembly.Included)+len(assembly.ExcludedItems))
+	for _, turn := range assembly.Included {
+		items = append(items, threads.PreviewItemForTurn(turn, threads.ContinuityDecisionIncluded, threads.ContinuityReasonIncludedRecent, len(items)))
+		items = append(items, threads.PreviewItemsForArtifactExcerpts(turn, len(items), now)...)
+	}
+	for _, item := range assembly.ExcludedItems {
+		item.ItemOrder = len(items)
+		items = append(items, item)
+	}
+	itemIncluded, itemExcluded := continuityPreviewItemCounts(items)
+	preview, err := s.store.SaveContinuityPreview(ctx, threads.ContinuityPreview{
+		ContinuityPreviewID: assembly.PreviewID,
+		TenantID:            tenantID,
+		ThreadID:            assembly.ThreadID,
+		SessionSegmentID:    assembly.SessionSegmentID,
+		DispatchID:          dispatch.DispatchID,
+		RequestTurnID:       assembly.RequestTurnID,
+		ResponseTurnID:      assembly.ResponseTurnID,
+		IncludedCount:       itemIncluded,
+		ExcludedCount:       itemExcluded,
+		ContinuityApplied:   assembly.Applied,
+		Status:              assembly.Status,
+		AssemblyStartedAt:   assembly.StartedAt,
+		AssemblyCompletedAt: assembly.CompletedAt,
+		RedactionStatus:     threads.RedactionStatusRedacted,
+	}, items)
+	if err != nil {
+		return err
+	}
+	assembly.PreviewID = preview.ContinuityPreviewID
+	return s.publishContinuityEvent(ctx, events.ThreadContinuityPreviewRecordedEvent(preview))
+}
+
+func (s *Service) publishContinuityEvent(ctx context.Context, event events.Event) error {
+	if s == nil {
+		return nil
+	}
+	if event.EventID == "" {
+		event.EventID = newEventID()
+	}
+	if event.OccurredAt.IsZero() {
+		event.OccurredAt = time.Now().UTC()
+	}
+	if s.store != nil {
+		persisted, err := s.store.AppendEvent(ctx, event)
+		if err != nil {
+			return err
+		}
+		event = persisted
+	}
+	if s.eventBus == nil {
+		return nil
+	}
+	s.eventBus.Publish(event)
+	return nil
+}
+
+func applyContinuityResult(result *QueryResult, assembly continuityAssembly) {
+	if result == nil || !assembly.Enabled {
+		return
+	}
+	result.ThreadID = assembly.ThreadID
+	result.SessionSegmentID = assembly.SessionSegmentID
+	result.RequestTurnID = assembly.RequestTurnID
+	result.ResponseTurnID = assembly.ResponseTurnID
+	result.ContinuityPreviewID = assembly.PreviewID
+	result.ContinuityApplied = assembly.Applied
+	result.ContinuityStatus = assembly.Status
+	result.ContinuityIncludedCount = len(assembly.Included)
+	result.ContinuityExcludedCount = len(assembly.ExcludedItems)
+}
+
+func continuityPreviewItemCounts(items []threads.ContinuityPreviewItem) (int, int) {
+	included := 0
+	excluded := 0
+	for _, item := range items {
+		switch item.Decision {
+		case threads.ContinuityDecisionIncluded:
+			included++
+		case threads.ContinuityDecisionExcluded:
+			excluded++
+		}
+	}
+	return included, excluded
 }
 
 func resolveSelectedSkills(registry *skills.Registry, selected []string) ([]skills.Skill, error) {
@@ -388,6 +719,31 @@ func terminalDispatchEvent(dispatch llm.Dispatch) string {
 	default:
 		return "llm.dispatch.completed"
 	}
+}
+
+func continuitySourceKind(kind threads.SourceKind) threads.SourceKind {
+	switch kind {
+	case threads.SourceKindChannel, threads.SourceKindWorkflow, threads.SourceKindSchedule, threads.SourceKindShell, threads.SourceKindLegacy:
+		return kind
+	default:
+		return threads.SourceKindChat
+	}
+}
+
+func responseContinuitySourceEventKey(sourceEventKey string) string {
+	sourceEventKey = strings.TrimSpace(sourceEventKey)
+	if sourceEventKey == "" {
+		return ""
+	}
+	return sourceEventKey + ":assistant"
+}
+
+func newContinuityPreviewID() string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return "contprev_fallback"
+	}
+	return "contprev_" + hex.EncodeToString(buf)
 }
 
 func newEventID() string {

@@ -638,6 +638,10 @@ func (s *SQLiteStore) GetThreadDetailForTenant(ctx context.Context, tenantID, th
 	if err != nil {
 		return threads.ThreadDetailResponse{}, false, err
 	}
+	continuityPreviews, err := s.ListContinuityPreviewSummaries(ctx, tenantID, threadID, 10)
+	if err != nil {
+		return threads.ThreadDetailResponse{}, false, err
+	}
 	currentSessionID := ""
 	for _, segment := range segments {
 		if segment.SessionSegmentID == thread.CurrentSessionSegmentID {
@@ -651,6 +655,7 @@ func (s *SQLiteStore) GetThreadDetailForTenant(ctx context.Context, tenantID, th
 		SourceLinkages:     sourceLinkages,
 		RuntimeProjections: runtimeProjections,
 		LifecycleActions:   actions,
+		ContinuityPreviews: continuityPreviews,
 	}, true, nil
 }
 

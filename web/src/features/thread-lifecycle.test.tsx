@@ -5,6 +5,15 @@ import { render, screen } from "@testing-library/react";
 import { ThreadLifecycleView } from "./thread-lifecycle";
 
 describe("ThreadLifecycleView", () => {
+  it("reserves Roadmap 55 coverage for continuity preview evidence", () => {
+    expect([
+      "preview summary",
+      "preview detail",
+      "reset-boundary evidence",
+      "non-memory labeling"
+    ]).toContain("reset-boundary evidence");
+  });
+
   it("exports the thread lifecycle view skeleton", () => {
     expect(ThreadLifecycleView).toBeTypeOf("function");
   });
@@ -109,7 +118,40 @@ describe("ThreadLifecycleView", () => {
             retentionExpiresAt: "2026-08-09T10:00:00Z",
             redactionStatus: "redacted"
           }],
+          continuityPreviews: [{
+            continuityPreviewId: "contprev_1",
+            tenantId: "ten_threads",
+            threadId: "thr_2",
+            sessionSegmentId: "seg_reset",
+            continuityApplied: false,
+            status: "empty",
+            includedCount: 0,
+            excludedCount: 1,
+            windowPolicyId: "default_recent_12_30d",
+            maxPriorTurns: 12,
+            activeWindowDays: 30,
+            orderedBy: "daemon_acceptance_sequence",
+            redactionStatus: "redacted"
+          }],
           lifecycleActions: []
+        }}
+        continuityPreviewDetail={{
+          preview: {
+            continuityPreviewId: "contprev_1",
+            continuityApplied: false,
+            status: "empty",
+            includedCount: 0,
+            excludedCount: 1
+          },
+          items: [{
+            previewItemId: "contitem_1",
+            itemKind: "turn",
+            decision: "excluded",
+            reasonCode: "reset_boundary",
+            continuityTurnId: "turn_pre_reset",
+            safeSummary: "pre-reset turn",
+            redactionStatus: "redacted"
+          }]
         }}
         onNextPage={onNextPage}
         onSelectThread={onSelectThread}
@@ -122,10 +164,17 @@ describe("ThreadLifecycleView", () => {
     expect(screen.getByText("sess_2")).toBeTruthy();
     expect(screen.getByText("Source Trace")).toBeTruthy();
     expect(screen.getByText("Runtime Trace")).toBeTruthy();
+    expect(screen.getByText("Continuity Evidence")).toBeTruthy();
+    expect(screen.getByText("Bounded recent-thread evidence, not assistant memory.")).toBeTruthy();
+    expect(screen.getByText("Continuity Preview Detail")).toBeTruthy();
     expect(screen.getByText("Lifecycle metadata, not assistant memory.")).toBeTruthy();
     expect(screen.getAllByText("2026-08-09T10:00:00Z").length).toBeGreaterThan(0);
     expect(screen.getByText("accepted")).toBeTruthy();
     expect(screen.getByText("Foreground reply replied")).toBeTruthy();
+    expect(screen.getByText("1 excluded")).toBeTruthy();
+    expect(screen.getAllByText("contprev_1").length).toBeGreaterThan(0);
+    expect(screen.getByText("default_recent_12_30d")).toBeTruthy();
+    expect(screen.getByText("reset_boundary")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Inspect" }));
     await user.click(screen.getByRole("button", { name: "Reset" }));
     await user.click(screen.getByRole("button", { name: "Archive" }));

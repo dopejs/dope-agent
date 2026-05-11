@@ -146,3 +146,14 @@ This roadmap still does not add:
 - rich conversation UI behaviors
 
 Those remain future roadmap work.
+
+## Roadmap 55 Thread Continuity
+
+Minimal clients may pass `threadId` on `/v1/chat/query` and
+`/v1/chat/query/stream` to request bounded current-thread continuity. The daemon
+returns `continuityPreviewId`, `continuityApplied`, included/excluded counts, and
+the active `sessionSegmentId` when continuity is evaluated.
+
+This is not memory or retrieval. Clients must present it as bounded recent-thread
+continuity, and operators should inspect `/v1/threads/{threadId}/continuity-previews/{previewId}`
+for included/excluded evidence, reset-boundary exclusions, and redaction status.

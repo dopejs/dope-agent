@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/events/thread-continuity-turn-recorded.event.schema.json",
+  "title": "ThreadContinuityTurnRecordedEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["threadId", "sessionSegmentId", "continuityTurnId", "action", "outcome", "redactionStatus"],
+  "properties": {
+    "tenantId": { "type": "string", "minLength": 1 },
+    "threadId": { "type": "string", "minLength": 1 },
+    "sessionSegmentId": { "type": "string", "minLength": 1 },
+    "continuityTurnId": { "type": "string", "minLength": 1 },
+    "dispatchId": { "type": "string" },
+    "action": { "type": "string", "enum": ["turn_recorded"] },
+    "outcome": { "type": "string", "minLength": 1 },
+    "reasonCode": { "type": "string" },
+    "acceptanceSequence": { "type": "integer", "minimum": 0 },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "suppressed", "redaction_failed"] }
+  }
+}

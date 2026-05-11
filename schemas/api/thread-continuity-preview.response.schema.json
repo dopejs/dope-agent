@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.dope.agent/api/thread-continuity-preview.response.schema.json",
+  "title": "ThreadContinuityPreviewResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["preview", "items"],
+  "properties": {
+    "preview": { "$ref": "thread-continuity-preview.schema.json" },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "thread-continuity-preview-item.schema.json" }
+    }
+  }
+}

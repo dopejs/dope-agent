@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 50
+	CurrentSchemaVersion = 51
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -3352,6 +3352,90 @@ var schemaMigrations = []schemaMigration{
 				retention_expires_at TEXT NOT NULL
 			);
 			`,
+		},
+	},
+	{
+		Version: 51,
+		Name:    "r55_thread_continuity",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS thread_continuity_turns (
+				continuity_turn_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				thread_id TEXT NOT NULL,
+				session_segment_id TEXT NOT NULL,
+				acceptance_sequence INTEGER NOT NULL,
+				role TEXT NOT NULL,
+				source_kind TEXT NOT NULL,
+				source_linkage_id TEXT,
+				source_message_id TEXT,
+				source_timestamp TEXT,
+				dispatch_id TEXT,
+				response_to_turn_id TEXT,
+				safe_content TEXT,
+				content_redaction_status TEXT NOT NULL,
+				recorded_at TEXT NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				source_event_key TEXT,
+				document_json TEXT NOT NULL,
+				UNIQUE(tenant_id, thread_id, acceptance_sequence),
+				FOREIGN KEY(thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_continuity_turns_window ON thread_continuity_turns(tenant_id, thread_id, session_segment_id, acceptance_sequence DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_continuity_turns_retention ON thread_continuity_turns(tenant_id, retention_expires_at);`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_continuity_turns_source_event ON thread_continuity_turns(tenant_id, source_event_key) WHERE source_event_key IS NOT NULL AND source_event_key != '';`,
+			`
+			CREATE TABLE IF NOT EXISTS thread_continuity_previews (
+				continuity_preview_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				thread_id TEXT NOT NULL,
+				session_segment_id TEXT NOT NULL,
+				dispatch_id TEXT,
+				request_turn_id TEXT,
+				response_turn_id TEXT,
+				window_policy_id TEXT NOT NULL,
+				max_prior_turns INTEGER NOT NULL,
+				active_window_days INTEGER NOT NULL,
+				included_count INTEGER NOT NULL,
+				excluded_count INTEGER NOT NULL,
+				continuity_applied INTEGER NOT NULL,
+				status TEXT NOT NULL,
+				failure_class TEXT,
+				assembly_started_at TEXT NOT NULL,
+				assembly_completed_at TEXT NOT NULL,
+				assembly_duration_ms INTEGER NOT NULL,
+				retention_expires_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_continuity_previews_thread ON thread_continuity_previews(tenant_id, thread_id, assembly_completed_at DESC, continuity_preview_id DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_continuity_previews_retention ON thread_continuity_previews(tenant_id, retention_expires_at);`,
+			`
+			CREATE TABLE IF NOT EXISTS thread_continuity_preview_items (
+				preview_item_id TEXT PRIMARY KEY,
+				continuity_preview_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				thread_id TEXT NOT NULL,
+				item_kind TEXT NOT NULL,
+				continuity_turn_id TEXT,
+				artifact_ref TEXT,
+				artifact_excerpt_id TEXT,
+				decision TEXT NOT NULL,
+				reason_code TEXT NOT NULL,
+				acceptance_sequence INTEGER,
+				source_timestamp TEXT,
+				safe_summary TEXT,
+				redaction_status TEXT NOT NULL,
+				item_order INTEGER NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(continuity_preview_id) REFERENCES thread_continuity_previews(continuity_preview_id) ON DELETE CASCADE
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_continuity_preview_items_preview ON thread_continuity_preview_items(continuity_preview_id, item_order ASC, preview_item_id ASC);`,
+			`CREATE INDEX IF NOT EXISTS idx_thread_continuity_preview_items_thread ON thread_continuity_preview_items(tenant_id, thread_id, acceptance_sequence ASC);`,
 		},
 	},
 }

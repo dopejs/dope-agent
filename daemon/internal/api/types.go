@@ -205,28 +205,43 @@ type CreateIntegrationDiagnosticSmokeProbe struct {
 }
 
 type ChatQueryResponse struct {
-	DispatchID     string           `json:"dispatchId"`
-	Provider       string           `json:"provider"`
-	Model          string           `json:"model"`
-	Skills         []string         `json:"skills"`
-	SkillContracts []map[string]any `json:"skillContracts,omitempty"`
-	Query          string           `json:"query"`
-	Status         string           `json:"status"`
-	Partial        bool             `json:"partial"`
-	Reply          string           `json:"reply"`
-	FinishReason   string           `json:"finishReason,omitempty"`
-	Usage          llm.Usage        `json:"usage"`
-	ErrorCode      string           `json:"errorCode,omitempty"`
-	Error          string           `json:"error,omitempty"`
+	DispatchID              string           `json:"dispatchId"`
+	Provider                string           `json:"provider"`
+	Model                   string           `json:"model"`
+	Skills                  []string         `json:"skills"`
+	SkillContracts          []map[string]any `json:"skillContracts,omitempty"`
+	Query                   string           `json:"query"`
+	Status                  string           `json:"status"`
+	Partial                 bool             `json:"partial"`
+	Reply                   string           `json:"reply"`
+	FinishReason            string           `json:"finishReason,omitempty"`
+	Usage                   llm.Usage        `json:"usage"`
+	ErrorCode               string           `json:"errorCode,omitempty"`
+	Error                   string           `json:"error,omitempty"`
+	ThreadID                string           `json:"threadId,omitempty"`
+	SessionSegmentID        string           `json:"sessionSegmentId,omitempty"`
+	RequestTurnID           string           `json:"requestTurnId,omitempty"`
+	ResponseTurnID          string           `json:"responseTurnId,omitempty"`
+	ContinuityPreviewID     string           `json:"continuityPreviewId,omitempty"`
+	ContinuityApplied       *bool            `json:"continuityApplied,omitempty"`
+	ContinuityStatus        string           `json:"continuityStatus,omitempty"`
+	ContinuityIncludedCount *int             `json:"continuityIncludedCount,omitempty"`
+	ContinuityExcludedCount *int             `json:"continuityExcludedCount,omitempty"`
 }
 
 type ChatQueryStreamStarted struct {
-	DispatchID     string           `json:"dispatchId"`
-	Provider       string           `json:"provider"`
-	Model          string           `json:"model"`
-	Skills         []string         `json:"skills"`
-	SkillContracts []map[string]any `json:"skillContracts,omitempty"`
-	Query          string           `json:"query"`
+	DispatchID          string           `json:"dispatchId"`
+	Provider            string           `json:"provider"`
+	Model               string           `json:"model"`
+	Skills              []string         `json:"skills"`
+	SkillContracts      []map[string]any `json:"skillContracts,omitempty"`
+	Query               string           `json:"query"`
+	ThreadID            string           `json:"threadId,omitempty"`
+	SessionSegmentID    string           `json:"sessionSegmentId,omitempty"`
+	RequestTurnID       string           `json:"requestTurnId,omitempty"`
+	ContinuityPreviewID string           `json:"continuityPreviewId,omitempty"`
+	ContinuityApplied   *bool            `json:"continuityApplied,omitempty"`
+	ContinuityStatus    string           `json:"continuityStatus,omitempty"`
 }
 
 type ChatQueryStreamDelta struct {

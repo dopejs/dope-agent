@@ -1311,6 +1311,7 @@ describe("App", () => {
     await user.selectOptions(screen.getByLabelText(/plane filter/i), "delivery");
     await user.selectOptions(screen.getByLabelText(/severity filter/i), "critical");
     await user.click(screen.getByRole("button", { name: /apply filters/i }));
+    await user.type(screen.getByLabelText(/thread id/i), "thr_web");
 
     await waitFor(() => {
       expect(mockClient.getDiagnostics).toHaveBeenLastCalledWith({
@@ -1323,7 +1324,8 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(mockClient.queryChat).toHaveBeenCalledWith({
-        query: "Return one bounded readiness confirmation."
+        query: "Return one bounded readiness confirmation.",
+        threadId: "thr_web"
       }, { tenantId: "ten_personal" });
       expect(screen.getByText(/Test query completed with 2 total tokens/i)).not.toBeNull();
     });
