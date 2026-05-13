@@ -39,6 +39,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/profiles"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/reminders"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
@@ -396,6 +397,12 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/threads/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/threads/", "threads", "thread_id", "thread", func(w http.ResponseWriter, r *http.Request) {
 		handleThreadLifecycleRoutes(deps.Store, deps.EventBus, w, r)
 	})))
+	mux.HandleFunc("/v1/profiles", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleAgentProfileRoutes(deps.Store, deps.EventBus, w, r)
+	}))
+	mux.HandleFunc("/v1/profiles/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleAgentProfileRoutes(deps.Store, deps.EventBus, w, r)
+	}))
 	mux.HandleFunc("/v1/sessions", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSessions(deps.Router, deps.EventBus, deps.Store, w, r)
 	}))
@@ -720,6 +727,11 @@ func handleRuns(cfg config.Config, sessionRouter *router.SessionRouter, manager 
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		runs, err = projectRunProfileProjections(r.Context(), sqliteStore, runs)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, ListResponse[runtime.Run]{Items: runs})
 	case http.MethodPost:
 		var request CreateRunRequest
@@ -793,6 +805,26 @@ func handleRuns(cfg config.Config, sessionRouter *router.SessionRouter, manager 
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		if projection, err := recordActiveProfileProjectionForTarget(r.Context(), sqliteStore, eventBus, runtimeProfileProjectionTarget{
+			ResourceKind: profiles.RuntimeResourceRun,
+			ResourceID:   run.RunID,
+			RunID:        run.RunID,
+		}); err != nil {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "run profile projection failed before response")
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		} else if projection != nil {
+			run.ActiveProfileProjection = projection
+		}
+		if _, err := recordActiveProfileProjectionForTarget(r.Context(), sqliteStore, eventBus, runtimeProfileProjectionTarget{
+			ResourceKind: profiles.RuntimeResourceSession,
+			ResourceID:   session.SessionID,
+			RunID:        run.RunID,
+		}); err != nil {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "session profile projection failed before response")
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		if reservation.ReservationID != "" {
 			if _, err := billingManager.Commit(r.Context(), billing.ResolveInput{
 				TenantID:     reservation.TenantID,
@@ -839,6 +871,9 @@ func handleRuns(cfg config.Config, sessionRouter *router.SessionRouter, manager 
 			return
 		}
 
+		if !canInspectProfileRuntime(r.Context()) {
+			run.ActiveProfileProjection = nil
+		}
 		writeJSON(w, http.StatusCreated, run)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -854,7 +889,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 
 	parts := strings.Split(path, "/")
 	if len(parts) == 1 {
-		handleRunByID(deliveryManager, manager, w, r, parts[0])
+		handleRunByID(deliveryManager, manager, sqliteStore, w, r, parts[0])
 		return
 	}
 
@@ -966,7 +1001,7 @@ func handleRunRoutes(cfg config.Config, manager *runtime.Manager, policyEngine *
 	http.NotFound(w, r)
 }
 
-func handleRunByID(deliveryManager *delivery.Manager, manager *runtime.Manager, w http.ResponseWriter, r *http.Request, runID string) {
+func handleRunByID(deliveryManager *delivery.Manager, manager *runtime.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, runID string) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -983,6 +1018,11 @@ func handleRunByID(deliveryManager *delivery.Manager, manager *runtime.Manager, 
 		return
 	}
 	run, err := projectRunDeliverySummary(r.Context(), deliveryManager, run)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	run, err = projectRunProfileProjection(r.Context(), sqliteStore, run)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1114,6 +1154,11 @@ func handleSessions(sessionRouter *router.SessionRouter, eventBus *events.Bus, s
 	// tenant's sessions. Filter by the caller's tenant against the
 	// store's `tenant_id` column.
 	sessions, err := filterSessionsByTenant(r.Context(), sqliteStore, sessionRouter.ListSessions())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	sessions, err = projectSessionProfileProjections(r.Context(), sqliteStore, sessions)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

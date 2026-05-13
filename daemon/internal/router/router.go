@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/profiles"
 )
 
 var (
@@ -30,19 +32,20 @@ const (
 )
 
 type Session struct {
-	SessionID    string        `json:"sessionId"`
-	Kind         SessionKind   `json:"kind"`
-	Status       SessionStatus `json:"status"`
-	Channel      string        `json:"channel"`
-	AccountID    string        `json:"accountId,omitempty"`
-	PeerID       string        `json:"peerId"`
-	ThreadID     string        `json:"threadId,omitempty"`
-	RoutingKey   string        `json:"routingKey"`
-	Generation   int           `json:"generation"`
-	CreatedAt    time.Time     `json:"createdAt"`
-	UpdatedAt    time.Time     `json:"updatedAt"`
-	LastActiveAt time.Time     `json:"lastActiveAt"`
-	LastResetAt  *time.Time    `json:"lastResetAt,omitempty"`
+	SessionID               string                      `json:"sessionId"`
+	Kind                    SessionKind                 `json:"kind"`
+	Status                  SessionStatus               `json:"status"`
+	Channel                 string                      `json:"channel"`
+	AccountID               string                      `json:"accountId,omitempty"`
+	PeerID                  string                      `json:"peerId"`
+	ThreadID                string                      `json:"threadId,omitempty"`
+	RoutingKey              string                      `json:"routingKey"`
+	Generation              int                         `json:"generation"`
+	CreatedAt               time.Time                   `json:"createdAt"`
+	UpdatedAt               time.Time                   `json:"updatedAt"`
+	LastActiveAt            time.Time                   `json:"lastActiveAt"`
+	LastResetAt             *time.Time                  `json:"lastResetAt,omitempty"`
+	ActiveProfileProjection *profiles.RuntimeProjection `json:"activeProfileProjection,omitempty"`
 }
 
 type RouteInput struct {

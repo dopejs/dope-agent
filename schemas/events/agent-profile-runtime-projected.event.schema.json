@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-profile-runtime-projected.event.schema.json",
+  "type": "object",
+  "required": ["eventId", "category", "name", "occurredAt", "resource", "payload"],
+  "properties": {
+    "eventId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "category": { "const": "agent_profile" },
+    "name": { "const": "agent_profile.runtime_projected" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "resource": { "type": "object", "required": ["kind", "id"] },
+    "payload": {
+      "type": "object",
+      "required": ["runtimeProfileProjectionId", "profileId", "profileVersionId", "selectionId", "selectionScope", "selectionReason", "safeDisplayName", "safeSummary", "redactionStatus"],
+      "properties": {
+        "runtimeProfileProjectionId": { "type": "string" },
+        "profileId": { "type": "string" },
+        "profileVersionId": { "type": "string" },
+        "selectionId": { "type": "string" },
+        "selectionScope": { "type": "string" },
+        "selectionReason": { "type": "string" },
+        "safeDisplayName": { "type": "string" },
+        "safeSummary": { "type": "string" },
+        "redactionStatus": { "enum": ["redacted", "suppressed", "redaction_failed"] }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

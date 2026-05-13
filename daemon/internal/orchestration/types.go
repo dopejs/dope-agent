@@ -7,6 +7,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/mail"
+	"github.com/dopejs/dope-agent/daemon/internal/profiles"
 )
 
 type WorkflowStatus string
@@ -71,28 +72,29 @@ type CreateWorkflowInput struct {
 }
 
 type Workflow struct {
-	WorkflowID             string         `json:"workflowId"`
-	RunID                  string         `json:"runId"`
-	ScheduleID             string         `json:"scheduleId,omitempty"`
-	ScheduleAttemptID      string         `json:"scheduleAttemptId,omitempty"`
-	ReminderID             string         `json:"reminderId,omitempty"`
-	ReminderOccurrenceID   string         `json:"reminderOccurrenceId,omitempty"`
-	EnvironmentScope       string         `json:"environmentScope,omitempty"`
-	Goal                   string         `json:"goal"`
-	Status                 WorkflowStatus `json:"status"`
-	PlanSummary            string         `json:"planSummary,omitempty"`
-	FailureSummary         string         `json:"failureSummary,omitempty"`
-	LatestDeliveryID       string         `json:"latestDeliveryId,omitempty"`
-	LatestDeliveryStatus   string         `json:"latestDeliveryStatus,omitempty"`
-	LatestDeliveryTargetID string         `json:"latestDeliveryTargetId,omitempty"`
-	CreatedAt              time.Time      `json:"createdAt"`
-	UpdatedAt              time.Time      `json:"updatedAt"`
-	StartedAt              *time.Time     `json:"startedAt,omitempty"`
-	CompletedAt            *time.Time     `json:"completedAt,omitempty"`
-	InterruptedAt          *time.Time     `json:"interruptedAt,omitempty"`
-	Steps                  []WorkflowStep `json:"steps,omitempty"`
-	Dependencies           []Dependency   `json:"dependencies,omitempty"`
-	Handoffs               []Handoff      `json:"handoffs,omitempty"`
+	WorkflowID              string                      `json:"workflowId"`
+	RunID                   string                      `json:"runId"`
+	ScheduleID              string                      `json:"scheduleId,omitempty"`
+	ScheduleAttemptID       string                      `json:"scheduleAttemptId,omitempty"`
+	ReminderID              string                      `json:"reminderId,omitempty"`
+	ReminderOccurrenceID    string                      `json:"reminderOccurrenceId,omitempty"`
+	EnvironmentScope        string                      `json:"environmentScope,omitempty"`
+	Goal                    string                      `json:"goal"`
+	Status                  WorkflowStatus              `json:"status"`
+	PlanSummary             string                      `json:"planSummary,omitempty"`
+	FailureSummary          string                      `json:"failureSummary,omitempty"`
+	LatestDeliveryID        string                      `json:"latestDeliveryId,omitempty"`
+	LatestDeliveryStatus    string                      `json:"latestDeliveryStatus,omitempty"`
+	LatestDeliveryTargetID  string                      `json:"latestDeliveryTargetId,omitempty"`
+	ActiveProfileProjection *profiles.RuntimeProjection `json:"activeProfileProjection,omitempty"`
+	CreatedAt               time.Time                   `json:"createdAt"`
+	UpdatedAt               time.Time                   `json:"updatedAt"`
+	StartedAt               *time.Time                  `json:"startedAt,omitempty"`
+	CompletedAt             *time.Time                  `json:"completedAt,omitempty"`
+	InterruptedAt           *time.Time                  `json:"interruptedAt,omitempty"`
+	Steps                   []WorkflowStep              `json:"steps,omitempty"`
+	Dependencies            []Dependency                `json:"dependencies,omitempty"`
+	Handoffs                []Handoff                   `json:"handoffs,omitempty"`
 }
 
 type WorkflowStep struct {

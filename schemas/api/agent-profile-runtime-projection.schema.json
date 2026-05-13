@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-profile-runtime-projection.schema.json",
+  "type": "object",
+  "required": ["runtimeProfileProjectionId", "profileId", "profileVersionId", "selectionId", "resourceKind", "resourceId", "selectionScope", "selectionReason", "safeDisplayName", "safeSummary", "occurredAt", "redactionStatus"],
+  "properties": {
+    "runtimeProfileProjectionId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "profileId": { "type": "string" },
+    "profileVersionId": { "type": "string" },
+    "selectionId": { "type": "string" },
+    "resourceKind": { "enum": ["thread", "session", "run", "workflow", "handoff_destination"] },
+    "resourceId": { "type": "string" },
+    "safeDisplayName": { "type": "string" },
+    "safeSummary": { "type": "string" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": { "enum": ["redacted", "suppressed", "redaction_failed"] }
+  },
+  "additionalProperties": true
+}

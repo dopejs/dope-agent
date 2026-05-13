@@ -11,6 +11,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
+	"github.com/dopejs/dope-agent/daemon/internal/profiles"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/threads"
 )
@@ -74,10 +75,18 @@ func TestThreadHandoffCreateChannelToWebPersistsSeparateDestinationAndReferences
 		t.Fatalf("SaveContinuityTurn: %v", err)
 	}
 	seedHandoffConnectorAndPolicy(t, sqliteStore, source.TenantID, "slack-main", "channel_redacted")
+	profileResult, err := sqliteStore.CreateAgentProfile(context.Background(), identity.TenantContext{TenantID: source.TenantID, PrincipalID: "prn_profile_admin"}, profiles.MutationInput{
+		DisplayName: "Handoff Agent",
+		Persona:     profiles.Persona{SafeSummary: "handoff profile"},
+		Activate:    true,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentProfile: %v", err)
+	}
 
 	eventBus := events.NewBus()
 	req := httptest.NewRequest(http.MethodPost, "/v1/threads/thr_handoff_source/handoffs", strings.NewReader(`{"destination":{"surface":"web"},"reasonCode":"user_requested_handoff"}`))
-	req = req.WithContext(withTenantContext(req.Context(), threadTenantContext(identity.PermissionConnectorsManage)))
+	req = req.WithContext(withTenantContext(req.Context(), threadTenantContext(identity.PermissionConnectorsManage, identity.PermissionProfilesInspect)))
 	rec := httptest.NewRecorder()
 	handleThreadLifecycleRoutes(sqliteStore, eventBus, rec, req)
 	if rec.Code != http.StatusCreated {
@@ -86,6 +95,9 @@ func TestThreadHandoffCreateChannelToWebPersistsSeparateDestinationAndReferences
 	link := decodeStrictResponse[threads.HandoffLink](t, rec.Body.Bytes())
 	if link.SourceThreadID != source.ThreadID || link.DestinationThreadID == "" || link.DestinationThreadID == source.ThreadID || link.DestinationConversationShape != threads.ConversationShapeWeb {
 		t.Fatalf("unexpected handoff link: %+v", link)
+	}
+	if link.ActiveProfileProjection == nil || link.ActiveProfileProjection.ProfileID != profileResult.Profile.ProfileID || link.ActiveProfileProjection.ResourceKind != profiles.RuntimeResourceHandoffDestination {
+		t.Fatalf("expected handoff destination active profile projection, got %+v", link.ActiveProfileProjection)
 	}
 	refs, err := sqliteStore.ListHandoffSourceReferencesForLink(context.Background(), source.TenantID, link.HandoffLinkID)
 	if err != nil {
@@ -100,6 +112,9 @@ func TestThreadHandoffCreateChannelToWebPersistsSeparateDestinationAndReferences
 	}
 	if detail.ConversationShape == nil || detail.ConversationShape.Shape != threads.ConversationShapeWeb || len(detail.HandoffLinks) != 1 {
 		t.Fatalf("destination detail missing web shape/handoff evidence: %+v", detail)
+	}
+	if detail.HandoffLinks[0].ActiveProfileProjection == nil || detail.HandoffLinks[0].ActiveProfileProjection.ProfileID != profileResult.Profile.ProfileID {
+		t.Fatalf("destination detail missing handoff profile projection: %+v", detail.HandoffLinks[0])
 	}
 	foundEvent := false
 	for _, event := range eventBus.List(events.Filter{Category: "thread"}) {

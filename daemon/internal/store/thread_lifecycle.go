@@ -638,6 +638,10 @@ func (s *SQLiteStore) GetThreadDetailForTenant(ctx context.Context, tenantID, th
 	if err != nil {
 		return threads.ThreadDetailResponse{}, false, err
 	}
+	activeProfileProjections, err := s.ListRuntimeProfileProjections(ctx, tenantID, "", "", threadID, 1)
+	if err != nil {
+		return threads.ThreadDetailResponse{}, false, err
+	}
 	continuityPreviews, err := s.ListContinuityPreviewSummaries(ctx, tenantID, threadID, 10)
 	if err != nil {
 		return threads.ThreadDetailResponse{}, false, err
@@ -678,6 +682,9 @@ func (s *SQLiteStore) GetThreadDetailForTenant(ctx context.Context, tenantID, th
 	}
 	if hasShape {
 		response.ConversationShape = &shape
+	}
+	if len(activeProfileProjections) > 0 {
+		response.ActiveProfileProjection = &activeProfileProjections[0]
 	}
 	return response, true, nil
 }

@@ -1,6 +1,10 @@
 package threads
 
-import "time"
+import (
+	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/profiles"
+)
 
 type RuntimeResourceKind string
 
@@ -37,16 +41,17 @@ type ThreadListResponse struct {
 }
 
 type ThreadDetailResponse struct {
-	Thread                 ThreadResource             `json:"thread"`
-	SessionSegments        []SessionSegment           `json:"sessionSegments"`
-	SourceLinkages         []SourceLinkage            `json:"sourceLinkages"`
-	RuntimeProjections     []RuntimeProjection        `json:"runtimeProjections"`
-	LifecycleActions       []LifecycleAction          `json:"lifecycleActions"`
-	ContinuityPreviews     []ContinuityPreview        `json:"continuityPreviews,omitempty"`
-	ConversationShape      *ConversationShapeEvidence `json:"conversationShape,omitempty"`
-	ParticipationDecisions []ParticipationDecision    `json:"participationDecisions,omitempty"`
-	ResetEvents            []ResetEvent               `json:"resetEvents,omitempty"`
-	HandoffLinks           []HandoffLink              `json:"handoffLinks,omitempty"`
+	Thread                  ThreadResource              `json:"thread"`
+	SessionSegments         []SessionSegment            `json:"sessionSegments"`
+	SourceLinkages          []SourceLinkage             `json:"sourceLinkages"`
+	RuntimeProjections      []RuntimeProjection         `json:"runtimeProjections"`
+	LifecycleActions        []LifecycleAction           `json:"lifecycleActions"`
+	ContinuityPreviews      []ContinuityPreview         `json:"continuityPreviews,omitempty"`
+	ConversationShape       *ConversationShapeEvidence  `json:"conversationShape,omitempty"`
+	ParticipationDecisions  []ParticipationDecision     `json:"participationDecisions,omitempty"`
+	ResetEvents             []ResetEvent                `json:"resetEvents,omitempty"`
+	HandoffLinks            []HandoffLink               `json:"handoffLinks,omitempty"`
+	ActiveProfileProjection *profiles.RuntimeProjection `json:"activeProfileProjection,omitempty"`
 }
 
 type ThreadPage struct {

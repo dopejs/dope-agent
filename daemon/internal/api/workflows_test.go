@@ -16,10 +16,12 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/config"
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
 	"github.com/dopejs/dope-agent/daemon/internal/mail"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/profiles"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
@@ -47,6 +49,11 @@ func TestWorkflowPlanningRoutesExposeInspectablePlanAndEnvironmentIsolation(t *t
 	}
 	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
 		t.Fatalf("UpsertRun returned error: %v", err)
+	}
+	tenantContext := identity.TenantContext{TenantID: "ten_workflow_profile", PrincipalID: "prn_admin", Permissions: []identity.Permission{identity.PermissionProfilesInspect, identity.PermissionProfilesManage}}
+	profileResult, err := sqliteStore.CreateAgentProfile(context.Background(), tenantContext, profiles.MutationInput{DisplayName: "Workflow Agent", Persona: profiles.Persona{SafeSummary: "workflow profile"}, Activate: true})
+	if err != nil {
+		t.Fatalf("CreateAgentProfile returned error: %v", err)
 	}
 
 	registry := newAllowSkillRegistryForWorkflowTest(t, cfg.DataDir)
@@ -79,13 +86,18 @@ func TestWorkflowPlanningRoutesExposeInspectablePlanAndEnvironmentIsolation(t *t
 	}
 
 	createRec := httptest.NewRecorder()
-	server.Handler().ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows", strings.NewReader(`{}`)))
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows", strings.NewReader(`{}`))
+	createReq = createReq.WithContext(withTenantContext(createReq.Context(), tenantContext))
+	server.Handler().ServeHTTP(createRec, createReq)
 	if createRec.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d body=%s", createRec.Code, createRec.Body.String())
 	}
 	created := decodeStrictResponse[orchestration.Workflow](t, createRec.Body.Bytes())
 	if created.Status != orchestration.WorkflowStatusPlanned {
 		t.Fatalf("expected planned workflow, got %s", created.Status)
+	}
+	if created.ActiveProfileProjection == nil || created.ActiveProfileProjection.ProfileID != profileResult.Profile.ProfileID {
+		t.Fatalf("expected workflow profile projection, got %+v", created.ActiveProfileProjection)
 	}
 	if len(created.Steps) != 1 {
 		t.Fatalf("expected one planned step, got %d", len(created.Steps))
@@ -95,7 +107,9 @@ func TestWorkflowPlanningRoutesExposeInspectablePlanAndEnvironmentIsolation(t *t
 	}
 
 	listRec := httptest.NewRecorder()
-	server.Handler().ServeHTTP(listRec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/workflows", nil))
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/workflows", nil)
+	listReq = listReq.WithContext(withTenantContext(listReq.Context(), tenantContext))
+	server.Handler().ServeHTTP(listRec, listReq)
 	if listRec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", listRec.Code, listRec.Body.String())
 	}
@@ -105,7 +119,9 @@ func TestWorkflowPlanningRoutesExposeInspectablePlanAndEnvironmentIsolation(t *t
 	}
 
 	getRec := httptest.NewRecorder()
-	server.Handler().ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/workflows/"+created.WorkflowID, nil))
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/workflows/"+created.WorkflowID, nil)
+	getReq = getReq.WithContext(withTenantContext(getReq.Context(), tenantContext))
+	server.Handler().ServeHTTP(getRec, getReq)
 	if getRec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", getRec.Code, getRec.Body.String())
 	}
@@ -115,6 +131,9 @@ func TestWorkflowPlanningRoutesExposeInspectablePlanAndEnvironmentIsolation(t *t
 	}
 	if got.PlanSummary == "" || got.Steps[0].SelectionRationale == "" {
 		t.Fatalf("expected inspectable planning truth, got %+v", got)
+	}
+	if got.ActiveProfileProjection == nil || got.ActiveProfileProjection.ProfileID != profileResult.Profile.ProfileID {
+		t.Fatalf("expected workflow get profile projection, got %+v", got.ActiveProfileProjection)
 	}
 }
 
@@ -139,6 +158,11 @@ func TestWorkflowStartExecutesAllowModeSkillAndLinksRuntimeTruth(t *testing.T) {
 	if err := sqliteStore.UpsertRun(context.Background(), run); err != nil {
 		t.Fatalf("UpsertRun returned error: %v", err)
 	}
+	tenantContext := identity.TenantContext{TenantID: "ten_workflow_start_profile", PrincipalID: "prn_admin", Permissions: []identity.Permission{identity.PermissionProfilesInspect, identity.PermissionProfilesManage}}
+	profileResult, err := sqliteStore.CreateAgentProfile(context.Background(), tenantContext, profiles.MutationInput{DisplayName: "Workflow Start Agent", Persona: profiles.Persona{SafeSummary: "workflow start profile"}, Activate: true})
+	if err != nil {
+		t.Fatalf("CreateAgentProfile returned error: %v", err)
+	}
 
 	registry := newAllowSkillRegistryForWorkflowTest(t, cfg.DataDir)
 	eventBus := events.NewBus()
@@ -157,14 +181,18 @@ func TestWorkflowStartExecutesAllowModeSkillAndLinksRuntimeTruth(t *testing.T) {
 	})
 
 	createRec := httptest.NewRecorder()
-	server.Handler().ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows", strings.NewReader(`{}`)))
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows", strings.NewReader(`{}`))
+	createReq = createReq.WithContext(withTenantContext(createReq.Context(), tenantContext))
+	server.Handler().ServeHTTP(createRec, createReq)
 	if createRec.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d body=%s", createRec.Code, createRec.Body.String())
 	}
 	created := decodeStrictResponse[orchestration.Workflow](t, createRec.Body.Bytes())
 
 	startRec := httptest.NewRecorder()
-	server.Handler().ServeHTTP(startRec, httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows/"+created.WorkflowID+"/start", nil))
+	startReq := httptest.NewRequest(http.MethodPost, "/v1/runs/"+run.RunID+"/workflows/"+created.WorkflowID+"/start", nil)
+	startReq = startReq.WithContext(withTenantContext(startReq.Context(), tenantContext))
+	server.Handler().ServeHTTP(startRec, startReq)
 	if startRec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", startRec.Code, startRec.Body.String())
 	}
@@ -173,7 +201,9 @@ func TestWorkflowStartExecutesAllowModeSkillAndLinksRuntimeTruth(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		getRec := httptest.NewRecorder()
-		server.Handler().ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/workflows/"+created.WorkflowID, nil))
+		getReq := httptest.NewRequest(http.MethodGet, "/v1/runs/"+run.RunID+"/workflows/"+created.WorkflowID, nil)
+		getReq = getReq.WithContext(withTenantContext(getReq.Context(), tenantContext))
+		server.Handler().ServeHTTP(getRec, getReq)
 		if getRec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d body=%s", getRec.Code, getRec.Body.String())
 		}
@@ -188,6 +218,16 @@ func TestWorkflowStartExecutesAllowModeSkillAndLinksRuntimeTruth(t *testing.T) {
 	}
 	if len(final.Steps) != 1 || final.Steps[0].RuntimeStepID == "" || final.Steps[0].ActiveToolCallID == "" {
 		t.Fatalf("expected runtime linkage on workflow step, got %+v", final.Steps)
+	}
+	if final.ActiveProfileProjection == nil || final.ActiveProfileProjection.ProfileID != profileResult.Profile.ProfileID {
+		t.Fatalf("expected workflow-start profile projection, got %+v", final.ActiveProfileProjection)
+	}
+	projections, err := sqliteStore.ListRuntimeProfileProjections(context.Background(), tenantContext.TenantID, string(profiles.RuntimeResourceWorkflow), created.WorkflowID, "", 10)
+	if err != nil {
+		t.Fatalf("ListRuntimeProfileProjections returned error: %v", err)
+	}
+	if len(projections) < 2 || projections[len(projections)-1].ProfileID != profileResult.Profile.ProfileID {
+		t.Fatalf("expected create and start projections without rewrite, got %+v", projections)
 	}
 
 	step, ok := manager.GetStep(run.RunID, final.Steps[0].RuntimeStepID)

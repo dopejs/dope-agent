@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-profile-overlay-reference.schema.json",
+  "type": "object",
+  "required": ["overlayReferenceId", "profileId", "referenceKind", "scope", "referenceUri", "safeDisplayLabel", "validationState", "createdAt", "updatedAt", "redactionStatus"],
+  "properties": {
+    "overlayReferenceId": { "type": "string" },
+    "profileId": { "type": "string" },
+    "profileVersionId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "referenceKind": { "type": "string" },
+    "scope": { "type": "string" },
+    "referenceUri": { "type": "string" },
+    "safeDisplayLabel": { "type": "string" },
+    "validationState": { "enum": ["valid", "partial", "missing", "permission_denied", "out_of_scope", "too_large", "unsafe_content", "redaction_failed"] },
+    "failureReasonCode": { "type": "string" },
+    "lastValidatedAt": { "type": "string", "format": "date-time" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "redactionStatus": { "enum": ["redacted", "suppressed", "redaction_failed"] }
+  },
+  "additionalProperties": true
+}

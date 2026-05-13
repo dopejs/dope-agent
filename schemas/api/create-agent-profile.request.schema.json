@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create-agent-profile.request.schema.json",
+  "type": "object",
+  "required": ["displayName"],
+  "properties": {
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "displayIdentity": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "safeSummary": { "type": "string", "maxLength": 160 }
+      },
+      "additionalProperties": false
+    },
+    "persona": {
+      "type": "object",
+      "properties": {
+        "tone": { "type": "string", "maxLength": 80 },
+        "instructions": { "type": "string", "maxLength": 4000 },
+        "safeSummary": { "type": "string", "maxLength": 160 }
+      },
+      "additionalProperties": false
+    },
+    "defaultProviderPreference": {
+      "type": "object",
+      "properties": {
+        "providerId": { "type": "string", "maxLength": 160, "pattern": "^[A-Za-z0-9._:/@-]*$" },
+        "model": { "type": "string", "maxLength": 160, "pattern": "^[A-Za-z0-9._:/@-]*$" },
+        "reasoningLevel": { "enum": ["", "low", "medium", "high", "xhigh"] },
+        "validationState": { "enum": ["", "valid", "partial"] },
+        "failureReasonCode": { "type": "string", "maxLength": 0 }
+      },
+      "additionalProperties": false
+    },
+    "safetyDefaults": {
+      "type": "object",
+      "properties": {
+        "approvalPosture": { "enum": ["", "ask", "ask_for_risky_changes", "always_ask", "manual", "auto_read_only"] },
+        "riskTolerance": { "enum": ["", "low", "medium", "high"] },
+        "validationState": { "enum": ["", "valid", "partial"] },
+        "failureReasonCode": { "type": "string", "maxLength": 0 }
+      },
+      "additionalProperties": false
+    },
+    "legacyMappingEvidence": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "properties": {
+          "sourceKind": { "type": "string", "maxLength": 80 },
+          "mappingState": { "enum": ["valid", "partial", "missing", "permission_denied", "out_of_scope", "too_large", "unsafe_content", "redaction_failed"] },
+          "reasonCode": { "type": "string", "maxLength": 160 },
+          "safeSummary": { "type": "string", "maxLength": 160 },
+          "redactionStatus": { "enum": ["redacted", "suppressed", "redaction_failed"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "overlayReferences": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["referenceUri"],
+        "properties": {
+          "referenceKind": { "type": "string", "maxLength": 80, "pattern": "^[A-Za-z0-9._:/@-]*$" },
+          "referenceUri": { "type": "string", "minLength": 1, "maxLength": 1024, "not": { "pattern": "(^/|(^|/)\\.\\.(/|$))" } },
+          "scope": { "enum": ["", "profile"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "activate": { "type": "boolean" },
+    "reasonCode": { "type": "string", "maxLength": 160 }
+  },
+  "additionalProperties": false
+}

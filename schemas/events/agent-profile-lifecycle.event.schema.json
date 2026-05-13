@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-profile-lifecycle.event.schema.json",
+  "type": "object",
+  "required": ["eventId", "category", "name", "occurredAt", "resource", "payload"],
+  "properties": {
+    "eventId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "category": { "const": "agent_profile" },
+    "name": {
+      "enum": [
+        "agent_profile.created",
+        "agent_profile.updated",
+        "agent_profile.activated",
+        "agent_profile.rolled_back",
+        "agent_profile.archived",
+        "agent_profile.disabled",
+        "agent_profile.validation_failed",
+        "agent_profile.permission_denied",
+        "agent_profile.create_denied",
+        "agent_profile.update_denied",
+        "agent_profile.inspect_denied",
+        "agent_profile.activate_denied",
+        "agent_profile.rollback_denied",
+        "agent_profile.retirement_denied",
+        "agent_profile.safe_default_fallback"
+      ]
+    },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "resource": { "type": "object", "required": ["kind", "id"] },
+    "payload": {
+      "type": "object",
+      "required": ["outcome", "reasonCode", "redactionStatus"],
+      "properties": {
+        "profileId": { "type": "string" },
+        "profileVersionId": { "type": "string" },
+        "actorPrincipalId": { "type": "string" },
+        "outcome": { "type": "string" },
+        "reasonCode": { "type": "string" },
+        "permissionGate": { "type": "string" },
+        "safeSummary": { "type": "string" },
+        "auditEventId": { "type": "string" },
+        "redactionStatus": { "enum": ["redacted", "suppressed", "redaction_failed"] }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

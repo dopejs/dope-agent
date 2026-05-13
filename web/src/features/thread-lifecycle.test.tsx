@@ -119,6 +119,21 @@ describe("ThreadLifecycleView", () => {
             retentionExpiresAt: "2026-08-09T10:00:00Z",
             redactionStatus: "redacted"
           }],
+          activeProfileProjection: {
+            runtimeProfileProjectionId: "rpp_1",
+            tenantId: "ten_threads",
+            profileId: "prof_1",
+            profileVersionId: "profv_1",
+            selectionId: "sel_1",
+            resourceKind: "thread",
+            resourceId: "thr_2",
+            selectionScope: "tenant_default",
+            selectionReason: "user_activated",
+            safeDisplayName: "Support Agent",
+            safeSummary: "Direct support persona",
+            occurredAt: "2026-05-11T10:00:00Z",
+            redactionStatus: "redacted"
+          },
           continuityPreviews: [{
             continuityPreviewId: "contprev_1",
             tenantId: "ten_threads",
@@ -211,6 +226,7 @@ describe("ThreadLifecycleView", () => {
     expect(screen.getByText("room to web")).toBeTruthy();
     expect(screen.getByText("available")).toBeTruthy();
     expect(screen.getByText("Runtime Trace")).toBeTruthy();
+    expect(screen.getByText("Profile Support Agent version profv_1 is explicit configuration, not assistant memory.")).toBeTruthy();
     expect(screen.getByText("Continuity Evidence")).toBeTruthy();
     expect(screen.getByText("Bounded recent-thread evidence, not assistant memory.")).toBeTruthy();
     expect(screen.getByText("Continuity Preview Detail")).toBeTruthy();

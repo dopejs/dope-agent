@@ -1057,6 +1057,7 @@ export type RunResource = {
   latestDeliveryId?: string;
   latestDeliveryStatus?: string;
   latestDeliveryTargetId?: string;
+  activeProfileProjection?: AgentProfileRuntimeProjection;
   createdAt: string;
   updatedAt: string;
 };
@@ -1142,6 +1143,8 @@ export type TenantPermission =
   | "billing.view"
   | "billing.manage"
   | "billing.evidence_export"
+  | "profiles.inspect"
+  | "profiles.manage"
   | "read_only.inspect";
 
 export type IntegrationDiagnosticStatus = "unknown" | "healthy" | "degraded" | "blocked" | "unsupported";
@@ -2763,6 +2766,7 @@ export type ThreadDetailResponse = {
   sessionSegments: Record<string, unknown>[];
   sourceLinkages: ThreadSourceLinkage[];
   runtimeProjections: ThreadRuntimeProjection[];
+  activeProfileProjection?: AgentProfileRuntimeProjection;
   continuityPreviews?: ThreadContinuityPreview[];
   lifecycleActions: Record<string, unknown>[];
   conversationShape?: ThreadConversationShape;
@@ -2792,6 +2796,156 @@ export type ThreadLifecycleActionResponse = {
   changedAt: string;
   action: ThreadLifecycleActionKind;
   availableActions: ThreadLifecycleActionKind[];
+};
+
+export type AgentProfileStatus = "draft" | "active" | "archived" | "disabled";
+export type AgentProfileRedactionStatus = "redacted" | "suppressed" | "redaction_failed";
+export type AgentProfileOverlayValidationState = "valid" | "partial" | "missing" | "permission_denied" | "out_of_scope" | "too_large" | "unsafe_content" | "redaction_failed";
+
+export type AgentProfileDisplayIdentity = {
+  name?: string;
+  description?: string;
+  safeSummary?: string;
+};
+
+export type AgentProfilePersona = {
+  tone?: string;
+  instructions?: string;
+  safeSummary?: string;
+};
+
+export type AgentProfileProviderPreference = {
+  providerId?: string;
+  model?: string;
+  reasoningLevel?: string;
+  validationState?: AgentProfileOverlayValidationState;
+  failureReasonCode?: string;
+};
+
+export type AgentProfileSafetyDefaults = {
+  approvalPosture?: string;
+  riskTolerance?: string;
+  validationState?: AgentProfileOverlayValidationState;
+  failureReasonCode?: string;
+};
+
+export type AgentProfileOverlayReference = {
+  overlayReferenceId: string;
+  profileId: string;
+  profileVersionId?: string;
+  tenantId: string;
+  referenceKind: string;
+  scope: string;
+  referenceUri: string;
+  safeDisplayLabel: string;
+  validationState: AgentProfileOverlayValidationState;
+  failureReasonCode?: string;
+  lastValidatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  redactionStatus: AgentProfileRedactionStatus;
+};
+
+export type AgentProfileResource = {
+  profileId: string;
+  tenantId: string;
+  displayName: string;
+  displayIdentity: AgentProfileDisplayIdentity;
+  persona: AgentProfilePersona;
+  defaultProviderPreference: AgentProfileProviderPreference;
+  safetyDefaults: AgentProfileSafetyDefaults;
+  status: AgentProfileStatus;
+  activeVersionId?: string;
+  tenantDefault: boolean;
+  overlayReferenceCount: number;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
+  disabledAt?: string;
+  createdByPrincipalId?: string;
+  updatedByPrincipalId?: string;
+  redactionStatus: AgentProfileRedactionStatus;
+};
+
+export type AgentProfileVersionResource = {
+  profileVersionId: string;
+  profileId: string;
+  tenantId: string;
+  versionNumber: number;
+  sourceVersionId?: string;
+  changeKind: "created" | "updated" | "activated" | "rolled_back" | "archived" | "disabled" | "validated";
+  changeSummary: string;
+  snapshot: AgentProfileResource;
+  rollbackEligibility: "eligible" | "invalid_provider" | "invalid_overlay" | "policy_blocked" | "profile_archived" | "profile_disabled" | "redaction_failed";
+  actorPrincipalId?: string;
+  createdAt: string;
+  auditEventId?: string;
+  redactionStatus: AgentProfileRedactionStatus;
+};
+
+export type AgentProfileActiveSelection = {
+  selectionId: string;
+  tenantId: string;
+  profileId: string;
+  profileVersionId: string;
+  selectionScope: string;
+  selectionReason: "default_seeded" | "user_activated" | "rollback_activated" | "system_fallback";
+  selectedByPrincipalId?: string;
+  selectedAt: string;
+  auditEventId?: string;
+  redactionStatus: AgentProfileRedactionStatus;
+};
+
+export type AgentProfileRuntimeProjection = {
+  runtimeProfileProjectionId: string;
+  tenantId: string;
+  profileId: string;
+  profileVersionId: string;
+  selectionId: string;
+  resourceKind: "thread" | "session" | "run" | "workflow" | "handoff_destination";
+  resourceId: string;
+  safeDisplayName: string;
+  safeSummary: string;
+  configurationScope?: string;
+  deferredBindingClassification?: string;
+  occurredAt: string;
+  retentionExpiresAt?: string;
+  redactionStatus: AgentProfileRedactionStatus;
+};
+
+export type AgentProfileMutationInput = {
+  displayName: string;
+  displayIdentity?: AgentProfileDisplayIdentity;
+  persona?: AgentProfilePersona;
+  defaultProviderPreference?: AgentProfileProviderPreference;
+  safetyDefaults?: AgentProfileSafetyDefaults;
+  overlayReferences?: Array<{ referenceKind?: string; referenceUri: string; scope?: string }>;
+  activate?: boolean;
+  reasonCode?: string;
+};
+
+export type AgentProfileMutationResult = {
+  profile: AgentProfileResource;
+  version: AgentProfileVersionResource;
+  selection?: AgentProfileActiveSelection;
+  auditEventId: string;
+};
+
+export type AgentProfileDetailResponse = {
+  profile: AgentProfileResource;
+  versions: AgentProfileVersionResource[];
+  overlayReferences: AgentProfileOverlayReference[];
+  auditEvents: Array<Record<string, unknown>>;
+};
+
+export type AgentProfileListResponse = {
+  tenantId: string;
+  page: {
+    limit: number;
+    nextCursor?: string;
+    order: string;
+  };
+  items: AgentProfileResource[];
 };
 
 export type DopeClientOptions = {
@@ -3704,8 +3858,48 @@ export class DopeClient {
     });
   }
 
+  async getRun(runId: string, tenantOptions?: TenantRequestOptions): Promise<RunResource> {
+    return this.requestJSON<RunResource>(`/v1/runs/${encodePathComponent(runId.trim())}`, { tenant: tenantOptions });
+  }
+
   async fetchRoute<T>(route: string, tenantOptions?: TenantRequestOptions): Promise<T> {
     return this.requestJSON<T>(normalizeRoute(route), { tenant: tenantOptions });
+  }
+
+  async listAgentProfiles(query: { limit?: number } = {}, tenantOptions?: TenantRequestOptions): Promise<AgentProfileListResponse> {
+    return this.requestJSON<AgentProfileListResponse>("/v1/profiles", { query, tenant: tenantOptions });
+  }
+
+  async getAgentProfile(profileId: string, tenantOptions?: TenantRequestOptions): Promise<AgentProfileDetailResponse> {
+    return this.requestJSON<AgentProfileDetailResponse>(`/v1/profiles/${encodePathComponent(profileId)}`, { tenant: tenantOptions });
+  }
+
+  async createAgentProfile(input: AgentProfileMutationInput, tenantOptions?: TenantRequestOptions): Promise<AgentProfileMutationResult> {
+    return this.requestJSON<AgentProfileMutationResult>("/v1/profiles", { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async updateAgentProfile(profileId: string, input: AgentProfileMutationInput, tenantOptions?: TenantRequestOptions): Promise<AgentProfileMutationResult> {
+    return this.requestJSON<AgentProfileMutationResult>(`/v1/profiles/${encodePathComponent(profileId)}`, { method: "PATCH", body: input, tenant: tenantOptions });
+  }
+
+  async activateAgentProfile(profileId: string, input: { profileVersionId?: string; reasonCode?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<AgentProfileActiveSelection> {
+    return this.requestJSON<AgentProfileActiveSelection>(`/v1/profiles/${encodePathComponent(profileId)}/activate`, { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async listAgentProfileVersions(profileId: string, query: { limit?: number } = {}, tenantOptions?: TenantRequestOptions): Promise<{ items: AgentProfileVersionResource[] }> {
+    return this.requestJSON<{ items: AgentProfileVersionResource[] }>(`/v1/profiles/${encodePathComponent(profileId)}/versions`, { query, tenant: tenantOptions });
+  }
+
+  async rollbackAgentProfile(profileId: string, input: { sourceProfileVersionId: string; reasonCode?: string }, tenantOptions?: TenantRequestOptions): Promise<AgentProfileMutationResult> {
+    return this.requestJSON<AgentProfileMutationResult>(`/v1/profiles/${encodePathComponent(profileId)}/rollback`, { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async archiveAgentProfile(profileId: string, input: { reasonCode?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<AgentProfileMutationResult> {
+    return this.requestJSON<AgentProfileMutationResult>(`/v1/profiles/${encodePathComponent(profileId)}/archive`, { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async disableAgentProfile(profileId: string, input: { reasonCode?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<AgentProfileMutationResult> {
+    return this.requestJSON<AgentProfileMutationResult>(`/v1/profiles/${encodePathComponent(profileId)}/disable`, { method: "POST", body: input, tenant: tenantOptions });
   }
 
   streamEvents(query: EventStreamQuery = {}, handlers: EventStreamHandlers = {}, tenantOptions?: TenantRequestOptions): EventStreamSubscription {

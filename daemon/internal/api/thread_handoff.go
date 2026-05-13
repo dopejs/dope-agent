@@ -13,6 +13,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/connectors"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
+	"github.com/dopejs/dope-agent/daemon/internal/profiles"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/threads"
 )
@@ -59,11 +60,32 @@ func handleThreadHandoffCreate(sqliteStore *store.SQLiteStore, eventBus *events.
 		handleThreadHandoffError(w, err)
 		return
 	}
+	if projection, err := recordActiveProfileProjectionForTarget(r.Context(), sqliteStore, eventBus, runtimeProfileProjectionTarget{
+		ResourceKind:     profiles.RuntimeResourceHandoffDestination,
+		ResourceID:       link.DestinationThreadID,
+		ThreadID:         link.DestinationThreadID,
+		SessionSegmentID: link.DestinationSessionSegmentID,
+		HandoffID:        link.HandoffLinkID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	} else if projection != nil {
+		link.ActiveProfileProjection = projection
+		if saved, err := sqliteStore.SaveHandoffLink(r.Context(), link); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		} else {
+			link = saved
+		}
+	}
 	if eventBus != nil {
 		if _, err := publishEvent(r.Context(), eventBus, sqliteStore, events.ThreadHandoffLinkedEvent(link)); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+	}
+	if !canInspectProfileRuntime(r.Context()) {
+		link.ActiveProfileProjection = nil
 	}
 	writeJSON(w, http.StatusCreated, link)
 }

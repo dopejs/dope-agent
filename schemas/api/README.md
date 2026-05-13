@@ -119,6 +119,20 @@ fixture editing support.
 
 Connector conformance schemas are additive Phase 48 contracts:
 
+Roadmap 57 agent profile schemas are additive profile/persona contracts:
+
+- agent profile resource
+- agent profile version resource
+- agent profile overlay reference
+- agent profile runtime projection
+- agent profile list response
+- create/update/activation/rollback/retirement profile requests
+- profile retirement response
+
+These schemas are tenant-scoped metadata contracts. Profile summaries, overlay labels,
+runtime projections, and audit evidence must not expose secrets or raw unsafe persona
+content.
+
 - connector capability profile
 - connector conformance result
 - connector diagnostic state

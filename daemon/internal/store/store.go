@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 52
+	CurrentSchemaVersion = 53
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -3570,6 +3570,138 @@ var schemaMigrations = []schemaMigration{
 			`,
 			`CREATE INDEX IF NOT EXISTS idx_thread_handoff_source_refs_link ON thread_handoff_source_references(handoff_link_id);`,
 			`CREATE INDEX IF NOT EXISTS idx_thread_handoff_source_refs_destination ON thread_handoff_source_references(tenant_id, destination_thread_id, destination_session_segment_id);`,
+		},
+	},
+	{
+		Version: 53,
+		Name:    "r57_agent_profile_persona",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS agent_profiles (
+				profile_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				display_name TEXT NOT NULL,
+				status TEXT NOT NULL,
+				active_version_id TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				archived_at TEXT,
+				disabled_at TEXT,
+				created_by_principal_id TEXT,
+				updated_by_principal_id TEXT,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_profiles_tenant_status_updated ON agent_profiles(tenant_id, status, updated_at DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS agent_profile_versions (
+				profile_version_id TEXT PRIMARY KEY,
+				profile_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				version_number INTEGER NOT NULL,
+				source_version_id TEXT,
+				change_kind TEXT NOT NULL,
+				change_summary TEXT NOT NULL,
+				rollback_eligibility TEXT NOT NULL,
+				actor_principal_id TEXT,
+				created_at TEXT NOT NULL,
+				audit_event_id TEXT,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(profile_id) REFERENCES agent_profiles(profile_id) ON DELETE RESTRICT,
+				UNIQUE(tenant_id, profile_id, version_number)
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_profile_versions_profile ON agent_profile_versions(tenant_id, profile_id, version_number DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS agent_profile_active_selections (
+				selection_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				profile_id TEXT NOT NULL,
+				profile_version_id TEXT NOT NULL,
+				selection_scope TEXT NOT NULL,
+				selection_reason TEXT NOT NULL,
+				selected_by_principal_id TEXT,
+				selected_at TEXT NOT NULL,
+				audit_event_id TEXT,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(profile_id) REFERENCES agent_profiles(profile_id) ON DELETE RESTRICT,
+				FOREIGN KEY(profile_version_id) REFERENCES agent_profile_versions(profile_version_id) ON DELETE RESTRICT,
+				UNIQUE(tenant_id, selection_scope)
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_profile_active_selections_profile ON agent_profile_active_selections(tenant_id, profile_id, selected_at DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS agent_profile_overlay_references (
+				overlay_reference_id TEXT PRIMARY KEY,
+				profile_id TEXT NOT NULL,
+				profile_version_id TEXT NOT NULL,
+				tenant_id TEXT NOT NULL,
+				reference_kind TEXT NOT NULL,
+				scope TEXT NOT NULL,
+				reference_uri TEXT NOT NULL,
+				safe_display_label TEXT NOT NULL,
+				validation_state TEXT NOT NULL,
+				failure_reason_code TEXT,
+				last_validated_at TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(profile_id) REFERENCES agent_profiles(profile_id) ON DELETE RESTRICT,
+				FOREIGN KEY(profile_version_id) REFERENCES agent_profile_versions(profile_version_id) ON DELETE RESTRICT
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_profile_overlay_references_profile ON agent_profile_overlay_references(tenant_id, profile_id, updated_at DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS agent_profile_runtime_projections (
+				runtime_profile_projection_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				profile_id TEXT NOT NULL,
+				profile_version_id TEXT NOT NULL,
+				selection_id TEXT NOT NULL,
+				resource_kind TEXT NOT NULL,
+				resource_id TEXT NOT NULL,
+				thread_id TEXT,
+				session_segment_id TEXT,
+				run_id TEXT,
+				workflow_id TEXT,
+				handoff_link_id TEXT,
+				selection_scope TEXT NOT NULL,
+				selection_reason TEXT NOT NULL,
+				safe_display_name TEXT NOT NULL,
+				safe_summary TEXT NOT NULL,
+				occurred_at TEXT NOT NULL,
+				retention_expires_at TEXT,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				FOREIGN KEY(profile_id) REFERENCES agent_profiles(profile_id) ON DELETE RESTRICT,
+				FOREIGN KEY(profile_version_id) REFERENCES agent_profile_versions(profile_version_id) ON DELETE RESTRICT,
+				FOREIGN KEY(selection_id) REFERENCES agent_profile_active_selections(selection_id) ON DELETE RESTRICT
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_profile_runtime_projections_resource ON agent_profile_runtime_projections(tenant_id, resource_kind, resource_id, occurred_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_profile_runtime_projections_thread ON agent_profile_runtime_projections(tenant_id, thread_id, occurred_at DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS agent_profile_audit_events (
+				audit_event_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				profile_id TEXT,
+				profile_version_id TEXT,
+				actor_principal_id TEXT,
+				event_kind TEXT NOT NULL,
+				outcome TEXT NOT NULL,
+				permission_gate TEXT,
+				reason_code TEXT NOT NULL,
+				safe_summary TEXT,
+				occurred_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_profile_audit_events_profile ON agent_profile_audit_events(tenant_id, profile_id, occurred_at DESC);`,
 		},
 	},
 }

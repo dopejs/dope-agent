@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-profile-list.response.schema.json",
+  "type": "object",
+  "required": ["page", "items"],
+  "properties": {
+    "tenantId": { "type": "string" },
+    "page": { "type": "object" },
+    "items": { "type": "array", "items": { "$ref": "agent-profile-resource.schema.json" } }
+  },
+  "additionalProperties": true
+}

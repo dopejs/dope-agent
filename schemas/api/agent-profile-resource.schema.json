@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-profile-resource.schema.json",
+  "type": "object",
+  "required": ["profileId", "displayName", "displayIdentity", "persona", "defaultProviderPreference", "safetyDefaults", "status", "tenantDefault", "overlayReferenceCount", "createdAt", "updatedAt", "redactionStatus"],
+  "properties": {
+    "profileId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "displayName": { "type": "string" },
+    "displayIdentity": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "safeSummary": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "persona": {
+      "type": "object",
+      "properties": {
+        "tone": { "type": "string" },
+        "instructions": { "type": "string" },
+        "safeSummary": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "defaultProviderPreference": {
+      "type": "object",
+      "properties": {
+        "providerId": { "type": "string" },
+        "model": { "type": "string" },
+        "reasoningLevel": { "type": "string" },
+        "validationState": { "enum": ["valid", "partial", "missing", "permission_denied", "out_of_scope", "too_large", "unsafe_content", "redaction_failed"] },
+        "failureReasonCode": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "safetyDefaults": {
+      "type": "object",
+      "properties": {
+        "approvalPosture": { "type": "string" },
+        "riskTolerance": { "type": "string" },
+        "validationState": { "enum": ["valid", "partial", "missing", "permission_denied", "out_of_scope", "too_large", "unsafe_content", "redaction_failed"] },
+        "failureReasonCode": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "legacyMappingEvidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sourceKind": { "type": "string" },
+          "mappingState": { "enum": ["valid", "partial", "missing", "permission_denied", "out_of_scope", "too_large", "unsafe_content", "redaction_failed"] },
+          "reasonCode": { "type": "string" },
+          "safeSummary": { "type": "string" },
+          "redactionStatus": { "enum": ["redacted", "suppressed", "redaction_failed"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "status": { "enum": ["draft", "active", "archived", "disabled"] },
+    "activeVersionId": { "type": "string" },
+    "tenantDefault": { "type": "boolean" },
+    "overlayReferenceCount": { "type": "integer", "minimum": 0 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "archivedAt": { "type": "string", "format": "date-time" },
+    "disabledAt": { "type": "string", "format": "date-time" },
+    "createdByPrincipalId": { "type": "string" },
+    "updatedByPrincipalId": { "type": "string" },
+    "redactionStatus": { "enum": ["redacted", "suppressed", "redaction_failed"] }
+  },
+  "additionalProperties": true
+}

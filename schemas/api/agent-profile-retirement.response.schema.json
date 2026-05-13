@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-profile-retirement.response.schema.json",
+  "type": "object",
+  "required": ["profile", "version", "auditEventId"],
+  "properties": {
+    "profile": { "$ref": "agent-profile-resource.schema.json" },
+    "version": { "$ref": "agent-profile-version-resource.schema.json" },
+    "selection": { "type": "object" },
+    "auditEventId": { "type": "string" }
+  },
+  "additionalProperties": true
+}

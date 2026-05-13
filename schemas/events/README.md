@@ -41,3 +41,13 @@ Roadmap 55 continuity events are metadata-only audit facts:
 
 These payloads must not include raw prompts, provider payloads, disallowed message
 bodies, secrets, or cross-tenant identifiers.
+
+Roadmap 57 profile events are metadata-only audit facts:
+
+- `agent_profile.*` lifecycle outcomes
+- `agent_profile.version_created`
+- `agent_profile.runtime_projected`
+
+Profile events must carry safe summaries, permission gates, reason codes, and redaction
+status only. Raw persona instructions, provider secrets, and unsafe overlay content are
+not valid event evidence.

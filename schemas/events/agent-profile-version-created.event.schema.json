@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-profile-version-created.event.schema.json",
+  "type": "object",
+  "required": ["eventId", "category", "name", "occurredAt", "resource", "payload"],
+  "properties": {
+    "eventId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "category": { "const": "agent_profile" },
+    "name": { "const": "agent_profile.version_created" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "resource": { "type": "object", "required": ["kind", "id"] },
+    "payload": {
+      "type": "object",
+      "required": ["profileId", "profileVersionId", "changeKind", "versionNumber", "redactionStatus"],
+      "properties": {
+        "profileId": { "type": "string" },
+        "profileVersionId": { "type": "string" },
+        "changeKind": { "enum": ["created", "updated", "activated", "rolled_back", "archived", "disabled", "validated"] },
+        "versionNumber": { "type": "integer", "minimum": 1 },
+        "reasonCode": { "type": "string" },
+        "redactionStatus": { "enum": ["redacted", "suppressed", "redaction_failed"] }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

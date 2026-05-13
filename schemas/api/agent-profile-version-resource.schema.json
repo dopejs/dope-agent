@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-profile-version-resource.schema.json",
+  "type": "object",
+  "required": ["profileVersionId", "profileId", "versionNumber", "changeKind", "changeSummary", "snapshot", "rollbackEligibility", "createdAt", "redactionStatus"],
+  "properties": {
+    "profileVersionId": { "type": "string" },
+    "profileId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "versionNumber": { "type": "integer", "minimum": 1 },
+    "sourceVersionId": { "type": "string" },
+    "changeKind": { "enum": ["created", "updated", "activated", "rolled_back", "archived", "disabled", "validated"] },
+    "changeSummary": { "type": "string" },
+    "snapshot": { "$ref": "agent-profile-resource.schema.json" },
+    "rollbackEligibility": { "enum": ["eligible", "invalid_provider", "invalid_overlay", "policy_blocked", "profile_archived", "profile_disabled", "redaction_failed"] },
+    "actorPrincipalId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "auditEventId": { "type": "string" },
+    "redactionStatus": { "enum": ["redacted", "suppressed", "redaction_failed"] }
+  },
+  "additionalProperties": true
+}

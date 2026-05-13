@@ -511,6 +511,118 @@ describe("tui cli", () => {
     expect(stdout.contents).toContain("Thread thr_1 handoff completed.");
     expect(stdout.contents).toContain("Destination Thread: thr_web");
   });
+
+  it("runs profile list and inspection commands", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const listAgentProfiles = vi.fn().mockResolvedValue({
+      tenantId: "ten_profile",
+      items: [{ profileId: "prof_1", status: "active", tenantDefault: true, displayName: "Support Agent" }]
+    });
+    const getAgentProfile = vi.fn().mockResolvedValue({
+      profile: { profileId: "prof_1", displayName: "Support Agent", status: "active", tenantDefault: true, persona: { safeSummary: "direct support" }, displayIdentity: {} },
+      versions: [],
+      overlayReferences: [{ referenceKind: "prompt", validationState: "valid", safeDisplayLabel: "profile.md" }]
+    });
+
+    let code = await runCLI(parseArgs(["--profiles"], {}), {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () => ({ listAgentProfiles, queryChat: vi.fn(), streamChatQuery: vi.fn() }) as any
+    });
+    expect(code).toBe(0);
+    expect(stdout.contents).toContain("prof_1 active default=yes Support Agent");
+
+    code = await runCLI(parseArgs(["--profile", "prof_1"], {}), {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () => ({ getAgentProfile, queryChat: vi.fn(), streamChatQuery: vi.fn() }) as any
+    });
+    expect(code).toBe(0);
+    expect(getAgentProfile).toHaveBeenCalledWith("prof_1");
+    expect(stdout.contents).toContain("Overlay prompt valid profile.md");
+    expect(stdout.contents).toContain("Evidence: explicit profile configuration, not assistant memory");
+  });
+
+  it("runs profile history, rollback, and retirement commands", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const listAgentProfileVersions = vi.fn().mockResolvedValue({
+      items: [{ profileVersionId: "profv_1", versionNumber: 1, changeKind: "created", rollbackEligibility: "eligible", changeSummary: "Created" }]
+    });
+    const rollbackAgentProfile = vi.fn().mockResolvedValue({
+      profile: { profileId: "prof_1", status: "active" },
+      version: { profileVersionId: "profv_2" }
+    });
+    const archiveAgentProfile = vi.fn().mockResolvedValue({
+      profile: { profileId: "prof_1", status: "archived" },
+      version: { profileVersionId: "profv_3" },
+      selection: { selectionReason: "system_fallback", profileId: "prof_default" }
+    });
+    const disableAgentProfile = vi.fn().mockResolvedValue({
+      profile: { profileId: "prof_2", status: "disabled" },
+      version: { profileVersionId: "profv_4" }
+    });
+
+    let code = await runCLI(parseArgs(["--profile-history", "prof_1"], {}), {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () => ({ listAgentProfileVersions, queryChat: vi.fn(), streamChatQuery: vi.fn() }) as any
+    });
+    expect(code).toBe(0);
+    expect(stdout.contents).toContain("profv_1 v1 created rollback=eligible Created");
+
+    code = await runCLI(parseArgs(["--profile-rollback", "prof_1:profv_1"], {}), {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () => ({ rollbackAgentProfile, queryChat: vi.fn(), streamChatQuery: vi.fn() }) as any
+    });
+    expect(code).toBe(0);
+    expect(rollbackAgentProfile).toHaveBeenCalledWith("prof_1", { sourceProfileVersionId: "profv_1", reasonCode: "tui_profile_rollback" });
+
+    code = await runCLI(parseArgs(["--profile-archive", "prof_1"], {}), {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () => ({ archiveAgentProfile, queryChat: vi.fn(), streamChatQuery: vi.fn() }) as any
+    });
+    expect(code).toBe(0);
+    expect(stdout.contents).toContain("Fallback: system_fallback prof_default");
+
+    code = await runCLI(parseArgs(["--profile-disable", "prof_2"], {}), {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () => ({ disableAgentProfile, queryChat: vi.fn(), streamChatQuery: vi.fn() }) as any
+    });
+    expect(code).toBe(0);
+    expect(disableAgentProfile).toHaveBeenCalledWith("prof_2", { reasonCode: "tui_profile_disable" });
+  });
+
+  it("prints run active profile projection output", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const getRun = vi.fn().mockResolvedValue({
+      runId: "run_1",
+      status: "running",
+      entrypoint: "operator",
+      activeProfileProjection: {
+        profileId: "prof_1",
+        profileVersionId: "profv_1",
+        configurationScope: "explicit_profile_configuration"
+      }
+    });
+    const code = await runCLI(parseArgs(["--run", "run_1"], {}), {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () => ({ getRun, queryChat: vi.fn(), streamChatQuery: vi.fn() }) as any
+    });
+    expect(code).toBe(0);
+    expect(stdout.contents).toContain("Active Profile: prof_1 version=profv_1 evidence=explicit_profile_configuration");
+  });
+
+  it("prints denied profile retirement errors", async () => {
+    const stdout = createMemoryWriter();
+    const stderr = createMemoryWriter();
+    const archiveAgentProfile = vi.fn().mockRejectedValue(new Error("profiles.manage is required"));
+    const code = await runCLI(parseArgs(["--profile-archive", "prof_1"], {}), {
+      io: { stdin: process.stdin, stdout, stderr },
+      createClient: () => ({ archiveAgentProfile, queryChat: vi.fn(), streamChatQuery: vi.fn() }) as any
+    });
+    expect(code).toBe(1);
+    expect(stderr.contents).toContain("profiles.manage is required");
+  });
 });
 
 function createMemoryWriter() {

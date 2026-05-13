@@ -93,6 +93,8 @@ export function ThreadLifecycleView({
             <dd>{detail.sourceLinkages.length}</dd>
             <dt>Runtime projections</dt>
             <dd>{detail.runtimeProjections.length}</dd>
+            <dt>Active profile</dt>
+            <dd>{detail.activeProfileProjection?.profileId ?? "unavailable"}</dd>
             <dt>Continuity previews</dt>
             <dd>{detail.continuityPreviews?.length ?? 0}</dd>
             <dt>Lifecycle actions</dt>
@@ -215,6 +217,11 @@ export function ThreadLifecycleView({
           <section aria-label="Runtime trace">
             <h4>Runtime Trace</h4>
             {detail.runtimeProjections.length === 0 ? <p className="muted">No runtime evidence.</p> : null}
+            {detail.activeProfileProjection ? (
+              <p className="muted">
+                Profile {detail.activeProfileProjection.safeDisplayName} version {detail.activeProfileProjection.profileVersionId} is explicit configuration, not assistant memory.
+              </p>
+            ) : null}
             <ul>
               {detail.runtimeProjections.map((projection) => (
                 <li key={projection.runtimeProjectionId}>

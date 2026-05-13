@@ -4,6 +4,9 @@ import {
   createDopeClient,
   type ActivationDiagnosticListResponse,
   type ActivationStateResource,
+  type AgentProfileDetailResponse,
+  type AgentProfileListResponse,
+  type AgentProfileMutationInput,
   type ApprovalResource,
   type AuthMeResponse,
   type BillingDenialResource,
@@ -49,6 +52,8 @@ import {
   type ChannelManagementSupportEvidence
 } from "@dope/client";
 import { ChannelManagementView } from "../features/channel-management";
+import { AgentProfileEditor } from "../features/agent-profiles/AgentProfileEditor";
+import { AgentProfileHistory } from "../features/agent-profiles/AgentProfileHistory";
 import { ThreadLifecycleView } from "../features/thread-lifecycle";
 
 const DEFAULT_DAEMON_URL = "http://127.0.0.1:19192";
@@ -95,6 +100,8 @@ type ShellSnapshot = {
   selectedChannelConnector: ChannelConnectorDetailResource | null;
   channelSupportEvidence: ChannelManagementSupportEvidence | null;
   threads: ThreadListResponse | null;
+  profiles: AgentProfileListResponse | null;
+  selectedProfile: AgentProfileDetailResponse | null;
 };
 
 type DetailView = {
@@ -145,7 +152,9 @@ const EMPTY_SHELL: ShellSnapshot = {
   channelConnectors: null,
   selectedChannelConnector: null,
   channelSupportEvidence: null,
-  threads: null
+  threads: null,
+  profiles: null,
+  selectedProfile: null
 };
 
 const ROLE_OPTIONS: TenantRole[] = ["owner", "admin", "operator", "viewer"];
@@ -307,6 +316,9 @@ export function App() {
       const threadsPromise = hasPermission(tenant, "credentials.inspect")
         ? scopedClient.listThreads({ limit: 20 }, scopedOptions).catch(() => null)
         : Promise.resolve(null);
+      const profilesPromise = hasPermission(tenant, "profiles.inspect")
+        ? scopedClient.listAgentProfiles({ limit: 20 }, scopedOptions).catch(() => null)
+        : Promise.resolve(null);
 
       const [
         onboarding,
@@ -334,7 +346,8 @@ export function App() {
         billingDenials,
         membershipItems,
         channelConnectors,
-        threads
+        threads,
+        profiles
       ] = await Promise.all([
         scopedClient.getOnboarding(scopedOptions),
         scopedClient.getActivation(scopedOptions).then((response) => response.activation).catch(() => null),
@@ -364,19 +377,24 @@ export function App() {
         billingDenialsPromise,
         membershipPromise,
         channelConnectorsPromise,
-        threadsPromise
+        threadsPromise,
+        profilesPromise
       ]);
       const latestValidation = liveValidations.items[0] ?? null;
       const latestCampaign = campaigns.items[0] ?? null;
       const firstSetupSession = setupSessions.items[0] ?? null;
       const firstChannelConnectorID = channelConnectors?.items[0]?.connectorId ?? "";
+      const firstProfileID = profiles?.items[0]?.profileId ?? "";
       const channelConnectorDetailPromise = firstChannelConnectorID
         ? scopedClient.getChannelConnector(firstChannelConnectorID, scopedOptions).catch(() => null)
         : Promise.resolve(null);
       const channelSupportEvidencePromise = firstChannelConnectorID
         ? scopedClient.getChannelConnectorSupportEvidence(firstChannelConnectorID, scopedOptions).catch(() => null)
         : Promise.resolve(null);
-      const [setupDiagnostics, liveValidationLedger, liveValidationRetention, campaignItems, campaignAttemptGroups, toolCallInspections, selectedChannelConnector, channelSupportEvidence] = await Promise.all([
+      const selectedProfilePromise = firstProfileID
+        ? scopedClient.getAgentProfile(firstProfileID, scopedOptions).catch(() => null)
+        : Promise.resolve(null);
+      const [setupDiagnostics, liveValidationLedger, liveValidationRetention, campaignItems, campaignAttemptGroups, toolCallInspections, selectedChannelConnector, channelSupportEvidence, selectedProfile] = await Promise.all([
         firstSetupSession ? scopedClient.getSetupDiagnostics(firstSetupSession.setupSessionId, scopedOptions).then((response) => response.items).catch(() => []) : Promise.resolve([]),
         latestValidation ? scopedClient.listLiveValidationLedger(latestValidation.validationId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
         latestValidation ? scopedClient.getLiveValidationRetention(latestValidation.validationId, scopedOptions) : Promise.resolve(null),
@@ -384,7 +402,8 @@ export function App() {
         latestCampaign ? scopedClient.listEvaluationCampaignAttemptGroups(latestCampaign.campaignId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
         latestCampaign ? scopedClient.listEvaluationToolCallInspections(latestCampaign.campaignId, { limit: 20 }, scopedOptions).then((response) => response.items) : Promise.resolve([]),
         channelConnectorDetailPromise,
-        channelSupportEvidencePromise
+        channelSupportEvidencePromise,
+        selectedProfilePromise
       ]);
 
       if (generation !== generationRef.current || activeTenantRef.current !== tenant.tenantId) {
@@ -424,7 +443,9 @@ export function App() {
         channelConnectors,
         selectedChannelConnector,
         channelSupportEvidence,
-        threads
+        threads,
+        profiles,
+        selectedProfile
       });
       setMemberships({
         status: hasPermission(tenant, "tenant.manage") ? membershipStatusFor(membershipItems) : "hidden",
@@ -1440,6 +1461,98 @@ export function App() {
     void runChannelConnectorAction(connectorId, "route-policy", (client, scoped) => client.updateChannelRoutePolicy(connectorId, input, scoped));
   }
 
+  async function refreshProfiles(selectedProfileId?: string) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId ?? activeTenantId;
+    const client = buildClient(tenantId);
+    const profiles = await client.listAgentProfiles({ limit: 20 }, scoped);
+    const profileId = selectedProfileId || profiles.items[0]?.profileId || "";
+    const selectedProfile = profileId ? await client.getAgentProfile(profileId, scoped).catch(() => null) : null;
+    setShell((previous) => ({ ...previous, profiles, selectedProfile }));
+  }
+
+  function handleProfileSelect(profileId: string) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId ?? activeTenantId;
+    const client = buildClient(tenantId);
+    void client.getAgentProfile(profileId, scoped)
+      .then((selectedProfile) => setShell((previous) => ({ ...previous, selectedProfile })))
+      .catch((caught) => setError(errorMessage(caught)));
+  }
+
+  function runProfileAction(profileId: string, actionName: string, action: (client: ReturnType<typeof buildClient>, scoped: TenantRequestOptions) => Promise<unknown>) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId ?? activeTenantId;
+    setError("");
+    setActionMessage("");
+    setActiveActionId(`profile-${actionName}-${profileId}`);
+    const client = buildClient(tenantId);
+    void action(client, scoped)
+      .then(() => refreshProfiles(profileId))
+      .then(() => setActionMessage(`Profile ${profileId} ${actionName} completed.`))
+      .catch((caught) => setError(errorMessage(caught)))
+      .finally(() => setActiveActionId(""));
+  }
+
+  function handleProfileActivate(profileId: string) {
+    runProfileAction(profileId, "activate", (client, scoped) => client.activateAgentProfile(profileId, {}, scoped));
+  }
+
+  function handleProfileArchive(profileId: string) {
+    runProfileAction(profileId, "archive", (client, scoped) => client.archiveAgentProfile(profileId, { reasonCode: "web_profile_archive" }, scoped));
+  }
+
+  function handleProfileDisable(profileId: string) {
+    runProfileAction(profileId, "disable", (client, scoped) => client.disableAgentProfile(profileId, { reasonCode: "web_profile_disable" }, scoped));
+  }
+
+  function runProfileMutation(actionName: string, action: (client: ReturnType<typeof buildClient>, scoped: TenantRequestOptions) => Promise<{ profile?: { profileId: string } }>) {
+    const scoped = currentTenantOptions();
+    if (!scoped) {
+      return;
+    }
+    const tenantId = scoped.tenantId ?? activeTenantId;
+    setError("");
+    setActionMessage("");
+    setActiveActionId(`profile-${actionName}`);
+    const client = buildClient(tenantId);
+    void action(client, scoped)
+      .then((result) => refreshProfiles(result.profile?.profileId))
+      .then(() => setActionMessage(`Profile ${actionName} completed.`))
+      .catch((caught) => setError(errorMessage(caught)))
+      .finally(() => setActiveActionId(""));
+  }
+
+  function handleProfileSave(input: AgentProfileMutationInput) {
+    const profileId = shell.selectedProfile?.profile.profileId || shell.profiles?.items[0]?.profileId || "";
+    if (!profileId) {
+      handleProfileCreate(input);
+      return;
+    }
+    runProfileMutation("update", (client, scoped) => client.updateAgentProfile(profileId, { ...input, reasonCode: "web_profile_update" }, scoped));
+  }
+
+  function handleProfileCreate(input: AgentProfileMutationInput) {
+    runProfileMutation("create", (client, scoped) => client.createAgentProfile({ ...input, reasonCode: "web_profile_create" }, scoped));
+  }
+
+  function handleProfileRollback(profileVersionId: string) {
+    const profileId = shell.selectedProfile?.profile.profileId || "";
+    if (!profileId) {
+      return;
+    }
+    runProfileMutation("rollback", (client, scoped) => client.rollbackAgentProfile(profileId, { sourceProfileVersionId: profileVersionId, reasonCode: "web_profile_rollback" }, scoped));
+  }
+
   const onboarding = shell.onboarding;
   const activation = shell.activation;
   const activationDiagnosticItems = shell.activationDiagnostics?.items ?? [];
@@ -1561,6 +1674,24 @@ export function App() {
           void refreshShell({ tenantId: activeTenantId });
         }}
       />
+
+      <AgentProfileEditor
+        profiles={shell.profiles}
+        detail={shell.selectedProfile}
+        loading={status === "loading"}
+        denied={activeTenantStatus === "denied"}
+        error={activeTenantStatus === "denied" ? "Profile inspection unavailable until tenant access is restored." : ""}
+        onRefresh={() => {
+          void refreshProfiles();
+        }}
+        onSelectProfile={handleProfileSelect}
+        onCreate={handleProfileCreate}
+        onSave={handleProfileSave}
+        onActivate={handleProfileActivate}
+        onArchive={handleProfileArchive}
+        onDisable={handleProfileDisable}
+      />
+      <AgentProfileHistory versions={shell.selectedProfile?.versions ?? []} onRollback={handleProfileRollback} />
 
       <section className={`dashboard-grid tenant-${activeTenantStatus}`}>
         <section className="panel onboarding-panel">

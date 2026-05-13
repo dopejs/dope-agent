@@ -189,6 +189,12 @@ func handleThreadDetail(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r
 		http.NotFound(w, r)
 		return
 	}
+	if !canInspectProfileRuntime(r.Context()) {
+		response.ActiveProfileProjection = nil
+		for idx := range response.HandoffLinks {
+			response.HandoffLinks[idx].ActiveProfileProjection = nil
+		}
+	}
 	writeJSON(w, http.StatusOK, response)
 }
 

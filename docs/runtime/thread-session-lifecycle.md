@@ -40,6 +40,12 @@ replies, background deliveries, and connector messages. Projection summaries mus
 metadata-only and redact or suppress unsafe provider payloads, message bodies, secrets,
 and cross-tenant identifiers.
 
+Roadmap 57 adds optional active profile projection evidence to new runtime work. The
+projection records the tenant-default `profileId`, `profileVersionId`, selection scope,
+safe display name, safe summary, and redaction status at work start. It is immutable
+evidence for later inspection and must not be recomputed when a profile is edited,
+archived, disabled, or rolled back.
+
 ## Restart And Retention
 
 Startup restores existing sessions and projects legacy sessions as partial thread

@@ -16,11 +16,18 @@ export type TUIOptions = {
   listThreads?: boolean;
   inspectThreadId?: string;
   traceThreadId?: string;
+  inspectRunId?: string;
   continuityPreview?: { threadId: string; previewId: string };
   resetThreadId?: string;
   archiveThreadId?: string;
   reopenThreadId?: string;
   handoffWebThreadId?: string;
+  listProfiles?: boolean;
+  inspectProfileId?: string;
+  archiveProfileId?: string;
+  disableProfileId?: string;
+  profileHistoryId?: string;
+  rollbackProfile?: { profileId: string; versionId: string };
 };
 
 type CLIIO = {
@@ -89,6 +96,96 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
     }
   }
 
+  if (options.listProfiles) {
+    try {
+      const list = await client.listAgentProfiles();
+      io.stdout.write(`Profiles: ${list.tenantId}\n`);
+      for (const profile of list.items) {
+        io.stdout.write(`${profile.profileId} ${profile.status} default=${profile.tenantDefault ? "yes" : "no"} ${profile.displayName}\n`);
+      }
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.inspectProfileId) {
+    try {
+      const detail = await client.getAgentProfile(options.inspectProfileId);
+      io.stdout.write(`Profile: ${detail.profile.profileId}\n`);
+      io.stdout.write(`Name: ${detail.profile.displayName}\n`);
+      io.stdout.write(`Status: ${detail.profile.status}\n`);
+      io.stdout.write(`Default: ${detail.profile.tenantDefault ? "yes" : "no"}\n`);
+      io.stdout.write(`Summary: ${detail.profile.persona.safeSummary ?? detail.profile.displayIdentity.safeSummary ?? "metadata only"}\n`);
+      io.stdout.write(`Versions: ${detail.versions.length}\n`);
+      io.stdout.write(`Overlays: ${detail.overlayReferences.length}\n`);
+      for (const overlay of detail.overlayReferences) {
+        io.stdout.write(`- Overlay ${overlay.referenceKind} ${overlay.validationState} ${overlay.safeDisplayLabel}\n`);
+      }
+      io.stdout.write("Evidence: explicit profile configuration, not assistant memory\n");
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.profileHistoryId) {
+    try {
+      const history = await client.listAgentProfileVersions(options.profileHistoryId);
+      io.stdout.write(`Profile History: ${options.profileHistoryId}\n`);
+      for (const version of history.items) {
+        io.stdout.write(`${version.profileVersionId} v${version.versionNumber} ${version.changeKind} rollback=${version.rollbackEligibility} ${version.changeSummary}\n`);
+      }
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.rollbackProfile) {
+    try {
+      const result = await client.rollbackAgentProfile(options.rollbackProfile.profileId, {
+        sourceProfileVersionId: options.rollbackProfile.versionId,
+        reasonCode: "tui_profile_rollback"
+      });
+      io.stdout.write(`Profile ${result.profile.profileId} rollback completed.\n`);
+      io.stdout.write(`Version: ${result.version.profileVersionId}\n`);
+      io.stdout.write(`Status: ${result.profile.status}\n`);
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  const profileRetirementCommand = options.archiveProfileId
+    ? { profileId: options.archiveProfileId, action: "archive" as const, run: client.archiveAgentProfile.bind(client) }
+    : options.disableProfileId
+      ? { profileId: options.disableProfileId, action: "disable" as const, run: client.disableAgentProfile.bind(client) }
+      : null;
+  if (profileRetirementCommand) {
+    try {
+      const result = await profileRetirementCommand.run(profileRetirementCommand.profileId, { reasonCode: `tui_profile_${profileRetirementCommand.action}` });
+      io.stdout.write(`Profile ${result.profile.profileId} ${profileRetirementCommand.action} completed.\n`);
+      io.stdout.write(`Status: ${result.profile.status}\n`);
+      if (result.selection?.selectionReason) {
+        io.stdout.write(`Fallback: ${result.selection.selectionReason} ${result.selection.profileId}\n`);
+      }
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
   if (options.inspectThreadId) {
     try {
       const detail = await client.getThread(options.inspectThreadId);
@@ -104,6 +201,9 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
       io.stdout.write(`Segments: ${detail.sessionSegments.length}\n`);
       io.stdout.write(`Source Linkages: ${detail.sourceLinkages.length}\n`);
       io.stdout.write(`Runtime Projections: ${detail.runtimeProjections.length}\n`);
+      if (detail.activeProfileProjection) {
+        io.stdout.write(`Active Profile: ${detail.activeProfileProjection.profileId} version=${detail.activeProfileProjection.profileVersionId} evidence=${detail.activeProfileProjection.configurationScope ?? "explicit_profile_configuration"}\n`);
+      }
       io.stdout.write(`Continuity Previews: ${detail.continuityPreviews?.length ?? 0}\n`);
       io.stdout.write(`Conversation Shape: ${detail.conversationShape?.shape ?? "unavailable"}\n`);
       io.stdout.write(`Participation Decisions: ${detail.participationDecisions?.length ?? 0}\n`);
@@ -155,6 +255,9 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
         io.stdout.write("- none\n");
       }
       io.stdout.write("Runtime Trace:\n");
+      if (detail.activeProfileProjection) {
+        io.stdout.write(`- active-profile ${detail.activeProfileProjection.profileId} version=${detail.activeProfileProjection.profileVersionId} ${detail.activeProfileProjection.safeSummary}\n`);
+      }
       for (const projection of detail.runtimeProjections) {
         io.stdout.write(`- ${projection.resourceKind} ${projection.status} ${projection.safeSummary ?? projection.reasonCode ?? "metadata only"} redaction=${projection.redactionStatus} retention=${projection.retentionExpiresAt ?? "policy default"}\n`);
       }
@@ -167,6 +270,23 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
       }
       if ((detail.continuityPreviews?.length ?? 0) === 0) {
         io.stdout.write("- none\n");
+      }
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.inspectRunId) {
+    try {
+      const run = await client.getRun(options.inspectRunId);
+      io.stdout.write(`Run: ${run.runId}\n`);
+      io.stdout.write(`Status: ${run.status}\n`);
+      io.stdout.write(`Entrypoint: ${run.entrypoint}\n`);
+      if (run.activeProfileProjection) {
+        io.stdout.write(`Active Profile: ${run.activeProfileProjection.profileId} version=${run.activeProfileProjection.profileVersionId} evidence=${run.activeProfileProjection.configurationScope ?? "explicit_profile_configuration"}\n`);
       }
       return 0;
     } catch (error) {
@@ -324,11 +444,34 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
       case "--threads":
         options.listThreads = true;
         break;
+      case "--profiles":
+        options.listProfiles = true;
+        break;
+      case "--profile":
+        options.inspectProfileId = argv[++index] ?? options.inspectProfileId;
+        break;
+      case "--profile-archive":
+        options.archiveProfileId = argv[++index] ?? options.archiveProfileId;
+        break;
+      case "--profile-disable":
+        options.disableProfileId = argv[++index] ?? options.disableProfileId;
+        break;
+      case "--profile-history":
+        options.profileHistoryId = argv[++index] ?? options.profileHistoryId;
+        break;
+      case "--profile-rollback": {
+        const [profileId = "", versionId = ""] = (argv[++index] ?? "").split(":", 2);
+        options.rollbackProfile = { profileId, versionId };
+        break;
+      }
       case "--thread":
         options.inspectThreadId = argv[++index] ?? options.inspectThreadId;
         break;
       case "--thread-trace":
         options.traceThreadId = argv[++index] ?? options.traceThreadId;
+        break;
+      case "--run":
+        options.inspectRunId = argv[++index] ?? options.inspectRunId;
         break;
       case "--continuity-preview": {
         const [threadId = "", previewId = ""] = (argv[++index] ?? "").split(":", 2);
@@ -372,8 +515,15 @@ export function helpText(): string {
     "  --slack-setup <id>  Print Slack hosted setup state",
     "  --matrix-setup <id> Print Matrix hosted setup state",
     "  --threads           List tenant thread lifecycle metadata",
+    "  --profiles          List tenant agent profiles",
+    "  --profile <id>      Inspect one tenant agent profile",
+    "  --profile-history <id> Print retained profile versions",
+    "  --profile-rollback <profileId:versionId> Roll back one profile",
+    "  --profile-archive <id> Archive one tenant agent profile",
+    "  --profile-disable <id> Disable one tenant agent profile",
     "  --thread <id>       Inspect one tenant thread",
     "  --thread-trace <id> Print source-to-runtime trace evidence",
+    "  --run <id>          Inspect one tenant run",
     "  --continuity-preview <threadId:previewId> Inspect one continuity preview",
     "  --thread-reset <id> Reset one tenant thread",
     "  --thread-archive <id> Archive one tenant thread",

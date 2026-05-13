@@ -25,6 +25,8 @@
         "evaluation.manage",
         "billing.view",
         "billing.evidence_export",
+        "profiles.inspect",
+        "profiles.manage",
         "read_only.inspect"
       ]
     }

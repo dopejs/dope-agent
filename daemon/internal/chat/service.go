@@ -12,6 +12,7 @@ import (
 
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
+	"github.com/dopejs/dope-agent/daemon/internal/profiles"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/setupwizard"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
@@ -98,6 +99,10 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	if err != nil {
 		return QueryResult{}, err
 	}
+	activeProfile, activeSelection, hasActiveProfile, err := s.resolveActiveProfile(ctx, input, &dispatchInput)
+	if err != nil {
+		return QueryResult{}, err
+	}
 	if s.providers != nil {
 		_, dispatchInput, err = s.providers.ResolveDispatchInput(dispatchInput)
 		if err != nil {
@@ -118,6 +123,11 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	}
 	if err := persistDispatch(ctx, s.store, dispatch); err != nil {
 		return QueryResult{}, err
+	}
+	if hasActiveProfile {
+		if err := s.recordActiveProfileProjection(ctx, activeProfile, activeSelection, input, continuity); err != nil {
+			return QueryResult{}, err
+		}
 	}
 	if err := s.persistContinuityRequest(ctx, &continuity, input, dispatch.DispatchID, strings.TrimSpace(input.Query)); err != nil {
 		return QueryResult{}, err
@@ -159,6 +169,10 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 	if err != nil {
 		return QueryResult{}, err
 	}
+	activeProfile, activeSelection, hasActiveProfile, err := s.resolveActiveProfile(ctx, input, &dispatchInput)
+	if err != nil {
+		return QueryResult{}, err
+	}
 	if s.providers != nil {
 		_, dispatchInput, err = s.providers.ResolveDispatchInput(dispatchInput)
 		if err != nil {
@@ -179,6 +193,11 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 	}
 	if err := persistDispatch(ctx, s.store, dispatch); err != nil {
 		return QueryResult{}, err
+	}
+	if hasActiveProfile {
+		if err := s.recordActiveProfileProjection(ctx, activeProfile, activeSelection, input, continuity); err != nil {
+			return QueryResult{}, err
+		}
 	}
 	if err := s.persistContinuityRequest(ctx, &continuity, input, dispatch.DispatchID, strings.TrimSpace(input.Query)); err != nil {
 		return QueryResult{}, err
@@ -253,6 +272,60 @@ func (s *Service) enforceProviderSetupGate(ctx context.Context, tenantID, provid
 			return fmt.Errorf("%w: %s", providers.ErrProviderAuthUnavailable, reason)
 		}
 		return nil
+	}
+	return nil
+}
+
+func (s *Service) resolveActiveProfile(ctx context.Context, input QueryInput, dispatchInput *llm.CreateDispatchInput) (profiles.AgentProfile, profiles.ActiveSelection, bool, error) {
+	if s == nil || s.store == nil || strings.TrimSpace(input.TenantID) == "" {
+		return profiles.AgentProfile{}, profiles.ActiveSelection{}, false, nil
+	}
+	profile, selection, found, err := s.store.ActiveAgentProfileSelection(ctx, strings.TrimSpace(input.TenantID))
+	if err != nil || !found {
+		return profiles.AgentProfile{}, profiles.ActiveSelection{}, false, err
+	}
+	if strings.TrimSpace(input.Provider) == "" && strings.TrimSpace(profile.DefaultProviderPreference.ProviderID) != "" {
+		dispatchInput.Provider = strings.TrimSpace(profile.DefaultProviderPreference.ProviderID)
+	}
+	if strings.TrimSpace(input.Model) == "" && strings.TrimSpace(profile.DefaultProviderPreference.Model) != "" {
+		dispatchInput.Model = strings.TrimSpace(profile.DefaultProviderPreference.Model)
+	}
+	profileMessages := profileContextMessages(profile)
+	if len(profileMessages) > 0 {
+		dispatchInput.Messages = append(dispatchInput.Messages, profileMessages...)
+	}
+	return profile, selection, true, nil
+}
+
+func profileContextMessages(profile profiles.AgentProfile) []llm.Message {
+	messages := make([]llm.Message, 0, 2)
+	if summary := strings.TrimSpace(profiles.SafeProfileSummary(profile)); summary != "" {
+		messages = append(messages, llm.Message{Role: llm.RoleSystem, Content: "Agent profile persona: " + summary})
+	}
+	safety := strings.TrimSpace(profile.SafetyDefaults.ApprovalPosture)
+	if safety != "" {
+		messages = append(messages, llm.Message{Role: llm.RoleSystem, Content: "Agent profile safety posture: " + safety})
+	}
+	return messages
+}
+
+func (s *Service) recordActiveProfileProjection(ctx context.Context, profile profiles.AgentProfile, selection profiles.ActiveSelection, input QueryInput, continuity continuityAssembly) error {
+	if s == nil || s.store == nil || strings.TrimSpace(input.ThreadID) == "" {
+		return nil
+	}
+	projection := profiles.BuildRuntimeProjection(profile, selection, profiles.RuntimeProjectionInput{
+		ResourceKind: profiles.RuntimeResourceThread,
+		ResourceID:   strings.TrimSpace(input.ThreadID),
+		ThreadID:     strings.TrimSpace(input.ThreadID),
+		SessionID:    continuity.SessionSegmentID,
+		OccurredAt:   time.Now().UTC(),
+	})
+	recorded, err := s.store.RecordRuntimeProfileProjection(ctx, projection)
+	if err != nil {
+		return err
+	}
+	if s.eventBus != nil {
+		s.eventBus.Publish(events.AgentProfileRuntimeProjectedEvent(recorded))
 	}
 	return nil
 }

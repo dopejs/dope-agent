@@ -21,6 +21,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/mcp"
 	"github.com/dopejs/dope-agent/daemon/internal/orchestration"
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
+	"github.com/dopejs/dope-agent/daemon/internal/profiles"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/skills"
@@ -115,6 +116,11 @@ func handleRunWorkflows(cfg config.Config, manager *runtime.Manager, policyEngin
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		items, err = projectWorkflowProfileProjections(r.Context(), sqliteStore, items)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, WorkflowListResponse{Items: items})
 	case http.MethodPost:
 		run, ok := manager.GetRun(runID)
@@ -147,6 +153,23 @@ func handleRunWorkflows(cfg config.Config, manager *runtime.Manager, policyEngin
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		if projection, err := recordActiveProfileProjectionForTarget(r.Context(), sqliteStore, eventBus, runtimeProfileProjectionTarget{
+			ResourceKind: profiles.RuntimeResourceWorkflow,
+			ResourceID:   workflow.WorkflowID,
+			RunID:        runID,
+			WorkflowID:   workflow.WorkflowID,
+		}); err != nil {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "workflow profile projection failed before response")
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		} else if projection != nil {
+			workflow.ActiveProfileProjection = projection
+			if err := persistWorkflowDetail(r.Context(), sqliteStore, workflow); err != nil {
+				releaseBillingReservation(r.Context(), billingManager, reservation, "workflow profile projection failed before persistence")
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
 		if reservation.ReservationID != "" && workflow.Status == orchestration.WorkflowStatusPlanningFailed {
 			releaseBillingReservation(r.Context(), billingManager, reservation, "workflow planning failed before execution")
 		}
@@ -166,6 +189,9 @@ func handleRunWorkflows(cfg config.Config, manager *runtime.Manager, policyEngin
 		if _, err := publishWorkflowEvent(r.Context(), eventBus, sqliteStore, "workflow.planned", workflow, nil, nil); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+		if !canInspectProfileRuntime(r.Context()) {
+			workflow.ActiveProfileProjection = nil
 		}
 		writeJSON(w, http.StatusCreated, workflow)
 	default:
@@ -198,6 +224,11 @@ func handleRunWorkflowByID(deliveryManager *delivery.Manager, sqliteStore *store
 		return
 	}
 	workflow, err = projectWorkflowMailSummaries(r.Context(), sqliteStore, workflow)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	workflow, err = projectWorkflowProfileProjection(r.Context(), sqliteStore, workflow)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -256,6 +287,18 @@ func handleRunWorkflowStart(cfg config.Config, manager *runtime.Manager, policyE
 		return
 	}
 	workflow = orchestration.NewManager().InitializeExecution(workflow, time.Now().UTC())
+	if projection, err := recordActiveProfileProjectionForTarget(r.Context(), sqliteStore, eventBus, runtimeProfileProjectionTarget{
+		ResourceKind: profiles.RuntimeResourceWorkflow,
+		ResourceID:   workflow.WorkflowID,
+		RunID:        runID,
+		WorkflowID:   workflow.WorkflowID,
+	}); err != nil {
+		releaseBillingReservation(r.Context(), billingManager, reservation, "workflow start profile projection failed before persistence")
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	} else if projection != nil {
+		workflow.ActiveProfileProjection = projection
+	}
 	if err := persistWorkflowDetail(r.Context(), sqliteStore, workflow); err != nil {
 		releaseBillingReservation(r.Context(), billingManager, reservation, "workflow start failed before persistence")
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -292,6 +335,11 @@ func handleRunWorkflowStart(cfg config.Config, manager *runtime.Manager, policyE
 		return
 	}
 	workflow, err = projectWorkflowMailSummaries(r.Context(), sqliteStore, workflow)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	workflow, err = projectWorkflowProfileProjection(r.Context(), sqliteStore, workflow)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -348,6 +396,11 @@ func handleRunWorkflowCancel(cfg config.Config, manager *runtime.Manager, sandbo
 		return
 	}
 	workflow, err = projectWorkflowMailSummaries(r.Context(), sqliteStore, workflow)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	workflow, err = projectWorkflowProfileProjection(r.Context(), sqliteStore, workflow)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -119,6 +119,17 @@ Resolution order is:
 3. implicit ready configured provider
 4. builtin fallback provider
 
+## Roadmap 57 Agent Profile Defaults
+
+Agent profiles can carry a tenant-owned default provider preference containing provider,
+model, reasoning level, validation state, and failure reason metadata. These defaults are
+applied as explicit profile configuration when runtime work starts and are recorded in
+profile version/runtime projection evidence.
+
+Provider profile readiness remains authoritative. A profile preference must not bypass
+provider inventory, credential readiness, or model validation, and archived/disabled
+profiles cannot become the tenant default for new work.
+
 Today, the implicit ready configured provider path preserves the existing `openai_compatible` behavior when it is configured but not explicitly set as the default provider.
 
 ### Model

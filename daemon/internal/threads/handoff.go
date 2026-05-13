@@ -3,6 +3,8 @@ package threads
 import (
 	"errors"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/profiles"
 )
 
 type HandoffStatus string
@@ -72,6 +74,7 @@ type HandoffLink struct {
 	ReasonCode                   string                       `json:"reasonCode,omitempty"`
 	FirstDestinationResponseID   string                       `json:"firstDestinationResponseId,omitempty"`
 	SourceReferenceStatus        HandoffSourceReferenceStatus `json:"sourceReferenceStatus"`
+	ActiveProfileProjection      *profiles.RuntimeProjection  `json:"activeProfileProjection,omitempty"`
 	CreatedAt                    time.Time                    `json:"createdAt,omitempty"`
 	ConsumedAt                   time.Time                    `json:"consumedAt,omitempty"`
 	RetentionExpiresAt           time.Time                    `json:"retentionExpiresAt,omitempty"`

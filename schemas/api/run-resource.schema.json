@@ -74,6 +74,9 @@
     "latestDeliveryTargetId": {
       "type": "string"
     },
+    "activeProfileProjection": {
+      "$ref": "agent-profile-runtime-projection.schema.json"
+    },
     "createdAt": {
       "type": "string",
       "format": "date-time"
