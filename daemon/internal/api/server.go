@@ -403,6 +403,21 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/profiles/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleAgentProfileRoutes(deps.Store, deps.EventBus, w, r)
 	}))
+	mux.HandleFunc("/v1/workspaces", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleWorkspaceRoutes(deps.Store, deps.EventBus, w, r)
+	}))
+	mux.HandleFunc("/v1/workspaces/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleWorkspaceRoutes(deps.Store, deps.EventBus, w, r)
+	}))
+	mux.HandleFunc("/v1/bindings", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleBindingRoutes(deps.Store, deps.EventBus, w, r)
+	}))
+	mux.HandleFunc("/v1/bindings/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleBindingRoutes(deps.Store, deps.EventBus, w, r)
+	}))
+	mux.HandleFunc("/v1/capability-visibility", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleCapabilityVisibilityRoutes(deps.Store, deps.EventBus, w, r)
+	}))
 	mux.HandleFunc("/v1/sessions", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleSessions(deps.Router, deps.EventBus, deps.Store, w, r)
 	}))

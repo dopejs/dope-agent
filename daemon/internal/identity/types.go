@@ -79,6 +79,8 @@ const (
 	PermissionBillingEvidenceExport            Permission = "billing.evidence_export"
 	PermissionProfilesInspect                  Permission = "profiles.inspect"
 	PermissionProfilesManage                   Permission = "profiles.manage"
+	PermissionBindingsInspect                  Permission = "bindings.inspect"
+	PermissionBindingsManage                   Permission = "bindings.manage"
 	PermissionReadOnlyInspect                  Permission = "read_only.inspect"
 )
 
@@ -115,6 +117,8 @@ var AllSensitivePermissions = []Permission{
 	PermissionBillingEvidenceExport,
 	PermissionProfilesInspect,
 	PermissionProfilesManage,
+	PermissionBindingsInspect,
+	PermissionBindingsManage,
 }
 
 var (

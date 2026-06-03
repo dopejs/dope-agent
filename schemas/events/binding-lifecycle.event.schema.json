@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "binding-lifecycle.event.schema.json",
+  "type": "object",
+  "required": ["category", "name", "occurredAt", "resource", "payload"],
+  "properties": {
+    "eventId": { "type": "string" },
+    "category": { "type": "string", "const": "binding" },
+    "name": { "type": "string" },
+    "occurredAt": { "type": "string" },
+    "resource": { "type": "object" },
+    "payload": {
+      "type": "object",
+      "required": ["outcome", "reasonCode", "redactionStatus"],
+      "properties": {
+        "bindingId": { "type": "string" },
+        "workspaceId": { "type": "string" },
+        "actorPrincipalId": { "type": "string" },
+        "outcome": { "type": "string" },
+        "reasonCode": { "type": "string" },
+        "permissionGate": { "type": "string" },
+        "safeSummary": { "type": "string" },
+        "auditEventId": { "type": "string" },
+        "redactionStatus": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

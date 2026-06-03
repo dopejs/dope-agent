@@ -14,6 +14,8 @@ export type TUIOptions = {
   slackSetupConnectorId?: string;
   matrixSetupConnectorId?: string;
   listThreads?: boolean;
+  listBindings?: boolean;
+  listWorkspaces?: boolean;
   inspectThreadId?: string;
   traceThreadId?: string;
   inspectRunId?: string;
@@ -87,6 +89,36 @@ export async function runCLI(options: TUIOptions, deps: RunCLIDependencies = {})
       io.stdout.write(`Threads: ${list.tenantId}\n`);
       for (const thread of list.items) {
         io.stdout.write(`${thread.threadId} ${thread.lifecycleState} ${thread.sourceKind} ${thread.sourceSummary ?? ""}\n`);
+      }
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.listWorkspaces) {
+    try {
+      const list = await client.listWorkspaces();
+      io.stdout.write(`Workspaces: ${list.tenantId ?? ""}\n`);
+      for (const ws of list.workspaces) {
+        io.stdout.write(`${ws.workspaceId} ${ws.status}${ws.isDefault ? " (default)" : ""} repair=${ws.repairStatus} ${ws.displayName}\n`);
+      }
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      io.stderr.write(`Error: ${message}\n`);
+      return 1;
+    }
+  }
+
+  if (options.listBindings) {
+    try {
+      const list = await client.listBindings();
+      io.stdout.write(`Bindings: ${list.tenantId ?? ""}\n`);
+      for (const binding of list.bindings) {
+        io.stdout.write(`${binding.bindingId} ${binding.scopeKind} ${binding.scopeLabel} -> ${binding.selectedProfileId ?? "-"}/${binding.selectedWorkspaceId ?? "-"} ${binding.status} repair=${binding.repairStatus}\n`);
       }
       return 0;
     } catch (error) {
@@ -443,6 +475,12 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
         break;
       case "--threads":
         options.listThreads = true;
+        break;
+      case "--workspaces":
+        options.listWorkspaces = true;
+        break;
+      case "--bindings":
+        options.listBindings = true;
         break;
       case "--profiles":
         options.listProfiles = true;

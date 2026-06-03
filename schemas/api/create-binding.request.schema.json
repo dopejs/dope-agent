@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create-binding.request.schema.json",
+  "type": "object",
+  "required": ["scopeKind", "scopeRef"],
+  "properties": {
+    "scopeKind": { "type": "string", "enum": ["channel", "integration_account"] },
+    "scopeRef": { "type": "string" },
+    "selectedProfileId": { "type": "string" },
+    "selectedWorkspaceId": { "type": "string" },
+    "reasonCode": { "type": "string" }
+  },
+  "additionalProperties": false
+}

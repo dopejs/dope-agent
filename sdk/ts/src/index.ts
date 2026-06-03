@@ -2955,6 +2955,96 @@ export type DopeClientOptions = {
   defaultTenantId?: string;
 };
 
+// --- Roadmap 58: Workspace and capability binding ---
+
+export type WorkspaceStatus = "active" | "archived" | "disabled";
+export type BindingRepairStatus =
+  | "healthy"
+  | "disabled"
+  | "invalid"
+  | "stale"
+  | "unsupported"
+  | "needs_repair";
+export type BindingScopeKind = "channel" | "integration_account";
+export type CapabilityVisibility = "visible" | "hidden" | "disabled" | "default_enabled";
+export type CapabilityVisibilityScope = "profile" | "workspace";
+
+export interface WorkspaceResource {
+  workspaceId: string;
+  tenantId?: string;
+  displayName: string;
+  status: WorkspaceStatus;
+  isDefault: boolean;
+  repairStatus: BindingRepairStatus;
+  redactionStatus: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceListResponse {
+  tenantId?: string;
+  workspaces: WorkspaceResource[];
+}
+
+export interface BindingResource {
+  bindingId: string;
+  tenantId?: string;
+  scopeKind: BindingScopeKind;
+  scopeLabel: string;
+  selectedProfileId?: string;
+  selectedProfileVersionId?: string;
+  selectedWorkspaceId?: string;
+  status: "active" | "disabled";
+  repairStatus: BindingRepairStatus;
+  validationStatus: "valid" | "invalid";
+  resultingSelectionSummary?: string;
+  lastMaterialChangeAt: string;
+  redactionStatus: string;
+}
+
+export interface BindingListResponse {
+  tenantId?: string;
+  bindings: BindingResource[];
+}
+
+export interface CreateBindingInput {
+  scopeKind: BindingScopeKind;
+  scopeRef: string;
+  selectedProfileId?: string;
+  selectedWorkspaceId?: string;
+  reasonCode?: string;
+}
+
+export interface UpdateBindingInput {
+  selectedProfileId?: string;
+  selectedWorkspaceId?: string;
+  disable?: boolean;
+  reasonCode?: string;
+}
+
+export interface CapabilityVisibilityResource {
+  policyId: string;
+  tenantId?: string;
+  scopeKind: CapabilityVisibilityScope;
+  scopeRef: string;
+  capabilityId: string;
+  visibility: CapabilityVisibility;
+  validationStatus: "valid" | "invalid";
+}
+
+export interface CapabilityVisibilityListResponse {
+  tenantId?: string;
+  policies: CapabilityVisibilityResource[];
+}
+
+export interface SetCapabilityVisibilityInput {
+  scopeKind: CapabilityVisibilityScope;
+  scopeRef: string;
+  capabilityId: string;
+  visibility: CapabilityVisibility;
+  reasonCode?: string;
+}
+
 export class DopeClientError extends Error {
   readonly status: number;
   readonly code?: string;
@@ -3080,6 +3170,56 @@ export class DopeClient {
 
   async createThreadHandoff(threadId: string, input: ThreadHandoffInput, tenantOptions?: TenantRequestOptions): Promise<ThreadHandoffLink> {
     return this.requestJSON<ThreadHandoffLink>(`/v1/threads/${encodePathComponent(threadId.trim())}/handoffs`, { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  // --- Roadmap 58: Workspace and capability binding ---
+
+  async listWorkspaces(tenantOptions?: TenantRequestOptions): Promise<WorkspaceListResponse> {
+    return this.requestJSON<WorkspaceListResponse>("/v1/workspaces", { tenant: tenantOptions });
+  }
+
+  async getWorkspace(workspaceId: string, tenantOptions?: TenantRequestOptions): Promise<WorkspaceResource> {
+    return this.requestJSON<WorkspaceResource>(`/v1/workspaces/${encodePathComponent(workspaceId.trim())}`, { tenant: tenantOptions });
+  }
+
+  async createWorkspace(input: { displayName: string }, tenantOptions?: TenantRequestOptions): Promise<WorkspaceResource> {
+    return this.requestJSON<WorkspaceResource>("/v1/workspaces", { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async updateWorkspace(workspaceId: string, input: { status: WorkspaceStatus; reasonCode?: string }, tenantOptions?: TenantRequestOptions): Promise<WorkspaceResource> {
+    return this.requestJSON<WorkspaceResource>(`/v1/workspaces/${encodePathComponent(workspaceId.trim())}`, { method: "PATCH", body: input, tenant: tenantOptions });
+  }
+
+  async listBindings(tenantOptions?: TenantRequestOptions): Promise<BindingListResponse> {
+    return this.requestJSON<BindingListResponse>("/v1/bindings", { tenant: tenantOptions });
+  }
+
+  async getBinding(bindingId: string, tenantOptions?: TenantRequestOptions): Promise<BindingResource> {
+    return this.requestJSON<BindingResource>(`/v1/bindings/${encodePathComponent(bindingId.trim())}`, { tenant: tenantOptions });
+  }
+
+  async createBinding(input: CreateBindingInput, tenantOptions?: TenantRequestOptions): Promise<BindingResource> {
+    return this.requestJSON<BindingResource>("/v1/bindings", { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async updateBinding(bindingId: string, input: UpdateBindingInput, tenantOptions?: TenantRequestOptions): Promise<BindingResource> {
+    return this.requestJSON<BindingResource>(`/v1/bindings/${encodePathComponent(bindingId.trim())}`, { method: "PATCH", body: input, tenant: tenantOptions });
+  }
+
+  async removeBinding(bindingId: string, tenantOptions?: TenantRequestOptions): Promise<void> {
+    await this.requestJSON<void>(`/v1/bindings/${encodePathComponent(bindingId.trim())}`, { method: "DELETE", tenant: tenantOptions });
+  }
+
+  async repairBinding(bindingId: string, tenantOptions?: TenantRequestOptions): Promise<BindingResource> {
+    return this.requestJSON<BindingResource>(`/v1/bindings/${encodePathComponent(bindingId.trim())}/repair`, { method: "POST", body: {}, tenant: tenantOptions });
+  }
+
+  async listCapabilityVisibility(query: { scopeKind: CapabilityVisibilityScope; scopeRef: string }, tenantOptions?: TenantRequestOptions): Promise<CapabilityVisibilityListResponse> {
+    return this.requestJSON<CapabilityVisibilityListResponse>("/v1/capability-visibility", { query, tenant: tenantOptions });
+  }
+
+  async setCapabilityVisibility(input: SetCapabilityVisibilityInput, tenantOptions?: TenantRequestOptions): Promise<CapabilityVisibilityResource> {
+    return this.requestJSON<CapabilityVisibilityResource>("/v1/capability-visibility", { method: "PUT", body: input, tenant: tenantOptions });
   }
 
   async getChannelConnector(connectorId: string, tenantOptions?: TenantRequestOptions): Promise<ChannelConnectorDetailResource> {
@@ -3954,7 +4094,14 @@ export class DopeClient {
     if (!response.ok) {
       throw await toClientError(response);
     }
-    return (await response.json()) as T;
+    if (response.status === 204) {
+      return undefined as T;
+    }
+    const text = await response.text();
+    if (text.length === 0) {
+      return undefined as T;
+    }
+    return JSON.parse(text) as T;
   }
 
   private buildURL(route: string, query?: Record<string, QueryValue>): string {

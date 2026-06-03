@@ -26,8 +26,8 @@ import (
 // CI runs without -short and exercises the full N=10000 seed.
 
 const (
-	perfRowCount   = 10_000
-	perfIterations = 200
+	perfRowCount         = 10_000
+	perfIterations       = 200
 	perfRegressionFactor = 1.2
 
 	perfTenantA = "ten_perfaaaa"

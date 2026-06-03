@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "update-binding.request.schema.json",
+  "type": "object",
+  "properties": {
+    "selectedProfileId": { "type": "string" },
+    "selectedWorkspaceId": { "type": "string" },
+    "disable": { "type": "boolean" },
+    "reasonCode": { "type": "string" }
+  },
+  "additionalProperties": false
+}

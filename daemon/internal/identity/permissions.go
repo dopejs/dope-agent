@@ -37,6 +37,8 @@ func PermissionsForRole(role Role, lifecycle LifecycleStatus) []Permission {
 			PermissionBillingManage,
 			PermissionProfilesInspect,
 			PermissionProfilesManage,
+			PermissionBindingsInspect,
+			PermissionBindingsManage,
 		}
 	case RoleOperator:
 		return []Permission{

@@ -228,10 +228,10 @@ func (s *SQLiteStore) GetRunForTenantRaw(ctx context.Context, runID, tenantID st
 	)
 	// Buffer scan via a local row scanner.
 	var (
-		runRow                                                                         runtime.Run
-		statusStr                                                                      string
-		sessionID, scheduleID, scheduleAttemptID, reminderID, reminderOccurrenceID     sql.NullString
-		createdAt, updatedAt                                                           string
+		runRow                                                                     runtime.Run
+		statusStr                                                                  string
+		sessionID, scheduleID, scheduleAttemptID, reminderID, reminderOccurrenceID sql.NullString
+		createdAt, updatedAt                                                       string
 	)
 	if err := row.Scan(
 		&runRow.RunID,

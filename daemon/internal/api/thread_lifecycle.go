@@ -1,12 +1,14 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/bindings"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
@@ -195,7 +197,34 @@ func handleThreadDetail(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r
 			response.HandoffLinks[idx].ActiveProfileProjection = nil
 		}
 	}
-	writeJSON(w, http.StatusOK, response)
+	writeThreadDetailWithBindingProjection(sqliteStore, w, r, tenantContext, threadID, response)
+}
+
+// writeThreadDetailWithBindingProjection emits the thread detail and, for callers holding
+// bindings.inspect, attaches the latest runtime binding evidence as an additive
+// `bindingProjection` field (FR-013, SC-012) without altering the base response struct.
+func writeThreadDetailWithBindingProjection(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, tenantContext identity.TenantContext, threadID string, response any) {
+	if sqliteStore == nil || !identity.HasPermission(tenantContext.Permissions, identity.PermissionBindingsInspect) {
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	evidence, found, err := sqliteStore.LatestRuntimeBindingEvidence(r.Context(), tenantContext.TenantID, "thread", threadID)
+	if err != nil || !found {
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	raw, err := json.Marshal(response)
+	if err != nil {
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	merged := map[string]any{}
+	if err := json.Unmarshal(raw, &merged); err != nil {
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	merged["bindingProjection"] = bindings.ToRuntimeEvidenceResource(evidence)
+	writeJSON(w, http.StatusOK, merged)
 }
 
 func handleThreadContinuityPreviewDetail(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, threadID, previewID string) {

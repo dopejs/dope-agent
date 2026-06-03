@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "workspace-list.response.schema.json",
+  "type": "object",
+  "required": ["workspaces"],
+  "properties": {
+    "tenantId": { "type": "string" },
+    "workspaces": { "type": "array", "items": { "$ref": "workspace-resource.schema.json" } }
+  },
+  "additionalProperties": true
+}

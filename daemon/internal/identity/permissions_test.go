@@ -9,7 +9,7 @@ func TestPermissionsForRoleUsesTieredLeastPrivilege(t *testing.T) {
 		want []Permission
 	}{
 		{name: "owner", role: RoleOwner, want: AllSensitivePermissions},
-		{name: "admin", role: RoleAdmin, want: []Permission{PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionIntegrationDiagnosticsRead, PermissionIntegrationDiagnosticsRun, PermissionIntegrationDiagnosticsSmoke, PermissionIntegrationDiagnosticsSmokeRisky, PermissionConnectorsManage, PermissionMCPManage, PermissionLiveValidationReconcile, PermissionEvaluationManage, PermissionEvaluationDiscoveryRead, PermissionEvaluationDiscoveryRun, PermissionEvaluationDiscoverySuppress, PermissionEvaluationFixtureRead, PermissionEvaluationFixtureManage, PermissionEvaluationFixtureReview, PermissionEvaluationFixtureSuppress, PermissionEvaluationCampaignRead, PermissionEvaluationCampaignManage, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead, PermissionEvaluationRetentionManage, PermissionBillingView, PermissionBillingManage, PermissionProfilesInspect, PermissionProfilesManage}},
+		{name: "admin", role: RoleAdmin, want: []Permission{PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionIntegrationDiagnosticsRead, PermissionIntegrationDiagnosticsRun, PermissionIntegrationDiagnosticsSmoke, PermissionIntegrationDiagnosticsSmokeRisky, PermissionConnectorsManage, PermissionMCPManage, PermissionLiveValidationReconcile, PermissionEvaluationManage, PermissionEvaluationDiscoveryRead, PermissionEvaluationDiscoveryRun, PermissionEvaluationDiscoverySuppress, PermissionEvaluationFixtureRead, PermissionEvaluationFixtureManage, PermissionEvaluationFixtureReview, PermissionEvaluationFixtureSuppress, PermissionEvaluationCampaignRead, PermissionEvaluationCampaignManage, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead, PermissionEvaluationRetentionManage, PermissionBillingView, PermissionBillingManage, PermissionProfilesInspect, PermissionProfilesManage, PermissionBindingsInspect, PermissionBindingsManage}},
 		{name: "operator", role: RoleOperator, want: []Permission{PermissionRunsExecute, PermissionApprovalsResolve, PermissionLiveValidationExecute, PermissionIntegrationDiagnosticsRead, PermissionIntegrationDiagnosticsRun, PermissionIntegrationDiagnosticsSmoke, PermissionEvaluationDiscoveryRead, PermissionEvaluationDiscoveryRun, PermissionEvaluationDiscoverySuppress, PermissionEvaluationFixtureRead, PermissionEvaluationFixtureSuppress, PermissionEvaluationCampaignRead, PermissionEvaluationCampaignManage, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead}},
 		{name: "viewer", role: RoleViewer, want: []Permission{PermissionReadOnlyInspect, PermissionEvaluationCampaignRead, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead}},
 	}
@@ -40,7 +40,7 @@ func TestPermissionsDeniedForInactiveLifecycle(t *testing.T) {
 func TestPermissionEvaluatorCoversSensitiveCapabilities(t *testing.T) {
 	rolePermissions := map[Role][]Permission{
 		RoleOwner:    AllSensitivePermissions,
-		RoleAdmin:    {PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionIntegrationDiagnosticsRead, PermissionIntegrationDiagnosticsRun, PermissionIntegrationDiagnosticsSmoke, PermissionIntegrationDiagnosticsSmokeRisky, PermissionConnectorsManage, PermissionMCPManage, PermissionLiveValidationReconcile, PermissionEvaluationManage, PermissionEvaluationDiscoveryRead, PermissionEvaluationDiscoveryRun, PermissionEvaluationDiscoverySuppress, PermissionEvaluationFixtureRead, PermissionEvaluationFixtureManage, PermissionEvaluationFixtureReview, PermissionEvaluationFixtureSuppress, PermissionEvaluationCampaignRead, PermissionEvaluationCampaignManage, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead, PermissionEvaluationRetentionManage, PermissionBillingView, PermissionBillingManage, PermissionProfilesInspect, PermissionProfilesManage},
+		RoleAdmin:    {PermissionTenantManage, PermissionSecretsManage, PermissionCredentialsInspect, PermissionIntegrationsManage, PermissionIntegrationDiagnosticsRead, PermissionIntegrationDiagnosticsRun, PermissionIntegrationDiagnosticsSmoke, PermissionIntegrationDiagnosticsSmokeRisky, PermissionConnectorsManage, PermissionMCPManage, PermissionLiveValidationReconcile, PermissionEvaluationManage, PermissionEvaluationDiscoveryRead, PermissionEvaluationDiscoveryRun, PermissionEvaluationDiscoverySuppress, PermissionEvaluationFixtureRead, PermissionEvaluationFixtureManage, PermissionEvaluationFixtureReview, PermissionEvaluationFixtureSuppress, PermissionEvaluationCampaignRead, PermissionEvaluationCampaignManage, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead, PermissionEvaluationRetentionManage, PermissionBillingView, PermissionBillingManage, PermissionProfilesInspect, PermissionProfilesManage, PermissionBindingsInspect, PermissionBindingsManage},
 		RoleOperator: {PermissionRunsExecute, PermissionApprovalsResolve, PermissionLiveValidationExecute, PermissionIntegrationDiagnosticsRead, PermissionIntegrationDiagnosticsRun, PermissionIntegrationDiagnosticsSmoke, PermissionEvaluationDiscoveryRead, PermissionEvaluationDiscoveryRun, PermissionEvaluationDiscoverySuppress, PermissionEvaluationFixtureRead, PermissionEvaluationFixtureSuppress, PermissionEvaluationCampaignRead, PermissionEvaluationCampaignManage, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead},
 		RoleViewer:   {PermissionReadOnlyInspect, PermissionEvaluationCampaignRead, PermissionEvaluationDashboardRead, PermissionEvaluationInspectionRead},
 	}
@@ -214,5 +214,30 @@ func TestBillingEvidenceExportPermissionIsCanonicalAndSeparateFromBillingView(t 
 	explicit.Permissions = append(explicit.Permissions, PermissionBillingEvidenceExport)
 	if !EvaluatePermission(explicit, PermissionBillingEvidenceExport).Allowed {
 		t.Fatal("explicit billing.evidence_export permission should authorize evidence export")
+	}
+}
+
+// TestBindingPermissionsGrantedAndIsolated verifies Roadmap 58 binding permissions are
+// granted to owner/admin, withheld from operator/viewer, and registered as sensitive.
+func TestBindingPermissionsGrantedAndIsolated(t *testing.T) {
+	for _, permission := range []Permission{PermissionBindingsInspect, PermissionBindingsManage} {
+		if !HasPermission(AllSensitivePermissions, permission) {
+			t.Fatalf("%s must be a sensitive permission", permission)
+		}
+		if !Can(RoleOwner, StatusActive, permission) {
+			t.Fatalf("owner must hold %s", permission)
+		}
+		if !Can(RoleAdmin, StatusActive, permission) {
+			t.Fatalf("admin must hold %s", permission)
+		}
+		if Can(RoleOperator, StatusActive, permission) {
+			t.Fatalf("operator must NOT hold %s", permission)
+		}
+		if Can(RoleViewer, StatusActive, permission) {
+			t.Fatalf("viewer must NOT hold %s", permission)
+		}
+		if Can(RoleOwner, StatusDisabled, permission) {
+			t.Fatalf("disabled lifecycle must not grant %s", permission)
+		}
 	}
 }

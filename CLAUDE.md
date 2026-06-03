@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/020-tenant-scoped-data-migration/plan.md`
+`specs/043-workspace-capability-binding/plan.md`
 <!-- SPECKIT END -->
 
 ## Project Overview

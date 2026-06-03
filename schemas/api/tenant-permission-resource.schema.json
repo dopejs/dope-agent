@@ -27,6 +27,8 @@
         "billing.evidence_export",
         "profiles.inspect",
         "profiles.manage",
+        "bindings.inspect",
+        "bindings.manage",
         "read_only.inspect"
       ]
     }

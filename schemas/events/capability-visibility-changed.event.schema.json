@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "capability-visibility-changed.event.schema.json",
+  "type": "object",
+  "required": ["category", "name", "occurredAt", "resource", "payload"],
+  "properties": {
+    "eventId": { "type": "string" },
+    "category": { "type": "string", "const": "binding" },
+    "name": { "type": "string", "const": "capability_visibility.changed" },
+    "occurredAt": { "type": "string" },
+    "resource": { "type": "object" },
+    "payload": {
+      "type": "object",
+      "required": ["scopeKind", "capabilityId", "visibility", "redactionStatus"],
+      "properties": {
+        "actorPrincipalId": { "type": "string" },
+        "scopeKind": { "type": "string", "enum": ["profile", "workspace"] },
+        "scopeRef": { "type": "string" },
+        "capabilityId": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["visible", "hidden", "disabled", "default_enabled"] },
+        "auditEventId": { "type": "string" },
+        "redactionStatus": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

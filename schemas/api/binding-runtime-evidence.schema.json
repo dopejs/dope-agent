@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "binding-runtime-evidence.schema.json",
+  "type": "object",
+  "required": ["projectionId", "resourceKind", "resourceId", "bindingScope", "classification", "selectionReason", "occurredAt", "redactionStatus"],
+  "properties": {
+    "projectionId": { "type": "string" },
+    "resourceKind": { "type": "string" },
+    "resourceId": { "type": "string" },
+    "selectedProfileId": { "type": "string" },
+    "selectedProfileVersionId": { "type": "string" },
+    "selectedWorkspaceId": { "type": "string" },
+    "bindingScope": { "type": "string", "enum": ["channel", "integration_account", "tenant_default"] },
+    "bindingId": { "type": "string" },
+    "classification": { "type": "string", "enum": ["applied_binding", "default_binding", "legacy_default"] },
+    "selectionReason": { "type": "string" },
+    "capabilityVisibilitySummary": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["capabilityId", "effective", "offered", "executable", "reason"],
+        "properties": {
+          "capabilityId": { "type": "string" },
+          "effective": { "type": "string", "enum": ["visible", "hidden", "disabled", "blocked"] },
+          "defaultEnabled": { "type": "boolean" },
+          "offered": { "type": "boolean" },
+          "executable": { "type": "boolean" },
+          "reason": { "type": "string" },
+          "scope": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "occurredAt": { "type": "string" },
+    "redactionStatus": { "type": "string" }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "capability-visibility-policy.schema.json",
+  "type": "object",
+  "required": ["policyId", "scopeKind", "scopeRef", "capabilityId", "visibility", "validationStatus"],
+  "properties": {
+    "policyId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "scopeKind": { "type": "string", "enum": ["profile", "workspace"] },
+    "scopeRef": { "type": "string" },
+    "capabilityId": { "type": "string" },
+    "visibility": { "type": "string", "enum": ["visible", "hidden", "disabled", "default_enabled"] },
+    "validationStatus": { "type": "string", "enum": ["valid", "invalid"] }
+  },
+  "additionalProperties": true
+}

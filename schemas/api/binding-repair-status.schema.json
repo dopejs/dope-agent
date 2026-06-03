@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "binding-repair-status.schema.json",
+  "type": "string",
+  "enum": ["healthy", "disabled", "invalid", "stale", "unsupported", "needs_repair"]
+}

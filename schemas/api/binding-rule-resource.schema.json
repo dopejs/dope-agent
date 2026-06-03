@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "binding-rule-resource.schema.json",
+  "type": "object",
+  "required": ["bindingId", "scopeKind", "scopeLabel", "status", "repairStatus", "validationStatus", "lastMaterialChangeAt", "redactionStatus"],
+  "properties": {
+    "bindingId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "scopeKind": { "type": "string", "enum": ["channel", "integration_account"] },
+    "scopeLabel": { "type": "string" },
+    "selectedProfileId": { "type": "string" },
+    "selectedProfileVersionId": { "type": "string" },
+    "selectedWorkspaceId": { "type": "string" },
+    "status": { "type": "string", "enum": ["active", "disabled"] },
+    "repairStatus": { "$ref": "binding-repair-status.schema.json" },
+    "validationStatus": { "type": "string", "enum": ["valid", "invalid"] },
+    "resultingSelectionSummary": { "type": "string" },
+    "lastMaterialChangeAt": { "type": "string" },
+    "redactionStatus": { "type": "string" }
+  },
+  "additionalProperties": true
+}

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/bindings"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/profiles"
@@ -103,6 +104,13 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	if err != nil {
 		return QueryResult{}, err
 	}
+	bindingSelection, hasBinding, err := s.resolveBindingForWork(ctx, input, activeProfile, activeSelection, hasActiveProfile)
+	if err != nil {
+		return QueryResult{}, err
+	}
+	if err := s.enforceCapabilityVisibility(ctx, input, selectedSkills, bindingSelection, hasBinding); err != nil {
+		return QueryResult{}, err
+	}
 	if s.providers != nil {
 		_, dispatchInput, err = s.providers.ResolveDispatchInput(dispatchInput)
 		if err != nil {
@@ -125,7 +133,12 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 		return QueryResult{}, err
 	}
 	if hasActiveProfile {
-		if err := s.recordActiveProfileProjection(ctx, activeProfile, activeSelection, input, continuity); err != nil {
+		if err := s.recordActiveProfileProjection(ctx, activeProfile, activeSelection, input, continuity, bindingSelection, hasBinding); err != nil {
+			return QueryResult{}, err
+		}
+	}
+	if hasBinding {
+		if err := s.recordRuntimeBindingEvidence(ctx, input, bindingSelection, false); err != nil {
 			return QueryResult{}, err
 		}
 	}
@@ -173,6 +186,13 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 	if err != nil {
 		return QueryResult{}, err
 	}
+	bindingSelection, hasBinding, err := s.resolveBindingForWork(ctx, input, activeProfile, activeSelection, hasActiveProfile)
+	if err != nil {
+		return QueryResult{}, err
+	}
+	if err := s.enforceCapabilityVisibility(ctx, input, selectedSkills, bindingSelection, hasBinding); err != nil {
+		return QueryResult{}, err
+	}
 	if s.providers != nil {
 		_, dispatchInput, err = s.providers.ResolveDispatchInput(dispatchInput)
 		if err != nil {
@@ -195,7 +215,12 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 		return QueryResult{}, err
 	}
 	if hasActiveProfile {
-		if err := s.recordActiveProfileProjection(ctx, activeProfile, activeSelection, input, continuity); err != nil {
+		if err := s.recordActiveProfileProjection(ctx, activeProfile, activeSelection, input, continuity, bindingSelection, hasBinding); err != nil {
+			return QueryResult{}, err
+		}
+	}
+	if hasBinding {
+		if err := s.recordRuntimeBindingEvidence(ctx, input, bindingSelection, false); err != nil {
 			return QueryResult{}, err
 		}
 	}
@@ -309,16 +334,132 @@ func profileContextMessages(profile profiles.AgentProfile) []llm.Message {
 	return messages
 }
 
-func (s *Service) recordActiveProfileProjection(ctx context.Context, profile profiles.AgentProfile, selection profiles.ActiveSelection, input QueryInput, continuity continuityAssembly) error {
+// ErrBindingRepairRequired is returned when binding resolution selects an invalid
+// profile/workspace; new work fails closed without silent substitution (FR-031).
+var ErrBindingRepairRequired = errors.New("binding selection requires repair")
+
+// resolveBindingForWork resolves the binding selection and enforces fail-closed behavior:
+// an invalid selected profile/workspace blocks new work (FR-031).
+func (s *Service) resolveBindingForWork(ctx context.Context, input QueryInput, profile profiles.AgentProfile, selection profiles.ActiveSelection, hasActiveProfile bool) (bindings.EffectiveBindingSelection, bool, error) {
+	if !hasActiveProfile {
+		return bindings.EffectiveBindingSelection{}, false, nil
+	}
+	resolution, hasBinding, err := s.resolveBindingSelection(ctx, input, profile, selection, hasActiveProfile)
+	if err != nil {
+		return bindings.EffectiveBindingSelection{}, false, err
+	}
+	if hasBinding && resolution.Outcome == bindings.OutcomeRepairRequired {
+		return resolution, hasBinding, fmt.Errorf("%w: %s", ErrBindingRepairRequired, resolution.RepairReason)
+	}
+	return resolution, hasBinding, nil
+}
+
+// enforceCapabilityVisibility blocks execution of any explicitly selected skill whose
+// capability is hidden or disabled under the active binding (FR-016). The skill id is
+// treated as the capability id for visibility resolution.
+func (s *Service) enforceCapabilityVisibility(ctx context.Context, input QueryInput, selectedSkills []skills.Skill, binding bindings.EffectiveBindingSelection, hasBinding bool) error {
+	if !hasBinding || s == nil || s.store == nil || strings.TrimSpace(input.TenantID) == "" {
+		return nil
+	}
+	tenantID := strings.TrimSpace(input.TenantID)
+	for _, skill := range selectedSkills {
+		decision, err := s.store.EffectiveCapabilityVisibility(ctx, tenantID, binding.SelectedProfileID, binding.SelectedWorkspaceID, skill.SkillID, nil)
+		if err != nil {
+			return err
+		}
+		if err := bindings.EnforceExecutable(decision); err != nil {
+			return fmt.Errorf("%w: %s", err, skill.SkillID)
+		}
+	}
+	return nil
+}
+
+// resolveBindingSelection resolves the effective workspace/capability binding for new
+// work using deterministic precedence and fails closed on an invalid selection (FR-006,
+// FR-031). It returns a zero selection (no outcome) when the tenant context is absent.
+func (s *Service) resolveBindingSelection(ctx context.Context, input QueryInput, profile profiles.AgentProfile, selection profiles.ActiveSelection, hasActiveProfile bool) (bindings.EffectiveBindingSelection, bool, error) {
+	if s == nil || s.store == nil || strings.TrimSpace(input.TenantID) == "" {
+		return bindings.EffectiveBindingSelection{}, false, nil
+	}
+	tenantID := strings.TrimSpace(input.TenantID)
+	ws, err := s.store.EnsureDefaultWorkspace(ctx, tenantID)
+	if err != nil {
+		return bindings.EffectiveBindingSelection{}, false, err
+	}
+	var channelBinding *bindings.BindingRule
+	if scopeRef := strings.TrimSpace(input.SourceLinkageID); scopeRef != "" {
+		channelBinding, err = s.store.ResolveChannelBinding(ctx, tenantID, scopeRef)
+		if err != nil {
+			return bindings.EffectiveBindingSelection{}, false, err
+		}
+	}
+	resolution := bindings.ResolveSelection(bindings.ResolutionInput{
+		ChannelBinding:                channelBinding,
+		TenantDefaultProfileID:        profile.ProfileID,
+		TenantDefaultProfileVersionID: selection.ProfileVersionID,
+		TenantDefaultWorkspaceID:      ws.WorkspaceID,
+		ProfileAvailable: func(id string) bool {
+			if hasActiveProfile && id == profile.ProfileID {
+				return profile.Status != profiles.StatusArchived && profile.Status != profiles.StatusDisabled
+			}
+			ok, oerr := s.store.IsProfileSelectable(ctx, tenantID, id)
+			return oerr == nil && ok
+		},
+		WorkspaceAvailable: func(id string) bool {
+			if id == ws.WorkspaceID {
+				return ws.Status == bindings.WorkspaceActive
+			}
+			ok, oerr := s.store.IsWorkspaceSelectable(ctx, tenantID, id)
+			return oerr == nil && ok
+		},
+	})
+	resolution.CapabilityVisibility = s.resolveCapabilityVisibilitySummary(ctx, tenantID, resolution.SelectedProfileID, resolution.SelectedWorkspaceID)
+	return resolution, true, nil
+}
+
+// resolveCapabilityVisibilitySummary builds the per-capability decision summary for the
+// capabilities that have an explicit profile/workspace policy under the active binding.
+func (s *Service) resolveCapabilityVisibilitySummary(ctx context.Context, tenantID, profileID, workspaceID string) []bindings.CapabilityDecision {
+	profilePolicies, workspacePolicies, err := s.store.CapabilityVisibilityForScopes(ctx, tenantID, profileID, workspaceID)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	inputs := make([]bindings.VisibilityInput, 0)
+	for capID := range profilePolicies {
+		seen[capID] = struct{}{}
+	}
+	for capID := range workspacePolicies {
+		seen[capID] = struct{}{}
+	}
+	for capID := range seen {
+		inputs = append(inputs, bindings.VisibilityInput{
+			CapabilityID:    capID,
+			ProfilePolicy:   profilePolicies[capID],
+			WorkspacePolicy: workspacePolicies[capID],
+		})
+	}
+	if len(inputs) == 0 {
+		return nil
+	}
+	return bindings.ResolveVisibilitySet(inputs)
+}
+
+func (s *Service) recordActiveProfileProjection(ctx context.Context, profile profiles.AgentProfile, selection profiles.ActiveSelection, input QueryInput, continuity continuityAssembly, binding bindings.EffectiveBindingSelection, hasBinding bool) error {
 	if s == nil || s.store == nil || strings.TrimSpace(input.ThreadID) == "" {
 		return nil
 	}
+	classification := profiles.DeferredBindingClassificationMarker
+	if hasBinding && binding.Outcome == bindings.OutcomeResolved {
+		classification = profiles.AppliedBindingClassificationMarker
+	}
 	projection := profiles.BuildRuntimeProjection(profile, selection, profiles.RuntimeProjectionInput{
-		ResourceKind: profiles.RuntimeResourceThread,
-		ResourceID:   strings.TrimSpace(input.ThreadID),
-		ThreadID:     strings.TrimSpace(input.ThreadID),
-		SessionID:    continuity.SessionSegmentID,
-		OccurredAt:   time.Now().UTC(),
+		ResourceKind:          profiles.RuntimeResourceThread,
+		ResourceID:            strings.TrimSpace(input.ThreadID),
+		ThreadID:              strings.TrimSpace(input.ThreadID),
+		SessionID:             continuity.SessionSegmentID,
+		OccurredAt:            time.Now().UTC(),
+		BindingClassification: classification,
 	})
 	recorded, err := s.store.RecordRuntimeProfileProjection(ctx, projection)
 	if err != nil {
@@ -326,6 +467,29 @@ func (s *Service) recordActiveProfileProjection(ctx context.Context, profile pro
 	}
 	if s.eventBus != nil {
 		s.eventBus.Publish(events.AgentProfileRuntimeProjectedEvent(recorded))
+	}
+	return nil
+}
+
+// recordRuntimeBindingEvidence persists durable binding evidence for the run and publishes
+// the runtime-projected event (FR-013). Evidence is append-only (FR-012).
+func (s *Service) recordRuntimeBindingEvidence(ctx context.Context, input QueryInput, binding bindings.EffectiveBindingSelection, legacyDefault bool) error {
+	if s == nil || s.store == nil || strings.TrimSpace(input.ThreadID) == "" || strings.TrimSpace(input.TenantID) == "" {
+		return nil
+	}
+	evidence := bindings.BuildRuntimeBindingEvidence(binding, bindings.RuntimeBindingEvidenceInput{
+		TenantID:      strings.TrimSpace(input.TenantID),
+		ResourceKind:  "thread",
+		ResourceID:    strings.TrimSpace(input.ThreadID),
+		OccurredAt:    time.Now().UTC(),
+		LegacyDefault: legacyDefault,
+	})
+	recorded, err := s.store.RecordRuntimeBindingEvidence(ctx, evidence)
+	if err != nil {
+		return err
+	}
+	if s.eventBus != nil {
+		s.eventBus.Publish(events.BindingRuntimeProjectedEvent(recorded))
 	}
 	return nil
 }

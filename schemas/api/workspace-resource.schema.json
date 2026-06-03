@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "workspace-resource.schema.json",
+  "type": "object",
+  "required": ["workspaceId", "displayName", "status", "isDefault", "repairStatus", "redactionStatus", "createdAt", "updatedAt"],
+  "properties": {
+    "workspaceId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "displayName": { "type": "string" },
+    "status": { "type": "string", "enum": ["active", "archived", "disabled"] },
+    "isDefault": { "type": "boolean" },
+    "repairStatus": { "$ref": "binding-repair-status.schema.json" },
+    "redactionStatus": { "type": "string" },
+    "createdAt": { "type": "string" },
+    "updatedAt": { "type": "string" }
+  },
+  "additionalProperties": true
+}

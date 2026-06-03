@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "effective-binding-selection.schema.json",
+  "type": "object",
+  "required": ["outcome", "bindingScope"],
+  "properties": {
+    "outcome": { "type": "string", "enum": ["resolved", "default", "repair_required"] },
+    "bindingScope": { "type": "string", "enum": ["channel", "integration_account", "tenant_default"] },
+    "bindingId": { "type": "string" },
+    "selectedProfileId": { "type": "string" },
+    "selectedProfileVersionId": { "type": "string" },
+    "selectedWorkspaceId": { "type": "string" },
+    "repairStatus": { "$ref": "binding-repair-status.schema.json" },
+    "repairReason": { "type": "string" }
+  },
+  "additionalProperties": true
+}

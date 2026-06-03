@@ -637,3 +637,18 @@ function createMemoryWriter() {
     }
   } as NodeJS.WritableStream & { contents: string };
 }
+
+describe("tui binding commands", () => {
+  it("lists bindings and workspaces via the SDK", async () => {
+    const stdout: string[] = [];
+    const io = { stdout: { write: (s: string) => stdout.push(s) }, stderr: { write: () => {} } };
+    const client = {
+      listBindings: vi.fn().mockResolvedValue({ tenantId: "ten_58", bindings: [{ bindingId: "bnd_1", scopeKind: "channel", scopeLabel: "discord:c1", selectedProfileId: "prof_1", selectedWorkspaceId: "ws_1", status: "active", repairStatus: "healthy", validationStatus: "valid", lastMaterialChangeAt: "x", redactionStatus: "redacted" }] }),
+      listWorkspaces: vi.fn().mockResolvedValue({ tenantId: "ten_58", workspaces: [{ workspaceId: "ws_1", displayName: "Personal Workspace", status: "active", isDefault: true, repairStatus: "healthy", redactionStatus: "not_required", createdAt: "x", updatedAt: "x" }] })
+    };
+    const code = await runCLI({ daemonURL: "http://localhost:1", listBindings: true } as any, { createClient: () => client as any, io: io as any });
+    expect(code).toBe(0);
+    expect(client.listBindings).toHaveBeenCalled();
+    expect(stdout.join("")).toMatch(/bnd_1 channel discord:c1/);
+  });
+});

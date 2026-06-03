@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "update-capability-visibility.request.schema.json",
+  "type": "object",
+  "required": ["scopeKind", "scopeRef", "capabilityId", "visibility"],
+  "properties": {
+    "scopeKind": { "type": "string", "enum": ["profile", "workspace"] },
+    "scopeRef": { "type": "string" },
+    "capabilityId": { "type": "string" },
+    "visibility": { "type": "string", "enum": ["visible", "hidden", "disabled", "default_enabled"] },
+    "reasonCode": { "type": "string" }
+  },
+  "additionalProperties": false
+}

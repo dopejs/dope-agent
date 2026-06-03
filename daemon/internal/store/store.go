@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 53
+	CurrentSchemaVersion = 54
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -3702,6 +3702,115 @@ var schemaMigrations = []schemaMigration{
 			);
 			`,
 			`CREATE INDEX IF NOT EXISTS idx_agent_profile_audit_events_profile ON agent_profile_audit_events(tenant_id, profile_id, occurred_at DESC);`,
+		},
+	},
+	{
+		Version: 54,
+		Name:    "r58_workspace_capability_binding",
+		Statements: []string{
+			`
+			CREATE TABLE IF NOT EXISTS workspaces (
+				workspace_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				display_name TEXT NOT NULL,
+				status TEXT NOT NULL,
+				is_default INTEGER NOT NULL DEFAULT 0,
+				owner_principal_id TEXT,
+				repair_status TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				archived_at TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_workspaces_tenant_status_updated ON workspaces(tenant_id, status, updated_at DESC);`,
+			// Exactly one default personal workspace per tenant (FR-025 lazy provisioning,
+			// concurrent first-access convergence).
+			`CREATE UNIQUE INDEX IF NOT EXISTS uq_workspaces_tenant_default ON workspaces(tenant_id) WHERE is_default = 1;`,
+			`
+			CREATE TABLE IF NOT EXISTS binding_rules (
+				binding_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				scope_kind TEXT NOT NULL,
+				scope_ref TEXT NOT NULL,
+				selected_profile_id TEXT,
+				selected_profile_version_id TEXT,
+				selected_workspace_id TEXT,
+				status TEXT NOT NULL,
+				repair_status TEXT NOT NULL,
+				validation_status TEXT NOT NULL,
+				actor_principal_id TEXT,
+				audit_event_id TEXT,
+				previous_selection_summary TEXT,
+				resulting_selection_summary TEXT,
+				redaction_status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				disabled_at TEXT,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_binding_rules_tenant_scope ON binding_rules(tenant_id, scope_kind, scope_ref);`,
+			// At most one active binding per (tenant, scope_kind, scope_ref) so precedence
+			// at a single scope is deterministic.
+			`CREATE UNIQUE INDEX IF NOT EXISTS uq_binding_rules_active_scope ON binding_rules(tenant_id, scope_kind, scope_ref) WHERE status = 'active';`,
+			`
+			CREATE TABLE IF NOT EXISTS capability_visibility_policies (
+				policy_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				scope_kind TEXT NOT NULL,
+				scope_ref TEXT NOT NULL,
+				capability_id TEXT NOT NULL,
+				visibility TEXT NOT NULL,
+				actor_principal_id TEXT,
+				validation_status TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				document_json TEXT NOT NULL,
+				UNIQUE(tenant_id, scope_kind, scope_ref, capability_id)
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_capability_visibility_scope ON capability_visibility_policies(tenant_id, scope_kind, scope_ref);`,
+			`
+			CREATE TABLE IF NOT EXISTS binding_runtime_projections (
+				projection_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				resource_kind TEXT NOT NULL,
+				resource_id TEXT NOT NULL,
+				selected_profile_id TEXT,
+				selected_profile_version_id TEXT,
+				selected_workspace_id TEXT,
+				binding_scope TEXT NOT NULL,
+				binding_id TEXT,
+				classification TEXT NOT NULL,
+				selection_reason TEXT NOT NULL,
+				capability_visibility_summary TEXT,
+				occurred_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_binding_runtime_projections_resource ON binding_runtime_projections(tenant_id, resource_kind, resource_id, occurred_at DESC);`,
+			`
+			CREATE TABLE IF NOT EXISTS binding_audit_events (
+				audit_event_id TEXT PRIMARY KEY,
+				tenant_id TEXT NOT NULL,
+				binding_id TEXT,
+				workspace_id TEXT,
+				actor_principal_id TEXT,
+				event_kind TEXT NOT NULL,
+				outcome TEXT NOT NULL,
+				permission_gate TEXT,
+				reason_code TEXT NOT NULL,
+				safe_summary TEXT,
+				occurred_at TEXT NOT NULL,
+				redaction_status TEXT NOT NULL,
+				document_json TEXT NOT NULL
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_binding_audit_events_binding ON binding_audit_events(tenant_id, binding_id, occurred_at DESC);`,
 		},
 	},
 }

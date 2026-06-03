@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "binding-runtime-projected.event.schema.json",
+  "type": "object",
+  "required": ["category", "name", "occurredAt", "resource", "payload"],
+  "properties": {
+    "eventId": { "type": "string" },
+    "category": { "type": "string", "const": "binding" },
+    "name": { "type": "string", "const": "binding.runtime_projected" },
+    "occurredAt": { "type": "string" },
+    "resource": { "type": "object" },
+    "payload": {
+      "type": "object",
+      "required": ["projectionId", "bindingScope", "classification", "redactionStatus"],
+      "properties": {
+        "projectionId": { "type": "string" },
+        "selectedProfileId": { "type": "string" },
+        "selectedWorkspaceId": { "type": "string" },
+        "bindingScope": { "type": "string", "enum": ["channel", "integration_account", "tenant_default"] },
+        "bindingId": { "type": "string" },
+        "classification": { "type": "string", "enum": ["applied_binding", "default_binding", "legacy_default"] },
+        "selectionReason": { "type": "string" },
+        "redactionStatus": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

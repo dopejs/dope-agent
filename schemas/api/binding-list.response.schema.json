@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "binding-list.response.schema.json",
+  "type": "object",
+  "required": ["bindings"],
+  "properties": {
+    "tenantId": { "type": "string" },
+    "bindings": { "type": "array", "items": { "$ref": "binding-rule-resource.schema.json" } }
+  },
+  "additionalProperties": true
+}
