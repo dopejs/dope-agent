@@ -40,6 +40,10 @@ const (
 	BackendKindNative          BackendKind = "native"
 	BackendKindFakeLocal       BackendKind = "fake_local"
 	BackendKindFeishuLark      BackendKind = "feishu_lark"
+	// BackendKindAdapterRPC selects an out-of-process integration adapter reached over the
+	// capability RPC contract (Roadmap 59). The daemon retains the operation ledger; the
+	// adapter performs provider request/response mapping only.
+	BackendKindAdapterRPC BackendKind = "adapter_rpc"
 )
 
 type ProbeKind string

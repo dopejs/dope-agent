@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	stdruntime "runtime"
@@ -36,6 +37,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/im"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
+	"github.com/dopejs/dope-agent/daemon/internal/integrations/adapterrpc"
 	"github.com/dopejs/dope-agent/daemon/internal/livevalidation"
 	"github.com/dopejs/dope-agent/daemon/internal/llm"
 	"github.com/dopejs/dope-agent/daemon/internal/mail"
@@ -170,6 +172,14 @@ func New() (*App, error) {
 	providerManager := providers.NewManager(cfg, llmDispatcher, managedRegistry)
 	connectorSupervisor := connectors.NewSupervisor()
 	capabilitySupervisor := capabilities.NewSupervisor()
+	// Roadmap 59: optionally wire out-of-process integration adapters. Off by default — the
+	// in-daemon fake backend remains the default backend in every environment. Enabled only
+	// when DOPE_INTEGRATION_ADAPTER names an adapter binary.
+	if adapterBin := strings.TrimSpace(os.Getenv("DOPE_INTEGRATION_ADAPTER")); adapterBin != "" {
+		if err := wireIntegrationAdapters(context.Background(), adapterBin, capabilitySupervisor, calendarManager, mailManager); err != nil {
+			return nil, fmt.Errorf("integration adapter wiring: %w", err)
+		}
+	}
 	chatService := chat.NewService(llmDispatcher, providerManager, skillRegistry, eventBus, sqliteStore)
 	activationService := activation.NewService(activation.Dependencies{
 		StateStore:       sqliteStore,
@@ -833,6 +843,43 @@ func newEventID() string {
 	}
 
 	return "evt_" + hex.EncodeToString(buf)
+}
+
+// wireIntegrationAdapters spawns one out-of-process adapter per integration domain, registers
+// the adapter-backed Backend on each manager, and starts a supervised runtime that gates
+// readiness on the contract-version handshake (Roadmap 59). It is invoked only when the
+// operator explicitly enables adapters; the in-daemon fake backend stays registered for
+// fake_local-bound integrations. A failed readiness probe is logged and leaves the adapter
+// circuit-breaking under supervision rather than aborting daemon startup.
+func wireIntegrationAdapters(ctx context.Context, binary string, sup *capabilities.Supervisor, calMgr *calendar.Manager, mailMgr *mail.Manager) error {
+	// Credentials are resolved per call. Provider-backed secret resolution (Roadmap 37) is
+	// installed where real providers are wired (Roadmap 60/63); the reference adapter needs none.
+	creds := adapterrpc.ScopedResolver(nil)
+	start := func(domain string) (*adapterrpc.Client, error) {
+		client, err := adapterrpc.NewProcessClient(ctx, binary)
+		if err != nil {
+			return nil, fmt.Errorf("spawn %s adapter: %w", domain, err)
+		}
+		client.WithCredentials(creds)
+		rt := capabilities.StartAdapterRuntime(sup, "integration-adapter-"+domain, domain, client)
+		if perr := rt.Probe(ctx); perr != nil {
+			slog.Warn("integration.adapter_probe_failed", "domain", domain, "error", perr)
+		}
+		return client, nil
+	}
+
+	calClient, err := start("calendar")
+	if err != nil {
+		return err
+	}
+	calMgr.RegisterBackend(integrations.BackendKindAdapterRPC, calendar.NewAdapterBackend(calClient, 0))
+
+	mailClient, err := start("mail")
+	if err != nil {
+		return err
+	}
+	mailMgr.RegisterBackend(integrations.BackendKindAdapterRPC, mail.NewAdapterBackend(mailClient, 0))
+	return nil
 }
 
 func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, identityManager *identity.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager, integrationManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, reminderManager *reminders.Manager) error {
