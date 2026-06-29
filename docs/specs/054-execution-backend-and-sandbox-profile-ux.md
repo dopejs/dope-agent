@@ -2,7 +2,7 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 68, the execution
+Authority: This document is the authoritative upstream spec for Roadmap 69, the execution
 backend and sandbox profile user experience slice.
 
 Primary source documents:
@@ -10,7 +10,7 @@ Primary source documents:
 - `docs/harness/sandbox-backend-comparison.md`
 - `specs/001-sandbox-managed-providers/`
 - `specs/002-sandbox-requirement-contract/`
-- `docs/specs/052-operator-managed-skill-and-capability-catalog.md`
+- `docs/specs/053-operator-managed-skill-and-capability-catalog.md`
 
 ## Background
 
@@ -34,7 +34,7 @@ selection through product surfaces.
 
 - Roadmap 16: Sandbox Execution Plane
 - Roadmap 17: Sandbox Requirement Declarations And Consumer Convergence
-- Roadmap 67: Operator-Managed Skill And Capability Catalog
+- Roadmap 68: Operator-Managed Skill And Capability Catalog
 
 ## In Scope
 
@@ -88,4 +88,4 @@ preflight or approval gates.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/053-execution-backend-and-sandbox-profile-ux.md 完成 phase 68 的工作`
+`$speckit-specify 结合 docs/specs/054-execution-backend-and-sandbox-profile-ux.md 完成 phase 69 的工作`

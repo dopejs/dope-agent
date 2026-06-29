@@ -2,7 +2,7 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 65, the product
+Authority: This document is the authoritative upstream spec for Roadmap 66, the product
 routine builder slice for proactive personal-agent workflows.
 
 Primary source documents:
@@ -52,7 +52,7 @@ triggers, workflow steps, approval expectations, and delivery outcomes.
 - memory-generated routines
 - self-modifying routine optimization
 - marketplace routine packs
-- webhook triggers, owned by Roadmap 66
+- webhook triggers, owned by Roadmap 67
 
 ## Operator Or User Problems To Solve
 
@@ -92,4 +92,4 @@ truth. It must not introduce hidden background execution.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/050-routine-builder.md 完成 phase 65 的工作`
+`$speckit-specify 结合 docs/specs/051-routine-builder.md 完成 phase 66 的工作`

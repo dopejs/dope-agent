@@ -2,15 +2,15 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 71, the final
+Authority: This document is the authoritative upstream spec for Roadmap 72, the final
 non-knowledge public release soak and launch gate before context, knowledge, and memory
 work begins.
 
 Primary source documents:
 - `docs/specs/024-production-install-upgrade-backup-and-soak.md`
 - `docs/specs/028-hosted-operational-profile-and-recovery.md`
-- `docs/specs/054-operator-shell-productization.md`
-- `docs/specs/055-support-diagnostics-and-evidence-bundle.md`
+- `docs/specs/055-operator-shell-productization.md`
+- `docs/specs/056-support-diagnostics-and-evidence-bundle.md`
 - `docs/runtime/release-readiness.md`
 
 ## Background
@@ -100,4 +100,4 @@ or validators only where the public beta gate needs stronger evidence.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/056-public-release-soak-and-launch-gate.md 完成 phase 71 的工作`
+`$speckit-specify 结合 docs/specs/057-public-release-soak-and-launch-gate.md 完成 phase 72 的工作`

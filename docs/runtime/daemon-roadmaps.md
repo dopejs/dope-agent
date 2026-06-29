@@ -1949,51 +1949,54 @@ Goal: make conversation threads, bounded non-memory continuity, group/reset/hand
 structured persona, workspace, and capability bindings product-visible and auditable
 before later context and memory systems consume them.
 
-### Roadmaps 59-64: Real Calendar, Mail, Attachments, And Inbox Triage
+### Roadmaps 59-65: Integration Adapter Plane, Real Calendar, Mail, Attachments, And Inbox Triage
 
 Status: `[ ] proposed`
 
 Detailed specs:
 
-- [docs/specs/044-real-calendar-provider-closure.md](../specs/044-real-calendar-provider-closure.md)
-- [docs/specs/045-calendar-attendee-and-rsvp-workflows.md](../specs/045-calendar-attendee-and-rsvp-workflows.md)
-- [docs/specs/046-calendar-recurrence-and-all-day-depth.md](../specs/046-calendar-recurrence-and-all-day-depth.md)
-- [docs/specs/047-real-mail-provider-closure.md](../specs/047-real-mail-provider-closure.md)
-- [docs/specs/048-mail-attachment-transfer.md](../specs/048-mail-attachment-transfer.md)
-- [docs/specs/049-inbox-triage-mvp-without-memory.md](../specs/049-inbox-triage-mvp-without-memory.md)
+- [docs/specs/044-external-integration-adapter-plane.md](../specs/044-external-integration-adapter-plane.md)
+- [docs/specs/045-real-calendar-provider-closure.md](../specs/045-real-calendar-provider-closure.md)
+- [docs/specs/046-calendar-attendee-and-rsvp-workflows.md](../specs/046-calendar-attendee-and-rsvp-workflows.md)
+- [docs/specs/047-calendar-recurrence-and-all-day-depth.md](../specs/047-calendar-recurrence-and-all-day-depth.md)
+- [docs/specs/048-real-mail-provider-closure.md](../specs/048-real-mail-provider-closure.md)
+- [docs/specs/049-mail-attachment-transfer.md](../specs/049-mail-attachment-transfer.md)
+- [docs/specs/050-inbox-triage-mvp-without-memory.md](../specs/050-inbox-triage-mvp-without-memory.md)
 
-Goal: replace fake-provider-only confidence with real calendar and mail closure, deepen
-calendar and mail domain capability, and add explicit-rule inbox triage without memory.
+Goal: establish the supervised out-of-process integration adapter plane first, then replace
+fake-provider-only confidence with real calendar and mail closure built as adapters on that
+plane, deepen calendar and mail domain capability, and add explicit-rule inbox triage
+without memory.
 
-### Roadmaps 65-68: Proactive Routines, Webhooks, Catalog, And Execution UX
+### Roadmaps 66-69: Proactive Routines, Webhooks, Catalog, And Execution UX
 
 Status: `[ ] proposed`
 
 Detailed specs:
 
-- [docs/specs/050-routine-builder.md](../specs/050-routine-builder.md)
-- [docs/specs/051-webhook-and-external-trigger-plane.md](../specs/051-webhook-and-external-trigger-plane.md)
-- [docs/specs/052-operator-managed-skill-and-capability-catalog.md](../specs/052-operator-managed-skill-and-capability-catalog.md)
-- [docs/specs/053-execution-backend-and-sandbox-profile-ux.md](../specs/053-execution-backend-and-sandbox-profile-ux.md)
+- [docs/specs/051-routine-builder.md](../specs/051-routine-builder.md)
+- [docs/specs/052-webhook-and-external-trigger-plane.md](../specs/052-webhook-and-external-trigger-plane.md)
+- [docs/specs/053-operator-managed-skill-and-capability-catalog.md](../specs/053-operator-managed-skill-and-capability-catalog.md)
+- [docs/specs/054-execution-backend-and-sandbox-profile-ux.md](../specs/054-execution-backend-and-sandbox-profile-ux.md)
 
 Goal: expose proactive routines, external event triggers, operator-managed skills and
 capabilities, and sandbox/execution profile state without agent-managed skill generation
 or memory-driven optimization.
 
-### Roadmaps 69-71: Product Shell, Support Evidence, And Public Launch Gate
+### Roadmaps 70-72: Product Shell, Support Evidence, And Public Launch Gate
 
 Status: `[ ] proposed`
 
 Detailed specs:
 
-- [docs/specs/054-operator-shell-productization.md](../specs/054-operator-shell-productization.md)
-- [docs/specs/055-support-diagnostics-and-evidence-bundle.md](../specs/055-support-diagnostics-and-evidence-bundle.md)
-- [docs/specs/056-public-release-soak-and-launch-gate.md](../specs/056-public-release-soak-and-launch-gate.md)
+- [docs/specs/055-operator-shell-productization.md](../specs/055-operator-shell-productization.md)
+- [docs/specs/056-support-diagnostics-and-evidence-bundle.md](../specs/056-support-diagnostics-and-evidence-bundle.md)
+- [docs/specs/057-public-release-soak-and-launch-gate.md](../specs/057-public-release-soak-and-launch-gate.md)
 
 Goal: turn the web shell into a public-product control console, add redacted support
 evidence bundles, and run the final non-knowledge public release gate.
 
-Roadmap 71 is the explicit entry gate for context engineering, knowledge retrieval,
+Roadmap 72 is the explicit entry gate for context engineering, knowledge retrieval,
 memory write policy, agent-managed skills, and self-improvement design.
 
 ## Roadmap 13: Provider Streaming Timeout Semantics

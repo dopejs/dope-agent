@@ -2,12 +2,12 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 60, the calendar
+Authority: This document is the authoritative upstream spec for Roadmap 61, the calendar
 attendee, invitation, and RSVP workflow slice.
 
 Primary source documents:
 - `docs/specs/014-calendar-integration.md`
-- `docs/specs/044-real-calendar-provider-closure.md`
+- `docs/specs/045-real-calendar-provider-closure.md`
 - `docs/specs/025-live-validation-and-side-effect-replay.md`
 
 ## Background
@@ -30,7 +30,7 @@ truth, approval, diagnostics, and delivery linkage.
 
 ## Dependencies On Completed Phases
 
-- Roadmap 59: Real Calendar Provider Closure
+- Roadmap 60: Real Calendar Provider Closure
 - Roadmap 40: Live Validation And Side-Effect Replay
 
 ## In Scope
@@ -88,4 +88,4 @@ features must return explicit unsupported diagnostics.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/045-calendar-attendee-and-rsvp-workflows.md 完成 phase 60 的工作`
+`$speckit-specify 结合 docs/specs/046-calendar-attendee-and-rsvp-workflows.md 完成 phase 61 的工作`

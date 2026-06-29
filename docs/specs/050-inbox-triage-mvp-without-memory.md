@@ -2,12 +2,12 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 64, the first
+Authority: This document is the authoritative upstream spec for Roadmap 65, the first
 inbox triage workflow slice without memory or knowledge-plane dependency.
 
 Primary source documents:
 - `docs/specs/015-mail-integration.md`
-- `docs/specs/047-real-mail-provider-closure.md`
+- `docs/specs/048-real-mail-provider-closure.md`
 - `docs/specs/016-tasks-and-reminders.md`
 - `docs/specs/013-delivery-and-notifications.md`
 
@@ -31,7 +31,7 @@ operator-approved actions, delivery, and reminder/task linkage.
 
 ## Dependencies On Completed Phases
 
-- Roadmap 62: Real Mail Provider Closure
+- Roadmap 63: Real Mail Provider Closure
 - Roadmap 31: Tasks And Reminders
 - Roadmap 28: Delivery And Notifications
 
@@ -87,4 +87,4 @@ rather than creating a parallel triage executor.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/049-inbox-triage-mvp-without-memory.md 完成 phase 64 的工作`
+`$speckit-specify 结合 docs/specs/050-inbox-triage-mvp-without-memory.md 完成 phase 65 的工作`

@@ -2,7 +2,7 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 70, the support
+Authority: This document is the authoritative upstream spec for Roadmap 71, the support
 diagnostics and redacted evidence bundle slice.
 
 Primary source documents:
@@ -33,7 +33,7 @@ Provide a permission-gated redacted evidence bundle for support and incident tri
 
 - Roadmap 42: Integration Health And Permission Diagnostics
 - Roadmap 43: Hosted Operational Profile And Recovery
-- Roadmap 69: Operator Shell Productization
+- Roadmap 70: Operator Shell Productization
 
 ## In Scope
 
@@ -93,4 +93,4 @@ records rather than duplicating raw data.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/055-support-diagnostics-and-evidence-bundle.md 完成 phase 70 的工作`
+`$speckit-specify 结合 docs/specs/056-support-diagnostics-and-evidence-bundle.md 完成 phase 71 的工作`
