@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dopejs.dev/schemas/events/integrations/adapter-health.json",
+  "title": "IntegrationAdapterHealthEvent",
+  "description": "Additive event emitted on adapter readiness/health/restart/circuit-break transitions, consistent with the connector/capability health surface. Carries no credentials or raw provider content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["capabilityId", "domain", "status", "readiness"],
+  "properties": {
+    "capabilityId": { "type": "string", "minLength": 1 },
+    "domain": { "type": "string", "enum": ["calendar", "mail"] },
+    "status": { "type": "string", "enum": ["registered", "healthy", "degraded", "backing_off", "failed"] },
+    "readiness": { "type": "string", "enum": ["pending", "ready", "unavailable"] },
+    "restartCount": { "type": "integer", "minimum": 0 },
+    "failureCount": { "type": "integer", "minimum": 0 },
+    "contractVersion": { "type": "string" },
+    "reason": { "type": "string", "description": "Redacted failure/diagnostic reason; no secrets or raw content." }
+  }
+}
