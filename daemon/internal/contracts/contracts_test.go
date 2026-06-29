@@ -388,6 +388,17 @@ func TestIntegrationSchemasAcceptCanonicalFixtures(t *testing.T) {
 	mustValidateFixtures(t, validator, integrationContractFixtures())
 }
 
+func TestIntegrationAdapterSchemasAcceptCanonicalFixtures(t *testing.T) {
+	t.Parallel()
+
+	validator := contracts.NewValidator(schemaRootDir(t))
+	mustValidateFixtures(t, validator, map[string]string{
+		"schemas/capability/integration-adapter/request.json":  `{"requestId":"req-1","contractVersion":"1","domain":"calendar","operation":"ProjectAccount","deadlineMs":30000,"resource":{}}`,
+		"schemas/capability/integration-adapter/response.json": `{"requestId":"req-1","contractVersion":"1","status":"ok","payload":{}}`,
+		"schemas/events/integrations/adapter-health.json":      `{"capabilityId":"cap-1","domain":"calendar","status":"healthy","readiness":"ready"}`,
+	})
+}
+
 func TestDeliverySchemasAcceptCanonicalFixtures(t *testing.T) {
 	t.Parallel()
 

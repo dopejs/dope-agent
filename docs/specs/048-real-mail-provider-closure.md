@@ -2,13 +2,14 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 62, the first real
+Authority: This document is the authoritative upstream spec for Roadmap 63, the first real
 mail provider closure after the fake mail backend.
 
 Primary source documents:
 - `docs/specs/015-mail-integration.md`
 - `docs/specs/031-hosted-credential-and-oauth-setup-wizard.md`
 - `docs/specs/027-integration-health-and-permission-diagnostics.md`
+- `docs/specs/044-external-integration-adapter-plane.md`
 
 ## Background
 
@@ -24,6 +25,9 @@ operation model.
 ## Fixed Decisions
 
 - Provider choice must be recorded during speckit clarification.
+- The real provider MUST be implemented as an adapter on the external integration adapter
+  plane (Roadmap 59), not as an in-process backend. The mail operation ledger stays
+  daemon-owned per that plane's fixed decisions.
 - Real mail sends remain side effects requiring explicit permission and evidence.
 - Fake backend coverage remains mandatory.
 - Full attachment transfer remains a separate roadmap.
@@ -33,6 +37,7 @@ operation model.
 - Roadmap 30: Mail Integration
 - Roadmap 46: Hosted Credential And OAuth Setup Wizard
 - Roadmap 42: Integration Health And Permission Diagnostics
+- Roadmap 59: External Integration Adapter Plane (prerequisite; build before this roadmap)
 
 ## In Scope
 
@@ -87,4 +92,4 @@ behavior must not create a second mail execution plane.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/047-real-mail-provider-closure.md 完成 phase 62 的工作`
+`$speckit-specify 结合 docs/specs/048-real-mail-provider-closure.md 完成 phase 63 的工作`

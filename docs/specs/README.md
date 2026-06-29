@@ -68,19 +68,20 @@ Do not rely on the short roadmap heading alone when a `docs/specs` document exis
 - `041` -> Roadmap 56: Group Room Reset And Handoff Semantics
 - `042` -> Roadmap 57: Agent Profile And Persona Configuration
 - `043` -> Roadmap 58: Workspace And Capability Binding
-- `044` -> Roadmap 59: Real Calendar Provider Closure
-- `045` -> Roadmap 60: Calendar Attendee And RSVP Workflows
-- `046` -> Roadmap 61: Calendar Recurrence And All-Day Depth
-- `047` -> Roadmap 62: Real Mail Provider Closure
-- `048` -> Roadmap 63: Mail Attachment Transfer
-- `049` -> Roadmap 64: Inbox Triage MVP Without Memory
-- `050` -> Roadmap 65: Routine Builder
-- `051` -> Roadmap 66: Webhook And External Trigger Plane
-- `052` -> Roadmap 67: Operator-Managed Skill And Capability Catalog
-- `053` -> Roadmap 68: Execution Backend And Sandbox Profile UX
-- `054` -> Roadmap 69: Operator Shell Productization
-- `055` -> Roadmap 70: Support Diagnostics And Evidence Bundle
-- `056` -> Roadmap 71: Public Release Soak And Launch Gate
+- `044` -> Roadmap 59: External Integration Adapter Plane
+- `045` -> Roadmap 60: Real Calendar Provider Closure
+- `046` -> Roadmap 61: Calendar Attendee And RSVP Workflows
+- `047` -> Roadmap 62: Calendar Recurrence And All-Day Depth
+- `048` -> Roadmap 63: Real Mail Provider Closure
+- `049` -> Roadmap 64: Mail Attachment Transfer
+- `050` -> Roadmap 65: Inbox Triage MVP Without Memory
+- `051` -> Roadmap 66: Routine Builder
+- `052` -> Roadmap 67: Webhook And External Trigger Plane
+- `053` -> Roadmap 68: Operator-Managed Skill And Capability Catalog
+- `054` -> Roadmap 69: Execution Backend And Sandbox Profile UX
+- `055` -> Roadmap 70: Operator Shell Productization
+- `056` -> Roadmap 71: Support Diagnostics And Evidence Bundle
+- `057` -> Roadmap 72: Public Release Soak And Launch Gate
 
 ## Authoring Standard
 

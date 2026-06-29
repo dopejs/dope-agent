@@ -2,7 +2,7 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 69, the operator
+Authority: This document is the authoritative upstream spec for Roadmap 70, the operator
 shell productization slice for public beta readiness.
 
 Primary source documents:
@@ -10,7 +10,7 @@ Primary source documents:
 - `docs/specs/021-tenant-aware-operator-shell-and-sdk.md`
 - `docs/specs/030-hosted-signup-and-tenant-activation.md`
 - `docs/specs/038-channel-management-and-repair-ux.md`
-- `docs/specs/050-routine-builder.md`
+- `docs/specs/051-routine-builder.md`
 
 ## Background
 
@@ -89,4 +89,4 @@ contracts remain authoritative.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/054-operator-shell-productization.md 完成 phase 69 的工作`
+`$speckit-specify 结合 docs/specs/055-operator-shell-productization.md 完成 phase 70 的工作`

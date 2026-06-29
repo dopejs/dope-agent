@@ -32,6 +32,15 @@ func NewManager(environmentScope string) *Manager {
 	}
 }
 
+// RegisterBackend installs a backend implementation under a backend kind (e.g.
+// integrations.BackendKindAdapterRPC for the out-of-process adapter plane, Roadmap 59). The
+// fake backend remains registered for integrations bound to fake_local.
+func (m *Manager) RegisterBackend(kind integrations.BackendKind, backend Backend) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.backends[kind] = backend
+}
+
 func (m *Manager) Restore(accounts []AccountProjection, operations []Operation, artifacts []Artifact) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -238,7 +247,7 @@ func (m *Manager) CreateDraft(resources []integrations.Resource, input CreateDra
 	operation := m.newOperation(account, resource, OperationClassCreateDraft, selectionMode, summarizeDraftInput(input.Subject, input.To, input.Cc, input.Bcc), input.Source)
 	item, attachments, err := backend.CreateDraft(resource, account, input)
 	if err != nil {
-		return account, DraftSnapshot{}, m.failOperation(operation, "backend_error", err.Error()), nil, err
+		return account, DraftSnapshot{}, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
 	}
 	item.OperationID = operation.OperationID
 	item.IntegrationID = account.IntegrationID
@@ -260,7 +269,7 @@ func (m *Manager) UpdateDraft(resources []integrations.Resource, input UpdateDra
 	operation := m.newOperation(account, resource, OperationClassUpdateDraft, selectionMode, input.DraftID, input.Source)
 	item, attachments, err := backend.UpdateDraft(resource, account, input)
 	if err != nil {
-		return account, DraftSnapshot{}, m.failOperation(operation, "not_found", err.Error()), nil, err
+		return account, DraftSnapshot{}, m.failOperation(operation, writeFailureReason("not_found", err), err.Error()), nil, err
 	}
 	item.OperationID = operation.OperationID
 	item.IntegrationID = account.IntegrationID
@@ -291,7 +300,7 @@ func (m *Manager) SendMessage(resources []integrations.Resource, input SendMessa
 	}
 	item, attachments, err := backend.SendMessage(resource, account, input)
 	if err != nil {
-		return account, MessageSnapshot{}, m.failOperation(operation, "backend_error", err.Error()), nil, err
+		return account, MessageSnapshot{}, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
 	}
 	item.OperationID = operation.OperationID
 	item.IntegrationID = account.IntegrationID
@@ -327,7 +336,7 @@ func (m *Manager) SendDraft(resources []integrations.Resource, input SendDraftIn
 	}
 	draft, message, attachments, err := backend.SendDraft(resource, account, input)
 	if err != nil {
-		return account, DraftSnapshot{}, MessageSnapshot{}, m.failOperation(operation, "backend_error", err.Error()), nil, err
+		return account, DraftSnapshot{}, MessageSnapshot{}, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
 	}
 	draft.OperationID = operation.OperationID
 	draft.IntegrationID = account.IntegrationID
@@ -361,7 +370,7 @@ func (m *Manager) ReplyMessage(resources []integrations.Resource, input ReplyMes
 	}
 	draft, message, attachments, err := backend.ReplyMessage(resource, account, input)
 	if err != nil {
-		return account, nil, nil, m.failOperation(operation, "backend_error", err.Error()), nil, err
+		return account, nil, nil, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
 	}
 	artifacts := make([]Artifact, 0, 1+len(attachments))
 	resultMode := ResultModeDraftOnly
@@ -415,7 +424,7 @@ func (m *Manager) ForwardMessage(resources []integrations.Resource, input Forwar
 	}
 	draft, message, attachments, err := backend.ForwardMessage(resource, account, input)
 	if err != nil {
-		return account, nil, nil, m.failOperation(operation, "backend_error", err.Error()), nil, err
+		return account, nil, nil, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
 	}
 	artifacts := make([]Artifact, 0, 1+len(attachments))
 	resultMode := ResultModeDraftOnly

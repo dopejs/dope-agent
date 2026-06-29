@@ -32,6 +32,15 @@ func NewManager(environmentScope string) *Manager {
 	}
 }
 
+// RegisterBackend installs a backend implementation under a backend kind (e.g.
+// integrations.BackendKindAdapterRPC for the out-of-process adapter plane, Roadmap 59). The
+// fake backend remains registered for integrations bound to fake_local.
+func (m *Manager) RegisterBackend(kind integrations.BackendKind, backend Backend) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.backends[kind] = backend
+}
+
 func (m *Manager) Restore(accounts []AccountProjection, operations []Operation, artifacts []Artifact) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -163,7 +172,7 @@ func (m *Manager) CreateEvent(resources []integrations.Resource, input CreateEve
 	operation := m.newOperation(account, resource, OperationClassCreateEvent, selectionMode, normalizeTimezone(input.Timezone, account.PrimaryTimezone), input.Title, input.Source)
 	item, err := backend.CreateEvent(resource, account, input)
 	if err != nil {
-		return account, Event{}, m.failOperation(operation, "backend_error", err.Error()), nil, err
+		return account, Event{}, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
 	}
 	artifact := EventArtifact(operation, item)
 	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)
@@ -184,7 +193,7 @@ func (m *Manager) UpdateEvent(resources []integrations.Resource, input UpdateEve
 	operation := m.newOperation(account, resource, OperationClassUpdateEvent, selectionMode, normalizeTimezone(input.Timezone, account.PrimaryTimezone), input.ExternalEventID, input.Source)
 	item, err := backend.UpdateEvent(resource, account, input)
 	if err != nil {
-		return account, Event{}, m.failOperation(operation, "not_found", err.Error()), nil, err
+		return account, Event{}, m.failOperation(operation, writeFailureReason("not_found", err), err.Error()), nil, err
 	}
 	artifact := EventArtifact(operation, item)
 	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)
@@ -199,7 +208,7 @@ func (m *Manager) CancelEvent(resources []integrations.Resource, input CancelEve
 	operation := m.newOperation(account, resource, OperationClassCancelEvent, selectionMode, account.PrimaryTimezone, input.ExternalEventID, input.Source)
 	item, err := backend.CancelEvent(resource, account, input)
 	if err != nil {
-		return account, Event{}, m.failOperation(operation, "not_found", err.Error()), nil, err
+		return account, Event{}, m.failOperation(operation, writeFailureReason("not_found", err), err.Error()), nil, err
 	}
 	artifact := EventArtifact(operation, item)
 	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)

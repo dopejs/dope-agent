@@ -2,13 +2,13 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 61, the calendar
+Authority: This document is the authoritative upstream spec for Roadmap 62, the calendar
 recurrence and all-day event depth slice.
 
 Primary source documents:
 - `docs/specs/014-calendar-integration.md`
-- `docs/specs/044-real-calendar-provider-closure.md`
-- `docs/specs/045-calendar-attendee-and-rsvp-workflows.md`
+- `docs/specs/045-real-calendar-provider-closure.md`
+- `docs/specs/046-calendar-attendee-and-rsvp-workflows.md`
 
 ## Background
 
@@ -30,8 +30,8 @@ constraints, series identity, occurrence identity, and rollback safety.
 
 ## Dependencies On Completed Phases
 
-- Roadmap 59: Real Calendar Provider Closure
-- Roadmap 60: Calendar Attendee And RSVP Workflows, if attendee recurrence interactions
+- Roadmap 60: Real Calendar Provider Closure
+- Roadmap 61: Calendar Attendee And RSVP Workflows, if attendee recurrence interactions
   are in scope for the selected provider
 
 ## In Scope
@@ -87,4 +87,4 @@ possible.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/046-calendar-recurrence-and-all-day-depth.md 完成 phase 61 的工作`
+`$speckit-specify 结合 docs/specs/047-calendar-recurrence-and-all-day-depth.md 完成 phase 62 的工作`

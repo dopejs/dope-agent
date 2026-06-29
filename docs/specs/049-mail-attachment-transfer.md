@@ -2,12 +2,12 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 63, the mail
+Authority: This document is the authoritative upstream spec for Roadmap 64, the mail
 attachment upload, download, and artifact transfer slice.
 
 Primary source documents:
 - `docs/specs/015-mail-integration.md`
-- `docs/specs/047-real-mail-provider-closure.md`
+- `docs/specs/048-real-mail-provider-closure.md`
 - `docs/specs/011-use-computer-capability-plane.md`
 
 ## Background
@@ -30,7 +30,7 @@ redaction, and artifact retention.
 
 ## Dependencies On Completed Phases
 
-- Roadmap 62: Real Mail Provider Closure
+- Roadmap 63: Real Mail Provider Closure
 - Roadmap 26: Use-Computer Capability Plane, for artifact handling precedent
 
 ## In Scope
@@ -88,4 +88,4 @@ artifact path and retention rules.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/048-mail-attachment-transfer.md 完成 phase 63 的工作`
+`$speckit-specify 结合 docs/specs/049-mail-attachment-transfer.md 完成 phase 64 的工作`

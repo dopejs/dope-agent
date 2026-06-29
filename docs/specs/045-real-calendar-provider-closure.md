@@ -2,13 +2,14 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 59, the first real
+Authority: This document is the authoritative upstream spec for Roadmap 60, the first real
 calendar provider closure after the fake calendar backend.
 
 Primary source documents:
 - `docs/specs/014-calendar-integration.md`
 - `docs/specs/031-hosted-credential-and-oauth-setup-wizard.md`
 - `docs/specs/027-integration-health-and-permission-diagnostics.md`
+- `docs/specs/044-external-integration-adapter-plane.md`
 - `docs/providers/real-account-smoke.md`
 
 ## Background
@@ -25,6 +26,9 @@ calendar operation model.
 ## Fixed Decisions
 
 - Provider choice must be recorded during speckit clarification.
+- The real provider MUST be implemented as an adapter on the external integration adapter
+  plane (Roadmap 59), not as an in-process `Backend`. The operation ledger stays
+  daemon-owned per that plane's fixed decisions.
 - Real provider work must reuse calendar operation, integration readiness, diagnostics,
   live validation, and delivery truth.
 - Fake backend coverage remains mandatory.
@@ -35,6 +39,7 @@ calendar operation model.
 - Roadmap 29: Calendar Integration
 - Roadmap 46: Hosted Credential And OAuth Setup Wizard
 - Roadmap 42: Integration Health And Permission Diagnostics
+- Roadmap 59: External Integration Adapter Plane (prerequisite; build before this roadmap)
 
 ## In Scope
 
@@ -91,4 +96,4 @@ second calendar execution ledger.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/044-real-calendar-provider-closure.md 完成 phase 59 的工作`
+`$speckit-specify 结合 docs/specs/045-real-calendar-provider-closure.md 完成 phase 60 的工作`

@@ -2,7 +2,7 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 67, the
+Authority: This document is the authoritative upstream spec for Roadmap 68, the
 operator-managed skill and capability catalog slice before agent-managed skills.
 
 Primary source documents:
@@ -90,4 +90,4 @@ than being replaced wholesale.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/052-operator-managed-skill-and-capability-catalog.md 完成 phase 67 的工作`
+`$speckit-specify 结合 docs/specs/053-operator-managed-skill-and-capability-catalog.md 完成 phase 68 的工作`

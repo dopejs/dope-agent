@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dopejs.dev/schemas/capability/integration-adapter/request.json",
+  "title": "IntegrationAdapterRequest",
+  "description": "Daemon -> adapter request envelope for one Backend operation. The adapter performs provider request/response mapping only; it MUST NOT record any ledger, idempotency, or side-effect-evidence state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["requestId", "contractVersion", "domain", "operation", "deadlineMs", "resource"],
+  "properties": {
+    "requestId": { "type": "string", "minLength": 1, "description": "Correlation id." },
+    "contractVersion": { "type": "string", "minLength": 1, "description": "Must exactly match the daemon contract version." },
+    "domain": { "type": "string", "enum": ["calendar", "mail"] },
+    "operation": { "type": "string", "minLength": 1, "description": "Operation name mirroring the per-domain Backend interface." },
+    "deadlineMs": { "type": "integer", "minimum": 1, "description": "Daemon-supplied per-operation deadline (Q1). Adapter MUST honor it." },
+    "resource": { "type": "object", "description": "Normalized integration Resource projection. MUST NOT contain secrets." },
+    "credential": {
+      "type": "object",
+      "description": "Per-call scoped, short-lived credential material (Q-clarification, FR-006). MUST NOT be persisted or logged by the adapter.",
+      "additionalProperties": true
+    },
+    "payload": { "type": "object", "description": "Operation-specific input mirroring existing *Input types." }
+  }
+}

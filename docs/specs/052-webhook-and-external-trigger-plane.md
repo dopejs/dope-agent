@@ -2,12 +2,12 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for Roadmap 66, the webhook
+Authority: This document is the authoritative upstream spec for Roadmap 67, the webhook
 and external event trigger plane.
 
 Primary source documents:
 - `docs/specs/010-scheduled-tasks-and-wakeups.md`
-- `docs/specs/050-routine-builder.md`
+- `docs/specs/051-routine-builder.md`
 - `docs/runtime/operator-trust-model.md`
 
 ## Background
@@ -31,7 +31,7 @@ with authentication, replay protection, quota, audit, and delivery linkage.
 ## Dependencies On Completed Phases
 
 - Roadmap 25: Scheduled Tasks And Wakeups
-- Roadmap 65: Routine Builder
+- Roadmap 66: Routine Builder
 - Roadmap 38: Billing, Quotas, And Usage Accounting
 
 ## In Scope
@@ -89,4 +89,4 @@ preserving external source identity.
 
 ## Recommended `/speckit-specify` Input
 
-`$speckit-specify 结合 docs/specs/051-webhook-and-external-trigger-plane.md 完成 phase 66 的工作`
+`$speckit-specify 结合 docs/specs/052-webhook-and-external-trigger-plane.md 完成 phase 67 的工作`
