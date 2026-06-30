@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-routine.request.schema.json",
+  "title": "CreateRoutineRequest",
+  "type": "object",
+  "required": ["definition"],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "definition": { "$ref": "./routine-resource.schema.json#/$defs/definition" }
+  }
+}

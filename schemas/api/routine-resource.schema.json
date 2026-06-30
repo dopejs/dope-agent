@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/routine-resource.schema.json",
+  "title": "RoutineResource",
+  "type": "object",
+  "required": ["routineId", "name", "state", "currentVersion", "definition", "versions", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "$defs": {
+    "trigger": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["cron", "once"] },
+        "cronExpr": { "type": "string" },
+        "timezone": { "type": "string" },
+        "fireAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "required": ["goal"],
+      "additionalProperties": false,
+      "properties": {
+        "entrypoint": { "type": "string" },
+        "goal": { "type": "string" }
+      }
+    },
+    "definition": {
+      "type": "object",
+      "required": ["name", "trigger", "workflow"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "trigger": { "$ref": "#/$defs/trigger" },
+        "workflow": { "$ref": "#/$defs/workflow" },
+        "approvalExpectation": { "type": "string" },
+        "deliveryPreferenceId": { "type": "string" },
+        "maxRetries": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "version": {
+      "type": "object",
+      "required": ["version", "definition", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "definition": { "$ref": "#/$defs/definition" },
+        "scheduleId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "properties": {
+    "tenantId": { "type": "string" },
+    "routineId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "name": { "type": "string" },
+    "state": { "type": "string", "enum": ["active", "paused", "cancelled"] },
+    "currentVersion": { "type": "integer", "minimum": 1 },
+    "currentScheduleId": { "type": "string" },
+    "definition": { "$ref": "#/$defs/definition" },
+    "versions": { "type": "array", "items": { "$ref": "#/$defs/version" } },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

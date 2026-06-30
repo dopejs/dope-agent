@@ -46,6 +46,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/reminders"
+	"github.com/dopejs/dope-agent/daemon/internal/routine"
 	"github.com/dopejs/dope-agent/daemon/internal/triage"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -81,6 +82,7 @@ type App struct {
 	Mail                 *mail.Manager
 	Reminders            *reminders.Manager
 	Triage               *triage.Manager
+	Routines             *routine.Manager
 	Scheduler            *scheduler.Scheduler
 	Delivery             *delivery.Manager
 	Billing              *billing.Manager
@@ -335,6 +337,7 @@ func New() (*App, error) {
 		WorkflowLauncher: workflowLauncher,
 		Billing:          billingManager,
 	})
+	routineManager := routine.NewManager(string(cfg.Environment), scheduleManager)
 	if err := recoverPersistedStateWithSecrets(envCtx, cfg.DataDir, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, identityManager, providerManager, sandboxManager, secretManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
 		return nil, err
 	}
@@ -419,6 +422,7 @@ func New() (*App, error) {
 		Mail:                  mailManager,
 		Reminders:             reminderManager,
 		Triage:                triageManager,
+		Routines:              routineManager,
 		Providers:             providerManager,
 		Connectors:            connectorSupervisor,
 		Capabilities:          capabilitySupervisor,
@@ -457,6 +461,7 @@ func New() (*App, error) {
 		Mail:                 mailManager,
 		Reminders:            reminderManager,
 		Triage:               triageManager,
+		Routines:             routineManager,
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
 		Delivery:             deliveryManager,
