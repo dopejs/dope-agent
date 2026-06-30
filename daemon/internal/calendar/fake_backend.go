@@ -144,6 +144,8 @@ func (b *FakeBackend) CreateEvent(resource integrations.Resource, account Accoun
 		CreatedAt:               now,
 		UpdatedAt:               now,
 	}
+	item.AttendeeDetails = fakeInvite(resolveAttendeeRequests(input.AttendeeRequests, input.Attendees), input.NotifyAttendees)
+	item.Attendees = attendeeEmails(item.AttendeeDetails)
 	state.events[item.ExternalEventID] = item
 	return item, nil
 }
@@ -163,8 +165,67 @@ func (b *FakeBackend) UpdateEvent(resource integrations.Resource, account Accoun
 	item.EndsAt = input.EndsAt.UTC()
 	item.Timezone = normalizeTimezone(input.Timezone, account.PrimaryTimezone)
 	item.UpdatedAt = time.Now().UTC()
+	if requests := resolveAttendeeRequests(input.AttendeeRequests, input.Attendees); len(requests) > 0 {
+		item.AttendeeDetails = fakeInvite(requests, input.NotifyAttendees)
+		item.Attendees = attendeeEmails(item.AttendeeDetails)
+	}
 	state.events[item.ExternalEventID] = item
 	return item, nil
+}
+
+// UpdateAttendees adds/removes attendees on an existing event and simulates invitation results.
+func (b *FakeBackend) UpdateAttendees(resource integrations.Resource, account AccountProjection, input UpdateAttendeesInput) (Event, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	state := b.ensureStateLocked(resource)
+	item, ok := state.events[strings.TrimSpace(input.ExternalEventID)]
+	if !ok {
+		return Event{}, ErrCalendarEventNotFound
+	}
+	// Index existing attendees by email so add/remove is idempotent and preserves RSVP state.
+	byEmail := make(map[string]Attendee, len(item.AttendeeDetails))
+	for _, a := range item.AttendeeDetails {
+		byEmail[strings.ToLower(a.Email)] = a
+	}
+	for _, email := range input.RemoveAttendees {
+		delete(byEmail, strings.ToLower(strings.TrimSpace(email)))
+	}
+	for _, added := range fakeInvite(resolveAttendeeRequests(input.AddAttendees, nil), input.Notify) {
+		byEmail[strings.ToLower(added.Email)] = added
+	}
+	details := make([]Attendee, 0, len(byEmail))
+	for _, a := range byEmail {
+		details = append(details, a)
+	}
+	sort.Slice(details, func(i, j int) bool { return details[i].Email < details[j].Email })
+	item.AttendeeDetails = details
+	item.Attendees = attendeeEmails(details)
+	item.UpdatedAt = time.Now().UTC()
+	state.events[item.ExternalEventID] = item
+	return item, nil
+}
+
+// fakeInvite simulates per-attendee invitation + RSVP results for the fake backend: an
+// invitation is "sent" only when notification was requested; RSVP starts at needs_action.
+func fakeInvite(requests []AttendeeRequest, notify bool) []Attendee {
+	if len(requests) == 0 {
+		return nil
+	}
+	details := make([]Attendee, 0, len(requests))
+	for _, r := range requests {
+		invitation := InvitationStatusNotRequested
+		if notify {
+			invitation = InvitationStatusSent
+		}
+		details = append(details, Attendee{
+			Email:            strings.TrimSpace(r.Email),
+			DisplayName:      r.DisplayName,
+			Role:             r.Role,
+			RSVP:             RSVPStatusNeedsAction,
+			InvitationStatus: invitation,
+		})
+	}
+	return details
 }
 
 func (b *FakeBackend) CancelEvent(resource integrations.Resource, account AccountProjection, input CancelEventInput) (Event, error) {

@@ -111,6 +111,15 @@ func (p *CalendarProvider) route(ctx context.Context, token scopedToken, resourc
 			return nil, pf
 		}
 		return marshalResult(p.cancelEvent(ctx, token, in.Account, in.Input))
+	case "UpdateAttendees":
+		var in struct {
+			Account calendar.AccountProjection    `json:"account"`
+			Input   calendar.UpdateAttendeesInput `json:"input"`
+		}
+		if pf := decodePayload(op.Payload, &in); pf != nil {
+			return nil, pf
+		}
+		return marshalResult(p.updateAttendees(ctx, token, in.Account, in.Input))
 	default:
 		return nil, &providerFault{kind: faultInternal, code: "unsupported_operation", message: "unsupported calendar operation"}
 	}
@@ -134,7 +143,19 @@ type feishuEvent struct {
 	Location    struct {
 		Name string `json:"name"`
 	} `json:"location"`
-	Recurrence string `json:"recurrence"`
+	Recurrence string           `json:"recurrence"`
+	Attendees  []feishuAttendee `json:"attendees"`
+}
+
+// feishuAttendee mirrors a Feishu calendar event attendee. RSVP is carried in rsvp_status.
+type feishuAttendee struct {
+	Type            string `json:"type"`
+	AttendeeID      string `json:"attendee_id"`
+	RsvpStatus      string `json:"rsvp_status"` // needs_action | accept | decline | tentative
+	DisplayName     string `json:"display_name"`
+	IsOptional      bool   `json:"is_optional"`
+	ThirdPartyEmail string `json:"third_party_email"`
+	UserID          string `json:"user_id"`
 }
 
 type feishuPrimaryResp struct {
@@ -249,20 +270,24 @@ func (p *CalendarProvider) busyFree(ctx context.Context, token scopedToken, acco
 }
 
 func (p *CalendarProvider) createEvent(ctx context.Context, token scopedToken, account calendar.AccountProjection, input calendar.CreateEventInput) (calendar.Event, *providerFault) {
-	body := writeEventBody(input.Title, input.Description, input.Location, input.StartsAt, input.EndsAt, firstNonEmpty(input.Timezone, account.PrimaryTimezone))
-	path := fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events", url.PathEscape(account.PrimaryCalendarRef))
+	requests := resolveRequests(input.AttendeeRequests, input.Attendees)
+	body := writeEventBody(input.Title, input.Description, input.Location, input.StartsAt, input.EndsAt, firstNonEmpty(input.Timezone, account.PrimaryTimezone), requests)
+	path := fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events?need_notification=%t", url.PathEscape(account.PrimaryCalendarRef), input.NotifyAttendees)
 	var out struct {
 		Event feishuEvent `json:"event"`
 	}
 	if pf := p.client.call(ctx, "POST", path, token.AccessToken, body, &out, true); pf != nil {
 		return calendar.Event{}, pf
 	}
-	return mapEvent(account, out.Event), nil
+	ev := mapEvent(account, out.Event)
+	applyInvitationStatus(&ev, requests, input.NotifyAttendees)
+	return ev, nil
 }
 
 func (p *CalendarProvider) updateEvent(ctx context.Context, token scopedToken, account calendar.AccountProjection, input calendar.UpdateEventInput) (calendar.Event, *providerFault) {
-	body := writeEventBody(input.Title, input.Description, input.Location, input.StartsAt, input.EndsAt, firstNonEmpty(input.Timezone, account.PrimaryTimezone))
-	path := fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/%s", url.PathEscape(account.PrimaryCalendarRef), url.PathEscape(input.ExternalEventID))
+	requests := resolveRequests(input.AttendeeRequests, input.Attendees)
+	body := writeEventBody(input.Title, input.Description, input.Location, input.StartsAt, input.EndsAt, firstNonEmpty(input.Timezone, account.PrimaryTimezone), requests)
+	path := fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/%s?need_notification=%t", url.PathEscape(account.PrimaryCalendarRef), url.PathEscape(input.ExternalEventID), input.NotifyAttendees)
 	var out struct {
 		Event feishuEvent `json:"event"`
 	}
@@ -272,6 +297,44 @@ func (p *CalendarProvider) updateEvent(ctx context.Context, token scopedToken, a
 	ev := mapEvent(account, out.Event)
 	if ev.ExternalEventID == "" {
 		ev.ExternalEventID = input.ExternalEventID // identity preserved across update (FR-004)
+	}
+	applyInvitationStatus(&ev, requests, input.NotifyAttendees)
+	return ev, nil
+}
+
+func (p *CalendarProvider) updateAttendees(ctx context.Context, token scopedToken, account calendar.AccountProjection, input calendar.UpdateAttendeesInput) (calendar.Event, *providerFault) {
+	eventPath := fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/%s", url.PathEscape(account.PrimaryCalendarRef), url.PathEscape(input.ExternalEventID))
+	if len(input.AddAttendees) > 0 {
+		body := map[string]any{"attendees": attendeeBody(resolveRequests(input.AddAttendees, nil)), "need_notification": input.Notify}
+		if pf := p.client.call(ctx, "POST", eventPath+"/attendees", token.AccessToken, body, nil, true); pf != nil {
+			return calendar.Event{}, pf
+		}
+	}
+	if len(input.RemoveAttendees) > 0 {
+		// Resolve emails to attendee ids from the current event, then batch-delete.
+		var current struct {
+			Event feishuEvent `json:"event"`
+		}
+		if pf := p.client.call(ctx, "GET", eventPath, token.AccessToken, nil, &current, false); pf != nil {
+			return calendar.Event{}, pf
+		}
+		ids := resolveAttendeeIDs(current.Event.Attendees, input.RemoveAttendees)
+		if len(ids) > 0 {
+			body := map[string]any{"attendee_ids": ids, "need_notification": input.Notify}
+			if pf := p.client.call(ctx, "POST", eventPath+"/attendees/batch_delete", token.AccessToken, body, nil, true); pf != nil {
+				return calendar.Event{}, pf
+			}
+		}
+	}
+	var out struct {
+		Event feishuEvent `json:"event"`
+	}
+	if pf := p.client.call(ctx, "GET", eventPath, token.AccessToken, nil, &out, false); pf != nil {
+		return calendar.Event{}, pf
+	}
+	ev := mapEvent(account, out.Event)
+	if ev.ExternalEventID == "" {
+		ev.ExternalEventID = input.ExternalEventID
 	}
 	return ev, nil
 }
@@ -295,7 +358,7 @@ func (p *CalendarProvider) cancelEvent(ctx context.Context, token scopedToken, a
 
 // ---- mapping helpers ----
 
-func writeEventBody(title, description, location string, startsAt, endsAt time.Time, tz string) map[string]any {
+func writeEventBody(title, description, location string, startsAt, endsAt time.Time, tz string, attendees []calendar.AttendeeRequest) map[string]any {
 	body := map[string]any{
 		"summary":     title,
 		"description": description,
@@ -305,7 +368,134 @@ func writeEventBody(title, description, location string, startsAt, endsAt time.T
 	if strings.TrimSpace(location) != "" {
 		body["location"] = map[string]any{"name": location}
 	}
+	if items := attendeeBody(attendees); len(items) > 0 {
+		body["attendees"] = items
+	}
 	return body
+}
+
+// attendeeBody builds the Feishu attendee payload from attendee requests.
+func attendeeBody(requests []calendar.AttendeeRequest) []map[string]any {
+	if len(requests) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(requests))
+	for _, r := range requests {
+		out = append(out, map[string]any{
+			"type":              "third_party",
+			"third_party_email": r.Email,
+			"is_optional":       r.Role == calendar.AttendeeRoleOptional,
+		})
+	}
+	return out
+}
+
+// resolveRequests mirrors the calendar package's attendee normalization for the provider side:
+// prefer explicit requests, otherwise synthesize from the legacy email list (required role).
+func resolveRequests(requests []calendar.AttendeeRequest, emails []string) []calendar.AttendeeRequest {
+	if len(requests) > 0 {
+		out := make([]calendar.AttendeeRequest, 0, len(requests))
+		for _, r := range requests {
+			if strings.TrimSpace(r.Email) == "" {
+				continue
+			}
+			if r.Role == "" {
+				r.Role = calendar.AttendeeRoleRequired
+			}
+			out = append(out, r)
+		}
+		return out
+	}
+	out := make([]calendar.AttendeeRequest, 0, len(emails))
+	for _, e := range emails {
+		if strings.TrimSpace(e) == "" {
+			continue
+		}
+		out = append(out, calendar.AttendeeRequest{Email: strings.TrimSpace(e), Role: calendar.AttendeeRoleRequired})
+	}
+	return out
+}
+
+// mapAttendees projects Feishu attendees onto the calendar attendee resource, preserving RSVP.
+func mapAttendees(items []feishuAttendee) []calendar.Attendee {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]calendar.Attendee, 0, len(items))
+	for _, a := range items {
+		role := calendar.AttendeeRoleRequired
+		if a.IsOptional {
+			role = calendar.AttendeeRoleOptional
+		}
+		out = append(out, calendar.Attendee{
+			Email:       firstNonEmpty(a.ThirdPartyEmail, a.DisplayName),
+			DisplayName: a.DisplayName,
+			Role:        role,
+			RSVP:        mapRSVP(a.RsvpStatus),
+		})
+	}
+	return out
+}
+
+func mapRSVP(s string) calendar.RSVPStatus {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "accept", "accepted":
+		return calendar.RSVPStatusAccepted
+	case "decline", "declined":
+		return calendar.RSVPStatusDeclined
+	case "tentative":
+		return calendar.RSVPStatusTentative
+	case "needs_action", "":
+		return calendar.RSVPStatusNeedsAction
+	default:
+		return calendar.RSVPStatusUnknown
+	}
+}
+
+// applyInvitationStatus records, per attendee returned by a write, whether the externally-visible
+// invitation was sent (notify requested) or only added without notification.
+func applyInvitationStatus(ev *calendar.Event, requests []calendar.AttendeeRequest, notify bool) {
+	if len(ev.AttendeeDetails) == 0 && len(requests) > 0 {
+		// Provider did not echo attendees; project from the request so the outcome is truthful.
+		ev.AttendeeDetails = make([]calendar.Attendee, 0, len(requests))
+		for _, r := range requests {
+			ev.AttendeeDetails = append(ev.AttendeeDetails, calendar.Attendee{Email: r.Email, DisplayName: r.DisplayName, Role: r.Role, RSVP: calendar.RSVPStatusNeedsAction})
+		}
+	}
+	status := calendar.InvitationStatusNotRequested
+	if notify {
+		status = calendar.InvitationStatusSent
+	}
+	for i := range ev.AttendeeDetails {
+		ev.AttendeeDetails[i].InvitationStatus = status
+	}
+	ev.Attendees = attendeeEmailList(ev.AttendeeDetails)
+}
+
+func attendeeEmailList(details []calendar.Attendee) []string {
+	if len(details) == 0 {
+		return nil
+	}
+	emails := make([]string, 0, len(details))
+	for _, a := range details {
+		emails = append(emails, a.Email)
+	}
+	return emails
+}
+
+// resolveAttendeeIDs maps emails to Feishu attendee ids for removal.
+func resolveAttendeeIDs(current []feishuAttendee, removeEmails []string) []string {
+	want := make(map[string]bool, len(removeEmails))
+	for _, e := range removeEmails {
+		want[strings.ToLower(strings.TrimSpace(e))] = true
+	}
+	ids := make([]string, 0, len(removeEmails))
+	for _, a := range current {
+		if want[strings.ToLower(firstNonEmpty(a.ThirdPartyEmail, a.DisplayName))] && a.AttendeeID != "" {
+			ids = append(ids, a.AttendeeID)
+		}
+	}
+	return ids
 }
 
 func mapEvent(account calendar.AccountProjection, item feishuEvent) calendar.Event {
@@ -314,6 +504,7 @@ func mapEvent(account calendar.AccountProjection, item feishuEvent) calendar.Eve
 		lifecycle = calendar.EventLifecycleStateCancelled
 	}
 	now := time.Now().UTC()
+	attendees := mapAttendees(item.Attendees)
 	return calendar.Event{
 		ExternalEventID:         item.EventID,
 		IntegrationID:           account.IntegrationID,
@@ -328,6 +519,8 @@ func mapEvent(account calendar.AccountProjection, item feishuEvent) calendar.Eve
 		AllDay:                  item.StartTime.Date != "",
 		Recurring:               strings.TrimSpace(item.Recurrence) != "",
 		RecurrenceSummary:       item.Recurrence,
+		Attendees:               attendeeEmailList(attendees),
+		AttendeeDetails:         attendees,
 		MutationEligibleInPhase: item.StartTime.Date == "" && strings.TrimSpace(item.Recurrence) == "",
 		LifecycleState:          lifecycle,
 		UpdatedAt:               now,

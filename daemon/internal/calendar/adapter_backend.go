@@ -107,6 +107,14 @@ func (b *AdapterBackend) CancelEvent(resource integrations.Resource, account Acc
 	return out, b.mapErr(err)
 }
 
+func (b *AdapterBackend) UpdateAttendees(resource integrations.Resource, account AccountProjection, input UpdateAttendeesInput) (Event, error) {
+	ctx, cancel := b.op()
+	defer cancel()
+	var out Event
+	err := b.client.Dispatch(ctx, domainCalendar, "UpdateAttendees", resource, map[string]any{"account": account, "input": input}, &out)
+	return out, b.mapErr(err)
+}
+
 // RestoreIntegrationState is a no-op: the adapter holds no durable state; restore is daemon-owned.
 func (b *AdapterBackend) RestoreIntegrationState(integrationID string, events []Event) {}
 

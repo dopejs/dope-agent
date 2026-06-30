@@ -270,7 +270,6 @@ func TestOutOfScopeMutationsRejectedBeforeProviderCall(t *testing.T) {
 		name  string
 		input calendar.CreateEventInput
 	}{
-		{"attendees", calendar.CreateEventInput{Selection: sel(), Title: "x", StartsAt: base, EndsAt: base.Add(time.Hour), Attendees: []string{"a@example.com"}}},
 		{"recurring", calendar.CreateEventInput{Selection: sel(), Title: "x", StartsAt: base, EndsAt: base.Add(time.Hour), Recurring: true}},
 		{"all_day", calendar.CreateEventInput{Selection: sel(), Title: "x", StartsAt: base, EndsAt: base.Add(time.Hour), AllDay: true}},
 	}
@@ -280,6 +279,118 @@ func TestOutOfScopeMutationsRejectedBeforeProviderCall(t *testing.T) {
 				t.Fatal("expected out-of-scope rejection")
 			}
 		})
+	}
+}
+
+// US1 (FR-001/FR-002, SC-001): attendee-bearing create records event-field mutation plus
+// per-attendee invitation results and the requested notification behavior.
+func TestCreateWithAttendeesRecordsOutcome(t *testing.T) {
+	m, resources := wiredManager(t, feishuMux(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/events") {
+			writeFeishu(w, map[string]any{"event": map[string]any{
+				"event_id":   "evt-att",
+				"summary":    "Sync",
+				"start_time": map[string]any{"timestamp": "1741397400", "timezone": "UTC"},
+				"end_time":   map[string]any{"timestamp": "1741401000", "timezone": "UTC"},
+				"status":     "confirmed",
+				"attendees": []map[string]any{
+					{"type": "third_party", "third_party_email": "a@example.com", "rsvp_status": "needs_action"},
+				},
+			}})
+			return
+		}
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+	}))
+	base := time.Date(2026, 3, 8, 1, 30, 0, 0, time.UTC)
+	_, ev, op, _, err := m.CreateEvent(resources, calendar.CreateEventInput{
+		Selection:        sel(),
+		Title:            "Sync",
+		StartsAt:         base,
+		EndsAt:           base.Add(time.Hour),
+		AttendeeRequests: []calendar.AttendeeRequest{{Email: "a@example.com", Role: calendar.AttendeeRoleRequired}},
+		NotifyAttendees:  true,
+	})
+	if err != nil {
+		t.Fatalf("create with attendees: %v", err)
+	}
+	if len(ev.AttendeeDetails) != 1 || ev.AttendeeDetails[0].InvitationStatus != calendar.InvitationStatusSent {
+		t.Fatalf("attendee invitation not recorded as sent: %+v", ev.AttendeeDetails)
+	}
+	if op.AttendeeOutcome == nil || op.AttendeeOutcome.NotificationBehavior != calendar.NotificationBehaviorNotify {
+		t.Fatalf("attendee outcome = %+v, want notify", op.AttendeeOutcome)
+	}
+}
+
+// US2 (FR-001): an attendee-only update is a distinct operation; field mutation untouched.
+func TestUpdateAttendeesDistinctOperation(t *testing.T) {
+	m, resources := wiredManager(t, feishuMux(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/attendees"):
+			writeFeishu(w, map[string]any{})
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/events/"):
+			writeFeishu(w, map[string]any{"event": map[string]any{
+				"event_id":   "evt-1",
+				"summary":    "Sync",
+				"start_time": map[string]any{"timestamp": "1741397400", "timezone": "UTC"},
+				"end_time":   map[string]any{"timestamp": "1741401000", "timezone": "UTC"},
+				"status":     "confirmed",
+				"attendees": []map[string]any{
+					{"type": "third_party", "third_party_email": "a@example.com", "rsvp_status": "accept"},
+				},
+			}})
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	_, ev, op, _, err := m.UpdateAttendees(resources, calendar.UpdateAttendeesInput{
+		Selection:       sel(),
+		ExternalEventID: "evt-1",
+		AddAttendees:    []calendar.AttendeeRequest{{Email: "a@example.com"}},
+		Notify:          true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateAttendees: %v", err)
+	}
+	if op.OperationClass != calendar.OperationClassUpdateAttendees {
+		t.Fatalf("op class = %q, want update_attendees", op.OperationClass)
+	}
+	if len(ev.AttendeeDetails) != 1 || ev.AttendeeDetails[0].RSVP != calendar.RSVPStatusAccepted {
+		t.Fatalf("RSVP not projected: %+v", ev.AttendeeDetails)
+	}
+}
+
+// US3 (FR-003): RSVP state is projected from the provider on the read path.
+func TestGetEventProjectsRSVP(t *testing.T) {
+	m, resources := wiredManager(t, feishuMux(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/events/") {
+			writeFeishu(w, map[string]any{"event": map[string]any{
+				"event_id":   "evt-7",
+				"summary":    "Review",
+				"start_time": map[string]any{"timestamp": "1741397400", "timezone": "UTC"},
+				"end_time":   map[string]any{"timestamp": "1741401000", "timezone": "UTC"},
+				"status":     "confirmed",
+				"attendees": []map[string]any{
+					{"third_party_email": "a@example.com", "rsvp_status": "decline"},
+					{"third_party_email": "b@example.com", "rsvp_status": "tentative", "is_optional": true},
+				},
+			}})
+			return
+		}
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+	}))
+	_, ev, _, _, err := m.GetEvent(resources, calendar.GetEventInput{Selection: sel(), ExternalEventID: "evt-7"})
+	if err != nil {
+		t.Fatalf("GetEvent: %v", err)
+	}
+	if len(ev.AttendeeDetails) != 2 {
+		t.Fatalf("attendees not projected: %+v", ev.AttendeeDetails)
+	}
+	got := map[string]calendar.RSVPStatus{}
+	for _, a := range ev.AttendeeDetails {
+		got[a.Email] = a.RSVP
+	}
+	if got["a@example.com"] != calendar.RSVPStatusDeclined || got["b@example.com"] != calendar.RSVPStatusTentative {
+		t.Fatalf("RSVP states wrong: %+v", got)
 	}
 }
 

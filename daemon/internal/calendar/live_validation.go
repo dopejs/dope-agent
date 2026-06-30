@@ -7,6 +7,7 @@ func LiveValidationMatrixRows() []livevalidation.MatrixRow {
 		livevalidation.ToolClassCalendarEventCreate,
 		livevalidation.ToolClassCalendarEventUpdate,
 		livevalidation.ToolClassCalendarEventCancel,
+		livevalidation.ToolClassCalendarAttendeeUpdate,
 	}
 	rows := make([]livevalidation.MatrixRow, 0, len(classes))
 	for _, toolClass := range classes {

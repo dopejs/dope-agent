@@ -17,6 +17,7 @@ const (
 	ToolClassCalendarEventCreate        ToolClass = "calendar.event.create"
 	ToolClassCalendarEventUpdate        ToolClass = "calendar.event.update"
 	ToolClassCalendarEventCancel        ToolClass = "calendar.event.cancel"
+	ToolClassCalendarAttendeeUpdate     ToolClass = "calendar.attendee.update"
 	ToolClassMailDraftCreate            ToolClass = "mail.draft.create"
 	ToolClassMailDraftUpdate            ToolClass = "mail.draft.update"
 	ToolClassMailSend                   ToolClass = "mail.send"
@@ -171,6 +172,7 @@ func DefaultMatrixRows() []MatrixRow {
 		supportedRow(ToolClassCalendarEventCreate, SafetyClassNonIdempotentMutation, MatrixApprovalPerAction, RetryPolicyNone, CompensationManualConfirmation, "fake calendar create ambiguous commit test"),
 		supportedRow(ToolClassCalendarEventUpdate, SafetyClassIdempotentMutation, MatrixApprovalScopeLevel, RetryPolicyManual, CompensationManualConfirmation, "fake calendar update retry/reconciliation test"),
 		supportedRow(ToolClassCalendarEventCancel, SafetyClassNonIdempotentMutation, MatrixApprovalPerAction, RetryPolicyNone, CompensationManualConfirmation, "fake calendar cancel submit-unknown test"),
+		supportedRow(ToolClassCalendarAttendeeUpdate, SafetyClassNonIdempotentMutation, MatrixApprovalPerAction, RetryPolicyNone, CompensationManualConfirmation, "fake calendar attendee invitation per-action approval test"),
 		supportedRow(ToolClassMailDraftCreate, SafetyClassIdempotentMutation, MatrixApprovalScopeLevel, RetryPolicyManual, CompensationManualConfirmation, "fake mail draft create test"),
 		supportedRow(ToolClassMailDraftUpdate, SafetyClassIdempotentMutation, MatrixApprovalScopeLevel, RetryPolicyManual, CompensationManualConfirmation, "fake mail draft update test"),
 		supportedRow(ToolClassMailSend, SafetyClassNonIdempotentMutation, MatrixApprovalPerAction, RetryPolicyNone, CompensationManualConfirmation, "fake mail send ambiguous commit test"),

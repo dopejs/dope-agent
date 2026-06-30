@@ -173,7 +173,7 @@ func executeCalendarAction(manager *calendar.Manager, integrationsManager *integ
 			},
 		}, nil
 	case calendar.OperationClassCreateEvent:
-		if err := rejectUnsupportedCalendarMutation(action.CalendarRef, action.AllDay, action.Recurring, attendeesToRequests(action.Attendees)); err != nil {
+		if err := rejectUnsupportedCalendarMutation(action.CalendarRef, action.AllDay, action.Recurring); err != nil {
 			return calendarExecutionResult{}, err
 		}
 		if action.StartsAt == nil || action.EndsAt == nil {
@@ -207,7 +207,7 @@ func executeCalendarAction(manager *calendar.Manager, integrationsManager *integ
 			},
 		}, nil
 	case calendar.OperationClassUpdateEvent:
-		if err := rejectUnsupportedCalendarMutation(action.CalendarRef, action.AllDay, action.Recurring, attendeesToRequests(action.Attendees)); err != nil {
+		if err := rejectUnsupportedCalendarMutation(action.CalendarRef, action.AllDay, action.Recurring); err != nil {
 			return calendarExecutionResult{}, err
 		}
 		if action.StartsAt == nil || action.EndsAt == nil {
@@ -268,14 +268,4 @@ func executeCalendarAction(manager *calendar.Manager, integrationsManager *integ
 	default:
 		return calendarExecutionResult{}, fmt.Errorf("unsupported calendar action %q", action.OperationClass)
 	}
-}
-
-func attendeesToRequests(items []string) []CalendarAttendeeRequest {
-	requests := make([]CalendarAttendeeRequest, 0, len(items))
-	for _, item := range items {
-		if email := strings.TrimSpace(item); email != "" {
-			requests = append(requests, CalendarAttendeeRequest{Email: email})
-		}
-	}
-	return requests
 }

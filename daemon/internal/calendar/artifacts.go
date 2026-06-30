@@ -27,14 +27,14 @@ func EventArtifact(operation Operation, item Event) Artifact {
 
 func AvailabilityArtifact(operation Operation, query AvailabilityQuery) Artifact {
 	return Artifact{
-		ArtifactID:         newID("calendar_artifact"),
-		OperationID:        operation.OperationID,
-		Kind:               ArtifactKindAvailabilityQuery,
-		IntegrationID:      operation.IntegrationID,
-		EnvironmentScope:   operation.EnvironmentScope,
-		CalendarRef:        operation.CalendarRef,
-		Timezone:           query.Timezone,
-		AvailabilityQuery:  &query,
-		CreatedAt:          time.Now().UTC(),
+		ArtifactID:        newID("calendar_artifact"),
+		OperationID:       operation.OperationID,
+		Kind:              ArtifactKindAvailabilityQuery,
+		IntegrationID:     operation.IntegrationID,
+		EnvironmentScope:  operation.EnvironmentScope,
+		CalendarRef:       operation.CalendarRef,
+		Timezone:          query.Timezone,
+		AvailabilityQuery: &query,
+		CreatedAt:         time.Now().UTC(),
 	}
 }

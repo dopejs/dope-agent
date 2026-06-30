@@ -355,7 +355,7 @@ func handleCalendarEventCreate(cfg config.Config, manager *calendar.Manager, int
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := rejectUnsupportedCalendarMutation(request.CalendarRef, request.AllDay, request.Recurring, request.Attendees); err != nil {
+	if err := rejectUnsupportedCalendarMutation(request.CalendarRef, request.AllDay, request.Recurring); err != nil {
 		writeCalendarError(w, r, err)
 		return
 	}
@@ -376,14 +376,16 @@ func handleCalendarEventCreate(cfg config.Config, manager *calendar.Manager, int
 		return
 	}
 	account, item, operation, artifacts, err := manager.CreateEvent(integrationsManager.List(), calendar.CreateEventInput{
-		Selection:   calendar.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
-		Title:       strings.TrimSpace(request.Title),
-		Description: strings.TrimSpace(request.Description),
-		Location:    strings.TrimSpace(request.Location),
-		StartsAt:    startsAt,
-		EndsAt:      endsAt,
-		Timezone:    strings.TrimSpace(request.Timezone),
-		Source:      calendarSourceLinkageWithOperation(request.Source, operationID),
+		Selection:        calendar.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
+		Title:            strings.TrimSpace(request.Title),
+		Description:      strings.TrimSpace(request.Description),
+		Location:         strings.TrimSpace(request.Location),
+		StartsAt:         startsAt,
+		EndsAt:           endsAt,
+		Timezone:         strings.TrimSpace(request.Timezone),
+		AttendeeRequests: calendarAttendeeRequests(request.Attendees),
+		NotifyAttendees:  request.NotifyAttendees,
+		Source:           calendarSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
 		if recordErr := recordCalendarActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
@@ -416,7 +418,7 @@ func handleCalendarEventUpdate(cfg config.Config, manager *calendar.Manager, int
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := rejectUnsupportedCalendarMutation(request.CalendarRef, request.AllDay, request.Recurring, request.Attendees); err != nil {
+	if err := rejectUnsupportedCalendarMutation(request.CalendarRef, request.AllDay, request.Recurring); err != nil {
 		writeCalendarError(w, r, err)
 		return
 	}
@@ -437,15 +439,17 @@ func handleCalendarEventUpdate(cfg config.Config, manager *calendar.Manager, int
 		return
 	}
 	account, item, operation, artifacts, err := manager.UpdateEvent(integrationsManager.List(), calendar.UpdateEventInput{
-		Selection:       calendar.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
-		ExternalEventID: strings.TrimSpace(externalEventID),
-		Title:           strings.TrimSpace(request.Title),
-		Description:     strings.TrimSpace(request.Description),
-		Location:        strings.TrimSpace(request.Location),
-		StartsAt:        startsAt,
-		EndsAt:          endsAt,
-		Timezone:        strings.TrimSpace(request.Timezone),
-		Source:          calendarSourceLinkageWithOperation(request.Source, operationID),
+		Selection:        calendar.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
+		ExternalEventID:  strings.TrimSpace(externalEventID),
+		Title:            strings.TrimSpace(request.Title),
+		Description:      strings.TrimSpace(request.Description),
+		Location:         strings.TrimSpace(request.Location),
+		StartsAt:         startsAt,
+		EndsAt:           endsAt,
+		Timezone:         strings.TrimSpace(request.Timezone),
+		AttendeeRequests: calendarAttendeeRequests(request.Attendees),
+		NotifyAttendees:  request.NotifyAttendees,
+		Source:           calendarSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
 		if recordErr := recordCalendarActivity(r.Context(), eventBus, sqliteStore, account, operation, artifacts); recordErr != nil {
@@ -719,7 +723,9 @@ func filterCalendarAccounts(items []calendar.AccountProjection, r *http.Request)
 	return filtered
 }
 
-func rejectUnsupportedCalendarMutation(calendarRef string, allDay, recurring bool, attendees []CalendarAttendeeRequest) error {
+// rejectUnsupportedCalendarMutation rejects mutations still out of scope (recurrence, all-day,
+// alternate calendar). Attendee-bearing writes are supported from Roadmap 61 (spec 046).
+func rejectUnsupportedCalendarMutation(calendarRef string, allDay, recurring bool) error {
 	switch {
 	case strings.TrimSpace(calendarRef) != "":
 		return calendar.ErrCalendarAlternateCalendarDeny
@@ -727,11 +733,28 @@ func rejectUnsupportedCalendarMutation(calendarRef string, allDay, recurring boo
 		return calendar.ErrCalendarRecurringUnsupported
 	case allDay:
 		return calendar.ErrCalendarAllDayUnsupported
-	case len(attendees) > 0:
-		return calendar.ErrCalendarAttendeesUnsupported
 	default:
 		return nil
 	}
+}
+
+// calendarAttendeeRequests maps API attendee requests to the calendar attendee model.
+func calendarAttendeeRequests(items []CalendarAttendeeRequest) []calendar.AttendeeRequest {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]calendar.AttendeeRequest, 0, len(items))
+	for _, a := range items {
+		if strings.TrimSpace(a.Email) == "" {
+			continue
+		}
+		role := calendar.AttendeeRoleRequired
+		if strings.EqualFold(strings.TrimSpace(a.Role), string(calendar.AttendeeRoleOptional)) {
+			role = calendar.AttendeeRoleOptional
+		}
+		out = append(out, calendar.AttendeeRequest{Email: strings.TrimSpace(a.Email), DisplayName: strings.TrimSpace(a.DisplayName), Role: role})
+	}
+	return out
 }
 
 func calendarAccountForOperation(manager *calendar.Manager, operation calendar.Operation) (calendar.AccountProjection, bool) {

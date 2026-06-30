@@ -15,7 +15,78 @@ const (
 	OperationClassCreateEvent OperationClass = "create_event"
 	OperationClassUpdateEvent OperationClass = "update_event"
 	OperationClassCancelEvent OperationClass = "cancel_event"
+	// OperationClassUpdateAttendees is an attendee-only mutation (add/remove + invitation
+	// notification) recorded distinctly from event-field edits (Roadmap 61, FR-001).
+	OperationClassUpdateAttendees OperationClass = "update_attendees"
 )
+
+// AttendeeRole, RSVPStatus, InvitationStatus, and NotificationBehavior model attendee-bearing
+// calendar writes and RSVP (Roadmap 61). All are additive to the existing calendar resources.
+type AttendeeRole string
+
+const (
+	AttendeeRoleRequired AttendeeRole = "required"
+	AttendeeRoleOptional AttendeeRole = "optional"
+)
+
+type RSVPStatus string
+
+const (
+	RSVPStatusNeedsAction RSVPStatus = "needs_action"
+	RSVPStatusAccepted    RSVPStatus = "accepted"
+	RSVPStatusDeclined    RSVPStatus = "declined"
+	RSVPStatusTentative   RSVPStatus = "tentative"
+	RSVPStatusUnknown     RSVPStatus = "unknown"
+)
+
+type InvitationStatus string
+
+const (
+	InvitationStatusNotRequested InvitationStatus = "not_requested"
+	InvitationStatusSent         InvitationStatus = "sent"
+	InvitationStatusBlocked      InvitationStatus = "blocked"
+	InvitationStatusFailed       InvitationStatus = "failed"
+	InvitationStatusUnsupported  InvitationStatus = "unsupported"
+)
+
+type NotificationBehavior string
+
+const (
+	NotificationBehaviorSilent      NotificationBehavior = "silent"
+	NotificationBehaviorNotify      NotificationBehavior = "notify"
+	NotificationBehaviorUnsupported NotificationBehavior = "unsupported"
+)
+
+// AttendeeRequest is a requested attendee with role and is the input shape for attendee writes.
+type AttendeeRequest struct {
+	Email       string       `json:"email"`
+	DisplayName string       `json:"displayName,omitempty"`
+	Role        AttendeeRole `json:"role,omitempty"`
+}
+
+// Attendee is the projected per-attendee result: role, RSVP response, and the externally-visible
+// invitation outcome. Diagnostic carries a redacted, stable reason when the invitation is
+// blocked/failed/unsupported.
+type Attendee struct {
+	Email            string           `json:"email"`
+	DisplayName      string           `json:"displayName,omitempty"`
+	Role             AttendeeRole     `json:"role,omitempty"`
+	RSVP             RSVPStatus       `json:"rsvp,omitempty"`
+	InvitationStatus InvitationStatus `json:"invitationStatus,omitempty"`
+	Diagnostic       string           `json:"diagnostic,omitempty"`
+}
+
+// AttendeeOutcome records the attendee notification side effect distinctly from the event-field
+// mutation (FR-001/FR-002): the requested notification behavior, per-attendee results, whether
+// the provider supports the requested behavior, and ambiguity.
+type AttendeeOutcome struct {
+	NotificationRequested bool                 `json:"notificationRequested"`
+	NotificationBehavior  NotificationBehavior `json:"notificationBehavior"`
+	Attendees             []Attendee           `json:"attendees,omitempty"`
+	Ambiguous             bool                 `json:"ambiguous,omitempty"`
+	Unsupported           bool                 `json:"unsupported,omitempty"`
+	UnsupportedReason     string               `json:"unsupportedReason,omitempty"`
+}
 
 type OperationStatus string
 
@@ -78,6 +149,7 @@ type Event struct {
 	Recurring               bool                `json:"recurring,omitempty"`
 	RecurrenceSummary       string              `json:"recurrenceSummary,omitempty"`
 	Attendees               []string            `json:"attendees,omitempty"`
+	AttendeeDetails         []Attendee          `json:"attendeeDetails,omitempty"`
 	MutationEligibleInPhase bool                `json:"mutationEligibleInPhase"`
 	LifecycleState          EventLifecycleState `json:"lifecycleState"`
 	CreatedAt               time.Time           `json:"createdAt"`
@@ -147,6 +219,7 @@ type Operation struct {
 	ScheduleID          string                                    `json:"scheduleId,omitempty"`
 	ScheduleAttemptID   string                                    `json:"scheduleAttemptId,omitempty"`
 	DeliveryID          string                                    `json:"deliveryId,omitempty"`
+	AttendeeOutcome     *AttendeeOutcome                          `json:"attendeeOutcome,omitempty"`
 	ArtifactIDs         []string                                  `json:"artifactIds,omitempty"`
 	AvailabilityQueryID string                                    `json:"availabilityQueryId,omitempty"`
 	CreatedAt           time.Time                                 `json:"createdAt"`
@@ -221,31 +294,46 @@ type BusyFreeInput struct {
 }
 
 type CreateEventInput struct {
-	Selection   Selection
-	Title       string
-	Description string
-	Location    string
-	StartsAt    time.Time
-	EndsAt      time.Time
-	Timezone    string
-	AllDay      bool
-	Recurring   bool
-	Attendees   []string
-	Source      SourceLinkage
+	Selection        Selection
+	Title            string
+	Description      string
+	Location         string
+	StartsAt         time.Time
+	EndsAt           time.Time
+	Timezone         string
+	AllDay           bool
+	Recurring        bool
+	Attendees        []string
+	AttendeeRequests []AttendeeRequest
+	NotifyAttendees  bool
+	Source           SourceLinkage
 }
 
 type UpdateEventInput struct {
+	Selection        Selection
+	ExternalEventID  string
+	Title            string
+	Description      string
+	Location         string
+	StartsAt         time.Time
+	EndsAt           time.Time
+	Timezone         string
+	AllDay           bool
+	Recurring        bool
+	Attendees        []string
+	AttendeeRequests []AttendeeRequest
+	NotifyAttendees  bool
+	Source           SourceLinkage
+}
+
+// UpdateAttendeesInput is an attendee-only mutation: add/remove attendees with an explicit
+// notification choice, recorded as a distinct attendee operation (Roadmap 61, US2).
+type UpdateAttendeesInput struct {
 	Selection       Selection
 	ExternalEventID string
-	Title           string
-	Description     string
-	Location        string
-	StartsAt        time.Time
-	EndsAt          time.Time
-	Timezone        string
-	AllDay          bool
-	Recurring       bool
-	Attendees       []string
+	AddAttendees    []AttendeeRequest
+	RemoveAttendees []string
+	Notify          bool
 	Source          SourceLinkage
 }
 

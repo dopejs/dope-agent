@@ -37,6 +37,21 @@
       "type": "array",
       "items": { "type": "string" }
     },
+    "attendeeDetails": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "email": { "type": "string" },
+          "displayName": { "type": "string" },
+          "role": { "type": "string", "enum": ["required", "optional"] },
+          "rsvp": { "type": "string", "enum": ["needs_action", "accepted", "declined", "tentative", "unknown"] },
+          "invitationStatus": { "type": "string", "enum": ["not_requested", "sent", "blocked", "failed", "unsupported"] },
+          "diagnostic": { "type": "string" }
+        }
+      }
+    },
     "mutationEligibleInPhase": { "type": "boolean" },
     "lifecycleState": {
       "type": "string",

@@ -141,6 +141,10 @@ func classifyReason(evidence ProviderDiagnosticEvidence) DiagnosticReasonCode {
 		return ReasonProviderUnavailable
 	case strings.Contains(combined, "operator_action"):
 		return ReasonOperatorActionNeeded
+	case strings.Contains(combined, "unsupported"):
+		// Provider does not support a requested capability (e.g. RSVP inspection or attendee
+		// notification control, Roadmap 61 FR-005) — surface it explicitly, not as a silent drop.
+		return ReasonUnsupportedDiagnostic
 	default:
 		return ReasonUnknownProviderError
 	}

@@ -416,7 +416,9 @@ type CalendarSourceLinkageRequest struct {
 }
 
 type CalendarAttendeeRequest struct {
-	Email string `json:"email,omitempty"`
+	Email       string `json:"email,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
+	Role        string `json:"role,omitempty"` // required | optional (default required)
 }
 
 type CalendarWorkflowActionRequest struct {
@@ -483,18 +485,19 @@ type CreateCalendarAvailabilityQueryRequest struct {
 }
 
 type CreateCalendarEventRequest struct {
-	IntegrationID string                        `json:"integrationId,omitempty"`
-	CalendarRef   string                        `json:"calendarRef,omitempty"`
-	Title         string                        `json:"title,omitempty"`
-	Description   string                        `json:"description,omitempty"`
-	Location      string                        `json:"location,omitempty"`
-	StartsAt      string                        `json:"startsAt"`
-	EndsAt        string                        `json:"endsAt"`
-	Timezone      string                        `json:"timezone,omitempty"`
-	AllDay        bool                          `json:"allDay,omitempty"`
-	Recurring     bool                          `json:"recurring,omitempty"`
-	Attendees     []CalendarAttendeeRequest     `json:"attendees,omitempty"`
-	Source        *CalendarSourceLinkageRequest `json:"source,omitempty"`
+	IntegrationID   string                        `json:"integrationId,omitempty"`
+	CalendarRef     string                        `json:"calendarRef,omitempty"`
+	Title           string                        `json:"title,omitempty"`
+	Description     string                        `json:"description,omitempty"`
+	Location        string                        `json:"location,omitempty"`
+	StartsAt        string                        `json:"startsAt"`
+	EndsAt          string                        `json:"endsAt"`
+	Timezone        string                        `json:"timezone,omitempty"`
+	AllDay          bool                          `json:"allDay,omitempty"`
+	Recurring       bool                          `json:"recurring,omitempty"`
+	Attendees       []CalendarAttendeeRequest     `json:"attendees,omitempty"`
+	NotifyAttendees bool                          `json:"notifyAttendees,omitempty"`
+	Source          *CalendarSourceLinkageRequest `json:"source,omitempty"`
 }
 
 type UpdateCalendarEventRequest = CreateCalendarEventRequest

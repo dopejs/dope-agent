@@ -241,17 +241,22 @@ func TestCalendarMutationRoutesPreserveIdentityAndRejectUnsupportedRequests(t *t
 		t.Fatalf("expected honest all-day rejection, got %d body=%s", allDayRec.Code, allDayRec.Body.String())
 	}
 
+	// Roadmap 61: attendee-bearing updates are now accepted and record an attendee outcome.
 	attendeeRec := httptest.NewRecorder()
 	attendeeReq := httptest.NewRequest(http.MethodPost, "/v1/calendar/events/"+created.Event.ExternalEventID+"/update", strings.NewReader(`{
-		"title":"Bad update",
+		"title":"Attendee update",
 		"startsAt":"2026-04-23T15:00:00-07:00",
 		"endsAt":"2026-04-23T15:30:00-07:00",
-		"attendees":[{"email":"bob@example.com"}]
+		"attendees":[{"email":"bob@example.com","role":"required"}],
+		"notifyAttendees":true
 	}`))
 	attendeeReq.Header.Set("Content-Type", "application/json")
 	server.Handler().ServeHTTP(attendeeRec, attendeeReq)
-	if attendeeRec.Code != http.StatusBadRequest || !strings.Contains(attendeeRec.Body.String(), calendar.ErrCalendarAttendeesUnsupported.Error()) {
-		t.Fatalf("expected attendee rejection, got %d body=%s", attendeeRec.Code, attendeeRec.Body.String())
+	if attendeeRec.Code != http.StatusOK {
+		t.Fatalf("expected attendee update accepted, got %d body=%s", attendeeRec.Code, attendeeRec.Body.String())
+	}
+	if !strings.Contains(attendeeRec.Body.String(), "bob@example.com") || !strings.Contains(attendeeRec.Body.String(), "attendeeOutcome") {
+		t.Fatalf("expected attendee details + outcome in response, got %s", attendeeRec.Body.String())
 	}
 
 	alternateRec := httptest.NewRecorder()

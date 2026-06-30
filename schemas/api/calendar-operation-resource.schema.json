@@ -19,7 +19,7 @@
     "operationId": { "type": "string" },
     "operationClass": {
       "type": "string",
-      "enum": ["list_events", "get_event", "busy_free", "create_event", "update_event", "cancel_event"]
+      "enum": ["list_events", "get_event", "busy_free", "create_event", "update_event", "cancel_event", "update_attendees"]
     },
     "status": {
       "type": "string",
@@ -49,6 +49,32 @@
       "items": { "type": "string" }
     },
     "availabilityQueryId": { "type": "string" },
+    "attendeeOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "notificationRequested": { "type": "boolean" },
+        "notificationBehavior": { "type": "string", "enum": ["silent", "notify", "unsupported"] },
+        "ambiguous": { "type": "boolean" },
+        "unsupported": { "type": "boolean" },
+        "unsupportedReason": { "type": "string" },
+        "attendees": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "email": { "type": "string" },
+              "displayName": { "type": "string" },
+              "role": { "type": "string", "enum": ["required", "optional"] },
+              "rsvp": { "type": "string", "enum": ["needs_action", "accepted", "declined", "tentative", "unknown"] },
+              "invitationStatus": { "type": "string", "enum": ["not_requested", "sent", "blocked", "failed", "unsupported"] },
+              "diagnostic": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
     "createdAt": { "type": "string", "format": "date-time" },
     "completedAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }

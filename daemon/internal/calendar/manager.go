@@ -162,7 +162,7 @@ func (m *Manager) BusyFree(resources []integrations.Resource, input BusyFreeInpu
 }
 
 func (m *Manager) CreateEvent(resources []integrations.Resource, input CreateEventInput) (AccountProjection, Event, Operation, []Artifact, error) {
-	if err := validateMutationInput(input.AllDay, input.Recurring, input.Attendees); err != nil {
+	if err := validateMutationInput(input.AllDay, input.Recurring); err != nil {
 		return AccountProjection{}, Event{}, Operation{}, nil, err
 	}
 	if !input.EndsAt.After(input.StartsAt) {
@@ -178,13 +178,14 @@ func (m *Manager) CreateEvent(resources []integrations.Resource, input CreateEve
 		class, providerKind := failureClassAndProvider("backend_error", err)
 		return account, Event{}, m.failOperation(operation, class, providerKind, err.Error()), nil, err
 	}
+	operation.AttendeeOutcome = buildAttendeeOutcome(input.NotifyAttendees, item.AttendeeDetails)
 	artifact := EventArtifact(operation, item)
 	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)
 	return account, item, operation, []Artifact{artifact}, nil
 }
 
 func (m *Manager) UpdateEvent(resources []integrations.Resource, input UpdateEventInput) (AccountProjection, Event, Operation, []Artifact, error) {
-	if err := validateMutationInput(input.AllDay, input.Recurring, input.Attendees); err != nil {
+	if err := validateMutationInput(input.AllDay, input.Recurring); err != nil {
 		return AccountProjection{}, Event{}, Operation{}, nil, err
 	}
 	if !input.EndsAt.After(input.StartsAt) {
@@ -200,6 +201,30 @@ func (m *Manager) UpdateEvent(resources []integrations.Resource, input UpdateEve
 		class, providerKind := failureClassAndProvider("not_found", err)
 		return account, Event{}, m.failOperation(operation, class, providerKind, err.Error()), nil, err
 	}
+	operation.AttendeeOutcome = buildAttendeeOutcome(input.NotifyAttendees, item.AttendeeDetails)
+	artifact := EventArtifact(operation, item)
+	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)
+	return account, item, operation, []Artifact{artifact}, nil
+}
+
+// UpdateAttendees performs an attendee-only mutation (add/remove + invitation notification) as a
+// distinct operation on the single ledger (Roadmap 61, US2). The event-field mutation is
+// untouched; the attendee notification side effect is recorded via the AttendeeOutcome.
+func (m *Manager) UpdateAttendees(resources []integrations.Resource, input UpdateAttendeesInput) (AccountProjection, Event, Operation, []Artifact, error) {
+	if len(input.AddAttendees) == 0 && len(input.RemoveAttendees) == 0 {
+		return AccountProjection{}, Event{}, Operation{}, nil, ErrCalendarAttendeeRequestEmpty
+	}
+	account, resource, backend, selectionMode, err := m.selectAccount(resources, input.Selection)
+	if err != nil {
+		return AccountProjection{}, Event{}, Operation{}, nil, err
+	}
+	operation := m.newOperation(account, resource, OperationClassUpdateAttendees, selectionMode, account.PrimaryTimezone, input.ExternalEventID, input.Source)
+	item, err := backend.UpdateAttendees(resource, account, input)
+	if err != nil {
+		class, providerKind := failureClassAndProvider("not_found", err)
+		return account, Event{}, m.failOperation(operation, class, providerKind, err.Error()), nil, err
+	}
+	operation.AttendeeOutcome = buildAttendeeOutcome(input.Notify, item.AttendeeDetails)
 	artifact := EventArtifact(operation, item)
 	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)
 	return account, item, operation, []Artifact{artifact}, nil
@@ -292,15 +317,14 @@ func (m *Manager) ListArtifacts(operationID string) []Artifact {
 	return items
 }
 
-func validateMutationInput(allDay, recurring bool, attendees []string) error {
+func validateMutationInput(allDay, recurring bool) error {
 	switch {
 	case recurring:
 		return ErrCalendarRecurringUnsupported
 	case allDay:
 		return ErrCalendarAllDayUnsupported
-	case len(attendees) > 0:
-		return ErrCalendarAttendeesUnsupported
 	default:
+		// Attendee-bearing writes are supported from Roadmap 61 (spec 046).
 		return nil
 	}
 }
@@ -427,7 +451,7 @@ func (m *Manager) failOperation(operation Operation, class, providerKind, reason
 
 func calendarOperationSideEffecting(class OperationClass) bool {
 	switch class {
-	case OperationClassCreateEvent, OperationClassUpdateEvent, OperationClassCancelEvent:
+	case OperationClassCreateEvent, OperationClassUpdateEvent, OperationClassCancelEvent, OperationClassUpdateAttendees:
 		return true
 	default:
 		return false

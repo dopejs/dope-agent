@@ -8,8 +8,8 @@ import (
 
 func TestCalendarLiveValidationMatrixRowsClassifyCreateUpdateCancel(t *testing.T) {
 	rows := LiveValidationMatrixRows()
-	if len(rows) != 3 {
-		t.Fatalf("len(rows)=%d, want 3", len(rows))
+	if len(rows) != 4 {
+		t.Fatalf("len(rows)=%d, want 4", len(rows))
 	}
 	byClass := map[livevalidation.ToolClass]livevalidation.MatrixRow{}
 	for _, row := range rows {
@@ -23,5 +23,9 @@ func TestCalendarLiveValidationMatrixRowsClassifyCreateUpdateCancel(t *testing.T
 	}
 	if byClass[livevalidation.ToolClassCalendarEventCancel].RetryPolicy != livevalidation.RetryPolicyNone {
 		t.Fatalf("cancel row=%+v, want no retry", byClass[livevalidation.ToolClassCalendarEventCancel])
+	}
+	// Roadmap 61: externally-visible attendee actions are gated per-action.
+	if byClass[livevalidation.ToolClassCalendarAttendeeUpdate].Approval != livevalidation.MatrixApprovalPerAction {
+		t.Fatalf("attendee row=%+v, want per-action approval", byClass[livevalidation.ToolClassCalendarAttendeeUpdate])
 	}
 }

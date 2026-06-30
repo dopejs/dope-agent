@@ -23,10 +23,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "email": { "type": "string" }
+          "email": { "type": "string" },
+          "displayName": { "type": "string" },
+          "role": { "type": "string", "enum": ["required", "optional"] }
         }
       }
     },
+    "notifyAttendees": { "type": "boolean" },
     "source": { "$ref": "./create-calendar-availability-query.request.schema.json#/$defs/source" }
   }
 }

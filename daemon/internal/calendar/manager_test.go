@@ -86,7 +86,7 @@ func TestCalendarManagerUsesExplicitSelectionAndCanonicalDefaultFallback(t *test
 	}
 }
 
-func TestCalendarManagerRejectsRecurringAllDayAndAttendeeMutation(t *testing.T) {
+func TestCalendarManagerRejectsRecurringAndAllDayButAllowsAttendees(t *testing.T) {
 	t.Parallel()
 
 	manager := NewManager("test")
@@ -113,14 +113,26 @@ func TestCalendarManagerRejectsRecurringAllDayAndAttendeeMutation(t *testing.T) 
 		t.Fatalf("expected all-day unsupported, got %v", err)
 	}
 
-	_, _, _, _, err = manager.CreateEvent(resources, CreateEventInput{
-		Title:     "With Attendee",
-		StartsAt:  now.Add(time.Hour),
-		EndsAt:    now.Add(2 * time.Hour),
-		Attendees: []string{"bob@example.com"},
+	// Roadmap 61: attendee-bearing writes are now supported and record an attendee outcome.
+	_, event, operation, _, err := manager.CreateEvent(resources, CreateEventInput{
+		Selection:       Selection{IntegrationID: "calendar-a"},
+		Title:           "With Attendee",
+		StartsAt:        now.Add(time.Hour),
+		EndsAt:          now.Add(2 * time.Hour),
+		Attendees:       []string{"bob@example.com"},
+		NotifyAttendees: true,
 	})
-	if !errors.Is(err, ErrCalendarAttendeesUnsupported) {
-		t.Fatalf("expected attendee unsupported, got %v", err)
+	if err != nil {
+		t.Fatalf("attendee-bearing create should succeed, got %v", err)
+	}
+	if len(event.AttendeeDetails) != 1 || event.AttendeeDetails[0].Email != "bob@example.com" {
+		t.Fatalf("attendee not recorded on event: %+v", event.AttendeeDetails)
+	}
+	if operation.AttendeeOutcome == nil || !operation.AttendeeOutcome.NotificationRequested {
+		t.Fatalf("attendee outcome not recorded: %+v", operation.AttendeeOutcome)
+	}
+	if got := event.AttendeeDetails[0].InvitationStatus; got != InvitationStatusSent {
+		t.Fatalf("invitation status = %q, want sent", got)
 	}
 }
 
