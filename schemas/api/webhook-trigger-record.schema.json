@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/webhook-trigger-record.schema.json",
+  "title": "WebhookTriggerRecord",
+  "type": "object",
+  "required": ["triggerId", "webhookId", "status", "payloadBytes", "createdAt"],
+  "additionalProperties": false,
+  "properties": {
+    "triggerId": { "type": "string" },
+    "webhookId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "idempotencyKey": { "type": "string" },
+    "status": { "type": "string", "enum": ["fired", "replay_suppressed", "auth_failed", "payload_too_large", "quota_denied", "disabled"] },
+    "payloadBytes": { "type": "integer", "minimum": 0 },
+    "executionRef": { "type": "string" },
+    "failureReason": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

@@ -45,6 +45,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/reminders"
 	"github.com/dopejs/dope-agent/daemon/internal/routine"
 	"github.com/dopejs/dope-agent/daemon/internal/triage"
+	"github.com/dopejs/dope-agent/daemon/internal/webhook"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
@@ -79,6 +80,7 @@ type Dependencies struct {
 	Reminders      *reminders.Manager
 	Triage         *triage.Manager
 	Routines       *routine.Manager
+	Webhooks       *webhook.Manager
 	Connectors     *connectors.Supervisor
 	Capabilities   *capabilities.Supervisor
 	ComputerUse    *computeruse.Manager
@@ -569,6 +571,16 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/mail/operations/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/mail/operations/", "mail_operations", "operation_id", "mail_operation", func(w http.ResponseWriter, r *http.Request) {
 		handleMailOperationRoutes(deps.Config, deps.Mail, deps.Store, w, r)
 	})))
+	mux.HandleFunc("/v1/webhooks", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleWebhooks(deps.Webhooks, w, r)
+	}))
+	mux.HandleFunc("/v1/webhooks/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleWebhookRoutes(deps.Webhooks, w, r)
+	}))
+	// Inbound webhook ingress is authenticated by the webhook signature, not a bearer principal.
+	mux.HandleFunc("/v1/triggers/webhook/", func(w http.ResponseWriter, r *http.Request) {
+		handleWebhookTrigger(deps.Webhooks, w, r)
+	})
 	mux.HandleFunc("/v1/routines", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleRoutines(deps.Routines, w, r)
 	}))

@@ -41,6 +41,9 @@ var allowedUnauthenticatedRoutes = map[string]struct{}{
 	"/healthz":        {},
 	"/version":        {},
 	"/v1/system/info": {},
+	// Inbound webhook ingress (Roadmap 67) is authenticated by the per-endpoint HMAC signature
+	// and resolves tenant from the signed endpoint, not from a bearer principal.
+	"/v1/triggers/webhook/": {},
 }
 
 // allowedWithEnvironmentRoutes lists the routes that are permitted to use

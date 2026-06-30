@@ -46,9 +46,8 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/reminders"
-	"github.com/dopejs/dope-agent/daemon/internal/routine"
-	"github.com/dopejs/dope-agent/daemon/internal/triage"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
+	"github.com/dopejs/dope-agent/daemon/internal/routine"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
@@ -57,6 +56,8 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 	"github.com/dopejs/dope-agent/daemon/internal/telemetry"
 	"github.com/dopejs/dope-agent/daemon/internal/tenantctx"
+	"github.com/dopejs/dope-agent/daemon/internal/triage"
+	"github.com/dopejs/dope-agent/daemon/internal/webhook"
 )
 
 type App struct {
@@ -83,6 +84,7 @@ type App struct {
 	Reminders            *reminders.Manager
 	Triage               *triage.Manager
 	Routines             *routine.Manager
+	Webhooks             *webhook.Manager
 	Scheduler            *scheduler.Scheduler
 	Delivery             *delivery.Manager
 	Billing              *billing.Manager
@@ -338,6 +340,7 @@ func New() (*App, error) {
 		Billing:          billingManager,
 	})
 	routineManager := routine.NewManager(string(cfg.Environment), scheduleManager)
+	webhookManager := webhook.NewManager(string(cfg.Environment), &webhookWorkflowFirer{launcher: workflowLauncher, routines: routineManager}, nil)
 	if err := recoverPersistedStateWithSecrets(envCtx, cfg.DataDir, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, identityManager, providerManager, sandboxManager, secretManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
 		return nil, err
 	}
@@ -423,6 +426,7 @@ func New() (*App, error) {
 		Reminders:             reminderManager,
 		Triage:                triageManager,
 		Routines:              routineManager,
+		Webhooks:              webhookManager,
 		Providers:             providerManager,
 		Connectors:            connectorSupervisor,
 		Capabilities:          capabilitySupervisor,
@@ -462,6 +466,7 @@ func New() (*App, error) {
 		Reminders:            reminderManager,
 		Triage:               triageManager,
 		Routines:             routineManager,
+		Webhooks:             webhookManager,
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
 		Delivery:             deliveryManager,
@@ -853,6 +858,34 @@ func newEventID() string {
 	}
 
 	return "evt_" + hex.EncodeToString(buf)
+}
+
+// webhookWorkflowFirer fires a webhook target by launching a workflow through the existing
+// scheduled-workflow launcher, so a webhook trigger creates a normal runtime execution record
+// (Roadmap 67). Routine targets resolve to their configured workflow goal.
+type webhookWorkflowFirer struct {
+	launcher scheduler.WorkflowLauncher
+	routines *routine.Manager
+}
+
+func (f *webhookWorkflowFirer) Fire(ctx context.Context, endpoint webhook.Endpoint, payload []byte) (string, error) {
+	goal := endpoint.TargetRef
+	if endpoint.TargetKind == webhook.TargetKindRoutine && f.routines != nil {
+		if r, ok := f.routines.Get(endpoint.TargetRef); ok {
+			goal = r.Definition.Workflow.Goal
+		}
+	}
+	if f.launcher == nil {
+		return "", fmt.Errorf("webhook firer launcher is not configured")
+	}
+	result, err := f.launcher.LaunchScheduledWorkflow(ctx, scheduler.WorkflowTarget{Entrypoint: "operator", WorkflowGoal: goal}, "webhook:"+endpoint.WebhookID, "")
+	if err != nil {
+		return "", err
+	}
+	if result.RunID != "" {
+		return result.RunID, nil
+	}
+	return result.WorkflowID, nil
 }
 
 // wireIntegrationAdapters spawns one out-of-process adapter per integration domain, registers

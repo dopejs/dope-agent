@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/webhook-endpoint-resource.schema.json",
+  "title": "WebhookEndpointResource",
+  "type": "object",
+  "required": ["webhookId", "name", "targetKind", "targetRef", "status", "secretFingerprint", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "webhookId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "name": { "type": "string" },
+    "targetKind": { "type": "string", "enum": ["routine", "workflow", "run"] },
+    "targetRef": { "type": "string" },
+    "status": { "type": "string", "enum": ["active", "disabled"] },
+    "secretFingerprint": { "type": "string" },
+    "secretVersion": { "type": "integer", "minimum": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

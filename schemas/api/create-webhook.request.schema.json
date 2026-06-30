@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-webhook.request.schema.json",
+  "title": "CreateWebhookRequest",
+  "type": "object",
+  "required": ["name", "targetKind", "targetRef"],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "name": { "type": "string" },
+    "targetKind": { "type": "string", "enum": ["routine", "workflow", "run"] },
+    "targetRef": { "type": "string" }
+  }
+}
