@@ -3078,6 +3078,38 @@ export interface BindingRuntimeEvidenceResource {
   redactionStatus: string;
 }
 
+// --- Roadmap 65-69 product surface types (operator shell, Roadmap 70) ---
+
+export type TriageClassification = "urgent" | "needs_reply" | "fyi" | "newsletter" | "blocked" | "unsupported";
+export type TriageOutcome = "draft_reply" | "reminder" | "delivery_digest" | "no_action";
+export type TriageCondition = { field: "sender" | "subject" | "body" | "recipient"; operator: "contains" | "equals" | "not_contains"; value: string };
+export type TriageRule = { ruleId?: string; description?: string; conditions?: TriageCondition[]; classification: TriageClassification; outcome?: TriageOutcome };
+export type TriagePolicyResource = { policyId: string; environmentScope?: string; name: string; rules: TriageRule[]; defaultClassification: TriageClassification; createdAt: string; updatedAt: string };
+export type CreateTriagePolicyInput = { name: string; rules: TriageRule[]; defaultClassification?: TriageClassification };
+export type TriageMessage = { messageId: string; threadId?: string; sender?: string; recipients?: string[]; subject?: string; bodyPreview?: string };
+export type TriageDecision = { messageId: string; classification: TriageClassification; matchedRuleId?: string; outcome: TriageOutcome; defaultApplied?: boolean; replayCandidate: boolean; decidedAt: string };
+export type TriageRunResource = { runId: string; policyId: string; environmentScope?: string; messageCount: number; decisions: TriageDecision[]; createdAt: string };
+
+export type RoutineTrigger = { kind: "cron" | "once"; cronExpr?: string; timezone?: string; fireAt?: string };
+export type RoutineWorkflow = { entrypoint?: string; goal: string };
+export type RoutineDefinition = { name: string; trigger: RoutineTrigger; workflow: RoutineWorkflow; approvalExpectation?: string; deliveryPreferenceId?: string; maxRetries?: number };
+export type RoutineVersion = { version: number; definition: RoutineDefinition; scheduleId?: string; createdAt: string };
+export type RoutineResource = { routineId: string; environmentScope?: string; name: string; state: "active" | "paused" | "cancelled"; currentVersion: number; currentScheduleId?: string; definition: RoutineDefinition; versions: RoutineVersion[]; createdAt: string; updatedAt: string };
+export type RoutinePreview = { scheduleKind: string; triggerSummary: string; workflowSummary: string; approvalExpectation: string; deliveryPreferenceId?: string; retrySummary: string };
+
+export type WebhookEndpointResource = { webhookId: string; tenantId?: string; environmentScope?: string; name: string; targetKind: "routine" | "workflow" | "run"; targetRef: string; status: "active" | "disabled"; secretFingerprint: string; secretVersion?: number; createdAt: string; updatedAt: string };
+export type CreateWebhookInput = { name: string; targetKind: "routine" | "workflow" | "run"; targetRef: string };
+export type WebhookCreateResult = { endpoint: WebhookEndpointResource; secret: string };
+
+export type CatalogRequirement = { key: string; description?: string };
+export type CatalogVersion = { version: string; source: string; checksum?: string; requirements?: CatalogRequirement[]; publishedAt: string };
+export type CatalogItemResource = { itemId: string; kind: "skill" | "mcp_server" | "capability"; name: string; trustTier: "official" | "verified" | "community" | "untrusted"; permissions?: string[]; versions: CatalogVersion[]; createdAt: string; updatedAt: string };
+export type CatalogEnablementResource = { tenantId?: string; itemId: string; state: "enabled" | "disabled"; activeVersion?: string; versionStack?: string[]; history: { action: string; version?: string; actor?: string; reason?: string; occurredAt: string }[]; updatedAt: string };
+export type CatalogInspection = { item: CatalogItemResource; enablement: CatalogEnablementResource; unmetRequirements?: CatalogRequirement[]; permissionSatisfied: boolean };
+
+export type ExecutionProfileResource = { profile: { profileId: string; name: string; backendKind: "subprocess" | "docker" | "ssh" | "local_shell"; riskTier: "low" | "medium" | "high"; provides?: string[]; requirements?: string[]; description?: string; createdAt: string }; status: { profileId: string; health: "ready" | "degraded" | "unavailable"; reason?: string; unmetRequirements?: string[]; available: boolean } };
+export type ExecutionDenialExplanation = { requiredCapabilities: string[]; eligibleProfiles: string[]; missingCapabilities?: Record<string, string[]>; unavailable?: Record<string, string> };
+
 export class DopeClientError extends Error {
   readonly status: number;
   readonly code?: string;
@@ -4073,6 +4105,104 @@ export class DopeClient {
 
   async disableAgentProfile(profileId: string, input: { reasonCode?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<AgentProfileMutationResult> {
     return this.requestJSON<AgentProfileMutationResult>(`/v1/profiles/${encodePathComponent(profileId)}/disable`, { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  // --- Roadmap 65: inbox triage ---
+
+  async listTriagePolicies(tenantOptions?: TenantRequestOptions): Promise<{ items: TriagePolicyResource[] }> {
+    return this.requestJSON<{ items: TriagePolicyResource[] }>("/v1/triage/policies", { tenant: tenantOptions });
+  }
+
+  async createTriagePolicy(input: CreateTriagePolicyInput, tenantOptions?: TenantRequestOptions): Promise<TriagePolicyResource> {
+    return this.requestJSON<TriagePolicyResource>("/v1/triage/policies", { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async getTriagePolicy(policyId: string, tenantOptions?: TenantRequestOptions): Promise<TriagePolicyResource> {
+    return this.requestJSON<TriagePolicyResource>(`/v1/triage/policies/${encodePathComponent(policyId)}`, { tenant: tenantOptions });
+  }
+
+  async runTriagePolicy(policyId: string, input: { messages: TriageMessage[] }, tenantOptions?: TenantRequestOptions): Promise<TriageRunResource> {
+    return this.requestJSON<TriageRunResource>(`/v1/triage/policies/${encodePathComponent(policyId)}/run`, { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  // --- Roadmap 66: routine builder ---
+
+  async listRoutines(tenantOptions?: TenantRequestOptions): Promise<{ items: RoutineResource[] }> {
+    return this.requestJSON<{ items: RoutineResource[] }>("/v1/routines", { tenant: tenantOptions });
+  }
+
+  async createRoutine(input: { definition: RoutineDefinition }, tenantOptions?: TenantRequestOptions): Promise<RoutineResource> {
+    return this.requestJSON<RoutineResource>("/v1/routines", { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async previewRoutine(input: { definition: RoutineDefinition }, tenantOptions?: TenantRequestOptions): Promise<RoutinePreview> {
+    return this.requestJSON<RoutinePreview>("/v1/routines/preview", { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async getRoutine(routineId: string, tenantOptions?: TenantRequestOptions): Promise<RoutineResource> {
+    return this.requestJSON<RoutineResource>(`/v1/routines/${encodePathComponent(routineId)}`, { tenant: tenantOptions });
+  }
+
+  async updateRoutine(routineId: string, input: { definition: RoutineDefinition }, tenantOptions?: TenantRequestOptions): Promise<RoutineResource> {
+    return this.requestJSON<RoutineResource>(`/v1/routines/${encodePathComponent(routineId)}`, { method: "PUT", body: input, tenant: tenantOptions });
+  }
+
+  async routineLifecycle(routineId: string, action: "pause" | "resume" | "cancel" | "repair", tenantOptions?: TenantRequestOptions): Promise<RoutineResource> {
+    return this.requestJSON<RoutineResource>(`/v1/routines/${encodePathComponent(routineId)}/${action}`, { method: "POST", tenant: tenantOptions });
+  }
+
+  // --- Roadmap 67: webhook trigger plane ---
+
+  async listWebhooks(tenantOptions?: TenantRequestOptions): Promise<{ items: WebhookEndpointResource[] }> {
+    return this.requestJSON<{ items: WebhookEndpointResource[] }>("/v1/webhooks", { tenant: tenantOptions });
+  }
+
+  async createWebhook(input: CreateWebhookInput, tenantOptions?: TenantRequestOptions): Promise<WebhookCreateResult> {
+    return this.requestJSON<WebhookCreateResult>("/v1/webhooks", { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async getWebhook(webhookId: string, tenantOptions?: TenantRequestOptions): Promise<WebhookEndpointResource> {
+    return this.requestJSON<WebhookEndpointResource>(`/v1/webhooks/${encodePathComponent(webhookId)}`, { tenant: tenantOptions });
+  }
+
+  async rotateWebhook(webhookId: string, tenantOptions?: TenantRequestOptions): Promise<WebhookCreateResult> {
+    return this.requestJSON<WebhookCreateResult>(`/v1/webhooks/${encodePathComponent(webhookId)}/rotate`, { method: "POST", tenant: tenantOptions });
+  }
+
+  async disableWebhook(webhookId: string, tenantOptions?: TenantRequestOptions): Promise<WebhookEndpointResource> {
+    return this.requestJSON<WebhookEndpointResource>(`/v1/webhooks/${encodePathComponent(webhookId)}/disable`, { method: "POST", tenant: tenantOptions });
+  }
+
+  // --- Roadmap 68: operator-managed catalog ---
+
+  async listCatalogItems(tenantOptions?: TenantRequestOptions): Promise<{ items: CatalogItemResource[] }> {
+    return this.requestJSON<{ items: CatalogItemResource[] }>("/v1/catalog/items", { tenant: tenantOptions });
+  }
+
+  async inspectCatalogItem(itemId: string, tenantOptions?: TenantRequestOptions): Promise<CatalogInspection> {
+    return this.requestJSON<CatalogInspection>(`/v1/catalog/items/${encodePathComponent(itemId)}`, { tenant: tenantOptions });
+  }
+
+  async catalogItemLifecycle(itemId: string, action: "enable" | "disable" | "rollback", input: { version?: string; actor?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<CatalogEnablementResource> {
+    return this.requestJSON<CatalogEnablementResource>(`/v1/catalog/items/${encodePathComponent(itemId)}/${action}`, { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  // --- Roadmap 69: execution backend + sandbox profile UX ---
+
+  async listExecutionProfiles(tenantOptions?: TenantRequestOptions): Promise<{ items: ExecutionProfileResource[] }> {
+    return this.requestJSON<{ items: ExecutionProfileResource[] }>("/v1/execution/profiles", { tenant: tenantOptions });
+  }
+
+  async getExecutionProfile(profileId: string, tenantOptions?: TenantRequestOptions): Promise<ExecutionProfileResource> {
+    return this.requestJSON<ExecutionProfileResource>(`/v1/execution/profiles/${encodePathComponent(profileId)}`, { tenant: tenantOptions });
+  }
+
+  async selectExecutionProfile(profileId: string, input: { actor?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<unknown> {
+    return this.requestJSON<unknown>(`/v1/execution/profiles/${encodePathComponent(profileId)}/select`, { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async explainExecution(input: { requiredCapabilities: string[] }, tenantOptions?: TenantRequestOptions): Promise<ExecutionDenialExplanation> {
+    return this.requestJSON<ExecutionDenialExplanation>("/v1/execution/explain", { method: "POST", body: input, tenant: tenantOptions });
   }
 
   streamEvents(query: EventStreamQuery = {}, handlers: EventStreamHandlers = {}, tenantOptions?: TenantRequestOptions): EventStreamSubscription {
