@@ -34,6 +34,30 @@ func TestSafeReason(t *testing.T) {
 	}
 }
 
+// FR-028/SC-014: the redaction primitive must catch a broader set of credential and raw
+// payload markers, not just secret=/token=/api_key.
+func TestContainsUnsafeMarkers(t *testing.T) {
+	unsafe := []string{
+		"password=hunter2",
+		"Authorization: Bearer abc",
+		"bearer eyJhbGciOiJIUzI1NiJ9.payload.sig",
+		"x-api-key: k", "ACCESS_KEY=AKIA", "private_key: ...",
+		"passwd=root",
+	}
+	for _, v := range unsafe {
+		if SafeLabel(v) != "(redacted)" {
+			t.Fatalf("expected SafeLabel to redact %q, got %q", v, SafeLabel(v))
+		}
+		if SafeReason(v) != "redacted" {
+			t.Fatalf("expected SafeReason to redact %q, got %q", v, SafeReason(v))
+		}
+	}
+	// Benign operator text must survive.
+	if got := SafeLabel("Marketing Workspace"); got != "Marketing Workspace" {
+		t.Fatalf("benign label wrongly redacted: %q", got)
+	}
+}
+
 // B14/B20: denial evidence must never carry secrets; the builder routes through redaction.
 func TestBuildRuntimeBindingEvidence_AppliedAndRedacted(t *testing.T) {
 	sel := EffectiveBindingSelection{

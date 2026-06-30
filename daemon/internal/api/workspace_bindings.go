@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +14,38 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
+
+// writeJSONWithBindingProjection writes response and, for callers holding bindings.inspect,
+// attaches the latest runtime binding evidence for (resourceKind, resourceID) as an additive
+// `bindingProjection` field without altering the base response type (FR-013, SC-008, SC-012).
+func writeJSONWithBindingProjection(sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request, resourceKind, resourceID string, response any) {
+	if sqliteStore == nil {
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	tenantContext, ok := tenantContextFromContext(r.Context())
+	if !ok || !identity.HasPermission(tenantContext.Permissions, identity.PermissionBindingsInspect) {
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	evidence, found, err := sqliteStore.LatestRuntimeBindingEvidence(r.Context(), tenantContext.TenantID, resourceKind, resourceID)
+	if err != nil || !found {
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	raw, err := json.Marshal(response)
+	if err != nil {
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	merged := map[string]any{}
+	if err := json.Unmarshal(raw, &merged); err != nil {
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	merged["bindingProjection"] = bindings.ToRuntimeEvidenceResource(evidence)
+	writeJSON(w, http.StatusOK, merged)
+}
 
 // --- Workspaces ---
 
@@ -227,7 +261,7 @@ func handleCreateBinding(sqliteStore *store.SQLiteStore, bus *events.Bus, w http
 		writeBindingError(w, err)
 		return
 	}
-	if err := publishBindingLifecycle(r.Context(), sqliteStore, bus, events.BindingLifecycleInput{TenantID: tenantContext.TenantID, BindingID: rule.BindingID, ActorPrincipalID: tenantContext.PrincipalID, EventName: "binding.created", Outcome: "succeeded", ReasonCode: "user_created_binding", PermissionGate: string(identity.PermissionBindingsManage), SafeSummary: "Binding created", AuditEventID: auditID}); err != nil {
+	if err := publishBindingLifecycle(r.Context(), sqliteStore, bus, events.BindingLifecycleInput{TenantID: tenantContext.TenantID, BindingID: rule.BindingID, ActorPrincipalID: tenantContext.PrincipalID, EventName: "binding.created", Outcome: "succeeded", ReasonCode: "user_created_binding", PermissionGate: string(identity.PermissionBindingsManage), SafeSummary: "Binding created", ResultingSelectionSummary: rule.ResultingSelectionSummary, AuditEventID: auditID}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -253,7 +287,7 @@ func handleUpdateBinding(sqliteStore *store.SQLiteStore, bus *events.Bus, bindin
 	if rule.Status == bindings.BindingDisabled {
 		eventName = "binding.disabled"
 	}
-	if err := publishBindingLifecycle(r.Context(), sqliteStore, bus, events.BindingLifecycleInput{TenantID: tenantContext.TenantID, BindingID: rule.BindingID, ActorPrincipalID: tenantContext.PrincipalID, EventName: eventName, Outcome: "succeeded", ReasonCode: "user_updated_binding", PermissionGate: string(identity.PermissionBindingsManage), SafeSummary: "Binding updated", AuditEventID: auditID}); err != nil {
+	if err := publishBindingLifecycle(r.Context(), sqliteStore, bus, events.BindingLifecycleInput{TenantID: tenantContext.TenantID, BindingID: rule.BindingID, ActorPrincipalID: tenantContext.PrincipalID, EventName: eventName, Outcome: "succeeded", ReasonCode: "user_updated_binding", PermissionGate: string(identity.PermissionBindingsManage), SafeSummary: "Binding updated", PreviousSelectionSummary: rule.PreviousSelectionSummary, ResultingSelectionSummary: rule.ResultingSelectionSummary, AuditEventID: auditID}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -365,6 +399,64 @@ func requireBindingPermission(sqliteStore *store.SQLiteStore, w http.ResponseWri
 		return identity.TenantContext{}, false
 	}
 	return tenantContext, true
+}
+
+// enforceRunCapabilityVisibility blocks execution of a hidden or disabled capability/skill
+// requested through the runtime tool-call API (FR-016: hidden/disabled capabilities MUST NOT
+// execute even when requested directly by a user, agent, client integration, connector
+// payload, or replay).
+//
+// When the run has recorded binding evidence, enforcement uses that run's resolved profile +
+// workspace (the binding that actually applied to the work, including any channel/account
+// binding), so the execution gate matches the work-start decision. Otherwise (no run-scoped
+// evidence, e.g. a direct API tool-call with no chat work-start) it falls back to the tenant
+// default: the active profile plus the default workspace. Resolution failures fail closed
+// (block), matching the chat enforcement and the spec's fail-closed posture. An empty tenant
+// or absent active profile means no binding policy is in force, so execution is allowed.
+func enforceRunCapabilityVisibility(ctx context.Context, sqliteStore *store.SQLiteStore, runID, capabilityID string) error {
+	capabilityID = strings.TrimSpace(capabilityID)
+	if sqliteStore == nil || capabilityID == "" {
+		return nil
+	}
+	tenantContext, ok := tenantContextFromContext(ctx)
+	if !ok || strings.TrimSpace(tenantContext.TenantID) == "" {
+		return nil
+	}
+	tenantID := strings.TrimSpace(tenantContext.TenantID)
+
+	var profileID, workspaceID string
+	if runID = strings.TrimSpace(runID); runID != "" {
+		ev, found, err := sqliteStore.LatestRuntimeBindingEvidence(ctx, tenantID, "run", runID)
+		if err != nil {
+			return err
+		}
+		if found {
+			profileID, workspaceID = ev.SelectedProfileID, ev.SelectedWorkspaceID
+		}
+	}
+	if profileID == "" && workspaceID == "" {
+		profile, _, found, err := sqliteStore.ActiveAgentProfileSelection(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return nil
+		}
+		ws, err := sqliteStore.EnsureDefaultWorkspace(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+		profileID, workspaceID = profile.ProfileID, ws.WorkspaceID
+	}
+
+	decision, err := sqliteStore.EffectiveCapabilityVisibility(ctx, tenantID, profileID, workspaceID, capabilityID, nil)
+	if err != nil {
+		return err
+	}
+	if err := bindings.EnforceExecutable(decision); err != nil {
+		return fmt.Errorf("%w: %s", err, capabilityID)
+	}
+	return nil
 }
 
 func publishBindingLifecycle(ctx context.Context, sqliteStore *store.SQLiteStore, bus *events.Bus, input events.BindingLifecycleInput) error {

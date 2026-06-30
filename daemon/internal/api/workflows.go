@@ -892,7 +892,7 @@ func executeWorkflowSkillTool(ctx context.Context, cfg config.Config, manager *r
 		ToolName: wfStep.ToolName,
 		Input:    wfStep.Input,
 	}
-	createInput, consumer, executionReq, approvalOutcome, err := prepareExecutableSkillToolCall(ctx, cfg, policyEngine, sqliteStore, eventBus, skillRegistry, nil, request, "workflow:"+workflow.WorkflowID)
+	createInput, consumer, executionReq, approvalOutcome, err := prepareExecutableSkillToolCall(ctx, cfg, policyEngine, sqliteStore, eventBus, skillRegistry, nil, request, "workflow:"+workflow.WorkflowID, workflow.RunID)
 	if err != nil {
 		return runtime.ToolCall{}, false, orchestration.StepStatusFailed, "", err
 	}
@@ -940,7 +940,7 @@ func executeWorkflowCapabilityTool(ctx context.Context, cfg config.Config, manag
 		ToolName:     wfStep.ToolName,
 		Input:        wfStep.Input,
 	}
-	createInput, consumer, executionReq, approvalOutcome, err := prepareCapabilityToolCall(ctx, cfg, policyEngine, sqliteStore, eventBus, capabilitySupervisor, request, "workflow:"+workflow.WorkflowID)
+	createInput, consumer, executionReq, approvalOutcome, err := prepareCapabilityToolCall(ctx, cfg, policyEngine, sqliteStore, eventBus, capabilitySupervisor, request, "workflow:"+workflow.WorkflowID, workflow.RunID)
 	if err != nil {
 		return runtime.ToolCall{}, false, orchestration.StepStatusFailed, "", err
 	}

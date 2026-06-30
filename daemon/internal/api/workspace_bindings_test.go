@@ -2,15 +2,123 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/bindings"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
+	"github.com/dopejs/dope-agent/daemon/internal/profiles"
 	"github.com/dopejs/dope-agent/daemon/internal/store"
 )
+
+// FR-016/SC-005: a capability disabled (or hidden) at the active profile/workspace scope MUST
+// NOT execute through the direct runtime tool-call API, while a visible capability is allowed.
+// This guards the execution gate consumed by prepareExecutableSkillToolCall /
+// prepareCapabilityToolCall, independent of the chat work-start path.
+func TestEnforceDirectCapabilityVisibilityBlocksHiddenAndDisabled(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer sqliteStore.Close()
+	admin := bindingAdmin()
+	ctx := withTenantContext(t.Context(), admin)
+
+	profile, err := sqliteStore.EnsureDefaultAgentProfile(ctx, admin.TenantID)
+	if err != nil {
+		t.Fatalf("EnsureDefaultAgentProfile: %v", err)
+	}
+
+	// No policy yet: capability is allowed to execute.
+	if err := enforceRunCapabilityVisibility(ctx, sqliteStore, "", "skill.alpha"); err != nil {
+		t.Fatalf("expected allow with no policy, got %v", err)
+	}
+
+	// Disable it at profile scope -> execution must be blocked.
+	if _, _, err := sqliteStore.SetCapabilityVisibility(ctx, admin, bindings.SetVisibilityRequest{
+		ScopeKind: bindings.VisibilityScopeProfile, ScopeRef: profile.ProfileID, CapabilityID: "skill.alpha", Visibility: bindings.VisibilityDisabled,
+	}); err != nil {
+		t.Fatalf("SetCapabilityVisibility disabled: %v", err)
+	}
+	if err := enforceRunCapabilityVisibility(ctx, sqliteStore, "", "skill.alpha"); !errors.Is(err, bindings.ErrCapabilityNotExecutable) {
+		t.Fatalf("expected ErrCapabilityNotExecutable for disabled capability, got %v", err)
+	}
+
+	// Hidden at workspace scope is also non-executable.
+	ws, err := sqliteStore.EnsureDefaultWorkspace(ctx, admin.TenantID)
+	if err != nil {
+		t.Fatalf("EnsureDefaultWorkspace: %v", err)
+	}
+	if _, _, err := sqliteStore.SetCapabilityVisibility(ctx, admin, bindings.SetVisibilityRequest{
+		ScopeKind: bindings.VisibilityScopeWorkspace, ScopeRef: ws.WorkspaceID, CapabilityID: "skill.beta", Visibility: bindings.VisibilityHidden,
+	}); err != nil {
+		t.Fatalf("SetCapabilityVisibility hidden: %v", err)
+	}
+	if err := enforceRunCapabilityVisibility(ctx, sqliteStore, "", "skill.beta"); !errors.Is(err, bindings.ErrCapabilityNotExecutable) {
+		t.Fatalf("expected ErrCapabilityNotExecutable for hidden capability, got %v", err)
+	}
+
+	// A different, unconstrained capability still executes.
+	if err := enforceRunCapabilityVisibility(ctx, sqliteStore, "", "skill.gamma"); err != nil {
+		t.Fatalf("expected allow for unconstrained capability, got %v", err)
+	}
+}
+
+// FR-016 (run-scoped): when a run has recorded binding evidence, the execution gate enforces
+// that run's resolved profile/workspace visibility — not the tenant default — so a capability
+// disabled under the run's bound profile cannot execute, while one only restricted under a
+// different (tenant-default) profile is unaffected.
+func TestEnforceRunCapabilityVisibilityUsesRunBinding(t *testing.T) {
+	sqliteStore, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer sqliteStore.Close()
+	admin := bindingAdmin()
+	ctx := withTenantContext(t.Context(), admin)
+
+	tenantDefault, err := sqliteStore.EnsureDefaultAgentProfile(ctx, admin.TenantID)
+	if err != nil {
+		t.Fatalf("EnsureDefaultAgentProfile: %v", err)
+	}
+	runProfile, err := sqliteStore.CreateAgentProfile(ctx, admin, profiles.MutationInput{DisplayName: "RunProfile", Activate: true})
+	if err != nil {
+		t.Fatalf("CreateAgentProfile: %v", err)
+	}
+	ws, err := sqliteStore.EnsureDefaultWorkspace(ctx, admin.TenantID)
+	if err != nil {
+		t.Fatalf("EnsureDefaultWorkspace: %v", err)
+	}
+
+	// Record run-scoped binding evidence selecting the run profile.
+	if _, err := sqliteStore.RecordRuntimeBindingEvidence(ctx, bindings.BuildRuntimeBindingEvidence(
+		bindings.EffectiveBindingSelection{Outcome: bindings.OutcomeResolved, BindingScope: bindings.RuntimeScopeChannel, SelectedProfileID: runProfile.Profile.ProfileID, SelectedWorkspaceID: ws.WorkspaceID},
+		bindings.RuntimeBindingEvidenceInput{TenantID: admin.TenantID, ResourceKind: "run", ResourceID: "run_x", OccurredAt: time.Now().UTC()},
+	)); err != nil {
+		t.Fatalf("RecordRuntimeBindingEvidence: %v", err)
+	}
+
+	// Disabled under the RUN's profile -> blocked when enforced for that run.
+	if _, _, err := sqliteStore.SetCapabilityVisibility(ctx, admin, bindings.SetVisibilityRequest{ScopeKind: bindings.VisibilityScopeProfile, ScopeRef: runProfile.Profile.ProfileID, CapabilityID: "skill.delta", Visibility: bindings.VisibilityDisabled}); err != nil {
+		t.Fatalf("SetCapabilityVisibility run profile: %v", err)
+	}
+	if err := enforceRunCapabilityVisibility(ctx, sqliteStore, "run_x", "skill.delta"); !errors.Is(err, bindings.ErrCapabilityNotExecutable) {
+		t.Fatalf("expected block under run profile, got %v", err)
+	}
+
+	// Disabled only under the tenant-default profile -> NOT blocked for this run.
+	if _, _, err := sqliteStore.SetCapabilityVisibility(ctx, admin, bindings.SetVisibilityRequest{ScopeKind: bindings.VisibilityScopeProfile, ScopeRef: tenantDefault.ProfileID, CapabilityID: "skill.epsilon", Visibility: bindings.VisibilityDisabled}); err != nil {
+		t.Fatalf("SetCapabilityVisibility tenant default: %v", err)
+	}
+	if err := enforceRunCapabilityVisibility(ctx, sqliteStore, "run_x", "skill.epsilon"); err != nil {
+		t.Fatalf("expected run binding to ignore tenant-default-only restriction, got %v", err)
+	}
+}
 
 func bindingAdmin() identity.TenantContext {
 	return identity.TenantContext{TenantID: "ten_api_bind", PrincipalID: "prn_admin", Permissions: []identity.Permission{identity.PermissionBindingsInspect, identity.PermissionBindingsManage, identity.PermissionProfilesManage}}

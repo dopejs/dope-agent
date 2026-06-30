@@ -16,32 +16,36 @@ import (
 var ErrBindingNotFound = errors.New("binding not found")
 
 type bindingAuditRow struct {
-	AuditEventID     string
-	TenantID         string
-	BindingID        string
-	WorkspaceID      string
-	ActorPrincipalID string
-	EventKind        string
-	Outcome          string
-	PermissionGate   string
-	ReasonCode       string
-	SafeSummary      string
-	OccurredAt       time.Time
+	AuditEventID              string
+	TenantID                  string
+	BindingID                 string
+	WorkspaceID               string
+	ActorPrincipalID          string
+	EventKind                 string
+	Outcome                   string
+	PermissionGate            string
+	ReasonCode                string
+	SafeSummary               string
+	PreviousSelectionSummary  string
+	ResultingSelectionSummary string
+	OccurredAt                time.Time
 }
 
 func insertBindingAuditTx(ctx context.Context, tx *sql.Tx, row bindingAuditRow) error {
 	doc, err := json.Marshal(map[string]any{
-		"auditEventId":     row.AuditEventID,
-		"tenantId":         row.TenantID,
-		"bindingId":        row.BindingID,
-		"workspaceId":      row.WorkspaceID,
-		"actorPrincipalId": row.ActorPrincipalID,
-		"eventKind":        row.EventKind,
-		"outcome":          row.Outcome,
-		"permissionGate":   row.PermissionGate,
-		"reasonCode":       row.ReasonCode,
-		"safeSummary":      bindings.SafeLabel(row.SafeSummary),
-		"occurredAt":       row.OccurredAt.Format(time.RFC3339Nano),
+		"auditEventId":              row.AuditEventID,
+		"tenantId":                  row.TenantID,
+		"bindingId":                 row.BindingID,
+		"workspaceId":               row.WorkspaceID,
+		"actorPrincipalId":          row.ActorPrincipalID,
+		"eventKind":                 row.EventKind,
+		"outcome":                   row.Outcome,
+		"permissionGate":            row.PermissionGate,
+		"reasonCode":                row.ReasonCode,
+		"safeSummary":               bindings.SafeLabel(row.SafeSummary),
+		"previousSelectionSummary":  bindings.SafeLabel(row.PreviousSelectionSummary),
+		"resultingSelectionSummary": bindings.SafeLabel(row.ResultingSelectionSummary),
+		"occurredAt":                row.OccurredAt.Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		return err
@@ -112,7 +116,7 @@ func (s *SQLiteStore) CreateBindingRule(ctx context.Context, actor identity.Tena
 		}
 		return bindings.BindingRule{}, "", err
 	}
-	if err := insertBindingAuditTx(ctx, tx, bindingAuditRow{AuditEventID: auditID, TenantID: actor.TenantID, BindingID: rule.BindingID, ActorPrincipalID: actor.PrincipalID, EventKind: "binding.created", Outcome: "succeeded", PermissionGate: string(identity.PermissionBindingsManage), ReasonCode: defaultReason(req.ReasonCode, "user_created_binding"), SafeSummary: "Binding created", OccurredAt: now}); err != nil {
+	if err := insertBindingAuditTx(ctx, tx, bindingAuditRow{AuditEventID: auditID, TenantID: actor.TenantID, BindingID: rule.BindingID, ActorPrincipalID: actor.PrincipalID, EventKind: "binding.created", Outcome: "succeeded", PermissionGate: string(identity.PermissionBindingsManage), ReasonCode: defaultReason(req.ReasonCode, "user_created_binding"), SafeSummary: "Binding created", ResultingSelectionSummary: rule.ResultingSelectionSummary, OccurredAt: now}); err != nil {
 		return bindings.BindingRule{}, "", err
 	}
 	if err := tx.Commit(); err != nil {
@@ -133,6 +137,7 @@ func (s *SQLiteStore) UpdateBindingRule(ctx context.Context, actor identity.Tena
 	if !found {
 		return bindings.BindingRule{}, "", ErrBindingNotFound
 	}
+	previousSummary := rule.ResultingSelectionSummary
 	now := time.Now().UTC()
 	auditID := newStoreID("audit_binding")
 	eventKind := "binding.updated"
@@ -171,6 +176,7 @@ func (s *SQLiteStore) UpdateBindingRule(ctx context.Context, actor identity.Tena
 		}
 		rule.ResultingSelectionSummary = bindingSelectionSummary(rule.SelectedProfileID, rule.SelectedWorkspaceID)
 	}
+	rule.PreviousSelectionSummary = previousSummary
 	rule.UpdatedAt = now
 	rule.ActorPrincipalID = actor.PrincipalID
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -181,7 +187,7 @@ func (s *SQLiteStore) UpdateBindingRule(ctx context.Context, actor identity.Tena
 	if err := updateBindingRuleTx(ctx, tx, rule); err != nil {
 		return bindings.BindingRule{}, "", err
 	}
-	if err := insertBindingAuditTx(ctx, tx, bindingAuditRow{AuditEventID: auditID, TenantID: actor.TenantID, BindingID: rule.BindingID, ActorPrincipalID: actor.PrincipalID, EventKind: eventKind, Outcome: "succeeded", PermissionGate: string(identity.PermissionBindingsManage), ReasonCode: defaultReason(req.ReasonCode, "user_updated_binding"), SafeSummary: "Binding updated", OccurredAt: now}); err != nil {
+	if err := insertBindingAuditTx(ctx, tx, bindingAuditRow{AuditEventID: auditID, TenantID: actor.TenantID, BindingID: rule.BindingID, ActorPrincipalID: actor.PrincipalID, EventKind: eventKind, Outcome: "succeeded", PermissionGate: string(identity.PermissionBindingsManage), ReasonCode: defaultReason(req.ReasonCode, "user_updated_binding"), SafeSummary: "Binding updated", PreviousSelectionSummary: previousSummary, ResultingSelectionSummary: rule.ResultingSelectionSummary, OccurredAt: now}); err != nil {
 		return bindings.BindingRule{}, "", err
 	}
 	if err := tx.Commit(); err != nil {

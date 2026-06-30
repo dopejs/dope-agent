@@ -20,6 +20,8 @@
         "reasonCode": { "type": "string" },
         "permissionGate": { "type": "string" },
         "safeSummary": { "type": "string" },
+        "previousSelectionSummary": { "type": "string" },
+        "resultingSelectionSummary": { "type": "string" },
         "auditEventId": { "type": "string" },
         "redactionStatus": { "type": "string" }
       },

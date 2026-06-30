@@ -2773,6 +2773,8 @@ export type ThreadDetailResponse = {
   participationDecisions?: ThreadParticipationDecision[];
   resetEvents?: ThreadResetEvent[];
   handoffLinks?: ThreadHandoffLink[];
+  /** Additive runtime binding evidence (FR-013); present only for callers with bindings.inspect. */
+  bindingProjection?: BindingRuntimeEvidenceResource;
 };
 
 export type ThreadListQuery = {
@@ -3043,6 +3045,37 @@ export interface SetCapabilityVisibilityInput {
   capabilityId: string;
   visibility: CapabilityVisibility;
   reasonCode?: string;
+}
+
+export type BindingRuntimeScope = "channel" | "integration_account" | "tenant_default";
+export type BindingRuntimeClassification = "applied_binding" | "default_binding" | "legacy_default";
+
+export interface BindingCapabilityDecisionResource {
+  capabilityId: string;
+  effective: "visible" | "hidden" | "disabled" | "blocked";
+  defaultEnabled?: boolean;
+  offered: boolean;
+  executable: boolean;
+  reason: string;
+  scope?: string;
+}
+
+/** Runtime binding evidence attached to a run/thread (FR-013). Surfaced as the optional,
+ * additive `bindingProjection` on thread detail for callers holding `bindings.inspect`. */
+export interface BindingRuntimeEvidenceResource {
+  projectionId: string;
+  resourceKind: string;
+  resourceId: string;
+  selectedProfileId?: string;
+  selectedProfileVersionId?: string;
+  selectedWorkspaceId?: string;
+  bindingScope: BindingRuntimeScope;
+  bindingId?: string;
+  classification: BindingRuntimeClassification;
+  selectionReason: string;
+  capabilityVisibilitySummary?: BindingCapabilityDecisionResource[];
+  occurredAt: string;
+  redactionStatus: string;
 }
 
 export class DopeClientError extends Error {

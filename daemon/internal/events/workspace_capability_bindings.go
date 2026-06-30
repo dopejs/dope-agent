@@ -8,16 +8,18 @@ import (
 
 // BindingLifecycleInput describes a binding/workspace lifecycle or denial event.
 type BindingLifecycleInput struct {
-	TenantID         string
-	BindingID        string
-	WorkspaceID      string
-	ActorPrincipalID string
-	EventName        string
-	Outcome          string
-	ReasonCode       string
-	PermissionGate   string
-	SafeSummary      string
-	AuditEventID     string
+	TenantID                  string
+	BindingID                 string
+	WorkspaceID               string
+	ActorPrincipalID          string
+	EventName                 string
+	Outcome                   string
+	ReasonCode                string
+	PermissionGate            string
+	SafeSummary               string
+	PreviousSelectionSummary  string
+	ResultingSelectionSummary string
+	AuditEventID              string
 }
 
 // BindingLifecycleEvent constructs a tenant-scoped binding lifecycle/denial event
@@ -34,15 +36,17 @@ func BindingLifecycleEvent(input BindingLifecycleInput) Event {
 		OccurredAt: time.Now().UTC(),
 		Resource:   Resource{Kind: "workspace_capability_binding", ID: resourceID},
 		Payload: map[string]any{
-			"bindingId":        input.BindingID,
-			"workspaceId":      input.WorkspaceID,
-			"actorPrincipalId": input.ActorPrincipalID,
-			"outcome":          input.Outcome,
-			"reasonCode":       input.ReasonCode,
-			"permissionGate":   input.PermissionGate,
-			"safeSummary":      bindings.SafeLabel(input.SafeSummary),
-			"auditEventId":     input.AuditEventID,
-			"redactionStatus":  string(bindings.RedactionRedacted),
+			"bindingId":                 input.BindingID,
+			"workspaceId":               input.WorkspaceID,
+			"actorPrincipalId":          input.ActorPrincipalID,
+			"outcome":                   input.Outcome,
+			"reasonCode":                input.ReasonCode,
+			"permissionGate":            input.PermissionGate,
+			"safeSummary":               bindings.SafeLabel(input.SafeSummary),
+			"previousSelectionSummary":  bindings.SafeLabel(input.PreviousSelectionSummary),
+			"resultingSelectionSummary": bindings.SafeLabel(input.ResultingSelectionSummary),
+			"auditEventId":              input.AuditEventID,
+			"redactionStatus":           string(bindings.RedactionRedacted),
 		},
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/audit"
 	"github.com/dopejs/dope-agent/daemon/internal/auth"
 	"github.com/dopejs/dope-agent/daemon/internal/billing"
+	"github.com/dopejs/dope-agent/daemon/internal/bindings"
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
 	"github.com/dopejs/dope-agent/daemon/internal/chat"
@@ -1042,7 +1043,7 @@ func handleRunByID(deliveryManager *delivery.Manager, manager *runtime.Manager, 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, run)
+	writeJSONWithBindingProjection(sqliteStore, w, r, "run", run.RunID, run)
 }
 
 func handleRunCancel(manager *runtime.Manager, eventBus *events.Bus, sqliteStore *store.SQLiteStore, checkpointManager *checkpoints.Manager, w http.ResponseWriter, r *http.Request, runID string) {
@@ -4683,9 +4684,9 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 			handleMCPToolCallRequest(cfg, manager, mcpManager, eventBus, billingManager, sqliteStore, checkpointManager, w, r, runID, stepID, request)
 			return
 		case strings.TrimSpace(request.SkillID) != "":
-			createInput, consumer, executionReq, approvalOutcome, err = prepareExecutableSkillToolCall(r.Context(), cfg, policyEngine, sqliteStore, eventBus, skillRegistry, secretManager, request, currentActor(r.Context()))
+			createInput, consumer, executionReq, approvalOutcome, err = prepareExecutableSkillToolCall(r.Context(), cfg, policyEngine, sqliteStore, eventBus, skillRegistry, secretManager, request, currentActor(r.Context()), runID)
 		default:
-			createInput, consumer, executionReq, approvalOutcome, err = prepareCapabilityToolCall(r.Context(), cfg, policyEngine, sqliteStore, eventBus, capabilitySupervisor, request, currentActor(r.Context()))
+			createInput, consumer, executionReq, approvalOutcome, err = prepareCapabilityToolCall(r.Context(), cfg, policyEngine, sqliteStore, eventBus, capabilitySupervisor, request, currentActor(r.Context()), runID)
 		}
 		if err != nil {
 			switch {
@@ -4693,6 +4694,8 @@ func handleRunStepToolCalls(cfg config.Config, manager *runtime.Manager, policyE
 				http.NotFound(w, r)
 			case errors.Is(err, skills.ErrSkillNotFound), errors.Is(err, capabilities.ErrCapabilityNotFound):
 				http.NotFound(w, r)
+			case errors.Is(err, bindings.ErrCapabilityNotExecutable):
+				writeError(w, http.StatusForbidden, err.Error())
 			default:
 				writeError(w, http.StatusBadRequest, err.Error())
 			}
@@ -5149,7 +5152,7 @@ func handleRunStepToolCallFail(manager *runtime.Manager, eventBus *events.Bus, b
 	writeJSON(w, http.StatusOK, toolCall)
 }
 
-func prepareExecutableSkillToolCall(ctx context.Context, cfg config.Config, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, skillRegistry *skills.Registry, secretManager *secrets.Manager, request createToolCallRequest, requestedBy string) (runtime.CreateToolCallInput, *sandbox.ConsumerContractView, sandbox.ExecutionRequest, *approvalGateResponse, error) {
+func prepareExecutableSkillToolCall(ctx context.Context, cfg config.Config, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, skillRegistry *skills.Registry, secretManager *secrets.Manager, request createToolCallRequest, requestedBy, runID string) (runtime.CreateToolCallInput, *sandbox.ConsumerContractView, sandbox.ExecutionRequest, *approvalGateResponse, error) {
 	if skillRegistry == nil {
 		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, errors.New("skills registry is not configured")
 	}
@@ -5162,6 +5165,9 @@ func prepareExecutableSkillToolCall(ctx context.Context, cfg config.Config, poli
 	}
 	if skill.AvailabilityStatus != skills.SkillAvailabilityStatusAvailable {
 		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, errors.New(firstNonEmpty(skill.AvailabilityReason, "skill is unavailable"))
+	}
+	if err := enforceRunCapabilityVisibility(ctx, sqliteStore, runID, skill.SkillID); err != nil {
+		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, err
 	}
 	consumer := buildExecutableSkillConsumerView(ctx, cfg, secretManager, skill, requestedBy)
 	if outcome, approved, err := authorizeToolCallConsumer(ctx, policyEngine, sqliteStore, eventBus, request.ApprovalID, "skill", skill.SkillID, "executable skill execution requires approval", consumer, requestedBy); err != nil {
@@ -5182,13 +5188,16 @@ func prepareExecutableSkillToolCall(ctx context.Context, cfg config.Config, poli
 	}, consumer, executionReq, nil, nil
 }
 
-func prepareCapabilityToolCall(ctx context.Context, cfg config.Config, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, capabilitySupervisor *capabilities.Supervisor, request createToolCallRequest, requestedBy string) (runtime.CreateToolCallInput, *sandbox.ConsumerContractView, sandbox.ExecutionRequest, *approvalGateResponse, error) {
+func prepareCapabilityToolCall(ctx context.Context, cfg config.Config, policyEngine *policy.Engine, sqliteStore *store.SQLiteStore, eventBus *events.Bus, capabilitySupervisor *capabilities.Supervisor, request createToolCallRequest, requestedBy, runID string) (runtime.CreateToolCallInput, *sandbox.ConsumerContractView, sandbox.ExecutionRequest, *approvalGateResponse, error) {
 	if capabilitySupervisor == nil {
 		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, errors.New("capability supervisor is not configured")
 	}
 	capability, ok := capabilitySupervisor.Get(request.CapabilityID)
 	if !ok {
 		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, capabilities.ErrCapabilityNotFound
+	}
+	if err := enforceRunCapabilityVisibility(ctx, sqliteStore, runID, capability.CapabilityID); err != nil {
+		return runtime.CreateToolCallInput{}, nil, sandbox.ExecutionRequest{}, nil, err
 	}
 	consumer := buildLocalToolConsumerView(capability, requestedBy)
 	if requiresApprovalForCapability(capability) {

@@ -91,6 +91,15 @@ func TestChatFailsClosedOnInvalidBinding(t *testing.T) {
 	if !errors.Is(err, ErrBindingRepairRequired) {
 		t.Fatalf("expected fail-closed ErrBindingRepairRequired, got %v", err)
 	}
+	// FR-031: blocked work MUST still record durable runtime evidence of the
+	// repair-required outcome so operators can see which work was blocked and why.
+	ev, found, err := sqliteStore.LatestRuntimeBindingEvidence(ctx, actor.TenantID, "thread", "thr_bad")
+	if err != nil || !found {
+		t.Fatalf("expected blocked-path runtime evidence, found=%v err=%v", found, err)
+	}
+	if ev.SelectionReason == "" {
+		t.Fatalf("expected a safe repair reason on blocked evidence, got %+v", ev)
+	}
 }
 
 // B7/SC-003: workspace binding does not change provider/profile behavior beyond identity;
@@ -102,7 +111,7 @@ func TestChatDefaultBindingEvidence(t *testing.T) {
 	if _, err := sqliteStore.CreateAgentProfile(ctx, actor, profiles.MutationInput{DisplayName: "Default", DefaultProviderPreference: profiles.DefaultProviderPreference{ProviderID: "profile-capture", Model: "profile-model"}, Activate: true}); err != nil {
 		t.Fatalf("create default: %v", err)
 	}
-	if _, err := service.Query(ctx, QueryInput{TenantID: actor.TenantID, Query: "hi", ThreadID: "thr_def"}); err != nil {
+	if _, err := service.Query(ctx, QueryInput{TenantID: actor.TenantID, Query: "hi", ThreadID: "thr_def", RunID: "run_def"}); err != nil {
 		t.Fatalf("Query: %v", err)
 	}
 	ev, found, err := sqliteStore.LatestRuntimeBindingEvidence(ctx, actor.TenantID, "thread", "thr_def")
@@ -114,6 +123,15 @@ func TestChatDefaultBindingEvidence(t *testing.T) {
 	}
 	if ev.BindingScope != bindings.RuntimeScopeTenantDefault {
 		t.Fatalf("expected tenant_default scope, got %s", ev.BindingScope)
+	}
+	// SC-008/FR-013: evidence is also recorded per-run so the run surface and the runtime
+	// execution gate can resolve the selection that applied to the run.
+	runEv, found, err := sqliteStore.LatestRuntimeBindingEvidence(ctx, actor.TenantID, "run", "run_def")
+	if err != nil || !found {
+		t.Fatalf("run evidence: %v found=%v", err, found)
+	}
+	if runEv.SelectedProfileID != ev.SelectedProfileID {
+		t.Fatalf("run evidence profile mismatch: run=%s thread=%s", runEv.SelectedProfileID, ev.SelectedProfileID)
 	}
 }
 

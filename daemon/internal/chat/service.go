@@ -37,6 +37,15 @@ type QueryInput struct {
 	SourceMessageID string
 	SourceTimestamp *time.Time
 	SourceEventKey  string
+	// ChannelScopeRef and AccountScopeRef are the tenant-owned channel identity (Roadmap 48)
+	// and integration-account identity (Roadmap 37) of the originating work, used to resolve
+	// channel/account binding rules (FR-006). Empty when work has no channel/account origin.
+	ChannelScopeRef string
+	AccountScopeRef string
+	// RunID, when set, links this work to a runtime run so binding evidence is recorded
+	// per-run and the runtime execution gate can enforce the run's resolved capability
+	// visibility (FR-013/FR-016, SC-008). Empty for chat work with no runtime run.
+	RunID string
 }
 
 type QueryResult struct {
@@ -106,6 +115,7 @@ func (s *Service) Query(ctx context.Context, input QueryInput) (QueryResult, err
 	}
 	bindingSelection, hasBinding, err := s.resolveBindingForWork(ctx, input, activeProfile, activeSelection, hasActiveProfile)
 	if err != nil {
+		s.recordBlockedBindingEvidence(ctx, input, bindingSelection, hasBinding, err)
 		return QueryResult{}, err
 	}
 	if err := s.enforceCapabilityVisibility(ctx, input, selectedSkills, bindingSelection, hasBinding); err != nil {
@@ -188,6 +198,7 @@ func (s *Service) Stream(ctx context.Context, input QueryInput, emit func(Stream
 	}
 	bindingSelection, hasBinding, err := s.resolveBindingForWork(ctx, input, activeProfile, activeSelection, hasActiveProfile)
 	if err != nil {
+		s.recordBlockedBindingEvidence(ctx, input, bindingSelection, hasBinding, err)
 		return QueryResult{}, err
 	}
 	if err := s.enforceCapabilityVisibility(ctx, input, selectedSkills, bindingSelection, hasBinding); err != nil {
@@ -374,75 +385,32 @@ func (s *Service) enforceCapabilityVisibility(ctx context.Context, input QueryIn
 	return nil
 }
 
-// resolveBindingSelection resolves the effective workspace/capability binding for new
-// work using deterministic precedence and fails closed on an invalid selection (FR-006,
-// FR-031). It returns a zero selection (no outcome) when the tenant context is absent.
+// resolveBindingSelection resolves the effective workspace/capability binding for new work
+// using deterministic precedence (channel -> integration-account default -> tenant default,
+// FR-006) and fails closed on an invalid selection (FR-031). All reads run in one store
+// snapshot so a concurrent binding/visibility change cannot produce mixed state (FR-033).
+// It returns a zero selection (no outcome) when the tenant context is absent.
 func (s *Service) resolveBindingSelection(ctx context.Context, input QueryInput, profile profiles.AgentProfile, selection profiles.ActiveSelection, hasActiveProfile bool) (bindings.EffectiveBindingSelection, bool, error) {
 	if s == nil || s.store == nil || strings.TrimSpace(input.TenantID) == "" {
 		return bindings.EffectiveBindingSelection{}, false, nil
 	}
-	tenantID := strings.TrimSpace(input.TenantID)
-	ws, err := s.store.EnsureDefaultWorkspace(ctx, tenantID)
+	channelRef := strings.TrimSpace(input.ChannelScopeRef)
+	if channelRef == "" {
+		// Backward-compatible fallback: callers that have not adopted ChannelScopeRef may
+		// still pass the channel identity via SourceLinkageID.
+		channelRef = strings.TrimSpace(input.SourceLinkageID)
+	}
+	resolution, err := s.store.ResolveBindingSelection(ctx, store.BindingResolutionParams{
+		TenantID:                      strings.TrimSpace(input.TenantID),
+		ChannelScopeRef:               channelRef,
+		AccountScopeRef:               strings.TrimSpace(input.AccountScopeRef),
+		TenantDefaultProfileID:        profile.ProfileID,
+		TenantDefaultProfileVersionID: selection.ProfileVersionID,
+	})
 	if err != nil {
 		return bindings.EffectiveBindingSelection{}, false, err
 	}
-	var channelBinding *bindings.BindingRule
-	if scopeRef := strings.TrimSpace(input.SourceLinkageID); scopeRef != "" {
-		channelBinding, err = s.store.ResolveChannelBinding(ctx, tenantID, scopeRef)
-		if err != nil {
-			return bindings.EffectiveBindingSelection{}, false, err
-		}
-	}
-	resolution := bindings.ResolveSelection(bindings.ResolutionInput{
-		ChannelBinding:                channelBinding,
-		TenantDefaultProfileID:        profile.ProfileID,
-		TenantDefaultProfileVersionID: selection.ProfileVersionID,
-		TenantDefaultWorkspaceID:      ws.WorkspaceID,
-		ProfileAvailable: func(id string) bool {
-			if hasActiveProfile && id == profile.ProfileID {
-				return profile.Status != profiles.StatusArchived && profile.Status != profiles.StatusDisabled
-			}
-			ok, oerr := s.store.IsProfileSelectable(ctx, tenantID, id)
-			return oerr == nil && ok
-		},
-		WorkspaceAvailable: func(id string) bool {
-			if id == ws.WorkspaceID {
-				return ws.Status == bindings.WorkspaceActive
-			}
-			ok, oerr := s.store.IsWorkspaceSelectable(ctx, tenantID, id)
-			return oerr == nil && ok
-		},
-	})
-	resolution.CapabilityVisibility = s.resolveCapabilityVisibilitySummary(ctx, tenantID, resolution.SelectedProfileID, resolution.SelectedWorkspaceID)
 	return resolution, true, nil
-}
-
-// resolveCapabilityVisibilitySummary builds the per-capability decision summary for the
-// capabilities that have an explicit profile/workspace policy under the active binding.
-func (s *Service) resolveCapabilityVisibilitySummary(ctx context.Context, tenantID, profileID, workspaceID string) []bindings.CapabilityDecision {
-	profilePolicies, workspacePolicies, err := s.store.CapabilityVisibilityForScopes(ctx, tenantID, profileID, workspaceID)
-	if err != nil {
-		return nil
-	}
-	seen := map[string]struct{}{}
-	inputs := make([]bindings.VisibilityInput, 0)
-	for capID := range profilePolicies {
-		seen[capID] = struct{}{}
-	}
-	for capID := range workspacePolicies {
-		seen[capID] = struct{}{}
-	}
-	for capID := range seen {
-		inputs = append(inputs, bindings.VisibilityInput{
-			CapabilityID:    capID,
-			ProfilePolicy:   profilePolicies[capID],
-			WorkspacePolicy: workspacePolicies[capID],
-		})
-	}
-	if len(inputs) == 0 {
-		return nil
-	}
-	return bindings.ResolveVisibilitySet(inputs)
 }
 
 func (s *Service) recordActiveProfileProjection(ctx context.Context, profile profiles.AgentProfile, selection profiles.ActiveSelection, input QueryInput, continuity continuityAssembly, binding bindings.EffectiveBindingSelection, hasBinding bool) error {
@@ -471,27 +439,53 @@ func (s *Service) recordActiveProfileProjection(ctx context.Context, profile pro
 	return nil
 }
 
-// recordRuntimeBindingEvidence persists durable binding evidence for the run and publishes
-// the runtime-projected event (FR-013). Evidence is append-only (FR-012).
+// recordRuntimeBindingEvidence persists durable binding evidence for the work item and
+// publishes the runtime-projected event (FR-013). Evidence is recorded per resource that the
+// selection influenced: always the thread, and additionally the runtime run when one is
+// linked, so operators can inspect the selection from either surface (SC-008). Append-only
+// (FR-012).
 func (s *Service) recordRuntimeBindingEvidence(ctx context.Context, input QueryInput, binding bindings.EffectiveBindingSelection, legacyDefault bool) error {
-	if s == nil || s.store == nil || strings.TrimSpace(input.ThreadID) == "" || strings.TrimSpace(input.TenantID) == "" {
+	if s == nil || s.store == nil || strings.TrimSpace(input.TenantID) == "" {
 		return nil
 	}
-	evidence := bindings.BuildRuntimeBindingEvidence(binding, bindings.RuntimeBindingEvidenceInput{
-		TenantID:      strings.TrimSpace(input.TenantID),
-		ResourceKind:  "thread",
-		ResourceID:    strings.TrimSpace(input.ThreadID),
-		OccurredAt:    time.Now().UTC(),
-		LegacyDefault: legacyDefault,
-	})
-	recorded, err := s.store.RecordRuntimeBindingEvidence(ctx, evidence)
-	if err != nil {
-		return err
+	tenantID := strings.TrimSpace(input.TenantID)
+	type target struct{ kind, id string }
+	targets := make([]target, 0, 2)
+	if threadID := strings.TrimSpace(input.ThreadID); threadID != "" {
+		targets = append(targets, target{kind: "thread", id: threadID})
 	}
-	if s.eventBus != nil {
-		s.eventBus.Publish(events.BindingRuntimeProjectedEvent(recorded))
+	if runID := strings.TrimSpace(input.RunID); runID != "" {
+		targets = append(targets, target{kind: "run", id: runID})
+	}
+	for _, t := range targets {
+		evidence := bindings.BuildRuntimeBindingEvidence(binding, bindings.RuntimeBindingEvidenceInput{
+			TenantID:      tenantID,
+			ResourceKind:  t.kind,
+			ResourceID:    t.id,
+			OccurredAt:    time.Now().UTC(),
+			LegacyDefault: legacyDefault,
+		})
+		recorded, err := s.store.RecordRuntimeBindingEvidence(ctx, evidence)
+		if err != nil {
+			return err
+		}
+		if s.eventBus != nil {
+			s.eventBus.Publish(events.BindingRuntimeProjectedEvent(recorded))
+		}
 	}
 	return nil
+}
+
+// recordBlockedBindingEvidence records durable runtime evidence for work that is blocked by
+// fail-closed binding resolution (FR-031: new work MUST be blocked "with a safe
+// repair-required outcome and runtime evidence"). It is best-effort and never masks the
+// originating repair error: the work is already blocked by the returned error regardless of
+// whether the evidence write succeeds.
+func (s *Service) recordBlockedBindingEvidence(ctx context.Context, input QueryInput, binding bindings.EffectiveBindingSelection, hasBinding bool, cause error) {
+	if !hasBinding || !errors.Is(cause, ErrBindingRepairRequired) {
+		return
+	}
+	_ = s.recordRuntimeBindingEvidence(ctx, input, binding, false)
 }
 
 func (s *Service) buildDispatchInput(input QueryInput) (llm.CreateDispatchInput, []skills.Skill, error) {

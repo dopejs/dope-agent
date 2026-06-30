@@ -16,6 +16,7 @@
     "participationDecisions": { "type": "array", "items": { "$ref": "thread-participation-decision.schema.json" } },
     "resetEvents": { "type": "array", "items": { "$ref": "thread-reset-event.schema.json" } },
     "handoffLinks": { "type": "array", "items": { "$ref": "thread-handoff-link.schema.json" } },
-    "activeProfileProjection": { "$ref": "agent-profile-runtime-projection.schema.json" }
+    "activeProfileProjection": { "$ref": "agent-profile-runtime-projection.schema.json" },
+    "bindingProjection": { "$ref": "binding-runtime-evidence.schema.json" }
   }
 }

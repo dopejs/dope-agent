@@ -330,3 +330,34 @@ test as serialized hand-offs.
   non-negotiable acceptance gates — verify explicitly, do not stub.
 - Commit after each task or logical group; keep schema + fixture + code changes together.
 - Redaction (FR-028) applies to every surface; never expose secrets/payloads/cross-tenant ids.
+
+## Post-completion review (2026-06-30)
+
+A correctness review against the FRs/SCs found and fixed the following gaps the original
+73-task pass left open. All have proving tests.
+
+- **FR-006** — the integration-account default tier was never resolved at work-start
+  (`ResolveAccountBinding` had no runtime caller). Added `store.ResolveBindingSelection`
+  applying full channel→account→tenant precedence, and threaded channel/account identity from
+  connectors (`im/loop.go`). Test: `store.TestResolveBindingSelectionPrecedence`.
+- **FR-033** — work-start resolution now runs all reads in one store transaction (single
+  snapshot); no mixed pre/post-change state.
+- **FR-016** — capability-visibility enforcement was only at the chat prompt-offer step. Added
+  `enforceRunCapabilityVisibility` at the runtime skill/capability tool-call execution gate,
+  using the run's recorded binding evidence (else tenant default). Tests:
+  `api.TestEnforceRunCapabilityVisibility*`.
+- **FR-013 / SC-008 (M2)** — binding evidence is now recorded per-run (not only per-thread)
+  and surfaced as additive `bindingProjection` on run detail (+ schema). `thread-detail` and
+  `run-resource` schemas now declare `bindingProjection` (previously injected into a closed
+  schema).
+- **FR-031** — fail-closed `repair_required` work now records runtime evidence (was silent).
+- **FR-010** — audit + lifecycle event now carry previous/resulting selection summary.
+- **FR-028** — redaction marker set broadened.
+
+Documented residuals (see `docs/runtime/workspace-capability-binding.md` → Residual items):
+FR-017 tenant/connector limit data source (resolver ready, no phase-58 source); FR-011 event
+row persisted post-commit per daemon-wide convention (authoritative audit is in-tx);
+MCP/computer-use/integration tool-call paths not yet visibility-gated.
+
+Note: the daemon suite also had 5 pre-existing continuity tests (Roadmaps 54–56) failing due
+to wall-clock-relative fixtures; fixed by anchoring those tests' clocks. Unrelated to 043.

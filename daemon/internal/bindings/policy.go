@@ -223,7 +223,22 @@ func identifierLike(value string) bool {
 	return true
 }
 
+// unsafeMarkers are case-insensitive substrings that indicate a label/reason may carry a
+// secret, credential, or raw provider payload and must not be surfaced verbatim (FR-028,
+// SC-014). The list is intentionally conservative-broad: a false positive only forces a
+// generic safe label, while a miss could leak sensitive material.
+var unsafeMarkers = []string{
+	"secret=", "token=", "api_key", "apikey", "password=", "passwd=",
+	"authorization", "bearer ", "x-api-key", "access_key", "private_key",
+	"eyj", // JWT header prefix (base64 of {"alg/typ...)
+}
+
 func containsUnsafe(value string) bool {
 	lower := strings.ToLower(value)
-	return strings.Contains(lower, "secret=") || strings.Contains(lower, "token=") || strings.Contains(lower, "api_key")
+	for _, marker := range unsafeMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }

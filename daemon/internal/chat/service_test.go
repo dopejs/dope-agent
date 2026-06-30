@@ -134,7 +134,9 @@ func TestStreamEmitsSelectedSkillContractsOnChunks(t *testing.T) {
 
 func TestQueryAssemblesBoundedCurrentSegmentContinuity(t *testing.T) {
 	ctx := context.Background()
-	now := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	// Anchor to wall-clock: continuity age/retention cutoffs use time.Now(), so a frozen
+	// past date would age the seeded turns out of the window once real time advances.
+	now := time.Now().UTC()
 
 	tests := []struct {
 		name            string
@@ -312,7 +314,8 @@ func TestQueryRecordsResetBoundaryExclusions(t *testing.T) {
 
 func TestQueryInjectsSafeArtifactExcerptsAndPreviewEvidence(t *testing.T) {
 	ctx := context.Background()
-	now := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	// Anchor to wall-clock so the seeded turn/excerpt stays inside the continuity window.
+	now := time.Now().UTC()
 	sqliteStore, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "dope"))
 	if err != nil {
 		t.Fatalf("NewSQLiteStore returned error: %v", err)

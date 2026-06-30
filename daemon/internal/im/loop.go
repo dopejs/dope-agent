@@ -750,6 +750,24 @@ func threadSourceLinkageID(record imtypes.MessageRecord, outcome threads.Routing
 	return "src_" + shortThreadHash(record.DeliveryID+":"+string(outcome))
 }
 
+// bindingChannelScopeRef derives the tenant-owned channel identity used to resolve a
+// channel-scoped binding rule (FR-006). It is a stable connector-qualified channel id (unlike
+// the per-delivery threadSourceLinkageID), so channel bindings created against this identity
+// resolve consistently for new work from the same channel. Empty when the channel is unknown.
+func bindingChannelScopeRef(record imtypes.MessageRecord) string {
+	channel := strings.TrimSpace(record.ChannelID)
+	if channel == "" {
+		channel = strings.TrimSpace(record.ChannelOrConversationID)
+	}
+	if channel == "" {
+		return ""
+	}
+	if connector := strings.TrimSpace(record.ConnectorID); connector != "" {
+		return connector + ":" + channel
+	}
+	return channel
+}
+
 func shortThreadHash(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])[:24]
@@ -773,6 +791,9 @@ func (l *MessageLoop) executeFinalReply(ctx context.Context, connector connector
 		SourceMessageID: inboundProviderMessageID(inbound),
 		SourceTimestamp: &persistedInbound.CreatedAt,
 		SourceEventKey:  "connector:" + persistedInbound.DeliveryID,
+		ChannelScopeRef: bindingChannelScopeRef(persistedInbound),
+		AccountScopeRef: strings.TrimSpace(persistedInbound.ConnectorAccountID),
+		RunID:           run.RunID,
 	})
 	if queryErr != nil {
 		return queryResult, imtypes.MessageRecord{}, queryErr
@@ -865,6 +886,9 @@ func (l *MessageLoop) executeStreamingReply(ctx context.Context, connector conne
 		SourceMessageID: inboundProviderMessageID(inbound),
 		SourceTimestamp: &persistedInbound.CreatedAt,
 		SourceEventKey:  "connector:" + persistedInbound.DeliveryID,
+		ChannelScopeRef: bindingChannelScopeRef(persistedInbound),
+		AccountScopeRef: strings.TrimSpace(persistedInbound.ConnectorAccountID),
+		RunID:           run.RunID,
 	}, func(chunk chat.StreamChunk) error {
 		if progressErr != nil {
 			return nil

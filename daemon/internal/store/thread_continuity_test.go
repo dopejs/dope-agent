@@ -250,7 +250,9 @@ func TestContinuityPreviewPersistsArtifactExcerptRetentionAndRedaction(t *testin
 	}
 	defer store.Close()
 
-	now := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	// Anchor to wall-clock: GetContinuityPreviewDetail filters by retention against
+	// time.Now(), so a frozen past date makes the seeded preview/excerpt read as expired.
+	now := time.Now().UTC()
 	seedContinuityThread(t, ctx, store, "ten_1", "thr_1", "seg_1", now)
 	preview, err := store.SaveContinuityPreview(ctx, threads.ContinuityPreview{
 		ContinuityPreviewID: "contprev_artifact",

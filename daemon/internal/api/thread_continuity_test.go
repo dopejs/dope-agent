@@ -31,7 +31,9 @@ func TestChatQueryRouteContinuityFieldsRemainAdditive(t *testing.T) {
 	identityManager := identity.NewManager(sqliteStore)
 	authHeader, tenantID := issueContinuityAuthHeader(t, authManager, identityManager)
 
-	now := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	// Anchor to wall-clock: continuity windows use time.Now(), so a frozen past date ages
+	// the seeded turns out of the window once real time advances.
+	now := time.Now().UTC()
 	seedAPIContinuityThread(t, sqliteStore, tenantID, now)
 	if _, err := sqliteStore.SaveContinuityTurn(context.Background(), threads.ContinuityTurn{
 		ContinuityTurnID:       "turn_prior",
@@ -297,7 +299,7 @@ func TestChatQueryStreamContinuityParity(t *testing.T) {
 	}
 	defer sqliteStore.Close()
 
-	now := time.Date(2026, 5, 11, 10, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	if err := sqliteStore.UpsertThread(context.Background(), threads.Thread{ThreadID: "thr_stream", TenantID: "ten_threads", LifecycleState: threads.LifecycleStateActive, CurrentSessionSegmentID: "seg_stream", SourceKind: threads.SourceKindChat, LastActivityAt: now, CreatedAt: now, UpdatedAt: now, RetentionExpiresAt: now.Add(90 * 24 * time.Hour), RedactionStatus: threads.RedactionStatusRedacted}); err != nil {
 		t.Fatalf("UpsertThread returned error: %v", err)
 	}

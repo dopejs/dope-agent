@@ -77,6 +77,9 @@
     "activeProfileProjection": {
       "$ref": "agent-profile-runtime-projection.schema.json"
     },
+    "bindingProjection": {
+      "$ref": "binding-runtime-evidence.schema.json"
+    },
     "createdAt": {
       "type": "string",
       "format": "date-time"
