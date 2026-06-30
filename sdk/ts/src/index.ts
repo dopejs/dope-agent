@@ -3110,6 +3110,23 @@ export type CatalogInspection = { item: CatalogItemResource; enablement: Catalog
 export type ExecutionProfileResource = { profile: { profileId: string; name: string; backendKind: "subprocess" | "docker" | "ssh" | "local_shell"; riskTier: "low" | "medium" | "high"; provides?: string[]; requirements?: string[]; description?: string; createdAt: string }; status: { profileId: string; health: "ready" | "degraded" | "unavailable"; reason?: string; unmetRequirements?: string[]; available: boolean } };
 export type ExecutionDenialExplanation = { requiredCapabilities: string[]; eligibleProfiles: string[]; missingCapabilities?: Record<string, string[]>; unavailable?: Record<string, string> };
 
+export type EvidenceScopeKind = "run" | "workflow" | "thread" | "connector" | "provider" | "routine" | "quota_denial" | "time_window";
+export type EvidenceScope = { kind: EvidenceScopeKind; ref?: string; windowStart?: string; windowEnd?: string };
+export type EvidenceSection = { kind: string; resourceRefs?: string[]; summary?: Record<string, string>; links?: string[] };
+export type EvidenceBundleResource = { bundleId: string; tenantId?: string; actor?: string; scope: EvidenceScope; sections?: EvidenceSection[]; redactionStatus: "redacted" | "failed_closed"; createdAt: string; retentionExpiresAt: string };
+export type GenerateEvidenceBundleInput = { tenantId?: string; actor?: string; scope: EvidenceScope };
+
+export type LaunchGateWorkload = { name: string; status: "pass" | "fail" | "skip"; owner?: string; reason?: string };
+export type LaunchGateEvidenceInput = {
+  channels?: unknown[];
+  providerSmoke?: unknown[];
+  workloads?: LaunchGateWorkload[];
+  soakDurationMet?: boolean;
+  supportBundleValidated?: boolean;
+  redactionValidated?: boolean;
+};
+export type LaunchGateDecision = { result: "ship" | "no_ship"; reasons?: string[]; nonKnowledgeParityComplete: boolean; gateStatement: string };
+
 export class DopeClientError extends Error {
   readonly status: number;
   readonly code?: string;
@@ -4203,6 +4220,26 @@ export class DopeClient {
 
   async explainExecution(input: { requiredCapabilities: string[] }, tenantOptions?: TenantRequestOptions): Promise<ExecutionDenialExplanation> {
     return this.requestJSON<ExecutionDenialExplanation>("/v1/execution/explain", { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  // --- Roadmap 71: support diagnostics evidence bundle ---
+
+  async listEvidenceBundles(query: { tenantId?: string; actor?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<{ items: EvidenceBundleResource[] }> {
+    return this.requestJSON<{ items: EvidenceBundleResource[] }>("/v1/support/evidence-bundles", { query, tenant: tenantOptions });
+  }
+
+  async generateEvidenceBundle(input: GenerateEvidenceBundleInput, tenantOptions?: TenantRequestOptions): Promise<EvidenceBundleResource> {
+    return this.requestJSON<EvidenceBundleResource>("/v1/support/evidence-bundles", { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async getEvidenceBundle(bundleId: string, query: { tenantId?: string; actor?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<EvidenceBundleResource> {
+    return this.requestJSON<EvidenceBundleResource>(`/v1/support/evidence-bundles/${encodePathComponent(bundleId)}`, { query, tenant: tenantOptions });
+  }
+
+  // --- Roadmap 72: public release launch gate ---
+
+  async validateLaunchGate(evidence: LaunchGateEvidenceInput, tenantOptions?: TenantRequestOptions): Promise<LaunchGateDecision> {
+    return this.requestJSON<LaunchGateDecision>("/v1/release/launch-gate", { method: "POST", body: evidence, tenant: tenantOptions });
   }
 
   streamEvents(query: EventStreamQuery = {}, handlers: EventStreamHandlers = {}, tenantOptions?: TenantRequestOptions): EventStreamSubscription {

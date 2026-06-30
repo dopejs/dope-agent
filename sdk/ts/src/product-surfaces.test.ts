@@ -41,4 +41,21 @@ describe("Roadmap 65-69 product surface SDK methods (operator shell, Roadmap 70)
     expect(urls.some((u) => u.includes("/v1/catalog/items/ci_1"))).toBe(true);
     expect(urls.some((u) => u.includes("/v1/execution/explain"))).toBe(true);
   });
+
+  it("routes support evidence bundle + launch-gate calls through daemon APIs", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ bundleId: "eb_1", scope: { kind: "routine", ref: "r_1" }, redactionStatus: "redacted", createdAt: "t", retentionExpiresAt: "t" }))
+      .mockResolvedValueOnce(jsonResponse({ result: "no_ship", reasons: ["missing mail provider smoke entry"], nonKnowledgeParityComplete: false, gateStatement: "gate" }));
+
+    const client = createDopeClient({ baseURL: "https://daemon.test", fetchImpl });
+
+    const bundle = await client.generateEvidenceBundle({ actor: "support@dope", scope: { kind: "routine", ref: "r_1" } });
+    expect(bundle.redactionStatus).toBe("redacted");
+    const decision = await client.validateLaunchGate({ workloads: [], soakDurationMet: false });
+    expect(decision.result).toBe("no_ship");
+
+    const urls = fetchImpl.mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes("/v1/support/evidence-bundles"))).toBe(true);
+    expect(urls.some((u) => u.includes("/v1/release/launch-gate"))).toBe(true);
+  });
 });

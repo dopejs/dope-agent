@@ -1,0 +1,77 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import type {
+  CatalogItemResource,
+  EvidenceBundleResource,
+  ExecutionProfileResource,
+  RoutineResource,
+  TriagePolicyResource,
+  WebhookEndpointResource,
+} from "@dope/client";
+
+import {
+  CatalogView,
+  ExecutionProfilesView,
+  RoutinesView,
+  SupportEvidenceView,
+  SurfacePanel,
+  TriagePoliciesView,
+  WebhooksView,
+} from "./surfaces";
+
+describe("operator shell product surface views (Roadmap 70)", () => {
+  afterEach(() => cleanup());
+
+  it("renders the denied state with a reason", () => {
+    render(<SurfacePanel title="Routines" state="denied" reason="select a tenant" />);
+    expect(screen.getByRole("status").textContent).toContain("Select a tenant");
+    expect(screen.getByText("select a tenant")).toBeTruthy();
+  });
+
+  it("renders empty and unsupported states", () => {
+    render(<SurfacePanel title="A" state="empty" />);
+    expect(screen.getByRole("status").textContent).toContain("Nothing here yet");
+  });
+
+  it("renders routines with state + version", () => {
+    const routines: RoutineResource[] = [{ routineId: "r1", name: "Daily", state: "active", currentVersion: 2, definition: { name: "Daily", trigger: { kind: "cron", cronExpr: "0 8 * * *" }, workflow: { goal: "summarize" } }, versions: [], createdAt: "t", updatedAt: "t" }];
+    render(<RoutinesView routines={routines} state="ready" />);
+    expect(screen.getByText("Daily")).toBeTruthy();
+    expect(screen.getByText("v2")).toBeTruthy();
+  });
+
+  it("renders webhooks showing only the redacted secret fingerprint", () => {
+    const endpoints: WebhookEndpointResource[] = [{ webhookId: "w1", name: "deploy", targetKind: "routine", targetRef: "r1", status: "active", secretFingerprint: "sha256:abc", createdAt: "t", updatedAt: "t" }];
+    render(<WebhooksView endpoints={endpoints} state="ready" />);
+    expect(screen.getByText("deploy")).toBeTruthy();
+    expect(screen.getByText("sha256:abc")).toBeTruthy();
+  });
+
+  it("renders catalog items with trust tier", () => {
+    const items: CatalogItemResource[] = [{ itemId: "c1", kind: "skill", name: "pdf-extract", trustTier: "verified", versions: [{ version: "1.0.0", source: "s", publishedAt: "t" }], createdAt: "t", updatedAt: "t" }];
+    render(<CatalogView items={items} state="ready" />);
+    expect(screen.getByText("pdf-extract")).toBeTruthy();
+    expect(screen.getByText("verified")).toBeTruthy();
+  });
+
+  it("renders execution profiles with health + denial reason", () => {
+    const profiles: ExecutionProfileResource[] = [{ profile: { profileId: "p1", name: "Docker", backendKind: "docker", riskTier: "medium", createdAt: "t" }, status: { profileId: "p1", health: "unavailable", reason: "docker daemon not running", available: false } }];
+    render(<ExecutionProfilesView profiles={profiles} state="ready" />);
+    expect(screen.getByText("Docker")).toBeTruthy();
+    expect(screen.getByText("docker daemon not running")).toBeTruthy();
+  });
+
+  it("renders triage policies", () => {
+    const policies: TriagePolicyResource[] = [{ policyId: "tp1", name: "inbox", rules: [], defaultClassification: "fyi", createdAt: "t", updatedAt: "t" }];
+    render(<TriagePoliciesView policies={policies} state="ready" />);
+    expect(screen.getByText("inbox")).toBeTruthy();
+  });
+
+  it("renders support evidence bundles with redaction status", () => {
+    const bundles: EvidenceBundleResource[] = [{ bundleId: "b1", scope: { kind: "routine", ref: "r1" }, redactionStatus: "redacted", createdAt: "t", retentionExpiresAt: "t" }];
+    render(<SupportEvidenceView bundles={bundles} state="ready" />);
+    expect(screen.getByText("routine:r1")).toBeTruthy();
+    expect(screen.getByText("redacted")).toBeTruthy();
+  });
+});
