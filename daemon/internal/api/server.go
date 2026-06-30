@@ -31,6 +31,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/evidence"
 	"github.com/dopejs/dope-agent/daemon/internal/execprofile"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
@@ -85,6 +86,7 @@ type Dependencies struct {
 	Webhooks       *webhook.Manager
 	Catalog        *catalog.Manager
 	ExecProfiles   *execprofile.Manager
+	Evidence       *evidence.Manager
 	Connectors     *connectors.Supervisor
 	Capabilities   *capabilities.Supervisor
 	ComputerUse    *computeruse.Manager
@@ -575,6 +577,12 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/mail/operations/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/mail/operations/", "mail_operations", "operation_id", "mail_operation", func(w http.ResponseWriter, r *http.Request) {
 		handleMailOperationRoutes(deps.Config, deps.Mail, deps.Store, w, r)
 	})))
+	mux.HandleFunc("/v1/support/evidence-bundles", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleEvidenceBundles(deps.Evidence, w, r)
+	}))
+	mux.HandleFunc("/v1/support/evidence-bundles/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleEvidenceBundleRoutes(deps.Evidence, w, r)
+	}))
 	mux.HandleFunc("/v1/execution/profiles", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleExecutionProfiles(deps.ExecProfiles, w, r)
 	}))

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/generate-evidence-bundle.request.schema.json",
+  "title": "GenerateEvidenceBundleRequest",
+  "type": "object",
+  "required": ["scope"],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "actor": { "type": "string" },
+    "scope": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["run", "workflow", "thread", "connector", "provider", "routine", "quota_denial", "time_window"] },
+        "ref": { "type": "string" },
+        "windowStart": { "type": "string", "format": "date-time" },
+        "windowEnd": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

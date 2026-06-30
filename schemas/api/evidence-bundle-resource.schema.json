@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/evidence-bundle-resource.schema.json",
+  "title": "EvidenceBundleResource",
+  "type": "object",
+  "required": ["bundleId", "scope", "redactionStatus", "createdAt", "retentionExpiresAt"],
+  "additionalProperties": false,
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["run", "workflow", "thread", "connector", "provider", "routine", "quota_denial", "time_window"] },
+        "ref": { "type": "string" },
+        "windowStart": { "type": "string", "format": "date-time" },
+        "windowEnd": { "type": "string", "format": "date-time" }
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string" },
+        "resourceRefs": { "type": "array", "items": { "type": "string" } },
+        "summary": { "type": "object", "additionalProperties": { "type": "string" } },
+        "links": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "properties": {
+    "bundleId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "actor": { "type": "string" },
+    "scope": { "$ref": "#/$defs/scope" },
+    "sections": { "type": "array", "items": { "$ref": "#/$defs/section" } },
+    "redactionStatus": { "type": "string", "enum": ["redacted", "failed_closed"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "retentionExpiresAt": { "type": "string", "format": "date-time" }
+  }
+}

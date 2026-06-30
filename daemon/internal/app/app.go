@@ -35,6 +35,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/evidence"
 	"github.com/dopejs/dope-agent/daemon/internal/execprofile"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/im"
@@ -89,6 +90,7 @@ type App struct {
 	Webhooks             *webhook.Manager
 	Catalog              *catalog.Manager
 	ExecProfiles         *execprofile.Manager
+	Evidence             *evidence.Manager
 	Scheduler            *scheduler.Scheduler
 	Delivery             *delivery.Manager
 	Billing              *billing.Manager
@@ -352,6 +354,7 @@ func New() (*App, error) {
 		ProfileID: "subprocess", Name: "Subprocess Sandbox", BackendKind: execprofile.BackendSubprocess,
 		RiskTier: execprofile.RiskLow, Provides: []string{"local_fs"}, Description: "repo-owned subprocess sandbox",
 	})
+	evidenceManager := evidence.NewManager(string(cfg.Environment), nil, nil)
 	if err := recoverPersistedStateWithSecrets(envCtx, cfg.DataDir, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, identityManager, providerManager, sandboxManager, secretManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
 		return nil, err
 	}
@@ -440,6 +443,7 @@ func New() (*App, error) {
 		Webhooks:              webhookManager,
 		Catalog:               catalogManager,
 		ExecProfiles:          execProfileManager,
+		Evidence:              evidenceManager,
 		Providers:             providerManager,
 		Connectors:            connectorSupervisor,
 		Capabilities:          capabilitySupervisor,
@@ -482,6 +486,7 @@ func New() (*App, error) {
 		Webhooks:             webhookManager,
 		Catalog:              catalogManager,
 		ExecProfiles:         execProfileManager,
+		Evidence:             evidenceManager,
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
 		Delivery:             deliveryManager,
