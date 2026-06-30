@@ -911,16 +911,13 @@ func cloneAuthState(state AuthState) AuthState {
 		state.Metadata = metadata
 	}
 	if state.Sandbox != nil {
-		payload, err := json.Marshal(state.Sandbox)
-		if err == nil {
+		// Deep-copy the sandbox map via JSON round-trip; on any failure keep the original
+		// reference (the returned state already holds it).
+		if payload, err := json.Marshal(state.Sandbox); err == nil {
 			var cloned map[string]any
 			if json.Unmarshal(payload, &cloned) == nil {
 				state.Sandbox = cloned
-			} else {
-				state.Sandbox = state.Sandbox
 			}
-		} else {
-			state.Sandbox = state.Sandbox
 		}
 	}
 	return state
