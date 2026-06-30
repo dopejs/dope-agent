@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-triage-policy.request.schema.json",
+  "title": "CreateTriagePolicyRequest",
+  "type": "object",
+  "required": ["name", "rules"],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string" },
+    "name": { "type": "string" },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["classification"],
+        "additionalProperties": false,
+        "properties": {
+          "ruleId": { "type": "string" },
+          "description": { "type": "string" },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["field", "operator", "value"],
+              "additionalProperties": false,
+              "properties": {
+                "field": { "type": "string", "enum": ["sender", "subject", "body", "recipient"] },
+                "operator": { "type": "string", "enum": ["contains", "equals", "not_contains"] },
+                "value": { "type": "string" }
+              }
+            }
+          },
+          "classification": { "type": "string", "enum": ["urgent", "needs_reply", "fyi", "newsletter", "blocked", "unsupported"] },
+          "outcome": { "type": "string", "enum": ["draft_reply", "reminder", "delivery_digest", "no_action"] }
+        }
+      }
+    },
+    "defaultClassification": { "type": "string", "enum": ["urgent", "needs_reply", "fyi", "newsletter", "blocked", "unsupported"] }
+  }
+}

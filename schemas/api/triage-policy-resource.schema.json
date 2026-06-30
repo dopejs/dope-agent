@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/triage-policy-resource.schema.json",
+  "title": "TriagePolicyResource",
+  "type": "object",
+  "required": ["policyId", "name", "rules", "defaultClassification", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "$defs": {
+    "classification": { "type": "string", "enum": ["urgent", "needs_reply", "fyi", "newsletter", "blocked", "unsupported"] },
+    "outcome": { "type": "string", "enum": ["draft_reply", "reminder", "delivery_digest", "no_action"] },
+    "condition": {
+      "type": "object",
+      "required": ["field", "operator", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "field": { "type": "string", "enum": ["sender", "subject", "body", "recipient"] },
+        "operator": { "type": "string", "enum": ["contains", "equals", "not_contains"] },
+        "value": { "type": "string" }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["ruleId", "classification", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "ruleId": { "type": "string" },
+        "description": { "type": "string" },
+        "conditions": { "type": "array", "items": { "$ref": "#/$defs/condition" } },
+        "classification": { "$ref": "#/$defs/classification" },
+        "outcome": { "$ref": "#/$defs/outcome" }
+      }
+    }
+  },
+  "properties": {
+    "tenantId": { "type": "string" },
+    "policyId": { "type": "string" },
+    "environmentScope": { "type": "string", "enum": ["test", "prod"] },
+    "name": { "type": "string" },
+    "rules": { "type": "array", "items": { "$ref": "#/$defs/rule" } },
+    "defaultClassification": { "$ref": "#/$defs/classification" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

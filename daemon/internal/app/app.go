@@ -46,6 +46,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/policy"
 	"github.com/dopejs/dope-agent/daemon/internal/providers"
 	"github.com/dopejs/dope-agent/daemon/internal/reminders"
+	"github.com/dopejs/dope-agent/daemon/internal/triage"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
 	"github.com/dopejs/dope-agent/daemon/internal/sandbox"
@@ -79,6 +80,7 @@ type App struct {
 	Calendar             *calendar.Manager
 	Mail                 *mail.Manager
 	Reminders            *reminders.Manager
+	Triage               *triage.Manager
 	Scheduler            *scheduler.Scheduler
 	Delivery             *delivery.Manager
 	Billing              *billing.Manager
@@ -323,6 +325,7 @@ func New() (*App, error) {
 		Delivery:         deliveryManager,
 		WorkflowLauncher: workflowLauncher,
 	})
+	triageManager := triage.NewManager(string(cfg.Environment))
 	scheduleManager := scheduler.New(scheduler.Dependencies{
 		Config:           cfg,
 		Runtime:          runtimeManager,
@@ -415,6 +418,7 @@ func New() (*App, error) {
 		Calendar:              calendarManager,
 		Mail:                  mailManager,
 		Reminders:             reminderManager,
+		Triage:                triageManager,
 		Providers:             providerManager,
 		Connectors:            connectorSupervisor,
 		Capabilities:          capabilitySupervisor,
@@ -452,6 +456,7 @@ func New() (*App, error) {
 		Calendar:             calendarManager,
 		Mail:                 mailManager,
 		Reminders:            reminderManager,
+		Triage:               triageManager,
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
 		Delivery:             deliveryManager,
