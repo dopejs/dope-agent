@@ -49,6 +49,25 @@ const (
 	InvitationStatusUnsupported  InvitationStatus = "unsupported"
 )
 
+// RecurrenceScope states which part of a recurring series a mutation targets (Roadmap 62).
+type RecurrenceScope string
+
+const (
+	RecurrenceScopeUnspecified      RecurrenceScope = ""
+	RecurrenceScopeThisOccurrence   RecurrenceScope = "this_occurrence"
+	RecurrenceScopeThisAndFollowing RecurrenceScope = "this_and_following"
+	RecurrenceScopeEntireSeries     RecurrenceScope = "entire_series"
+)
+
+func (s RecurrenceScope) valid() bool {
+	switch s {
+	case RecurrenceScopeThisOccurrence, RecurrenceScopeThisAndFollowing, RecurrenceScopeEntireSeries:
+		return true
+	default:
+		return false
+	}
+}
+
 type NotificationBehavior string
 
 const (
@@ -146,8 +165,14 @@ type Event struct {
 	EndsAt                  time.Time           `json:"endsAt"`
 	Timezone                string              `json:"timezone"`
 	AllDay                  bool                `json:"allDay,omitempty"`
+	StartDate               string              `json:"startDate,omitempty"` // all-day boundary YYYY-MM-DD
+	EndDate                 string              `json:"endDate,omitempty"`   // all-day boundary YYYY-MM-DD (exclusive end)
 	Recurring               bool                `json:"recurring,omitempty"`
 	RecurrenceSummary       string              `json:"recurrenceSummary,omitempty"`
+	RecurrenceRule          string              `json:"recurrenceRule,omitempty"` // RRULE
+	SeriesID                string              `json:"seriesId,omitempty"`
+	OccurrenceID            string              `json:"occurrenceId,omitempty"`
+	OriginalStartsAt        *time.Time          `json:"originalStartsAt,omitempty"`
 	Attendees               []string            `json:"attendees,omitempty"`
 	AttendeeDetails         []Attendee          `json:"attendeeDetails,omitempty"`
 	MutationEligibleInPhase bool                `json:"mutationEligibleInPhase"`
@@ -197,34 +222,37 @@ type Artifact struct {
 }
 
 type Operation struct {
-	OperationID         string                                    `json:"operationId"`
-	OperationClass      OperationClass                            `json:"operationClass"`
-	Status              OperationStatus                           `json:"status"`
-	IntegrationID       string                                    `json:"integrationId"`
-	CalendarAccountID   string                                    `json:"calendarAccountId"`
-	EnvironmentScope    string                                    `json:"environmentScope"`
-	CalendarRef         string                                    `json:"calendarRef,omitempty"`
-	SelectionMode       string                                    `json:"selectionMode,omitempty"`
-	TimezoneUsed        string                                    `json:"timezoneUsed,omitempty"`
-	RequestSummary      string                                    `json:"requestSummary,omitempty"`
-	ExternalEventID     string                                    `json:"externalEventId,omitempty"`
-	FailureClass        string                                    `json:"failureClass,omitempty"`
-	FailureReason       string                                    `json:"failureReason,omitempty"`
-	DiagnosticFailure   *integrations.DiagnosticFailureProjection `json:"diagnosticFailure,omitempty"`
-	RunID               string                                    `json:"runId,omitempty"`
-	StepID              string                                    `json:"stepId,omitempty"`
-	ToolCallID          string                                    `json:"toolCallId,omitempty"`
-	WorkflowID          string                                    `json:"workflowId,omitempty"`
-	WorkflowStepID      string                                    `json:"workflowStepId,omitempty"`
-	ScheduleID          string                                    `json:"scheduleId,omitempty"`
-	ScheduleAttemptID   string                                    `json:"scheduleAttemptId,omitempty"`
-	DeliveryID          string                                    `json:"deliveryId,omitempty"`
-	AttendeeOutcome     *AttendeeOutcome                          `json:"attendeeOutcome,omitempty"`
-	ArtifactIDs         []string                                  `json:"artifactIds,omitempty"`
-	AvailabilityQueryID string                                    `json:"availabilityQueryId,omitempty"`
-	CreatedAt           time.Time                                 `json:"createdAt"`
-	CompletedAt         *time.Time                                `json:"completedAt,omitempty"`
-	UpdatedAt           time.Time                                 `json:"updatedAt"`
+	OperationID             string                                    `json:"operationId"`
+	OperationClass          OperationClass                            `json:"operationClass"`
+	Status                  OperationStatus                           `json:"status"`
+	IntegrationID           string                                    `json:"integrationId"`
+	CalendarAccountID       string                                    `json:"calendarAccountId"`
+	EnvironmentScope        string                                    `json:"environmentScope"`
+	CalendarRef             string                                    `json:"calendarRef,omitempty"`
+	SelectionMode           string                                    `json:"selectionMode,omitempty"`
+	TimezoneUsed            string                                    `json:"timezoneUsed,omitempty"`
+	RequestSummary          string                                    `json:"requestSummary,omitempty"`
+	ExternalEventID         string                                    `json:"externalEventId,omitempty"`
+	FailureClass            string                                    `json:"failureClass,omitempty"`
+	FailureReason           string                                    `json:"failureReason,omitempty"`
+	DiagnosticFailure       *integrations.DiagnosticFailureProjection `json:"diagnosticFailure,omitempty"`
+	RunID                   string                                    `json:"runId,omitempty"`
+	StepID                  string                                    `json:"stepId,omitempty"`
+	ToolCallID              string                                    `json:"toolCallId,omitempty"`
+	WorkflowID              string                                    `json:"workflowId,omitempty"`
+	WorkflowStepID          string                                    `json:"workflowStepId,omitempty"`
+	ScheduleID              string                                    `json:"scheduleId,omitempty"`
+	ScheduleAttemptID       string                                    `json:"scheduleAttemptId,omitempty"`
+	DeliveryID              string                                    `json:"deliveryId,omitempty"`
+	AttendeeOutcome         *AttendeeOutcome                          `json:"attendeeOutcome,omitempty"`
+	RecurrenceScope         RecurrenceScope                           `json:"recurrenceScope,omitempty"`
+	OriginalExternalEventID string                                    `json:"originalExternalEventId,omitempty"`
+	ResultingSeriesID       string                                    `json:"resultingSeriesId,omitempty"`
+	ArtifactIDs             []string                                  `json:"artifactIds,omitempty"`
+	AvailabilityQueryID     string                                    `json:"availabilityQueryId,omitempty"`
+	CreatedAt               time.Time                                 `json:"createdAt"`
+	CompletedAt             *time.Time                                `json:"completedAt,omitempty"`
+	UpdatedAt               time.Time                                 `json:"updatedAt"`
 }
 
 type OperationSummary struct {
@@ -302,7 +330,10 @@ type CreateEventInput struct {
 	EndsAt           time.Time
 	Timezone         string
 	AllDay           bool
+	StartDate        string
+	EndDate          string
 	Recurring        bool
+	RecurrenceRule   string
 	Attendees        []string
 	AttendeeRequests []AttendeeRequest
 	NotifyAttendees  bool
@@ -319,7 +350,11 @@ type UpdateEventInput struct {
 	EndsAt           time.Time
 	Timezone         string
 	AllDay           bool
+	StartDate        string
+	EndDate          string
 	Recurring        bool
+	RecurrenceRule   string
+	RecurrenceScope  RecurrenceScope
 	Attendees        []string
 	AttendeeRequests []AttendeeRequest
 	NotifyAttendees  bool
@@ -341,6 +376,7 @@ type CancelEventInput struct {
 	Selection       Selection
 	ExternalEventID string
 	Reason          string
+	RecurrenceScope RecurrenceScope
 	Source          SourceLinkage
 }
 

@@ -173,7 +173,7 @@ func executeCalendarAction(manager *calendar.Manager, integrationsManager *integ
 			},
 		}, nil
 	case calendar.OperationClassCreateEvent:
-		if err := rejectUnsupportedCalendarMutation(action.CalendarRef, action.AllDay, action.Recurring); err != nil {
+		if err := rejectUnsupportedCalendarMutation(action.CalendarRef); err != nil {
 			return calendarExecutionResult{}, err
 		}
 		if action.StartsAt == nil || action.EndsAt == nil {
@@ -207,7 +207,7 @@ func executeCalendarAction(manager *calendar.Manager, integrationsManager *integ
 			},
 		}, nil
 	case calendar.OperationClassUpdateEvent:
-		if err := rejectUnsupportedCalendarMutation(action.CalendarRef, action.AllDay, action.Recurring); err != nil {
+		if err := rejectUnsupportedCalendarMutation(action.CalendarRef); err != nil {
 			return calendarExecutionResult{}, err
 		}
 		if action.StartsAt == nil || action.EndsAt == nil {

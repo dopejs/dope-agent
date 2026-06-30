@@ -31,8 +31,14 @@
     "endsAt": { "type": "string", "format": "date-time" },
     "timezone": { "type": "string" },
     "allDay": { "type": "boolean" },
+    "startDate": { "type": "string" },
+    "endDate": { "type": "string" },
     "recurring": { "type": "boolean" },
     "recurrenceSummary": { "type": "string" },
+    "recurrenceRule": { "type": "string" },
+    "seriesId": { "type": "string" },
+    "occurrenceId": { "type": "string" },
+    "originalStartsAt": { "type": "string", "format": "date-time" },
     "attendees": {
       "type": "array",
       "items": { "type": "string" }

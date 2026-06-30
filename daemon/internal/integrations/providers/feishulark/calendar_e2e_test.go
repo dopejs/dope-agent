@@ -260,28 +260,6 @@ func TestAmbiguousWriteRecordedAsAmbiguousCommit(t *testing.T) {
 	}
 }
 
-// US2 (FR-010, AS6): out-of-scope mutations are rejected before any real provider call.
-func TestOutOfScopeMutationsRejectedBeforeProviderCall(t *testing.T) {
-	m, resources := wiredManager(t, feishuMux(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatalf("out-of-scope mutation must not reach the provider: %s %s", r.Method, r.URL.Path)
-	}))
-	base := time.Date(2026, 3, 8, 1, 30, 0, 0, time.UTC)
-	cases := []struct {
-		name  string
-		input calendar.CreateEventInput
-	}{
-		{"recurring", calendar.CreateEventInput{Selection: sel(), Title: "x", StartsAt: base, EndsAt: base.Add(time.Hour), Recurring: true}},
-		{"all_day", calendar.CreateEventInput{Selection: sel(), Title: "x", StartsAt: base, EndsAt: base.Add(time.Hour), AllDay: true}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if _, _, _, _, err := m.CreateEvent(resources, tc.input); err == nil {
-				t.Fatal("expected out-of-scope rejection")
-			}
-		})
-	}
-}
-
 // US1 (FR-001/FR-002, SC-001): attendee-bearing create records event-field mutation plus
 // per-attendee invitation results and the requested notification behavior.
 func TestCreateWithAttendeesRecordsOutcome(t *testing.T) {
@@ -391,6 +369,57 @@ func TestGetEventProjectsRSVP(t *testing.T) {
 	}
 	if got["a@example.com"] != calendar.RSVPStatusDeclined || got["b@example.com"] != calendar.RSVPStatusTentative {
 		t.Fatalf("RSVP states wrong: %+v", got)
+	}
+}
+
+// US1 (FR-005): all-day create maps date boundaries through the provider.
+func TestProviderAllDayCreate(t *testing.T) {
+	m, resources := wiredManager(t, feishuMux(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/events") {
+			writeFeishu(w, map[string]any{"event": map[string]any{
+				"event_id":   "evt-allday",
+				"summary":    "Holiday",
+				"start_time": map[string]any{"date": "2026-03-08", "timezone": "UTC"},
+				"end_time":   map[string]any{"date": "2026-03-09", "timezone": "UTC"},
+				"status":     "confirmed",
+			}})
+			return
+		}
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+	}))
+	base := time.Date(2026, 3, 8, 0, 0, 0, 0, time.UTC)
+	_, ev, _, _, err := m.CreateEvent(resources, calendar.CreateEventInput{
+		Selection: sel(), Title: "Holiday", StartsAt: base, EndsAt: base.Add(24 * time.Hour),
+		AllDay: true, StartDate: "2026-03-08", EndDate: "2026-03-09",
+	})
+	if err != nil {
+		t.Fatalf("all-day create: %v", err)
+	}
+	if !ev.AllDay || ev.StartDate != "2026-03-08" {
+		t.Fatalf("all-day not mapped: %+v", ev)
+	}
+}
+
+// US3 (FR-003): an unsupported provider recurrence operation maps to an explicit unsupported
+// diagnostic, with no partial mutation.
+func TestProviderUnsupportedRecurrenceDiagnostic(t *testing.T) {
+	m, resources := wiredManager(t, feishuMux(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/events") {
+			writeFeishuCode(w, 99992001, "recurrence not supported")
+			return
+		}
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+	}))
+	base := time.Date(2026, 3, 9, 1, 0, 0, 0, time.UTC)
+	_, _, op, _, err := m.CreateEvent(resources, calendar.CreateEventInput{
+		Selection: sel(), Title: "Weekly", StartsAt: base, EndsAt: base.Add(time.Hour),
+		Recurring: true, RecurrenceRule: "FREQ=WEEKLY",
+	})
+	if err == nil {
+		t.Fatal("expected unsupported recurrence failure")
+	}
+	if op.DiagnosticFailure == nil || op.DiagnosticFailure.ReasonCode != integrations.ReasonUnsupportedDiagnostic {
+		t.Fatalf("diagnostic = %+v, want unsupported", op.DiagnosticFailure)
 	}
 }
 

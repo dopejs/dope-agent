@@ -494,7 +494,11 @@ type CreateCalendarEventRequest struct {
 	EndsAt          string                        `json:"endsAt"`
 	Timezone        string                        `json:"timezone,omitempty"`
 	AllDay          bool                          `json:"allDay,omitempty"`
+	StartDate       string                        `json:"startDate,omitempty"`
+	EndDate         string                        `json:"endDate,omitempty"`
 	Recurring       bool                          `json:"recurring,omitempty"`
+	RecurrenceRule  string                        `json:"recurrenceRule,omitempty"`
+	RecurrenceScope string                        `json:"recurrenceScope,omitempty"`
 	Attendees       []CalendarAttendeeRequest     `json:"attendees,omitempty"`
 	NotifyAttendees bool                          `json:"notifyAttendees,omitempty"`
 	Source          *CalendarSourceLinkageRequest `json:"source,omitempty"`
@@ -503,10 +507,11 @@ type CreateCalendarEventRequest struct {
 type UpdateCalendarEventRequest = CreateCalendarEventRequest
 
 type CancelCalendarEventRequest struct {
-	IntegrationID string                        `json:"integrationId,omitempty"`
-	CalendarRef   string                        `json:"calendarRef,omitempty"`
-	Reason        string                        `json:"reason,omitempty"`
-	Source        *CalendarSourceLinkageRequest `json:"source,omitempty"`
+	IntegrationID   string                        `json:"integrationId,omitempty"`
+	CalendarRef     string                        `json:"calendarRef,omitempty"`
+	Reason          string                        `json:"reason,omitempty"`
+	RecurrenceScope string                        `json:"recurrenceScope,omitempty"`
+	Source          *CalendarSourceLinkageRequest `json:"source,omitempty"`
 }
 
 type CreateMailDraftRequest struct {

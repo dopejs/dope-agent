@@ -203,6 +203,9 @@ func feishuCodeFault(code int, _ string) *providerFault {
 		return &providerFault{kind: faultAuth, code: "token_expired", message: "access token expired"}
 	case 1062502, 429:
 		return &providerFault{kind: faultRateLimited, code: "rate_limited", message: "provider rate limited"}
+	case 99992001, 190002:
+		// Provider cannot honor the requested recurrence/all-day operation (Roadmap 62, FR-003).
+		return &providerFault{kind: faultInternal, code: "recurrence_unsupported", message: "provider does not support the requested recurrence operation"}
 	default:
 		return &providerFault{kind: faultUnavailable, code: fmt.Sprintf("provider_error_%d", code), message: "provider returned an error"}
 	}

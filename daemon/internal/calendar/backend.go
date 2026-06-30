@@ -20,6 +20,12 @@ var (
 	ErrCalendarAlternateCalendarDeny = errors.New("alternate-calendar mutation is out of scope for phase 29")
 	ErrCalendarInvalidTimeRange      = errors.New("invalid calendar time range")
 	ErrCalendarAttendeeRequestEmpty  = errors.New("attendee update requires at least one add or remove")
+	// ErrCalendarRecurrenceScopeRequired is returned when a recurring event is mutated without
+	// stating which part of the series the mutation targets (Roadmap 62, FR-002).
+	ErrCalendarRecurrenceScopeRequired = errors.New("recurrence scope is required for recurring-event mutation")
+	// ErrCalendarRecurrenceScopeInvalid is returned when a stated recurrence scope is not one of
+	// this_occurrence / this_and_following / entire_series.
+	ErrCalendarRecurrenceScopeInvalid = errors.New("recurrence scope is invalid")
 )
 
 type Backend interface {

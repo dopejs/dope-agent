@@ -355,7 +355,7 @@ func handleCalendarEventCreate(cfg config.Config, manager *calendar.Manager, int
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := rejectUnsupportedCalendarMutation(request.CalendarRef, request.AllDay, request.Recurring); err != nil {
+	if err := rejectUnsupportedCalendarMutation(request.CalendarRef); err != nil {
 		writeCalendarError(w, r, err)
 		return
 	}
@@ -383,6 +383,11 @@ func handleCalendarEventCreate(cfg config.Config, manager *calendar.Manager, int
 		StartsAt:         startsAt,
 		EndsAt:           endsAt,
 		Timezone:         strings.TrimSpace(request.Timezone),
+		AllDay:           request.AllDay,
+		StartDate:        strings.TrimSpace(request.StartDate),
+		EndDate:          strings.TrimSpace(request.EndDate),
+		Recurring:        request.Recurring,
+		RecurrenceRule:   strings.TrimSpace(request.RecurrenceRule),
 		AttendeeRequests: calendarAttendeeRequests(request.Attendees),
 		NotifyAttendees:  request.NotifyAttendees,
 		Source:           calendarSourceLinkageWithOperation(request.Source, operationID),
@@ -418,7 +423,7 @@ func handleCalendarEventUpdate(cfg config.Config, manager *calendar.Manager, int
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := rejectUnsupportedCalendarMutation(request.CalendarRef, request.AllDay, request.Recurring); err != nil {
+	if err := rejectUnsupportedCalendarMutation(request.CalendarRef); err != nil {
 		writeCalendarError(w, r, err)
 		return
 	}
@@ -447,6 +452,12 @@ func handleCalendarEventUpdate(cfg config.Config, manager *calendar.Manager, int
 		StartsAt:         startsAt,
 		EndsAt:           endsAt,
 		Timezone:         strings.TrimSpace(request.Timezone),
+		AllDay:           request.AllDay,
+		StartDate:        strings.TrimSpace(request.StartDate),
+		EndDate:          strings.TrimSpace(request.EndDate),
+		Recurring:        request.Recurring,
+		RecurrenceRule:   strings.TrimSpace(request.RecurrenceRule),
+		RecurrenceScope:  calendarRecurrenceScope(request.RecurrenceScope),
 		AttendeeRequests: calendarAttendeeRequests(request.Attendees),
 		NotifyAttendees:  request.NotifyAttendees,
 		Source:           calendarSourceLinkageWithOperation(request.Source, operationID),
@@ -495,6 +506,7 @@ func handleCalendarEventCancel(cfg config.Config, manager *calendar.Manager, int
 		Selection:       calendar.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
 		ExternalEventID: strings.TrimSpace(externalEventID),
 		Reason:          strings.TrimSpace(request.Reason),
+		RecurrenceScope: calendarRecurrenceScope(request.RecurrenceScope),
 		Source:          calendarSourceLinkageWithOperation(request.Source, operationID),
 	})
 	if operation.OperationID != "" {
@@ -723,19 +735,19 @@ func filterCalendarAccounts(items []calendar.AccountProjection, r *http.Request)
 	return filtered
 }
 
-// rejectUnsupportedCalendarMutation rejects mutations still out of scope (recurrence, all-day,
-// alternate calendar). Attendee-bearing writes are supported from Roadmap 61 (spec 046).
-func rejectUnsupportedCalendarMutation(calendarRef string, allDay, recurring bool) error {
-	switch {
-	case strings.TrimSpace(calendarRef) != "":
+// rejectUnsupportedCalendarMutation rejects mutations still out of scope. Attendee writes are
+// supported from Roadmap 61 (spec 046); all-day and recurrence from Roadmap 62 (spec 047). Only
+// alternate-calendar targeting remains out of scope.
+func rejectUnsupportedCalendarMutation(calendarRef string) error {
+	if strings.TrimSpace(calendarRef) != "" {
 		return calendar.ErrCalendarAlternateCalendarDeny
-	case recurring:
-		return calendar.ErrCalendarRecurringUnsupported
-	case allDay:
-		return calendar.ErrCalendarAllDayUnsupported
-	default:
-		return nil
 	}
+	return nil
+}
+
+// calendarRecurrenceScope maps the API recurrence-scope string to the calendar model.
+func calendarRecurrenceScope(raw string) calendar.RecurrenceScope {
+	return calendar.RecurrenceScope(strings.TrimSpace(raw))
 }
 
 // calendarAttendeeRequests maps API attendee requests to the calendar attendee model.
@@ -767,7 +779,7 @@ func writeCalendarError(w http.ResponseWriter, r *http.Request, err error) {
 		http.NotFound(w, r)
 	case errors.Is(err, calendar.ErrCalendarUnavailable):
 		writeError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, calendar.ErrCalendarSelectionInvalid), errors.Is(err, calendar.ErrCalendarRecurringUnsupported), errors.Is(err, calendar.ErrCalendarAllDayUnsupported), errors.Is(err, calendar.ErrCalendarAttendeesUnsupported), errors.Is(err, calendar.ErrCalendarAlternateCalendarDeny), errors.Is(err, calendar.ErrCalendarInvalidTimeRange):
+	case errors.Is(err, calendar.ErrCalendarSelectionInvalid), errors.Is(err, calendar.ErrCalendarRecurringUnsupported), errors.Is(err, calendar.ErrCalendarAllDayUnsupported), errors.Is(err, calendar.ErrCalendarAttendeesUnsupported), errors.Is(err, calendar.ErrCalendarAlternateCalendarDeny), errors.Is(err, calendar.ErrCalendarInvalidTimeRange), errors.Is(err, calendar.ErrCalendarRecurrenceScopeRequired), errors.Is(err, calendar.ErrCalendarRecurrenceScopeInvalid):
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, err.Error())

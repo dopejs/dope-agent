@@ -9,6 +9,7 @@
     "integrationId": { "type": "string" },
     "calendarRef": { "type": "string" },
     "reason": { "type": "string" },
+    "recurrenceScope": { "type": "string", "enum": ["this_occurrence", "this_and_following", "entire_series"] },
     "source": { "$ref": "./create-calendar-availability-query.request.schema.json#/$defs/source" }
   }
 }

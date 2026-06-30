@@ -86,34 +86,39 @@ func TestCalendarManagerUsesExplicitSelectionAndCanonicalDefaultFallback(t *test
 	}
 }
 
-func TestCalendarManagerRejectsRecurringAndAllDayButAllowsAttendees(t *testing.T) {
+func TestCalendarManagerAllowsRecurringAllDayAndAttendees(t *testing.T) {
 	t.Parallel()
 
 	manager := NewManager("test")
 	resources := calendarTestResources()
 	now := time.Now().UTC()
 
-	_, _, _, _, err := manager.CreateEvent(resources, CreateEventInput{
-		Title:     "Recurring",
-		StartsAt:  now.Add(time.Hour),
-		EndsAt:    now.Add(2 * time.Hour),
-		Recurring: true,
+	// Roadmap 62: recurring creates are supported.
+	_, rec, _, _, err := manager.CreateEvent(resources, CreateEventInput{
+		Selection:      Selection{IntegrationID: "calendar-a"},
+		Title:          "Recurring",
+		StartsAt:       now.Add(time.Hour),
+		EndsAt:         now.Add(2 * time.Hour),
+		Recurring:      true,
+		RecurrenceRule: "FREQ=WEEKLY",
 	})
-	if !errors.Is(err, ErrCalendarRecurringUnsupported) {
-		t.Fatalf("expected recurring unsupported, got %v", err)
+	if err != nil || !rec.Recurring {
+		t.Fatalf("recurring create should succeed: err=%v ev=%+v", err, rec)
 	}
 
-	_, _, _, _, err = manager.CreateEvent(resources, CreateEventInput{
-		Title:    "All Day",
-		StartsAt: now.Add(time.Hour),
-		EndsAt:   now.Add(2 * time.Hour),
-		AllDay:   true,
+	// Roadmap 62: all-day creates are supported.
+	_, allDay, _, _, err := manager.CreateEvent(resources, CreateEventInput{
+		Selection: Selection{IntegrationID: "calendar-a"},
+		Title:     "All Day",
+		AllDay:    true,
+		StartDate: "2026-04-24",
+		EndDate:   "2026-04-25",
 	})
-	if !errors.Is(err, ErrCalendarAllDayUnsupported) {
-		t.Fatalf("expected all-day unsupported, got %v", err)
+	if err != nil || !allDay.AllDay {
+		t.Fatalf("all-day create should succeed: err=%v ev=%+v", err, allDay)
 	}
 
-	// Roadmap 61: attendee-bearing writes are now supported and record an attendee outcome.
+	// Roadmap 61: attendee-bearing writes are supported and record an attendee outcome.
 	_, event, operation, _, err := manager.CreateEvent(resources, CreateEventInput{
 		Selection:       Selection{IntegrationID: "calendar-a"},
 		Title:           "With Attendee",

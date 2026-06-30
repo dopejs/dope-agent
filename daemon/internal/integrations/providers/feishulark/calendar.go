@@ -271,7 +271,13 @@ func (p *CalendarProvider) busyFree(ctx context.Context, token scopedToken, acco
 
 func (p *CalendarProvider) createEvent(ctx context.Context, token scopedToken, account calendar.AccountProjection, input calendar.CreateEventInput) (calendar.Event, *providerFault) {
 	requests := resolveRequests(input.AttendeeRequests, input.Attendees)
-	body := writeEventBody(input.Title, input.Description, input.Location, input.StartsAt, input.EndsAt, firstNonEmpty(input.Timezone, account.PrimaryTimezone), requests)
+	body := writeEventBody(eventBodyInput{
+		title: input.Title, description: input.Description, location: input.Location,
+		tz:       firstNonEmpty(input.Timezone, account.PrimaryTimezone),
+		startsAt: input.StartsAt, endsAt: input.EndsAt,
+		allDay: input.AllDay, startDate: input.StartDate, endDate: input.EndDate,
+		recurrenceRule: input.RecurrenceRule, attendees: requests,
+	})
 	path := fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events?need_notification=%t", url.PathEscape(account.PrimaryCalendarRef), input.NotifyAttendees)
 	var out struct {
 		Event feishuEvent `json:"event"`
@@ -286,7 +292,13 @@ func (p *CalendarProvider) createEvent(ctx context.Context, token scopedToken, a
 
 func (p *CalendarProvider) updateEvent(ctx context.Context, token scopedToken, account calendar.AccountProjection, input calendar.UpdateEventInput) (calendar.Event, *providerFault) {
 	requests := resolveRequests(input.AttendeeRequests, input.Attendees)
-	body := writeEventBody(input.Title, input.Description, input.Location, input.StartsAt, input.EndsAt, firstNonEmpty(input.Timezone, account.PrimaryTimezone), requests)
+	body := writeEventBody(eventBodyInput{
+		title: input.Title, description: input.Description, location: input.Location,
+		tz:       firstNonEmpty(input.Timezone, account.PrimaryTimezone),
+		startsAt: input.StartsAt, endsAt: input.EndsAt,
+		allDay: input.AllDay, startDate: input.StartDate, endDate: input.EndDate,
+		recurrenceRule: input.RecurrenceRule, attendees: requests,
+	})
 	path := fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/%s?need_notification=%t", url.PathEscape(account.PrimaryCalendarRef), url.PathEscape(input.ExternalEventID), input.NotifyAttendees)
 	var out struct {
 		Event feishuEvent `json:"event"`
@@ -358,17 +370,39 @@ func (p *CalendarProvider) cancelEvent(ctx context.Context, token scopedToken, a
 
 // ---- mapping helpers ----
 
-func writeEventBody(title, description, location string, startsAt, endsAt time.Time, tz string, attendees []calendar.AttendeeRequest) map[string]any {
+type eventBodyInput struct {
+	title, description, location, tz string
+	startsAt, endsAt                 time.Time
+	allDay                           bool
+	startDate, endDate               string
+	recurrenceRule                   string
+	attendees                        []calendar.AttendeeRequest
+}
+
+func writeEventBody(in eventBodyInput) map[string]any {
+	start := map[string]any{"timezone": in.tz}
+	end := map[string]any{"timezone": in.tz}
+	if in.allDay {
+		// All-day events use date boundaries (timezone-independent) rather than timestamps.
+		start["date"] = firstNonEmpty(in.startDate, in.startsAt.UTC().Format("2006-01-02"))
+		end["date"] = firstNonEmpty(in.endDate, in.endsAt.UTC().Format("2006-01-02"))
+	} else {
+		start["timestamp"] = strconv.FormatInt(in.startsAt.Unix(), 10)
+		end["timestamp"] = strconv.FormatInt(in.endsAt.Unix(), 10)
+	}
 	body := map[string]any{
-		"summary":     title,
-		"description": description,
-		"start_time":  map[string]any{"timestamp": strconv.FormatInt(startsAt.Unix(), 10), "timezone": tz},
-		"end_time":    map[string]any{"timestamp": strconv.FormatInt(endsAt.Unix(), 10), "timezone": tz},
+		"summary":     in.title,
+		"description": in.description,
+		"start_time":  start,
+		"end_time":    end,
 	}
-	if strings.TrimSpace(location) != "" {
-		body["location"] = map[string]any{"name": location}
+	if strings.TrimSpace(in.location) != "" {
+		body["location"] = map[string]any{"name": in.location}
 	}
-	if items := attendeeBody(attendees); len(items) > 0 {
+	if strings.TrimSpace(in.recurrenceRule) != "" {
+		body["recurrence"] = in.recurrenceRule
+	}
+	if items := attendeeBody(in.attendees); len(items) > 0 {
 		body["attendees"] = items
 	}
 	return body
@@ -505,7 +539,9 @@ func mapEvent(account calendar.AccountProjection, item feishuEvent) calendar.Eve
 	}
 	now := time.Now().UTC()
 	attendees := mapAttendees(item.Attendees)
-	return calendar.Event{
+	allDay := item.StartTime.Date != ""
+	recurring := strings.TrimSpace(item.Recurrence) != ""
+	ev := calendar.Event{
 		ExternalEventID:         item.EventID,
 		IntegrationID:           account.IntegrationID,
 		CalendarAccountID:       account.CalendarAccountID,
@@ -516,15 +552,22 @@ func mapEvent(account calendar.AccountProjection, item feishuEvent) calendar.Eve
 		StartsAt:                parseFeishuTime(item.StartTime),
 		EndsAt:                  parseFeishuTime(item.EndTime),
 		Timezone:                firstNonEmpty(item.StartTime.Timezone, account.PrimaryTimezone),
-		AllDay:                  item.StartTime.Date != "",
-		Recurring:               strings.TrimSpace(item.Recurrence) != "",
+		AllDay:                  allDay,
+		StartDate:               item.StartTime.Date,
+		EndDate:                 item.EndTime.Date,
+		Recurring:               recurring,
 		RecurrenceSummary:       item.Recurrence,
+		RecurrenceRule:          item.Recurrence,
 		Attendees:               attendeeEmailList(attendees),
 		AttendeeDetails:         attendees,
-		MutationEligibleInPhase: item.StartTime.Date == "" && strings.TrimSpace(item.Recurrence) == "",
+		MutationEligibleInPhase: true,
 		LifecycleState:          lifecycle,
 		UpdatedAt:               now,
 	}
+	if recurring {
+		ev.SeriesID = item.EventID // Feishu series identity is the root event id
+	}
+	return ev
 }
 
 // parseFeishuTime preserves the absolute instant: timestamps are unix seconds (UTC), so DST and

@@ -162,10 +162,7 @@ func (m *Manager) BusyFree(resources []integrations.Resource, input BusyFreeInpu
 }
 
 func (m *Manager) CreateEvent(resources []integrations.Resource, input CreateEventInput) (AccountProjection, Event, Operation, []Artifact, error) {
-	if err := validateMutationInput(input.AllDay, input.Recurring); err != nil {
-		return AccountProjection{}, Event{}, Operation{}, nil, err
-	}
-	if !input.EndsAt.After(input.StartsAt) {
+	if !input.AllDay && !input.EndsAt.After(input.StartsAt) {
 		return AccountProjection{}, Event{}, Operation{}, nil, ErrCalendarInvalidTimeRange
 	}
 	account, resource, backend, selectionMode, err := m.selectAccount(resources, input.Selection)
@@ -185,10 +182,10 @@ func (m *Manager) CreateEvent(resources []integrations.Resource, input CreateEve
 }
 
 func (m *Manager) UpdateEvent(resources []integrations.Resource, input UpdateEventInput) (AccountProjection, Event, Operation, []Artifact, error) {
-	if err := validateMutationInput(input.AllDay, input.Recurring); err != nil {
+	if err := validateRecurrenceScope(input.RecurrenceScope); err != nil {
 		return AccountProjection{}, Event{}, Operation{}, nil, err
 	}
-	if !input.EndsAt.After(input.StartsAt) {
+	if !input.AllDay && !input.EndsAt.After(input.StartsAt) {
 		return AccountProjection{}, Event{}, Operation{}, nil, ErrCalendarInvalidTimeRange
 	}
 	account, resource, backend, selectionMode, err := m.selectAccount(resources, input.Selection)
@@ -202,6 +199,9 @@ func (m *Manager) UpdateEvent(resources []integrations.Resource, input UpdateEve
 		return account, Event{}, m.failOperation(operation, class, providerKind, err.Error()), nil, err
 	}
 	operation.AttendeeOutcome = buildAttendeeOutcome(input.NotifyAttendees, item.AttendeeDetails)
+	operation.RecurrenceScope = input.RecurrenceScope
+	operation.OriginalExternalEventID = strings.TrimSpace(input.ExternalEventID)
+	operation.ResultingSeriesID = item.SeriesID
 	artifact := EventArtifact(operation, item)
 	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)
 	return account, item, operation, []Artifact{artifact}, nil
@@ -231,6 +231,9 @@ func (m *Manager) UpdateAttendees(resources []integrations.Resource, input Updat
 }
 
 func (m *Manager) CancelEvent(resources []integrations.Resource, input CancelEventInput) (AccountProjection, Event, Operation, []Artifact, error) {
+	if err := validateRecurrenceScope(input.RecurrenceScope); err != nil {
+		return AccountProjection{}, Event{}, Operation{}, nil, err
+	}
 	account, resource, backend, selectionMode, err := m.selectAccount(resources, input.Selection)
 	if err != nil {
 		return AccountProjection{}, Event{}, Operation{}, nil, err
@@ -241,6 +244,9 @@ func (m *Manager) CancelEvent(resources []integrations.Resource, input CancelEve
 		class, providerKind := failureClassAndProvider("not_found", err)
 		return account, Event{}, m.failOperation(operation, class, providerKind, err.Error()), nil, err
 	}
+	operation.RecurrenceScope = input.RecurrenceScope
+	operation.OriginalExternalEventID = strings.TrimSpace(input.ExternalEventID)
+	operation.ResultingSeriesID = item.SeriesID
 	artifact := EventArtifact(operation, item)
 	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)
 	return account, item, operation, []Artifact{artifact}, nil
@@ -317,16 +323,14 @@ func (m *Manager) ListArtifacts(operationID string) []Artifact {
 	return items
 }
 
-func validateMutationInput(allDay, recurring bool) error {
-	switch {
-	case recurring:
-		return ErrCalendarRecurringUnsupported
-	case allDay:
-		return ErrCalendarAllDayUnsupported
-	default:
-		// Attendee-bearing writes are supported from Roadmap 61 (spec 046).
-		return nil
+// validateRecurrenceScope rejects an explicitly-set but invalid recurrence scope. All-day and
+// recurring writes are supported from Roadmap 62 (spec 047); a missing scope on a recurring
+// target is enforced backend-side where the target's recurring-ness is known.
+func validateRecurrenceScope(scope RecurrenceScope) error {
+	if scope != RecurrenceScopeUnspecified && !scope.valid() {
+		return ErrCalendarRecurrenceScopeInvalid
 	}
+	return nil
 }
 
 func (m *Manager) selectAccount(resources []integrations.Resource, selection Selection) (AccountProjection, integrations.Resource, Backend, string, error) {

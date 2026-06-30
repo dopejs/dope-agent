@@ -126,6 +126,11 @@ func (b *FakeBackend) CreateEvent(resource integrations.Resource, account Accoun
 	state := b.ensureStateLocked(resource)
 	now := time.Now().UTC()
 	eventID := fmt.Sprintf("evt_%s_%d", strings.ReplaceAll(resource.IntegrationID, "-", "_"), now.UnixNano())
+	startsAt, endsAt := input.StartsAt.UTC(), input.EndsAt.UTC()
+	if input.AllDay {
+		startsAt, endsAt = allDayBounds(input.StartDate, input.EndDate, startsAt, endsAt)
+	}
+	recurring := input.Recurring || strings.TrimSpace(input.RecurrenceRule) != ""
 	item := Event{
 		ExternalEventID:         eventID,
 		IntegrationID:           account.IntegrationID,
@@ -134,20 +139,41 @@ func (b *FakeBackend) CreateEvent(resource integrations.Resource, account Accoun
 		Title:                   strings.TrimSpace(input.Title),
 		Description:             strings.TrimSpace(input.Description),
 		Location:                strings.TrimSpace(input.Location),
-		StartsAt:                input.StartsAt.UTC(),
-		EndsAt:                  input.EndsAt.UTC(),
+		StartsAt:                startsAt,
+		EndsAt:                  endsAt,
 		Timezone:                normalizeTimezone(input.Timezone, account.PrimaryTimezone),
-		AllDay:                  false,
-		Recurring:               false,
+		AllDay:                  input.AllDay,
+		StartDate:               strings.TrimSpace(input.StartDate),
+		EndDate:                 strings.TrimSpace(input.EndDate),
+		Recurring:               recurring,
+		RecurrenceRule:          strings.TrimSpace(input.RecurrenceRule),
 		MutationEligibleInPhase: true,
 		LifecycleState:          EventLifecycleStateActive,
 		CreatedAt:               now,
 		UpdatedAt:               now,
 	}
+	if recurring {
+		item.SeriesID = eventID // series identity = root event id for the fake backend
+	}
 	item.AttendeeDetails = fakeInvite(resolveAttendeeRequests(input.AttendeeRequests, input.Attendees), input.NotifyAttendees)
 	item.Attendees = attendeeEmails(item.AttendeeDetails)
 	state.events[item.ExternalEventID] = item
 	return item, nil
+}
+
+// allDayBounds derives absolute UTC start/end from inclusive all-day date boundaries. The end
+// date is treated as exclusive (next-day midnight) per common calendar convention, preserving
+// correct day count across timezone/DST boundaries (dates are timezone-independent here).
+func allDayBounds(startDate, endDate string, fallbackStart, fallbackEnd time.Time) (time.Time, time.Time) {
+	start := fallbackStart
+	end := fallbackEnd
+	if s, err := time.Parse("2006-01-02", strings.TrimSpace(startDate)); err == nil {
+		start = s.UTC()
+	}
+	if e, err := time.Parse("2006-01-02", strings.TrimSpace(endDate)); err == nil {
+		end = e.UTC()
+	}
+	return start, end
 }
 
 func (b *FakeBackend) UpdateEvent(resource integrations.Resource, account AccountProjection, input UpdateEventInput) (Event, error) {
@@ -158,19 +184,50 @@ func (b *FakeBackend) UpdateEvent(resource integrations.Resource, account Accoun
 	if !ok {
 		return Event{}, ErrCalendarEventNotFound
 	}
+	if item.Recurring && input.RecurrenceScope == RecurrenceScopeUnspecified {
+		return Event{}, ErrCalendarRecurrenceScopeRequired
+	}
+	original := item.StartsAt
 	item.Title = strings.TrimSpace(input.Title)
 	item.Description = strings.TrimSpace(input.Description)
 	item.Location = strings.TrimSpace(input.Location)
-	item.StartsAt = input.StartsAt.UTC()
-	item.EndsAt = input.EndsAt.UTC()
+	startsAt, endsAt := input.StartsAt.UTC(), input.EndsAt.UTC()
+	if input.AllDay {
+		startsAt, endsAt = allDayBounds(input.StartDate, input.EndDate, startsAt, endsAt)
+		item.AllDay = true
+		item.StartDate = strings.TrimSpace(input.StartDate)
+		item.EndDate = strings.TrimSpace(input.EndDate)
+	}
+	item.StartsAt = startsAt
+	item.EndsAt = endsAt
 	item.Timezone = normalizeTimezone(input.Timezone, account.PrimaryTimezone)
 	item.UpdatedAt = time.Now().UTC()
+	if item.Recurring {
+		applyRecurrenceIdentity(&item, input.RecurrenceScope, original)
+	}
 	if requests := resolveAttendeeRequests(input.AttendeeRequests, input.Attendees); len(requests) > 0 {
 		item.AttendeeDetails = fakeInvite(requests, input.NotifyAttendees)
 		item.Attendees = attendeeEmails(item.AttendeeDetails)
 	}
 	state.events[item.ExternalEventID] = item
 	return item, nil
+}
+
+// applyRecurrenceIdentity stamps occurrence vs series identity onto a recurring mutation result
+// so operation history can preserve original + resulting provider identities (FR-004). A single
+// occurrence edit produces a distinct occurrence id pinned to the original start instant.
+func applyRecurrenceIdentity(item *Event, scope RecurrenceScope, originalStart time.Time) {
+	if item.SeriesID == "" {
+		item.SeriesID = item.ExternalEventID
+	}
+	switch scope {
+	case RecurrenceScopeThisOccurrence:
+		os := originalStart
+		item.OriginalStartsAt = &os
+		item.OccurrenceID = fmt.Sprintf("%s::%d", item.SeriesID, originalStart.Unix())
+	default:
+		item.OccurrenceID = ""
+	}
 }
 
 // UpdateAttendees adds/removes attendees on an existing event and simulates invitation results.
@@ -236,10 +293,18 @@ func (b *FakeBackend) CancelEvent(resource integrations.Resource, account Accoun
 	if !ok {
 		return Event{}, ErrCalendarEventNotFound
 	}
+	if item.Recurring && input.RecurrenceScope == RecurrenceScopeUnspecified {
+		return Event{}, ErrCalendarRecurrenceScopeRequired
+	}
 	now := time.Now().UTC()
-	item.LifecycleState = EventLifecycleStateCancelled
 	item.UpdatedAt = now
 	item.CancelledAt = &now
+	if item.Recurring && input.RecurrenceScope == RecurrenceScopeThisOccurrence {
+		// Cancelling a single occurrence leaves the series active; record occurrence identity.
+		applyRecurrenceIdentity(&item, RecurrenceScopeThisOccurrence, item.StartsAt)
+	} else {
+		item.LifecycleState = EventLifecycleStateCancelled
+	}
 	state.events[item.ExternalEventID] = item
 	return item, nil
 }

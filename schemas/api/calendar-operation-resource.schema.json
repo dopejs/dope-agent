@@ -49,6 +49,9 @@
       "items": { "type": "string" }
     },
     "availabilityQueryId": { "type": "string" },
+    "recurrenceScope": { "type": "string", "enum": ["this_occurrence", "this_and_following", "entire_series"] },
+    "originalExternalEventId": { "type": "string" },
+    "resultingSeriesId": { "type": "string" },
     "attendeeOutcome": {
       "type": "object",
       "additionalProperties": false,

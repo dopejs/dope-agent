@@ -228,17 +228,20 @@ func TestCalendarMutationRoutesPreserveIdentityAndRejectUnsupportedRequests(t *t
 		t.Fatalf("expected cancelled lifecycle state, got %+v", cancelled.Event)
 	}
 
+	// Roadmap 62: all-day creates are now accepted with date boundaries.
 	allDayRec := httptest.NewRecorder()
 	allDayReq := httptest.NewRequest(http.MethodPost, "/v1/calendar/events", strings.NewReader(`{
 		"title":"All day event",
 		"startsAt":"2026-04-24T00:00:00Z",
 		"endsAt":"2026-04-25T00:00:00Z",
-		"allDay":true
+		"allDay":true,
+		"startDate":"2026-04-24",
+		"endDate":"2026-04-25"
 	}`))
 	allDayReq.Header.Set("Content-Type", "application/json")
 	server.Handler().ServeHTTP(allDayRec, allDayReq)
-	if allDayRec.Code != http.StatusBadRequest || !strings.Contains(allDayRec.Body.String(), calendar.ErrCalendarAllDayUnsupported.Error()) {
-		t.Fatalf("expected honest all-day rejection, got %d body=%s", allDayRec.Code, allDayRec.Body.String())
+	if allDayRec.Code != http.StatusCreated || !strings.Contains(allDayRec.Body.String(), `"allDay":true`) {
+		t.Fatalf("expected all-day acceptance, got %d body=%s", allDayRec.Code, allDayRec.Body.String())
 	}
 
 	// Roadmap 61: attendee-bearing updates are now accepted and record an attendee outcome.
