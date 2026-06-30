@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/catalog-enablement-resource.schema.json",
+  "title": "CatalogEnablementResource",
+  "type": "object",
+  "required": ["itemId", "state", "history", "updatedAt"],
+  "additionalProperties": false,
+  "$defs": {
+    "event": {
+      "type": "object",
+      "required": ["action", "occurredAt"],
+      "additionalProperties": false,
+      "properties": {
+        "action": { "type": "string", "enum": ["enabled", "disabled", "rolled_back"] },
+        "version": { "type": "string" },
+        "actor": { "type": "string" },
+        "reason": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "properties": {
+    "tenantId": { "type": "string" },
+    "itemId": { "type": "string" },
+    "state": { "type": "string", "enum": ["enabled", "disabled"] },
+    "activeVersion": { "type": "string" },
+    "versionStack": { "type": "array", "items": { "type": "string" } },
+    "history": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

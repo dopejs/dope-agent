@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/catalog-item-resource.schema.json",
+  "title": "CatalogItemResource",
+  "type": "object",
+  "required": ["itemId", "kind", "name", "trustTier", "versions", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "$defs": {
+    "requirement": {
+      "type": "object",
+      "required": ["key"],
+      "additionalProperties": false,
+      "properties": { "key": { "type": "string" }, "description": { "type": "string" } }
+    },
+    "version": {
+      "type": "object",
+      "required": ["version", "source", "publishedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string" },
+        "source": { "type": "string" },
+        "checksum": { "type": "string" },
+        "requirements": { "type": "array", "items": { "$ref": "#/$defs/requirement" } },
+        "publishedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "properties": {
+    "itemId": { "type": "string" },
+    "kind": { "type": "string", "enum": ["skill", "mcp_server", "capability"] },
+    "name": { "type": "string" },
+    "trustTier": { "type": "string", "enum": ["official", "verified", "community", "untrusted"] },
+    "permissions": { "type": "array", "items": { "type": "string" } },
+    "versions": { "type": "array", "items": { "$ref": "#/$defs/version" } },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

@@ -22,6 +22,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/billing"
 	"github.com/dopejs/dope-agent/daemon/internal/calendar"
 	"github.com/dopejs/dope-agent/daemon/internal/capabilities"
+	"github.com/dopejs/dope-agent/daemon/internal/catalog"
 	"github.com/dopejs/dope-agent/daemon/internal/chat"
 	"github.com/dopejs/dope-agent/daemon/internal/checkpoints"
 	"github.com/dopejs/dope-agent/daemon/internal/computeruse"
@@ -85,6 +86,7 @@ type App struct {
 	Triage               *triage.Manager
 	Routines             *routine.Manager
 	Webhooks             *webhook.Manager
+	Catalog              *catalog.Manager
 	Scheduler            *scheduler.Scheduler
 	Delivery             *delivery.Manager
 	Billing              *billing.Manager
@@ -341,6 +343,7 @@ func New() (*App, error) {
 	})
 	routineManager := routine.NewManager(string(cfg.Environment), scheduleManager)
 	webhookManager := webhook.NewManager(string(cfg.Environment), &webhookWorkflowFirer{launcher: workflowLauncher, routines: routineManager}, nil)
+	catalogManager := catalog.NewManager(string(cfg.Environment), nil, nil)
 	if err := recoverPersistedStateWithSecrets(envCtx, cfg.DataDir, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, identityManager, providerManager, sandboxManager, secretManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
 		return nil, err
 	}
@@ -427,6 +430,7 @@ func New() (*App, error) {
 		Triage:                triageManager,
 		Routines:              routineManager,
 		Webhooks:              webhookManager,
+		Catalog:               catalogManager,
 		Providers:             providerManager,
 		Connectors:            connectorSupervisor,
 		Capabilities:          capabilitySupervisor,
@@ -467,6 +471,7 @@ func New() (*App, error) {
 		Triage:               triageManager,
 		Routines:             routineManager,
 		Webhooks:             webhookManager,
+		Catalog:              catalogManager,
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
 		Delivery:             deliveryManager,

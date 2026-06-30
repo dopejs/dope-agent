@@ -45,6 +45,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/reminders"
 	"github.com/dopejs/dope-agent/daemon/internal/routine"
 	"github.com/dopejs/dope-agent/daemon/internal/triage"
+	"github.com/dopejs/dope-agent/daemon/internal/catalog"
 	"github.com/dopejs/dope-agent/daemon/internal/webhook"
 	"github.com/dopejs/dope-agent/daemon/internal/router"
 	"github.com/dopejs/dope-agent/daemon/internal/runtime"
@@ -81,6 +82,7 @@ type Dependencies struct {
 	Triage         *triage.Manager
 	Routines       *routine.Manager
 	Webhooks       *webhook.Manager
+	Catalog        *catalog.Manager
 	Connectors     *connectors.Supervisor
 	Capabilities   *capabilities.Supervisor
 	ComputerUse    *computeruse.Manager
@@ -571,6 +573,12 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/mail/operations/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/mail/operations/", "mail_operations", "operation_id", "mail_operation", func(w http.ResponseWriter, r *http.Request) {
 		handleMailOperationRoutes(deps.Config, deps.Mail, deps.Store, w, r)
 	})))
+	mux.HandleFunc("/v1/catalog/items", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleCatalogItems(deps.Catalog, w, r)
+	}))
+	mux.HandleFunc("/v1/catalog/items/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleCatalogItemRoutes(deps.Catalog, w, r)
+	}))
 	mux.HandleFunc("/v1/webhooks", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleWebhooks(deps.Webhooks, w, r)
 	}))
