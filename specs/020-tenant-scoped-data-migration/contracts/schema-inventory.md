@@ -273,6 +273,18 @@ event-schema-file prefixes from `schemas/events/` (flat layout).
 | binding_runtime_projections | tenant_owned | column tenant_id plus selected profile/workspace tenant at work start | leave_existing | thread/run inspection routes | binding-runtime-projected | binding runtime evidence helpers | PRIMARY KEY projection_id, (tenant_id, resource_kind, resource_id, occurred_at DESC) | runtime binding evidence and immutability tests | backup_restore |
 | binding_audit_events | tenant_owned | column tenant_id from acting tenant context | leave_existing | binding detail/audit routes | binding-lifecycle | binding audit helpers | PRIMARY KEY audit_event_id, (tenant_id, binding_id, occurred_at DESC) | binding lifecycle audit and fail-closed tests | backup_restore |
 
+## Persisted Tables — Roadmap 60-72 operator product surfaces
+
+Generic JSON-document backing store for the Roadmap 65-71 in-memory managers (triage, routine,
+webhook, catalog, execution-profile, support-evidence). Each manager serializes its resources as
+documents keyed by (doc_kind, doc_id) and reloads them on startup. The table is global in this
+MVP: the primary key is not tenant-partitioned and there are no per-tenant isolation tests yet;
+the `tenant_id` column is recorded for a future per-tenant partitioning migration.
+
+| name | classification | tenantIdSource | migrationAction | affectedAPIs | affectedEvents | storeAccess | indexesAndUniqueness | isolationTests | rollback |
+|------|----------------|----------------|-----------------|--------------|----------------|-------------|----------------------|----------------|----------|
+| manager_documents | global | not_applicable (tenant_id column reserved for future per-tenant partitioning; PK is doc_kind+doc_id, not tenant-scoped) | leave_global | triage/routine/webhook/catalog/execution-profile/support-evidence routes | (manager lifecycle events emitted per domain; the document store itself emits none) | managerdoc generic helpers (Put/List/Delete) over store.{Put,List,Delete}ManagerDocument | PRIMARY KEY (doc_kind, doc_id) | per-manager persistence round-trip tests (create, reopen store, LoadFromStore) | backup_restore |
+
 ## Event Sources
 
 Event categories whose payloads gain server-side tenant scoping. Where the event
