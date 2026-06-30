@@ -143,7 +143,7 @@ func (m *Manager) ListThreads(resources []integrations.Resource, input ListThrea
 	operation := m.newOperation(account, resource, OperationClassListThreads, selectionMode, summarizeListThreads(input), input.Source)
 	items, err := backend.ListThreads(resource, account, input)
 	if err != nil {
-		return account, nil, m.failOperation(operation, "backend_error", err.Error()), nil, err
+		return account, nil, m.failBackend(operation, "backend_error", err), nil, err
 	}
 	artifacts := make([]Artifact, 0, len(items))
 	for _, item := range items {
@@ -164,7 +164,7 @@ func (m *Manager) GetThread(resources []integrations.Resource, input GetThreadIn
 	operation := m.newOperation(account, resource, OperationClassGetThread, selectionMode, input.ThreadID, input.Source)
 	item, err := backend.GetThread(resource, account, input.ThreadID)
 	if err != nil {
-		return account, ThreadSnapshot{}, m.failOperation(operation, "not_found", err.Error()), nil, err
+		return account, ThreadSnapshot{}, m.failBackend(operation, "not_found", err), nil, err
 	}
 	item.OperationID = operation.OperationID
 	item.IntegrationID = account.IntegrationID
@@ -182,7 +182,7 @@ func (m *Manager) GetMessage(resources []integrations.Resource, input GetMessage
 	operation := m.newOperation(account, resource, OperationClassGetMessage, selectionMode, input.MessageID, input.Source)
 	item, err := backend.GetMessage(resource, account, input.MessageID)
 	if err != nil {
-		return account, MessageSnapshot{}, m.failOperation(operation, "not_found", err.Error()), nil, err
+		return account, MessageSnapshot{}, m.failBackend(operation, "not_found", err), nil, err
 	}
 	item.OperationID = operation.OperationID
 	item.IntegrationID = account.IntegrationID
@@ -204,7 +204,7 @@ func (m *Manager) ListDrafts(resources []integrations.Resource, input ListDrafts
 	operation := m.newOperation(account, resource, OperationClassListDrafts, selectionMode, "", input.Source)
 	items, err := backend.ListDrafts(resource, account, input)
 	if err != nil {
-		return account, nil, m.failOperation(operation, "backend_error", err.Error()), nil, err
+		return account, nil, m.failBackend(operation, "backend_error", err), nil, err
 	}
 	artifacts := make([]Artifact, 0, len(items))
 	for _, item := range items {
@@ -225,7 +225,7 @@ func (m *Manager) GetDraft(resources []integrations.Resource, input GetDraftInpu
 	operation := m.newOperation(account, resource, OperationClassGetDraft, selectionMode, input.DraftID, input.Source)
 	item, err := backend.GetDraft(resource, account, input.DraftID)
 	if err != nil {
-		return account, DraftSnapshot{}, m.failOperation(operation, "not_found", err.Error()), nil, err
+		return account, DraftSnapshot{}, m.failBackend(operation, "not_found", err), nil, err
 	}
 	item.OperationID = operation.OperationID
 	item.IntegrationID = account.IntegrationID
@@ -247,7 +247,7 @@ func (m *Manager) CreateDraft(resources []integrations.Resource, input CreateDra
 	operation := m.newOperation(account, resource, OperationClassCreateDraft, selectionMode, summarizeDraftInput(input.Subject, input.To, input.Cc, input.Bcc), input.Source)
 	item, attachments, err := backend.CreateDraft(resource, account, input)
 	if err != nil {
-		return account, DraftSnapshot{}, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
+		return account, DraftSnapshot{}, m.failBackend(operation, "backend_error", err), nil, err
 	}
 	item.OperationID = operation.OperationID
 	item.IntegrationID = account.IntegrationID
@@ -269,7 +269,7 @@ func (m *Manager) UpdateDraft(resources []integrations.Resource, input UpdateDra
 	operation := m.newOperation(account, resource, OperationClassUpdateDraft, selectionMode, input.DraftID, input.Source)
 	item, attachments, err := backend.UpdateDraft(resource, account, input)
 	if err != nil {
-		return account, DraftSnapshot{}, m.failOperation(operation, writeFailureReason("not_found", err), err.Error()), nil, err
+		return account, DraftSnapshot{}, m.failBackend(operation, "not_found", err), nil, err
 	}
 	item.OperationID = operation.OperationID
 	item.IntegrationID = account.IntegrationID
@@ -300,7 +300,7 @@ func (m *Manager) SendMessage(resources []integrations.Resource, input SendMessa
 	}
 	item, attachments, err := backend.SendMessage(resource, account, input)
 	if err != nil {
-		return account, MessageSnapshot{}, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
+		return account, MessageSnapshot{}, m.failBackend(operation, "backend_error", err), nil, err
 	}
 	item.OperationID = operation.OperationID
 	item.IntegrationID = account.IntegrationID
@@ -326,7 +326,7 @@ func (m *Manager) SendDraft(resources []integrations.Resource, input SendDraftIn
 	}
 	draftBefore, draftErr := backend.GetDraft(resource, account, input.DraftID)
 	if draftErr != nil {
-		return account, DraftSnapshot{}, MessageSnapshot{}, m.failOperation(operation, "not_found", draftErr.Error()), nil, draftErr
+		return account, DraftSnapshot{}, MessageSnapshot{}, m.failBackend(operation, "not_found", draftErr), nil, draftErr
 	}
 	if err := validateExplicitRecipients(draftBefore.RecipientSummary); err != nil && draftBefore.ComposeMode == ComposeModeNewMessage {
 		return account, DraftSnapshot{}, MessageSnapshot{}, m.blockOperation(operation, ResultModeBlocked, "recipient_required", err.Error()), nil, err
@@ -336,7 +336,7 @@ func (m *Manager) SendDraft(resources []integrations.Resource, input SendDraftIn
 	}
 	draft, message, attachments, err := backend.SendDraft(resource, account, input)
 	if err != nil {
-		return account, DraftSnapshot{}, MessageSnapshot{}, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
+		return account, DraftSnapshot{}, MessageSnapshot{}, m.failBackend(operation, "backend_error", err), nil, err
 	}
 	draft.OperationID = operation.OperationID
 	draft.IntegrationID = account.IntegrationID
@@ -370,7 +370,7 @@ func (m *Manager) ReplyMessage(resources []integrations.Resource, input ReplyMes
 	}
 	draft, message, attachments, err := backend.ReplyMessage(resource, account, input)
 	if err != nil {
-		return account, nil, nil, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
+		return account, nil, nil, m.failBackend(operation, "backend_error", err), nil, err
 	}
 	artifacts := make([]Artifact, 0, 1+len(attachments))
 	resultMode := ResultModeDraftOnly
@@ -424,7 +424,7 @@ func (m *Manager) ForwardMessage(resources []integrations.Resource, input Forwar
 	}
 	draft, message, attachments, err := backend.ForwardMessage(resource, account, input)
 	if err != nil {
-		return account, nil, nil, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
+		return account, nil, nil, m.failBackend(operation, "backend_error", err), nil, err
 	}
 	artifacts := make([]Artifact, 0, 1+len(attachments))
 	resultMode := ResultModeDraftOnly
@@ -646,13 +646,20 @@ func (m *Manager) completeOperation(operation Operation, resultMode ResultMode, 
 	return operation
 }
 
-func (m *Manager) failOperation(operation Operation, failureClass, reason string) Operation {
+// failBackend classifies a backend error into a stable failure class + diagnostics provider kind
+// (FR-006) and records the failed operation. Use this for failures returned by the Backend.
+func (m *Manager) failBackend(operation Operation, defaultClass string, err error) Operation {
+	class, providerKind := failureClassAndProvider(defaultClass, err)
+	return m.failOperation(operation, class, providerKind, err.Error())
+}
+
+func (m *Manager) failOperation(operation Operation, failureClass, providerKind, reason string) Operation {
 	now := time.Now().UTC()
 	operation.Status = OperationStatusFailed
 	operation.ResultMode = ResultModeFailed
 	operation.FailureClass = strings.TrimSpace(failureClass)
 	operation.FailureReason = strings.TrimSpace(reason)
-	diagnostic := integrations.DiagnosticFailureForOperationFailure("mail", "", operation.IntegrationID, string(operation.OperationClass), operation.FailureClass, operation.FailureReason, mailOperationSideEffecting(operation.OperationClass), now)
+	diagnostic := integrations.DiagnosticFailureForOperationFailure("mail", providerKind, operation.IntegrationID, string(operation.OperationClass), operation.FailureClass, operation.FailureReason, mailOperationSideEffecting(operation.OperationClass), now)
 	operation.DiagnosticFailure = &diagnostic
 	operation.CompletedAt = &now
 	operation.UpdatedAt = now
@@ -666,6 +673,8 @@ func (m *Manager) blockOperation(operation Operation, resultMode ResultMode, fai
 	operation.ResultMode = resultMode
 	operation.FailureClass = strings.TrimSpace(failureClass)
 	operation.FailureReason = strings.TrimSpace(reason)
+	// Block reasons are daemon-side policy gates (recipient/permission/attachment), not provider
+	// faults, so no provider kind is attributed.
 	diagnostic := integrations.DiagnosticFailureForOperationFailure("mail", "", operation.IntegrationID, string(operation.OperationClass), operation.FailureClass, operation.FailureReason, mailOperationSideEffecting(operation.OperationClass), now)
 	operation.DiagnosticFailure = &diagnostic
 	operation.CompletedAt = &now

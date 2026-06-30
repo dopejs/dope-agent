@@ -91,8 +91,15 @@ a real provider `Handler`. The first real provider is **Feishu/Lark calendar** (
 - Unconfirmed write outcomes (success-then-disconnect, truncated, or 5xx after submit) are
   conveyed over the contract's undecodable-response channel and recorded as `ambiguous_commit`
   on the single daemon ledger; the daemon never coerces them to success/failure.
-- Out-of-scope mutations (attendee/RSVP, recurrence, all-day, alternate calendar) are rejected
-  by the calendar Manager before any provider call.
+- Out-of-scope mutations (alternate calendar) are rejected by the calendar Manager before any
+  provider call. (Attendee/RSVP shipped in Roadmap 61; recurrence/all-day in Roadmap 62.)
+
+The second real provider is **Feishu/Lark mail** (Roadmap 63, `feishulark.NewMailProvider`),
+served by the same harness when `DOPE_ADAPTER_DOMAIN=mail`. It maps account/thread/message/
+draft projection, draft create/update, and send/send-draft/reply/forward onto the existing mail
+resources; sends carry the same ambiguous-commit + redacted-diagnostic guarantees. Full
+attachment transfer is out of scope (Roadmap 64): attachment references resolve as unresolved so
+attachment-bearing sends are blocked daemon-side rather than silently sent without the file.
 
 ## Verification
 

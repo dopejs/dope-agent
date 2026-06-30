@@ -858,9 +858,11 @@ func wireIntegrationAdapters(ctx context.Context, binary string, sup *capabiliti
 	providerKind := strings.ToLower(strings.TrimSpace(os.Getenv("DOPE_ADAPTER_PROVIDER")))
 	var fetcher adapterrpc.IntegrationCredentialFetcher
 	calProviderKind := ""
+	mailProviderKind := ""
 	if providerKind == "feishu_lark" || providerKind == "feishu" || providerKind == "lark" {
 		fetcher = integrationSecretFetcher(integrationMgr, secretMgr)
 		calProviderKind = string(integrations.BackendKindFeishuLark)
+		mailProviderKind = string(integrations.BackendKindFeishuLark)
 	}
 	creds := adapterrpc.ScopedResolver(fetcher)
 	start := func(domain string) (*adapterrpc.Client, error) {
@@ -886,7 +888,7 @@ func wireIntegrationAdapters(ctx context.Context, binary string, sup *capabiliti
 	if err != nil {
 		return err
 	}
-	mailMgr.RegisterBackend(integrations.BackendKindAdapterRPC, mail.NewAdapterBackend(mailClient, 0))
+	mailMgr.RegisterBackend(integrations.BackendKindAdapterRPC, mail.NewAdapterBackend(mailClient, 0).WithProviderKind(mailProviderKind))
 	return nil
 }
 

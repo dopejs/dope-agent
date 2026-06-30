@@ -43,6 +43,8 @@ func runFeishuLark() error {
 	switch domain {
 	case "calendar":
 		return adapterprovider.Serve(os.Stdin, os.Stdout, feishulark.NewCalendarProvider(client))
+	case "mail":
+		return adapterprovider.Serve(os.Stdin, os.Stdout, feishulark.NewMailProvider(client))
 	default:
 		return fmt.Errorf("feishu_lark provider does not serve domain %q in this roadmap", domain)
 	}
