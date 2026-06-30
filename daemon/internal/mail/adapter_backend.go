@@ -183,6 +183,14 @@ func (b *AdapterBackend) ResolveAttachments(resource integrations.Resource, acco
 	return out
 }
 
+func (b *AdapterBackend) DownloadAttachment(resource integrations.Resource, account AccountProjection, input DownloadAttachmentInput) (AttachmentReference, error) {
+	ctx, cancel := b.op()
+	defer cancel()
+	var out AttachmentReference
+	err := b.client.Dispatch(ctx, domainMail, "DownloadAttachment", resource, payload(account, input), &out)
+	return out, b.mapErr(err)
+}
+
 // RestoreIntegrationState is a no-op: the adapter holds no durable state; restore is daemon-owned.
 func (b *AdapterBackend) RestoreIntegrationState(integrationID string, threads []ThreadSnapshot, messages []MessageSnapshot, drafts []DraftSnapshot, attachments []AttachmentReference) {
 }

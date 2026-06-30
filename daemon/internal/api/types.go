@@ -452,6 +452,22 @@ type MailSourceLinkageRequest struct {
 	AllowSendSideEffects bool   `json:"allowSendSideEffects,omitempty"`
 }
 
+type DownloadMailAttachmentRequest struct {
+	IntegrationID string                    `json:"integrationId,omitempty"`
+	MessageID     string                    `json:"messageId,omitempty"`
+	DisplayName   string                    `json:"displayName,omitempty"`
+	MediaType     string                    `json:"mediaType,omitempty"`
+	SizeBytes     int64                     `json:"sizeBytes,omitempty"`
+	Source        *MailSourceLinkageRequest `json:"source,omitempty"`
+}
+
+type MailAttachmentResponse struct {
+	Account    mail.AccountProjection   `json:"account"`
+	Attachment mail.AttachmentReference `json:"attachment"`
+	Operation  mail.Operation           `json:"operation"`
+	Artifacts  []mail.Artifact          `json:"artifacts"`
+}
+
 type MailAttachmentRefRequest struct {
 	AttachmentRefID string `json:"attachmentRefId,omitempty"`
 	DisplayName     string `json:"displayName,omitempty"`

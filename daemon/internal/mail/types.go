@@ -20,7 +20,20 @@ const (
 	OperationClassSendDraft      OperationClass = "send_draft"
 	OperationClassReplyMessage   OperationClass = "reply_message"
 	OperationClassForwardMessage OperationClass = "forward_message"
+	// OperationClassDownloadAttachment downloads an attachment as a managed artifact (Roadmap 64).
+	OperationClassDownloadAttachment OperationClass = "download_attachment"
 )
+
+// DownloadAttachmentInput requests an attachment download as a managed artifact (Roadmap 64).
+type DownloadAttachmentInput struct {
+	Selection       Selection
+	MessageID       string
+	AttachmentRefID string
+	DisplayName     string
+	MediaType       string
+	SizeBytes       int64
+	Source          SourceLinkage
+}
 
 type OperationStatus string
 
@@ -192,6 +205,9 @@ type AttachmentReference struct {
 	SizeBytes        int64                      `json:"sizeBytes,omitempty"`
 	ResolutionStatus AttachmentResolutionStatus `json:"resolutionStatus"`
 	FailureReason    string                     `json:"failureReason,omitempty"`
+	RetentionClass   string                     `json:"retentionClass,omitempty"` // managed-artifact retention policy (Roadmap 64)
+	Redacted         bool                       `json:"redacted,omitempty"`       // sensitive content redacted from evidence
+	Downloaded       bool                       `json:"downloaded,omitempty"`     // content fetched as a managed artifact
 	CreatedAt        time.Time                  `json:"createdAt"`
 }
 

@@ -556,6 +556,9 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/mail/drafts/", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleMailDraftRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Billing, deps.Store, w, r)
 	}))
+	mux.HandleFunc("/v1/mail/attachments/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleMailAttachmentRoutes(deps.Config, deps.Mail, deps.Integrations, deps.EventBus, deps.Billing, deps.Store, w, r)
+	}))
 	mux.HandleFunc("/v1/mail/operations", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleMailOperations(deps.Config, deps.Mail, deps.Store, w, r)
 	}))

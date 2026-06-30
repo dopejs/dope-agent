@@ -97,9 +97,14 @@ a real provider `Handler`. The first real provider is **Feishu/Lark calendar** (
 The second real provider is **Feishu/Lark mail** (Roadmap 63, `feishulark.NewMailProvider`),
 served by the same harness when `DOPE_ADAPTER_DOMAIN=mail`. It maps account/thread/message/
 draft projection, draft create/update, and send/send-draft/reply/forward onto the existing mail
-resources; sends carry the same ambiguous-commit + redacted-diagnostic guarantees. Full
-attachment transfer is out of scope (Roadmap 64): attachment references resolve as unresolved so
-attachment-bearing sends are blocked daemon-side rather than silently sent without the file.
+resources; sends carry the same ambiguous-commit + redacted-diagnostic guarantees.
+
+Mail attachment transfer (Roadmap 64) resolves attachment references under a size/MIME/retention/
+redaction policy (`mail.EvaluateAttachment`): within-policy references resolve and link to the
+draft/send; over-limit or unsafe attachments fail explicitly (too_large / unsupported_type) so
+the daemon blocks the send with no partial transfer. Attachments can be downloaded as managed
+attachment artifacts (`download_attachment` op, `POST /v1/mail/attachments/{id}/download`). No
+attachment content beyond the redacted artifact is exposed.
 
 ## Verification
 

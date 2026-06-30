@@ -239,6 +239,35 @@ func (m *Manager) GetDraft(resources []integrations.Resource, input GetDraftInpu
 	return account, item, operation, artifacts, nil
 }
 
+// DownloadAttachment downloads an attachment as a managed artifact under transfer policy
+// (Roadmap 64). A policy failure (too large / unsupported type) is recorded as a failed
+// operation with the reason; no content is transferred.
+func (m *Manager) DownloadAttachment(resources []integrations.Resource, input DownloadAttachmentInput) (AccountProjection, AttachmentReference, Operation, []Artifact, error) {
+	account, resource, backend, selectionMode, err := m.selectAccount(resources, input.Selection)
+	if err != nil {
+		return AccountProjection{}, AttachmentReference{}, Operation{}, nil, err
+	}
+	operation := m.newOperation(account, resource, OperationClassDownloadAttachment, selectionMode, input.AttachmentRefID, input.Source)
+	ref, err := backend.DownloadAttachment(resource, account, input)
+	if err != nil {
+		return account, AttachmentReference{}, m.failBackend(operation, "not_found", err), nil, err
+	}
+	if ref.ResolutionStatus != AttachmentResolutionResolved {
+		// Policy rejected the attachment (too large / unsupported type): record explicitly with
+		// no partial transfer.
+		failed := m.failOperation(operation, "attachment_policy_rejected", "", firstNonEmpty(ref.FailureReason, "attachment rejected by transfer policy"))
+		artifact := AttachmentArtifact(failed, ref)
+		failed.ArtifactIDs = append(failed.ArtifactIDs, artifact.ArtifactID)
+		m.storeArtifact(artifact)
+		return account, ref, failed, []Artifact{artifact}, ErrMailAttachmentUnresolved
+	}
+	ref.OperationID = operation.OperationID
+	ref.IntegrationID = account.IntegrationID
+	artifact := AttachmentArtifact(operation, ref)
+	operation = m.completeOperation(operation, ResultModeInspection, "", input.MessageID, "", []Artifact{artifact})
+	return account, ref, operation, []Artifact{artifact}, nil
+}
+
 func (m *Manager) CreateDraft(resources []integrations.Resource, input CreateDraftInput) (AccountProjection, DraftSnapshot, Operation, []Artifact, error) {
 	account, resource, backend, selectionMode, err := m.selectAccount(resources, input.Selection)
 	if err != nil {
@@ -644,6 +673,13 @@ func (m *Manager) completeOperation(operation Operation, resultMode ResultMode, 
 	m.operations[operation.OperationID] = operation
 	m.mu.Unlock()
 	return operation
+}
+
+// storeArtifact records a single artifact (used by failure paths that still produce an artifact).
+func (m *Manager) storeArtifact(artifact Artifact) {
+	m.mu.Lock()
+	m.artifacts[artifact.ArtifactID] = artifact
+	m.mu.Unlock()
 }
 
 // failBackend classifies a backend error into a stable failure class + diagnostics provider kind

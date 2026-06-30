@@ -185,9 +185,16 @@ func (p *MailProvider) route(ctx context.Context, token scopedToken, resource in
 		if pf := decodePayload(op.Payload, &in); pf != nil {
 			return nil, pf
 		}
-		// Full attachment transfer is Roadmap 64; references resolve as unresolved so the daemon
-		// blocks attachment-bearing sends rather than dropping the attachment.
-		return marshalResult(resolveUnresolved(in.Refs, in.ParentKind, in.ParentID), nil)
+		return marshalResult(resolveWithPolicy(in.Refs, in.ParentKind, in.ParentID), nil)
+	case "DownloadAttachment":
+		var in struct {
+			Account mail.AccountProjection       `json:"account"`
+			Input   mail.DownloadAttachmentInput `json:"input"`
+		}
+		if pf := decodePayload(op.Payload, &in); pf != nil {
+			return nil, pf
+		}
+		return marshalResult(p.downloadAttachment(ctx, token, in.Account, in.Input))
 	default:
 		return nil, &providerFault{kind: faultInternal, code: "unsupported_operation", message: "unsupported mail operation"}
 	}
@@ -339,7 +346,7 @@ func (p *MailProvider) createDraft(ctx context.Context, token scopedToken, accou
 	}
 	draft := mapDraft(account, out.Draft, input.ComposeMode)
 	draft.ThreadID = firstNonEmpty(draft.ThreadID, input.ThreadID)
-	return draftWithAttachments{Draft: draft, Attachments: resolveUnresolved(input.AttachmentRefs, "draft", draft.DraftID)}, nil
+	return draftWithAttachments{Draft: draft, Attachments: resolveWithPolicy(input.AttachmentRefs, "draft", draft.DraftID)}, nil
 }
 
 func (p *MailProvider) updateDraft(ctx context.Context, token scopedToken, account mail.AccountProjection, input mail.UpdateDraftInput) (draftWithAttachments, *providerFault) {
@@ -356,7 +363,7 @@ func (p *MailProvider) updateDraft(ctx context.Context, token scopedToken, accou
 		draft.DraftID = input.DraftID
 	}
 	draft.DraftStatus = mail.DraftStatusUpdated
-	return draftWithAttachments{Draft: draft, Attachments: resolveUnresolved(input.AttachmentRefs, "draft", draft.DraftID)}, nil
+	return draftWithAttachments{Draft: draft, Attachments: resolveWithPolicy(input.AttachmentRefs, "draft", draft.DraftID)}, nil
 }
 
 func (p *MailProvider) sendMessage(ctx context.Context, token scopedToken, account mail.AccountProjection, input mail.SendMessageInput) (messageWithAttachments, *providerFault) {
@@ -368,7 +375,7 @@ func (p *MailProvider) sendMessage(ctx context.Context, token scopedToken, accou
 	if pf := p.client.call(ctx, "POST", path, token.AccessToken, body, &out, true); pf != nil {
 		return messageWithAttachments{}, pf
 	}
-	return messageWithAttachments{Message: mapMessage(account, out.Message, mail.DirectionOutbound), Attachments: resolveUnresolved(input.AttachmentRefs, "message", out.Message.MessageID)}, nil
+	return messageWithAttachments{Message: mapMessage(account, out.Message, mail.DirectionOutbound), Attachments: resolveWithPolicy(input.AttachmentRefs, "message", out.Message.MessageID)}, nil
 }
 
 func (p *MailProvider) sendDraft(ctx context.Context, token scopedToken, account mail.AccountProjection, input mail.SendDraftInput) (sendDraftResult, *providerFault) {
@@ -502,25 +509,63 @@ func mapDraft(account mail.AccountProjection, item feishuMailDraft, mode mail.Co
 	}
 }
 
-// resolveUnresolved surfaces attachment references as unresolved (Roadmap 64 not yet
-// implemented), so the daemon blocks attachment-bearing sends rather than dropping attachments.
-func resolveUnresolved(refs []mail.AttachmentRefInput, parentKind, parentID string) []mail.AttachmentReference {
+// resolveWithPolicy resolves attachment references under transfer policy (Roadmap 64): within
+// policy they resolve (resolved) with retention/redaction metadata; over-limit or unsafe ones
+// fail explicitly (too_large / unsupported_type) so the daemon blocks the send with no partial.
+func resolveWithPolicy(refs []mail.AttachmentRefInput, parentKind, parentID string) []mail.AttachmentReference {
 	if len(refs) == 0 {
 		return nil
 	}
+	now := time.Now().UTC()
 	out := make([]mail.AttachmentReference, 0, len(refs))
 	for _, r := range refs {
-		out = append(out, mail.AttachmentReference{
+		ref := mail.AttachmentReference{
 			AttachmentRefID:  r.AttachmentRefID,
 			ParentKind:       parentKind,
 			ParentID:         parentID,
 			DisplayName:      r.DisplayName,
 			MediaType:        r.MediaType,
 			SizeBytes:        r.SizeBytes,
-			ResolutionStatus: mail.AttachmentResolutionUnresolved,
-			FailureReason:    "attachment transfer is not yet supported (Roadmap 64)",
-			CreatedAt:        time.Now().UTC(),
-		})
+			ResolutionStatus: mail.AttachmentResolutionResolved,
+			CreatedAt:        now,
+		}
+		mail.ApplyAttachmentPolicy(&ref)
+		out = append(out, ref)
 	}
 	return out
+}
+
+func (p *MailProvider) downloadAttachment(ctx context.Context, token scopedToken, account mail.AccountProjection, input mail.DownloadAttachmentInput) (mail.AttachmentReference, *providerFault) {
+	path := fmt.Sprintf("/open-apis/mail/v1/user_mailboxes/%s/messages/%s/attachments/%s", url.PathEscape(account.MailboxAddress), url.PathEscape(input.MessageID), url.PathEscape(input.AttachmentRefID))
+	var out struct {
+		DisplayName string `json:"display_name"`
+		MediaType   string `json:"media_type"`
+		SizeBytes   int64  `json:"size_bytes"`
+	}
+	if pf := p.client.call(ctx, "GET", path, token.AccessToken, nil, &out, false); pf != nil {
+		return mail.AttachmentReference{}, pf
+	}
+	ref := mail.AttachmentReference{
+		AttachmentRefID:  input.AttachmentRefID,
+		IntegrationID:    account.IntegrationID,
+		ParentKind:       "message",
+		ParentID:         input.MessageID,
+		DisplayName:      firstNonEmpty(out.DisplayName, input.DisplayName, "attachment.bin"),
+		MediaType:        firstNonEmpty(out.MediaType, input.MediaType),
+		SizeBytes:        nonZero(out.SizeBytes, input.SizeBytes),
+		ResolutionStatus: mail.AttachmentResolutionResolved,
+		CreatedAt:        time.Now().UTC(),
+	}
+	mail.ApplyAttachmentPolicy(&ref)
+	if ref.ResolutionStatus == mail.AttachmentResolutionResolved {
+		ref.Downloaded = true
+	}
+	return ref, nil
+}
+
+func nonZero(a, b int64) int64 {
+	if a != 0 {
+		return a
+	}
+	return b
 }

@@ -8,7 +8,7 @@
   "properties": {
     "tenantId": { "type": "string" },
     "operationId": { "type": "string" },
-    "operationClass": { "type": "string", "enum": ["list_threads", "get_thread", "get_message", "list_drafts", "get_draft", "create_draft", "update_draft", "send_message", "send_draft", "reply_message", "forward_message"] },
+    "operationClass": { "type": "string", "enum": ["list_threads", "get_thread", "get_message", "list_drafts", "get_draft", "create_draft", "update_draft", "send_message", "send_draft", "reply_message", "forward_message", "download_attachment"] },
     "status": { "type": "string", "enum": ["requested", "completed", "failed", "blocked", "cancelled"] },
     "resultMode": { "type": "string", "enum": ["inspection", "draft_only", "sent", "blocked", "failed"] },
     "sendPath": { "type": "string", "enum": ["direct", "draft"] },

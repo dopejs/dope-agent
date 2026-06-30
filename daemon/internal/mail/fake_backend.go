@@ -335,6 +335,36 @@ func (b *FakeBackend) ResolveAttachments(resource integrations.Resource, account
 	return b.resolveAttachmentsLocked(resource, account, refs, parentKind, parentID, time.Now().UTC())
 }
 
+// DownloadAttachment simulates a managed attachment download under transfer policy.
+func (b *FakeBackend) DownloadAttachment(resource integrations.Resource, account AccountProjection, input DownloadAttachmentInput) (AttachmentReference, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now().UTC()
+	refID := strings.TrimSpace(input.AttachmentRefID)
+	if refID == "" {
+		return AttachmentReference{}, ErrMailAttachmentUnresolved
+	}
+	ref := AttachmentReference{
+		AttachmentRefID:  refID,
+		IntegrationID:    account.IntegrationID,
+		ParentKind:       "message",
+		ParentID:         strings.TrimSpace(input.MessageID),
+		DisplayName:      firstNonEmpty(strings.TrimSpace(input.DisplayName), "attachment.bin"),
+		MediaType:        strings.TrimSpace(input.MediaType),
+		SizeBytes:        input.SizeBytes,
+		ResolutionStatus: AttachmentResolutionResolved,
+		CreatedAt:        now,
+	}
+	ApplyAttachmentPolicy(&ref)
+	if ref.ResolutionStatus == AttachmentResolutionResolved {
+		ref.Downloaded = true
+	}
+	if state, ok := b.states[resource.IntegrationID]; ok {
+		state.attachments[ref.AttachmentRefID] = ref
+	}
+	return ref, nil
+}
+
 func (b *FakeBackend) RestoreIntegrationState(integrationID string, threads []ThreadSnapshot, messages []MessageSnapshot, drafts []DraftSnapshot, attachments []AttachmentReference) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -488,6 +518,11 @@ func (b *FakeBackend) resolveAttachmentsLocked(resource integrations.Resource, a
 		}
 		if item.DisplayName == "" {
 			item.DisplayName = "attachment.bin"
+		}
+		// Apply size/MIME/retention/redaction policy to references that resolved (Roadmap 64):
+		// over-limit or unsafe attachments fail explicitly rather than transferring.
+		if item.ResolutionStatus == AttachmentResolutionResolved {
+			ApplyAttachmentPolicy(&item)
 		}
 		b.states[resource.IntegrationID].attachments[item.AttachmentRefID] = item
 		items = append(items, item)

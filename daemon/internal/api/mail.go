@@ -389,6 +389,59 @@ func handleMailDraftUpdate(cfg config.Config, manager *mail.Manager, integration
 	})
 }
 
+// handleMailAttachmentRoutes serves /v1/mail/attachments/{attachmentRefId}/download (Roadmap 64).
+func handleMailAttachmentRoutes(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
+	if manager == nil || integrationsManager == nil {
+		writeError(w, http.StatusInternalServerError, "mail dependencies are not configured")
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/v1/mail/attachments/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || parts[1] != "download" || r.Method != http.MethodPost {
+		http.NotFound(w, r)
+		return
+	}
+	attachmentRefID := strings.TrimSpace(parts[0])
+	var request DownloadMailAttachmentRequest
+	if err := decodeJSONBody(r, &request); err != nil && !errors.Is(err, http.ErrBodyNotAllowed) && !strings.Contains(err.Error(), "EOF") {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	operationID := mail.NewOperationID()
+	reservation, ok := beginIntegrationOperationQuota(r.Context(), cfg, billingManager, "mail", operationID, "POST /v1/mail/attachments/{attachmentRefId}/download", w, r)
+	if !ok {
+		return
+	}
+	account, attachment, operation, artifacts, err := manager.DownloadAttachment(integrationsManager.List(), mail.DownloadAttachmentInput{
+		Selection:       mail.Selection{IntegrationID: strings.TrimSpace(request.IntegrationID)},
+		MessageID:       strings.TrimSpace(request.MessageID),
+		AttachmentRefID: attachmentRefID,
+		DisplayName:     strings.TrimSpace(request.DisplayName),
+		MediaType:       strings.TrimSpace(request.MediaType),
+		SizeBytes:       request.SizeBytes,
+		Source:          mailSourceLinkageWithOperation(request.Source, operationID),
+	})
+	if operation.OperationID != "" {
+		if recordErr := recordMailActivityAndCommitQuota(r.Context(), eventBus, billingManager, reservation, sqliteStore, account, operation, artifacts); recordErr != nil {
+			writeError(w, http.StatusInternalServerError, recordErr.Error())
+			return
+		}
+	}
+	if err != nil {
+		if operation.OperationID == "" {
+			releaseBillingReservation(r.Context(), billingManager, reservation, "mail operation failed before backend attempt")
+		}
+		writeMailError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, MailAttachmentResponse{
+		Account:    account,
+		Attachment: attachment,
+		Operation:  operation,
+		Artifacts:  artifacts,
+	})
+}
+
 func handleMailSendMessage(cfg config.Config, manager *mail.Manager, integrationsManager *integrations.Manager, eventBus *events.Bus, billingManager *billing.Manager, sqliteStore *store.SQLiteStore, w http.ResponseWriter, r *http.Request) {
 	if manager == nil || integrationsManager == nil {
 		writeError(w, http.StatusInternalServerError, "mail dependencies are not configured")

@@ -36,6 +36,10 @@ type Backend interface {
 	ReplyMessage(resource integrations.Resource, account AccountProjection, input ReplyMessageInput) (*DraftSnapshot, *MessageSnapshot, []AttachmentReference, error)
 	ForwardMessage(resource integrations.Resource, account AccountProjection, input ForwardMessageInput) (*DraftSnapshot, *MessageSnapshot, []AttachmentReference, error)
 	ResolveAttachments(resource integrations.Resource, account AccountProjection, refs []AttachmentRefInput, parentKind, parentID string) []AttachmentReference
+	// DownloadAttachment fetches an attachment as a managed attachment artifact under transfer
+	// policy (Roadmap 64). A policy failure (too large / unsupported type) returns a reference
+	// with a non-resolved status and a reason rather than transferring content.
+	DownloadAttachment(resource integrations.Resource, account AccountProjection, input DownloadAttachmentInput) (AttachmentReference, error)
 	RestoreIntegrationState(integrationID string, threads []ThreadSnapshot, messages []MessageSnapshot, drafts []DraftSnapshot, attachments []AttachmentReference)
 }
 

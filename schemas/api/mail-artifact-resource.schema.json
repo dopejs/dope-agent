@@ -34,6 +34,9 @@
         "sizeBytes": { "type": "integer", "minimum": 0 },
         "resolutionStatus": { "type": "string", "enum": ["resolved", "unresolved", "failed"] },
         "failureReason": { "type": "string" },
+        "retentionClass": { "type": "string" },
+        "redacted": { "type": "boolean" },
+        "downloaded": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       }
     },
