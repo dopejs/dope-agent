@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/execution-profile-resource.schema.json",
+  "title": "ExecutionProfileResource",
+  "type": "object",
+  "required": ["profile", "status"],
+  "additionalProperties": false,
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "required": ["profileId", "name", "backendKind", "riskTier", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "profileId": { "type": "string" },
+        "name": { "type": "string" },
+        "backendKind": { "type": "string", "enum": ["subprocess", "docker", "ssh", "local_shell"] },
+        "riskTier": { "type": "string", "enum": ["low", "medium", "high"] },
+        "provides": { "type": "array", "items": { "type": "string" } },
+        "requirements": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "status": {
+      "type": "object",
+      "required": ["profileId", "health", "available"],
+      "additionalProperties": false,
+      "properties": {
+        "profileId": { "type": "string" },
+        "health": { "type": "string", "enum": ["ready", "degraded", "unavailable"] },
+        "reason": { "type": "string" },
+        "unmetRequirements": { "type": "array", "items": { "type": "string" } },
+        "available": { "type": "boolean" }
+      }
+    }
+  },
+  "properties": {
+    "profile": { "$ref": "#/$defs/profile" },
+    "status": { "$ref": "#/$defs/status" }
+  }
+}

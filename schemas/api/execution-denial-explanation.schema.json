@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/execution-denial-explanation.schema.json",
+  "title": "ExecutionDenialExplanation",
+  "type": "object",
+  "required": ["requiredCapabilities", "eligibleProfiles"],
+  "additionalProperties": false,
+  "properties": {
+    "requiredCapabilities": { "type": "array", "items": { "type": "string" } },
+    "eligibleProfiles": { "type": "array", "items": { "type": "string" } },
+    "missingCapabilities": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } },
+    "unavailable": { "type": "object", "additionalProperties": { "type": "string" } }
+  }
+}

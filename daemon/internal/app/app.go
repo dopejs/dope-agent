@@ -35,6 +35,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/execprofile"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/im"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
@@ -87,6 +88,7 @@ type App struct {
 	Routines             *routine.Manager
 	Webhooks             *webhook.Manager
 	Catalog              *catalog.Manager
+	ExecProfiles         *execprofile.Manager
 	Scheduler            *scheduler.Scheduler
 	Delivery             *delivery.Manager
 	Billing              *billing.Manager
@@ -344,6 +346,12 @@ func New() (*App, error) {
 	routineManager := routine.NewManager(string(cfg.Environment), scheduleManager)
 	webhookManager := webhook.NewManager(string(cfg.Environment), &webhookWorkflowFirer{launcher: workflowLauncher, routines: routineManager}, nil)
 	catalogManager := catalog.NewManager(string(cfg.Environment), nil, nil)
+	execProfileManager := execprofile.NewManager(string(cfg.Environment), nil, nil, nil)
+	// The repo-owned subprocess sandbox is always-available; richer backends register when wired.
+	_, _ = execProfileManager.RegisterProfile(execprofile.ExecutionProfile{
+		ProfileID: "subprocess", Name: "Subprocess Sandbox", BackendKind: execprofile.BackendSubprocess,
+		RiskTier: execprofile.RiskLow, Provides: []string{"local_fs"}, Description: "repo-owned subprocess sandbox",
+	})
 	if err := recoverPersistedStateWithSecrets(envCtx, cfg.DataDir, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, identityManager, providerManager, sandboxManager, secretManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
 		return nil, err
 	}
@@ -431,6 +439,7 @@ func New() (*App, error) {
 		Routines:              routineManager,
 		Webhooks:              webhookManager,
 		Catalog:               catalogManager,
+		ExecProfiles:          execProfileManager,
 		Providers:             providerManager,
 		Connectors:            connectorSupervisor,
 		Capabilities:          capabilitySupervisor,
@@ -472,6 +481,7 @@ func New() (*App, error) {
 		Routines:             routineManager,
 		Webhooks:             webhookManager,
 		Catalog:              catalogManager,
+		ExecProfiles:         execProfileManager,
 		Providers:            providerManager,
 		Scheduler:            scheduleManager,
 		Delivery:             deliveryManager,

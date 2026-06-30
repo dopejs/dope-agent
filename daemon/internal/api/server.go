@@ -31,6 +31,7 @@ import (
 	"github.com/dopejs/dope-agent/daemon/internal/delivery"
 	"github.com/dopejs/dope-agent/daemon/internal/evaluation"
 	"github.com/dopejs/dope-agent/daemon/internal/events"
+	"github.com/dopejs/dope-agent/daemon/internal/execprofile"
 	"github.com/dopejs/dope-agent/daemon/internal/identity"
 	"github.com/dopejs/dope-agent/daemon/internal/imtypes"
 	"github.com/dopejs/dope-agent/daemon/internal/integrations"
@@ -83,6 +84,7 @@ type Dependencies struct {
 	Routines       *routine.Manager
 	Webhooks       *webhook.Manager
 	Catalog        *catalog.Manager
+	ExecProfiles   *execprofile.Manager
 	Connectors     *connectors.Supervisor
 	Capabilities   *capabilities.Supervisor
 	ComputerUse    *computeruse.Manager
@@ -573,6 +575,15 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/mail/operations/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/mail/operations/", "mail_operations", "operation_id", "mail_operation", func(w http.ResponseWriter, r *http.Request) {
 		handleMailOperationRoutes(deps.Config, deps.Mail, deps.Store, w, r)
 	})))
+	mux.HandleFunc("/v1/execution/profiles", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleExecutionProfiles(deps.ExecProfiles, w, r)
+	}))
+	mux.HandleFunc("/v1/execution/profiles/", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleExecutionProfileRoutes(deps.ExecProfiles, w, r)
+	}))
+	mux.HandleFunc("/v1/execution/explain", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleExecutionExplain(deps.ExecProfiles, w, r)
+	}))
 	mux.HandleFunc("/v1/catalog/items", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleCatalogItems(deps.Catalog, w, r)
 	}))
