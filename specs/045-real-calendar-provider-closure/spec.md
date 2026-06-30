@@ -3,9 +3,9 @@
 **Feature Branch**: `main`
 **Created**: 2026-06-04
 **Status**: Draft
-**Phase / Roadmap**: Phase 59 — Roadmap 59 (Real Calendar, first real provider closure)
-**Input**: User description: "结合 docs/specs/044-real-calendar-provider-closure.md 完成 phase 59 的工作"
-**Upstream authority**: [docs/specs/044-real-calendar-provider-closure.md](../../docs/specs/044-real-calendar-provider-closure.md)
+**Phase / Roadmap**: Phase 60 — Roadmap 60 (Real Calendar, first real provider closure)
+**Input**: User description: "结合 docs/specs/045-real-calendar-provider-closure.md 完成 phase 60 的工作"
+**Upstream authority**: [docs/specs/045-real-calendar-provider-closure.md](../../docs/specs/045-real-calendar-provider-closure.md)
 **Provider decision (recorded during clarification)**: **Feishu/Lark Calendar** — reuses the existing `feishu_lark` backend kind already present in the integrations diagnostics plane.
 
 ## Overview

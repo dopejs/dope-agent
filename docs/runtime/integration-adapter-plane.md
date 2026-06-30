@@ -72,10 +72,33 @@ Re-bind the integration's `BackendBinding.BackendKind` to `fake_local` (or unset
 `DOPE_INTEGRATION_ADAPTER` and restart). No data migration is involved; the operation ledger
 is unchanged.
 
+## Real providers
+
+The reference adapter (`adapterref`) returns empty deterministic payloads. Real providers
+replace it via the `adapterprovider` serve harness, which runs the same stdio RPC loop against
+a real provider `Handler`. The first real provider is **Feishu/Lark calendar** (Roadmap 60,
+`internal/integrations/providers/feishulark`):
+
+- Selected at runtime by `DOPE_ADAPTER_PROVIDER=feishu_lark` (default stays the reference
+  skeleton); the served domain is `DOPE_ADAPTER_DOMAIN` (default `calendar`).
+- Maps the Feishu Open Platform Calendar API onto the existing calendar resources; the HTTP
+  base URL and client are injectable (`DOPE_FEISHU_BASE_URL`) so it is exercisable against
+  synthetic/recorded responses in CI.
+- Provider OAuth/scope/token/rate-limit/unavailable failures are returned as a redacted,
+  stable failure-class token + typed failure kind; the daemon classifies them onto the
+  existing `feishu_lark` diagnostics reason vocabulary. Raw provider messages are not
+  forwarded.
+- Unconfirmed write outcomes (success-then-disconnect, truncated, or 5xx after submit) are
+  conveyed over the contract's undecodable-response channel and recorded as `ambiguous_commit`
+  on the single daemon ledger; the daemon never coerces them to success/failure.
+- Out-of-scope mutations (attendee/RSVP, recurrence, all-day, alternate calendar) are rejected
+  by the calendar Manager before any provider call.
+
 ## Verification
 
 ```bash
 make daemon-contract-test
 cd daemon && go test ./internal/integrations/adapterrpc/... ./internal/integrations/adapterref/... \
-  ./internal/calendar/... ./internal/mail/... ./internal/capabilities/...
+  ./internal/integrations/adapterprovider/... ./internal/integrations/providers/feishulark/... \
+  ./internal/calendar/... ./internal/mail/... ./internal/capabilities/... ./internal/opsreadiness/...
 ```

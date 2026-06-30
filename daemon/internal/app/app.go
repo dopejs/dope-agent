@@ -176,7 +176,7 @@ func New() (*App, error) {
 	// in-daemon fake backend remains the default backend in every environment. Enabled only
 	// when DOPE_INTEGRATION_ADAPTER names an adapter binary.
 	if adapterBin := strings.TrimSpace(os.Getenv("DOPE_INTEGRATION_ADAPTER")); adapterBin != "" {
-		if err := wireIntegrationAdapters(context.Background(), adapterBin, capabilitySupervisor, calendarManager, mailManager); err != nil {
+		if err := wireIntegrationAdapters(context.Background(), adapterBin, capabilitySupervisor, calendarManager, mailManager, integrationManager, secretManager); err != nil {
 			return nil, fmt.Errorf("integration adapter wiring: %w", err)
 		}
 	}
@@ -851,10 +851,18 @@ func newEventID() string {
 // operator explicitly enables adapters; the in-daemon fake backend stays registered for
 // fake_local-bound integrations. A failed readiness probe is logged and leaves the adapter
 // circuit-breaking under supervision rather than aborting daemon startup.
-func wireIntegrationAdapters(ctx context.Context, binary string, sup *capabilities.Supervisor, calMgr *calendar.Manager, mailMgr *mail.Manager) error {
-	// Credentials are resolved per call. Provider-backed secret resolution (Roadmap 37) is
-	// installed where real providers are wired (Roadmap 60/63); the reference adapter needs none.
-	creds := adapterrpc.ScopedResolver(nil)
+func wireIntegrationAdapters(ctx context.Context, binary string, sup *capabilities.Supervisor, calMgr *calendar.Manager, mailMgr *mail.Manager, integrationMgr *integrations.Manager, secretMgr *secrets.Manager) error {
+	// Credentials are resolved per call. When a real provider is selected (Roadmap 60/63), the
+	// resolver is backed by the Roadmap 37 secret path so per-call scoped tokens reach the
+	// adapter and missing credentials fail closed; the reference adapter needs no credentials.
+	providerKind := strings.ToLower(strings.TrimSpace(os.Getenv("DOPE_ADAPTER_PROVIDER")))
+	var fetcher adapterrpc.IntegrationCredentialFetcher
+	calProviderKind := ""
+	if providerKind == "feishu_lark" || providerKind == "feishu" || providerKind == "lark" {
+		fetcher = integrationSecretFetcher(integrationMgr, secretMgr)
+		calProviderKind = string(integrations.BackendKindFeishuLark)
+	}
+	creds := adapterrpc.ScopedResolver(fetcher)
 	start := func(domain string) (*adapterrpc.Client, error) {
 		client, err := adapterrpc.NewProcessClient(ctx, binary)
 		if err != nil {
@@ -872,7 +880,7 @@ func wireIntegrationAdapters(ctx context.Context, binary string, sup *capabiliti
 	if err != nil {
 		return err
 	}
-	calMgr.RegisterBackend(integrations.BackendKindAdapterRPC, calendar.NewAdapterBackend(calClient, 0))
+	calMgr.RegisterBackend(integrations.BackendKindAdapterRPC, calendar.NewAdapterBackend(calClient, 0).WithProviderKind(calProviderKind))
 
 	mailClient, err := start("mail")
 	if err != nil {
@@ -880,6 +888,33 @@ func wireIntegrationAdapters(ctx context.Context, binary string, sup *capabiliti
 	}
 	mailMgr.RegisterBackend(integrations.BackendKindAdapterRPC, mail.NewAdapterBackend(mailClient, 0))
 	return nil
+}
+
+// integrationSecretFetcher resolves an integration's scoped, short-lived credential material
+// through the Roadmap 37 secret path. It fails closed (returns an error, never anonymous
+// material) when the integration or its credential binding is absent, so the operation fails
+// with a stable auth diagnostic rather than calling the provider unauthenticated (FR-012).
+func integrationSecretFetcher(integrationMgr *integrations.Manager, secretMgr *secrets.Manager) adapterrpc.IntegrationCredentialFetcher {
+	return func(ctx context.Context, integrationID string) (json.RawMessage, error) {
+		if integrationMgr == nil || secretMgr == nil {
+			return nil, fmt.Errorf("integration credential resolution is not configured")
+		}
+		resource, ok := integrationMgr.Get(integrationID)
+		if !ok {
+			return nil, fmt.Errorf("integration %q not found for credential resolution", integrationID)
+		}
+		ref := strings.TrimSpace(resource.BackendBinding.BackendRefID)
+		if ref == "" {
+			return nil, fmt.Errorf("integration %q has no credential binding", integrationID)
+		}
+		resolved, err := secretMgr.Resolve(ctx, secrets.ResolveInput{TenantID: resource.TenantID, SecretRef: ref})
+		if err != nil {
+			return nil, fmt.Errorf("resolve integration credential: %w", err)
+		}
+		// The stored value is the scoped access token; granted scopes ride on secret metadata
+		// where present. No token material is logged here.
+		return json.Marshal(map[string]any{"accessToken": resolved.Value})
+	}
 }
 
 func recoverPersistedState(ctx context.Context, environment config.Environment, sqliteStore *store.SQLiteStore, sessionRouter *router.SessionRouter, checkpointManager *checkpoints.Manager, eventBus *events.Bus, connectorSupervisor *connectors.Supervisor, capabilitySupervisor *capabilities.Supervisor, policyEngine *policy.Engine, authManager *auth.Manager, identityManager *identity.Manager, providerManager *providers.Manager, sandboxManager *sandbox.Manager, mcpManager *mcp.Manager, integrationManager *integrations.Manager, calendarManager *calendar.Manager, mailManager *mail.Manager, reminderManager *reminders.Manager) error {

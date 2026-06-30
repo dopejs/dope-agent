@@ -114,7 +114,8 @@ func (m *Manager) ListEvents(resources []integrations.Resource, input ListEvents
 	operation := m.newOperation(account, resource, OperationClassListEvents, selectionMode, account.PrimaryTimezone, summarizeWindow(input.StartsAt, input.EndsAt), input.Source)
 	items, err := backend.ListEvents(resource, account, input)
 	if err != nil {
-		return account, nil, m.failOperation(operation, "backend_error", err.Error()), nil, err
+		class, providerKind := failureClassAndProvider("backend_error", err)
+		return account, nil, m.failOperation(operation, class, providerKind, err.Error()), nil, err
 	}
 	artifacts := make([]Artifact, 0, len(items))
 	for _, item := range items {
@@ -132,7 +133,8 @@ func (m *Manager) GetEvent(resources []integrations.Resource, input GetEventInpu
 	operation := m.newOperation(account, resource, OperationClassGetEvent, selectionMode, account.PrimaryTimezone, input.ExternalEventID, input.Source)
 	item, err := backend.GetEvent(resource, account, input.ExternalEventID)
 	if err != nil {
-		return account, Event{}, m.failOperation(operation, "not_found", err.Error()), nil, err
+		class, providerKind := failureClassAndProvider("not_found", err)
+		return account, Event{}, m.failOperation(operation, class, providerKind, err.Error()), nil, err
 	}
 	artifact := EventArtifact(operation, item)
 	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)
@@ -148,7 +150,8 @@ func (m *Manager) BusyFree(resources []integrations.Resource, input BusyFreeInpu
 	operation := m.newOperation(account, resource, OperationClassBusyFree, selectionMode, timezone, summarizeWindow(&input.WindowStart, &input.WindowEnd), input.Source)
 	query, err := backend.BusyFree(resource, account, input)
 	if err != nil {
-		return account, AvailabilityQuery{}, m.failOperation(operation, "backend_error", err.Error()), nil, err
+		class, providerKind := failureClassAndProvider("backend_error", err)
+		return account, AvailabilityQuery{}, m.failOperation(operation, class, providerKind, err.Error()), nil, err
 	}
 	query.QueryID = operation.OperationID
 	query.OperationID = operation.OperationID
@@ -172,7 +175,8 @@ func (m *Manager) CreateEvent(resources []integrations.Resource, input CreateEve
 	operation := m.newOperation(account, resource, OperationClassCreateEvent, selectionMode, normalizeTimezone(input.Timezone, account.PrimaryTimezone), input.Title, input.Source)
 	item, err := backend.CreateEvent(resource, account, input)
 	if err != nil {
-		return account, Event{}, m.failOperation(operation, writeFailureReason("backend_error", err), err.Error()), nil, err
+		class, providerKind := failureClassAndProvider("backend_error", err)
+		return account, Event{}, m.failOperation(operation, class, providerKind, err.Error()), nil, err
 	}
 	artifact := EventArtifact(operation, item)
 	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)
@@ -193,7 +197,8 @@ func (m *Manager) UpdateEvent(resources []integrations.Resource, input UpdateEve
 	operation := m.newOperation(account, resource, OperationClassUpdateEvent, selectionMode, normalizeTimezone(input.Timezone, account.PrimaryTimezone), input.ExternalEventID, input.Source)
 	item, err := backend.UpdateEvent(resource, account, input)
 	if err != nil {
-		return account, Event{}, m.failOperation(operation, writeFailureReason("not_found", err), err.Error()), nil, err
+		class, providerKind := failureClassAndProvider("not_found", err)
+		return account, Event{}, m.failOperation(operation, class, providerKind, err.Error()), nil, err
 	}
 	artifact := EventArtifact(operation, item)
 	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)
@@ -208,7 +213,8 @@ func (m *Manager) CancelEvent(resources []integrations.Resource, input CancelEve
 	operation := m.newOperation(account, resource, OperationClassCancelEvent, selectionMode, account.PrimaryTimezone, input.ExternalEventID, input.Source)
 	item, err := backend.CancelEvent(resource, account, input)
 	if err != nil {
-		return account, Event{}, m.failOperation(operation, writeFailureReason("not_found", err), err.Error()), nil, err
+		class, providerKind := failureClassAndProvider("not_found", err)
+		return account, Event{}, m.failOperation(operation, class, providerKind, err.Error()), nil, err
 	}
 	artifact := EventArtifact(operation, item)
 	operation = m.completeOperation(operation, []Artifact{artifact}, nil, item.ExternalEventID)
@@ -404,12 +410,12 @@ func (m *Manager) completeOperation(operation Operation, artifacts []Artifact, q
 	return operation
 }
 
-func (m *Manager) failOperation(operation Operation, class, reason string) Operation {
+func (m *Manager) failOperation(operation Operation, class, providerKind, reason string) Operation {
 	now := time.Now().UTC()
 	operation.Status = OperationStatusFailed
 	operation.FailureClass = class
 	operation.FailureReason = reason
-	diagnostic := integrations.DiagnosticFailureForOperationFailure("calendar", "", operation.IntegrationID, string(operation.OperationClass), class, reason, calendarOperationSideEffecting(operation.OperationClass), now)
+	diagnostic := integrations.DiagnosticFailureForOperationFailure("calendar", providerKind, operation.IntegrationID, string(operation.OperationClass), class, reason, calendarOperationSideEffecting(operation.OperationClass), now)
 	operation.DiagnosticFailure = &diagnostic
 	operation.CompletedAt = &now
 	operation.UpdatedAt = now

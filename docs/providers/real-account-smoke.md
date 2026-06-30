@@ -14,3 +14,20 @@ For each supported domain:
 Readiness may pass with recorded skips only when all fake-backend and
 operational evidence passes and the skipped real-account domains have explicit
 reasons.
+
+## Calendar (Feishu/Lark, Roadmap 60)
+
+The calendar domain has a real Feishu/Lark provider implemented as an adapter on the
+external integration adapter plane (Roadmap 59). Its real-account smoke is built by
+`opsreadiness.CalendarRealAccountSmoke`:
+
+- When safe operator-provided Feishu/Lark credentials are available and enabled, the
+  create/update/cancel live-validation rows are exercised and the status reports `pass`.
+- Otherwise an explicit structured skip is recorded (default reason: "safe Feishu/Lark
+  calendar credentials unavailable in this environment"); overall readiness can still pass
+  because fake-backend and operational evidence pass.
+- The raw provider message is never forwarded into diagnostics or smoke output; only the
+  stable, redacted failure-class token and reason code are recorded.
+
+The real provider runs only when `DOPE_INTEGRATION_ADAPTER` names the adapter binary and
+`DOPE_ADAPTER_PROVIDER=feishu_lark` is set; default development/CI uses the fake backend.
