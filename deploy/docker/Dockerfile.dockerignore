@@ -1,0 +1,7 @@
+# BuildKit reads this for `-f deploy/docker/Dockerfile`. Only daemon/ is needed.
+*
+!daemon
+daemon/**/*_test.go
+**/.git
+**/node_modules
+**/.gocache

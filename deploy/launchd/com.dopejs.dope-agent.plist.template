@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  DopeAgent launchd user agent template.
+  Tokens (@NAME@) are substituted by deploy/install.sh; do not edit the installed
+  copy by hand unless you know what you are doing — re-run the installer instead.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dopejs.dope-agent</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>@DOPE_BIN@</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DOPE_ENV</key>
+        <string>@DOPE_ENV@</string>
+        <key>DOPE_DATA_DIR</key>
+        <string>@DOPE_DATA_DIR@</string>
+        <key>DOPE_BIND_ADDR</key>
+        <string>@DOPE_BIND_ADDR@</string>
+        <key>DOPE_VERSION</key>
+        <string>@DOPE_VERSION@</string>
+        <key>DOPE_LOG_LEVEL</key>
+        <string>@DOPE_LOG_LEVEL@</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Back off if the daemon crash-loops on boot. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>@DOPE_LOG_DIR@/daemon.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>@DOPE_LOG_DIR@/daemon.err.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>@DOPE_DATA_DIR@</string>
+</dict>
+</plist>

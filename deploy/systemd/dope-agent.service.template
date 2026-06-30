@@ -1,0 +1,33 @@
+[Unit]
+# DopeAgent systemd service template.
+# Tokens (@NAME@) are substituted by deploy/install.sh.
+# Works both as a user service (systemctl --user) and a system service
+# (/etc/systemd/system). For a system service the installer also writes
+# User=/Group= lines after @SYSTEM_USER_BLOCK@.
+Description=DopeAgent daemon (personal agent OS control plane)
+Documentation=https://github.com/dopejs/dope-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=@DOPE_BIN@
+Environment=DOPE_ENV=@DOPE_ENV@
+Environment=DOPE_DATA_DIR=@DOPE_DATA_DIR@
+Environment=DOPE_BIND_ADDR=@DOPE_BIND_ADDR@
+Environment=DOPE_VERSION=@DOPE_VERSION@
+Environment=DOPE_LOG_LEVEL=@DOPE_LOG_LEVEL@
+WorkingDirectory=@DOPE_DATA_DIR@
+@SYSTEM_USER_BLOCK@
+# Restart on failure, but back off so a broken config does not hot-loop.
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+# Hardening (safe for a single-node self-host; relax if it blocks a feature).
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=@SYSTEMD_WANTED_BY@
