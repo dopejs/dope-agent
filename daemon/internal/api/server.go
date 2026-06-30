@@ -577,6 +577,9 @@ func NewServer(deps Dependencies) *Server {
 	mux.HandleFunc("/v1/mail/operations/", protected(withByIDTenantGuard(deps.Store, ae, "/v1/mail/operations/", "mail_operations", "operation_id", "mail_operation", func(w http.ResponseWriter, r *http.Request) {
 		handleMailOperationRoutes(deps.Config, deps.Mail, deps.Store, w, r)
 	})))
+	mux.HandleFunc("/v1/release/launch-gate", protected(func(w http.ResponseWriter, r *http.Request) {
+		handleLaunchGateValidate(w, r)
+	}))
 	mux.HandleFunc("/v1/support/evidence-bundles", protected(func(w http.ResponseWriter, r *http.Request) {
 		handleEvidenceBundles(deps.Evidence, w, r)
 	}))

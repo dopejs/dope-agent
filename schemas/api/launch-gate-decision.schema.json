@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/launch-gate-decision.schema.json",
+  "title": "LaunchGateDecision",
+  "type": "object",
+  "required": ["result", "nonKnowledgeParityComplete", "gateStatement"],
+  "additionalProperties": false,
+  "properties": {
+    "result": { "type": "string", "enum": ["ship", "no_ship"] },
+    "reasons": { "type": "array", "items": { "type": "string" } },
+    "nonKnowledgeParityComplete": { "type": "boolean" },
+    "gateStatement": { "type": "string" }
+  }
+}

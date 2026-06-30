@@ -93,3 +93,21 @@ Do not mark a future release complete from targeted-validation evidence or from 
 pre-Roadmap-40/41 soak. Any later release that changes Roadmap 40 live validation or
 Roadmap 41 evaluation-product behavior must rerun the required soak and link fresh
 evidence for the reviewed commit.
+
+## Non-Knowledge Public Beta Launch Gate (Roadmap 72)
+
+The public beta launch gate is codified as `opsreadiness.ValidateLaunchGate` over a
+`LaunchGateEvidence` index (POST `/v1/release/launch-gate`). It is a no-ship gate: missing
+required workload evidence, fewer than three channel entries, missing calendar/mail provider
+entries, or unmet soak / support-bundle / redaction evidence each produce a specific no-ship
+reason. Real-account smoke may be skipped only with a structured accepted reason.
+
+Required exercised workloads: activation, setup, channels, sessions, profile binding, routines,
+webhooks, quota denial, diagnostics, evaluation, live validation, support bundle, backup,
+restore, upgrade, rollback.
+
+Entry-gate rule: **context, knowledge, and memory work may begin only after non-knowledge parity
+release evidence passes (LaunchDecision.result == "ship") or residual exceptions are explicitly
+accepted.** With Roadmaps 44-72 (specs 044-057) landed, the non-knowledge personal-agent product
++ operations baseline is in place; the launch gate validates the release evidence index that
+authorizes starting context/knowledge/memory design.

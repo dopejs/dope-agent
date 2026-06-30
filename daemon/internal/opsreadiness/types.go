@@ -174,13 +174,13 @@ type SoakReport struct {
 }
 
 type RealAccountSmokeStatus struct {
-	Domain                        string
-	SafeCredentialsAvailable      bool
-	Enabled                       bool
-	Result                        string
-	SkipReason                    string
-	FakeBackendCoveragePassing    bool
-	ContainsRawCredentialMaterial bool
+	Domain                        string `json:"domain"`
+	SafeCredentialsAvailable      bool   `json:"safeCredentialsAvailable"`
+	Enabled                       bool   `json:"enabled"`
+	Result                        string `json:"result,omitempty"`
+	SkipReason                    string `json:"skipReason,omitempty"`
+	FakeBackendCoveragePassing    bool   `json:"fakeBackendCoveragePassing"`
+	ContainsRawCredentialMaterial bool   `json:"containsRawCredentialMaterial,omitempty"`
 }
 
 type ReleaseReadinessEvidence struct {
