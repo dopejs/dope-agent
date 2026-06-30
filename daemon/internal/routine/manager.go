@@ -10,8 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dopejs/dope-agent/daemon/internal/managerdoc"
 	"github.com/dopejs/dope-agent/daemon/internal/scheduler"
 )
+
+const docKindRoutine = "routine"
 
 var (
 	ErrRoutineNotFound  = errors.New("routine not found")
@@ -36,6 +39,7 @@ type Manager struct {
 	mu       sync.RWMutex
 	env      string
 	sched    Scheduler
+	docs     managerdoc.Store
 	routines map[string]Routine
 }
 
@@ -43,7 +47,13 @@ func NewManager(environmentScope string, sched Scheduler) *Manager {
 	return &Manager{env: strings.TrimSpace(environmentScope), sched: sched, routines: make(map[string]Routine)}
 }
 
-// Restore reloads persisted routines.
+// WithStore installs durable persistence for routines and returns the manager.
+func (m *Manager) WithStore(s managerdoc.Store) *Manager {
+	m.docs = s
+	return m
+}
+
+// Restore reloads routines from an in-memory slice.
 func (m *Manager) Restore(routines []Routine) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -51,6 +61,16 @@ func (m *Manager) Restore(routines []Routine) {
 	for _, r := range routines {
 		m.routines[r.RoutineID] = r
 	}
+}
+
+// LoadFromStore reloads persisted routines from the document store on startup.
+func (m *Manager) LoadFromStore(ctx context.Context) error {
+	routines, err := managerdoc.List[Routine](ctx, m.docs, docKindRoutine)
+	if err != nil {
+		return err
+	}
+	m.Restore(routines)
+	return nil
 }
 
 // Preview compiles a definition without activating it and returns the schedule/workflow/approval/
@@ -221,6 +241,7 @@ func (m *Manager) store(routine Routine) {
 	m.mu.Lock()
 	m.routines[routine.RoutineID] = routine
 	m.mu.Unlock()
+	_ = managerdoc.Put(context.Background(), m.docs, docKindRoutine, routine.RoutineID, m.env, "", routine)
 }
 
 // compile maps a routine definition onto an existing scheduler create input (workflow target).

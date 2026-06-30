@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultDatabaseFile  = "daemon.sqlite"
-	CurrentSchemaVersion = 54
+	CurrentSchemaVersion = 55
 )
 
 func (s *SQLiteStore) ResolveActiveTenantBinding(ctx context.Context) any {
@@ -3811,6 +3811,27 @@ var schemaMigrations = []schemaMigration{
 			);
 			`,
 			`CREATE INDEX IF NOT EXISTS idx_binding_audit_events_binding ON binding_audit_events(tenant_id, binding_id, occurred_at DESC);`,
+		},
+	},
+	{
+		Version: 55,
+		Name:    "r60_72_manager_documents",
+		Statements: []string{
+			// Generic JSON-document store backing the Roadmap 65-71 in-memory managers
+			// (triage, routine, webhook, catalog, execprofile, evidence). Each manager persists
+			// its resources as documents keyed by (doc_kind, doc_id) and reloads them on startup.
+			`
+			CREATE TABLE IF NOT EXISTS manager_documents (
+				doc_kind TEXT NOT NULL,
+				doc_id TEXT NOT NULL,
+				environment_scope TEXT,
+				tenant_id TEXT,
+				document_json TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (doc_kind, doc_id)
+			);
+			`,
+			`CREATE INDEX IF NOT EXISTS idx_manager_documents_kind ON manager_documents(doc_kind);`,
 		},
 	},
 }

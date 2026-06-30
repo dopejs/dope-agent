@@ -335,7 +335,7 @@ func New() (*App, error) {
 		Delivery:         deliveryManager,
 		WorkflowLauncher: workflowLauncher,
 	})
-	triageManager := triage.NewManager(string(cfg.Environment))
+	triageManager := triage.NewManager(string(cfg.Environment)).WithStore(sqliteStore)
 	scheduleManager := scheduler.New(scheduler.Dependencies{
 		Config:           cfg,
 		Runtime:          runtimeManager,
@@ -345,16 +345,25 @@ func New() (*App, error) {
 		WorkflowLauncher: workflowLauncher,
 		Billing:          billingManager,
 	})
-	routineManager := routine.NewManager(string(cfg.Environment), scheduleManager)
-	webhookManager := webhook.NewManager(string(cfg.Environment), &webhookWorkflowFirer{launcher: workflowLauncher, routines: routineManager}, nil)
-	catalogManager := catalog.NewManager(string(cfg.Environment), nil, nil)
-	execProfileManager := execprofile.NewManager(string(cfg.Environment), nil, nil, nil)
-	// The repo-owned subprocess sandbox is always-available; richer backends register when wired.
+	routineManager := routine.NewManager(string(cfg.Environment), scheduleManager).WithStore(sqliteStore)
+	webhookManager := webhook.NewManager(string(cfg.Environment), &webhookWorkflowFirer{launcher: workflowLauncher, routines: routineManager}, nil).WithStore(sqliteStore)
+	catalogManager := catalog.NewManager(string(cfg.Environment), nil, nil).WithStore(sqliteStore)
+	execProfileManager := execprofile.NewManager(string(cfg.Environment), nil, nil, nil).WithStore(sqliteStore)
+	evidenceManager := evidence.NewManager(string(cfg.Environment), nil, nil).WithStore(sqliteStore)
+	// Reload persisted manager state (Roadmap 65-71) before first use so resources survive restart.
+	loadCtx := context.Background()
+	_ = triageManager.LoadFromStore(loadCtx)
+	_ = routineManager.LoadFromStore(loadCtx)
+	_ = webhookManager.LoadFromStore(loadCtx)
+	_ = catalogManager.LoadFromStore(loadCtx)
+	_ = execProfileManager.LoadFromStore(loadCtx)
+	_ = evidenceManager.LoadFromStore(loadCtx)
+	// The repo-owned subprocess sandbox is always-available; register after load so it is present
+	// even on a fresh store (RegisterProfile is idempotent by profile id).
 	_, _ = execProfileManager.RegisterProfile(execprofile.ExecutionProfile{
 		ProfileID: "subprocess", Name: "Subprocess Sandbox", BackendKind: execprofile.BackendSubprocess,
 		RiskTier: execprofile.RiskLow, Provides: []string{"local_fs"}, Description: "repo-owned subprocess sandbox",
 	})
-	evidenceManager := evidence.NewManager(string(cfg.Environment), nil, nil)
 	if err := recoverPersistedStateWithSecrets(envCtx, cfg.DataDir, cfg.Environment, sqliteStore, sessionRouter, checkpointManager, eventBus, connectorSupervisor, capabilitySupervisor, policyEngine, authManager, identityManager, providerManager, sandboxManager, secretManager, mcpManager, integrationManager, calendarManager, mailManager, reminderManager); err != nil {
 		return nil, err
 	}

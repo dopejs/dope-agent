@@ -1,13 +1,18 @@
 package triage
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/managerdoc"
 )
+
+const docKindPolicy = "triage_policy"
 
 var (
 	ErrPolicyNotFound = errors.New("triage policy not found")
@@ -21,6 +26,7 @@ var (
 type Manager struct {
 	mu       sync.RWMutex
 	env      string
+	docs     managerdoc.Store
 	policies map[string]Policy
 }
 
@@ -28,7 +34,13 @@ func NewManager(environmentScope string) *Manager {
 	return &Manager{env: strings.TrimSpace(environmentScope), policies: make(map[string]Policy)}
 }
 
-// Restore reloads persisted policies.
+// WithStore installs durable persistence for triage policies and returns the manager.
+func (m *Manager) WithStore(s managerdoc.Store) *Manager {
+	m.docs = s
+	return m
+}
+
+// Restore reloads policies from an in-memory slice (used by callers that already hold them).
 func (m *Manager) Restore(policies []Policy) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -36,6 +48,16 @@ func (m *Manager) Restore(policies []Policy) {
 	for _, p := range policies {
 		m.policies[p.PolicyID] = p
 	}
+}
+
+// LoadFromStore reloads persisted triage policies from the document store on startup.
+func (m *Manager) LoadFromStore(ctx context.Context) error {
+	policies, err := managerdoc.List[Policy](ctx, m.docs, docKindPolicy)
+	if err != nil {
+		return err
+	}
+	m.Restore(policies)
+	return nil
 }
 
 // CreatePolicy validates and stores a policy. Classifications and outcomes must be from the fixed
@@ -64,6 +86,7 @@ func (m *Manager) CreatePolicy(name string, rules []Rule, defaultClassification 
 	m.mu.Lock()
 	m.policies[policy.PolicyID] = policy
 	m.mu.Unlock()
+	_ = managerdoc.Put(context.Background(), m.docs, docKindPolicy, policy.PolicyID, m.env, "", policy)
 	return policy, nil
 }
 

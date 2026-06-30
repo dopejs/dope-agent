@@ -10,7 +10,18 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/managerdoc"
 )
+
+const docKindWebhook = "webhook_endpoint"
+
+// persistedEndpoint is the durable form of a webhook: its projection plus the signing secret
+// (hex) needed to verify signatures across restarts.
+type persistedEndpoint struct {
+	Endpoint  Endpoint `json:"endpoint"`
+	SecretHex string   `json:"secretHex"`
+}
 
 var (
 	ErrEndpointNotFound = errors.New("webhook endpoint not found")
@@ -55,9 +66,39 @@ type Manager struct {
 	env       string
 	firer     Firer
 	quota     QuotaGate
+	docs      managerdoc.Store
 	endpoints map[string]Endpoint
 	secrets   map[string][]byte          // webhookID -> signing secret (never projected)
 	seenKeys  map[string]map[string]bool // webhookID -> idempotency key -> seen
+}
+
+// WithStore installs durable persistence for webhook endpoints + secrets and returns the manager.
+func (m *Manager) WithStore(s managerdoc.Store) *Manager {
+	m.docs = s
+	return m
+}
+
+// LoadFromStore reloads persisted webhook endpoints + signing secrets on startup.
+func (m *Manager) LoadFromStore(ctx context.Context) error {
+	items, err := managerdoc.List[persistedEndpoint](ctx, m.docs, docKindWebhook)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, item := range items {
+		m.endpoints[item.Endpoint.WebhookID] = item.Endpoint
+		if secret, decErr := hex.DecodeString(item.SecretHex); decErr == nil {
+			m.secrets[item.Endpoint.WebhookID] = secret
+		}
+	}
+	return nil
+}
+
+// persist write-throughs an endpoint + its secret. Callers hold m.mu or pass copies.
+func (m *Manager) persist(endpoint Endpoint, secret []byte) {
+	_ = managerdoc.Put(context.Background(), m.docs, docKindWebhook, endpoint.WebhookID, m.env, endpoint.TenantID,
+		persistedEndpoint{Endpoint: endpoint, SecretHex: hex.EncodeToString(secret)})
 }
 
 func NewManager(environmentScope string, firer Firer, quota QuotaGate) *Manager {
@@ -104,6 +145,7 @@ func (m *Manager) Create(tenantID, name string, targetKind TargetKind, targetRef
 	m.endpoints[endpoint.WebhookID] = endpoint
 	m.secrets[endpoint.WebhookID] = secret
 	m.mu.Unlock()
+	m.persist(endpoint, secret)
 	return CreateSecret{Endpoint: endpoint, Secret: hex.EncodeToString(secret)}, nil
 }
 
@@ -124,6 +166,7 @@ func (m *Manager) Rotate(tenantID, webhookID string) (CreateSecret, error) {
 	endpoint.UpdatedAt = time.Now().UTC()
 	m.endpoints[endpoint.WebhookID] = endpoint
 	m.secrets[endpoint.WebhookID] = secret
+	m.persist(endpoint, secret)
 	return CreateSecret{Endpoint: endpoint, Secret: hex.EncodeToString(secret)}, nil
 }
 
@@ -141,6 +184,7 @@ func (m *Manager) Disable(tenantID, webhookID string) (Endpoint, error) {
 	endpoint.Status = StatusDisabled
 	endpoint.UpdatedAt = time.Now().UTC()
 	m.endpoints[endpoint.WebhookID] = endpoint
+	m.persist(endpoint, m.secrets[endpoint.WebhookID])
 	return endpoint, nil
 }
 

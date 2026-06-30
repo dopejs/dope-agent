@@ -9,6 +9,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/managerdoc"
+)
+
+const (
+	docKindExecProfile   = "exec_profile"
+	docKindExecSelection = "exec_selection"
 )
 
 var (
@@ -55,8 +62,29 @@ type Manager struct {
 	health     HealthChecker
 	reqs       RequirementChecker
 	perms      PermissionGate
+	docs       managerdoc.Store
 	profiles   map[string]ExecutionProfile
 	selections map[string]Selection // tenantID -> selection
+}
+
+// WithStore installs durable persistence for profiles + selections and returns the manager.
+func (m *Manager) WithStore(s managerdoc.Store) *Manager {
+	m.docs = s
+	return m
+}
+
+// LoadFromStore reloads persisted profiles + selections on startup.
+func (m *Manager) LoadFromStore(ctx context.Context) error {
+	profiles, err := managerdoc.List[ExecutionProfile](ctx, m.docs, docKindExecProfile)
+	if err != nil {
+		return err
+	}
+	selections, err := managerdoc.List[Selection](ctx, m.docs, docKindExecSelection)
+	if err != nil {
+		return err
+	}
+	m.Restore(profiles, selections)
+	return nil
 }
 
 func NewManager(environmentScope string, health HealthChecker, reqs RequirementChecker, perms PermissionGate) *Manager {
@@ -96,6 +124,7 @@ func (m *Manager) RegisterProfile(profile ExecutionProfile) (ExecutionProfile, e
 	m.mu.Lock()
 	m.profiles[profile.ProfileID] = profile
 	m.mu.Unlock()
+	_ = managerdoc.Put(context.Background(), m.docs, docKindExecProfile, profile.ProfileID, m.env, "", profile)
 	return profile, nil
 }
 
@@ -199,6 +228,7 @@ func (m *Manager) SelectProfile(ctx context.Context, tenantID, profileID, actor 
 	selection.History = append(selection.History, SelectionEvent{ProfileID: profileID, Actor: actor, OccurredAt: now})
 	selection.UpdatedAt = now
 	m.selections[selection.TenantID] = selection
+	_ = managerdoc.Put(context.Background(), m.docs, docKindExecSelection, selection.TenantID, m.env, selection.TenantID, selection)
 	return selection, nil
 }
 

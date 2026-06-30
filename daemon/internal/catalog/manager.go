@@ -8,6 +8,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/managerdoc"
+)
+
+const (
+	docKindCatalogItem       = "catalog_item"
+	docKindCatalogEnablement = "catalog_enablement"
 )
 
 var (
@@ -45,8 +52,29 @@ type Manager struct {
 	env         string
 	checker     RequirementChecker
 	permissions PermissionGate
+	docs        managerdoc.Store
 	items       map[string]CatalogItem
 	enablements map[string]Enablement // key: tenantID + "\x00" + itemID
+}
+
+// WithStore installs durable persistence for catalog items + enablements and returns the manager.
+func (m *Manager) WithStore(s managerdoc.Store) *Manager {
+	m.docs = s
+	return m
+}
+
+// LoadFromStore reloads persisted catalog items + enablements on startup.
+func (m *Manager) LoadFromStore(ctx context.Context) error {
+	items, err := managerdoc.List[CatalogItem](ctx, m.docs, docKindCatalogItem)
+	if err != nil {
+		return err
+	}
+	enablements, err := managerdoc.List[Enablement](ctx, m.docs, docKindCatalogEnablement)
+	if err != nil {
+		return err
+	}
+	m.Restore(items, enablements)
+	return nil
 }
 
 func NewManager(environmentScope string, checker RequirementChecker, permissions PermissionGate) *Manager {
@@ -90,6 +118,7 @@ func (m *Manager) RegisterItem(item CatalogItem) (CatalogItem, error) {
 	}
 	m.items[item.ItemID] = item
 	m.mu.Unlock()
+	_ = managerdoc.Put(context.Background(), m.docs, docKindCatalogItem, item.ItemID, m.env, "", item)
 	return item, nil
 }
 
@@ -165,6 +194,7 @@ func (m *Manager) Rollback(ctx context.Context, tenantID, itemID, actor string) 
 	}
 	enablement.UpdatedAt = now
 	m.enablements[key] = enablement
+	_ = managerdoc.Put(context.Background(), m.docs, docKindCatalogEnablement, key, m.env, enablement.TenantID, enablement)
 	return enablement, nil
 }
 
@@ -251,6 +281,7 @@ func (m *Manager) recordTransition(tenantID, itemID string, state EnablementStat
 	enablement.History = append(enablement.History, EnablementEvent{Action: action, Version: version, Actor: actor, Reason: reason, OccurredAt: now})
 	enablement.UpdatedAt = now
 	m.enablements[key] = enablement
+	_ = managerdoc.Put(context.Background(), m.docs, docKindCatalogEnablement, key, m.env, enablement.TenantID, enablement)
 	return enablement
 }
 

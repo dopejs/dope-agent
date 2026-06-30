@@ -8,7 +8,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dopejs/dope-agent/daemon/internal/managerdoc"
 )
+
+const docKindBundle = "evidence_bundle"
 
 var (
 	ErrBundleNotFound    = errors.New("evidence bundle not found")
@@ -47,8 +51,29 @@ type Manager struct {
 	env       string
 	collector Collector
 	perms     PermissionGate
+	docs      managerdoc.Store
 	bundles   map[string]Bundle
 	audit     []AccessEvent
+}
+
+// WithStore installs durable persistence for generated evidence bundles and returns the manager.
+func (m *Manager) WithStore(s managerdoc.Store) *Manager {
+	m.docs = s
+	return m
+}
+
+// LoadFromStore reloads persisted evidence bundles on startup.
+func (m *Manager) LoadFromStore(ctx context.Context) error {
+	bundles, err := managerdoc.List[Bundle](ctx, m.docs, docKindBundle)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, b := range bundles {
+		m.bundles[b.BundleID] = b
+	}
+	return nil
 }
 
 func NewManager(environmentScope string, collector Collector, perms PermissionGate) *Manager {
@@ -99,6 +124,7 @@ func (m *Manager) Generate(ctx context.Context, tenantID, actor string, scope Sc
 	m.bundles[bundle.BundleID] = bundle
 	m.audit = append(m.audit, AccessEvent{BundleID: bundle.BundleID, TenantID: bundle.TenantID, Actor: bundle.Actor, Action: "generated", OccurredAt: now})
 	m.mu.Unlock()
+	_ = managerdoc.Put(ctx, m.docs, docKindBundle, bundle.BundleID, m.env, bundle.TenantID, bundle)
 	return bundle, nil
 }
 
