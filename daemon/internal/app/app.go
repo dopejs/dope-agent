@@ -348,8 +348,8 @@ func New() (*App, error) {
 	routineManager := routine.NewManager(string(cfg.Environment), scheduleManager).WithStore(sqliteStore)
 	webhookManager := webhook.NewManager(string(cfg.Environment), &webhookWorkflowFirer{launcher: workflowLauncher, routines: routineManager}, nil).WithStore(sqliteStore)
 	catalogManager := catalog.NewManager(string(cfg.Environment), nil, nil).WithStore(sqliteStore)
-	execProfileManager := execprofile.NewManager(string(cfg.Environment), nil, nil, nil).WithStore(sqliteStore)
-	evidenceManager := evidence.NewManager(string(cfg.Environment), nil, nil).WithStore(sqliteStore)
+	execProfileManager := execprofile.NewManager(string(cfg.Environment), sandboxExecHealth{sandbox: sandboxManager}, nil, nil).WithStore(sqliteStore)
+	evidenceManager := evidence.NewManager(string(cfg.Environment), evidenceCollector{routines: routineManager}, nil).WithStore(sqliteStore)
 	// Reload persisted manager state (Roadmap 65-71) before first use so resources survive restart.
 	loadCtx := context.Background()
 	_ = triageManager.LoadFromStore(loadCtx)
@@ -915,6 +915,65 @@ func (f *webhookWorkflowFirer) Fire(ctx context.Context, endpoint webhook.Endpoi
 		return result.RunID, nil
 	}
 	return result.WorkflowID, nil
+}
+
+// evidenceCollector assembles redaction-candidate summaries for a support evidence bundle from
+// existing daemon records (Roadmap 71). It reuses resource summaries + links, never raw logs; the
+// evidence manager redacts and fails closed. Additional scopes attach as their managers are
+// threaded in; unhandled scopes return no sections (the bundle still generates).
+type evidenceCollector struct {
+	routines *routine.Manager
+}
+
+func (c evidenceCollector) Collect(_ context.Context, _ string, scope evidence.Scope) ([]evidence.Section, error) {
+	switch scope.Kind {
+	case evidence.ScopeRoutine:
+		if c.routines == nil {
+			return nil, nil
+		}
+		r, ok := c.routines.Get(scope.Ref)
+		if !ok {
+			return nil, nil
+		}
+		return []evidence.Section{{
+			Kind:         "routine",
+			ResourceRefs: []string{r.RoutineID, r.CurrentScheduleID},
+			Summary: map[string]string{
+				"name":           r.Name,
+				"state":          string(r.State),
+				"currentVersion": fmt.Sprint(r.CurrentVersion),
+			},
+			Links: []string{"/v1/routines/" + r.RoutineID},
+		}}, nil
+	default:
+		return nil, nil
+	}
+}
+
+// sandboxExecHealth reports execution-profile backend health from the authoritative sandbox
+// backend-capability view (Roadmap 69). The sandbox/policy layer remains authoritative; this only
+// projects live availability so the profile UX reflects real backend state.
+type sandboxExecHealth struct{ sandbox *sandbox.Manager }
+
+func (h sandboxExecHealth) Health(_ context.Context, profile execprofile.ExecutionProfile) (execprofile.HealthStatus, string) {
+	if h.sandbox == nil {
+		return execprofile.HealthReady, ""
+	}
+	for _, cap := range h.sandbox.BackendCapabilities() {
+		if !strings.EqualFold(string(cap.BackendKind), string(profile.BackendKind)) {
+			continue
+		}
+		switch cap.AvailabilityStatus {
+		case sandbox.BackendAvailabilityStatusAvailable:
+			return execprofile.HealthReady, ""
+		case sandbox.BackendAvailabilityStatusDegraded:
+			return execprofile.HealthDegraded, cap.AvailabilityReason
+		default:
+			return execprofile.HealthUnavailable, cap.AvailabilityReason
+		}
+	}
+	// Unknown backend kind: don't falsely mark unavailable (the always-on subprocess default).
+	return execprofile.HealthReady, ""
 }
 
 // wireIntegrationAdapters spawns one out-of-process adapter per integration domain, registers
