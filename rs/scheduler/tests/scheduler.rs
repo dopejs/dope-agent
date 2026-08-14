@@ -45,7 +45,10 @@ impl Clock for FakeClock {
 }
 
 fn temp_dir() -> String {
-    let dir = std::env::temp_dir().join(format!("dope_scheduler_test_{}", std::process::id()));
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("dope_scheduler_test_{}_{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

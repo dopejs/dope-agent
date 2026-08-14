@@ -24,7 +24,7 @@ fn make_run(id: &str, tenant: &str) -> Run {
     let now = Utc::now();
     Run {
         run_id: id.to_string(),
-        session_id: format!("sess_{id}"),
+        session_id: String::new(),
         entrypoint: "test entrypoint".to_string(),
         status: RunStatus::Running,
         goal: "test goal".to_string(),
@@ -79,7 +79,7 @@ fn make_session(id: &str) -> Session {
         account_id: String::new(),
         peer_id: "peer_1".to_string(),
         thread_id: String::new(),
-        routing_key: "cli".to_string(),
+        routing_key: format!("rk_{id}"),
         generation: 1,
         created_at: now,
         updated_at: now,
