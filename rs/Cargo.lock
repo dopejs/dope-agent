@@ -439,8 +439,12 @@ dependencies = [
 name = "dope-feishulark"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "dope-adapterprovider",
  "dope-adapterrpc",
+ "dope-calendar",
+ "dope-integrations",
+ "dope-mail",
  "serde",
  "serde_json",
  "ureq",

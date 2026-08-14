@@ -2,10 +2,25 @@
 //! (token.go + the fault-mapping core of client.go). The HTTP client and the
 //! calendar/mail provider handlers are the next increment.
 
+mod calendar;
 mod client;
+mod mail;
+pub use calendar::*;
 pub use client::*;
+pub use mail::*;
 
 use serde::{Deserialize, Serialize};
+
+#[must_use]
+pub fn first_non_empty(values: &[&str]) -> String {
+    for value in values {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    String::new()
+}
 
 /// The Feishu Open Platform base. Lark international uses open.larksuite.com; overridable at
 /// wiring time.

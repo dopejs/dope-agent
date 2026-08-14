@@ -2,10 +2,12 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread;
 
+use dope_adapterprovider::{Handler, Operation};
 use dope_feishulark::{
-    adapter_failure_kind, ambiguous_fault, feishu_code_fault, http_status_fault, parse_token, Client,
-    FaultKind, ScopedToken, AMBIGUOUS_CODE,
+    adapter_failure_kind, ambiguous_fault, feishu_code_fault, http_status_fault, new_calendar_provider,
+    new_mail_provider, parse_token, Client, FaultKind, ScopedToken, AMBIGUOUS_CODE,
 };
+use serde_json::value::RawValue;
 
 fn mock_http(status: &'static str, body: &'static str) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -14,13 +16,21 @@ fn mock_http(status: &'static str, body: &'static str) -> String {
     let status = status.to_string();
     thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {
-            let mut buf = [0u8; 8192];
-            let _ = stream.read(&mut buf);
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(80)));
+            let mut buf = [0u8; 2048];
+            loop {
+                match stream.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(_) => continue,
+                    Err(_) => break,
+                }
+            }
             let resp = format!(
                 "{status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()
             );
             let _ = stream.write_all(resp.as_bytes());
+            let _ = stream.flush();
         }
     });
     format!("http://{addr}")
@@ -134,4 +144,48 @@ fn client_call_maps_feishu_code() {
     let err = client.call(None, "GET", "/x", "tok", None::<&()>, None::<&mut MailboxResp>, false).unwrap_err();
     assert_eq!(err.kind, FaultKind::Scope);
     assert_eq!(err.code, "scope_not_granted");
+}
+
+#[test]
+fn calendar_project_account_roundtrip() {
+    let base = mock_http("HTTP/1.1 200 OK", r#"{"code":0,"msg":"ok","data":{"calendars":[{"calendar":{"calendar_id":"cal_1","summary":"Primary"},"user_id":"u_1"}]}}"#);
+    let provider = new_calendar_provider(Client::new(&base));
+    let resource = dope_integrations::Resource {
+        integration_id: "cal_1".to_string(),
+        domain_kind: "calendar".to_string(),
+        ..Default::default()
+    };
+    let op = Operation {
+        domain: "calendar".to_string(),
+        operation: "ProjectAccount".to_string(),
+        resource: Some(RawValue::from_string(serde_json::to_string(&resource).unwrap()).unwrap()),
+        credential: Some(RawValue::from_string(r#"{"accessToken":"tok"}"#.to_string()).unwrap()),
+        payload: None,
+    };
+    let result = provider.handle(op, None).unwrap().unwrap();
+    let account: dope_calendar::AccountProjection = serde_json::from_str(result.get()).unwrap();
+    assert_eq!(account.primary_calendar_ref, "cal_1");
+    assert_eq!(account.integration_id, "cal_1");
+}
+
+#[test]
+fn mail_project_account_roundtrip() {
+    let base = mock_http("HTTP/1.1 200 OK", r#"{"code":0,"msg":"ok","data":{"mailbox_address":"a@x.com","name":"Alice"}}"#);
+    let provider = new_mail_provider(Client::new(&base));
+    let resource = dope_integrations::Resource {
+        integration_id: "m_1".to_string(),
+        domain_kind: "mail".to_string(),
+        ..Default::default()
+    };
+    let op = Operation {
+        domain: "mail".to_string(),
+        operation: "ProjectAccount".to_string(),
+        resource: Some(RawValue::from_string(serde_json::to_string(&resource).unwrap()).unwrap()),
+        credential: Some(RawValue::from_string(r#"{"accessToken":"tok"}"#.to_string()).unwrap()),
+        payload: None,
+    };
+    let result = provider.handle(op, None).unwrap().unwrap();
+    let account: dope_mail::AccountProjection = serde_json::from_str(result.get()).unwrap();
+    assert_eq!(account.mailbox_address, "a@x.com");
+    assert_eq!(account.integration_id, "m_1");
 }
