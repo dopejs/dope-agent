@@ -12,6 +12,7 @@ mod computeruse;
 pub mod consumer_policy;
 mod crud;
 pub mod delivery;
+mod events;
 mod identity;
 mod integrations;
 pub mod mail;

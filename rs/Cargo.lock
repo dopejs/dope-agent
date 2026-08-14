@@ -750,6 +750,7 @@ dependencies = [
  "dope-calendar",
  "dope-capabilities",
  "dope-computeruse",
+ "dope-events",
  "dope-identity",
  "dope-integrations",
  "dope-llm",

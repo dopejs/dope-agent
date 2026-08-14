@@ -39,6 +39,7 @@ fn store_conn_query(db_path: &str, query: &str) -> i64 {
 use chrono::Utc;
 use dope_capabilities::{Capability, Status as CapabilityStatus};
 use dope_router::{Session, SessionKind, SessionStatus};
+use dope_events::{Event, Filter, Resource, Scope};
 use dope_llm::{Dispatch, DispatchStatus, Message, MessageRole, Usage};
 use dope_policy::{Approval, ApprovalStatus, Decision, DecisionOutcome};
 use dope_providers::{
@@ -526,4 +527,47 @@ fn migrate_to_version_applies_partial_schema_then_head() {
     // Bring it to the head and confirm all 55 migrations are now applied.
     store.migrate_to_version(55).unwrap();
     assert_eq!(store.schema_version().unwrap(), 55);
+}
+#[test]
+fn event_append_and_list_round_trip() {
+    let dir = temp_dir("events");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let now = Utc::now();
+    let mut payload = serde_json::Map::new();
+    payload.insert("k".to_string(), serde_json::json!("v"));
+    let event = Event {
+        event_id: "evt_1".to_string(),
+        sequence: 0,
+        environment_scope: "test".to_string(),
+        tenant_id: String::new(),
+        category: "audit".to_string(),
+        name: "audit.cross_tenant_access_denied".to_string(),
+        occurred_at: now,
+        scope: Scope { run_id: "run_1".to_string(), ..Scope::default() },
+        resource: Resource { kind: "run".to_string(), id: "run_1".to_string() },
+        payload: payload.clone(),
+    };
+    let appended = store.append_event(&event).unwrap();
+    assert!(appended.sequence > 0);
+
+    let listed = store
+        .list_events(&Filter {
+            environment_scope: "test".to_string(),
+            category: "audit".to_string(),
+            ..Filter::default()
+        })
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].event_id, "evt_1");
+    assert_eq!(listed[0].name, "audit.cross_tenant_access_denied");
+    assert_eq!(listed[0].scope.run_id, "run_1");
+    assert_eq!(listed[0].resource.kind, "run");
+    assert_eq!(listed[0].payload.get("k"), Some(&serde_json::json!("v")));
+    assert_eq!(listed[0].sequence, appended.sequence);
+
+    // Cursor filter: no rows after the last sequence.
+    let after = store
+        .list_events(&Filter { cursor: appended.sequence, ..Filter::default() })
+        .unwrap();
+    assert!(after.is_empty());
 }
