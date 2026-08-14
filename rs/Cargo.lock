@@ -459,6 +459,7 @@ dependencies = [
  "dope-orchestration",
  "dope-policy",
  "dope-providers",
+ "dope-reminders",
  "dope-router",
  "dope-routine",
  "dope-runtime",
