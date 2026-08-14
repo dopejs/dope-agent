@@ -8,10 +8,13 @@ use chrono::SecondsFormat;
 use rusqlite::{params, Connection};
 
 mod crud;
+mod manager_documents;
 mod migrations;
 mod policy;
 mod providers;
 mod registry;
+
+pub use manager_documents::ManagerDocument;
 
 /// The production schema head. The full 55-version migration list is added incrementally.
 pub const CURRENT_SCHEMA_VERSION: i64 = 55;
@@ -60,6 +63,11 @@ impl SQLiteStore {
     #[must_use]
     pub fn db_path(&self) -> &str {
         &self.db_path
+    }
+
+    /// The schema version currently applied to this database.
+    pub fn schema_version(&self) -> Result<i64, String> {
+        current_schema_version(&self.conn)
     }
 
     /// Applies the SQLite pragmas used by the Go store.

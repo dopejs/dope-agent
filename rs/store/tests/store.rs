@@ -465,3 +465,28 @@ fn approval_and_decision_round_trip() {
     assert_eq!(decisions.len(), 1);
     assert_eq!(decisions[0].outcome, DecisionOutcome::Allowed);
 }
+#[test]
+fn manager_document_round_trips_through_sqlite() {
+    let dir = temp_dir("managdoc");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let now = Utc::now();
+    let doc = dope_store::ManagerDocument {
+        doc_kind: "triage".to_string(),
+        doc_id: "t1".to_string(),
+        environment_scope: "test".to_string(),
+        tenant_id: "tenant_1".to_string(),
+        document_json: "{\"a\":1}".to_string(),
+        updated_at: now,
+    };
+    store.put_manager_document(&doc).unwrap();
+
+    let listed = store.list_manager_documents("triage").unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].doc_id, "t1");
+    assert_eq!(listed[0].environment_scope, "test");
+    assert_eq!(listed[0].document_json, "{\"a\":1}");
+
+    store.delete_manager_document("triage", "t1").unwrap();
+    assert_eq!(store.list_manager_documents("triage").unwrap().len(), 0);
+    assert_eq!(store.schema_version().unwrap(), 55);
+}
