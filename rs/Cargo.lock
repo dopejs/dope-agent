@@ -431,6 +431,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-integrations"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-livevalidation",
+ "dope-setupwizard",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "dope-inventory"
 version = "0.1.0"
 dependencies = [
