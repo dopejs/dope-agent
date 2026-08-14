@@ -16,6 +16,8 @@ dope-capabilities.workspace = true
 dope-llm.workspace = true
 dope-providers.workspace = true
 dope-policy.workspace = true
-
-[dev-dependencies]
+dope-identity.workspace = true
 dope-integrations.workspace = true
+dope-calendar.workspace = true
+dope-mail.workspace = true
+dope-computeruse.workspace = true

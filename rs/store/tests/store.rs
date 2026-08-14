@@ -490,3 +490,30 @@ fn manager_document_round_trips_through_sqlite() {
     assert_eq!(store.list_manager_documents("triage").unwrap().len(), 0);
     assert_eq!(store.schema_version().unwrap(), 55);
 }
+#[test]
+fn sandbox_execution_round_trips_through_sqlite() {
+    let dir = temp_dir("sandboxexec");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let now = Utc::now();
+    let record = dope_store::SandboxExecutionRecord {
+        execution_id: "exec_1".to_string(),
+        profile_id: "prof_1".to_string(),
+        backend_kind: "docker".to_string(),
+        status: "running".to_string(),
+        approval_id: String::new(),
+        requested_at: now,
+        updated_at: now,
+        started_at: Some(now),
+        completed_at: None,
+        document: "{\"kind\":\"exec\"}".to_string(),
+    };
+    store.upsert_sandbox_execution(&record).unwrap();
+    let listed = store.list_sandbox_executions().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].execution_id, "exec_1");
+    assert_eq!(listed[0].backend_kind, "docker");
+    assert_eq!(listed[0].approval_id, "");
+    assert_eq!(listed[0].document, "{\"kind\":\"exec\"}");
+    assert!(listed[0].started_at.is_some());
+    assert!(listed[0].completed_at.is_none());
+}

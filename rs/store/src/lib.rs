@@ -7,14 +7,21 @@ use std::path::Path;
 use chrono::SecondsFormat;
 use rusqlite::{params, Connection};
 
+pub mod calendar;
+mod computeruse;
 mod crud;
+mod identity;
+mod integrations;
+pub mod mail;
 mod manager_documents;
 mod migrations;
 mod policy;
 mod providers;
+mod records;
 mod registry;
 
 pub use manager_documents::ManagerDocument;
+pub use records::SandboxExecutionRecord;
 
 /// The production schema head. The full 55-version migration list is added incrementally.
 pub const CURRENT_SCHEMA_VERSION: i64 = 55;

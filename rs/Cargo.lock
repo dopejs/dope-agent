@@ -738,9 +738,13 @@ name = "dope-store"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-calendar",
  "dope-capabilities",
+ "dope-computeruse",
+ "dope-identity",
  "dope-integrations",
  "dope-llm",
+ "dope-mail",
  "dope-policy",
  "dope-providers",
  "dope-router",
