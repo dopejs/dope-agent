@@ -403,6 +403,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-computeruse"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "dope-config"
 version = "0.1.0"
 dependencies = [
