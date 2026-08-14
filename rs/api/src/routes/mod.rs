@@ -15,9 +15,14 @@ use crate::response::Json;
 use crate::state::AppState;
 use crate::types::{self, SystemInfoResponse};
 
+pub mod activation;
+pub mod auth;
 pub mod calendar;
+pub mod evaluation;
 pub mod mail;
 pub mod reminders;
+pub mod resources;
+pub mod runs;
 pub mod workflows;
 
 /// `/healthz` payload (Go: `{"ok": true, "service": "dope"}`).
@@ -62,9 +67,14 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/version", get(version))
         .route("/v1/system/info", get(system_info))
+        .merge(activation::router())
+        .merge(auth::router())
         .merge(calendar::router())
+        .merge(evaluation::router())
         .merge(mail::router())
         .merge(reminders::router())
+        .merge(resources::router())
+        .merge(runs::router())
         .merge(workflows::router())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
