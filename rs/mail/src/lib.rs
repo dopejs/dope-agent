@@ -639,6 +639,17 @@ fn is_false(v: &bool) -> bool {
 }
 
 #[must_use]
+pub fn first_non_empty(values: &[&str]) -> String {
+    for value in values {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    String::new()
+}
+
+#[must_use]
 pub fn join_recipients(parts: &[&[String]]) -> Vec<String> {
     let mut out = Vec::new();
     for group in parts {
@@ -823,6 +834,13 @@ pub fn live_validation_matrix_rows() -> Vec<dope_livevalidation::MatrixRow> {
     }
     rows
 }
+
+mod adapter_backend;
+mod fake_backend;
+mod manager;
+pub use adapter_backend::*;
+pub use fake_backend::*;
+pub use manager::*;
 
 // Attachment transfer policy (port of attachments_policy.go, Roadmap 64).
 
