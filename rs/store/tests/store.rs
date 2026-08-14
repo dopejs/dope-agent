@@ -15,14 +15,15 @@ fn opens_store_and_creates_schema_migrations_table() {
     assert_eq!(store.data_dir(), dir);
     assert!(Path::new(store.db_path()).exists());
 
-    // The bookkeeping table is created even with an empty migration list.
-    let version: i64 = store_conn_query(store.db_path(), "SELECT COUNT(1) FROM schema_migrations");
-    assert_eq!(version, 0);
+    // v1 baseline is applied on open, so exactly one migration row is recorded.
+    let rows: i64 = store_conn_query(store.db_path(), "SELECT COUNT(1) FROM schema_migrations");
+    assert_eq!(rows, 1);
 }
 
 #[test]
-fn empty_migration_list_is_noop() {
-    assert!(schema_migrations().is_empty());
+fn baseline_migration_is_registered() {
+    assert_eq!(schema_migrations().len(), 1);
+    assert_eq!(schema_migrations()[0].version, 1);
     assert_eq!(CURRENT_SCHEMA_VERSION, 55);
 }
 

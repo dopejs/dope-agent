@@ -7,6 +7,8 @@ use std::path::Path;
 use chrono::SecondsFormat;
 use rusqlite::{params, Connection};
 
+mod migrations;
+
 /// The production schema head. The full 55-version migration list is added incrementally.
 pub const CURRENT_SCHEMA_VERSION: i64 = 55;
 
@@ -21,11 +23,10 @@ pub struct SchemaMigration {
     pub statements: Vec<String>,
 }
 
-/// The ordered schema migration list. Populated incrementally as each Go schema version is
-/// ported; an empty list means migrate() is a no-op beyond ensuring the bookkeeping table.
+/// The ordered schema migration list (see migrations.rs).
 #[must_use]
 pub fn schema_migrations() -> Vec<SchemaMigration> {
-    Vec::new()
+    migrations::schema_migrations()
 }
 
 pub struct SQLiteStore {
