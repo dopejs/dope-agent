@@ -11,7 +11,9 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+mod classifier;
 mod diagnostics;
+pub use classifier::*;
 pub use diagnostics::*;
 
 macro_rules! string_enum {

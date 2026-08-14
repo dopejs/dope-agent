@@ -132,6 +132,40 @@ pub enum CalendarError {
     CalendarRecurrenceScopeRequired,
     #[error("recurrence scope is invalid")]
     CalendarRecurrenceScopeInvalid,
+    #[error("calendar backend is not configured")]
+    CalendarBackendNotConfigured,
+    #[error("{0}")]
+    Adapter(AdapterFailure),
+    #[error("calendar adapter transport error: {0}")]
+    AdapterTransport(String),
+}
+
+/// A wrapped out-of-process adapter failure carrying the stable, redacted failure class and
+/// diagnostics provider kind the Manager records on the operation ledger (FR-006/FR-008).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdapterFailure {
+    pub class: String,
+    pub provider_kind: String,
+    pub detail: String,
+    pub ambiguous: bool,
+    pub unavailable: bool,
+}
+
+impl AdapterFailure {
+    #[must_use]
+    pub fn failure_class(&self) -> &str {
+        &self.class
+    }
+}
+
+impl std::fmt::Display for AdapterFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if !self.detail.is_empty() {
+            f.write_str(&self.detail)
+        } else {
+            f.write_str(&self.class)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -369,12 +403,14 @@ pub struct OperationSummary {
     pub captured_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Selection {
     pub integration_id: String,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SourceLinkage {
     pub operation_id: String,
     pub run_id: String,
@@ -421,7 +457,8 @@ pub struct Action {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListEventsInput {
     pub selection: Selection,
     pub starts_at: Option<DateTime<Utc>>,
@@ -429,14 +466,16 @@ pub struct ListEventsInput {
     pub source: SourceLinkage,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetEventInput {
     pub selection: Selection,
     pub external_event_id: String,
     pub source: SourceLinkage,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BusyFreeInput {
     pub selection: Selection,
     pub window_start: DateTime<Utc>,
@@ -445,7 +484,8 @@ pub struct BusyFreeInput {
     pub source: SourceLinkage,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateEventInput {
     pub selection: Selection,
     pub title: String,
@@ -465,7 +505,8 @@ pub struct CreateEventInput {
     pub source: SourceLinkage,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateEventInput {
     pub selection: Selection,
     pub external_event_id: String,
@@ -487,7 +528,8 @@ pub struct UpdateEventInput {
     pub source: SourceLinkage,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateAttendeesInput {
     pub selection: Selection,
     pub external_event_id: String,
@@ -497,7 +539,8 @@ pub struct UpdateAttendeesInput {
     pub source: SourceLinkage,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CancelEventInput {
     pub selection: Selection,
     pub external_event_id: String,
@@ -618,3 +661,10 @@ pub fn live_validation_matrix_rows() -> Vec<dope_livevalidation::MatrixRow> {
     }
     rows
 }
+
+mod adapter_backend;
+mod fake_backend;
+mod manager;
+pub use adapter_backend::*;
+pub use fake_backend::*;
+pub use manager::*;

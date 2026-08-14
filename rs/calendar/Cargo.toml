@@ -7,8 +7,10 @@ rust-version.workspace = true
 [dependencies]
 dope-integrations.workspace = true
 dope-livevalidation.workspace = true
+dope-adapterrpc.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 parking_lot.workspace = true
+uuid = { workspace = true, features = ["v4"] }

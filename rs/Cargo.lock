@@ -354,12 +354,14 @@ name = "dope-calendar"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-adapterrpc",
  "dope-integrations",
  "dope-livevalidation",
  "parking_lot",
  "serde",
  "serde_json",
  "thiserror",
+ "uuid",
 ]
 
 [[package]]
@@ -453,6 +455,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 

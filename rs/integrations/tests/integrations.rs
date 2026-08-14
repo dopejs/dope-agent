@@ -1,6 +1,9 @@
 
+use chrono::Utc;
 use dope_integrations::{
-    backend_kind_supports_domain, BackendBinding, BackendKind, CreateInput, Manager, ProbeKind,
+    backend_kind_supports_domain, classify_provider_evidence,
+    diagnostic_failure_for_operation_failure, BackendBinding, BackendKind, CreateInput,
+    DiagnosticReasonCode, FreshnessState, Manager, ProbeKind, ProviderDiagnosticEvidence,
     ReadinessStatus, UpdateReadinessInput,
 };
 use serde_json::Map;
@@ -73,4 +76,42 @@ fn run_probe_returns_completed() {
     let (_resource, result, summary) = manager.run_probe("cal-1", ProbeKind::Inspect, &input).expect("probe");
     assert_eq!(result.status, "completed");
     assert_eq!(summary.integration_id, "cal-1");
+}
+
+#[test]
+fn classify_provider_evidence_maps_token_expired() {
+    let evidence = ProviderDiagnosticEvidence {
+        provider_error_class: "token_expired".to_string(),
+        ..ProviderDiagnosticEvidence::default()
+    };
+    let classification = classify_provider_evidence(&evidence);
+    assert_eq!(classification.reason_code, DiagnosticReasonCode::TokenExpired);
+    assert!(!classification.ambiguous);
+}
+
+#[test]
+fn classify_provider_evidence_feishu_scope() {
+    let evidence = ProviderDiagnosticEvidence {
+        provider_kind: "feishu_lark".to_string(),
+        provider_error_class: "99991669".to_string(),
+        ..ProviderDiagnosticEvidence::default()
+    };
+    let classification = classify_provider_evidence(&evidence);
+    assert_eq!(classification.reason_code, DiagnosticReasonCode::ScopeMissing);
+}
+
+#[test]
+fn operation_failure_projection_is_fresh() {
+    let projection = diagnostic_failure_for_operation_failure(
+        "calendar",
+        "feishu_lark",
+        "cal-1",
+        "create_event",
+        "scope_not_granted",
+        "missing scope",
+        true,
+        Utc::now(),
+    );
+    assert_eq!(projection.reason_code, DiagnosticReasonCode::ScopeMissing);
+    assert_eq!(projection.freshness_state, FreshnessState::Fresh);
 }
