@@ -15,11 +15,13 @@ pub(crate) fn go_zero_time() -> DateTime<Utc> {
     )
 }
 
-/// True when `t` is Go's zero time or chrono's `Default` (`MIN_UTC`); both
-/// conventions appear across the ported domain crates for unset times.
+/// True when `t` is an "unset" sentinel: Go's zero `time.Time` (year 1),
+/// chrono's `DateTime::<Utc>::MIN_UTC`, or chrono's `Default` (`UNIX_EPOCH` —
+/// what `..Default::default()` yields on derived-`Default` structs). All three
+/// appear across the ported domain crates for unset times.
 #[must_use]
 pub(crate) fn is_go_zero_time(t: DateTime<Utc>) -> bool {
-    t == go_zero_time() || t == DateTime::<Utc>::MIN_UTC
+    t == go_zero_time() || t == DateTime::<Utc>::MIN_UTC || t == DateTime::<Utc>::UNIX_EPOCH
 }
 
 /// `time.Now().UTC()` equivalent used when a Go constructor falls back to

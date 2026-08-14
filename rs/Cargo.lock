@@ -618,7 +618,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "dope-billing",
- "dope-events",
  "dope-identity",
  "dope-livevalidation",
  "dope-orchestration",
@@ -640,6 +639,7 @@ dependencies = [
  "chrono",
  "dope-billing",
  "dope-bindings",
+ "dope-evaluation",
  "dope-integrations",
  "dope-livevalidation",
  "dope-opsreadiness",

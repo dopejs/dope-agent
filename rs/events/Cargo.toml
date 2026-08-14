@@ -17,3 +17,4 @@ dope-integrations.workspace = true
 dope-opsreadiness.workspace = true
 dope-bindings.workspace = true
 dope-livevalidation.workspace = true
+dope-evaluation.workspace = true
