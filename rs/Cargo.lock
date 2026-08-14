@@ -455,6 +455,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-connectors"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dope-contracts"
 version = "0.1.0"
 dependencies = [

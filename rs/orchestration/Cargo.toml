@@ -1,0 +1,21 @@
+[package]
+name = "dope-orchestration"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-capabilities.workspace = true
+dope-calendar.workspace = true
+dope-computeruse.workspace = true
+dope-config.workspace = true
+dope-integrations.workspace = true
+dope-mail.workspace = true
+dope-profiles.workspace = true
+dope-runtime.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
+uuid = { workspace = true, features = ["v4"] }
