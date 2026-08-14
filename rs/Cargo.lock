@@ -496,6 +496,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-mail"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-integrations",
+ "dope-livevalidation",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "dope-model-provider"
 version = "0.1.0"
 dependencies = [
