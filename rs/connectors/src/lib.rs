@@ -238,9 +238,11 @@ pub struct ConnectorDiagnosticState {
 
 mod conformance;
 mod diagnostics;
+mod management;
 mod supervisor;
 
 pub use conformance::*;
 pub use diagnostics::*;
+pub use management::*;
 pub use supervisor::*;
 

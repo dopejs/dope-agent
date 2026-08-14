@@ -1,17 +1,17 @@
-//! Port of daemon/internal/evaluation/types.go: the evaluation data model — replay
-//! candidates, replay attempts, comparison results, drift findings, and regression
-//! fixtures — plus the query filters and create inputs used by the evaluation API.
-//! Types only: manager/recorder/campaign logic lives in the Go daemon and is out of
-//! scope here. Wire layout mirrors the Go JSON tags exactly: camelCase fields,
-//! snake_case enum values, and `omitempty` mapped to
-//! `#[serde(default, skip_serializing_if = ...)]`.
-
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+//! Port of `daemon/internal/evaluation`: the evaluation replay ledger model,
+//! the product/dashboard/discovery/campaign domain, and the evaluation
+//! manager (replay candidate + attempt + comparison CRUD with billing quota
+//! reservation and runtime-plane recording). See `rs/MIGRATION.md` for
+//! conventions: camelCase serde fields, snake_case enum wire values,
+//! `thiserror` error enums, `chrono::DateTime<Utc>` times, and no
+//! `unwrap`/`expect` outside tests.
+//!
+//! Wave 4 completion adds the manager and the product-family modules on top of
+//! the replay-ledger types already ported here.
 
 macro_rules! string_enum {
     ($name:ident { $first:ident => $first_s:literal $(, $v:ident => $s:literal)* $(,)? }) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
         #[serde(rename_all = "snake_case")]
         pub enum $name {
             #[default]
@@ -35,302 +35,102 @@ macro_rules! string_enum {
     };
 }
 
-string_enum!(CandidateKind {
-    CuratedWork => "curated_work",
-    Fixture => "fixture",
-});
+pub mod campaign;
+pub mod campaign_aggregation;
+pub mod campaign_runner;
+pub mod comparison;
+pub mod dashboard;
+pub mod discovery;
+pub mod discovery_scoring;
+pub mod discovery_sources;
+pub mod error;
+pub mod fixtures;
+pub mod manager;
+pub mod product_fixture;
+pub mod product_fixture_validation;
+pub mod product_redaction;
+pub mod product_store;
+pub mod product_validation;
+pub mod runtime_recorder;
+pub mod suppression;
+pub mod tool_call_inspection;
+pub mod tool_call_inspection_diff;
+pub mod types;
+pub(crate) mod util;
 
-string_enum!(SourceKind {
-    Run => "run",
-    Workflow => "workflow",
-    Schedule => "schedule",
-    Integration => "integration",
-    ComputerUse => "computer_use",
-    Fixture => "fixture",
-});
-
-string_enum!(ReadinessStatus {
-    FullyReplayable => "fully_replayable",
-    PartiallyReplayable => "partially_replayable",
-    Blocked => "blocked",
-    Unreplayable => "unreplayable",
-});
-
-string_enum!(ReplayMode {
-    NonLive => "non_live",
-    LiveValidation => "live_validation",
-});
-
-string_enum!(ReplayAttemptStatus {
-    Queued => "queued",
-    Running => "running",
-    Completed => "completed",
-    Blocked => "blocked",
-    Unreplayable => "unreplayable",
-    Failed => "failed",
-    Cancelled => "cancelled",
-});
-
-string_enum!(ApprovalHandling {
-    Blocked => "blocked",
-    EvidenceOnly => "evidence_only",
-    FreshApprovalRequired => "fresh_approval_required",
-});
-
-string_enum!(SideEffectHandling {
-    Blocked => "blocked",
-    EvidenceOnly => "evidence_only",
-    Live => "live",
-});
-
-string_enum!(ComparisonTerminalStatus {
-    Matched => "matched",
-    Drifted => "drifted",
-    Blocked => "blocked",
-    Unreplayable => "unreplayable",
-});
-
-string_enum!(DriftPlane {
-    Runtime => "runtime",
-    Policy => "policy",
-    Integration => "integration",
-    Delivery => "delivery",
-    Evidence => "evidence",
-    Unknown => "unknown",
-    Mixed => "mixed",
-});
-
-string_enum!(FixtureDomainClass {
-    Schedule => "schedule",
-    Integration => "integration",
-    ComputerUse => "computer_use",
-});
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SourceRef {
-    pub kind: SourceKind,
-    pub id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub route: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SafetyScope {
-    pub mode: ReplayMode,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub description: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlaneSummaries {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub runtime: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub policy: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub integration: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub delivery: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub evidence: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReplayCandidate {
-    pub candidate_id: String,
-    pub candidate_kind: CandidateKind,
-    pub display_name: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub description: String,
-    pub source_kind: SourceKind,
-    pub source_id: String,
-    pub source_refs: Vec<SourceRef>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tool_classes: Vec<String>,
-    pub environment_scope: String,
-    pub readiness_status: ReadinessStatus,
-    pub readiness_reasons: Vec<String>,
-    pub limitations: Vec<String>,
-    pub default_replay_mode: ReplayMode,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub fixture_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub latest_attempt_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub latest_comparison_id: String,
-    // Go json tag is "expectedComparisonSummary" (not the camelCase of the field).
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "expectedComparisonSummary")]
-    pub expected_comparison: Option<PlaneSummaries>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub captured_evidence_refs: Vec<SourceRef>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReplayAttempt {
-    pub attempt_id: String,
-    pub candidate_id: String,
-    pub source_refs: Vec<SourceRef>,
-    pub environment_scope: String,
-    pub mode: ReplayMode,
-    pub status: ReplayAttemptStatus,
-    pub safety_scope: SafetyScope,
-    pub approval_handling: ApprovalHandling,
-    pub side_effect_handling: SideEffectHandling,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub launched_by: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub change_window_label: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub baseline_attempt_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub result_run_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub result_workflow_id: String,
-    pub evidence_refs: Vec<SourceRef>,
-    pub blocked_reasons: Vec<String>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub runtime_summary: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub policy_summary: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub integration_summary: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub delivery_summary: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub evidence_summary: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub started_at: Option<DateTime<Utc>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub completed_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ComparisonResult {
-    pub comparison_id: String,
-    pub candidate_id: String,
-    pub baseline_ref: String,
-    pub attempt_id: String,
-    pub environment_scope: String,
-    pub terminal_status: ComparisonTerminalStatus,
-    pub runtime_summary: String,
-    pub policy_summary: String,
-    pub integration_summary: String,
-    pub delivery_summary: String,
-    pub evidence_summary: String,
-    pub confidence: String,
-    pub limitations: Vec<String>,
-    pub drift_findings: Vec<DriftFinding>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub change_window_label: String,
-    pub generated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DriftFinding {
-    pub finding_id: String,
-    pub comparison_id: String,
-    pub plane: DriftPlane,
-    pub severity: String,
-    pub summary: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub baseline_value: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub replay_value: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub evidence_refs: Vec<SourceRef>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub recommended_action: String,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RegressionFixture {
-    pub fixture_id: String,
-    pub display_name: String,
-    pub domain_class: FixtureDomainClass,
-    pub manifest_path: String,
-    pub source_refs: Vec<SourceRef>,
-    pub captured_evidence_refs: Vec<SourceRef>,
-    pub assumptions: Vec<String>,
-    pub limitations: Vec<String>,
-    pub expected_replay_mode: ReplayMode,
-    pub expected_comparison_summary: PlaneSummaries,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub candidate_id: String,
-    pub environment_scope: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-// Plain query structs: no serde, used as API query parameters.
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct CandidateFilter {
-    pub environment_scope: String,
-    pub candidate_kind: CandidateKind,
-    pub source_kind: SourceKind,
-    pub readiness_status: ReadinessStatus,
-    pub limit: i64,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AttemptFilter {
-    pub environment_scope: String,
-    pub candidate_id: String,
-    pub status: ReplayAttemptStatus,
-    pub limit: i64,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ComparisonFilter {
-    pub environment_scope: String,
-    pub candidate_id: String,
-    pub attempt_id: String,
-    pub terminal_status: ComparisonTerminalStatus,
-    pub limit: i64,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct FixtureFilter {
-    pub environment_scope: String,
-    pub domain_class: FixtureDomainClass,
-    pub limit: i64,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateReplayAttemptInput {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mode: Option<ReplayMode>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub change_window_label: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub baseline_attempt_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub safety_scope: Option<SafetyScope>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub launched_by: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateComparisonInput {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub baseline_attempt_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub baseline_ref: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub change_window_label: String,
-}
+pub use campaign::{
+    CampaignSourceSelection, CampaignTransition, CreateCampaignInput, campaign_idempotency_scope,
+    campaign_item_from_selection, create_replay_campaign, transition_replay_campaign,
+};
+pub use campaign_aggregation::{
+    CampaignAttemptAggregationInput, CampaignReplayLaunchPlan, build_campaign_attempt_group,
+    build_campaign_replay_launch_plan,
+};
+pub use campaign_runner::{CampaignRunnerInput, CampaignRunnerPlan, build_campaign_runner_plan};
+pub use comparison::compare_attempt;
+pub use dashboard::{
+    DashboardProjectionInput, build_dashboard_projection, page_dashboard_projections,
+};
+pub use discovery::{
+    DISCOVERY_PARTIAL_REASON_MAX_EMITTED_CANDIDATES, DISCOVERY_PARTIAL_REASON_MAX_INSPECTED_RECORDS,
+    DiscoveryProgress, StartDiscoveryRunInput,
+    apply_discovery_run_progress, build_discovery_run_from_policy, discovery_idempotency_scope,
+};
+pub use discovery_scoring::{
+    CandidateScoringInput, build_discovered_candidate_from_signals, candidate_discovery_score,
+    candidate_explanation_fields, readiness_status_default, redaction_status_default,
+    score_band_for,
+};
+pub use discovery_sources::{
+    DiscoverySourceFilter, DiscoverySourceReader, DiscoverySourceRecord, collect_discovery_source_refs,
+    discovery_source_route, read_discovery_source_refs,
+};
+pub use error::{BillingReservationError, EvaluationError};
+pub use fixtures::{
+    CapturedEvidence, candidate_from_fixture, candidate_id_for_fixture, load_captured_evidence,
+    load_regression_fixtures,
+};
+pub use manager::{Dependencies, Manager, Store};
+pub use product_fixture::{
+    FixtureRevisionInput, FixtureReviewDecision, ProductFixtureInput, apply_product_fixture_retention,
+    create_product_fixture_from_candidate, create_product_fixture_revision,
+    ensure_product_fixture_editable, product_fixture_selectable, review_product_fixture,
+    suppress_product_fixture,
+};
+pub use product_fixture_validation::{
+    ProductFixturePayloadValidation, reject_repo_managed_fixture_edit, validate_product_fixture_payload,
+};
+pub use product_redaction::{
+    CandidateEvidenceInput, RedactedEvidence, RedactionPolicy, candidate_evidence_from_payload,
+    failed_closed_redacted_evidence, normalize_sensitive_field, redact_evidence_payload,
+};
+pub use product_store::{
+    DiscoveredCandidateFilter, DiscoveryPolicyFilter, DiscoveryRunFilter, ProductListFilter,
+    ProductStore, RetentionApplicationFilter,
+};
+pub use product_validation::{
+    DEFAULT_PRODUCT_PAGE_LIMIT, MAX_PRODUCT_PAGE_LIMIT, normalize_product_limit,
+    validate_discovery_policy, validate_tenant_scoped_product_request,
+};
+pub use runtime_recorder::{
+    REPLAY_CREDENTIAL_LEAK_MARKERS, REPLAY_REDACTED_CREDENTIAL, REPLAY_RUNTIME_ENTRYPOINT,
+    BoxFuture, ReplayRecordInput, ReplayRecordResult, ReplayRuntime, ReplayRuntimeStore,
+    RuntimeRecorder, RuntimeReplayRecorder, redact_replay_credential_string,
+    redact_replay_credential_strings, redact_replay_record_input, replay_run_goal,
+    replay_workflow,
+};
+pub use suppression::{
+    CreateSuppressionInput, candidate_source_ref, filter_suppressed_candidates,
+    find_active_suppression, new_suppression_record, revoke_suppression_record,
+    suppression_applies,
+};
+pub use tool_call_inspection::{
+    INSPECTION_DRIFTED, INSPECTION_FAILED, INSPECTION_LIVE_VALIDATION_ABORTED,
+    INSPECTION_LIVE_VALIDATION_COMPLETED, INSPECTION_LIVE_VALIDATION_DENIED,
+    INSPECTION_LIVE_VALIDATION_FAILED, INSPECTION_LIVE_VALIDATION_OPERATOR_ACTION,
+    INSPECTION_MATCHED, INSPECTION_MISSING_ORIGINAL_EVIDENCE, INSPECTION_MISSING_REPLAY_EVIDENCE,
+    INSPECTION_UNSUPPORTED, ToolCallInspectionInput,
+    build_tool_call_inspection, classify_tool_call_inspection,
+};
+pub use tool_call_inspection_diff::{ToolCallDiffInput, redacted_tool_call_diff};
+pub use types::*;

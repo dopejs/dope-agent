@@ -8,203 +8,26 @@
 //! SaveChannelSupportEvidence, GetLatestChannelSupportEvidence,
 //! ListExpiredChannelSupportEvidence).
 //!
-//! Records are store-local (the Go record types live in the connectors domain,
-//! whose Rust surface lands with the wave-8 channel-connector projection). The
-//! connector projection / audit / enablement / repair DAOs are intentionally
-//! left for that wave.
-
-use std::collections::HashMap;
+//! The record types and their pure predicates live in `dope-connectors`
+//! (management.rs), matching the Go layout where the connectors package owns
+//! them and the store only persists them. This module re-exports them so
+//! existing `dope_store::channel_management::*` imports keep resolving.
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::{params, Row};
-use serde::{Deserialize, Serialize};
 
 use crate::crud::now_rfc3339;
 use crate::SQLiteStore;
 
-/// Go `connectors.RouteDecisionOutcome`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RouteDecisionOutcome {
-    Accepted,
-    Ignored,
-    Blocked,
-    Duplicate,
-    Unsupported,
-    Failed,
-    Disabled,
-}
-
-impl RouteDecisionOutcome {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            RouteDecisionOutcome::Accepted => "accepted",
-            RouteDecisionOutcome::Ignored => "ignored",
-            RouteDecisionOutcome::Blocked => "blocked",
-            RouteDecisionOutcome::Duplicate => "duplicate",
-            RouteDecisionOutcome::Unsupported => "unsupported",
-            RouteDecisionOutcome::Failed => "failed",
-            RouteDecisionOutcome::Disabled => "disabled",
-        }
-    }
-}
-
-/// Go `connectors.ManagementState` (the `action-required` literal is not
-/// snake_case, so variants carry explicit renames).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ManagementState {
-    #[serde(rename = "ready")]
-    Ready,
-    #[serde(rename = "disabled")]
-    Disabled,
-    #[serde(rename = "degraded")]
-    Degraded,
-    #[serde(rename = "unavailable")]
-    Unavailable,
-    #[serde(rename = "action-required")]
-    ActionRequired,
-}
-
-impl ManagementState {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ManagementState::Ready => "ready",
-            ManagementState::Disabled => "disabled",
-            ManagementState::Degraded => "degraded",
-            ManagementState::Unavailable => "unavailable",
-            ManagementState::ActionRequired => "action-required",
-        }
-    }
-}
-
-/// Go `connectors.RoutePolicy`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RoutePolicy {
-    pub route_policy_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub tenant_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub connector_id: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub eligible_senders: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub eligible_conversations: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub eligible_rooms: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub eligible_channels: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub invocation_gates: Vec<String>,
-    pub background_delivery_eligible: bool,
-    pub validation_state: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub reason_code: String,
-    pub validated_at: DateTime<Utc>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub audit_event_id: String,
-    pub redaction_status: dope_connectors::RedactionStatus,
-}
-
-/// Go `connectors.RoutingDecision`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RoutingDecision {
-    pub routing_decision_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub tenant_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub connector_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub connector_kind: String,
-    pub outcome: RouteDecisionOutcome,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub reason_code: String,
-    pub occurred_at: DateTime<Utc>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub safe_evidence: HashMap<String, String>,
-    pub redaction_status: dope_connectors::RedactionStatus,
-    pub retention_expires_at: DateTime<Utc>,
-}
-
-/// Go `connectors.ForegroundReplyOutcome`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ForegroundReplyOutcome {
-    pub reply_outcome_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub tenant_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub connector_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub routing_decision_id: String,
-    pub status: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub reason_code: String,
-    pub occurred_at: DateTime<Utc>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub safe_evidence: HashMap<String, String>,
-    pub redaction_status: dope_connectors::RedactionStatus,
-    pub retention_expires_at: DateTime<Utc>,
-}
-
-/// Go `connectors.BackgroundDeliveryOutcome`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BackgroundDeliveryOutcome {
-    pub delivery_outcome_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub tenant_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub connector_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub delivery_target_id: String,
-    pub status: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub reason_code: String,
-    pub occurred_at: DateTime<Utc>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub safe_evidence: HashMap<String, String>,
-    pub redaction_status: dope_connectors::RedactionStatus,
-    pub retention_expires_at: DateTime<Utc>,
-}
-
-/// Go `connectors.SupportEvidenceBundle`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SupportEvidenceBundle {
-    pub support_evidence_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub tenant_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub connector_id: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub generated_by_principal_id: String,
-    pub generated_at: DateTime<Utc>,
-    pub current_state: ManagementState,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub state_transitions: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub diagnostic_refs: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub repair_refs: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub routing_decision_refs: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub reply_outcome_refs: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub delivery_outcome_refs: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub audit_refs: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub redactions: Vec<String>,
-    pub retention_expires_at: DateTime<Utc>,
-    pub redaction_status: dope_connectors::RedactionStatus,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub safe_evidence: HashMap<String, String>,
-}
+/// The channel-management record types, enums, and pure predicates, defined in
+/// `dope-connectors` (Go keeps them in the connectors package) and re-exported
+/// here for the store DAOs below and for callers importing them from dope-store.
+pub use dope_connectors::{
+    BackgroundDeliveryOutcome, ForegroundReplyOutcome, ManagementState, RouteDecisionOutcome,
+    RoutePolicy, RoutingDecision, SupportEvidenceBundle, contains_route_policy_value,
+    default_route_policy, normalize_route_policy, route_policy_allows_conversation,
+    route_policy_allows_sender, route_policy_is_valid,
+};
 
 fn new_store_id(prefix: &str) -> String {
     let hex = uuid::Uuid::new_v4().simple().to_string();
@@ -649,55 +472,3 @@ impl SQLiteStore {
     }
 }
 
-/// Go `connectors.RoutePolicyIsValid` — a policy is valid only when its
-/// validation state is exactly `valid` (trimmed).
-#[must_use]
-pub fn route_policy_is_valid(policy: &RoutePolicy) -> bool {
-    policy.validation_state.trim() == "valid"
-}
-
-/// Go `connectors.RoutePolicyAllowsConversation` — valid policies with any
-/// eligible conversation/room/channel list allow the conversation when it
-/// matches one of the listed identities.
-#[must_use]
-pub fn route_policy_allows_conversation(policy: &RoutePolicy, conversation_id: &str) -> bool {
-    if !route_policy_is_valid(policy) {
-        return false;
-    }
-    let conversation_id = conversation_id.trim();
-    if conversation_id.is_empty() {
-        return false;
-    }
-    if policy.eligible_conversations.is_empty()
-        && policy.eligible_rooms.is_empty()
-        && policy.eligible_channels.is_empty()
-    {
-        return false;
-    }
-    contains_route_policy_value(&policy.eligible_conversations, conversation_id)
-        || contains_route_policy_value(&policy.eligible_rooms, conversation_id)
-        || contains_route_policy_value(&policy.eligible_channels, conversation_id)
-}
-
-/// Go `connectors.RoutePolicyAllowsSender` — valid policies without an
-/// eligible-sender list allow every sender; otherwise the sender must match.
-#[must_use]
-pub fn route_policy_allows_sender(policy: &RoutePolicy, sender_id: &str) -> bool {
-    if !route_policy_is_valid(policy) {
-        return false;
-    }
-    if policy.eligible_senders.is_empty() {
-        return true;
-    }
-    contains_route_policy_value(&policy.eligible_senders, sender_id.trim())
-}
-
-/// Go `connectors.containsRoutePolicyValue`.
-#[must_use]
-fn contains_route_policy_value(values: &[String], target: &str) -> bool {
-    let target = target.trim();
-    if target.is_empty() {
-        return false;
-    }
-    values.iter().any(|value| value.trim() == target)
-}

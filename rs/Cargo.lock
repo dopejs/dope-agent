@@ -617,8 +617,20 @@ name = "dope-evaluation"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-billing",
+ "dope-events",
+ "dope-identity",
+ "dope-livevalidation",
+ "dope-orchestration",
+ "dope-runtime",
+ "dope-store",
+ "parking_lot",
  "serde",
  "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -626,6 +638,13 @@ name = "dope-events"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-billing",
+ "dope-bindings",
+ "dope-integrations",
+ "dope-livevalidation",
+ "dope-opsreadiness",
+ "dope-profiles",
+ "dope-threads",
  "parking_lot",
  "serde",
  "serde_json",

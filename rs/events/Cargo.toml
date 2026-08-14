@@ -10,3 +10,10 @@ serde_json.workspace = true
 chrono.workspace = true
 parking_lot.workspace = true
 uuid = { workspace = true, features = ["v4"] }
+dope-profiles.workspace = true
+dope-threads.workspace = true
+dope-billing.workspace = true
+dope-integrations.workspace = true
+dope-opsreadiness.workspace = true
+dope-bindings.workspace = true
+dope-livevalidation.workspace = true

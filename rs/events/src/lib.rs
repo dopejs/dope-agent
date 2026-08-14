@@ -1,8 +1,46 @@
-//! Port of the daemon/internal/events envelope types (bus.go): the runtime-event
-//! envelope, scope, resource, and subscription filter. The in-process Bus and the domain
-//! emitters (agent_profiles, billing, connector_*, thread_*, evaluation_product, etc.) are
-//! ported incrementally; this crate establishes the wire types shared by the store, API, and
-//! fan-out layers.
+//! Port of the daemon/internal/events envelope types (bus.go) plus the domain
+//! event emitters (agent_profiles, billing, connector_*, thread_*, live_validation,
+//! integration_diagnostics, workspace_capability_bindings, etc.). The Bus is the
+//! in-process fan-out layer; each domain module is a pure Event-builder mirroring the
+//! corresponding Go file (category/name/scope/resource/payload byte-identical).
+
+mod agent_profiles;
+mod billing;
+mod channel_management;
+mod connector_delivery;
+mod connector_diagnostics;
+mod connector_discord;
+mod connector_ingress;
+mod connector_matrix;
+mod connector_slack;
+mod connector_telegram;
+mod connectors;
+mod integration_diagnostics;
+mod live_validation;
+mod thread_continuity;
+mod thread_group_room;
+mod thread_lifecycle;
+mod util;
+mod wire;
+mod workspace_capability_bindings;
+
+pub use agent_profiles::*;
+pub use billing::*;
+pub use channel_management::*;
+pub use connector_delivery::*;
+pub use connector_diagnostics::*;
+pub use connector_discord::*;
+pub use connector_ingress::*;
+pub use connector_matrix::*;
+pub use connector_slack::*;
+pub use connector_telegram::*;
+pub use connectors::*;
+pub use integration_diagnostics::*;
+pub use live_validation::*;
+pub use thread_continuity::*;
+pub use thread_group_room::*;
+pub use thread_lifecycle::*;
+pub use workspace_capability_bindings::*;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
