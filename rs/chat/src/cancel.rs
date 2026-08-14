@@ -88,6 +88,7 @@ impl CancellationToken {
         KillLink {
             state: Arc::clone(&self.state),
             id,
+            _lifetime: std::marker::PhantomData,
         }
     }
 

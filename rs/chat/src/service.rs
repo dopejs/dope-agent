@@ -156,7 +156,7 @@ impl Service {
             &input.scope,
             &final_dispatch,
             &selected_skills,
-            terminal_dispatch_event(&final_dispatch),
+            &terminal_dispatch_event(&final_dispatch),
         )?;
         self.persist_continuity_response(&mut continuity, &input, &final_dispatch)?;
 
@@ -297,7 +297,7 @@ impl Service {
             &input.scope,
             &final_dispatch,
             &selected_skills,
-            terminal_dispatch_event(&final_dispatch),
+            &terminal_dispatch_event(&final_dispatch),
         )?;
         self.persist_continuity_response(&mut continuity, &input, &final_dispatch)?;
 

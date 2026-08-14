@@ -121,12 +121,12 @@ pub trait ChatStore: Send + Sync {
 /// event-append methods delegate to SQLite; every other method is not ported
 /// to `dope-store` yet and fails with a deferred error (see the module
 /// documentation).
-impl ChatStore for dope_store::SQLiteStore {
+impl ChatStore for std::sync::Mutex<dope_store::SQLiteStore> {
     fn upsert_llm_dispatch(&self, dispatch: &Dispatch) -> Result<(), String> {
-        dope_store::SQLiteStore::upsert_llm_dispatch(self, dispatch)
+        self.lock().map_err(|_| "lock sqlite store".to_string())?.upsert_llm_dispatch(dispatch)
     }
     fn append_event(&self, event: &Event) -> Result<Event, String> {
-        dope_store::SQLiteStore::append_event(self, event)
+        self.lock().map_err(|_| "lock sqlite store".to_string())?.append_event(event)
     }
     fn list_setup_sessions(&self, _tenant_id: &str) -> Result<Vec<SetupSession>, String> {
         Err(deferred("list_setup_sessions"))

@@ -84,7 +84,7 @@ pub enum ContinuityReason {
 }
 
 /// Go: `RuntimeArtifactExcerpt`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeArtifactExcerpt {
     pub artifact_excerpt_id: String,
@@ -113,7 +113,7 @@ pub struct RuntimeArtifactExcerpt {
 /// `retention_expires_at: None` maps to Go's zero `time.Time`; note the two
 /// call sites treat zero differently (see `eligible_continuity_turns` and
 /// `build_handoff_source_references`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContinuityTurn {
     pub continuity_turn_id: String,
@@ -186,7 +186,7 @@ pub struct ContinuityPreview {
 }
 
 /// Go: `ContinuityPreviewItem`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContinuityPreviewItem {
     pub preview_item_id: String,

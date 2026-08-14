@@ -5,16 +5,17 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Chat message role; wire values match the Go `MessageRole` constants.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageRole {
+    #[default]
     System,
     User,
     Assistant,
     Tool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
     pub role: MessageRole,
@@ -33,9 +34,10 @@ pub struct Usage {
 
 /// Dispatch lifecycle state; wire values match the Go `DispatchStatus`
 /// constants (`partial_failed` etc.).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DispatchStatus {
+    #[default]
     Queued,
     Running,
     Completed,
@@ -45,7 +47,7 @@ pub enum DispatchStatus {
 }
 
 /// A prepared or settled dispatch record.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Dispatch {
     pub dispatch_id: String,
