@@ -6,6 +6,15 @@
 use std::sync::Arc;
 
 use dope_events::{Bus, Event, Resource};
+mod builders;
+
+pub use builders::{
+    build_billing_audit_event, build_credential_audit_event,
+    build_integration_diagnostic_audit_event, default_billing_audit_retention_policy,
+    BILLING_AUDIT_EVENT_KIND, CREDENTIAL_EVENT_KIND, INTEGRATION_DIAGNOSTIC_AUDIT_EVENT_KIND,
+    BillingAuditInput, CredentialAuditInput, IntegrationDiagnosticAuditInput,
+};
+
 use dope_identity::tenantctx;
 use thiserror::Error;
 

@@ -1,5 +1,14 @@
-//! Port of daemon/internal/delivery/types.go: the delivery domain types (targets,
-//! preferences, outcomes, attempts, summary windows). The manager/store logic is a follow-up.
+//! Port of daemon/internal/delivery: the delivery domain types (targets, preferences,
+//! outcomes, attempts, summary windows) plus the manager, dispatcher, digest, linkage, adapter
+//! seam, and live-validation rows. The manager logic lives in [`manager`], [`dispatcher`],
+//! [`digest`], and [`linkage`]; the channel-specific adapter bodies (ConnectorAdapter and the
+//! matrix/telegram/slack hosted-setup gating) are deferred to the wave-7 channels port. The
+//! adapter seam ([`DeliveryAdapter`]) and the channel/thread store hooks
+//! ([`ChannelDeliveryHooks`]) are ported as traits with documented no-op defaults.
+//!
+//! context.Context is replaced by synchronous Rust: the Go manager's background goroutines for
+//! retries and summary-window emission become detached std threads (see
+//! [`Manager::configure_for_testing`] for the test knobs).
 
 use std::collections::HashMap;
 
@@ -270,7 +279,10 @@ pub struct OutcomeFilter {
     pub workflow_id: String,
     pub schedule_id: String,
     pub integration_id: String,
-    pub status: OutcomeStatus,
+    /// Outcome status filter. Go's zero value is the empty string (no filter); the
+    /// [`OutcomeStatus`] enum has no empty variant, so `None` maps to "no status filter"
+    /// and `Some(status)` filters on that status.
+    pub status: Option<OutcomeStatus>,
     pub target_id: String,
 }
 
@@ -287,3 +299,17 @@ pub struct SendResult {
 fn is_zero_i64(v: &i64) -> bool {
     *v == 0
 }
+
+pub mod adapters;
+pub mod digest;
+pub mod dispatcher;
+pub mod linkage;
+pub mod live_validation;
+pub mod manager;
+pub mod test_sink;
+
+pub use adapters::{ChannelDeliveryHooks, DeliveryAdapter};
+pub use linkage::{latest_summary_from_outcome, LatestSummary};
+pub use live_validation::live_validation_matrix_rows;
+pub use manager::{DeliveryError, Manager};
+pub use test_sink::{TestSinkAdapter, TestSinkMessage};

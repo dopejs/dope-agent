@@ -367,8 +367,13 @@ dependencies = [
 name = "dope-audit"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "dope-billing",
  "dope-events",
  "dope-identity",
+ "dope-integrations",
+ "dope-secrets",
+ "serde",
  "serde_json",
  "thiserror",
 ]
@@ -502,10 +507,16 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "dope-calendar",
+ "dope-events",
  "dope-integrations",
+ "dope-livevalidation",
  "dope-mail",
+ "dope-store",
+ "parking_lot",
  "serde",
  "serde_json",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]

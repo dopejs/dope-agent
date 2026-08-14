@@ -1,19 +1,19 @@
 [package]
-name = "dope-delivery"
+name = "dope-routine"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-calendar.workspace = true
-dope-events.workspace = true
-dope-integrations.workspace = true
-dope-livevalidation.workspace = true
-dope-mail.workspace = true
 dope-store.workspace = true
-chrono.workspace = true
-parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+chrono.workspace = true
 thiserror.workspace = true
+parking_lot.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+chrono.workspace = true
 uuid = { workspace = true, features = ["v4"] }
