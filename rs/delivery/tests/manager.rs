@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use chrono::Utc;
 use dope_delivery::{
-    DeliveryPreference, DeliveryTarget, OutcomeInput, OutcomeStatus, PreferenceScopeKind,
-    ResultClass, SuppressionPolicy, TargetKind, TargetStatus,
+    DeliveryAdapter, DeliveryPreference, DeliveryTarget, OutcomeInput, OutcomeStatus,
+    PreferenceScopeKind, ResultClass, SuppressionPolicy, TargetKind, TargetStatus,
 };
 use dope_events::Bus;
 use dope_integrations::DiagnosticReasonCode;
@@ -22,7 +22,7 @@ use common::{manager_with, seed_delivery_preference_state, wait_for_outcome_stat
 fn delivery_retries_without_failover_and_retains_attempt_history() {
     let store = store("retry");
     let adapter = ScriptedAdapter::new(TargetKind::TestSink, vec![Err("transient send failure".to_string())]);
-    let manager = dope_delivery::Manager::new("test", Bus::new(), Arc::clone(&store), vec![Arc::clone(&adapter)]);
+    let manager = dope_delivery::Manager::new("test", Bus::new(), Arc::clone(&store), vec![Arc::clone(&adapter) as Arc<dyn DeliveryAdapter>]);
     manager.configure_for_testing(3, Duration::from_millis(10), Duration::from_millis(20));
 
     let (primary, mut pref) = seed_delivery_preference_state(&manager, "primary-target");
@@ -71,7 +71,7 @@ fn delivery_restore_resumes_queued_attempt() {
         "test",
         Bus::new(),
         Arc::clone(&store),
-        vec![Arc::clone(&first_adapter)],
+        vec![Arc::clone(&first_adapter) as Arc<dyn DeliveryAdapter>],
     );
     first.configure_for_testing(3, Duration::from_secs(3600), Duration::from_secs(7200));
     let (target, _) = seed_delivery_preference_state(&first, "restore-target");
@@ -106,7 +106,7 @@ fn delivery_restore_resumes_queued_attempt() {
         "test",
         Bus::new(),
         Arc::clone(&store),
-        vec![Arc::clone(&second_adapter)],
+        vec![Arc::clone(&second_adapter) as Arc<dyn DeliveryAdapter>],
     );
     second.configure_for_testing(3, Duration::from_millis(10), Duration::from_millis(20));
     second.restore().unwrap();

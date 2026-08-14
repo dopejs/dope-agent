@@ -151,7 +151,7 @@ impl SandboxManager for SandboxStub {
                 decision_id: "decision-1".to_string(),
                 resolution: if self.allow { DecisionResolution::Allow } else { DecisionResolution::Deny },
                 approval_status: DecisionApprovalStatus::NotApplicable,
-                effective_profile_id: self.stub_profile("p").profile_id,
+                effective_profile_id: SandboxStub::stub_profile("p").profile_id,
                 effective_backend_kind: BackendKind::Subprocess,
                 ..Default::default()
             },
@@ -170,14 +170,14 @@ impl SandboxManager for SandboxStub {
         };
         Ok(dope_sandbox::Execution {
             execution_id: execution_id.to_string(),
-            profile_id,
+            profile_id: profile_id.clone(),
             backend_kind: BackendKind::Subprocess,
             status: ExecutionStatus::Completed,
             decision: Decision {
                 decision_id: "decision-1".to_string(),
                 resolution: if self.allow { DecisionResolution::Allow } else { DecisionResolution::Deny },
                 approval_status: DecisionApprovalStatus::NotApplicable,
-                effective_profile_id: entry.profile_id.clone(),
+                effective_profile_id: profile_id.clone(),
                 effective_backend_kind: BackendKind::Subprocess,
                 ..Default::default()
             },
@@ -553,8 +553,8 @@ fn manager_with_store() -> (Manager, std::path::PathBuf) {
         (RunResult::default(), None)
     }));
     let registry = Registry::from_bridges(vec![
-        Arc::new(ClaudeBridge::new(home(&cfg), &cfg, claude_runner, None)),
-        Arc::new(CodexBridge::new(home(&cfg), &cfg, codex_runner, None)),
+        Arc::new(ClaudeBridge::new(&home(&cfg), &cfg, claude_runner, None)),
+        Arc::new(CodexBridge::new(&home(&cfg), &cfg, codex_runner, None)),
     ]);
     let store = dope_store::SQLiteStore::new(data_dir.to_str().unwrap()).expect("open store");
     (Manager::new(cfg, registry, Some(store)), base)

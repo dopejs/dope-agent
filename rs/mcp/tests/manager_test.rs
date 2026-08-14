@@ -503,7 +503,7 @@ fn bundled_catalog_entries_are_sorted_and_context7_installs() {
         .install_catalog_entry("context7", &CatalogInstallInput::default(), InstallMethod::Api)
         .unwrap();
     assert_eq!(result.status, "installed");
-    assert_eq!(result.server.as_ref().unwrap().server_id, "context7");
+    assert_eq!(result.server.as_ref().unwrap().server.server_id, "context7");
 
     let server = manager.get_server("context7").unwrap();
     assert_eq!(server.origin_kind, OriginKind::Catalog);

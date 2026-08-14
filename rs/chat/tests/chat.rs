@@ -579,6 +579,7 @@ impl ChatStore for FakeStore {
         }
         let saved_items: Vec<ContinuityPreviewItem> = items
             .iter()
+            .cloned()
             .enumerate()
             .map(|(index, mut item)| {
                 if item.preview_item_id.is_empty() {
@@ -1321,8 +1322,8 @@ fn query_suppresses_unsafe_continuity_content() {
         )
         .expect("query");
     let result = execution.result;
-    let request_turn = store
-        .turns()
+    let turns = store.turns();
+    let request_turn = turns
         .iter()
         .find(|turn| turn.continuity_turn_id == result.request_turn_id)
         .expect("request turn persisted");
@@ -1559,7 +1560,7 @@ fn sqlite_store_adapter_ports_dispatch_and_defers_continuity() {
     assert_eq!(got, dispatch);
 
     // The un-ported store surface fails explicitly instead of degrading.
-    let chat_store: &dyn ChatStore = &store;
+    let chat_store: &dyn ChatStore = &std::sync::Mutex::new(store);
     let err = chat_store
         .list_continuity_turns(&dope_chat::ContinuityLookupQuery::default())
         .expect_err("deferred method errors");
