@@ -1,15 +1,18 @@
 //! Round-trip integration tests for the channel-management ledger DAOs ported from
 //! `daemon/internal/store/channel_management.go` into `channel_management.rs`.
-//! Ports of TestChannelManagementSupportEvidenceRetentionExpiresNormalInspection and
-//! TestChannelManagementRouteReplyAndDeliveryOutcomesPersistWithRetention.
+//! Ports of TestChannelManagementSupportEvidenceRetentionExpiresNormalInspection,
+//! TestChannelManagementRouteReplyAndDeliveryOutcomesPersistWithRetention,
+//! TestChannelManagementEnablementPersistenceSurvivesRestart, and
+//! TestChannelManagementRepairActionsListNewestFirst.
 
 use std::collections::HashMap;
 
 use chrono::{Duration, TimeZone, Utc};
-use dope_connectors::RedactionStatus;
+use dope_connectors::{ManagementActionKind, ManagementTerminalState, RedactionStatus, RetrySafety};
 use dope_store::{
-    BackgroundDeliveryOutcome, ForegroundReplyOutcome, ManagementState, RouteDecisionOutcome,
-    RoutePolicy, RoutingDecision, SQLiteStore, SupportEvidenceBundle,
+    BackgroundDeliveryOutcome, ConnectorAuditRecord, EnablementState, ForegroundReplyOutcome,
+    ManagementState, RepairAction, RouteDecisionOutcome, RoutePolicy, RoutingDecision,
+    SQLiteStore, SupportEvidenceBundle,
 };
 
 fn temp_dir(name: &str) -> String {
@@ -241,4 +244,146 @@ fn support_evidence_retention_separates_latest_and_expired() {
         .unwrap()
         .expect("latest after refresh");
     assert_eq!(latest.current_state, ManagementState::Degraded);
+}
+
+#[test]
+fn enablement_state_persists_across_restart() {
+    let dir = temp_dir("channel_enablement");
+    {
+        let store = SQLiteStore::new(&dir).unwrap();
+        let changed_at = Utc.with_ymd_and_hms(2026, 5, 10, 9, 0, 0).unwrap();
+        store
+            .save_channel_connector_enablement_state(&EnablementState {
+                tenant_id: "ten_channels".to_string(),
+                connector_id: "discord-main".to_string(),
+                state: "disabled".to_string(),
+                reason_code: "maintenance".to_string(),
+                changed_by_principal_id: "prn_channels".to_string(),
+                changed_at,
+                audit_event_id: "audit_disable".to_string(),
+                ..EnablementState::default()
+            })
+            .unwrap();
+    }
+
+    // Reopen the store on the same data dir: the state survives.
+    let reopened = SQLiteStore::new(&dir).unwrap();
+    let state = reopened
+        .get_channel_connector_enablement_state("ten_channels", "discord-main")
+        .unwrap()
+        .expect("enablement state found");
+    assert_eq!(state.state, "disabled");
+    assert_eq!(state.reason_code, "maintenance");
+    assert_eq!(state.changed_by_principal_id, "prn_channels");
+    assert_eq!(state.audit_event_id, "audit_disable");
+
+    // Upsert through the ON CONFLICT path with a changed field.
+    let mut updated = state.clone();
+    updated.state = "enabled".to_string();
+    updated.audit_event_id = "audit_enable".to_string();
+    reopened.save_channel_connector_enablement_state(&updated).unwrap();
+    let got = reopened
+        .get_channel_connector_enablement_state("ten_channels", "discord-main")
+        .unwrap()
+        .expect("enablement state after update");
+    assert_eq!(got.state, "enabled");
+    assert_eq!(got.audit_event_id, "audit_enable");
+
+    // Unknown tenant/connector pair is absent.
+    assert!(reopened
+        .get_channel_connector_enablement_state("ten_other", "discord-main")
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn repair_actions_list_newest_first() {
+    let dir = temp_dir("channel_repair");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let base_time = Utc.with_ymd_and_hms(2026, 5, 10, 8, 0, 0).unwrap();
+
+    let base = RepairAction {
+        tenant_id: "ten_channels".to_string(),
+        connector_id: "discord-main".to_string(),
+        connector_kind: "discord".to_string(),
+        action_kind: ManagementActionKind::Repair,
+        status: ManagementTerminalState::ActionRequired,
+        retry_safety: Some(RetrySafety::Retryable),
+        audit_event_id: "audit_repair".to_string(),
+        redaction_status: RedactionStatus::Redacted,
+        ..RepairAction::default()
+    };
+    let older = RepairAction {
+        repair_action_id: "repair_older".to_string(),
+        started_at: base_time,
+        ..base.clone()
+    };
+    let newer = RepairAction {
+        repair_action_id: "repair_newer".to_string(),
+        started_at: base_time + Duration::minutes(1),
+        ..base.clone()
+    };
+    store.save_channel_repair_action(&older).unwrap();
+    store.save_channel_repair_action(&newer).unwrap();
+
+    let items = store.list_channel_repair_actions("ten_channels", "discord-main").unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].repair_action_id, "repair_newer");
+    assert_eq!(items[1].repair_action_id, "repair_older");
+    assert_eq!(items[0].action_kind, ManagementActionKind::Repair);
+    assert_eq!(items[0].status, ManagementTerminalState::ActionRequired);
+    assert_eq!(items[0].retry_safety, Some(RetrySafety::Retryable));
+
+    assert!(store.list_channel_repair_actions("ten_other", "discord-main").unwrap().is_empty());
+}
+
+#[test]
+fn management_audit_records_round_trip_newest_first() {
+    let dir = temp_dir("channel_audit");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 5, 10, 10, 0, 0).unwrap();
+
+    store
+        .save_channel_management_audit_record(&ConnectorAuditRecord {
+            audit_event_id: "audit_disable_1".to_string(),
+            tenant_id: "ten_channels".to_string(),
+            connector_id: "discord-main".to_string(),
+            principal_id: "prn_channels".to_string(),
+            action: "disable_connector".to_string(),
+            permission_gate: "connector_management".to_string(),
+            outcome: "allowed".to_string(),
+            reason_code: "maintenance".to_string(),
+            created_at: now,
+            redaction_status: RedactionStatus::Redacted,
+        })
+        .unwrap();
+    store
+        .save_channel_management_audit_record(&ConnectorAuditRecord {
+            audit_event_id: "audit_disable_2".to_string(),
+            action: "enable_connector".to_string(),
+            outcome: "denied".to_string(),
+            created_at: now + Duration::minutes(1),
+            ..ConnectorAuditRecord {
+                tenant_id: "ten_channels".to_string(),
+                connector_id: "discord-main".to_string(),
+                permission_gate: "connector_management".to_string(),
+                redaction_status: RedactionStatus::Redacted,
+                ..ConnectorAuditRecord::default()
+            }
+        })
+        .unwrap();
+
+    let items = store.list_channel_management_audit_records("ten_channels", "discord-main").unwrap();
+    assert_eq!(items.len(), 2);
+    // Newest created_at first.
+    assert_eq!(items[0].audit_event_id, "audit_disable_2");
+    assert_eq!(items[0].outcome, "denied");
+    assert_eq!(items[1].audit_event_id, "audit_disable_1");
+    assert_eq!(items[1].outcome, "allowed");
+    assert_eq!(items[1].principal_id, "prn_channels");
+
+    assert!(store
+        .list_channel_management_audit_records("ten_other", "discord-main")
+        .unwrap()
+        .is_empty());
 }

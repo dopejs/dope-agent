@@ -21,6 +21,7 @@ pub mod evaluation;
 mod evaluation_product;
 mod events;
 mod identity;
+mod integration_diagnostics;
 mod integrations;
 pub mod mail;
 mod manager_documents;
@@ -48,8 +49,9 @@ pub mod workflow;
 pub use billing::BillingRepositoryHandle;
 pub use computeruse::ComputerUseStoreHandle;
 pub use channel_management::{
-    BackgroundDeliveryOutcome, ForegroundReplyOutcome, ManagementState, RouteDecisionOutcome,
-    RoutePolicy, RoutingDecision, SupportEvidenceBundle,
+    BackgroundDeliveryOutcome, ConnectorAuditRecord, EnablementState, ForegroundReplyOutcome,
+    ManagementState, RepairAction, RouteDecisionOutcome, RoutePolicy, RoutingDecision,
+    SupportEvidenceBundle,
 };
 pub use consumer_policy::ConsumerPolicyRecordRecord;
 pub use discord_setup::{

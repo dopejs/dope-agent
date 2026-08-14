@@ -6,7 +6,10 @@
 //! SaveChannelForegroundReplyOutcome, ListChannelForegroundReplyOutcomes,
 //! SaveChannelBackgroundDeliveryOutcome, ListChannelBackgroundDeliveryOutcomes,
 //! SaveChannelSupportEvidence, GetLatestChannelSupportEvidence,
-//! ListExpiredChannelSupportEvidence).
+//! ListExpiredChannelSupportEvidence, SaveChannelConnectorEnablementState,
+//! GetChannelConnectorEnablementState, SaveChannelRepairAction,
+//! ListChannelRepairActions, SaveChannelManagementAuditRecord,
+//! ListChannelManagementAuditRecords).
 //!
 //! The record types and their pure predicates live in `dope-connectors`
 //! (management.rs), matching the Go layout where the connectors package owns
@@ -23,10 +26,11 @@ use crate::SQLiteStore;
 /// `dope-connectors` (Go keeps them in the connectors package) and re-exported
 /// here for the store DAOs below and for callers importing them from dope-store.
 pub use dope_connectors::{
-    BackgroundDeliveryOutcome, ForegroundReplyOutcome, ManagementState, RouteDecisionOutcome,
-    RoutePolicy, RoutingDecision, SupportEvidenceBundle, contains_route_policy_value,
-    default_route_policy, normalize_route_policy, route_policy_allows_conversation,
-    route_policy_allows_sender, route_policy_is_valid,
+    BackgroundDeliveryOutcome, ConnectorAuditRecord, EnablementState, ForegroundReplyOutcome,
+    ManagementState, RepairAction, RouteDecisionOutcome, RoutePolicy, RoutingDecision,
+    SupportEvidenceBundle, contains_route_policy_value, default_route_policy,
+    normalize_route_policy, route_policy_allows_conversation, route_policy_allows_sender,
+    route_policy_is_valid,
 };
 
 fn new_store_id(prefix: &str) -> String {
@@ -67,6 +71,26 @@ fn scan_channel_delivery_outcome(row: &Row) -> Result<BackgroundDeliveryOutcome,
 fn scan_channel_support_evidence(row: &Row) -> Result<SupportEvidenceBundle, String> {
     let raw: String = row.get(0).map_err(|e| e.to_string())?;
     serde_json::from_str(&raw).map_err(|e| format!("decode channel support evidence: {e}"))
+}
+
+fn scan_channel_enablement_state(row: &Row) -> Result<dope_connectors::EnablementState, String> {
+    let raw: String = row.get(0).map_err(|e| e.to_string())?;
+    serde_json::from_str(&raw).map_err(|e| format!("decode channel enablement state: {e}"))
+}
+
+fn scan_channel_repair_action(row: &Row) -> Result<dope_connectors::RepairAction, String> {
+    let raw: String = row.get(0).map_err(|e| e.to_string())?;
+    serde_json::from_str(&raw).map_err(|e| format!("decode channel repair action: {e}"))
+}
+
+fn scan_channel_audit_record(row: &Row) -> Result<dope_connectors::ConnectorAuditRecord, String> {
+    let raw: String = row.get(0).map_err(|e| e.to_string())?;
+    serde_json::from_str(&raw).map_err(|e| format!("decode channel management audit: {e}"))
+}
+
+/// Serializes an optional string enum to its wire literal, or NULL when unset.
+fn opt_enum_str<T: serde::Serialize>(value: &Option<T>) -> Option<String> {
+    value.as_ref().map(crate::crud::enum_str)
 }
 
 impl SQLiteStore {
@@ -467,6 +491,222 @@ impl SQLiteStore {
         let mut items = Vec::new();
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
             items.push(scan_channel_support_evidence(row)?);
+        }
+        Ok(items)
+    }
+
+    /// Go `SaveChannelConnectorEnablementState` — upserts the per-tenant
+    /// enablement state (PK tenant_id + connector_id).
+    pub fn save_channel_connector_enablement_state(
+        &self,
+        state: &dope_connectors::EnablementState,
+    ) -> Result<(), String> {
+        let mut state = state.clone();
+        if is_unset_time(&state.changed_at) {
+            state.changed_at = Utc::now();
+        }
+        let document = serde_json::to_string(&state)
+            .map_err(|e| format!("marshal channel connector enablement: {e}"))?;
+
+        self.conn
+            .execute(
+                r#"INSERT INTO channel_connector_enablement_states (
+                    tenant_id, connector_id, state, reason_code, changed_by_principal_id,
+                    changed_at, validated_at, audit_event_id, document_json
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                ON CONFLICT(tenant_id, connector_id) DO UPDATE SET
+                    state = excluded.state,
+                    reason_code = excluded.reason_code,
+                    changed_by_principal_id = excluded.changed_by_principal_id,
+                    changed_at = excluded.changed_at,
+                    validated_at = excluded.validated_at,
+                    audit_event_id = excluded.audit_event_id,
+                    document_json = excluded.document_json"#,
+                params![
+                    state.tenant_id,
+                    state.connector_id,
+                    state.state,
+                    crate::crud::null_string(&state.reason_code),
+                    crate::crud::null_string(&state.changed_by_principal_id),
+                    now_rfc3339(&state.changed_at),
+                    crate::crud::opt_time_string(&state.validated_at),
+                    state.audit_event_id,
+                    document,
+                ],
+            )
+            .map_err(|e| format!("save channel connector enablement {}/{}: {e}", state.tenant_id, state.connector_id))?;
+        Ok(())
+    }
+
+    /// Go `GetChannelConnectorEnablementState`.
+    pub fn get_channel_connector_enablement_state(
+        &self,
+        tenant_id: &str,
+        connector_id: &str,
+    ) -> Result<Option<dope_connectors::EnablementState>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT document_json FROM channel_connector_enablement_states WHERE tenant_id = ?1 AND connector_id = ?2",
+            )
+            .map_err(|e| format!("get channel connector enablement {tenant_id}/{connector_id}: {e}"))?;
+        let mut rows = stmt.query(params![tenant_id, connector_id]).map_err(|e| e.to_string())?;
+        let Some(row) = rows.next().map_err(|e| e.to_string())? else {
+            return Ok(None);
+        };
+        scan_channel_enablement_state(row).map(Some)
+    }
+
+    /// Go `SaveChannelRepairAction` — generates a repair_action_id when unset.
+    pub fn save_channel_repair_action(
+        &self,
+        action: &dope_connectors::RepairAction,
+    ) -> Result<(), String> {
+        let mut action = action.clone();
+        if action.repair_action_id.trim().is_empty() {
+            action.repair_action_id = new_store_id("channel_repair_action");
+        }
+        if is_unset_time(&action.started_at) {
+            action.started_at = Utc::now();
+        }
+        // Go defaults an empty RedactionStatus to Redacted; the Rust enum is
+        // non-empty by construction (Default is Redacted), so no defaulting is needed.
+        let document = serde_json::to_string(&action)
+            .map_err(|e| format!("marshal channel repair action: {e}"))?;
+
+        self.conn
+            .execute(
+                r#"INSERT INTO channel_repair_actions (
+                    repair_action_id, tenant_id, connector_id, connector_kind, actor_principal_id,
+                    action_kind, source_diagnostic_state_id, setup_session_id, status, retry_safety,
+                    remediation_owner, started_at, completed_at, audit_event_id, redaction_status, document_json
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                ON CONFLICT(repair_action_id) DO UPDATE SET
+                    status = excluded.status,
+                    completed_at = excluded.completed_at,
+                    audit_event_id = excluded.audit_event_id,
+                    redaction_status = excluded.redaction_status,
+                    document_json = excluded.document_json"#,
+                params![
+                    action.repair_action_id,
+                    action.tenant_id,
+                    action.connector_id,
+                    action.connector_kind,
+                    crate::crud::null_string(&action.actor_principal_id),
+                    crate::crud::enum_str(&action.action_kind),
+                    crate::crud::null_string(&action.source_diagnostic_state_id),
+                    crate::crud::null_string(&action.setup_session_id),
+                    crate::crud::enum_str(&action.status),
+                    opt_enum_str(&action.retry_safety),
+                    opt_enum_str(&action.remediation_owner),
+                    now_rfc3339(&action.started_at),
+                    crate::crud::opt_time_string(&action.completed_at),
+                    action.audit_event_id,
+                    crate::crud::enum_str(&action.redaction_status),
+                    document,
+                ],
+            )
+            .map_err(|e| format!("save channel repair action {}: {e}", action.repair_action_id))?;
+        Ok(())
+    }
+
+    /// Go `ListChannelRepairActions` — newest started first, limited to 50.
+    pub fn list_channel_repair_actions(
+        &self,
+        tenant_id: &str,
+        connector_id: &str,
+    ) -> Result<Vec<dope_connectors::RepairAction>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                r#"SELECT document_json
+                FROM channel_repair_actions
+                WHERE tenant_id = ?1 AND connector_id = ?2
+                ORDER BY started_at DESC, repair_action_id DESC
+                LIMIT 50"#,
+            )
+            .map_err(|e| format!("list channel repair actions {tenant_id}/{connector_id}: {e}"))?;
+        let mut rows = stmt.query(params![tenant_id, connector_id]).map_err(|e| e.to_string())?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            items.push(scan_channel_repair_action(row)?);
+        }
+        Ok(items)
+    }
+
+    /// Go `SaveChannelManagementAuditRecord` — generates an audit_event_id when
+    /// unset.
+    pub fn save_channel_management_audit_record(
+        &self,
+        record: &dope_connectors::ConnectorAuditRecord,
+    ) -> Result<(), String> {
+        let mut record = record.clone();
+        if record.audit_event_id.trim().is_empty() {
+            record.audit_event_id = new_store_id("connector_management_audit");
+        }
+        if is_unset_time(&record.created_at) {
+            record.created_at = Utc::now();
+        }
+        // Go defaults an empty RedactionStatus to Redacted; the Rust enum is
+        // non-empty by construction (Default is Redacted), so no defaulting is needed.
+        let document = serde_json::to_string(&record)
+            .map_err(|e| format!("marshal channel management audit: {e}"))?;
+
+        self.conn
+            .execute(
+                r#"INSERT INTO channel_management_audit_records (
+                    audit_event_id, tenant_id, connector_id, principal_id, action, permission_gate,
+                    outcome, reason_code, created_at, redaction_status, document_json
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                ON CONFLICT(audit_event_id) DO UPDATE SET
+                    tenant_id = excluded.tenant_id,
+                    connector_id = excluded.connector_id,
+                    principal_id = excluded.principal_id,
+                    action = excluded.action,
+                    permission_gate = excluded.permission_gate,
+                    outcome = excluded.outcome,
+                    reason_code = excluded.reason_code,
+                    created_at = excluded.created_at,
+                    redaction_status = excluded.redaction_status,
+                    document_json = excluded.document_json"#,
+                params![
+                    record.audit_event_id,
+                    record.tenant_id,
+                    record.connector_id,
+                    crate::crud::null_string(&record.principal_id),
+                    record.action,
+                    record.permission_gate,
+                    record.outcome,
+                    crate::crud::null_string(&record.reason_code),
+                    now_rfc3339(&record.created_at),
+                    crate::crud::enum_str(&record.redaction_status),
+                    document,
+                ],
+            )
+            .map_err(|e| format!("save channel management audit {}: {e}", record.audit_event_id))?;
+        Ok(())
+    }
+
+    /// Go `ListChannelManagementAuditRecords` — newest created first, limited to 50.
+    pub fn list_channel_management_audit_records(
+        &self,
+        tenant_id: &str,
+        connector_id: &str,
+    ) -> Result<Vec<dope_connectors::ConnectorAuditRecord>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                r#"SELECT document_json
+                FROM channel_management_audit_records
+                WHERE tenant_id = ?1 AND connector_id = ?2
+                ORDER BY created_at DESC, audit_event_id DESC
+                LIMIT 50"#,
+            )
+            .map_err(|e| format!("list channel management audit {tenant_id}/{connector_id}: {e}"))?;
+        let mut rows = stmt.query(params![tenant_id, connector_id]).map_err(|e| e.to_string())?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            items.push(scan_channel_audit_record(row)?);
         }
         Ok(items)
     }
