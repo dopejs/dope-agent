@@ -36,6 +36,9 @@ pub const REQUIRED_FAULT_TYPES: &[&str] = &[
 
 pub const REQUIRED_RESOURCE_CATEGORIES: &[&str] = &["logs", "stored_data_size", "active_work_or_queue_backlog", "memory"];
 
+mod validation;
+pub use validation::*;
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct RunbookEvidence {
     pub name: String,
