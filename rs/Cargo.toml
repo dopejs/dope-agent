@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["protocol", "model-provider", "core", "cli", "config", "identity", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations"]
+members = ["protocol", "model-provider", "core", "cli", "config", "identity", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy"]
 
 [workspace.package]
 edition = "2024"
@@ -14,6 +14,7 @@ dope-activation = { path = "activation" }
 dope-capabilities = { path = "capabilities" }
 dope-inventory = { path = "inventory" }
 dope-integrations = { path = "integrations" }
+dope-policy = { path = "policy" }
 dope-setupwizard = { path = "setupwizard" }
 dope-imtypes = { path = "imtypes" }
 dope-livevalidation = { path = "livevalidation" }
