@@ -502,6 +502,18 @@ dependencies = [
 [[package]]
 name = "dope-providers"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-config",
+ "dope-llm",
+ "dope-setupwizard",
+ "futures",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
 
 [[package]]
 name = "dope-router"
