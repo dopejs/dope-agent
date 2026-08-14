@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["protocol", "model-provider", "core", "cli", "config", "identity", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox"]
+members = ["protocol", "model-provider", "core", "cli", "config", "identity", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox", "delivery"]
 
 [workspace.package]
 edition = "2024"
@@ -35,6 +35,7 @@ dope-opsreadiness = { path = "opsreadiness" }
 dope-computeruse = { path = "computeruse" }
 dope-artifacts = { path = "artifacts" }
 dope-sandbox = { path = "sandbox" }
+dope-delivery = { path = "delivery" }
 dope-llm = { path = "llm" }
 dope-profiles = { path = "profiles" }
 dope-threads = { path = "threads" }

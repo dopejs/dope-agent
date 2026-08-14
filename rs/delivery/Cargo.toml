@@ -1,0 +1,13 @@
+[package]
+name = "dope-delivery"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-calendar.workspace = true
+dope-integrations.workspace = true
+dope-mail.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
