@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["protocol", "model-provider", "core", "cli", "config", "identity", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark"]
+members = ["protocol", "model-provider", "core", "cli", "config", "identity", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness"]
 
 [workspace.package]
 edition = "2024"
@@ -31,6 +31,7 @@ dope-calendar = { path = "calendar" }
 dope-mail = { path = "mail" }
 dope-runtime = { path = "runtime" }
 dope-feishulark = { path = "feishulark" }
+dope-opsreadiness = { path = "opsreadiness" }
 dope-llm = { path = "llm" }
 dope-profiles = { path = "profiles" }
 dope-threads = { path = "threads" }
