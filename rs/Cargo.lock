@@ -304,10 +304,18 @@ dependencies = [
 [[package]]
 name = "dope-adapterprovider"
 version = "0.1.0"
+dependencies = [
+ "dope-adapterrpc",
+ "serde_json",
+]
 
 [[package]]
 name = "dope-adapterref"
 version = "0.1.0"
+dependencies = [
+ "dope-adapterrpc",
+ "serde_json",
+]
 
 [[package]]
 name = "dope-adapterrpc"
@@ -344,6 +352,14 @@ dependencies = [
 [[package]]
 name = "dope-capabilities"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-adapterref",
+ "dope-adapterrpc",
+ "parking_lot",
+ "serde",
+ "thiserror",
+]
 
 [[package]]
 name = "dope-cli"
@@ -515,6 +531,17 @@ dependencies = [
 [[package]]
 name = "dope-setupwizard"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-identity",
+ "dope-secrets",
+ "futures",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
 
 [[package]]
 name = "dope-telemetry"

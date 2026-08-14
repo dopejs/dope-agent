@@ -44,7 +44,7 @@ the daemon's non-test import graph. LOC = non-test lines.
 | Wave | Packages (crate) | Status |
 |---|---|---|
 | 1 leaves | config(997), identity(1128, +tenantctx 61 +auth 413), telemetry(42), billing(2150), bindings(1126), llm(1083), profiles(688), threads(1327), router(220) | done (187 tests green) |
-| 2 base | secrets(1037), contracts(451), activation(1263), capabilities(344), adapterrpc(551), adapterprovider(155), adapterref(157), inventory(254), setupwizard(1753), imtypes(108), livevalidation(1977), providers(1079) | in progress (livevalidation done: 24 tests green) |
+| 2 base | secrets(1037), contracts(451), activation(1263), capabilities(344), adapterrpc(551), adapterprovider(155), adapterref(157), inventory(254), setupwizard(1753), imtypes(108), livevalidation(1977), providers(1079) | in progress (11/12 done; only providers remains) |
 | 3 integration-base | connectors-root(1543), integrations(1674), calendar(1665), mail(2468), opsreadiness(1939), policy(259), feishulark(1457), runtime(1120) | pending |
 | 4 runtime-services | computeruse(1239), artifacts(158), orchestration(869), evaluation(3396), events(2185) | pending |
 | 5 store | audit(558), dope-store core+domains(28.6k, split), migrationfixture(1513), tenancy(2626), checkpoints(107), delivery(1817), managerdoc(66), sandbox(3419) | pending |
