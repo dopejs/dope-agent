@@ -142,7 +142,7 @@ pub fn join_errors(results: Vec<Result<(), String>>) -> Result<(), String> {
     }
 }
 
-fn require_allowed(label: &str, value: &str, allowed: &[&str]) -> Result<(), String> {
+pub fn require_allowed(label: &str, value: &str, allowed: &[&str]) -> Result<(), String> {
     if allowed.iter().any(|item| item == &value) {
         Ok(())
     } else {
@@ -223,7 +223,7 @@ pub fn validate_backup_artifact(artifact: &BackupArtifact) -> Result<(), String>
     join_errors(results)
 }
 
-fn validate_representative_tenants(count: i64, tenants: &[TenantStateSummary]) -> Result<(), String> {
+pub fn validate_representative_tenants(count: i64, tenants: &[TenantStateSummary]) -> Result<(), String> {
     if count < MINIMUM_TENANT_COUNT as i64 || tenants.len() < MINIMUM_TENANT_COUNT {
         return Err(format!("representative backup requires at least {MINIMUM_TENANT_COUNT} tenants"));
     }
@@ -236,7 +236,7 @@ fn validate_representative_tenants(count: i64, tenants: &[TenantStateSummary]) -
     Ok(())
 }
 
-fn validate_tenant_state_summary(label: &str, tenant: &TenantStateSummary) -> Result<(), String> {
+pub fn validate_tenant_state_summary(label: &str, tenant: &TenantStateSummary) -> Result<(), String> {
     join_errors(vec![
         require_non_empty(&format!("{label}.tenant id"), &tenant.tenant_id),
         require_items(&format!("{label}.credential refs"), &tenant.credential_refs),
@@ -586,4 +586,8 @@ pub fn mail_real_account_smoke(input: &MailSmokeInput) -> RealAccountSmokeStatus
 pub fn load_json_fixture<T: DeserializeOwned>(path: &str) -> Result<T, String> {
     let raw = std::fs::read_to_string(path).map_err(|e| format!("read fixture {path}: {e}"))?;
     serde_json::from_str(&raw).map_err(|e| format!("decode fixture {path}: {e}"))
+}
+
+pub fn load_hosted_evidence_fixture<T: DeserializeOwned>(path: &str) -> Result<T, String> {
+    load_json_fixture(path)
 }

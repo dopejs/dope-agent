@@ -36,7 +36,9 @@ pub const REQUIRED_FAULT_TYPES: &[&str] = &[
 
 pub const REQUIRED_RESOURCE_CATEGORIES: &[&str] = &["logs", "stored_data_size", "active_work_or_queue_backlog", "memory"];
 
+mod hosted;
 mod validation;
+pub use hosted::*;
 pub use validation::*;
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -213,16 +215,6 @@ pub struct ReleaseReadinessEvidence {
     pub decision: String,
 }
 
-// Smoke matrix report (referenced by ReleaseReadinessEvidence; the full smoke logic is a
-// follow-up increment, so this shape is defined here to keep the evidence record complete).
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct SmokeMatrixReport {
-    pub report_id: String,
-    pub domain: String,
-    pub result: String,
-    pub diagnostics_checked: Vec<String>,
-}
-
 // ---- hosted deployment model (hosted_types.go) ----
 
 pub const HOSTED_HOST_CLASS_STABLE_TEST_HOST: &str = "stable_test_host";
@@ -375,7 +367,7 @@ pub struct HostedEvidenceLink {
     pub blocking_findings: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct HostedReleaseEvidenceIndex {
     pub release_index_id: String,
     pub run_id: String,
@@ -390,7 +382,7 @@ pub struct HostedReleaseEvidenceIndex {
     pub evidence_links: Vec<HostedEvidenceLink>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct HostedBackupEvidence {
     pub backup_id: String,
     pub run_id: String,
@@ -406,7 +398,7 @@ pub struct HostedBackupEvidence {
     pub generated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct HostedRestoreRehearsalResult {
     pub restore_result_id: String,
     pub run_id: String,
@@ -427,7 +419,7 @@ pub struct HostedRestoreRehearsalResult {
     pub generated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct HostedRollbackDecisionRecord {
     pub rollback_decision_id: String,
     pub run_id: String,
@@ -440,7 +432,7 @@ pub struct HostedRollbackDecisionRecord {
     pub decided_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct HostedUpgradeEvidence {
     pub upgrade_evidence_id: String,
     pub run_id: String,
@@ -472,7 +464,7 @@ pub struct HostedObservation {
     pub unsupported: bool,
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct HostedObservationReport {
     pub observation_report_id: String,
     pub run_id: String,

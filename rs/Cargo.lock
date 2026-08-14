@@ -560,6 +560,7 @@ name = "dope-opsreadiness"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-integrations",
  "serde",
  "serde_json",
 ]
