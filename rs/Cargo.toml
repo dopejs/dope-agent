@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["protocol", "model-provider", "core", "cli", "config", "identity", "im", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "api", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox", "delivery", "store", "checkpoints", "events", "connectors", "discord", "matrix", "slack", "telegram", "evaluation", "audit", "orchestration", "skills", "catalog", "evidence", "execprofile", "triage", "routine", "reminders", "webhook", "scheduler", "tenancy", "migrationfixture", "mcp", "chat", "managedproviders"]
+members = ["protocol", "model-provider", "core", "cli", "config", "identity", "im", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "api", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox", "delivery", "store", "checkpoints", "events", "connectors", "discord", "matrix", "slack", "telegram", "evaluation", "audit", "orchestration", "skills", "catalog", "evidence", "execprofile", "triage", "routine", "reminders", "webhook", "scheduler", "tenancy", "migrationfixture", "mcp", "chat", "managedproviders", "app"]
 
 [workspace.package]
 edition = "2024"
@@ -70,6 +70,7 @@ dope-router = { path = "router" }
 dope-protocol = { path = "protocol" }
 dope-model-provider = { path = "model-provider" }
 dope-core = { path = "core" }
+dope-app = { path = "app" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

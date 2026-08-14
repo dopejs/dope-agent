@@ -19,14 +19,14 @@
 //! `writeError`-style 500s via ApiError, and the Go mutation-error mapping
 //! (connector not found -> 404, connector disabled -> 409, otherwise 500).
 //!
-//! Known gaps (dope-store has no DAOs for these tables yet; see TODO markers):
-//! - channel_connector_enablement_states persistence (disable/re-enable)
-//! - channel_repair_actions persistence + listing (repair/detail/support-evidence)
-//! - channel_management_audit_records persistence + listing (permission denials,
-//!   disable/re-enable/repair/route-policy audit writes, support-evidence audit refs)
-//! Handlers keep the exact Go response shapes (audit event ids are generated
-//! locally, matching the store`s `new_store_id` id style) and call the supervisor
-//! mutations; the persistence itself is deferred to the store wave.
+//! Persistence is on the dope-store channel_management DAOs:
+//! - channel_connector_enablement_states (disable/re-enable)
+//! - channel_repair_actions + list (repair, detail, support-evidence refs)
+//! - channel_management_audit_records + list (permission denials, disable/
+//!   re-enable/repair/route-policy audit writes, support-evidence audit refs)
+//! Handlers keep the exact Go response shapes and fail closed: the supervisor
+//! mutation runs after the audit + enablement rows persist, so a persistence
+//! failure leaves the connector state untouched.
 
 use std::collections::HashMap;
 
@@ -157,6 +157,7 @@ async fn connector_list(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
     let Some(tc) = require_channel_management_permission(
+        &state,
         tenant.as_ref().map(|e| &e.0.0),
         "",
         Permission::CredentialsInspect,
@@ -201,6 +202,7 @@ async fn connector_detail(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
     let Some(tc) = require_channel_management_permission(
+        &state,
         tenant.as_ref().map(|e| &e.0.0),
         &connector_id,
         Permission::CredentialsInspect,
@@ -228,6 +230,7 @@ async fn connector_diagnostics(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
     let Some(tc) = require_channel_management_permissions(
+        &state,
         tenant.as_ref().map(|e| &e.0.0),
         &connector_id,
         "channel_management.diagnostics",
@@ -252,6 +255,7 @@ async fn connector_disable(
     body: String,
 ) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
     let Some(tc) = require_channel_management_permission(
+        &state,
         tenant.as_ref().map(|e| &e.0.0),
         &connector_id,
         Permission::ConnectorsManage,
@@ -261,51 +265,67 @@ async fn connector_disable(
     };
     let input = decode_action_body(&body).unwrap_or_default();
     let supervisor = connectors_supervisor(&state)?;
-    let now = Utc::now();
     let reason = coalesce_reason(&input.reason_code, "tenant_disabled");
-    let audit = record_channel_management_audit(
-        &tc,
-        &connector_id,
-        "channel_management.disable",
-        "connectors.manage",
-        "succeeded",
-        &reason,
-    );
-    let audit_event_id = audit.audit_event_id.clone();
+    let mut result: Option<EnablementMutationResult> = None;
+    let mut persistence_error: Option<String> = None;
     let mutation = supervisor.with_connector_mutation(&connector_id, || {
         if supervisor.get_for_tenant(&connector_id, &tc.tenant_id).is_none() {
             return Err(ConnectorsError::ConnectorNotFound);
         }
+        let now = Utc::now();
+        let audit = match record_channel_management_audit(
+            &state,
+            &tc,
+            &connector_id,
+            "channel_management.disable",
+            "connectors.manage",
+            "succeeded",
+            &reason,
+        ) {
+            Ok(record) => record,
+            Err(err) => {
+                persistence_error = Some(err);
+                return Err(ConnectorsError::CoreInvariantFailed);
+            }
+        };
         // Go persists the disabled EnablementState via
-        // SaveChannelConnectorEnablementState before calling Disable; dope-store
-        // has no channel_connector_enablement_states DAO yet (TODO), so the
-        // supervisor transition is the only durable change here.
-        let _enablement = EnablementState {
+        // SaveChannelConnectorEnablementState before calling Disable; the store
+        // write happens under the same mutation lock and a failure leaves the
+        // supervisor state untouched (fail closed).
+        let enablement = EnablementState {
             tenant_id: tc.tenant_id.clone(),
             connector_id: connector_id.clone(),
             state: "disabled".to_string(),
             reason_code: reason.clone(),
             changed_by_principal_id: tc.principal_id.clone(),
             changed_at: now,
-            audit_event_id: audit_event_id.clone(),
+            audit_event_id: audit.audit_event_id.clone(),
             ..Default::default()
         };
+        if let Err(err) = state.store.lock().save_channel_connector_enablement_state(&enablement) {
+            persistence_error = Some(err);
+            return Err(ConnectorsError::CoreInvariantFailed);
+        }
         supervisor.disable(&connector_id, &reason)?;
-        Ok(())
-    });
-    if let Err(err) = mutation {
-        return Err(channel_management_mutation_error(err));
-    }
-    Ok((
-        StatusCode::OK,
-        AxumJson(serde_json::to_value(EnablementMutationResult {
-            connector_id,
+        result = Some(EnablementMutationResult {
+            connector_id: connector_id.clone(),
             enablement_state: ManagementState::Disabled,
             delivery_eligible: false,
             audit_event_id: audit.audit_event_id,
             changed_at: now,
-        })
-        .map_err(ApiError::from)?),
+        });
+        Ok(())
+    });
+    if let Some(err) = persistence_error {
+        return Err(ApiError::from_store(err));
+    }
+    if let Err(err) = mutation {
+        return Err(channel_management_mutation_error(err));
+    }
+    let result = result.ok_or_else(|| ApiError::internal("mutation did not produce a result"))?;
+    Ok((
+        StatusCode::OK,
+        AxumJson(serde_json::to_value(result).map_err(ApiError::from)?),
     ))
 }
 
@@ -317,6 +337,7 @@ async fn connector_re_enable(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
     let Some(tc) = require_channel_management_permission(
+        &state,
         tenant.as_ref().map(|e| &e.0.0),
         &connector_id,
         Permission::ConnectorsManage,
@@ -349,22 +370,30 @@ async fn connector_re_enable(
     if found && policy.validation_state != "valid" {
         return Err(ApiError::Conflict("route policy is not valid".to_string()));
     }
-    let audit = record_channel_management_audit(
-        &tc,
-        &connector_id,
-        "channel_management.re_enable",
-        "connectors.manage",
-        "succeeded",
-        "validated_re_enable",
-    );
-    let audit_event_id = audit.audit_event_id.clone();
+    let mut result: Option<EnablementMutationResult> = None;
+    let mut persistence_error: Option<String> = None;
     let mutation = supervisor.with_connector_mutation(&connector_id, || {
         let connector = supervisor
             .get_for_tenant(&connector_id, &tc.tenant_id)
             .ok_or(ConnectorsError::ConnectorNotFound)?;
-        // Go persists the enabled EnablementState (with validated_at) here;
-        // dope-store has no channel_connector_enablement_states DAO yet (TODO).
-        let _enablement = EnablementState {
+        let audit = match record_channel_management_audit(
+            &state,
+            &tc,
+            &connector_id,
+            "channel_management.re_enable",
+            "connectors.manage",
+            "succeeded",
+            "validated_re_enable",
+        ) {
+            Ok(record) => record,
+            Err(err) => {
+                persistence_error = Some(err);
+                return Err(ConnectorsError::CoreInvariantFailed);
+            }
+        };
+        // Go persists the enabled EnablementState (with validated_at) here; the
+        // store write happens under the same mutation lock (fail closed).
+        let enablement = EnablementState {
             tenant_id: tc.tenant_id.clone(),
             connector_id: connector_id.clone(),
             state: "enabled".to_string(),
@@ -372,24 +401,32 @@ async fn connector_re_enable(
             changed_by_principal_id: tc.principal_id.clone(),
             changed_at: now,
             validated_at: Some(now),
-            audit_event_id: audit_event_id.clone(),
+            audit_event_id: audit.audit_event_id.clone(),
         };
+        if let Err(err) = state.store.lock().save_channel_connector_enablement_state(&enablement) {
+            persistence_error = Some(err);
+            return Err(ConnectorsError::CoreInvariantFailed);
+        }
         supervisor.re_enable(&connector.connector_id)?;
-        Ok(())
-    });
-    if let Err(err) = mutation {
-        return Err(channel_management_mutation_error(err));
-    }
-    Ok((
-        StatusCode::OK,
-        AxumJson(serde_json::to_value(EnablementMutationResult {
-            connector_id,
+        result = Some(EnablementMutationResult {
+            connector_id: connector_id.clone(),
             enablement_state: ManagementState::Ready,
             delivery_eligible: true,
             audit_event_id: audit.audit_event_id,
             changed_at: now,
-        })
-        .map_err(ApiError::from)?),
+        });
+        Ok(())
+    });
+    if let Some(err) = persistence_error {
+        return Err(ApiError::from_store(err));
+    }
+    if let Err(err) = mutation {
+        return Err(channel_management_mutation_error(err));
+    }
+    let result = result.ok_or_else(|| ApiError::internal("mutation did not produce a result"))?;
+    Ok((
+        StatusCode::OK,
+        AxumJson(serde_json::to_value(result).map_err(ApiError::from)?),
     ))
 }
 
@@ -410,6 +447,7 @@ async fn connector_repair(
         required.push(Permission::SecretsManage);
     }
     let Some(tc) = require_channel_management_permissions(
+        &state,
         tenant.as_ref().map(|e| &e.0.0),
         &connector_id,
         "channel_management.repair",
@@ -427,15 +465,18 @@ async fn connector_repair(
         .collect::<Vec<_>>()
         .join("+");
     let audit = record_channel_management_audit(
+        &state,
         &tc,
         &connector_id,
         &format!("channel_management.{action_kind}"),
         &permission_gate,
         "succeeded",
         "repair_started",
-    );
+    )
+    .map_err(ApiError::from_store)?;
     let now = Utc::now();
     let action = RepairAction {
+        repair_action_id: new_repair_action_id(),
         tenant_id: tc.tenant_id.clone(),
         connector_id: connector_id.clone(),
         connector_kind: connector.kind.clone(),
@@ -453,8 +494,14 @@ async fn connector_repair(
         redaction_status: RedactionStatus::Redacted,
         ..Default::default()
     };
-    // Go persists the repair action via SaveChannelRepairAction; dope-store has
-    // no channel_repair_actions DAO yet (TODO), so the response is the ledger row.
+    // Go SaveChannelRepairAction generates the id internally; the DAO only
+    // generates when unset, so pre-generate the same new_store_id shape to keep
+    // the response (and the support-evidence repair refs) id non-empty.
+    state
+        .store
+        .lock()
+        .save_channel_repair_action(&action)
+        .map_err(ApiError::from_store)?;
     Ok((
         StatusCode::ACCEPTED,
         AxumJson(serde_json::to_value(action).map_err(ApiError::from)?),
@@ -469,6 +516,7 @@ async fn route_policy_get(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
     let Some(tc) = require_channel_management_permission(
+        &state,
         tenant.as_ref().map(|e| &e.0.0),
         &connector_id,
         Permission::CredentialsInspect,
@@ -494,6 +542,7 @@ async fn route_policy_put(
     body: String,
 ) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
     let Some(tc) = require_channel_management_permission(
+        &state,
         tenant.as_ref().map(|e| &e.0.0),
         &connector_id,
         Permission::ConnectorsManage,
@@ -515,39 +564,51 @@ async fn route_policy_put(
         )));
     }
     let background_delivery = input.background_delivery_eligible.unwrap_or(true);
-    let audit = record_channel_management_audit(
-        &tc,
-        &connector_id,
-        "channel_management.route_policy.update",
-        "connectors.manage",
-        "succeeded",
-        "route_policy_updated",
-    );
-    let policy = normalize_route_policy(
-        dope_connectors::RoutePolicy {
-            tenant_id: tc.tenant_id.clone(),
-            connector_id: connector_id.clone(),
-            eligible_senders: input.eligible_senders,
-            eligible_conversations: input.eligible_conversations,
-            eligible_rooms: input.eligible_rooms,
-            eligible_channels: input.eligible_channels,
-            invocation_gates: input.invocation_gates,
-            background_delivery_eligible: background_delivery,
-            validation_state: "valid".to_string(),
-            validated_at: Utc::now(),
-            audit_event_id: audit.audit_event_id,
-            redaction_status: RedactionStatus::Redacted,
-            ..Default::default()
-        },
-        Utc::now(),
-    );
     let mut save_result: Option<Result<(), String>> = None;
+    let mut persistence_error: Option<String> = None;
+    let mut saved_policy: Option<dope_connectors::RoutePolicy> = None;
     let mutation = supervisor.with_connector_mutation(&connector_id, || {
-        // Go records the audit row inside the mutation; the audit persistence is
-        // deferred (no DAO), but the store write happens under the same lock.
+        // Go records the audit row inside the mutation before saving the policy.
+        let audit = match record_channel_management_audit(
+            &state,
+            &tc,
+            &connector_id,
+            "channel_management.route_policy.update",
+            "connectors.manage",
+            "succeeded",
+            "route_policy_updated",
+        ) {
+            Ok(record) => record,
+            Err(err) => {
+                persistence_error = Some(err);
+                return Err(ConnectorsError::CoreInvariantFailed);
+            }
+        };
+        let policy = normalize_route_policy(
+            dope_connectors::RoutePolicy {
+                tenant_id: tc.tenant_id.clone(),
+                connector_id: connector_id.clone(),
+                eligible_senders: input.eligible_senders,
+                eligible_conversations: input.eligible_conversations,
+                eligible_rooms: input.eligible_rooms,
+                eligible_channels: input.eligible_channels,
+                invocation_gates: input.invocation_gates,
+                background_delivery_eligible: background_delivery,
+                validation_state: "valid".to_string(),
+                validated_at: Utc::now(),
+                audit_event_id: audit.audit_event_id,
+                redaction_status: RedactionStatus::Redacted,
+                ..Default::default()
+            },
+            Utc::now(),
+        );
         save_result = Some(state.store.lock().save_channel_route_policy(&policy));
+        saved_policy = Some(policy);
         Ok(())
     });
+    if let Some(err) = persistence_error {
+        return Err(ApiError::from_store(err));
+    }
     if let Err(err) = mutation {
         return Err(ApiError::internal(err));
     }
@@ -559,7 +620,7 @@ async fn route_policy_put(
         .lock()
         .get_channel_route_policy(&tc.tenant_id, &connector_id)
         .map_err(ApiError::from_store)?
-        .unwrap_or(policy);
+        .unwrap_or_else(|| saved_policy.unwrap_or_default());
     Ok((
         StatusCode::OK,
         AxumJson(serde_json::to_value(stored).map_err(ApiError::from)?),
@@ -574,6 +635,7 @@ async fn reply_outcomes(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
     let Some(tc) = require_channel_management_permission(
+        &state,
         tenant.as_ref().map(|e| &e.0.0),
         &connector_id,
         Permission::CredentialsInspect,
@@ -597,6 +659,7 @@ async fn delivery_outcomes(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
     let Some(tc) = require_channel_management_permission(
+        &state,
         tenant.as_ref().map(|e| &e.0.0),
         &connector_id,
         Permission::CredentialsInspect,
@@ -620,6 +683,7 @@ async fn support_evidence(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
     let Some(tc) = require_channel_management_permission(
+        &state,
         tenant.as_ref().map(|e| &e.0.0),
         &connector_id,
         Permission::CredentialsInspect,
@@ -689,8 +753,7 @@ async fn support_evidence(
 // ---------------------------------------------------------------------------
 
 /// Go buildChannelConnectorDetail: projection + diagnostic summary + route
-/// policy + recent decisions/outcomes. Repair actions are not populated yet
-/// (dope-store has no list_channel_repair_actions DAO — TODO).
+/// policy + recent decisions/outcomes + repair actions.
 fn build_channel_connector_detail(
     state: &AppState,
     tc: &dope_identity::TenantContext,
@@ -717,6 +780,10 @@ fn build_channel_connector_detail(
         .store
         .lock()
         .list_channel_background_delivery_outcomes(&tc.tenant_id, &connector.connector_id, now)?;
+    let repair_actions = state
+        .store
+        .lock()
+        .list_channel_repair_actions(&tc.tenant_id, &connector.connector_id)?;
     Ok(ChannelConnectorDetail {
         projection,
         diagnostic_summary: latest_diagnostic(&diagnostics).cloned(),
@@ -724,7 +791,7 @@ fn build_channel_connector_detail(
         recent_route_decisions,
         foreground_reply_outcomes,
         background_delivery,
-        repair_actions: Vec::new(),
+        repair_actions,
         support_evidence_available: true,
         retention: HashMap::from([("defaultDays".to_string(), "90".to_string())]),
         ..Default::default()
@@ -753,7 +820,6 @@ fn get_or_default_channel_route_policy(
 
 /// Go enrichChannelSupportEvidenceBundle: aggregates diagnostic/repair/decision/
 /// outcome/audit refs into the bundle and emits redaction + retention events.
-/// Repair refs and audit refs are not populated yet (missing store DAOs — TODO).
 fn enrich_channel_support_evidence_bundle(
     state: &AppState,
     tenant_id: &str,
@@ -784,8 +850,10 @@ fn enrich_channel_support_evidence_bundle(
             ));
         }
     }
-    // Go appends ListChannelRepairActions ids to bundle.repair_refs; dope-store
-    // has no list_channel_repair_actions DAO yet (TODO).
+    let repairs = store.list_channel_repair_actions(tenant_id, connector_id)?;
+    for item in repairs {
+        bundle.repair_refs.push(item.repair_action_id);
+    }
     let decisions = store.list_channel_routing_decisions(tenant_id, connector_id, now)?;
     for item in decisions {
         bundle.routing_decision_refs.push(item.routing_decision_id);
@@ -799,8 +867,10 @@ fn enrich_channel_support_evidence_bundle(
     for item in deliveries {
         bundle.delivery_outcome_refs.push(item.delivery_outcome_id);
     }
-    // Go appends ListChannelManagementAuditRecords ids to bundle.audit_refs;
-    // dope-store has no list_channel_management_audit_records DAO yet (TODO).
+    let audits = store.list_channel_management_audit_records(tenant_id, connector_id)?;
+    for item in audits {
+        bundle.audit_refs.push(item.audit_event_id);
+    }
     let expired = store.list_expired_channel_support_evidence(tenant_id, connector_id, now)?;
     for item in expired {
         state.event_bus.publish(connector_management_retention_applied(
@@ -821,13 +891,14 @@ fn enrich_channel_support_evidence_bundle(
 
 /// Go requireChannelManagementPermission: tenant context + permission gate. On
 /// denial Go records a `channel_management.<action>` audit row
-/// (SaveChannelManagementAuditRecord) before returning the 403; that write is
-/// deferred until dope-store has the audit-records DAO (TODO).
+/// (SaveChannelManagementAuditRecord) before returning the 403; the store write
+/// is best-effort (Go ignores the error).
 fn require_channel_management_permission(
+    state: &AppState,
     tenant: Option<&dope_identity::TenantContext>,
-    _connector_id: &str,
+    connector_id: &str,
     permission: Permission,
-    _action: &str,
+    action: &str,
 ) -> Option<dope_identity::TenantContext> {
     let tc = tenant?.clone();
     if tc.tenant_id.is_empty() {
@@ -836,11 +907,25 @@ fn require_channel_management_permission(
     if has_permission(&tc.permissions, permission) {
         return Some(tc);
     }
+    let record = dope_connectors::ConnectorAuditRecord {
+        audit_event_id: new_audit_event_id(),
+        tenant_id: tc.tenant_id.clone(),
+        connector_id: connector_id.to_string(),
+        principal_id: tc.principal_id.clone(),
+        action: action.to_string(),
+        permission_gate: permission_string(&permission),
+        outcome: "denied".to_string(),
+        reason_code: "permission_missing".to_string(),
+        created_at: Utc::now(),
+        redaction_status: RedactionStatus::Redacted,
+    };
+    let _ = state.store.lock().save_channel_management_audit_record(&record);
     None
 }
 
 /// Go requireChannelManagementPermissions: every listed permission must pass.
 fn require_channel_management_permissions(
+    state: &AppState,
     tenant: Option<&dope_identity::TenantContext>,
     connector_id: &str,
     action: &str,
@@ -849,6 +934,7 @@ fn require_channel_management_permissions(
     let mut tc: Option<dope_identity::TenantContext> = None;
     for permission in permissions {
         tc = Some(require_channel_management_permission(
+            state,
             tenant,
             connector_id,
             *permission,
@@ -869,17 +955,18 @@ fn channel_management_denial() -> (StatusCode, AxumJson<serde_json::Value>) {
     )
 }
 
-/// Go recordChannelManagementAudit: builds the audit record with a fresh event
-/// id and defaults principal/created-at. The store write is deferred (TODO).
+/// Go recordChannelManagementAudit: persists the audit record (the id is
+/// pre-generated in the store's `new_store_id` style) and returns it.
 fn record_channel_management_audit(
+    state: &AppState,
     tc: &dope_identity::TenantContext,
     connector_id: &str,
     action: &str,
     permission_gate: &str,
     outcome: &str,
     reason_code: &str,
-) -> dope_connectors::ConnectorAuditRecord {
-    dope_connectors::ConnectorAuditRecord {
+) -> Result<dope_connectors::ConnectorAuditRecord, String> {
+    let record = dope_connectors::ConnectorAuditRecord {
         audit_event_id: new_audit_event_id(),
         tenant_id: tc.tenant_id.clone(),
         connector_id: connector_id.to_string(),
@@ -890,13 +977,22 @@ fn record_channel_management_audit(
         reason_code: reason_code.to_string(),
         created_at: Utc::now(),
         redaction_status: RedactionStatus::Redacted,
-    }
+    };
+    state.store.lock().save_channel_management_audit_record(&record)?;
+    Ok(record)
 }
 
 /// Go `newStoreID("audit")`-style id for the local audit records.
 fn new_audit_event_id() -> String {
     let hex = Uuid::new_v4().simple().to_string();
     format!("audit_{}", &hex[..16])
+}
+
+/// Go `newStoreID("channel_repair_action")`-style id (the DAO generates this
+/// internally when unset; pre-generated so the response carries it).
+fn new_repair_action_id() -> String {
+    let hex = Uuid::new_v4().simple().to_string();
+    format!("channel_repair_action_{}", &hex[..16])
 }
 
 /// Go `newStoreID("channel_support_evidence")`-style id (the store DAO would
@@ -975,9 +1071,9 @@ mod tests {
     use axum::http::Request;
     use chrono::{Duration, Utc};
     use dope_connectors::{
-        BackgroundDeliveryOutcome, DiagnosticInput, DiagnosticReasonCode, ForegroundReplyOutcome,
-        LifecycleState, RegisterInput, RouteDecisionOutcome, RoutingDecision, SupportEvidenceBundle,
-        classify_diagnostic,
+        BackgroundDeliveryOutcome, ConnectorAuditRecord, DiagnosticInput, DiagnosticReasonCode,
+        ForegroundReplyOutcome, LifecycleState, ManagementTerminalState, RegisterInput,
+        RouteDecisionOutcome, RoutingDecision, SupportEvidenceBundle, classify_diagnostic,
     };
     use dope_store::SQLiteStore;
     use parking_lot::Mutex;
@@ -1282,6 +1378,29 @@ mod tests {
         let audit_event_id = json["auditEventId"].as_str().expect("auditEventId");
         assert!(!audit_event_id.is_empty(), "expected audit event id, got {json}");
 
+        // The disabled enablement state and the audit row are persisted (Go
+        // SaveChannelConnectorEnablementState + recordChannelManagementAudit).
+        let persisted = state
+            .store
+            .lock()
+            .get_channel_connector_enablement_state("ten_channels", "discord-main")
+            .expect("get enablement");
+        let persisted = persisted.expect("persisted enablement state");
+        assert_eq!(persisted.state, "disabled");
+        assert_eq!(persisted.reason_code, "maintenance");
+        assert_eq!(persisted.audit_event_id, audit_event_id);
+        let audits = state
+            .store
+            .lock()
+            .list_channel_management_audit_records("ten_channels", "discord-main")
+            .expect("list audits");
+        assert!(
+            audits.iter().any(|record| {
+                record.action == "channel_management.disable" && record.audit_event_id == audit_event_id
+            }),
+            "expected disable audit, got: {audits:?}"
+        );
+
         // A stale diagnostic blocks re-enable (409).
         let stale = classify_diagnostic(DiagnosticInput {
             diagnostic_state_id: "diag_stale".to_string(),
@@ -1341,6 +1460,31 @@ mod tests {
         assert_eq!(status, StatusCode::ACCEPTED, "repair body: {json}");
         assert_eq!(json["status"], "disabled");
         assert_eq!(json["sourceDiagnosticStateId"], "diag_1");
+        let repair_action_id = json["repairActionId"].as_str().expect("repairActionId");
+        assert!(!repair_action_id.is_empty(), "expected repair action id, got {json}");
+
+        // The repair action and its audit row are persisted (Go
+        // SaveChannelRepairAction + recordChannelManagementAudit).
+        let repairs = state
+            .store
+            .lock()
+            .list_channel_repair_actions("ten_channels", "slack-main")
+            .expect("list repairs");
+        assert_eq!(repairs.len(), 1, "repairs: {repairs:?}");
+        assert_eq!(repairs[0].repair_action_id, repair_action_id);
+        assert_eq!(repairs[0].action_kind, ManagementActionKind::Reconnect);
+        assert!(!repairs[0].audit_event_id.is_empty());
+        let audits = state
+            .store
+            .lock()
+            .list_channel_management_audit_records("ten_channels", "slack-main")
+            .expect("list audits");
+        assert!(
+            audits.iter().any(|record| {
+                record.action == "channel_management.reconnect" && record.reason_code == "repair_started"
+            }),
+            "expected repair audit, got: {audits:?}"
+        );
     }
 
     // Port of TestChannelManagementSupportEvidenceIsPermissionedAndMetadataOnly.
@@ -1398,8 +1542,8 @@ mod tests {
         );
     }
 
-    // Port of TestChannelManagementSupportEvidenceAggregatesIncidentReferences.
-    // Repair refs are not populated yet (dope-store has no repair-actions DAO).
+    // Port of TestChannelManagementSupportEvidenceAggregatesIncidentReferences:
+    // routing-decision, repair, and audit refs all aggregate into the bundle.
     #[tokio::test]
     async fn support_evidence_aggregates_incident_references() {
         let mut state = test_state();
@@ -1407,22 +1551,49 @@ mod tests {
         state.connectors = Some(supervisor.clone());
         register_connector(&supervisor, "ten_channels", "matrix-main", "matrix", "Matrix Main");
         let now = Utc::now();
-        state
-            .store
-            .lock()
-            .save_channel_routing_decision(&RoutingDecision {
-                routing_decision_id: "route_1".to_string(),
-                tenant_id: "ten_channels".to_string(),
-                connector_id: "matrix-main".to_string(),
-                connector_kind: "matrix".to_string(),
-                outcome: RouteDecisionOutcome::Blocked,
-                reason_code: "blocked_route".to_string(),
-                occurred_at: now,
-                retention_expires_at: now + Duration::days(90),
-                redaction_status: RedactionStatus::Redacted,
-                ..Default::default()
-            })
-            .expect("save decision");
+        {
+            let store = state.store.lock();
+            store
+                .save_channel_routing_decision(&RoutingDecision {
+                    routing_decision_id: "route_1".to_string(),
+                    tenant_id: "ten_channels".to_string(),
+                    connector_id: "matrix-main".to_string(),
+                    connector_kind: "matrix".to_string(),
+                    outcome: RouteDecisionOutcome::Blocked,
+                    reason_code: "blocked_route".to_string(),
+                    occurred_at: now,
+                    retention_expires_at: now + Duration::days(90),
+                    redaction_status: RedactionStatus::Redacted,
+                    ..Default::default()
+                })
+                .expect("save decision");
+            store
+                .save_channel_repair_action(&RepairAction {
+                    repair_action_id: "repair_1".to_string(),
+                    tenant_id: "ten_channels".to_string(),
+                    connector_id: "matrix-main".to_string(),
+                    connector_kind: "matrix".to_string(),
+                    action_kind: ManagementActionKind::Repair,
+                    status: ManagementTerminalState::ActionRequired,
+                    started_at: now,
+                    redaction_status: RedactionStatus::Redacted,
+                    ..Default::default()
+                })
+                .expect("save repair");
+            store
+                .save_channel_management_audit_record(&ConnectorAuditRecord {
+                    audit_event_id: "audit_1".to_string(),
+                    tenant_id: "ten_channels".to_string(),
+                    connector_id: "matrix-main".to_string(),
+                    action: "channel_management.disable".to_string(),
+                    permission_gate: "connectors.manage".to_string(),
+                    outcome: "succeeded".to_string(),
+                    created_at: now,
+                    redaction_status: RedactionStatus::Redacted,
+                    ..Default::default()
+                })
+                .expect("save audit");
+        }
         let app = router().with_state(state.clone());
 
         let req = channel_tenant_request(
@@ -1439,6 +1610,20 @@ mod tests {
         assert!(
             refs.iter().any(|v| v == "route_1"),
             "expected route_1 in routingDecisionRefs: {json}"
+        );
+        let repair_refs = json["repairRefs"]
+            .as_array()
+            .expect("repairRefs array");
+        assert!(
+            repair_refs.iter().any(|v| v == "repair_1"),
+            "expected repair_1 in repairRefs: {json}"
+        );
+        let audit_refs = json["auditRefs"]
+            .as_array()
+            .expect("auditRefs array");
+        assert!(
+            audit_refs.iter().any(|v| v == "audit_1"),
+            "expected audit_1 in auditRefs: {json}"
         );
     }
 

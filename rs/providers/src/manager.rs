@@ -529,8 +529,14 @@ impl Manager {
     // -- profile construction -------------------------------------------------
 
     fn load_profiles(&self) {
-        let mut inner = self.inner.write();
-        let mut items = vec![self.build_echo_profile(), self.build_openai_compatible_profile(&inner)];
+        // NOTE: build_managed_profile acquires its own read lock, so the
+        // write lock must not be held while managed profiles are built (a
+        // parking_lot RwLock is not reentrant and self-deadlocks when a
+        // managed registry is present).
+        let mut items = vec![
+            self.build_echo_profile(),
+            self.build_openai_compatible_profile(&self.inner.read()),
+        ];
         if let Some(registry) = &self.registry {
             for bridge in registry.list() {
                 items.push(self.build_managed_profile(&bridge));
@@ -541,6 +547,7 @@ impl Manager {
             item.default = item.provider_id == default_provider_id;
         }
         items.sort_by(|a, b| a.provider_id.cmp(&b.provider_id));
+        let mut inner = self.inner.write();
         inner.profiles.clear();
         inner.order.clear();
         for item in items {

@@ -9,8 +9,6 @@ name = "dope-cli"
 path = "src/main.rs"
 
 [dependencies]
-dope-protocol.workspace = true
-dope-model-provider.workspace = true
-dope-core.workspace = true
-clap.workspace = true
-tokio.workspace = true
+dope-app = { workspace = true }
+dope-config = { workspace = true }
+tokio = { workspace = true }
