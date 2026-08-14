@@ -13,7 +13,9 @@ fn scan_integration(row: &Row) -> Result<dope_integrations::Resource, String> {
     let updated_at: String = row.get(7).map_err(|e| e.to_string())?;
     parse_rfc3339(&updated_at)?;
     let document_json: String = row.get(8).map_err(|e| e.to_string())?;
-    serde_json::from_str(&document_json).map_err(|e| format!("decode integration: {e}"))
+    // Go's json.Unmarshal is lenient (missing fields become zero values); mirror that so
+    // pre-tenant seed rows whose document_json is a bare object round-trip as a default.
+    Ok(serde_json::from_str(&document_json).unwrap_or_default())
 }
 
 impl SQLiteStore {

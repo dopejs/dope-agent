@@ -3,9 +3,13 @@
 #![allow(dead_code)]
 
 use rusqlite::Connection;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_migrationfixture_{name}_{}", std::process::id()));
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("dope_migrationfixture_{name}_{}_{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

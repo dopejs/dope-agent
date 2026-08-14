@@ -301,6 +301,16 @@ pub fn execute_subprocess(
     cancel.register_child(child);
 
     let result = loop {
+        if cancel.is_cancelled() {
+            break cancelled_subprocess_result(
+                launch,
+                pid,
+                cancel,
+                timed_out,
+                &stdout_capture,
+                &stderr_capture,
+            );
+        }
         match cancel.try_wait_child() {
             Ok(Some(status)) => {
                 break finish_subprocess_result(
@@ -316,16 +326,6 @@ pub fn execute_subprocess(
             Err(err) => {
                 break io_capture_failed_result(pid, err, &stdout_capture, &stderr_capture);
             }
-        }
-        if cancel.is_cancelled() {
-            break cancelled_subprocess_result(
-                launch,
-                pid,
-                cancel,
-                timed_out,
-                &stdout_capture,
-                &stderr_capture,
-            );
         }
         std::thread::sleep(Duration::from_millis(10));
     };

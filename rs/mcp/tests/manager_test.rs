@@ -224,6 +224,7 @@ fn manager_registers_updates_and_lists_servers() {
             &UpdateServerInput {
                 display_name: Some("Renamed".to_string()),
                 enabled: Some(false),
+                auto_restart: Some(false),
                 ..UpdateServerInput::default()
             },
         )

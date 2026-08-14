@@ -305,7 +305,7 @@ pub(crate) fn mcp_backoff_delay(failure_count: i64) -> Duration {
 #[must_use]
 pub fn restart_backoff_delay(failure_count: i64) -> Duration {
     const FIVE_SECONDS: i64 = 5_000_000_000;
-    const FIVE_MINUTES: i64 = 5 * 60 * FIVE_SECONDS;
+    const FIVE_MINUTES: i64 = 300 * 1_000_000_000;
     if failure_count <= 0 {
         return Duration::from_nanos(FIVE_SECONDS as u64);
     }

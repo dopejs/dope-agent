@@ -2015,6 +2015,17 @@ impl Manager {
                 if let Some(enabled) = operation.input.enabled {
                     server.enabled = enabled;
                     server.operator_modified = true;
+                    if let Some(state) = guard.states.get_mut(&server.server_id) {
+                        state.status = if enabled {
+                            if state.status == LifecycleStatus::Disabled {
+                                LifecycleStatus::Stopped
+                            } else {
+                                state.status
+                            }
+                        } else {
+                            LifecycleStatus::Disabled
+                        };
+                    }
                 }
                 if let Some(profile_id) = &operation.input.sandbox_profile_id {
                     server.sandbox_profile_id = profile_id.trim().to_string();

@@ -71,7 +71,7 @@ fn pre_tenant_v21_fixture_seeds_all_parent_child_pairs() {
 
 #[test]
 fn pre_tenant_v21_fixture_seeds_exact_ids_and_payloads() {
-    let dir = temp_dir("pre_tenant_v21");
+    let dir = temp_dir("pre_tenant_v21_ids");
     let store = build_pre_tenant_v21_fixture(&dir).unwrap();
     let conn = open_conn(store.db_path());
 

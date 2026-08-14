@@ -51,7 +51,7 @@ fn execution_roundtrips_camel_case() {
         args: vec!["hello".to_string()],
         cwd: "/tmp".to_string(),
         env_keys: vec!["PATH".to_string()],
-        stdin_provided: false,
+        stdin_provided: true,
         timeout_ms: 30000,
         requested_by: "test".to_string(),
         resource_kind: "capability".to_string(),
@@ -86,6 +86,10 @@ fn execution_roundtrips_camel_case() {
             status: ExecutionStatus::Completed,
             exit_code: Some(0),
             stdout: "hello".to_string(),
+            backend_metadata: serde_json::Map::from_iter([(
+                "backend".to_string(),
+                serde_json::json!("subprocess"),
+            )]),
             ..SandboxResult::default()
         },
         requested_at: now,

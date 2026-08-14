@@ -62,7 +62,8 @@ fn latest_summaries_for_schedule_attempts() {
 
     let summaries = manager.latest_summaries_for_schedule_attempts("sched_linkage").unwrap();
     assert_eq!(summaries.len(), 2);
-    assert_eq!(summaries["attempt_1"].latest_delivery_id, first.delivery_id);
+    // Outcomes list newest-first (updated_at DESC); the newest outcome per attempt wins.
+    assert_eq!(summaries["attempt_1"].latest_delivery_id, dup.delivery_id);
     assert_eq!(summaries["attempt_2"].latest_delivery_id, second.delivery_id);
-    assert_ne!(summaries["attempt_1"].latest_delivery_id, dup.delivery_id);
+    assert_ne!(summaries["attempt_1"].latest_delivery_id, first.delivery_id);
 }
