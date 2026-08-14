@@ -350,6 +350,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-calendar"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-integrations",
+ "dope-livevalidation",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "dope-capabilities"
 version = "0.1.0"
 dependencies = [

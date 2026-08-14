@@ -1,0 +1,14 @@
+[package]
+name = "dope-calendar"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-integrations.workspace = true
+dope-livevalidation.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
