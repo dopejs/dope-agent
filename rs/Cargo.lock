@@ -522,8 +522,11 @@ name = "dope-connectors"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-livevalidation",
+ "parking_lot",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -1014,6 +1017,7 @@ dependencies = [
  "dope-providers",
  "dope-router",
  "dope-runtime",
+ "dope-threads",
  "rusqlite",
  "serde",
  "serde_json",

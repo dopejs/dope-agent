@@ -2,7 +2,9 @@
 //! model (`Connector`), conformance results (`ConformanceResult`), and per-connector
 //! diagnostic state (`ConnectorDiagnosticState`) together with their string enums.
 //! Wire values (camelCase field names, snake_case enum literals) match the Go json
-//! tags exactly. Manager/supervisor logic is not ported.
+//! tags exactly. The supervisor manager (crate::Supervisor) and the conformance
+//! helpers (crate::run_matrix_case, crate::CapabilityProfile, ...) live in the
+//! supervisor and conformance submodules.
 
 use std::collections::HashMap;
 
@@ -39,6 +41,8 @@ macro_rules! string_enum {
         }
     };
 }
+
+pub(crate) use string_enum;
 
 // --- supervisor.go: Status + Connector ------------------------------------
 
@@ -229,3 +233,12 @@ pub struct ConnectorDiagnosticState {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub redaction_failure_id: String,
 }
+
+// --- supervisor.go manager + conformance.go helpers ------------------------
+
+mod conformance;
+mod supervisor;
+
+pub use conformance::*;
+pub use supervisor::*;
+
