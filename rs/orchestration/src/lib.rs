@@ -363,7 +363,7 @@ pub fn first_non_empty(values: &[&str]) -> String {
 /// Go `shellEscape`: single-quote shell escaping for embedded command args.
 #[must_use]
 pub fn shell_escape(value: &str) -> String {
-    value.replace('\'', "'\"\'\"')
+    value.replace('\'', "'\"'\"'")
 }
 
 /// Go `SummarizeOutput`: JSON-serializes a value and truncates to 160 chars.
@@ -376,7 +376,7 @@ pub fn summarize_output(value: Option<&serde_json::Value>) -> String {
 
 /// Go `WorkflowStepByID`.
 #[must_use]
-pub fn workflow_step_by_id(workflow: &Workflow, workflow_step_id: &str) -> Option<&WorkflowStep> {
+pub fn workflow_step_by_id<'a>(workflow: &'a Workflow, workflow_step_id: &str) -> Option<&'a WorkflowStep> {
     workflow.steps.iter().find(|step| step.workflow_step_id == workflow_step_id)
 }
 
@@ -1208,11 +1208,11 @@ impl Manager {
     /// Appends a dependency and wires its id into the target step's
     /// `dependency_ids`.
     pub fn add_dependency(&self, workflow_id: &str, input: AddDependencyInput) -> Result<Dependency, OrchestrationError> {
+        let mut inner = self.inner.write();
+        let workflow = inner.by_id.get_mut(workflow_id).ok_or(OrchestrationError::WorkflowNotFound)?;
         if input.from_workflow_step_id.trim().is_empty() || input.to_workflow_step_id.trim().is_empty() {
             return Err(OrchestrationError::StepIDRequired);
         }
-        let mut inner = self.inner.write();
-        let workflow = inner.by_id.get_mut(workflow_id).ok_or(OrchestrationError::WorkflowNotFound)?;
         if workflow_step_by_id(workflow, &input.from_workflow_step_id).is_none()
             || workflow_step_by_id(workflow, &input.to_workflow_step_id).is_none()
         {

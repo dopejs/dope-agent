@@ -659,6 +659,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-orchestration"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-calendar",
+ "dope-capabilities",
+ "dope-computeruse",
+ "dope-config",
+ "dope-integrations",
+ "dope-mail",
+ "dope-profiles",
+ "dope-runtime",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "dope-policy"
 version = "0.1.0"
 dependencies = [
@@ -780,8 +800,11 @@ dependencies = [
  "dope-calendar",
  "dope-capabilities",
  "dope-computeruse",
+ "dope-connectors",
+ "dope-evaluation",
  "dope-events",
  "dope-identity",
+ "dope-imtypes",
  "dope-integrations",
  "dope-llm",
  "dope-mail",

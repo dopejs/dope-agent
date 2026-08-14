@@ -9,9 +9,11 @@ use rusqlite::{params, Connection};
 
 pub mod calendar;
 mod computeruse;
+pub mod connectors;
 pub mod consumer_policy;
 mod crud;
 pub mod delivery;
+pub mod evaluation;
 mod events;
 mod identity;
 mod integrations;

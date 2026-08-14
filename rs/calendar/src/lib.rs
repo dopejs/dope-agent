@@ -423,7 +423,7 @@ pub struct SourceLinkage {
     pub delivery_id: String,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Action {
     pub operation_class: OperationClass,

@@ -135,11 +135,13 @@ fn replay_candidate_round_trips_through_sqlite() {
         ..Default::default()
     };
     assert!(store.list_replay_candidates(&kind_filter).unwrap().is_empty());
-    let status_filter = CandidateFilter {
-        readiness_status: ReadinessStatus::FullyReplayable,
+    // FullyReplayable is the enum default, so it maps to "unset" (Go's `!= ""` check);
+    // only non-default values emit a readiness_status clause.
+    let readiness_filter = CandidateFilter {
+        readiness_status: ReadinessStatus::Blocked,
         ..Default::default()
     };
-    assert_eq!(store.list_replay_candidates(&status_filter).unwrap().len(), 1);
+    assert!(store.list_replay_candidates(&readiness_filter).unwrap().is_empty());
     let source_filter = CandidateFilter {
         source_kind: SourceKind::Workflow,
         ..Default::default()
@@ -223,8 +225,9 @@ fn replay_attempt_round_trips_through_sqlite() {
     assert!(got.completed_at.is_some());
 
     // Dynamic filters match and miss.
+    // Queued is the enum default ("unset"); use a non-default status for a real miss.
     let status_filter = AttemptFilter {
-        status: ReplayAttemptStatus::Queued,
+        status: ReplayAttemptStatus::Cancelled,
         ..Default::default()
     };
     assert!(store.list_replay_attempts(&status_filter).unwrap().is_empty());
@@ -389,11 +392,12 @@ fn regression_fixture_round_trips_through_sqlite() {
         ..Default::default()
     };
     assert!(store.list_regression_fixtures(&domain_filter).unwrap().is_empty());
-    let schedule_filter = FixtureFilter {
-        domain_class: FixtureDomainClass::Schedule,
+    // Schedule is the enum default ("unset"); use non-default classes for real misses.
+    let computer_use_filter = FixtureFilter {
+        domain_class: FixtureDomainClass::ComputerUse,
         ..Default::default()
     };
-    assert_eq!(store.list_regression_fixtures(&schedule_filter).unwrap().len(), 1);
+    assert!(store.list_regression_fixtures(&computer_use_filter).unwrap().is_empty());
     let limit_filter = FixtureFilter {
         limit: 1,
         ..Default::default()

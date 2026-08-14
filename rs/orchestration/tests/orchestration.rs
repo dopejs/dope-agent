@@ -451,8 +451,9 @@ fn apply_computer_use_projection_records_artifacts() {
         created_at: now,
         ..dope_computeruse::Artifact::default()
     };
+    let stored = manager.get_workflow(&workflow.workflow_id).unwrap();
     let wf = apply_computer_use_projection(
-        workflow,
+        stored,
         &step.workflow_step_id,
         "cu_sess_1",
         &["navigate".to_string(), "snapshot".to_string()],
