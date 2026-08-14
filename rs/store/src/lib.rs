@@ -7,6 +7,7 @@ use std::path::Path;
 use chrono::SecondsFormat;
 use rusqlite::{params, Connection};
 
+mod crud;
 mod migrations;
 
 /// The production schema head. The full 55-version migration list is added incrementally.

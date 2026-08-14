@@ -36,3 +36,162 @@ fn store_conn_query(db_path: &str, query: &str) -> i64 {
     let conn = rusqlite::Connection::open(db_path).unwrap();
     conn.query_row(query, [], |row| row.get(0)).unwrap()
 }
+use chrono::Utc;
+use dope_runtime::{Run, RunCheckpoint, RunStatus, Step, StepStatus, ToolCall, ToolCallStatus};
+
+fn make_run() -> Run {
+    let now = Utc::now();
+    Run {
+        run_id: "run_test".to_string(),
+        session_id: String::new(),
+        entrypoint: "test entrypoint".to_string(),
+        status: RunStatus::Running,
+        goal: "test goal".to_string(),
+        created_at: now,
+        updated_at: now,
+        ..Run::default()
+    }
+}
+
+fn make_step() -> Step {
+    let now = Utc::now();
+    Step {
+        step_id: "step_1".to_string(),
+        run_id: "run_test".to_string(),
+        workflow_id: "wf_1".to_string(),
+        workflow_step_id: "wfs_1".to_string(),
+        attempt: 2,
+        title: "Do the thing".to_string(),
+        kind: "task".to_string(),
+        status: StepStatus::Completed,
+        created_at: now,
+        updated_at: now,
+        input: Some(serde_json::json!({"a": 1})),
+        output: Some(serde_json::json!({"b": "done"})),
+    }
+}
+
+fn make_tool_call() -> ToolCall {
+    let now = Utc::now();
+    let mut sandbox = serde_json::Map::new();
+    sandbox.insert("session".to_string(), serde_json::json!("s-1"));
+    ToolCall {
+        tool_call_id: "tc_1".to_string(),
+        run_id: "run_test".to_string(),
+        step_id: "step_1".to_string(),
+        invocation_kind: "mcp_tool".to_string(),
+        capability_id: "cap_1".to_string(),
+        mcp_server_id: "mcp_1".to_string(),
+        mcp_tool_name: "search".to_string(),
+        tool_name: "search".to_string(),
+        status: ToolCallStatus::Completed,
+        sandbox_execution_id: "sand_1".to_string(),
+        failure_class: "timeout".to_string(),
+        error: "boom".to_string(),
+        input: Some(serde_json::json!({"q": "hi"})),
+        output: Some(serde_json::json!({"r": 1})),
+        sandbox,
+        integration_bindings: vec![dope_integrations::BindingSummary {
+            integration_id: "int_1".to_string(),
+            domain_kind: "calendar".to_string(),
+            display_name: "Calendar".to_string(),
+            readiness_at_invocation: dope_integrations::ReadinessStatus::Healthy,
+            backend_kind: dope_integrations::BackendKind::Native,
+            ..dope_integrations::BindingSummary::default()
+        }],
+        created_at: now,
+        updated_at: now,
+        ..ToolCall::default()
+    }
+}
+
+#[test]
+fn upsert_run_and_read_tenant_id() {
+    let dir = temp_dir("run");
+    let store = SQLiteStore::new(&dir).unwrap();
+    store.upsert_run(&make_run()).unwrap();
+    // No tenant is bound through the legacy path, so the tenant id is absent.
+    assert_eq!(store.run_tenant_id("run_test").unwrap(), None);
+}
+
+#[test]
+fn step_round_trips_through_sqlite() {
+    let dir = temp_dir("step");
+    let store = SQLiteStore::new(&dir).unwrap();
+    store.upsert_run(&make_run()).unwrap();
+    let step = make_step();
+    store.upsert_step(&step).unwrap();
+
+    let listed = store.list_steps("run_test").unwrap();
+    assert_eq!(listed.len(), 1);
+    let got = &listed[0];
+    assert_eq!(got.step_id, "step_1");
+    assert_eq!(got.run_id, "run_test");
+    assert_eq!(got.workflow_id, "wf_1");
+    assert_eq!(got.workflow_step_id, "wfs_1");
+    assert_eq!(got.attempt, 2);
+    assert_eq!(got.title, "Do the thing");
+    assert_eq!(got.kind, "task");
+    assert_eq!(got.status, StepStatus::Completed);
+    assert_eq!(got.input, Some(serde_json::json!({"a": 1})));
+    assert_eq!(got.output, Some(serde_json::json!({"b": "done"})));
+}
+
+#[test]
+fn tool_call_round_trips_through_sqlite() {
+    let dir = temp_dir("toolcall");
+    let store = SQLiteStore::new(&dir).unwrap();
+    store.upsert_run(&make_run()).unwrap();
+    store.upsert_step(&make_step()).unwrap();
+    let tc = make_tool_call();
+    store.upsert_tool_call(&tc).unwrap();
+
+    let listed = store.list_tool_calls("run_test", "step_1").unwrap();
+    assert_eq!(listed.len(), 1);
+    let got = &listed[0];
+    assert_eq!(got.tool_call_id, "tc_1");
+    assert_eq!(got.invocation_kind, "mcp_tool");
+    assert_eq!(got.capability_id, "cap_1");
+    assert_eq!(got.mcp_server_id, "mcp_1");
+    assert_eq!(got.mcp_tool_name, "search");
+    assert_eq!(got.status, ToolCallStatus::Completed);
+    assert_eq!(got.sandbox_execution_id, "sand_1");
+    assert_eq!(got.failure_class, "timeout");
+    assert_eq!(got.error, "boom");
+    assert_eq!(got.input, Some(serde_json::json!({"q": "hi"})));
+    assert_eq!(got.output, Some(serde_json::json!({"r": 1})));
+    assert_eq!(got.sandbox.get("session"), Some(&serde_json::json!("s-1")));
+    assert_eq!(got.integration_bindings.len(), 1);
+    assert_eq!(got.integration_bindings[0].integration_id, "int_1");
+    assert_eq!(got.integration_bindings[0].backend_kind, dope_integrations::BackendKind::Native);
+}
+
+#[test]
+fn checkpoint_round_trips_through_sqlite() {
+    let dir = temp_dir("checkpoint");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let run = make_run();
+    let step = make_step();
+    let tool_call = make_tool_call();
+    store.upsert_run(&run).unwrap();
+    store.upsert_step(&step).unwrap();
+    store.upsert_tool_call(&tool_call).unwrap();
+
+    let checkpoint = RunCheckpoint {
+        run: run.clone(),
+        steps: vec![step.clone()],
+        tool_calls: vec![tool_call.clone()],
+        captured_at: Utc::now(),
+    };
+    store.save_checkpoint(&checkpoint).unwrap();
+
+    let listed = store.list_latest_checkpoints().unwrap();
+    assert_eq!(listed.len(), 1);
+    let got = &listed[0];
+    assert_eq!(got.run.run_id, "run_test");
+    assert_eq!(got.run.goal, "test goal");
+    assert_eq!(got.steps.len(), 1);
+    assert_eq!(got.steps[0].step_id, "step_1");
+    assert_eq!(got.tool_calls.len(), 1);
+    assert_eq!(got.tool_calls[0].tool_call_id, "tc_1");
+}

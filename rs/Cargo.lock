@@ -730,7 +730,12 @@ name = "dope-store"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-integrations",
+ "dope-runtime",
  "rusqlite",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
