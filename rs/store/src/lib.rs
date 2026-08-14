@@ -9,16 +9,22 @@ use rusqlite::{params, Connection};
 
 pub mod calendar;
 mod computeruse;
+pub mod consumer_policy;
 mod crud;
+pub mod delivery;
 mod identity;
 mod integrations;
 pub mod mail;
 mod manager_documents;
+pub mod mcp;
 mod migrations;
 mod policy;
 mod providers;
 mod records;
 mod registry;
+pub mod reminders;
+pub mod schedule;
+pub mod secret_scope;
 
 pub use manager_documents::ManagerDocument;
 pub use records::SandboxExecutionRecord;
