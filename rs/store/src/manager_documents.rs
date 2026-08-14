@@ -88,3 +88,43 @@ impl SQLiteStore {
         Ok(items)
     }
 }
+
+/// Write-through-persists value as a JSON document keyed by (kind, id).
+pub fn put_document<T: serde::Serialize>(
+    store: &SQLiteStore,
+    kind: &str,
+    id: &str,
+    env: &str,
+    tenant: &str,
+    value: &T,
+) -> Result<(), String> {
+    let document_json = serde_json::to_string(value).map_err(|e| format!("marshal {kind} document: {e}"))?;
+    store.put_manager_document(&ManagerDocument {
+        doc_kind: kind.to_string(),
+        doc_id: id.to_string(),
+        environment_scope: env.to_string(),
+        tenant_id: tenant.to_string(),
+        document_json,
+        updated_at: chrono::Utc::now(),
+    })
+}
+
+/// Removes a document.
+pub fn delete_document(store: &SQLiteStore, kind: &str, id: &str) -> Result<(), String> {
+    store.delete_manager_document(kind, id)
+}
+
+/// Reloads all documents of a kind as typed values, skipping any that fail to decode.
+pub fn list_documents<T: serde::de::DeserializeOwned>(
+    store: &SQLiteStore,
+    kind: &str,
+) -> Result<Vec<T>, String> {
+    let docs = store.list_manager_documents(kind)?;
+    let mut out = Vec::with_capacity(docs.len());
+    for doc in docs {
+        if let Ok(value) = serde_json::from_str::<T>(&doc.document_json) {
+            out.push(value);
+        }
+    }
+    Ok(out)
+}

@@ -30,7 +30,7 @@ pub mod schedule;
 pub mod secret_scope;
 pub mod workflow;
 
-pub use manager_documents::ManagerDocument;
+pub use manager_documents::{delete_document, list_documents, put_document, ManagerDocument};
 pub use records::SandboxExecutionRecord;
 
 /// The production schema head. The full 55-version migration list is added incrementally.
