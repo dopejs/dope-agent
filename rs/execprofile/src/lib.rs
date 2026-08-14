@@ -240,8 +240,9 @@ impl<'a> Manager<'a> {
         }
     }
 
-    /// Go `WithStore`: installs durable persistence for profiles + selections.
-    pub fn with_store(mut self, store: &'a SQLiteStore) -> Self {
+    /// Go `WithStore`: installs durable persistence for profiles + selections and returns
+    /// the manager.
+    pub fn with_store(&mut self, store: &'a SQLiteStore) -> &mut Self {
         self.docs = Some(store);
         self
     }
@@ -449,7 +450,7 @@ pub fn first_non_empty(values: &[&str]) -> String {
 
 /// Go `time.Time.IsZero`: the Go zero time is 0001-01-01T00:00:00Z.
 fn is_zero_time(t: DateTime<Utc>) -> bool {
-    t == Utc.with_ymd_and_hms(1, 1, 1, 0, 0, 0).expect("year 1 is a valid chrono date")
+    t == DateTime::<Utc>::MIN_UTC
 }
 
 /// Go `newID`: 8 random bytes hex-encoded (16 hex chars) with the prefix.

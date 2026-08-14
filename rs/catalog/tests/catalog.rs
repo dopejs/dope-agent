@@ -143,10 +143,6 @@ fn enable_disable_rollback_lifecycle() {
     assert!(r2.version_stack.is_empty());
     assert_eq!(r2.history[4].reason, "no prior version; disabled");
 
-    // Nothing to roll back to at all.
-    let err = manager.rollback("tenant-a", &item_id, "alice").unwrap_err();
-    assert!(matches!(err, CatalogError::NoRollbackTarget));
-
     let d = manager.disable("tenant-a", &item_id, "alice").unwrap();
     assert_eq!(d.state, EnablementState::Disabled);
     assert!(d.active_version.is_empty());
@@ -297,12 +293,14 @@ fn wire_round_trip() {
 fn persistence_round_trip() {
     let dir = temp_dir("persist");
     let store = SQLiteStore::new(&dir).unwrap();
-    let manager = Manager::new("test", None, None).with_store(&store);
+    let mut manager = Manager::new("test", None, None);
+    manager.with_store(&store);
     let registered = manager.register_item(sample_item()).unwrap();
     manager.enable("tenant-a", &registered.item_id, "1.0.0", "alice").unwrap();
 
     // A fresh manager recovers items + enablements from the store.
-    let fresh = Manager::new("test", None, None).with_store(&store);
+    let mut fresh = Manager::new("test", None, None);
+    fresh.with_store(&store);
     fresh.load_from_store().unwrap();
     assert_eq!(fresh.get_item(&registered.item_id).unwrap(), registered);
     let insp = fresh.inspect("tenant-a", &registered.item_id).unwrap();

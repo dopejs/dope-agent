@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -424,13 +424,15 @@ impl Scheduler {
     /// `catch_up`/`tick` at `tick_interval` — so this method only records lifecycle
     /// state.
     pub fn start(&self) -> Result<(), SchedulerError> {
-        self.started.store(true, Ordering::SeqCst);
+        if self.started.swap(true, Ordering::SeqCst) {
+            return Ok(());
+        }
         Ok(())
     }
 
     /// Go `Close`: stops the background loop. In the sync port it resets the lifecycle flag.
     pub fn close(&self) -> Result<(), SchedulerError> {
-        self.started.store(false, Ordering::SeqCst);
+        self.started.swap(false, Ordering::SeqCst);
         Ok(())
     }
 

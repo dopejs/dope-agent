@@ -255,8 +255,8 @@ impl<'a> Manager<'a> {
         inner.by_id.clear();
         inner.ids.clear();
         for policy in policies {
+            inner.ids.push(policy.policy_id.clone());
             inner.by_id.insert(policy.policy_id.clone(), policy);
-            inner.ids.push(policy.policy_id);
         }
     }
 

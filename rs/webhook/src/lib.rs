@@ -202,7 +202,7 @@ impl QuotaGate for AllowAllQuota {
 
 #[derive(Default)]
 struct ManagerInner {
-    endpoints: HashMap<String, Endpoint>,
+    by_id: HashMap<String, Endpoint>,
     /// webhook id -> signing secret (never projected).
     secrets: HashMap<String, Vec<u8>>,
     /// webhook id -> seen idempotency keys.
@@ -258,7 +258,7 @@ impl<'a> Manager<'a> {
                 inner.ids.push(endpoint.webhook_id.clone());
             }
             inner.by_id.insert(endpoint.webhook_id.clone(), endpoint.clone());
-            if let Ok(secret) = decode_hex(&item.secret_hex) {
+            if let Some(secret) = decode_hex(&item.secret_hex) {
                 inner.secrets.insert(endpoint.webhook_id, secret);
             }
         }

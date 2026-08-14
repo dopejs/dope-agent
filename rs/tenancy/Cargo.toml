@@ -1,0 +1,27 @@
+[package]
+name = "dope-tenancy"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-store.workspace = true
+dope-identity.workspace = true
+dope-audit.workspace = true
+dope-runtime.workspace = true
+dope-router.workspace = true
+dope-llm.workspace = true
+dope-policy.workspace = true
+dope-bindings.workspace = true
+dope-profiles.workspace = true
+dope-threads.workspace = true
+dope-connectors.workspace = true
+dope-providers.workspace = true
+dope-orchestration.workspace = true
+dope-calendar.workspace = true
+dope-mail.workspace = true
+dope-computeruse.workspace = true
+dope-evaluation.workspace = true
+dope-events.workspace = true
+dope-integrations.workspace = true
+dope-delivery.workspace = true

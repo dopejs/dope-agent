@@ -15,7 +15,7 @@ fn temp_dir(name: &str) -> String {
 }
 
 fn go_zero_time() -> chrono::DateTime<Utc> {
-    Utc.with_ymd_and_hms(1, 1, 1, 0, 0, 0).unwrap()
+    chrono::DateTime::<Utc>::MIN_UTC
 }
 
 struct DegradedHealth;
@@ -266,12 +266,14 @@ fn wire_round_trip() {
 fn persistence_round_trip() {
     let dir = temp_dir("persist");
     let store = SQLiteStore::new(&dir).unwrap();
-    let manager = Manager::new("test", None, None, None).with_store(&store);
+    let mut manager = Manager::new("test", None, None, None);
+    manager.with_store(&store);
     let profile = manager.register_profile(sample_profile("p_a", &["docker"], &[])).unwrap();
     manager.select_profile("tenant-a", &profile.profile_id, "alice").unwrap();
 
     // A fresh manager recovers profiles + selections from the store.
-    let fresh = Manager::new("test", None, None, None).with_store(&store);
+    let mut fresh = Manager::new("test", None, None, None);
+    fresh.with_store(&store);
     fresh.load_from_store().unwrap();
     assert_eq!(fresh.get_profile(&profile.profile_id).unwrap().profile, profile);
     let (sel, ok) = fresh.selection_for_tenant("tenant-a");

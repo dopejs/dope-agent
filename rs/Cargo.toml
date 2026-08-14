@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["protocol", "model-provider", "core", "cli", "config", "identity", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox", "delivery", "store", "checkpoints", "events", "connectors", "evaluation", "audit", "orchestration"]
+members = ["protocol", "model-provider", "core", "cli", "config", "identity", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox", "delivery", "store", "checkpoints", "events", "connectors", "evaluation", "audit", "orchestration", "skills", "catalog", "evidence", "execprofile", "triage", "routine", "webhook", "scheduler"]
 
 [workspace.package]
 edition = "2024"
@@ -43,6 +43,14 @@ dope-connectors = { path = "connectors" }
 dope-evaluation = { path = "evaluation" }
 dope-audit = { path = "audit" }
 dope-orchestration = { path = "orchestration" }
+dope-skills = { path = "skills" }
+dope-catalog = { path = "catalog" }
+dope-evidence = { path = "evidence" }
+dope-execprofile = { path = "execprofile" }
+dope-triage = { path = "triage" }
+dope-routine = { path = "routine" }
+dope-webhook = { path = "webhook" }
+dope-scheduler = { path = "scheduler" }
 dope-llm = { path = "llm" }
 dope-profiles = { path = "profiles" }
 dope-threads = { path = "threads" }

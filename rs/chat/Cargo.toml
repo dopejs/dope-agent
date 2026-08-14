@@ -1,0 +1,26 @@
+[package]
+name = "dope-chat"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-llm.workspace = true
+dope-store.workspace = true
+dope-events.workspace = true
+dope-threads.workspace = true
+dope-profiles.workspace = true
+dope-bindings.workspace = true
+dope-skills.workspace = true
+dope-providers.workspace = true
+dope-setupwizard.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+tokio = { workspace = true, features = ["rt", "time"] }
+
+[dev-dependencies]
+futures.workspace = true

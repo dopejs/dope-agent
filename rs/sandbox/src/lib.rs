@@ -1,11 +1,22 @@
-//! Port of daemon/internal/sandbox/types.go: the sandbox data model (profiles, policies,
-//! execution requests/decisions/results, and consumer declarations). The manager (process
-//! execution) is the next increment; the streaming AttachedExecution handle is deferred with it.
+//! Port of daemon/internal/sandbox: the sandbox data model (profiles, policies,
+//! execution requests/decisions/results, and consumer declarations) plus the
+//! manager (profile/policy/execution lifecycle, persistence, and event
+//! fan-out), execution (subprocess and docker process execution, cancellation,
+//! capture buffers, backend metadata), and redaction (secret-value redaction
+//! for result surfaces) layers. Ported from the Go types.go / manager.go.
 
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+
+pub mod execution;
+pub mod manager;
+pub mod redaction;
+
+pub use execution::*;
+pub use manager::*;
+pub use redaction::*;
 
 macro_rules! string_enum {
     ($name:ident { $first:ident => $first_s:literal $(, $v:ident => $s:literal)* $(,)? }) => {

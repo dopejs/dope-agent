@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use chrono::{Duration, Utc};
 use dope_store::SQLiteStore;
@@ -15,14 +15,27 @@ use dope_routine::{
 use uuid::Uuid;
 
 /// Records compiled schedules and lifecycle calls (Go `fakeScheduler`).
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct FakeScheduler {
-    seq: Mutex<usize>,
-    created: Mutex<Vec<CreateInput>>,
-    paused: Mutex<Vec<String>>,
-    resumed: Mutex<Vec<String>>,
-    cancelled: Mutex<Vec<String>>,
-    missing: Mutex<HashSet<String>>,
+    seq: Arc<Mutex<usize>>,
+    created: Arc<Mutex<Vec<CreateInput>>>,
+    paused: Arc<Mutex<Vec<String>>>,
+    resumed: Arc<Mutex<Vec<String>>>,
+    cancelled: Arc<Mutex<Vec<String>>>,
+    missing: Arc<Mutex<HashSet<String>>>,
+}
+
+impl Default for FakeScheduler {
+    fn default() -> Self {
+        FakeScheduler {
+            seq: Arc::new(Mutex::new(0)),
+            created: Arc::new(Mutex::new(Vec::new())),
+            paused: Arc::new(Mutex::new(Vec::new())),
+            resumed: Arc::new(Mutex::new(Vec::new())),
+            cancelled: Arc::new(Mutex::new(Vec::new())),
+            missing: Arc::new(Mutex::new(HashSet::new())),
+        }
+    }
 }
 
 impl Scheduler for FakeScheduler {
@@ -109,7 +122,7 @@ fn create_compiles_to_workflow_schedule() {
     // Version 1 snapshots the definition + schedule id.
     assert_eq!(r.versions.len(), 1);
     assert_eq!(r.versions[0].version, 1);
-    assert_eq!(r.versions[0].schedule_id, r.current_schedule_id);
+    assert_eq!(r.versions[0].schedule_id.as_str(), r.current_schedule_id.as_str());
     assert_eq!(r.versions[0].definition.name, "Daily summary");
 }
 
@@ -128,10 +141,10 @@ fn update_preserves_prior_evidence() {
     assert_eq!(updated.definition.workflow.goal, "summarize my day and inbox");
     let cancelled = f.cancelled.lock().unwrap();
     assert_eq!(cancelled.len(), 1);
-    assert_eq!(cancelled[0], prior_schedule_id);
+    assert_eq!(cancelled[0].as_str(), prior_schedule_id.as_str());
     drop(cancelled);
     // The prior version keeps its schedule id (its execution evidence).
-    assert_eq!(updated.versions[0].schedule_id, prior_schedule_id);
+    assert_eq!(updated.versions[0].schedule_id.as_str(), prior_schedule_id.as_str());
     assert_eq!(updated.versions[1].version, 2);
 }
 
@@ -145,7 +158,7 @@ fn lifecycle_pause_resume_cancel() {
     assert_eq!(paused.state, State::Paused);
     let paused_calls = f.paused.lock().unwrap();
     assert_eq!(paused_calls.len(), 1);
-    assert_eq!(paused_calls[0], r.current_schedule_id);
+    assert_eq!(paused_calls[0].as_str(), r.current_schedule_id.as_str());
     drop(paused_calls);
 
     let resumed = m.resume(&r.routine_id).unwrap();
@@ -174,7 +187,7 @@ fn repair_recreates_missing_schedule() {
     assert_ne!(repaired.current_schedule_id, r.current_schedule_id);
     assert_eq!(repaired.current_version, 1, "repair must not bump version");
     // The current version reflects the repaired schedule id.
-    assert_eq!(repaired.versions[0].schedule_id, repaired.current_schedule_id);
+    assert_eq!(repaired.versions[0].schedule_id.as_str(), repaired.current_schedule_id.as_str());
 }
 
 #[test]
@@ -244,7 +257,7 @@ fn get_and_list() {
     let b = m.create(def2).unwrap();
     let listed = m.list();
     assert_eq!(listed.len(), 2);
-    assert_eq!(listed[0].routine_id, a.routine_id);
+    assert_eq!(listed[0].routine_id.as_str(), a.routine_id.as_str());
     assert_eq!(listed[1].routine_id, b.routine_id);
     assert_eq!(m.get(&a.routine_id).unwrap(), a);
 }

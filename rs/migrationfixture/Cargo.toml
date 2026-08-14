@@ -1,0 +1,15 @@
+[package]
+name = "dope-migrationfixture"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-store.workspace = true
+dope-providers.workspace = true
+dope-integrations.workspace = true
+dope-connectors.workspace = true
+rusqlite.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true

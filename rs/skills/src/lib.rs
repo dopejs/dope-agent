@@ -460,7 +460,7 @@ fn load_skill(skill_root: &str, source: Source, secret_root: &str) -> Result<Ski
         parse_executable_manifest(skill_root, secret_root, &frontmatter);
 
     Ok(Skill {
-        skill_id,
+        skill_id: skill_id.clone(),
         name: skill_name.trim().to_string(),
         description: frontmatter
             .get("description")
@@ -522,15 +522,16 @@ fn read_file_with_stat(path: &Path) -> std::io::Result<(String, std::fs::Metadat
 }
 
 fn bundled_files(skill_root: &str) -> Result<Vec<File>, SkillsError> {
+    let root = Path::new(skill_root);
     let mut files = Vec::new();
-    walk_bundled_files(Path::new(skill_root), &mut files)?;
+    walk_bundled_files(root, root, &mut files)?;
     files.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(files)
 }
 
 /// Recursive equivalent of Go's `filepath.WalkDir` (lexical order at each
 /// level, symlinks not followed, `SKILL.md` excluded).
-fn walk_bundled_files(dir: &Path, files: &mut Vec<File>) -> Result<(), SkillsError> {
+fn walk_bundled_files(dir: &Path, root: &Path, files: &mut Vec<File>) -> Result<(), SkillsError> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(err) => {
@@ -563,7 +564,7 @@ fn walk_bundled_files(dir: &Path, files: &mut Vec<File>) -> Result<(), SkillsErr
             }
         };
         if file_type.is_dir() {
-            walk_bundled_files(&path, files)?;
+            walk_bundled_files(&path, root, files)?;
             continue;
         }
         if path.file_name().and_then(|name| name.to_str()) == Some("SKILL.md") {
@@ -578,7 +579,7 @@ fn walk_bundled_files(dir: &Path, files: &mut Vec<File>) -> Result<(), SkillsErr
                 ));
             }
         };
-        let relative = match path.strip_prefix(dir) {
+        let relative = match path.strip_prefix(root) {
             Ok(relative) => relative,
             Err(err) => {
                 return Err(SkillsError::WalkSkillFiles(
@@ -718,7 +719,7 @@ fn parse_executable_manifest(
     }
     match resolve_executable_skill_secrets(secret_root, &manifest.secret_refs) {
         Ok(resolved_secrets) => {
-            for secret_ref in &manifest.secret_refs {
+            for secret_ref in manifest.secret_refs.clone() {
                 if secret_ref.trim().is_empty() {
                     return (
                         Some(manifest),
@@ -892,11 +893,8 @@ fn split_csv_ints(value: &str) -> Vec<i64> {
 }
 
 fn effective_environment() -> String {
-    match std::env::var("DOPE_ENV")
-        .map(|value| value.trim().to_string())
-        .as_deref()
-    {
-        Some("prod") => "prod".to_string(),
+    match std::env::var("DOPE_ENV") {
+        Ok(value) if value.trim() == "prod" => "prod".to_string(),
         _ => "test".to_string(),
     }
 }

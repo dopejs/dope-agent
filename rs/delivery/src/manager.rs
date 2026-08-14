@@ -53,10 +53,10 @@ pub enum DeliveryError {
 
 /// Retry/digest configuration (Go `maxAttempts`/`baseRetryDelay`/`maxRetryDelay`).
 #[derive(Debug, Clone, Copy)]
-struct DeliveryConfig {
-    max_attempts: i64,
-    base_retry_delay: Duration,
-    max_retry_delay: Duration,
+pub(crate) struct DeliveryConfig {
+    pub(crate) max_attempts: i64,
+    pub(crate) base_retry_delay: Duration,
+    pub(crate) max_retry_delay: Duration,
 }
 
 impl Default for DeliveryConfig {
@@ -70,21 +70,21 @@ impl Default for DeliveryConfig {
 }
 
 #[derive(Default)]
-struct DeliverySchedules {
-    retry_scheduled: HashMap<String, ()>,
-    window_scheduled: HashMap<String, ()>,
+pub(crate) struct DeliverySchedules {
+    pub(crate) retry_scheduled: HashMap<String, ()>,
+    pub(crate) window_scheduled: HashMap<String, ()>,
 }
 
 /// Shared manager state. Methods take `self: &Arc<Self>` so detached retry/window threads
 /// (which only hold the `Arc`) can drive the same logic.
 pub(crate) struct ManagerInner {
-    environment_scope: String,
-    event_bus: Bus,
-    store: Arc<Mutex<SQLiteStore>>,
-    adapters: Mutex<Vec<Arc<dyn DeliveryAdapter>>>,
-    hooks: Option<Arc<dyn ChannelDeliveryHooks>>,
-    schedules: Mutex<DeliverySchedules>,
-    config: Mutex<DeliveryConfig>,
+    pub(crate) environment_scope: String,
+    pub(crate) event_bus: Bus,
+    pub(crate) store: Arc<Mutex<SQLiteStore>>,
+    pub(crate) adapters: Mutex<Vec<Arc<dyn DeliveryAdapter>>>,
+    pub(crate) hooks: Option<Arc<dyn ChannelDeliveryHooks>>,
+    pub(crate) schedules: Mutex<DeliverySchedules>,
+    pub(crate) config: Mutex<DeliveryConfig>,
 }
 
 /// The delivery manager (port of `Manager`). Cloneable handle over shared inner state; all
@@ -918,7 +918,7 @@ pub(crate) fn non_empty(a: &str, fallback: &str) -> String {
 
 /// Go `suppressionReason` receiver on DeliveryPreference.
 fn suppression_reason(pref: &DeliveryPreference, result_class: ResultClass) -> Option<String> {
-    let policy = pref.suppression_policy.unwrap_or_default();
+    let policy = pref.suppression_policy.clone().unwrap_or_default();
     match result_class {
         ResultClass::RoutineSuccess => {
             if policy.suppress_routine_success {

@@ -192,8 +192,9 @@ impl<'a> Manager<'a> {
         }
     }
 
-    /// Go `WithStore`: installs durable persistence for generated evidence bundles.
-    pub fn with_store(mut self, store: &'a SQLiteStore) -> Self {
+    /// Go `WithStore`: installs durable persistence for generated evidence bundles and
+    /// returns the manager.
+    pub fn with_store(&mut self, store: &'a SQLiteStore) -> &mut Self {
         self.docs = Some(store);
         self
     }

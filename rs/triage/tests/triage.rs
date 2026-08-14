@@ -174,8 +174,8 @@ fn get_and_list_policies() {
     let listed = m.list_policies();
     assert_eq!(listed.len(), 2);
     // Insertion order is preserved.
-    assert_eq!(listed[0].policy_id, a.policy_id);
-    assert_eq!(listed[1].policy_id, b.policy_id);
+    assert_eq!(listed[0].policy_id.as_str(), a.policy_id.as_str());
+    assert_eq!(listed[1].policy_id.as_str(), b.policy_id.as_str());
     assert_eq!(m.get_policy(&a.policy_id).unwrap(), a);
     assert!(m.get_policy(&a.policy_id.trim().to_uppercase()).is_none());
     assert!(m.get_policy("missing").is_none());

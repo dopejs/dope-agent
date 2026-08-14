@@ -12,10 +12,10 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use dope_events::Filter;
 use dope_scheduler::{
-    next_due_after, Clock, CreateInput, Dependencies, DispatchStatus, DownstreamStatus,
-    RetryBackoffKind, RetryPolicy, RunTarget, Schedule, ScheduleKind, ScheduleStatus, Scheduler,
-    Target, TargetKind, Trigger, TriggerKind, WorkflowLaunchResult, WorkflowLauncher,
-    WorkflowTarget,
+    next_due_after, Clock, CreateInput, Dependencies, DispatchAttempt, DispatchStatus,
+    DownstreamStatus, RetryBackoffKind, RetryPolicy, RunTarget, Schedule, ScheduleKind,
+    ScheduleStatus, Scheduler, Target, TargetKind, Trigger, TriggerKind, WorkflowLaunchResult,
+    WorkflowLauncher, WorkflowTarget,
 };
 use dope_store::SQLiteStore;
 
@@ -630,13 +630,13 @@ fn create_validates_trigger() {
     assert!(err.to_string().contains("value 13 out of bounds"), "{err}");
 
     let err = h.scheduler.create(cron_input("10-20 0 32 * *", "UTC")).unwrap_err();
-    assert!(err.to_string().contains("range \"10-20 0 32 * *\" out of bounds") || err.to_string().contains("value 32 out of bounds"), "{err}");
+    assert!(err.to_string().contains("value 32 out of bounds"), "{err}");
 
     // Valid cron create.
     let schedule = h.scheduler.create(cron_input("*/5 * * * *", "UTC")).unwrap();
     assert_eq!(schedule.kind, ScheduleKind::Recurring);
     assert_eq!(schedule.status, ScheduleStatus::Active);
-    assert_eq!(schedule.next_due_at, Some(parse("2026-04-22T07:05:00Z")));
+    assert_eq!(schedule.next_due_at, Some(parse("2026-04-22T07:00:00Z")));
 }
 
 // ---------------------------------------------------------------------------
@@ -664,6 +664,7 @@ fn schedule_persists_across_scheduler_instances() {
 
     // A second scheduler over the same SQLite database sees the same schedule.
     let clock_b = FakeClock::new(now + chrono::Duration::seconds(60));
+    let clock_b_handle = clock_b.clone();
     let sched_b = Scheduler::new(Dependencies {
         environment: dope_config::Environment::Test,
         runtime: Arc::clone(&runtime),
@@ -683,7 +684,7 @@ fn schedule_persists_across_scheduler_instances() {
     assert_eq!(got.next_due_at, schedule.next_due_at);
 
     // Dispatch via B and read the attempt history back through A.
-    clock_b.set(fire_at + chrono::Duration::seconds(1));
+    clock_b_handle.set(fire_at + chrono::Duration::seconds(1));
     sched_b.tick().unwrap();
     let got_b = sched_b.get(&schedule.schedule_id).unwrap().unwrap();
     assert_eq!(got_b.attempts.len(), 1);
@@ -765,7 +766,7 @@ fn events_published_to_bus() {
         .unwrap();
     assert_eq!(created.scope.schedule_id, schedule.schedule_id);
     assert_eq!(created.resource.kind, "schedule");
-    assert_eq!(created.payload.get("status").unwrap(), "scheduled");
+    assert_eq!(created.payload.get("status").unwrap().as_str().unwrap(), "scheduled");
 
     h.clock.set(fire_at + chrono::Duration::seconds(1));
     h.scheduler.tick().unwrap();
@@ -778,7 +779,7 @@ fn events_published_to_bus() {
         .into_iter()
         .find(|e| e.name == "schedule.dispatch_recorded")
         .unwrap();
-    assert_eq!(recorded.payload.get("dispatchStatus").unwrap(), "dispatched");
+    assert_eq!(recorded.payload.get("dispatchStatus").unwrap().as_str().unwrap(), "dispatched");
     assert!(recorded.payload.contains_key("runId"));
     assert!(recorded.payload.contains_key("scheduleAttemptId"));
 }

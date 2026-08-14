@@ -99,9 +99,11 @@ fn generate_is_permission_gated() {
     // allow-all manager + store, then access through a DenyAll manager reloaded from the store.
     let dir = temp_dir("perm");
     let store = SQLiteStore::new(&dir).unwrap();
-    let producer = Manager::new("test", None, None).with_store(&store);
+    let mut producer = Manager::new("test", None, None);
+    producer.with_store(&store);
     let bundle = producer.generate("tenant-a", "alice", run_scope("run_1")).unwrap();
-    let consumer = Manager::new("test", None, Some(Box::new(DenyAll))).with_store(&store);
+    let mut consumer = Manager::new("test", None, Some(Box::new(DenyAll)));
+    consumer.with_store(&store);
     consumer.load_from_store().unwrap();
     assert!(matches!(
         consumer.get("tenant-a", "alice", &bundle.bundle_id).unwrap_err(),
@@ -244,11 +246,13 @@ fn wire_round_trip() {
 fn persistence_round_trip() {
     let dir = temp_dir("persist");
     let store = SQLiteStore::new(&dir).unwrap();
-    let manager = Manager::new("test", None, None).with_store(&store);
+    let mut manager = Manager::new("test", None, None);
+    manager.with_store(&store);
     let bundle = manager.generate("tenant-a", "alice", run_scope("run_1")).unwrap();
 
     // A fresh manager recovers bundles from the store; audit events are not persisted.
-    let fresh = Manager::new("test", None, None).with_store(&store);
+    let mut fresh = Manager::new("test", None, None);
+    fresh.with_store(&store);
     fresh.load_from_store().unwrap();
     assert!(fresh.audit_trail(&bundle.bundle_id).is_empty()); // generation audit is not persisted
     assert_eq!(fresh.list_for_tenant("tenant-a", "alice").unwrap().len(), 1);

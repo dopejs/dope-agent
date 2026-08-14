@@ -333,8 +333,8 @@ impl<'a> Manager<'a> {
         inner.by_id.clear();
         inner.ids.clear();
         for routine in routines {
+            inner.ids.push(routine.routine_id.clone());
             inner.by_id.insert(routine.routine_id.clone(), routine);
-            inner.ids.push(routine.routine_id);
         }
     }
 

@@ -88,7 +88,7 @@ fn get_and_list_for_tenant() {
     assert!(m.get("ten_a", "missing").is_none());
     let listed = m.list_for_tenant("ten_a");
     assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].webhook_id, a.webhook_id);
+    assert_eq!(listed[0].webhook_id.as_str(), a.webhook_id.as_str());
     assert_eq!(m.list_for_tenant("ten_b").len(), 1);
     assert_eq!(m.list_for_tenant("ten_c").len(), 0);
     let _ = b;

@@ -5,6 +5,22 @@ version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+dope-config.workspace = true
+dope-store.workspace = true
+dope-events.workspace = true
+dope-policy.workspace = true
+dope-secrets.workspace = true
+dope-identity.workspace = true
+dope-audit.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+sha2.workspace = true
+futures.workspace = true
+md-5 = "0.10"
+sha1 = "0.10"
+base64 = "0.22"
+libc = "0.2"

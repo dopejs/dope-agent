@@ -90,8 +90,11 @@ impl ManagerInner {
         match send_result {
             Err(send_err) => {
                 attempt.completed_at = Some(completed_at);
+                // Go records the caller-side attempt's failure class (empty at this point:
+                // handleAttemptFailure mutates its own copy), so capture it before the move.
+                let failure_class = attempt.failure_class.clone();
                 let failed = self.handle_attempt_failure(outcome, attempt, &send_err)?;
-                self.record_channel_background_delivery_outcome(&failed, target, &attempt.failure_class)?;
+                self.record_channel_background_delivery_outcome(&failed, target, &failure_class)?;
                 Ok(failed)
             }
             Ok(result) => {
@@ -294,12 +297,13 @@ impl ManagerInner {
         if outcome.status != OutcomeStatus::Queued && outcome.status != OutcomeStatus::Dispatching {
             return Ok(());
         }
-        let (target, ok) = self.get_target(&outcome.chosen_target_id)?;
+        let chosen_target_id = outcome.chosen_target_id.clone();
+        let (target, ok) = self.get_target(&chosen_target_id)?;
         if !ok {
             let next = self.next_attempt_number(&outcome.delivery_id);
             self.fail_outcome_without_retry(
                 outcome,
-                &outcome.chosen_target_id,
+                &chosen_target_id,
                 next,
                 "target_missing",
                 "configured target is missing",
