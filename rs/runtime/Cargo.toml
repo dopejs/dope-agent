@@ -1,0 +1,18 @@
+[package]
+name = "dope-runtime"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-integrations.workspace = true
+dope-calendar.workspace = true
+dope-mail.workspace = true
+dope-profiles.workspace = true
+dope-livevalidation.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
+uuid = { workspace = true, features = ["v4"] }

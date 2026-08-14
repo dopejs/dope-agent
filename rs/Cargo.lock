@@ -585,6 +585,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-runtime"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-calendar",
+ "dope-integrations",
+ "dope-livevalidation",
+ "dope-mail",
+ "dope-profiles",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "dope-secrets"
 version = "0.1.0"
 dependencies = [
