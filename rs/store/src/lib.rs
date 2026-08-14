@@ -8,17 +8,20 @@ use chrono::SecondsFormat;
 use rusqlite::{params, Connection};
 
 pub mod calendar;
+pub mod channel_management;
 mod computeruse;
 pub mod connectors;
 pub mod consumer_policy;
 mod crud;
 pub mod delivery;
+pub mod discord_setup;
 pub mod evaluation;
 mod events;
 mod identity;
 mod integrations;
 pub mod mail;
 mod manager_documents;
+pub mod matrix_setup;
 pub mod mcp;
 mod migrations;
 mod policy;
@@ -28,13 +31,36 @@ mod registry;
 pub mod reminders;
 pub mod schedule;
 pub mod secret_scope;
+pub mod slack_setup;
 mod tenancy;
+pub mod telegram_setup;
+pub mod thread_persistence;
 pub mod workflow;
 
+pub use channel_management::{
+    BackgroundDeliveryOutcome, ForegroundReplyOutcome, ManagementState, RouteDecisionOutcome,
+    RoutePolicy, RoutingDecision, SupportEvidenceBundle,
+};
 pub use consumer_policy::ConsumerPolicyRecordRecord;
+pub use discord_setup::{
+    DiscordDestinationValidationRecord, DiscordHostedSetupRecord, DiscordSmokeEvidenceRecord,
+};
 pub use manager_documents::{delete_document, list_documents, put_document, ManagerDocument};
+pub use matrix_setup::{
+    MatrixConversationRouteRecord, MatrixEventEvidenceRecord, MatrixHomeserverBindingRecord,
+    MatrixHostedSetupRecord, MatrixRoutePolicyRecord, MatrixSmokeEvidenceRecord,
+};
 pub use records::SandboxExecutionRecord;
 pub use secret_scope::SecretScopeBindingRecord;
+pub use slack_setup::{
+    SlackConversationRouteRecord, SlackEventEvidenceRecord, SlackHostedSetupRecord,
+    SlackRoutePolicyRecord, SlackSmokeEvidenceRecord, SlackWorkspaceBinding,
+};
+pub use telegram_setup::{
+    ConnectorAccountBindingSummary, TelegramAllowmentRecord, TelegramHostedSetupRecord,
+    TelegramSmokeEvidenceRecord, TelegramUpdateEvidenceRecord,
+};
+pub use thread_persistence::ThreadListQuery;
 
 /// The production schema head. The full 55-version migration list is added incrementally.
 pub const CURRENT_SCHEMA_VERSION: i64 = 55;

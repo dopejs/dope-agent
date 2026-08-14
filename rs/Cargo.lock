@@ -648,6 +648,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-im"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-chat",
+ "dope-checkpoints",
+ "dope-connectors",
+ "dope-events",
+ "dope-imtypes",
+ "dope-llm",
+ "dope-router",
+ "dope-runtime",
+ "dope-store",
+ "dope-threads",
+ "futures",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "dope-imtypes"
 version = "0.1.0"
 dependencies = [

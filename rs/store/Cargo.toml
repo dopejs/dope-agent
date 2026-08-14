@@ -24,5 +24,6 @@ dope-computeruse.workspace = true
 dope-events.workspace = true
 dope-connectors.workspace = true
 dope-imtypes.workspace = true
+dope-threads.workspace = true
 dope-evaluation.workspace = true
 dope-orchestration.workspace = true

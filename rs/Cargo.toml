@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["protocol", "model-provider", "core", "cli", "config", "identity", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox", "delivery", "store", "checkpoints", "events", "connectors", "evaluation", "audit", "orchestration", "skills", "catalog", "evidence", "execprofile", "triage", "routine", "webhook", "scheduler", "tenancy", "migrationfixture", "mcp", "chat", "managedproviders"]
+members = ["protocol", "model-provider", "core", "cli", "config", "identity", "im", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox", "delivery", "store", "checkpoints", "events", "connectors", "evaluation", "audit", "orchestration", "skills", "catalog", "evidence", "execprofile", "triage", "routine", "webhook", "scheduler", "tenancy", "migrationfixture", "mcp", "chat", "managedproviders"]
 
 [workspace.package]
 edition = "2024"
@@ -16,6 +16,7 @@ dope-inventory = { path = "inventory" }
 dope-integrations = { path = "integrations" }
 dope-policy = { path = "policy" }
 dope-setupwizard = { path = "setupwizard" }
+dope-im = { path = "im" }
 dope-imtypes = { path = "imtypes" }
 dope-livevalidation = { path = "livevalidation" }
 dope-providers = { path = "providers" }
