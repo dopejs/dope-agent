@@ -28,6 +28,7 @@ mod registry;
 pub mod reminders;
 pub mod schedule;
 pub mod secret_scope;
+pub mod workflow;
 
 pub use manager_documents::ManagerDocument;
 pub use records::SandboxExecutionRecord;

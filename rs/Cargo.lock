@@ -808,6 +808,7 @@ dependencies = [
  "dope-integrations",
  "dope-llm",
  "dope-mail",
+ "dope-orchestration",
  "dope-policy",
  "dope-providers",
  "dope-router",
