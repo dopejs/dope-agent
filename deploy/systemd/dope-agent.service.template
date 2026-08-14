@@ -17,6 +17,9 @@ Environment=DOPE_DATA_DIR=@DOPE_DATA_DIR@
 Environment=DOPE_BIND_ADDR=@DOPE_BIND_ADDR@
 Environment=DOPE_VERSION=@DOPE_VERSION@
 Environment=DOPE_LOG_LEVEL=@DOPE_LOG_LEVEL@
+# Live connectors default off so the daemon boots without external
+# credentials; opt in at install time (see install.sh).
+Environment=DOPE_CONNECTORS_DISCORD_ENABLED=@DOPE_DISCORD_ENABLED@
 WorkingDirectory=@DOPE_DATA_DIR@
 @SYSTEM_USER_BLOCK@
 # Restart on failure, but back off so a broken config does not hot-loop.

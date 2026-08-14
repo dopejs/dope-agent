@@ -63,6 +63,10 @@ DOPE_BIN_DIR="${DOPE_BIN_DIR:-${HOME}/.local/bin}"
 DOPE_DATA_DIR="${DOPE_DATA_DIR:-${DEFAULT_DATA}}"
 DOPE_BIND_ADDR="${DOPE_BIND_ADDR:-${DEFAULT_BIND}}"
 DOPE_LOG_LEVEL="${DOPE_LOG_LEVEL:-info}"
+# Live connectors default off so the daemon boots without external creds and
+# does not crash-loop on a stale/invalid token in config.json. Opt in with
+# DOPE_CONNECTORS_DISCORD_ENABLED=true (and a valid token in config.json).
+DOPE_DISCORD_ENABLED="${DOPE_CONNECTORS_DISCORD_ENABLED:-false}"
 DOPE_LOG_DIR="${DOPE_DATA_DIR}/logs"
 DOPE_BIN="${DOPE_BIN_DIR}/dope"
 
@@ -123,6 +127,7 @@ render() { # render <template> <dest> ; substitutes @TOKEN@
       -e "s|@DOPE_BIND_ADDR@|${DOPE_BIND_ADDR}|g" \
       -e "s|@DOPE_VERSION@|${DOPE_VERSION}|g" \
       -e "s|@DOPE_LOG_LEVEL@|${DOPE_LOG_LEVEL}|g" \
+      -e "s|@DOPE_DISCORD_ENABLED@|${DOPE_DISCORD_ENABLED}|g" \
       -e "s|@DOPE_LOG_DIR@|${DOPE_LOG_DIR}|g" \
       "$1" > "$2"
 }

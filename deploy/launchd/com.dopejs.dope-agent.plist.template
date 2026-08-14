@@ -27,6 +27,10 @@
         <string>@DOPE_VERSION@</string>
         <key>DOPE_LOG_LEVEL</key>
         <string>@DOPE_LOG_LEVEL@</string>
+        <!-- Live connectors default off so the daemon boots without external
+             credentials; opt in at install time (see install.sh). -->
+        <key>DOPE_CONNECTORS_DISCORD_ENABLED</key>
+        <string>@DOPE_DISCORD_ENABLED@</string>
     </dict>
 
     <key>RunAtLoad</key>
