@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["protocol", "model-provider", "core", "cli", "config", "identity", "im", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox", "delivery", "store", "checkpoints", "events", "connectors", "evaluation", "audit", "orchestration", "skills", "catalog", "evidence", "execprofile", "triage", "routine", "webhook", "scheduler", "tenancy", "migrationfixture", "mcp", "chat", "managedproviders"]
+members = ["protocol", "model-provider", "core", "cli", "config", "identity", "im", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox", "delivery", "store", "checkpoints", "events", "connectors", "discord", "matrix", "slack", "telegram", "evaluation", "audit", "orchestration", "skills", "catalog", "evidence", "execprofile", "triage", "routine", "webhook", "scheduler", "tenancy", "migrationfixture", "mcp", "chat", "managedproviders"]
 
 [workspace.package]
 edition = "2024"
@@ -41,6 +41,10 @@ dope-store = { path = "store" }
 dope-checkpoints = { path = "checkpoints" }
 dope-events = { path = "events" }
 dope-connectors = { path = "connectors" }
+dope-discord = { path = "discord" }
+dope-matrix = { path = "matrix" }
+dope-slack = { path = "slack" }
+dope-telegram = { path = "telegram" }
 dope-evaluation = { path = "evaluation" }
 dope-audit = { path = "audit" }
 dope-orchestration = { path = "orchestration" }

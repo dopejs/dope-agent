@@ -40,6 +40,10 @@ pub enum ConnectorsError {
     CoreInvariantFailed,
     #[error("equivalent durable identity rule is required")]
     EquivalentIdentityRequired,
+    #[error("connector id is required")]
+    DiagnosticConnectorRequired,
+    #[error("diagnostic reason code is required")]
+    DiagnosticReasonRequired,
 }
 
 /// Input to [`Supervisor::register`] (Go `RegisterInput`).

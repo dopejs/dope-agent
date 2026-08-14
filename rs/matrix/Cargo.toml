@@ -1,0 +1,31 @@
+[package]
+name = "dope-matrix"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-connectors = { workspace = true }
+dope-im = { workspace = true }
+dope-imtypes = { workspace = true }
+dope-store = { workspace = true }
+dope-events = { workspace = true }
+dope-router = { workspace = true }
+dope-chat = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+parking_lot = { workspace = true }
+tokio = { workspace = true }
+ureq = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+futures = { workspace = true }
+dope-llm = { workspace = true }
+dope-runtime = { workspace = true }
+dope-checkpoints = { workspace = true }
+dope-router = { workspace = true }

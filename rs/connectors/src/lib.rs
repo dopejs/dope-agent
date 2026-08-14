@@ -237,8 +237,10 @@ pub struct ConnectorDiagnosticState {
 // --- supervisor.go manager + conformance.go helpers ------------------------
 
 mod conformance;
+mod diagnostics;
 mod supervisor;
 
 pub use conformance::*;
+pub use diagnostics::*;
 pub use supervisor::*;
 
