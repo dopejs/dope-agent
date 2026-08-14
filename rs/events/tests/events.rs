@@ -48,3 +48,35 @@ fn filter_defaults_are_empty() {
     assert_eq!(f.cursor, 0);
     assert!(!f.include_global);
 }
+
+#[test]
+fn bus_publishes_and_filters_history_and_live_subscribers() {
+    use dope_events::{Bus, Event, Filter};
+
+    let bus = Bus::new();
+    let (rx, sub) = bus.subscribe(Filter {
+        category: "audit".to_string(),
+        ..Filter::default()
+    });
+
+    let ev = bus.publish(Event {
+        event_id: "evt_1".to_string(),
+        category: "audit".to_string(),
+        name: "n".to_string(),
+        ..Event::default()
+    });
+    assert!(ev.sequence > 0);
+
+    // Live subscriber receives the matching event.
+    let got = rx.try_recv().unwrap();
+    assert_eq!(got.event_id, "evt_1");
+
+    // History list filters by category.
+    assert_eq!(bus.list(&Filter { category: "audit".to_string(), ..Filter::default() }).len(), 1);
+    assert_eq!(bus.list(&Filter { category: "other".to_string(), ..Filter::default() }).len(), 0);
+
+    drop(sub);
+    // After unsubscribe, a new publish has no live subscriber; history still grows.
+    bus.publish(Event { event_id: "evt_2".to_string(), category: "audit".to_string(), ..Event::default() });
+    assert_eq!(bus.list(&Filter { category: "audit".to_string(), ..Filter::default() }).len(), 2);
+}
