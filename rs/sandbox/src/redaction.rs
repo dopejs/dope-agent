@@ -6,11 +6,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine as _;
-use md5::Digest as Md5Digest;
-use sha1::Digest as Sha1Digest;
-use sha2::{Digest as Sha2Digest, Sha256, Sha512};
+use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
+use md5::Md5;
+use sha1::Sha1;
+use sha2::{Digest, Sha256, Sha512};
 
 use crate::{ConsumerContractView, SecretResolution, SubprocessResult};
 
@@ -21,7 +21,10 @@ pub const REDACTED: &str = "[REDACTED]";
 /// their derived encodings) from the request environment, for redaction of
 /// stdout/stderr/error surfaces.
 #[must_use]
-pub fn collect_secret_redaction_values(env: &HashMap<String, String>, consumer: &ConsumerContractView) -> Vec<String> {
+pub fn collect_secret_redaction_values(
+    env: &HashMap<String, String>,
+    consumer: &ConsumerContractView,
+) -> Vec<String> {
     if env.is_empty() || consumer.secret_scope.is_empty() {
         return Vec::new();
     }
@@ -31,7 +34,10 @@ pub fn collect_secret_redaction_values(env: &HashMap<String, String>, consumer: 
         if item.resolution != SecretResolution::Resolved {
             continue;
         }
-        let value = env.get(&item.secret_ref).map(|v| v.trim().to_string()).unwrap_or_default();
+        let value = env
+            .get(&item.secret_ref)
+            .map(|v| v.trim().to_string())
+            .unwrap_or_default();
         if value.is_empty() {
             continue;
         }
@@ -53,7 +59,9 @@ pub fn collect_secret_redaction_values(env: &HashMap<String, String>, consumer: 
 /// the daemon process environment (used by attached executions where the
 /// request environment is not available to the runner thread).
 #[must_use]
-pub fn collect_secret_redaction_values_from_process_env(consumer: &ConsumerContractView) -> Vec<String> {
+pub fn collect_secret_redaction_values_from_process_env(
+    consumer: &ConsumerContractView,
+) -> Vec<String> {
     if consumer.secret_scope.is_empty() {
         return Vec::new();
     }
@@ -69,7 +77,10 @@ pub fn collect_secret_redaction_values_from_process_env(consumer: &ConsumerContr
 /// Go `redactSubprocessResult`: applies secret-value redaction to the
 /// stdout/stderr/error surfaces of a subprocess result.
 #[must_use]
-pub fn redact_subprocess_result(mut result: SubprocessResult, secret_values: &[String]) -> SubprocessResult {
+pub fn redact_subprocess_result(
+    mut result: SubprocessResult,
+    secret_values: &[String],
+) -> SubprocessResult {
     if secret_values.is_empty() {
         return result;
     }
@@ -110,9 +121,9 @@ pub fn derived_secret_variants(value: &str) -> Vec<String> {
         STANDARD_NO_PAD.encode(trimmed.as_bytes()),
         URL_SAFE.encode(trimmed.as_bytes()),
         URL_SAFE_NO_PAD.encode(trimmed.as_bytes()),
-        format!("{:x}", Md5Digest::digest(trimmed.as_bytes())),
-        format!("{:x}", Sha1Digest::digest(trimmed.as_bytes())),
-        format!("{:x}", Sha2Digest::digest(trimmed.as_bytes())),
+        format!("{:x}", Md5::digest(trimmed.as_bytes())),
+        format!("{:x}", Sha1::digest(trimmed.as_bytes())),
+        format!("{:x}", Sha256::digest(trimmed.as_bytes())),
         format!("{:x}", Sha256::digest(trimmed.as_bytes())),
         format!("{:x}", Sha512::digest(trimmed.as_bytes())),
     ];

@@ -518,7 +518,7 @@ pub fn look_path(name: &str) -> Option<String> {
     if name.is_empty() {
         return None;
     }
-    if name.contains('/') || name.contains('\') {
+    if name.contains('/') || name.contains('\\') {
         return if Path::new(name).is_file() {
             Some(name.to_string())
         } else {

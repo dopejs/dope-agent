@@ -1942,8 +1942,9 @@ impl Manager {
                 if server_id.is_empty() {
                     return Err(McpError::ServerIDRequired);
                 }
-                let (mut server, created) = if let Some(existing) = guard.servers.get(&server_id) {
-                    (existing.clone(), false)
+                let existing = guard.servers.get(&server_id).cloned();
+                let (mut server, created) = if let Some(existing) = existing {
+                    (existing, false)
                 } else {
                     let server = Server {
                         // Go activeTenantID(ctx): tenant context is not ported.
@@ -1958,9 +1959,11 @@ impl Manager {
                         declaration: default_declaration(),
                         ..Server::default()
                     };
-                    guard.server_ids.push(server_id.clone());
                     (server, true)
                 };
+                if created {
+                    guard.server_ids.push(server_id.clone());
+                }
                 server.tenant_id = String::new(); // activeTenantID(ctx)
                 server.display_name = create_input.display_name.trim().to_string();
                 if create_input.origin_kind != OriginKind::default() {

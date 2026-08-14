@@ -451,6 +451,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-chat"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-bindings",
+ "dope-config",
+ "dope-events",
+ "dope-llm",
+ "dope-profiles",
+ "dope-providers",
+ "dope-setupwizard",
+ "dope-skills",
+ "dope-store",
+ "dope-threads",
+ "futures",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "dope-checkpoints"
 version = "0.1.0"
 dependencies = [
@@ -693,6 +718,43 @@ dependencies = [
  "serde_json",
  "thiserror",
  "uuid",
+]
+
+[[package]]
+name = "dope-managedproviders"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-config",
+ "dope-llm",
+ "dope-providers",
+ "dope-sandbox",
+ "dope-setupwizard",
+ "dope-store",
+ "futures",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "dope-mcp"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-config",
+ "dope-events",
+ "dope-livevalidation",
+ "dope-policy",
+ "dope-sandbox",
+ "dope-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "url",
 ]
 
 [[package]]

@@ -10,6 +10,7 @@
 //! streams via std::thread + std::sync::mpsc, mirroring Go's goroutine +
 //! buffered channel wait.
 
+use std::collections::HashSet;
 use std::io::Read;
 use std::io::Write as _;
 use std::process::{Child, Command, Stdio};
@@ -17,16 +18,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::collections::HashSet;
 
 use chrono::{DateTime, SecondsFormat, Utc};
 
-use crate::manager::{synchronize_execution_consumer_state, Manager};
+use crate::manager::{Manager, synchronize_execution_consumer_state};
 use crate::redaction::collect_secret_redaction_values_from_process_env;
 use crate::redaction::redact_secret_text;
-use crate::{
-    BackendKind, ErrorClass, Execution, ExecutionStatus, Result as SandboxResult,
-};
+use crate::{BackendKind, ErrorClass, Execution, ExecutionStatus, Result as SandboxResult};
 
 /// Approval action used when requesting sandbox escalations (Go
 /// sandboxApprovalAction).
@@ -145,8 +143,17 @@ pub struct CaptureBuffer {
 impl CaptureBuffer {
     #[must_use]
     pub fn new(limit: i64) -> Self {
-        let limit = if limit <= 0 { 64 * 1024 } else { limit as usize };
-        CaptureBuffer { limit, size: 0, truncated: false, buf: Vec::new() }
+        let limit = if limit <= 0 {
+            64 * 1024
+        } else {
+            limit as usize
+        };
+        CaptureBuffer {
+            limit,
+            size: 0,
+            truncated: false,
+            buf: Vec::new(),
+        }
     }
 
     /// Go `String()`: the captured content with surrounding whitespace
@@ -213,7 +220,11 @@ pub struct AttachedExecution {
 /// stdio wiring, a cancellation-aware wait loop (interrupt, grace, kill), and
 /// captures stdout/stderr into bounded buffers.
 #[must_use]
-pub fn execute_subprocess(launch: &LaunchSpec, cancel: &CancellationToken, timed_out: &AtomicBool) -> SubprocessResult {
+pub fn execute_subprocess(
+    launch: &LaunchSpec,
+    cancel: &CancellationToken,
+    timed_out: &AtomicBool,
+) -> SubprocessResult {
     let started_at = Utc::now();
     let mut command = Command::new(&launch.command);
     command.args(&launch.args);
@@ -231,8 +242,16 @@ pub fn execute_subprocess(launch: &LaunchSpec, cancel: &CancellationToken, timed
     } else {
         command.stdin(Stdio::piped());
     }
-    command.stdout(if launch.capture_stdout { Stdio::piped() } else { Stdio::inherit() });
-    command.stderr(if launch.capture_stderr { Stdio::piped() } else { Stdio::inherit() });
+    command.stdout(if launch.capture_stdout {
+        Stdio::piped()
+    } else {
+        Stdio::inherit()
+    });
+    command.stderr(if launch.capture_stderr {
+        Stdio::piped()
+    } else {
+        Stdio::inherit()
+    });
 
     let mut child = match command.spawn() {
         Ok(child) => child,
@@ -284,7 +303,14 @@ pub fn execute_subprocess(launch: &LaunchSpec, cancel: &CancellationToken, timed
     let result = loop {
         match cancel.try_wait_child() {
             Ok(Some(status)) => {
-                break finish_subprocess_result(launch, pid, started_at, status, &stdout_capture, &stderr_capture);
+                break finish_subprocess_result(
+                    launch,
+                    pid,
+                    started_at,
+                    status,
+                    &stdout_capture,
+                    &stderr_capture,
+                );
             }
             Ok(None) => {}
             Err(err) => {
@@ -292,7 +318,14 @@ pub fn execute_subprocess(launch: &LaunchSpec, cancel: &CancellationToken, timed
             }
         }
         if cancel.is_cancelled() {
-            break cancelled_subprocess_result(launch, pid, cancel, timed_out, &stdout_capture, &stderr_capture);
+            break cancelled_subprocess_result(
+                launch,
+                pid,
+                cancel,
+                timed_out,
+                &stdout_capture,
+                &stderr_capture,
+            );
         }
         std::thread::sleep(Duration::from_millis(10));
     };
@@ -323,7 +356,11 @@ pub(crate) fn read_pipe_into(mut pipe: impl Read, capture: Arc<Mutex<CaptureBuff
 /// Go `executeDocker`: builds the docker CLI invocation and delegates to
 /// executeSubprocess, then decorates the backend metadata.
 #[must_use]
-pub fn execute_docker(launch: &LaunchSpec, cancel: &CancellationToken, timed_out: &AtomicBool) -> SubprocessResult {
+pub fn execute_docker(
+    launch: &LaunchSpec,
+    cancel: &CancellationToken,
+    timed_out: &AtomicBool,
+) -> SubprocessResult {
     let mut args: Vec<String> = vec!["run".to_string(), "--rm".to_string(), "-i".to_string()];
     if !launch.docker_network.is_empty() {
         args.push("--network".to_string());
@@ -356,13 +393,33 @@ pub fn execute_docker(launch: &LaunchSpec, cancel: &CancellationToken, timed_out
     };
 
     let mut result = execute_subprocess(&docker_launch, cancel, timed_out);
-    result.backend_metadata.insert("backend".to_string(), serde_json::json!(BackendKind::Docker.as_str()));
-    result.backend_metadata.insert("dockerImage".to_string(), serde_json::json!(launch.docker_image));
-    result.backend_metadata.insert("dockerNetwork".to_string(), serde_json::json!(launch.docker_network));
-    result.backend_metadata.insert("mountCount".to_string(), serde_json::json!(launch.docker_mounts.len()));
-    result.backend_metadata.insert("processType".to_string(), serde_json::json!(BACKEND_META_PROCESS_KIND_CONTAINER));
-    result.backend_metadata.insert("networkEnforcement".to_string(), serde_json::json!(true));
-    result.backend_metadata.insert("networkPolicyStrength".to_string(), serde_json::json!("container_runtime"));
+    result.backend_metadata.insert(
+        "backend".to_string(),
+        serde_json::json!(BackendKind::Docker.as_str()),
+    );
+    result.backend_metadata.insert(
+        "dockerImage".to_string(),
+        serde_json::json!(launch.docker_image),
+    );
+    result.backend_metadata.insert(
+        "dockerNetwork".to_string(),
+        serde_json::json!(launch.docker_network),
+    );
+    result.backend_metadata.insert(
+        "mountCount".to_string(),
+        serde_json::json!(launch.docker_mounts.len()),
+    );
+    result.backend_metadata.insert(
+        "processType".to_string(),
+        serde_json::json!(BACKEND_META_PROCESS_KIND_CONTAINER),
+    );
+    result
+        .backend_metadata
+        .insert("networkEnforcement".to_string(), serde_json::json!(true));
+    result.backend_metadata.insert(
+        "networkPolicyStrength".to_string(),
+        serde_json::json!("container_runtime"),
+    );
     result
 }
 
@@ -379,10 +436,22 @@ fn finish_subprocess_result(
     let mut metadata = serde_json::Map::new();
     metadata.insert("backend".to_string(), serde_json::json!("subprocess"));
     metadata.insert("pid".to_string(), serde_json::json!(pid));
-    metadata.insert("startedAt".to_string(), serde_json::json!(started_at.to_rfc3339_opts(SecondsFormat::Nanos, true)));
-    metadata.insert("completedAt".to_string(), serde_json::json!(completed_at.to_rfc3339_opts(SecondsFormat::Nanos, true)));
-    metadata.insert("platform".to_string(), serde_json::json!(std::env::consts::OS));
-    metadata.insert("architecture".to_string(), serde_json::json!(std::env::consts::ARCH));
+    metadata.insert(
+        "startedAt".to_string(),
+        serde_json::json!(started_at.to_rfc3339_opts(SecondsFormat::Nanos, true)),
+    );
+    metadata.insert(
+        "completedAt".to_string(),
+        serde_json::json!(completed_at.to_rfc3339_opts(SecondsFormat::Nanos, true)),
+    );
+    metadata.insert(
+        "platform".to_string(),
+        serde_json::json!(std::env::consts::OS),
+    );
+    metadata.insert(
+        "architecture".to_string(),
+        serde_json::json!(std::env::consts::ARCH),
+    );
     let stdout = capture_string(stdout_capture);
     let stderr = capture_string(stderr_capture);
     let output_truncated = capture_truncated(stdout_capture) || capture_truncated(stderr_capture);
@@ -476,9 +545,17 @@ fn cancelled_subprocess_result(
         }
     }
     let (error_class, error_code, error_text) = if timed_out.load(Ordering::SeqCst) {
-        (ErrorClass::Timeout, "sandbox_timeout".to_string(), "execution timed out".to_string())
+        (
+            ErrorClass::Timeout,
+            "sandbox_timeout".to_string(),
+            "execution timed out".to_string(),
+        )
     } else {
-        (ErrorClass::Cancelled, "sandbox_cancelled".to_string(), "execution was cancelled".to_string())
+        (
+            ErrorClass::Cancelled,
+            "sandbox_cancelled".to_string(),
+            "execution was cancelled".to_string(),
+        )
     };
     let mut metadata = serde_json::Map::new();
     metadata.insert("backend".to_string(), serde_json::json!("subprocess"));
@@ -518,11 +595,7 @@ pub fn status_for_cancel(timed_out: bool) -> ExecutionStatus {
 /// Go `maxDuration`.
 #[must_use]
 pub fn max_duration(value: Duration, fallback: Duration) -> Duration {
-    if value.is_zero() {
-        fallback
-    } else {
-        value
-    }
+    if value.is_zero() { fallback } else { value }
 }
 
 /// Sends SIGINT to a child pid (Go os.Interrupt). Best-effort.
@@ -538,22 +611,42 @@ fn send_interrupt(_pid: u32) {}
 
 /// Go `startedBackendMetadata`.
 #[must_use]
-pub fn started_backend_metadata(execution: &Execution, extra: Option<&serde_json::Map<String, serde_json::Value>>) -> serde_json::Map<String, serde_json::Value> {
+pub fn started_backend_metadata(
+    execution: &Execution,
+    extra: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> serde_json::Map<String, serde_json::Value> {
     let mut metadata = serde_json::Map::new();
-    metadata.insert("backend".to_string(), serde_json::json!(execution.backend_kind.as_str()));
+    metadata.insert(
+        "backend".to_string(),
+        serde_json::json!(execution.backend_kind.as_str()),
+    );
     match execution.backend_kind {
         BackendKind::Docker => {
             metadata.insert("networkEnforcement".to_string(), serde_json::json!(true));
-            metadata.insert("networkPolicyStrength".to_string(), serde_json::json!("container_runtime"));
-            metadata.insert("processType".to_string(), serde_json::json!(BACKEND_META_PROCESS_KIND_CONTAINER));
+            metadata.insert(
+                "networkPolicyStrength".to_string(),
+                serde_json::json!("container_runtime"),
+            );
+            metadata.insert(
+                "processType".to_string(),
+                serde_json::json!(BACKEND_META_PROCESS_KIND_CONTAINER),
+            );
         }
         _ => {
             metadata.insert(
                 "networkEnforcement".to_string(),
-                serde_json::json!(execution.decision.effective_backend_kind == BackendKind::Subprocess),
+                serde_json::json!(
+                    execution.decision.effective_backend_kind == BackendKind::Subprocess
+                ),
             );
-            metadata.insert("networkPolicyStrength".to_string(), serde_json::json!("declared_only"));
-            metadata.insert("processType".to_string(), serde_json::json!(BACKEND_META_PROCESS_KIND));
+            metadata.insert(
+                "networkPolicyStrength".to_string(),
+                serde_json::json!("declared_only"),
+            );
+            metadata.insert(
+                "processType".to_string(),
+                serde_json::json!(BACKEND_META_PROCESS_KIND),
+            );
         }
     }
     if let Some(extra) = extra {
@@ -588,7 +681,8 @@ pub fn docker_network_mode(access: &crate::AccessRequest) -> String {
 /// Go `dockerMountsForExecution`.
 #[must_use]
 pub fn docker_mounts_for_execution(cwd: &str, access: &crate::AccessRequest) -> Vec<DockerMount> {
-    let mut roots: Vec<DockerMount> = Vec::with_capacity(access.read_roots.len() + access.write_roots.len() + 2);
+    let mut roots: Vec<DockerMount> =
+        Vec::with_capacity(access.read_roots.len() + access.write_roots.len() + 2);
     let mut writable: HashSet<String> = HashSet::new();
     for root in &access.write_roots {
         let trimmed = crate::manager::clean_path(root.trim());
@@ -613,7 +707,11 @@ pub fn docker_mounts_for_execution(cwd: &str, access: &crate::AccessRequest) -> 
             return;
         }
         seen.insert(trimmed.clone());
-        roots.push(DockerMount { source: trimmed.clone(), target: trimmed, read_only });
+        roots.push(DockerMount {
+            source: trimmed.clone(),
+            target: trimmed,
+            read_only,
+        });
     };
     if !cwd.is_empty() {
         let is_writable = writable.contains(&crate::manager::clean_path(cwd));
@@ -632,29 +730,54 @@ pub fn docker_mounts_for_execution(cwd: &str, access: &crate::AccessRequest) -> 
 /// Go `mergeBackendMetadata`: folds managed-provider execution metadata into
 /// the backend metadata map.
 #[must_use]
-pub fn merge_backend_metadata(metadata: &serde_json::Map<String, serde_json::Value>, execution: &Execution) -> serde_json::Map<String, serde_json::Value> {
+pub fn merge_backend_metadata(
+    metadata: &serde_json::Map<String, serde_json::Value>,
+    execution: &Execution,
+) -> serde_json::Map<String, serde_json::Value> {
     let mut out = metadata.clone();
     if let Some(provider_id) = trimmed_metadata(&execution.metadata, "managedProviderId") {
-        out.insert("managedProviderId".to_string(), serde_json::json!(provider_id));
+        out.insert(
+            "managedProviderId".to_string(),
+            serde_json::json!(provider_id),
+        );
     }
     if let Some(action) = trimmed_metadata(&execution.metadata, "managedProviderAction") {
-        out.insert("managedProviderAction".to_string(), serde_json::json!(action));
+        out.insert(
+            "managedProviderAction".to_string(),
+            serde_json::json!(action),
+        );
     }
-    if let Some(operation_id) = trimmed_metadata(&execution.metadata, "managedProviderOperationId") {
-        out.insert("managedProviderOperationId".to_string(), serde_json::json!(operation_id));
+    if let Some(operation_id) = trimmed_metadata(&execution.metadata, "managedProviderOperationId")
+    {
+        out.insert(
+            "managedProviderOperationId".to_string(),
+            serde_json::json!(operation_id),
+        );
     }
     if let Some(strength) = trimmed_metadata(&execution.metadata, "enforcementStrength") {
-        out.insert("enforcementStrength".to_string(), serde_json::json!(strength));
+        out.insert(
+            "enforcementStrength".to_string(),
+            serde_json::json!(strength),
+        );
     }
     if let Some(classes) = trimmed_metadata(&execution.metadata, "sensitiveStateClasses") {
         let split: Vec<String> = classes.split(',').map(|s| s.to_string()).collect();
-        out.insert("sensitiveStateClasses".to_string(), serde_json::json!(split));
+        out.insert(
+            "sensitiveStateClasses".to_string(),
+            serde_json::json!(split),
+        );
     }
     out
 }
 
-fn trimmed_metadata(metadata: &std::collections::HashMap<String, String>, key: &str) -> Option<String> {
-    metadata.get(key).map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+fn trimmed_metadata(
+    metadata: &std::collections::HashMap<String, String>,
+    key: &str,
+) -> Option<String> {
+    metadata
+        .get(key)
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 /// Go `requiresManagedProviderFinalization`.
@@ -679,7 +802,12 @@ impl Manager {
     /// (or docker) with a timeout watchdog, applies secret redaction, records
     /// the terminal result, and persists/publishes — deferring the terminal
     /// event when managed-provider finalization is pending.
-    pub(crate) fn run_execution(&self, cancel: CancellationToken, mut execution: Execution, launch: Option<LaunchSpec>) {
+    pub(crate) fn run_execution(
+        &self,
+        cancel: CancellationToken,
+        mut execution: Execution,
+        launch: Option<LaunchSpec>,
+    ) {
         let Some(launch) = launch else { return };
         {
             let now = Utc::now();
@@ -688,11 +816,14 @@ impl Manager {
             execution.updated_at = now;
             execution.result.status = ExecutionStatus::Running;
             execution.result.started_at = Some(now);
-            execution.result.backend_metadata = merge_backend_metadata(&started_backend_metadata(&execution, None), &execution);
+            execution.result.backend_metadata =
+                merge_backend_metadata(&started_backend_metadata(&execution, None), &execution);
             synchronize_execution_consumer_state(&mut execution);
         }
-        self.store_execution(execution.clone());
-        if self.persist_consumer_contract(execution.consumer.as_ref()).is_ok()
+        self.store_execution(&execution);
+        if self
+            .persist_consumer_contract(execution.consumer.as_ref())
+            .is_ok()
             && self.persist_execution(&execution).is_ok()
         {
             let _ = self.publish_execution_started(&execution);
@@ -749,7 +880,8 @@ impl Manager {
         let delay_terminal = {
             let mut inner = self.inner.write();
             inner.cancels.remove(&execution.execution_id);
-            let delay = requires_managed_provider_finalization(&execution) && execution.status == ExecutionStatus::Completed;
+            let delay = requires_managed_provider_finalization(&execution)
+                && execution.status == ExecutionStatus::Completed;
             if delay {
                 execution.metadata.insert(
                     MANAGED_PROVIDER_PENDING_FINALIZATION_KEY.to_string(),
@@ -757,11 +889,15 @@ impl Manager {
                 );
                 inner.pending_final.insert(execution.execution_id.clone());
             }
-            inner.executions.insert(execution.execution_id.clone(), execution.clone());
+            inner
+                .executions
+                .insert(execution.execution_id.clone(), execution.clone());
             delay
         };
 
-        if self.persist_consumer_contract(execution.consumer.as_ref()).is_ok()
+        if self
+            .persist_consumer_contract(execution.consumer.as_ref())
+            .is_ok()
             && self.persist_execution(&execution).is_ok()
         {
             if delay_terminal {
@@ -782,7 +918,11 @@ impl Manager {
         pid: u32,
         timeout: Duration,
     ) {
-        let secret_values = collect_secret_redaction_values_from_process_env(execution.consumer.as_ref());
+        let secret_values = execution
+            .consumer
+            .as_ref()
+            .map(collect_secret_redaction_values_from_process_env)
+            .unwrap_or_default();
 
         if timeout > Duration::ZERO {
             let watchdog_cancel = cancel.clone();
@@ -819,10 +959,20 @@ impl Manager {
                     let mut metadata = serde_json::Map::new();
                     metadata.insert("backend".to_string(), serde_json::json!("subprocess"));
                     metadata.insert("pid".to_string(), serde_json::json!(pid));
-                    metadata.insert("completedAt".to_string(), serde_json::json!(completed_at.to_rfc3339_opts(SecondsFormat::Nanos, true)));
-                    metadata.insert("platform".to_string(), serde_json::json!(std::env::consts::OS));
-                    metadata.insert("architecture".to_string(), serde_json::json!(std::env::consts::ARCH));
-                    let stderr = redact_secret_text(&capture_string(&stderr_capture), &secret_values);
+                    metadata.insert(
+                        "completedAt".to_string(),
+                        serde_json::json!(completed_at.to_rfc3339_opts(SecondsFormat::Nanos, true)),
+                    );
+                    metadata.insert(
+                        "platform".to_string(),
+                        serde_json::json!(std::env::consts::OS),
+                    );
+                    metadata.insert(
+                        "architecture".to_string(),
+                        serde_json::json!(std::env::consts::ARCH),
+                    );
+                    let stderr =
+                        redact_secret_text(&capture_string(&stderr_capture), &secret_values);
                     let output_truncated = capture_truncated(&stderr_capture);
                     if status.success() {
                         result = Some(SubprocessResult {
@@ -842,7 +992,10 @@ impl Manager {
                             output_truncated,
                             error_class: ErrorClass::ProcessFailed,
                             error_code: "sandbox_process_failed".to_string(),
-                            error: redact_secret_text(&format!("exit status {exit_code}"), &secret_values),
+                            error: redact_secret_text(
+                                &format!("exit status {exit_code}"),
+                                &secret_values,
+                            ),
                             backend_metadata: metadata,
                             ..SubprocessResult::default()
                         });
@@ -854,7 +1007,10 @@ impl Manager {
                     metadata.insert("backend".to_string(), serde_json::json!("subprocess"));
                     result = Some(SubprocessResult {
                         status: ExecutionStatus::Failed,
-                        stderr: redact_secret_text(&capture_string(&stderr_capture), &secret_values),
+                        stderr: redact_secret_text(
+                            &capture_string(&stderr_capture),
+                            &secret_values,
+                        ),
                         output_truncated: capture_truncated(&stderr_capture),
                         error_class: ErrorClass::IoCaptureFailed,
                         error_code: "sandbox_wait_failed".to_string(),
@@ -914,9 +1070,13 @@ impl Manager {
         {
             let mut inner = self.inner.write();
             inner.cancels.remove(&execution.execution_id);
-            inner.executions.insert(execution.execution_id.clone(), execution.clone());
+            inner
+                .executions
+                .insert(execution.execution_id.clone(), execution.clone());
         }
-        if self.persist_consumer_contract(execution.consumer.as_ref()).is_ok()
+        if self
+            .persist_consumer_contract(execution.consumer.as_ref())
+            .is_ok()
             && self.persist_execution(&execution).is_ok()
         {
             let _ = self.publish_execution_terminal(&execution);

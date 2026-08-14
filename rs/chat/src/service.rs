@@ -12,43 +12,47 @@
 //! Streaming is a callback emitter (`stream`, the faithful Go shape) plus a
 //! thread + `std::sync::mpsc` variant (`stream_channel`).
 
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 use chrono::{DateTime, Utc};
 use dope_bindings::{
-    build_runtime_binding_evidence, enforce_executable, EffectiveBindingSelection,
-    ResolutionOutcome, RuntimeBindingEvidenceInput,
+    EffectiveBindingSelection, ResolutionOutcome, RuntimeBindingEvidenceInput,
+    build_runtime_binding_evidence, enforce_executable,
 };
-use dope_llm::{CreateDispatchInput, Dispatch, DispatchStatus, Message, MessageRole, ProviderError};
+use dope_llm::{
+    CreateDispatchInput, Dispatch, DispatchStatus, Message, MessageRole, ProviderError,
+};
 use dope_profiles::{
-    build_runtime_projection, safe_profile_summary, ActiveSelection, AgentProfile,
-    RuntimeProjectionInput, RuntimeResourceKind, APPLIED_BINDING_CLASSIFICATION_MARKER,
-    DEFERRED_BINDING_CLASSIFICATION_MARKER,
+    APPLIED_BINDING_CLASSIFICATION_MARKER, ActiveSelection, AgentProfile,
+    DEFERRED_BINDING_CLASSIFICATION_MARKER, RuntimeProjectionInput, RuntimeResourceKind,
+    build_runtime_projection, safe_profile_summary,
 };
-use dope_setupwizard::{new_service, ServiceDependencies, SafeUseMode, TARGET_OPENAI_COMPATIBLE};
+use dope_setupwizard::{SafeUseMode, ServiceDependencies, TARGET_OPENAI_COMPATIBLE, new_service};
 use dope_skills::{Overlay, Registry, Skill};
 use dope_threads::{
+    ContinuityDecision, ContinuityItemKind, ContinuityMode, ContinuityPreview,
+    ContinuityPreviewItem, ContinuityReason, ContinuityRole, ContinuityStatus, ContinuityTurn,
+    HandoffSourceReference, HandoffSourceReferenceDecision, HandoffSourceReferenceEligibility,
+    HandoffSourceReferenceStatus, HandoffStatus, LifecycleState, RedactionStatus, SourceKind,
     default_continuity_policy, eligible_continuity_turns, normalize_continuity_mode,
     preview_item_for_turn, preview_items_for_artifact_excerpts, reset_boundary_preview_items,
-    safe_continuity_content, ContinuityDecision, ContinuityItemKind, ContinuityMode,
-    ContinuityPreview, ContinuityPreviewItem, ContinuityReason, ContinuityRole,
-    ContinuityStatus, ContinuityTurn, HandoffSourceReference, HandoffSourceReferenceDecision,
-    HandoffSourceReferenceEligibility, HandoffSourceReferenceStatus, HandoffStatus,
-    LifecycleState, RedactionStatus, SourceKind,
+    safe_continuity_content,
 };
 use serde_json::{Map, Value};
 
 use crate::cancel::CancellationToken;
 use crate::error::ChatError;
 use crate::events::{
-    agent_profile_runtime_projected_event, binding_runtime_projected_event,
-    dispatch_status_str, new_continuity_preview_id, normalize_event,
-    thread_continuity_preview_recorded_event, thread_continuity_turn_recorded_event,
+    agent_profile_runtime_projected_event, binding_runtime_projected_event, dispatch_status_str,
+    new_continuity_preview_id, normalize_event, thread_continuity_preview_recorded_event,
+    thread_continuity_turn_recorded_event,
 };
 use crate::store::{BindingResolutionParams, ChatStore, ContinuityLookupQuery};
-use crate::types::{ContinuityAssembly, QueryExecution, QueryInput, QueryResult, Service, StreamChunk};
+use crate::types::{
+    ContinuityAssembly, QueryExecution, QueryInput, QueryResult, Service, StreamChunk,
+};
 
 /// Go `llm.OpenAICompatibleProviderName`.
 pub const OPENAI_COMPATIBLE_PROVIDER_NAME: &str = "openai_compatible";
@@ -83,14 +87,15 @@ impl Service {
                 // hasBinding, err) with the zero selection returned alongside
                 // the error; the helper no-ops unless the cause is
                 // ErrBindingRepairRequired with hasBinding=true.
-                self.record_blocked_binding_evidence(
-                    &input, &binding_selection, has_binding, &err,
-                );
+                self.record_blocked_binding_evidence(&input, &binding_selection, has_binding, &err);
                 return Err(err);
             }
         };
         if let Err(err) = self.enforce_capability_visibility(
-            &input, &selected_skills, &binding_selection, has_binding,
+            &input,
+            &selected_skills,
+            &binding_selection,
+            has_binding,
         ) {
             return Err(err);
         }
@@ -100,9 +105,7 @@ impl Service {
                 .map_err(|err| ChatError::Provider(err.to_string()))?;
             dispatch_input = effective;
         }
-        self.enforce_provider_setup_gate(
-            &input.tenant_id, &dispatch_input.provider, "chat",
-        )?;
+        self.enforce_provider_setup_gate(&input.tenant_id, &dispatch_input.provider, "chat")?;
         let mut continuity = self.prepare_continuity(&input, &mut dispatch_input)?;
 
         let dispatch = self
@@ -124,9 +127,7 @@ impl Service {
         if has_binding {
             self.record_runtime_binding_evidence(&input, &binding_selection, false)?;
         }
-        self.persist_continuity_request(
-            &mut continuity, &input, &dispatch_id, input.query.trim(),
-        )?;
+        self.persist_continuity_request(&mut continuity, &input, &dispatch_id, input.query.trim())?;
         publish_dispatch_event(
             self.event_bus.as_ref(),
             self.store.as_deref(),
@@ -199,14 +200,15 @@ impl Service {
         let (binding_selection, has_binding) = match binding_res {
             Ok(()) => (binding_selection, has_binding),
             Err(err) => {
-                self.record_blocked_binding_evidence(
-                    &input, &binding_selection, has_binding, &err,
-                );
+                self.record_blocked_binding_evidence(&input, &binding_selection, has_binding, &err);
                 return Err(err);
             }
         };
         if let Err(err) = self.enforce_capability_visibility(
-            &input, &selected_skills, &binding_selection, has_binding,
+            &input,
+            &selected_skills,
+            &binding_selection,
+            has_binding,
         ) {
             return Err(err);
         }
@@ -216,9 +218,7 @@ impl Service {
                 .map_err(|err| ChatError::Provider(err.to_string()))?;
             dispatch_input = effective;
         }
-        self.enforce_provider_setup_gate(
-            &input.tenant_id, &dispatch_input.provider, "chat",
-        )?;
+        self.enforce_provider_setup_gate(&input.tenant_id, &dispatch_input.provider, "chat")?;
         let mut continuity = self.prepare_continuity(&input, &mut dispatch_input)?;
 
         let dispatch = self
@@ -242,9 +242,7 @@ impl Service {
         if has_binding {
             self.record_runtime_binding_evidence(&input, &binding_selection, false)?;
         }
-        self.persist_continuity_request(
-            &mut continuity, &input, &dispatch_id, input.query.trim(),
-        )?;
+        self.persist_continuity_request(&mut continuity, &input, &dispatch_id, input.query.trim())?;
         publish_dispatch_event(
             self.event_bus.as_ref(),
             self.store.as_deref(),
@@ -283,7 +281,9 @@ impl Service {
                 };
                 emit(out).map_err(|err| ProviderError::Other(err.to_string()))
             };
-            self.dispatcher.dispatch_stream(dispatch, &dope_cancel, &mut adapter).await
+            self.dispatcher
+                .dispatch_stream(dispatch, &dope_cancel, &mut adapter)
+                .await
         });
 
         let final_dispatch = match &exec_result {
@@ -326,7 +326,10 @@ impl Service {
         cancel: CancellationToken,
         capacity: usize,
     ) -> Result<
-        (mpsc::Receiver<StreamChunk>, JoinHandle<Result<QueryExecution, ChatError>>),
+        (
+            mpsc::Receiver<StreamChunk>,
+            JoinHandle<Result<QueryExecution, ChatError>>,
+        ),
         ChatError,
     > {
         let service = self.clone();
@@ -334,10 +337,14 @@ impl Service {
         let handle = std::thread::Builder::new()
             .name("dope-chat-stream".to_string())
             .spawn(move || {
-                service.stream(input, &cancel, Some(move |chunk| {
-                    tx.send(chunk)
-                        .map_err(|_| ChatError::Emit("stream receiver closed".to_string())),
-                }))
+                service.stream(
+                    input,
+                    &cancel,
+                    Some(move |chunk| {
+                        tx.send(chunk)
+                            .map_err(|_| ChatError::Emit("stream receiver closed".to_string()))
+                    }),
+                )
             })
             .map_err(|err| ChatError::Runtime(format!("spawn chat stream thread: {err}")))?;
         Ok((rx, handle))
@@ -347,7 +354,7 @@ impl Service {
     /// because `new_service` requires a dispatcher. Kept for surface parity.
     fn ensure_configured(&self) -> Result<(), ChatError> {
         Ok(())
-    },
+    }
 
     // ------------------------------------------------------------------
     // Provider setup gate (Go enforceProviderSetupGate)
@@ -367,7 +374,9 @@ impl Service {
         if tenant_id.is_empty() || provider_id != OPENAI_COMPATIBLE_PROVIDER_NAME {
             return Ok(());
         }
-        let sessions = store.list_setup_sessions(tenant_id).map_err(ChatError::Store)?;
+        let sessions = store
+            .list_setup_sessions(tenant_id)
+            .map_err(ChatError::Store)?;
         for session in sessions {
             if session.target_id != TARGET_OPENAI_COMPATIBLE {
                 continue;
@@ -384,7 +393,7 @@ impl Service {
             return Ok(());
         }
         Ok(())
-    },
+    }
 
     // ------------------------------------------------------------------
     // Active profile (Go resolveActiveProfile)
@@ -409,9 +418,17 @@ impl Service {
             return Ok((AgentProfile::default(), ActiveSelection::default(), false));
         };
         if input.provider.trim().is_empty()
-            && !profile.default_provider_preference.provider_id.trim().is_empty()
+            && !profile
+                .default_provider_preference
+                .provider_id
+                .trim()
+                .is_empty()
         {
-            dispatch_input.provider = profile.default_provider_preference.provider_id.trim().to_string();
+            dispatch_input.provider = profile
+                .default_provider_preference
+                .provider_id
+                .trim()
+                .to_string();
         }
         if input.model.trim().is_empty()
             && !profile.default_provider_preference.model.trim().is_empty()
@@ -423,7 +440,7 @@ impl Service {
             dispatch_input.messages.extend(profile_messages);
         }
         Ok((profile, selection, true))
-    },
+    }
 
     // ------------------------------------------------------------------
     // Binding resolution (Go resolveBindingForWork / resolveBindingSelection)
@@ -448,11 +465,13 @@ impl Service {
             return (
                 resolution.clone(),
                 has_binding,
-                Err(ChatError::BindingRepairRequired(resolution.repair_reason.clone())),
+                Err(ChatError::BindingRepairRequired(
+                    resolution.repair_reason.clone(),
+                )),
             );
         }
         (resolution, has_binding, Ok(()))
-    },
+    }
 
     fn resolve_binding_selection(
         &self,
@@ -482,9 +501,13 @@ impl Service {
             tenant_default_profile_version_id: selection.profile_version_id.clone(),
         }) {
             Ok(resolution) => (resolution, true, Ok(())),
-            Err(err) => (EffectiveBindingSelection::default(), false, Err(ChatError::Store(err))),
+            Err(err) => (
+                EffectiveBindingSelection::default(),
+                false,
+                Err(ChatError::Store(err)),
+            ),
         }
-    },
+    }
 
     // ------------------------------------------------------------------
     // Capability visibility (Go enforceCapabilityVisibility)
@@ -521,7 +544,7 @@ impl Service {
             }
         }
         Ok(())
-    },
+    }
 
     // ------------------------------------------------------------------
     // Evidence recording (Go recordActiveProfileProjection /
@@ -569,7 +592,7 @@ impl Service {
             bus.publish(agent_profile_runtime_projected_event(&recorded));
         }
         Ok(())
-    },
+    }
 
     fn record_runtime_binding_evidence(
         &self,
@@ -613,7 +636,7 @@ impl Service {
             }
         }
         Ok(())
-    },
+    }
 
     /// Go `recordBlockedBindingEvidence`: best-effort evidence for work
     /// blocked by fail-closed binding resolution (FR-031). Never masks the
@@ -629,7 +652,7 @@ impl Service {
             return;
         }
         let _ = self.record_runtime_binding_evidence(input, binding, false);
-    },
+    }
 
     // ------------------------------------------------------------------
     // Dispatch input (Go buildDispatchInput)
@@ -644,8 +667,11 @@ impl Service {
             return Err(ChatError::QueryRequired);
         }
         let selected_skills = resolve_selected_skills(self.skills.as_deref(), &input.skills)?;
-        let messages =
-            compile_prompt_messages(query, &selected_skills, available_overlays(self.skills.as_deref()));
+        let messages = compile_prompt_messages(
+            query,
+            &selected_skills,
+            available_overlays(self.skills.as_deref()),
+        );
         Ok((
             CreateDispatchInput {
                 provider: input.provider.trim().to_string(),
@@ -656,7 +682,7 @@ impl Service {
             },
             selected_skills,
         ))
-    },
+    }
 
     // ------------------------------------------------------------------
     // Continuity (Go prepareContinuity + persistence)
@@ -677,7 +703,9 @@ impl Service {
         }
         let started = Utc::now();
         let mode = normalize_continuity_mode(input.continuity_mode);
-        let thread = store.get_thread_for_tenant(&tenant_id, &thread_id).map_err(ChatError::Store)?;
+        let thread = store
+            .get_thread_for_tenant(&tenant_id, &thread_id)
+            .map_err(ChatError::Store)?;
         let Some(thread) = thread else {
             return Ok(ContinuityAssembly::default());
         };
@@ -767,7 +795,7 @@ impl Service {
         }
         assembly.completed_at = Some(Utc::now());
         Ok(assembly)
-    },
+    }
 
     /// Go `availableHandoffSourceReferences`: collects referenced, eligible,
     /// unexpired handoff source summaries from succeeded links targeting the
@@ -776,7 +804,14 @@ impl Service {
         &self,
         tenant_id: &str,
         destination_thread_id: &str,
-    ) -> Result<(Vec<HandoffSourceReference>, Vec<String>, Vec<ContinuityPreviewItem>), ChatError> {
+    ) -> Result<
+        (
+            Vec<HandoffSourceReference>,
+            Vec<String>,
+            Vec<ContinuityPreviewItem>,
+        ),
+        ChatError,
+    > {
         let Some(store) = self.store.as_deref() else {
             return Ok((Vec::new(), Vec::new(), Vec::new()));
         };
@@ -802,9 +837,13 @@ impl Service {
                 let eligible = reference.decision == HandoffSourceReferenceDecision::Referenced
                     && reference.eligibility_status == HandoffSourceReferenceEligibility::Eligible
                     && !reference.safe_summary.trim().is_empty()
-                    && reference.retention_expires_at.map_or(true, |expires| expires > now);
+                    && reference
+                        .retention_expires_at
+                        .map_or(true, |expires| expires > now);
                 items.push(preview_item_for_handoff_source_reference(
-                    &reference, eligible, items.len() as i32,
+                    &reference,
+                    eligible,
+                    items.len() as i32,
                 ));
                 if eligible {
                     refs.push(reference);
@@ -816,7 +855,7 @@ impl Service {
             }
         }
         Ok((refs, link_ids, items))
-    },
+    }
 
     /// Go `persistContinuityRequest`: records the user turn and publishes the
     /// turn-recorded event.
@@ -855,10 +894,12 @@ impl Service {
             retention_expires_at: None,
             source_event_key: input.source_event_key.trim().to_string(),
         };
-        let saved = store.save_continuity_turn(&turn).map_err(ChatError::Store)?;
+        let saved = store
+            .save_continuity_turn(&turn)
+            .map_err(ChatError::Store)?;
         assembly.request_turn_id = saved.continuity_turn_id.clone();
         self.publish_continuity_event(thread_continuity_turn_recorded_event(&saved, "recorded"))
-    },
+    }
 
     /// Go `persistContinuityResponse`: records the assistant turn (when the
     /// dispatch produced output), consumes referenced handoff sources, and
@@ -899,9 +940,13 @@ impl Service {
                 retention_expires_at: None,
                 source_event_key: response_continuity_source_event_key(&input.source_event_key),
             };
-            let saved = store.save_continuity_turn(&turn).map_err(ChatError::Store)?;
+            let saved = store
+                .save_continuity_turn(&turn)
+                .map_err(ChatError::Store)?;
             assembly.response_turn_id = saved.continuity_turn_id.clone();
-            self.publish_continuity_event(thread_continuity_turn_recorded_event(&saved, "recorded"))?;
+            self.publish_continuity_event(thread_continuity_turn_recorded_event(
+                &saved, "recorded",
+            ))?;
         }
         for handoff_link_id in &assembly.handoff_link_ids {
             store
@@ -928,7 +973,9 @@ impl Service {
                 items.len() as i32,
             ));
             items.extend(preview_items_for_artifact_excerpts(
-                turn, items.len() as i32, Some(now),
+                turn,
+                items.len() as i32,
+                Some(now),
             ));
         }
         for mut item in assembly.excluded_items.clone() {
@@ -960,10 +1007,12 @@ impl Service {
             retention_expires_at: DateTime::<Utc>::UNIX_EPOCH,
             redaction_status: RedactionStatus::Redacted,
         };
-        let saved = store.save_continuity_preview(&preview, &items).map_err(ChatError::Store)?;
+        let saved = store
+            .save_continuity_preview(&preview, &items)
+            .map_err(ChatError::Store)?;
         assembly.preview_id = saved.continuity_preview_id.clone();
         self.publish_continuity_event(thread_continuity_preview_recorded_event(&saved))
-    },
+    }
 
     /// Go `publishContinuityEvent`: normalizes, persists, and publishes one
     /// thread-continuity event.
@@ -978,7 +1027,7 @@ impl Service {
             bus.publish(event);
         }
         Ok(())
-    },
+    }
 }
 
 // ------------------------------------------------------------------------
@@ -1019,7 +1068,9 @@ pub fn resolve_selected_skills(
     };
     // Go: `ResolveSelected` returns "skill not found: X" / other registry
     // errors verbatim; the display text is preserved in `Skills`.
-    registry.resolve_selected(selected).map_err(|err| ChatError::Skills(err.to_string()))
+    registry
+        .resolve_selected(selected)
+        .map_err(|err| ChatError::Skills(err.to_string()))
 }
 
 /// Go `availableOverlays`.
@@ -1069,16 +1120,25 @@ pub fn compile_prompt_messages(
             builder.push_str("\nInstructions:\n");
             builder.push_str(body);
         }
-        messages.push(Message { role: MessageRole::System, content: builder });
+        messages.push(Message {
+            role: MessageRole::System,
+            content: builder,
+        });
     }
-    messages.push(Message { role: MessageRole::User, content: query.trim().to_string() });
+    messages.push(Message {
+        role: MessageRole::User,
+        content: query.trim().to_string(),
+    });
     messages
 }
 
 /// Go `selectedSkillIDsFromSkills`.
 #[must_use]
 pub fn selected_skill_ids_from_skills(selected: &[Skill]) -> Vec<String> {
-    selected.iter().map(|skill| skill.skill_id.clone()).collect()
+    selected
+        .iter()
+        .map(|skill| skill.skill_id.clone())
+        .collect()
 }
 
 /// Go `selectedSkillContracts`: deep-cloned sandbox consumer views for the
@@ -1087,7 +1147,10 @@ pub fn selected_skill_ids_from_skills(selected: &[Skill]) -> Vec<String> {
 pub fn selected_skill_contracts(
     selected: &[Skill],
 ) -> Vec<serde_json::Map<String, serde_json::Value>> {
-    selected.iter().filter_map(|skill| skill.sandbox.clone()).collect()
+    selected
+        .iter()
+        .filter_map(|skill| skill.sandbox.clone())
+        .collect()
 }
 
 /// Go `terminalDispatchEvent`.
@@ -1129,14 +1192,13 @@ pub fn response_continuity_source_event_key(source_event_key: &str) -> String {
 }
 
 /// Go `persistDispatch`.
-fn persist_dispatch(
-    store: Option<&dyn ChatStore>,
-    dispatch: &Dispatch,
-) -> Result<(), ChatError> {
+fn persist_dispatch(store: Option<&dyn ChatStore>, dispatch: &Dispatch) -> Result<(), ChatError> {
     let Some(store) = store else {
         return Ok(());
     };
-    store.upsert_llm_dispatch(dispatch).map_err(ChatError::Store)
+    store
+        .upsert_llm_dispatch(dispatch)
+        .map_err(ChatError::Store)
 }
 
 /// Go `publishDispatchEvent`: builds the `llm.*` event payload and persists
@@ -1154,13 +1216,22 @@ fn publish_dispatch_event(
     };
 
     let mut payload: Map<String, Value> = Map::new();
-    payload.insert("provider".to_string(), Value::String(dispatch.provider.clone()));
+    payload.insert(
+        "provider".to_string(),
+        Value::String(dispatch.provider.clone()),
+    );
     payload.insert("model".to_string(), Value::String(dispatch.model.clone()));
     match name {
         "llm.dispatch.requested" => {
             payload.insert("stream".to_string(), Value::Bool(dispatch.stream));
-            payload.insert("timeoutMs".to_string(), Value::Number(dispatch.timeout_ms.into()));
-            payload.insert("maxRetries".to_string(), Value::Number(dispatch.max_retries.into()));
+            payload.insert(
+                "timeoutMs".to_string(),
+                Value::Number(dispatch.timeout_ms.into()),
+            );
+            payload.insert(
+                "maxRetries".to_string(),
+                Value::Number(dispatch.max_retries.into()),
+            );
             payload.insert(
                 "status".to_string(),
                 Value::String(dispatch_status_str(dispatch.status).to_string()),
@@ -1186,7 +1257,10 @@ fn publish_dispatch_event(
                 "usage".to_string(),
                 serde_json::to_value(&dispatch.usage).unwrap_or(Value::Null),
             );
-            payload.insert("errorCode".to_string(), Value::String(dispatch.error_code.clone()));
+            payload.insert(
+                "errorCode".to_string(),
+                Value::String(dispatch.error_code.clone()),
+            );
             payload.insert("error".to_string(), Value::String(dispatch.error.clone()));
         }
     }
@@ -1239,7 +1313,10 @@ pub fn inject_handoff_source_reference_messages(
     for reference in refs {
         let summary = reference.safe_summary.trim();
         if !summary.is_empty() {
-            prior.push(Message { role: MessageRole::User, content: summary.to_string() });
+            prior.push(Message {
+                role: MessageRole::User,
+                content: summary.to_string(),
+            });
         }
     }
     if prior.is_empty() {
@@ -1264,10 +1341,7 @@ pub fn inject_handoff_source_reference_messages(
 /// redacted artifact excerpt summaries) immediately before the first user
 /// message.
 #[must_use]
-pub fn inject_continuity_messages(
-    messages: &[Message],
-    turns: &[ContinuityTurn],
-) -> Vec<Message> {
+pub fn inject_continuity_messages(messages: &[Message], turns: &[ContinuityTurn]) -> Vec<Message> {
     if turns.is_empty() {
         return messages.to_vec();
     }
@@ -1280,7 +1354,10 @@ pub fn inject_continuity_messages(
         };
         let content = turn.safe_content.trim();
         if !content.is_empty() {
-            prior.push(Message { role, content: content.to_string() });
+            prior.push(Message {
+                role,
+                content: content.to_string(),
+            });
         }
         for excerpt in &turn.artifact_excerpt_refs {
             if excerpt.redaction_status != RedactionStatus::Redacted {
@@ -1290,7 +1367,10 @@ pub fn inject_continuity_messages(
             if summary.status != RedactionStatus::Redacted || summary.text.trim().is_empty() {
                 continue;
             }
-            prior.push(Message { role, content: summary.text });
+            prior.push(Message {
+                role,
+                content: summary.text,
+            });
         }
     }
     if prior.is_empty() {
@@ -1381,9 +1461,7 @@ pub fn preview_item_for_handoff_source_reference(
 
 /// Go `handoffReferenceContinuityReason`.
 #[must_use]
-pub fn handoff_reference_continuity_reason(
-    reference: &HandoffSourceReference,
-) -> ContinuityReason {
+pub fn handoff_reference_continuity_reason(reference: &HandoffSourceReference) -> ContinuityReason {
     if let Some(expires) = reference.retention_expires_at {
         if expires <= Utc::now() {
             return ContinuityReason::RetentionExpired;
@@ -1394,7 +1472,9 @@ pub fn handoff_reference_continuity_reason(
         HandoffSourceReferenceEligibility::RedactionFailed => ContinuityReason::RedactionFailed,
         HandoffSourceReferenceEligibility::RetentionExpired => ContinuityReason::RetentionExpired,
         HandoffSourceReferenceEligibility::ResetBoundary => ContinuityReason::ResetBoundary,
-        HandoffSourceReferenceEligibility::IncompleteEvidence => ContinuityReason::IncompleteEvidence,
+        HandoffSourceReferenceEligibility::IncompleteEvidence => {
+            ContinuityReason::IncompleteEvidence
+        }
         HandoffSourceReferenceEligibility::Unsupported => ContinuityReason::UnsupportedSource,
         HandoffSourceReferenceEligibility::Eligible => {
             if reference.decision != HandoffSourceReferenceDecision::Referenced {

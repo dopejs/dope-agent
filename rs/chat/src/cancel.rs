@@ -61,7 +61,12 @@ impl CancellationToken {
             watcher();
         }
         let children: Vec<Arc<TokenState>> = {
-            self.state.children.lock().iter().filter_map(|weak| weak.upgrade()).collect()
+            self.state
+                .children
+                .lock()
+                .iter()
+                .filter_map(|weak| weak.upgrade())
+                .collect()
         };
         for child in children {
             CancellationToken { state: child }.kill();
@@ -80,7 +85,10 @@ impl CancellationToken {
     pub fn register_watcher(&self, watcher: impl FnOnce() + Send + 'static) -> KillLink<'_> {
         let id = self.state.next_watcher_id.fetch_add(1, Ordering::Relaxed);
         self.state.watchers.lock().push((id, Box::new(watcher)));
-        KillLink { state: Arc::clone(&self.state), id }
+        KillLink {
+            state: Arc::clone(&self.state),
+            id,
+        }
     }
 
     /// Bridges this token into a [`dope_llm::CancelToken`]: killing this token

@@ -189,6 +189,12 @@ impl Service {
         event_bus: Option<dope_events::Bus>,
         store: Option<Arc<dyn ChatStore>>,
     ) -> Self {
-        Service { dispatcher, providers, skills, event_bus, store }
+        Service {
+            dispatcher,
+            providers,
+            skills,
+            event_bus,
+            store,
+        }
     }
 }

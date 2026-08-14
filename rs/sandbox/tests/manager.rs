@@ -11,16 +11,16 @@ use chrono::Utc;
 use dope_events::{Bus, Filter};
 use dope_policy::Engine;
 use dope_sandbox::{
-    approval_matches_execution, awaits_managed_provider_finalization, clean_path,
-    derived_secret_variants, evaluate_access_decision, first_non_empty, is_terminal,
-    redact_secret_text, within_any, AccessRequest, ApprovalMode, BackendAvailabilityStatus,
-    BackendCapabilityProfile, BackendHostStatus, BackendKind, BackendSelectionOutcome,
-    CaptureBuffer, ConsumerContractView, ConsumerKind, ConsumerPolicyRecord,
-    ConsumerRequirementDeclaration, DecisionResolution, ExecutionMode, ExecutionRequest,
-    ExecutionStatus, Manager, NetworkMode, PolicyRecordStatus, Profile,
+    AccessRequest, ApprovalMode, BackendAvailabilityStatus, BackendCapabilityProfile,
+    BackendHostStatus, BackendKind, BackendSelectionOutcome, CaptureBuffer, ConsumerContractView,
+    ConsumerKind, ConsumerPolicyRecord, ConsumerRequirementDeclaration, DecisionResolution,
+    ExecutionMode, ExecutionRequest, ExecutionStatus, Manager, NetworkMode,
     PROFILE_ID_MANAGED_PROVIDER_CLAUDE, PROFILE_ID_MANAGED_PROVIDER_CODEX,
-    PROFILE_ID_SUBPROCESS_DEFAULT, SandboxError, SecretDefaultSource, SecretEnvironmentScope,
-    SecretResolution, SecretScopeOutcome, Source, hex_encode,
+    PROFILE_ID_SUBPROCESS_DEFAULT, PolicyRecordStatus, Profile, SandboxError, SecretDefaultSource,
+    SecretEnvironmentScope, SecretResolution, SecretScopeOutcome, Source,
+    approval_matches_execution, awaits_managed_provider_finalization, clean_path,
+    derived_secret_variants, evaluate_access_decision, first_non_empty, hex_encode, is_terminal,
+    redact_secret_text, within_any,
 };
 use dope_store::SQLiteStore;
 
@@ -55,13 +55,20 @@ fn test_config(data_dir: &str) -> dope_config::Config {
 
 fn test_manager(data_dir: &str) -> Manager {
     let store = Arc::new(Mutex::new(SQLiteStore::new(data_dir).expect("open store")));
-    Manager::new(test_config(data_dir), Some(store), Bus::new(), Engine::new())
+    Manager::new(
+        test_config(data_dir),
+        Some(store),
+        Bus::new(),
+        Engine::new(),
+    )
 }
 
 fn wait_for_terminal(manager: &Manager, execution_id: &str) -> dope_sandbox::Execution {
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     loop {
-        let execution = manager.get_execution(execution_id).expect("execution present");
+        let execution = manager
+            .get_execution(execution_id)
+            .expect("execution present");
         if is_terminal(execution.status) {
             return execution;
         }
@@ -73,11 +80,7 @@ fn wait_for_terminal(manager: &Manager, execution_id: &str) -> dope_sandbox::Exe
 }
 
 fn test_shell() -> &'static str {
-    if cfg!(windows) {
-        "cmd"
-    } else {
-        "/bin/sh"
-    }
+    if cfg!(windows) { "cmd" } else { "/bin/sh" }
 }
 
 fn test_shell_args(script: &str) -> Vec<String> {
@@ -88,7 +91,10 @@ fn test_shell_args(script: &str) -> Vec<String> {
     }
 }
 
-fn test_consumer_view(consumer_id: &str, secret_scope: Vec<SecretScopeOutcome>) -> ConsumerContractView {
+fn test_consumer_view(
+    consumer_id: &str,
+    secret_scope: Vec<SecretScopeOutcome>,
+) -> ConsumerContractView {
     ConsumerContractView {
         declaration: Some(ConsumerRequirementDeclaration {
             declaration_id: format!("managed_provider:{consumer_id}:prompt_execution"),
@@ -121,7 +127,11 @@ fn test_consumer_view(consumer_id: &str, secret_scope: Vec<SecretScopeOutcome>) 
     }
 }
 
-fn test_secret_scope_outcome(secret_ref: &str, scope: SecretEnvironmentScope, resolution: SecretResolution) -> SecretScopeOutcome {
+fn test_secret_scope_outcome(
+    secret_ref: &str,
+    scope: SecretEnvironmentScope,
+    resolution: SecretResolution,
+) -> SecretScopeOutcome {
     SecretScopeOutcome {
         consumer_kind: ConsumerKind::ManagedProvider,
         consumer_id: "test_consumer".to_string(),
@@ -142,7 +152,10 @@ fn explain_requires_approval_for_network() {
         .explain(ExecutionRequest {
             command: "echo".to_string(),
             args: vec!["hello".to_string()],
-            access: AccessRequest { network_mode: Some(NetworkMode::Full), ..Default::default() },
+            access: AccessRequest {
+                network_mode: Some(NetworkMode::Full),
+                ..Default::default()
+            },
             ..ExecutionRequest::default()
         })
         .expect("explain");
@@ -157,7 +170,10 @@ fn list_profiles_includes_backend_capability_and_docker_availability() {
     assert!(!profiles.is_empty(), "expected builtin sandbox profiles");
     let mut found_docker = false;
     for profile in &profiles {
-        assert_eq!(profile.backend_capability.backend_kind, profile.backend_kind);
+        assert_eq!(
+            profile.backend_capability.backend_kind,
+            profile.backend_kind
+        );
         if profile.backend_kind == BackendKind::Docker {
             found_docker = true;
             assert!(!profile.backend_capability.display_name.is_empty());
@@ -181,8 +197,14 @@ fn evaluate_access_decision_unsupported_docker_backend() {
         ..Default::default()
     };
     let decision = evaluate_access_decision(&profile, "/tmp", &AccessRequest::default());
-    assert_eq!(decision.selection_outcome, Some(BackendSelectionOutcome::Unsupported));
-    assert_eq!(decision.host_status, Some(BackendHostStatus::MissingPrerequisite));
+    assert_eq!(
+        decision.selection_outcome,
+        Some(BackendSelectionOutcome::Unsupported)
+    );
+    assert_eq!(
+        decision.host_status,
+        Some(BackendHostStatus::MissingPrerequisite)
+    );
     assert_eq!(decision.mismatch_reason, "backend_unavailable");
     assert!(decision.explanation.contains("docker CLI is not available"));
 }
@@ -208,7 +230,10 @@ fn evaluate_access_decision_docker_access_rule_mismatch() {
             ..Default::default()
         },
     );
-    assert_eq!(decision.selection_outcome, Some(BackendSelectionOutcome::Unsupported));
+    assert_eq!(
+        decision.selection_outcome,
+        Some(BackendSelectionOutcome::Unsupported)
+    );
     assert_eq!(decision.mismatch_reason, "backend_capability_mismatch");
 }
 
@@ -216,7 +241,12 @@ fn evaluate_access_decision_docker_access_rule_mismatch() {
 fn start_execution_completes_and_persists() {
     let dir = temp_dir("start_completes");
     let store = Arc::new(Mutex::new(SQLiteStore::new(&dir).expect("open store")));
-    let manager = Manager::new(test_config(&dir), Some(Arc::clone(&store)), Bus::new(), Engine::new());
+    let manager = Manager::new(
+        test_config(&dir),
+        Some(Arc::clone(&store)),
+        Bus::new(),
+        Engine::new(),
+    );
     let cwd = temp_dir("start_completes_cwd");
 
     let execution = manager
@@ -237,7 +267,11 @@ fn start_execution_completes_and_persists() {
     assert_eq!(execution.status, ExecutionStatus::Completed);
     assert_eq!(execution.result.stdout, "hello sandbox");
 
-    let records = store.lock().unwrap().list_sandbox_executions().expect("list executions");
+    let records = store
+        .lock()
+        .unwrap()
+        .list_sandbox_executions()
+        .expect("list executions");
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].execution_id, execution.execution_id);
 }
@@ -246,7 +280,12 @@ fn start_execution_completes_and_persists() {
 fn start_execution_creates_approval_and_denies_until_approved() {
     let dir = temp_dir("start_approval");
     let store = Arc::new(Mutex::new(SQLiteStore::new(&dir).expect("open store")));
-    let manager = Manager::new(test_config(&dir), Some(Arc::clone(&store)), Bus::new(), Engine::new());
+    let manager = Manager::new(
+        test_config(&dir),
+        Some(Arc::clone(&store)),
+        Bus::new(),
+        Engine::new(),
+    );
     let cwd = temp_dir("start_approval_cwd");
 
     let execution = manager
@@ -265,10 +304,17 @@ fn start_execution_creates_approval_and_denies_until_approved() {
         .expect("start execution");
 
     assert_eq!(execution.status, ExecutionStatus::Denied);
-    assert!(!execution.approval_id.is_empty(), "expected approval id on denied execution");
+    assert!(
+        !execution.approval_id.is_empty(),
+        "expected approval id on denied execution"
+    );
     assert_eq!(execution.result.error_class, "approval_required");
 
-    let approvals = store.lock().unwrap().list_approvals().expect("list approvals");
+    let approvals = store
+        .lock()
+        .unwrap()
+        .list_approvals()
+        .expect("list approvals");
     assert_eq!(approvals.len(), 1);
     assert_eq!(approvals[0].approval_id, execution.approval_id);
 }
@@ -292,7 +338,9 @@ fn cancel_execution_transitions_to_cancelled() {
         })
         .expect("start execution");
 
-    let (_, already_terminal) = manager.cancel_execution(&execution.execution_id).expect("cancel");
+    let (_, already_terminal) = manager
+        .cancel_execution(&execution.execution_id)
+        .expect("cancel");
     assert!(!already_terminal);
 
     let execution = wait_for_terminal(&manager, &execution.execution_id);
@@ -318,11 +366,15 @@ fn wait_execution_times_out() {
         })
         .expect("start execution");
 
-    let err = manager.wait_execution(&execution.execution_id, Duration::from_millis(150)).expect_err("timeout");
+    let err = manager
+        .wait_execution(&execution.execution_id, Duration::from_millis(150))
+        .expect_err("timeout");
     assert_eq!(err, SandboxError::WaitTimeout);
 
     // Clean up the running process.
-    manager.cancel_execution(&execution.execution_id).expect("cancel");
+    manager
+        .cancel_execution(&execution.execution_id)
+        .expect("cancel");
     let terminal = wait_for_terminal(&manager, &execution.execution_id);
     assert_eq!(terminal.status, ExecutionStatus::Cancelled);
 }
@@ -361,14 +413,20 @@ fn evaluate_access_distinguishes_declared_managed_provider_roots() {
     let allowed = manager.evaluate_access(
         PROFILE_ID_MANAGED_PROVIDER_CODEX,
         "",
-        AccessRequest { read_roots: vec![allowed_path.clone()], ..Default::default() },
+        AccessRequest {
+            read_roots: vec![allowed_path.clone()],
+            ..Default::default()
+        },
     );
     assert_eq!(allowed.resolution, DecisionResolution::Allow);
 
     let denied = manager.evaluate_access(
         PROFILE_ID_MANAGED_PROVIDER_CODEX,
         "",
-        AccessRequest { read_roots: vec!["/etc/passwd".to_string()], ..Default::default() },
+        AccessRequest {
+            read_roots: vec!["/etc/passwd".to_string()],
+            ..Default::default()
+        },
     );
     assert_eq!(denied.resolution, DecisionResolution::Deny);
 }
@@ -377,10 +435,15 @@ fn evaluate_access_distinguishes_declared_managed_provider_roots() {
 fn managed_provider_profiles_use_isolated_home_in_test_environment() {
     let dir = temp_dir("isolated_home");
     let manager = test_manager(&dir);
-    let profile = manager.get_profile(PROFILE_ID_MANAGED_PROVIDER_CLAUDE).expect("claude profile");
+    let profile = manager
+        .get_profile(PROFILE_ID_MANAGED_PROVIDER_CLAUDE)
+        .expect("claude profile");
     let want_home = format!("{}/managed-provider-home", dir.trim_end_matches('/'));
     assert_eq!(profile.default_work_dir, want_home);
-    assert!(within_any(&format!("{want_home}/.claude"), &profile.filesystem_policy.read_roots));
+    assert!(within_any(
+        &format!("{want_home}/.claude"),
+        &profile.filesystem_policy.read_roots
+    ));
 }
 
 #[test]
@@ -388,17 +451,20 @@ fn start_execution_redacts_secret_values_from_results() {
     let manager = test_manager(&temp_dir("redaction"));
     let cwd = temp_dir("redaction_cwd");
 
-    let mut consumer = test_consumer_view("redaction-skill", vec![SecretScopeOutcome {
-        consumer_kind: ConsumerKind::Skill,
-        consumer_id: "redaction-skill".to_string(),
-        secret_ref: "EXEC_SKILL_TOKEN".to_string(),
-        environment_scope: SecretEnvironmentScope::Test,
-        default_source: Some(SecretDefaultSource::InstanceOverride),
-        default_rule_id: "skill:redaction-skill".to_string(),
-        delivery_kind: "environment_variable".to_string(),
-        redaction_rule: "value_redacted".to_string(),
-        resolution: SecretResolution::Resolved,
-    }]);
+    let mut consumer = test_consumer_view(
+        "redaction-skill",
+        vec![SecretScopeOutcome {
+            consumer_kind: ConsumerKind::Skill,
+            consumer_id: "redaction-skill".to_string(),
+            secret_ref: "EXEC_SKILL_TOKEN".to_string(),
+            environment_scope: SecretEnvironmentScope::Test,
+            default_source: Some(SecretDefaultSource::InstanceOverride),
+            default_rule_id: "skill:redaction-skill".to_string(),
+            delivery_kind: "environment_variable".to_string(),
+            redaction_rule: "value_redacted".to_string(),
+            resolution: SecretResolution::Resolved,
+        }],
+    );
     if let Some(declaration) = &mut consumer.declaration {
         declaration.consumer_kind = ConsumerKind::Skill;
         declaration.declaration_id = "skill:redaction-skill:tool_call.execute".to_string();
@@ -433,8 +499,16 @@ fn start_execution_redacts_secret_values_from_results() {
 
     let execution = wait_for_terminal(&manager, &execution.execution_id);
     assert_eq!(execution.status, ExecutionStatus::Completed);
-    assert!(!execution.result.stdout.contains("top-secret-token"), "raw secret leaked: {:?}", execution.result.stdout);
-    assert!(!execution.result.stdout.contains("dG9wLXNlY3JldC10b2tlbg=="), "derived base64 leaked: {:?}", execution.result.stdout);
+    assert!(
+        !execution.result.stdout.contains("top-secret-token"),
+        "raw secret leaked: {:?}",
+        execution.result.stdout
+    );
+    assert!(
+        !execution.result.stdout.contains("dG9wLXNlY3JldC10b2tlbg=="),
+        "derived base64 leaked: {:?}",
+        execution.result.stdout
+    );
     assert_eq!(execution.result.stdout, "[REDACTED]\n[REDACTED]");
 }
 
@@ -443,7 +517,12 @@ fn restore_cancels_pending_managed_provider_finalization() {
     let dir = temp_dir("restore_pending");
     let store1 = Arc::new(Mutex::new(SQLiteStore::new(&dir).expect("open store 1")));
     let bus1 = Bus::new();
-    let manager1 = Manager::new(test_config(&dir), Some(Arc::clone(&store1)), bus1.clone(), Engine::new());
+    let manager1 = Manager::new(
+        test_config(&dir),
+        Some(Arc::clone(&store1)),
+        bus1.clone(),
+        Engine::new(),
+    );
     let cwd = temp_dir("restore_pending_cwd");
 
     let execution = manager1
@@ -452,9 +531,18 @@ fn restore_cancels_pending_managed_provider_finalization() {
             args: test_shell_args("printf 'hello managed provider'"),
             cwd: cwd.clone(),
             metadata: HashMap::from([
-                ("managedProviderId".to_string(), "claude_managed".to_string()),
-                ("managedProviderAction".to_string(), "prompt_execution".to_string()),
-                ("managedProviderOperationId".to_string(), "managed_provider_op_1".to_string()),
+                (
+                    "managedProviderId".to_string(),
+                    "claude_managed".to_string(),
+                ),
+                (
+                    "managedProviderAction".to_string(),
+                    "prompt_execution".to_string(),
+                ),
+                (
+                    "managedProviderOperationId".to_string(),
+                    "managed_provider_op_1".to_string(),
+                ),
             ]),
             access: AccessRequest {
                 read_roots: vec![cwd.clone()],
@@ -467,19 +555,36 @@ fn restore_cancels_pending_managed_provider_finalization() {
 
     let execution = wait_for_terminal(&manager1, &execution.execution_id);
     assert_eq!(execution.status, ExecutionStatus::Completed);
-    assert!(awaits_managed_provider_finalization(&execution), "expected pending finalization marker");
-    let events1 = bus1.list(&Filter { category: "sandbox".to_string(), ..Default::default() });
-    assert!(!events1.iter().any(|event| event.name == "sandbox.execution_completed"), "terminal event must be deferred");
+    assert!(
+        awaits_managed_provider_finalization(&execution),
+        "expected pending finalization marker"
+    );
+    let events1 = bus1.list(&Filter {
+        category: "sandbox".to_string(),
+        ..Default::default()
+    });
+    assert!(
+        !events1
+            .iter()
+            .any(|event| event.name == "sandbox.execution_completed"),
+        "terminal event must be deferred"
+    );
 
     // The runner thread persists the terminal document after publishing the
     // in-memory state; wait for the marker before closing the store.
     let persist_deadline = std::time::Instant::now() + Duration::from_secs(2);
     loop {
-        let records = store1.lock().unwrap().list_sandbox_executions().expect("list executions");
-        if records
-            .iter()
-            .any(|record| record.execution_id == execution.execution_id && record.document.contains("managedProviderFinalizationPending"))
-        {
+        let records = store1
+            .lock()
+            .unwrap()
+            .list_sandbox_executions()
+            .expect("list executions");
+        if records.iter().any(|record| {
+            record.execution_id == execution.execution_id
+                && record
+                    .document
+                    .contains("managedProviderFinalizationPending")
+        }) {
             break;
         }
         if std::time::Instant::now() >= persist_deadline {
@@ -496,12 +601,28 @@ fn restore_cancels_pending_managed_provider_finalization() {
     let manager2 = Manager::new(test_config(&dir), Some(store2), bus2.clone(), Engine::new());
     manager2.restore().expect("restore");
 
-    let restored = manager2.get_execution(&execution.execution_id).expect("restored execution");
+    let restored = manager2
+        .get_execution(&execution.execution_id)
+        .expect("restored execution");
     assert_eq!(restored.status, ExecutionStatus::Cancelled);
-    assert_eq!(restored.result.error_code, "daemon_restarted_before_consumer_finalization");
-    assert!(!awaits_managed_provider_finalization(&restored), "marker must be cleared");
-    let events2 = bus2.list(&Filter { category: "sandbox".to_string(), ..Default::default() });
-    assert!(events2.iter().any(|event| event.name == "sandbox.execution_cancelled"), "expected recovery cancelled event");
+    assert_eq!(
+        restored.result.error_code,
+        "daemon_restarted_before_consumer_finalization"
+    );
+    assert!(
+        !awaits_managed_provider_finalization(&restored),
+        "marker must be cleared"
+    );
+    let events2 = bus2.list(&Filter {
+        category: "sandbox".to_string(),
+        ..Default::default()
+    });
+    assert!(
+        events2
+            .iter()
+            .any(|event| event.name == "sandbox.execution_cancelled"),
+        "expected recovery cancelled event"
+    );
 }
 
 /// Minimal in-memory secret metadata store implementing dope_secrets::Store.
@@ -524,15 +645,27 @@ impl dope_secrets::Store for FakeSecretStore {
         version: dope_secrets::SecretVersion,
     ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
         Box::pin(async move {
-            self.secrets.lock().unwrap().insert(secret.secret_ref.clone(), secret);
-            self.versions.lock().unwrap().insert(version.secret_version_id.clone(), version);
+            self.secrets
+                .lock()
+                .unwrap()
+                .insert(secret.secret_ref.clone(), secret);
+            self.versions
+                .lock()
+                .unwrap()
+                .insert(version.secret_version_id.clone(), version);
             Ok(())
         })
     }
 
-    fn update_secret_metadata<'a>(&'a self, secret: dope_secrets::TenantSecret) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+    fn update_secret_metadata<'a>(
+        &'a self,
+        secret: dope_secrets::TenantSecret,
+    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
         Box::pin(async move {
-            self.secrets.lock().unwrap().insert(secret.secret_ref.clone(), secret);
+            self.secrets
+                .lock()
+                .unwrap()
+                .insert(secret.secret_ref.clone(), secret);
             Ok(())
         })
     }
@@ -544,15 +677,27 @@ impl dope_secrets::Store for FakeSecretStore {
         version: dope_secrets::SecretVersion,
     ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
         Box::pin(async move {
-            self.secrets.lock().unwrap().insert(secret.secret_ref.clone(), secret);
-            self.versions.lock().unwrap().insert(version.secret_version_id.clone(), version);
+            self.secrets
+                .lock()
+                .unwrap()
+                .insert(secret.secret_ref.clone(), secret);
+            self.versions
+                .lock()
+                .unwrap()
+                .insert(version.secret_version_id.clone(), version);
             Ok(())
         })
     }
 
-    fn disable_secret<'a>(&'a self, secret: dope_secrets::TenantSecret) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+    fn disable_secret<'a>(
+        &'a self,
+        secret: dope_secrets::TenantSecret,
+    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
         Box::pin(async move {
-            self.secrets.lock().unwrap().insert(secret.secret_ref.clone(), secret);
+            self.secrets
+                .lock()
+                .unwrap()
+                .insert(secret.secret_ref.clone(), secret);
             Ok(())
         })
     }
@@ -577,7 +722,8 @@ impl dope_secrets::Store for FakeSecretStore {
         &'a self,
         tenant_id: &'a str,
         secret_version_id: &'a str,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Option<dope_secrets::SecretVersion>>> {
+    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Option<dope_secrets::SecretVersion>>>
+    {
         Box::pin(async move {
             Ok(self
                 .versions
@@ -589,10 +735,11 @@ impl dope_secrets::Store for FakeSecretStore {
         })
     }
 
-    fn list_secrets<'a>(&'a self, _tenant_id: &'a str) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Vec<dope_secrets::TenantSecret>>> {
-        Box::pin(async move {
-            Ok(self.secrets.lock().unwrap().values().cloned().collect())
-        })
+    fn list_secrets<'a>(
+        &'a self,
+        _tenant_id: &'a str,
+    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Vec<dope_secrets::TenantSecret>>> {
+        Box::pin(async move { Ok(self.secrets.lock().unwrap().values().cloned().collect()) })
     }
 }
 
@@ -600,7 +747,12 @@ impl dope_secrets::Store for FakeSecretStore {
 fn sandbox_secret_scope_uses_active_tenant_and_fails_closed() {
     let dir = temp_dir("secret_scope");
     let store = Arc::new(Mutex::new(SQLiteStore::new(&dir).expect("open store")));
-    let manager = Manager::new(test_config(&dir), Some(Arc::clone(&store)), Bus::new(), Engine::new());
+    let manager = Manager::new(
+        test_config(&dir),
+        Some(Arc::clone(&store)),
+        Bus::new(),
+        Engine::new(),
+    );
 
     let backend_dir = temp_dir("secret_scope_backend");
     let backend = dope_secrets::LocalBackend::new(&backend_dir).expect("local backend");
@@ -634,13 +786,19 @@ fn sandbox_secret_scope_uses_active_tenant_and_fails_closed() {
         },
         consumer: Some(test_consumer_view(
             "sandbox_scope",
-            vec![test_secret_scope_outcome("SANDBOX_TOKEN", SecretEnvironmentScope::Test, SecretResolution::Unavailable)],
+            vec![test_secret_scope_outcome(
+                "SANDBOX_TOKEN",
+                SecretEnvironmentScope::Test,
+                SecretResolution::Unavailable,
+            )],
         )),
         ..ExecutionRequest::default()
     };
 
     // Without tenant context the scope must fail closed.
-    let denied = manager.explain(request.clone()).expect("explain without tenant");
+    let denied = manager
+        .explain(request.clone())
+        .expect("explain without tenant");
     assert_eq!(denied.resolution, DecisionResolution::Deny);
     assert_eq!(
         denied.consumer.as_ref().expect("consumer").secret_scope[0].resolution,
@@ -653,7 +811,9 @@ fn sandbox_secret_scope_uses_active_tenant_and_fails_closed() {
         principal_id: "prn_b".to_string(),
         ..Default::default()
     };
-    let allowed = dope_identity::tenantctx::with_context(context, || manager.explain(request).expect("explain with tenant"));
+    let allowed = dope_identity::tenantctx::with_context(context, || {
+        manager.explain(request).expect("explain with tenant")
+    });
     assert_eq!(allowed.resolution, DecisionResolution::Allow);
     assert_eq!(
         allowed.consumer.as_ref().expect("consumer").secret_scope[0].resolution,
@@ -676,9 +836,18 @@ fn capture_buffer_truncates() {
 #[test]
 fn redaction_covers_raw_and_derived_values() {
     let variants = derived_secret_variants("top-secret-token");
-    assert!(variants.contains(&"dG9wLXNlY3JldC10b2tlbg==".to_string()), "base64 variant missing");
-    assert!(variants.contains(&hex_encode(b"top-secret-token")), "hex variant missing");
-    assert!(variants.iter().any(|v| v.len() == 32), "md5 variant missing");
+    assert!(
+        variants.contains(&"dG9wLXNlY3JldC10b2tlbg==".to_string()),
+        "base64 variant missing"
+    );
+    assert!(
+        variants.contains(&hex_encode(b"top-secret-token")),
+        "hex variant missing"
+    );
+    assert!(
+        variants.iter().any(|v| v.len() == 32),
+        "md5 variant missing"
+    );
 
     let redacted = redact_secret_text("prefix dG9wLXNlY3JldC10b2tlbg== suffix", &variants);
     assert!(!redacted.contains("dG9wLXNlY3JldC10b2tlbg=="));
@@ -703,7 +872,11 @@ fn approval_matches_execution_matches_sandbox_and_tool_call() {
         resource_id: "subprocess_default".to_string(),
         ..Default::default()
     };
-    assert!(approval_matches_execution(&sandbox_approval, &execution, &profile));
+    assert!(approval_matches_execution(
+        &sandbox_approval,
+        &execution,
+        &profile
+    ));
 
     let tool_approval = dope_policy::Approval {
         approval_id: "approval_2".to_string(),
@@ -712,7 +885,11 @@ fn approval_matches_execution_matches_sandbox_and_tool_call() {
         resource_id: "shell".to_string(),
         ..Default::default()
     };
-    assert!(approval_matches_execution(&tool_approval, &execution, &profile));
+    assert!(approval_matches_execution(
+        &tool_approval,
+        &execution,
+        &profile
+    ));
 
     let unrelated = dope_policy::Approval {
         approval_id: "approval_3".to_string(),
@@ -721,7 +898,9 @@ fn approval_matches_execution_matches_sandbox_and_tool_call() {
         resource_id: "cal".to_string(),
         ..Default::default()
     };
-    assert!(!approval_matches_execution(&unrelated, &execution, &profile));
+    assert!(!approval_matches_execution(
+        &unrelated, &execution, &profile
+    ));
 }
 
 #[test]

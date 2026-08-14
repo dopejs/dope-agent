@@ -16,26 +16,26 @@ use dope_bindings::{
     RuntimeBindingEvidence,
 };
 use dope_chat::{
-    CancellationToken, ChatError, ChatStore, OPENAI_COMPATIBLE_PROVIDER_NAME, QueryInput, QueryResult, Service, StreamChunk,
-    compile_prompt_messages, continuity_source_kind, inject_continuity_messages,
-    response_continuity_source_event_key, terminal_dispatch_event,
+    CancellationToken, ChatError, ChatStore, OPENAI_COMPATIBLE_PROVIDER_NAME, QueryInput,
+    QueryResult, Service, StreamChunk, compile_prompt_messages, continuity_source_kind,
+    inject_continuity_messages, response_continuity_source_event_key, terminal_dispatch_event,
 };
 use dope_events::{Bus, Event, Filter, Scope};
 use dope_llm::{
-    CancelToken, Dispatcher, Dispatch, DispatchStatus, Message, MessageRole, Provider,
+    CancelToken, Dispatch, DispatchStatus, Dispatcher, Message, MessageRole, Provider,
     ProviderError, ProviderRequest, ProviderResponse, StreamEmitter, Usage,
 };
 use dope_profiles::{ActiveSelection, AgentProfile, RuntimeProjection};
 use dope_setupwizard::{
-    RemediationOwner, SafeUseMode, SetupSession, SetupState, SetupStyle, TargetKind,
-    TARGET_OPENAI_COMPATIBLE,
+    RemediationOwner, SafeUseMode, SetupSession, SetupState, SetupStyle, TARGET_OPENAI_COMPATIBLE,
+    TargetKind,
 };
 use dope_threads::{
     ContinuityDecision, ContinuityItemKind, ContinuityMode, ContinuityPreview,
     ContinuityPreviewItem, ContinuityReason, ContinuityRole, ContinuityStatus, ContinuityTurn,
     HandoffLink, HandoffSourceReference, HandoffSourceReferenceDecision,
-    HandoffSourceReferenceEligibility, HandoffSourceReferenceStatus, HandoffStatus,
-    LifecycleState, RedactionStatus, RuntimeArtifactExcerpt, SourceKind, Thread,
+    HandoffSourceReferenceStatus, LifecycleState, RedactionStatus, RuntimeArtifactExcerpt,
+    SourceKind, Thread,
 };
 use futures::future::BoxFuture;
 use parking_lot::RwLock;
@@ -48,19 +48,24 @@ use parking_lot::RwLock;
 #[derive(Clone)]
 struct TestProvider {
     name: String,
-    requests: Arc<RwLock<Vec<ProviderRequest>>>
+    requests: Arc<RwLock<Vec<ProviderRequest>>>,
 }
 
 impl TestProvider {
     fn new(name: &str) -> Self {
-        TestProvider { name: name.to_string(), requests: Arc::new(RwLock::new(Vec::new())) }
+        TestProvider {
+            name: name.to_string(),
+            requests: Arc::new(RwLock::new(Vec::new())),
+        }
     }
 
     fn saw_message(&self, content: &str) -> bool {
-        self.requests
-            .read()
-            .iter()
-            .any(|request| request.messages.iter().any(|message| message.content == content))
+        self.requests.read().iter().any(|request| {
+            request
+                .messages
+                .iter()
+                .any(|message| message.content == content)
+        })
     }
 }
 
@@ -79,7 +84,11 @@ impl Provider for TestProvider {
             Ok(ProviderResponse {
                 output: format!("reply:{}", request.model),
                 finish_reason: "stop".to_string(),
-                usage: Usage { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+                usage: Usage {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    total_tokens: 2,
+                },
             })
         })
     }
@@ -101,13 +110,21 @@ impl Provider for TestProvider {
                 delta: request.model.clone(),
                 output: format!("reply:{}", request.model),
                 finish_reason: "stop".to_string(),
-                usage: Some(Usage { input_tokens: 1, output_tokens: 1, total_tokens: 2 }),
+                usage: Some(Usage {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    total_tokens: 2,
+                }),
                 ..Default::default()
             })?;
             Ok(ProviderResponse {
                 output: format!("reply:{}", request.model),
                 finish_reason: "stop".to_string(),
-                usage: Usage { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+                usage: Usage {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    total_tokens: 2,
+                },
             })
         })
     }
@@ -118,7 +135,7 @@ impl Provider for TestProvider {
 struct SlowProvider {
     name: String,
     delay: Duration,
-    requests: Arc<RwLock<Vec<ProviderRequest>>>
+    requests: Arc<RwLock<Vec<ProviderRequest>>>,
 }
 
 impl Provider for SlowProvider {
@@ -149,7 +166,9 @@ impl Provider for SlowProvider {
         _emit: StreamEmitter<'a>,
     ) -> BoxFuture<'a, Result<ProviderResponse, ProviderError>> {
         Box::pin(async {
-            Err(ProviderError::other("stream not supported by slow provider")),
+            Err(ProviderError::other(
+                "stream not supported by slow provider",
+            ))
         })
     }
 }
@@ -190,11 +209,16 @@ struct FakeStore {
 
 impl FakeStore {
     fn new() -> Arc<Self> {
-        Arc::new(FakeStore { inner: RwLock::new(FakeInner::default()) })
+        Arc::new(FakeStore {
+            inner: RwLock::new(FakeInner::default()),
+        })
     }
 
     fn add_thread(&self, thread: Thread) {
-        self.inner.write().threads.insert(thread_key(&thread.tenant_id, &thread.thread_id), thread);
+        self.inner
+            .write()
+            .threads
+            .insert(thread_key(&thread.tenant_id, &thread.thread_id), thread);
     }
 
     fn add_turn(&self, turn: ContinuityTurn) {
@@ -214,7 +238,10 @@ impl FakeStore {
     }
 
     fn set_capability_visibility(&self, capability_id: &str, decision: CapabilityDecision) {
-        self.inner.write().capability_visibility.insert(capability_id.to_string(), decision);
+        self.inner
+            .write()
+            .capability_visibility
+            .insert(capability_id.to_string(), decision);
     }
 
     fn add_handoff_link(&self, link: HandoffLink) {
@@ -251,7 +278,11 @@ const DEFAULT_TURN_LIMIT: usize = 76;
 impl ChatStore for FakeStore {
     fn upsert_llm_dispatch(&self, dispatch: &Dispatch) -> Result<(), String> {
         let mut inner = self.inner.write();
-        if let Some(existing) = inner.dispatches.iter_mut().find(|d| d.dispatch_id == dispatch.dispatch_id) {
+        if let Some(existing) = inner
+            .dispatches
+            .iter_mut()
+            .find(|d| d.dispatch_id == dispatch.dispatch_id)
+        {
             *existing = dispatch.clone();
         } else {
             inner.dispatches.push(dispatch.clone());
@@ -269,7 +300,12 @@ impl ChatStore for FakeStore {
 
     fn list_setup_sessions(&self, tenant_id: &str) -> Result<Vec<SetupSession>, String> {
         let inner = self.inner.read();
-        Ok(inner.setup_sessions.iter().filter(|s| s.tenant_id == tenant_id).cloned().collect())
+        Ok(inner
+            .setup_sessions
+            .iter()
+            .filter(|s| s.tenant_id == tenant_id)
+            .cloned()
+            .collect())
     }
 
     fn active_agent_profile_selection(
@@ -277,7 +313,10 @@ impl ChatStore for FakeStore {
         tenant_id: &str,
     ) -> Result<Option<(AgentProfile, ActiveSelection)>, String> {
         let inner = self.inner.read();
-        Ok(inner.active_selection.clone().filter(|(profile, _)| profile.tenant_id == tenant_id))
+        Ok(inner
+            .active_selection
+            .clone()
+            .filter(|(profile, _)| profile.tenant_id == tenant_id))
     }
 
     fn record_runtime_profile_projection(
@@ -307,15 +346,19 @@ impl ChatStore for FakeStore {
         capability_id: &str,
     ) -> Result<CapabilityDecision, String> {
         let inner = self.inner.read();
-        Ok(inner.capability_visibility.get(capability_id).cloned().unwrap_or_else(|| CapabilityDecision {
-            capability_id: capability_id.to_string(),
-            effective: EffectiveVisibility::VISIBLE,
-            default_enabled: false,
-            offered: true,
-            executable: true,
-            reason: "default_executable".to_string(),
-            scope: "workspace".to_string(),
-        }))
+        Ok(inner
+            .capability_visibility
+            .get(capability_id)
+            .cloned()
+            .unwrap_or_else(|| CapabilityDecision {
+                capability_id: capability_id.to_string(),
+                effective: EffectiveVisibility::VISIBLE,
+                default_enabled: false,
+                offered: true,
+                executable: true,
+                reason: "default_executable".to_string(),
+                scope: "workspace".to_string(),
+            }))
     }
 
     fn record_runtime_binding_evidence(
@@ -334,7 +377,12 @@ impl ChatStore for FakeStore {
         tenant_id: &str,
         thread_id: &str,
     ) -> Result<Option<Thread>, String> {
-        Ok(self.inner.read().threads.get(&thread_key(tenant_id, thread_id)).cloned())
+        Ok(self
+            .inner
+            .read()
+            .threads
+            .get(&thread_key(tenant_id, thread_id))
+            .cloned())
     }
 
     fn list_continuity_turns(
@@ -343,7 +391,11 @@ impl ChatStore for FakeStore {
     ) -> Result<Vec<ContinuityTurn>, String> {
         let inner = self.inner.read();
         let now = query.now.unwrap_or_else(Utc::now);
-        let limit = if query.limit <= 0 { DEFAULT_TURN_LIMIT } else { query.limit as usize };
+        let limit = if query.limit <= 0 {
+            DEFAULT_TURN_LIMIT
+        } else {
+            query.limit as usize
+        };
         let mut items: Vec<ContinuityTurn> = inner
             .turns
             .iter()
@@ -352,7 +404,10 @@ impl ChatStore for FakeStore {
                     && turn.thread_id == query.thread_id
                     && turn.session_segment_id == query.session_segment_id
             })
-            .filter(|turn| turn.retention_expires_at.is_some_and(|expires| expires >= now))
+            .filter(|turn| {
+                turn.retention_expires_at
+                    .is_some_and(|expires| expires >= now)
+            })
             .cloned()
             .collect();
         items.sort_by(|a, b| b.acceptance_sequence.cmp(&a.acceptance_sequence));
@@ -366,7 +421,11 @@ impl ChatStore for FakeStore {
     ) -> Result<Vec<ContinuityTurn>, String> {
         let inner = self.inner.read();
         let now = query.now.unwrap_or_else(Utc::now);
-        let limit = if query.limit <= 0 { DEFAULT_TURN_LIMIT } else { query.limit as usize };
+        let limit = if query.limit <= 0 {
+            DEFAULT_TURN_LIMIT
+        } else {
+            query.limit as usize
+        };
         let mut items: Vec<ContinuityTurn> = inner
             .turns
             .iter()
@@ -375,7 +434,10 @@ impl ChatStore for FakeStore {
                     && turn.thread_id == query.thread_id
                     && turn.session_segment_id != query.session_segment_id
             })
-            .filter(|turn| turn.retention_expires_at.is_some_and(|expires| expires >= now))
+            .filter(|turn| {
+                turn.retention_expires_at
+                    .is_some_and(|expires| expires >= now)
+            })
             .cloned()
             .collect();
         items.sort_by(|a, b| b.acceptance_sequence.cmp(&a.acceptance_sequence));
@@ -411,15 +473,14 @@ impl ChatStore for FakeStore {
         Ok(inner
             .handoff_refs
             .iter()
-            .filter(|reference| reference.tenant_id == tenant_id && reference.handoff_link_id == link_id)
+            .filter(|reference| {
+                reference.tenant_id == tenant_id && reference.handoff_link_id == link_id
+            })
             .cloned()
             .collect())
     }
 
-    fn save_continuity_turn(
-        &self,
-        turn: &ContinuityTurn,
-    ) -> Result<ContinuityTurn, String> {
+    fn save_continuity_turn(&self, turn: &ContinuityTurn) -> Result<ContinuityTurn, String> {
         let mut inner = self.inner.write();
         let now = Utc::now();
         let mut out = turn.clone();
@@ -510,7 +571,8 @@ impl ChatStore for FakeStore {
             out.assembly_completed_at = now;
         }
         if out.assembly_duration_ms == 0 {
-            out.assembly_duration_ms = (out.assembly_completed_at - out.assembly_started_at).num_milliseconds();
+            out.assembly_duration_ms =
+                (out.assembly_completed_at - out.assembly_started_at).num_milliseconds();
         }
         if out.retention_expires_at == DateTime::<Utc>::UNIX_EPOCH {
             out.retention_expires_at = out.assembly_completed_at + chrono::Duration::days(90);
@@ -558,8 +620,12 @@ fn skill_registry() -> Arc<dope_skills::Registry> {
         "description: \"data skill\"",
         "---",
         "data instructions",
-    ].join("\n");
-    write_file(&data.path().join("skills").join("shared").join("SKILL.md"), &skill);
+    ]
+    .join("\n");
+    write_file(
+        &data.path().join("skills").join("shared").join("SKILL.md"),
+        &skill,
+    );
     let registry = dope_skills::Registry::with_roots(
         &home.path().join(".agents").to_string_lossy(),
         data.path().to_str().expect("data path"),
@@ -664,7 +730,10 @@ fn query_returns_selected_skill_contracts_and_events() {
                 model: "model-a".to_string(),
                 skills: vec!["shared".to_string()],
                 query: "hello".to_string(),
-                scope: Scope { run_id: "run_1".to_string(), ..Scope::default() },
+                scope: Scope {
+                    run_id: "run_1".to_string(),
+                    ..Scope::default()
+                },
                 ..QueryInput::default()
             },
             &CancellationToken::new(),
@@ -673,7 +742,11 @@ fn query_returns_selected_skill_contracts_and_events() {
     assert!(execution.exec_error.is_none());
     let result = execution.result;
     assert_eq!(result.skills, vec!["shared".to_string()]);
-    assert_eq!(result.skill_contracts.len(), 1, "expected one selected skill contract");
+    assert_eq!(
+        result.skill_contracts.len(),
+        1,
+        "expected one selected skill contract"
+    );
     let declaration = result.skill_contracts[0]
         .get("declaration")
         .expect("declaration payload")
@@ -683,8 +756,15 @@ fn query_returns_selected_skill_contracts_and_events() {
     assert_eq!(declaration["consumerId"], "shared");
     assert_eq!(declaration["operationKind"], "skill_selection");
 
-    let llm_events = bus.list(&Filter { category: "llm".to_string(), ..Filter::default() });
-    assert_eq!(llm_events.len(), 2, "expected requested and terminal llm events");
+    let llm_events = bus.list(&Filter {
+        category: "llm".to_string(),
+        ..Filter::default()
+    });
+    assert_eq!(
+        llm_events.len(),
+        2,
+        "expected requested and terminal llm events"
+    );
     assert!(llm_events[0].payload.contains_key("skillContracts"));
     assert_eq!(llm_events[0].name, "llm.dispatch.requested");
     assert_eq!(llm_events[1].name, "llm.dispatch.completed");
@@ -725,11 +805,18 @@ fn query_blocks_openai_compatible_when_setup_session_blocks_dependent_use() {
 
     let err = svc
         .query(
-            QueryInput { tenant_id: "ten_chat_setup".to_string(), query: "hello".to_string(), ..QueryInput::default() },
+            QueryInput {
+                tenant_id: "ten_chat_setup".to_string(),
+                query: "hello".to_string(),
+                ..QueryInput::default()
+            },
             &CancellationToken::new(),
         )
         .expect_err("setup gate must block");
-    assert_eq!(err, ChatError::ProviderAuthUnavailable("credential_missing".to_string()));
+    assert_eq!(
+        err,
+        ChatError::ProviderAuthUnavailable("credential_missing".to_string())
+    );
 }
 
 /// Go `TestQueryFailsClosedOnRepairRequiredBinding` semantics (FR-031):
@@ -740,7 +827,11 @@ fn query_fails_closed_on_repair_required_binding() {
     let dispatcher = new_dispatcher(Arc::new(provider));
     let store = FakeStore::new();
     store.set_active_selection(
-        AgentProfile { tenant_id: "ten_1".to_string(), profile_id: "prof_1".to_string(), ..AgentProfile::default() },
+        AgentProfile {
+            tenant_id: "ten_1".to_string(),
+            profile_id: "prof_1".to_string(),
+            ..AgentProfile::default()
+        },
         ActiveSelection::default(),
     );
     store.set_binding_resolution(EffectiveBindingSelection {
@@ -776,7 +867,10 @@ fn query_fails_closed_on_repair_required_binding() {
     ));
     // FR-031: durable runtime evidence was recorded for the blocked work.
     assert_eq!(store.binding_evidence().len(), 1);
-    let binding_events = bus.list(&Filter { category: "binding".to_string(), ..Filter::default() });
+    let binding_events = bus.list(&Filter {
+        category: "binding".to_string(),
+        ..Filter::default()
+    });
     assert_eq!(binding_events.len(), 1);
     assert_eq!(binding_events[0].name, "binding.runtime_projected");
 }
@@ -790,7 +884,11 @@ fn query_blocks_hidden_capability_under_binding() {
     let registry = skill_registry();
     let store = FakeStore::new();
     store.set_active_selection(
-        AgentProfile { tenant_id: "ten_1".to_string(), profile_id: "prof_1".to_string(), ..AgentProfile::default() },
+        AgentProfile {
+            tenant_id: "ten_1".to_string(),
+            profile_id: "prof_1".to_string(),
+            ..AgentProfile::default()
+        },
         ActiveSelection::default(),
     );
     store.set_binding_resolution(EffectiveBindingSelection {
@@ -811,7 +909,11 @@ fn query_blocks_hidden_capability_under_binding() {
             scope: "workspace".to_string(),
         },
     );
-    let svc = service(dispatcher, Some(registry), Some(store.clone() as Arc<dyn ChatStore>));
+    let svc = service(
+        dispatcher,
+        Some(registry),
+        Some(store.clone() as Arc<dyn ChatStore>),
+    );
     let err = svc
         .query(
             QueryInput {
@@ -840,7 +942,11 @@ fn query_records_profile_projection_and_binding_evidence() {
     let dispatcher = new_dispatcher(Arc::new(provider));
     let store = FakeStore::new();
     store.set_active_selection(
-        AgentProfile { tenant_id: "ten_1".to_string(), profile_id: "prof_1".to_string(), ..AgentProfile::default() },
+        AgentProfile {
+            tenant_id: "ten_1".to_string(),
+            profile_id: "prof_1".to_string(),
+            ..AgentProfile::default()
+        },
         ActiveSelection::default(),
     );
     store.set_binding_resolution(EffectiveBindingSelection {
@@ -872,11 +978,16 @@ fn query_records_profile_projection_and_binding_evidence() {
     assert!(execution.exec_error.is_none());
     assert_eq!(store.profile_projections().len(), 1);
     assert_eq!(store.binding_evidence().len(), 1);
-    let profile_events =
-        bus.list(&Filter { category: "agent_profile".to_string(), ..Filter::default() });
+    let profile_events = bus.list(&Filter {
+        category: "agent_profile".to_string(),
+        ..Filter::default()
+    });
     assert_eq!(profile_events.len(), 1);
     assert_eq!(profile_events[0].name, "agent_profile.runtime_projected");
-    let binding_events = bus.list(&Filter { category: "binding".to_string(), ..Filter::default() });
+    let binding_events = bus.list(&Filter {
+        category: "binding".to_string(),
+        ..Filter::default()
+    });
     assert_eq!(binding_events.len(), 1);
     assert_eq!(binding_events[0].name, "binding.runtime_projected");
 }
@@ -915,8 +1026,22 @@ fn query_assembles_bounded_current_segment_continuity() {
         Case {
             name: "within-limit",
             seed: vec![
-                continuity_turn("turn_1", "seg_1", 1, ContinuityRole::User, "prior user", now),
-                continuity_turn("turn_2", "seg_1", 2, ContinuityRole::Assistant, "prior assistant", now + chrono::Duration::minutes(1)),
+                continuity_turn(
+                    "turn_1",
+                    "seg_1",
+                    1,
+                    ContinuityRole::User,
+                    "prior user",
+                    now,
+                ),
+                continuity_turn(
+                    "turn_2",
+                    "seg_1",
+                    2,
+                    ContinuityRole::Assistant,
+                    "prior assistant",
+                    now + chrono::Duration::minutes(1),
+                ),
             ],
             want_status: ContinuityStatus::Applied,
             want_applied: true,
@@ -928,7 +1053,16 @@ fn query_assembles_bounded_current_segment_continuity() {
         Case {
             name: "over-limit",
             seed: (1..=14)
-                .map(|i| continuity_turn(&format!("turn_{i:02}"), "seg_1", i, ContinuityRole::User, &format!("prior-{i:02}"), now + chrono::Duration::minutes(i)))
+                .map(|i| {
+                    continuity_turn(
+                        &format!("turn_{i:02}"),
+                        "seg_1",
+                        i,
+                        ContinuityRole::User,
+                        &format!("prior-{i:02}"),
+                        now + chrono::Duration::minutes(i),
+                    )
+                })
                 .collect(),
             want_status: ContinuityStatus::Applied,
             want_applied: true,
@@ -940,7 +1074,14 @@ fn query_assembles_bounded_current_segment_continuity() {
         Case {
             name: "age-limited",
             seed: vec![
-                continuity_turn("turn_old", "seg_1", 1, ContinuityRole::User, "too old", now - chrono::Duration::days(31)),
+                continuity_turn(
+                    "turn_old",
+                    "seg_1",
+                    1,
+                    ContinuityRole::User,
+                    "too old",
+                    now - chrono::Duration::days(31),
+                ),
                 continuity_turn("turn_new", "seg_1", 2, ContinuityRole::User, "fresh", now),
             ],
             want_status: ContinuityStatus::Applied,
@@ -953,8 +1094,22 @@ fn query_assembles_bounded_current_segment_continuity() {
         Case {
             name: "current-segment-only",
             seed: vec![
-                continuity_turn("turn_other", "seg_old", 1, ContinuityRole::User, "old segment", now),
-                continuity_turn("turn_current", "seg_1", 2, ContinuityRole::User, "current segment", now),
+                continuity_turn(
+                    "turn_other",
+                    "seg_old",
+                    1,
+                    ContinuityRole::User,
+                    "old segment",
+                    now,
+                ),
+                continuity_turn(
+                    "turn_current",
+                    "seg_1",
+                    2,
+                    ContinuityRole::User,
+                    "current segment",
+                    now,
+                ),
             ],
             want_status: ContinuityStatus::Applied,
             want_applied: true,
@@ -989,18 +1144,47 @@ fn query_assembles_bounded_current_segment_continuity() {
             .expect("query");
         assert!(execution.exec_error.is_none(), "case {}", case.name);
         let result = execution.result;
-        assert_eq!(result.continuity_status, Some(case.want_status), "case {}", case.name);
-        assert_eq!(result.continuity_applied, case.want_applied, "case {}", case.name);
-        assert_eq!(result.continuity_included_count, case.want_included, "case {}", case.name);
-        assert_eq!(result.continuity_excluded_count, case.want_excluded, "case {}", case.name);
+        assert_eq!(
+            result.continuity_status,
+            Some(case.want_status),
+            "case {}",
+            case.name
+        );
+        assert_eq!(
+            result.continuity_applied, case.want_applied,
+            "case {}",
+            case.name
+        );
+        assert_eq!(
+            result.continuity_included_count, case.want_included,
+            "case {}",
+            case.name
+        );
+        assert_eq!(
+            result.continuity_excluded_count, case.want_excluded,
+            "case {}",
+            case.name
+        );
         assert!(!result.request_turn_id.is_empty(), "case {}", case.name);
         assert!(!result.response_turn_id.is_empty(), "case {}", case.name);
-        assert!(!result.continuity_preview_id.is_empty(), "case {}", case.name);
+        assert!(
+            !result.continuity_preview_id.is_empty(),
+            "case {}",
+            case.name
+        );
         for content in &case.want_contains {
-            assert!(provider.saw_message(content), "case {} missing {content:?}", case.name);
+            assert!(
+                provider.saw_message(content),
+                "case {} missing {content:?}",
+                case.name
+            );
         }
         for content in &case.want_not_contains {
-            assert!(!provider.saw_message(content), "case {} saw {content:?}", case.name);
+            assert!(
+                !provider.saw_message(content),
+                "case {} saw {content:?}",
+                case.name
+            );
         }
     }
 }
@@ -1023,7 +1207,14 @@ fn query_records_reset_boundary_exclusions() {
         retention_expires_at: Some(now + chrono::Duration::days(90)),
         redaction_status: RedactionStatus::Redacted,
     });
-    store.add_turn(continuity_turn("turn_pre_reset", "seg_old", 1, ContinuityRole::User, "pre reset context", now));
+    store.add_turn(continuity_turn(
+        "turn_pre_reset",
+        "seg_old",
+        1,
+        ContinuityRole::User,
+        "pre reset context",
+        now,
+    ));
     let provider = TestProvider::new("continuity-reset");
     let dispatcher = new_dispatcher(Arc::new(provider.clone()));
     let svc = service(dispatcher, None, Some(store.clone() as Arc<dyn ChatStore>));
@@ -1058,7 +1249,14 @@ fn query_injects_safe_artifact_excerpts_and_preview_evidence() {
     let now = Utc::now();
     let store = FakeStore::new();
     seed_continuity_thread(&store, now);
-    let mut turn = continuity_turn("turn_with_artifact", "seg_1", 1, ContinuityRole::User, "prior user", now);
+    let mut turn = continuity_turn(
+        "turn_with_artifact",
+        "seg_1",
+        1,
+        ContinuityRole::User,
+        "prior user",
+        now,
+    );
     turn.artifact_excerpt_refs = vec![RuntimeArtifactExcerpt {
         artifact_excerpt_id: "artex_1".to_string(),
         tenant_id: "ten_1".to_string(),
@@ -1129,7 +1327,10 @@ fn query_suppresses_unsafe_continuity_content() {
         .find(|turn| turn.continuity_turn_id == result.request_turn_id)
         .expect("request turn persisted");
     assert_eq!(request_turn.safe_content, "suppressed");
-    assert_eq!(request_turn.content_redaction_status, RedactionStatus::Suppressed);
+    assert_eq!(
+        request_turn.content_redaction_status,
+        RedactionStatus::Suppressed
+    );
 }
 
 /// Go `TestQueryDeduplicatesConnectorSourceEventRequestAndResponseTurns`.
@@ -1154,9 +1355,15 @@ fn query_deduplicates_connector_source_event_request_and_response_turns() {
         source_event_key: "connector:delivery_1".to_string(),
         ..QueryInput::default()
     };
-    svc.query(input.clone(), &CancellationToken::new()).expect("first query");
-    svc.query(input, &CancellationToken::new()).expect("second query");
-    assert_eq!(store.turns().len(), 2, "duplicate connector event keeps one request/response pair");
+    svc.query(input.clone(), &CancellationToken::new())
+        .expect("first query");
+    svc.query(input, &CancellationToken::new())
+        .expect("second query");
+    assert_eq!(
+        store.turns().len(),
+        2,
+        "duplicate connector event keeps one request/response pair"
+    );
 }
 
 // ------------------------------------------------------------------------
@@ -1190,13 +1397,24 @@ fn stream_emits_selected_skill_contracts_on_chunks() {
     assert!(execution.exec_error.is_none());
     assert_eq!(chunks.len(), 2, "expected two stream chunks");
     for chunk in &chunks {
-        assert_eq!(chunk.skill_contracts.len(), 1, "expected skill contracts on each chunk");
-        assert_eq!(chunk.delta.len() > 0, true);
+        assert_eq!(
+            chunk.skill_contracts.len(),
+            1,
+            "expected skill contracts on each chunk"
+        );
+        assert!(!chunk.delta.is_empty());
     }
     assert_eq!(execution.result.skill_contracts.len(), 1);
     assert_eq!(chunks[0].reply, "reply:");
     assert_eq!(chunks[1].reply, "reply:model-b");
-    assert_eq!(chunks[1].usage, Some(Usage { input_tokens: 1, output_tokens: 1, total_tokens: 2 }));
+    assert_eq!(
+        chunks[1].usage,
+        Some(Usage {
+            input_tokens: 1,
+            output_tokens: 1,
+            total_tokens: 2
+        })
+    );
 }
 
 /// Thread + mpsc streaming variant: chunks arrive on the receiver and the
@@ -1224,7 +1442,10 @@ fn stream_channel_emits_chunks_over_mpsc() {
         chunks.push(chunk);
     }
     assert_eq!(chunks.len(), 2, "expected two stream chunks over mpsc");
-    let execution = handle.join().expect("stream thread panicked").expect("stream execution");
+    let execution = handle
+        .join()
+        .expect("stream thread panicked")
+        .expect("stream execution");
     assert!(execution.exec_error.is_none());
     assert_eq!(execution.result.dispatch.status, DispatchStatus::Completed);
 }
@@ -1248,8 +1469,13 @@ fn query_returns_dispatch_cancelled_when_token_killed() {
     });
     std::thread::sleep(Duration::from_millis(80));
     cancel.kill();
-    let execution = handle.join().expect("query thread panicked").expect("query returns execution");
-    let exec_error = execution.exec_error.expect("exec error expected on cancellation");
+    let execution = handle
+        .join()
+        .expect("query thread panicked")
+        .expect("query returns execution");
+    let exec_error = execution
+        .exec_error
+        .expect("exec error expected on cancellation");
     assert!(matches!(exec_error, ChatError::Dispatch(_)));
     assert_eq!(execution.result.dispatch.status, DispatchStatus::Cancelled);
     let persisted = store.dispatches();
@@ -1299,12 +1525,19 @@ fn sqlite_store_adapter_ports_dispatch_and_defers_continuity() {
         dispatch_id: "d_1".to_string(),
         provider: "echo".to_string(),
         model: "m".to_string(),
-        messages: vec![Message { role: MessageRole::User, content: "hi".to_string() }],
+        messages: vec![Message {
+            role: MessageRole::User,
+            content: "hi".to_string(),
+        }],
         stream: false,
         status: DispatchStatus::Completed,
         output: "hello".to_string(),
         finish_reason: "stop".to_string(),
-        usage: Usage { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        usage: Usage {
+            input_tokens: 1,
+            output_tokens: 1,
+            total_tokens: 2,
+        },
         error_code: String::new(),
         error: String::new(),
         timeout_ms: 30_000,
@@ -1316,8 +1549,13 @@ fn sqlite_store_adapter_ports_dispatch_and_defers_continuity() {
         started_at: Some(now),
         completed_at: Some(now),
     };
-    store.upsert_llm_dispatch(&dispatch).expect("upsert dispatch");
-    let got = store.get_llm_dispatch("d_1").expect("get dispatch").expect("found");
+    store
+        .upsert_llm_dispatch(&dispatch)
+        .expect("upsert dispatch");
+    let got = store
+        .get_llm_dispatch("d_1")
+        .expect("get dispatch")
+        .expect("found");
     assert_eq!(got, dispatch);
 
     // The un-ported store surface fails explicitly instead of degrading.
@@ -1327,7 +1565,14 @@ fn sqlite_store_adapter_ports_dispatch_and_defers_continuity() {
         .expect_err("deferred method errors");
     assert!(err.contains("not ported to dope-store"), "{err}");
     let err = chat_store
-        .save_continuity_turn(&continuity_turn("t", "seg", 1, ContinuityRole::User, "x", now))
+        .save_continuity_turn(&continuity_turn(
+            "t",
+            "seg",
+            1,
+            ContinuityRole::User,
+            "x",
+            now,
+        ))
         .expect_err("deferred method errors");
     assert!(err.contains("save_continuity_turn"), "{err}");
 }
@@ -1348,7 +1593,10 @@ fn query_input_round_trips_camel_case_wire() {
         tenant_id: "ten_1".to_string(),
         thread_id: "thr_1".to_string(),
         continuity_mode: Some(ContinuityMode::Disabled),
-        scope: Scope { run_id: "run_1".to_string(), ..Scope::default() },
+        scope: Scope {
+            run_id: "run_1".to_string(),
+            ..Scope::default()
+        },
         source_kind: Some(SourceKind::Channel),
         source_linkage_id: "src_1".to_string(),
         source_message_id: "msg_1".to_string(),
@@ -1375,12 +1623,19 @@ fn query_result_round_trips_with_dispatch() {
         dispatch_id: "d_1".to_string(),
         provider: "echo".to_string(),
         model: "m".to_string(),
-        messages: vec![Message { role: MessageRole::User, content: "hi".to_string() }],
+        messages: vec![Message {
+            role: MessageRole::User,
+            content: "hi".to_string(),
+        }],
         stream: true,
         status: DispatchStatus::Completed,
         output: "hello".to_string(),
         finish_reason: "stop".to_string(),
-        usage: Usage { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        usage: Usage {
+            input_tokens: 1,
+            output_tokens: 1,
+            total_tokens: 2,
+        },
         error_code: String::new(),
         error: String::new(),
         timeout_ms: 30_000,
@@ -1395,10 +1650,12 @@ fn query_result_round_trips_with_dispatch() {
     let result = QueryResult {
         query: "hello".to_string(),
         skills: vec!["shared".to_string()],
-        skill_contracts: vec![serde_json::json!({"declaration": {"consumerKind": "skill"}})
-            .as_object()
-            .expect("object")
-            .clone()],
+        skill_contracts: vec![
+            serde_json::json!({"declaration": {"consumerKind": "skill"}})
+                .as_object()
+                .expect("object")
+                .clone(),
+        ],
         dispatch,
         thread_id: "thr_1".to_string(),
         session_segment_id: "seg_1".to_string(),
@@ -1428,7 +1685,11 @@ fn stream_chunk_round_trips_camel_case_wire() {
         delta: "hi".to_string(),
         reply: "hi".to_string(),
         finish_reason: "stop".to_string(),
-        usage: Some(Usage { input_tokens: 1, output_tokens: 1, total_tokens: 2 }),
+        usage: Some(Usage {
+            input_tokens: 1,
+            output_tokens: 1,
+            total_tokens: 2,
+        }),
         thread_id: "thr".to_string(),
         session_segment_id: "seg".to_string(),
         request_turn_id: "turn".to_string(),
@@ -1468,8 +1729,18 @@ fn compile_prompt_messages_lays_out_overlays_skills_and_query() {
     assert_eq!(messages[0].content, "Agent overlay (data_dir):\nbe helpful");
     assert!(messages[1].content.starts_with("Skill: shared"));
     assert!(messages[1].content.contains("Description: data skill"));
-    assert!(messages[1].content.contains("Instructions:\ndata instructions"));
-    assert_eq!(messages[2], Message { role: MessageRole::User, content: "hello".to_string() });
+    assert!(
+        messages[1]
+            .content
+            .contains("Instructions:\ndata instructions")
+    );
+    assert_eq!(
+        messages[2],
+        Message {
+            role: MessageRole::User,
+            content: "hello".to_string()
+        }
+    );
 }
 
 #[test]
@@ -1477,13 +1748,25 @@ fn inject_continuity_messages_inserts_before_first_user_message() {
     let now = Utc::now();
     let turn = continuity_turn("t1", "seg", 1, ContinuityRole::User, "prior", now);
     let base = vec![
-        Message { role: MessageRole::System, content: "sys".to_string() },
-        Message { role: MessageRole::User, content: "current".to_string() },
+        Message {
+            role: MessageRole::System,
+            content: "sys".to_string(),
+        },
+        Message {
+            role: MessageRole::User,
+            content: "current".to_string(),
+        },
     ];
     let out = inject_continuity_messages(&base, &[turn]);
     assert_eq!(out.len(), 3);
     assert_eq!(out[0], base[0]);
-    assert_eq!(out[1], Message { role: MessageRole::User, content: "prior".to_string() });
+    assert_eq!(
+        out[1],
+        Message {
+            role: MessageRole::User,
+            content: "prior".to_string()
+        }
+    );
     assert_eq!(out[2], base[1]);
 }
 
@@ -1511,29 +1794,65 @@ fn terminal_dispatch_event_names_match_go() {
         started_at: None,
         completed_at: None,
     };
-    let with_status = |status| Dispatch { status, ..base.clone() };
-    assert_eq!(terminal_dispatch_event(&with_status(DispatchStatus::Completed)), "llm.dispatch.completed");
-    assert_eq!(terminal_dispatch_event(&with_status(DispatchStatus::PartialFailed)), "llm.dispatch.partial_failed");
-    assert_eq!(terminal_dispatch_event(&with_status(DispatchStatus::Failed)), "llm.dispatch.failed");
-    assert_eq!(terminal_dispatch_event(&with_status(DispatchStatus::Cancelled)), "llm.dispatch.cancelled");
+    let with_status = |status| Dispatch {
+        status,
+        ..base.clone()
+    };
+    assert_eq!(
+        terminal_dispatch_event(&with_status(DispatchStatus::Completed)),
+        "llm.dispatch.completed"
+    );
+    assert_eq!(
+        terminal_dispatch_event(&with_status(DispatchStatus::PartialFailed)),
+        "llm.dispatch.partial_failed"
+    );
+    assert_eq!(
+        terminal_dispatch_event(&with_status(DispatchStatus::Failed)),
+        "llm.dispatch.failed"
+    );
+    assert_eq!(
+        terminal_dispatch_event(&with_status(DispatchStatus::Cancelled)),
+        "llm.dispatch.cancelled"
+    );
 }
 
 #[test]
 fn continuity_source_kind_normalizes_unknown_to_chat() {
     assert_eq!(continuity_source_kind(None), SourceKind::Chat);
-    assert_eq!(continuity_source_kind(Some(SourceKind::Chat)), SourceKind::Chat);
-    assert_eq!(continuity_source_kind(Some(SourceKind::Channel)), SourceKind::Channel);
-    assert_eq!(continuity_source_kind(Some(SourceKind::Workflow)), SourceKind::Workflow);
-    assert_eq!(continuity_source_kind(Some(SourceKind::Schedule)), SourceKind::Schedule);
-    assert_eq!(continuity_source_kind(Some(SourceKind::Shell)), SourceKind::Shell);
-    assert_eq!(continuity_source_kind(Some(SourceKind::Legacy)), SourceKind::Legacy);
+    assert_eq!(
+        continuity_source_kind(Some(SourceKind::Chat)),
+        SourceKind::Chat
+    );
+    assert_eq!(
+        continuity_source_kind(Some(SourceKind::Channel)),
+        SourceKind::Channel
+    );
+    assert_eq!(
+        continuity_source_kind(Some(SourceKind::Workflow)),
+        SourceKind::Workflow
+    );
+    assert_eq!(
+        continuity_source_kind(Some(SourceKind::Schedule)),
+        SourceKind::Schedule
+    );
+    assert_eq!(
+        continuity_source_kind(Some(SourceKind::Shell)),
+        SourceKind::Shell
+    );
+    assert_eq!(
+        continuity_source_kind(Some(SourceKind::Legacy)),
+        SourceKind::Legacy
+    );
 }
 
 #[test]
 fn response_continuity_source_event_key_appends_assistant_suffix() {
     assert_eq!(response_continuity_source_event_key(""), "");
     assert_eq!(response_continuity_source_event_key("  "), "");
-    assert_eq!(response_continuity_source_event_key("connector:delivery_1"), "connector:delivery_1:assistant");
+    assert_eq!(
+        response_continuity_source_event_key("connector:delivery_1"),
+        "connector:delivery_1:assistant"
+    );
 }
 
 fn blocked_openai_setup_session() -> SetupSession {
@@ -1570,4 +1889,3 @@ fn blocked_openai_setup_session() -> SetupSession {
         unsupported_reason_code: String::new(),
     }
 }
-

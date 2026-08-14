@@ -31,8 +31,10 @@ pub mod secret_scope;
 mod tenancy;
 pub mod workflow;
 
+pub use consumer_policy::ConsumerPolicyRecordRecord;
 pub use manager_documents::{delete_document, list_documents, put_document, ManagerDocument};
 pub use records::SandboxExecutionRecord;
+pub use secret_scope::SecretScopeBindingRecord;
 
 /// The production schema head. The full 55-version migration list is added incrementally.
 pub const CURRENT_SCHEMA_VERSION: i64 = 55;

@@ -23,6 +23,7 @@ uuid = { workspace = true, features = ["v4"] }
 tokio = { workspace = true, features = ["rt", "time"] }
 
 [dev-dependencies]
+dope-config.workspace = true
 futures.workspace = true
 tempfile = "3"
 serde_json.workspace = true

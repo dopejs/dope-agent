@@ -17,8 +17,8 @@ use dope_llm::Dispatch;
 use dope_profiles::{ActiveSelection, AgentProfile, RuntimeProjection};
 use dope_setupwizard::SetupSession;
 use dope_threads::{
-    ContinuityPreview, ContinuityPreviewItem, ContinuityTurn, HandoffLink,
-    HandoffSourceReference, Thread,
+    ContinuityPreview, ContinuityPreviewItem, ContinuityTurn, HandoffLink, HandoffSourceReference,
+    Thread,
 };
 
 /// Go `store.ContinuityLookupQuery`. A `now` of `None` maps to Go's zero
@@ -102,10 +102,7 @@ pub trait ChatStore: Send + Sync {
         tenant_id: &str,
         link_id: &str,
     ) -> Result<Vec<HandoffSourceReference>, String>;
-    fn save_continuity_turn(
-        &self,
-        turn: &ContinuityTurn,
-    ) -> Result<ContinuityTurn, String>;
+    fn save_continuity_turn(&self, turn: &ContinuityTurn) -> Result<ContinuityTurn, String>;
     fn mark_handoff_source_references_consumed(
         &self,
         tenant_id: &str,
@@ -201,10 +198,7 @@ impl ChatStore for dope_store::SQLiteStore {
     ) -> Result<Vec<HandoffSourceReference>, String> {
         Err(deferred("list_handoff_source_references_for_link"))
     }
-    fn save_continuity_turn(
-        &self,
-        _turn: &ContinuityTurn,
-    ) -> Result<ContinuityTurn, String> {
+    fn save_continuity_turn(&self, _turn: &ContinuityTurn) -> Result<ContinuityTurn, String> {
         Err(deferred("save_continuity_turn"))
     }
     fn mark_handoff_source_references_consumed(

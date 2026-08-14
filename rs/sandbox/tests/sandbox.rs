@@ -1,7 +1,7 @@
 use chrono::Utc;
 use dope_sandbox::{
-    is_terminal, AccessRequest, BackendKind, Decision, DecisionResolution, ErrorClass,
-    Execution, ExecutionStatus, FilesystemMode, NetworkMode, Profile, Result as SandboxResult,
+    AccessRequest, BackendKind, Decision, DecisionResolution, ErrorClass, Execution,
+    ExecutionStatus, FilesystemMode, NetworkMode, Profile, Result as SandboxResult, is_terminal,
 };
 
 #[test]
@@ -25,7 +25,10 @@ fn profile_roundtrips_camel_case() {
         profile_id: "p1".to_string(),
         title: "Subprocess".to_string(),
         backend_kind: BackendKind::Subprocess,
-        filesystem_policy: dope_sandbox::FilesystemPolicy { mode: FilesystemMode::Scoped, ..Default::default() },
+        filesystem_policy: dope_sandbox::FilesystemPolicy {
+            mode: FilesystemMode::Scoped,
+            ..Default::default()
+        },
         ..Profile::default()
     };
     let json = serde_json::to_string(&profile).unwrap();
@@ -56,7 +59,10 @@ fn execution_roundtrips_camel_case() {
         scope: "tool_call".to_string(),
         approval_id: "".to_string(),
         reason: "round trip".to_string(),
-        metadata: std::collections::HashMap::from([("managedProviderId".to_string(), "claude".to_string())]),
+        metadata: std::collections::HashMap::from([(
+            "managedProviderId".to_string(),
+            "claude".to_string(),
+        )]),
         access: AccessRequest {
             read_roots: vec!["/tmp".to_string()],
             write_roots: vec!["/tmp".to_string()],
@@ -100,7 +106,10 @@ fn execution_roundtrips_camel_case() {
     assert_eq!(back.status, ExecutionStatus::Completed);
     assert_eq!(back.decision.resolution, DecisionResolution::Allow);
     assert_eq!(back.result.stdout, "hello");
-    assert_eq!(back.metadata.get("managedProviderId").map(|v| v.as_str()), Some("claude"));
+    assert_eq!(
+        back.metadata.get("managedProviderId").map(|v| v.as_str()),
+        Some("claude")
+    );
     // Terminal status survives the round trip.
     assert!(is_terminal(back.status));
 }

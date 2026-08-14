@@ -9,7 +9,7 @@ use dope_events::{Event, Resource, Scope};
 use dope_llm::DispatchStatus;
 use dope_profiles::RuntimeProjection;
 use dope_threads::{ContinuityPreview, ContinuityStatus, ContinuityTurn, RedactionStatus};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Go `events.ThreadContinuityTurnRecordedName`.
 pub const THREAD_CONTINUITY_TURN_RECORDED_NAME: &str = "thread.continuity_turn_recorded";
@@ -85,14 +85,25 @@ pub(crate) fn normalize_event(mut event: Event) -> Event {
 /// Go `events.ThreadContinuityTurnRecordedEvent`.
 #[must_use]
 pub fn thread_continuity_turn_recorded_event(turn: &ContinuityTurn, outcome: &str) -> Event {
-    let outcome = if outcome.is_empty() { "recorded" } else { outcome };
-    let occurred_at = if turn.recorded_at == DateTime::<Utc>::UNIX_EPOCH { Utc::now() } else { turn.recorded_at };
+    let outcome = if outcome.is_empty() {
+        "recorded"
+    } else {
+        outcome
+    };
+    let occurred_at = if turn.recorded_at == DateTime::<Utc>::UNIX_EPOCH {
+        Utc::now()
+    } else {
+        turn.recorded_at
+    };
     Event {
         tenant_id: turn.tenant_id.clone(),
         category: "thread".to_string(),
         name: THREAD_CONTINUITY_TURN_RECORDED_NAME.to_string(),
         occurred_at,
-        scope: Scope { session_id: turn.session_segment_id.clone(), ..Scope::default() },
+        scope: Scope {
+            session_id: turn.session_segment_id.clone(),
+            ..Scope::default()
+        },
         resource: Resource {
             kind: "thread_continuity_turn".to_string(),
             id: turn.continuity_turn_id.clone(),
@@ -126,7 +137,10 @@ pub fn thread_continuity_preview_recorded_event(preview: &ContinuityPreview) -> 
         category: "thread".to_string(),
         name: THREAD_CONTINUITY_PREVIEW_RECORDED_NAME.to_string(),
         occurred_at,
-        scope: Scope { session_id: preview.session_segment_id.clone(), ..Scope::default() },
+        scope: Scope {
+            session_id: preview.session_segment_id.clone(),
+            ..Scope::default()
+        },
         resource: Resource {
             kind: "thread_continuity_preview".to_string(),
             id: preview.continuity_preview_id.clone(),

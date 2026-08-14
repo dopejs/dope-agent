@@ -786,7 +786,7 @@ fn secret_resolution_falls_back_to_mcp_secrets_file() {
     )
     .unwrap();
     let manager = dope_mcp::Manager::new(test_cfg(dir.to_str().unwrap()), None, None, None, None, None);
-    let resolved = manager
+    let (resolved, _) = manager
         .create_server(CreateServerInput {
             server_id: "srv-1".to_string(),
             enabled: true,
