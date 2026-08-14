@@ -364,6 +364,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-audit"
+version = "0.1.0"
+dependencies = [
+ "dope-events",
+ "dope-identity",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "dope-billing"
 version = "0.1.0"
 dependencies = [
