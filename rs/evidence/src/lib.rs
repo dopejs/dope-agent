@@ -4,6 +4,7 @@
 //! Bundle generation and access are audited; redaction failure fails closed.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
 use dope_store::{list_documents, put_document, SQLiteStore};
@@ -162,21 +163,21 @@ struct ManagerInner {
 
 /// Generates and serves redacted evidence bundles. Bundles + audit are in-memory for this
 /// slice; bundle content reuses existing records via the collector and is redacted by default.
-pub struct Manager<'a> {
+pub struct Manager {
     inner: parking_lot::RwLock<ManagerInner>,
     env: String,
     collector: Box<dyn Collector>,
     perms: Box<dyn PermissionGate>,
-    docs: Option<&'a SQLiteStore>,
+    docs: Option<Arc<parking_lot::Mutex<SQLiteStore>>>,
 }
 
-impl<'a> Default for Manager<'a> {
+impl Default for Manager {
     fn default() -> Self {
         Self::new("", None, None)
     }
 }
 
-impl<'a> Manager<'a> {
+impl Manager {
     /// Go `NewManager`: nil hooks fall back to an empty collector + all-pass permission gate.
     pub fn new(
         environment_scope: &str,
@@ -194,7 +195,7 @@ impl<'a> Manager<'a> {
 
     /// Go `WithStore`: installs durable persistence for generated evidence bundles and
     /// returns the manager.
-    pub fn with_store(&mut self, store: &'a SQLiteStore) -> &mut Self {
+    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<SQLiteStore>>) -> &mut Self {
         self.docs = Some(store);
         self
     }
@@ -202,8 +203,8 @@ impl<'a> Manager<'a> {
     /// Go `LoadFromStore`: reloads persisted evidence bundles on startup (merges into the
     /// in-memory map; the audit trail is not persisted).
     pub fn load_from_store(&self) -> Result<(), String> {
-        let Some(store) = self.docs else { return Ok(()); };
-        let bundles: Vec<Bundle> = list_documents(store, DOC_KIND_BUNDLE)?;
+        let Some(store) = &self.docs else { return Ok(()); };
+        let bundles: Vec<Bundle> = list_documents(&store.lock(), DOC_KIND_BUNDLE)?;
         let mut inner = self.inner.write();
         for bundle in bundles {
             inner.bundles.insert(bundle.bundle_id.clone(), bundle);
@@ -304,8 +305,8 @@ impl<'a> Manager<'a> {
 
     /// Write-through persistence; skipped when no store is installed (Go nil store no-ops).
     fn persist<T: serde::Serialize>(&self, kind: &str, id: &str, tenant: &str, value: &T) {
-        if let Some(store) = self.docs {
-            let _ = put_document(store, kind, id, &self.env, tenant, value);
+        if let Some(store) = &self.docs {
+            let _ = put_document(&store.lock(), kind, id, &self.env, tenant, value);
         }
     }
 }

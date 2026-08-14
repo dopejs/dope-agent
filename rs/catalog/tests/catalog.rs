@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use chrono::Utc;
 use dope_catalog::{
     CatalogError, CatalogItem, Enablement, EnablementEvent, EnablementState, ItemKind, Manager,
@@ -292,18 +294,25 @@ fn wire_round_trip() {
 #[test]
 fn persistence_round_trip() {
     let dir = temp_dir("persist");
-    let store = SQLiteStore::new(&dir).unwrap();
+    let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir).unwrap()));
     let mut manager = Manager::new("test", None, None);
-    manager.with_store(&store);
+    manager.with_store(Arc::clone(&store));
     let registered = manager.register_item(sample_item()).unwrap();
     manager.enable("tenant-a", &registered.item_id, "1.0.0", "alice").unwrap();
 
     // A fresh manager recovers items + enablements from the store.
     let mut fresh = Manager::new("test", None, None);
-    fresh.with_store(&store);
+    fresh.with_store(Arc::clone(&store));
     fresh.load_from_store().unwrap();
     assert_eq!(fresh.get_item(&registered.item_id).unwrap(), registered);
     let insp = fresh.inspect("tenant-a", &registered.item_id).unwrap();
     assert_eq!(insp.enablement.state, EnablementState::Enabled);
     assert_eq!(insp.enablement.active_version, "1.0.0");
 }
+/// Compile-time guard: this manager must be usable from axum `AppState` (Send + Sync).
+#[test]
+fn manager_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<dope_catalog::Manager>();
+}
+

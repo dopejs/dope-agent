@@ -55,14 +55,14 @@ fn temp_dir() -> String {
 
 struct Harness {
     clock: FakeClock,
-    store: Arc<SQLiteStore>,
+    store: Arc<parking_lot::Mutex<SQLiteStore>>,
     runtime: Arc<dope_runtime::Manager>,
     scheduler: Scheduler,
     bus: dope_events::Bus,
 }
 
 fn harness_with_launcher(now: DateTime<Utc>, launcher: Option<Arc<dyn WorkflowLauncher>>) -> Harness {
-    let store = Arc::new(SQLiteStore::new(&temp_dir()).unwrap());
+    let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&temp_dir()).unwrap()));
     let runtime = Arc::new(dope_runtime::Manager::new());
     let bus = dope_events::Bus::new();
     let clock = FakeClock::new(now);
@@ -393,11 +393,12 @@ fn retry_and_exhausted_truth_for_dispatch_failure() {
     // Deactivate the target record so dispatch fails deterministically.
     let mut target_record = h
         .store
+        .lock()
         .get_schedule_target(&schedule.schedule_id, &schedule.target_ref_id)
         .unwrap()
         .unwrap();
     target_record.active = false;
-    h.store.upsert_schedule_target(&target_record).unwrap();
+    h.store.lock().upsert_schedule_target(&target_record).unwrap();
 
     h.clock.set(fire_at + chrono::Duration::seconds(1));
     h.scheduler.tick().unwrap();
@@ -650,7 +651,7 @@ fn create_validates_trigger() {
 fn schedule_persists_across_scheduler_instances() {
     let now = parse("2026-04-22T14:00:00Z");
     let dir = temp_dir();
-    let store = Arc::new(SQLiteStore::new(&dir).unwrap());
+    let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir).unwrap()));
     let runtime = Arc::new(dope_runtime::Manager::new());
     let clock = FakeClock::new(now);
     let sched_a = Scheduler::new(Dependencies {
@@ -831,7 +832,7 @@ fn pause_resume_cancel_edges() {
     assert_eq!(items[0].schedule_id, schedule.schedule_id);
 
     // Store accessor + lifecycle flags.
-    assert!(h.scheduler.store().data_dir().contains("dope_scheduler_test"));
+    assert!(h.scheduler.store().lock().data_dir().contains("dope_scheduler_test"));
     h.scheduler.start().unwrap();
     h.scheduler.close().unwrap();
     assert_eq!(h.scheduler.tick_interval(), Duration::from_millis(10));
@@ -850,6 +851,7 @@ fn store_records_written_by_create() {
 
     let record = h
         .store
+        .lock()
         .get_schedule("test", &schedule.schedule_id)
         .unwrap()
         .unwrap();
@@ -862,6 +864,7 @@ fn store_records_written_by_create() {
 
     let target = h
         .store
+        .lock()
         .get_schedule_target(&schedule.schedule_id, &schedule.target_ref_id)
         .unwrap()
         .unwrap();
@@ -870,3 +873,10 @@ fn store_records_written_by_create() {
     assert_eq!(target.revision, 1);
     assert!(target.document.contains("\"entrypoint\":\"operator\""));
 }
+/// Compile-time guard: this manager must be usable from axum `AppState` (Send + Sync).
+#[test]
+fn manager_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<dope_scheduler::Scheduler>();
+}
+

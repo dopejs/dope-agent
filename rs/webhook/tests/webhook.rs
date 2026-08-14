@@ -43,7 +43,7 @@ fn temp_dir(tag: &str) -> PathBuf {
 }
 
 /// Mirrors the Go `setup` helper.
-fn setup() -> (Manager<'static>, Box<RecordingFirer>, Endpoint, String) {
+fn setup() -> (Manager, Box<RecordingFirer>, Endpoint, String) {
     let firer = Box::new(RecordingFirer::default());
     let m = Manager::new("test", Some(firer.clone() as Box<dyn Firer>), None);
     let created = m.create("ten_a", "deploy hook", TargetKind::Routine, "routine_1").unwrap();
@@ -328,17 +328,17 @@ fn persistence_round_trip() {
     let webhook_id;
     let secret;
     {
-        let store = SQLiteStore::new(&dir.to_string_lossy()).unwrap();
+        let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir.to_string_lossy()).unwrap()));
         let mut m = Manager::new("test", None, None);
-        m.with_store(&store);
+        m.with_store(Arc::clone(&store));
         let created = m.create("ten_a", "hook", TargetKind::Routine, "routine_1").unwrap();
         webhook_id = created.endpoint.webhook_id.clone();
         secret = created.secret;
     }
     {
-        let store = SQLiteStore::new(&dir.to_string_lossy()).unwrap();
+        let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir.to_string_lossy()).unwrap()));
         let mut m = Manager::new("test", None, None);
-        m.with_store(&store);
+        m.with_store(Arc::clone(&store));
         m.load_from_store().unwrap();
         let ep = m.get("ten_a", &webhook_id).expect("endpoint survived restart");
         assert_eq!(ep.name, "hook");
@@ -356,3 +356,10 @@ fn persistence_round_trip() {
         assert_eq!(rec.status, TriggerStatus::Fired);
     }
 }
+/// Compile-time guard: this manager must be usable from axum `AppState` (Send + Sync).
+#[test]
+fn manager_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<dope_webhook::Manager>();
+}
+

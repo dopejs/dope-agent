@@ -24,4 +24,5 @@ sha2.workspace = true
 
 [dev-dependencies]
 futures.workspace = true
+parking_lot.workspace = true
 tempfile = "3"

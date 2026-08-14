@@ -14,6 +14,7 @@
 //! dropped (sync port). HMAC-SHA256 (RFC 2104) is implemented on the workspace `sha2` crate.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -213,15 +214,15 @@ struct ManagerInner {
 /// Owns webhook endpoints, verifies inbound triggers, and dispatches to the firer (Go
 /// `Manager`). Endpoints + secrets + replay keys are in-memory for this slice; the firer routes
 /// execution to the existing runtime/routine planes which own the durable execution evidence.
-pub struct Manager<'a> {
+pub struct Manager {
     inner: parking_lot::RwLock<ManagerInner>,
     env: String,
     firer: Box<dyn Firer>,
     quota: Box<dyn QuotaGate>,
-    docs: Option<&'a dope_store::SQLiteStore>,
+    docs: Option<Arc<parking_lot::Mutex<dope_store::SQLiteStore>>>,
 }
 
-impl<'a> Manager<'a> {
+impl Manager {
     /// Go `NewManager`: `firer`/`quota` default to `NoopFirer`/`AllowAllQuota` when
     /// `None`.
     #[must_use]
@@ -241,7 +242,7 @@ impl<'a> Manager<'a> {
 
     /// Go `WithStore`: installs durable persistence for webhook endpoints + secrets and returns
     /// the manager.
-    pub fn with_store(&mut self, store: &'a dope_store::SQLiteStore) -> &mut Self {
+    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> &mut Self {
         self.docs = Some(store);
         self
     }
@@ -249,8 +250,8 @@ impl<'a> Manager<'a> {
     /// Go `LoadFromStore`: reloads persisted webhook endpoints + signing secrets on startup.
     /// A no-op when no store is installed.
     pub fn load_from_store(&self) -> Result<(), String> {
-        let Some(docs) = self.docs else { return Ok(()); };
-        let items: Vec<PersistedEndpoint> = dope_store::list_documents(docs, DOC_KIND_WEBHOOK)?;
+        let Some(docs) = &self.docs else { return Ok(()); };
+        let items: Vec<PersistedEndpoint> = dope_store::list_documents(&docs.lock(), DOC_KIND_WEBHOOK)?;
         let mut inner = self.inner.write();
         for item in items {
             let endpoint = item.endpoint;
@@ -474,13 +475,13 @@ impl<'a> Manager<'a> {
 
     /// Go `persist`: write-through of an endpoint + its secret (errors ignored, as in Go).
     fn persist(&self, endpoint: &Endpoint, secret: &[u8]) {
-        let Some(docs) = self.docs else { return; };
+        let Some(docs) = &self.docs else { return; };
         let persisted = PersistedEndpoint {
             endpoint: endpoint.clone(),
             secret_hex: encode_hex(secret),
         };
         let _ = dope_store::put_document(
-            docs,
+            &docs.lock(),
             DOC_KIND_WEBHOOK,
             &endpoint.webhook_id,
             &self.env,

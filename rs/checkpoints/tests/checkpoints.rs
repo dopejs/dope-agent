@@ -13,7 +13,7 @@ fn temp_dir(name: &str) -> String {
 #[test]
 fn saves_and_restores_latest_checkpoint() {
     let dir = temp_dir("restore");
-    let store = Arc::new(SQLiteStore::new(&dir).unwrap());
+    let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir).unwrap()));
     let runtime = Arc::new(RuntimeManager::new());
     let manager = Manager::new(store.clone(), runtime.clone());
 
@@ -53,7 +53,7 @@ fn saves_and_restores_latest_checkpoint() {
     manager.save_run_checkpoint("run_cp").unwrap();
 
     // The checkpoint row was persisted.
-    assert_eq!(store.list_latest_checkpoints().unwrap().len(), 1);
+    assert_eq!(store.lock().list_latest_checkpoints().unwrap().len(), 1);
 
     // A fresh runtime recovers the run from the latest checkpoint.
     let runtime2 = Arc::new(RuntimeManager::new());
@@ -70,3 +70,10 @@ fn saves_and_restores_latest_checkpoint() {
     assert_eq!(tool_calls.len(), 1);
     assert_eq!(tool_calls[0].tool_name, "search");
 }
+/// Compile-time guard: this manager must be usable from axum `AppState` (Send + Sync).
+#[test]
+fn manager_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<dope_checkpoints::Manager>();
+}
+

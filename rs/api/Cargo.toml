@@ -1,0 +1,61 @@
+[package]
+name = "dope-api"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# HTTP server stack (wave 6+): axum router over tower/tower-http, tokio runtime, hyper HTTP/1.
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tokio = { workspace = true }
+hyper = { workspace = true }
+
+# Serialization / errors / time / ids.
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+parking_lot = { workspace = true }
+futures = { workspace = true }
+
+# Manager crates referenced by AppState (Go Dependencies) and/or the shared
+# DTO vocabulary (port of daemon/internal/api/types.go).
+dope-store = { workspace = true }
+dope-config = { workspace = true }
+dope-events = { workspace = true }
+dope-chat = { workspace = true }
+dope-runtime = { workspace = true }
+dope-router = { workspace = true }
+dope-policy = { workspace = true }
+dope-identity = { workspace = true }
+dope-llm = { workspace = true }
+dope-providers = { workspace = true }
+dope-skills = { workspace = true }
+dope-sandbox = { workspace = true }
+dope-secrets = { workspace = true }
+dope-mcp = { workspace = true }
+dope-integrations = { workspace = true }
+dope-calendar = { workspace = true }
+dope-mail = { workspace = true }
+dope-triage = { workspace = true }
+dope-routine = { workspace = true }
+dope-webhook = { workspace = true }
+dope-catalog = { workspace = true }
+dope-execprofile = { workspace = true }
+dope-evidence = { workspace = true }
+dope-connectors = { workspace = true }
+dope-capabilities = { workspace = true }
+dope-computeruse = { workspace = true }
+dope-scheduler = { workspace = true }
+dope-delivery = { workspace = true }
+dope-billing = { workspace = true }
+dope-activation = { workspace = true }
+dope-setupwizard = { workspace = true }
+dope-checkpoints = { workspace = true }
+dope-evaluation = { workspace = true }
+dope-livevalidation = { workspace = true }
+dope-audit = { workspace = true }
+dope-orchestration = { workspace = true }

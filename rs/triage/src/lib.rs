@@ -13,6 +13,7 @@
 //! every persistence call is skipped while it is `None`.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -225,13 +226,13 @@ struct ManagerInner {
 /// Owns triage policies and evaluates triage runs (Go `Manager`). Policies are in-memory with
 /// `restore`/`load_from_store`; runs are pure functions of (policy, messages) so they are
 /// deterministic and replayable (FR-006).
-pub struct Manager<'a> {
+pub struct Manager {
     inner: parking_lot::RwLock<ManagerInner>,
     env: String,
-    docs: Option<&'a dope_store::SQLiteStore>,
+    docs: Option<Arc<parking_lot::Mutex<dope_store::SQLiteStore>>>,
 }
 
-impl<'a> Manager<'a> {
+impl Manager {
     /// Go `NewManager`: a manager scoped to `environment_scope` with no persistence store.
     #[must_use]
     pub fn new(environment_scope: &str) -> Self {
@@ -243,7 +244,7 @@ impl<'a> Manager<'a> {
     }
 
     /// Go `WithStore`: installs durable persistence for triage policies and returns the manager.
-    pub fn with_store(&mut self, store: &'a dope_store::SQLiteStore) -> &mut Self {
+    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> &mut Self {
         self.docs = Some(store);
         self
     }
@@ -263,8 +264,8 @@ impl<'a> Manager<'a> {
     /// Go `LoadFromStore`: reloads persisted triage policies from the document store on startup.
     /// A no-op when no store is installed.
     pub fn load_from_store(&self) -> Result<(), String> {
-        let Some(docs) = self.docs else { return Ok(()); };
-        let policies = dope_store::list_documents::<Policy>(docs, DOC_KIND_POLICY)?;
+        let Some(docs) = &self.docs else { return Ok(()); };
+        let policies = dope_store::list_documents::<Policy>(&docs.lock(), DOC_KIND_POLICY)?;
         self.restore(policies);
         Ok(())
     }
@@ -298,8 +299,8 @@ impl<'a> Manager<'a> {
             inner.by_id.insert(policy.policy_id.clone(), policy.clone());
             inner.ids.push(policy.policy_id.clone());
         }
-        if let Some(docs) = self.docs {
-            let _ = dope_store::put_document(docs, DOC_KIND_POLICY, &policy.policy_id, &self.env, "", &policy);
+        if let Some(docs) = &self.docs {
+            let _ = dope_store::put_document(&docs.lock(), DOC_KIND_POLICY, &policy.policy_id, &self.env, "", &policy);
         }
         Ok(policy)
     }

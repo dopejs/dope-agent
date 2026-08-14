@@ -5,6 +5,7 @@
 //! defaults fail closed when a backend is unavailable.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use dope_store::{list_documents, put_document, SQLiteStore};
@@ -207,22 +208,22 @@ struct ManagerInner {
 
 /// Projects execution profiles and selections. Profiles + selections are in-memory with
 /// `restore`; the sandbox/policy layer remains authoritative for actual execution permission.
-pub struct Manager<'a> {
+pub struct Manager {
     inner: parking_lot::RwLock<ManagerInner>,
     env: String,
     health: Box<dyn HealthChecker>,
     reqs: Box<dyn RequirementChecker>,
     perms: Box<dyn PermissionGate>,
-    docs: Option<&'a SQLiteStore>,
+    docs: Option<Arc<parking_lot::Mutex<SQLiteStore>>>,
 }
 
-impl<'a> Default for Manager<'a> {
+impl Default for Manager {
     fn default() -> Self {
         Self::new("", None, None, None)
     }
 }
 
-impl<'a> Manager<'a> {
+impl Manager {
     /// Go `NewManager`: nil hooks fall back to ready-health / all-met / allow-all defaults.
     pub fn new(
         environment_scope: &str,
@@ -242,16 +243,16 @@ impl<'a> Manager<'a> {
 
     /// Go `WithStore`: installs durable persistence for profiles + selections and returns
     /// the manager.
-    pub fn with_store(&mut self, store: &'a SQLiteStore) -> &mut Self {
+    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<SQLiteStore>>) -> &mut Self {
         self.docs = Some(store);
         self
     }
 
     /// Go `LoadFromStore`: reloads persisted profiles + selections on startup.
     pub fn load_from_store(&self) -> Result<(), String> {
-        let Some(store) = self.docs else { return Ok(()); };
-        let profiles: Vec<ExecutionProfile> = list_documents(store, DOC_KIND_EXEC_PROFILE)?;
-        let selections: Vec<Selection> = list_documents(store, DOC_KIND_EXEC_SELECTION)?;
+        let Some(store) = &self.docs else { return Ok(()); };
+        let profiles: Vec<ExecutionProfile> = list_documents(&store.lock(), DOC_KIND_EXEC_PROFILE)?;
+        let selections: Vec<Selection> = list_documents(&store.lock(), DOC_KIND_EXEC_SELECTION)?;
         self.restore(profiles, selections);
         Ok(())
     }
@@ -414,8 +415,8 @@ impl<'a> Manager<'a> {
 
     /// Write-through persistence; skipped when no store is installed (Go nil store no-ops).
     fn persist<T: serde::Serialize>(&self, kind: &str, id: &str, tenant: &str, value: &T) {
-        if let Some(store) = self.docs {
-            let _ = put_document(store, kind, id, &self.env, tenant, value);
+        if let Some(store) = &self.docs {
+            let _ = put_document(&store.lock(), kind, id, &self.env, tenant, value);
         }
     }
 }

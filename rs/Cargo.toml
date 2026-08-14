@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["protocol", "model-provider", "core", "cli", "config", "identity", "im", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox", "delivery", "store", "checkpoints", "events", "connectors", "discord", "matrix", "slack", "telegram", "evaluation", "audit", "orchestration", "skills", "catalog", "evidence", "execprofile", "triage", "routine", "webhook", "scheduler", "tenancy", "migrationfixture", "mcp", "chat", "managedproviders"]
+members = ["protocol", "model-provider", "core", "cli", "config", "identity", "im", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "api", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref", "integrations", "policy", "calendar", "mail", "runtime", "feishulark", "opsreadiness", "computeruse", "artifacts", "sandbox", "delivery", "store", "checkpoints", "events", "connectors", "discord", "matrix", "slack", "telegram", "evaluation", "audit", "orchestration", "skills", "catalog", "evidence", "execprofile", "triage", "routine", "reminders", "webhook", "scheduler", "tenancy", "migrationfixture", "mcp", "chat", "managedproviders"]
 
 [workspace.package]
 edition = "2024"
@@ -23,6 +23,7 @@ dope-providers = { path = "providers" }
 dope-adapterrpc = { path = "adapterrpc" }
 dope-adapterprovider = { path = "adapterprovider" }
 dope-adapterref = { path = "adapterref" }
+dope-api = { path = "api" }
 dope-config = { path = "config" }
 dope-identity = { path = "identity" }
 dope-telemetry = { path = "telemetry" }
@@ -63,6 +64,7 @@ dope-chat = { path = "chat" }
 dope-managedproviders = { path = "managedproviders" }
 dope-llm = { path = "llm" }
 dope-profiles = { path = "profiles" }
+dope-reminders = { path = "reminders" }
 dope-threads = { path = "threads" }
 dope-router = { path = "router" }
 dope-protocol = { path = "protocol" }
@@ -82,7 +84,11 @@ regex = "1"
 ureq = "2"
 url = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "rt", "signal", "time"] }
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+hyper = { version = "1", features = ["server", "http1"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 async-stream = "0.3"
 clap = { version = "4", features = ["derive", "env"] }

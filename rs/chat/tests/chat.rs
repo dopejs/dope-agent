@@ -1484,6 +1484,13 @@ fn query_returns_dispatch_cancelled_when_token_killed() {
     assert_eq!(persisted[0].status, DispatchStatus::Cancelled);
     assert_eq!(persisted[0].error_code, "cancelled");
 }
+/// Compile-time guard: this manager must be usable from axum `AppState` (Send + Sync).
+#[test]
+fn manager_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<dope_chat::Service>();
+}
+
 
 // ------------------------------------------------------------------------
 // Cancellation token semantics

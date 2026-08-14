@@ -281,17 +281,17 @@ fn persistence_round_trip() {
     let dir = temp_dir("persist");
     let routine_id;
     {
-        let store = SQLiteStore::new(&dir.to_string_lossy()).unwrap();
+        let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir.to_string_lossy()).unwrap()));
         let mut m = Manager::new("test", fake());
-        m.with_store(&store);
+        m.with_store(Arc::clone(&store));
         let r = m.create(daily_def()).unwrap();
         let _ = m.pause(&r.routine_id);
         routine_id = r.routine_id.clone();
     }
     {
-        let store = SQLiteStore::new(&dir.to_string_lossy()).unwrap();
+        let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir.to_string_lossy()).unwrap()));
         let mut m = Manager::new("test", fake());
-        m.with_store(&store);
+        m.with_store(Arc::clone(&store));
         m.load_from_store().unwrap();
         let got = m.get(&routine_id).expect("routine survived restart");
         assert_eq!(got.state, State::Paused);
@@ -299,3 +299,10 @@ fn persistence_round_trip() {
         assert_eq!(got.name, "Daily summary");
     }
 }
+/// Compile-time guard: this manager must be usable from axum `AppState` (Send + Sync).
+#[test]
+fn manager_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<dope_routine::Manager>();
+}
+

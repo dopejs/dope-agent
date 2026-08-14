@@ -679,7 +679,12 @@ mod tests {
         dispatcher.set_default_model("echo-v1");
         let chat = ChatService::new_service(dispatcher, None, None, Some(bus.clone()), None);
         let runtime = Arc::new(RuntimeManager::new());
-        let checkpoints = CheckpointManager::new(store.clone(), runtime.clone());
+        let checkpoints = CheckpointManager::new(
+            Arc::new(parking_lot::Mutex::new(
+                SQLiteStore::new(store.data_dir()).expect("store"),
+            )),
+            runtime.clone(),
+        );
         MessageLoop::new(
             SessionRouter::new(),
             runtime,

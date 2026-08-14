@@ -14,6 +14,7 @@
 //! routine builder consumes. The Go `context.Context` parameters are dropped (sync port).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -302,14 +303,14 @@ struct ManagerInner {
 /// Owns routines and compiles them to the scheduler/workflow plane (Go `Manager`). Routines are
 /// stored in-memory with `restore`/`load_from_store`; the compiled schedules (and their attempt
 /// evidence) persist in the scheduler's own store.
-pub struct Manager<'a> {
+pub struct Manager {
     inner: parking_lot::RwLock<ManagerInner>,
     env: String,
     sched: Box<dyn Scheduler>,
-    docs: Option<&'a dope_store::SQLiteStore>,
+    docs: Option<Arc<parking_lot::Mutex<dope_store::SQLiteStore>>>,
 }
 
-impl<'a> Manager<'a> {
+impl Manager {
     /// Go `NewManager`.
     #[must_use]
     pub fn new(environment_scope: &str, sched: Box<dyn Scheduler>) -> Self {
@@ -322,7 +323,7 @@ impl<'a> Manager<'a> {
     }
 
     /// Go `WithStore`: installs durable persistence for routines and returns the manager.
-    pub fn with_store(&mut self, store: &'a dope_store::SQLiteStore) -> &mut Self {
+    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> &mut Self {
         self.docs = Some(store);
         self
     }
@@ -341,8 +342,8 @@ impl<'a> Manager<'a> {
     /// Go `LoadFromStore`: reloads persisted routines from the document store on startup.
     /// A no-op when no store is installed.
     pub fn load_from_store(&self) -> Result<(), String> {
-        let Some(docs) = self.docs else { return Ok(()); };
-        let routines = dope_store::list_documents::<Routine>(docs, DOC_KIND_ROUTINE)?;
+        let Some(docs) = &self.docs else { return Ok(()); };
+        let routines = dope_store::list_documents::<Routine>(&docs.lock(), DOC_KIND_ROUTINE)?;
         self.restore(routines);
         Ok(())
     }
@@ -521,8 +522,8 @@ impl<'a> Manager<'a> {
             }
             inner.by_id.insert(routine.routine_id.clone(), routine.clone());
         }
-        if let Some(docs) = self.docs {
-            let _ = dope_store::put_document(docs, DOC_KIND_ROUTINE, &routine.routine_id, &self.env, "", &routine);
+        if let Some(docs) = &self.docs {
+            let _ = dope_store::put_document(&docs.lock(), DOC_KIND_ROUTINE, &routine.routine_id, &self.env, "", &routine);
         }
     }
 }

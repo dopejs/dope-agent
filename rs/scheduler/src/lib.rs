@@ -24,6 +24,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use parking_lot::Mutex;
+
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
@@ -351,7 +353,7 @@ pub struct WorkflowLaunchResult {
 }
 
 /// Go `WorkflowLauncher` interface: launches a scheduled workflow target.
-pub trait WorkflowLauncher {
+pub trait WorkflowLauncher: Send + Sync {
     fn launch_scheduled_workflow(
         &self,
         target: &WorkflowTarget,
@@ -361,7 +363,7 @@ pub trait WorkflowLauncher {
 }
 
 /// Go `Clock` interface: injectable now source.
-pub trait Clock {
+pub trait Clock: Send + Sync {
     fn now(&self) -> DateTime<Utc>;
 }
 
@@ -381,7 +383,7 @@ pub struct Dependencies {
     pub environment: dope_config::Environment,
     pub runtime: Arc<dope_runtime::Manager>,
     pub event_bus: Option<dope_events::Bus>,
-    pub store: Arc<SQLiteStore>,
+    pub store: Arc<Mutex<SQLiteStore>>,
     pub workflow_launcher: Option<Arc<dyn WorkflowLauncher>>,
     pub clock: Option<Box<dyn Clock>>,
     pub tick_interval: Duration,
@@ -391,7 +393,7 @@ pub struct Scheduler {
     environment: dope_config::Environment,
     runtime: Arc<dope_runtime::Manager>,
     event_bus: Option<dope_events::Bus>,
-    store: Arc<SQLiteStore>,
+    store: Arc<Mutex<SQLiteStore>>,
     workflow_launcher: Option<Arc<dyn WorkflowLauncher>>,
     clock: Box<dyn Clock>,
     tick_interval: Duration,
@@ -438,7 +440,7 @@ impl Scheduler {
 
     /// Go `Store`: returns the underlying store.
     #[must_use]
-    pub fn store(&self) -> Arc<SQLiteStore> {
+    pub fn store(&self) -> Arc<Mutex<SQLiteStore>> {
         Arc::clone(&self.store)
     }
 
@@ -496,7 +498,7 @@ impl Scheduler {
     /// Go `List`: hydrates every schedule record in the environment scope.
     pub fn list(&self) -> Result<Vec<Schedule>, SchedulerError> {
         let records = self
-            .store
+            .store.lock()
             .list_schedules(&environment_scope(self.environment))
             .map_err(SchedulerError::Store)?;
         records.into_iter().map(|record| self.hydrate_schedule(record)).collect()
@@ -505,7 +507,7 @@ impl Scheduler {
     /// Go `Get` (the Go `(Schedule, bool, error)` becomes `Result<Option<Schedule>>`).
     pub fn get(&self, schedule_id: &str) -> Result<Option<Schedule>, SchedulerError> {
         let Some(record) = self
-            .store
+            .store.lock()
             .get_schedule(&environment_scope(self.environment), schedule_id)
             .map_err(SchedulerError::Store)?
         else {
@@ -765,11 +767,11 @@ impl Scheduler {
             ]),
         )?;
 
-        let target_record = match self
-            .store
+        let target_result = self
+            .store.lock()
             .get_schedule_target(&schedule.schedule_id, &schedule.target_ref_id)
-            .map_err(SchedulerError::Store)?
-        {
+            .map_err(SchedulerError::Store)?;
+        let target_record = match target_result {
             Some(record) if record.active => record,
             Some(_) | None => {
                 return self.record_dispatch_failure(
@@ -1004,7 +1006,7 @@ impl Scheduler {
                 }
             } else {
                 match self
-                    .store
+                    .store.lock()
                     .get_workflow(&schedule.environment_scope, &attempt.run_id, &attempt.workflow_id)
                     .map_err(SchedulerError::Store)?
                 {
@@ -1161,14 +1163,14 @@ impl Scheduler {
             schedule.completed_at = record.completed_at;
         }
         if let Some(target_record) = self
-            .store
+            .store.lock()
             .get_schedule_target(&record.schedule_id, &record.target_ref_id)
             .map_err(SchedulerError::Store)?
         {
             schedule.target = decode_target_record(&target_record)?;
         }
         let attempt_records = self
-            .store
+            .store.lock()
             .list_schedule_dispatch_attempts(&record.schedule_id)
             .map_err(SchedulerError::Store)?;
         let mut attempts = Vec::with_capacity(attempt_records.len());
@@ -1201,7 +1203,7 @@ impl Scheduler {
         let schedule_doc = serde_json::to_string(schedule).map_err(|err| {
             SchedulerError::MarshalSchedule(schedule.schedule_id.clone(), err.to_string())
         })?;
-        self.store
+        self.store.lock()
             .upsert_schedule(&ScheduleRecord {
                 schedule_id: schedule.schedule_id.clone(),
                 environment_scope: schedule.environment_scope.clone(),
@@ -1225,7 +1227,7 @@ impl Scheduler {
         let target_doc = serde_json::to_string(&schedule.target).map_err(|err| {
             SchedulerError::MarshalScheduleTarget(schedule.target_ref_id.clone(), err.to_string())
         })?;
-        self.store
+        self.store.lock()
             .upsert_schedule_target(&ScheduleTargetRecord {
                 target_ref_id: schedule.target_ref_id.clone(),
                 schedule_id: schedule.schedule_id.clone(),
@@ -1241,7 +1243,7 @@ impl Scheduler {
             let attempt_doc = serde_json::to_string(attempt).map_err(|err| {
                 SchedulerError::MarshalScheduleAttempt(attempt.attempt_id.clone(), err.to_string())
             })?;
-            self.store
+            self.store.lock()
                 .upsert_schedule_dispatch_attempt(&ScheduleDispatchAttemptRecord {
                     attempt_id: attempt.attempt_id.clone(),
                     schedule_id: schedule.schedule_id.clone(),

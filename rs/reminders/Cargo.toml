@@ -1,0 +1,36 @@
+[package]
+name = "dope-reminders"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-store.workspace = true
+dope-delivery.workspace = true
+dope-scheduler.workspace = true
+dope-livevalidation.workspace = true
+dope-events.workspace = true
+dope-identity.workspace = true
+dope-integrations.workspace = true
+dope-calendar.workspace = true
+dope-mail.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+parking_lot.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+dope-store.workspace = true
+dope-delivery.workspace = true
+dope-events.workspace = true
+dope-identity.workspace = true
+dope-runtime.workspace = true
+dope-router.workspace = true
+dope-migrationfixture.workspace = true

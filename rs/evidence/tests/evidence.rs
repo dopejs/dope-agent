@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use chrono::Utc;
 use dope_evidence::{
@@ -98,12 +99,12 @@ fn generate_is_permission_gated() {
     // Get and ListForTenant are permission-gated once a bundle exists: generate with an
     // allow-all manager + store, then access through a DenyAll manager reloaded from the store.
     let dir = temp_dir("perm");
-    let store = SQLiteStore::new(&dir).unwrap();
+    let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir).unwrap()));
     let mut producer = Manager::new("test", None, None);
-    producer.with_store(&store);
+    producer.with_store(Arc::clone(&store));
     let bundle = producer.generate("tenant-a", "alice", run_scope("run_1")).unwrap();
     let mut consumer = Manager::new("test", None, Some(Box::new(DenyAll)));
-    consumer.with_store(&store);
+    consumer.with_store(Arc::clone(&store));
     consumer.load_from_store().unwrap();
     assert!(matches!(
         consumer.get("tenant-a", "alice", &bundle.bundle_id).unwrap_err(),
@@ -245,17 +246,24 @@ fn wire_round_trip() {
 #[test]
 fn persistence_round_trip() {
     let dir = temp_dir("persist");
-    let store = SQLiteStore::new(&dir).unwrap();
+    let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir).unwrap()));
     let mut manager = Manager::new("test", None, None);
-    manager.with_store(&store);
+    manager.with_store(Arc::clone(&store));
     let bundle = manager.generate("tenant-a", "alice", run_scope("run_1")).unwrap();
 
     // A fresh manager recovers bundles from the store; audit events are not persisted.
     let mut fresh = Manager::new("test", None, None);
-    fresh.with_store(&store);
+    fresh.with_store(Arc::clone(&store));
     fresh.load_from_store().unwrap();
     assert!(fresh.audit_trail(&bundle.bundle_id).is_empty()); // generation audit is not persisted
     assert_eq!(fresh.list_for_tenant("tenant-a", "alice").unwrap().len(), 1);
     assert_eq!(fresh.get("tenant-a", "alice", &bundle.bundle_id).unwrap(), bundle);
     assert_eq!(fresh.audit_trail(&bundle.bundle_id).len(), 1); // only the access event just recorded
 }
+/// Compile-time guard: this manager must be usable from axum `AppState` (Send + Sync).
+#[test]
+fn manager_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<dope_evidence::Manager>();
+}
+

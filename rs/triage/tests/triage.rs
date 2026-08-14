@@ -2,6 +2,7 @@
 //! `manager_test.go` / `persistence_test.go` coverage.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use chrono::Utc;
 use dope_store::SQLiteStore;
@@ -316,16 +317,16 @@ fn persistence_round_trip() {
     let dir = temp_dir("persist");
     let policy_id;
     {
-        let store = SQLiteStore::new(&dir.to_string_lossy()).unwrap();
+        let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir.to_string_lossy()).unwrap()));
         let mut m = Manager::new("test");
-        m.with_store(&store);
+        m.with_store(Arc::clone(&store));
         let policy = m.create_policy("inbox", vec![], Classification::Fyi).unwrap();
         policy_id = policy.policy_id.clone();
     }
     {
-        let store = SQLiteStore::new(&dir.to_string_lossy()).unwrap();
+        let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir.to_string_lossy()).unwrap()));
         let mut m = Manager::new("test");
-        m.with_store(&store);
+        m.with_store(Arc::clone(&store));
         m.load_from_store().unwrap();
         let reloaded = m.get_policy(&policy_id).expect("policy survived restart");
         assert_eq!(reloaded.environment_scope, "test");
@@ -348,3 +349,10 @@ fn run_wire_round_trip() {
     let decoded: Run = serde_json::from_str(&json).unwrap();
     assert_eq!(decoded, run);
 }
+/// Compile-time guard: this manager must be usable from axum `AppState` (Send + Sync).
+#[test]
+fn manager_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<dope_triage::Manager>();
+}
+

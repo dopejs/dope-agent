@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use chrono::Utc;
 use dope_execprofile::{
@@ -265,15 +266,15 @@ fn wire_round_trip() {
 #[test]
 fn persistence_round_trip() {
     let dir = temp_dir("persist");
-    let store = SQLiteStore::new(&dir).unwrap();
+    let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir).unwrap()));
     let mut manager = Manager::new("test", None, None, None);
-    manager.with_store(&store);
+    manager.with_store(Arc::clone(&store));
     let profile = manager.register_profile(sample_profile("p_a", &["docker"], &[])).unwrap();
     manager.select_profile("tenant-a", &profile.profile_id, "alice").unwrap();
 
     // A fresh manager recovers profiles + selections from the store.
     let mut fresh = Manager::new("test", None, None, None);
-    fresh.with_store(&store);
+    fresh.with_store(Arc::clone(&store));
     fresh.load_from_store().unwrap();
     assert_eq!(fresh.get_profile(&profile.profile_id).unwrap().profile, profile);
     let (sel, ok) = fresh.selection_for_tenant("tenant-a");
@@ -281,4 +282,11 @@ fn persistence_round_trip() {
     assert_eq!(sel.profile_id, profile.profile_id);
     assert_eq!(sel.history.len(), 1);
 }
+/// Compile-time guard: this manager must be usable from axum `AppState` (Send + Sync).
+#[test]
+fn manager_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<dope_execprofile::Manager>();
+}
+
 

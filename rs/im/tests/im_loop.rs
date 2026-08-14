@@ -317,7 +317,12 @@ fn test_harness(
     dispatcher.set_default_model("echo-v1");
     let chat = Service::new_service(dispatcher, None, None, Some(bus.clone()), None);
     let runtime = Arc::new(RuntimeManager::new());
-    let checkpoints = CheckpointManager::new(store.clone(), runtime.clone());
+    let checkpoints = CheckpointManager::new(
+        Arc::new(parking_lot::Mutex::new(
+            SQLiteStore::new(dir.path().to_str().expect("path")).expect("store"),
+        )),
+        runtime.clone(),
+    );
     let loop_ = MessageLoop::new(
         SessionRouter::new(),
         runtime.clone(),

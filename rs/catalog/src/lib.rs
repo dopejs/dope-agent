@@ -5,6 +5,7 @@
 //! closed (unmet requirements or denied permissions block enablement before execution).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use dope_store::{list_documents, put_document, SQLiteStore};
@@ -212,21 +213,21 @@ struct ManagerInner {
 /// Owns the operator catalog and per-tenant enablement. Items + enablements are in-memory with
 /// `restore`; a `dope_store::SQLiteStore` installed via `with_store` is used for
 /// write-through persistence (None skips persistence, mirroring the Go nil store).
-pub struct Manager<'a> {
+pub struct Manager {
     inner: parking_lot::RwLock<ManagerInner>,
     env: String,
     checker: Box<dyn RequirementChecker>,
     permissions: Box<dyn PermissionGate>,
-    docs: Option<&'a SQLiteStore>,
+    docs: Option<Arc<parking_lot::Mutex<SQLiteStore>>>,
 }
 
-impl<'a> Default for Manager<'a> {
+impl Default for Manager {
     fn default() -> Self {
         Self::new("", None, None)
     }
 }
 
-impl<'a> Manager<'a> {
+impl Manager {
     /// Go `NewManager`: nil hooks fall back to all-pass defaults.
     pub fn new(
         environment_scope: &str,
@@ -244,16 +245,16 @@ impl<'a> Manager<'a> {
 
     /// Go `WithStore`: installs durable persistence for catalog items + enablements and
     /// returns the manager.
-    pub fn with_store(&mut self, store: &'a SQLiteStore) -> &mut Self {
+    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<SQLiteStore>>) -> &mut Self {
         self.docs = Some(store);
         self
     }
 
     /// Go `LoadFromStore`: reloads persisted catalog items + enablements on startup.
     pub fn load_from_store(&self) -> Result<(), String> {
-        let Some(store) = self.docs else { return Ok(()); };
-        let items: Vec<CatalogItem> = list_documents(store, DOC_KIND_CATALOG_ITEM)?;
-        let enablements: Vec<Enablement> = list_documents(store, DOC_KIND_CATALOG_ENABLEMENT)?;
+        let Some(store) = &self.docs else { return Ok(()); };
+        let items: Vec<CatalogItem> = list_documents(&store.lock(), DOC_KIND_CATALOG_ITEM)?;
+        let enablements: Vec<Enablement> = list_documents(&store.lock(), DOC_KIND_CATALOG_ENABLEMENT)?;
         self.restore(items, enablements);
         Ok(())
     }
@@ -455,8 +456,8 @@ impl<'a> Manager<'a> {
 
     /// Write-through persistence; skipped when no store is installed (Go nil store no-ops).
     fn persist<T: serde::Serialize>(&self, kind: &str, id: &str, tenant: &str, value: &T) {
-        if let Some(store) = self.docs {
-            let _ = put_document(store, kind, id, &self.env, tenant, value);
+        if let Some(store) = &self.docs {
+            let _ = put_document(&store.lock(), kind, id, &self.env, tenant, value);
         }
     }
 }

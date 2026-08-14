@@ -241,7 +241,12 @@ fn harness() -> Harness {
     dispatcher.set_default_model("echo-v1");
     let chat = ChatService::new_service(dispatcher, None, None, Some(bus.clone()), None);
     let runtime = Arc::new(dope_runtime::Manager::new());
-    let checkpoints = CheckpointManager::new(store.clone(), runtime.clone());
+    let checkpoints = CheckpointManager::new(
+        Arc::new(parking_lot::Mutex::new(
+            SQLiteStore::new(dir.path().to_str().expect("path")).expect("store"),
+        )),
+        runtime.clone(),
+    );
     let loop_ = Arc::new(MessageLoop::new(
         SessionRouter::new(),
         runtime.clone(),
