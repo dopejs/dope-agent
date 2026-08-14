@@ -40,6 +40,10 @@ use chrono::Utc;
 use dope_capabilities::{Capability, Status as CapabilityStatus};
 use dope_router::{Session, SessionKind, SessionStatus};
 use dope_llm::{Dispatch, DispatchStatus, Message, MessageRole, Usage};
+use dope_policy::{Approval, ApprovalStatus, Decision, DecisionOutcome};
+use dope_providers::{
+    AuthMode, AuthState, AuthStatus, Check, CheckStatus, Family, Model, Preference,
+};
 use dope_runtime::{Run, RunCheckpoint, RunStatus, Step, StepStatus, ToolCall, ToolCallStatus};
 
 fn make_run() -> Run {
@@ -319,4 +323,145 @@ fn llm_dispatch_round_trips_through_sqlite() {
     let fetched = store.get_llm_dispatch("disp_1").unwrap().expect("found");
     assert_eq!(fetched.dispatch_id, "disp_1");
     assert_eq!(store.get_llm_dispatch("missing").unwrap(), None);
+}
+#[test]
+fn provider_check_and_auth_state_round_trip() {
+    let dir = temp_dir("provider");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let now = Utc::now();
+
+    let check = Check {
+        check_id: "chk_1".to_string(),
+        provider_id: "prov_1".to_string(),
+        family: Family::OpenAICompatible,
+        auth_mode: AuthMode::ApiKey,
+        status: CheckStatus::Passed,
+        model: "gpt-4o".to_string(),
+        endpoint: "https://api.openai.com".to_string(),
+        error_class: String::new(),
+        error_code: String::new(),
+        error_message: String::new(),
+        usage: Usage { input_tokens: 5, output_tokens: 5, total_tokens: 10 },
+        created_at: now,
+        completed_at: now,
+    };
+    store.upsert_provider_check(&check).unwrap();
+    let checks = store.list_provider_checks("prov_1").unwrap();
+    assert_eq!(checks.len(), 1);
+    assert_eq!(checks[0].family, Family::OpenAICompatible);
+    assert_eq!(checks[0].status, CheckStatus::Passed);
+    assert_eq!(checks[0].usage.total_tokens, 10);
+    assert_eq!(store.get_provider_check("prov_1", "chk_1").unwrap().unwrap().check_id, "chk_1");
+
+    let mut metadata = std::collections::HashMap::new();
+    metadata.insert("region".to_string(), "us-east-1".to_string());
+    let state = AuthState {
+        tenant_id: String::new(),
+        provider_id: "prov_1".to_string(),
+        family: Family::OpenAICompatible,
+        auth_mode: AuthMode::ApiKey,
+        status: AuthStatus::Authenticated,
+        cli_path: String::new(),
+        cli_available: true,
+        account_label: "acct".to_string(),
+        account_id: "acc_1".to_string(),
+        plan: "pro".to_string(),
+        auth_method: "key".to_string(),
+        login_command: vec!["login".to_string()],
+        logout_command: vec!["logout".to_string()],
+        last_checked_at: now,
+        last_authenticated_at: Some(now),
+        last_error: String::new(),
+        metadata,
+        sandbox: Some(serde_json::json!({"session": "s"})),
+    };
+    store.upsert_provider_auth_state(&state).unwrap();
+    let states = store.list_provider_auth_states().unwrap();
+    assert_eq!(states.len(), 1);
+    assert_eq!(states[0].status, AuthStatus::Authenticated);
+    assert_eq!(states[0].cli_available, true);
+    assert_eq!(states[0].login_command, vec!["login".to_string()]);
+    assert_eq!(states[0].metadata.get("region"), Some(&"us-east-1".to_string()));
+    assert!(states[0].sandbox.is_some());
+}
+
+#[test]
+fn provider_models_and_preference_round_trip() {
+    let dir = temp_dir("provmodel");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let now = Utc::now();
+
+    let model = Model {
+        provider_id: "prov_1".to_string(),
+        model_id: "gpt-4o".to_string(),
+        display_name: "GPT-4o".to_string(),
+        description: "flagship".to_string(),
+        default: true,
+        available: true,
+        source: "managed".to_string(),
+        chat: true,
+        stream: true,
+        coding: true,
+        tool_use: true,
+        reasoning_levels: vec!["low".to_string(), "high".to_string()],
+    };
+    store.replace_provider_models("prov_1", &[model]).unwrap();
+    let models = store.list_provider_models().unwrap();
+    assert_eq!(models.len(), 1);
+    assert_eq!(models[0].model_id, "gpt-4o");
+    assert_eq!(models[0].default, true);
+    assert_eq!(models[0].tool_use, true);
+    assert_eq!(models[0].reasoning_levels.len(), 2);
+    assert_eq!(store.list_provider_models_by_provider("prov_1").unwrap().len(), 1);
+
+    let preference = Preference { provider_id: "prov_1".to_string(), default_model: "gpt-4o".to_string(), updated_at: now };
+    store.upsert_provider_preference(&preference).unwrap();
+    let prefs = store.list_provider_preferences().unwrap();
+    assert_eq!(prefs.len(), 1);
+    assert_eq!(prefs[0].default_model, "gpt-4o");
+}
+
+#[test]
+fn approval_and_decision_round_trip() {
+    let dir = temp_dir("policy");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let now = Utc::now();
+
+    let approval = Approval {
+        approval_id: "apr_1".to_string(),
+        action: "send_email".to_string(),
+        resource_kind: "mail".to_string(),
+        resource_id: "mail_1".to_string(),
+        reason: "user requested".to_string(),
+        requested_by: "user_1".to_string(),
+        status: ApprovalStatus::Pending,
+        created_at: now,
+        updated_at: now,
+        resolved_at: None,
+        resolution: String::new(),
+        comment: String::new(),
+        sandbox: None,
+        integration_bindings: vec![],
+    };
+    store.upsert_approval(&approval).unwrap();
+    let approvals = store.list_approvals().unwrap();
+    assert_eq!(approvals.len(), 1);
+    assert_eq!(approvals[0].status, ApprovalStatus::Pending);
+    assert_eq!(approvals[0].resource_kind, "mail");
+
+    let decision = Decision {
+        decision_id: "dec_1".to_string(),
+        action: "send_email".to_string(),
+        resource_kind: "mail".to_string(),
+        resource_id: "mail_1".to_string(),
+        outcome: DecisionOutcome::Allowed,
+        reason: "policy allows".to_string(),
+        approval_id: String::new(),
+        created_at: now,
+        sandbox: None,
+    };
+    store.upsert_decision(&decision).unwrap();
+    let decisions = store.list_decisions().unwrap();
+    assert_eq!(decisions.len(), 1);
+    assert_eq!(decisions[0].outcome, DecisionOutcome::Allowed);
 }

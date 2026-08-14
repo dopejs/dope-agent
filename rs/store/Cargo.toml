@@ -14,6 +14,8 @@ dope-runtime.workspace = true
 dope-router.workspace = true
 dope-capabilities.workspace = true
 dope-llm.workspace = true
+dope-providers.workspace = true
+dope-policy.workspace = true
 
 [dev-dependencies]
 dope-integrations.workspace = true

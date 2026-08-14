@@ -9,6 +9,8 @@ use rusqlite::{params, Connection};
 
 mod crud;
 mod migrations;
+mod policy;
+mod providers;
 mod registry;
 
 /// The production schema head. The full 55-version migration list is added incrementally.
