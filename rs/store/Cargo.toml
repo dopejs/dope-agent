@@ -30,5 +30,6 @@ dope-orchestration.workspace = true
 dope-profiles.workspace = true
 dope-bindings.workspace = true
 dope-secrets.workspace = true
+dope-billing.workspace = true
 tokio.workspace = true
 parking_lot.workspace = true

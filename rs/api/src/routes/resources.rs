@@ -1,13 +1,14 @@
 //! resources route family (port of daemon/internal/api/thread_lifecycle.go,
-//! thread_handoff.go, agent_profiles.go, workspace_bindings.go).
+//! thread_handoff.go and agent_profiles.go).
 //!
 //! The Go surface mounts these route families under /v1:
 //! - `/v1/threads` + `/v1/threads/` — thread list, detail, lifecycle actions
 //!   (reset/archive/reopen), handoff creation, continuity-preview detail
 //! - `/v1/profiles` + `/v1/profiles/` — agent profile CRUD + lifecycle
-//! - `/v1/workspaces` + `/v1/workspaces/` — workspace records
-//! - `/v1/bindings` + `/v1/bindings/` — binding rules (+ repair)
-//! - `/v1/capability-visibility` — capability visibility policy
+//!
+//! The workspace / binding / capability-visibility families are ported in
+//! workspace_bindings.rs (Go workspace_bindings.go) so the two routers do not
+//! overlap.
 //!
 //! Port status:
 //! - The thread list/detail/lifecycle surface is fully ported on the dope-store
@@ -17,33 +18,19 @@
 //!   transition conflicts -> 409) and the tenant-scoped permission gates
 //!   (credentials.inspect for reads, connectors.manage for mutations) mirror the
 //!   Go handlers.
-//! - The thread detail binding projection (writeThreadDetailWithBindingProjection,
-//!   FR-013) is skipped: it needs `LatestRuntimeBindingEvidence` + the
-//!   bindings resource projection, neither ported. The base response matches Go
-//!   for callers without bindings.inspect.
-//! - The following surfaces are registered but answer 501 because the store
-//!   DAOs they need have not been ported (reported, not duplicated):
-//!   * POST /v1/threads/{id}/handoffs — needs store save_handoff_link /
-//!     save_handoff_source_references / list_continuity_turns (plus the
-//!     active-profile projection DAOs); dope-threads already supplies
-//!     validate_handoff / build_handoff_source_references / resolve_conversation_shape.
-//!   * GET /v1/threads/{id}/continuity-previews/{preview_id} — needs store
-//!     get_continuity_preview_detail.
-//!   * /v1/profiles* — needs store ListAgentProfiles / CreateAgentProfile /
-//!     GetAgentProfileDetail / UpdateAgentProfile / ActivateAgentProfile /
-//!     ListAgentProfileVersions / RollbackAgentProfile / RetireAgentProfile
-//!     (dope-profiles supplies the domain types and mutation policy).
-//!   * /v1/workspaces* — needs store ListWorkspaces / GetWorkspace /
-//!     CreateWorkspace / UpdateWorkspaceStatus.
-//!   * /v1/bindings* — needs store ListBindingRules / GetBindingRule /
-//!     CreateBindingRule / UpdateBindingRule / RemoveBindingRule / RepairBindingRule.
-//!   * /v1/capability-visibility — needs store ListCapabilityVisibility /
-//!     SetCapabilityVisibility.
-//!
-//! The 501 shape follows the existing activation.rs precedent (and Go's own
-//! handleThreadHandoffNotImplemented / evaluation-route stubs); Go maps the
-//! nil-store analogue to 500, so a 500 would be misleading here — the store
-//! exists, its DAOs are simply not ported.
+//! - Thread detail additionally attaches the latest runtime binding evidence as
+//!   an additive `bindingProjection` field for callers holding bindings.inspect
+//!   (FR-013, SC-012; Go writeThreadDetailWithBindingProjection) on the new
+//!   dope-store binding evidence DAO.
+//! - POST /v1/threads/{id}/handoffs and
+//!   GET /v1/threads/{id}/continuity-previews/{preview_id} are fully ported on
+//!   the dope-store thread_handoff + thread_continuity DAOs, the dope-threads
+//!   handoff/continuity domain (validate_handoff /
+//!   build_handoff_source_references / resolve_conversation_shape) and the
+//!   active-profile projection DAOs (dope-store profiles.rs).
+//! - The agent profile family is fully ported on the dope-store profile DAOs
+//!   (list/create/get/update/activate/versions/rollback/retire) with the
+//!   dope-events profile lifecycle + version-created events.
 
 use axum::body::Bytes;
 use axum::extract::{Extension, Path, Query, State};
@@ -52,9 +39,13 @@ use axum::routing::{get, post};
 use axum::{Json as AxumJson, Router};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
+use dope_connectors as connectors;
 use dope_events as events;
 use dope_identity::{has_permission, Permission};
+use dope_profiles as profiles;
+use dope_threads as threads;
 
 use crate::error::ApiError;
 use crate::middleware::TenantContext;
@@ -63,7 +54,8 @@ use crate::state::AppState;
 
 /// Route family router. Only the methods the Go handlers accept are
 /// registered; axum answers the other methods with 405 (Go
-/// w.WriteHeader(http.StatusMethodNotAllowed)).
+/// w.WriteHeader(http.StatusMethodNotAllowed)). The workspace / binding /
+/// capability-visibility families live in workspace_bindings.rs.
 #[must_use]
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -95,28 +87,6 @@ pub fn router() -> Router<AppState> {
         .route("/v1/profiles/{profile_id}/rollback", post(rollback_profile))
         .route("/v1/profiles/{profile_id}/archive", post(archive_profile))
         .route("/v1/profiles/{profile_id}/disable", post(disable_profile))
-        // Workspaces / bindings / capability visibility
-        .route(
-            "/v1/workspaces",
-            get(list_workspaces).post(create_workspace),
-        )
-        .route(
-            "/v1/workspaces/{workspace_id}",
-            get(get_workspace).patch(update_workspace),
-        )
-        .route(
-            "/v1/bindings",
-            get(list_bindings).post(create_binding),
-        )
-        .route(
-            "/v1/bindings/{binding_id}",
-            get(get_binding).patch(update_binding).delete(delete_binding),
-        )
-        .route("/v1/bindings/{binding_id}/repair", post(repair_binding))
-        .route(
-            "/v1/capability-visibility",
-            get(list_capability_visibility).put(set_capability_visibility),
-        )
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +135,30 @@ struct ThreadLifecycleActionResponse {
     available_actions: Vec<dope_threads::LifecycleActionKind>,
 }
 
+/// Go threadHandoffDestinationRequest.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ThreadHandoffDestinationRequest {
+    surface: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    connector_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    source_account_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    source_conversation_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    conversation_shape: String,
+}
+
+/// Go threadHandoffRequest.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ThreadHandoffRequest {
+    destination: ThreadHandoffDestinationRequest,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    reason_code: String,
+}
+
 // ---------------------------------------------------------------------------
 // Threads: list / detail / lifecycle actions
 // ---------------------------------------------------------------------------
@@ -200,14 +194,14 @@ async fn list_threads(
 }
 
 /// GET /v1/threads/{thread_id} — full operator detail view (Go
-/// handleThreadDetail). The additive bindingProjection is skipped (store
-/// LatestRuntimeBindingEvidence not ported); the base response matches Go for
-/// callers without bindings.inspect.
+/// handleThreadDetail). Callers holding bindings.inspect additionally get the
+/// latest runtime binding evidence as an additive `bindingProjection` field
+/// (Go writeThreadDetailWithBindingProjection, FR-013/SC-012).
 async fn thread_detail(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(thread_id): Path<String>,
-) -> Result<Json<dope_threads::ThreadDetailResponse>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
     let tc = require_thread_permission(tenant.as_ref().map(|e| &e.0), Permission::CredentialsInspect)?;
     let mut response = state
         .store
@@ -223,7 +217,7 @@ async fn thread_detail(
             link.active_profile_projection = None;
         }
     }
-    Ok(Json(response))
+    write_thread_detail_with_binding_projection(&state, tc, &thread_id, response)
 }
 
 /// POST /v1/threads/{thread_id}/reset — reset lifecycle mutation.
@@ -328,219 +322,821 @@ async fn thread_lifecycle_action(
     }))
 }
 
-/// POST /v1/threads/{thread_id}/handoffs — thread handoff creation. The
-/// persistence DAOs (save_handoff_link / save_handoff_source_references /
-/// list_continuity_turns, plus the active-profile projection DAOs) are not
-/// ported to dope-store, so this answers 501 after the connectors.manage gate
-/// (Go handleThreadHandoffNotImplemented precedent).
+/// POST /v1/threads/{thread_id}/handoffs — create a thread handoff (201).
+/// Full port of Go handleThreadHandoffCreate: validates the source thread and
+/// its proven conversation shape, ensures the destination thread (web or
+/// channel), persists the handoff link plus its continuity source references,
+/// records the destination active-profile projection, and publishes the
+/// thread.handoff_linked event.
 async fn thread_handoff_create(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(thread_id): Path<String>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = require_thread_permission(tenant.as_ref().map(|e| &e.0), Permission::ConnectorsManage)?;
-    let _ = (state, thread_id, body);
-    Ok(not_implemented(
-        "thread_handoff_not_implemented",
-        "thread handoff creation is not enabled yet",
-    ))
+) -> Result<(StatusCode, AxumJson<threads::HandoffLink>), ApiError> {
+    let tc = require_thread_permission(tenant.as_ref().map(|e| &e.0), Permission::ConnectorsManage)?;
+    let input: ThreadHandoffRequest = decode_json_body(&body)?;
+    let now = Utc::now();
+    let link = create_thread_handoff(&state, tc, &thread_id, &input, now)?;
+    // Go recordActiveProfileProjectionForTarget: anchor the active profile
+    // selection to the handoff destination and re-save the link with the
+    // projection attached.
+    let projection = record_active_profile_projection_for_target(
+        &state,
+        tc,
+        profiles::RuntimeResourceKind::HANDOFF_DESTINATION,
+        &link.destination_thread_id,
+        &link.destination_thread_id,
+        &link.destination_session_segment_id,
+        &link.handoff_link_id,
+    )?;
+    let mut link = link;
+    if let Some(projection) = projection {
+        link.active_profile_projection = Some(projection.clone());
+        link = state
+            .store
+            .lock()
+            .save_handoff_link(link)
+            .map_err(ApiError::from_store)?;
+    }
+    publish_thread_event(
+        &state,
+        &tc.tenant_id,
+        events::thread_handoff_linked_event(link.clone()),
+    )?;
+    if !can_inspect_profile_runtime(tenant.as_ref().map(|e| &e.0)) {
+        link.active_profile_projection = None;
+    }
+    Ok((StatusCode::CREATED, AxumJson(link)))
 }
 
 /// GET /v1/threads/{thread_id}/continuity-previews/{preview_id} — continuity
-/// preview detail. The store get_continuity_preview_detail DAO is not ported,
-/// so this answers 501 after the credentials.inspect gate.
+/// preview detail (Go handleThreadContinuityPreviewDetail) on the store
+/// get_continuity_preview_detail DAO.
 async fn thread_continuity_preview_detail(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path((thread_id, preview_id)): Path<(String, String)>,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = require_thread_permission(tenant.as_ref().map(|e| &e.0), Permission::CredentialsInspect)?;
-    let _ = (state, thread_id, preview_id);
-    Ok(not_implemented(
-        "thread_continuity_preview_not_implemented",
-        "thread continuity preview detail is not yet ported",
-    ))
+) -> Result<Json<threads::ContinuityPreviewDetail>, ApiError> {
+    let tc = require_thread_permission(tenant.as_ref().map(|e| &e.0), Permission::CredentialsInspect)?;
+    let detail = state
+        .store
+        .lock()
+        .get_continuity_preview_detail(&tc.tenant_id, &thread_id, &preview_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("not found".to_string()))?;
+    Ok(Json(detail))
+}
+
+// --- thread handoff helpers (Go createThreadHandoff + friends) ---
+
+/// Go createThreadHandoff: loads the source thread + proven shape, resolves
+/// source/destination eligibility, validates, and persists the link with its
+/// continuity source references.
+fn create_thread_handoff(
+    state: &AppState,
+    tc: &dope_identity::TenantContext,
+    source_thread_id: &str,
+    input: &ThreadHandoffRequest,
+    now: DateTime<Utc>,
+) -> Result<threads::HandoffLink, ApiError> {
+    let source_thread = state
+        .store
+        .lock()
+        .get_thread_for_tenant(&tc.tenant_id, source_thread_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("thread not found".to_string()))?;
+    let source_shape = state
+        .store
+        .lock()
+        .get_conversation_shape_for_thread(&tc.tenant_id, source_thread_id)
+        .map_err(ApiError::from_store)?;
+    let Some(source_shape) = source_shape else {
+        return Err(handoff_error(threads::ThreadsError::HandoffNotEligible));
+    };
+    if source_shape.shape_evidence_status != threads::ShapeEvidenceStatus::Proven
+        || source_shape.shape == threads::ConversationShape::Unknown
+        || source_shape.shape == threads::ConversationShape::Unsupported
+    {
+        return Err(handoff_error(threads::ThreadsError::HandoffNotEligible));
+    }
+    let (source_eligible, source_permission_allowed) =
+        validate_handoff_source(state, tc, &source_thread, &source_shape)?;
+    let (destination_thread, destination_shape, destination_permission_allowed) =
+        ensure_handoff_destination_thread(state, tc, &input.destination, now)?;
+    let link = threads::HandoffLink {
+        handoff_link_id: String::new(),
+        tenant_id: tc.tenant_id.clone(),
+        source_thread_id: source_thread.thread_id.clone(),
+        source_session_segment_id: source_thread.current_session_segment_id.clone(),
+        destination_thread_id: destination_thread.thread_id.clone(),
+        destination_session_segment_id: destination_thread.current_session_segment_id.clone(),
+        source_conversation_shape: source_shape.shape,
+        destination_conversation_shape: destination_shape.shape,
+        source_kind: Some(source_thread.source_kind),
+        destination_kind: Some(destination_thread.source_kind),
+        source_connector_id: source_shape.connector_id.clone(),
+        destination_connector_id: destination_shape.connector_id.clone(),
+        source_conversation_id: source_shape.source_conversation_id.clone(),
+        destination_conversation_id: destination_shape.source_conversation_id.clone(),
+        actor_principal_id: tc.principal_id.clone(),
+        permission_gate: "connectors.manage".to_string(),
+        status: threads::HandoffStatus::Succeeded,
+        reason_code: coalesce_reason(&input.reason_code, "user_requested_handoff"),
+        first_destination_response_id: String::new(),
+        source_reference_status: threads::HandoffSourceReferenceStatus::Available,
+        active_profile_projection: None,
+        created_at: Some(now),
+        consumed_at: None,
+        retention_expires_at: None,
+        redaction_status: threads::RedactionStatus::Redacted,
+    };
+    threads::validate_handoff(&threads::HandoffValidationInput {
+        link: link.clone(),
+        has_mutation_permission: true,
+        source_eligible,
+        destination_eligible: destination_shape.shape_evidence_status == threads::ShapeEvidenceStatus::Proven,
+        source_permission_allowed,
+        destination_permission_allowed,
+    })
+    .map_err(handoff_error)?;
+    let mut saved = state
+        .store
+        .lock()
+        .save_handoff_link(link.clone())
+        .map_err(ApiError::from_store)?;
+    let turns = state
+        .store
+        .lock()
+        .list_continuity_turns(&dope_store::thread_continuity::ContinuityLookupQuery {
+            tenant_id: tc.tenant_id.clone(),
+            thread_id: source_thread.thread_id.clone(),
+            session_segment_id: source_thread.current_session_segment_id.clone(),
+            limit: 0,
+            now: Some(now),
+        })
+        .map_err(ApiError::from_store)?;
+    let mut refs = threads::build_handoff_source_references(&saved, &turns, Some(now));
+    if refs.is_empty() {
+        saved.source_reference_status = threads::HandoffSourceReferenceStatus::None;
+        return state
+            .store
+            .lock()
+            .save_handoff_link(saved)
+            .map_err(ApiError::from_store);
+    }
+    state
+        .store
+        .lock()
+        .save_handoff_source_references(&mut refs)
+        .map_err(ApiError::from_store)?;
+    Ok(saved)
+}
+
+/// Go ensureHandoffDestinationThread: web surfaces create a fresh shell thread;
+/// channel surfaces resolve (or create) the current thread for the normalized
+/// source continuation key and record a proven shape.
+fn ensure_handoff_destination_thread(
+    state: &AppState,
+    tc: &dope_identity::TenantContext,
+    destination: &ThreadHandoffDestinationRequest,
+    now: DateTime<Utc>,
+) -> Result<(threads::Thread, threads::ConversationShapeEvidence, bool), ApiError> {
+    match destination.surface.trim() {
+        "web" => {
+            let thread_id = format!(
+                "thr_handoff_web_{}",
+                short_handoff_hash(&format!("{}:{}", tc.tenant_id, rfc3339_nano(now)))
+            );
+            let segment_id = format!("seg_{thread_id}");
+            let retention = state
+                .store
+                .lock()
+                .thread_retention_expiry(&tc.tenant_id, now)
+                .map_err(ApiError::from_store)?;
+            let thread = threads::Thread {
+                thread_id: thread_id.clone(),
+                tenant_id: tc.tenant_id.clone(),
+                lifecycle_state: threads::LifecycleState::Active,
+                current_session_segment_id: segment_id.clone(),
+                source_kind: threads::SourceKind::Shell,
+                source_summary: "Web handoff destination".to_string(),
+                last_activity_at: now,
+                created_at: now,
+                updated_at: now,
+                retention_expires_at: Some(retention),
+                redaction_status: threads::RedactionStatus::Redacted,
+            };
+            state.store.lock().upsert_thread(&thread).map_err(ApiError::from_store)?;
+            state
+                .store
+                .lock()
+                .upsert_thread_session_segment(&threads::SessionSegment {
+                    session_segment_id: segment_id.clone(),
+                    thread_id: thread_id.clone(),
+                    tenant_id: tc.tenant_id.clone(),
+                    session_id: String::new(),
+                    generation: 1,
+                    state: "active".to_string(),
+                    started_at: now,
+                    ended_at: None,
+                    last_active_at: now,
+                    reset_from_session_segment_id: String::new(),
+                    partial_evidence: false,
+                })
+                .map_err(ApiError::from_store)?;
+            let shape = threads::resolve_conversation_shape(&threads::ConversationShapeResolutionInput {
+                tenant_id: tc.tenant_id.clone(),
+                thread_id: thread_id.clone(),
+                session_segment_id: segment_id.clone(),
+                source_kind: threads::SourceKind::Shell,
+                connector_id: String::new(),
+                connector_kind: String::new(),
+                source_account_id: String::new(),
+                source_conversation_id: String::new(),
+                source_conversation_summary: "Web handoff destination".to_string(),
+                claimed_shape: Some(threads::ConversationShape::Web),
+                now: Some(now),
+            });
+            state
+                .store
+                .lock()
+                .save_conversation_shape_evidence(&shape)
+                .map_err(ApiError::from_store)?;
+            Ok((thread, shape, true))
+        }
+        "channel" => {
+            let shape_value = threads::normalize_conversation_shape(&destination.conversation_shape)
+                .map_err(|_| handoff_error(threads::ThreadsError::HandoffNotEligible))?;
+            if shape_value != threads::ConversationShape::Group
+                && shape_value != threads::ConversationShape::Room
+                && shape_value != threads::ConversationShape::DirectMessage
+            {
+                return Err(handoff_error(threads::ThreadsError::HandoffNotEligible));
+            }
+            let (destination_eligible, destination_permission_allowed) = validate_channel_handoff_endpoint(
+                state,
+                tc,
+                &destination.connector_id,
+                &destination.source_conversation_id,
+                connectors::HANDOFF_SURFACE_DESTINATION_SUPPORT,
+            )?;
+            if !destination_permission_allowed {
+                return Err(handoff_error(threads::ThreadsError::HandoffPermissionDenied));
+            }
+            if !destination_eligible {
+                return Err(handoff_error(threads::ThreadsError::HandoffNotEligible));
+            }
+            let destination_connector = find_connector_for_tenant(state, &tc.tenant_id, &destination.connector_id)?
+                .ok_or_else(|| handoff_error(threads::ThreadsError::HandoffNotEligible))?;
+            let key = threads::normalize_source_continuation_key(&threads::SourceContinuationKey {
+                tenant_id: tc.tenant_id.clone(),
+                connector_id: destination.connector_id.clone(),
+                source_account_id: destination.source_account_id.clone(),
+                source_conversation_id: destination.source_conversation_id.clone(),
+            })
+            .map_err(|_| handoff_error(threads::ThreadsError::HandoffNotEligible))?;
+            let current = state
+                .store
+                .lock()
+                .get_current_thread_for_source(&key)
+                .map_err(ApiError::from_store)?;
+            let current = match current {
+                Some(thread) => thread,
+                None => {
+                    let thread_id = format!(
+                        "thr_handoff_channel_{}",
+                        short_handoff_hash(&key.to_string())
+                    );
+                    let segment_id = format!("seg_{thread_id}");
+                    let retention = state
+                        .store
+                        .lock()
+                        .thread_retention_expiry(&tc.tenant_id, now)
+                        .map_err(ApiError::from_store)?;
+                    let thread = threads::Thread {
+                        thread_id: thread_id.clone(),
+                        tenant_id: tc.tenant_id.clone(),
+                        lifecycle_state: threads::LifecycleState::Active,
+                        current_session_segment_id: segment_id.clone(),
+                        source_kind: threads::SourceKind::Channel,
+                        source_summary: format!(
+                            "{} / {}",
+                            destination.connector_id, destination.source_conversation_id
+                        ),
+                        last_activity_at: now,
+                        created_at: now,
+                        updated_at: now,
+                        retention_expires_at: Some(retention),
+                        redaction_status: threads::RedactionStatus::Redacted,
+                    };
+                    state.store.lock().upsert_thread(&thread).map_err(ApiError::from_store)?;
+                    state
+                        .store
+                        .lock()
+                        .upsert_thread_session_segment(&threads::SessionSegment {
+                            session_segment_id: segment_id.clone(),
+                            thread_id: thread_id.clone(),
+                            tenant_id: tc.tenant_id.clone(),
+                            session_id: String::new(),
+                            generation: 1,
+                            state: "active".to_string(),
+                            started_at: now,
+                            ended_at: None,
+                            last_active_at: now,
+                            reset_from_session_segment_id: String::new(),
+                            partial_evidence: false,
+                        })
+                        .map_err(ApiError::from_store)?;
+                    thread
+                }
+            };
+            let shape = threads::resolve_conversation_shape(&threads::ConversationShapeResolutionInput {
+                tenant_id: tc.tenant_id.clone(),
+                thread_id: current.thread_id.clone(),
+                session_segment_id: current.current_session_segment_id.clone(),
+                source_kind: threads::SourceKind::Channel,
+                connector_id: destination.connector_id.clone(),
+                connector_kind: destination_connector.kind.clone(),
+                source_account_id: destination.source_account_id.clone(),
+                source_conversation_id: destination.source_conversation_id.clone(),
+                source_conversation_summary: current.source_summary.clone(),
+                claimed_shape: Some(shape_value),
+                now: Some(now),
+            });
+            state
+                .store
+                .lock()
+                .save_conversation_shape_evidence(&shape)
+                .map_err(ApiError::from_store)?;
+            Ok((current, shape, destination_permission_allowed))
+        }
+        _ => Err(handoff_error(threads::ThreadsError::HandoffNotEligible)),
+    }
+}
+
+/// Go validateHandoffSource.
+fn validate_handoff_source(
+    state: &AppState,
+    tc: &dope_identity::TenantContext,
+    source_thread: &threads::Thread,
+    source_shape: &threads::ConversationShapeEvidence,
+) -> Result<(bool, bool), ApiError> {
+    if source_thread.lifecycle_state == threads::LifecycleState::Archived {
+        return Ok((false, true));
+    }
+    if source_shape.source_kind != Some(threads::SourceKind::Channel) {
+        return Ok((true, true));
+    }
+    validate_channel_handoff_endpoint(
+        state,
+        tc,
+        &source_shape.connector_id,
+        &source_shape.source_conversation_id,
+        connectors::HANDOFF_SURFACE_SOURCE_SUPPORT,
+    )
+}
+
+/// Go validateChannelHandoffEndpoint: connector must exist, be healthy, and
+/// either declare handoff support or allow the conversation through its route
+/// policy.
+fn validate_channel_handoff_endpoint(
+    state: &AppState,
+    tc: &dope_identity::TenantContext,
+    connector_id: &str,
+    source_conversation_id: &str,
+    capability_key: &str,
+) -> Result<(bool, bool), ApiError> {
+    let Some(connector) = find_connector_for_tenant(state, &tc.tenant_id, connector_id)? else {
+        return Ok((false, false));
+    };
+    if connector.status == connectors::Status::Disabled
+        || connector.status == connectors::Status::Failed
+        || connector.status == connectors::Status::BackingOff
+    {
+        return Ok((false, false));
+    }
+    if connector_handoff_capability_unsupported(&connector, capability_key) {
+        return Ok((false, true));
+    }
+    let policy = state
+        .store
+        .lock()
+        .get_channel_route_policy(&tc.tenant_id, connector_id)
+        .map_err(ApiError::from_store)?;
+    match policy {
+        Some(policy) if connectors::route_policy_is_valid(&policy) => Ok((
+            connectors::route_policy_allows_conversation(&policy, source_conversation_id),
+            true,
+        )),
+        _ => Ok((false, false)),
+    }
+}
+
+/// Go connectorHandoffCapabilityUnsupported: an explicit capability value that
+/// is neither supported nor limited means the endpoint cannot hand off.
+fn connector_handoff_capability_unsupported(
+    connector: &dope_connectors::Connector,
+    capability_key: &str,
+) -> bool {
+    if connector.capability_profile.is_empty() || capability_key.trim().is_empty() {
+        return false;
+    }
+    match connector.capability_profile.get(capability_key) {
+        Some(value) => {
+            let raw = value.as_str().unwrap_or_default().trim();
+            raw != connectors::ConformanceResultStatus::Supported.as_str()
+                && raw != connectors::ConformanceResultStatus::Limited.as_str()
+        }
+        None => false,
+    }
+}
+
+/// Go findConnectorForTenant: first connector matching id whose tenant is
+/// empty or the caller's tenant.
+fn find_connector_for_tenant(
+    state: &AppState,
+    tenant_id: &str,
+    connector_id: &str,
+) -> Result<Option<dope_connectors::Connector>, ApiError> {
+    let items = state.store.lock().list_connectors().map_err(ApiError::from_store)?;
+    for item in items {
+        if item.connector_id.trim() != connector_id.trim() {
+            continue;
+        }
+        if !item.tenant_id.trim().is_empty() && item.tenant_id.trim() != tenant_id.trim() {
+            continue;
+        }
+        return Ok(Some(item));
+    }
+    Ok(None)
+}
+
+/// Go handleThreadHandoffError: permission failures answer the stable 403
+/// denial; same-thread / ineligible destinations answer 409; missing threads
+/// answer 404 (handled by the caller); anything else is 500.
+fn handoff_error(err: threads::ThreadsError) -> ApiError {
+    match err {
+        threads::ThreadsError::HandoffPermissionDenied => credential_denial(),
+        threads::ThreadsError::HandoffSameThread | threads::ThreadsError::HandoffNotEligible => {
+            ApiError::Conflict(err.to_string())
+        }
+        other => ApiError::from_store(other.to_string()),
+    }
+}
+
+/// Go shortHandoffHash: 24 hex chars. dope-api has no sha2 dependency, so the
+/// uuid v4 hex (32 chars) is truncated to the same id shape; uniqueness comes
+/// from the uuid, matching Go's intent.
+fn short_handoff_hash(value: &str) -> String {
+    let _ = value;
+    let hex = uuid::Uuid::new_v4().simple().to_string();
+    hex[..24].to_string()
+}
+
+/// Go RFC3339Nano timestamp (used for the web handoff id input).
+fn rfc3339_nano(ts: DateTime<Utc>) -> String {
+    ts.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
 }
 
 // ---------------------------------------------------------------------------
-// Agent profiles (registered; DAOs not ported -> 501)
+// Agent profiles (Go agent_profiles.go)
 // ---------------------------------------------------------------------------
 
+/// GET /v1/profiles — tenant profile list (Go handleListAgentProfiles).
 async fn list_profiles(
     State(state): State<AppState>,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = state;
-    Ok(profile_store_not_configured())
+    tenant: Option<Extension<TenantContext>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<profiles::ListResponse>, ApiError> {
+    let tc = require_profile_permission(
+        &state,
+        tenant.as_ref().map(|e| &e.0),
+        Permission::ProfilesInspect,
+        "agent_profile.inspect_denied",
+        "",
+    )?;
+    let limit = parse_limit(params.get("limit"));
+    let items = state
+        .store
+        .lock()
+        .list_agent_profiles(&tc.tenant_id, limit)
+        .map_err(ApiError::from_store)?;
+    Ok(Json(items))
 }
 
+/// POST /v1/profiles — create a profile (201; Go handleCreateAgentProfile).
 async fn create_profile(
     State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, body);
-    Ok(profile_store_not_configured())
+) -> Result<(StatusCode, AxumJson<profiles::MutationResult>), ApiError> {
+    let tc = require_profile_permission(
+        &state,
+        tenant.as_ref().map(|e| &e.0),
+        Permission::ProfilesManage,
+        "agent_profile.create_denied",
+        "",
+    )?;
+    let input: profiles::MutationInput = decode_json_body(&body)?;
+    // Drop the store guard before the denied event publishes (parking_lot is
+    // not reentrant).
+    let created = {
+        let store = state.store.lock();
+        store.create_agent_profile(tc, &input)
+    };
+    let result = match created {
+        Ok(result) => result,
+        Err(message) => {
+            publish_profile_denied_event(&state, tc, "", "agent_profile.validation_failed", &message)?;
+            return Err(map_profile_error(message));
+        }
+    };
+    publish_profile_mutation_events(
+        &state,
+        tc,
+        &result,
+        "agent_profile.created",
+        "succeeded",
+        &default_api_reason(&input.reason_code, "user_created_profile"),
+    )?;
+    Ok((StatusCode::CREATED, AxumJson(result)))
 }
 
+/// GET /v1/profiles/{profile_id} — profile detail with versions, overlays,
+/// and audit events (Go handleGetAgentProfile).
 async fn get_profile(
     State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
     Path(profile_id): Path<String>,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, profile_id);
-    Ok(profile_store_not_configured())
+) -> Result<Json<profiles::ProfileDetail>, ApiError> {
+    let tc = require_profile_permission(
+        &state,
+        tenant.as_ref().map(|e| &e.0),
+        Permission::ProfilesInspect,
+        "agent_profile.inspect_denied",
+        &profile_id,
+    )?;
+    let detail = state
+        .store
+        .lock()
+        .get_agent_profile_detail(&tc.tenant_id, &profile_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("profile not found".to_string()))?;
+    Ok(Json(detail))
 }
 
+/// PATCH /v1/profiles/{profile_id} — update profile persona/identity
+/// (Go handleUpdateAgentProfile).
 async fn update_profile(
     State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
     Path(profile_id): Path<String>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, profile_id, body);
-    Ok(profile_store_not_configured())
+) -> Result<Json<profiles::MutationResult>, ApiError> {
+    let tc = require_profile_permission(
+        &state,
+        tenant.as_ref().map(|e| &e.0),
+        Permission::ProfilesManage,
+        "agent_profile.update_denied",
+        &profile_id,
+    )?;
+    let input: profiles::MutationInput = decode_json_body(&body)?;
+    let updated = {
+        let store = state.store.lock();
+        store.update_agent_profile(tc, &profile_id, &input)
+    };
+    let result = match updated {
+        Ok(result) => result,
+        Err(message) => {
+            publish_profile_denied_event(&state, tc, &profile_id, "agent_profile.validation_failed", &message)?;
+            return Err(map_profile_error(message));
+        }
+    };
+    publish_profile_mutation_events(
+        &state,
+        tc,
+        &result,
+        "agent_profile.updated",
+        "succeeded",
+        &default_api_reason(&input.reason_code, "user_updated_profile"),
+    )?;
+    Ok(Json(result))
 }
 
+/// POST /v1/profiles/{profile_id}/activate — set the tenant default
+/// (Go handleActivateAgentProfile). The request body is optional.
 async fn activate_profile(
     State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
     Path(profile_id): Path<String>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, profile_id, body);
-    Ok(profile_store_not_configured())
+) -> Result<Json<profiles::ActiveSelection>, ApiError> {
+    let tc = require_profile_permission(
+        &state,
+        tenant.as_ref().map(|e| &e.0),
+        Permission::ProfilesManage,
+        "agent_profile.activate_denied",
+        &profile_id,
+    )?;
+    let input: profiles::ActivationInput = decode_optional_json_body(&body)?;
+    let activated = {
+        let store = state.store.lock();
+        store.activate_agent_profile(tc, &profile_id, &input)
+    };
+    let selection = match activated {
+        Ok(selection) => selection,
+        Err(message) => {
+            publish_profile_denied_event(
+                &state,
+                tc,
+                &profile_id,
+                "agent_profile.activate_denied",
+                &message,
+            )?;
+            return Err(map_profile_error(message));
+        }
+    };
+    publish_thread_event(
+        &state,
+        &tc.tenant_id,
+        events::agent_profile_lifecycle_event(events::AgentProfileLifecycleInput {
+            tenant_id: tc.tenant_id.clone(),
+            profile_id: selection.profile_id.clone(),
+            profile_version_id: selection.profile_version_id.clone(),
+            actor_principal_id: tc.principal_id.clone(),
+            event_name: "agent_profile.activated".to_string(),
+            outcome: "succeeded".to_string(),
+            reason_code: default_api_reason(&input.reason_code, "user_selected_default"),
+            permission_gate: "profiles.manage".to_string(),
+            audit_event_id: selection.audit_event_id.clone(),
+            redaction_status: profiles::RedactionStatus::REDACTED,
+            ..Default::default()
+        }),
+    )?;
+    Ok(Json(selection))
 }
 
+/// GET /v1/profiles/{profile_id}/versions — profile version history
+/// (Go handleListAgentProfileVersions).
 async fn list_profile_versions(
     State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
     Path(profile_id): Path<String>,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, profile_id);
-    Ok(profile_store_not_configured())
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<crate::types::ListResponse<profiles::ProfileVersion>>, ApiError> {
+    let tc = require_profile_permission(
+        &state,
+        tenant.as_ref().map(|e| &e.0),
+        Permission::ProfilesInspect,
+        "agent_profile.inspect_denied",
+        &profile_id,
+    )?;
+    let limit = parse_limit(params.get("limit"));
+    let items = state
+        .store
+        .lock()
+        .list_agent_profile_versions(&tc.tenant_id, &profile_id, limit)
+        .map_err(ApiError::from_store)?;
+    Ok(Json(crate::types::ListResponse { items }))
 }
 
+/// POST /v1/profiles/{profile_id}/rollback — revert to a source version
+/// (Go handleRollbackAgentProfile).
 async fn rollback_profile(
     State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
     Path(profile_id): Path<String>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, profile_id, body);
-    Ok(profile_store_not_configured())
+) -> Result<Json<profiles::MutationResult>, ApiError> {
+    let tc = require_profile_permission(
+        &state,
+        tenant.as_ref().map(|e| &e.0),
+        Permission::ProfilesManage,
+        "agent_profile.rollback_denied",
+        &profile_id,
+    )?;
+    let input: profiles::RollbackInput = decode_json_body(&body)?;
+    let rolled_back = {
+        let store = state.store.lock();
+        store.rollback_agent_profile(tc, &profile_id, &input)
+    };
+    let result = match rolled_back {
+        Ok(result) => result,
+        Err(message) => {
+            publish_profile_denied_event(
+                &state,
+                tc,
+                &profile_id,
+                "agent_profile.rollback_denied",
+                &message,
+            )?;
+            return Err(map_profile_error(message));
+        }
+    };
+    publish_profile_mutation_events(
+        &state,
+        tc,
+        &result,
+        "agent_profile.rolled_back",
+        "succeeded",
+        &default_api_reason(&input.reason_code, "operator_reverted_persona"),
+    )?;
+    Ok(Json(result))
 }
 
+/// POST /v1/profiles/{profile_id}/archive — retire with archived status
+/// (Go handleRetireAgentProfile). The request body is optional.
 async fn archive_profile(
     State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
     Path(profile_id): Path<String>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, profile_id, body);
-    Ok(profile_store_not_configured())
+) -> Result<Json<profiles::MutationResult>, ApiError> {
+    retire_profile(&state, tenant, profile_id, profiles::Status::ARCHIVED, body).await
 }
 
+/// POST /v1/profiles/{profile_id}/disable — retire with disabled status
+/// (Go handleRetireAgentProfile). The request body is optional.
 async fn disable_profile(
     State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
     Path(profile_id): Path<String>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, profile_id, body);
-    Ok(profile_store_not_configured())
+) -> Result<Json<profiles::MutationResult>, ApiError> {
+    retire_profile(&state, tenant, profile_id, profiles::Status::DISABLED, body).await
 }
 
-// ---------------------------------------------------------------------------
-// Workspaces / bindings / capability visibility (registered; DAOs not ported
-// -> 501)
-// ---------------------------------------------------------------------------
-
-async fn list_workspaces(
-    State(state): State<AppState>,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = state;
-    Ok(binding_store_not_configured())
-}
-
-async fn create_workspace(
-    State(state): State<AppState>,
+/// Shared retirement handler (Go handleRetireAgentProfile): retires the
+/// profile, publishes the archived/disabled lifecycle + version events, and —
+/// when the retired profile was the tenant default — the safe-default fallback
+/// event.
+async fn retire_profile(
+    state: &AppState,
+    tenant: Option<Extension<TenantContext>>,
+    profile_id: String,
+    status: profiles::Status,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, body);
-    Ok(binding_store_not_configured())
-}
-
-async fn get_workspace(
-    State(state): State<AppState>,
-    Path(workspace_id): Path<String>,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, workspace_id);
-    Ok(binding_store_not_configured())
-}
-
-async fn update_workspace(
-    State(state): State<AppState>,
-    Path(workspace_id): Path<String>,
-    body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, workspace_id, body);
-    Ok(binding_store_not_configured())
-}
-
-async fn list_bindings(
-    State(state): State<AppState>,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = state;
-    Ok(binding_store_not_configured())
-}
-
-async fn create_binding(
-    State(state): State<AppState>,
-    body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, body);
-    Ok(binding_store_not_configured())
-}
-
-async fn get_binding(
-    State(state): State<AppState>,
-    Path(binding_id): Path<String>,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, binding_id);
-    Ok(binding_store_not_configured())
-}
-
-async fn update_binding(
-    State(state): State<AppState>,
-    Path(binding_id): Path<String>,
-    body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, binding_id, body);
-    Ok(binding_store_not_configured())
-}
-
-async fn delete_binding(
-    State(state): State<AppState>,
-    Path(binding_id): Path<String>,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, binding_id);
-    Ok(binding_store_not_configured())
-}
-
-async fn repair_binding(
-    State(state): State<AppState>,
-    Path(binding_id): Path<String>,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, binding_id);
-    Ok(binding_store_not_configured())
-}
-
-async fn list_capability_visibility(
-    State(state): State<AppState>,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = state;
-    Ok(binding_store_not_configured())
-}
-
-async fn set_capability_visibility(
-    State(state): State<AppState>,
-    body: Bytes,
-) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
-    let _ = (state, body);
-    Ok(binding_store_not_configured())
+) -> Result<Json<profiles::MutationResult>, ApiError> {
+    let tc = require_profile_permission(
+        state,
+        tenant.as_ref().map(|e| &e.0),
+        Permission::ProfilesManage,
+        "agent_profile.retirement_denied",
+        &profile_id,
+    )?;
+    let input: profiles::RetirementInput = decode_optional_json_body(&body)?;
+    let is_disabled = status == profiles::Status::DISABLED;
+    let retired = {
+        let store = state.store.lock();
+        store.retire_agent_profile(tc, &profile_id, status, &input)
+    };
+    let result = match retired {
+        Ok(result) => result,
+        Err(message) => {
+            publish_profile_denied_event(
+                state,
+                tc,
+                &profile_id,
+                "agent_profile.retirement_denied",
+                &message,
+            )?;
+            return Err(map_profile_error(message));
+        }
+    };
+    let event_name = if is_disabled {
+        "agent_profile.disabled"
+    } else {
+        "agent_profile.archived"
+    };
+    publish_profile_mutation_events(
+        state,
+        tc,
+        &result,
+        event_name,
+        "succeeded",
+        &default_api_reason(&input.reason_code, "operator_retired_profile"),
+    )?;
+    if !result.selection.selection_id.is_empty() {
+        publish_thread_event(
+            state,
+            &tc.tenant_id,
+            events::agent_profile_lifecycle_event(events::AgentProfileLifecycleInput {
+                tenant_id: tc.tenant_id.clone(),
+                profile_id: result.selection.profile_id.clone(),
+                profile_version_id: result.selection.profile_version_id.clone(),
+                actor_principal_id: "system".to_string(),
+                event_name: "agent_profile.safe_default_fallback".to_string(),
+                outcome: "succeeded".to_string(),
+                reason_code: "current_default_retired".to_string(),
+                permission_gate: "profiles.manage".to_string(),
+                audit_event_id: result.selection.audit_event_id.clone(),
+                redaction_status: profiles::RedactionStatus::REDACTED,
+                ..Default::default()
+            }),
+        )?;
+    }
+    Ok(Json(result))
 }
 
 // ---------------------------------------------------------------------------
@@ -645,33 +1241,257 @@ fn decode_json_body<T: serde::de::DeserializeOwned>(body: &Bytes) -> Result<T, A
     serde_json::from_slice(body).map_err(|err| ApiError::BadRequest(err.to_string()))
 }
 
-/// 501 `{error, code}` payload (Go writeActivationNotImplemented precedent).
-fn not_implemented(code: &'static str, message: &'static str) -> (StatusCode, AxumJson<serde_json::Value>) {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        AxumJson(serde_json::json!({ "error": message, "code": code })),
+/// Go decodeOptionalJSON: an empty body decodes to the zero value (EOF is
+/// tolerated); malformed JSON answers 400.
+fn decode_optional_json_body<T: serde::de::DeserializeOwned>(body: &Bytes) -> Result<T, ApiError> {
+    if body.is_empty() {
+        return serde_json::from_slice(b"{}").map_err(|err| ApiError::BadRequest(err.to_string()));
+    }
+    serde_json::from_slice(body).map_err(|err| ApiError::BadRequest(err.to_string()))
+}
+
+/// Go defaultAPIReason.
+fn default_api_reason(value: &str, fallback: &str) -> String {
+    coalesce_reason(value, fallback)
+}
+
+/// Go limit parse: unparseable/zero -> 0 (the store applies its default).
+fn parse_limit(raw: Option<&String>) -> i64 {
+    match raw {
+        Some(value) if !value.trim().is_empty() => value.trim().parse().unwrap_or(0),
+        _ => 0,
+    }
+}
+
+/// Go requireProfilePermission: resolved tenant context + the given
+/// permission, else a denied profile lifecycle event (when the tenant is
+/// known) followed by the stable 403 credential denial.
+fn require_profile_permission<'a>(
+    state: &AppState,
+    tenant: Option<&'a TenantContext>,
+    permission: Permission,
+    event_name: &str,
+    profile_id: &str,
+) -> Result<&'a dope_identity::TenantContext, ApiError> {
+    let Some(tc) = tenant else {
+        return Err(credential_denial());
+    };
+    if tc.0.tenant_id.trim().is_empty() || !has_permission(&tc.0.permissions, permission) {
+        if !tc.0.tenant_id.trim().is_empty() {
+            let _ = publish_thread_event(
+                state,
+                &tc.0.tenant_id,
+                events::agent_profile_lifecycle_event(events::AgentProfileLifecycleInput {
+                    tenant_id: tc.0.tenant_id.clone(),
+                    profile_id: profile_id.to_string(),
+                    actor_principal_id: tc.0.principal_id.clone(),
+                    event_name: event_name.to_string(),
+                    outcome: "denied".to_string(),
+                    reason_code: "permission_denied".to_string(),
+                    permission_gate: "profiles.manage".to_string(),
+                    redaction_status: profiles::RedactionStatus::REDACTED,
+                    ..Default::default()
+                }),
+            );
+        }
+        return Err(credential_denial());
+    }
+    Ok(&tc.0)
+}
+
+/// Go publishProfileLifecycle for mutation failures: a denied lifecycle event.
+fn publish_profile_denied_event(
+    state: &AppState,
+    tc: &dope_identity::TenantContext,
+    profile_id: &str,
+    event_name: &str,
+    message: &str,
+) -> Result<(), ApiError> {
+    publish_thread_event(
+        state,
+        &tc.tenant_id,
+        events::agent_profile_lifecycle_event(events::AgentProfileLifecycleInput {
+            tenant_id: tc.tenant_id.clone(),
+            profile_id: profile_id.to_string(),
+            actor_principal_id: tc.principal_id.clone(),
+            event_name: event_name.to_string(),
+            outcome: "denied".to_string(),
+            reason_code: profile_reason_code(message),
+            permission_gate: "profiles.manage".to_string(),
+            redaction_status: profiles::RedactionStatus::REDACTED,
+            ..Default::default()
+        }),
     )
 }
 
-/// 501 for the agent-profile family: the profile DAOs are not ported to
-/// dope-store (Go maps the nil-store analogue to 500 "profile store is not
-/// configured"; 501 is the honest marker for the missing DAOs).
-fn profile_store_not_configured() -> (StatusCode, AxumJson<serde_json::Value>) {
-    not_implemented(
-        "profile_store_not_configured",
-        "agent profile store DAOs are not yet ported",
-    )
+/// Go publishProfileMutationEvents: lifecycle + version-created events for a
+/// successful profile mutation.
+fn publish_profile_mutation_events(
+    state: &AppState,
+    actor: &dope_identity::TenantContext,
+    result: &profiles::MutationResult,
+    event_name: &str,
+    outcome: &str,
+    reason_code: &str,
+) -> Result<(), ApiError> {
+    publish_thread_event(
+        state,
+        &actor.tenant_id,
+        events::agent_profile_lifecycle_event(events::AgentProfileLifecycleInput {
+            tenant_id: actor.tenant_id.clone(),
+            profile_id: result.profile.profile_id.clone(),
+            profile_version_id: result.version.profile_version_id.clone(),
+            actor_principal_id: actor.principal_id.clone(),
+            event_name: event_name.to_string(),
+            outcome: outcome.to_string(),
+            reason_code: reason_code.to_string(),
+            permission_gate: "profiles.manage".to_string(),
+            safe_summary: profiles::safe_profile_summary(&result.profile),
+            audit_event_id: result.audit_event_id.clone(),
+            redaction_status: profiles::RedactionStatus::REDACTED,
+        }),
+    )?;
+    if !result.version.profile_version_id.is_empty() {
+        publish_thread_event(
+            state,
+            &actor.tenant_id,
+            events::agent_profile_version_created_event(events::AgentProfileVersionInput {
+                tenant_id: actor.tenant_id.clone(),
+                profile_id: result.profile.profile_id.clone(),
+                profile_version_id: result.version.profile_version_id.clone(),
+                change_kind: result.version.change_kind.clone(),
+                version_number: result.version.version_number,
+                reason_code: reason_code.to_string(),
+                redaction_status: profiles::RedactionStatus::REDACTED,
+            }),
+        )?;
+    }
+    Ok(())
 }
 
-/// 501 for the workspace/binding/capability-visibility families (Go nil-store
-/// analogue: 500 "binding store is not configured").
-fn binding_store_not_configured() -> (StatusCode, AxumJson<serde_json::Value>) {
-    not_implemented(
-        "binding_store_not_configured",
-        "workspace/binding store DAOs are not yet ported",
-    )
+/// Go writeProfileError: sentinel mapping for the store error strings.
+fn map_profile_error(message: String) -> ApiError {
+    if message == "agent profile not found" {
+        return ApiError::NotFound("profile not found".to_string());
+    }
+    if message == profiles::ProfilesError::ProfileNotActivatable.to_string() {
+        return ApiError::Conflict(message);
+    }
+    if message == profiles::ProfilesError::ScopedBindingDeferred.to_string()
+        || message.starts_with("profile validation failed")
+    {
+        return ApiError::BadRequest(message);
+    }
+    if message == profiles::ProfilesError::ExplicitActorRequired.to_string() {
+        return credential_denial();
+    }
+    ApiError::from_store(message)
 }
 
+/// Go reasonCodeForProfileError: the stable reason code for a failed profile
+/// mutation (used in the validation_failed denial event).
+fn profile_reason_code(message: &str) -> String {
+    if let Some(code) = message.strip_prefix("profile validation failed: ") {
+        let code = code.trim();
+        if code.is_empty() {
+            return "profile_validation_failed".to_string();
+        }
+        return code.to_string();
+    }
+    if message == profiles::ProfilesError::ScopedBindingDeferred.to_string() {
+        return "scoped_binding_deferred".to_string();
+    }
+    if message == profiles::ProfilesError::ProfileNotActivatable.to_string() {
+        return "profile_not_activatable".to_string();
+    }
+    if message == "agent profile not found" {
+        return "profile_not_found".to_string();
+    }
+    if message == profiles::ProfilesError::ExplicitActorRequired.to_string() {
+        return "explicit_actor_required".to_string();
+    }
+    "profile_operation_failed".to_string()
+}
+
+/// Go recordActiveProfileProjectionForTarget: records the active profile
+/// selection as a runtime projection anchored to the target resource and
+/// publishes agent_profile.runtime_projected. Returns None when the tenant
+/// has no active selection or the resource id is empty.
+fn record_active_profile_projection_for_target(
+    state: &AppState,
+    tc: &dope_identity::TenantContext,
+    resource_kind: profiles::RuntimeResourceKind,
+    resource_id: &str,
+    thread_id: &str,
+    session_segment_id: &str,
+    handoff_id: &str,
+) -> Result<Option<profiles::RuntimeProjection>, ApiError> {
+    if resource_id.trim().is_empty() {
+        return Ok(None);
+    }
+    let Some((profile, selection)) = state
+        .store
+        .lock()
+        .active_agent_profile_selection(&tc.tenant_id)
+        .map_err(ApiError::from_store)?
+    else {
+        return Ok(None);
+    };
+    let projection = profiles::build_runtime_projection(
+        &profile,
+        &selection,
+        profiles::RuntimeProjectionInput {
+            resource_kind,
+            resource_id: resource_id.trim().to_string(),
+            thread_id: thread_id.trim().to_string(),
+            session_id: session_segment_id.trim().to_string(),
+            handoff_id: handoff_id.trim().to_string(),
+            ..Default::default()
+        },
+    );
+    let recorded = state
+        .store
+        .lock()
+        .record_runtime_profile_projection(projection)
+        .map_err(ApiError::from_store)?;
+    publish_thread_event(
+        state,
+        &tc.tenant_id,
+        events::agent_profile_runtime_projected_event(recorded.clone()),
+    )?;
+    Ok(Some(recorded))
+}
+
+/// Go writeThreadDetailWithBindingProjection: for callers holding
+/// bindings.inspect, attaches the latest runtime binding evidence as an
+/// additive `bindingProjection` field (FR-013, SC-012).
+fn write_thread_detail_with_binding_projection(
+    state: &AppState,
+    tc: &dope_identity::TenantContext,
+    thread_id: &str,
+    response: threads::ThreadDetailResponse,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut merged = serde_json::to_value(response)
+        .map_err(ApiError::from)?
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+    if has_permission(&tc.permissions, Permission::BindingsInspect) {
+        let evidence = state
+            .store
+            .lock()
+            .latest_runtime_binding_evidence(&tc.tenant_id, "thread", thread_id)
+            .map_err(ApiError::from_store)?;
+        if let Some(evidence) = evidence {
+            merged.insert(
+                "bindingProjection".to_string(),
+                serde_json::to_value(dope_bindings::to_runtime_evidence_resource(&evidence))
+                    .map_err(ApiError::from)?,
+            );
+        }
+    }
+    Ok(Json(serde_json::Value::Object(merged)))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1114,89 +1934,495 @@ mod tests {
         assert_eq!(json["message"], "lifecycle transition is not allowed");
     }
 
+    // Port of TestThreadHandoffCreateChannelToWebPersistsSeparateDestinationAndReferences.
     #[tokio::test]
-    async fn handoff_and_continuity_gate_permission_then_501() {
+    async fn thread_handoff_channel_to_web_persists_destination_and_references() {
         let state = test_state();
+        // Base the fixture on the real clock so the 90-day retention the
+        // handler derives stays in the future.
+        let now = chrono::Utc::now();
+        {
+            let store = state.store.lock();
+            let source = threads::Thread {
+                thread_id: "thr_handoff_source".to_string(),
+                tenant_id: "ten_threads".to_string(),
+                lifecycle_state: threads::LifecycleState::Active,
+                current_session_segment_id: "seg_source".to_string(),
+                source_kind: threads::SourceKind::Channel,
+                source_summary: "Slack / #support".to_string(),
+                last_activity_at: now,
+                created_at: now,
+                updated_at: now,
+                retention_expires_at: Some(now + Duration::days(90)),
+                redaction_status: threads::RedactionStatus::Redacted,
+            };
+            store.upsert_thread(&source).expect("upsert source");
+            store
+                .upsert_thread_session_segment(&threads::SessionSegment {
+                    session_segment_id: "seg_source".to_string(),
+                    thread_id: source.thread_id.clone(),
+                    tenant_id: source.tenant_id.clone(),
+                    session_id: String::new(),
+                    generation: 1,
+                    state: "active".to_string(),
+                    started_at: now,
+                    ended_at: None,
+                    last_active_at: now,
+                    reset_from_session_segment_id: String::new(),
+                    partial_evidence: false,
+                })
+                .expect("upsert source segment");
+            let shape = threads::resolve_conversation_shape(&threads::ConversationShapeResolutionInput {
+                tenant_id: source.tenant_id.clone(),
+                thread_id: source.thread_id.clone(),
+                session_segment_id: source.current_session_segment_id.clone(),
+                source_kind: threads::SourceKind::Channel,
+                connector_id: "slack-main".to_string(),
+                connector_kind: "slack".to_string(),
+                source_account_id: "workspace_redacted".to_string(),
+                source_conversation_id: "channel_redacted".to_string(),
+                source_conversation_summary: source.source_summary.clone(),
+                claimed_shape: Some(threads::ConversationShape::Room),
+                now: Some(now),
+            });
+            store.save_conversation_shape_evidence(&shape).expect("save source shape");
+            store
+                .save_continuity_turn(&threads::ContinuityTurn {
+                    continuity_turn_id: "turn_source_1".to_string(),
+                    tenant_id: source.tenant_id.clone(),
+                    thread_id: source.thread_id.clone(),
+                    session_segment_id: source.current_session_segment_id.clone(),
+                    acceptance_sequence: 1,
+                    role: threads::ContinuityRole::User,
+                    source_kind: threads::SourceKind::Channel,
+                    source_linkage_id: String::new(),
+                    source_message_id: String::new(),
+                    source_timestamp: None,
+                    dispatch_id: String::new(),
+                    response_to_turn_id: String::new(),
+                    safe_content: "safe source context".to_string(),
+                    content_redaction_status: threads::RedactionStatus::Redacted,
+                    artifact_excerpt_refs: Vec::new(),
+                    recorded_at: now,
+                    retention_expires_at: Some(now + Duration::days(90)),
+                    source_event_key: String::new(),
+                })
+                .expect("save continuity turn");
+            // Connector + route policy make the channel endpoint eligible.
+            store
+                .upsert_connector(&dope_connectors::Connector {
+                    tenant_id: "ten_threads".to_string(),
+                    connector_id: "slack-main".to_string(),
+                    kind: "slack".to_string(),
+                    display_name: "Slack Main".to_string(),
+                    status: dope_connectors::Status::Healthy,
+                    capability_profile: {
+                        let mut profile = serde_json::Map::new();
+                        profile.insert(
+                            dope_connectors::HANDOFF_SURFACE_DESTINATION_SUPPORT.to_string(),
+                            serde_json::Value::String("supported".to_string()),
+                        );
+                        profile
+                    },
+                    created_at: now,
+                    updated_at: now,
+                    ..Default::default()
+                })
+                .expect("upsert connector");
+            store
+                .save_channel_route_policy(&dope_connectors::RoutePolicy {
+                    route_policy_id: "route_policy_slack-main".to_string(),
+                    tenant_id: "ten_threads".to_string(),
+                    connector_id: "slack-main".to_string(),
+                    eligible_rooms: vec!["channel_redacted".to_string()],
+                    eligible_channels: vec!["channel_redacted".to_string()],
+                    eligible_conversations: vec!["channel_redacted".to_string()],
+                    validation_state: "valid".to_string(),
+                    validated_at: now,
+                    redaction_status: dope_connectors::RedactionStatus::Redacted,
+                    ..Default::default()
+                })
+                .expect("save route policy");
+            let result = store
+                .create_agent_profile(
+                    &dope_identity::TenantContext {
+                        tenant_id: "ten_threads".to_string(),
+                        principal_id: "prn_profile_admin".to_string(),
+                        ..Default::default()
+                    },
+                    &profiles::MutationInput {
+                        display_name: "Handoff Agent".to_string(),
+                        persona: profiles::Persona { safe_summary: "handoff profile".to_string(), ..Default::default() },
+                        activate: true,
+                        ..Default::default()
+                    },
+                )
+                .expect("create profile");
+            let _profile_id = result.profile.profile_id;
+        }
         let app = crate::routes::router(state.clone());
-
-        // Without the manage permission the gate answers 403 before the 501.
-        let req = tenant_request("POST", "/v1/threads/thr_1/handoffs", Some(r#"{"destination":{"surface":"web"}}"#), "ten_threads", vec![Permission::CredentialsInspect]);
+        let req = tenant_request(
+            "POST",
+            "/v1/threads/thr_handoff_source/handoffs",
+            Some(r#"{"destination":{"surface":"web"},"reasonCode":"user_requested_handoff"}"#),
+            "ten_threads",
+            vec![Permission::ConnectorsManage, Permission::ProfilesInspect],
+        );
         let (status, json) = send(&app, req).await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "handoff denied body: {json}");
+        assert_eq!(status, StatusCode::CREATED, "handoff body: {json}");
+        assert_eq!(json["sourceThreadId"], "thr_handoff_source");
+        let destination = json["destinationThreadId"].as_str().expect("destination").to_string();
+        assert!(!destination.is_empty() && destination != "thr_handoff_source");
+        assert_eq!(json["destinationConversationShape"], "web");
+        let profile_id = {
+            let store = state.store.lock();
+            store
+                .active_agent_profile_selection("ten_threads")
+                .expect("selection")
+                .expect("found")
+                .0
+                .profile_id
+        };
+        assert_eq!(json["activeProfileProjection"]["profileId"], profile_id.as_str());
 
-        let req = tenant_request("GET", "/v1/threads/thr_1/continuity-previews/pv_1", None, "ten_threads", vec![]);
-        let (status, _) = send(&app, req).await;
-        assert_eq!(status, StatusCode::FORBIDDEN);
+        // The continuity source reference was persisted with the Referenced decision.
+        let link_id = json["handoffLinkId"].as_str().expect("link id").to_string();
+        let refs = {
+            let store = state.store.lock();
+            store
+                .list_handoff_source_references_for_link("ten_threads", &link_id)
+                .expect("list refs")
+        };
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].decision, threads::HandoffSourceReferenceDecision::Referenced);
+        assert_eq!(refs[0].continuity_turn_id, "turn_source_1");
 
-        // With the permission the unported surfaces answer 501.
-        let req = tenant_request("POST", "/v1/threads/thr_1/handoffs", Some(r#"{"destination":{"surface":"web"}}"#), "ten_threads", vec![Permission::ConnectorsManage]);
-        let (status, json) = send(&app, req).await;
-        assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "handoff body: {json}");
-        assert_eq!(json["code"], "thread_handoff_not_implemented");
-
-        let req = tenant_request("GET", "/v1/threads/thr_1/continuity-previews/pv_1", None, "ten_threads", vec![Permission::CredentialsInspect]);
-        let (status, json) = send(&app, req).await;
-        assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "preview body: {json}");
-        assert_eq!(json["code"], "thread_continuity_preview_not_implemented");
+        // thread.handoff_linked was published.
+        let events = state
+            .event_bus
+            .list(&dope_events::Filter { category: "thread".to_string(), ..Default::default() });
+        assert!(
+            events.iter().any(|event| event.name == dope_events::THREAD_HANDOFF_LINKED_NAME
+                && event.payload.get("sourceThreadId").and_then(|v| v.as_str()) == Some("thr_handoff_source")),
+            "expected handoff linked event: {events:?}"
+        );
     }
 
+    // Port of TestThreadHandoffCreateRequiresManagePermission.
     #[tokio::test]
-    async fn unported_profile_binding_and_visibility_families_answer_501() {
+    async fn thread_handoff_requires_manage_permission() {
         let state = test_state();
         let app = crate::routes::router(state.clone());
+        let req = tenant_request(
+            "POST",
+            "/v1/threads/missing/handoffs",
+            Some(r#"{"destination":{"surface":"web"}}"#),
+            "ten_threads",
+            vec![Permission::CredentialsInspect],
+        );
+        let (status, json) = send(&app, req).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "denied body: {json}");
+    }
 
-        // Agent profiles.
-        for (method, uri, body) in [
-            ("GET", "/v1/profiles", None),
-            ("POST", "/v1/profiles", Some(r#"{"displayName":"Agent"}"#)),
-            ("GET", "/v1/profiles/prof_1", None),
-            ("PATCH", "/v1/profiles/prof_1", Some(r#"{"displayName":"Renamed"}"#)),
-            ("POST", "/v1/profiles/prof_1/activate", Some("{}")),
-            ("GET", "/v1/profiles/prof_1/versions", None),
-            ("POST", "/v1/profiles/prof_1/rollback", Some("{}")),
-            ("POST", "/v1/profiles/prof_1/archive", Some("{}")),
-            ("POST", "/v1/profiles/prof_1/disable", Some("{}")),
-        ] {
-            let (status, json) = send(&app, request(method, uri, body)).await;
-            assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{method} {uri}: {json}");
-            assert_eq!(json["code"], "profile_store_not_configured", "{method} {uri}: {json}");
+    // Continuity preview detail answers 200 with the preview + items and 404
+    // for missing previews.
+    #[tokio::test]
+    async fn thread_continuity_preview_detail_ok_and_404() {
+        let state = test_state();
+        let now = chrono::Utc::now();
+        {
+            let store = state.store.lock();
+            // The preview references the thread and its session segment (FK).
+            store
+                .upsert_thread(&threads::Thread {
+                    thread_id: "thr_preview".to_string(),
+                    tenant_id: "ten_threads".to_string(),
+                    lifecycle_state: threads::LifecycleState::Active,
+                    current_session_segment_id: "seg_preview".to_string(),
+                    source_kind: threads::SourceKind::Channel,
+                    source_summary: "Preview thread".to_string(),
+                    last_activity_at: now,
+                    created_at: now,
+                    updated_at: now,
+                    retention_expires_at: Some(now + Duration::days(90)),
+                    redaction_status: threads::RedactionStatus::Redacted,
+                })
+                .expect("upsert thread");
+            store
+                .upsert_thread_session_segment(&threads::SessionSegment {
+                    session_segment_id: "seg_preview".to_string(),
+                    thread_id: "thr_preview".to_string(),
+                    tenant_id: "ten_threads".to_string(),
+                    session_id: String::new(),
+                    generation: 1,
+                    state: "active".to_string(),
+                    started_at: now,
+                    ended_at: None,
+                    last_active_at: now,
+                    reset_from_session_segment_id: String::new(),
+                    partial_evidence: false,
+                })
+                .expect("upsert segment");
+            let mut items = vec![threads::ContinuityPreviewItem {
+                preview_item_id: "contitem_1".to_string(),
+                continuity_preview_id: "contprev_1".to_string(),
+                tenant_id: "ten_threads".to_string(),
+                thread_id: "thr_preview".to_string(),
+                item_kind: threads::ContinuityItemKind::Turn,
+                continuity_turn_id: "turn_source_1".to_string(),
+                role: Some(threads::ContinuityRole::User),
+                artifact_ref: String::new(),
+                artifact_excerpt_id: String::new(),
+                handoff_source_reference_id: String::new(),
+                decision: threads::ContinuityDecision::Included,
+                reason_code: threads::ContinuityReason::IncludedRecent,
+                acceptance_sequence: 1,
+                source_timestamp: None,
+                safe_summary: "safe preview".to_string(),
+                redaction_status: threads::RedactionStatus::Redacted,
+                item_order: 0,
+            }];
+            store
+                .save_continuity_preview(
+                    threads::ContinuityPreview {
+                        continuity_preview_id: "contprev_1".to_string(),
+                        tenant_id: "ten_threads".to_string(),
+                        thread_id: "thr_preview".to_string(),
+                        session_segment_id: "seg_preview".to_string(),
+                        dispatch_id: String::new(),
+                        request_turn_id: String::new(),
+                        response_turn_id: String::new(),
+                        window_policy_id: String::new(),
+                        max_prior_turns: 0,
+                        active_window_days: 0,
+                        included_count: 1,
+                        excluded_count: 0,
+                        continuity_applied: true,
+                        status: threads::ContinuityStatus::Applied,
+                        failure_class: String::new(),
+                        assembly_started_at: now,
+                        assembly_completed_at: now,
+                        assembly_duration_ms: 0,
+                        retention_expires_at: now + Duration::days(90),
+                        redaction_status: threads::RedactionStatus::Redacted,
+                    },
+                    &mut items,
+                )
+                .expect("save preview");
         }
+        let app = crate::routes::router(state.clone());
+        let req = tenant_request(
+            "GET",
+            "/v1/threads/thr_preview/continuity-previews/contprev_1",
+            None,
+            "ten_threads",
+            vec![Permission::CredentialsInspect],
+        );
+        let (status, json) = send(&app, req).await;
+        assert_eq!(status, StatusCode::OK, "preview body: {json}");
+        assert_eq!(json["preview"]["continuityPreviewId"], "contprev_1");
+        assert_eq!(json["items"].as_array().map(|v| v.len()), Some(1));
 
-        // Workspaces.
-        for (method, uri, body) in [
-            ("GET", "/v1/workspaces", None),
-            ("POST", "/v1/workspaces", Some(r#"{"displayName":"Default"}"#)),
-            ("GET", "/v1/workspaces/ws_1", None),
-            ("PATCH", "/v1/workspaces/ws_1", Some(r#"{"status":"active"}"#)),
-        ] {
-            let (status, json) = send(&app, request(method, uri, body)).await;
-            assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{method} {uri}: {json}");
-            assert_eq!(json["code"], "binding_store_not_configured", "{method} {uri}: {json}");
-        }
+        let req = tenant_request(
+            "GET",
+            "/v1/threads/thr_preview/continuity-previews/contprev_missing",
+            None,
+            "ten_threads",
+            vec![Permission::CredentialsInspect],
+        );
+        let (status, _) = send(&app, req).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
 
-        // Bindings.
-        for (method, uri, body) in [
-            ("GET", "/v1/bindings", None),
-            ("POST", "/v1/bindings", Some(r#"{"workspaceId":"ws_1"}"#)),
-            ("GET", "/v1/bindings/b_1", None),
-            ("PATCH", "/v1/bindings/b_1", Some(r#"{"status":"disabled"}"#)),
-            ("DELETE", "/v1/bindings/b_1", None),
-            ("POST", "/v1/bindings/b_1/repair", None),
-        ] {
-            let (status, json) = send(&app, request(method, uri, body)).await;
-            assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{method} {uri}: {json}");
-            assert_eq!(json["code"], "binding_store_not_configured", "{method} {uri}: {json}");
-        }
+    // Port of TestAgentProfileAPIRequiresPermissionsAndMutatesProfiles.
+    #[tokio::test]
+    async fn agent_profile_lifecycle_requires_permissions_and_mutates() {
+        let state = test_state();
+        let app = crate::routes::router(state.clone());
+        let admin = vec![Permission::ProfilesInspect, Permission::ProfilesManage];
+        let viewer = vec![Permission::ProfilesInspect];
 
-        // Capability visibility.
-        for (method, uri, body) in [
-            ("GET", "/v1/capability-visibility?scopeKind=profile&scopeRef=prof_1", None),
-            ("PUT", "/v1/capability-visibility", Some(r#"{"scopeKind":"profile","scopeRef":"prof_1","capabilityId":"cap_1","visibility":"visible"}"#)),
-        ] {
-            let (status, json) = send(&app, request(method, uri, body)).await;
-            assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{method} {uri}: {json}");
-            assert_eq!(json["code"], "binding_store_not_configured", "{method} {uri}: {json}");
+        let (status, json) = send(
+            &app,
+            tenant_request("POST", "/v1/profiles", Some(r#"{"displayName":"Support","persona":{"tone":"direct"},"activate":true}"#), "ten_threads", admin.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "create body: {json}");
+        let profile_id = json["profile"]["profileId"].as_str().expect("profile id").to_string();
+
+        // List works for the viewer.
+        let (status, json) = send(&app, tenant_request("GET", "/v1/profiles", None, "ten_threads", viewer.clone())).await;
+        assert_eq!(status, StatusCode::OK, "list body: {json}");
+        assert!(json["items"].as_array().map(|v| !v.is_empty()).unwrap_or(false));
+
+        // Update denied without profiles.manage.
+        let (status, json) = send(
+            &app,
+            tenant_request("PATCH", &format!("/v1/profiles/{profile_id}"), Some(r#"{"displayName":"Denied"}"#), "ten_threads", viewer.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "denied update: {json}");
+
+        // Invalid create answers 400 with the safe reason code.
+        let (status, json) = send(
+            &app,
+            tenant_request(
+                "POST",
+                "/v1/profiles",
+                Some(r#"{"displayName":"Invalid","defaultProviderPreference":{"providerId":"bad provider"}}"#),
+                "ten_threads",
+                admin.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "invalid create: {json}");
+        assert!(
+            json.to_string().contains("provider_preference_malformed"),
+            "expected safe reason code: {json}"
+        );
+
+        // Archive succeeds for the admin.
+        let (status, json) = send(
+            &app,
+            tenant_request("POST", &format!("/v1/profiles/{profile_id}/archive"), Some(r#"{"reasonCode":"test_archive"}"#), "ten_threads", admin.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "archive body: {json}");
+        assert_eq!(json["profile"]["status"], "archived");
+
+        // Durable profile events: denied update + validation failure.
+        let events = state
+            .event_bus
+            .list(&dope_events::Filter { category: "agent_profile".to_string(), ..Default::default() });
+        assert!(
+            events.iter().any(|event| event.name == "agent_profile.update_denied"
+                && event.payload.get("reasonCode").and_then(|v| v.as_str()) == Some("permission_denied")),
+            "expected update_denied event: {events:?}"
+        );
+        assert!(
+            events.iter().any(|event| event.name == "agent_profile.validation_failed"
+                && event.payload.get("reasonCode").and_then(|v| v.as_str()) == Some("provider_preference_malformed")),
+            "expected validation_failed event: {events:?}"
+        );
+    }
+
+    // Port of TestAgentProfileAPIVersionsRollbackDisableAndOverlays (subset).
+    #[tokio::test]
+    async fn agent_profile_versions_rollback_and_disable() {
+        let state = test_state();
+        let app = crate::routes::router(state.clone());
+        let admin = vec![Permission::ProfilesInspect, Permission::ProfilesManage];
+
+        let (status, json) = send(
+            &app,
+            tenant_request(
+                "POST",
+                "/v1/profiles",
+                Some(r#"{"displayName":"Support","persona":{"tone":"direct"},"overlayReferences":[{"referenceKind":"prompt","referenceUri":"prompt://profiles/support","scope":"profile"}]}"#),
+                "ten_threads",
+                admin.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "create: {json}");
+        let profile_id = json["profile"]["profileId"].as_str().expect("profile id").to_string();
+        let first_version_id = json["version"]["profileVersionId"].as_str().expect("version id").to_string();
+
+        // Update creates a second version.
+        let (status, json) = send(
+            &app,
+            tenant_request(
+                "PATCH",
+                &format!("/v1/profiles/{profile_id}"),
+                Some(r#"{"displayName":"Support Updated","persona":{"tone":"calm"}}"#),
+                "ten_threads",
+                admin.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "update: {json}");
+
+        // Versions list shows both.
+        let (status, json) = send(
+            &app,
+            tenant_request("GET", &format!("/v1/profiles/{profile_id}/versions"), None, "ten_threads", admin.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "versions: {json}");
+        assert_eq!(json["items"].as_array().map(|v| v.len()), Some(2));
+
+        // Rollback to the first version.
+        let (status, json) = send(
+            &app,
+            tenant_request(
+                "POST",
+                &format!("/v1/profiles/{profile_id}/rollback"),
+                Some(&format!(r#"{{"sourceProfileVersionId":"{first_version_id}"}}"#)),
+                "ten_threads",
+                admin.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "rollback: {json}");
+        assert_eq!(json["version"]["sourceVersionId"], first_version_id.as_str());
+
+        // Disable the profile.
+        let (status, json) = send(
+            &app,
+            tenant_request("POST", &format!("/v1/profiles/{profile_id}/disable"), Some("{}"), "ten_threads", admin.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "disable: {json}");
+        assert_eq!(json["profile"]["status"], "disabled");
+    }
+
+    // Thread detail attaches bindingProjection only for bindings.inspect callers.
+    #[tokio::test]
+    async fn thread_detail_binding_projection_gated_by_permission() {
+        let state = test_state();
+        let now = chrono::Utc::now() - Duration::minutes(5);
+        seed_thread(&state, &thread("thr_binding", "ten_threads", threads::LifecycleState::Active, threads::SourceKind::Channel, "Slack / #support", now, now));
+        {
+            let store = state.store.lock();
+            store
+                .record_runtime_binding_evidence(dope_bindings::RuntimeBindingEvidence {
+                    tenant_id: "ten_threads".to_string(),
+                    resource_kind: "thread".to_string(),
+                    resource_id: "thr_binding".to_string(),
+                    binding_scope: dope_bindings::BindingRuntimeScope::CHANNEL,
+                    classification: dope_bindings::Classification::APPLIED,
+                    selection_reason: "explicit_binding_selection".to_string(),
+                    occurred_at: now,
+                    redaction_status: dope_bindings::RedactionStatus::REDACTED,
+                    ..Default::default()
+                })
+                .expect("record binding evidence");
         }
+        let app = crate::routes::router(state.clone());
+
+        // Without bindings.inspect there is no projection field.
+        let (status, json) = send(
+            &app,
+            tenant_request("GET", "/v1/threads/thr_binding", None, "ten_threads", vec![Permission::CredentialsInspect]),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "detail body: {json}");
+        assert!(json.get("bindingProjection").is_none(), "leaked projection: {json}");
+
+        // With bindings.inspect the additive projection is attached.
+        let (status, json) = send(
+            &app,
+            tenant_request(
+                "GET",
+                "/v1/threads/thr_binding",
+                None,
+                "ten_threads",
+                vec![Permission::CredentialsInspect, Permission::BindingsInspect],
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "detail body: {json}");
+        assert_eq!(json["bindingProjection"]["resourceKind"], "thread");
+        assert_eq!(json["bindingProjection"]["resourceId"], "thr_binding");
     }
 }
-

@@ -472,3 +472,98 @@ impl SQLiteStore {
         Ok((updated_sessions, updated_actions))
     }
 }
+
+// --- dope_computeruse::Store trait impl (Send + Sync handle over the DAOs) ---
+//
+// rusqlite's Connection is Send but not Sync, so SQLiteStore cannot be the
+// trait's `Send + Sync` self type directly. Following the dope_secrets::Store
+// precedent (see secrets.rs), the workspace convention shares the store as
+// `Arc<parking_lot::Mutex<SQLiteStore>>`; the mutex is wrapped in the local
+// `ComputerUseStoreHandle` newtype, which satisfies Send + Sync and serializes
+// access exactly like the Go daemon's single-connection store.
+
+/// Send + Sync handle over the SQLite store implementing
+/// dope_computeruse::Store. Construct from a fresh store and share as
+/// `Arc<ComputerUseStoreHandle>` with the computer-use manager.
+pub struct ComputerUseStoreHandle(pub parking_lot::Mutex<SQLiteStore>);
+
+impl ComputerUseStoreHandle {
+    pub fn new(store: SQLiteStore) -> Self {
+        Self(parking_lot::Mutex::new(store))
+    }
+}
+
+impl dope_computeruse::Store for ComputerUseStoreHandle {
+    fn upsert_computer_use_session(&self, session: &dope_computeruse::Session) -> Result<(), String> {
+        self.0.lock().upsert_computer_use_session(session)
+    }
+
+    fn list_computer_use_sessions(&self, environment: &str, run_id: &str) -> Result<Vec<dope_computeruse::Session>, String> {
+        self.0.lock().list_computer_use_sessions(environment, run_id)
+    }
+
+    fn get_computer_use_session(
+        &self,
+        environment: &str,
+        run_id: &str,
+        session_id: &str,
+    ) -> Result<Option<dope_computeruse::Session>, String> {
+        self.0.lock().get_computer_use_session(environment, run_id, session_id)
+    }
+
+    fn upsert_computer_use_action(&self, action: &dope_computeruse::Action) -> Result<(), String> {
+        self.0.lock().upsert_computer_use_action(action)
+    }
+
+    fn list_computer_use_actions(
+        &self,
+        environment: &str,
+        run_id: &str,
+        session_id: &str,
+    ) -> Result<Vec<dope_computeruse::Action>, String> {
+        self.0.lock().list_computer_use_actions(environment, run_id, session_id)
+    }
+
+    fn get_computer_use_action(
+        &self,
+        environment: &str,
+        run_id: &str,
+        session_id: &str,
+        action_id: &str,
+    ) -> Result<Option<dope_computeruse::Action>, String> {
+        self.0.lock().get_computer_use_action(environment, run_id, session_id, action_id)
+    }
+
+    fn find_pending_computer_use_action_by_approval(
+        &self,
+        environment: &str,
+        approval_id: &str,
+    ) -> Result<Option<dope_computeruse::Action>, String> {
+        self.0.lock().find_pending_computer_use_action_by_approval(environment, approval_id)
+    }
+
+    fn upsert_computer_use_artifact(&self, artifact: &dope_computeruse::Artifact) -> Result<(), String> {
+        self.0.lock().upsert_computer_use_artifact(artifact)
+    }
+
+    fn list_computer_use_artifacts_for_action(
+        &self,
+        environment: &str,
+        run_id: &str,
+        action_id: &str,
+    ) -> Result<Vec<dope_computeruse::Artifact>, String> {
+        self.0.lock().list_computer_use_artifacts_for_action(environment, run_id, action_id)
+    }
+
+    fn get_computer_use_artifact(&self, environment: &str, artifact_id: &str) -> Result<Option<dope_computeruse::Artifact>, String> {
+        self.0.lock().get_computer_use_artifact(environment, artifact_id)
+    }
+
+    fn mark_in_flight_computer_use_interrupted(
+        &self,
+        environment: &str,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(Vec<dope_computeruse::Session>, Vec<dope_computeruse::Action>), String> {
+        self.0.lock().mark_inflight_computer_use_interrupted(environment, &now)
+    }
+}

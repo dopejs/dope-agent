@@ -7,6 +7,7 @@ use std::path::Path;
 use chrono::SecondsFormat;
 use rusqlite::{params, Connection};
 
+pub mod billing;
 pub mod bindings;
 pub mod calendar;
 pub mod channel_management;
@@ -44,6 +45,8 @@ pub mod thread_persistence;
 pub mod workspaces;
 pub mod workflow;
 
+pub use billing::BillingRepositoryHandle;
+pub use computeruse::ComputerUseStoreHandle;
 pub use channel_management::{
     BackgroundDeliveryOutcome, ForegroundReplyOutcome, ManagementState, RouteDecisionOutcome,
     RoutePolicy, RoutingDecision, SupportEvidenceBundle,

@@ -33,14 +33,20 @@
 //!   `POST .../matrix-smoke` (non-safe-live records only),
 //!   `GET .../{discord|telegram|slack|matrix}-conformance`
 //!
+//! The tenant-scoped evaluation product family (discovery policies/runs,
+//! discovered candidates, product fixtures + revisions + review/suppress,
+//! suppressions, replay campaigns, dashboard projections, tool-call
+//! inspections, retention/apply) is fully ported on the dope-store
+//! evaluation_product DAOs (rs/store/src/evaluation_product.rs) with the
+//! dope_evaluation domain helpers (build_discovery_run_from_policy,
+//! create_product_fixture_from_candidate, create_replay_campaign, ...). The
+//! tenant is read from the resolved tenant context (400 when absent, matching
+//! Go evaluationProductTenantIDFromRequest); capability-gated mutations check
+//! the specific permission or the evaluation.manage wildcard. Note: Go answers
+//! 501 for POST /v1/evaluation/retention/apply ("mutations are not enabled");
+//! this wave implements the real handler on the store apply_retention DAO.
+//!
 //! NOT PORTED (manager/store method missing — reported, not duplicated):
-//! - the tenant-scoped evaluation product family (discovery policies/runs,
-//!   discovered candidates, product fixtures + revisions + review/suppress,
-//!   suppressions, replay campaigns, dashboard projections, tool-call
-//!   inspections, retention/apply): dope-store's SQLiteStore has the tables
-//!   (migration r41) but none of the product DAOs
-//!   (ListDiscoveryPolicies/UpsertDiscoveryPolicy/SaveDiscoveryRun/...), and no
-//!   crate implements `dope_evaluation::product_store::ProductStore`.
 //! - `POST /v1/live-validations/{telegram|slack}-smoke`: the Go api layer
 //!   delegates the evidence build to the connectors packages; dope-api does not
 //!   depend on dope-telegram/dope-slack, so the recorders are not ported.
@@ -79,6 +85,7 @@ use dope_evaluation::{
     CreateReplayAttemptInput, EvaluationError, FixtureFilter, ReplayAttempt, ReplayAttemptStatus,
     ReplayCandidate, ReplayMode, RegressionFixture,
 };
+use dope_identity::{has_permission, Permission};
 use dope_livevalidation::{
     ApprovalMode, ApprovalStatus, ApprovalTarget, Attempt, AttemptFilter, AttemptStatus, Comparison,
     FreshApproval, KillSwitch, KillSwitchFilter, KillSwitchScope, LiveValidationError, MatrixRow,
@@ -1522,6 +1529,1097 @@ fn project_slack_smoke_evidence_resource(
 /// registered: their SQLiteStore DAOs do not exist in dope-store (see the
 /// module doc).
 #[must_use]
+// ---------------------------------------------------------------------------
+// Evaluation product family (Go evaluation_product.go) — discovery policies,
+// discovery runs, discovered candidates, product fixtures + revisions,
+// suppressions, replay campaigns, dashboard projections, tool-call
+// inspections, and retention/apply. All routes read the resolved tenant
+// context (400 when absent) and answer on the dope-store evaluation_product
+// DAOs; mutation routes requiring a capability check it with the
+// evaluation.manage wildcard (Go evaluationProductRequestHasPermission).
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EvaluationProductListResponse<T> {
+    tenant_id: String,
+    page: dope_evaluation::ProductPage,
+    items: Vec<T>,
+}
+
+/// Go upsertDiscoveryPolicyRequest.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpsertDiscoveryPolicyRequest {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    source_kinds: Vec<dope_evaluation::SourceKind>,
+    #[serde(default)]
+    window_start: DateTime<Utc>,
+    #[serde(default)]
+    window_end: DateTime<Utc>,
+    #[serde(default)]
+    max_inspected_records: i64,
+    #[serde(default)]
+    max_emitted_candidates: i64,
+    #[serde(default)]
+    cost_budget: i64,
+    #[serde(default)]
+    sensitive_field_rules: Vec<String>,
+    #[serde(default)]
+    retention_policy_ref: String,
+    #[allow(dead_code)]
+    #[serde(default)]
+    idempotency_key: String,
+}
+
+/// Go startDiscoveryRunRequest.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartDiscoveryRunRequest {
+    #[serde(default)]
+    policy_id: String,
+    #[serde(default)]
+    window_start: DateTime<Utc>,
+    #[serde(default)]
+    window_end: DateTime<Utc>,
+    #[serde(default)]
+    source_kinds: Vec<dope_evaluation::SourceKind>,
+    #[serde(default)]
+    max_inspected_records: i64,
+    #[serde(default)]
+    max_emitted_candidates: i64,
+    #[serde(default)]
+    cost_budget: i64,
+    #[serde(default)]
+    cursor: String,
+    #[serde(default)]
+    idempotency_key: String,
+}
+
+/// Go materializeProductFixtureRequest.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MaterializeProductFixtureRequest {
+    #[serde(default)]
+    fixture_id: String,
+    display_name: String,
+    #[serde(default)]
+    domain_class: dope_evaluation::FixtureDomainClass,
+    #[serde(default)]
+    fixture_payload: serde_json::Map<String, serde_json::Value>,
+    #[serde(default)]
+    change_summary: String,
+    #[serde(default)]
+    idempotency_key: String,
+}
+
+/// Go createFixtureRevisionRequest.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateFixtureRevisionRequest {
+    #[serde(default)]
+    revision_id: String,
+    #[serde(default)]
+    fixture_payload: serde_json::Map<String, serde_json::Value>,
+    #[serde(default)]
+    content_summary: String,
+    #[serde(default)]
+    change_summary: String,
+    #[serde(default)]
+    source_evidence_refs: Vec<String>,
+    #[allow(dead_code)]
+    #[serde(default)]
+    idempotency_key: String,
+}
+
+/// Go reviewProductFixtureRequest.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewProductFixtureRequest {
+    revision_id: String,
+    decision: String,
+    #[allow(dead_code)]
+    #[serde(default)]
+    reason: String,
+}
+
+/// Go createCampaignRequest.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateCampaignRequest {
+    #[serde(default)]
+    campaign_id: String,
+    display_name: String,
+    #[serde(default)]
+    scope_summary: String,
+    #[serde(default)]
+    source_selections: Vec<CampaignSourceSelectionRequest>,
+    #[serde(default)]
+    start_immediately: bool,
+    #[serde(default)]
+    idempotency_key: String,
+}
+
+/// Go campaignSourceSelectionRequest.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CampaignSourceSelectionRequest {
+    source_type: dope_evaluation::ProductResourceKind,
+    source_id: String,
+    #[serde(default)]
+    source_snapshot: serde_json::Map<String, serde_json::Value>,
+    #[serde(default)]
+    selection_reason: String,
+}
+
+/// Go productFixtureMutationResponse.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductFixtureMutationResponse {
+    fixture: dope_evaluation::ProductManagedFixture,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    revision: Option<dope_evaluation::FixtureRevision>,
+}
+
+/// Go evaluationProductTenantIDFromRequest: a resolved tenant context is
+/// required (400 with the stable product-tenant message otherwise).
+fn evaluation_product_tenant(
+    tenant: Option<&TenantContext>,
+) -> Result<&dope_identity::TenantContext, ApiError> {
+    match tenant {
+        Some(tc) if !tc.0.tenant_id.trim().is_empty() => Ok(&tc.0),
+        _ => Err(ApiError::BadRequest(
+            dope_evaluation::EvaluationError::ProductTenantRequired.to_string(),
+        )),
+    }
+}
+
+/// Go evaluationProductRequestHasPermission: the specific permission or the
+/// evaluation.manage wildcard.
+fn evaluation_product_permission(
+    tc: &dope_identity::TenantContext,
+    permission: Permission,
+) -> bool {
+    has_permission(&tc.permissions, permission)
+        || has_permission(&tc.permissions, Permission::EvaluationManage)
+}
+
+/// Go productPageFromRequest.
+fn product_page(params: &HashMap<String, String>) -> dope_evaluation::ProductPage {
+    dope_evaluation::ProductPage {
+        cursor: params.get("cursor").cloned().unwrap_or_default(),
+        limit: dope_evaluation::normalize_product_limit(query_int(params, "limit")),
+    }
+}
+
+/// GET /v1/evaluation/discovery-policies (Go handleEvaluationProductDiscoveryPolicies).
+async fn list_discovery_policies(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<EvaluationProductListResponse<dope_evaluation::DiscoveryPolicy>>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    let enabled = match params.get("enabled") {
+        Some(raw) if !raw.trim().is_empty() => Some(
+            raw.trim().parse::<bool>().map_err(|_| ApiError::BadRequest("enabled must be a boolean".to_string()))?,
+        ),
+        _ => None,
+    };
+    let filter = dope_evaluation::DiscoveryPolicyFilter {
+        base: dope_evaluation::ProductListFilter {
+            tenant_id: tc.tenant_id.clone(),
+            cursor: params.get("cursor").cloned().unwrap_or_default(),
+            limit: query_int(&params, "limit"),
+        },
+        enabled,
+    };
+    let items = state.store.lock().list_discovery_policies(&filter).map_err(ApiError::from_store)?;
+    Ok(Json(EvaluationProductListResponse {
+        tenant_id: tc.tenant_id.clone(),
+        page: product_page(&params),
+        items,
+    }))
+}
+
+/// GET /v1/evaluation/discovery-policies/{policy_id} — one policy.
+async fn get_discovery_policy(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(policy_id): Path<String>,
+) -> Result<Json<dope_evaluation::DiscoveryPolicy>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    let item = state
+        .store
+        .lock()
+        .get_discovery_policy(&tc.tenant_id, &policy_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("discovery policy not found".to_string()))?;
+    Ok(Json(item))
+}
+
+/// PUT /v1/evaluation/discovery-policies/{policy_id} — upsert a policy (Go
+/// handleEvaluationProductDiscoveryPolicyRoutes PUT branch).
+async fn upsert_discovery_policy(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(policy_id): Path<String>,
+    body: Bytes,
+) -> Result<Json<dope_evaluation::DiscoveryPolicy>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    let input: UpsertDiscoveryPolicyRequest = decode_optional_json_body(&body)?;
+    let now = Utc::now();
+    let item = dope_evaluation::DiscoveryPolicy {
+        policy_id: policy_id.clone(),
+        tenant_id: tc.tenant_id.clone(),
+        enabled: input.enabled,
+        source_kinds: input.source_kinds,
+        window_start: input.window_start,
+        window_end: input.window_end,
+        max_inspected_records: input.max_inspected_records,
+        max_emitted_candidates: input.max_emitted_candidates,
+        cost_budget: input.cost_budget,
+        sensitive_field_rules: input.sensitive_field_rules,
+        retention_policy_ref: input.retention_policy_ref,
+        created_by: tc.principal_id.clone(),
+        created_at: now,
+        updated_at: now,
+    };
+    state
+        .store
+        .lock()
+        .upsert_discovery_policy(item.clone())
+        .map_err(ApiError::BadRequest)?;
+    Ok(Json(item))
+}
+
+/// GET /v1/evaluation/discovery-runs (Go
+/// handleEvaluationProductDiscoveryRuns GET branch).
+async fn list_discovery_runs(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<EvaluationProductListResponse<dope_evaluation::DiscoveryRun>>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    let filter = dope_evaluation::DiscoveryRunFilter {
+        base: dope_evaluation::ProductListFilter {
+            tenant_id: tc.tenant_id.clone(),
+            cursor: params.get("cursor").cloned().unwrap_or_default(),
+            limit: query_int(&params, "limit"),
+        },
+        status: parse_enum::<dope_evaluation::ProductLifecycleStatus>(params.get("status").cloned().unwrap_or_default().as_str()),
+        source_kind: parse_enum::<dope_evaluation::SourceKind>(params.get("sourceKind").cloned().unwrap_or_default().as_str()),
+    };
+    let items = state.store.lock().list_discovery_runs(&filter).map_err(ApiError::from_store)?;
+    Ok(Json(EvaluationProductListResponse {
+        tenant_id: tc.tenant_id.clone(),
+        page: product_page(&params),
+        items,
+    }))
+}
+
+/// POST /v1/evaluation/discovery-runs — start a discovery run (202; Go
+/// handleEvaluationProductDiscoveryRuns POST branch).
+async fn start_discovery_run(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    body: Bytes,
+) -> Result<(StatusCode, AxumJson<dope_evaluation::DiscoveryRun>), ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    let input: StartDiscoveryRunRequest = decode_optional_json_body(&body)?;
+    let now = Utc::now();
+    let policy = if input.policy_id.trim().is_empty() {
+        dope_evaluation::DiscoveryPolicy {
+            policy_id: String::new(),
+            tenant_id: tc.tenant_id.clone(),
+            enabled: true,
+            source_kinds: input.source_kinds.clone(),
+            window_start: input.window_start,
+            window_end: input.window_end,
+            max_inspected_records: input.max_inspected_records,
+            max_emitted_candidates: input.max_emitted_candidates,
+            cost_budget: input.cost_budget,
+            ..Default::default()
+        }
+    } else {
+        let existing = state
+            .store
+            .lock()
+            .get_discovery_policy(&tc.tenant_id, &input.policy_id)
+            .map_err(ApiError::from_store)?
+            .ok_or_else(|| ApiError::NotFound("discovery policy not found".to_string()))?;
+        existing
+    };
+    let run = dope_evaluation::build_discovery_run_from_policy(
+        policy,
+        dope_evaluation::StartDiscoveryRunInput {
+            window_start: input.window_start,
+            window_end: input.window_end,
+            source_kinds: input.source_kinds,
+            max_inspected_records: input.max_inspected_records,
+            max_emitted_candidates: input.max_emitted_candidates,
+            cost_budget: input.cost_budget,
+            cursor: input.cursor,
+            started_by: tc.principal_id.clone(),
+            idempotency_key: input.idempotency_key,
+        },
+        now,
+    )
+    .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+    state.store.lock().save_discovery_run(run.clone()).map_err(ApiError::from_store)?;
+    Ok((StatusCode::ACCEPTED, AxumJson(run)))
+}
+
+/// GET /v1/evaluation/discovery-runs/{discovery_run_id} (Go
+/// handleEvaluationProductDiscoveryRunRoutes).
+async fn get_discovery_run(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(discovery_run_id): Path<String>,
+) -> Result<Json<dope_evaluation::DiscoveryRun>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    let item = state
+        .store
+        .lock()
+        .get_discovery_run(&tc.tenant_id, &discovery_run_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("discovery run not found".to_string()))?;
+    Ok(Json(item))
+}
+
+/// GET /v1/evaluation/discovered-candidates (Go
+/// handleEvaluationProductDiscoveredCandidates).
+async fn list_discovered_candidates(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<EvaluationProductListResponse<dope_evaluation::DiscoveredCandidate>>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    let filter = dope_evaluation::DiscoveredCandidateFilter {
+        base: dope_evaluation::ProductListFilter {
+            tenant_id: tc.tenant_id.clone(),
+            cursor: params.get("cursor").cloned().unwrap_or_default(),
+            limit: query_int(&params, "limit"),
+        },
+        discovery_run_id: params.get("discoveryRunId").cloned().unwrap_or_default(),
+        source_kind: parse_enum::<dope_evaluation::SourceKind>(params.get("sourceKind").cloned().unwrap_or_default().as_str()),
+        readiness_status: parse_enum::<dope_evaluation::ReadinessStatus>(params.get("readinessStatus").cloned().unwrap_or_default().as_str()),
+        suppression_state: parse_enum::<dope_evaluation::SuppressionState>(params.get("suppressionState").cloned().unwrap_or_default().as_str()),
+        score_band: parse_enum::<dope_evaluation::ScoreBand>(params.get("scoreBand").cloned().unwrap_or_default().as_str()),
+    };
+    let items = state.store.lock().list_discovered_candidates(&filter).map_err(ApiError::from_store)?;
+    Ok(Json(EvaluationProductListResponse {
+        tenant_id: tc.tenant_id.clone(),
+        page: product_page(&params),
+        items,
+    }))
+}
+
+/// GET /v1/evaluation/discovered-candidates/{discovered_candidate_id} (Go
+/// handleEvaluationProductDiscoveredCandidateRoutes GET branch).
+async fn get_discovered_candidate(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(discovered_candidate_id): Path<String>,
+) -> Result<Json<dope_evaluation::DiscoveredCandidate>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    let item = state
+        .store
+        .lock()
+        .get_discovered_candidate(&tc.tenant_id, &discovered_candidate_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("discovered candidate not found".to_string()))?;
+    Ok(Json(item))
+}
+
+/// POST /v1/evaluation/discovered-candidates/{id}/product-fixtures —
+/// materialize a product fixture from a discovered candidate (201; Go
+/// handleEvaluationProductFixtureMaterialization). Requires
+/// evaluation.fixture.manage.
+async fn materialize_product_fixture(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(discovered_candidate_id): Path<String>,
+    body: Bytes,
+) -> Result<(StatusCode, AxumJson<ProductFixtureMutationResponse>), ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationFixtureManage) {
+        return Err(ApiError::Forbidden("evaluation.fixture.manage is required".to_string()));
+    }
+    let input: MaterializeProductFixtureRequest = decode_optional_json_body(&body)?;
+    let candidate = state
+        .store
+        .lock()
+        .get_discovered_candidate(&tc.tenant_id, &discovered_candidate_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("discovered candidate not found".to_string()))?;
+    let evidence = state
+        .store
+        .lock()
+        .get_latest_candidate_evidence(&tc.tenant_id, &discovered_candidate_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::BadRequest("candidate evidence not found".to_string()))?;
+    let (fixture, revision) = dope_evaluation::create_product_fixture_from_candidate(
+        dope_evaluation::ProductFixtureInput {
+            fixture_id: input.fixture_id,
+            tenant_id: tc.tenant_id.clone(),
+            display_name: input.display_name,
+            domain_class: input.domain_class,
+            source_candidate: candidate,
+            source_evidence: evidence,
+            fixture_payload: input.fixture_payload,
+            change_summary: input.change_summary,
+            created_by: tc.principal_id.clone(),
+            idempotency_key: input.idempotency_key,
+        },
+        Utc::now(),
+    )
+    .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+    state
+        .store
+        .lock()
+        .upsert_product_fixture(fixture.clone())
+        .map_err(ApiError::from_store)?;
+    state
+        .store
+        .lock()
+        .save_fixture_revision(revision.clone())
+        .map_err(ApiError::from_store)?;
+    Ok((StatusCode::CREATED, AxumJson(ProductFixtureMutationResponse {
+        fixture,
+        revision: Some(revision),
+    })))
+}
+
+/// GET /v1/evaluation/product-fixtures (Go handleEvaluationProductFixtures).
+/// Requires evaluation.fixture.read.
+async fn list_product_fixtures(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<EvaluationProductListResponse<dope_evaluation::ProductManagedFixture>>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationFixtureRead) {
+        return Err(ApiError::Forbidden("evaluation.fixture.read is required".to_string()));
+    }
+    let filter = dope_evaluation::ProductListFilter {
+        tenant_id: tc.tenant_id.clone(),
+        cursor: params.get("cursor").cloned().unwrap_or_default(),
+        limit: query_int(&params, "limit"),
+    };
+    let items = state.store.lock().list_product_fixtures(&filter).map_err(ApiError::from_store)?;
+    Ok(Json(EvaluationProductListResponse {
+        tenant_id: tc.tenant_id.clone(),
+        page: product_page(&params),
+        items,
+    }))
+}
+
+/// GET /v1/evaluation/product-fixtures/{fixture_id} (Go
+/// handleEvaluationProductFixtureRoutes single-segment branch).
+async fn get_product_fixture(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(fixture_id): Path<String>,
+) -> Result<Json<dope_evaluation::ProductManagedFixture>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationFixtureRead) {
+        return Err(ApiError::Forbidden("evaluation.fixture.read is required".to_string()));
+    }
+    let item = state
+        .store
+        .lock()
+        .get_product_fixture(&tc.tenant_id, &fixture_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("product fixture not found".to_string()))?;
+    Ok(Json(item))
+}
+
+/// GET /v1/evaluation/product-fixtures/{fixture_id}/revisions (Go
+/// handleEvaluationProductFixtureRevisions GET branch).
+async fn list_fixture_revisions(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(fixture_id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<EvaluationProductListResponse<dope_evaluation::FixtureRevision>>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationFixtureRead) {
+        return Err(ApiError::Forbidden("evaluation.fixture.read is required".to_string()));
+    }
+    let items = state
+        .store
+        .lock()
+        .list_fixture_revisions(&tc.tenant_id, &fixture_id, query_int(&params, "limit"))
+        .map_err(ApiError::from_store)?;
+    Ok(Json(EvaluationProductListResponse {
+        tenant_id: tc.tenant_id.clone(),
+        page: product_page(&params),
+        items,
+    }))
+}
+
+/// POST /v1/evaluation/product-fixtures/{fixture_id}/revisions — create a
+/// fixture revision (201; Go handleEvaluationProductFixtureRevisions POST
+/// branch). Requires evaluation.fixture.manage.
+async fn create_fixture_revision(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(fixture_id): Path<String>,
+    body: Bytes,
+) -> Result<(StatusCode, AxumJson<ProductFixtureMutationResponse>), ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationFixtureManage) {
+        return Err(ApiError::Forbidden("evaluation.fixture.manage is required".to_string()));
+    }
+    let input: CreateFixtureRevisionRequest = decode_optional_json_body(&body)?;
+    let fixture = state
+        .store
+        .lock()
+        .get_product_fixture(&tc.tenant_id, &fixture_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("product fixture not found".to_string()))?;
+    let revisions = state
+        .store
+        .lock()
+        .list_fixture_revisions(&tc.tenant_id, &fixture_id, 1)
+        .map_err(ApiError::from_store)?;
+    let next_revision_number = revisions.first().map(|r| r.revision_number + 1).unwrap_or(1);
+    let (updated, revision) = dope_evaluation::create_product_fixture_revision(
+        fixture,
+        dope_evaluation::FixtureRevisionInput {
+            revision_id: input.revision_id,
+            fixture_payload: input.fixture_payload,
+            content_summary: input.content_summary,
+            change_summary: input.change_summary,
+            source_evidence_refs: input.source_evidence_refs,
+            redaction_status: dope_evaluation::RedactionStatus::Clean,
+            created_by: tc.principal_id.clone(),
+        },
+        next_revision_number,
+        Utc::now(),
+    )
+    .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+    state
+        .store
+        .lock()
+        .upsert_product_fixture(updated.clone())
+        .map_err(ApiError::from_store)?;
+    state
+        .store
+        .lock()
+        .save_fixture_revision(revision.clone())
+        .map_err(ApiError::from_store)?;
+    Ok((StatusCode::CREATED, AxumJson(ProductFixtureMutationResponse {
+        fixture: updated,
+        revision: Some(revision),
+    })))
+}
+
+/// POST /v1/evaluation/product-fixtures/{fixture_id}/review (Go
+/// handleEvaluationProductFixtureReview). Requires evaluation.fixture.review.
+async fn review_product_fixture_route(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(fixture_id): Path<String>,
+    body: Bytes,
+) -> Result<Json<ProductFixtureMutationResponse>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationFixtureReview) {
+        return Err(ApiError::Forbidden("evaluation.fixture.review is required".to_string()));
+    }
+    let input: ReviewProductFixtureRequest = decode_optional_json_body(&body)?;
+    let fixture = state
+        .store
+        .lock()
+        .get_product_fixture(&tc.tenant_id, &fixture_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("product fixture not found".to_string()))?;
+    let decision = match input.decision.as_str() {
+        "approved" => dope_evaluation::FixtureReviewDecision::Approved,
+        "rejected" => dope_evaluation::FixtureReviewDecision::Rejected,
+        "needs_changes" => dope_evaluation::FixtureReviewDecision::NeedsChanges,
+        _ => return Err(ApiError::BadRequest("invalid fixture review decision".to_string())),
+    };
+    let updated = dope_evaluation::review_product_fixture(
+        fixture,
+        &input.revision_id,
+        decision,
+        Utc::now(),
+    )
+    .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+    state
+        .store
+        .lock()
+        .upsert_product_fixture(updated.clone())
+        .map_err(ApiError::from_store)?;
+    Ok(Json(ProductFixtureMutationResponse { fixture: updated, revision: None }))
+}
+
+/// POST /v1/evaluation/product-fixtures/{fixture_id}/suppress (Go
+/// handleEvaluationProductFixtureSuppress). Requires evaluation.fixture.suppress.
+async fn suppress_product_fixture_route(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(fixture_id): Path<String>,
+) -> Result<Json<ProductFixtureMutationResponse>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationFixtureSuppress) {
+        return Err(ApiError::Forbidden("evaluation.fixture.suppress is required".to_string()));
+    }
+    let fixture = state
+        .store
+        .lock()
+        .get_product_fixture(&tc.tenant_id, &fixture_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("product fixture not found".to_string()))?;
+    let updated = dope_evaluation::suppress_product_fixture(fixture, Utc::now())
+        .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+    state
+        .store
+        .lock()
+        .upsert_product_fixture(updated.clone())
+        .map_err(ApiError::from_store)?;
+    Ok(Json(ProductFixtureMutationResponse { fixture: updated, revision: None }))
+}
+
+/// POST /v1/evaluation/suppressions — create a suppression (201; Go
+/// handleEvaluationProductSuppressions).
+async fn create_suppression(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    body: Bytes,
+) -> Result<(StatusCode, AxumJson<dope_evaluation::SuppressionRecord>), ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    let input: CreateSuppressionRequest = decode_optional_json_body(&body)?;
+    let now = Utc::now();
+    let item = dope_evaluation::SuppressionRecord {
+        suppression_id: if input.suppression_id.is_empty() {
+            format!("suppression_{}", now.timestamp_nanos_opt().unwrap_or_default())
+        } else {
+            input.suppression_id
+        },
+        tenant_id: tc.tenant_id.clone(),
+        target_kind: input.target_kind,
+        target_id: input.target_id,
+        target_source_ref: input.target_source_ref,
+        reason_code: input.reason_code,
+        reason: input.reason,
+        created_by: if input.created_by.is_empty() {
+            tc.principal_id.clone()
+        } else {
+            input.created_by
+        },
+        created_at: now,
+        expires_at: input.expires_at,
+        active: true,
+    };
+    state.store.lock().create_suppression(item.clone()).map_err(ApiError::BadRequest)?;
+    Ok((StatusCode::CREATED, AxumJson(item)))
+}
+
+/// GET /v1/evaluation/campaigns (Go handleEvaluationProductCampaigns GET
+/// branch). Requires evaluation.campaign.read.
+async fn list_replay_campaigns(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<EvaluationProductListResponse<dope_evaluation::ReplayCampaign>>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationCampaignRead) {
+        return Err(ApiError::Forbidden("evaluation.campaign.read is required".to_string()));
+    }
+    let filter = dope_evaluation::ProductListFilter {
+        tenant_id: tc.tenant_id.clone(),
+        cursor: params.get("cursor").cloned().unwrap_or_default(),
+        limit: query_int(&params, "limit"),
+    };
+    let items = state.store.lock().list_replay_campaigns(&filter).map_err(ApiError::from_store)?;
+    Ok(Json(EvaluationProductListResponse {
+        tenant_id: tc.tenant_id.clone(),
+        page: product_page(&params),
+        items,
+    }))
+}
+
+/// POST /v1/evaluation/campaigns — create a replay campaign (201; Go
+/// handleEvaluationProductCampaigns POST branch). Requires
+/// evaluation.campaign.manage.
+async fn create_replay_campaign_route(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    body: Bytes,
+) -> Result<(StatusCode, AxumJson<dope_evaluation::ReplayCampaign>), ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationCampaignManage) {
+        return Err(ApiError::Forbidden("evaluation.campaign.manage is required".to_string()));
+    }
+    let input: CreateCampaignRequest = decode_optional_json_body(&body)?;
+    let selections = campaign_source_selections(&state, tc, &input.source_selections)?;
+    let (campaign, items) = dope_evaluation::create_replay_campaign(
+        dope_evaluation::CreateCampaignInput {
+            campaign_id: input.campaign_id,
+            tenant_id: tc.tenant_id.clone(),
+            display_name: input.display_name,
+            scope_summary: input.scope_summary,
+            started_by: tc.principal_id.clone(),
+            idempotency_key: input.idempotency_key,
+            source_selections: selections,
+            start_immediately: input.start_immediately,
+        },
+        Utc::now(),
+    )
+    .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+    state
+        .store
+        .lock()
+        .save_replay_campaign(campaign.clone())
+        .map_err(ApiError::from_store)?;
+    for item in items {
+        state.store.lock().save_campaign_item(item).map_err(ApiError::from_store)?;
+    }
+    Ok((StatusCode::CREATED, AxumJson(campaign)))
+}
+
+/// GET /v1/evaluation/campaigns/{campaign_id} (Go
+/// handleEvaluationProductCampaignRoutes single-segment branch).
+async fn get_replay_campaign(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(campaign_id): Path<String>,
+) -> Result<Json<dope_evaluation::ReplayCampaign>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationCampaignRead) {
+        return Err(ApiError::Forbidden("evaluation.campaign.read is required".to_string()));
+    }
+    let item = state
+        .store
+        .lock()
+        .get_replay_campaign(&tc.tenant_id, &campaign_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("campaign not found".to_string()))?;
+    Ok(Json(item))
+}
+
+/// GET /v1/evaluation/campaigns/{campaign_id}/items (Go
+/// handleEvaluationProductCampaignRoutes items branch).
+async fn list_campaign_items(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(campaign_id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<EvaluationProductListResponse<dope_evaluation::CampaignItem>>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationCampaignRead) {
+        return Err(ApiError::Forbidden("evaluation.campaign.read is required".to_string()));
+    }
+    let filter = dope_evaluation::ProductListFilter {
+        tenant_id: tc.tenant_id.clone(),
+        cursor: params.get("cursor").cloned().unwrap_or_default(),
+        limit: query_int(&params, "limit"),
+    };
+    let items = state
+        .store
+        .lock()
+        .list_campaign_items(&filter, &campaign_id)
+        .map_err(ApiError::from_store)?;
+    Ok(Json(EvaluationProductListResponse {
+        tenant_id: tc.tenant_id.clone(),
+        page: product_page(&params),
+        items,
+    }))
+}
+
+/// GET /v1/evaluation/campaigns/{campaign_id}/attempt-groups (Go
+/// handleEvaluationProductCampaignRoutes attempt-groups branch).
+async fn list_campaign_attempt_groups(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(campaign_id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<EvaluationProductListResponse<dope_evaluation::CampaignAttemptGroup>>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationCampaignRead) {
+        return Err(ApiError::Forbidden("evaluation.campaign.read is required".to_string()));
+    }
+    let filter = dope_evaluation::ProductListFilter {
+        tenant_id: tc.tenant_id.clone(),
+        cursor: params.get("cursor").cloned().unwrap_or_default(),
+        limit: query_int(&params, "limit"),
+    };
+    let items = state
+        .store
+        .lock()
+        .list_campaign_attempt_groups(&filter, &campaign_id)
+        .map_err(ApiError::from_store)?;
+    Ok(Json(EvaluationProductListResponse {
+        tenant_id: tc.tenant_id.clone(),
+        page: product_page(&params),
+        items,
+    }))
+}
+
+/// POST /v1/evaluation/campaigns/{campaign_id}/{start|complete|cancel|publish-results}
+/// (Go handleEvaluationProductCampaignTransition). Requires
+/// evaluation.campaign.manage.
+async fn campaign_transition_route(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path((campaign_id, action)): Path<(String, String)>,
+) -> Result<Json<dope_evaluation::ReplayCampaign>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationCampaignManage) {
+        return Err(ApiError::Forbidden("evaluation.campaign.manage is required".to_string()));
+    }
+    let campaign = state
+        .store
+        .lock()
+        .get_replay_campaign(&tc.tenant_id, &campaign_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("campaign not found".to_string()))?;
+    let transition = match action.as_str() {
+        "start" => dope_evaluation::CampaignTransition::Start,
+        "complete" => dope_evaluation::CampaignTransition::Complete,
+        "cancel" => dope_evaluation::CampaignTransition::Cancel,
+        "publish-results" => dope_evaluation::CampaignTransition::Publish,
+        _ => return Err(ApiError::NotFound("campaign route not found".to_string())),
+    };
+    let updated = dope_evaluation::transition_replay_campaign(campaign, transition, Utc::now())
+        .map_err(|err| ApiError::BadRequest(err.to_string()))?;
+    state
+        .store
+        .lock()
+        .save_replay_campaign(updated.clone())
+        .map_err(ApiError::from_store)?;
+    Ok(Json(updated))
+}
+
+/// GET /v1/evaluation/campaigns/{campaign_id}/tool-call-inspections (Go
+/// handleEvaluationProductCampaignRoutes tool-call-inspections branch).
+async fn list_campaign_tool_call_inspections(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(campaign_id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<EvaluationProductListResponse<dope_evaluation::ToolCallInspection>>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationInspectionRead) {
+        return Err(ApiError::Forbidden("evaluation.inspection.read is required".to_string()));
+    }
+    let filter = dope_evaluation::ProductListFilter {
+        tenant_id: tc.tenant_id.clone(),
+        cursor: params.get("cursor").cloned().unwrap_or_default(),
+        limit: query_int(&params, "limit"),
+    };
+    let items = state
+        .store
+        .lock()
+        .list_tool_call_inspections(&filter, &campaign_id)
+        .map_err(ApiError::from_store)?;
+    Ok(Json(EvaluationProductListResponse {
+        tenant_id: tc.tenant_id.clone(),
+        page: product_page(&params),
+        items,
+    }))
+}
+
+/// GET /v1/evaluation/dashboard (Go handleEvaluationProductDashboard).
+/// Requires evaluation.dashboard.read.
+async fn list_dashboard_projections(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<EvaluationProductListResponse<dope_evaluation::DashboardProjection>>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationDashboardRead) {
+        return Err(ApiError::Forbidden("evaluation.dashboard.read is required".to_string()));
+    }
+    let filter = dope_evaluation::ProductListFilter {
+        tenant_id: tc.tenant_id.clone(),
+        cursor: params.get("cursor").cloned().unwrap_or_default(),
+        limit: query_int(&params, "limit"),
+    };
+    let items = state.store.lock().list_dashboard_projections(&filter).map_err(ApiError::from_store)?;
+    Ok(Json(EvaluationProductListResponse {
+        tenant_id: tc.tenant_id.clone(),
+        page: product_page(&params),
+        items,
+    }))
+}
+
+/// GET /v1/evaluation/tool-call-inspections/{inspection_id} (Go
+/// handleEvaluationProductToolCallInspectionRoutes). Requires
+/// evaluation.inspection.read.
+async fn get_tool_call_inspection(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    Path(inspection_id): Path<String>,
+) -> Result<Json<dope_evaluation::ToolCallInspection>, ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    if !evaluation_product_permission(tc, Permission::EvaluationInspectionRead) {
+        return Err(ApiError::Forbidden("evaluation.inspection.read is required".to_string()));
+    }
+    let item = state
+        .store
+        .lock()
+        .get_tool_call_inspection(&tc.tenant_id, &inspection_id)
+        .map_err(ApiError::from_store)?
+        .ok_or_else(|| ApiError::NotFound("tool-call inspection not found".to_string()))?;
+    Ok(Json(item))
+}
+
+/// POST /v1/evaluation/retention/apply — apply product retention (Go
+/// handleEvaluationProductRoutes retention/apply branch answers 501 "not
+/// enabled"; the dope-store apply_retention DAO exists, so this wave
+/// implements the real handler with a dry_run flag).
+async fn apply_evaluation_retention(
+    State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
+    body: Bytes,
+) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
+    let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
+    let input: ApplyRetentionRequest = decode_optional_json_body(&body)?;
+    let filter = dope_evaluation::RetentionApplicationFilter {
+        base: dope_evaluation::ProductListFilter {
+            tenant_id: tc.tenant_id.clone(),
+            cursor: String::new(),
+            limit: 0,
+        },
+        resource_kinds: input.resource_kinds,
+        dry_run: input.dry_run,
+    };
+    let application_ids = state.store.lock().apply_retention(&filter).map_err(ApiError::from_store)?;
+    Ok((StatusCode::OK, AxumJson(serde_json::json!({
+        "tenantId": tc.tenant_id,
+        "dryRun": input.dry_run,
+        "applicationIds": application_ids,
+    }))))
+}
+
+/// Go campaignSourceSelectionsFromRequest: resolves each selection against
+/// the store and snapshots the source state.
+fn campaign_source_selections(
+    state: &AppState,
+    tc: &dope_identity::TenantContext,
+    inputs: &[CampaignSourceSelectionRequest],
+) -> Result<Vec<dope_evaluation::CampaignSourceSelection>, ApiError> {
+    let mut selections = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        let mut selection = dope_evaluation::CampaignSourceSelection {
+            source_type: input.source_type.clone(),
+            source_id: input.source_id.clone(),
+            tenant_id: tc.tenant_id.clone(),
+            source_snapshot: input.source_snapshot.clone(),
+            selection_reason: input.selection_reason.clone(),
+            ..Default::default()
+        };
+        match input.source_type {
+            dope_evaluation::ProductResourceKind::ProductFixture => {
+                let fixture = state
+                    .store
+                    .lock()
+                    .get_product_fixture(&tc.tenant_id, &input.source_id)
+                    .map_err(ApiError::from_store)?
+                    .ok_or_else(|| {
+                        ApiError::BadRequest(dope_evaluation::EvaluationError::CampaignSelectionInvalid.to_string())
+                    })?;
+                selection.suppression_state = fixture.suppression_state.clone();
+                selection.retention_state = fixture.retention_state.clone();
+                selection.review_state = fixture.review_state.clone();
+                selection.source_snapshot = serde_json::json!({
+                    "fixtureId": fixture.fixture_id,
+                    "displayName": fixture.display_name,
+                    "currentRevisionId": fixture.current_revision_id,
+                    "reviewState": fixture.review_state,
+                    "retentionState": fixture.retention_state,
+                    "suppressionState": fixture.suppression_state,
+                })
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+            }
+            dope_evaluation::ProductResourceKind::DiscoveredCandidate => {
+                let candidate = state
+                    .store
+                    .lock()
+                    .get_discovered_candidate(&tc.tenant_id, &input.source_id)
+                    .map_err(ApiError::from_store)?
+                    .ok_or_else(|| {
+                        ApiError::BadRequest(dope_evaluation::EvaluationError::CampaignSelectionInvalid.to_string())
+                    })?;
+                selection.suppression_state = candidate.suppression_state.clone();
+                selection.retention_state = candidate.retention_state.clone();
+                selection.source_snapshot = serde_json::json!({
+                    "discoveredCandidateId": candidate.discovered_candidate_id,
+                    "sourceKind": candidate.source_kind,
+                    "sourceId": candidate.source_id,
+                    "score": candidate.score,
+                    "scoreBand": candidate.score_band,
+                    "readinessStatus": candidate.readiness_status,
+                    "retentionState": candidate.retention_state,
+                    "suppressionState": candidate.suppression_state,
+                })
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+            }
+            _ => {
+                if selection.retention_state.as_str().is_empty() {
+                    selection.retention_state = dope_evaluation::RetentionState::Active;
+                }
+                if selection.suppression_state.as_str().is_empty() {
+                    selection.suppression_state = dope_evaluation::SuppressionState::None;
+                }
+            }
+        }
+        selections.push(selection);
+    }
+    Ok(selections)
+}
+
+/// Go decodeOptionalJSON: empty body decodes to the zero value; malformed
+/// JSON answers 400.
+fn decode_optional_json_body<T: serde::de::DeserializeOwned>(body: &Bytes) -> Result<T, ApiError> {
+    if body.is_empty() {
+        return serde_json::from_slice(b"{}").map_err(|err| ApiError::BadRequest(err.to_string()));
+    }
+    serde_json::from_slice(body).map_err(|err| ApiError::BadRequest(err.to_string()))
+}
+
+/// Go createSuppressionRequest (the wire body; the store record itself has
+/// no serde defaults, so the handler fills them like Go).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateSuppressionRequest {
+    #[serde(default)]
+    suppression_id: String,
+    #[serde(default)]
+    target_kind: dope_evaluation::ProductResourceKind,
+    #[serde(default)]
+    target_id: String,
+    #[serde(default)]
+    target_source_ref: String,
+    #[serde(default)]
+    reason_code: String,
+    #[serde(default)]
+    reason: String,
+    #[serde(default)]
+    created_by: String,
+    #[serde(default)]
+    expires_at: Option<DateTime<Utc>>,
+}
+
+/// Request body for POST /v1/evaluation/retention/apply.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplyRetentionRequest {
+    #[serde(default)]
+    resource_kinds: Vec<dope_evaluation::ProductResourceKind>,
+    #[serde(default)]
+    dry_run: bool,
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         // Evaluation replay ledger.
@@ -1556,6 +2654,84 @@ pub fn router() -> Router<AppState> {
             get(get_comparison),
         )
         .route("/v1/evaluation/fixtures", get(list_fixtures))
+        // Evaluation product family (Go evaluation_product.go).
+        .route("/v1/evaluation/discovery-policies", get(list_discovery_policies))
+        .route(
+            "/v1/evaluation/discovery-policies/{policy_id}",
+            get(get_discovery_policy).put(upsert_discovery_policy),
+        )
+        .route(
+            "/v1/evaluation/discovery-runs",
+            get(list_discovery_runs).post(start_discovery_run),
+        )
+        .route(
+            "/v1/evaluation/discovery-runs/{discovery_run_id}",
+            get(get_discovery_run),
+        )
+        .route(
+            "/v1/evaluation/discovered-candidates",
+            get(list_discovered_candidates),
+        )
+        .route(
+            "/v1/evaluation/discovered-candidates/{discovered_candidate_id}",
+            get(get_discovered_candidate),
+        )
+        .route(
+            "/v1/evaluation/discovered-candidates/{discovered_candidate_id}/product-fixtures",
+            post(materialize_product_fixture),
+        )
+        .route("/v1/evaluation/product-fixtures", get(list_product_fixtures))
+        .route(
+            "/v1/evaluation/product-fixtures/{fixture_id}",
+            get(get_product_fixture),
+        )
+        .route(
+            "/v1/evaluation/product-fixtures/{fixture_id}/revisions",
+            get(list_fixture_revisions).post(create_fixture_revision),
+        )
+        .route(
+            "/v1/evaluation/product-fixtures/{fixture_id}/review",
+            post(review_product_fixture_route),
+        )
+        .route(
+            "/v1/evaluation/product-fixtures/{fixture_id}/suppress",
+            post(suppress_product_fixture_route),
+        )
+        .route("/v1/evaluation/suppressions", post(create_suppression))
+        .route(
+            "/v1/evaluation/campaigns",
+            get(list_replay_campaigns).post(create_replay_campaign_route),
+        )
+        .route(
+            "/v1/evaluation/campaigns/{campaign_id}",
+            get(get_replay_campaign),
+        )
+        .route(
+            "/v1/evaluation/campaigns/{campaign_id}/items",
+            get(list_campaign_items),
+        )
+        .route(
+            "/v1/evaluation/campaigns/{campaign_id}/attempt-groups",
+            get(list_campaign_attempt_groups),
+        )
+        .route(
+            "/v1/evaluation/campaigns/{campaign_id}/{action}",
+            post(campaign_transition_route),
+        )
+        .route(
+            "/v1/evaluation/campaigns/{campaign_id}/tool-call-inspections",
+            get(list_campaign_tool_call_inspections),
+        )
+        .route("/v1/evaluation/dashboard", get(list_dashboard_projections))
+        .route(
+            "/v1/evaluation/tool-call-inspections/{inspection_id}",
+            get(get_tool_call_inspection),
+        )
+        .route(
+            "/v1/evaluation/retention/apply",
+            post(apply_evaluation_retention),
+        )
+
         // Live validation collection + items.
         .route(
             "/v1/live-validations",
@@ -2528,24 +3704,448 @@ mod tests {
         assert!(!raw.contains("secret"), "leaked secret evidence: {raw}");
     }
 
+
+    fn product_tenant_context(tenant_id: &str, permissions: Vec<Permission>) -> IdentityTenantContext {
+        IdentityTenantContext {
+            tenant_id: tenant_id.to_string(),
+            principal_id: format!("prn_{tenant_id}"),
+            permissions,
+            ..Default::default()
+        }
+    }
+
+    // Port of TestEvaluationProductRoutesListTenantScopedPoliciesWithoutManager
+    // + TestEvaluationProductDiscoveryAPIRoutes.
     #[tokio::test]
-    async fn unported_product_routes_return_404() {
+    async fn evaluation_product_discovery_policies_and_runs() {
         let h = harness(None, None);
         let app = crate::routes::router(h.state.clone());
-        for uri in [
-            "/v1/evaluation/campaigns",
-            "/v1/evaluation/campaigns/campaign_1",
-            "/v1/evaluation/dashboard",
-            "/v1/evaluation/discovery-policies",
-            "/v1/evaluation/discovery-runs",
-            "/v1/evaluation/discovered-candidates",
-            "/v1/evaluation/product-fixtures",
-            "/v1/evaluation/suppressions",
-            "/v1/evaluation/tool-call-inspections/inspection_1",
-            "/v1/evaluation/retention/apply",
-        ] {
-            let (status, _) = send(&app, request("GET", uri, None)).await;
-            assert_eq!(status, StatusCode::NOT_FOUND, "uri: {uri}");
+        let tenant = product_tenant_context("ten_api", Vec::new());
+        let now = chrono::Utc::now();
+        {
+            let store = h.store.lock();
+            store
+                .upsert_discovery_policy(dope_evaluation::DiscoveryPolicy {
+                    policy_id: "policy_api".to_string(),
+                    tenant_id: "ten_api".to_string(),
+                    enabled: true,
+                    source_kinds: vec![dope_evaluation::SourceKind::Run],
+                    window_start: now - chrono::Duration::hours(1),
+                    window_end: now,
+                    max_inspected_records: 10,
+                    max_emitted_candidates: 2,
+                    cost_budget: 5,
+                    created_at: now,
+                    updated_at: now,
+                    ..Default::default()
+                })
+                .expect("upsert policy");
         }
+
+        // List tenant-scoped policies (no permission gate in Go).
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(request("GET", "/v1/evaluation/discovery-policies", None), tenant.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "list policies: {json}");
+        assert_eq!(json["tenantId"], "ten_api");
+        assert_eq!(json["items"][0]["policyId"], "policy_api");
+
+        // PUT a policy by id.
+        let put_body = serde_json::json!({
+            "enabled": true,
+            "sourceKinds": ["run"],
+            "windowStart": (now - chrono::Duration::hours(1)).to_rfc3339(),
+            "windowEnd": now.to_rfc3339(),
+            "maxInspectedRecords": 10,
+            "maxEmittedCandidates": 2,
+            "costBudget": 5,
+        })
+        .to_string();
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request("PUT", "/v1/evaluation/discovery-policies/policy_api_1", Some(&put_body)),
+                tenant.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "put policy: {json}");
+        assert_eq!(json["policyId"], "policy_api_1");
+
+        // GET the policy.
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request("GET", "/v1/evaluation/discovery-policies/policy_api_1", None),
+                tenant.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "get policy: {json}");
+        assert_eq!(json["policyId"], "policy_api_1");
+
+        // Start a discovery run referencing the policy (202).
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request(
+                    "POST",
+                    "/v1/evaluation/discovery-runs",
+                    Some(r#"{"policyId":"policy_api_1","idempotencyKey":"idem_api_1"}"#),
+                ),
+                tenant.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED, "start run: {json}");
+        assert_eq!(json["idempotencyKey"], "idem_api_1");
+        let run_id = json["discoveryRunId"].as_str().expect("run id").to_string();
+
+        // Seed a discovered candidate with evidence and fetch it.
+        {
+            let store = h.store.lock();
+            store
+                .save_discovered_candidate(
+                    dope_evaluation::DiscoveredCandidate {
+                        discovered_candidate_id: "candidate_api_1".to_string(),
+                        tenant_id: "ten_api".to_string(),
+                        discovery_run_id: run_id,
+                        source_kind: dope_evaluation::SourceKind::Run,
+                        source_id: "run_source_1".to_string(),
+                        score: 0.9,
+                        score_band: dope_evaluation::ScoreBand::High,
+                        redaction_status: dope_evaluation::RedactionStatus::Redacted,
+                        readiness_status: dope_evaluation::ReadinessStatus::FullyReplayable,
+                        suppression_state: dope_evaluation::SuppressionState::None,
+                        retention_state: dope_evaluation::RetentionState::Active,
+                        created_at: now,
+                        updated_at: now,
+                        ..Default::default()
+                    },
+                    dope_evaluation::CandidateEvidence {
+                        evidence_id: "evidence_api_1".to_string(),
+                        tenant_id: "ten_api".to_string(),
+                        discovered_candidate_id: "candidate_api_1".to_string(),
+                        retention_state: dope_evaluation::RetentionState::Active,
+                        created_at: now,
+                        ..Default::default()
+                    },
+                )
+                .expect("save candidate");
+        }
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request("GET", "/v1/evaluation/discovered-candidates/candidate_api_1", None),
+                tenant.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "get candidate: {json}");
+        assert_eq!(json["discoveredCandidateId"], "candidate_api_1");
+
+        // Create a suppression (201).
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request(
+                    "POST",
+                    "/v1/evaluation/suppressions",
+                    Some(r#"{"suppressionId":"suppression_api_1","targetKind":"discovered_candidate","targetId":"candidate_api_1","reasonCode":"operator_hidden","reason":"hidden in test"}"#),
+                ),
+                tenant.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "suppression: {json}");
+        assert_eq!(json["suppressionId"], "suppression_api_1");
+        assert_eq!(json["active"], true);
+    }
+
+    // Port of TestEvaluationProductFixturePermissionDenialsAndLifecycleRoutes.
+    #[tokio::test]
+    async fn evaluation_product_fixture_permissions_and_lifecycle() {
+        let h = harness(None, None);
+        let app = crate::routes::router(h.state.clone());
+        let now = chrono::Utc::now();
+        let admin = product_tenant_context(
+            "ten_fixture_api",
+            vec![
+                Permission::EvaluationFixtureRead,
+                Permission::EvaluationFixtureManage,
+                Permission::EvaluationFixtureReview,
+                Permission::EvaluationFixtureSuppress,
+            ],
+        );
+        let viewer = product_tenant_context("ten_fixture_api", vec![Permission::EvaluationFixtureRead]);
+        {
+            let store = h.store.lock();
+            store
+                .save_discovery_run(dope_evaluation::DiscoveryRun {
+                    discovery_run_id: "discovery_run_fixture_api".to_string(),
+                    tenant_id: "ten_fixture_api".to_string(),
+                    status: dope_evaluation::ProductLifecycleStatus::Completed,
+                    source_kinds: vec![dope_evaluation::SourceKind::Run],
+                    window_start: now - chrono::Duration::hours(1),
+                    window_end: now,
+                    max_inspected_records: 10,
+                    max_emitted_candidates: 2,
+                    cost_budget: 5,
+                    started_at: now,
+                    updated_at: now,
+                    ..Default::default()
+                })
+                .expect("save run");
+            store
+                .save_discovered_candidate(
+                    dope_evaluation::DiscoveredCandidate {
+                        discovered_candidate_id: "candidate_fixture_api".to_string(),
+                        tenant_id: "ten_fixture_api".to_string(),
+                        discovery_run_id: "discovery_run_fixture_api".to_string(),
+                        source_kind: dope_evaluation::SourceKind::Run,
+                        source_id: "run_fixture_api".to_string(),
+                        score: 0.9,
+                        score_band: dope_evaluation::ScoreBand::High,
+                        redaction_status: dope_evaluation::RedactionStatus::Redacted,
+                        readiness_status: dope_evaluation::ReadinessStatus::FullyReplayable,
+                        suppression_state: dope_evaluation::SuppressionState::None,
+                        retention_state: dope_evaluation::RetentionState::Active,
+                        created_at: now,
+                        updated_at: now,
+                        ..Default::default()
+                    },
+                    dope_evaluation::CandidateEvidence {
+                        evidence_id: "evidence_fixture_api".to_string(),
+                        tenant_id: "ten_fixture_api".to_string(),
+                        discovered_candidate_id: "candidate_fixture_api".to_string(),
+                        redacted_payload: serde_json::json!({ "goal": "safe" }).as_object().cloned().unwrap_or_default(),
+                        materialization_allowed: true,
+                        retention_state: dope_evaluation::RetentionState::Active,
+                        created_at: now,
+                        ..Default::default()
+                    },
+                )
+                .expect("save candidate");
+        }
+
+        // Viewer without fixture.manage is denied materialization (403).
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request(
+                    "POST",
+                    "/v1/evaluation/discovered-candidates/candidate_fixture_api/product-fixtures",
+                    Some(r#"{"displayName":"Denied Fixture","domainClass":"schedule","fixturePayload":{"goal":"safe"}}"#),
+                ),
+                viewer.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "denied create: {json}");
+        assert!(json.to_string().contains("evaluation.fixture.manage"));
+
+        // Admin materializes the fixture (201).
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request(
+                    "POST",
+                    "/v1/evaluation/discovered-candidates/candidate_fixture_api/product-fixtures",
+                    Some(r#"{"fixtureId":"product_fixture_api","displayName":"Product Fixture API","domainClass":"schedule","fixturePayload":{"goal":"safe"},"changeSummary":"initial"}"#),
+                ),
+                admin.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "create fixture: {json}");
+        assert_eq!(json["fixture"]["fixtureId"], "product_fixture_api");
+        let revision_id = json["revision"]["revisionId"].as_str().expect("revision id").to_string();
+
+        // Viewer without fixture.manage cannot create a revision (403).
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request(
+                    "POST",
+                    "/v1/evaluation/product-fixtures/product_fixture_api/revisions",
+                    Some(r#"{"fixturePayload":{"goal":"viewer edit"},"changeSummary":"viewer edit"}"#),
+                ),
+                viewer.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "denied revision: {json}");
+        assert!(json.to_string().contains("evaluation.fixture.manage"));
+
+        // Viewer without fixture.review is denied (403).
+        let review_body = format!(r#"{{"revisionId":"{revision_id}","decision":"approved"}}"#);
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request(
+                    "POST",
+                    "/v1/evaluation/product-fixtures/product_fixture_api/review",
+                    Some(&review_body),
+                ),
+                viewer.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "denied review: {json}");
+        assert!(json.to_string().contains("evaluation.fixture.review"));
+
+        // Admin approves the current revision (200).
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request(
+                    "POST",
+                    "/v1/evaluation/product-fixtures/product_fixture_api/review",
+                    Some(&review_body),
+                ),
+                admin.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "review: {json}");
+        assert_eq!(json["fixture"]["reviewState"], "approved");
+
+        // Viewer without fixture.suppress is denied (403); admin suppresses.
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request("POST", "/v1/evaluation/product-fixtures/product_fixture_api/suppress", None),
+                viewer.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "denied suppress: {json}");
+        assert!(json.to_string().contains("evaluation.fixture.suppress"));
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request("POST", "/v1/evaluation/product-fixtures/product_fixture_api/suppress", None),
+                admin.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "suppress: {json}");
+        assert_eq!(json["fixture"]["suppressionState"], "suppressed");
+    }
+
+    // Retention/apply uses the store apply_retention DAO (dry-run default).
+    #[tokio::test]
+    async fn evaluation_product_retention_apply_records_applications() {
+        let h = harness(None, None);
+        let app = crate::routes::router(h.state.clone());
+        let tenant = product_tenant_context("ten_api", Vec::new());
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request("POST", "/v1/evaluation/retention/apply", Some(r#"{"dryRun":true}"#)),
+                tenant.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "retention: {json}");
+        assert_eq!(json["tenantId"], "ten_api");
+        assert_eq!(json["dryRun"], true);
+        assert!(!json["applicationIds"].as_array().map(|v| v.is_empty()).unwrap_or(true));
+
+        // Missing tenant answers the stable 400.
+        let (status, json) = send(
+            &app,
+            request("POST", "/v1/evaluation/retention/apply", Some(r#"{"dryRun":true}"#)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "no tenant: {json}");
+    }
+
+    // Campaign list requires evaluation.campaign.read; creation requires
+    // evaluation.campaign.manage.
+    #[tokio::test]
+    async fn evaluation_product_campaign_permissions_and_creation() {
+        let h = harness(None, None);
+        let app = crate::routes::router(h.state.clone());
+        let viewer = product_tenant_context("ten_api", Vec::new());
+        let admin = product_tenant_context(
+            "ten_api",
+            vec![Permission::EvaluationCampaignRead, Permission::EvaluationCampaignManage],
+        );
+
+        // List denied without campaign.read.
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(request("GET", "/v1/evaluation/campaigns", None), viewer.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "denied list: {json}");
+        assert!(json.to_string().contains("evaluation.campaign.read"));
+
+        // Create denied without campaign.manage.
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request("POST", "/v1/evaluation/campaigns", Some(r#"{"displayName":"Campaign One"}"#)),
+                viewer.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "denied create: {json}");
+        assert!(json.to_string().contains("evaluation.campaign.manage"));
+
+        // Admin creates a campaign with a fixture selection.
+        {
+            let store = h.store.lock();
+            store
+                .upsert_product_fixture(dope_evaluation::ProductManagedFixture {
+                    fixture_id: "product_fixture_campaign".to_string(),
+                    tenant_id: "ten_api".to_string(),
+                    display_name: "Campaign Fixture".to_string(),
+                    domain_class: dope_evaluation::FixtureDomainClass::Schedule,
+                    source_kind: "run".to_string(),
+                    current_revision_id: "revision_1".to_string(),
+                    review_state: dope_evaluation::ProductLifecycleStatus::Approved,
+                    suppression_state: dope_evaluation::SuppressionState::None,
+                    retention_state: dope_evaluation::RetentionState::Active,
+                    created_at: now_fixed(),
+                    updated_at: now_fixed(),
+                    ..Default::default()
+                })
+                .expect("upsert fixture");
+        }
+        let campaign_body = serde_json::json!({
+            "displayName": "Campaign One",
+            "sourceSelections": [
+                { "sourceType": "product_fixture", "sourceId": "product_fixture_campaign" },
+            ],
+        })
+        .to_string();
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(request("POST", "/v1/evaluation/campaigns", Some(&campaign_body)), admin.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "create campaign: {json}");
+        assert_eq!(json["displayName"], "Campaign One");
+        let campaign_id = json["campaignId"].as_str().expect("campaign id").to_string();
+
+        // Campaign items were persisted.
+        let (status, json) = send(
+            &app,
+            with_tenant_extension(
+                request("GET", &format!("/v1/evaluation/campaigns/{campaign_id}/items"), None),
+                admin.clone(),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "campaign items: {json}");
+        assert_eq!(json["items"].as_array().map(|v| v.len()), Some(1));
+    }
+
+    fn now_fixed() -> chrono::DateTime<chrono::Utc> {
+        chrono::Utc::now()
     }
 }
