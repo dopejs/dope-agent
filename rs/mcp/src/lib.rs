@@ -71,6 +71,8 @@ macro_rules! string_enum {
     };
 }
 
+pub(crate) use string_enum;
+
 /// Manager validation/lookup failures (Go sentinel errors).
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum McpError {

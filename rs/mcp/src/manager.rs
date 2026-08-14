@@ -671,11 +671,12 @@ impl Manager {
         }
         let rule = rule.expect("rule present when not blocked");
         if resource.effective_availability != "available" {
+            let unavailable_reason = resource.unavailable_reason.clone();
             return Ok(ToolAuthorizationResponse {
                 status: ToolAuthorizationStatus::Blocked,
                 tool: resource,
                 message: first_non_empty(&[
-                    resource.unavailable_reason.as_str(),
+                    unavailable_reason.as_str(),
                     "tool is not currently available",
                 ]),
                 ..ToolAuthorizationResponse::default()
@@ -986,7 +987,7 @@ impl Manager {
             install_id: install_id.clone(),
             status: "installed".to_string(),
             catalog_entry_id: entry.id.clone(),
-            server_id: resource.server_id.clone(),
+            server_id: resource.server.server_id.clone(),
             availability_status: resource.availability_status,
             availability_reason: resource.availability_reason.clone(),
             audit_event_ids: vec![requested_event.event_id.clone()],
@@ -996,7 +997,7 @@ impl Manager {
         let mut completed_payload = Map::new();
         completed_payload.insert("installId".to_string(), Value::String(install_id.clone()));
         completed_payload.insert("catalogEntryId".to_string(), Value::String(entry.id.clone()));
-        completed_payload.insert("serverId".to_string(), Value::String(resource.server_id.clone()));
+        completed_payload.insert("serverId".to_string(), Value::String(resource.server.server_id.clone()));
         completed_payload.insert("method".to_string(), Value::String(method.as_str().to_string()));
         completed_payload.insert("status".to_string(), Value::String(result.status.clone()));
         completed_payload.insert(
@@ -1936,7 +1937,7 @@ impl Manager {
     ) -> Result<(ServerResource, bool), McpError> {
         let now = Utc::now();
         let mut guard = self.inner.state.write();
-        let (server, created) = match &update {
+        let (mut server, created) = match &update {
             None => {
                 let server_id = create_input.server_id.trim().to_string();
                 if server_id.is_empty() {
@@ -2558,7 +2559,7 @@ impl Manager {
                 active: server.declaration.active,
                 source: dope_sandbox::Source::Builtin,
             }),
-            secret_scope,
+            secret_scope: secret_scope.clone(),
             policy_record: Some(dope_sandbox::ConsumerPolicyRecord {
                 policy_record_id: format!(
                     "policy_mcp_{}_{}_{}",
