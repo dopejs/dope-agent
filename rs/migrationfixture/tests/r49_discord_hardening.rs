@@ -34,7 +34,7 @@ fn r49_hosted_setup_row_matches_go_document_shape() {
     seed_r49_discord_hardening_rows(&store).unwrap();
     let conn = open_conn(store.db_path());
 
-    let row: (String, String, i64, i64, String, String, String) = conn
+    let row: (String, i64, i64, String, String, String, String) = conn
         .query_row(
             "SELECT readiness_state, respond_in_dm, require_mention, delivery_mode, reason_code, redaction_status, document_json FROM discord_hosted_setups WHERE tenant_id = 'ten_discord_alpha' AND connector_id = 'discord-r49-1'",
             [],

@@ -61,7 +61,7 @@ impl CancellationToken {
             watcher();
         }
         let children: Vec<Arc<TokenState>> = {
-            self.state.children.lock().iter().filter_map(Weak::upgrade).collect()
+            self.state.children.lock().iter().filter_map(|weak| weak.upgrade()).collect()
         };
         for child in children {
             CancellationToken { state: child }.kill();

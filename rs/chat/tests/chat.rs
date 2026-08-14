@@ -16,7 +16,7 @@ use dope_bindings::{
     RuntimeBindingEvidence,
 };
 use dope_chat::{
-    CancellationToken, ChatError, ChatStore, QueryInput, QueryResult, Service, StreamChunk,
+    CancellationToken, ChatError, ChatStore, OPENAI_COMPATIBLE_PROVIDER_NAME, QueryInput, QueryResult, Service, StreamChunk,
     compile_prompt_messages, continuity_source_kind, inject_continuity_messages,
     response_continuity_source_event_key, terminal_dispatch_event,
 };
@@ -1183,7 +1183,7 @@ fn stream_emits_selected_skill_contracts_on_chunks() {
             &CancellationToken::new(),
             Some(|chunk| {
                 chunks.push(chunk);
-                Ok(()),
+                Ok(())
             }),
         )
         .expect("stream");

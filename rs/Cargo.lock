@@ -696,6 +696,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-migrationfixture"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-connectors",
+ "dope-integrations",
+ "dope-providers",
+ "dope-store",
+ "rusqlite",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dope-model-provider"
 version = "0.1.0"
 dependencies = [

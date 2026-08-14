@@ -34,7 +34,7 @@ fn r41_seeded_ids_and_documents_load_back() {
     let conn = open_conn(store.db_path());
 
     // Policy + run + candidate chain for the alpha tenant.
-    let policy: (String, String, i64, String) = conn
+    let policy: (String, i64, String, String) = conn
         .query_row(
             "SELECT tenant_id, enabled, created_by, document_json FROM evaluation_discovery_policies WHERE policy_id = 'r41_policy_1'",
             [],

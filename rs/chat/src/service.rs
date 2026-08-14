@@ -877,7 +877,7 @@ impl Service {
         }
         let tenant_id = assembly.tenant_id.clone();
         let now = Utc::now();
-        if !dispatch.output.trim().is_empty() {
+        if !dispatch.output.is_empty() {
             let safe = safe_continuity_content(&dispatch.output);
             let turn = ContinuityTurn {
                 continuity_turn_id: String::new(),

@@ -1081,447 +1081,248 @@ impl Manager {
                 id: approval.approval_id.clone(),
             },
             payload: approval_payload,
-/// Go `approvalMatchesExecution`.
-#[must_use]
-pub fn approval_matches_execution(approval: &dope_policy::Approval, execution: &Execution, profile: &Profile) -> bool {
-    if approval.action == SANDBOX_APPROVAL_ACTION
-        && approval.resource_kind == SANDBOX_RESOURCE_KIND
-        && approval.resource_id == profile.profile_id
-    {
-        return true;
+            ..dope_events::Event::default()
+        })?;
+
+        let mut decision_payload = serde_json::Map::new();
+        decision_payload.insert("action".to_string(), serde_json::json!(decision.action));
+        decision_payload.insert("resourceKind".to_string(), serde_json::json!(decision.resource_kind));
+        decision_payload.insert("resourceId".to_string(), serde_json::json!(decision.resource_id));
+        decision_payload.insert("outcome".to_string(), serde_json::json!(decision.outcome.as_str()));
+        decision_payload.insert("reason".to_string(), serde_json::json!(decision.reason));
+        decision_payload.insert("approvalId".to_string(), serde_json::json!(decision.approval_id));
+        self.publish_event(dope_events::Event {
+            category: "policy".to_string(),
+            name: "policy.decision_recorded".to_string(),
+            resource: dope_events::Resource {
+                kind: "decision".to_string(),
+                id: decision.decision_id.clone(),
+            },
+            payload: decision_payload,
+            ..dope_events::Event::default()
+        })?;
+        Ok(())
     }
-    approval.action == "tool_call.execute"
-        && approval.resource_kind == execution.resource_kind.trim()
-        && approval.resource_id == execution.resource_id.trim()
+
+    fn publish_execution_requested(&self, execution: &Execution) -> Result<(), SandboxError> {
+        let mut payload = serde_json::Map::new();
+        payload.insert("profileId".to_string(), serde_json::json!(execution.profile_id));
+        payload.insert("backendKind".to_string(), serde_json::json!(execution.backend_kind.as_str()));
+        payload.insert("command".to_string(), serde_json::json!(execution.command));
+        payload.insert("args".to_string(), serde_json::json!(execution.args));
+        payload.insert("cwd".to_string(), serde_json::json!(execution.cwd));
+        payload.insert("requestedBy".to_string(), serde_json::json!(execution.requested_by));
+        payload.insert("resourceKind".to_string(), serde_json::json!(execution.resource_kind));
+        payload.insert("resourceId".to_string(), serde_json::json!(execution.resource_id));
+        payload.insert("scope".to_string(), serde_json::json!(execution.scope));
+        payload.insert("status".to_string(), serde_json::json!(execution.status.as_str()));
+        merge_execution_payload_metadata(&mut payload, &execution.metadata);
+        merge_consumer_payload(&mut payload, execution.consumer.as_ref());
+        self.publish_event(dope_events::Event {
+            category: EVENT_CATEGORY.to_string(),
+            name: "sandbox.execution_requested".to_string(),
+            resource: dope_events::Resource {
+                kind: RESOURCE_KIND_EXECUTION.to_string(),
+                id: execution.execution_id.clone(),
+            },
+            payload,
+            ..dope_events::Event::default()
+        })
+    }
+
+    fn publish_decision_recorded(&self, execution: &Execution) -> Result<(), SandboxError> {
+        let decision = &execution.decision;
+        let mut payload = serde_json::Map::new();
+        payload.insert("decisionId".to_string(), serde_json::json!(decision.decision_id));
+        payload.insert("resolution".to_string(), serde_json::json!(decision.resolution.as_str()));
+        payload.insert("selectionOutcome".to_string(), serde_json::json!(decision.selection_outcome.map(|o| o.as_str())));
+        payload.insert("matchedRules".to_string(), serde_json::json!(decision.matched_rules));
+        payload.insert("approvalRequired".to_string(), serde_json::json!(decision.approval_required));
+        payload.insert("approvalStatus".to_string(), serde_json::json!(decision.approval_status.as_str()));
+        payload.insert("effectiveProfileId".to_string(), serde_json::json!(decision.effective_profile_id));
+        payload.insert("effectiveBackendKind".to_string(), serde_json::json!(decision.effective_backend_kind.as_str()));
+        payload.insert("requiredBackendKind".to_string(), serde_json::json!(decision.required_backend_kind.map(|k| k.as_str())));
+        payload.insert("hostStatus".to_string(), serde_json::json!(decision.host_status.map(|h| h.as_str())));
+        payload.insert("mismatchReason".to_string(), serde_json::json!(decision.mismatch_reason));
+        payload.insert("explanation".to_string(), serde_json::json!(decision.explanation));
+        merge_consumer_payload(&mut payload, execution.consumer.as_ref());
+        self.publish_event(dope_events::Event {
+            category: EVENT_CATEGORY.to_string(),
+            name: "sandbox.decision_recorded".to_string(),
+            resource: dope_events::Resource {
+                kind: RESOURCE_KIND_EXECUTION.to_string(),
+                id: execution.execution_id.clone(),
+            },
+            payload,
+            ..dope_events::Event::default()
+        })
+    }
+
+    fn publish_execution_started(&self, execution: &Execution) -> Result<(), SandboxError> {
+        let mut payload = serde_json::Map::new();
+        payload.insert("profileId".to_string(), serde_json::json!(execution.profile_id));
+        payload.insert("backendKind".to_string(), serde_json::json!(execution.backend_kind.as_str()));
+        payload.insert("status".to_string(), serde_json::json!(execution.status.as_str()));
+        payload.insert("startedAt".to_string(), serde_json::json!(execution.started_at.map(|t| t.to_rfc3339())));
+        merge_execution_payload_metadata(&mut payload, &execution.metadata);
+        merge_consumer_payload(&mut payload, execution.consumer.as_ref());
+        self.publish_event(dope_events::Event {
+            category: EVENT_CATEGORY.to_string(),
+            name: "sandbox.execution_started".to_string(),
+            resource: dope_events::Resource {
+                kind: RESOURCE_KIND_EXECUTION.to_string(),
+                id: execution.execution_id.clone(),
+            },
+            payload,
+            ..dope_events::Event::default()
+        })
+    }
+
+    fn publish_execution_terminal(&self, execution: &Execution) -> Result<(), SandboxError> {
+        let name = match execution.status {
+            ExecutionStatus::Completed => "sandbox.execution_completed",
+            ExecutionStatus::Cancelled => "sandbox.execution_cancelled",
+            ExecutionStatus::Denied => "sandbox.execution_denied",
+            _ => "sandbox.execution_failed",
+        };
+        let mut payload = serde_json::Map::new();
+        payload.insert("profileId".to_string(), serde_json::json!(execution.profile_id));
+        payload.insert("backendKind".to_string(), serde_json::json!(execution.backend_kind.as_str()));
+        payload.insert("status".to_string(), serde_json::json!(execution.status.as_str()));
+        payload.insert("exitCode".to_string(), serde_json::json!(execution.result.exit_code));
+        payload.insert("signal".to_string(), serde_json::json!(execution.result.signal));
+        payload.insert("outputTruncated".to_string(), serde_json::json!(execution.result.output_truncated));
+        payload.insert("errorClass".to_string(), serde_json::json!(execution.result.error_class));
+        payload.insert("errorCode".to_string(), serde_json::json!(execution.result.error_code));
+        payload.insert("error".to_string(), serde_json::json!(execution.result.error));
+        payload.insert("partial".to_string(), serde_json::json!(execution.result.partial));
+        if let Some(completed_at) = execution.result.completed_at {
+            payload.insert("completedAt".to_string(), serde_json::json!(completed_at.to_rfc3339()));
+        }
+        merge_execution_payload_metadata(&mut payload, &execution.metadata);
+        merge_consumer_payload(&mut payload, execution.consumer.as_ref());
+        for (key, value) in &execution.result.backend_metadata {
+            payload.insert(key.clone(), value.clone());
+        }
+        self.publish_event(dope_events::Event {
+            category: EVENT_CATEGORY.to_string(),
+            name: name.to_string(),
+            resource: dope_events::Resource {
+                kind: RESOURCE_KIND_EXECUTION.to_string(),
+                id: execution.execution_id.clone(),
+            },
+            payload,
+            ..dope_events::Event::default()
+        })
+    }
+
+    fn publish_event(&self, mut event: dope_events::Event) -> Result<dope_events::Event, SandboxError> {
+        if event.event_id.is_empty() {
+            event.event_id = new_id("evt");
+        }
+        if event.occurred_at == DateTime::<Utc>::MIN_UTC {
+            event.occurred_at = Utc::now();
+        }
+        if event.payload.is_empty() {
+            event.payload = serde_json::Map::new();
+        }
+        if let Some(store) = &self.store {
+            let persisted = store
+                .lock()
+                .unwrap()
+                .append_event(&event)
+                .map_err(|err| SandboxError::AppendEvent(event.name.clone(), err))?;
+            event = persisted;
+        }
+        Ok(self.event_bus.publish(event))
+    }
+
+    fn has_active_executions(&self) -> bool {
+        let inner = self.inner.read();
+        inner.execution_ids.iter().any(|id| {
+            inner
+                .executions
+                .get(id)
+                .map(|execution| !is_terminal(execution.status))
+                .unwrap_or(false)
+        })
+    }
+
+    fn store_execution(&self, execution: &Execution) {
+        let mut inner = self.inner.write();
+        if !inner.executions.contains_key(&execution.execution_id) {
+            inner.execution_ids.push(execution.execution_id.clone());
+        }
+        inner.executions.insert(execution.execution_id.clone(), execution.clone());
+    }
+
+    fn reload_builtins(&self) {
+        self.inner.write().reload_builtins_locked(&self.cfg);
+    }
+
+    fn list_profiles_locked(&self) -> Vec<Profile> {
+        let inner = self.inner.read();
+        inner
+            .profile_ids
+            .iter()
+            .filter_map(|id| inner.profiles.get(id))
+            .cloned()
+            .collect()
+    }
 }
 
-/// Go `evaluateAccessDecision`.
-#[must_use]
-pub fn evaluate_access_decision(profile: &Profile, cwd: &str, access: &AccessRequest) -> Decision {
-    let mut decision = Decision {
-        decision_id: new_id("sandbox_decision"),
-        resolution: DecisionResolution::Allow,
-        selection_outcome: Some(BackendSelectionOutcome::Selected),
-        matched_rules: vec![format!("profile:{}", profile.profile_id)],
-        approval_status: DecisionApprovalStatus::NotApplicable,
-        effective_profile_id: profile.profile_id.clone(),
-        effective_backend_kind: profile.backend_kind,
-        host_status: Some(backend_host_status(&profile.backend_capability)),
-        explanation: "execution is allowed by sandbox profile".to_string(),
-        ..Decision::default()
-    };
-    let mut approval_required = false;
-    let mut reasons: Vec<String> = Vec::with_capacity(4);
-
-    match profile.backend_kind {
-        BackendKind::Subprocess => {}
-        BackendKind::Docker => {
-            if profile.backend_capability.availability_status != BackendAvailabilityStatus::Available {
-                mark_decision_unsupported(
-                    &mut decision,
-                    "backend:unsupported",
-                    &first_non_empty(&[
-                        profile.backend_capability.availability_reason.as_str(),
-                        "docker backend is not available on this host",
-                    ]),
-                    "backend_unavailable",
-                );
-                return decision;
+impl ManagerInner {
+    fn reload_builtins_locked(&mut self, cfg: &dope_config::Config) {
+        let builtins = builtin_profiles(cfg);
+        let capabilities = detect_backend_capabilities(cfg);
+        self.profiles = HashMap::with_capacity(builtins.len());
+        self.profile_ids = Vec::with_capacity(builtins.len());
+        self.capabilities = capabilities;
+        for mut profile in builtins {
+            if let Some(capability) = self.capabilities.get(&profile.backend_kind) {
+                profile.backend_capability = capability.clone();
             }
-            let mismatch = docker_access_mismatch(access);
-            if !mismatch.is_empty() {
-                mark_decision_unsupported(&mut decision, "backend:mismatch", &mismatch, "backend_capability_mismatch");
-                return decision;
+            self.profiles.insert(profile.profile_id.clone(), profile);
+            self.profile_ids.push(profile.profile_id);
+        }
+    }
+}
+
+fn merge_execution_payload_metadata(payload: &mut serde_json::Map<String, serde_json::Value>, metadata: &HashMap<String, String>) {
+    for key in [
+        "managedProviderId",
+        "managedProviderAction",
+        "managedProviderOperationId",
+        "sandboxProfileId",
+        "sandboxDecision",
+        "enforcementStrength",
+        "failureClass",
+        "sensitiveStateClasses",
+    ] {
+        if let Some(value) = metadata.get(key) {
+            if !value.trim().is_empty() {
+                payload.insert(key.to_string(), serde_json::json!(value));
             }
         }
-        _ => {
-            if profile.approval_policy.required_for_unknown_backends {
-                approval_required = true;
-                reasons.push("backend:approval_required".to_string());
-            } else {
-                mark_decision_unsupported(
-                    &mut decision,
-                    "backend:unsupported",
-                    "sandbox backend is not available",
-                    "backend_unavailable",
-                );
-                return decision;
-            }
-        }
-    }
-
-    let (fs_decision, fs_rule) = evaluate_filesystem(profile, cwd, access);
-    if fs_decision == DecisionResolution::Deny {
-        decision.resolution = DecisionResolution::Deny;
-        decision.matched_rules.push(fs_rule);
-        decision.explanation = "filesystem access is denied by sandbox profile".to_string();
-        return decision;
-    }
-    if fs_decision == DecisionResolution::Ask {
-        approval_required = true;
-        reasons.push(fs_rule);
-    }
-
-    let (net_decision, net_rule) = evaluate_network(profile, access);
-    if net_decision == DecisionResolution::Deny {
-        decision.resolution = DecisionResolution::Deny;
-        decision.matched_rules.push(net_rule);
-        decision.explanation = "network access is denied by sandbox profile".to_string();
-        return decision;
-    }
-    if net_decision == DecisionResolution::Ask {
-        approval_required = true;
-        reasons.push(net_rule);
-    }
-
-    if approval_required {
-        decision.approval_required = true;
-        decision.resolution = DecisionResolution::Ask;
-        decision.matched_rules.extend(reasons);
-        decision.explanation = "sandbox execution requires approval".to_string();
-    }
-    decision
-}
-
-/// Go `requiredBackendKind`.
-#[must_use]
-pub fn required_backend_kind(declaration: &ConsumerRequirementDeclaration) -> Option<BackendKind> {
-    if declaration.allowed_backend_kinds.len() == 1 {
-        return Some(declaration.allowed_backend_kinds[0]);
-    }
-    None
-}
-
-/// Go `backendRequirementUnsupported`.
-#[must_use]
-pub fn backend_requirement_unsupported(profile_backend: BackendKind, required_backend: Option<BackendKind>, required_strength: &str) -> bool {
-    if let Some(required) = required_backend {
-        if required != profile_backend {
-            return true;
-        }
-    }
-    match required_strength.trim() {
-        "" | "declared_only" | "subprocess" => false,
-        "containerized" | "docker" => profile_backend != BackendKind::Docker,
-        _ => true,
     }
 }
 
-/// Go `backendHostStatus`.
-#[must_use]
-pub fn backend_host_status(capability: &BackendCapabilityProfile) -> BackendHostStatus {
-    match capability.availability_status {
-        BackendAvailabilityStatus::Available => BackendHostStatus::Ready,
-        BackendAvailabilityStatus::Unavailable => BackendHostStatus::MissingPrerequisite,
-        BackendAvailabilityStatus::Degraded => BackendHostStatus::RuntimeUnavailable,
-    }
-}
-
-/// Go `dockerAccessMismatch`.
-#[must_use]
-pub fn docker_access_mismatch(access: &AccessRequest) -> String {
-    if access.network_mode == Some(NetworkMode::AllowList)
-        || !access.allowed_hosts.is_empty()
-        || !access.allowed_ports.is_empty()
-    {
-        return "docker backend cannot yet enforce host or port allow-lists for this request".to_string();
-    }
-    if access.allow_loopback {
-        return "docker backend cannot yet provide explicit loopback-only guarantees for this request".to_string();
-    }
-    String::new()
-}
-
-/// Go `markDecisionUnsupported`.
-pub fn mark_decision_unsupported(decision: &mut Decision, rule: &str, explanation: &str, mismatch_reason: &str) {
-    decision.resolution = DecisionResolution::Deny;
-    decision.selection_outcome = Some(BackendSelectionOutcome::Unsupported);
-    decision.approval_required = false;
-    decision.approval_status = DecisionApprovalStatus::NotApplicable;
-    decision.matched_rules.push(rule.to_string());
-    decision.explanation = explanation.to_string();
-    decision.mismatch_reason = mismatch_reason.to_string();
-}
-
-/// Go `markDecisionDenied`.
-pub fn mark_decision_denied(decision: &mut Decision, rule: &str, explanation: &str, mismatch_reason: &str) {
-    decision.resolution = DecisionResolution::Deny;
-    decision.selection_outcome = Some(BackendSelectionOutcome::Denied);
-    decision.approval_required = false;
-    decision.approval_status = DecisionApprovalStatus::NotApplicable;
-    decision.matched_rules.push(rule.to_string());
-    decision.explanation = explanation.to_string();
-    decision.mismatch_reason = mismatch_reason.to_string();
-}
-
-/// Go `consumerID`.
-#[must_use]
-pub fn consumer_id(view: &ConsumerContractView) -> String {
-    if let Some(record) = &view.policy_record {
-        if !record.consumer_id.trim().is_empty() {
-            return record.consumer_id.trim().to_string();
-        }
-    }
+fn merge_consumer_payload(payload: &mut serde_json::Map<String, serde_json::Value>, view: Option<&ConsumerContractView>) {
+    let Some(view) = view else { return };
     if let Some(declaration) = &view.declaration {
-        return declaration.consumer_id.trim().to_string();
+        payload.insert("consumerKind".to_string(), serde_json::json!(declaration.consumer_kind.as_str()));
+        payload.insert("consumerId".to_string(), serde_json::json!(declaration.consumer_id));
+        payload.insert("declarationId".to_string(), serde_json::json!(declaration.declaration_id));
+        payload.insert("operationKind".to_string(), serde_json::json!(declaration.operation_kind));
+        payload.insert("requiredEnforcementStrength".to_string(), serde_json::json!(declaration.required_enforcement_strength));
     }
-    String::new()
-}
-
-/// Go `decisionToStatus`.
-#[must_use]
-pub fn decision_to_status(decision: &Decision) -> ExecutionStatus {
-    if decision.resolution == DecisionResolution::Allow {
-        return ExecutionStatus::Pending;
+    if !view.secret_scope.is_empty() {
+        payload.insert("secretScope".to_string(), serde_json::json!(view.secret_scope));
     }
-    if decision.selection_outcome == Some(BackendSelectionOutcome::Unsupported) {
-        return ExecutionStatus::Unsupported;
-    }
-    ExecutionStatus::Denied
-}
-
-/// Go `decisionErrorClass`.
-#[must_use]
-pub fn decision_error_class(decision: &Decision) -> ErrorClass {
-    if decision.matched_rules.iter().any(|rule| rule == "backend:mismatch") {
-        return ErrorClass::BackendMismatch;
-    }
-    if decision.matched_rules.iter().any(|rule| rule == "enforcement:unsupported" || rule == "backend:unsupported") {
-        return ErrorClass::BackendMissing;
-    }
-    if decision.approval_status == DecisionApprovalStatus::Rejected {
-        return ErrorClass::ApprovalRejected;
-    }
-    if decision.approval_required {
-        return ErrorClass::ApprovalRequired;
-    }
-    ErrorClass::PolicyDenied
-}
-
-/// Go `decisionErrorCode`.
-#[must_use]
-pub fn decision_error_code(decision: &Decision) -> String {
-    if decision.matched_rules.iter().any(|rule| rule == "backend:mismatch") {
-        return "sandbox_backend_mismatch".to_string();
-    }
-    if decision.matched_rules.iter().any(|rule| rule == "enforcement:unsupported" || rule == "backend:unsupported") {
-        return "sandbox_backend_unsupported".to_string();
-    }
-    if decision.approval_status == DecisionApprovalStatus::Rejected {
-        return "sandbox_approval_rejected".to_string();
-    }
-    if decision.approval_required {
-        return "sandbox_approval_required".to_string();
-    }
-    "sandbox_policy_denied".to_string()
-}
-
-/// Go `synchronizeExecutionConsumerState`: propagates the execution status
-/// into the consumer policy record and mirrors it into the result/decision
-/// consumer views.
-pub(crate) fn synchronize_execution_consumer_state(execution: &mut Execution) {
-    let Some(consumer) = &mut execution.consumer else { return };
-    let Some(record) = &mut consumer.policy_record else { return };
-    record.sandbox_execution_id = execution.execution_id.clone();
-    record.decision = execution.decision.resolution;
-    record.approval_status = execution.decision.approval_status;
-    record.secret_resolution = secret_resolution_from_consumer(consumer);
-    if record.enforcement_strength.is_empty() {
-        if let Some(declaration) = &consumer.declaration {
-            record.enforcement_strength = declaration.required_enforcement_strength.trim().to_string();
-        }
-    }
-    if record.enforcement_strength.is_empty() {
-        record.enforcement_strength = "declared_only".to_string();
-    }
-    match execution.status {
-        ExecutionStatus::Running => {
-            record.status = PolicyRecordStatus::Running;
-        }
-        ExecutionStatus::Completed => {
-            record.status = PolicyRecordStatus::Completed;
-            record.completed_at = Some(Utc::now());
-        }
-        ExecutionStatus::Failed => {
-            record.status = PolicyRecordStatus::Failed;
-            record.failure_class = execution.result.error_class.clone();
-            record.completed_at = Some(Utc::now());
-        }
-        ExecutionStatus::Cancelled => {
-            record.status = PolicyRecordStatus::Cancelled;
-            record.failure_class = execution.result.error_class.clone();
-            record.completed_at = Some(Utc::now());
-        }
-        ExecutionStatus::Unsupported => {
-            record.status = PolicyRecordStatus::Unsupported;
-            record.failure_class = execution.result.error_class.clone();
-            record.completed_at = Some(Utc::now());
-        }
-        ExecutionStatus::Denied => {
-            if record.status != PolicyRecordStatus::Unsupported {
-                record.status = if execution.decision.approval_status == DecisionApprovalStatus::Pending {
-                    PolicyRecordStatus::ApprovalPending
-                } else {
-                    PolicyRecordStatus::Denied
-                };
-            }
-            record.failure_class = execution.result.error_class.clone();
-            record.completed_at = Some(Utc::now());
-        }
-        _ => {
-            record.status = PolicyRecordStatus::PreflightAllowed;
-        }
-    }
-    let mirror = execution.consumer.clone();
-    if execution.result.consumer.is_none() {
-        execution.result.consumer = mirror.clone();
-    } else if let Some(result_consumer) = &mut execution.result.consumer {
-        result_consumer.policy_record = mirror.as_ref().and_then(|consumer| consumer.policy_record.clone());
-    }
-    if execution.decision.consumer.is_none() {
-        execution.decision.consumer = mirror;
-    } else if let Some(decision_consumer) = &mut execution.decision.consumer {
-        decision_consumer.policy_record = execution
-            .consumer
-            .as_ref()
-            .and_then(|consumer| consumer.policy_record.clone());
+    if let Some(record) = &view.policy_record {
+        payload.insert("policyRecordId".to_string(), serde_json::json!(record.policy_record_id));
+        payload.insert("policyStatus".to_string(), serde_json::json!(record.status.as_str()));
+        payload.insert("secretResolution".to_string(), serde_json::json!(record.secret_resolution.as_str()));
     }
 }
 
-/// Go `secretResolutionFromConsumer`.
-#[must_use]
-pub fn secret_resolution_from_consumer(view: &ConsumerContractView) -> SecretResolution {
-    if view.secret_scope.is_empty() {
-        return SecretResolution::NotApplicable;
-    }
-    let mut resolution = SecretResolution::Resolved;
-    for item in &view.secret_scope {
-        match item.resolution {
-            SecretResolution::Unavailable => return SecretResolution::Unavailable,
-            SecretResolution::Denied => {
-                resolution = SecretResolution::Denied;
-            }
-            SecretResolution::Resolved => {}
-            other => {
-                if resolution == SecretResolution::Resolved {
-                    resolution = other;
-                }
-            }
-        }
-    }
-    resolution
-}
-
-/// Go `secretScopeBindingRecordID`.
-fn secret_scope_binding_record_id(item: &SecretScopeOutcome) -> String {
-    let base = first_non_empty(&[item.default_rule_id.as_str(), &new_id("secret_binding")]);
-    let mut parts: Vec<String> = vec![base];
-    let scope = item.environment_scope.as_str().trim();
-    if !scope.is_empty() {
-        parts.push(scope.to_string());
-    }
-    let secret_ref = item.secret_ref.trim();
-    if !secret_ref.is_empty() {
-        parts.push(secret_ref.to_string());
-    }
-    parts.join(":")
-}
-
-/// Go `commandApprovalRule`.
-#[must_use]
-pub fn command_approval_rule(profile: &Profile, command: &str) -> String {
-    let base = std::path::Path::new(command.trim())
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_default();
-    for required in &profile.approval_policy.required_for_commands {
-        let required = required.trim();
-        if required.eq_ignore_ascii_case(command.trim()) || required.eq_ignore_ascii_case(&base) {
-            return "command:approval_required".to_string();
-        }
-    }
-    String::new()
-}
-
-/// Go `evaluateFilesystem` (the error return is dead in the Go source; the
-/// decision + matched rule are returned).
-#[must_use]
-pub fn evaluate_filesystem(profile: &Profile, cwd: &str, access: &AccessRequest) -> (DecisionResolution, String) {
-    match profile.filesystem_policy.mode {
-        FilesystemMode::Full => return (DecisionResolution::Allow, "filesystem:full_access".to_string()),
-        FilesystemMode::None => {
-            if !cwd.is_empty() || !access.read_roots.is_empty() || !access.write_roots.is_empty() {
-                return (DecisionResolution::Deny, "filesystem:none".to_string());
-            }
-            return (DecisionResolution::Allow, "filesystem:none".to_string());
-        }
-        FilesystemMode::Scoped => {}
-    }
-
-    let read_roots = effective_read_roots(profile);
-    let write_roots = effective_write_roots(profile);
-    let mut all_roots = read_roots.clone();
-    all_roots.extend(write_roots.iter().cloned());
-    if !cwd.is_empty() && !within_any(cwd, &all_roots) {
-        return (DecisionResolution::Deny, "filesystem:cwd_outside_scoped_roots".to_string());
-    }
-    for root in &access.read_roots {
-        if !within_any(root, &read_roots) && !within_any(root, &write_roots) {
-            return (DecisionResolution::Deny, "filesystem:read_outside_scoped_roots".to_string());
-        }
-    }
-    for root in &access.write_roots {
-        if !within_any(root, &write_roots) {
-            if profile.approval_policy.required_for_writes_outside_roots {
-                return (DecisionResolution::Ask, "filesystem:write_outside_roots_requires_approval".to_string());
-            }
-            return (DecisionResolution::Deny, "filesystem:write_outside_scoped_roots".to_string());
-        }
-    }
-    if !cwd.is_empty() && !within_any(cwd, &write_roots) && profile.approval_policy.required_for_writes_outside_roots {
-        return (DecisionResolution::Ask, "filesystem:cwd_write_scope_requires_approval".to_string());
-    }
-    (DecisionResolution::Allow, "filesystem:scoped".to_string())
-}
-
-/// Go `evaluateNetwork`.
-#[must_use]
-pub fn evaluate_network(profile: &Profile, access: &AccessRequest) -> (DecisionResolution, String) {
-    if access.network_mode.is_none() || access.network_mode == Some(NetworkMode::Deny) {
-        return (DecisionResolution::Allow, "network:none".to_string());
-    }
-    match profile.network_policy.mode {
-        NetworkMode::Full => (DecisionResolution::Allow, "network:full".to_string()),
-        NetworkMode::Deny => {
-            if profile.approval_policy.required_for_network {
-                (DecisionResolution::Ask, "network:approval_required".to_string())
-            } else {
-                (DecisionResolution::Deny, "network:denied".to_string())
-            }
-        }
-        NetworkMode::AllowList => {
-            if access.network_mode == Some(NetworkMode::Full) {
-                if profile.approval_policy.required_for_network {
-                    return (DecisionResolution::Ask, "network:approval_required".to_string());
-                }
-                return (DecisionResolution::Deny, "network:mode_exceeds_profile".to_string());
-            }
-            if access.allow_loopback && !profile.network_policy.allow_loopback {
-                if profile.approval_policy.required_for_network {
-                    return (DecisionResolution::Ask, "network:loopback_requires_approval".to_string());
-                }
-                return (DecisionResolution::Deny, "network:loopback_denied".to_string());
-            }
-            if !subset_strings(&access.allowed_hosts, &profile.network_policy.allowed_hosts)
-                || !subset_ints(&access.allowed_ports, &profile.network_policy.allowed_ports)
-            {
-                if profile.approval_policy.required_for_network {
-                    return (DecisionResolution::Ask, "network:allow_list_requires_approval".to_string());
-                }
-                return (DecisionResolution::Deny, "network:allow_list_denied".to_string());
-            }
-            (DecisionResolution::Allow, "network:allow_list".to_string())
-        }
-        _ => (DecisionResolution::Deny, "network:unknown_mode".to_string()),
-    }
-}
