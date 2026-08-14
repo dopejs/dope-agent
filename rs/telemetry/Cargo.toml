@@ -1,0 +1,9 @@
+[package]
+name = "dope-telemetry"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono.workspace = true
+parking_lot.workspace = true

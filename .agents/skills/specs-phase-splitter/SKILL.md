@@ -1,6 +1,6 @@
 ---
 name: specs-phase-splitter
-description: Use when turning roadmap phases or architecture follow-on work into standalone upstream spec documents under docs/specs, or when preparing authoritative docs/specs inputs for later speckit-specify work.
+description: Use when turning roadmap phases or architecture follow-on work into standalone upstream spec documents under docs/specs, or when preparing authoritative docs/specs inputs for later feature-spec work.
 ---
 
 # Specs Phase Splitter
@@ -8,13 +8,13 @@ description: Use when turning roadmap phases or architecture follow-on work into
 Use this skill when the user wants to:
 
 - split a roadmap phase into one or more standalone spec docs
-- prepare `docs/specs/*.md` as upstream product specs before running `speckit-specify`
-- reorganize follow-on phases so future speckit work starts from one authoritative spec
+- prepare `docs/specs/*.md` as upstream product specs before implementation planning
+- reorganize follow-on phases so future feature work starts from one authoritative spec
 
 ## Goal
 
 Produce stable, standalone `docs/specs` documents that capture enough information for a
-later `/speckit-specify` run to start with minimal ambiguity.
+later feature spec to start with minimal ambiguity.
 
 ## Required Inputs
 
@@ -36,13 +36,13 @@ Number them sequentially with three digits:
 - `008-...`
 - `009-...`
 
-These numbers are independent from branch names and `specs/<NNN>-...` speckit feature
+These numbers are independent from branch names and `specs/<NNN>-...` historical feature
 directories.
 
 ## What Each docs/specs File Must Contain
 
 Each document should be strong enough to serve as the main input to a later
-`/speckit-specify` run.
+feature-spec draft.
 
 Include:
 
@@ -61,7 +61,7 @@ Include:
 - compatibility and operational notes
 - verification expectations
 - definition of done
-- recommended `/speckit-specify` input
+- recommended spec input
 
 ## Splitting Rules
 
@@ -70,7 +70,7 @@ Include:
    they have different execution surfaces, risks, or verification stories.
 3. Keep each doc roadmap-closed. A later implementation phase should be able to finish the
    slice without absorbing adjacent roadmap work.
-4. Record fixed decisions explicitly so later `speckit-specify` runs do not reopen already
+4. Record fixed decisions explicitly so later spec drafts do not reopen already
    settled scope unless the user asks.
 
 ## Required Follow-Through
@@ -87,4 +87,4 @@ After adding or updating `docs/specs`:
 - Write for future planning, not implementation detail
 - Be specific about scope boundaries
 - Prefer concise, durable statements over verbose explanation
-- Optimize for “can later feed this into `/speckit-specify` directly”
+- Optimize for “can later feed this into a feature spec directly”

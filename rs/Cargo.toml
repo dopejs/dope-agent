@@ -1,0 +1,48 @@
+[workspace]
+resolver = "2"
+members = ["protocol", "model-provider", "core", "cli", "config", "identity", "telemetry", "billing", "bindings", "llm", "profiles", "threads", "router", "secrets", "contracts", "activation", "capabilities", "inventory", "setupwizard", "imtypes", "livevalidation", "providers", "adapterrpc", "adapterprovider", "adapterref"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+rust-version = "1.85"
+
+[workspace.dependencies]
+dope-secrets = { path = "secrets" }
+dope-contracts = { path = "contracts" }
+dope-activation = { path = "activation" }
+dope-capabilities = { path = "capabilities" }
+dope-inventory = { path = "inventory" }
+dope-setupwizard = { path = "setupwizard" }
+dope-imtypes = { path = "imtypes" }
+dope-livevalidation = { path = "livevalidation" }
+dope-providers = { path = "providers" }
+dope-adapterrpc = { path = "adapterrpc" }
+dope-adapterprovider = { path = "adapterprovider" }
+dope-adapterref = { path = "adapterref" }
+dope-config = { path = "config" }
+dope-identity = { path = "identity" }
+dope-telemetry = { path = "telemetry" }
+dope-billing = { path = "billing" }
+dope-bindings = { path = "bindings" }
+dope-llm = { path = "llm" }
+dope-profiles = { path = "profiles" }
+dope-threads = { path = "threads" }
+dope-router = { path = "router" }
+dope-protocol = { path = "protocol" }
+dope-model-provider = { path = "model-provider" }
+dope-core = { path = "core" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v7", "serde"] }
+thiserror = "2"
+futures = "0.3"
+parking_lot = "0.12"
+bytes = "1"
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+async-stream = "0.3"
+clap = { version = "4", features = ["derive", "env"] }

@@ -1,0 +1,17 @@
+[package]
+name = "dope-llm"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+parking_lot.workspace = true
+futures.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+
+[dev-dependencies]
+serde_json.workspace = true

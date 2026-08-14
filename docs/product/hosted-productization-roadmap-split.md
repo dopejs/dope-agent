@@ -124,7 +124,7 @@ This split is done when the child specs exist, runtime and harness docs link the
 order, and future implementation can start from each child spec without reopening the
 program structure.
 
-## Recommended `/speckit-specify` Input
+## Recommended Spec Input
 
 Do not implement this umbrella document directly. Use one child spec as the authoritative
 input for a future roadmap slice.

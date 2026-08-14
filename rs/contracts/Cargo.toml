@@ -1,0 +1,11 @@
+[package]
+name = "dope-contracts"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+parking_lot.workspace = true

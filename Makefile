@@ -27,3 +27,16 @@ daemon-test:
 
 daemon-contract-test:
 	cd $(GO_DAEMON_DIR) && go test ./internal/contracts/...
+
+RS_DIR := ./rs
+
+.PHONY: rs-build rs-test rs-clippy
+
+rs-build:
+	cd $(RS_DIR) && cargo build --workspace
+
+rs-test:
+	cd $(RS_DIR) && cargo test --workspace
+
+rs-clippy:
+	cd $(RS_DIR) && cargo clippy --workspace --all-targets

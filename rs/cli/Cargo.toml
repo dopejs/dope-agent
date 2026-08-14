@@ -1,0 +1,16 @@
+[package]
+name = "dope-cli"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "dope-cli"
+path = "src/main.rs"
+
+[dependencies]
+dope-protocol.workspace = true
+dope-model-provider.workspace = true
+dope-core.workspace = true
+clap.workspace = true
+tokio.workspace = true

@@ -2,11 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-<!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan:
-`specs/044-integration-adapter-plane/plan.md`
-<!-- SPECKIT END -->
+Planned feature scope lives in plain markdown under `specs/<NNN>-<name>/` and `docs/specs/` (Spec Kit tooling was removed; the documents remain authoritative).
 
 ## Project Overview
 

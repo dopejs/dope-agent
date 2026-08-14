@@ -1,0 +1,13 @@
+[package]
+name = "dope-router"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+parking_lot.workspace = true
+uuid = { workspace = true, features = ["v4"] }

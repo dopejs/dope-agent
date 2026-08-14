@@ -1,0 +1,16 @@
+[package]
+name = "dope-threads"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-profiles.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+# Direct version until the integrator promotes `regex` to workspace deps.
+regex = "1"
+
+[dev-dependencies]
+serde_json.workspace = true

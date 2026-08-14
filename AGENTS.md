@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-`daemon/` contains the Go control plane, runtime, providers, channels, and harness code. `web/` and `tui/` are the client surfaces. `sdk/ts/` holds the TypeScript client SDK used by both. `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providers/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
+`daemon/` contains the Go control plane, runtime, providers, channels, and harness code. `web/` and `tui/` are the client surfaces. `sdk/ts/` holds the TypeScript client SDK used by both. `rs/` is the Rust rewrite workspace (`protocol` wire types, `model-provider` provider clients, `core` agent turn loop, `cli` entry). `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providers/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
 
 ## Build, Test, and Development Commands
 
@@ -39,7 +39,6 @@ Follow the existing imperative commit style: `Complete roadmap 15 skill registry
 
 Default development work must use the test environment, not `~/.dope`. Never assume live connectors or managed providers are safe to touch; make the environment explicit. Treat secrets in config as operator-owned material and avoid logging or echoing them in tests, scripts, or API output.
 
-<!-- SPECKIT START -->
-Current active speckit plan: `specs/042-agent-profile-persona/plan.md`
-Use it for feature-specific scope, contracts, verification, and repo paths.
-<!-- SPECKIT END -->
+## Feature Planning
+
+Spec Kit tooling was removed. Planned feature work lives on as plain markdown under `specs/<NNN>-<name>/` (spec, plan, tasks, contracts) and `docs/specs/`; treat those documents as the authoritative scope for their features. New features are specified directly as markdown in `docs/specs/`.

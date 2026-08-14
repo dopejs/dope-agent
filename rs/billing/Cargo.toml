@@ -1,0 +1,15 @@
+[package]
+name = "dope-billing"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+parking_lot.workspace = true

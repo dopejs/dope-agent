@@ -1,0 +1,11 @@
+[package]
+name = "dope-adapterrpc"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
+thiserror.workspace = true
+parking_lot.workspace = true

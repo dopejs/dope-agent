@@ -79,6 +79,6 @@ Each child roadmap must end with:
 
 This split is done when the child specs exist, their roadmap ordering is aligned in runtime and harness docs, and future implementation can start from the child docs without reopening the program structure.
 
-## Recommended `/speckit-specify` Input
+## Recommended Spec Input
 
 Do not implement this umbrella document directly. Use one of the child specs as the authoritative input for a future roadmap slice.

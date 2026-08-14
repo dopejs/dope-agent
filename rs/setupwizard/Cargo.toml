@@ -1,0 +1,7 @@
+[package]
+name = "dope-setupwizard"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]

@@ -1,0 +1,178 @@
+//! Serde domain types consumed by daemon packages, mirroring the JSON shapes
+//! of `daemon/internal/llm/dispatcher.go`.
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+/// Chat message role; wire values match the Go `MessageRole` constants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageRole {
+    System,
+    User,
+    Assistant,
+    Tool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Message {
+    pub role: MessageRole,
+    pub content: String,
+}
+
+/// Token accounting for one dispatch. `total_tokens` is normalized to
+/// `input + output` by the dispatcher when a provider leaves it zero.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Usage {
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub total_tokens: i64,
+}
+
+/// Dispatch lifecycle state; wire values match the Go `DispatchStatus`
+/// constants (`partial_failed` etc.).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DispatchStatus {
+    Queued,
+    Running,
+    Completed,
+    PartialFailed,
+    Failed,
+    Cancelled,
+}
+
+/// A prepared or settled dispatch record.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Dispatch {
+    pub dispatch_id: String,
+    pub provider: String,
+    pub model: String,
+    pub messages: Vec<Message>,
+    pub stream: bool,
+    pub status: DispatchStatus,
+    pub output: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub finish_reason: String,
+    pub usage: Usage,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub error_code: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub error: String,
+    pub timeout_ms: i64,
+    pub partial: bool,
+    pub max_retries: i64,
+    pub attempt_count: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+/// Input accepted by [`crate::Dispatcher::prepare`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateDispatchInput {
+    pub provider: String,
+    pub model: String,
+    pub messages: Vec<Message>,
+    pub timeout_ms: i64,
+    pub max_retries: i64,
+}
+
+/// One streamed delta forwarded to the caller's emitter. The dispatcher
+/// backfills `output` with the aggregate text streamed so far.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamChunk {
+    pub delta: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub output: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub finish_reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<Usage>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn message_role_wire_values_match_go() {
+        assert_eq!(serde_json::to_string(&MessageRole::System).unwrap(), "\"system\"");
+        assert_eq!(serde_json::to_string(&MessageRole::User).unwrap(), "\"user\"");
+        assert_eq!(serde_json::to_string(&MessageRole::Assistant).unwrap(), "\"assistant\"");
+        assert_eq!(serde_json::to_string(&MessageRole::Tool).unwrap(), "\"tool\"");
+    }
+
+    #[test]
+    fn dispatch_status_wire_values_match_go() {
+        assert_eq!(serde_json::to_string(&DispatchStatus::Queued).unwrap(), "\"queued\"");
+        assert_eq!(serde_json::to_string(&DispatchStatus::Running).unwrap(), "\"running\"");
+        assert_eq!(serde_json::to_string(&DispatchStatus::Completed).unwrap(), "\"completed\"");
+        assert_eq!(
+            serde_json::to_string(&DispatchStatus::PartialFailed).unwrap(),
+            "\"partial_failed\""
+        );
+        assert_eq!(serde_json::to_string(&DispatchStatus::Failed).unwrap(), "\"failed\"");
+        assert_eq!(serde_json::to_string(&DispatchStatus::Cancelled).unwrap(), "\"cancelled\"");
+    }
+
+    #[test]
+    fn usage_serializes_camel_case() {
+        let usage = Usage { input_tokens: 3, output_tokens: 1, total_tokens: 4 };
+        let json = serde_json::to_value(usage).unwrap();
+        assert_eq!(json, serde_json::json!({"inputTokens": 3, "outputTokens": 1, "totalTokens": 4}));
+    }
+
+    #[test]
+    fn dispatch_omits_empty_optional_fields_like_go() {
+        let now = Utc::now();
+        let dispatch = Dispatch {
+            dispatch_id: "d-1".into(),
+            provider: "echo".into(),
+            model: "m".into(),
+            messages: vec![],
+            stream: false,
+            status: DispatchStatus::Queued,
+            output: String::new(),
+            finish_reason: String::new(),
+            usage: Usage::default(),
+            error_code: String::new(),
+            error: String::new(),
+            timeout_ms: 30_000,
+            partial: false,
+            max_retries: 0,
+            attempt_count: 0,
+            created_at: now,
+            updated_at: now,
+            started_at: None,
+            completed_at: None,
+        };
+        let json = serde_json::to_value(&dispatch).unwrap();
+        let object = json.as_object().unwrap();
+        assert!(!object.contains_key("finishReason"));
+        assert!(!object.contains_key("errorCode"));
+        assert!(!object.contains_key("error"));
+        assert!(!object.contains_key("startedAt"));
+        assert!(!object.contains_key("completedAt"));
+        assert!(object.contains_key("createdAt"));
+        assert!(object.contains_key("timeoutMs"));
+        // Round-trips despite the omitted fields.
+        let back: Dispatch = serde_json::from_value(json).unwrap();
+        assert_eq!(back, dispatch);
+    }
+
+    #[test]
+    fn stream_chunk_omits_empty_optional_fields_like_go() {
+        let chunk = StreamChunk { delta: "hi".into(), ..StreamChunk::default() };
+        let json = serde_json::to_value(&chunk).unwrap();
+        assert_eq!(json, serde_json::json!({"delta": "hi"}));
+    }
+}

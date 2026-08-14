@@ -1,0 +1,16 @@
+[package]
+name = "dope-core"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-protocol.workspace = true
+dope-model-provider.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+futures.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+parking_lot.workspace = true

@@ -24,3 +24,5 @@ tui/dist/
 tui/node_modules/
 
 .worktrees/
+
+rs/target/

@@ -1,0 +1,17 @@
+[package]
+name = "dope-livevalidation"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-billing.workspace = true
+dope-identity.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+parking_lot.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
