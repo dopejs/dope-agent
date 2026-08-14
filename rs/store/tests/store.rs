@@ -517,3 +517,13 @@ fn sandbox_execution_round_trips_through_sqlite() {
     assert!(listed[0].started_at.is_some());
     assert!(listed[0].completed_at.is_none());
 }
+#[test]
+fn migrate_to_version_applies_partial_schema_then_head() {
+    let dir = temp_dir("migratev");
+    let store = SQLiteStore::new_at_version(&dir, 21).unwrap();
+    assert_eq!(store.schema_version().unwrap(), 21);
+
+    // Bring it to the head and confirm all 55 migrations are now applied.
+    store.migrate_to_version(55).unwrap();
+    assert_eq!(store.schema_version().unwrap(), 55);
+}

@@ -62,6 +62,21 @@ impl SQLiteStore {
         Ok(store)
     }
 
+    /// Opens a store and migrates only up through `target_version`. Test-only helper that
+    /// mirrors the Go `NewSQLiteStoreAtVersion` (used by the migration fixture builder to
+    /// produce a pre-tenant database before applying the head migrations).
+    pub fn new_at_version(data_dir: &str, target_version: i64) -> Result<Self, String> {
+        let resolved = resolve_data_dir(data_dir)?;
+        std::fs::create_dir_all(&resolved).map_err(|e| format!("create data dir: {e}"))?;
+        let db_path = Path::new(&resolved).join(DEFAULT_DATABASE_FILE);
+        let db_path = db_path.to_string_lossy().to_string();
+        let conn = Connection::open(&db_path).map_err(|e| format!("open sqlite db: {e}"))?;
+        let store = SQLiteStore { data_dir: resolved, db_path, conn };
+        store.configure()?;
+        store.migrate_to_version(target_version)?;
+        Ok(store)
+    }
+
     #[must_use]
     pub fn data_dir(&self) -> &str {
         &self.data_dir
@@ -117,6 +132,39 @@ impl SQLiteStore {
             current = migration.version;
         }
 
+        tx.commit().map_err(|e| format!("commit migration transaction: {e}"))
+    }
+
+    /// Applies schema migrations only up through `target_version`, stopping before any later
+    /// migration. Test-only helper mirroring the Go `MigrateToVersion`.
+    pub fn migrate_to_version(&self, target_version: i64) -> Result<(), String> {
+        if target_version < 1 {
+            return Err(format!("migrate to version: invalid target {target_version}"));
+        }
+        let tx = self.conn.unchecked_transaction().map_err(|e| format!("begin migration: {e}"))?;
+        tx.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at TEXT NOT NULL
+            );",
+        )
+        .map_err(|e| format!("ensure schema_migrations table: {e}"))?;
+
+        let current = current_schema_version(&tx)?;
+        for migration in schema_migrations() {
+            if migration.version <= current {
+                continue;
+            }
+            if migration.version > target_version {
+                break;
+            }
+            for statement in &migration.statements {
+                tx.execute_batch(statement)
+                    .map_err(|e| format!("apply schema migration {} ({}): {e}", migration.version, migration.name))?;
+            }
+            record_schema_migration(&tx, migration.version, &migration.name)?;
+        }
         tx.commit().map_err(|e| format!("commit migration transaction: {e}"))
     }
 }
