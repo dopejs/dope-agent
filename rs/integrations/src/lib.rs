@@ -13,8 +13,10 @@ use serde_json::{Map, Value};
 
 mod classifier;
 mod diagnostics;
+mod diagnostics_runtime;
 pub use classifier::*;
 pub use diagnostics::*;
+pub use diagnostics_runtime::*;
 
 macro_rules! string_enum {
     ($name:ident { $first:ident => $first_s:literal $(, $v:ident => $s:literal)* $(,)? }) => {

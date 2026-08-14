@@ -249,7 +249,7 @@ pub struct DiagnosticRunFilter {
     pub include_expired: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DiagnosticInspectionInput {
     pub resource: crate::Resource,
     pub capability: String,
@@ -259,7 +259,7 @@ pub struct DiagnosticInspectionInput {
     pub force_generic: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DiagnosticRunInput {
     pub resource: crate::Resource,
     pub requested_by: String,

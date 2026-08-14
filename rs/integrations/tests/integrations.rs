@@ -3,8 +3,10 @@ use chrono::Utc;
 use dope_integrations::{
     backend_kind_supports_domain, classify_provider_evidence,
     diagnostic_failure_for_operation_failure, BackendBinding, BackendKind, CreateInput,
-    DiagnosticReasonCode, FreshnessState, Manager, ProbeKind, ProviderDiagnosticEvidence,
-    ReadinessStatus, UpdateReadinessInput,
+    DiagnosticInspectionInput, DiagnosticManager, DiagnosticReasonCode, DiagnosticRetentionState,
+    FeishuLarkDiagnosticBackend, FreshnessState, IntegrationError, Manager, ProbeKind,
+    ProviderDiagnosticEvidence, ReadinessStatus, RedactionStatus, Resource,
+    UpdateReadinessInput, new_diagnostic_retention_record, redact_diagnostic_summary,
 };
 use serde_json::Map;
 
@@ -114,4 +116,78 @@ fn operation_failure_projection_is_fresh() {
     );
     assert_eq!(projection.reason_code, DiagnosticReasonCode::ScopeMissing);
     assert_eq!(projection.freshness_state, FreshnessState::Fresh);
+}
+
+#[test]
+fn redact_diagnostic_summary_suppresses_secrets() {
+    let result = redact_diagnostic_summary("Authorization: Bearer abc123def");
+    assert_eq!(result.status, RedactionStatus::Suppressed);
+    assert_eq!(result.summary, "diagnostic detail suppressed");
+}
+
+#[test]
+fn redact_diagnostic_summary_passes_clean_text() {
+    let result = redact_diagnostic_summary("integration is healthy");
+    assert_eq!(result.status, RedactionStatus::Redacted);
+    assert_eq!(result.summary, "integration is healthy");
+}
+
+#[test]
+fn diagnostic_manager_inspect_limited_diagnostic() {
+    let manager = DiagnosticManager::new();
+    let resource = Resource {
+        domain_kind: "calendar".to_string(),
+        readiness_status: ReadinessStatus::Healthy,
+        backend_binding: BackendBinding {
+            backend_kind: BackendKind::FakeLocal,
+            supports_probe_read: true,
+            ..BackendBinding::default()
+        },
+        ..Resource::default()
+    };
+    let result = manager.inspect(DiagnosticInspectionInput {
+        resource,
+        ..DiagnosticInspectionInput::default()
+    });
+    assert_eq!(result.reason_code, DiagnosticReasonCode::LimitedDiagnostic);
+    assert_eq!(result.capability, "integration.readiness");
+}
+
+#[test]
+fn feishu_lark_backend_run_probe_healthy() {
+    let backend = FeishuLarkDiagnosticBackend::new();
+    let resource = Resource {
+        domain_kind: "calendar".to_string(),
+        readiness_status: ReadinessStatus::Healthy,
+        backend_binding: BackendBinding {
+            backend_kind: BackendKind::FeishuLark,
+            ..BackendBinding::default()
+        },
+        ..Resource::default()
+    };
+    let result = backend.run_probe(&resource, ProbeKind::Inspect, &serde_json::Map::new()).unwrap();
+    assert_eq!(result.status, "completed");
+}
+
+#[test]
+fn feishu_lark_backend_rejects_unsupported_domain() {
+    let backend = FeishuLarkDiagnosticBackend::new();
+    let resource = Resource {
+        domain_kind: "chat".to_string(),
+        backend_binding: BackendBinding {
+            backend_kind: BackendKind::FeishuLark,
+            ..BackendBinding::default()
+        },
+        ..Resource::default()
+    };
+    let err = backend.run_probe(&resource, ProbeKind::Inspect, &serde_json::Map::new()).unwrap_err();
+    assert!(matches!(err, IntegrationError::ProbeUnsupported));
+}
+
+#[test]
+fn retention_record_is_active_by_default() {
+    let record = new_diagnostic_retention_record("ten_1", "integration", "cal-1", Utc::now());
+    assert_eq!(record.retention_state, DiagnosticRetentionState::Active);
+    assert!(record.retention_record_id.starts_with("diag_retention_"));
+    assert_eq!(record.default_expires_at, record.effective_expires_at);
 }

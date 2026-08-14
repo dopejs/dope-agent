@@ -463,6 +463,7 @@ dependencies = [
  "dope-livevalidation",
  "dope-setupwizard",
  "parking_lot",
+ "regex",
  "serde",
  "serde_json",
  "sha2",
