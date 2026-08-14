@@ -740,6 +740,7 @@ dependencies = [
  "chrono",
  "dope-capabilities",
  "dope-integrations",
+ "dope-llm",
  "dope-router",
  "dope-runtime",
  "rusqlite",

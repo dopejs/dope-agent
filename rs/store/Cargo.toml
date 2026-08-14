@@ -13,6 +13,7 @@ uuid = { workspace = true, features = ["v4"] }
 dope-runtime.workspace = true
 dope-router.workspace = true
 dope-capabilities.workspace = true
+dope-llm.workspace = true
 
 [dev-dependencies]
 dope-integrations.workspace = true

@@ -39,6 +39,7 @@ fn store_conn_query(db_path: &str, query: &str) -> i64 {
 use chrono::Utc;
 use dope_capabilities::{Capability, Status as CapabilityStatus};
 use dope_router::{Session, SessionKind, SessionStatus};
+use dope_llm::{Dispatch, DispatchStatus, Message, MessageRole, Usage};
 use dope_runtime::{Run, RunCheckpoint, RunStatus, Step, StepStatus, ToolCall, ToolCallStatus};
 
 fn make_run() -> Run {
@@ -269,4 +270,53 @@ fn capability_round_trips_through_sqlite() {
     assert_eq!(got.backoff_seconds, 30);
     assert_eq!(got.last_failure_reason, "timeout");
     assert!(got.next_restart_at.is_some());
+}
+#[test]
+fn llm_dispatch_round_trips_through_sqlite() {
+    let dir = temp_dir("llm");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let now = Utc::now();
+    let dispatch = Dispatch {
+        dispatch_id: "disp_1".to_string(),
+        provider: "openai".to_string(),
+        model: "gpt-4o".to_string(),
+        messages: vec![Message { role: MessageRole::User, content: "hi".to_string() }],
+        stream: true,
+        status: DispatchStatus::Completed,
+        output: "hello".to_string(),
+        finish_reason: "stop".to_string(),
+        usage: Usage { input_tokens: 3, output_tokens: 1, total_tokens: 4 },
+        error_code: String::new(),
+        error: String::new(),
+        timeout_ms: 30000,
+        partial: false,
+        max_retries: 2,
+        attempt_count: 1,
+        created_at: now,
+        updated_at: now,
+        started_at: Some(now),
+        completed_at: Some(now),
+    };
+    store.upsert_llm_dispatch(&dispatch).unwrap();
+
+    let listed = store.list_llm_dispatches().unwrap();
+    assert_eq!(listed.len(), 1);
+    let got = &listed[0];
+    assert_eq!(got.dispatch_id, "disp_1");
+    assert_eq!(got.provider, "openai");
+    assert_eq!(got.model, "gpt-4o");
+    assert_eq!(got.stream, true);
+    assert_eq!(got.status, DispatchStatus::Completed);
+    assert_eq!(got.output, "hello");
+    assert_eq!(got.finish_reason, "stop");
+    assert_eq!(got.messages.len(), 1);
+    assert_eq!(got.messages[0].content, "hi");
+    assert_eq!(got.usage.total_tokens, 4);
+    assert_eq!(got.timeout_ms, 30000);
+    assert!(got.started_at.is_some());
+    assert!(got.completed_at.is_some());
+
+    let fetched = store.get_llm_dispatch("disp_1").unwrap().expect("found");
+    assert_eq!(fetched.dispatch_id, "disp_1");
+    assert_eq!(store.get_llm_dispatch("missing").unwrap(), None);
 }

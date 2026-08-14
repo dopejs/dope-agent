@@ -75,6 +75,56 @@ fn scan_capability(row: &Row) -> Result<dope_capabilities::Capability, String> {
     })
 }
 
+fn scan_llm_dispatch(row: &Row) -> Result<dope_llm::Dispatch, String> {
+    let dispatch_id: String = row.get(0).map_err(|e| e.to_string())?;
+    let provider: String = row.get(1).map_err(|e| e.to_string())?;
+    let model: String = row.get(2).map_err(|e| e.to_string())?;
+    let messages_raw: String = row.get(3).map_err(|e| e.to_string())?;
+    let stream: bool = row.get(4).map_err(|e| e.to_string())?;
+    let status: String = row.get(5).map_err(|e| e.to_string())?;
+    let output: String = row.get(6).map_err(|e| e.to_string())?;
+    let finish_reason: Option<String> = row.get(7).map_err(|e| e.to_string())?;
+    let usage_raw: String = row.get(8).map_err(|e| e.to_string())?;
+    let error_code: Option<String> = row.get(9).map_err(|e| e.to_string())?;
+    let error_text: Option<String> = row.get(10).map_err(|e| e.to_string())?;
+    let timeout_ms: i64 = row.get(11).map_err(|e| e.to_string())?;
+    let max_retries: i64 = row.get(12).map_err(|e| e.to_string())?;
+    let attempt_count: i64 = row.get(13).map_err(|e| e.to_string())?;
+    let created_at: String = row.get(14).map_err(|e| e.to_string())?;
+    let updated_at: String = row.get(15).map_err(|e| e.to_string())?;
+    let started_at: Option<String> = row.get(16).map_err(|e| e.to_string())?;
+    let completed_at: Option<String> = row.get(17).map_err(|e| e.to_string())?;
+
+    let status: dope_llm::DispatchStatus = parse_enum(&status)?;
+    let messages: Vec<dope_llm::Message> =
+        serde_json::from_str(&messages_raw).map_err(|e| format!("decode llm dispatch messages: {e}"))?;
+    let usage: dope_llm::Usage =
+        serde_json::from_str(&usage_raw).map_err(|e| format!("decode llm dispatch usage: {e}"))?;
+    let partial = status == dope_llm::DispatchStatus::PartialFailed;
+
+    Ok(dope_llm::Dispatch {
+        dispatch_id,
+        provider,
+        model,
+        messages,
+        stream,
+        status,
+        output,
+        finish_reason: finish_reason.unwrap_or_default(),
+        usage,
+        error_code: error_code.unwrap_or_default(),
+        error: error_text.unwrap_or_default(),
+        timeout_ms,
+        partial,
+        max_retries,
+        attempt_count,
+        created_at: parse_rfc3339(&created_at)?,
+        updated_at: parse_rfc3339(&updated_at)?,
+        started_at: parse_opt_rfc3339(started_at)?,
+        completed_at: parse_opt_rfc3339(completed_at)?,
+    })
+}
+
 impl SQLiteStore {
     pub fn upsert_session(&self, session: &dope_router::Session) -> Result<(), String> {
         self.conn
@@ -192,5 +242,98 @@ impl SQLiteStore {
             items.push(scan_capability(row)?);
         }
         Ok(items)
+    }
+
+    pub fn upsert_llm_dispatch(&self, dispatch: &dope_llm::Dispatch) -> Result<(), String> {
+        let messages_json =
+            serde_json::to_string(&dispatch.messages).map_err(|e| format!("marshal llm dispatch messages: {e}"))?;
+        let usage_json =
+            serde_json::to_string(&dispatch.usage).map_err(|e| format!("marshal llm dispatch usage: {e}"))?;
+
+        self.conn
+            .execute(
+                r#"INSERT INTO llm_dispatches (
+                    dispatch_id, provider, model, messages_json, stream, status, output_text,
+                    finish_reason, usage_json, error_code, error_text, timeout_ms, max_retries,
+                    attempt_count, created_at, updated_at, started_at, completed_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+                ON CONFLICT(dispatch_id) DO UPDATE SET
+                    provider = excluded.provider,
+                    model = excluded.model,
+                    messages_json = excluded.messages_json,
+                    stream = excluded.stream,
+                    status = excluded.status,
+                    output_text = excluded.output_text,
+                    finish_reason = excluded.finish_reason,
+                    usage_json = excluded.usage_json,
+                    error_code = excluded.error_code,
+                    error_text = excluded.error_text,
+                    timeout_ms = excluded.timeout_ms,
+                    max_retries = excluded.max_retries,
+                    attempt_count = excluded.attempt_count,
+                    created_at = excluded.created_at,
+                    updated_at = excluded.updated_at,
+                    started_at = excluded.started_at,
+                    completed_at = excluded.completed_at"#,
+                params![
+                    dispatch.dispatch_id,
+                    dispatch.provider,
+                    dispatch.model,
+                    messages_json,
+                    dispatch.stream,
+                    enum_str(&dispatch.status),
+                    dispatch.output,
+                    null_string(&dispatch.finish_reason),
+                    usage_json,
+                    null_string(&dispatch.error_code),
+                    null_string(&dispatch.error),
+                    dispatch.timeout_ms,
+                    dispatch.max_retries,
+                    dispatch.attempt_count,
+                    now_rfc3339(&dispatch.created_at),
+                    now_rfc3339(&dispatch.updated_at),
+                    opt_time_string(&dispatch.started_at),
+                    opt_time_string(&dispatch.completed_at),
+                ],
+            )
+            .map_err(|e| format!("upsert llm dispatch {}: {e}", dispatch.dispatch_id))?;
+        Ok(())
+    }
+
+    pub fn list_llm_dispatches(&self) -> Result<Vec<dope_llm::Dispatch>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                r#"SELECT dispatch_id, provider, model, messages_json, stream, status, output_text,
+                    finish_reason, usage_json, error_code, error_text, timeout_ms, max_retries,
+                    attempt_count, created_at, updated_at, started_at, completed_at
+                FROM llm_dispatches
+                ORDER BY created_at ASC, dispatch_id ASC"#,
+            )
+            .map_err(|e| format!("list llm dispatches: {e}"))?;
+        let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            items.push(scan_llm_dispatch(row)?);
+        }
+        Ok(items)
+    }
+
+    pub fn get_llm_dispatch(&self, dispatch_id: &str) -> Result<Option<dope_llm::Dispatch>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                r#"SELECT dispatch_id, provider, model, messages_json, stream, status, output_text,
+                    finish_reason, usage_json, error_code, error_text, timeout_ms, max_retries,
+                    attempt_count, created_at, updated_at, started_at, completed_at
+                FROM llm_dispatches
+                WHERE dispatch_id = ?1"#,
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query(params![dispatch_id]).map_err(|e| e.to_string())?;
+        let Some(row) = rows.next().map_err(|e| e.to_string())? else {
+            return Ok(None);
+        };
+        scan_llm_dispatch(row).map(Some)
     }
 }
