@@ -12,12 +12,12 @@
 
 use std::io::{BufRead, Read, Write};
 use std::sync::Arc;
-use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::Digest;
 
 use crate::types::{DiscoveryStatus, Server, Tool, TransportKind};
 use crate::McpError;
@@ -25,8 +25,9 @@ use crate::McpError;
 /// MCP protocol version used for session initialization (Go hard-codes this).
 pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
-/// Stdio subprocess pipes handed to a stdio transport (Go SessionPipes).
-#[derive(Debug, Clone, Default)]
+/// Stdio subprocess pipes handed to a stdio transport (Go SessionPipes). The pipe
+/// handles are not Clone/Debug (Go io.WriteCloser/io.ReadCloser), only Default.
+#[derive(Default)]
 pub struct SessionPipes {
     pub stdin: Option<Box<dyn Write + Send>>,
     pub stdout: Option<Box<dyn Read + Send>>,
@@ -52,9 +53,10 @@ pub trait Transport: Send + Sync {
     ) -> Result<Arc<dyn Session>, McpError>;
 }
 
-/// An open MCP client session (Go Session interface). `done` yields the terminal
-/// result once (equivalent to Go `Done() <-chan error`; a disconnected channel is an
-/// implicit nil/clean close).
+/// An open MCP client session (Go Session interface). `wait_done` blocks until the
+/// session terminates and returns its terminal result (equivalent to the manager's use
+/// of Go `<-session.Done()`; a disconnected channel is an implicit nil/clean close).
+/// The trait is Sync-friendly (no channel handles are exposed).
 pub trait Session: Send + Sync {
     fn id(&self) -> String;
     fn list_tools(&self, timeout: Duration) -> Result<Vec<Tool>, String>;
@@ -64,7 +66,7 @@ pub trait Session: Send + Sync {
         input: Value,
     ) -> Result<serde_json::Map<String, Value>, String>;
     fn close(&self) -> Result<(), String>;
-    fn done(&self) -> &Receiver<Result<(), String>>;
+    fn wait_done(&self) -> Result<(), String>;
 }
 
 /// JSON-RPC request wire type (Go rpcRequest).

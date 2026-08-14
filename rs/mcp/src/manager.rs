@@ -35,10 +35,8 @@ use crate::transport::{Session, SessionPipes, Transport, TransportMux};
 use crate::types::*;
 use crate::{
     McpError, RESOURCE_KIND_SERVER, RESOURCE_KIND_TOOL, clean_strings, clone_backend_kinds,
-    clone_catalog_management, clone_catalog_install_snapshot, clone_declaration_ptr,
-    clone_strings, clone_tool_map, clone_websocket_config, default_declaration,
-    environment_scope, first_non_empty, mcp_backoff_delay, normalize_declaration,
-    rfc3339_nano, session_start_timeout,
+    clone_strings, environment_scope, first_non_empty, mcp_backoff_delay, rfc3339_nano,
+    session_start_timeout,
 };
 
 /// Go `websocketReconnectMaxAttempts`.
@@ -1688,7 +1686,7 @@ impl Manager {
     /// done receiver), then reconciles state and schedules restarts/reconnects. Runs on
     /// a detached thread from `start`.
     pub fn watch_session(&self, server_id: &str, execution_id: &str, session: Arc<dyn Session>) {
-        let done = session.done().recv().unwrap_or(Ok(()));
+        let done = session.wait_done();
         let (active, server, state, stop_requested, cancel_requested, transport_kind) = {
             let mut guard = self.inner.state.write();
             let active = guard.sessions.get(server_id).cloned();
@@ -1920,7 +1918,7 @@ impl Manager {
             }
             let cause = first_non_empty(&[
                 response.blocked_reason.as_str(),
-                resource.server.state.health_reason.as_str(),
+                resource.state.health_reason.as_str(),
                 response.failure_class.as_str(),
                 "websocket reconnect failed",
             ]);
@@ -2666,7 +2664,7 @@ impl Manager {
         projected.catalog_management =
             sanitize_catalog_management_projection(self.build_catalog_management_locked(server));
         let state_obj = state.states.get(&server.server_id).cloned().unwrap_or_default();
-        let tool_count = state.tools.get(&server.server_id).map(HashMap::len).unwrap_or(0);
+        let tool_count = state.tools.get(&server.server_id).map(|map| map.len()).unwrap_or(0);
         let mut tools = Vec::with_capacity(tool_count);
         if let Some(map) = state.tools.get(&server.server_id) {
             for tool in map.values() {
@@ -4029,4 +4027,578 @@ impl Manager {
             other => other,
         }
     }
+}
+
+/// Go `updateOperation`: the internal create-vs-update discriminator.
+struct UpdateOperation {
+    server_id: String,
+    input: UpdateServerInput,
+}
+
+/// Go `defaultWebsocketHeaderName`.
+#[must_use]
+pub fn default_websocket_header_name(auth: &WebsocketAuthConfig) -> String {
+    if auth.mode == WebsocketAuthMode::BearerHeader && auth.header_name.trim().is_empty() {
+        return "Authorization".to_string();
+    }
+    auth.header_name.trim().to_string()
+}
+
+/// Go `defaultWebsocketScheme`.
+#[must_use]
+pub fn default_websocket_scheme(auth: &WebsocketAuthConfig) -> String {
+    if auth.mode == WebsocketAuthMode::BearerHeader && auth.scheme.trim().is_empty() {
+        return "Bearer".to_string();
+    }
+    auth.scheme.trim().to_string()
+}
+
+/// Go `validateWebsocketEndpoint`.
+pub fn validate_websocket_endpoint(raw: &str) -> Result<(), McpError> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err(McpError::TransportUnavailable);
+    }
+    let parsed = url::Url::parse(raw)
+        .map_err(|err| McpError::Other(format!("websocket endpoint is invalid: {err}")))?;
+    if parsed.scheme() != "ws" && parsed.scheme() != "wss" {
+        return Err(McpError::Other("websocket endpoint must use ws or wss".to_string()));
+    }
+    if parsed.host_str().is_none_or(|host| host.trim().is_empty()) {
+        return Err(McpError::Other("websocket endpoint must include a host".to_string()));
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(McpError::Other(
+            "websocket endpoint must not include inline credentials; use websocketConfig.auth instead"
+                .to_string(),
+        ));
+    }
+    if !parsed.query().unwrap_or_default().trim().is_empty() {
+        return Err(McpError::Other(
+            "websocket endpoint must not include inline query parameters; use websocketConfig.auth instead"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Go `sanitizeWebsocketEndpointForProjection`: strips inline credentials/query/fragment
+/// from the projected endpoint.
+#[must_use]
+pub fn sanitize_websocket_endpoint_for_projection(raw: &str) -> String {
+    let Ok(mut parsed) = url::Url::parse(raw.trim()) else {
+        return raw.trim().to_string();
+    };
+    let _ = parsed.set_username("");
+    let _ = parsed.set_password(None);
+    parsed.set_query(None);
+    parsed.set_fragment(None);
+    parsed.as_str().to_string()
+}
+
+/// Go `defaultStateForServer`.
+#[must_use]
+pub fn default_state_for_server(server: &Server) -> ServerState {
+    let now = Utc::now();
+    let status = if server.enabled {
+        LifecycleStatus::Stopped
+    } else {
+        LifecycleStatus::Disabled
+    };
+    ServerState {
+        server_id: server.server_id.clone(),
+        status,
+        updated_at: now,
+        ..ServerState::default()
+    }
+}
+
+/// Go `lifecycleStatusFromExecution`.
+#[must_use]
+pub fn lifecycle_status_from_execution(execution: &dope_sandbox::Execution) -> LifecycleStatus {
+    if execution.status == dope_sandbox::ExecutionStatus::Unsupported
+        || execution.decision.selection_outcome == Some(dope_sandbox::BackendSelectionOutcome::Unsupported)
+    {
+        return LifecycleStatus::Unsupported;
+    }
+    if execution.result.error_code == "sandbox_profile_not_found"
+        || execution.result.error_class == dope_sandbox::ErrorClass::InvalidProfile.as_str()
+    {
+        return LifecycleStatus::Denied;
+    }
+    LifecycleStatus::Denied
+}
+
+/// Go `classifyExecutionFailure`.
+#[must_use]
+pub fn classify_execution_failure(execution: &dope_sandbox::Execution) -> String {
+    match execution.result.error_class.as_str() {
+        value if value == dope_sandbox::ErrorClass::LaunchFailed.as_str() => "launch_failed".to_string(),
+        value if value == dope_sandbox::ErrorClass::Timeout.as_str() => "timeout".to_string(),
+        value if value == dope_sandbox::ErrorClass::Cancelled.as_str() => "cancelled".to_string(),
+        value if value == dope_sandbox::ErrorClass::ProcessFailed.as_str() => {
+            "transport_runtime_failure".to_string()
+        }
+        value
+            if value == dope_sandbox::ErrorClass::PolicyDenied.as_str()
+                || value == dope_sandbox::ErrorClass::ApprovalRequired.as_str()
+                || value == dope_sandbox::ErrorClass::ApprovalRejected.as_str()
+                || value == dope_sandbox::ErrorClass::InvalidProfile.as_str() =>
+        {
+            "policy_denied".to_string()
+        }
+        _ => {
+            if execution.status == dope_sandbox::ExecutionStatus::Denied {
+                "policy_denied".to_string()
+            } else {
+                execution.result.error_class.trim().to_string()
+            }
+        }
+    }
+}
+
+/// Go `mergeCatalogInstallInput`.
+#[must_use]
+pub fn merge_catalog_install_input(
+    entry: &CatalogEntry,
+    input: &CatalogInstallInput,
+    method: InstallMethod,
+    environment: dope_config::Environment,
+) -> CreateServerInput {
+    let mut spec = entry.default_install_spec.clone();
+    let mut server_id = input.server_id.trim().to_string();
+    if server_id.is_empty() {
+        server_id = entry.id.clone();
+    }
+    spec.server_id = server_id;
+    spec.origin_kind = OriginKind::Catalog;
+    spec.catalog_entry_id = entry.id.clone();
+    spec.install_method = method;
+    spec.environment_scope = environment_scope(environment);
+    if !input.display_name.trim().is_empty() {
+        spec.display_name = input.display_name.trim().to_string();
+    }
+    if let Some(enabled) = input.enabled {
+        spec.enabled = enabled;
+    }
+    if !input.sandbox_profile_id.trim().is_empty() {
+        spec.sandbox_profile_id = input.sandbox_profile_id.trim().to_string();
+    }
+    if !input.command.trim().is_empty() {
+        spec.command = input.command.trim().to_string();
+    }
+    if !input.args.is_empty() {
+        spec.args = input.args.clone();
+    }
+    if !input.endpoint.trim().is_empty() {
+        spec.endpoint = input.endpoint.trim().to_string();
+    }
+    if !input.working_dir.trim().is_empty() {
+        spec.working_dir = input.working_dir.trim().to_string();
+    }
+    if !input.secret_refs.is_empty() {
+        spec.secret_refs = clean_strings(&input.secret_refs);
+    }
+    spec
+}
+
+/// Go `catalogManagementForCreate`.
+#[must_use]
+pub fn catalog_management_for_create(
+    entry: &CatalogEntry,
+    create_input: &CreateServerInput,
+    previous: Option<&Server>,
+    action: CatalogAction,
+    now: DateTime<Utc>,
+) -> CatalogManagement {
+    let mut management = CatalogManagement {
+        source_kind: entry.source_kind.clone(),
+        installed_revision: fingerprint_create_server_spec(create_input),
+        current_revision: fingerprint_create_server_spec(create_input),
+        install_input_snapshot: install_snapshot_from_create_spec(create_input),
+        last_action: Some(action),
+        last_action_status: Some(CatalogActionStatus::Completed),
+        last_action_at: Some(now),
+        ..CatalogManagement::default()
+    };
+    if let Some(previous) = previous {
+        if let Some(previous_management) = &previous.catalog_management {
+            management.installed_at = previous_management.installed_at;
+        }
+    }
+    if management.installed_at.is_none() {
+        management.installed_at = Some(now);
+    }
+    if action == CatalogAction::Refresh || action == CatalogAction::Reinstall {
+        management.last_maintained_at = Some(now);
+    }
+    management
+}
+
+/// Go `serverToCreateInput`.
+#[must_use]
+pub fn server_to_create_input(server: &Server) -> CreateServerInput {
+    CreateServerInput {
+        server_id: server.server_id.clone(),
+        display_name: server.display_name.clone(),
+        origin_kind: server.origin_kind,
+        catalog_entry_id: server.catalog_entry_id.clone(),
+        install_method: server.install_method,
+        environment_scope: server.environment_scope.clone(),
+        enabled: server.enabled,
+        sandbox_profile_id: server.sandbox_profile_id.clone(),
+        declaration_id: server.declaration_id.clone(),
+        declaration: clone_declaration_ptr(server.declaration.clone()),
+        transport_kind: server.transport_kind,
+        command: server.command.clone(),
+        args: clone_strings(&server.args),
+        endpoint: server.endpoint.clone(),
+        websocket_config: clone_websocket_config(&server.websocket_config),
+        working_dir: server.working_dir.clone(),
+        secret_refs: clean_strings(&server.secret_refs),
+        auto_restart: server.auto_restart,
+        operator_modified: server.operator_modified,
+        catalog_management: clone_catalog_management(&server.catalog_management),
+    }
+}
+
+/// Go `assessCatalogDrift`.
+#[must_use]
+pub fn assess_catalog_drift(
+    server: &Server,
+    management: &CatalogManagement,
+    entry_present: bool,
+) -> (CatalogDriftStatus, String) {
+    if server.origin_kind != OriginKind::Catalog {
+        return (CatalogDriftStatus::default(), String::new());
+    }
+    if !entry_present {
+        return (
+            CatalogDriftStatus::MissingEntry,
+            "catalog entry is no longer available".to_string(),
+        );
+    }
+    if server.operator_modified {
+        if !management.installed_revision.is_empty()
+            && !management.current_revision.is_empty()
+            && management.installed_revision != management.current_revision
+        {
+            return (
+                CatalogDriftStatus::LocallyModified,
+                "server has local modifications and the catalog entry has changed".to_string(),
+            );
+        }
+        return (
+            CatalogDriftStatus::LocallyModified,
+            "server has local operator modifications".to_string(),
+        );
+    }
+    if !management.installed_revision.is_empty()
+        && !management.current_revision.is_empty()
+        && management.installed_revision != management.current_revision
+    {
+        return (
+            CatalogDriftStatus::CatalogUpdated,
+            "installed server no longer matches the current catalog revision".to_string(),
+        );
+    }
+    (CatalogDriftStatus::InSync, String::new())
+}
+
+/// Go `sanitizeCatalogManagementProjection`.
+#[must_use]
+pub fn sanitize_catalog_management_projection(
+    management: Option<CatalogManagement>,
+) -> Option<CatalogManagement> {
+    management.map(|mut projected| {
+        projected.install_input_snapshot =
+            sanitize_catalog_install_snapshot_projection(projected.install_input_snapshot);
+        projected
+    })
+}
+
+/// Go `sanitizeCatalogInstallSnapshotProjection`.
+#[must_use]
+pub fn sanitize_catalog_install_snapshot_projection(
+    mut snapshot: CatalogInstallSnapshot,
+) -> CatalogInstallSnapshot {
+    snapshot.command = String::new();
+    snapshot.args = Vec::new();
+    snapshot.endpoint = String::new();
+    snapshot.working_dir = String::new();
+    snapshot
+}
+
+/// Go `redactedIssues`.
+#[must_use]
+pub fn redacted_issues(issues: &[RevalidationIssue]) -> Vec<Value> {
+    issues
+        .iter()
+        .map(|issue| {
+            serde_json::json!({
+                "kind": issue.kind,
+                "name": issue.name,
+                "status": issue.status.as_str(),
+                "reason": issue.reason,
+                "environmentScope": issue.environment_scope,
+            })
+        })
+        .collect()
+}
+
+/// Go `catalogManagementPayload` (non-nil input only; callers pass `Value::Null` for
+/// a missing management block).
+#[must_use]
+pub fn catalog_management_payload(management: &CatalogManagement) -> Map<String, Value> {
+    let mut payload = Map::new();
+    payload.insert("sourceKind".to_string(), Value::String(management.source_kind.clone()));
+    payload.insert(
+        "installedRevision".to_string(),
+        Value::String(management.installed_revision.clone()),
+    );
+    payload.insert(
+        "currentRevision".to_string(),
+        Value::String(management.current_revision.clone()),
+    );
+    payload.insert(
+        "driftStatus".to_string(),
+        Value::String(management.drift_status.as_str().to_string()),
+    );
+    payload.insert("driftReason".to_string(), Value::String(management.drift_reason.clone()));
+    if let Some(installed_at) = management.installed_at {
+        payload.insert("installedAt".to_string(), Value::String(rfc3339_nano(installed_at)));
+    }
+    if let Some(last_maintained_at) = management.last_maintained_at {
+        payload.insert(
+            "lastMaintainedAt".to_string(),
+            Value::String(rfc3339_nano(last_maintained_at)),
+        );
+    }
+    if let Some(last_action_at) = management.last_action_at {
+        payload.insert("lastActionAt".to_string(), Value::String(rfc3339_nano(last_action_at)));
+    }
+    if let Some(last_action) = management.last_action {
+        payload.insert("lastAction".to_string(), Value::String(last_action.as_str().to_string()));
+    }
+    if let Some(last_action_status) = management.last_action_status {
+        payload.insert(
+            "lastActionStatus".to_string(),
+            Value::String(last_action_status.as_str().to_string()),
+        );
+    }
+    if !management.last_action_failure_class.is_empty() {
+        payload.insert(
+            "lastActionFailureClass".to_string(),
+            Value::String(management.last_action_failure_class.clone()),
+        );
+    }
+    if !management.last_action_reason.is_empty() {
+        payload.insert(
+            "lastActionReason".to_string(),
+            Value::String(management.last_action_reason.clone()),
+        );
+    }
+    if let Some(last_revalidation) = &management.last_revalidation {
+        payload.insert(
+            "lastRevalidation".to_string(),
+            serde_json::json!({
+                "checkedAt": rfc3339_nano(last_revalidation.checked_at),
+                "status": last_revalidation.status.as_str(),
+                "classification": last_revalidation.classification.as_str(),
+                "reason": last_revalidation.reason,
+                "issues": redacted_issues(&last_revalidation.issues),
+            }),
+        );
+    }
+    payload
+}
+
+/// Go `catalogInstallConflictReason`.
+#[must_use]
+pub fn catalog_install_conflict_reason(existing: &Server, entry_id: &str) -> Option<String> {
+    if existing.origin_kind != OriginKind::Catalog {
+        return Some("server id is already owned by a manual MCP server".to_string());
+    }
+    if existing.catalog_entry_id != entry_id {
+        return Some(format!(
+            "server id is already owned by catalog entry {}",
+            existing.catalog_entry_id
+        ));
+    }
+    if existing.operator_modified {
+        return Some("existing installed server has operator modifications".to_string());
+    }
+    None
+}
+
+/// Go `redactString`.
+#[must_use]
+pub fn redact_string(input: &str, secrets: &HashMap<String, String>) -> String {
+    let mut redacted = input.to_string();
+    for value in secrets.values() {
+        for candidate in redaction_candidates(value) {
+            redacted = redacted.replace(&candidate, "[REDACTED]");
+        }
+    }
+    redacted
+}
+
+/// Go `redactionCandidates`: the secret plus its query-escaped, base64 (std/url,
+/// padded/raw), and hex (lower/upper) forms.
+#[must_use]
+pub fn redaction_candidates(secret: &str) -> Vec<String> {
+    const STD_ALPHABET: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const URL_ALPHABET: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let trimmed = secret.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let bytes = trimmed.as_bytes();
+    let mut seen: Vec<String> = Vec::new();
+    let mut add = |value: String| {
+        if !value.trim().is_empty() && !seen.contains(&value) {
+            seen.push(value);
+        }
+    };
+    add(trimmed.to_string());
+    add(
+        url::form_urlencoded::byte_serialize(bytes)
+            .collect::<String>()
+            .replace("%20", "+"),
+    );
+    add(base64_encode(bytes, STD_ALPHABET, true));
+    add(base64_encode(bytes, STD_ALPHABET, false));
+    add(base64_encode(bytes, URL_ALPHABET, true));
+    add(base64_encode(bytes, URL_ALPHABET, false));
+    let hex = hex_encode(bytes);
+    add(hex.clone());
+    add(hex.to_uppercase());
+    seen
+}
+
+/// Minimal base64 encoder (Go encoding/base64 Std/Raw/URL/RawURL encodings).
+fn base64_encode(input: &[u8], alphabet: &[u8; 64], pad: bool) -> String {
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(alphabet[((n >> 18) & 63) as usize] as char);
+        out.push(alphabet[((n >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(alphabet[((n >> 6) & 63) as usize] as char);
+        } else if pad {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(alphabet[(n & 63) as usize] as char);
+        } else if pad {
+            out.push('=');
+        }
+    }
+    out
+}
+
+/// Lowercase hex encoding (Go encoding/hex).
+fn hex_encode(input: &[u8]) -> String {
+    input.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Go `stringFromMap`.
+#[must_use]
+pub fn string_from_map(input: &Map<String, Value>, key: &str) -> String {
+    match input.get(key) {
+        Some(Value::String(value)) => value.trim().to_string(),
+        _ => String::new(),
+    }
+}
+
+/// Go `sessionID`.
+#[must_use]
+pub fn session_id(active: Option<&SessionState>) -> String {
+    match active {
+        Some(active) => active.session_id.trim().to_string(),
+        None => String::new(),
+    }
+}
+
+/// Go `secretResolution`.
+#[must_use]
+pub fn secret_resolution(items: &[dope_sandbox::SecretScopeOutcome]) -> dope_sandbox::SecretResolution {
+    if items.is_empty() {
+        return dope_sandbox::SecretResolution::NotApplicable;
+    }
+    for item in items {
+        if item.resolution == dope_sandbox::SecretResolution::Unavailable {
+            return dope_sandbox::SecretResolution::Unavailable;
+        }
+    }
+    for item in items {
+        if item.resolution == dope_sandbox::SecretResolution::Denied {
+            return dope_sandbox::SecretResolution::Denied;
+        }
+    }
+    dope_sandbox::SecretResolution::Resolved
+}
+
+/// Go `consumeViewMap` (the name is a typo in the original): JSON round-trip of the
+/// consumer view into an arbitrary value.
+#[must_use]
+pub fn consumer_view_map(view: &dope_sandbox::ConsumerContractView) -> Option<Value> {
+    serde_json::to_value(view).ok()
+}
+
+/// Go `policy.approval_requested` event payload.
+#[must_use]
+pub fn approval_payload(approval: &dope_policy::Approval) -> Map<String, Value> {
+    let mut payload = Map::new();
+    payload.insert("action".to_string(), Value::String(approval.action.clone()));
+    payload.insert("resourceKind".to_string(), Value::String(approval.resource_kind.clone()));
+    payload.insert("resourceId".to_string(), Value::String(approval.resource_id.clone()));
+    payload.insert("status".to_string(), Value::String(approval.status.as_str().to_string()));
+    payload.insert(
+        "sandbox".to_string(),
+        approval.sandbox.clone().unwrap_or(Value::Null),
+    );
+    payload
+}
+
+/// Go `policy.decision_recorded` event payload.
+#[must_use]
+pub fn decision_payload(decision: &dope_policy::Decision) -> Map<String, Value> {
+    let mut payload = Map::new();
+    payload.insert("action".to_string(), Value::String(decision.action.clone()));
+    payload.insert("resourceKind".to_string(), Value::String(decision.resource_kind.clone()));
+    payload.insert("resourceId".to_string(), Value::String(decision.resource_id.clone()));
+    payload.insert("outcome".to_string(), Value::String(decision.outcome.as_str().to_string()));
+    payload.insert("approvalId".to_string(), Value::String(decision.approval_id.clone()));
+    payload.insert(
+        "sandbox".to_string(),
+        decision.sandbox.clone().unwrap_or(Value::Null),
+    );
+    payload
+}
+
+/// Go event id: `evt_<name sanitized>_<unix nanos>`.
+#[must_use]
+pub fn event_id(name: &str) -> String {
+    format!(
+        "evt_{}_{}",
+        name.replace('.', "_").replace(':', "_"),
+        Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    )
+}
+
+/// Go policy-record timestamp: `YYYYMMDDHHMMSS` + 9-digit nanoseconds, dot stripped.
+#[must_use]
+pub fn policy_record_timestamp() -> String {
+    let now = Utc::now();
+    format!(
+        "{}{:09}",
+        now.format("%Y%m%d%H%M%S"),
+        now.timestamp_subsec_nanos()
+    )
 }

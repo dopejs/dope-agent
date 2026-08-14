@@ -29,8 +29,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, params_from_iter, types::Value, Row};
 
 use crate::crud::{
-    decode_map, decode_vec, enum_str, marshal_json, marshal_map, marshal_vec, now_rfc3339,
-    null_string, opt_time_string, parse_enum, parse_opt_rfc3339, parse_rfc3339,
+    decode_map, decode_opt_json, decode_vec, enum_str, marshal_json, marshal_map, marshal_vec,
+    now_rfc3339, null_string, opt_time_string, parse_enum, parse_opt_rfc3339, parse_rfc3339,
 };
 use crate::SQLiteStore;
 

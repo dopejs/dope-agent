@@ -379,7 +379,13 @@ fn default_tenant_resolver_fails_closed_then_resolves() {
             status: LifecycleStatus::Active,
             created_at: now,
             updated_at: now,
-            ..Tenant::default()
+            created_by_principal_id: String::new(),
+            default_owner_principal_id: String::new(),
+            caller_membership_role: None,
+            caller_membership_status: None,
+            caller_permissions: Vec::new(),
+            default_for_current_token: false,
+            default_for_current_principal: false,
         })
         .unwrap();
 

@@ -135,8 +135,11 @@ string_enum!(RevalidationIssueStatus {
 pub struct Server {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tenant_id: String,
+    #[serde(default)]
     pub server_id: String,
+    #[serde(default)]
     pub display_name: String,
+    #[serde(default)]
     pub source: Source,
     #[serde(default)]
     pub origin_kind: OriginKind,
@@ -148,12 +151,19 @@ pub struct Server {
     pub environment_scope: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog_management: Option<CatalogManagement>,
+    #[serde(default)]
     pub enabled: bool,
+    #[serde(default)]
     pub sandbox_profile_id: String,
+    #[serde(default)]
     pub declaration_id: String,
+    #[serde(default)]
     pub declaration: Declaration,
+    #[serde(default)]
     pub transport_kind: TransportKind,
+    #[serde(default)]
     pub command: String,
+    #[serde(default)]
     pub args: Vec<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub endpoint: String,
@@ -176,11 +186,15 @@ pub struct Server {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerState {
+    #[serde(default)]
     pub server_id: String,
+    #[serde(default)]
     pub status: LifecycleStatus,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub health_reason: String,
+    #[serde(default)]
     pub failure_count: i64,
+    #[serde(default)]
     pub restart_count: i64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub last_session_id: String,
@@ -271,7 +285,9 @@ pub struct WebsocketAuthSummary {
 pub struct Tool {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tenant_id: String,
+    #[serde(default)]
     pub server_id: String,
+    #[serde(default)]
     pub tool_name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub title: String,
@@ -291,10 +307,15 @@ pub struct Tool {
 pub struct ToolExposureRule {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tenant_id: String,
+    #[serde(default)]
     pub server_id: String,
+    #[serde(default)]
     pub tool_name: String,
+    #[serde(default)]
     pub runtime_surface: String,
+    #[serde(default)]
     pub exposure_mode: ExposureMode,
+    #[serde(default)]
     pub active: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reason: String,
@@ -341,6 +362,7 @@ pub struct Declaration {
     pub approval_mode: dope_sandbox::ApprovalMode,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub required_enforcement_strength: String,
+    #[serde(default)]
     pub active: bool,
 }
 
@@ -550,7 +572,7 @@ pub struct CatalogManagement {
     pub last_action_failure_class: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub last_action_reason: String,
-    #[serde(default, skip_serializing_if = "crate::is_default_catalog_install_snapshot")]
+    #[serde(default, skip_serializing_if = "crate::types::is_default_catalog_install_snapshot")]
     pub install_input_snapshot: CatalogInstallSnapshot,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_revalidation: Option<RevalidationSnapshot>,

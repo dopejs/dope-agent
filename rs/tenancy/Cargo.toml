@@ -25,3 +25,4 @@ dope-evaluation.workspace = true
 dope-events.workspace = true
 dope-integrations.workspace = true
 dope-delivery.workspace = true
+chrono.workspace = true

@@ -953,6 +953,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-tenancy"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-audit",
+ "dope-bindings",
+ "dope-calendar",
+ "dope-computeruse",
+ "dope-connectors",
+ "dope-delivery",
+ "dope-evaluation",
+ "dope-events",
+ "dope-identity",
+ "dope-integrations",
+ "dope-llm",
+ "dope-mail",
+ "dope-orchestration",
+ "dope-policy",
+ "dope-profiles",
+ "dope-providers",
+ "dope-router",
+ "dope-runtime",
+ "dope-store",
+ "dope-threads",
+]
+
+[[package]]
 name = "dope-threads"
 version = "0.1.0"
 dependencies = [

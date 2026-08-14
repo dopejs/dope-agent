@@ -28,6 +28,7 @@ mod registry;
 pub mod reminders;
 pub mod schedule;
 pub mod secret_scope;
+mod tenancy;
 pub mod workflow;
 
 pub use manager_documents::{delete_document, list_documents, put_document, ManagerDocument};

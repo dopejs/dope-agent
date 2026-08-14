@@ -42,6 +42,9 @@ pub mod workflows;
 use std::fmt;
 
 pub use dope_store::SQLiteStore;
+pub use bindings::BindingAccessScope;
+pub use profiles::ProfileAccessScope;
+pub use threads::ThreadAccessScope;
 
 /// Re-export of the store's cross-tenant sentinel so callers can match on it without
 /// importing the store crate.

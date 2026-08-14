@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use dope_audit::Emitter;
 use dope_events::{Bus, Filter};
-use dope_identity::tenantctx::{self, TenantContext};
-use dope_identity::Permission;
+use dope_identity::tenantctx;
+use dope_identity::{Permission, TenantContext};
 use dope_runtime::{Run, RunStatus};
 use dope_store::delivery::DeliveryTargetRecord;
 use dope_store::schedule::ScheduleRecord;
