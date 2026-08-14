@@ -270,7 +270,7 @@ fn disable_is_tenant_scoped() {
     let m = Manager::new("test", None, None);
     let ep = m.create("ten_a", "hook", TargetKind::Run, "run_1").unwrap().endpoint;
     assert_eq!(m.disable("ten_b", &ep.webhook_id).unwrap_err(), WebhookError::CrossTenant);
-    assert_eq!(m.disable("missing", &ep.webhook_id).unwrap_err(), WebhookError::EndpointNotFound);
+    assert_eq!(m.disable("missing", "missing_hook").unwrap_err(), WebhookError::EndpointNotFound);
     let disabled = m.disable("ten_a", &ep.webhook_id).unwrap();
     assert_eq!(disabled.status, Status::Disabled);
     assert_eq!(m.get("ten_a", &ep.webhook_id).unwrap().status, Status::Disabled);

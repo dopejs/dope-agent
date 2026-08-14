@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use dope_sandbox::{
     AccessRequest, ApprovalMode, BackendKind, ConsumerContractView, ConsumerKind,
     ConsumerPolicyRecord, ConsumerRequirementDeclaration, DecisionApprovalStatus,

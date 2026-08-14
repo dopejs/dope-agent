@@ -369,7 +369,7 @@ impl Bridge for ClaudeBridge {
     }
 
     fn start(&self, cancel: &CancelToken) -> Result<(AuthState, Vec<Model>), Error> {
-        let (mut state, models, err) = self.detect(cancel)?;
+        let (mut state, models) = self.detect(cancel)?;
         state.status = AuthStatus::PendingLogin;
         state.last_checked_at = Utc::now();
         Ok((state, models))
@@ -442,6 +442,14 @@ impl Bridge for ClaudeBridge {
         Arc::new(ClaudeCLIProvider {
             bridge: Arc::new(self.clone_shallow()),
         })
+    }
+
+    fn default_model(&self) -> String {
+        ClaudeBridge::default_model(self)
+    }
+
+    fn models(&self, available: bool) -> Vec<Model> {
+        ClaudeBridge::models(self, available)
     }
 }
 

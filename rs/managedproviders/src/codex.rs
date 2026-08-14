@@ -529,7 +529,7 @@ impl Bridge for CodexBridge {
     }
 
     fn start(&self, cancel: &CancelToken) -> Result<(AuthState, Vec<Model>), Error> {
-        let (mut state, models, err) = self.detect(cancel)?;
+        let (mut state, models) = self.detect(cancel)?;
         state.status = AuthStatus::PendingLogin;
         state.last_checked_at = Utc::now();
         Ok((state, models))
@@ -604,6 +604,14 @@ impl Bridge for CodexBridge {
         Arc::new(CodexCLIProvider {
             bridge: Arc::new(self.clone_shallow()),
         })
+    }
+
+    fn default_model(&self) -> String {
+        CodexBridge::default_model(self)
+    }
+
+    fn models(&self, available: bool) -> Vec<Model> {
+        CodexBridge::models(self, available)
     }
 }
 

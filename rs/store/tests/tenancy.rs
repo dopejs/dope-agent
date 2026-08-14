@@ -76,7 +76,9 @@ fn make_session(id: &str) -> Session {
         kind: SessionKind::Direct,
         status: SessionStatus::Active,
         channel: "cli".to_string(),
+        account_id: String::new(),
         peer_id: "peer_1".to_string(),
+        thread_id: String::new(),
         routing_key: "cli".to_string(),
         generation: 1,
         created_at: now,
@@ -84,7 +86,6 @@ fn make_session(id: &str) -> Session {
         last_active_at: now,
         last_reset_at: None,
         active_profile_projection: None,
-        ..Session::default()
     }
 }
 

@@ -9,11 +9,10 @@
 //! exposed for feeding `dope_providers::Manager`, and the
 //! `dope-setupwizard` dependent-use gate guards resolution.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_llm::{Message, MessageRole, ProviderRequest};
+use dope_llm::{Message, MessageRole, Provider as _, ProviderRequest};
 use dope_providers::{AuthMode, AuthState, Check, CheckErrorClass, CheckStatus, Family, Model, Preference};
 use dope_store::SQLiteStore;
 use parking_lot::Mutex;

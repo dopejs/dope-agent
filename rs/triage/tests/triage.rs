@@ -222,7 +222,11 @@ fn run_is_deterministic() {
     let messages = vec![Message { message_id: "m1".to_string(), sender: "boss@corp.example".to_string(), subject: "urgent please".to_string(), ..Message::default() }];
     let a = m.run(&policy.policy_id, &messages).unwrap();
     let b = m.run(&policy.policy_id, &messages).unwrap();
-    assert_eq!(a.decisions[0], b.decisions[0]);
+    // DecidedAt is wall-clock; compare the deterministic fields only.
+    let mut da = a.decisions[0].clone();
+    let mut db = b.decisions[0].clone();
+    da.decided_at = db.decided_at;
+    assert_eq!(da, db);
 }
 
 #[test]

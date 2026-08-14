@@ -7,18 +7,18 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
-use dope_llm::{CancelToken, Message, MessageRole, Provider as LlmProvider, ProviderRequest};
+use dope_llm::{CancelToken, Message, MessageRole, Provider as _, ProviderRequest};
 use dope_managedproviders::{
     Bridge, ClaudeBridge, ClaudeCLIProvider, CodexBridge, Manager, CLAUDE_PROVIDER_ID,
     CODEX_PROVIDER_ID, ExecRunner, ManagedProviderOperationPlan, Registry, RunError, RunResult,
     Runner, SandboxManager, SandboxRunner, build_managed_provider_consumer_view,
     classify_cli_error, new_managed_provider_operation_id,
 };
-use dope_providers::{AuthStatus, ManagedRegistry, ManagedBridge, Preference};
+use dope_providers::{AuthStatus, ManagedRegistry, ManagedBridge};
 use dope_sandbox::{
     ApprovalMode, BackendKind, ConsumerContractView, ConsumerKind, Decision,
     DecisionApprovalStatus, DecisionResolution, ExecutionRequest, ExecutionStatus,
-    LocalStateAccessMode, ManagedProviderActionKind, NetworkMode, Profile, Result as SandboxResult,
+    LocalStateAccessMode, ManagedProviderActionKind, Profile, Result as SandboxResult,
     SensitiveLocalStateAccessSummary, SecretResolution,
 };
 

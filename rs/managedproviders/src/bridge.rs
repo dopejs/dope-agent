@@ -67,6 +67,23 @@ pub trait Bridge: Send + Sync {
     fn refresh(&self, cancel: &CancelToken) -> Result<(AuthState, Vec<Model>), crate::error::Error>;
     fn revoke(&self, cancel: &CancelToken) -> Result<(AuthState, Vec<Model>), crate::error::Error>;
     fn provider(&self) -> Arc<dyn dope_llm::Provider>;
+
+    /// The bridge's effective default model (configured value, then local
+    /// settings/cache), or "" when unknown. Used by the manager for checks and
+    /// model validation (the Go manager resolves this through its profile
+    /// state; the port surfaces it on the trait so the manager stays
+    /// registry-only).
+    fn default_model(&self) -> String {
+        String::new()
+    }
+
+    /// The bridge's known model catalog (Go `claudeBridge.models` /
+    /// `codexBridge.models`). Managed providers are fixed-selection, so the
+    /// manager validates default-model choices against this list.
+    fn models(&self, available: bool) -> Vec<Model> {
+        let _ = available;
+        Vec::new()
+    }
 }
 
 /// Go `Runner` interface. The operation plan that Go threads through

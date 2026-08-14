@@ -24,3 +24,5 @@ tokio = { workspace = true, features = ["rt", "time"] }
 
 [dev-dependencies]
 futures.workspace = true
+tempfile = "3"
+serde_json.workspace = true

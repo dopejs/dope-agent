@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, SecondsFormat, Utc};
 
-use crate::manager::Manager;
+use crate::manager::{synchronize_execution_consumer_state, Manager};
 use crate::redaction::collect_secret_redaction_values_from_process_env;
 use crate::redaction::redact_secret_text;
 use crate::{
@@ -679,7 +679,8 @@ impl Manager {
     /// (or docker) with a timeout watchdog, applies secret redaction, records
     /// the terminal result, and persists/publishes — deferring the terminal
     /// event when managed-provider finalization is pending.
-    pub(crate) fn run_execution(&self, cancel: CancellationToken, mut execution: Execution, launch: LaunchSpec) {
+    pub(crate) fn run_execution(&self, cancel: CancellationToken, mut execution: Execution, launch: Option<LaunchSpec>) {
+        let Some(launch) = launch else { return };
         {
             let now = Utc::now();
             execution.status = ExecutionStatus::Running;

@@ -192,6 +192,8 @@ fn schedules_accessor_cross_tenant_not_found() {
         assert!(accessor.get_schedule_for_tenant("test", "sch_1").unwrap().is_none());
         assert!(accessor.list_schedules_for_tenant("test").unwrap().is_empty());
     });
+}
+
 #[test]
 fn delivery_accessor_binds_tenant() {
     let store = SQLiteStore::new(&temp_dir("delivery")).unwrap();
