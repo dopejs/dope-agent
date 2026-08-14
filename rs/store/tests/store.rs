@@ -37,6 +37,8 @@ fn store_conn_query(db_path: &str, query: &str) -> i64 {
     conn.query_row(query, [], |row| row.get(0)).unwrap()
 }
 use chrono::Utc;
+use dope_capabilities::{Capability, Status as CapabilityStatus};
+use dope_router::{Session, SessionKind, SessionStatus};
 use dope_runtime::{Run, RunCheckpoint, RunStatus, Step, StepStatus, ToolCall, ToolCallStatus};
 
 fn make_run() -> Run {
@@ -194,4 +196,77 @@ fn checkpoint_round_trips_through_sqlite() {
     assert_eq!(got.steps[0].step_id, "step_1");
     assert_eq!(got.tool_calls.len(), 1);
     assert_eq!(got.tool_calls[0].tool_call_id, "tc_1");
+}
+#[test]
+fn session_round_trips_through_sqlite() {
+    let dir = temp_dir("session");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let now = Utc::now();
+    let session = Session {
+        session_id: "sess_1".to_string(),
+        kind: SessionKind::Group,
+        status: SessionStatus::Active,
+        channel: "discord".to_string(),
+        account_id: "acct_1".to_string(),
+        peer_id: "peer_1".to_string(),
+        thread_id: "thread_1".to_string(),
+        routing_key: "discord:peer_1:thread_1".to_string(),
+        generation: 3,
+        created_at: now,
+        updated_at: now,
+        last_active_at: now,
+        last_reset_at: Some(now),
+        active_profile_projection: None,
+    };
+    store.upsert_session(&session).unwrap();
+
+    let listed = store.list_sessions().unwrap();
+    assert_eq!(listed.len(), 1);
+    let got = &listed[0];
+    assert_eq!(got.session_id, "sess_1");
+    assert_eq!(got.kind, SessionKind::Group);
+    assert_eq!(got.status, SessionStatus::Active);
+    assert_eq!(got.channel, "discord");
+    assert_eq!(got.account_id, "acct_1");
+    assert_eq!(got.peer_id, "peer_1");
+    assert_eq!(got.thread_id, "thread_1");
+    assert_eq!(got.routing_key, "discord:peer_1:thread_1");
+    assert_eq!(got.generation, 3);
+    assert!(got.last_reset_at.is_some());
+}
+
+#[test]
+fn capability_round_trips_through_sqlite() {
+    let dir = temp_dir("capability");
+    let store = SQLiteStore::new(&dir).unwrap();
+    let now = Utc::now();
+    let capability = Capability {
+        capability_id: "cap_1".to_string(),
+        kind: "browser".to_string(),
+        display_name: "Browser".to_string(),
+        status: CapabilityStatus::Healthy,
+        failure_count: 2,
+        restart_count: 1,
+        backoff_seconds: 30,
+        next_restart_at: Some(now),
+        last_restart_at: Some(now),
+        last_heartbeat_at: Some(now),
+        last_failure_reason: "timeout".to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+    store.upsert_capability(&capability).unwrap();
+
+    let listed = store.list_capabilities().unwrap();
+    assert_eq!(listed.len(), 1);
+    let got = &listed[0];
+    assert_eq!(got.capability_id, "cap_1");
+    assert_eq!(got.kind, "browser");
+    assert_eq!(got.display_name, "Browser");
+    assert_eq!(got.status, CapabilityStatus::Healthy);
+    assert_eq!(got.failure_count, 2);
+    assert_eq!(got.restart_count, 1);
+    assert_eq!(got.backoff_seconds, 30);
+    assert_eq!(got.last_failure_reason, "timeout");
+    assert!(got.next_restart_at.is_some());
 }

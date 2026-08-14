@@ -9,6 +9,7 @@ use rusqlite::{params, Connection};
 
 mod crud;
 mod migrations;
+mod registry;
 
 /// The production schema head. The full 55-version migration list is added incrementally.
 pub const CURRENT_SCHEMA_VERSION: i64 = 55;

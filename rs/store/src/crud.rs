@@ -13,21 +13,39 @@ use crate::SQLiteStore;
 
 const RFC3339_NANO: SecondsFormat = SecondsFormat::Nanos;
 
-fn now_rfc3339(dt: &DateTime<Utc>) -> String {
+pub(crate) fn now_rfc3339(dt: &DateTime<Utc>) -> String {
     dt.to_rfc3339_opts(RFC3339_NANO, true)
 }
 
-fn parse_rfc3339(s: &str) -> Result<DateTime<Utc>, String> {
+pub(crate) fn parse_rfc3339(s: &str) -> Result<DateTime<Utc>, String> {
     DateTime::parse_from_rfc3339(s)
         .map(|dt| dt.with_timezone(&Utc))
         .map_err(|e| format!("parse timestamp {s}: {e}"))
 }
 
-fn parse_enum<T: serde::de::DeserializeOwned>(s: &str) -> Result<T, String> {
+pub(crate) fn opt_time_string(dt: &Option<DateTime<Utc>>) -> Option<String> {
+    dt.as_ref().map(now_rfc3339)
+}
+
+pub(crate) fn parse_opt_rfc3339(raw: Option<String>) -> Result<Option<DateTime<Utc>>, String> {
+    match raw {
+        None => Ok(None),
+        Some(s) if s.is_empty() => Ok(None),
+        Some(s) => parse_rfc3339(&s).map(Some),
+    }
+}
+
+pub(crate) fn parse_enum<T: serde::de::DeserializeOwned>(s: &str) -> Result<T, String> {
     serde_json::from_str(&format!("\"{s}\"")).map_err(|e| format!("invalid enum value {s}: {e}"))
 }
 
-fn null_string(value: &str) -> Option<String> {
+pub(crate) fn enum_str<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_string(value)
+        .map(|s| s.trim_matches('"').to_string())
+        .unwrap_or_default()
+}
+
+pub(crate) fn null_string(value: &str) -> Option<String> {
     if value.is_empty() {
         None
     } else {
@@ -35,14 +53,14 @@ fn null_string(value: &str) -> Option<String> {
     }
 }
 
-fn marshal_json(value: &Option<serde_json::Value>) -> Result<Option<String>, String> {
+pub(crate) fn marshal_json(value: &Option<serde_json::Value>) -> Result<Option<String>, String> {
     match value {
         None => Ok(None),
         Some(v) => Ok(Some(v.to_string())),
     }
 }
 
-fn marshal_map(value: &serde_json::Map<String, serde_json::Value>) -> Result<Option<String>, String> {
+pub(crate) fn marshal_map(value: &serde_json::Map<String, serde_json::Value>) -> Result<Option<String>, String> {
     if value.is_empty() {
         Ok(None)
     } else {
@@ -50,7 +68,7 @@ fn marshal_map(value: &serde_json::Map<String, serde_json::Value>) -> Result<Opt
     }
 }
 
-fn marshal_vec<T: serde::Serialize>(value: &[T]) -> Result<Option<String>, String> {
+pub(crate) fn marshal_vec<T: serde::Serialize>(value: &[T]) -> Result<Option<String>, String> {
     if value.is_empty() {
         Ok(None)
     } else {
@@ -58,7 +76,7 @@ fn marshal_vec<T: serde::Serialize>(value: &[T]) -> Result<Option<String>, Strin
     }
 }
 
-fn decode_opt_json(raw: &Option<String>) -> Result<Option<serde_json::Value>, String> {
+pub(crate) fn decode_opt_json(raw: &Option<String>) -> Result<Option<serde_json::Value>, String> {
     match raw {
         None => Ok(None),
         Some(s) if s.is_empty() => Ok(None),
@@ -66,7 +84,7 @@ fn decode_opt_json(raw: &Option<String>) -> Result<Option<serde_json::Value>, St
     }
 }
 
-fn decode_map(raw: &Option<String>) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+pub(crate) fn decode_map(raw: &Option<String>) -> Result<serde_json::Map<String, serde_json::Value>, String> {
     match raw {
         None => Ok(serde_json::Map::new()),
         Some(s) if s.is_empty() => Ok(serde_json::Map::new()),
@@ -74,7 +92,7 @@ fn decode_map(raw: &Option<String>) -> Result<serde_json::Map<String, serde_json
     }
 }
 
-fn decode_vec<T: serde::de::DeserializeOwned>(raw: &Option<String>) -> Result<Vec<T>, String> {
+pub(crate) fn decode_vec<T: serde::de::DeserializeOwned>(raw: &Option<String>) -> Result<Vec<T>, String> {
     match raw {
         None => Ok(Vec::new()),
         Some(s) if s.is_empty() => Ok(Vec::new()),

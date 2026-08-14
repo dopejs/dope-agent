@@ -738,7 +738,9 @@ name = "dope-store"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-capabilities",
  "dope-integrations",
+ "dope-router",
  "dope-runtime",
  "rusqlite",
  "serde",
