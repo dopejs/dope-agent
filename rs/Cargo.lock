@@ -499,12 +499,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "dope-events"
+name = "dope-evaluation"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "dope-events"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
