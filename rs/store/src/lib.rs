@@ -7,6 +7,7 @@ use std::path::Path;
 use chrono::SecondsFormat;
 use rusqlite::{params, Connection};
 
+pub mod bindings;
 pub mod calendar;
 pub mod channel_management;
 mod computeruse;
@@ -16,6 +17,7 @@ mod crud;
 pub mod delivery;
 pub mod discord_setup;
 pub mod evaluation;
+mod evaluation_product;
 mod events;
 mod identity;
 mod integrations;
@@ -25,16 +27,21 @@ pub mod matrix_setup;
 pub mod mcp;
 mod migrations;
 mod policy;
+pub mod profiles;
 mod providers;
 mod records;
 mod registry;
 pub mod reminders;
 pub mod schedule;
 pub mod secret_scope;
+pub mod secrets;
 pub mod slack_setup;
 mod tenancy;
 pub mod telegram_setup;
+pub mod thread_continuity;
+pub mod thread_handoff;
 pub mod thread_persistence;
+pub mod workspaces;
 pub mod workflow;
 
 pub use channel_management::{
@@ -51,6 +58,7 @@ pub use matrix_setup::{
     MatrixHostedSetupRecord, MatrixRoutePolicyRecord, MatrixSmokeEvidenceRecord,
 };
 pub use records::SandboxExecutionRecord;
+pub use secrets::SecretStoreHandle;
 pub use secret_scope::SecretScopeBindingRecord;
 pub use slack_setup::{
     SlackConversationRouteRecord, SlackEventEvidenceRecord, SlackHostedSetupRecord,

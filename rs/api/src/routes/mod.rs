@@ -17,13 +17,20 @@ use crate::types::{self, SystemInfoResponse};
 
 pub mod activation;
 pub mod auth;
+pub mod billing;
 pub mod calendar;
+pub mod channel_management;
+pub mod computer_use;
 pub mod evaluation;
+pub mod integrations;
 pub mod mail;
+pub mod mcp;
 pub mod reminders;
 pub mod resources;
 pub mod runs;
+pub mod setupwizard;
 pub mod workflows;
+pub mod workspace_bindings;
 
 /// `/healthz` payload (Go: `{"ok": true, "service": "dope"}`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -69,13 +76,20 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/system/info", get(system_info))
         .merge(activation::router())
         .merge(auth::router())
+        .merge(billing::router())
         .merge(calendar::router())
+        .merge(channel_management::router())
+        .merge(computer_use::router())
         .merge(evaluation::router())
+        .merge(integrations::router())
         .merge(mail::router())
+        .merge(mcp::router())
         .merge(reminders::router())
         .merge(resources::router())
         .merge(runs::router())
+        .merge(setupwizard::router())
         .merge(workflows::router())
+        .merge(workspace_bindings::router())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

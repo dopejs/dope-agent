@@ -810,3 +810,88 @@ impl SQLiteStore {
         Ok(items)
     }
 }
+
+// --- dope_identity::Store trait implementation -------------------------------
+//
+// The manager-facing persistence surface (rs/identity/src/manager.rs) is backed
+// by the sync DAOs above; every store failure is wrapped into
+// IdentityError::Store so the identity manager can surface it without losing
+// the underlying message.
+
+/// Minimal Send+Sync error wrapper for String store failures.
+#[derive(Debug)]
+struct IdentityStoreError(String);
+
+impl std::fmt::Display for IdentityStoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for IdentityStoreError {}
+
+fn identity_store_err(message: String) -> dope_identity::IdentityError {
+    dope_identity::IdentityError::Store(Box::new(IdentityStoreError(message)))
+}
+
+impl dope_identity::ResolverStore for SQLiteStore {
+    fn get_principal(&self, principal_id: &str) -> Result<Option<dope_identity::Principal>, dope_identity::IdentityError> {
+        self.get_principal(principal_id).map_err(identity_store_err)
+    }
+
+    fn get_tenant(&self, tenant_id: &str) -> Result<Option<dope_identity::Tenant>, dope_identity::IdentityError> {
+        self.get_tenant(tenant_id).map_err(identity_store_err)
+    }
+
+    fn list_memberships(&self, filter: &dope_identity::MembershipFilter) -> Result<Vec<dope_identity::Membership>, dope_identity::IdentityError> {
+        self.list_memberships(filter).map_err(identity_store_err)
+    }
+
+    fn list_token_tenant_grants(&self, token_id: &str) -> Result<Vec<dope_identity::TokenTenantGrant>, dope_identity::IdentityError> {
+        self.list_token_tenant_grants(token_id).map_err(identity_store_err)
+    }
+}
+
+impl dope_identity::AuditStore for SQLiteStore {
+    fn append_tenant_audit_event(&self, event: dope_identity::TenantAuditEvent) -> Result<dope_identity::TenantAuditEvent, dope_identity::IdentityError> {
+        self.append_tenant_audit_event(&event).map_err(identity_store_err)
+    }
+}
+
+impl dope_identity::Store for SQLiteStore {
+    fn upsert_tenant(&self, tenant: &dope_identity::Tenant) -> Result<(), dope_identity::IdentityError> {
+        self.upsert_tenant(tenant).map_err(identity_store_err)
+    }
+
+    fn upsert_principal(&self, principal: &dope_identity::Principal) -> Result<(), dope_identity::IdentityError> {
+        self.upsert_principal(principal).map_err(identity_store_err)
+    }
+
+    fn upsert_membership(&self, membership: &dope_identity::Membership) -> Result<(), dope_identity::IdentityError> {
+        self.upsert_membership(membership).map_err(identity_store_err)
+    }
+
+    fn upsert_tenant_invitation(&self, invitation: &dope_identity::TenantInvitation) -> Result<(), dope_identity::IdentityError> {
+        self.upsert_tenant_invitation(invitation).map_err(identity_store_err)
+    }
+
+    fn upsert_token_tenant_grant(&self, grant: &dope_identity::TokenTenantGrant) -> Result<(), dope_identity::IdentityError> {
+        self.upsert_token_tenant_grant(grant).map_err(identity_store_err)
+    }
+
+    fn list_tenants(&self, filter: &dope_identity::TenantFilter) -> Result<Vec<dope_identity::Tenant>, dope_identity::IdentityError> {
+        self.list_tenants(filter).map_err(identity_store_err)
+    }
+
+    fn list_principals(&self, filter: &dope_identity::PrincipalFilter) -> Result<Vec<dope_identity::Principal>, dope_identity::IdentityError> {
+        self.list_principals(filter).map_err(identity_store_err)
+    }
+
+    fn list_tenant_invitations(&self, filter: &dope_identity::InvitationFilter) -> Result<Vec<dope_identity::TenantInvitation>, dope_identity::IdentityError> {
+        self.list_tenant_invitations(filter).map_err(identity_store_err)
+    }
+
+    fn list_token_authorities(&self) -> Result<Vec<dope_identity::TokenAuthority>, dope_identity::IdentityError> {
+        self.list_token_authorities().map_err(identity_store_err)
+    }
+}

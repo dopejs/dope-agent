@@ -1278,6 +1278,7 @@ name = "dope-store"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-bindings",
  "dope-calendar",
  "dope-capabilities",
  "dope-computeruse",
@@ -1291,13 +1292,17 @@ dependencies = [
  "dope-mail",
  "dope-orchestration",
  "dope-policy",
+ "dope-profiles",
  "dope-providers",
  "dope-router",
  "dope-runtime",
+ "dope-secrets",
  "dope-threads",
+ "parking_lot",
  "rusqlite",
  "serde",
  "serde_json",
+ "tokio",
  "uuid",
 ]
 
