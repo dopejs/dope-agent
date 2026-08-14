@@ -407,9 +407,12 @@ name = "dope-computeruse"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-policy",
+ "dope-runtime",
  "serde",
  "serde_json",
  "url",
+ "uuid",
 ]
 
 [[package]]

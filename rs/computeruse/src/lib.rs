@@ -5,6 +5,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+mod manager;
+pub use manager::*;
+
 macro_rules! string_enum {
     ($name:ident { $first:ident => $first_s:literal $(, $v:ident => $s:literal)* $(,)? }) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
@@ -444,7 +447,7 @@ impl Driver for MemoryDriver {
     }
 }
 
-fn build_page_evidence_capture(session: &Session, action: &Action, kind: ActionKind) -> ArtifactCaptureRequest {
+pub(crate) fn build_page_evidence_capture(session: &Session, action: &Action, kind: ActionKind) -> ArtifactCaptureRequest {
     let mut artifact_kind = ArtifactKind::PageSnapshot;
     let mut mime_type = "application/json";
     let mut file_name = "page-snapshot.json";
