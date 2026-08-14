@@ -1,0 +1,9 @@
+[package]
+name = "dope-checkpoints"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-store.workspace = true
+dope-runtime.workspace = true

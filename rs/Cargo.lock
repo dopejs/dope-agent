@@ -413,6 +413,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-checkpoints"
+version = "0.1.0"
+dependencies = [
+ "dope-runtime",
+ "dope-store",
+]
+
+[[package]]
 name = "dope-cli"
 version = "0.1.0"
 dependencies = [
