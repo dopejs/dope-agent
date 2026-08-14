@@ -15,15 +15,20 @@ fn opens_store_and_creates_schema_migrations_table() {
     assert_eq!(store.data_dir(), dir);
     assert!(Path::new(store.db_path()).exists());
 
-    // v1 baseline is applied on open, so exactly one migration row is recorded.
-    let rows: i64 = store_conn_query(store.db_path(), "SELECT COUNT(1) FROM schema_migrations");
-    assert_eq!(rows, 1);
+    // All ported migrations are applied on open, up to the head of the ported list.
+    let applied: i64 = store_conn_query(store.db_path(), "SELECT MAX(version) FROM schema_migrations");
+    assert_eq!(applied, schema_migrations().last().unwrap().version);
 }
 
 #[test]
-fn baseline_migration_is_registered() {
-    assert_eq!(schema_migrations().len(), 1);
-    assert_eq!(schema_migrations()[0].version, 1);
+fn migrations_are_ordered_and_start_at_baseline() {
+    let migrations = schema_migrations();
+    assert!(migrations.len() >= 1);
+    assert_eq!(migrations[0].version, 1);
+    assert_eq!(migrations[0].name, "baseline");
+    for pair in migrations.windows(2) {
+        assert!(pair[0].version < pair[1].version);
+    }
     assert_eq!(CURRENT_SCHEMA_VERSION, 55);
 }
 
