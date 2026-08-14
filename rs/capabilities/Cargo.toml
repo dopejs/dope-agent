@@ -5,3 +5,11 @@ version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+dope-adapterrpc.workspace = true
+serde.workspace = true
+chrono.workspace = true
+parking_lot.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+dope-adapterref.workspace = true

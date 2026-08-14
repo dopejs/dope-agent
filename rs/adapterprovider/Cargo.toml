@@ -5,3 +5,5 @@ version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+dope-adapterrpc.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
