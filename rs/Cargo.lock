@@ -421,6 +421,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-feishulark"
+version = "0.1.0"
+dependencies = [
+ "dope-adapterprovider",
+ "dope-adapterrpc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dope-identity"
 version = "0.1.0"
 dependencies = [

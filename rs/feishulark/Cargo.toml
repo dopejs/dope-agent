@@ -1,0 +1,11 @@
+[package]
+name = "dope-feishulark"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-adapterrpc.workspace = true
+dope-adapterprovider.workspace = true
+serde.workspace = true
+serde_json.workspace = true
