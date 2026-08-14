@@ -1,7 +1,37 @@
+use std::io::{Read, Write};
+use std::net::TcpListener;
+use std::thread;
+
 use dope_feishulark::{
-    adapter_failure_kind, ambiguous_fault, feishu_code_fault, http_status_fault, parse_token,
+    adapter_failure_kind, ambiguous_fault, feishu_code_fault, http_status_fault, parse_token, Client,
     FaultKind, ScopedToken, AMBIGUOUS_CODE,
 };
+
+fn mock_http(status: &'static str, body: &'static str) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let body = body.to_string();
+    let status = status.to_string();
+    thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut buf = [0u8; 8192];
+            let _ = stream.read(&mut buf);
+            let resp = format!(
+                "{status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(resp.as_bytes());
+        }
+    });
+    format!("http://{addr}")
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct MailboxResp {
+    #[serde(default)]
+    mailbox_address: String,
+}
 
 #[test]
 fn parse_token_fails_closed_on_empty() {
@@ -70,4 +100,38 @@ fn ambiguous_fault_is_marked() {
     let fault = ambiguous_fault("boom");
     assert!(fault.is_ambiguous());
     assert_eq!(fault.code, AMBIGUOUS_CODE);
+}
+
+#[test]
+fn client_new_trims_and_defaults() {
+    assert_eq!(Client::new("https://open.feishu.cn/").base_url(), "https://open.feishu.cn");
+    assert_eq!(Client::new("  ").base_url(), "https://open.feishu.cn");
+    assert_eq!(Client::new("http://127.0.0.1:9").base_url(), "http://127.0.0.1:9");
+}
+
+#[test]
+fn client_call_decodes_ok_envelope() {
+    let base = mock_http("HTTP/1.1 200 OK", r#"{"code":0,"msg":"ok","data":{"mailbox_address":"a@x.com"}}"#);
+    let client = Client::new(&base);
+    let mut out = MailboxResp::default();
+    client.call(None, "GET", "/x", "tok", None::<&()>, Some(&mut out), false).unwrap();
+    assert_eq!(out.mailbox_address, "a@x.com");
+}
+
+#[test]
+fn client_call_maps_401_to_token_expired() {
+    let base = mock_http("HTTP/1.1 401 Unauthorized", "");
+    let client = Client::new(&base);
+    let err = client.call(None, "GET", "/x", "tok", None::<&()>, None::<&mut MailboxResp>, false).unwrap_err();
+    assert_eq!(err.kind, FaultKind::Auth);
+    assert_eq!(err.code, "token_expired");
+}
+
+#[test]
+fn client_call_maps_feishu_code() {
+    let base = mock_http("HTTP/1.1 200 OK", r#"{"code":99991669,"msg":"denied","data":null}"#);
+    let client = Client::new(&base);
+    let err = client.call(None, "GET", "/x", "tok", None::<&()>, None::<&mut MailboxResp>, false).unwrap_err();
+    assert_eq!(err.kind, FaultKind::Scope);
+    assert_eq!(err.code, "scope_not_granted");
 }

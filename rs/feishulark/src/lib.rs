@@ -2,6 +2,9 @@
 //! (token.go + the fault-mapping core of client.go). The HTTP client and the
 //! calendar/mail provider handlers are the next increment.
 
+mod client;
+pub use client::*;
+
 use serde::{Deserialize, Serialize};
 
 /// The Feishu Open Platform base. Lark international uses open.larksuite.com; overridable at
