@@ -108,7 +108,7 @@ pub fn evaluate_managed_provider_operation(
         },
         ..ManagedProviderOperationEvaluation::default()
     };
-    evaluation.consumer = build_managed_provider_consumer_view(operation, Some(&evaluation));
+    evaluation.consumer = Some(build_managed_provider_consumer_view(operation, Some(&evaluation)));
 
     if let Some(manager) = manager {
         let decision = manager

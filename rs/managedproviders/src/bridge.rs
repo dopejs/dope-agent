@@ -187,11 +187,12 @@ impl Runner for ExecRunner {
             (result, None)
         } else {
             result.exit_code = output.status.code().unwrap_or(-1);
+            let exit_code = result.exit_code;
             (
                 result,
                 Some(RunError {
                     code: String::new(),
-                    message: format!("exit status {}", result.exit_code),
+                    message: format!("exit status {}", exit_code),
                     retryable: false,
                 }),
             )

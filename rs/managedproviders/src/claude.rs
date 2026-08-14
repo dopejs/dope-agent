@@ -16,12 +16,14 @@ use crate::codex::classify_cli_error;
 use crate::error::Error;
 use crate::evaluate::{
     ManagedProviderOperationEvaluation, ManagedProviderOperationPlan, REQUESTED_BY_PREFIX,
-    clone_local_state_summaries, clone_strings, consumer_view_json,
-    evaluate_managed_provider_operation, finalize_managed_provider_execution_failure,
-    finalize_managed_provider_execution_success, local_state_class_list, local_state_summary,
-    merge_string_maps, new_managed_provider_operation_id, operation_metadata_from_plan,
+    clone_local_state_summaries, consumer_view_json, evaluate_managed_provider_operation,
+    finalize_managed_provider_execution_failure, finalize_managed_provider_execution_success,
+    local_state_class_list, local_state_summary, new_managed_provider_operation_id,
+    operation_metadata_from_plan,
 };
-use crate::helpers::{clone_roots, filepath_join, latest_user_message, now_ptr};
+use crate::helpers::{
+    clone_roots, clone_strings, filepath_join, latest_user_message, merge_string_maps, now_ptr,
+};
 
 pub const CLAUDE_PROVIDER_ID: &str = "claude_managed";
 
@@ -242,6 +244,7 @@ impl ClaudeBridge {
             },
             local_state: clone_local_state_summaries(local_state),
             sensitive_kinds: local_state_class_list(local_state),
+            ..Default::default()
         }
     }
 }

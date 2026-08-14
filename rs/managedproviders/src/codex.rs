@@ -18,11 +18,11 @@ use crate::evaluate::{
     clone_local_state_summaries, consumer_view_json, denied_evaluation,
     evaluate_managed_provider_operation, finalize_managed_provider_execution_failure,
     finalize_managed_provider_execution_success, local_state_class_list, local_state_summary,
-    merge_string_maps, new_managed_provider_operation_id, operation_metadata_from_plan,
+    new_managed_provider_operation_id, operation_metadata_from_plan,
 };
 use crate::helpers::{
     base_name, clone_roots, decode_jwt_payload, filepath_join, first_non_empty, latest_user_message,
-    now_ptr,
+    merge_string_maps, now_ptr,
 };
 
 pub const CODEX_PROVIDER_ID: &str = "codex_managed";
@@ -290,6 +290,7 @@ impl CodexBridge {
             },
             local_state,
             sensitive_kinds,
+            ..Default::default()
         };
         let evaluation = evaluate_managed_provider_operation(self.sandboxes.as_deref(), &plan)?;
         if evaluation.operation.decision != DecisionResolution::Allow {
@@ -380,6 +381,7 @@ impl CodexBridge {
             },
             local_state: clone_local_state_summaries(local_state),
             sensitive_kinds: local_state_class_list(local_state),
+            ..Default::default()
         }
     }
 }
