@@ -1,0 +1,10 @@
+[package]
+name = "dope-artifacts"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dope-computeruse.workspace = true
+sha2.workspace = true
+chrono.workspace = true

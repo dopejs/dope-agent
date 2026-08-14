@@ -343,6 +343,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-artifacts"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dope-computeruse",
+ "sha2",
+]
+
+[[package]]
 name = "dope-billing"
 version = "0.1.0"
 dependencies = [
