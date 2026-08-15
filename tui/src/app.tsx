@@ -2,6 +2,7 @@ import { render, Box, Text, useApp, useInput, useStdout } from "ink";
 import { useRef, useState } from "react";
 import { createDopeClient, type ChatQueryInput } from "@dope/client";
 import { Markdown } from "./markdown.js";
+import { COMMANDS, type ChatContext, type CommandDeps, type Role } from "./commands.js";
 
 export type AppOptions = {
   daemonURL: string;
@@ -10,26 +11,7 @@ export type AppOptions = {
   model?: string;
 };
 
-type Role = "user" | "assistant" | "system" | "error";
-
-type Message = {
-  id: number;
-  role: Role;
-  content: string;
-  done: boolean;
-};
-
-const HELP = [
-  "DopeAgent TUI",
-  "",
-  "/help           Show this help",
-  "/threads        List your threads",
-  "/reset <id>     Reset a thread",
-  "/exit           Quit",
-  "",
-  "Type a message and press Enter to chat (streaming).",
-  "Up/Down browse history, Esc cancels a streaming reply, Ctrl+C quits.",
-].join("\n");
+type Message = { id: number; role: Role; content: string; done: boolean };
 
 function App({ daemonURL, accessToken, provider, model }: AppOptions) {
   const { exit } = useApp();
@@ -38,6 +20,7 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
   const idRef = useRef(0);
   const cancelledRef = useRef(false);
 
+  const [context, setContext] = useState<ChatContext>({ provider, model });
   const [messages, setMessages] = useState<Message[]>([
     { id: 0, role: "system", content: "DopeAgent \u00b7 " + daemonURL + "\nType /help for commands.", done: true },
   ]);
@@ -56,6 +39,24 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
 
   function patch(id: number, content: string, done = false) {
     setMessages((m) => m.map((msg) => (msg.id === id ? { ...msg, content, done } : msg)));
+  }
+
+  async function slash(text: string) {
+    const [cmd, ...rest] = text.split(/\s+/);
+    const args = rest.join(" ");
+    const command = COMMANDS[cmd];
+    if (!command) {
+      push("error", "Unknown command " + cmd + ". Type /help.");
+      return;
+    }
+    const deps: CommandDeps = {
+      client: client.current,
+      push,
+      getContext: () => context,
+      setContext: (patch) => setContext((c) => ({ ...c, ...patch })),
+      exit,
+    };
+    await command.run(args, deps);
   }
 
   async function submit(raw: string) {
@@ -77,7 +78,7 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
 
     let acc = "";
     try {
-      const payload: ChatQueryInput = { query: text, provider, model };
+      const payload: ChatQueryInput = { query: text, provider: context.provider, model: context.model, threadId: context.threadId };
       const result = await client.current.streamChatQuery(payload, {
         onDelta(chunk) {
           if (cancelledRef.current) return;
@@ -86,49 +87,11 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
         },
       });
       patch(asstId, result.reply || acc, true);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
       patch(asstId, acc ? acc + "\n\n[error] " + message : "[error] " + message, true);
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function slash(text: string) {
-    const [cmd, ...rest] = text.split(/\s+/);
-    const arg = rest.join(" ");
-    switch (cmd) {
-      case "/help":
-        push("system", HELP);
-        return;
-      case "/exit":
-      case "/quit":
-        exit();
-        return;
-      case "/threads": {
-        try {
-          const list = await client.current.listThreads();
-          const body = list.items.length === 0
-            ? "No threads."
-            : list.items.map((t) => t.threadId + "  " + t.lifecycleState + "  " + t.sourceKind + "  " + (t.sourceSummary ?? "")).join("\n");
-          push("system", "Threads (" + list.items.length + "):\n" + body);
-        } catch (err) {
-          push("error", "[error] " + (err instanceof Error ? err.message : String(err)));
-        }
-        return;
-      }
-      case "/reset": {
-        if (!arg) { push("error", "/reset <thread-id>"); return; }
-        try {
-          const res = await client.current.resetThread(arg);
-          push("system", "Thread " + res.threadId + " reset \u2192 " + res.lifecycleState);
-        } catch (err) {
-          push("error", "[error] " + (err instanceof Error ? err.message : String(err)));
-        }
-        return;
-      }
-      default:
-        push("error", "Unknown command " + cmd + ". Type /help.");
     }
   }
 
@@ -153,17 +116,26 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
       else { setHistoryIndex(next); setInput(history[next]); }
       return;
     }
-    if (key.return) { void submit(input); return; }
+    if (key.return) {
+      if (input.endsWith("\\")) {
+        setInput((s) => s.slice(0, -1) + "\n");
+        return;
+      }
+      void submit(input);
+      return;
+    }
     if (key.backspace || key.delete) { setInput((s) => s.slice(0, -1)); return; }
     if (inputChar) { setInput((s) => s + inputChar); }
   });
 
-  const headerRows = 3;
+  const headerRows = 4;
   const visibleCount = Math.max(5, rows - headerRows);
   const visible = messages.slice(-visibleCount);
+  const status = "provider=" + (context.provider ?? "default") + " model=" + (context.model ?? "default") + " thread=" + (context.threadId ?? "new");
 
   return (
     <Box flexDirection="column" height={rows}>
+      <Text dimColor>{status}</Text>
       <Box flexDirection="column" flexGrow={1}>
         {visible.map((m) => (
           <Box key={m.id} flexDirection="column">
