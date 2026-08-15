@@ -1,4 +1,5 @@
 mod client;
+mod render;
 
 use std::io;
 use std::sync::Arc;
@@ -12,7 +13,8 @@ use ratatui::{
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     },
     layout::{Constraint, Direction, Layout},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Terminal,
 };
@@ -95,17 +97,25 @@ fn draw(frame: &mut ratatui::Frame, app: &App) {
     let start = if app.scroll_offset >= total { 0 } else { total - app.scroll_offset - visible_count.min(total - app.scroll_offset) };
     let visible = &app.messages[start..];
 
-    let mut body = String::new();
+    let mut body: Vec<Line<'static>> = Vec::new();
     for m in visible {
         match m.role {
-            Role::User => body.push_str(&format!("\x1b[32m> {}\x1b[0m\n", m.content)),
-            Role::Assistant => body.push_str(&format!("{}\n", m.content)),
-            Role::Error => body.push_str(&format!("\x1b[31m[error] {}\x1b[0m\n", m.content)),
-            Role::System => body.push_str(&format!("\x1b[90m{}\x1b[0m\n", m.content)),
+            Role::User => {
+                let mut spans = vec![Span::styled("> ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))];
+                spans.push(Span::styled(m.content.clone(), Style::default().fg(Color::Green)));
+                body.push(Line::from(spans));
+            }
+            Role::Assistant => body.extend(render::markdown_lines(&m.content)),
+            Role::Error => {
+                body.push(Line::from(Span::styled(format!("[error] {}", m.content), Style::default().fg(Color::Red))));
+            }
+            Role::System => {
+                body.push(Line::from(Span::styled(m.content.clone(), Style::default().fg(Color::DarkGray))));
+            }
         }
     }
     if app.busy {
-        body.push_str("\x1b[90m\u{258c}\x1b[0m");
+        body.push(Line::from(Span::styled("\u{258c}", Style::default().fg(Color::DarkGray))));
     }
     frame.render_widget(Paragraph::new(body), chunks[1]);
 
