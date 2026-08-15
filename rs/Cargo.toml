@@ -93,3 +93,15 @@ hyper = { version = "1", features = ["server", "http1"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 async-stream = "0.3"
 clap = { version = "4", features = ["derive", "env"] }
+
+# Disk-hygiene: debug symbols + incremental compilation are the dominant
+# source of `target/` bloat (a full dev/test build can reach ~76 GB).
+# Disable both for dev/test profiles so `target/` stays bounded. Release
+# already omits debug info by default.
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false
