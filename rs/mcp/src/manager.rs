@@ -144,8 +144,8 @@ impl Default for Manager {
 }
 
 impl Manager {
-    /// Go `NewManager`. A `None` transport defaults to an all-unavailable
-    /// `TransportMux` (the concrete transports are deferred).
+    /// Go `NewManager`. A `None` transport defaults to a `TransportMux` with the
+    /// concrete stdio / streamable-http / websocket transports installed.
     #[must_use]
     pub fn new(
         cfg: dope_config::Config,
@@ -1230,8 +1230,8 @@ impl Manager {
 
     /// Go `Start`: opens a transport session (stdio via the sandbox execution plane,
     /// streamable-http/websocket via the transport), discovers tools, and marks the
-    /// server healthy. The concrete transports are deferred; with a default mux the
-    /// transport-open step fails with `transport_runtime_failure`.
+    /// server healthy. The transport mux dispatches on the server's transport kind and
+    /// a failed open surfaces as `transport_runtime_failure`.
     pub fn start(&self, server_id: &str, requested_by: &str) -> Result<LifecycleResponse, McpError> {
         let started_at = Instant::now();
         let server_id = server_id.trim().to_string();

@@ -952,11 +952,18 @@ dependencies = [
  "dope-policy",
  "dope-sandbox",
  "dope-store",
+ "futures-util",
+ "http",
  "parking_lot",
+ "rustls 0.22.4",
  "serde",
  "serde_json",
+ "sha1",
  "sha2",
  "thiserror 2.0.20",
+ "tokio",
+ "tokio-tungstenite",
+ "ureq",
  "url",
 ]
 

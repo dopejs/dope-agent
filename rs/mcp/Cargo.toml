@@ -18,3 +18,19 @@ thiserror.workspace = true
 parking_lot.workspace = true
 sha2.workspace = true
 url.workspace = true
+# Concrete transports. The websocket client uses the same tokio-tungstenite /
+# futures-util / rustls stack as dope-discord (see rs/discord/Cargo.toml); the
+# streamable-http transport uses ureq like dope-feishulark. tokio is only used
+# to drive the websocket connect/sink/read-loop.
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "net", "io-util", "sync", "time"] }
+ureq = { workspace = true }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots", "connect"] }
+futures-util = "0.3"
+# rustls 0.22 (the ring provider shared with the rest of the workspace) keeps the
+# rustls ring dependency built for wss endpoints, mirroring dope-discord.
+rustls = { version = "0.22", default-features = false, features = ["ring", "logging", "tls12"] }
+http = "1"
+
+[dev-dependencies]
+# RFC6455 handshake accept key for the in-test WebSocket server.
+sha1 = "0.10"

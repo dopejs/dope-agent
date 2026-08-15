@@ -3,7 +3,10 @@
 //! fake transport, catalog install/lifecycle), and pure-helper coverage (framing,
 //! redaction, backoff, websocket endpoint validation).
 
+mod common;
+
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -104,6 +107,84 @@ impl Transport for FakeTransport {
         _timeout: Duration,
     ) -> Result<Arc<dyn Session>, McpError> {
         Ok(self.session.clone())
+    }
+}
+
+/// Test-only sandbox execution starter: spawns the `fake-mcp-server` bin as the
+/// attached process, tracks children by execution id, and kills them on cancel so the
+/// stdio session read loop terminates (mirroring the real sandbox execution plane).
+struct FakeAttachedExecutionStarter {
+    next_id: AtomicU64,
+    children: Mutex<HashMap<String, std::process::Child>>,
+}
+
+impl dope_mcp::AttachedExecutionStarter for FakeAttachedExecutionStarter {
+    fn start_attached_execution(
+        &self,
+        _request: &dope_sandbox::ExecutionRequest,
+    ) -> Result<(dope_sandbox::Execution, Option<dope_mcp::AttachedExecution>), String> {
+        let mut child = std::process::Command::new(common::fake_mcp_server_bin())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|err| format!("spawn fake mcp server: {err}"))?;
+        let execution_id = format!("fake-exec-{}", self.next_id.fetch_add(1, Ordering::SeqCst));
+        let execution = dope_sandbox::Execution {
+            execution_id: execution_id.clone(),
+            status: dope_sandbox::ExecutionStatus::Running,
+            ..dope_sandbox::Execution::default()
+        };
+        let attached = dope_mcp::AttachedExecution {
+            execution: execution.clone(),
+            stdin: Some(Box::new(child.stdin.take().expect("child stdin"))),
+            stdout: Some(Box::new(child.stdout.take().expect("child stdout"))),
+            stderr: Some(Box::new(child.stderr.take().expect("child stderr"))),
+        };
+        self.children.lock().unwrap().insert(execution_id, child);
+        Ok((execution, Some(attached)))
+    }
+
+    fn cancel_execution(
+        &self,
+        execution_id: &str,
+    ) -> Result<(dope_sandbox::Execution, bool), String> {
+        if let Some(mut child) = self.children.lock().unwrap().remove(execution_id) {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        Ok((
+            dope_sandbox::Execution {
+                execution_id: execution_id.to_string(),
+                status: dope_sandbox::ExecutionStatus::Cancelled,
+                ..dope_sandbox::Execution::default()
+            },
+            true,
+        ))
+    }
+
+    fn get_execution(&self, execution_id: &str) -> Option<dope_sandbox::Execution> {
+        Some(dope_sandbox::Execution {
+            execution_id: execution_id.to_string(),
+            status: dope_sandbox::ExecutionStatus::Completed,
+            ..dope_sandbox::Execution::default()
+        })
+    }
+
+    fn persist_consumer_view(
+        &self,
+        _view: &dope_sandbox::ConsumerContractView,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn get_profile(&self, profile_id: &str) -> Option<dope_sandbox::Profile> {
+        Some(dope_sandbox::Profile {
+            profile_id: profile_id.to_string(),
+            backend_kind: dope_sandbox::BackendKind::Subprocess,
+            active: true,
+            ..dope_sandbox::Profile::default()
+        })
     }
 }
 
@@ -368,13 +449,135 @@ fn manager_start_fails_for_stdio_without_sandbox_manager() {
 }
 
 #[test]
-fn manager_start_fails_when_transport_unavailable() {
-    // Default manager transport mux has no concrete transports.
+fn manager_start_fails_when_transport_open_fails() {
+    // The default manager transport mux installs the concrete transports; a
+    // streamable-http server pointing at a dead local port fails at transport open.
     let manager = dope_mcp::Manager::new(test_cfg("~/.dope-test"), None, None, None, None, None);
-    manager.create_server(streamable_server_input("srv-1")).unwrap();
+    manager
+        .create_server(CreateServerInput {
+            server_id: "srv-1".to_string(),
+            display_name: "Test Server".to_string(),
+            enabled: true,
+            sandbox_profile_id: "subprocess_default".to_string(),
+            declaration_id: "d".to_string(),
+            transport_kind: TransportKind::StreamableHTTP,
+            endpoint: "http://127.0.0.1:1/mcp".to_string(),
+            auto_restart: false,
+            ..CreateServerInput::default()
+        })
+        .unwrap();
     let response = manager.start("srv-1", "operator").unwrap();
     assert_eq!(response.failure_class, "transport_runtime_failure");
     assert_eq!(response.server.state.status, LifecycleStatus::Failed);
+}
+
+#[test]
+fn manager_stdio_start_discovers_tools_and_calls_tool() {
+    let starter = Arc::new(FakeAttachedExecutionStarter {
+        next_id: AtomicU64::new(1),
+        children: Mutex::new(HashMap::new()),
+    });
+    let manager = dope_mcp::Manager::new(
+        test_cfg("~/.dope-test"),
+        None,
+        None,
+        Some(starter),
+        None,
+        None,
+    );
+    manager
+        .create_server(CreateServerInput {
+            server_id: "srv-stdio".to_string(),
+            display_name: "Stdio Server".to_string(),
+            enabled: true,
+            sandbox_profile_id: dope_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
+            declaration_id: "d".to_string(),
+            transport_kind: TransportKind::Stdio,
+            command: common::fake_mcp_server_bin().to_string(),
+            args: vec![],
+            ..CreateServerInput::default()
+        })
+        .unwrap();
+
+    // start spawns the fake server through the sandbox starter and discovers tools
+    // through the stdio transport (initialize + tools/list over the framing).
+    let response = manager.start("srv-stdio", "operator").unwrap();
+    assert_eq!(response.server.state.status, LifecycleStatus::Healthy);
+    assert_eq!(response.server.tool_count, 1);
+
+    let tools = manager.list_tools("srv-stdio").unwrap();
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].tool.tool_name, "echo");
+    assert_eq!(tools[0].tool.discovery_status, DiscoveryStatus::Discovered);
+
+    // allow the tool and invoke it through the live stdio session.
+    manager
+        .update_tool_exposure(
+            "srv-stdio",
+            "echo",
+            &UpdateExposureInput {
+                runtime_surface: "chat".to_string(),
+                exposure_mode: ExposureMode::Allow,
+                active: true,
+                ..UpdateExposureInput::default()
+            },
+        )
+        .unwrap();
+    let allowed = manager
+        .authorize_tool(
+            "srv-stdio",
+            "echo",
+            &AuthorizeToolInput {
+                runtime_surface: "chat".to_string(),
+                ..AuthorizeToolInput::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(allowed.status, ToolAuthorizationStatus::Allowed);
+
+    let result = manager
+        .call_tool(
+            "srv-stdio",
+            "echo",
+            serde_json::json!({ "message": "hello via manager" }),
+            &allowed,
+        )
+        .unwrap();
+    assert_eq!(result.failure_class, "");
+    let output = result.output.as_ref().unwrap();
+    assert_eq!(output["content"][0]["text"], "hello via manager");
+
+    // stop kills the child (fake starter), the session read loop ends, and the
+    // watcher reconciles the server to Stopped.
+    let stop = manager.stop("srv-stdio").unwrap();
+    assert_eq!(stop.action, LifecycleAction::Stop);
+    let final_status = wait_for_status(
+        &manager,
+        "srv-stdio",
+        LifecycleStatus::Stopped,
+        Duration::from_secs(5),
+    );
+    assert_eq!(final_status, LifecycleStatus::Stopped);
+}
+
+/// Polls the server state until it reaches `expected` or the timeout elapses.
+fn wait_for_status(
+    manager: &dope_mcp::Manager,
+    server_id: &str,
+    expected: LifecycleStatus,
+    timeout: Duration,
+) -> LifecycleStatus {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let current = manager
+            .get_server_resource(server_id)
+            .map(|resource| resource.state.status)
+            .unwrap_or(LifecycleStatus::Disabled);
+        if current == expected || std::time::Instant::now() >= deadline {
+            return current;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 // ---------------------------------------------------------------------------

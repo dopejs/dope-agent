@@ -11,12 +11,6 @@
 //! event ledger.
 //!
 //! Deferred parts (documented at each site):
-//! - The concrete MCP client transports (stdio, streamable-http, websocket). The
-//!   transport/session traits, the JSON-RPC wire types, the stdio content-length framing
-//!   helper, and the transport mux are ported; the concrete transports need the sandbox
-//!   AttachedExecution pipes (not yet in dope-sandbox) and a websocket client (not in
-//!   the workspace), so TransportMux without concrete transports returns
-//!   ErrTransportUnavailable.
 //! - The sandbox execution starter (AttachedExecutionStarter) is a trait with no
 //!   workspace implementation yet; the manager behaves exactly like the Go manager with a
 //!   nil sandbox manager (ErrSandboxManagerMissing for stdio lifecycle).
@@ -131,7 +125,10 @@ pub use types::{
     TransportKind, UpdateExposureInput, UpdateServerInput, WebsocketAuthConfig,
     WebsocketAuthMode, WebsocketAuthSummary, WebsocketConfig,
 };
-pub use transport::{Session, SessionPipes, Transport, TransportMux};
+pub use transport::{
+    Session, SessionPipes, StdioTransport, StreamableHTTPTransport, Transport, TransportMux,
+    WebsocketTransport,
+};
 
 /// Go resourceKindServer.
 pub const RESOURCE_KIND_SERVER: &str = "mcp_server";
