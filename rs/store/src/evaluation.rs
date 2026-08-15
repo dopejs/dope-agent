@@ -448,3 +448,139 @@ impl SQLiteStore {
         Ok(Some(item))
     }
 }
+
+
+// --- dope_evaluation::Store trait impl (sync wrapper over the DAOs) ---
+//
+// rusqlite's Connection is Send but not Sync, so SQLiteStore cannot be the
+// trait's `Send + Sync` self type directly. The workspace convention shares
+// the store as `Arc<parking_lot::Mutex<SQLiteStore>>`; because the orphan
+// rule forbids implementing an external trait for a foreign type, the mutex
+// is wrapped in the local `EvaluationStoreHandle` newtype (see
+// SecretStoreHandle / ComputerUseStoreHandle for the same pattern).
+
+/// Send + Sync handle over the SQLite store implementing
+/// [`dope_evaluation::Store`]. Construct from a fresh store and share as
+/// `Arc<EvaluationStoreHandle>` with the evaluation manager.
+pub struct EvaluationStoreHandle(pub parking_lot::Mutex<SQLiteStore>);
+
+impl EvaluationStoreHandle {
+    pub fn new(store: SQLiteStore) -> Self {
+        Self(parking_lot::Mutex::new(store))
+    }
+}
+
+impl dope_evaluation::Store for EvaluationStoreHandle {
+    fn upsert_replay_candidate(
+        &self,
+        item: dope_evaluation::ReplayCandidate,
+    ) -> Result<(), dope_evaluation::EvaluationError> {
+        let store = self.0.lock();
+        store
+            .upsert_replay_candidate(&item)
+            .map_err(dope_evaluation::EvaluationError::Store)
+    }
+
+    fn list_replay_candidates(
+        &self,
+        filter: &dope_evaluation::CandidateFilter,
+    ) -> Result<Vec<dope_evaluation::ReplayCandidate>, dope_evaluation::EvaluationError> {
+        let store = self.0.lock();
+        store
+            .list_replay_candidates(filter)
+            .map_err(dope_evaluation::EvaluationError::Store)
+    }
+
+    fn get_replay_candidate(
+        &self,
+        environment_scope: &str,
+        candidate_id: &str,
+    ) -> Result<Option<dope_evaluation::ReplayCandidate>, dope_evaluation::EvaluationError> {
+        let store = self.0.lock();
+        store
+            .get_replay_candidate(environment_scope, candidate_id)
+            .map_err(dope_evaluation::EvaluationError::Store)
+    }
+
+    fn upsert_replay_attempt(
+        &self,
+        item: dope_evaluation::ReplayAttempt,
+    ) -> Result<(), dope_evaluation::EvaluationError> {
+        let store = self.0.lock();
+        store
+            .upsert_replay_attempt(&item)
+            .map_err(dope_evaluation::EvaluationError::Store)
+    }
+
+    fn list_replay_attempts(
+        &self,
+        filter: &dope_evaluation::AttemptFilter,
+    ) -> Result<Vec<dope_evaluation::ReplayAttempt>, dope_evaluation::EvaluationError> {
+        let store = self.0.lock();
+        store
+            .list_replay_attempts(filter)
+            .map_err(dope_evaluation::EvaluationError::Store)
+    }
+
+    fn get_replay_attempt(
+        &self,
+        environment_scope: &str,
+        attempt_id: &str,
+    ) -> Result<Option<dope_evaluation::ReplayAttempt>, dope_evaluation::EvaluationError> {
+        let store = self.0.lock();
+        store
+            .get_replay_attempt(environment_scope, attempt_id)
+            .map_err(dope_evaluation::EvaluationError::Store)
+    }
+
+    fn upsert_comparison_result(
+        &self,
+        item: dope_evaluation::ComparisonResult,
+    ) -> Result<(), dope_evaluation::EvaluationError> {
+        let store = self.0.lock();
+        store
+            .upsert_comparison_result(&item)
+            .map_err(dope_evaluation::EvaluationError::Store)
+    }
+
+    fn list_comparison_results(
+        &self,
+        filter: &dope_evaluation::ComparisonFilter,
+    ) -> Result<Vec<dope_evaluation::ComparisonResult>, dope_evaluation::EvaluationError> {
+        let store = self.0.lock();
+        store
+            .list_comparison_results(filter)
+            .map_err(dope_evaluation::EvaluationError::Store)
+    }
+
+    fn get_comparison_result(
+        &self,
+        environment_scope: &str,
+        comparison_id: &str,
+    ) -> Result<Option<dope_evaluation::ComparisonResult>, dope_evaluation::EvaluationError> {
+        let store = self.0.lock();
+        store
+            .get_comparison_result(environment_scope, comparison_id)
+            .map_err(dope_evaluation::EvaluationError::Store)
+    }
+
+    fn upsert_regression_fixture(
+        &self,
+        item: dope_evaluation::RegressionFixture,
+    ) -> Result<(), dope_evaluation::EvaluationError> {
+        let store = self.0.lock();
+        store
+            .upsert_regression_fixture(&item)
+            .map_err(dope_evaluation::EvaluationError::Store)
+    }
+
+    fn list_regression_fixtures(
+        &self,
+        filter: &dope_evaluation::FixtureFilter,
+    ) -> Result<Vec<dope_evaluation::RegressionFixture>, dope_evaluation::EvaluationError> {
+        let store = self.0.lock();
+        store
+            .list_regression_fixtures(filter)
+            .map_err(dope_evaluation::EvaluationError::Store)
+    }
+}

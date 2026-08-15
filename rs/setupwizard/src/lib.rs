@@ -18,8 +18,8 @@ pub use helpers::{
 pub use permissions::{can_inspect_setup, can_mutate_setup, require_inspection, require_mutation};
 pub use probe::{DefaultDiagnosticProbe, classify_diagnostic_reason, diagnostic_for_session};
 pub use service::{
-    new_service, DisableInput, MemoryStore, OAuthCallbackInput, OAuthStartInput,
-    OAuthStartResult, ReplaceInput, Service, ServiceDependencies, StartInput, Store,
-    SubmitSecretInput,
+    new_service, BoxFuture, DisableInput, MemoryStore, OAuthCallbackInput,
+    OAuthStartInput, OAuthStartResult, ReplaceInput, Service, ServiceDependencies,
+    StartInput, Store, SubmitSecretInput,
 };
 pub use types::*;

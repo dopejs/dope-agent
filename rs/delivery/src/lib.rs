@@ -1,10 +1,11 @@
 //! Port of daemon/internal/delivery: the delivery domain types (targets, preferences,
 //! outcomes, attempts, summary windows) plus the manager, dispatcher, digest, linkage, adapter
 //! seam, and live-validation rows. The manager logic lives in [`manager`], [`dispatcher`],
-//! [`digest`], and [`linkage`]; the channel-specific adapter bodies (ConnectorAdapter and the
-//! matrix/telegram/slack hosted-setup gating) are deferred to the wave-7 channels port. The
-//! adapter seam ([`DeliveryAdapter`]) and the channel/thread store hooks
-//! ([`ChannelDeliveryHooks`]) are ported as traits with documented no-op defaults.
+//! [`digest`], and [`linkage`]; the channel-connector adapter ([`connector_adapter`]) ports the
+//! Go ConnectorAdapter (connector reply senders, connector message/boundary persistence, and
+//! the matrix/telegram/slack hosted-setup delivery-eligibility gating). The adapter seam
+//! ([`DeliveryAdapter`]) and the channel/thread store hooks ([`ChannelDeliveryHooks`]) are
+//! ported as traits with documented no-op defaults where the store domain is still deferred.
 //!
 //! context.Context is replaced by synchronous Rust: the Go manager's background goroutines for
 //! retries and summary-window emission become detached std threads (see
@@ -301,6 +302,7 @@ fn is_zero_i64(v: &i64) -> bool {
 }
 
 pub mod adapters;
+pub mod connector_adapter;
 pub mod digest;
 pub mod dispatcher;
 pub mod linkage;
@@ -309,7 +311,8 @@ pub mod manager;
 pub mod test_sink;
 
 pub use adapters::{ChannelDeliveryHooks, DeliveryAdapter};
-pub use linkage::{latest_summary_from_outcome, LatestSummary};
+pub use connector_adapter::{ConnectorAdapter, ConnectorReplySender};
+pub use linkage::{LatestSummary, latest_summary_from_outcome};
 pub use live_validation::live_validation_matrix_rows;
 pub use manager::{DeliveryError, Manager};
 pub use test_sink::{TestSinkAdapter, TestSinkMessage};

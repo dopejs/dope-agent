@@ -7,6 +7,7 @@ rust-version.workspace = true
 [dependencies]
 dope-calendar.workspace = true
 dope-events.workspace = true
+dope-imtypes.workspace = true
 dope-integrations.workspace = true
 dope-livevalidation.workspace = true
 dope-mail.workspace = true
@@ -17,3 +18,6 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+dope-runtime.workspace = true

@@ -18,6 +18,20 @@ use dope_checkpoints::Manager as CheckpointsManager;
 use dope_computeruse::{Dependencies as ComputerUseDependencies, Manager as ComputerUseManager};
 use dope_config::{Config, Environment};
 use dope_connectors::Supervisor as ConnectorsSupervisor;
+use dope_discord::{GatewayTransport as DiscordGatewayTransport, new_runtime as new_discord_runtime};
+use dope_im::MessageLoop;
+use dope_matrix::{
+    ClientTransportConfig as MatrixClientTransportConfig, new_client_transport as new_matrix_transport,
+    new_runtime as new_matrix_runtime,
+};
+use dope_slack::{
+    WebApiTransport as SlackWebApiTransport, WebApiTransportConfig as SlackWebApiTransportConfig,
+    new_runtime as new_slack_runtime,
+};
+use dope_telegram::{
+    BotApiTransport as TelegramBotApiTransport, BotApiTransportConfig as TelegramBotApiTransportConfig,
+    Runtime as TelegramRuntime,
+};
 use dope_delivery::{Manager as DeliveryManager, TestSinkAdapter};
 use dope_evaluation::{Dependencies as EvaluationDependencies, Manager as EvaluationManager};
 use dope_events::Bus;
@@ -42,12 +56,16 @@ use dope_setupwizard::{
     ServiceDependencies as SetupWizardDependencies, new_service as new_setup_wizard,
 };
 use dope_skills::Registry as SkillsRegistry;
-use dope_store::{BillingRepositoryHandle, ComputerUseStoreHandle, SQLiteStore, SecretStoreHandle};
+use dope_store::{
+    BillingRepositoryHandle, ComputerUseStoreHandle, EvaluationStoreHandle,
+    LiveValidationStoreHandle, SQLiteStore, SecretStoreHandle, SetupWizardStoreHandle,
+};
 use dope_triage::Manager as TriageManager;
 use dope_webhook::Manager as WebhookManager;
 
 mod adapters;
 mod error;
+mod restore;
 
 pub use error::AppError;
 
@@ -69,7 +87,29 @@ pub struct App {
     sandboxes: Option<Arc<SandboxManager>>,
     scheduler: Option<Arc<Scheduler>>,
     reminders: Option<Arc<RemindersManager>>,
+    /// Dedicated SQLite connection shared by the connector message loops and
+    /// the four channel-connector runtimes (the runtimes take
+    /// Arc<SQLiteStore>, which cannot be derived from the Mutex-wrapped
+    /// primary handle).
+    connector_store: Arc<SQLiteStore>,
+    /// Constructed connector runtimes, filled by App::serve and closed by
+    /// App::close. None until serve runs (or when all connectors are disabled).
+    connector_runtimes: parking_lot::Mutex<Option<ConnectorRuntimes>>,
     closed: AtomicBool,
+}
+
+/// The four channel-connector runtimes (Go app.App fields discordRuntime,
+/// telegramRuntime, slackRuntime, matrixRuntime). Each is None when the
+/// connector is disabled in config. The telegram/matrix runtimes drive a
+/// blocking transport loop from a dedicated thread (start runs the loop on
+/// the calling thread), so they are stored as Arc to share with the thread;
+/// discord/slack start non-blocking and stay inline.
+struct ConnectorRuntimes {
+    discord: Option<dope_discord::Runtime>,
+    telegram: Option<Arc<TelegramRuntime>>,
+    slack: Option<dope_slack::Runtime>,
+    matrix: Option<Arc<dope_matrix::Runtime>>,
+    telegram_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl App {
@@ -91,6 +131,11 @@ impl App {
         let secondary = Arc::new(std::sync::Mutex::new(
             SQLiteStore::new(&data_dir).map_err(AppError::Store)?,
         ));
+        // The connector message loops + runtimes take a plain Arc<SQLiteStore>
+        // (the runtimes are single-threaded, non-Send store owners), so a
+        // dedicated connection to the same WAL database is opened for them.
+        #[allow(clippy::arc_with_non_send_sync)] // port-mandated Arc<SQLiteStore>
+        let connector_store = Arc::new(SQLiteStore::new(&data_dir).map_err(AppError::Store)?);
 
         // --- event bus ---
         let event_bus = Arc::new(Bus::new());
@@ -295,12 +340,13 @@ impl App {
         evidence_manager.with_store(store.clone());
         let evidence = Arc::new(evidence_manager);
 
-        // --- evaluation (store handle missing in dope-store -> None) ---
-        // TODO(app wiring): dope_evaluation::Store impl over SQLiteStore is
-        // not present in dope-store; the manager runs without persistence.
+        // --- evaluation (SQLite-backed Store handle) ---
+        let evaluation_store = Arc::new(EvaluationStoreHandle::new(
+            SQLiteStore::new(&data_dir).map_err(AppError::Store)?,
+        ));
         let evaluation = Arc::new(EvaluationManager::new(EvaluationDependencies {
             environment_scope: env_scope.to_string(),
-            store: None,
+            store: Some(evaluation_store),
             fixtures_dir: String::new(),
             runtime_recorder: None,
             billing: Some(billing.clone()),
@@ -308,13 +354,13 @@ impl App {
             clock: None,
         }));
 
-        // --- live validation (async Store not implementable outside the
-        // crate -> None) ---
-        // TODO(app wiring): dope_livevalidation::Store cannot be implemented
-        // outside the crate (LedgerOutcome is not re-exported); see api tests.
+        // --- live validation (SQLite-backed Store handle) ---
+        let live_validation_store = Arc::new(LiveValidationStoreHandle::new(
+            SQLiteStore::new(&data_dir).map_err(AppError::Store)?,
+        ));
         let live_validation = Arc::new(LiveValidationManager::new(LiveValidationDependencies {
             environment_scope: env_scope.to_string(),
-            store: None,
+            store: Some(live_validation_store),
             enabled: true,
             billing: Some(billing.clone()),
             hosted_billing: hosted,
@@ -323,10 +369,12 @@ impl App {
             candidate_tool_class_resolver: None,
         }));
 
-        // --- setup wizard (MemoryStore default; no dope-store impl) ---
-        // TODO(app wiring): dope_setupwizard::Store impl over SQLiteStore is
-        // missing; the in-memory store is used.
+        // --- setup wizard (SQLite-backed Store handle) ---
+        let setup_wizard_store = Arc::new(SetupWizardStoreHandle::new(
+            SQLiteStore::new(&data_dir).map_err(AppError::Store)?,
+        ));
         let setup_wizard = Arc::new(new_setup_wizard(SetupWizardDependencies {
+            store: Some(setup_wizard_store),
             secrets: Some(secret_manager.clone()),
             ..SetupWizardDependencies::default()
         }));
@@ -372,6 +420,12 @@ impl App {
         state.audit_emitter = Some(audit_emitter.clone());
         state.tenant_migration_status = Some(Arc::new(adapters::NoMigrationInProgress));
 
+        // Restore persisted in-memory state from SQLite (Go
+        // recoverPersistedStateWithSecrets, called in app.New right before the
+        // connector runtimes are built). Idempotent: every Restore replaces the
+        // in-memory registry wholesale.
+        restore::recover_persisted_state(&state, &event_bus, cfg.environment)?;
+
         Ok(App {
             config: cfg,
             state,
@@ -379,6 +433,8 @@ impl App {
             sandboxes: Some(sandboxes),
             scheduler: Some(scheduler),
             reminders: Some(reminders),
+            connector_store,
+            connector_runtimes: parking_lot::Mutex::new(None),
             closed: AtomicBool::new(false),
         })
     }
@@ -404,6 +460,12 @@ impl App {
         let bind_addr = self.config.bind_addr.clone();
 
         self.start_background_loops();
+
+        // Wave 8: construct + start the enabled channel-connector runtimes
+        // before serving (Go Run: discord -> telegram -> slack -> matrix).
+        let mut runtimes = self.build_connector_runtimes().await?;
+        self.start_connector_runtimes(&mut runtimes)?;
+        *self.connector_runtimes.lock() = Some(runtimes);
 
         // Publish system.started (best effort; the store/bus carry it).
         let _ = self.publish_system_event(
@@ -454,6 +516,44 @@ impl App {
         if self.closed.swap(true, Ordering::SeqCst) {
             return;
         }
+        // Connector runtimes close first (Go Close order: discord -> telegram
+        // -> slack -> matrix); the telegram poll thread is joined once the
+        // transport close drops the channel sender and unblocks its loop.
+        let mut first_err: Option<String> = None;
+        if let Some(runtimes) = self.connector_runtimes.lock().as_mut() {
+            if let Some(discord) = &runtimes.discord {
+                if let Err(err) = discord.close() {
+                    first_err.get_or_insert_with(|| format!("discord: {err}"));
+                }
+            }
+            if let Some(telegram) = &runtimes.telegram {
+                if let Err(err) = telegram.close() {
+                    first_err.get_or_insert_with(|| format!("telegram: {err}"));
+                }
+                if let Some(handle) = runtimes.telegram_thread.take() {
+                    let _ = handle.join();
+                }
+            }
+            if let Some(slack) = &runtimes.slack {
+                if let Err(err) = slack.close() {
+                    first_err.get_or_insert_with(|| format!("slack: {err}"));
+                }
+            }
+            if let Some(matrix) = &runtimes.matrix {
+                // The matrix client sync loop has no cancellation seam (the
+                // transport close is a no-op), so its thread is detached and
+                // ends with the process; only the close is reported here.
+                if let Err(err) = matrix.close() {
+                    first_err.get_or_insert_with(|| format!("matrix: {err}"));
+                }
+                // Leak a clone so the detached matrix thread never observes a
+                // freed runtime after the App is dropped.
+                std::mem::forget(matrix.clone());
+            }
+        }
+        if let Some(err) = first_err {
+            eprintln!("[dope] connector close error: {err}");
+        }
         if let Some(scheduler) = &self.scheduler {
             let _ = scheduler.close();
         }
@@ -464,6 +564,298 @@ impl App {
             let _ = sandboxes.close();
         }
         self.event_bus.close();
+    }
+
+    // ---------------------------------------------------------------------
+    // Wave 8: channel-connector runtimes
+    // ---------------------------------------------------------------------
+
+    /// Builds one connector message loop over the shared managers (port of Go
+    /// im.NewMessageLoop). dope-im::MessageLoop and dope_router::SessionRouter
+    /// are not Clone, so each connector runtime receives its own loop + router
+    /// over the same runtime/checkpoints/bus/store/chat deps — matching Go's
+    /// per-runtime im.NewMessageLoop(sessionRouter, ...) construction.
+    fn connector_message_loop(&self) -> MessageLoop {
+        let runtime = self.state.runtime.clone().expect("runtime wired in App::new");
+        let chat = self.state.chat.clone().expect("chat wired in App::new");
+        MessageLoop::new(
+            SessionRouter::new(),
+            runtime.clone(),
+            Some(CheckpointsManager::new(self.state.store.clone(), runtime)),
+            Some((*self.event_bus).clone()),
+            self.connector_store.clone(),
+            (*chat).clone(),
+        )
+    }
+
+    /// Resolves a connector secret value through the secret manager (Go
+    /// slackBotTokenProvider/matrixBotAccessTokenProvider resolve via
+    /// secrets.Resolve). None when no tenant or secret is available; the
+    /// caller falls back to the raw config token.
+    async fn resolve_connector_secret(&self, secret_ref: &str) -> Option<String> {
+        let tenant_id = self
+            .state
+            .store
+            .lock()
+            .resolve_default_personal_tenant_id()
+            .ok()?;
+        let manager = self.state.secrets.clone()?;
+        let resolved = manager
+            .resolve(dope_secrets::ResolveInput {
+                tenant_id,
+                secret_ref: secret_ref.trim().to_string(),
+            })
+            .await
+            .ok()?;
+        Some(resolved.value)
+    }
+
+    /// Constructs the four connector runtimes for the enabled connectors in
+    /// config (Go app.New connector block). Disabled connectors return
+    /// Ok(None) from their new_runtime, so no network or credential is
+    /// touched unless the connector is explicitly enabled.
+    async fn build_connector_runtimes(&self) -> Result<ConnectorRuntimes, AppError> {
+        let connector_cfg = &self.config.connectors;
+        let supervisor = self
+            .state
+            .connectors
+            .clone()
+            .expect("connectors supervisor wired in App::new");
+        let store = Some(self.connector_store.clone());
+        let bus = Some((*self.event_bus).clone());
+
+        // --- discord ---
+        let discord_cfg = dope_discord::Config {
+            enabled: connector_cfg.discord.enabled,
+            connector_id: connector_cfg.discord.connector_id.clone(),
+            display_name: connector_cfg.discord.display_name.clone(),
+            delivery_mode: connector_cfg.discord.delivery_mode.clone(),
+            bot_token: connector_cfg.discord.bot_token.clone(),
+            require_mention: connector_cfg.discord.require_mention,
+            respond_in_dm: connector_cfg.discord.respond_in_dm,
+            allowed_guild_ids: connector_cfg.discord.allowed_guild_ids.clone(),
+            allowed_channel_ids: connector_cfg.discord.allowed_channel_ids.clone(),
+            tenant_id: String::new(),
+        };
+        let discord_transport: Option<Box<dyn dope_discord::Transport>> =
+            if connector_cfg.discord.enabled {
+                Some(Box::new(
+                    DiscordGatewayTransport::new(discord_cfg.clone()).map_err(|err| {
+                        AppError::ConnectorRuntime(format!("discord transport: {err}"))
+                    })?,
+                ))
+            } else {
+                None
+            };
+        let discord = new_discord_runtime(
+            discord_cfg,
+            Some(dope_telemetry::Logger::new(&self.config.log_level)),
+            supervisor.clone(),
+            // The discord runtime takes Arc<MessageLoop>; the loop is !Send
+            // (single-threaded store), matching the runtime's design.
+            #[allow(clippy::arc_with_non_send_sync)]
+            Arc::new(self.connector_message_loop()),
+            store.clone(),
+            bus.clone(),
+            discord_transport,
+        )
+        .map_err(|err| AppError::ConnectorRuntime(format!("discord runtime: {err}")))?;
+
+        // --- telegram ---
+        let telegram_cfg = dope_telegram::Config {
+            enabled: connector_cfg.telegram.enabled,
+            connector_id: connector_cfg.telegram.connector_id.clone(),
+            display_name: connector_cfg.telegram.display_name.clone(),
+            bot_token: connector_cfg.telegram.bot_token.clone(),
+            bot_username: connector_cfg.telegram.bot_username.clone(),
+            tenant_id: String::new(),
+            allowments: restore::telegram_allowments_from_config(&connector_cfg.telegram),
+        };
+        let telegram_transport: Option<Arc<dyn dope_telegram::Transport>> =
+            if connector_cfg.telegram.enabled {
+                Some(Arc::new(
+                    TelegramBotApiTransport::new(TelegramBotApiTransportConfig {
+                        connector_id: connector_cfg.telegram.connector_id.clone(),
+                        bot_token: connector_cfg.telegram.bot_token.clone(),
+                        bot_username: connector_cfg.telegram.bot_username.clone(),
+                        base_url: connector_cfg.telegram.bot_api_base_url.clone(),
+                        ..Default::default()
+                    })
+                    .map_err(|err| {
+                        AppError::ConnectorRuntime(format!("telegram transport: {err}"))
+                    })?,
+                ))
+            } else {
+                None
+            };
+        let telegram = TelegramRuntime::new(
+            telegram_cfg,
+            supervisor.clone(),
+            Some(self.connector_message_loop()),
+            store.clone(),
+            bus.clone(),
+            telegram_transport,
+        )
+        .map_err(|err| AppError::ConnectorRuntime(format!("telegram runtime: {err}")))?
+        .map(Arc::new);
+
+        // --- slack ---
+        let slack_cfg = dope_slack::Config {
+            enabled: connector_cfg.slack.enabled,
+            connector_id: connector_cfg.slack.connector_id.clone(),
+            display_name: connector_cfg.slack.display_name.clone(),
+            workspace_binding_id: connector_cfg.slack.workspace_binding_id.clone(),
+            workspace_id: connector_cfg.slack.workspace_id.clone(),
+            bot_user_id: connector_cfg.slack.bot_user_id.clone(),
+            allowed_channel_ids: connector_cfg.slack.allowed_channel_ids.clone(),
+            allowed_dm_user_ids: connector_cfg.slack.allowed_dm_user_ids.clone(),
+            allowed_dm_user_groups: connector_cfg.slack.allowed_dm_user_groups.clone(),
+            tenant_id: String::new(),
+        };
+        let slack_token = if connector_cfg.slack.bot_token_secret_ref.trim().is_empty() {
+            String::new()
+        } else {
+            self.resolve_connector_secret(&connector_cfg.slack.bot_token_secret_ref)
+                .await
+                .unwrap_or_default()
+        };
+        let slack_transport: Option<Arc<dyn dope_slack::Transport>> =
+            if connector_cfg.slack.enabled {
+                Some(Arc::new(SlackWebApiTransport::new(
+                    SlackWebApiTransportConfig {
+                        connector_id: connector_cfg.slack.connector_id.clone(),
+                        base_url: connector_cfg.slack.api_base_url.clone(),
+                        bot_token: slack_token,
+                        ..Default::default()
+                    },
+                )))
+            } else {
+                None
+            };
+        let slack = new_slack_runtime(
+            slack_cfg,
+            supervisor.clone(),
+            self.connector_message_loop(),
+            store.clone(),
+            bus.clone(),
+            slack_transport,
+        )
+        .map_err(|err| AppError::ConnectorRuntime(format!("slack runtime: {err}")))?;
+
+        // --- matrix ---
+        let matrix_cfg = dope_matrix::types::Config {
+            enabled: connector_cfg.matrix.enabled,
+            connector_id: connector_cfg.matrix.connector_id.clone(),
+            display_name: connector_cfg.matrix.display_name.clone(),
+            homeserver_url: connector_cfg.matrix.homeserver_url.clone(),
+            homeserver_id: connector_cfg.matrix.homeserver_id.clone(),
+            bot_user_id: connector_cfg.matrix.bot_user_id.clone(),
+            selected_room_ids: connector_cfg.matrix.selected_room_ids.clone(),
+            allowed_direct_user_ids: connector_cfg.matrix.allowed_direct_user_ids.clone(),
+            configured_commands: connector_cfg.matrix.configured_commands.clone(),
+        };
+        let matrix_transport: Option<Box<dyn dope_matrix::Transport>> =
+            if connector_cfg.matrix.enabled {
+                Some(Box::new(
+                    new_matrix_transport(MatrixClientTransportConfig {
+                        connector_id: connector_cfg.matrix.connector_id.clone(),
+                        homeserver_url: connector_cfg.matrix.homeserver_url.clone(),
+                        bot_access_token: connector_cfg.matrix.bot_access_token.clone(),
+                        selected_room_ids: connector_cfg.matrix.selected_room_ids.clone(),
+                        allowed_direct_user_ids: connector_cfg.matrix.allowed_direct_user_ids.clone(),
+                        ..Default::default()
+                    })
+                    .map_err(|err| {
+                        AppError::ConnectorRuntime(format!("matrix transport: {err}"))
+                    })?,
+                ))
+            } else {
+                None
+            };
+        let matrix = new_matrix_runtime(
+            matrix_cfg,
+            supervisor.clone(),
+            self.connector_message_loop(),
+            store,
+            bus,
+            matrix_transport,
+        )
+        .map_err(|err| AppError::ConnectorRuntime(format!("matrix runtime: {err}")))?
+        .map(Arc::new);
+
+        Ok(ConnectorRuntimes {
+            discord,
+            telegram,
+            slack,
+            matrix,
+            telegram_thread: None,
+        })
+    }
+
+    /// Starts the constructed connector runtimes (Go App.Run connector
+    /// block). Discord/slack start non-blocking on the calling thread; the
+    /// telegram transport loop blocks until close, so it runs on a dedicated
+    /// thread that is joined in App::close.
+    fn start_connector_runtimes(
+        &self,
+        runtimes: &mut ConnectorRuntimes,
+    ) -> Result<(), AppError> {
+        if let Some(discord) = &runtimes.discord {
+            discord
+                .start()
+                .map_err(|err| AppError::ConnectorStart(format!("discord: {err}")))?;
+        }
+        if let Some(telegram) = &runtimes.telegram {
+            // SAFETY: dope_telegram::Runtime is !Send (its inner store
+            // connection is single-threaded), so the thread receives a raw
+            // pointer instead of moving the runtime. The runtime is kept alive
+            // by the App's Arc for the whole process, and every runtime method
+            // accesses inner state through the parking_lot::Mutex, so
+            // concurrent start() (this thread) and close() (the app thread) are
+            // serialized. close() closes the transport, dropping the poll
+            // thread's channel sender, which unblocks start() so the thread
+            // returns and can be joined before the App is dropped.
+            let raw = Arc::as_ptr(telegram) as usize;
+            let handle = std::thread::Builder::new()
+                .name("telegram-connector".to_string())
+                .spawn(move || {
+                    // SAFETY: raw is the address of the App-owned runtime,
+                    // which stays valid until this thread is joined in close().
+                    let rt = unsafe { &*(raw as *const TelegramRuntime) };
+                    let _ = rt.start();
+                })
+                .map_err(|err| AppError::ConnectorStart(format!("telegram thread: {err}")))?;
+            runtimes.telegram_thread = Some(handle);
+        }
+        if let Some(slack) = &runtimes.slack {
+            slack
+                .start()
+                .map_err(|err| AppError::ConnectorStart(format!("slack: {err}")))?;
+        }
+        if let Some(matrix) = &runtimes.matrix {
+            // SAFETY: same serialized-inner rationale as the telegram thread.
+            // The matrix client sync loop has no cancellation seam (the
+            // transport close is a no-op), so the thread is detached and runs
+            // until the process exits; close() leaks a clone of the App's Arc
+            // so the runtime is never freed under the running thread.
+            let raw = Arc::as_ptr(matrix) as usize;
+            let tenant_id = self
+                .state
+                .store
+                .lock()
+                .resolve_default_personal_tenant_id()
+                .unwrap_or_default();
+            std::thread::Builder::new()
+                .name("matrix-connector".to_string())
+                .spawn(move || {
+                    // SAFETY: raw is the address of the App-owned runtime;
+                    // close() leaks a clone so it stays valid for the process.
+                    let rt = unsafe { &*(raw as *const dope_matrix::Runtime) };
+                    let _ = rt.start(&tenant_id);
+                })
+                .map_err(|err| AppError::ConnectorStart(format!("matrix thread: {err}")))?;
+        }
+        Ok(())
     }
 
     /// Persists a system event on the store and publishes it on the bus
@@ -625,4 +1017,61 @@ mod tests {
         );
         app2.close();
     }
+
+    /// Connector runtimes are skipped when every connector is disabled (no
+    /// network, no credentials), and are constructed when a connector is
+    /// enabled with a token. Restore is idempotent: rebuilding the app against
+    /// the same data dir runs recoverPersistedState again without error.
+    #[tokio::test]
+    async fn connector_runtimes_constructed_or_skipped_and_restore_idempotent() {
+        // All connectors disabled: the four runtimes are None (skipped).
+        let config = test_config();
+        let app = App::new(config.clone()).expect("build app");
+        let runtimes = app
+            .build_connector_runtimes()
+            .await
+            .expect("build connector runtimes");
+        assert!(runtimes.discord.is_none(), "discord disabled -> skipped");
+        assert!(runtimes.telegram.is_none(), "telegram disabled -> skipped");
+        assert!(runtimes.slack.is_none(), "slack disabled -> skipped");
+        assert!(runtimes.matrix.is_none(), "matrix disabled -> skipped");
+        // Starting the (empty) runtime set is a no-op.
+        let mut runtimes = runtimes;
+        app.start_connector_runtimes(&mut runtimes)
+            .expect("start no runtimes");
+        app.close();
+
+        // Discord enabled with a token: the runtime is constructed. Nothing is
+        // started, so no network is touched.
+        let mut enabled = config.clone();
+        enabled.connectors.discord.enabled = true;
+        enabled.connectors.discord.bot_token = "test-token".to_string();
+        enabled.connectors.discord.connector_id = "discord-test".to_string();
+        enabled.connectors.discord.display_name = "Discord Test".to_string();
+        let app2 = App::new(enabled.clone()).expect("build app with discord enabled");
+        let runtimes2 = app2
+            .build_connector_runtimes()
+            .await
+            .expect("build runtimes with discord enabled");
+        assert!(
+            runtimes2.discord.is_some(),
+            "discord enabled -> runtime constructed"
+        );
+        assert!(
+            app2.state
+                .connectors
+                .as_ref()
+                .expect("connectors supervisor")
+                .list()
+                .is_empty(),
+            "no connector registered until start"
+        );
+        app2.close();
+
+        // Restore idempotence: rebuild against the same data dir (the store now
+        // holds whatever bootstrap wrote) and recover again.
+        let app3 = App::new(enabled).expect("rebuild app on existing store");
+        app3.close();
+    }
+
 }

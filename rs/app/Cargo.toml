@@ -39,6 +39,13 @@ dope-execprofile = { workspace = true }
 dope-evidence = { workspace = true }
 dope-connectors = { workspace = true }
 dope-capabilities = { workspace = true }
+dope-im = { workspace = true }
+dope-imtypes = { workspace = true }
+dope-discord = { workspace = true }
+dope-telegram = { workspace = true }
+dope-slack = { workspace = true }
+dope-matrix = { workspace = true }
+dope-telemetry = { workspace = true }
 dope-computeruse = { workspace = true }
 dope-scheduler = { workspace = true }
 dope-delivery = { workspace = true }

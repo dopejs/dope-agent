@@ -23,6 +23,7 @@ mod events;
 mod identity;
 mod integration_diagnostics;
 mod integrations;
+pub mod live_validation;
 pub mod mail;
 mod manager_documents;
 pub mod matrix_setup;
@@ -39,6 +40,7 @@ pub mod secret_scope;
 pub mod secrets;
 pub mod slack_setup;
 mod tenancy;
+pub mod setupwizard;
 pub mod telegram_setup;
 pub mod thread_continuity;
 pub mod thread_handoff;
@@ -57,6 +59,9 @@ pub use consumer_policy::ConsumerPolicyRecordRecord;
 pub use discord_setup::{
     DiscordDestinationValidationRecord, DiscordHostedSetupRecord, DiscordSmokeEvidenceRecord,
 };
+pub use evaluation::EvaluationStoreHandle;
+pub use live_validation::LiveValidationStoreHandle;
+pub use setupwizard::SetupWizardStoreHandle;
 pub use manager_documents::{delete_document, list_documents, put_document, ManagerDocument};
 pub use matrix_setup::{
     MatrixConversationRouteRecord, MatrixEventEvidenceRecord, MatrixHomeserverBindingRecord,

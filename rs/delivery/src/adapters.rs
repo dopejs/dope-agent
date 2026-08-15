@@ -14,17 +14,16 @@
 //! error message is what the manager stores as the attempt/outcome failure reason, so the
 //! String is the faithful carrier.
 //!
-//! ## Channel-specific adapters (deferred)
+//! ## Channel-connector adapter
 //!
-//! The wave-7 channel adapters — ConnectorAdapter (connector reply senders, connector
-//! message/boundary persistence) and the matrix/telegram/slack hosted-setup delivery-eligibility
-//! gating in connector_adapter.go — depend on the channel store domains (connector messages,
-//! delivery boundaries, hosted setups, channel enablement state) that have not been ported to
-//! the Rust store crate yet. Their bodies are DEFERRED. The manager treats a connector-route
-//! target as having no registered adapter (see adapter_unavailable failures) until those
-//! adapters land. The store interactions those adapters relied on are represented by
-//! [ChannelDeliveryHooks] below, whose default implementations are no-ops pending the
-//! channels port.
+//! The wave-7 channel-connector adapter (connector reply senders, connector message/boundary
+//! persistence, and the matrix/telegram/slack hosted-setup delivery-eligibility gating from
+//! connector_adapter.go) is ported in [`crate::connector_adapter`]. The manager treats a
+//! connector-route target as having no registered adapter (see adapter_unavailable failures)
+//! until that adapter is registered with the manager. The channel-management store hooks
+//! (enablement state, background-delivery evidence, thread projections) are still represented
+//! by [ChannelDeliveryHooks] below, whose default implementations are no-ops pending the
+//! remaining channel store domains.
 
 use crate::{DeliveryOutcome, DeliveryTarget, SendResult, TargetKind};
 

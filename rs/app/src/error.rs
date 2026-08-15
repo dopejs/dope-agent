@@ -18,8 +18,12 @@ pub enum AppError {
     Bind { addr: String, source: io::Error },
     #[error("serve http: {0}")]
     Serve(io::Error),
+    #[error("connector runtime: {0}")]
+    ConnectorRuntime(String),
     #[error("connector runtime start: {0}")]
     ConnectorStart(String),
+    #[error("restore persisted state: {0}")]
+    Restore(String),
     #[error("scheduler start: {0}")]
     SchedulerStart(String),
     #[error("reminders start: {0}")]

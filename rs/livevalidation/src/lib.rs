@@ -104,6 +104,7 @@ pub use executor::SideEffectExecutionInput;
 pub use fake_outcome::FakeOutcomeResult;
 pub use fake_outcome::fake_outcome_result_for;
 pub use idempotency::correlation_key;
+pub use ledger::LedgerOutcome;
 pub use ledger::is_terminal_ledger_outcome;
 pub use ledger::known_ledger_outcome;
 pub use ledger::validate_ledger_transition;
