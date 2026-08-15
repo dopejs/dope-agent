@@ -1,4 +1,4 @@
-GO_DAEMON_DIR := ./daemon
+RS_DIR := ./rs
 
 .PHONY: daemon-run daemon-run-test daemon-run-test-live daemon-run-prod daemon-test-status daemon-prod-status daemon-build daemon-test daemon-contract-test
 
@@ -20,15 +20,13 @@ daemon-prod-status:
 	./scripts/check-daemon-health.sh http://127.0.0.1:19191/healthz
 
 daemon-build:
-	cd $(GO_DAEMON_DIR) && go build ./cmd/dope
+	cd $(RS_DIR) && cargo build --release -p dope-cli
 
 daemon-test:
-	cd $(GO_DAEMON_DIR) && go test ./...
+	cd $(RS_DIR) && cargo test --workspace
 
 daemon-contract-test:
-	cd $(GO_DAEMON_DIR) && go test ./internal/contracts/...
-
-RS_DIR := ./rs
+	cd $(RS_DIR) && cargo test -p dope-contracts
 
 .PHONY: rs-build rs-test rs-clippy
 

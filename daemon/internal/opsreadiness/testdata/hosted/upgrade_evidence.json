@@ -1,9 +1,0 @@
-{
-  "preflight": {"upgradeEvidenceId": "upgrade_preflight_1", "phase": "preflight", "requiredBackupState": "pass", "daemonHealth": "pass"},
-  "postflight": {"upgradeEvidenceId": "upgrade_postflight_1", "phase": "postflight", "daemonHealth": "pass", "operationalDiagnostics": "pass"},
-  "failures": [
-    {"name": "backup_failed", "phase": "preflight", "requiredBackupState": "fail"},
-    {"name": "diagnostics_failed", "phase": "postflight", "operationalDiagnostics": "fail"}
-  ]
-}
-

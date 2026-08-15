@@ -1,8 +1,10 @@
 # Repository Guidelines
 
+> **MIGRATION COMPLETE (2026-08):** the Go `daemon/` control plane has been fully replaced by the Rust workspace (`rs/`) and deleted. The daemon binary is now `dope-cli` (`rs/cli`), wired by `dope-app` (`rs/app`), with the HTTP API in `dope-api`. `make daemon-build` / `daemon-test` / `daemon-contract-test` now map to `cargo` equivalents. Any remaining `daemon/`-related text below is historical.
+
 ## Project Structure & Module Organization
 
-`daemon/` contains the Go control plane, runtime, providers, channels, and harness code. `web/` and `tui/` are the client surfaces. `sdk/ts/` holds the TypeScript client SDK used by both. `rs/` is the Rust rewrite workspace (`protocol` wire types, `model-provider` provider clients, `core` agent turn loop, `cli` entry). `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providers/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
+The Rust workspace `rs/` is the daemon control plane (runtime, providers, channels, store, API, and harness). `web/` and `tui/` are the client surfaces. `sdk/ts/` holds the TypeScript client SDK used by both. `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providers/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
 
 ## Build, Test, and Development Commands
 

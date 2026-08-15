@@ -1,9 +1,0 @@
-{
-  "sourceKind": "computer_use",
-  "terminalStatus": "completed",
-  "runtime": "computer-use workflow replay reaches completed evidence",
-  "policy": "browser action policy evidence remains allowed",
-  "integration": "no external integration required for computer-use fixture",
-  "delivery": "computer-use fixture does not require live delivery",
-  "evidence": "computer-use action and artifact evidence is complete"
-}

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-DAEMON_DIR="${ROOT_DIR}/daemon"
+RS_DIR="${ROOT_DIR}/rs"
 ENV_NAME="${1:-test}"
 
 case "${ENV_NAME}" in
@@ -20,5 +20,5 @@ case "${ENV_NAME}" in
     ;;
 esac
 
-cd "${DAEMON_DIR}"
-exec go run ./cmd/dope
+cargo build --release -p dope-cli --manifest-path "${RS_DIR}/Cargo.toml"
+exec "${RS_DIR}/target/release/dope-cli"

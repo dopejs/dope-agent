@@ -1,7 +1,0 @@
-{
-  "error": "channel management audit store is not configured",
-  "connectorId": "slack-main",
-  "mutation": "disable",
-  "stateChanged": false,
-  "redactionStatus": "redacted"
-}
