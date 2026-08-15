@@ -56,6 +56,9 @@ dope-evaluation = { workspace = true }
 dope-livevalidation = { workspace = true }
 dope-audit = { workspace = true }
 
+# Async bridging for sync seams (MCP SecretResolver).
+futures = { workspace = true }
+
 # HTTP / runtime / serialization.
 axum = { workspace = true }
 tokio = { workspace = true }

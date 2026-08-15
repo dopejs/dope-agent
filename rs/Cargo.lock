@@ -445,6 +445,7 @@ dependencies = [
  "dope-telemetry",
  "dope-triage",
  "dope-webhook",
+ "futures",
  "parking_lot",
  "serde",
  "serde_json",

@@ -511,3 +511,116 @@ impl dope_api::state::MigrationStatus for NoMigrationInProgress {
         Vec::new()
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// MCP secret resolver (Go mcp.SetSecretManager with the tenant secret
+// manager): dope-mcp's SecretResolver seam is synchronous, while
+// dope-secrets::Manager::resolve is async (its store/backend futures are
+// plain sync work wrapped in BoxFuture), so the bridge blocks on a resolved
+// default personal tenant. Mirrors App::resolve_connector_secret's
+// tenant resolution.
+// ---------------------------------------------------------------------------
+
+pub struct McpSecretResolver {
+    store: Arc<parking_lot::Mutex<SQLiteStore>>,
+    secrets: Arc<dope_secrets::Manager>,
+}
+
+impl McpSecretResolver {
+    #[must_use]
+    pub fn new(
+        store: Arc<parking_lot::Mutex<SQLiteStore>>,
+        secrets: Arc<dope_secrets::Manager>,
+    ) -> Self {
+        Self { store, secrets }
+    }
+}
+
+impl dope_mcp::SecretResolver for McpSecretResolver {
+    fn resolve(&self, secret_ref: &str) -> Result<Option<String>, String> {
+        let tenant_id = self
+            .store
+            .lock()
+            .resolve_default_personal_tenant_id()
+            .map_err(|err| format!("resolve default tenant for mcp secret: {err}"))?;
+        if tenant_id.trim().is_empty() {
+            return Ok(None);
+        }
+        let resolved = futures::executor::block_on(self.secrets.resolve(dope_secrets::ResolveInput {
+            tenant_id,
+            secret_ref: secret_ref.trim().to_string(),
+        }))
+        .map_err(|err| format!("resolve mcp secret {secret_ref}: {err}"))?;
+        Ok(Some(resolved.value))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MCP attached-execution starter (Go attachedExecutionStarter): spawns the
+// MCP server command through the dope-sandbox execution plane, which returns
+// live stdin/stdout pipes plus a runner thread (stderr is drained into the
+// sandbox capture buffer, so the stdio transport gets no stderr pipe — it
+// tolerates that by skipping its own drain thread). The remaining trait
+// methods forward to the sandbox manager.
+// ---------------------------------------------------------------------------
+
+pub struct McpExecutionStarter {
+    sandbox: Arc<dope_sandbox::Manager>,
+}
+
+impl McpExecutionStarter {
+    #[must_use]
+    pub fn new(sandbox: Arc<dope_sandbox::Manager>) -> Self {
+        Self { sandbox }
+    }
+}
+
+impl dope_mcp::AttachedExecutionStarter for McpExecutionStarter {
+    fn start_attached_execution(
+        &self,
+        request: &dope_sandbox::ExecutionRequest,
+    ) -> Result<(dope_sandbox::Execution, Option<dope_mcp::AttachedExecution>), String> {
+        let (execution, attached) = self
+            .sandbox
+            .start_attached_execution(request.clone())
+            .map_err(|err| err.to_string())?;
+        let attached = attached.map(|attached| dope_mcp::AttachedExecution {
+            execution: attached.execution,
+            stdin: attached
+                .stdin
+                .map(|stdin| Box::new(stdin) as Box<dyn std::io::Write + Send>),
+            stdout: attached
+                .stdout
+                .map(|stdout| Box::new(stdout) as Box<dyn std::io::Read + Send>),
+            stderr: None,
+        });
+        Ok((execution, attached))
+    }
+
+    fn cancel_execution(
+        &self,
+        execution_id: &str,
+    ) -> Result<(dope_sandbox::Execution, bool), String> {
+        self.sandbox
+            .cancel_execution(execution_id)
+            .map_err(|err| err.to_string())
+    }
+
+    fn get_execution(&self, execution_id: &str) -> Option<dope_sandbox::Execution> {
+        self.sandbox.get_execution(execution_id)
+    }
+
+    fn persist_consumer_view(
+        &self,
+        view: &dope_sandbox::ConsumerContractView,
+    ) -> Result<(), String> {
+        self.sandbox
+            .persist_consumer_view(view)
+            .map_err(|err| err.to_string())
+    }
+
+    fn get_profile(&self, profile_id: &str) -> Option<dope_sandbox::Profile> {
+        self.sandbox.get_profile(profile_id)
+    }
+}

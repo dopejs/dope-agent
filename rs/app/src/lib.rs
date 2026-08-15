@@ -7,7 +7,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use dope_activation::{Dependencies as ActivationDependencies, Service as ActivationService};
+use dope_activation::{
+    BillingProjectorAdapter as ActivationBillingProjectorAdapter,
+    ChatRunnerAdapter as ActivationChatRunnerAdapter, Service as ActivationService,
+    SqliteActivationStore,
+};
 use dope_api::AppState;
 use dope_audit::Emitter as AuditEmitter;
 use dope_billing::Manager as BillingManager;
@@ -15,7 +19,9 @@ use dope_calendar::Manager as CalendarManager;
 use dope_capabilities::Supervisor as CapabilitiesSupervisor;
 use dope_chat::{ChatStore, Service as ChatService};
 use dope_checkpoints::Manager as CheckpointsManager;
-use dope_computeruse::{Dependencies as ComputerUseDependencies, Manager as ComputerUseManager};
+use dope_computeruse::{
+    Dependencies as ComputerUseDependencies, Manager as ComputerUseManager, SqliteArtifactRecorder,
+};
 use dope_config::{Config, Environment};
 use dope_connectors::Supervisor as ConnectorsSupervisor;
 use dope_discord::{GatewayTransport as DiscordGatewayTransport, new_runtime as new_discord_runtime};
@@ -32,10 +38,11 @@ use dope_telegram::{
     BotApiTransport as TelegramBotApiTransport, BotApiTransportConfig as TelegramBotApiTransportConfig,
     Runtime as TelegramRuntime,
 };
-use dope_delivery::{Manager as DeliveryManager, TestSinkAdapter};
+use dope_delivery::{ConnectorAdapter, Manager as DeliveryManager, TestSinkAdapter};
 use dope_evaluation::{Dependencies as EvaluationDependencies, Manager as EvaluationManager};
 use dope_events::Bus;
-use dope_execprofile::Manager as ExecProfileManager;
+use dope_evidence::{Manager as EvidenceManager, RoutineCollector};
+use dope_execprofile::{Manager as ExecProfileManager, SandboxHealthChecker};
 use dope_identity::auth::Manager as AuthManager;
 use dope_identity::{Manager as IdentityManager, Store as IdentityStore};
 use dope_integrations::Manager as IntegrationsManager;
@@ -96,6 +103,29 @@ pub struct App {
     /// App::close. None until serve runs (or when all connectors are disabled).
     connector_runtimes: parking_lot::Mutex<Option<ConnectorRuntimes>>,
     closed: AtomicBool,
+    /// Test-only visibility into the seam adapters wired in App::new (wave 8
+    /// parity): each manager keeps its hooks behind private fields, so the
+    /// wiring tests assert through these captured clones instead.
+    #[cfg(test)]
+    wiring: AppWiring,
+}
+
+/// The seam adapters wired into the managers in App::new, captured for the
+/// wiring tests. Every field is Some when the corresponding wave-8 adapter is
+/// wired (activation store/billing/chat, computeruse artifact recorder,
+/// execprofile sandbox health checker, evidence routine collector, delivery
+/// connector adapter, mcp execution starter + secret resolver).
+#[cfg(test)]
+pub struct AppWiring {
+    pub activation_store: Option<Arc<dope_activation::SqliteActivationStore>>,
+    pub activation_billing: Option<Arc<dope_activation::BillingProjectorAdapter>>,
+    pub activation_chat: Option<Arc<dope_activation::ChatRunnerAdapter>>,
+    pub computeruse_recorder: Option<Arc<dope_computeruse::SqliteArtifactRecorder>>,
+    pub execprofile_health: Option<Arc<dope_execprofile::SandboxHealthChecker>>,
+    pub evidence_collector: Option<Arc<dope_evidence::RoutineCollector>>,
+    pub delivery_connector: Option<Arc<dope_delivery::ConnectorAdapter>>,
+    pub mcp_starter: Option<Arc<adapters::McpExecutionStarter>>,
+    pub mcp_secret_resolver: Option<Arc<adapters::McpSecretResolver>>,
 }
 
 /// The four channel-connector runtimes (Go app.App fields discordRuntime,
@@ -210,16 +240,18 @@ impl App {
             secret_store.clone(),
             secret_backend.clone(),
         ));
+        let mcp_starter = Arc::new(adapters::McpExecutionStarter::new(sandboxes.clone()));
+        let mcp_secret_resolver =
+            Arc::new(adapters::McpSecretResolver::new(store.clone(), secret_manager.clone()));
         let mcp = Arc::new(McpManager::new(
             cfg.clone(),
             Some(secondary.clone()),
             Some((*event_bus).clone()),
-            None, // TODO(app wiring): AttachedExecutionStarter (sandbox execution plane)
+            Some(mcp_starter.clone()),
             Some(PolicyEngine::new()),
             None, // TODO(app wiring): concrete MCP transports are deferred
         ));
-        // TODO(app wiring): mcp.set_secret_manager needs a dope_secrets::Manager
-        // -> mcp::SecretResolver adapter; falls back to mcp-secrets.json.
+        mcp.set_secret_manager(mcp_secret_resolver.clone());
 
         // --- domain managers ---
         let integrations = Arc::new(IntegrationsManager::new(env_scope));
@@ -246,19 +278,29 @@ impl App {
         ));
         let billing = Arc::new(BillingManager::new(billing_repo));
 
-        // --- activation (store/billing/chat seams not yet implemented in
-        // dope-store; the service fails closed per call) ---
-        // TODO(app wiring): activation StateStore/IdentityRepository/
-        // BillingProjector/ChatRunner/AuditSink impls are missing.
-        let activation = Arc::new(ActivationService::new(ActivationDependencies {
-            environment_scope: env_scope.to_string(),
+        // --- activation (SQLite store + billing/chat adapters, wave 8 parity) ---
+        let activation_store = Arc::new(
+            SqliteActivationStore::new(SQLiteStore::new(&data_dir).map_err(AppError::Store)?)
+                .map_err(AppError::Store)?,
+        );
+        let activation_billing = Arc::new(ActivationBillingProjectorAdapter::new(billing.clone()));
+        let activation_chat = Arc::new(ActivationChatRunnerAdapter::new(Some(chat.clone())));
+        let activation = Arc::new(ActivationService::with_sqlite(
+            activation_store.clone(),
+            Some(activation_billing.clone()),
+            Some(activation_chat.clone()),
+            env_scope,
             hosted,
-            ..ActivationDependencies::default()
-        }));
+        ));
 
         // --- computer use (store-backed handle) ---
         let computeruse_store = Arc::new(ComputerUseStoreHandle::new(
             SQLiteStore::new(&data_dir).map_err(AppError::Store)?,
+        ));
+        let computeruse_recorder = Arc::new(SqliteArtifactRecorder::new(
+            computeruse_store.clone() as Arc<dyn dope_computeruse::Store>,
+            &data_dir,
+            env_scope,
         ));
         let computer_use = Arc::new(ComputerUseManager::new(ComputerUseDependencies {
             environment_scope: env_scope.to_string(),
@@ -266,17 +308,16 @@ impl App {
             policy: Some(policy_engine.clone()),
             store: computeruse_store,
             driver: None,
-            // TODO(app wiring): ArtifactRecorder over dope-artifacts not yet ported
-            artifacts: None,
+            artifacts: Some(computeruse_recorder.clone()),
         }));
 
-        // --- delivery (test sink adapter; connector adapter is deferred to
-        // the wave-7 channels port) ---
+        // --- delivery (test sink + channel-connector adapters) ---
+        let delivery_connector = Arc::new(ConnectorAdapter::new(store.clone()));
         let delivery = Arc::new(DeliveryManager::new(
             env_scope,
             (*event_bus).clone(),
             store.clone(),
-            vec![Arc::new(TestSinkAdapter::new())],
+            vec![Arc::new(TestSinkAdapter::new()), delivery_connector.clone()],
         ));
 
         // --- workflow launcher shared by scheduler/reminders/webhooks ---
@@ -326,17 +367,28 @@ impl App {
         webhook_manager.with_store(store.clone());
         let webhooks = Arc::new(webhook_manager);
 
-        // --- catalog / exec profiles / evidence (default hooks; the Go
-        // sandbox-health / evidence-collector projections are deferred) ---
-        // TODO(app wiring): execprofile HealthChecker + evidence Collector
-        // adapters are not ported; default all-pass hooks apply.
+        // --- catalog / exec profiles / evidence (sandbox-health + routine
+        // collectors wired, wave 8 parity) ---
         let mut catalog_manager = dope_catalog::Manager::new(env_scope, None, None);
         catalog_manager.with_store(store.clone());
         let catalog = Arc::new(catalog_manager);
-        let mut exec_profile_manager = ExecProfileManager::new(env_scope, None, None, None);
+        #[cfg(test)]
+        let execprofile_health = Arc::new(SandboxHealthChecker::new(Some(sandboxes.clone())));
+        let mut exec_profile_manager = ExecProfileManager::new(
+            env_scope,
+            Some(Box::new(SandboxHealthChecker::new(Some(sandboxes.clone())))),
+            None,
+            None,
+        );
         exec_profile_manager.with_store(store.clone());
         let exec_profiles = Arc::new(exec_profile_manager);
-        let mut evidence_manager = dope_evidence::Manager::new(env_scope, None, None);
+        #[cfg(test)]
+        let evidence_collector = Arc::new(RoutineCollector::new(Some(routines.clone())));
+        let mut evidence_manager = EvidenceManager::new(
+            env_scope,
+            Some(Box::new(RoutineCollector::new(Some(routines.clone())))),
+            None,
+        );
         evidence_manager.with_store(store.clone());
         let evidence = Arc::new(evidence_manager);
 
@@ -436,6 +488,18 @@ impl App {
             connector_store,
             connector_runtimes: parking_lot::Mutex::new(None),
             closed: AtomicBool::new(false),
+            #[cfg(test)]
+            wiring: AppWiring {
+                activation_store: Some(activation_store),
+                activation_billing: Some(activation_billing),
+                activation_chat: Some(activation_chat),
+                computeruse_recorder: Some(computeruse_recorder),
+                execprofile_health: Some(execprofile_health),
+                evidence_collector: Some(evidence_collector),
+                delivery_connector: Some(delivery_connector),
+                mcp_starter: Some(mcp_starter),
+                mcp_secret_resolver: Some(mcp_secret_resolver),
+            },
         })
     }
 
@@ -1072,6 +1136,30 @@ mod tests {
         // holds whatever bootstrap wrote) and recover again.
         let app3 = App::new(enabled).expect("rebuild app on existing store");
         app3.close();
+    }
+
+    /// Wave 8 parity: every seam adapter is wired into its manager (activation
+    /// store/billing/chat, computeruse artifact recorder, execprofile sandbox
+    /// health checker, evidence routine collector, delivery connector adapter,
+    /// mcp execution starter + secret resolver).
+    #[test]
+    fn wired_seam_adapters_are_non_none() {
+        let config = test_config();
+        let app = App::new(config).expect("build app");
+        let wiring = &app.wiring;
+        assert!(
+            wiring.activation_store.is_some(),
+            "activation StateStore/IdentityRepository/AuditSink (SqliteActivationStore)"
+        );
+        assert!(wiring.activation_billing.is_some(), "activation BillingProjector");
+        assert!(wiring.activation_chat.is_some(), "activation ChatRunner");
+        assert!(wiring.computeruse_recorder.is_some(), "computeruse ArtifactRecorder");
+        assert!(wiring.execprofile_health.is_some(), "execprofile HealthChecker");
+        assert!(wiring.evidence_collector.is_some(), "evidence Collector");
+        assert!(wiring.delivery_connector.is_some(), "delivery ConnectorAdapter");
+        assert!(wiring.mcp_starter.is_some(), "mcp AttachedExecutionStarter");
+        assert!(wiring.mcp_secret_resolver.is_some(), "mcp SecretResolver");
+        app.close();
     }
 
 }
