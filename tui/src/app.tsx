@@ -28,12 +28,14 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [busy, setBusy] = useState(false);
+  const [scrollOffset, setScrollOffset] = useState(0);
 
   const rows = stdout.rows ?? 24;
 
   function push(role: Role, content: string, done = true): number {
     const id = idRef.current++;
     setMessages((m) => [...m, { id, role, content, done }]);
+    setScrollOffset(0);
     return id;
   }
 
@@ -102,6 +104,9 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
       else { setInput(""); }
       return;
     }
+    if (key.pageUp) { setScrollOffset((o) => o + 10); return; }
+    if (key.pageDown) { setScrollOffset((o) => Math.max(0, o - 10)); return; }
+    if (key.ctrl && inputChar === "l") { setMessages((m) => [m[0]]); setScrollOffset(0); return; }
     if (key.upArrow) {
       if (history.length === 0) return;
       const next = historyIndex < 0 ? history.length - 1 : Math.max(0, historyIndex - 1);
@@ -130,8 +135,8 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
 
   const headerRows = 4;
   const visibleCount = Math.max(5, rows - headerRows);
-  const visible = messages.slice(-visibleCount);
-  const status = "provider=" + (context.provider ?? "default") + " model=" + (context.model ?? "default") + " thread=" + (context.threadId ?? "new");
+  const visible = scrollOffset === 0 ? messages.slice(-visibleCount) : messages.slice(-(visibleCount + scrollOffset), -scrollOffset);
+  const status = "provider=" + (context.provider ?? "default") + " model=" + (context.model ?? "default") + " thread=" + (context.threadId ?? "new") + (scrollOffset > 0 ? "  [scrolled, PageUp/PageDown to navigate]" : "");
 
   return (
     <Box flexDirection="column" height={rows}>
