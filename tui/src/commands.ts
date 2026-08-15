@@ -8,12 +8,16 @@ export type ChatContext = {
   threadId?: string;
 };
 
+export type PickerItem = { value: string; label: string };
+
 export type CommandDeps = {
   client: DopeClient;
   push: (role: Role, content: string) => void;
   getContext: () => ChatContext;
   setContext: (patch: Partial<ChatContext>) => void;
   exit: () => void;
+  /** Open an interactive single-column picker; onSelect runs when the user confirms. */
+  openPicker: (title: string, items: PickerItem[], onSelect: (value: string) => void) => void;
 };
 
 export type Command = {
@@ -60,11 +64,14 @@ export const COMMANDS: Record<string, Command> = {
     },
   },
   "/threads": {
-    help: "List threads",
+    help: "List threads (interactive picker)",
     run: async (_args, deps) => {
       try {
         const list = await deps.client.listThreads();
-        deps.push("system", "Threads (" + list.items.length + "):\n" + list.items.map((t) => "  " + t.threadId + "  " + t.lifecycleState + "  " + t.sourceKind + "  " + (t.sourceSummary ?? "")).join("\n") + "\nUse /thread <id> to continue one.");
+        if (list.items.length === 0) { deps.push("system", "No threads."); return; }
+        deps.openPicker("Select a thread (\u2191\u2193 move, Enter select, Esc cancel)",
+          list.items.map((t) => ({ value: t.threadId, label: t.threadId + "  " + t.lifecycleState + "  " + t.sourceKind + "  " + (t.sourceSummary ?? "") })),
+          (id) => { deps.setContext({ threadId: id }); deps.push("system", "thread = " + id); });
       } catch (e) { err(deps, e); }
     },
   },

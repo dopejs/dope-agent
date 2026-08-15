@@ -13,6 +13,13 @@ export type AppOptions = {
 
 type Message = { id: number; role: Role; content: string; done: boolean };
 
+type PickerState = {
+  title: string;
+  items: { value: string; label: string }[];
+  index: number;
+  onSelect: (value: string) => void;
+};
+
 function App({ daemonURL, accessToken, provider, model }: AppOptions) {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -29,6 +36,7 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [busy, setBusy] = useState(false);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [picker, setPicker] = useState<PickerState | null>(null);
 
   const rows = stdout.rows ?? 24;
 
@@ -41,6 +49,10 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
 
   function patch(id: number, content: string, done = false) {
     setMessages((m) => m.map((msg) => (msg.id === id ? { ...msg, content, done } : msg)));
+  }
+
+  function openPicker(title: string, items: { value: string; label: string }[], onSelect: (value: string) => void) {
+    setPicker({ title, items, index: 0, onSelect });
   }
 
   async function slash(text: string) {
@@ -57,6 +69,7 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
       getContext: () => context,
       setContext: (patch) => setContext((c) => ({ ...c, ...patch })),
       exit,
+      openPicker,
     };
     await command.run(args, deps);
   }
@@ -98,6 +111,14 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
   }
 
   useInput((inputChar, key) => {
+    if (picker) {
+      if (key.ctrl && inputChar === "c") { exit(); return; }
+      if (key.escape) { setPicker(null); return; }
+      if (key.upArrow) { setPicker((p) => (p ? { ...p, index: Math.max(0, p.index - 1) } : p)); return; }
+      if (key.downArrow) { setPicker((p) => (p ? { ...p, index: Math.min(p.items.length - 1, p.index + 1) } : p)); return; }
+      if (key.return) { const p = picker; setPicker(null); p.onSelect(p.items[p.index].value); return; }
+      return;
+    }
     if (key.ctrl && inputChar === "c") { exit(); return; }
     if (key.escape) {
       if (busy) { cancelledRef.current = true; setBusy(false); }
@@ -137,6 +158,20 @@ function App({ daemonURL, accessToken, provider, model }: AppOptions) {
   const visibleCount = Math.max(5, rows - headerRows);
   const visible = scrollOffset === 0 ? messages.slice(-visibleCount) : messages.slice(-(visibleCount + scrollOffset), -scrollOffset);
   const status = "provider=" + (context.provider ?? "default") + " model=" + (context.model ?? "default") + " thread=" + (context.threadId ?? "new") + (scrollOffset > 0 ? "  [scrolled, PageUp/PageDown to navigate]" : "");
+
+  if (picker) {
+    return (
+      <Box flexDirection="column" height={rows} paddingX={1}>
+        <Text bold>{picker.title}</Text>
+        <Box flexDirection="column" marginY={1}>
+          {picker.items.map((item, i) => (
+            <Text key={i} inverse={i === picker.index}>{i === picker.index ? "\u276f " : "  "}{item.label}</Text>
+          ))}
+        </Box>
+        <Text dimColor>Enter select · Esc cancel</Text>
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column" height={rows}>
