@@ -16,6 +16,8 @@ The Rust workspace `rs/` is the daemon control plane (runtime, providers, channe
 - `pnpm test:clients`: run SDK, web, and TUI client tests.
 - `pnpm build`: build client packages.
 
+**Disk hygiene (important):** the Rust `rs/target/` directory accumulates very large debug artifacts (~76 GB after a full build+test session) and can fill the disk. **After finishing any test/build session, run `cargo clean` from `rs/` (or `rm -rf rs/target`) to release that space.** Never leave a stale `rs/target/` behind across a long-running task.
+
 ## Coding Style & Naming Conventions
 
 Use existing repository conventions before introducing new abstractions. Go code must be `gofmt`-clean and organized by package boundary, not by feature dumping. TypeScript code should follow the existing Vite/React structure and keep contracts explicit. Prefer clear, production-readable names such as `provider_manager.go`, `chat-service.ts`, and `discord-channel-loop.md`. Keep changes small and reversible.
