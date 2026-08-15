@@ -1,4 +1,4 @@
-RS_DIR := ./rs
+RS_DIR := ./crates
 
 .PHONY: daemon-run daemon-run-test daemon-run-test-live daemon-run-prod daemon-test-status daemon-prod-status daemon-build daemon-test daemon-contract-test
 

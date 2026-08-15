@@ -77,6 +77,6 @@ Execution follows numbered roadmaps in `docs/runtime/daemon-roadmaps.md`. A road
 
 - Product scope: `docs/product/product-outline.md`
 - Roadmaps & tasks: `docs/runtime/daemon-roadmaps.md`, `docs/runtime/daemon-tasks.md`
-- Provider architecture: `docs/providers/provider-architecture.md`
+- Provider architecture: `docs/providecrates/provider-architecture.md`
 - Sandbox design: `docs/harness/sandbox-execution-plane.md`
 - Test workflow: `docs/dev/test-environment-workflow.md`

@@ -1,0 +1,107 @@
+[workspace]
+resolver = "2"
+members = ["foundation/protocol", "engine/model-provider", "engine/core", "surface/cli", "foundation/config", "iam/identity", "channels/im", "foundation/telemetry", "domains/billing", "foundation/bindings", "engine/llm", "engine/profiles", "engine/threads", "engine/router", "iam/secrets", "foundation/contracts", "domains/activation", "surface/api", "domains/capabilities", "domains/inventory", "domains/setupwizard", "channels/imtypes", "domains/livevalidation", "modeling/providers", "modeling/adapterrpc", "modeling/adapterprovider", "modeling/adapterref", "domains/integrations", "domains/policy", "domains/calendar", "domains/mail", "engine/runtime", "channels/feishulark", "modeling/opsreadiness", "domains/computeruse", "domains/artifacts", "domains/sandbox", "domains/delivery", "persistence/store", "engine/checkpoints", "engine/events", "channels/connectors", "channels/discord", "channels/matrix", "channels/slack", "channels/telegram", "domains/evaluation", "domains/audit", "domains/orchestration", "domains/skills", "domains/catalog", "domains/evidence", "domains/execprofile", "domains/triage", "domains/routine", "domains/reminders", "domains/webhook", "domains/scheduler", "iam/tenancy", "persistence/migrationfixture", "domains/mcp", "domains/chat", "modeling/managedproviders", "surface/app"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+rust-version = "1.85"
+
+[workspace.dependencies]
+dope-secrets = { path = "iam/secrets" }
+dope-contracts = { path = "foundation/contracts" }
+dope-activation = { path = "domains/activation" }
+dope-capabilities = { path = "domains/capabilities" }
+dope-inventory = { path = "domains/inventory" }
+dope-integrations = { path = "domains/integrations" }
+dope-policy = { path = "domains/policy" }
+dope-setupwizard = { path = "domains/setupwizard" }
+dope-im = { path = "channels/im" }
+dope-imtypes = { path = "channels/imtypes" }
+dope-livevalidation = { path = "domains/livevalidation" }
+dope-providers = { path = "modeling/providers" }
+dope-adapterrpc = { path = "modeling/adapterrpc" }
+dope-adapterprovider = { path = "modeling/adapterprovider" }
+dope-adapterref = { path = "modeling/adapterref" }
+dope-api = { path = "surface/api" }
+dope-config = { path = "foundation/config" }
+dope-identity = { path = "iam/identity" }
+dope-telemetry = { path = "foundation/telemetry" }
+dope-billing = { path = "domains/billing" }
+dope-bindings = { path = "foundation/bindings" }
+dope-calendar = { path = "domains/calendar" }
+dope-mail = { path = "domains/mail" }
+dope-runtime = { path = "engine/runtime" }
+dope-feishulark = { path = "channels/feishulark" }
+dope-opsreadiness = { path = "modeling/opsreadiness" }
+dope-computeruse = { path = "domains/computeruse" }
+dope-artifacts = { path = "domains/artifacts" }
+dope-sandbox = { path = "domains/sandbox" }
+dope-delivery = { path = "domains/delivery" }
+dope-store = { path = "persistence/store" }
+dope-checkpoints = { path = "engine/checkpoints" }
+dope-events = { path = "engine/events" }
+dope-connectors = { path = "channels/connectors" }
+dope-discord = { path = "channels/discord" }
+dope-matrix = { path = "channels/matrix" }
+dope-slack = { path = "channels/slack" }
+dope-telegram = { path = "channels/telegram" }
+dope-evaluation = { path = "domains/evaluation" }
+dope-audit = { path = "domains/audit" }
+dope-orchestration = { path = "domains/orchestration" }
+dope-skills = { path = "domains/skills" }
+dope-catalog = { path = "domains/catalog" }
+dope-evidence = { path = "domains/evidence" }
+dope-execprofile = { path = "domains/execprofile" }
+dope-triage = { path = "domains/triage" }
+dope-routine = { path = "domains/routine" }
+dope-webhook = { path = "domains/webhook" }
+dope-scheduler = { path = "domains/scheduler" }
+dope-tenancy = { path = "iam/tenancy" }
+dope-migrationfixture = { path = "persistence/migrationfixture" }
+dope-mcp = { path = "domains/mcp" }
+dope-chat = { path = "domains/chat" }
+dope-managedproviders = { path = "modeling/managedproviders" }
+dope-llm = { path = "engine/llm" }
+dope-profiles = { path = "engine/profiles" }
+dope-reminders = { path = "domains/reminders" }
+dope-threads = { path = "engine/threads" }
+dope-router = { path = "engine/router" }
+dope-protocol = { path = "foundation/protocol" }
+dope-model-provider = { path = "engine/model-provider" }
+dope-core = { path = "engine/core" }
+dope-app = { path = "surface/app" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v7", "serde"] }
+thiserror = "2"
+futures = "0.3"
+parking_lot = "0.12"
+bytes = "1"
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+regex = "1"
+ureq = "2"
+url = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "rt", "signal", "time"] }
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+hyper = { version = "1", features = ["server", "http1"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+async-stream = "0.3"
+clap = { version = "4", features = ["derive", "env"] }
+
+# Disk-hygiene: debug symbols + incremental compilation are the dominant
+# source of `target/` bloat (a full dev/test build can reach ~76 GB).
+# Disable both for dev/test profiles so `target/` stays bounded. Release
+# already omits debug info by default.
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false

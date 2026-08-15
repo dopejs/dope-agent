@@ -4,8 +4,8 @@
 # or just use deploy/docker/docker-compose.yml.
 
 FROM rust:1.85-bookworm AS build
-WORKDIR /src/rs
-COPY rs/ ./
+WORKDIR /src/crates
+COPY crates/ ./
 ARG DOPE_VERSION=docker
 RUN cargo build --release -p dope-cli
 
@@ -14,7 +14,7 @@ FROM alpine:3.20
 RUN apk add --no-cache ca-certificates wget \
  && adduser -D -u 10001 dope \
  && mkdir -p /data && chown dope:dope /data
-COPY --from=build /src/rs/target/release/dope-cli /usr/local/bin/dope
+COPY --from=build /src/crates/target/release/dope-cli /usr/local/bin/dope
 
 ENV DOPE_ENV=prod \
     DOPE_DATA_DIR=/data \

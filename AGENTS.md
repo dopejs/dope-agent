@@ -1,10 +1,10 @@
 # Repository Guidelines
 
-> **MIGRATION COMPLETE (2026-08):** the Go `daemon/` control plane has been fully replaced by the Rust workspace (`rs/`) and deleted. The daemon binary is now `dope-cli` (`rs/cli`), wired by `dope-app` (`rs/app`), with the HTTP API in `dope-api`. `make daemon-build` / `daemon-test` / `daemon-contract-test` now map to `cargo` equivalents. Any remaining `daemon/`-related text below is historical.
+> **MIGRATION COMPLETE (2026-08):** the Go `daemon/` control plane has been fully replaced by the Rust workspace (`crates/`) and deleted. The daemon binary is now `dope-cli` (`crates/cli`), wired by `dope-app` (`crates/app`), with the HTTP API in `dope-api`. `make daemon-build` / `daemon-test` / `daemon-contract-test` now map to `cargo` equivalents. Any remaining `daemon/`-related text below is historical.
 
 ## Project Structure & Module Organization
 
-The Rust workspace `rs/` is the daemon control plane (runtime, providers, channels, store, API, and harness). `web/` and `tui/` are the client surfaces. `sdk/ts/` holds the TypeScript client SDK used by both. `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providers/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
+The Rust workspace `crates/` is the daemon control plane (runtime, providers, channels, store, API, and harness). `web/` and `tui/` are the client surfaces. `sdk/ts/` holds the TypeScript client SDK used by both. `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providecrates/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
 
 ## Build, Test, and Development Commands
 
@@ -16,7 +16,7 @@ The Rust workspace `rs/` is the daemon control plane (runtime, providers, channe
 - `pnpm test:clients`: run SDK, web, and TUI client tests.
 - `pnpm build`: build client packages.
 
-**Disk hygiene (important):** the Rust `rs/target/` directory accumulates very large debug artifacts (~76 GB after a full build+test session) and can fill the disk. **After finishing any test/build session, run `cargo clean` from `rs/` (or `rm -rf rs/target`) to release that space.** Never leave a stale `rs/target/` behind across a long-running task.
+**Disk hygiene (important):** the Rust `crates/target/` directory accumulates very large debug artifacts (~76 GB after a full build+test session) and can fill the disk. **After finishing any test/build session, run `cargo clean` from `crates/` (or `rm -rf crates/target`) to release that space.** Never leave a stale `crates/target/` behind across a long-running task.
 
 ## Coding Style & Naming Conventions
 

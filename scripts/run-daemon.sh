@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-RS_DIR="${ROOT_DIR}/rs"
+RS_DIR="${ROOT_DIR}/crates"
 ENV_NAME="${1:-test}"
 
 case "${ENV_NAME}" in
