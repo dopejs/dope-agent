@@ -1,4 +1,5 @@
 mod client;
+mod commands;
 mod render;
 
 use std::io;
@@ -41,7 +42,7 @@ struct Cli {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Role { User, Assistant, System, Error }
+pub(crate) enum Role { User, Assistant, System, Error }
 
 struct Message {
     role: Role,
@@ -65,6 +66,7 @@ struct App {
 enum StreamMsg {
     Delta(String),
     Done(Result<ChatQueryResponse, String>),
+    Command(commands::CommandResult),
 }
 
 impl App {
@@ -196,6 +198,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     }
+                    StreamMsg::Command(result) => {
+                        match result {
+                            commands::CommandResult::Push(role, content) => app.push(role, content, true),
+                            commands::CommandResult::SetModel(m) => app.model = m,
+                            commands::CommandResult::SetProvider(p) => app.provider = p,
+                            commands::CommandResult::SetThread(t) => app.thread_id = t,
+                            commands::CommandResult::Quit => break,
+                        }
+                    }
                 }
             }
         }
@@ -246,7 +257,13 @@ fn submit(app: &mut App, client: &Arc<Client>, stream_tx: &mpsc::Sender<StreamMs
     app.history_index = -1;
 
     if text.starts_with('/') {
-        app.push(Role::System, format!("(no command support yet) {text}"), true);
+        let (cmd, args) = text.split_once(' ').map(|(c, a)| (c.to_string(), a.trim().to_string())).unwrap_or((text.clone(), String::new()));
+        let client = client.clone();
+        let tx = stream_tx.clone();
+        tokio::spawn(async move {
+            let result = commands::run_command(&cmd, &args, &client).await;
+            let _ = tx.send(StreamMsg::Command(result)).await;
+        });
         return;
     }
 

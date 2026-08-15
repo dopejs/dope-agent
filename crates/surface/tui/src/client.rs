@@ -102,4 +102,25 @@ impl Client {
         }
         terminal.ok_or_else(|| "stream ended without a terminal event".to_string())
     }
+
+    /// GET an API path and return the JSON body.
+    pub async fn get_json(&self, path: &str) -> Result<serde_json::Value, String> {
+        let url = format!("{}{}", self.base_url, path);
+        let resp = self.auth(self.http.get(&url)).send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}: {}", resp.status(), resp.text().await.unwrap_or_default()));
+        }
+        resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+    }
+
+    /// POST a JSON body to an API path and return the JSON body.
+    #[allow(dead_code)]
+    pub async fn post_json(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+        let url = format!("{}{}", self.base_url, path);
+        let resp = self.auth(self.http.post(&url).json(&body)).send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}: {}", resp.status(), resp.text().await.unwrap_or_default()));
+        }
+        resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+    }
 }
