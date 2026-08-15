@@ -1,3 +1,4 @@
+#![allow(unused_doc_comments)]
 //! Port of `daemon/internal/routine` (Roadmap 66): the routine builder. Routines are explicit,
 //! user-defined proactive routines that compile to the existing schedule + workflow + delivery
 //! planes — no autonomous planning and no memory. Routine edits create new versions and never

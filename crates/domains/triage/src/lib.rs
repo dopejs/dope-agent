@@ -1,3 +1,4 @@
+#![allow(unused_doc_comments)]
 //! Port of `daemon/internal/triage` (Roadmap 65): the explicit-rule, memory-free inbox-triage
 //! manager. Triage classifies mail messages against operator-defined rules and proposes visible
 //! actions; every decision is transparent (matched rule + evidence) and a deterministic replay

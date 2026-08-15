@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_llm::{Message, MessageRole, Provider as _, ProviderRequest};
+use dope_llm::{Message, MessageRole, ProviderRequest};
 use dope_providers::{AuthMode, AuthState, Check, CheckErrorClass, CheckStatus, Family, Model, Preference};
 use dope_store::SQLiteStore;
 use parking_lot::Mutex;
@@ -387,6 +387,7 @@ impl Manager {
 /// The `dope-sandbox` manager attachment for the registry: a convenience
 /// passthrough so callers can construct `Registry::new(cfg, Some(manager))`
 /// with the concrete trait object.
+#[allow(dead_code)]
 pub type SandboxManagerRef = Arc<dyn SandboxManager>;
 
 /// Go `failedCheck`.

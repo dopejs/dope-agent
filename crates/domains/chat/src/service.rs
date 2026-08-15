@@ -12,7 +12,6 @@
 //! Streaming is a callback emitter (`stream`, the faithful Go shape) plus a
 //! thread + `std::sync::mpsc` variant (`stream_channel`).
 
-use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 

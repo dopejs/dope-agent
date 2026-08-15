@@ -629,7 +629,7 @@ impl Manager {
             return Err(McpError::RuntimeSurfaceRequired);
         }
 
-        let (server, tool, active, rule, resource) = {
+        let (server, _tool, active, rule, resource) = {
             let guard = self.inner.state.read();
             let server = guard
                 .servers
@@ -1561,7 +1561,7 @@ impl Manager {
         }
         state.updated_at = now;
 
-        let (resource, persisted_tools) = {
+        let (_resource, persisted_tools) = {
             let mut guard = self.inner.state.write();
             guard.states.insert(server_id.clone(), state.clone());
             guard.sessions.insert(

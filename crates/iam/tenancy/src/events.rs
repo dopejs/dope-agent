@@ -15,6 +15,7 @@ use crate::{require, TenancyError};
 /// Tenant-aware accessor for the events table.
 pub struct Events {
     store: crate::SQLiteStore,
+    #[allow(dead_code)]
     emitter: Option<dope_audit::Emitter>,
 }
 

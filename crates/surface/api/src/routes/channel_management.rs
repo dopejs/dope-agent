@@ -114,6 +114,7 @@ struct ChannelManagementActionRequest {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     reason_code: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[allow(dead_code)]
     note: String,
     #[serde(default)]
     action_kind: Option<ManagementActionKind>,

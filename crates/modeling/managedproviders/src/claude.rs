@@ -495,7 +495,7 @@ impl dope_llm::Provider for ClaudeCLIProvider {
     fn stream<'a>(
         &'a self,
         request: ProviderRequest,
-        mut emit: dope_llm::StreamEmitter<'a>,
+        emit: dope_llm::StreamEmitter<'a>,
     ) -> BoxFuture<'a, Result<ProviderResponse, ProviderError>> {
         let bridge = Arc::clone(&self.bridge);
         Box::pin(async move {

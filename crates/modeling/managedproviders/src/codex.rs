@@ -403,7 +403,7 @@ impl Bridge for CodexBridge {
         AuthMode::LocalCLIBridge
     }
 
-    fn detect(&self, cancel: &CancelToken) -> Result<(AuthState, Vec<Model>), Error> {
+    fn detect(&self, _cancel: &CancelToken) -> Result<(AuthState, Vec<Model>), Error> {
         let mut state = self.base_state();
         let now = Utc::now();
         state.last_checked_at = now;
@@ -656,7 +656,7 @@ impl dope_llm::Provider for CodexCLIProvider {
     fn stream<'a>(
         &'a self,
         request: ProviderRequest,
-        mut emit: dope_llm::StreamEmitter<'a>,
+        emit: dope_llm::StreamEmitter<'a>,
     ) -> BoxFuture<'a, Result<ProviderResponse, ProviderError>> {
         let bridge = Arc::clone(&self.bridge);
         Box::pin(async move {

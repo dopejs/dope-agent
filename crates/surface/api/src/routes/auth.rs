@@ -194,6 +194,7 @@ struct GrantUpdateRequest {
     #[serde(default)]
     allowed_tenant_ids: Vec<String>,
     #[serde(default)]
+    #[allow(dead_code)]
     reason: String,
 }
 

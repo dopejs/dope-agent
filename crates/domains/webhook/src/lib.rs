@@ -1,3 +1,4 @@
+#![allow(unused_doc_comments)]
 //! Port of `daemon/internal/webhook` (Roadmap 67): the webhook + external trigger plane.
 //! Tenant-scoped webhook endpoints safely trigger runs/workflows/routines with signature
 //! authentication, replay protection, bounded + redacted payloads, quota/permission gating, and

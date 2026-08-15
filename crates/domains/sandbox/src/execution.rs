@@ -425,7 +425,7 @@ pub fn execute_docker(
 
 /// Builds the subprocess result from a normal (non-cancelled) exit.
 fn finish_subprocess_result(
-    launch: &LaunchSpec,
+    _launch: &LaunchSpec,
     pid: u32,
     started_at: DateTime<Utc>,
     status: std::process::ExitStatus,

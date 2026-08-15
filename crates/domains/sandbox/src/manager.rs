@@ -712,7 +712,7 @@ impl Manager {
         if request_env.is_empty() {
             request_env = HashMap::new();
         }
-        let env = build_environment(&profile, &request_env);
+        let _env = build_environment(&profile, &request_env);
 
         let mut execution = Execution {
             execution_id: execution_id.clone(),

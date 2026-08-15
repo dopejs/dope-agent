@@ -1,3 +1,4 @@
+#![allow(unreachable_patterns)]
 //! Port of the Go `daemon/internal/mcp` package: the MCP server registry, runtime
 //! state, tool catalog, and tool-exposure-rule management (transport kind selection,
 //! lifecycle, catalog install/refresh/reinstall/uninstall/revalidate, tool
@@ -25,7 +26,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use chrono::SecondsFormat;
-use serde::{Deserialize, Serialize};
 
 pub mod catalog;
 pub mod manager;

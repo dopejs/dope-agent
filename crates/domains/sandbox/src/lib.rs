@@ -1,3 +1,4 @@
+#![allow(unreachable_patterns)]
 //! Port of daemon/internal/sandbox: the sandbox data model (profiles, policies,
 //! execution requests/decisions/results, and consumer declarations) plus the
 //! manager (profile/policy/execution lifecycle, persistence, and event
