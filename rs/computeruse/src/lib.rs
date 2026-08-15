@@ -6,7 +6,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 mod manager;
+mod sqlite_artifact_recorder;
 pub use manager::*;
+pub use sqlite_artifact_recorder::SqliteArtifactRecorder;
 
 macro_rules! string_enum {
     ($name:ident { $first:ident => $first_s:literal $(, $v:ident => $s:literal)* $(,)? }) => {

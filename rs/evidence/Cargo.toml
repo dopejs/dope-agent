@@ -5,6 +5,7 @@ version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+dope-routine.workspace = true
 dope-store.workspace = true
 serde.workspace = true
 serde_json.workspace = true

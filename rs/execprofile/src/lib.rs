@@ -459,3 +459,12 @@ fn new_id(prefix: &str) -> String {
     let hex = Uuid::new_v4().simple().to_string();
     format!("{prefix}_{}", &hex[..16])
 }
+
+
+// ---------------------------------------------------------------------------
+// Sandbox-backed HealthChecker (wave 8 parity)
+// ---------------------------------------------------------------------------
+
+mod sandbox_health;
+pub use sandbox_health::SandboxCapabilitySource;
+pub use sandbox_health::SandboxHealthChecker;

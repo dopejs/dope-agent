@@ -590,8 +590,11 @@ dependencies = [
  "chrono",
  "dope-policy",
  "dope-runtime",
+ "dope-store",
+ "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "url",
  "uuid",
 ]
@@ -735,6 +738,7 @@ name = "dope-evidence"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-routine",
  "dope-store",
  "parking_lot",
  "regex",
@@ -749,6 +753,10 @@ name = "dope-execprofile"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-config",
+ "dope-events",
+ "dope-policy",
+ "dope-sandbox",
  "dope-store",
  "parking_lot",
  "serde",

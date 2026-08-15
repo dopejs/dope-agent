@@ -5,8 +5,9 @@
 //! The [`Service`] orchestrates personal-tenant resolution, quota baseline
 //! projection, readiness reporting, and the activation test chat. Persistence
 //! and side effects live behind the [`StateStore`], [`IdentityRepository`],
-//! [`BillingProjector`], [`ChatRunner`], and [`AuditSink`] traits; the SQLite
-//! implementations land with `dope-store` in wave 5.
+//! [`BillingProjector`], [`ChatRunner`], and [`AuditSink`] traits; the
+//! SQLite-backed adapters (wave 8 parity) live in [`sqlite`];
+//! [`Service::with_sqlite`] wires them into the service.
 
 macro_rules! define_string_enum {
     ($(#[$meta:meta])* $name:ident { $( $const_name:ident => $value:literal ),+ $(,)? }) => {
@@ -75,6 +76,7 @@ mod diagnostics;
 mod error;
 mod readiness;
 mod service;
+mod sqlite;
 mod test_chat;
 mod types;
 
@@ -97,6 +99,9 @@ pub use service::IdentityRepository;
 pub use service::RunTestChatInput;
 pub use service::Service;
 pub use service::StateStore;
+pub use sqlite::BillingProjectorAdapter;
+pub use sqlite::ChatRunnerAdapter;
+pub use sqlite::SqliteActivationStore;
 pub use test_chat::ChatRunFailure;
 pub use test_chat::RunTestChatFailure;
 pub use test_chat::TestChatInput;

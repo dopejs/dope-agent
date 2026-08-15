@@ -6,11 +6,16 @@ rust-version.workspace = true
 
 [dependencies]
 dope-billing.workspace = true
+dope-chat.workspace = true
 dope-identity.workspace = true
+dope-llm.workspace = true
+dope-store.workspace = true
+rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
+parking_lot.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]

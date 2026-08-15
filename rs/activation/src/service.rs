@@ -121,6 +121,32 @@ pub struct Service {
 }
 
 impl Service {
+    /// Builds the service over the SQLite-backed activation seams (wave 8
+    /// parity): the store adapter supplies the [`StateStore`],
+    /// [`IdentityRepository`], and [`AuditSink`] dependencies, mirroring Go's
+    /// single `*SQLiteStore` satisfying all three interfaces. Billing and chat
+    /// remain injectable (see [`BillingProjectorAdapter`] /
+    /// [`ChatRunnerAdapter`]).
+    #[must_use]
+    pub fn with_sqlite(
+        store: Arc<crate::sqlite::SqliteActivationStore>,
+        billing: Option<Arc<dyn BillingProjector>>,
+        chat: Option<Arc<dyn ChatRunner>>,
+        environment_scope: &str,
+        hosted: bool,
+    ) -> Self {
+        Service::new(Dependencies {
+            state_store: Some(store.clone()),
+            identity: Some(store.clone()),
+            billing,
+            chat,
+            audit: Some(store),
+            now: None,
+            environment_scope: environment_scope.to_string(),
+            hosted,
+        })
+    }
+
     #[must_use]
     pub fn new(deps: Dependencies) -> Self {
         let now = deps.now.unwrap_or_else(|| Box::new(Utc::now));

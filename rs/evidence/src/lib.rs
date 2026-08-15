@@ -413,3 +413,11 @@ pub fn redact_sections(sections: Vec<Section>) -> (Vec<Section>, bool) {
     }
     (out, ok)
 }
+
+
+// ---------------------------------------------------------------------------
+// Routine-backed Collector (wave 8 parity)
+// ---------------------------------------------------------------------------
+
+mod routine_collector;
+pub use routine_collector::RoutineCollector;
