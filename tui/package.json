@@ -11,11 +11,15 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@dope/client": "workspace:*"
+    "@dope/client": "workspace:*",
+    "ink": "^7.1.1",
+    "marked": "^15.0.0",
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "@types/react": "^19.0.0"
   }
 }
