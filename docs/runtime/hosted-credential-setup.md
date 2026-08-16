@@ -59,7 +59,7 @@ authorized support inspection.
 
 Use the test daemon only. Required checks:
 
-- `go test ./internal/setupwizard ./internal/api ./internal/store ./internal/providers ./internal/integrations`
+- `cargo test -p dope-setupwizard -p dope-api -p dope-store -p dope-providers -p dope-integrations`
 - `make daemon-contract-test`
 - `pnpm test:clients`
 - `pnpm build`

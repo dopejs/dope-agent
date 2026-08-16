@@ -44,7 +44,7 @@ Before production promotion, run:
 make daemon-contract-test
 pnpm test:clients
 pnpm build
-cd daemon && go test ./... && go mod tidy
+cd crates && cargo test --workspace
 ```
 
 Then complete the `DOPE_ENV=test` walkthrough in

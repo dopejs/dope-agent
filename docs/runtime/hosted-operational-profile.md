@@ -68,7 +68,7 @@ logs, soak report, backup evidence, restore evidence, upgrade preflight,
 upgrade postflight, rollback decision, integration diagnostics, resource
 observations, redaction check, and retention metadata. The generator inspects
 linked paths and health/redaction states before assigning pass/fail status, then
-runs `daemon/cmd/hosted-evidence-validate` and records
+runs `hosted-evidence-validate` (not yet ported to Rust) and records
 `release-evidence-validation.txt` next to the index. All linked evidence must
 match commit, profile, and run identity. Missing, stale, mismatched, failed,
 expired, or secret-exposing evidence is a no-ship condition.
@@ -77,6 +77,5 @@ Use the validator in default mode for a ship-ready review:
 
 ```bash
 RELEASE_INDEX_PATH=/path/printed/by/release_evidence_index
-cd daemon
-go run ./cmd/hosted-evidence-validate "$RELEASE_INDEX_PATH"
+# hosted-evidence-validate is not yet ported to Rust
 ```

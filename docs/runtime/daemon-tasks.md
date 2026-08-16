@@ -1,5 +1,9 @@
 # P0 Daemon Task Registry
 
+> **Rust migration (2026-08):** task statuses below are the Go-era execution
+> record, now ported to the Rust workspace (`crates/`). Verification maps to
+> `cargo test --workspace`.
+
 ## Purpose
 
 This document is the audit registry for P0 daemon tasks.
@@ -204,7 +208,7 @@ These are implemented pieces that support later roadmaps. They are real progress
 
 ### Daemon Kernel
 
-- [x] Create Go daemon entrypoint and app assembly
+- [x] Create daemon entrypoint and app assembly (ported: `dope-cli` + `dope-app` in `crates/`)
 - [x] Define daemon module boundaries
 - [x] Add health and version endpoints
 - [x] Add `/v1/system/info` endpoint

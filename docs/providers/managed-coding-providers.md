@@ -132,5 +132,5 @@ This roadmap is backed by:
 
 Verification commands:
 
-- `go test ./...` in `daemon/`
+- `cargo test --workspace` in `crates/`
 - `make daemon-contract-test`

@@ -252,4 +252,4 @@ This channel loop is currently verified through:
 - IM loop success and failure tests
 - IM loop thinking and streaming progression tests
 - Discord runtime end-to-end tests using the real connector runtime boundary with a test transport
-- full `go test ./...` on the daemon module
+- full `cargo test --workspace` on the daemon workspace

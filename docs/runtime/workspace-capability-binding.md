@@ -25,7 +25,7 @@ capability visibility at profile and workspace scope.
 ## Resolution at work-start
 
 When new work starts, the daemon resolves the effective binding selection in the same pass
-that resolves the active profile (`daemon/internal/chat/service.go`), delegating to
+that resolves the active profile (`crates/domains/chat/service.go`), delegating to
 `store.ResolveBindingSelection`, which performs every read (default workspace, channel
 binding, integration-account binding, profile/workspace availability, capability visibility)
 inside a **single transaction**. A concurrent binding or capability-visibility mutation can
@@ -35,7 +35,7 @@ selection with no mixed pre/post-change state (FR-033).
 Precedence (FR-006): **channel binding → integration-account default → tenant default**. The
 originating channel identity (`ChannelScopeRef`) and integration-account identity
 (`AccountScopeRef`) are carried on the work item; for connector traffic they are derived from
-the inbound message (`daemon/internal/im/loop.go`: connector-qualified channel id and
+the inbound message (`crates/channels/im/loop.go`: connector-qualified channel id and
 connector account id). An explicit channel binding always wins over an account default, which
 wins over the tenant default.
 
@@ -53,7 +53,7 @@ profile/workspace policies. A `hidden` or `disabled` capability is neither offer
 agent nor executable, even on direct request, replay, or stale state (FR-016). Enforcement
 happens at two points: at chat work-start over explicitly named skills, and — critically — at
 the runtime tool-call execution gate (`enforceRunCapabilityVisibility`, consumed by every
-skill/capability tool-call creation path in `daemon/internal/api`). The execution gate uses
+skill/capability tool-call creation path in `crates/surface/api`). The execution gate uses
 the **run's** recorded binding evidence (its resolved profile + workspace) when present, so it
 matches the work-start decision including a channel/account binding; absent run evidence (e.g.
 a direct API tool-call with no chat work-start) it falls back to the tenant default. A
@@ -151,6 +151,6 @@ These are intentional, documented limits of the current implementation:
 
 ## Verification
 
-Go: `daemon/internal/{bindings,store,store/tenancy,api,chat,events,identity,contracts}`.
+Rust: `crates/{foundation/bindings,persistence/store,surface/api,domains/chat,engine/events,iam/identity,foundation/contracts}`.
 Contracts/schemas: `make daemon-contract-test`. Clients: `pnpm test:clients`. Default local
 verification uses `~/.dope-test` on `127.0.0.1:19192`.

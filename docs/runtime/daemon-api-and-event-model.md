@@ -663,8 +663,8 @@ This document should directly guide:
 
 - `schemas/api/`
 - `schemas/events/`
-- `daemon/internal/api/`
-- `daemon/internal/events/`
+- `crates/surface/api/`
+- `crates/engine/events/`
 
 It should also constrain:
 
@@ -676,7 +676,7 @@ It should also constrain:
 
 1. define the first API schemas for system and run routes
 2. define the first event schemas for system, run, and step events
-3. update the Go daemon server scaffold to reflect `/v1/...` route groups
+3. update the Rust daemon server scaffold (`dope-api`) to reflect `/v1/...` route groups
 4. define the run resource and step resource response shapes
 
 ## Short Version

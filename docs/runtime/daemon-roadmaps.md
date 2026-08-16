@@ -1,5 +1,11 @@
 # P0 Daemon Roadmaps
 
+> **Rust migration (2026-08):** the daemon described here was implemented in
+> Go and then fully ported to the Rust workspace (`crates/`, see
+> `crates/MIGRATION.md`). Roadmap statuses remain the execution record;
+> verification commands below that read `cd daemon && go test ...` now map to
+> `cargo test --workspace` (or `make daemon-test`).
+
 ## Purpose
 
 This document defines the execution structure for the P0 daemon.

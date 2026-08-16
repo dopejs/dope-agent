@@ -12,12 +12,12 @@ in `schemas/capability/integration-adapter/`.
 
 Key packages:
 
-- `daemon/internal/integrations/adapterrpc` — envelopes, codec, transport, client,
+- `crates/modeling/adapterrpc` — envelopes, codec, transport, client,
   credential resolver, conformance harness.
-- `daemon/internal/integrations/adapterref` — reference adapter skeleton (no real provider).
-- `daemon/cmd/dope-integration-adapter` — reference adapter binary.
-- `daemon/internal/{calendar,mail}/adapter_backend.go` — `Backend` shims (kind `adapter_rpc`).
-- `daemon/internal/capabilities/adapter_runtime.go` — supervised lifecycle bridge.
+- `crates/modeling/adapterref` — reference adapter skeleton (no real provider).
+- reference adapter binary (not yet ported to Rust).
+- `crates/domains/{calendar,mail}` — `Backend` shims (kind `adapter_rpc`).
+- `crates/domains/capabilities` — supervised lifecycle bridge.
 
 ## Backend selection
 
@@ -32,8 +32,9 @@ to spawn supervised calendar and mail adapters and register the `adapter_rpc` ba
 the variable unset, daemon behavior is unchanged (fake backend only). The reference binary:
 
 ```bash
-go build -o /tmp/dope-integration-adapter ./daemon/cmd/dope-integration-adapter
-DOPE_INTEGRATION_ADAPTER=/tmp/dope-integration-adapter make daemon-run-test
+# The reference adapter binary is not yet ported to Rust; the adapter
+# envelopes live in crates/modeling/adapterrpc.
+DOPE_INTEGRATION_ADAPTER=/path/to/adapter-binary make daemon-run-test
 ```
 
 ## Readiness, health, and circuit-break
@@ -110,7 +111,6 @@ attachment content beyond the redacted artifact is exposed.
 
 ```bash
 make daemon-contract-test
-cd daemon && go test ./internal/integrations/adapterrpc/... ./internal/integrations/adapterref/... \
-  ./internal/integrations/adapterprovider/... ./internal/integrations/providers/feishulark/... \
-  ./internal/calendar/... ./internal/mail/... ./internal/capabilities/... ./internal/opsreadiness/...
+cd crates && cargo test -p dope-adapterrpc -p dope-adapterref -p dope-adapterprovider \
+  -p dope-feishulark -p dope-calendar -p dope-mail -p dope-capabilities -p dope-opsreadiness
 ```

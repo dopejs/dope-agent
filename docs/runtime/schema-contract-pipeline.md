@@ -13,9 +13,9 @@ P0 uses committed JSON Schema files as the durable contract source for:
 The enforcement path is test-driven:
 
 - schemas live under `schemas/api` and `schemas/events`
-- contract tests live under `daemon/internal/contracts`
+- contract tests live under `crates/foundation/contracts`
 - `make daemon-contract-test` runs the contract suite directly
-- `go test ./...` in `daemon/` also executes the contract suite
+- `cargo test --workspace` in `crates/` also executes the contract suite
 
 This is the minimum acceptable P0 contract gate. Contract drift must fail in test, not be discovered by operator clients.
 
@@ -58,9 +58,9 @@ The required operator workflow is:
 
 1. change the handler, resource type, or event payload
 2. update the schema file in `schemas/api` or `schemas/events`
-3. update or add a contract test in `daemon/internal/contracts`
+3. update or add a contract test in `crates/foundation/contracts`
 4. run `make daemon-contract-test`
-5. run `go test ./...` under `daemon/`
+5. run `cargo test --workspace` under `crates/`
 
 ## Contract Rules
 

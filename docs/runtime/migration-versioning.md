@@ -66,7 +66,7 @@ For any migration that changes persisted semantics beyond additive indexes or me
 Every new persisted schema change must:
 
 1. increment `CurrentSchemaVersion`
-2. add a named migration entry in `daemon/internal/store/store.go`
+2. add a named migration entry in `crates/persistence/store/store.go`
 3. keep the migration idempotent
 4. document rollback expectations
 5. add at least one store-level migration test

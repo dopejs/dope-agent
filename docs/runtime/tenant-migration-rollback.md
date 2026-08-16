@@ -92,7 +92,7 @@ A step is `failed` when its underlying SQL aborted (e.g., a schema swap detected
 2. **Patch and retry** — once the cause is fixed, ship a patched binary. The daemon re-runs incomplete steps on next boot; `completed` steps are idempotent and skipped.
 3. **Restore from backup** — if no patch is possible in the available recovery window, follow the restore procedure above.
 
-`failed` rows are **not** auto-cleared. The daemon refuses to serve until every step is `completed`. `tenant_migration_progress` is queried by `MigrationGate` at boot — see `daemon/internal/app/tenant_migration_startup.go`.
+`failed` rows are **not** auto-cleared. The daemon refuses to serve until every step is `completed`. `tenant_migration_progress` is queried by `MigrationGate` at boot — see `crates/surface/app/tenant_migration_startup.go`.
 
 ### Recover from `daemon.migration.orphan_detected`
 
@@ -110,24 +110,24 @@ Two conventions are kept in force for the lifetime of Roadmap 35. Both are enfor
 
 ### No admin / cross-tenant route
 
-The literal comment marker `// admin: cross-tenant` is **forbidden** anywhere under `daemon/internal/api/` and `daemon/internal/store/`. The R35 daemon has NO sanctioned admin surface that crosses tenant boundaries; every route is wrapped in `protected(...)` (resolves a tenant context) or `withEnvironment(...)` (unauthenticated environment endpoint).
+The literal comment marker `// admin: cross-tenant` is **forbidden** anywhere under `crates/surface/api/` and `crates/persistence/store/`. The R35 daemon has NO sanctioned admin surface that crosses tenant boundaries; every route is wrapped in `protected(...)` (resolves a tenant context) or `withEnvironment(...)` (unauthenticated environment endpoint).
 
 When Roadmap 36 lands the admin surface, the marker convention moves into the admin sub-package and this runbook section is updated.
 
-Enforced by `TestNoAdminCrossTenantMarker` and `TestAllRoutesGoThroughTenantContext` in `daemon/internal/api/no_admin_route_test.go` (T089b).
+Enforced by `TestNoAdminCrossTenantMarker` and `TestAllRoutesGoThroughTenantContext` in `crates/surface/api/no_admin_route_test.go` (T089b).
 
 ### Roadmap 37 boundary
 
 Roadmap 35 grants tenant ownership ONLY to `secret_scope_bindings`, `provider_preferences`, and `mcp_tool_exposure_rules` (Group A). It MUST NOT change DDL or store access for `provider_auth_states`, `mcp_servers`, `mcp_server_states`, `mcp_tools`, `connectors` (Group B) — those tables are owned by Roadmap 37.
 
-Enforced by `TestR37GroupASchemaHasTenantID`, `TestR37GroupBSchemaHasNoTenantID`, `TestR37GroupBHasNoTenantHelper`, and the exported-signature golden `TestR37BoundarySignaturesGolden` in `daemon/internal/store/tenancy/r37_boundary_test.go` (T089c). Updates to the golden MUST be co-reviewed with the Roadmap 37 owner.
+Enforced by `TestR37GroupASchemaHasTenantID`, `TestR37GroupBSchemaHasNoTenantID`, `TestR37GroupBHasNoTenantHelper`, and the exported-signature golden `TestR37BoundarySignaturesGolden` in `crates/persistence/store/r37_boundary_test.go` (T089c). Updates to the golden MUST be co-reviewed with the Roadmap 37 owner.
 
 ---
 
 ## Reference
 
 - Migration progress table: `tenant_migration_progress` (added in schema v22).
-- Migration step constants: `daemon/internal/store/migration_progress.go`.
-- Drivers: `daemon/internal/app/tenant_backfill_*.go`, `tenant_enforcement_runner.go`, `tenant_migration_startup.go`.
-- E2E regression suite: `daemon/internal/app/tenant_migration_e2e_test.go`.
+- Migration step constants: `crates/persistence/store/migration_progress.go`.
+- Drivers: `crates/surface/app/tenant_backfill_*.go`, `tenant_enforcement_runner.go`, `tenant_migration_startup.go`.
+- E2E regression suite: `crates/surface/app/tenant_migration_e2e_test.go`.
 - Schema inventory contract: [`specs/020-tenant-scoped-data-migration/contracts/schema-inventory.md`](../../specs/020-tenant-scoped-data-migration/contracts/schema-inventory.md).

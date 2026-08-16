@@ -40,7 +40,7 @@ both tenant administrator and authorized operator approval.
 
 Hosted release readiness uses
 `scripts/production/hosted-profile.sh evidence-index`. The command runs
-`daemon/cmd/hosted-evidence-validate` after generating the index. The index must link the
+`hosted-evidence-validate` (not yet ported to Rust) after generating the index. The index must link the
 deployment manifest, configuration profile, health checks, logs, soak report,
 backup evidence, restore evidence, upgrade preflight, upgrade postflight,
 rollback decision, integration diagnostics, resource observations, redaction
