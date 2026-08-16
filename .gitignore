@@ -10,6 +10,7 @@ Thumbs.db
 *.log
 *.exe
 .gocache/
+.tmp/
 .env
 .env.*
 .vscode/
