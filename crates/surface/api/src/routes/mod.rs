@@ -18,6 +18,7 @@ use crate::types::{self, SystemInfoResponse};
 pub mod activation;
 pub mod auth;
 pub mod billing;
+pub mod chat;
 pub mod calendar;
 pub mod channel_management;
 pub mod computer_use;
@@ -77,6 +78,7 @@ pub fn router(state: AppState) -> Router {
         .merge(activation::router())
         .merge(auth::router())
         .merge(billing::router())
+        .merge(chat::router())
         .merge(calendar::router())
         .merge(channel_management::router())
         .merge(computer_use::router())

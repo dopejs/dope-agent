@@ -85,7 +85,8 @@ regex = "1"
 ureq = "2"
 url = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "rt", "signal", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "rt", "signal", "sync", "time"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
