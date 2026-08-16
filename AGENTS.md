@@ -4,7 +4,7 @@
 
 ## Project Structure & Module Organization
 
-The Rust workspace `crates/` is the daemon control plane (runtime, providers, channels, store, API, and harness). `web/` and `tui/` are the client surfaces. `sdk/ts/` holds the TypeScript client SDK used by both. `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providecrates/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
+The Rust workspace `crates/` is the daemon control plane (runtime, providers, channels, store, API, and harness). `web/` is the web client and `crates/surface/tui/` is the Rust terminal client (`dope-tui`). `sdk/ts/` holds the TypeScript client SDK used by both. `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providecrates/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
 
 ## Build, Test, and Development Commands
 
@@ -13,7 +13,7 @@ The Rust workspace `crates/` is the daemon control plane (runtime, providers, ch
 - `make daemon-test-status`: check the local test daemon health.
 - `go test ./...` (run in `daemon/`): execute all Go tests.
 - `make daemon-contract-test`: validate schema and contract fixtures.
-- `pnpm test:clients`: run SDK, web, and TUI client tests.
+- `pnpm test:clients`: run SDK and web client tests.
 - `pnpm build`: build client packages.
 
 **Disk hygiene (important):** the Rust `crates/target/` directory accumulates very large debug artifacts (~76 GB after a full build+test session) and can fill the disk. **After finishing any test/build session, run `cargo clean` from `crates/` (or `rm -rf crates/target`) to release that space.** Never leave a stale `crates/target/` behind across a long-running task.

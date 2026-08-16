@@ -6,7 +6,7 @@ Planned feature scope lives in plain markdown under `specs/<NNN>-<name>/` and `d
 
 ## Project Overview
 
-DopeAgent is a personal agent OS with a Go daemon backend, React web UI, Node.js TUI, and a shared TypeScript client SDK. The daemon is the system spine owning runtime state, provider dispatch, policy gates, and event fan-out. Clients are thin consumers.
+DopeAgent is a personal agent OS with a Rust daemon backend, React web UI, Rust TUI (`dope-tui`), and a shared TypeScript client SDK. The daemon is the system spine owning runtime state, provider dispatch, policy gates, and event fan-out. Clients are thin consumers.
 
 ## Build & Development Commands
 
@@ -33,9 +33,8 @@ cd daemon && go test ./internal/<package>/... -run TestName
 ```bash
 pnpm build:sdk                 # Build @dope/client SDK
 pnpm build:web                 # Build web UI
-pnpm build:tui                 # Build TUI
-pnpm build:clients             # Build all clients (sdk -> web -> tui)
-pnpm test:clients              # Build + test all clients + smoke test
+pnpm build:clients             # Build all clients (sdk -> web)
+pnpm test:clients              # Build + test all clients
 pnpm dev:web                   # Start web dev server (Vite)
 pnpm test:sdk                  # Test SDK only
 pnpm test:web                  # Test web only
@@ -48,11 +47,11 @@ pnpm typecheck:web             # TypeScript type check for web
 
 - **`daemon/`** -- Go control plane. Entry point: `daemon/cmd/dope/main.go`, wired in `daemon/internal/app/app.go`. Key packages under `daemon/internal/`: `runtime` (run/step lifecycle), `llm` (provider abstraction), `providers`/`managedproviders` (provider registry), `api` (HTTP + WebSocket), `events` (event append + fan-out), `store` (SQLite persistence), `sandbox` (isolated execution), `policy` (permission gates), `connectors` (Discord etc.), `skills` (skill registry), `config`, `auth`, `router`.
 
-- **`sdk/ts/`** -- TypeScript client SDK (`@dope/client`). Exports `DopeClient` with `queryChat()` and `streamChatQuery()`. Used by both web and TUI.
+- **`sdk/ts/`** -- TypeScript client SDK (`@dope/client`). Exports `DopeClient` with `queryChat()` and `streamChatQuery()`. Used by the web client.
 
 - **`web/`** -- React 19 + Vite web UI. Uses `@dope/client` SDK. Generated types from schemas live in `web/src/generated/`.
 
-- **`tui/`** -- Node.js terminal client (`dope-chat` command). Uses `@dope/client` SDK.
+- **`crates/surface/tui/`** -- Rust terminal client (`dope-tui` binary), the full-screen Claude-Code-style TUI.
 
 - **`schemas/`** -- JSON Schema contracts: `api/` (82 files), `events/` (49 files), `config/`, `capability/`, `plugin/`. Source of truth for cross-language contracts. Generated client code derives from these.
 

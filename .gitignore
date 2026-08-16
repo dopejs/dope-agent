@@ -20,8 +20,6 @@ sdk/ts/dist/
 sdk/ts/node_modules/
 web/dist/
 web/node_modules/
-tui/dist/
-tui/node_modules/
 
 .worktrees/
 
