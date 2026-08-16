@@ -26,3 +26,4 @@ tui/node_modules/
 .worktrees/
 
 rs/target/
+crates/target/
