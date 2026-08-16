@@ -1,32 +1,38 @@
-# rs/ — DopeAgent Rust Workspace
+# crates/ — DopeAgent Rust Workspace
 
-Rust rewrite of the DopeAgent runtime, layered after `openai/codex`'s
-`codex-rs` architecture. The Go daemon under `daemon/` remains the control
-plane of record; this workspace replaces it incrementally, starting from the
-agent core.
+The Rust rewrite of the DopeAgent daemon control plane. This workspace fully
+replaces the former Go `daemon/` (deleted); see `crates/MIGRATION.md` for the
+migration record.
 
-## Crates
+## Layout
 
-- `protocol` — pure wire/domain types (UUIDv7 IDs, `Op` submissions, `Event`
-  stream, `ResponseItem` history). No I/O; everything cheap to serialize and
-  safe to persist as runtime evidence.
-- `model-provider` — `ModelProvider` trait plus concrete clients. Currently:
-  `OpenAiCompatibleClient`, a streaming SSE client for `/chat/completions`
-  endpoints, with tool-call fragment accumulation.
-- `core` — agent session and turn loop: model stream → tool dispatch →
-  history, emitting ordered protocol events. Tool failures are reported back
-  to the model as output; rounds are capped to bound provider quota.
-- `cli` — `dope-cli exec "<prompt>"` single-turn driver against any
-  OpenAI-compatible endpoint (`--base-url`, `--model`, `--api-key` or
-  `DOPE_*`/`OPENAI_API_KEY` env vars).
+- `foundation/` — config, contracts, errors, ids, telemetry (shared building blocks)
+- `engine/` — llm (dispatcher/providers), runtime (run/step/tool-call ledger), events, checkpoints, model-provider
+- `iam/` — identity, auth, tenancy
+- `channels/` — connectors (discord/slack/telegram/matrix), IM message loop
+- `modeling/` — providers, opsreadiness, and other modeling crates
+- `domains/` — chat, sandbox, mcp, skills, scheduler, delivery, calendar, mail, reminders, workflows, evaluation, and the rest of the domain managers
+- `persistence/` — SQLite store (`dope-store`) + DAOs
+- `surface/` — HTTP API (`dope-api`), daemon binary (`dope-cli`), terminal TUI (`dope-tui`)
 
-Not yet ported (deliberately): sandbox/exec, SQLite persistence, tenant
-identity/permissions, event bus, channels/connectors. Those arrive with
-their daemon modules, not ahead of them.
+## Key binaries
+
+| Binary | Crate | Purpose |
+|--------|-------|---------|
+| `dope-cli` | `surface/cli` | daemon entry point (loads config, builds `dope-app`, serves the API) |
+| `dope-tui` | `surface/tui` | full-screen terminal client |
 
 ## Commands
 
-- `cargo build --workspace` / `make rs-build`
-- `cargo test --workspace` / `make rs-test`
-- `cargo clippy --workspace --all-targets` / `make rs-clippy`
-- `cargo fmt --all -- --check` before committing
+```bash
+cargo build --workspace     # or: make rs-build
+cargo test --workspace      # or: make rs-test
+cargo clippy --workspace --all-targets   # or: make rs-clippy
+cargo fmt --all -- --check
+```
+
+Build the daemon binary:
+
+```bash
+cargo build --release -p dope-cli
+```

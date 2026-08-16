@@ -5,7 +5,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/dopejs/dope-agent/main/deploy/get.sh | bash
 #
 # Clones (or updates) the repo into a cache dir and runs deploy/install.sh.
-# Requires: git, Go 1.24+. All install.sh flags/env pass through, e.g.:
+# Requires: git, Rust (cargo). All install.sh flags/env pass through, e.g.:
 #
 #   curl -fsSL .../get.sh | DOPE_ENV=test bash
 #   curl -fsSL .../get.sh | bash -s -- --no-service

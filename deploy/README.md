@@ -5,7 +5,7 @@ control plane) plus thin clients (Web UI, TUI). Installing means getting the
 daemon running as a background service; clients then connect to it.
 
 > Status: there is no prebuilt-binary release channel yet, so every path below
-> **builds the daemon from source** (pure-Go, static binary — `CGO_ENABLED=0`).
+> **builds the daemon from source** (Rust release build).
 > Once CI publishes release artifacts, `get.sh` and the install script should be
 > updated to download a verified binary and skip the toolchain step.
 
@@ -13,8 +13,8 @@ daemon running as a background service; clients then connect to it.
 
 | Path | Needs |
 |------|-------|
-| Native (macOS / Linux) | Go 1.24+, `git`, `curl` |
-| Docker | Docker 24+ (no Go needed — built inside the image) |
+| Native (macOS / Linux) | Rust toolchain (cargo), `git`, `curl` |
+| Docker | Docker 24+ (no Rust needed — built inside the image) |
 
 The daemon is the only thing that must be installed. The clients are optional
 and built separately with `pnpm` (see [Connecting a client](#connecting-a-client)).
@@ -127,8 +127,9 @@ Clients are built from source and default to the **test** port `19192`, so for a
 pnpm install
 pnpm build:clients
 
-# TUI:
-DOPE_DAEMON_URL=http://127.0.0.1:19191 node tui/dist/index.js
+# TUI (Rust; build once from crates/):
+cd crates && cargo build --release -p dope-tui
+DOPE_DAEMON_URL=http://127.0.0.1:19191 dope-tui
 # Web (dev server; set the daemon URL inside the UI):
 pnpm dev:web
 ```
@@ -155,7 +156,7 @@ Common ones:
 | `DOPE_CONNECTORS_DISCORD_ENABLED` / `_BOT_TOKEN` | Discord connector (off by default) |
 | `DOPE_LOG_LEVEL` | `debug` / `info` / `warn` |
 
-(Full list: search `DOPE_` in `daemon/internal/config/config.go`.)
+(Full list: search `DOPE_` in `crates/foundation/config`.)
 
 ---
 

@@ -1,5 +1,9 @@
 # P0 Tech Stack Recommendation
 
+> **Superseded (2026-08):** the implementation chose Rust for the daemon
+> (`crates/` workspace). This document is the original Go-era recommendation,
+> retained for historical reference.
+
 ## Decision
 
 For P0, DopeAgent should use:

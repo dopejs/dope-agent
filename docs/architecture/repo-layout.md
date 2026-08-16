@@ -1,5 +1,9 @@
 # Repository Layout Plan
 
+> **Superseded (2026-08):** the daemon is now a Rust workspace under
+> `crates/` (see `crates/MIGRATION.md`); this document is the original Go-era
+> layout plan, retained for historical reference.
+
 ## Purpose
 
 This document defines the planned repository structure for DopeAgent before daemon implementation begins in earnest.

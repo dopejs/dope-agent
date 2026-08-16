@@ -25,7 +25,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-DAEMON_DIR="${REPO_ROOT}/daemon"
+RS_DIR="${REPO_ROOT}/crates"
 SERVICE_LABEL="com.dopejs.dope-agent"
 
 # ---- pretty output ---------------------------------------------------------
@@ -85,20 +85,18 @@ echo "    data dir -> ${DOPE_DATA_DIR}"
 echo "    health   -> ${HEALTH_URL}"
 
 # ---- preflight -------------------------------------------------------------
-command -v go >/dev/null 2>&1 || die "Go toolchain not found. Install Go 1.24+ (https://go.dev/dl) and re-run."
-GO_VER="$(go env GOVERSION 2>/dev/null | sed 's/^go//')"
-ver_ge() { [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -1)" == "$2" ]]; }
-ver_ge "${GO_VER:-0}" "1.24" || die "Go ${GO_VER} is too old; need >= 1.24."
-[[ -d "${DAEMON_DIR}" && -f "${DAEMON_DIR}/go.mod" ]] || die "daemon source not found at ${DAEMON_DIR}"
+command -v cargo >/dev/null 2>&1 || die "Rust toolchain not found. Install Rust (https://rustup.rs) and re-run."
+[[ -f "${RS_DIR}/Cargo.toml" ]] || die "workspace source not found at ${RS_DIR}/Cargo.toml"
 
-# ---- build (static, no cgo: modernc sqlite is pure Go) ---------------------
+# ---- build (Rust release) --------------------------------------------------
 DOPE_VERSION="$(git -C "${REPO_ROOT}" describe --tags --always --dirty 2>/dev/null || echo dev)"
 info "building daemon (version ${DOPE_VERSION}) ..."
 mkdir -p "${DOPE_BIN_DIR}"
 TMP_BIN="$(mktemp "${DOPE_BIN_DIR}/.dope.XXXXXX")"
 trap 'rm -f "${TMP_BIN}"' EXIT
-( cd "${DAEMON_DIR}" && CGO_ENABLED=0 go build -trimpath -o "${TMP_BIN}" ./cmd/dope ) \
+( cd "${RS_DIR}" && cargo build --release -p dope-cli ) \
   || die "build failed — fix the error above and re-run."
+cp -f "${RS_DIR}/target/release/dope-cli" "${TMP_BIN}"
 chmod 0755 "${TMP_BIN}"
 mv -f "${TMP_BIN}" "${DOPE_BIN}"   # atomic swap; a running service picks it up on restart
 trap - EXIT
@@ -185,8 +183,8 @@ cat <<EOF
 
 Connect a client (clients default to the test port 19192 — point them at this daemon):
 
-  TUI:   DOPE_DAEMON_URL=http://${HEALTH_HOST}:${HEALTH_PORT} node ${REPO_ROOT}/tui/dist/index.js
-         (build once: pnpm install && pnpm build:tui)
+  TUI:   DOPE_DAEMON_URL=http://${HEALTH_HOST}:${HEALTH_PORT} dope-tui
+         (build once: cd ${REPO_ROOT}/crates && cargo build --release -p dope-tui)
   Web:   pnpm --dir ${REPO_ROOT}/web dev   # then set the daemon URL in the UI
 
 $( [[ "${NO_SERVICE}" == "1" ]] && echo "(no service was registered: --no-service)" && exit 0

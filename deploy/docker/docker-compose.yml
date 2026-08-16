@@ -13,7 +13,7 @@
 services:
   dope-agent:
     build:
-      context: ../..                     # repo root — Dockerfile needs daemon/
+      context: ../..                     # repo root — Dockerfile needs crates/
       dockerfile: deploy/docker/Dockerfile
       args:
         DOPE_VERSION: docker

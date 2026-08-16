@@ -105,7 +105,7 @@ evidence cannot be recorded (FR-011).
   `listBindings`, `createBinding`, `updateBinding`, `removeBinding`, `repairBinding`,
   `listCapabilityVisibility`, `setCapabilityVisibility`.
 - Web: `web/src/features/workspace-capability-bindings/`.
-- TUI: `dope-chat --bindings`, `dope-chat --workspaces`.
+- TUI: `/bindings`, `/workspaces` slash commands in `dope-tui`.
 
 Older clients that do not understand binding fields keep working: new work without an
 explicit binding resolves to the default profile + default workspace, and new response

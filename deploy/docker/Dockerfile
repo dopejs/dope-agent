@@ -1,5 +1,5 @@
 # DopeAgent daemon image (Rust).
-# Build context is the REPO ROOT (needs the rs/ workspace):
+# Build context is the REPO ROOT (needs the crates/ workspace):
 #   docker build -f deploy/docker/Dockerfile -t dope-agent .
 # or just use deploy/docker/docker-compose.yml.
 
