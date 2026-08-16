@@ -1,5 +1,6 @@
 mod client;
 mod commands;
+mod persist;
 mod render;
 
 use std::io;
@@ -230,6 +231,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         picker: None,
     };
 
+    // restore last session
+    if let Some(state) = persist::load() {
+        app.messages = state
+            .messages
+            .into_iter()
+            .map(|m| Message {
+                role: role_from_str(&m.role),
+                content: m.content,
+                done: true,
+            })
+            .collect();
+        app.provider = state.provider;
+        app.model = state.model;
+        app.thread_id = state.thread_id;
+        if app.messages.is_empty() {
+            app.push(Role::System, "DopeAgent (type /help)".to_string(), true);
+        }
+    }
+
     // crossterm events -> channel (blocking read on a worker thread)
     let (event_tx, mut event_rx) = mpsc::channel::<Event>(32);
     tokio::task::spawn_blocking(move || {
@@ -293,6 +313,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+
+    let _ = persist::save(&persist::PersistedState {
+        messages: app
+            .messages
+            .iter()
+            .map(|m| persist::PersistedMessage {
+                role: role_to_str(m.role).to_string(),
+                content: m.content.clone(),
+            })
+            .collect(),
+        provider: app.provider.clone(),
+        model: app.model.clone(),
+        thread_id: app.thread_id.clone(),
+    });
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
@@ -389,6 +423,48 @@ fn handle_key(
         KeyCode::PageDown => {
             app.scroll_offset = app.scroll_offset.saturating_sub(10);
         }
+        KeyCode::Tab => {
+            if app.input.starts_with('/') {
+                const CMDS: &[&str] = &[
+                    "/help",
+                    "/exit",
+                    "/quit",
+                    "/model",
+                    "/provider",
+                    "/thread",
+                    "/threads",
+                    "/reset",
+                    "/workspaces",
+                    "/bindings",
+                    "/profiles",
+                    "/connectors",
+                    "/tenants",
+                    "/me",
+                    "/config",
+                ];
+                let matches: Vec<&str> = CMDS
+                    .iter()
+                    .copied()
+                    .filter(|c| c.starts_with(app.input.as_str()))
+                    .collect();
+                match matches.len() {
+                    1 => app.input = format!("{} ", matches[0]),
+                    n if n > 1 => {
+                        let common = common_prefix(&matches);
+                        if common.len() > app.input.len() {
+                            app.input = common;
+                        } else {
+                            app.push(
+                                Role::System,
+                                format!("commands: {}", matches.join("  ")),
+                                true,
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         KeyCode::Char(c) => app.input.push(c),
         _ => {}
     }
@@ -438,4 +514,35 @@ fn submit(app: &mut App, client: &Arc<Client>, stream_tx: &mpsc::Sender<StreamMs
             .await;
         let _ = tx.send(StreamMsg::Done(result)).await;
     });
+}
+
+fn role_to_str(role: Role) -> &'static str {
+    match role {
+        Role::User => "user",
+        Role::Assistant => "assistant",
+        Role::System => "system",
+        Role::Error => "error",
+    }
+}
+
+fn role_from_str(s: &str) -> Role {
+    match s {
+        "user" => Role::User,
+        "assistant" => Role::Assistant,
+        "error" => Role::Error,
+        _ => Role::System,
+    }
+}
+
+fn common_prefix(items: &[&str]) -> String {
+    let mut prefix = items[0].to_string();
+    for item in items.iter().skip(1) {
+        while !item.starts_with(&prefix) {
+            prefix.pop();
+        }
+        if prefix.is_empty() {
+            break;
+        }
+    }
+    prefix
 }
