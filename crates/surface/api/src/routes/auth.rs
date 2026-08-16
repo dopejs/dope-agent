@@ -35,11 +35,11 @@
 //! Deliberately not ported (reported, not duplicated):
 //! - the middleware-layer tenant-resolution denial audit record
 //!   (tenant.access_denied / tenant.token_expiry_denied) - the Rust
-//!   protected() middleware defers that to the app-wiring wave (TODO in
-//!   middleware.rs); handler-level permission denials DO write the
-//!   tenant.permission_denied audit exactly like Go's RequirePermission.
+//!   protected() middleware still defers that audit write; handler-level
+//!   permission denials DO write the tenant.permission_denied audit exactly
+//!   like Go's RequirePermission.
 //! - dope-identity::Store for SQLiteStore does not exist in dope-store yet
-//!   (rs/store/src/identity.rs has every backing method; the trait impl is
+//!   (crates/persistence/store has every backing method; the trait impl is
 //!   missing). Tests bridge it with a local wrapper. Same for
 //!   dope-secrets::Store (no SQLite impl in dope-store) - tests use a local
 //!   in-memory store mirroring the secrets crate's FakeStore semantics.

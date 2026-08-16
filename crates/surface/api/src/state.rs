@@ -83,10 +83,6 @@ pub struct AppState {
     pub llm: Option<Arc<Dispatcher>>,
     /// Go Dependencies.Chat.
     ///
-    /// TODO: PLACEHOLDER — `dope_chat::Service` holds `Arc<dyn ChatStore>`
-    /// (no `Send + Sync` supertraits), so it cannot live in axum `State`
-    /// (requires `Send + Sync`). Real type returns once `dyn ChatStore` is
-    /// `+ Send + Sync` or the service is wrapped.
     pub chat: Option<Arc<ChatService>>,
     /// Go Dependencies.Providers.
     pub providers: Option<Arc<ProvidersManager>>,
@@ -106,47 +102,24 @@ pub struct AppState {
     pub mail: Option<Arc<MailManager>>,
     /// Go Dependencies.Reminders.
     ///
-    /// TODO: MISSING MANAGER — the dope-reminders crate does not exist in the
-    /// rs/ workspace (no rs/reminders/ directory despite MIGRATION.md wave 6
-    /// listing reminders(1326) as done; dope-reminders is declared in the
-    /// workspace but resolves to nothing). Reminders DTOs in types.rs use
-    /// serde_json::Value placeholders until the crate lands.
     pub reminders: Option<Arc<RemindersManager>>,
     /// Go Dependencies.Triage.
     ///
-    /// TODO: PLACEHOLDER — `dope_triage::Manager<'a>` holds `Option<&SQLiteStore>`
-    /// (a `!Sync` reference), so it cannot live in axum `State`. Real type
-    /// returns once the manager owns its store handle thread-safely.
     pub triage: Option<Arc<TriageManager>>,
     /// Go Dependencies.Routines.
     ///
-    /// TODO: PLACEHOLDER — `dope_routine::Manager<'a>` holds `Box<dyn Scheduler>`
-    /// (no `Send + Sync` supertraits), so it cannot live in axum `State`.
     pub routines: Option<Arc<RoutineManager>>,
     /// Go Dependencies.Webhooks.
     ///
-    /// TODO: PLACEHOLDER — `dope_webhook::Manager<'a>` holds `Box<dyn Firer>` /
-    /// `Box<dyn QuotaGate>` (no `Send + Sync` supertraits), so it cannot live
-    /// in axum `State`.
     pub webhooks: Option<Arc<WebhookManager>>,
     /// Go Dependencies.Catalog.
     ///
-    /// TODO: PLACEHOLDER — `dope_catalog::Manager<'a>` holds `Box<dyn
-    /// RequirementChecker>` / `Box<dyn PermissionGate>` (no `Send + Sync`
-    /// supertraits), so it cannot live in axum `State`.
     pub catalog: Option<Arc<CatalogManager>>,
     /// Go Dependencies.ExecProfiles.
     ///
-    /// TODO: PLACEHOLDER — `dope_execprofile::Manager<'a>` holds `Box<dyn
-    /// HealthChecker>` / `Box<dyn RequirementChecker>` / `Box<dyn
-    /// PermissionGate>` (no `Send + Sync` supertraits), so it cannot live in
-    /// axum `State`.
     pub exec_profiles: Option<Arc<ExecProfileManager>>,
     /// Go Dependencies.Evidence.
     ///
-    /// TODO: PLACEHOLDER — `dope_evidence::Manager<'a>` holds `Box<dyn
-    /// Collector>` / `Box<dyn PermissionGate>` (no `Send + Sync` supertraits),
-    /// so it cannot live in axum `State`.
     pub evidence: Option<Arc<EvidenceManager>>,
     /// Go Dependencies.Connectors.
     pub connectors: Option<Arc<ConnectorsSupervisor>>,
@@ -156,10 +129,6 @@ pub struct AppState {
     pub computer_use: Option<Arc<ComputerUseManager>>,
     /// Go Dependencies.Scheduler.
     ///
-    /// TODO: PLACEHOLDER — `dope_scheduler::Scheduler` holds `Box<dyn Clock>`
-    /// and `Option<Arc<dyn WorkflowLauncher>>` (no `Send + Sync` supertraits),
-    /// so it cannot live in axum `State`. Real type returns once those trait
-    /// objects are `+ Send + Sync`.
     pub scheduler: Option<Arc<Scheduler>>,
     /// Go Dependencies.Delivery.
     pub delivery: Option<Arc<DeliveryManager>>,
@@ -177,9 +146,6 @@ pub struct AppState {
     pub store: Arc<Mutex<SQLiteStore>>,
     /// Go Dependencies.Checkpoints.
     ///
-    /// TODO: PLACEHOLDER — `dope_checkpoints::Manager` holds `Arc<SQLiteStore>`
-    /// (rusqlite `Connection` is `!Sync`), so it cannot live in axum `State`
-    /// while it owns its own store handle; the API-layer store is mutex-wrapped.
     pub checkpoints: Option<Arc<CheckpointsManager>>,
     /// Go Dependencies.Evaluation.
     pub evaluation: Option<Arc<EvaluationManager>>,

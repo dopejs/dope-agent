@@ -22,10 +22,9 @@
 //! _telegram.go) are service-dependency wiring: `OAuthStartURLProvider`,
 //! `SubmittedSecretRecorder`, and `OAuthCallbackRecorder` implementations that
 //! the setup Service calls during oauth/start, submit-secret, and oauth/callback.
-//! They are deferred to the app-wiring wave because they need the
-//! dope-slack/dope-matrix/dope-telegram crates (EvaluateHostedSetup etc.) and an
-//! HTTP client for the OAuth code exchange, neither of which is a dope-api
-//! dependency yet (TODO). What is portable here is ported: the slack hosted-setup
+//! They are deferred because they need the dope-slack/dope-matrix/dope-telegram
+//! crates (EvaluateHostedSetup etc.) and an HTTP client for the OAuth code
+//! exchange, neither of which is a dope-api dependency yet. What is portable here is ported: the slack hosted-setup
 //! resource projections (Go projectSlack*Resource) over the dope-store records,
 //! the slack OAuth authorization-URL builder, and the pure helper functions.
 //!
@@ -39,7 +38,7 @@
 //!   "snake_case"`, which renders SetupStyle::OAuth as `o_auth` instead of the
 //!   Go wire literal `oauth`; the request DTO accepts both (see
 //!   deserialize_setup_style), but session responses still carry `o_auth` until
-//!   the types wave switches to explicit wire literals (TODO).
+//!   the types are switched to explicit wire literals (TODO).
 
 use std::collections::HashMap;
 
@@ -164,7 +163,7 @@ struct SetupDisableRequest {
 
 /// Accepts the Go wire literal `"oauth"` for SetupStyle::OAuth. dope-setupwizard
 /// derives its serde from `rename_all = "snake_case"`, which renders the variant
-/// `o_auth`; the API layer accepts both spellings (TODO(types wave): make the
+/// `o_auth`; the API layer accepts both spellings (TODO: make the
 /// setupwizard string enums use explicit wire literals like dope-connectors).
 fn deserialize_setup_style<'de, D>(deserializer: D) -> Result<Option<SetupStyle>, D::Error>
 where
@@ -1123,7 +1122,7 @@ mod tests {
         // one the service returns DiagnosticLinkNeeded; the Go test (which wires
         // the default probe via NewService) expects 200. The handler maps that
         // unexpected service error to the Go default branch (500
-        // setup_failed:unexpected). TODO(service wave): flip this assertion to
+        // setup_failed:unexpected). TODO: flip this assertion to
         // 200 + no-leak once the service wires its default probe unconditionally.
         let req = setup_tenant_request(
             "POST",
@@ -1177,7 +1176,7 @@ mod tests {
 
         // The Discord submitted-secret flow (Go expects state degraded +
         // discord_destination_missing) has the same probe dependency as the
-        // openai submit above and is deferred with it (TODO service wave).
+        // openai submit above and is deferred with it (TODO).
 
         // Inspection denial: no credentials.inspect -> 403 without disclosure.
         let no_inspect = vec![Permission::SecretsManage, Permission::IntegrationsManage];

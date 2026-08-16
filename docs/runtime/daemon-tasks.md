@@ -30,11 +30,11 @@ Verification baseline for all tasks: `cargo test --workspace` and
 
 - [x] Replace roadmap and task documents with current-state versions; retire
       the R1-72 documents and superseded roadmap-split docs to git history
-- [ ] Rewrite `CLAUDE.md` daemon section for the Rust workspace
-- [ ] Audit and clean stale `TODO: PLACEHOLDER` / `TODO: MISSING` markers in
+- [x] Rewrite `CLAUDE.md` daemon section for the Rust workspace
+- [x] Audit and clean stale `TODO: PLACEHOLDER` / `TODO: MISSING` markers in
       `crates/surface/api/src/`
-- [ ] Sweep `docs/` for live references to the removed Go tree
-- [ ] Confirm `docs/specs/README.md` and spec-flow docs match the current
+- [x] Sweep `docs/` for live references to the removed Go tree
+- [x] Confirm `docs/specs/README.md` and spec-flow docs match the current
       authoring flow
 
 ## Roadmap 74: Deferred Hook Wiring Closure

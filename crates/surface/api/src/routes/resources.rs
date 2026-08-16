@@ -12,7 +12,7 @@
 //!
 //! Port status:
 //! - The thread list/detail/lifecycle surface is fully ported on the dope-store
-//!   thread DAOs (rs/store/src/thread_persistence.rs), the dope-threads domain
+//!   thread DAOs (`crates/persistence/store`), the dope-threads domain
 //!   types and the dope-events thread event builders. Status codes, DTOs,
 //!   validation (empty body -> 400, unknown action -> 404, missing row -> 404,
 //!   transition conflicts -> 409) and the tenant-scoped permission gates

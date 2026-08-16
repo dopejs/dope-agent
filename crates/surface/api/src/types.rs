@@ -3,9 +3,9 @@
 //! types; wire shape follows the Go json tags: camelCase + omitempty mapped to
 //! `skip_serializing_if` (empty string / empty vec / None / zero / false).
 //!
-//! Where a Go field references a domain type that has not been ported yet, the
-//! field uses a `serde_json::Value` placeholder marked with `TODO: MISSING
-//! CRATE` so the DTO vocabulary stays complete and compilable.
+//! Reminders DTO fields still use `serde_json::Value` placeholders where the
+//! real `dope_reminders` types should be wired (type-migration follow-on; the
+//! crate is ported but the DTO wiring is not yet switched over).
 
 use std::collections::HashMap;
 
@@ -1206,8 +1206,7 @@ pub struct CreateReminderRequest {
     pub title: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub details: String,
-    // TODO: MISSING CRATE — dope-reminders (reminders.BehaviorMode) has not
-    // been ported; placeholder Value keeps the DTO vocabulary complete.
+    // dope-reminders is ported; migrate this serde_json::Value to reminders::BehaviorMode.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub behavior_mode: serde_json::Value,
     pub trigger: ScheduleTriggerRequest,
@@ -1236,7 +1235,7 @@ pub struct ReminderWorkflowLaunchRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReminderFollowUpLinkRequest {
-    // TODO: MISSING CRATE — dope-reminders (reminders.FollowUpLinkKind).
+    // dope-reminders is ported; migrate to reminders::FollowUpLinkKind.
     pub link_kind: serde_json::Value,
     pub source_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -1254,7 +1253,7 @@ pub struct ReminderTransitionRequest {
     pub occurrence_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reason: String,
-    // TODO: MISSING CRATE — dope-reminders (reminders.ActorKind).
+    // dope-reminders is ported; migrate to reminders::ActorKind.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub actor_kind: serde_json::Value,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -1302,7 +1301,7 @@ pub struct ScheduleWorkflowTargetRequest {
 }
 
 pub type ScheduleListResponse = ListResponse<scheduler::Schedule>;
-// TODO: MISSING CRATE — dope-reminders (reminders.Reminder/Occurrence/ActionRecord).
+// dope-reminders is ported; migrate to reminders::{Reminder,Occurrence,ActionRecord}.
 pub type ReminderListResponse = ListResponse<serde_json::Value>;
 pub type ReminderOccurrenceListResponse = ListResponse<serde_json::Value>;
 pub type ReminderActionListResponse = ListResponse<serde_json::Value>;

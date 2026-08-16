@@ -1,7 +1,7 @@
 //! workspace_bindings route family — port of
 //! daemon/internal/api/workspace_bindings.go (workspace CRUD, binding rules,
 //! and capability visibility), backed by the dope-store workspace/binding DAOs
-//! (rs/store/src/workspaces.rs + rs/store/src/bindings.rs).
+//! (`crates/persistence/store`).
 //!
 //! Routes under /v1:
 //! - GET/POST /v1/workspaces, GET/PATCH /v1/workspaces/{workspace_id}

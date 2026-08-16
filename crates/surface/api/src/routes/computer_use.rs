@@ -34,8 +34,8 @@
 //!   runtime-projection DAO yet (same gap as resources.rs).
 //! - The environment filter inside the computer-use manager is exercised via
 //!   the manager's store seam; SQLiteStore does not implement
-//!   dope_computeruse::Store yet (app-wiring wave), so route tests wire a
-//!   test-local MemStore (mirroring rs/computeruse/tests/manager.rs).
+//!   dope_computeruse::Store yet, so route tests wire a test-local
+//!   MemStore.
 
 use axum::body::Bytes;
 use axum::extract::{Extension, Path, State};
@@ -782,8 +782,8 @@ mod tests {
 
     // ------------------------------------------------------------------
     // Test seams: in-memory Store + ArtifactRecorder (mirrors
-    // rs/computeruse/tests/manager.rs; SQLiteStore does not implement
-    // dope_computeruse::Store yet — app-wiring wave).
+    // the computeruse manager tests; SQLiteStore does not implement
+    // dope_computeruse::Store yet).
     // ------------------------------------------------------------------
 
     #[derive(Default)]

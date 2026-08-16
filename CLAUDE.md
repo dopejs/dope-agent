@@ -10,22 +10,22 @@ DopeAgent is a personal agent OS with a Rust daemon backend, React web UI, Rust 
 
 ## Build & Development Commands
 
-### Daemon (Go 1.24, in `daemon/`)
+### Daemon (Rust, in `crates/`)
 
 ```bash
-make daemon-build              # Build the daemon binary
+make daemon-build              # cargo build --release -p dope-cli
 make daemon-run-test           # Start daemon in test env (~/.dope-test, :19192)
 make daemon-run-test-live      # Test env with live connectors (Discord enabled)
 make daemon-run-prod           # Start daemon in prod env (~/.dope, :19191)
 make daemon-test-status        # Health check test daemon
 make daemon-prod-status        # Health check prod daemon
-make daemon-test               # Run all Go tests (cd daemon && go test ./...)
-make daemon-contract-test      # Run contract/schema validation tests
+make daemon-test               # cargo test --workspace
+make daemon-contract-test      # cargo test -p dope-contracts
 ```
 
-Run a single Go test:
+Run a single test:
 ```bash
-cd daemon && go test ./internal/<package>/... -run TestName
+cd crates && cargo test -p <crate> -- <filter>
 ```
 
 ### Clients (TypeScript, pnpm)
@@ -45,7 +45,7 @@ pnpm typecheck:web             # TypeScript type check for web
 
 ### System Boundaries
 
-- **`daemon/`** -- Go control plane. Entry point: `daemon/cmd/dope/main.go`, wired in `daemon/internal/app/app.go`. Key packages under `daemon/internal/`: `runtime` (run/step lifecycle), `llm` (provider abstraction), `providers`/`managedproviders` (provider registry), `api` (HTTP + WebSocket), `events` (event append + fan-out), `store` (SQLite persistence), `sandbox` (isolated execution), `policy` (permission gates), `connectors` (Discord etc.), `skills` (skill registry), `config`, `auth`, `router`.
+- **`crates/`** -- Rust workspace, the daemon control plane. Entry point: `dope-cli` (`crates/surface/cli`), wired by `dope-app` (`crates/surface/app`), HTTP API in `dope-api` (`crates/surface/api`). Key groups: `foundation/` (config, contracts, ids, telemetry), `engine/` (llm, runtime, events, checkpoints), `iam/` (identity, tenancy, secrets), `channels/` (connectors, im), `modeling/` (providers, adapters), `domains/` (chat, sandbox, mcp, skills, scheduler, delivery, calendar, mail, reminders, workflows, evaluation, policy, ...), `persistence/` (SQLite store), `surface/` (api, cli, tui).
 
 - **`sdk/ts/`** -- TypeScript client SDK (`@dope/client`). Exports `DopeClient` with `queryChat()` and `streamChatQuery()`. Used by the web client.
 
@@ -76,6 +76,6 @@ Execution follows numbered roadmaps in `docs/runtime/daemon-roadmaps.md`. A road
 
 - Product scope: `docs/product/product-outline.md`
 - Roadmaps & tasks: `docs/runtime/daemon-roadmaps.md`, `docs/runtime/daemon-tasks.md`
-- Provider architecture: `docs/providecrates/provider-architecture.md`
+- Provider architecture: `docs/providers/provider-architecture.md`
 - Sandbox design: `docs/harness/sandbox-execution-plane.md`
 - Test workflow: `docs/dev/test-environment-workflow.md`

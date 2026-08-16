@@ -89,7 +89,7 @@ Closing this register is Roadmaps 75 and 76.
 
 ## Roadmap 73: Documentation And Execution-Record Truth Closure
 
-Status: `[ ] planned` (partially delivered by this document replacement)
+Status: `[x] complete`
 
 ### Goal
 
@@ -115,16 +115,16 @@ engineer joining after the migration cannot be misled by Go-era text.
 - [x] Replace `daemon-roadmaps.md` and `daemon-tasks.md` with current-state
       documents; retire the stale R1-72 documents and superseded roadmap-split
       planning docs to git history (this change)
-- [ ] Rewrite the daemon section of `CLAUDE.md` for the Rust workspace
+- [x] Rewrite the daemon section of `CLAUDE.md` for the Rust workspace
       (crate layout under `crates/`, cargo/make commands, entry point
       `dope-cli`, app assembly in `crates/surface/app/src/lib.rs`)
-- [ ] Audit every `TODO: PLACEHOLDER` / `TODO: MISSING` marker in
+- [x] Audit every `TODO: PLACEHOLDER` / `TODO: MISSING` marker in
       `crates/surface/api/src/`; delete markers that describe closed gaps,
       keep only ones matching a real open seam, and reference this roadmap
       from any that remain
-- [ ] Sweep `docs/` for `daemon/internal/`, `cd daemon && go test`, and other
+- [x] Sweep `docs/` for `daemon/internal/`, `cd daemon && go test`, and other
       Go-era paths; fix or annotate as historical
-- [ ] Confirm `docs/specs/README.md` mapping and speckit-flow docs describe
+- [x] Confirm `docs/specs/README.md` mapping and speckit-flow docs describe
       the current (non-speckit-tooling) authoring flow
 
 ### Definition Of Done

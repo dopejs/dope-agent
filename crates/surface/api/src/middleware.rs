@@ -125,9 +125,9 @@ pub async fn protected(
             .map_err(|err| match err {
                 dope_identity::IdentityError::TenantAccessDenied => {
                     // Go: recordTenantAccessDenied + writeTenantDenial (403).
-                    // TODO: the tenant_resolution_denied audit write and the
-                    // full stable Denial body (error/errorCode/requestId) are
-                    // deferred to the app-wiring wave; the 403 itself is ported.
+                    // The tenant_resolution_denied audit write and the full
+                    // stable Denial body (error/errorCode/requestId) remain
+                    // deferred; the 403 itself is ported.
                     ApiError::Forbidden("tenant access denied".to_string())
                 }
                 other => ApiError::internal(other),
@@ -166,8 +166,7 @@ fn authenticate_request(
             // Go: token-expired requests additionally record a
             // tenant.access_denied audit event (reason_code=token_expired)
             // when the token identity is known. The Rust auth manager returns
-            // no token alongside the error, so that audit path is deferred to
-            // the app-wiring wave (TODO).
+            // no token alongside the error, so that audit path remains deferred.
             ApiError::Unauthorized(err.to_string())
         })?;
     Ok(token)

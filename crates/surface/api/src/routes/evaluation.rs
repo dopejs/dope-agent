@@ -37,7 +37,7 @@
 //! discovered candidates, product fixtures + revisions + review/suppress,
 //! suppressions, replay campaigns, dashboard projections, tool-call
 //! inspections, retention/apply) is fully ported on the dope-store
-//! evaluation_product DAOs (rs/store/src/evaluation_product.rs) with the
+//! evaluation_product DAOs (`crates/persistence/store`) with the
 //! dope_evaluation domain helpers (build_discovery_run_from_policy,
 //! create_product_fixture_from_candidate, create_replay_campaign, ...). The
 //! tenant is read from the resolved tenant context (400 when absent, matching
@@ -59,7 +59,7 @@
 //!   in-memory; events are published to `state.event_bus` only.
 //!
 //! Middleware note: the Go registrations wrap these routes with
-//! `protected()` only (no by-id tenant guard); the outer app-wiring wave
+//! `protected()` only (no by-id tenant guard); the outer app assembly
 //! applies the middleware. Handlers read the `TenantContext` extension when
 //! present and behave like the Go nil-auth path otherwise.
 //!

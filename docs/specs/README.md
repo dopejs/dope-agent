@@ -2,31 +2,28 @@
 
 ## Purpose
 
-`docs/specs/` stores upstream product specs for roadmap slices that should be expanded into
-full speckit feature specs later.
+`docs/specs/` stores upstream product specs for roadmap slices, authored directly as
+plain markdown (Spec Kit tooling was removed; the documents remain authoritative).
 
 These documents are intentionally more detailed than a roadmap section and more stable than
-an in-progress feature branch spec. They exist so `/speckit-specify` can start from a
-single authoritative source instead of reconstructing scope from scattered roadmap notes.
+an in-progress feature-branch spec. They are the authoritative scope for their roadmap
+slice, so implementation planning starts from one source instead of reconstructing scope
+from scattered roadmap notes.
 
 ## Usage Rule
 
-When a future roadmap slice already has a document in `docs/specs/`, prefer using that
-document directly as the main input to `/speckit-specify`.
-
-Recommended pattern:
-
-```text
-$speckit-specify 结合 docs/specs/<NNN>-<name>.md 完成 phase <roadmap number> 的工作
-```
-
-Do not rely on the short roadmap heading alone when a `docs/specs` document exists.
+When a roadmap slice already has a document in `docs/specs/`, use that document directly
+as the authoritative scope, alongside
+[`docs/runtime/daemon-roadmaps.md`](../runtime/daemon-roadmaps.md). Do not rely on the
+short roadmap heading alone when a `docs/specs` document exists.
 
 ## Numbering
 
-- `docs/specs/` numbering is sequential and independent from speckit feature branch or
-  `specs/` directory numbering.
+- `docs/specs/` numbering is sequential and independent from the `specs/` directory
+  numbering.
 - These numbers identify upstream product-spec documents only.
+- The sequence continues at `058` for the Roadmap 77+ context/knowledge/memory program
+  (see `docs/runtime/daemon-roadmaps.md`).
 
 ## Current Mapping
 
@@ -97,12 +94,8 @@ Each `docs/specs` document should include:
 - compatibility and operational notes
 - verification expectations
 - definition of done
-- a recommended `/speckit-specify` prompt
 
-When a `docs/specs` document is expanded into a branch-local speckit feature, the resulting
-`tasks.md` should stay below 50 tasks. If the scope naturally exceeds that branch-local
-budget, split the upstream spec before implementation planning rather than shipping a
-lower-focus oversized spec. Release-closure claims should use
+Release-closure claims should use
 [`docs/runtime/release-truth-checklist.md`](../runtime/release-truth-checklist.md) when
 implementation state and release evidence state could diverge.
 
@@ -110,7 +103,6 @@ implementation state and release evidence state could diverge.
 
 - `docs/runtime/daemon-roadmaps.md` defines roadmap order and closure criteria.
 - `docs/harness/harness-architecture.md` defines architectural sequencing and rationale.
-- `docs/specs/` captures the authoritative upstream spec for a future slice before a
-  branch-local speckit feature is created.
-- `specs/<NNN>-.../` remains the branch-local speckit working area once implementation
-  planning begins.
+- `docs/specs/` captures the authoritative upstream spec for a slice.
+- `specs/<NNN>-.../` holds the branch-local working area (spec/plan/tasks/contracts) once
+  implementation planning begins.
