@@ -14,6 +14,8 @@ pub enum CommandResult {
         title: String,
         items: Vec<(String, String)>,
     },
+    /// Toggle the live daemon event stream (steps / tool calls / dispatch).
+    ToggleEvents,
     Quit,
 }
 
@@ -31,7 +33,8 @@ const HELP: &str = "Commands:\n\
   /connectors            List channel connectors\n\
   /tenants               List tenants\n\
   /me                    Show the authenticated principal\n\
-  /config                Show daemon config\n\n\
+  /config                Show daemon config\n\
+  /events               Stream daemon events (steps / tool calls)\n\n\
 Keys:\n\
   Enter           Send; trailing \\ continues to the next line\n\
   Ctrl+X          Edit prompt in $EDITOR\n\
@@ -56,6 +59,7 @@ fn pretty(v: &serde_json::Value) -> String {
 pub async fn run_command(cmd: &str, args: &str, client: &Arc<Client>) -> CommandResult {
     match cmd {
         "/help" => CommandResult::Push(Role::System, HELP.to_string()),
+        "/events" => CommandResult::ToggleEvents,
         "/exit" | "/quit" => CommandResult::Quit,
         "/model" => CommandResult::SetModel(opt(args)),
         "/provider" => CommandResult::SetProvider(opt(args)),

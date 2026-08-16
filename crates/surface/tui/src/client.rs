@@ -130,6 +130,58 @@ impl Client {
         terminal.ok_or_else(|| "stream ended without a terminal event".to_string())
     }
 
+    /// Stream the daemon event ledger via SSE (`/v1/events/stream`). Invokes
+    /// `on_event(event_name, json)` for each event frame; returning `false`
+    /// stops the subscription. Runs until the stream closes or `on_event`
+    /// returns `false`.
+    pub async fn stream_events(
+        &self,
+        mut on_event: impl FnMut(String, serde_json::Value) -> bool,
+    ) -> Result<(), String> {
+        let url = format!("{}/v1/events/stream", self.base_url);
+        let resp = self
+            .auth(self.http.get(&url))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!(
+                "HTTP {}: {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            ));
+        }
+
+        let mut stream = resp.bytes_stream();
+        let mut buf = String::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| e.to_string())?;
+            buf.push_str(&String::from_utf8_lossy(&chunk));
+            while let Some(idx) = buf.find("\n\n") {
+                let frame = buf[..idx].to_string();
+                buf.drain(..idx + 2);
+                let mut event = String::new();
+                let mut data = String::new();
+                for line in frame.lines() {
+                    if let Some(v) = line.strip_prefix("event:") {
+                        event = v.trim().to_string();
+                    } else if let Some(v) = line.strip_prefix("data:") {
+                        data.push_str(v.trim());
+                    }
+                }
+                if data.is_empty() {
+                    continue;
+                }
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&data) {
+                    if !on_event(event, value) {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// GET an API path and return the JSON body.
     pub async fn get_json(&self, path: &str) -> Result<serde_json::Value, String> {
         let url = format!("{}{}", self.base_url, path);

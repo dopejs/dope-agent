@@ -5,6 +5,7 @@ mod render;
 
 use std::io;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use clap::Parser;
 use ratatui::{
@@ -52,6 +53,7 @@ pub(crate) enum Role {
     Assistant,
     System,
     Error,
+    Event,
 }
 
 struct Message {
@@ -79,11 +81,13 @@ struct App {
     busy: bool,
     picker: Option<Picker>,
     pending_editor: bool,
+    event_stop: Option<Arc<AtomicBool>>,
 }
 
 enum StreamMsg {
     Delta(String),
     Done(Result<ChatQueryResponse, String>),
+    Event(String, serde_json::Value),
     Command(commands::CommandResult),
 }
 
@@ -176,6 +180,12 @@ fn draw(frame: &mut ratatui::Frame, app: &App) {
                     Style::default().fg(Color::Red),
                 )));
             }
+            Role::Event => {
+                body.push(Line::from(Span::styled(
+                    m.content.clone(),
+                    Style::default().fg(Color::Yellow),
+                )));
+            }
             Role::System => {
                 body.push(Line::from(Span::styled(
                     m.content.clone(),
@@ -231,6 +241,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         busy: false,
         picker: None,
         pending_editor: false,
+        event_stop: None,
     };
 
     // restore last session
@@ -307,6 +318,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     }
+                    StreamMsg::Event(name, value) => {
+                        app.push(Role::Event, format_event(&name, &value), true);
+                    }
                     StreamMsg::Command(result) => {
                         match result {
                             commands::CommandResult::Push(role, content) => app.push(role, content, true),
@@ -316,6 +330,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             commands::CommandResult::OpenThreadPicker { title, items } => {
                                 app.picker = Some(Picker { title, items, index: 0 });
                             }
+                            commands::CommandResult::ToggleEvents => toggle_events(&mut app, &client, &stream_tx),
                             commands::CommandResult::Quit => break,
                         }
                     }
@@ -455,6 +470,7 @@ fn handle_key(
                     "/tenants",
                     "/me",
                     "/config",
+                    "/events",
                 ];
                 let matches: Vec<&str> = CMDS
                     .iter()
@@ -536,6 +552,7 @@ fn role_to_str(role: Role) -> &'static str {
         Role::Assistant => "assistant",
         Role::System => "system",
         Role::Error => "error",
+        Role::Event => "event",
     }
 }
 
@@ -544,6 +561,7 @@ fn role_from_str(s: &str) -> Role {
         "user" => Role::User,
         "assistant" => Role::Assistant,
         "error" => Role::Error,
+        "event" => Role::Event,
         _ => Role::System,
     }
 }
@@ -559,6 +577,66 @@ fn common_prefix(items: &[&str]) -> String {
         }
     }
     prefix
+}
+
+fn toggle_events(app: &mut App, client: &Arc<Client>, stream_tx: &mpsc::Sender<StreamMsg>) {
+    if let Some(stop) = app.event_stop.take() {
+        stop.store(false, Ordering::SeqCst);
+        app.push(Role::System, "events stream stopped".to_string(), true);
+        return;
+    }
+    let running = Arc::new(AtomicBool::new(true));
+    app.event_stop = Some(running.clone());
+    let client = client.clone();
+    let tx = stream_tx.clone();
+    tokio::spawn(async move {
+        let result = client
+            .stream_events(|name, value| {
+                let _ = tx.try_send(StreamMsg::Event(name, value));
+                running.load(Ordering::SeqCst)
+            })
+            .await;
+        if let Err(e) = result {
+            let _ = tx
+                .send(StreamMsg::Command(commands::CommandResult::Push(
+                    Role::Error,
+                    format!("[events] {e}"),
+                )))
+                .await;
+        }
+    });
+    app.push(
+        Role::System,
+        "events stream started (/events to stop)".to_string(),
+        true,
+    );
+}
+
+fn format_event(name: &str, value: &serde_json::Value) -> String {
+    let category = value
+        .get("category")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| name.split('.').next().unwrap_or("event"));
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(payload) = value.get("payload").and_then(|p| p.as_object()) {
+        for key in ["toolName", "title", "entrypoint", "kind"] {
+            if let Some(v) = payload.get(key).and_then(|v| v.as_str()) {
+                if !v.is_empty() {
+                    parts.push(v.to_string());
+                    break;
+                }
+            }
+        }
+        if let Some(status) = payload.get("status").and_then(|v| v.as_str()) {
+            parts.push(status.to_string());
+        }
+    }
+    if parts.is_empty() {
+        format!("[{category}] {name}")
+    } else {
+        format!("[{category}] {name}  {}", parts.join("  "))
+    }
 }
 
 fn open_external_editor(
@@ -580,4 +658,42 @@ fn open_external_editor(
     enable_raw_mode()?;
     execute!(terminal.backend_mut(), EnterAlternateScreen)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_event_step_created() {
+        let value = serde_json::json!({
+            "category": "step",
+            "name": "step.created",
+            "payload": { "title": "reply to connector message", "kind": "chat_query", "status": "queued" }
+        });
+        let out = format_event("step.created", &value);
+        assert!(out.starts_with("[step] step.created"), "got {out:?}");
+        assert!(out.contains("reply to connector message"), "got {out:?}");
+        assert!(out.contains("queued"), "got {out:?}");
+    }
+
+    #[test]
+    fn format_event_tool_call_requested() {
+        let value = serde_json::json!({
+            "category": "tool_call",
+            "name": "tool_call.requested",
+            "payload": { "toolName": "exec-skill", "status": "requested" }
+        });
+        let out = format_event("tool_call.requested", &value);
+        assert!(
+            out.starts_with("[tool_call] tool_call.requested"),
+            "got {out:?}"
+        );
+        assert!(out.contains("exec-skill"), "got {out:?}");
+    }
+
+    #[test]
+    fn role_event_roundtrip() {
+        assert_eq!(role_from_str(role_to_str(Role::Event)), Role::Event);
+    }
 }
