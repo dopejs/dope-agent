@@ -9,11 +9,13 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+// Each variant serializes as its exact Go wire literal: serde's
+// rename_all = "snake_case" mangles acronym variants (ClaudeCodeCLI ->
+// claude_code_c_l_i) and Go-era rows/clients carry the Go values.
 macro_rules! string_enum {
     ($name:ident { $($v:ident => $s:literal),+ $(,)? }) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-        #[serde(rename_all = "snake_case")]
-        pub enum $name { $($v),+ }
+        pub enum $name { $(#[serde(rename = $s)] $v),+ }
 
         impl $name {
             #[must_use]

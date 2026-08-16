@@ -79,6 +79,12 @@ short roadmap heading alone when a `docs/specs` document exists.
 - `055` -> Roadmap 70: Operator Shell Productization
 - `056` -> Roadmap 71: Support Diagnostics And Evidence Bundle
 - `057` -> Roadmap 72: Public Release Soak And Launch Gate
+- `058` -> Roadmap 78: Memory Plane Foundation (implementation gated on the
+  Roadmap 77 ship decision)
+- `059` -> Roadmap 79: Context Engineering Foundation (gated)
+- `060` -> Roadmap 80: Knowledge Retrieval (gated)
+- `061` -> Roadmap 81: Agent-Managed Skills (gated)
+- `062` -> Roadmap 82: Audited Self-Improvement (gated)
 
 ## Authoring Standard
 

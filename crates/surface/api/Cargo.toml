@@ -44,11 +44,13 @@ dope-mail = { workspace = true }
 dope-reminders = { workspace = true }
 dope-triage = { workspace = true }
 dope-routine = { workspace = true }
+dope-opsreadiness = { workspace = true }
 dope-webhook = { workspace = true }
 dope-catalog = { workspace = true }
 dope-execprofile = { workspace = true }
 dope-evidence = { workspace = true }
 dope-connectors = { workspace = true }
+dope-imtypes = { workspace = true }
 dope-threads = { workspace = true }
 dope-profiles = { workspace = true }
 dope-bindings = { workspace = true }

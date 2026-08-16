@@ -8,8 +8,7 @@ use thiserror::Error;
 macro_rules! string_enum {
     ($name:ident { $($v:ident => $s:literal),+ $(,)? }) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-        #[serde(rename_all = "snake_case")]
-        pub enum $name { $($v),+ }
+        pub enum $name { $(#[serde(rename = $s)] $v),+ }
 
         impl $name {
             #[must_use]

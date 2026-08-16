@@ -18,20 +18,62 @@ use crate::types::{self, SystemInfoResponse};
 pub mod activation;
 pub mod auth;
 pub mod billing;
+pub mod catalog;
 pub mod chat;
 pub mod calendar;
+pub mod capabilities;
 pub mod channel_management;
 pub mod computer_use;
+pub mod config;
+pub mod connectors;
 pub mod evaluation;
+pub mod evidence;
+pub mod execprofile;
 pub mod integrations;
+pub mod llm;
 pub mod mail;
 pub mod mcp;
+pub mod policy;
+pub mod providers;
+pub mod release;
 pub mod reminders;
 pub mod resources;
+pub mod routine;
 pub mod runs;
+pub mod sandboxes;
+pub mod sessions;
 pub mod setupwizard;
+pub mod triage;
 pub mod workflows;
 pub mod workspace_bindings;
+
+/// Decodes a JSON request body that Go's decodeJSONBody treats as required:
+/// an empty body is a 400 "request body is required", malformed JSON is a 400
+/// with the decoder message.
+pub(crate) fn decode_json_required<T: serde::de::DeserializeOwned>(
+    body: &axum::body::Bytes,
+) -> Result<T, crate::error::ApiError> {
+    if body.is_empty() {
+        return Err(crate::error::ApiError::BadRequest(
+            "request body is required".to_string(),
+        ));
+    }
+    serde_json::from_slice(body)
+        .map_err(|err| crate::error::ApiError::BadRequest(err.to_string()))
+}
+
+/// Decodes a JSON request body where the Go handler tolerates the EOF decode
+/// error (an absent body behaves like an empty request object); malformed
+/// JSON is still a 400.
+pub(crate) fn decode_json_or_default<T: Default + serde::de::DeserializeOwned>(
+    body: &axum::body::Bytes,
+) -> Result<T, crate::error::ApiError> {
+    if body.is_empty() {
+        return Ok(T::default());
+    }
+    serde_json::from_slice(body)
+        .map_err(|err| crate::error::ApiError::BadRequest(err.to_string()))
+}
 
 /// `/healthz` payload (Go: `{"ok": true, "service": "dope"}`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -67,33 +109,135 @@ pub async fn system_info(State(state): State<AppState>) -> Json<SystemInfoRespon
     Json(types::build_system_info_response(&state.config))
 }
 
-/// Builds the API router with shared layers (tracing). Route families attach
-/// their own routers and `protected()` route layers in later waves.
+/// Builds the API router with shared layers (tracing) and the Go
+/// authentication topology: everything runs behind the `protected()`
+/// middleware except the Go unauthenticated allowlist — `/healthz`,
+/// `/version`, `/v1/system/info`, the pairing entry points (Go
+/// withEnvironment), and the signature-authenticated webhook ingress.
 #[must_use]
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let open = Router::new()
         .route("/healthz", get(healthz))
         .route("/version", get(version))
         .route("/v1/system/info", get(system_info))
+        .merge(mcp::ingress_router())
+        .merge(auth::open_router().route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::with_environment,
+        )));
+
+    let protected_routes = Router::new()
         .merge(activation::router())
         .merge(auth::router())
         .merge(billing::router())
+        .merge(catalog::router())
         .merge(chat::router())
         .merge(calendar::router())
+        .merge(capabilities::router())
         .merge(channel_management::router())
         .merge(computer_use::router())
+        .merge(config::router())
+        .merge(connectors::router())
         .merge(evaluation::router())
+        .merge(evidence::router())
+        .merge(execprofile::router())
         .merge(integrations::router())
+        .merge(llm::router())
         .merge(mail::router())
         .merge(mcp::router())
+        .merge(policy::router())
+        .merge(providers::router())
+        .merge(release::router())
         .merge(reminders::router())
         .merge(resources::router())
+        .merge(routine::router())
         .merge(runs::router())
+        .merge(sandboxes::router())
+        .merge(sessions::router())
         .merge(setupwizard::router())
+        .merge(triage::router())
         .merge(workflows::router())
         .merge(workspace_bindings::router())
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::protected,
+        ));
+
+    open.merge(protected_routes)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+/// Shared test scaffolding for the route-family test modules: a minimal
+/// AppState over a temp store plus a JSON request helper against the full
+/// router.
+#[cfg(test)]
+pub(crate) mod tests_support {
+    use std::sync::Arc;
+
+    use axum::body::{to_bytes, Body};
+    use axum::http::{Request, StatusCode};
+    use parking_lot::Mutex;
+    use tower::ServiceExt;
+    use uuid::Uuid;
+
+    use crate::state::AppState;
+
+    pub(crate) fn test_config() -> dope_config::Config {
+        dope_config::Config {
+            environment: dope_config::Environment::Test,
+            bind_addr: "127.0.0.1:19192".to_string(),
+            data_dir: "/tmp/dope-api-test".to_string(),
+            log_level: "info".to_string(),
+            version: "0.1.0".to_string(),
+            llm: dope_config::LlmConfig::default(),
+            connectors: dope_config::ConnectorConfig {
+                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
+                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
+                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
+                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+            },
+        }
+    }
+
+    /// AppState with only the required core; managers stay None and are
+    /// injected per test module.
+    pub(crate) fn test_state() -> AppState {
+        let dir = std::env::temp_dir().join(format!("dope-api-routes-{}", Uuid::now_v7()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let store = Arc::new(Mutex::new(
+            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+        ));
+        AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store)
+    }
+
+    /// Sends one request against the assembled router and decodes the JSON
+    /// response (Null for empty bodies, e.g. bare 405s).
+    pub(crate) async fn request_json(
+        state: AppState,
+        method: &str,
+        uri: &str,
+        body: Option<serde_json::Value>,
+    ) -> (StatusCode, serde_json::Value) {
+        let app = super::router(state);
+        let builder = Request::builder().method(method).uri(uri);
+        let request = match body {
+            Some(json) => builder
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&json).expect("encode body")))
+                .expect("request"),
+            None => builder.body(Body::empty()).expect("request"),
+        };
+        let response = app.oneshot(request).await.expect("oneshot");
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.expect("body");
+        let json = if bytes.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null)
+        };
+        (status, json)
+    }
 }
 
 #[cfg(test)]
@@ -171,6 +315,38 @@ mod tests {
         assert_eq!(json["bindAddr"], "127.0.0.1:19192");
         assert_eq!(json["dataDir"], "/tmp/dope-api-test");
         assert_eq!(json["logLevel"], "info");
+    }
+
+    #[tokio::test]
+    async fn protected_routes_require_auth_when_auth_is_configured() {
+        let mut state = test_state();
+        state.auth = Some(Arc::new(dope_identity::auth::Manager::new()));
+        let app = router(state);
+
+        // Protected route without a token: 401 (Go protected()).
+        let request = Request::builder()
+            .uri("/v1/config")
+            .body(axum::body::Body::empty())
+            .expect("request");
+        let response = app.clone().oneshot(request).await.expect("oneshot");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        // Allowlisted routes stay open: healthz and the pairing entry point.
+        let request = Request::builder()
+            .uri("/healthz")
+            .body(axum::body::Body::empty())
+            .expect("request");
+        let response = app.clone().oneshot(request).await.expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/auth/pairings/start")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(r#"{"mode":"local","label":"cli"}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("oneshot");
+        assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

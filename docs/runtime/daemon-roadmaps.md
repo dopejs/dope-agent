@@ -48,9 +48,10 @@ Each implementation round should finish **one whole roadmap**.
 - Verification commands: `cargo test --workspace` (or `make daemon-test`) and
   `make daemon-contract-test`. Go-era `go test ./...` references in archived
   documents map to these.
-- **What is not closed** is captured below: release evidence (all soak/launch
-  evidence predates the Rust port), deferred permissive hooks, documentation
-  truth, and the gated context/knowledge/memory program.
+- **What is not closed** is captured below: Rust API surface parity (four
+  route families and auth-middleware attachment still open, Roadmap 74),
+  release evidence (all soak/launch evidence predates the Rust port),
+  deferred permissive hooks, and the gated context/knowledge/memory program.
 
 ## Completed Roadmap Ledger (1-72)
 
@@ -66,7 +67,7 @@ this file's git history (pre-2026-08-16 revisions) and in `specs/<NNN>-.../`.
 | 34-44 | Tenancy, hosted secrets, billing/quotas, production ops, live validation, evaluation expansion, diagnostics, hosted profile, release truth | R37/39/42/43 carry open evidence debt, see register below |
 | 45-53 | Hosted activation, credential wizard, quota UX; channel conformance, Discord hardening, Telegram, Slack, Matrix, channel repair UX | |
 | 54-59 | Thread/session lifecycle, continuity, group reset/handoff, persona, workspace binding, integration adapter plane | |
-| 60-72 | Real calendar/mail closure (Feishu/Lark), attachments, inbox triage, routines, webhooks, catalog, exec-profile UX, operator shell productization, evidence bundle, launch-gate validator | R72 delivered the *validator*; the launch-gate *run* is still open, see Roadmap 76 |
+| 60-72 | Real calendar/mail closure (Feishu/Lark), attachments, inbox triage, routines, webhooks, catalog, exec-profile UX, operator shell productization, evidence bundle, launch-gate validator | R72 delivered the *validator*; the launch-gate *run* is still open, see Roadmap 77 |
 
 ## Release Evidence Debt Register
 
@@ -83,7 +84,7 @@ release-truth standard none of it certifies the shipped Rust implementation.
 | 43 Hosted operational profile & recovery | full-duration hosted daemon soak (`hosted_soak_pending`) |
 | 72 Public release soak & launch gate | operator-run hosted soak + real-account evidence index; ship/no-ship decision |
 
-Closing this register is Roadmaps 75 and 76.
+Closing this register is Roadmaps 76 and 77.
 
 ---
 
@@ -140,9 +141,85 @@ engineer joining after the migration cannot be misled by Go-era text.
 
 ---
 
-## Roadmap 74: Deferred Hook Wiring Closure
+## Roadmap 74: Rust API Surface Parity Closure
 
-Status: `[ ] planned`
+Status: `[x] complete (2026-08-16)`
+
+### Goal
+
+Make the Rust daemon's HTTP surface actually match the Go daemon it replaced,
+so SDK/web/TUI clients and the launch-gate workflow stop 404ing against
+shipped functionality.
+
+### Context
+
+A 2026-08-16 route-table audit (Go table recovered from commit `16ac318^`)
+found the wave-8 "16 route families done" claim in `crates/MIGRATION.md` was
+an overstatement — the Go daemon served 22 families. The domain managers for
+the missing surfaces were fully ported and wired into `AppState`, but no
+route ever called them. Additionally, the ported `protected()` auth
+middleware is not attached to the production router: even with an auth
+manager configured, every route is served unauthenticated (Go wrapped every
+protected route at registration).
+
+### Tasks
+
+- [x] Port the six Roadmap 65-72 route families: `/v1/triage/policies`,
+      `/v1/routines`, `/v1/catalog/items`, `/v1/execution/profiles` +
+      `/v1/execution/explain`, `/v1/support/evidence-bundles`,
+      `/v1/release/launch-gate` — with Go status-code/error-mapping parity,
+      behavioral tests, and the `LaunchGateEvidence` `serde(default)` wire
+      fix (zero-value decode parity with Go)
+- [x] Port `/v1/config` (config inspection, Roadmap 1)
+- [x] Port `/v1/sessions` list/get/reset/events (Roadmaps 1/6)
+- [x] Port `/v1/llm/dispatches`, `/v1/llm/dispatches/stream` (Roadmap 3,
+      SSE started/delta/terminal frames; `CreateDispatchInput` and
+      `CheckInput` gained `serde(default)` for Go zero-value decode parity)
+- [x] Port `/v1/sandboxes/executions`, `/v1/sandboxes/profiles` (+reload),
+      `/v1/sandboxes/explain` (Roadmap 16)
+- [x] Port the four additional families the parity gate surfaced:
+      `/v1/capabilities` (Roadmap 2), `/v1/connectors` incl. the
+      `ingress/messages` inbound pipeline (Roadmaps 2/8/11),
+      `/v1/policy/approvals` incl. consumer-policy sync, sandbox enrichment,
+      and computer-use resume on approval (Roadmap 4), `/v1/providers` incl.
+      managed auth, models, default-model, and checks (Roadmaps 9/10)
+- [x] Attach `protected()` to the production router with Go's exact
+      unauthenticated allowlist (`/healthz`, `/version`, `/v1/system/info`,
+      pairing start/complete, signature-authed `/v1/triggers/webhook/`),
+      verified by test
+- [x] Route-table parity gate test (`crates/surface/api/tests/route_parity.rs`)
+      probing every pattern in the recorded Go route table against the
+      mounted router; it fails on unexplained gaps
+
+### Definition Of Done (met)
+
+- Every route in the Go daemon's final route table exists in the Rust router
+  with matching methods and status semantics, or carries a recorded
+  intentional-divergence note — enforced by the parity gate test.
+- Authentication enforcement parity: the unauthenticated allowlist matches Go
+  `server.go`, verified by test.
+
+### Residual Risk (rolled into Roadmap 75)
+
+- Per-handler tenant-context integration is documented per module rather than
+  implemented: hosted credential-permission checks, tenant-scoped list and
+  tenant-safe persistence variants, and the tenant-gated connector
+  diagnostics/setup/smoke reads answer the Go no-tenant-context behavior.
+  These paths are inert until identity-resolved tenant contexts are exercised
+  by a hosted deployment, and must be closed before the Roadmap 76 hosted
+  soak.
+
+### Explicitly Out Of Scope
+
+- In-manager hook wiring (Roadmap 75) and any new product surfaces.
+
+---
+
+## Roadmap 75: Deferred Hook Wiring Closure
+
+Status: `[x] complete (2026-08-16)` — see the recorded decisions below; the
+hosted-deployment remainder of the Roadmap 74 tenant residual moved to
+Roadmap 76 as a pre-soak prerequisite.
 
 ### Goal
 
@@ -169,18 +246,47 @@ permissive in the production assembly (`crates/surface/app/src/lib.rs`):
 
 ### Tasks
 
-- [ ] Implement a real webhook `QuotaGate` backed by the billing/quota plane
-      (Roadmap 38 surfaces), with per-tenant bounds and a deny event
-- [ ] Implement the catalog `RequirementChecker` against the sandbox
-      requirement contract (Roadmap 17) and `PermissionGate` against the
-      policy plane
-- [ ] Inventory every remaining `Option<Box<dyn ...>>` hook seam across
-      `crates/domains/*` whose `None` fallback is permissive; for each, wire
-      a real implementation or record an accepted-risk decision in this
-      document
-- [ ] Decide and record the fate of spec 052's non-webhook trigger sources
-- [ ] Behavioral tests for each newly wired gate (allow, deny, restart
-      persistence where applicable)
+- [x] Webhook `QuotaGate` backed by the billing plane
+      (`WebhookQuotaGateImpl` in `crates/surface/app/src/adapters.rs`):
+      tenant-scoped triggers reserve + commit one workflow-launch unit;
+      denials return the billing reason code, publish
+      `webhook.trigger_quota_denied`, and land in the durable QuotaDenial
+      ledger; hosted tenants fail closed when quota state is unavailable.
+      Recorded decision: tenant-less local triggers stay allowed — quota is
+      a hosted per-tenant bound.
+- [x] Catalog `RequirementChecker` backed by the sandbox plane
+      (`CatalogSandboxRequirementChecker`): a requirement key names a sandbox
+      backend that must report available; unknown keys are unmet (fail
+      closed). Catalog `PermissionGate` backed by the identity plane
+      (`CatalogTenantPermissionGate`): tenant-scoped enablement requires an
+      Active tenant; unknown/disabled tenants are denied. Recorded decision:
+      fine-grained permission strings stay with the authoritative
+      protected() middleware.
+- [x] Hook-seam inventory (grep `unwrap_or_else(|| Box::new` across crates):
+      webhook firer/quota — wired; catalog checker/permissions — wired;
+      execprofile health/reqs/perms — wired (sandbox health + sandbox
+      requirement checker + tenant gate); evidence collector/perms — wired
+      (routine collector + `EvidenceSupportPermissionGate`: named actor +
+      Active tenant). Accepted as-is (recorded): activation/scheduler clock
+      seams (test determinism only) and the matrix `FakeTransport`
+      constructor default (production wiring passes the real transport).
+- [x] Spec 052 non-webhook trigger sources — recorded decision: remain out
+      of scope for the non-knowledge program. IM ingress is served by the
+      channel connectors; any other third-party event source rides the
+      signed webhook plane. Generic inbound trigger adapters join the
+      post-launch backlog.
+- [x] Roadmap 74 tenant residual, data-isolation slice: llm dispatches use
+      tenant-scoped list/get and tenant-safe persistence; the sessions list
+      is tenant-filtered; connector diagnostics/setup/smoke hosted reads are
+      fully implemented behind the tenant context + connectors-manage
+      permission. Remaining hosted-deployment items moved to Roadmap 76
+      (pre-soak): providers hosted credential-permission checks and
+      per-tenant managed-auth variants, tenant-context overrides in
+      catalog/evidence/webhook handlers, and by-id tenant guards.
+- [x] Behavioral tests for each newly wired gate
+      (`crates/surface/app/src/adapters.rs` hook_wiring_tests: requirement
+      matching + fail-closed, active/disabled/unknown-tenant gating,
+      local-allow + hosted fail-closed + deny-event assertions)
 
 ### Definition Of Done
 
@@ -196,9 +302,10 @@ permissive in the production assembly (`crates/surface/app/src/lib.rs`):
 
 ---
 
-## Roadmap 75: Rust-Era Release Evidence Re-Run
+## Roadmap 76: Rust-Era Release Evidence Re-Run
 
-Status: `[ ] planned` — depends on Roadmap 74 (soak must cover final wiring)
+Status: `[ ] planned` — depends on Roadmaps 74 and 75 (soak must cover the
+full API surface and final wiring)
 
 ### Goal
 
@@ -215,8 +322,23 @@ is Go-era and therefore void for the Rust binary.
 
 ### Tasks
 
-- [ ] Verify the soak harness, fault drills, and ops tooling run unmodified
-      against the Rust daemon; port any Go-specific probes
+- [ ] Close the hosted tenant-context remainder before the hosted soak:
+      providers hosted credential-permission checks and per-tenant
+      managed-auth variants, tenant-context overrides in
+      catalog/evidence/webhook handlers, by-id tenant guards
+- [x] Verify the soak harness, fault drills, and ops tooling run unmodified
+      against the Rust daemon (2026-08-16: `scripts/production/run-soak.sh`
+      targeted-validation run passed against the Rust binary on the real
+      `~/.dope-test` data dir). The first real-data boot surfaced a Go
+      wire-compat defect class, fixed at root before any soak counts:
+      Go-marshaled `null` for nil slices/maps in persisted JSON (store
+      decoders + serde `null_default` annotations), 29 serde enum wire
+      values mangled by `rename_all = "snake_case"` acronym handling (every
+      `string_enum!` macro now renames each variant to its exact Go
+      literal), the missing Go `AppendEvent` default-tenant auto-bind (T077
+      CHECK constraint), and an MCP websocket transport
+      runtime-inside-runtime boot panic (shared never-dropped IO runtime +
+      `block_in_place`). Full-duration soaks must run on the fixed build.
 - [ ] 24-hour test-environment soak of the Rust daemon with fake-backend
       fault drills and resource-growth checks (closes R39 evidence)
 - [ ] Full-duration hosted daemon soak on a stable host (closes R43
@@ -230,19 +352,19 @@ is Go-era and therefore void for the Rust binary.
 
 ### Definition Of Done
 
-- The Release Evidence Debt Register above shrinks to only the Roadmap 76
+- The Release Evidence Debt Register above shrinks to only the Roadmap 77
   launch-gate row, each closed row linking Rust-era evidence.
 - Every recorded run identifies the exact Rust commit it certifies.
 
 ### Explicitly Out Of Scope
 
-- The public launch-gate run itself (Roadmap 76).
+- The public launch-gate run itself (Roadmap 77).
 
 ---
 
-## Roadmap 76: Public Launch Gate Execution
+## Roadmap 77: Public Launch Gate Execution
 
-Status: `[ ] planned` — depends on Roadmaps 74 and 75
+Status: `[ ] planned` — depends on Roadmaps 74, 75, and 76
 
 ### Goal
 
@@ -267,7 +389,7 @@ gate; missing evidence must fail it, not be waived.
       attachment transfer and inbox triage paths
 - [ ] Support evidence bundle generation and redaction verification on the
       release candidate
-- [ ] Assemble `LaunchGateEvidence` from Roadmap 75 artifacts plus the runs
+- [ ] Assemble `LaunchGateEvidence` from Roadmap 76 artifacts plus the runs
       above; execute `POST /v1/release/launch-gate`
 - [ ] Record the ship / no-ship decision, the evidence index location, and —
       on no-ship — the enumerated blockers as new roadmap tasks
@@ -276,14 +398,14 @@ gate; missing evidence must fail it, not be waived.
 
 - A dated launch-gate decision for a named Rust commit is recorded in this
   document and in the release evidence index.
-- On ship: the Roadmap 77 entry gate is formally open. On no-ship: every
+- On ship: the Roadmap 78 entry gate is formally open. On no-ship: every
   blocker is a tracked task with an owner roadmap.
 
 ---
 
-## Roadmap 77+: Context, Knowledge, And Memory Program
+## Roadmap 78+: Context, Knowledge, And Memory Program
 
-Status: `[ ] gated` — entry gate is the Roadmap 76 ship decision. Until the
+Status: `[ ] gated` — entry gate is the Roadmap 77 ship decision. Until the
 gate opens, only design work (spec authoring) is authorized; no
 implementation.
 
@@ -302,9 +424,12 @@ engineering, agent-managed skills, and audited self-improvement
 - No self-modifying agent behavior without review and audit.
 - No general-purpose knowledge graph as the primary storage model.
 
-### Program Shape (to be cut into roadmaps at design time)
+### Program Shape
 
-Author upstream specs continuing the `docs/specs/` sequence at `058`:
+The upstream specs are authored (2026-08-16) and mapped in
+[`../specs/README.md`](../specs/README.md): 058 → Roadmap 78, 059 → 79,
+060 → 80, 061 → 81, 062 → 82. Implementation of every slice stays gated on
+the Roadmap 77 ship decision:
 
 1. **Memory plane foundation** — memory types, data model, write policy,
    retention, attribution, reversal (recommended first slice, spec 058)
@@ -317,14 +442,14 @@ Author upstream specs continuing the `docs/specs/` sequence at `058`:
 5. **Self-improvement design** — review- and audit-gated behavior change
 
 Each spec follows the existing `docs/specs/` authoring standard and the
-roadmap-per-slice delivery unit. Numbering continues from Roadmap 77.
+roadmap-per-slice delivery unit. Numbering continues from Roadmap 78.
 
 ---
 
 ## Deferred, Non-Gating Work
 
 Carried follow-ons that do not block the launch gate; schedule after
-Roadmap 76 unless a launch blocker pulls them forward:
+Roadmap 77 unless a launch blocker pulls them forward:
 
 - **Sandbox backend expansion** (from Roadmap 20): additional consumer
   families onto sandbox execution, stronger backends beyond `docker`,
@@ -341,5 +466,5 @@ Roadmap 76 unless a launch blocker pulls them forward:
 - [`../specs/README.md`](../specs/README.md) — upstream spec index and
   spec→roadmap mapping; continues at 058 for the knowledge program.
 - [`release-truth-checklist.md`](release-truth-checklist.md) — mandatory for
-  every evidence claim in Roadmaps 75 and 76.
+  every evidence claim in Roadmaps 76 and 77.
 - `specs/<NNN>-.../` — per-slice working areas once implementation begins.

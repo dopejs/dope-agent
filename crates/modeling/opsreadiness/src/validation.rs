@@ -48,8 +48,11 @@ pub struct WorkloadEvidence {
     pub reason: String,
 }
 
+// serde(default): Go decodes a caller-supplied evidence index into the zero
+// value, so absent fields must degrade to empty/false instead of rejecting
+// the document at the API boundary.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct LaunchGateEvidence {
     pub channels: Vec<RealAccountSmokeStatus>,
     pub provider_smoke: Vec<RealAccountSmokeStatus>,

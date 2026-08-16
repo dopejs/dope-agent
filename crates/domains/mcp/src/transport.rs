@@ -773,16 +773,9 @@ impl Transport for WebsocketTransport {
         if endpoint.is_empty() {
             return Err(McpError::TransportUnavailable);
         }
-        let runtime = Arc::new(
-            tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .thread_name("mcp-ws")
-                .build()
-                .map_err(|err| McpError::Other(format!("build mcp websocket runtime: {err}")))?,
-        );
+        let runtime = ws_runtime()?;
         let request = build_ws_request(server)?;
-        let (ws, _response) = runtime
-            .block_on(async {
+        let (ws, _response) = run_blocking(&runtime, async {
                 match tokio::time::timeout(
                     WEBSOCKET_HANDSHAKE_TIMEOUT,
                     tokio_tungstenite::connect_async(request),
@@ -812,6 +805,37 @@ impl Transport for WebsocketTransport {
 
 /// Builds the websocket handshake request: headers from the resolved websocket auth
 /// headers plus any configured subprotocols (Go `websocketTransport.Open`).
+/// The shared websocket IO runtime. One process-wide runtime backs every
+/// websocket session and is intentionally never dropped: per-session runtimes
+/// panic when their last Arc drops inside an async context (e.g. a session
+/// torn down from an API handler or startup restore).
+fn ws_runtime() -> Result<Arc<tokio::runtime::Runtime>, McpError> {
+    static RUNTIME: std::sync::OnceLock<Arc<tokio::runtime::Runtime>> = std::sync::OnceLock::new();
+    if let Some(runtime) = RUNTIME.get() {
+        return Ok(Arc::clone(runtime));
+    }
+    let built = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_name("mcp-ws")
+        .worker_threads(2)
+        .build()
+        .map_err(|err| McpError::Other(format!("build mcp websocket runtime: {err}")))?;
+    let _ = RUNTIME.set(Arc::new(built));
+    Ok(Arc::clone(RUNTIME.get().expect("ws runtime initialized")))
+}
+
+/// Blocks on `fut` using the transport's private runtime. When the caller is
+/// already inside a tokio runtime (e.g. daemon startup restore on the main
+/// runtime), `block_in_place` releases the worker so the nested `block_on`
+/// is legal; from plain threads it blocks directly.
+fn run_blocking<F: std::future::Future>(runtime: &tokio::runtime::Runtime, fut: F) -> F::Output {
+    if tokio::runtime::Handle::try_current().is_ok() {
+        tokio::task::block_in_place(|| runtime.block_on(fut))
+    } else {
+        runtime.block_on(fut)
+    }
+}
+
 fn build_ws_request(server: &Server) -> Result<http::Request<()>, McpError> {
     let mut request = server
         .endpoint
@@ -984,7 +1008,7 @@ impl WebsocketSession {
         let write_result = {
             let writer = Arc::clone(&self.writer);
             let runtime = Arc::clone(&self.runtime);
-            runtime.block_on(async move {
+            run_blocking(&runtime, async move {
                 let mut writer = writer.lock().await;
                 writer.send(Message::Text(payload)).await
             })
@@ -1013,12 +1037,11 @@ impl WebsocketSession {
         .map_err(|err| format!("marshal mcp websocket payload: {err}"))?;
         let writer = Arc::clone(&self.writer);
         let runtime = Arc::clone(&self.runtime);
-        runtime
-            .block_on(async move {
-                let mut writer = writer.lock().await;
-                writer.send(Message::Text(payload)).await
-            })
-            .map_err(|err| format!("write mcp websocket payload: {err}"))
+        run_blocking(&runtime, async move {
+            let mut writer = writer.lock().await;
+            writer.send(Message::Text(payload)).await
+        })
+        .map_err(|err| format!("write mcp websocket payload: {err}"))
     }
 }
 
@@ -1059,7 +1082,7 @@ impl Session for WebsocketSession {
         // Best-effort close frame; the read-loop task tears down on its own.
         let writer = Arc::clone(&self.writer);
         let runtime = Arc::clone(&self.runtime);
-        let _ = runtime.block_on(async move {
+        let _ = run_blocking(&runtime, async move {
             let mut writer = writer.lock().await;
             let _ = writer.close().await;
         });

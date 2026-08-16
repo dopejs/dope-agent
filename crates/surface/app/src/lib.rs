@@ -358,18 +358,30 @@ impl App {
         triage_manager.with_store(store.clone());
         let triage = Arc::new(triage_manager);
 
-        // --- webhooks (firer launches scheduled workflows) ---
+        // --- webhooks (firer launches scheduled workflows; quota gate backed
+        // by the billing plane — Roadmap 75) ---
         let mut webhook_manager = WebhookManager::new(
             env_scope,
             Some(Box::new(adapters::WebhookFirerImpl::new(workflow_launcher))),
-            None,
+            Some(Box::new(adapters::WebhookQuotaGateImpl::new(
+                billing.clone(),
+                store.clone(),
+                event_bus.clone(),
+                env_scope,
+            ))),
         );
         webhook_manager.with_store(store.clone());
         let webhooks = Arc::new(webhook_manager);
 
-        // --- catalog / exec profiles / evidence (sandbox-health + routine
-        // collectors wired, wave 8 parity) ---
-        let mut catalog_manager = dope_catalog::Manager::new(env_scope, None, None);
+        // --- catalog / exec profiles / evidence (sandbox-backed requirement
+        // checker + identity-backed permission gate — Roadmap 75) ---
+        let mut catalog_manager = dope_catalog::Manager::new(
+            env_scope,
+            Some(Box::new(adapters::CatalogSandboxRequirementChecker::new(
+                sandboxes.clone(),
+            ))),
+            Some(Box::new(adapters::CatalogTenantPermissionGate::new(store.clone()))),
+        );
         catalog_manager.with_store(store.clone());
         let catalog = Arc::new(catalog_manager);
         #[cfg(test)]
@@ -377,8 +389,10 @@ impl App {
         let mut exec_profile_manager = ExecProfileManager::new(
             env_scope,
             Some(Box::new(SandboxHealthChecker::new(Some(sandboxes.clone())))),
-            None,
-            None,
+            Some(Box::new(adapters::ExecProfileSandboxRequirementChecker::new(
+                sandboxes.clone(),
+            ))),
+            Some(Box::new(adapters::ExecProfileTenantPermissionGate::new(store.clone()))),
         );
         exec_profile_manager.with_store(store.clone());
         let exec_profiles = Arc::new(exec_profile_manager);
@@ -387,7 +401,7 @@ impl App {
         let mut evidence_manager = EvidenceManager::new(
             env_scope,
             Some(Box::new(RoutineCollector::new(Some(routines.clone())))),
-            None,
+            Some(Box::new(adapters::EvidenceSupportPermissionGate::new(store.clone()))),
         );
         evidence_manager.with_store(store.clone());
         let evidence = Arc::new(evidence_manager);

@@ -22,6 +22,8 @@ pub enum ApiError {
     #[error("{0}")]
     Conflict(String),
     #[error("{0}")]
+    Unprocessable(String),
+    #[error("{0}")]
     Internal(String),
     #[error("tenant migration in progress")]
     TenantMigrationInProgress,
@@ -36,6 +38,7 @@ impl ApiError {
             Self::Forbidden(_) => "forbidden",
             Self::NotFound(_) => "not_found",
             Self::Conflict(_) => "conflict",
+            Self::Unprocessable(_) => "unprocessable_entity",
             Self::Internal(_) => "internal",
             Self::TenantMigrationInProgress => CODE_TENANT_MIGRATION_IN_PROGRESS,
         }
@@ -49,6 +52,7 @@ impl ApiError {
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
+            Self::Unprocessable(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::TenantMigrationInProgress => StatusCode::SERVICE_UNAVAILABLE,
         }

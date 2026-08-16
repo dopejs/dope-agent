@@ -43,6 +43,9 @@ impl std::fmt::Display for SmokeStatus {
 #[serde(rename_all = "snake_case")]
 pub enum AuthorizationMode {
     SafeLive,
+    // serde snake_case would mangle this to fake_o_auth; the Go wire value
+    // is fake_oauth.
+    #[serde(rename = "fake_oauth")]
     FakeOAuth,
     #[default]
     Unavailable,

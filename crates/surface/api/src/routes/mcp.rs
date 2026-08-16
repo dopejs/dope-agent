@@ -117,15 +117,19 @@ pub fn router() -> Router<AppState> {
         .route("/v1/skills", get(skills_list))
         .route("/v1/skills/reload", post(skills_reload))
         .route("/v1/skills/{skill_id}", get(skill_detail))
-        // Webhooks (CRUD + signature-authenticated ingress)
+        // Webhooks (CRUD; the signature-authenticated ingress lives in
+        // ingress_router so it stays outside the protected() layer)
         .route("/v1/webhooks", get(list_webhooks).post(create_webhook))
         .route("/v1/webhooks/{webhook_id}", get(get_webhook))
         .route("/v1/webhooks/{webhook_id}/rotate", post(rotate_webhook))
         .route("/v1/webhooks/{webhook_id}/disable", post(disable_webhook))
-        .route(
-            "/v1/triggers/webhook/{webhook_id}",
-            post(trigger_webhook),
-        )
+}
+
+/// The webhook trigger ingress. Go registers it without protected(): callers
+/// authenticate with the per-webhook HMAC signature, not an operator token.
+#[must_use]
+pub fn ingress_router() -> Router<AppState> {
+    Router::new().route("/v1/triggers/webhook/{webhook_id}", post(trigger_webhook))
 }
 // ---------------------------------------------------------------------------
 // MCP servers
@@ -899,7 +903,7 @@ mod tests {
     }
 
     fn app(state: AppState) -> axum::Router {
-        router().with_state(state)
+        router().merge(ingress_router()).with_state(state)
     }
 
     fn with_mcp(state: &mut AppState) {

@@ -36,6 +36,16 @@ pub mod types;
 /// variant's serde representation is exactly the literal, and as_str/Display agree
 /// with it. Used instead of the snake_case macro because MCP literals contain hyphens
 /// (e.g. streamable-http).
+/// Go marshals nil slices/maps as `null`; Go-era persisted documents carry it
+/// where Rust expects a sequence/map. Deserialize null as the default.
+pub fn null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de> + Default,
+{
+    Ok(<Option<T> as serde::Deserialize>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 macro_rules! string_enum {
     ($name:ident { $first:ident => $first_s:literal $(, $v:ident => $s:literal)* $(,)? }) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]

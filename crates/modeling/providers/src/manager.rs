@@ -46,8 +46,10 @@ pub struct Check {
     pub completed_at: chrono::DateTime<Utc>,
 }
 
+// serde(default): Go decodes the check request into the zero value, so a
+// partial body (e.g. only `model`) must not be rejected at the API boundary.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct CheckInput {
     pub model: String,
     pub prompt: String,

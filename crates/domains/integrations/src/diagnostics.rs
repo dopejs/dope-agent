@@ -13,11 +13,11 @@ pub const DIAGNOSTIC_STALE_AFTER: Duration = Duration::from_secs(15 * 60);
 macro_rules! string_enum {
     ($name:ident { $first:ident => $first_s:literal $(, $v:ident => $s:literal)* $(,)? }) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-        #[serde(rename_all = "snake_case")]
         pub enum $name {
             #[default]
+            #[serde(rename = $first_s)]
             $first,
-            $($v),*
+            $(#[serde(rename = $s)] $v),*
         }
         impl $name {
             #[must_use]

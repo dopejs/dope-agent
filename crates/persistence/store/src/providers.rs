@@ -10,6 +10,16 @@ use crate::crud::{
 };
 use crate::SQLiteStore;
 
+/// Go marshals nil slices/maps as the literal `null`; Go-era rows carry it in
+/// these NOT NULL json columns. Decode ""/"null" as the type's default.
+fn decode_json_or_default<T: serde::de::DeserializeOwned + Default>(raw: &str) -> Result<T, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "null" {
+        return Ok(T::default());
+    }
+    serde_json::from_str(trimmed).map_err(|e| e.to_string())
+}
+
 fn scan_provider_check(row: &Row) -> Result<dope_providers::Check, String> {
     let check_id: String = row.get(0).map_err(|e| e.to_string())?;
     let provider_id: String = row.get(1).map_err(|e| e.to_string())?;
@@ -36,7 +46,7 @@ fn scan_provider_check(row: &Row) -> Result<dope_providers::Check, String> {
         error_class: error_class.unwrap_or_default(),
         error_code: error_code.unwrap_or_default(),
         error_message: error_message.unwrap_or_default(),
-        usage: serde_json::from_str(&usage_raw).map_err(|e| format!("decode provider check usage: {e}"))?,
+        usage: decode_json_or_default(&usage_raw).map_err(|e| format!("decode provider check usage: {e}"))?,
         created_at: parse_rfc3339(&created_at)?,
         completed_at: parse_rfc3339(&completed_at)?,
     })
@@ -74,14 +84,14 @@ fn scan_provider_auth_state(row: &Row) -> Result<dope_providers::AuthState, Stri
         account_id: account_id.unwrap_or_default(),
         plan: plan.unwrap_or_default(),
         auth_method: auth_method.unwrap_or_default(),
-        login_command: serde_json::from_str(&login_command_raw)
+        login_command: decode_json_or_default(&login_command_raw)
             .map_err(|e| format!("decode provider auth login command: {e}"))?,
-        logout_command: serde_json::from_str(&logout_command_raw)
+        logout_command: decode_json_or_default(&logout_command_raw)
             .map_err(|e| format!("decode provider auth logout command: {e}"))?,
         last_checked_at: parse_rfc3339(&last_checked_at)?,
         last_authenticated_at: parse_opt_rfc3339(last_authenticated_at)?,
         last_error: last_error.unwrap_or_default(),
-        metadata: serde_json::from_str(&metadata_raw)
+        metadata: decode_json_or_default(&metadata_raw)
             .map_err(|e| format!("decode provider auth metadata: {e}"))?,
         sandbox: decode_opt_json(&sandbox_raw)?,
     })
@@ -113,7 +123,7 @@ fn scan_provider_model(row: &Row) -> Result<dope_providers::Model, String> {
         stream,
         coding,
         tool_use,
-        reasoning_levels: serde_json::from_str(&reasoning_levels_raw)
+        reasoning_levels: decode_json_or_default(&reasoning_levels_raw)
             .map_err(|e| format!("decode provider model reasoning levels: {e}"))?,
     })
 }

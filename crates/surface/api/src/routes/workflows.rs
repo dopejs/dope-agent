@@ -2411,7 +2411,7 @@ fn publish_computer_use_target_mismatch(
 /// Applies a tool call outcome to the workflow, syncs the runtime step
 /// status, publishes step/status events and recurses into
 /// advance_workflow_execution (Go advanceWorkflowAfterToolCall).
-fn advance_workflow_after_tool_call(
+pub(crate) fn advance_workflow_after_tool_call(
     state: &AppState,
     workflow: orchestration::Workflow,
     tool_call: &runtime::ToolCall,

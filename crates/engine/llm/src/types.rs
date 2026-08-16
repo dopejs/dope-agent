@@ -77,8 +77,11 @@ pub struct Dispatch {
 }
 
 /// Input accepted by [`crate::Dispatcher::prepare`].
+// serde(default): Go decodes the create-dispatch request into the zero value,
+// so absent fields (e.g. timeoutMs) must degrade to zero instead of rejecting
+// the request at the API boundary.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct CreateDispatchInput {
     pub provider: String,
     pub model: String,

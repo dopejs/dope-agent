@@ -58,6 +58,19 @@ impl SQLiteStore {
         let payload_json = serde_json::to_string(&event.payload)
             .map_err(|e| format!("marshal event payload: {e}"))?;
 
+        // Go AppendEvent: auto-bind tenant_id for non-global categories so
+        // legacy callers satisfy the T077 CHECK constraint — event.TenantID
+        // first, then the cached default personal tenant.
+        let mut event = event.clone();
+        if event.tenant_id.trim().is_empty()
+            && !dope_events::is_global_category(&event.category)
+        {
+            if let Some(tenant_id) = self.resolve_default_tenant_binding() {
+                event.tenant_id = tenant_id;
+            }
+        }
+        let event = &event;
+
         self.conn
             .execute(
                 r#"INSERT INTO events (

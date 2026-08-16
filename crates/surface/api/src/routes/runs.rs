@@ -1110,7 +1110,7 @@ pub async fn get_delivery_window(
     Ok(Json(item))
 }
 
-fn query_param(params: &HashMap<String, String>, key: &str) -> String {
+pub(crate) fn query_param(params: &HashMap<String, String>, key: &str) -> String {
     params
         .get(key)
         .map(|value| value.trim().to_string())
@@ -1406,7 +1406,7 @@ fn events_filter_from_request(
 
 /// Go parseEventCursor: query cursor, else Last-Event-ID header; must be a
 /// non-negative integer.
-fn parse_event_cursor(
+pub(crate) fn parse_event_cursor(
     params: &HashMap<String, String>,
     headers: &HeaderMap,
 ) -> Result<i64, ApiError> {
@@ -1431,7 +1431,7 @@ fn parse_event_cursor(
 
 /// Go listEvents: tenant-aware store read when a tenant id is resolved, else
 /// the plain ledger read.
-fn read_events(state: &AppState, filter: &events::Filter) -> Result<Vec<events::Event>, ApiError> {
+pub(crate) fn read_events(state: &AppState, filter: &events::Filter) -> Result<Vec<events::Event>, ApiError> {
     let store = state.store.lock();
     if !filter.tenant_owned_tenant_id.is_empty() {
         store
@@ -1443,7 +1443,7 @@ fn read_events(state: &AppState, filter: &events::Filter) -> Result<Vec<events::
 }
 
 /// Go buildEventListResponse: nextCursor is the last item's sequence.
-fn build_event_list_response(items: Vec<events::Event>) -> EventListResponse {
+pub(crate) fn build_event_list_response(items: Vec<events::Event>) -> EventListResponse {
     let next_cursor = items.last().map_or(0, |event| event.sequence);
     EventListResponse { items, next_cursor }
 }

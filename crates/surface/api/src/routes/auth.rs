@@ -73,15 +73,23 @@ use crate::middleware::{AuthenticatedToken, TenantContext};
 use crate::state::AppState;
 use crate::types::{AuthMeResponse, ListResponse, TenantDetailResponse, TenantListResponse};
 
-/// Route family router. Only the methods the Go handlers accept are
-/// registered; axum answers the other methods with 405 (Go
-/// w.WriteHeader(http.StatusMethodNotAllowed)). Pairing entry points stay
-/// unauthenticated (Go withEnvironment); everything else is protected().
+/// Unauthenticated pairing entry points (Go registers these with
+/// withEnvironment instead of protected()); the assembly in routes/mod.rs
+/// mounts this router outside the protected() layer.
 #[must_use]
-pub fn router() -> Router<AppState> {
+pub fn open_router() -> Router<AppState> {
     Router::new()
         .route("/v1/auth/pairings/start", post(auth_pairing_start))
         .route("/v1/auth/pairings/{pairing_id}/complete", post(auth_pairing_complete))
+}
+
+/// Route family router. Only the methods the Go handlers accept are
+/// registered; axum answers the other methods with 405 (Go
+/// w.WriteHeader(http.StatusMethodNotAllowed)). Pairing entry points live in
+/// [`open_router`]; everything here runs behind protected().
+#[must_use]
+pub fn router() -> Router<AppState> {
+    Router::new()
         .route("/v1/auth/me", get(auth_me))
         .route("/v1/auth/tokens", get(auth_tokens_list).post(auth_token_create))
         .route("/v1/auth/tokens/{token_id}/rotate", post(auth_token_rotate))
@@ -2215,8 +2223,14 @@ mod tests {
     // installed extensions (like the Go direct-handler tests).
     // -----------------------------------------------------------------------
 
+    /// The auth family without the protected() middleware, for tests that
+    /// inject tenant/token extensions directly and exercise the handlers'
+    /// own permission checks.
     fn plain_app(state: AppState) -> axum::Router {
-        crate::routes::router(state)
+        Router::new()
+            .merge(super::router())
+            .merge(super::open_router())
+            .with_state(state)
     }
 
     fn protected_app(state: AppState) -> axum::Router {

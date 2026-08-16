@@ -624,3 +624,422 @@ impl dope_mcp::AttachedExecutionStarter for McpExecutionStarter {
         self.sandbox.get_profile(profile_id)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Roadmap 75: deferred hook wiring — webhook trigger quota gate and the
+// catalog requirement/permission gates. These replace the permissive
+// AllowAllQuota / AllMet / AllowAll defaults in the production assembly.
+// ---------------------------------------------------------------------------
+
+/// Webhook trigger quota gate backed by the billing plane (Roadmap 75).
+///
+/// Tenant-scoped triggers reserve one workflow-launch unit and commit it;
+/// denials return the billing reason code and publish an auditable
+/// `webhook.trigger_quota_denied` event (the billing repo also records the
+/// durable QuotaDenial surfaced via /v1/billing/denials). Tenant-less local
+/// triggers stay allowed by recorded decision: quota enforcement is a hosted,
+/// per-tenant bound, and the local single-operator mode has no plan to charge.
+pub struct WebhookQuotaGateImpl {
+    billing: Arc<dope_billing::Manager>,
+    store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>,
+    events: Arc<dope_events::Bus>,
+    environment_scope: String,
+}
+
+impl WebhookQuotaGateImpl {
+    #[must_use]
+    pub fn new(
+        billing: Arc<dope_billing::Manager>,
+        store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>,
+        events: Arc<dope_events::Bus>,
+        environment_scope: &str,
+    ) -> Self {
+        Self {
+            billing,
+            store,
+            events,
+            environment_scope: environment_scope.to_string(),
+        }
+    }
+
+    fn publish_denied(&self, tenant_id: &str, webhook_id: &str, reason_code: &str) {
+        let mut payload = serde_json::Map::new();
+        payload.insert("tenantId".to_string(), serde_json::json!(tenant_id));
+        payload.insert("webhookId".to_string(), serde_json::json!(webhook_id));
+        payload.insert("reasonCode".to_string(), serde_json::json!(reason_code));
+        let event = dope_events::Event {
+            category: "webhook".to_string(),
+            name: "webhook.trigger_quota_denied".to_string(),
+            environment_scope: self.environment_scope.clone(),
+            resource: dope_events::Resource {
+                kind: "webhook".to_string(),
+                id: webhook_id.to_string(),
+            },
+            payload,
+            ..dope_events::Event::default()
+        };
+        if let Ok(stored) = self.store.lock().append_event(&event) {
+            self.events.publish(stored);
+        }
+    }
+}
+
+impl dope_webhook::QuotaGate for WebhookQuotaGateImpl {
+    fn allow(&self, tenant_id: &str, webhook_id: &str) -> (bool, String) {
+        let tenant_id = tenant_id.trim();
+        if tenant_id.is_empty() {
+            return (true, String::new());
+        }
+        let operation_key = format!(
+            "webhook_trigger:{webhook_id}:{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        );
+        let reserve = futures::executor::block_on(self.billing.reserve(
+            dope_billing::ReserveInput {
+                tenant_id: tenant_id.to_string(),
+                category: dope_billing::Category::WORKFLOW_LAUNCHES.into(),
+                amount: 1,
+                operation_key: operation_key.clone(),
+                reservation_point: "webhook_trigger".to_string(),
+                guarded_entry_point: "/v1/triggers/webhook".to_string(),
+                actor_principal_id: String::new(),
+                hosted: true,
+            },
+        ));
+        match reserve {
+            Ok(result) if result.allowed => {
+                // The accepted trigger consumes the launch: commit the
+                // reservation immediately (best-effort; a failed commit
+                // resolves through the billing recovery sweep).
+                let _ = futures::executor::block_on(self.billing.commit(
+                    dope_billing::ResolveInput {
+                        tenant_id: tenant_id.to_string(),
+                        category: dope_billing::Category::WORKFLOW_LAUNCHES.into(),
+                        operation_key,
+                        amount: 1,
+                        reason_code: "webhook_trigger_fired".to_string(),
+                        reason: "webhook trigger accepted".to_string(),
+                        actor_principal_id: String::new(),
+                    },
+                ));
+                (true, String::new())
+            }
+            Ok(result) => {
+                let reason_code = result
+                    .denial
+                    .map(|denial| denial.reason_code)
+                    .filter(|reason| !reason.is_empty())
+                    .unwrap_or_else(|| "quota_denied".to_string());
+                self.publish_denied(tenant_id, webhook_id, &reason_code);
+                (false, reason_code)
+            }
+            Err(err) => {
+                // Fail closed for hosted tenants: an unavailable quota plane
+                // must not grant unbounded webhook launches.
+                self.publish_denied(tenant_id, webhook_id, "quota_state_unavailable");
+                (false, format!("quota check failed: {err}"))
+            }
+        }
+    }
+}
+
+/// Catalog requirement checker backed by the sandbox execution plane
+/// (Roadmap 75, closing the spec 053 follow-on).
+///
+/// A requirement key (optionally prefixed `backend:`) is met when it names a
+/// sandbox backend whose capability profile reports `available`; every other
+/// key is unmet — the gate fails closed rather than guessing at
+/// prerequisites the sandbox plane cannot attest.
+pub struct CatalogSandboxRequirementChecker {
+    sandbox: Arc<dope_sandbox::Manager>,
+}
+
+impl CatalogSandboxRequirementChecker {
+    #[must_use]
+    pub fn new(sandbox: Arc<dope_sandbox::Manager>) -> Self {
+        Self { sandbox }
+    }
+}
+
+impl dope_catalog::RequirementChecker for CatalogSandboxRequirementChecker {
+    fn unmet(
+        &self,
+        _tenant_id: &str,
+        requirements: &[dope_catalog::Requirement],
+    ) -> Vec<dope_catalog::Requirement> {
+        let backends = self.sandbox.backend_capabilities();
+        requirements
+            .iter()
+            .filter(|requirement| {
+                let key = requirement.key.trim();
+                let key = key.strip_prefix("backend:").unwrap_or(key);
+                !backends.iter().any(|backend| {
+                    backend.backend_kind.as_str().eq_ignore_ascii_case(key)
+                        && backend.availability_status
+                            == dope_sandbox::BackendAvailabilityStatus::Available
+                })
+            })
+            .cloned()
+            .collect()
+    }
+}
+
+/// Catalog permission gate backed by the identity plane (Roadmap 75).
+///
+/// Tenant-less local enablement stays allowed (Go single-operator
+/// semantics). A tenant-scoped enablement requires the tenant to exist with
+/// an Active lifecycle status; unknown or non-active tenants are denied —
+/// fail closed. Finer-grained permission-string checks stay with the
+/// authoritative protected() route middleware, which resolves the caller's
+/// token permissions.
+pub struct CatalogTenantPermissionGate {
+    store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>,
+}
+
+impl CatalogTenantPermissionGate {
+    #[must_use]
+    pub fn new(store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> Self {
+        Self { store }
+    }
+}
+
+impl dope_catalog::PermissionGate for CatalogTenantPermissionGate {
+    fn allow(&self, tenant_id: &str, _permissions: &[String]) -> bool {
+        let tenant_id = tenant_id.trim();
+        if tenant_id.is_empty() {
+            return true;
+        }
+        match self.store.lock().get_tenant(tenant_id) {
+            Ok(Some(tenant)) => tenant.status == dope_identity::LifecycleStatus::Active,
+            _ => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod hook_wiring_tests {
+    use super::*;
+    use dope_catalog::{PermissionGate as _, RequirementChecker as _};
+    use dope_webhook::QuotaGate as _;
+
+    fn test_store() -> Arc<parking_lot::Mutex<dope_store::SQLiteStore>> {
+        let dir = std::env::temp_dir().join(format!(
+            "dope-hook-wiring-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        Arc::new(parking_lot::Mutex::new(
+            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+        ))
+    }
+
+    fn test_sandbox(store: &Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> Arc<dope_sandbox::Manager> {
+        let config = dope_config::Config {
+            environment: dope_config::Environment::Test,
+            bind_addr: "127.0.0.1:19192".to_string(),
+            data_dir: "/tmp/dope-hook-wiring".to_string(),
+            log_level: "info".to_string(),
+            version: "0.1.0".to_string(),
+            llm: dope_config::LlmConfig::default(),
+            connectors: dope_config::ConnectorConfig::default(),
+        };
+        let _ = store;
+        Arc::new(dope_sandbox::Manager::new(
+            config,
+            None,
+            dope_events::Bus::new(),
+            dope_policy::Engine::new(),
+        ))
+    }
+
+    #[test]
+    fn catalog_requirement_checker_matches_available_backends_and_fails_closed() {
+        let store = test_store();
+        let checker = CatalogSandboxRequirementChecker::new(test_sandbox(&store));
+        let requirements = vec![
+            dope_catalog::Requirement { key: "subprocess".to_string(), description: String::new() },
+            dope_catalog::Requirement { key: "backend:subprocess".to_string(), description: String::new() },
+            dope_catalog::Requirement { key: "warp_drive".to_string(), description: String::new() },
+        ];
+        let unmet = checker.unmet("ten_a", &requirements);
+        assert_eq!(unmet.len(), 1, "{unmet:?}");
+        assert_eq!(unmet[0].key, "warp_drive");
+    }
+
+    #[test]
+    fn catalog_permission_gate_requires_an_active_tenant() {
+        let store = test_store();
+        let gate = CatalogTenantPermissionGate::new(store.clone());
+        // Local (tenant-less) enablement stays allowed.
+        assert!(gate.allow("", &[]));
+        // Unknown tenant: fail closed.
+        assert!(!gate.allow("ten_unknown", &[]));
+        // Active tenant: allowed.
+        let now = chrono::Utc::now();
+        store
+            .lock()
+            .upsert_tenant(&dope_identity::Tenant {
+                tenant_id: "ten_active".to_string(),
+                display_name: "Active".to_string(),
+                status: dope_identity::LifecycleStatus::Active,
+                created_at: now,
+                updated_at: now,
+                tenant_kind: dope_identity::TenantKind::Organization,
+                created_by_principal_id: String::new(),
+                default_owner_principal_id: String::new(),
+                caller_membership_role: None,
+                caller_membership_status: None,
+                caller_permissions: Vec::new(),
+                default_for_current_principal: false,
+                default_for_current_token: false,
+            })
+            .expect("upsert tenant");
+        assert!(gate.allow("ten_active", &[]));
+        // Disabled tenant: denied.
+        store
+            .lock()
+            .upsert_tenant(&dope_identity::Tenant {
+                tenant_id: "ten_disabled".to_string(),
+                display_name: "Disabled".to_string(),
+                status: dope_identity::LifecycleStatus::Disabled,
+                created_at: now,
+                updated_at: now,
+                tenant_kind: dope_identity::TenantKind::Organization,
+                created_by_principal_id: String::new(),
+                default_owner_principal_id: String::new(),
+                caller_membership_role: None,
+                caller_membership_status: None,
+                caller_permissions: Vec::new(),
+                default_for_current_principal: false,
+                default_for_current_token: false,
+            })
+            .expect("upsert tenant");
+        assert!(!gate.allow("ten_disabled", &[]));
+    }
+
+    #[test]
+    fn webhook_quota_gate_allows_local_and_fails_closed_without_quota_state() {
+        let store = test_store();
+        let bus = Arc::new(dope_events::Bus::new());
+        // A billing manager without a repository: hosted reservations fail
+        // closed with quota_state_unavailable.
+        let billing = Arc::new(dope_billing::Manager::without_repo());
+        let gate = WebhookQuotaGateImpl::new(billing, store.clone(), bus, "test");
+
+        let (allowed, reason) = gate.allow("", "wh_local");
+        assert!(allowed, "{reason}");
+
+        let (allowed, reason) = gate.allow("ten_a", "wh_hosted");
+        assert!(!allowed);
+        assert!(!reason.is_empty());
+        // The deny is auditable: the event ledger holds the denial.
+        let events = store
+            .lock()
+            .list_events(&dope_events::Filter {
+                environment_scope: "test".to_string(),
+                category: "webhook".to_string(),
+                ..dope_events::Filter::default()
+            })
+            .expect("list events");
+        assert!(
+            events.iter().any(|event| event.name == "webhook.trigger_quota_denied"),
+            "{events:?}"
+        );
+    }
+}
+
+/// Execution-profile environment-requirement checker backed by the sandbox
+/// plane (Roadmap 75): a requirement string is met when it names an available
+/// sandbox backend (optionally `backend:`-prefixed); anything the sandbox
+/// plane cannot attest stays unmet — fail closed.
+pub struct ExecProfileSandboxRequirementChecker {
+    sandbox: Arc<dope_sandbox::Manager>,
+}
+
+impl ExecProfileSandboxRequirementChecker {
+    #[must_use]
+    pub fn new(sandbox: Arc<dope_sandbox::Manager>) -> Self {
+        Self { sandbox }
+    }
+}
+
+impl dope_execprofile::RequirementChecker for ExecProfileSandboxRequirementChecker {
+    fn unmet(&self, requirements: &[String]) -> Vec<String> {
+        let backends = self.sandbox.backend_capabilities();
+        requirements
+            .iter()
+            .filter(|requirement| {
+                let key = requirement.trim();
+                let key = key.strip_prefix("backend:").unwrap_or(key);
+                !backends.iter().any(|backend| {
+                    backend.backend_kind.as_str().eq_ignore_ascii_case(key)
+                        && backend.availability_status
+                            == dope_sandbox::BackendAvailabilityStatus::Available
+                })
+            })
+            .cloned()
+            .collect()
+    }
+}
+
+/// Execution-profile selection gate backed by the identity plane
+/// (Roadmap 75): tenant-less local selection stays allowed; a tenant-scoped
+/// selection requires an Active tenant — fail closed on unknown tenants.
+pub struct ExecProfileTenantPermissionGate {
+    store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>,
+}
+
+impl ExecProfileTenantPermissionGate {
+    #[must_use]
+    pub fn new(store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> Self {
+        Self { store }
+    }
+
+    fn tenant_active(&self, tenant_id: &str) -> bool {
+        let tenant_id = tenant_id.trim();
+        if tenant_id.is_empty() {
+            return true;
+        }
+        matches!(
+            self.store.lock().get_tenant(tenant_id),
+            Ok(Some(tenant)) if tenant.status == dope_identity::LifecycleStatus::Active
+        )
+    }
+}
+
+impl dope_execprofile::PermissionGate for ExecProfileTenantPermissionGate {
+    fn allow(&self, tenant_id: &str, _profile_id: &str) -> bool {
+        self.tenant_active(tenant_id)
+    }
+}
+
+/// Support evidence-bundle gate (Roadmap 75): requires a named actor for the
+/// audit trail and, when the bundle is tenant-scoped, an Active tenant —
+/// fail closed. The authoritative caller authentication stays with the
+/// protected() route middleware; this in-manager gate is defense-in-depth.
+pub struct EvidenceSupportPermissionGate {
+    store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>,
+}
+
+impl EvidenceSupportPermissionGate {
+    #[must_use]
+    pub fn new(store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> Self {
+        Self { store }
+    }
+}
+
+impl dope_evidence::PermissionGate for EvidenceSupportPermissionGate {
+    fn allow_support(&self, actor: &str, tenant_id: &str) -> bool {
+        if actor.trim().is_empty() {
+            return false;
+        }
+        let tenant_id = tenant_id.trim();
+        if tenant_id.is_empty() {
+            return true;
+        }
+        matches!(
+            self.store.lock().get_tenant(tenant_id),
+            Ok(Some(tenant)) if tenant.status == dope_identity::LifecycleStatus::Active
+        )
+    }
+}

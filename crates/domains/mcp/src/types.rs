@@ -12,6 +12,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::{clone_backend_kinds, clone_strings, clean_strings, string_enum};
 
+/// Go marshals nil slices/maps as `null`; Go-era persisted documents carry it
+/// where Rust expects a sequence/map. Deserialize null as the default.
+pub fn null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de> + Default,
+{
+    Ok(<Option<T> as serde::Deserialize>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+
 string_enum!(Source {
     Api => "api",
     Config => "config",
@@ -132,6 +143,7 @@ string_enum!(RevalidationIssueStatus {
 /// and never serialized (`json:"-"`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+
 pub struct Server {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tenant_id: String,
@@ -163,17 +175,18 @@ pub struct Server {
     pub transport_kind: TransportKind,
     #[serde(default)]
     pub command: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub args: Vec<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub endpoint: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub websocket_config: Option<WebsocketConfig>,
     #[serde(skip)]
+    #[serde(default, deserialize_with = "null_default")]
     pub resolved_websocket_headers: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub working_dir: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub secret_refs: Vec<String>,
     pub auto_restart: bool,
     #[serde(default, skip_serializing_if = "crate::is_false")]
@@ -230,11 +243,11 @@ pub struct TransportCapability {
     pub health_status: TransportHealthStatus,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reason: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub prerequisites: Vec<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub environment_scope: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub supported_auth_kinds: Vec<String>,
     pub daemon_managed_reconnect: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -256,7 +269,7 @@ pub struct WebsocketAuthConfig {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebsocketConfig {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub subprotocols: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth: Option<WebsocketAuthConfig>,
@@ -344,17 +357,17 @@ pub struct SecretSummary {
 #[serde(rename_all = "camelCase")]
 pub struct Declaration {
     pub execution_mode: dope_sandbox::ExecutionMode,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub allowed_backend_kinds: Vec<dope_sandbox::BackendKind>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub read_roots: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub write_roots: Vec<String>,
     #[serde(default)]
     pub network_mode: dope_sandbox::NetworkMode,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub allowed_hosts: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub allowed_ports: Vec<i64>,
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub allow_loopback: bool,
@@ -374,10 +387,10 @@ pub struct ServerResource {
     #[serde(flatten)]
     pub server: Server,
     pub state: ServerState,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub secret_summary: Vec<SecretSummary>,
     pub tool_count: i64,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolResource>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub transport_config_summary: String,
@@ -395,7 +408,7 @@ pub struct ServerResource {
 pub struct ToolResource {
     #[serde(flatten)]
     pub tool: Tool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub exposure: Vec<ToolExposureRule>,
     pub effective_availability: String,
     pub approval_required: bool,
@@ -423,12 +436,14 @@ pub struct CreateServerInput {
     pub declaration: Option<Declaration>,
     pub transport_kind: TransportKind,
     pub command: String,
+    #[serde(default, deserialize_with = "null_default")]
     pub args: Vec<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub endpoint: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub websocket_config: Option<WebsocketConfig>,
     pub working_dir: String,
+    #[serde(default, deserialize_with = "null_default")]
     pub secret_refs: Vec<String>,
     pub auto_restart: bool,
     #[serde(default, skip_serializing_if = "crate::is_false")]
@@ -509,13 +524,13 @@ pub struct CatalogInstallSnapshot {
     pub sandbox_profile_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub command: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub endpoint: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub working_dir: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub secret_refs: Vec<String>,
     #[serde(default)]
     pub install_method: InstallMethod,
@@ -540,7 +555,7 @@ pub struct RevalidationSnapshot {
     pub classification: RevalidationClassification,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reason: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub issues: Vec<RevalidationIssue>,
 }
 
@@ -591,7 +606,7 @@ pub struct CatalogLifecycleResult {
     pub failure_class: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reason: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub audit_event_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub removed: bool,
@@ -613,9 +628,9 @@ pub struct CatalogRevalidationResult {
     pub classification: RevalidationClassification,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reason: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub issues: Vec<RevalidationIssue>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub audit_event_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server: Option<ServerResource>,
@@ -654,7 +669,7 @@ pub struct ToolAuthorizationResponse {
 #[serde(rename_all = "camelCase")]
 pub struct CatalogInstallSupport {
     pub script_supported: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub script_args: Vec<String>,
 }
 
@@ -685,14 +700,14 @@ pub struct CatalogEntry {
     pub description: String,
     pub transport_kind: TransportKind,
     pub source_kind: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
     pub immediate_use: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub prerequisites: Vec<CatalogPrerequisite>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub secret_requirements: Vec<CatalogSecretRequirement>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub environment_eligibility: Vec<String>,
     pub availability_status: AvailabilityStatus,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -714,13 +729,13 @@ pub struct CatalogInstallInput {
     pub sandbox_profile_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub command: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub endpoint: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub working_dir: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub secret_refs: Vec<String>,
 }
 
@@ -735,7 +750,7 @@ pub struct CatalogInstallResult {
     pub availability_status: AvailabilityStatus,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub availability_reason: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub audit_event_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server: Option<ServerResource>,

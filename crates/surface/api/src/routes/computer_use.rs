@@ -575,7 +575,7 @@ fn current_actor(token: Option<&AuthenticatedToken>) -> String {
 /// Go persistComputerUseRuntimeTracking: persist the runtime step/tool call
 /// the manager created (plus the owning run), then a run checkpoint. Skipped
 /// when no runtime manager is configured (Go returns nil then).
-fn persist_computer_use_runtime_tracking(
+pub(crate) fn persist_computer_use_runtime_tracking(
     state: &AppState,
     action: &computeruse::Action,
 ) -> Result<(), ApiError> {
@@ -608,7 +608,7 @@ fn persist_computer_use_runtime_tracking(
 
 /// Go publishComputerUseArtifacts: one computer_use.artifact_recorded event
 /// per artifact on the action (best-effort in Go too).
-fn publish_computer_use_artifacts(
+pub(crate) fn publish_computer_use_artifacts(
     state: &AppState,
     tenant: Option<&TenantContext>,
     action: &computeruse::Action,
@@ -643,7 +643,7 @@ fn publish_computer_use_artifacts(
 }
 
 /// Go publishComputerUseTargetMismatch: computer_use.action_target_mismatch.
-fn publish_computer_use_target_mismatch(
+pub(crate) fn publish_computer_use_target_mismatch(
     state: &AppState,
     tenant: Option<&TenantContext>,
     action: &computeruse::Action,

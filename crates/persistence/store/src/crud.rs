@@ -84,10 +84,12 @@ pub(crate) fn decode_opt_json(raw: &Option<String>) -> Result<Option<serde_json:
     }
 }
 
+// Go marshals nil slices/maps as the literal `null`, and Go-era rows carry it
+// in these JSON columns; treat it as empty like the absent-column cases.
 pub(crate) fn decode_map(raw: &Option<String>) -> Result<serde_json::Map<String, serde_json::Value>, String> {
     match raw {
         None => Ok(serde_json::Map::new()),
-        Some(s) if s.is_empty() => Ok(serde_json::Map::new()),
+        Some(s) if s.is_empty() || s == "null" => Ok(serde_json::Map::new()),
         Some(s) => serde_json::from_str(s).map_err(|e| e.to_string()),
     }
 }
@@ -95,7 +97,7 @@ pub(crate) fn decode_map(raw: &Option<String>) -> Result<serde_json::Map<String,
 pub(crate) fn decode_vec<T: serde::de::DeserializeOwned>(raw: &Option<String>) -> Result<Vec<T>, String> {
     match raw {
         None => Ok(Vec::new()),
-        Some(s) if s.is_empty() => Ok(Vec::new()),
+        Some(s) if s.is_empty() || s == "null" => Ok(Vec::new()),
         Some(s) => serde_json::from_str(s).map_err(|e| e.to_string()),
     }
 }
