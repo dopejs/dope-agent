@@ -9,7 +9,7 @@ Authority: This document is the authoritative upstream spec for Roadmap 38, the 
 billing, quota, and usage-accounting layer.
 
 Primary source documents:
-- `docs/product/hosted-productization-roadmap-split.md`
+- `docs/product/hosted-productization-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/specs/019-tenant-identity-and-access-foundation.md`
 - `docs/specs/020-tenant-scoped-data-migration.md`
 - `docs/runtime/daemon-roadmaps.md`

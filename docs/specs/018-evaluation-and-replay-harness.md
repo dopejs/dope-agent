@@ -5,7 +5,7 @@ Status: implemented
 Authority: This document is the authoritative upstream spec for replay, comparison, and regression support needed before knowledge-plane work becomes the main differentiator.
 
 Primary source documents:
-- `docs/product/personal-agent-non-knowledge-roadmap-split.md`
+- `docs/product/personal-agent-non-knowledge-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/harness/harness-architecture.md`
 - `docs/product/openclaw-architecture-gaps.md`
 

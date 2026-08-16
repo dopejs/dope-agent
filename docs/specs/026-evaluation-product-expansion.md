@@ -12,7 +12,7 @@ Authority: This document is the authoritative upstream spec for Roadmap 41, the 
 product expansion that completes the remaining Roadmap 33 out-of-scope product gaps.
 
 Primary source documents:
-- `docs/product/hosted-productization-roadmap-split.md`
+- `docs/product/hosted-productization-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/specs/018-evaluation-and-replay-harness.md`
 - `docs/specs/024-production-install-upgrade-backup-and-soak.md`
 - `docs/specs/025-live-validation-and-side-effect-replay.md`

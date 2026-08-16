@@ -12,7 +12,7 @@ Authority: This document is the authoritative upstream spec for Roadmap 40, the 
 validation executor and full side-effect replay safety boundary.
 
 Primary source documents:
-- `docs/product/hosted-productization-roadmap-split.md`
+- `docs/product/hosted-productization-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/specs/018-evaluation-and-replay-harness.md`
 - `docs/specs/023-billing-quotas-and-usage-accounting.md`
 - `docs/runtime/daemon-roadmaps.md`

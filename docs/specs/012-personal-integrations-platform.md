@@ -5,7 +5,7 @@ Status: proposed
 Authority: This document is the authoritative upstream spec for the shared integration substrate that calendar, mail, and reminder domains should build on.
 
 Primary source documents:
-- `docs/product/personal-agent-non-knowledge-roadmap-split.md`
+- `docs/product/personal-agent-non-knowledge-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/product/openclaw-architecture-gaps.md`
 - `docs/runtime/operator-trust-model.md`
 

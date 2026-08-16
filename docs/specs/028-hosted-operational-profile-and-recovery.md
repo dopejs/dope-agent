@@ -10,7 +10,7 @@ test-host and operational recovery profile required before long-lived personal-a
 operation can be treated as stable.
 
 Primary source documents:
-- `docs/product/hosted-productization-roadmap-split.md`
+- `docs/product/hosted-productization-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/specs/024-production-install-upgrade-backup-and-soak.md`
 - `docs/runtime/production-operations.md`
 - `docs/runtime/production-install.md`

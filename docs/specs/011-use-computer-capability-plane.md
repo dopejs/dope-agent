@@ -5,7 +5,7 @@ Status: proposed
 Authority: This document is the authoritative upstream spec for first-class computer-use capability work after tool-call orchestration.
 
 Primary source documents:
-- `docs/product/personal-agent-non-knowledge-roadmap-split.md`
+- `docs/product/personal-agent-non-knowledge-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/runtime/operator-trust-model.md`
 - `docs/runtime/daemon-scope.md`
 

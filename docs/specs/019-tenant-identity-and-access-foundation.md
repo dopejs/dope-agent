@@ -6,7 +6,7 @@ Authority: This document is the authoritative upstream spec for Roadmap 34, the 
 identity and access foundation required before hosted multi-tenant product work can land.
 
 Primary source documents:
-- `docs/product/hosted-productization-roadmap-split.md`
+- `docs/product/hosted-productization-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/runtime/daemon-roadmaps.md`
 - `docs/runtime/operator-trust-model.md`
 

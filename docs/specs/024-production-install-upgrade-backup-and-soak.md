@@ -6,7 +6,7 @@ Authority: This document is the authoritative upstream spec for Roadmap 39, the 
 operations baseline required before live validation and evaluation-product expansion land.
 
 Primary source documents:
-- `docs/product/hosted-productization-roadmap-split.md`
+- `docs/product/hosted-productization-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/runtime/p0-release-review.md`
 - `docs/runtime/daemon-roadmaps.md`
 

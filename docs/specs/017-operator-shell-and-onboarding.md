@@ -5,7 +5,7 @@ Status: complete
 Authority: This document is the authoritative upstream spec for the product shell required to operate a production personal agent rather than a developer daemon.
 
 Primary source documents:
-- `docs/product/personal-agent-non-knowledge-roadmap-split.md`
+- `docs/product/personal-agent-non-knowledge-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/runtime/daemon-api-and-event-model.md`
 - `docs/product/feature-phasing.md`
 

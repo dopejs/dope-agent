@@ -4,20 +4,23 @@ This module defines product framing, benchmark positioning, and phased scope.
 
 ## Primary Entry Points
 
-- [01-product-outline.md](/Users/John/Code/agent-os/docs/product/product-outline.md)
-- [07-feature-phasing.md](/Users/John/Code/agent-os/docs/product/feature-phasing.md)
-- [08-openclaw-architecture-gaps.md](/Users/John/Code/agent-os/docs/product/openclaw-architecture-gaps.md)
-- [hosted-productization-roadmap-split.md](hosted-productization-roadmap-split.md)
+- [product-outline.md](product-outline.md)
+- [feature-phasing.md](feature-phasing.md)
+- [openclaw-architecture-gaps.md](openclaw-architecture-gaps.md)
 
 ## Suggested Reading Order
 
-1. [01-product-outline.md](/Users/John/Code/agent-os/docs/product/product-outline.md)
-2. [07-feature-phasing.md](/Users/John/Code/agent-os/docs/product/feature-phasing.md)
-3. [04-openclaw-integration.md](/Users/John/Code/agent-os/docs/product/openclaw-integration.md)
-4. [08-openclaw-architecture-gaps.md](/Users/John/Code/agent-os/docs/product/openclaw-architecture-gaps.md)
-5. [hosted-productization-roadmap-split.md](hosted-productization-roadmap-split.md)
-6. [05-roadmap.md](/Users/John/Code/agent-os/docs/product/initial-roadmap.md)
-7. [06-foundation-first.md](/Users/John/Code/agent-os/docs/product/foundation-first.md)
+1. [product-outline.md](product-outline.md)
+2. [feature-phasing.md](feature-phasing.md)
+3. [openclaw-integration.md](openclaw-integration.md)
+4. [openclaw-architecture-gaps.md](openclaw-architecture-gaps.md)
+5. [initial-roadmap.md](initial-roadmap.md)
+6. [foundation-first.md](foundation-first.md)
+
+Roadmap execution state and remaining work live in
+[`../runtime/daemon-roadmaps.md`](../runtime/daemon-roadmaps.md). The
+roadmap-split planning documents that defined Roadmaps 42-72 shipped in full
+and were removed 2026-08 (see git history).
 
 ## Add New Docs Here When
 

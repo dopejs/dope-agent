@@ -8,7 +8,7 @@ Authority: This document is the authoritative upstream spec for Roadmap 42, the
 integration reliability diagnostics layer for real external systems.
 
 Primary source documents:
-- `docs/product/hosted-productization-roadmap-split.md`
+- `docs/product/hosted-productization-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/specs/012-personal-integrations-platform.md`
 - `docs/specs/022-hosted-secrets-integrations-and-connector-isolation.md`
 - `docs/specs/024-production-install-upgrade-backup-and-soak.md`

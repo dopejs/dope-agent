@@ -6,7 +6,7 @@ Authority: This document is the authoritative upstream spec for Roadmap 36, the 
 operator surfaces required for tenant-aware hosted use.
 
 Primary source documents:
-- `docs/product/hosted-productization-roadmap-split.md`
+- `docs/product/hosted-productization-roadmap-split.md` (removed 2026-08, in git history)
 - `docs/specs/019-tenant-identity-and-access-foundation.md`
 - `docs/specs/020-tenant-scoped-data-migration.md`
 - `docs/specs/017-operator-shell-and-onboarding.md`
