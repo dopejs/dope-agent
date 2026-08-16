@@ -13,7 +13,10 @@ pub type Fixture = (&'static str, &'static str);
 /// Mirrors Go's schemaRootDir: the repository root containing the
 /// schemas/ tree.
 pub fn schema_root_dir() -> PathBuf {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("..");
     assert!(
         root.join("schemas").is_dir(),
         "schemas/ directory not found under {}",

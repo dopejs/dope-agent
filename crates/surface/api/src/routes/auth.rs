@@ -1628,7 +1628,7 @@ mod tests {
     use axum::body::to_bytes;
     use axum::http::Request as HttpRequest;
     use dope_events::Bus;
-    use dope_secrets::{LocalBackend, SecretVersion, SecretVersionStatus};
+    use dope_secrets::{LocalBackend, SecretVersionStatus};
     use dope_store::SQLiteStore;
     use parking_lot::Mutex;
     use tower::ServiceExt;

@@ -299,10 +299,11 @@ mod tests {
     use std::path::PathBuf;
 
     /// Locate the checked-in inventory relative to the repo root via this
-    /// crate's manifest dir (rs/inventory -> rs -> repo root).
+    /// crate's manifest dir (crates/domains/inventory -> crates/domains ->
+    /// crates -> repo root).
     fn inventory_path() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
+            .join("../../..")
             .join("specs/020-tenant-scoped-data-migration/contracts/schema-inventory.md")
     }
 
