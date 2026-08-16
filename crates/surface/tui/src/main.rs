@@ -78,6 +78,7 @@ struct App {
     scroll_offset: usize,
     busy: bool,
     picker: Option<Picker>,
+    pending_editor: bool,
 }
 
 enum StreamMsg {
@@ -229,6 +230,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         scroll_offset: 0,
         busy: false,
         picker: None,
+        pending_editor: false,
     };
 
     // restore last session
@@ -264,6 +266,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (stream_tx, mut stream_rx) = mpsc::channel::<StreamMsg>(64);
 
     loop {
+        if app.pending_editor {
+            app.pending_editor = false;
+            let mut input = app.input.clone();
+            match open_external_editor(&mut terminal, &mut input) {
+                Ok(()) => app.input = input,
+                Err(e) => app.push(Role::Error, format!("editor error: {e}"), true),
+            }
+        }
         terminal.draw(|f| draw(f, &app))?;
 
         tokio::select! {
@@ -373,6 +383,10 @@ fn handle_key(
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('l') {
         app.messages.clear();
         app.scroll_offset = 0;
+        return false;
+    }
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('x') {
+        app.pending_editor = true;
         return false;
     }
     match key.code {
@@ -545,4 +559,25 @@ fn common_prefix(items: &[&str]) -> String {
         }
     }
     prefix
+}
+
+fn open_external_editor(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    input: &mut String,
+) -> io::Result<()> {
+    let path = std::env::temp_dir().join("dope-tui-input.txt");
+    std::fs::write(&path, input.as_bytes())?;
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+    let _ = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("{} \"{}\"", editor, path.display()))
+        .status();
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        *input = content;
+    }
+    enable_raw_mode()?;
+    execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+    Ok(())
 }

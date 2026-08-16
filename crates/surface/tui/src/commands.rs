@@ -31,7 +31,14 @@ const HELP: &str = "Commands:\n\
   /connectors            List channel connectors\n\
   /tenants               List tenants\n\
   /me                    Show the authenticated principal\n\
-  /config                Show daemon config\n";
+  /config                Show daemon config\n\n\
+Keys:\n\
+  Enter           Send; trailing \\ continues to the next line\n\
+  Ctrl+X          Edit prompt in $EDITOR\n\
+  Ctrl+L          Clear transcript\n\
+  Up/Down         History; PageUp/PageDown scroll\n\
+  Tab             Complete slash command\n\
+  Esc             Cancel / quit";
 
 fn opt(s: &str) -> Option<String> {
     let t = s.trim();
