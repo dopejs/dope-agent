@@ -41,7 +41,11 @@ pub struct Client {
 
 impl Client {
     pub fn new(base_url: String, token: Option<String>) -> Self {
-        Client { base_url: base_url.trim_end_matches('/').to_string(), token, http: reqwest::Client::new() }
+        Client {
+            base_url: base_url.trim_end_matches('/').to_string(),
+            token,
+            http: reqwest::Client::new(),
+        }
     }
 
     fn auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -55,11 +59,21 @@ impl Client {
     #[allow(dead_code)]
     pub async fn query_chat(&self, input: &ChatQueryInput) -> Result<ChatQueryResponse, String> {
         let url = format!("{}/v1/chat/query", self.base_url);
-        let resp = self.auth(self.http.post(&url).json(input)).send().await.map_err(|e| e.to_string())?;
+        let resp = self
+            .auth(self.http.post(&url).json(input))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
-            return Err(format!("HTTP {}: {}", resp.status(), resp.text().await.unwrap_or_default()));
+            return Err(format!(
+                "HTTP {}: {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            ));
         }
-        resp.json::<ChatQueryResponse>().await.map_err(|e| e.to_string())
+        resp.json::<ChatQueryResponse>()
+            .await
+            .map_err(|e| e.to_string())
     }
 
     /// Streaming chat query via SSE. Invokes on_delta for each delta; returns the terminal response.
@@ -69,9 +83,17 @@ impl Client {
         mut on_delta: impl FnMut(String),
     ) -> Result<ChatQueryResponse, String> {
         let url = format!("{}/v1/chat/query/stream", self.base_url);
-        let resp = self.auth(self.http.post(&url).json(input)).send().await.map_err(|e| e.to_string())?;
+        let resp = self
+            .auth(self.http.post(&url).json(input))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
-            return Err(format!("HTTP {}: {}", resp.status(), resp.text().await.unwrap_or_default()));
+            return Err(format!(
+                "HTTP {}: {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            ));
         }
 
         let mut stream = resp.bytes_stream();
@@ -86,12 +108,17 @@ impl Client {
                 let mut event = String::new();
                 let mut data = String::new();
                 for line in frame.lines() {
-                    if let Some(v) = line.strip_prefix("event:") { event = v.trim().to_string(); }
-                    else if let Some(v) = line.strip_prefix("data:") { data.push_str(v.trim()); }
+                    if let Some(v) = line.strip_prefix("event:") {
+                        event = v.trim().to_string();
+                    } else if let Some(v) = line.strip_prefix("data:") {
+                        data.push_str(v.trim());
+                    }
                 }
                 match event.as_str() {
                     "chat.query.delta" => {
-                        if let Ok(d) = serde_json::from_str::<StreamDelta>(&data) { on_delta(d.delta); }
+                        if let Ok(d) = serde_json::from_str::<StreamDelta>(&data) {
+                            on_delta(d.delta);
+                        }
                     }
                     "chat.query.completed" | "chat.query.failed" | "chat.query.cancelled" => {
                         terminal = serde_json::from_str::<ChatQueryResponse>(&data).ok();
@@ -106,21 +133,45 @@ impl Client {
     /// GET an API path and return the JSON body.
     pub async fn get_json(&self, path: &str) -> Result<serde_json::Value, String> {
         let url = format!("{}{}", self.base_url, path);
-        let resp = self.auth(self.http.get(&url)).send().await.map_err(|e| e.to_string())?;
+        let resp = self
+            .auth(self.http.get(&url))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
-            return Err(format!("HTTP {}: {}", resp.status(), resp.text().await.unwrap_or_default()));
+            return Err(format!(
+                "HTTP {}: {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            ));
         }
-        resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+        resp.json::<serde_json::Value>()
+            .await
+            .map_err(|e| e.to_string())
     }
 
     /// POST a JSON body to an API path and return the JSON body.
     #[allow(dead_code)]
-    pub async fn post_json(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+    pub async fn post_json(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         let url = format!("{}{}", self.base_url, path);
-        let resp = self.auth(self.http.post(&url).json(&body)).send().await.map_err(|e| e.to_string())?;
+        let resp = self
+            .auth(self.http.post(&url).json(&body))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
-            return Err(format!("HTTP {}: {}", resp.status(), resp.text().await.unwrap_or_default()));
+            return Err(format!(
+                "HTTP {}: {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            ));
         }
-        resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+        resp.json::<serde_json::Value>()
+            .await
+            .map_err(|e| e.to_string())
     }
 }

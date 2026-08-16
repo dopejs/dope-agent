@@ -7,17 +7,17 @@ use std::sync::Arc;
 
 use clap::Parser;
 use ratatui::{
+    Terminal,
     backend::CrosstermBackend,
     crossterm::{
         event::{self, Event, KeyCode, KeyModifiers},
         execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     },
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Terminal,
 };
 use tokio::sync::mpsc;
 
@@ -28,7 +28,11 @@ use client::{ChatQueryInput, ChatQueryResponse, Client};
 #[command(name = "dope-tui", version)]
 struct Cli {
     /// Daemon base URL.
-    #[arg(long, env = "DOPE_DAEMON_URL", default_value = "http://127.0.0.1:19192")]
+    #[arg(
+        long,
+        env = "DOPE_DAEMON_URL",
+        default_value = "http://127.0.0.1:19192"
+    )]
     daemon_url: String,
     /// Access token for daemon auth.
     #[arg(long, env = "DOPE_ACCESS_TOKEN")]
@@ -41,13 +45,24 @@ struct Cli {
     model: Option<String>,
 }
 
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) enum Role { User, Assistant, System, Error }
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum Role {
+    User,
+    Assistant,
+    System,
+    Error,
+}
 
 struct Message {
     role: Role,
     content: String,
     done: bool,
+}
+
+struct Picker {
+    title: String,
+    items: Vec<(String, String)>,
+    index: usize,
 }
 
 struct App {
@@ -61,6 +76,7 @@ struct App {
     history_index: i32,
     scroll_offset: usize,
     busy: bool,
+    picker: Option<Picker>,
 }
 
 enum StreamMsg {
@@ -71,7 +87,11 @@ enum StreamMsg {
 
 impl App {
     fn push(&mut self, role: Role, content: String, done: bool) {
-        self.messages.push(Message { role, content, done });
+        self.messages.push(Message {
+            role,
+            content,
+            done,
+        });
         self.scroll_offset = 0;
     }
 
@@ -87,43 +107,96 @@ impl App {
 }
 
 fn draw(frame: &mut ratatui::Frame, app: &App) {
+    if let Some(picker) = &app.picker {
+        let mut lines: Vec<Line<'static>> = vec![Line::from(Span::styled(
+            picker.title.clone(),
+            Style::default().add_modifier(Modifier::BOLD),
+        ))];
+        for (i, (_, label)) in picker.items.iter().enumerate() {
+            let style = if i == picker.index {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
+            let prefix = if i == picker.index { "\u{276f} " } else { "  " };
+            lines.push(Line::from(Span::styled(format!("{prefix}{label}"), style)));
+        }
+        lines.push(Line::from(Span::styled(
+            "Enter select \u{b7} Esc cancel",
+            Style::default().fg(Color::DarkGray),
+        )));
+        frame.render_widget(Paragraph::new(lines), frame.area());
+        return;
+    }
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(3), Constraint::Length(3)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(3),
+            Constraint::Length(3),
+        ])
         .split(frame.area());
 
-    frame.render_widget(Paragraph::new(app.status()).style(Style::default().fg(Color::DarkGray)), chunks[0]);
+    frame.render_widget(
+        Paragraph::new(app.status()).style(Style::default().fg(Color::DarkGray)),
+        chunks[0],
+    );
 
     let visible_count = chunks[1].height.saturating_sub(1) as usize;
     let total = app.messages.len();
-    let start = if app.scroll_offset >= total { 0 } else { total - app.scroll_offset - visible_count.min(total - app.scroll_offset) };
+    let start = if app.scroll_offset >= total {
+        0
+    } else {
+        total - app.scroll_offset - visible_count.min(total - app.scroll_offset)
+    };
     let visible = &app.messages[start..];
 
     let mut body: Vec<Line<'static>> = Vec::new();
     for m in visible {
         match m.role {
             Role::User => {
-                let mut spans = vec![Span::styled("> ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))];
-                spans.push(Span::styled(m.content.clone(), Style::default().fg(Color::Green)));
+                let mut spans = vec![Span::styled(
+                    "> ",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                )];
+                spans.push(Span::styled(
+                    m.content.clone(),
+                    Style::default().fg(Color::Green),
+                ));
                 body.push(Line::from(spans));
             }
             Role::Assistant => body.extend(render::markdown_lines(&m.content)),
             Role::Error => {
-                body.push(Line::from(Span::styled(format!("[error] {}", m.content), Style::default().fg(Color::Red))));
+                body.push(Line::from(Span::styled(
+                    format!("[error] {}", m.content),
+                    Style::default().fg(Color::Red),
+                )));
             }
             Role::System => {
-                body.push(Line::from(Span::styled(m.content.clone(), Style::default().fg(Color::DarkGray))));
+                body.push(Line::from(Span::styled(
+                    m.content.clone(),
+                    Style::default().fg(Color::DarkGray),
+                )));
             }
         }
     }
     if app.busy {
-        body.push(Line::from(Span::styled("\u{258c}", Style::default().fg(Color::DarkGray))));
+        body.push(Line::from(Span::styled(
+            "\u{258c}",
+            Style::default().fg(Color::DarkGray),
+        )));
     }
     frame.render_widget(Paragraph::new(body), chunks[1]);
 
     let prompt = format!("\u{276f} {}", app.input);
     frame.render_widget(
-        Paragraph::new(prompt).block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Blue))),
+        Paragraph::new(prompt).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Blue)),
+        ),
         chunks[2],
     );
 }
@@ -145,19 +218,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model: cli.model,
         thread_id: None,
         input: String::new(),
-        messages: vec![Message { role: Role::System, content: "DopeAgent (type /help)".to_string(), done: true }],
+        messages: vec![Message {
+            role: Role::System,
+            content: "DopeAgent (type /help)".to_string(),
+            done: true,
+        }],
         history: Vec::new(),
         history_index: -1,
         scroll_offset: 0,
         busy: false,
+        picker: None,
     };
 
     // crossterm events -> channel (blocking read on a worker thread)
     let (event_tx, mut event_rx) = mpsc::channel::<Event>(32);
-    tokio::task::spawn_blocking(move || loop {
-        match event::read() {
-            Ok(ev) => { if event_tx.blocking_send(ev).is_err() { break; } }
-            Err(_) => break,
+    tokio::task::spawn_blocking(move || {
+        while let Ok(ev) = event::read() {
+            if event_tx.blocking_send(ev).is_err() {
+                break;
+            }
         }
     });
 
@@ -204,6 +283,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             commands::CommandResult::SetModel(m) => app.model = m,
                             commands::CommandResult::SetProvider(p) => app.provider = p,
                             commands::CommandResult::SetThread(t) => app.thread_id = t,
+                            commands::CommandResult::OpenThreadPicker { title, items } => {
+                                app.picker = Some(Picker { title, items, index: 0 });
+                            }
                             commands::CommandResult::Quit => break,
                         }
                     }
@@ -217,32 +299,96 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn handle_key(app: &mut App, ev: Event, client: &Arc<Client>, stream_tx: &mpsc::Sender<StreamMsg>) -> bool {
+fn handle_key(
+    app: &mut App,
+    ev: Event,
+    client: &Arc<Client>,
+    stream_tx: &mpsc::Sender<StreamMsg>,
+) -> bool {
     let Event::Key(key) = ev else { return false };
+    if app.picker.is_some() {
+        match key.code {
+            KeyCode::Esc => {
+                app.picker = None;
+            }
+            KeyCode::Up => {
+                if let Some(p) = &mut app.picker {
+                    p.index = p.index.saturating_sub(1);
+                }
+            }
+            KeyCode::Down => {
+                if let Some(p) = &mut app.picker {
+                    p.index = (p.index + 1).min(p.items.len().saturating_sub(1));
+                }
+            }
+            KeyCode::Enter => {
+                if let Some(p) = app.picker.take() {
+                    if let Some((value, _)) = p.items.get(p.index) {
+                        app.thread_id = Some(value.clone());
+                        app.push(Role::System, format!("thread = {value}"), true);
+                    }
+                }
+            }
+            _ => {}
+        }
+        return false;
+    }
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
         return true;
     }
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('l') {
+        app.messages.clear();
+        app.scroll_offset = 0;
+        return false;
+    }
     match key.code {
         KeyCode::Esc => {
-            if app.busy { app.busy = false; } else { return true; }
+            if app.busy {
+                app.busy = false;
+            } else {
+                return true;
+            }
         }
         KeyCode::Enter => {
-            submit(app, client, stream_tx);
+            if app.input.ends_with('\\') {
+                app.input.pop();
+                app.input.push('\n');
+            } else {
+                submit(app, client, stream_tx);
+            }
         }
-        KeyCode::Backspace => { app.input.pop(); }
+        KeyCode::Backspace => {
+            app.input.pop();
+        }
         KeyCode::Up => {
-            if app.history.is_empty() { return false; }
-            app.history_index = if app.history_index < 0 { app.history.len() as i32 - 1 } else { (app.history_index - 1).max(0) };
+            if app.history.is_empty() {
+                return false;
+            }
+            app.history_index = if app.history_index < 0 {
+                app.history.len() as i32 - 1
+            } else {
+                (app.history_index - 1).max(0)
+            };
             app.input = app.history[app.history_index as usize].clone();
         }
         KeyCode::Down => {
-            if app.history_index < 0 { return false; }
+            if app.history_index < 0 {
+                return false;
+            }
             app.history_index += 1;
-            if app.history_index as usize >= app.history.len() { app.history_index = -1; app.input.clear(); }
-            else { app.input = app.history[app.history_index as usize].clone(); }
+            if app.history_index as usize >= app.history.len() {
+                app.history_index = -1;
+                app.input.clear();
+            } else {
+                app.input = app.history[app.history_index as usize].clone();
+            }
         }
-        KeyCode::PageUp => { app.scroll_offset = app.scroll_offset.saturating_add(10); }
-        KeyCode::PageDown => { app.scroll_offset = app.scroll_offset.saturating_sub(10); }
+        KeyCode::PageUp => {
+            app.scroll_offset = app.scroll_offset.saturating_add(10);
+        }
+        KeyCode::PageDown => {
+            app.scroll_offset = app.scroll_offset.saturating_sub(10);
+        }
         KeyCode::Char(c) => app.input.push(c),
         _ => {}
     }
@@ -251,13 +397,18 @@ fn handle_key(app: &mut App, ev: Event, client: &Arc<Client>, stream_tx: &mpsc::
 
 fn submit(app: &mut App, client: &Arc<Client>, stream_tx: &mpsc::Sender<StreamMsg>) {
     let text = app.input.trim().to_string();
-    if text.is_empty() || app.busy { return; }
+    if text.is_empty() || app.busy {
+        return;
+    }
     app.input.clear();
     app.history.push(text.clone());
     app.history_index = -1;
 
     if text.starts_with('/') {
-        let (cmd, args) = text.split_once(' ').map(|(c, a)| (c.to_string(), a.trim().to_string())).unwrap_or((text.clone(), String::new()));
+        let (cmd, args) = text
+            .split_once(' ')
+            .map(|(c, a)| (c.to_string(), a.trim().to_string()))
+            .unwrap_or((text.clone(), String::new()));
         let client = client.clone();
         let tx = stream_tx.clone();
         tokio::spawn(async move {
@@ -280,9 +431,11 @@ fn submit(app: &mut App, client: &Arc<Client>, stream_tx: &mpsc::Sender<StreamMs
     let client = client.clone();
     let tx = stream_tx.clone();
     tokio::spawn(async move {
-        let result = client.stream_chat(&input, |delta| {
-            let _ = tx.try_send(StreamMsg::Delta(delta));
-        }).await;
+        let result = client
+            .stream_chat(&input, |delta| {
+                let _ = tx.try_send(StreamMsg::Delta(delta));
+            })
+            .await;
         let _ = tx.send(StreamMsg::Done(result)).await;
     });
 }
