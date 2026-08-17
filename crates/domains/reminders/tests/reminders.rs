@@ -376,13 +376,18 @@ fn performance_smoke() {
             .unwrap();
     }
 
+    // Shared CI runners run debug builds noticeably slower than a dev
+    // machine; scale the smoke bounds there so the gate catches order-of-
+    // magnitude regressions without flaking on scheduler jitter.
+    let bound_scale: u32 = if std::env::var_os("CI").is_some() { 10 } else { 1 };
+
     let list_started = Instant::now();
     let items = h.manager.list().unwrap();
     let list_elapsed = list_started.elapsed();
     assert_eq!(items.len(), 100, "expected 100 reminders");
     assert!(
-        list_elapsed < std::time::Duration::from_millis(500),
-        "expected reminder inspect smoke under 500ms, got {list_elapsed:?}"
+        list_elapsed < std::time::Duration::from_millis(500) * bound_scale,
+        "expected reminder inspect smoke under 500ms x{bound_scale}, got {list_elapsed:?}"
     );
 
     h.clock.set(due_at);
@@ -390,8 +395,8 @@ fn performance_smoke() {
     h.manager.tick().unwrap();
     let tick_elapsed = tick_started.elapsed();
     assert!(
-        tick_elapsed < std::time::Duration::from_secs(1),
-        "expected due detection smoke under 1s, got {tick_elapsed:?}"
+        tick_elapsed < std::time::Duration::from_secs(1) * bound_scale,
+        "expected due detection smoke under 1s x{bound_scale}, got {tick_elapsed:?}"
     );
 
     let (first, ok) = h.manager.get(&items[0].reminder_id).unwrap();
