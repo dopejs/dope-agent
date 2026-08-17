@@ -201,12 +201,18 @@ slice moved their **behavior** onto plugin mechanisms:
   hardcoding manager names. Scheduler and reminders own their start+close,
   sandbox its close, and memory its 60s consolidation/retention tick.
 - **Memory capture is a hook**: the memory plugin registers a
-  `chat/turn-end` observer that L0-captures the settled turn and schedules
-  due consolidation off the reply path — the hardcoded API-layer call is
-  gone. Two behavior notes: stream turns are now captured too (previously
-  only non-stream queries were), and channel-source turns are skipped in
-  the hook because connector ingress capture already records them
-  (unifying the two capture paths is a tracked follow-on).
+  `chat/turn-end` observer that L0-captures the settled turn (thread +
+  dispatch + source-message links) and schedules due consolidation off
+  the reply path — the hardcoded API-layer call is gone. Coverage notes:
+  stream turns are captured (previously only non-stream queries were),
+  and channel-source turns are captured here too — gateway-driven IM
+  traffic reaches chat without touching the HTTP ingress pipeline, so
+  the hook is its only capture point. HTTP-pipeline messages that also
+  dispatch chat produce both an `inbound_message` and a `chat_turn` L0;
+  accepted — L0s are excerpt evidence and consolidation extracts through
+  citations. Every capture path (chat hook, ingress, workflow, session
+  eviction) now honors the due turn-trigger by running consolidation off
+  the request path.
 - **Connector runtimes stay kernel-hosted for now** (recorded decision):
   the four channel runtime builders live in `App::serve` because the
   telegram/matrix transports are `!Send` and run on raw-pointer threads —

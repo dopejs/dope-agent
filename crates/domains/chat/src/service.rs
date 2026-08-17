@@ -467,6 +467,7 @@ impl Service {
             "output": result.dispatch.output,
             "status": dispatch_status_str(result.dispatch.status),
             "sourceKind": serde_json::to_value(input.source_kind).unwrap_or(Value::Null),
+            "sourceMessageId": input.source_message_id,
             "requestTurnId": result.request_turn_id,
             "responseTurnId": result.response_turn_id,
         });

@@ -979,7 +979,7 @@ fn capture_terminal_workflow_memory(state: &AppState, workflow: &orchestration::
         workflow.goal,
         workflow.status.as_str()
     );
-    let _ = super::memory::capture_l0(
+    let captured = super::memory::capture_l0(
         state,
         "",
         dope_memory::Actor {
@@ -996,6 +996,14 @@ fn capture_terminal_workflow_memory(state: &AppState, workflow: &orchestration::
             },
         ],
     );
+    if captured.is_some_and(|(_, due)| due) {
+        let state = state.clone();
+        std::thread::spawn(move || {
+            if let Err(err) = super::memory::execute_consolidation(&state, "", "turns", None) {
+                eprintln!("memory: workflow turn-trigger consolidation failed: {err:?}");
+            }
+        });
+    }
 }
 
 /// Starts one Ready workflow step: creates the runtime step (Planning →

@@ -1015,8 +1015,9 @@ async fn ingress_messages(
     )?;
 
     // Spec 058 phase 2 W1: capture the accepted inbound message as an L0
-    // memory ref (fire-and-forget; never affects the ingress outcome).
-    let _ = super::memory::capture_l0(
+    // memory ref (fire-and-forget; never affects the ingress outcome). A
+    // due turn-trigger runs consolidation off this path.
+    let captured = super::memory::capture_l0(
         &state,
         &tenant_id,
         dope_memory::Actor {
@@ -1038,6 +1039,17 @@ async fn ingress_messages(
             },
         ],
     );
+    if captured.is_some_and(|(_, due)| due) {
+        let state = state.clone();
+        let trigger_tenant = tenant_id.clone();
+        std::thread::spawn(move || {
+            if let Err(err) =
+                super::memory::execute_consolidation(&state, &trigger_tenant, "turns", None)
+            {
+                eprintln!("memory: ingress turn-trigger consolidation failed: {err:?}");
+            }
+        });
+    }
 
     Ok((
         StatusCode::ACCEPTED,

@@ -1126,6 +1126,45 @@ mod tests {
             .find(|asset| asset.title == "chat_turn")
             .expect("turn captured as L0 asset via the hook");
         assert!(captured.content.contains("remember this fact"));
+
+        // Channel-source turns are captured too (the only capture point for
+        // gateway-driven IM traffic) and carry the message source link.
+        let mut channel_payload = serde_json::json!({
+            "dispatchId": "disp_chan",
+            "tenantId": "",
+            "threadId": "thr_chan",
+            "query": "im question",
+            "output": "im answer",
+            "status": "completed",
+            "sourceKind": "channel",
+            "sourceMessageId": "msg_chan_1",
+        });
+        let outcome = hooks.run(dope_plugin::points::CHAT_TURN_END, &mut channel_payload);
+        assert!(outcome.allowed());
+        let assets = app
+            .state
+            .store
+            .lock()
+            .list_all_memory_assets()
+            .expect("list memory assets");
+        let channel_turn = assets
+            .iter()
+            .find(|asset| asset.content.contains("im question"))
+            .expect("channel turn captured");
+        assert!(
+            channel_turn
+                .source_links
+                .iter()
+                .any(|link| link.id == "msg_chan_1"),
+            "message source link carried"
+        );
+        assert!(
+            channel_turn
+                .source_links
+                .iter()
+                .any(|link| link.id == "thr_chan"),
+            "thread source link carried"
+        );
         app.close();
     }
 

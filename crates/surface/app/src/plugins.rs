@@ -1082,8 +1082,11 @@ fn build_routines(asm: &mut Assembly) -> Result<(), AppError> {
 
 /// Memory's chat-turn capture (spec 058 phase 2 W1), owned by the memory
 /// plugin as a `chat/turn-end` observer instead of a hardcoded API-layer
-/// call. Channel-source turns are skipped: connector ingress capture already
-/// records them (unifying the two paths is a tracked follow-on).
+/// call. Channel-source turns are captured too — gateway-driven IM traffic
+/// reaches chat without touching the HTTP ingress pipeline, so this hook is
+/// its only capture point. (HTTP-pipeline messages that also dispatch chat
+/// produce both an `inbound_message` and a `chat_turn` L0; accepted — L0s
+/// are excerpt evidence and consolidation extracts through citations.)
 struct MemoryCaptureHook {
     state: Arc<std::sync::OnceLock<AppState>>,
 }
@@ -1094,16 +1097,21 @@ impl dope_plugin::Hook for MemoryCaptureHook {
         let text_of = |key: &str| -> String {
             payload.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
         };
-        if payload.get("sourceKind").and_then(Value::as_str) == Some("channel") {
-            return dope_plugin::HookOutcome::Continue;
-        }
         let Some(state) = self.state.get() else {
             return dope_plugin::HookOutcome::Continue;
         };
         let tenant_id = text_of("tenantId");
         let thread_id = text_of("threadId");
         let dispatch_id = text_of("dispatchId");
+        let source_message_id = text_of("sourceMessageId");
         let mut links = Vec::new();
+        if !source_message_id.trim().is_empty() {
+            links.push(dope_memory::SourceLink {
+                kind: dope_memory::SourceKind::Message,
+                id: source_message_id,
+                ..dope_memory::SourceLink::default()
+            });
+        }
         if !thread_id.trim().is_empty() {
             links.push(dope_memory::SourceLink {
                 kind: dope_memory::SourceKind::Thread,

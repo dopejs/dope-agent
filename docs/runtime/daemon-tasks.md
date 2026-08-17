@@ -224,9 +224,15 @@ Pluginization precedes all further capability work.
       records only (no evidence link to hang an L0 on)
 - [ ] Session-strategy later slices: explicit session-frame objects,
       channel-native thread segmentation
-- [ ] Capture-path unification: channel turns through the turn-end hook
-      (retiring the separate ingress capture) once dedupe semantics are
-      settled
+- [x] Memory wiring closure (complete 2026-08-17): channel turns are
+      captured by the turn-end hook (message+thread+dispatch links) —
+      the only capture point for gateway-driven IM traffic, which
+      previously captured nothing; ingress capture stays for
+      accepted-but-not-dispatched messages (known benign duplication for
+      HTTP-pipeline messages that also dispatch, documented); ingress and
+      workflow captures now honor the due turn-trigger (consolidation off
+      the request path); workflow captures remain tenantless by design
+      (Workflow carries no tenant field — environment scope only)
 - [ ] Knowledge retrieval (BM25+vector+RRF, assets-as-tools) — after the
       session-strategy slice
 - [ ] Agent-managed skills; audited self-improvement — sequence tail
