@@ -133,6 +133,30 @@ Later slices: compression-to-memory (elided spans summarized as L2 assets
 instead of dropped), session frame objects (explicit goal/constraint
 records), and channel-native thread segmentation policies.
 
+## Behavioral pluginization (shipped 2026-08-17)
+
+Assembly-level pluginization (phase 1) made subsystems disableable; this
+slice moved their **behavior** onto plugin mechanisms:
+
+- **Lifecycle seam**: plugins register `on_start`/`on_close` callbacks
+  during build; `App::serve`/`App::close` run the registries instead of
+  hardcoding manager names. Scheduler and reminders own their start+close,
+  sandbox its close, and memory its 60s consolidation/retention tick.
+- **Memory capture is a hook**: the memory plugin registers a
+  `chat/turn-end` observer that L0-captures the settled turn and schedules
+  due consolidation off the reply path — the hardcoded API-layer call is
+  gone. Two behavior notes: stream turns are now captured too (previously
+  only non-stream queries were), and channel-source turns are skipped in
+  the hook because connector ingress capture already records them
+  (unifying the two capture paths is a tracked follow-on).
+- **Connector runtimes stay kernel-hosted for now** (recorded decision):
+  the four channel runtime builders live in `App::serve` because the
+  telegram/matrix transports are `!Send` and run on raw-pointer threads —
+  moving that gymnastics behind a plugin-owned lifecycle callback adds
+  risk without changing behavior. Channel plugins own identity,
+  enablement, and gating; full runtime ownership lands with the seam-RPC
+  slice, where a channel can be served out of process entirely.
+
 ## Phase 3 — out-of-process plugin providers (slice 1 shipped 2026-08-17)
 
 Shipped: external plugins as supervised stdio processes attaching to the

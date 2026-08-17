@@ -180,9 +180,20 @@ Pluginization precedes all further capability work.
       (system frame never elided, keepRecent floor, elision marker);
       personal (48k) vs thread (`sourceKind=channel`, 16k) budgets;
       operator config via the profile entry with fail-loud validation
+- [x] Behavioral pluginization (complete 2026-08-17): plugin-registered
+      lifecycle (`on_start`/`on_close` — scheduler/reminders start+close,
+      sandbox close, memory 60s tick) replaces hardcoded App special
+      cases; memory chat-turn capture moved from the API layer onto a
+      `chat/turn-end` hook (stream turns now captured; channel turns
+      skipped — ingress capture covers them); connector runtimes stay
+      kernel-hosted (recorded decision: !Send transport threads) until
+      the seam-RPC slice
 - [ ] Session-strategy later slices: compression-to-memory (elided spans
       → L2 summaries), explicit session-frame objects, channel-native
       thread segmentation
+- [ ] Capture-path unification: channel turns through the turn-end hook
+      (retiring the separate ingress capture) once dedupe semantics are
+      settled
 - [ ] Knowledge retrieval (BM25+vector+RRF, assets-as-tools) — after the
       session-strategy slice
 - [ ] Agent-managed skills; audited self-improvement — sequence tail

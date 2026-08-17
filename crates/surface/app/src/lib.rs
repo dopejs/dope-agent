@@ -8,7 +8,6 @@
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use dope_api::AppState;
 use dope_audit::Emitter as AuditEmitter;
@@ -71,6 +70,9 @@ pub struct App {
     /// External plugin process hosts (tier 2): spawned lazily on first hook
     /// call, killed in App::close.
     external_plugins: Vec<Arc<external::ExternalProcessHost>>,
+    /// Plugin-owned lifecycle callbacks (scheduler/reminders/memory starts,
+    /// sandbox/scheduler/reminders closes) registered during assembly.
+    lifecycle: plugins::Lifecycle,
     closed: AtomicBool,
     /// Test-only visibility into the seam adapters wired by the builtin
     /// plugins: each manager keeps its hooks behind private fields, so the
@@ -226,6 +228,8 @@ impl App {
         for warning in &report.warnings {
             eprintln!("[dope] plugin profile: {warning}");
         }
+        let late_state: Arc<std::sync::OnceLock<AppState>> =
+            Arc::new(std::sync::OnceLock::new());
         let mut asm = plugins::Assembly {
             cfg: cfg.clone(),
             profile: profile.clone(),
@@ -236,6 +240,8 @@ impl App {
             event_bus: event_bus.clone(),
             state,
             seams,
+            lifecycle: plugins::Lifecycle::default(),
+            late_state: late_state.clone(),
             #[cfg(test)]
             wiring: AppWiring::default(),
         };
@@ -278,6 +284,11 @@ impl App {
         // skipped by restore's per-manager Some guards.
         restore::recover_persisted_state(&asm.state, &event_bus, cfg.environment)?;
 
+        // Hooks and lifecycle callbacks built during assembly see the final
+        // state through this late binding (a clone taken mid-assembly would
+        // miss later-built managers).
+        let _ = late_state.set(asm.state.clone());
+
         Ok(App {
             config: cfg,
             state: asm.state,
@@ -285,6 +296,7 @@ impl App {
             connector_store,
             connector_runtimes: parking_lot::Mutex::new(None),
             external_plugins: external_hosts,
+            lifecycle: asm.lifecycle,
             closed: AtomicBool::new(false),
             #[cfg(test)]
             wiring: asm.wiring,
@@ -355,36 +367,12 @@ impl App {
         Ok(())
     }
 
-    /// Starts the background loops (scheduler, reminders) best-effort;
-    /// failures are logged, not fatal (the sync ports record lifecycle only).
+    /// Runs the plugin-registered start callbacks (scheduler tick, reminders
+    /// tick, memory 60s consolidation/retention tick, ...) in registration
+    /// order. Each start is best-effort: failures are the plugin's to log.
     fn start_background_loops(&self) {
-        if let Some(scheduler) = &self.state.scheduler {
-            if let Err(err) = scheduler.start() {
-                eprintln!("[dope] scheduler start failed: {err}");
-            }
-        }
-        if let Some(reminders) = &self.state.reminders {
-            if let Err(err) = reminders.start() {
-                eprintln!("[dope] reminders start failed: {err}");
-            }
-        }
-        // Memory tick (spec 058 phase 2 W2/W5): every 60s run idle-triggered
-        // consolidation and the retention sweep. Blocking work (store + LLM
-        // consolidation) runs on the blocking pool.
-        if self.state.memory.is_some() {
-            let state = self.state.clone();
-            tokio::spawn(async move {
-                let mut ticker = tokio::time::interval(Duration::from_secs(60));
-                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                loop {
-                    ticker.tick().await;
-                    let tick_state = state.clone();
-                    let _ = tokio::task::spawn_blocking(move || {
-                        dope_api::routes::memory::memory_tick(&tick_state);
-                    })
-                    .await;
-                }
-            });
+        for (_plugin_id, start) in &self.lifecycle.starts {
+            start(&self.state);
         }
     }
 
@@ -432,14 +420,10 @@ impl App {
         if let Some(err) = first_err {
             eprintln!("[dope] connector close error: {err}");
         }
-        if let Some(scheduler) = &self.state.scheduler {
-            let _ = scheduler.close();
-        }
-        if let Some(reminders) = &self.state.reminders {
-            reminders.close();
-        }
-        if let Some(sandboxes) = &self.state.sandboxes {
-            let _ = sandboxes.close();
+        // Plugin-registered closes in registration order (sandbox, scheduler,
+        // reminders under the default assembly); each is idempotent.
+        for (_plugin_id, close) in &self.lifecycle.closes {
+            close(&self.state);
         }
         for host in &self.external_plugins {
             host.close();
@@ -1092,6 +1076,56 @@ mod tests {
                 .any(|message| message.content == "hook window"),
             "persisted dispatch logs the hook-injected message"
         );
+        app.close();
+    }
+
+    /// Behavioral pluginization: the memory plugin's chat/turn-end hook
+    /// captures the settled turn as an L0 asset through the real assembly
+    /// (no hardcoded API-layer call), and lifecycle callbacks are
+    /// plugin-registered.
+    #[test]
+    fn memory_capture_rides_the_turn_end_hook() {
+        let config = test_config();
+        let app = App::new(config).expect("build app");
+        let hooks = app.state.hooks.as_ref().expect("hook bus");
+        assert!(
+            hooks
+                .registrations()
+                .contains(&("chat/turn-end".to_string(), "memory".to_string())),
+            "memory capture hook registered"
+        );
+        // Lifecycle registrations are plugin-owned.
+        let start_ids: Vec<&str> =
+            app.lifecycle.starts.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(start_ids, ["scheduler", "reminders", "memory"]);
+        let close_ids: Vec<&str> =
+            app.lifecycle.closes.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(close_ids, ["sandbox", "scheduler", "reminders"]);
+
+        let chat = app.state.chat.clone().expect("chat wired");
+        let execution = chat
+            .query(
+                dope_chat::QueryInput {
+                    query: "remember this fact".to_string(),
+                    provider: "echo".to_string(),
+                    ..Default::default()
+                },
+                &dope_chat::CancellationToken::new(),
+            )
+            .expect("query");
+        assert!(execution.exec_error.is_none());
+
+        let assets = app
+            .state
+            .store
+            .lock()
+            .list_all_memory_assets()
+            .expect("list memory assets");
+        let captured = assets
+            .iter()
+            .find(|asset| asset.title == "chat_turn")
+            .expect("turn captured as L0 asset via the hook");
+        assert!(captured.content.contains("remember this fact"));
         app.close();
     }
 

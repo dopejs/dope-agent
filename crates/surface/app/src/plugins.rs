@@ -94,6 +94,28 @@ pub(crate) struct WorkflowLauncherSeam(pub Arc<adapters::WorkflowLauncherImpl>);
 // Assembly context
 // ---------------------------------------------------------------------------
 
+/// One lifecycle callback registered by a plugin during its build.
+pub(crate) type LifecycleFn = Box<dyn Fn(&AppState) + Send + Sync>;
+
+/// Plugin-owned lifecycle registrations. `starts` run in registration order
+/// when the daemon begins serving; `closes` run in registration order during
+/// shutdown (each close is best-effort and idempotent by convention).
+#[derive(Default)]
+pub(crate) struct Lifecycle {
+    pub starts: Vec<(String, LifecycleFn)>,
+    pub closes: Vec<(String, LifecycleFn)>,
+}
+
+impl Lifecycle {
+    pub fn on_start(&mut self, plugin_id: &str, f: LifecycleFn) {
+        self.starts.push((plugin_id.to_string(), f));
+    }
+
+    pub fn on_close(&mut self, plugin_id: &str, f: LifecycleFn) {
+        self.closes.push((plugin_id.to_string(), f));
+    }
+}
+
 /// Mutable assembly context threaded through the plugin build functions.
 /// Kernel-built handles live as named fields; cross-plugin intermediates go
 /// through [`SeamMap`]; managers land on `state` (the same `Option` fields
@@ -111,6 +133,11 @@ pub(crate) struct Assembly {
     pub event_bus: Arc<Bus>,
     pub state: AppState,
     pub seams: SeamMap,
+    /// Plugin-owned start/close callbacks (run by App serve/close).
+    pub lifecycle: Lifecycle,
+    /// The fully assembled AppState, set by the kernel after restore. Hooks
+    /// built during assembly capture this instead of a stale partial clone.
+    pub late_state: Arc<std::sync::OnceLock<AppState>>,
     #[cfg(test)]
     pub wiring: crate::AppWiring,
 }
@@ -486,6 +513,14 @@ fn build_sandbox(asm: &mut Assembly) -> Result<(), AppError> {
     let secret_backend = asm.seams.get::<SecretBackendSeam>().expect("kernel secret backend").0;
     sandboxes.set_secret_manager(SecretsManager::new(secret_store, secret_backend));
     asm.state.sandboxes = Some(sandboxes);
+    asm.lifecycle.on_close(
+        "sandbox",
+        Box::new(|state| {
+            if let Some(sandboxes) = &state.sandboxes {
+                let _ = sandboxes.close();
+            }
+        }),
+    );
     Ok(())
 }
 
@@ -697,6 +732,24 @@ fn build_scheduler(asm: &mut Assembly) -> Result<(), AppError> {
         clock: None,
         tick_interval: Duration::ZERO,
     })));
+    asm.lifecycle.on_start(
+        "scheduler",
+        Box::new(|state| {
+            if let Some(scheduler) = &state.scheduler {
+                if let Err(err) = scheduler.start() {
+                    eprintln!("[dope] scheduler start failed: {err}");
+                }
+            }
+        }),
+    );
+    asm.lifecycle.on_close(
+        "scheduler",
+        Box::new(|state| {
+            if let Some(scheduler) = &state.scheduler {
+                let _ = scheduler.close();
+            }
+        }),
+    );
     Ok(())
 }
 
@@ -711,6 +764,24 @@ fn build_reminders(asm: &mut Assembly) -> Result<(), AppError> {
         clock: None,
         tick_interval: Duration::ZERO,
     })));
+    asm.lifecycle.on_start(
+        "reminders",
+        Box::new(|state| {
+            if let Some(reminders) = &state.reminders {
+                if let Err(err) = reminders.start() {
+                    eprintln!("[dope] reminders start failed: {err}");
+                }
+            }
+        }),
+    );
+    asm.lifecycle.on_close(
+        "reminders",
+        Box::new(|state| {
+            if let Some(reminders) = &state.reminders {
+                reminders.close();
+            }
+        }),
+    );
     Ok(())
 }
 
@@ -725,6 +796,76 @@ fn build_routines(asm: &mut Assembly) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Memory's chat-turn capture (spec 058 phase 2 W1), owned by the memory
+/// plugin as a `chat/turn-end` observer instead of a hardcoded API-layer
+/// call. Channel-source turns are skipped: connector ingress capture already
+/// records them (unifying the two paths is a tracked follow-on).
+struct MemoryCaptureHook {
+    state: Arc<std::sync::OnceLock<AppState>>,
+}
+
+impl dope_plugin::Hook for MemoryCaptureHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+        use serde_json::Value;
+        let text_of = |key: &str| -> String {
+            payload.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
+        };
+        if payload.get("sourceKind").and_then(Value::as_str) == Some("channel") {
+            return dope_plugin::HookOutcome::Continue;
+        }
+        let Some(state) = self.state.get() else {
+            return dope_plugin::HookOutcome::Continue;
+        };
+        let tenant_id = text_of("tenantId");
+        let thread_id = text_of("threadId");
+        let dispatch_id = text_of("dispatchId");
+        let mut links = Vec::new();
+        if !thread_id.trim().is_empty() {
+            links.push(dope_memory::SourceLink {
+                kind: dope_memory::SourceKind::Thread,
+                id: thread_id,
+                ..dope_memory::SourceLink::default()
+            });
+        }
+        if !dispatch_id.trim().is_empty() {
+            links.push(dope_memory::SourceLink {
+                kind: dope_memory::SourceKind::Run,
+                id: dispatch_id,
+                ..dope_memory::SourceLink::default()
+            });
+        }
+        if links.is_empty() {
+            return dope_plugin::HookOutcome::Continue;
+        }
+        let text = format!("user: {}\nassistant: {}", text_of("query").trim(), text_of("output"));
+        let due = dope_api::routes::memory::capture_l0(
+            state,
+            &tenant_id,
+            dope_memory::Actor {
+                kind: dope_memory::ActorKind::System,
+                id: "chat".to_string(),
+            },
+            "chat_turn",
+            &text,
+            links,
+        );
+        if due == Some(true) {
+            // Consolidation is blocking LLM + store work; run it off the
+            // reply path on a plain thread (hooks run on service threads
+            // that may have no tokio context, e.g. the IM message loops).
+            let state = state.clone();
+            std::thread::spawn(move || {
+                if let Err(err) = dope_api::routes::memory::execute_consolidation(
+                    &state, &tenant_id, "turns", None,
+                ) {
+                    eprintln!("memory: turn-trigger consolidation failed: {err:?}");
+                }
+            });
+        }
+        dope_plugin::HookOutcome::Continue
+    }
+}
+
 fn build_memory(asm: &mut Assembly) -> Result<(), AppError> {
     let llm = asm.state.llm.clone().expect("llm plugin built");
     asm.state.memory = Some(Arc::new(MemoryManager::new(
@@ -733,6 +874,34 @@ fn build_memory(asm: &mut Assembly) -> Result<(), AppError> {
         Some(Arc::new(adapters::LlmConsolidator::new(llm))),
         None,
     )));
+    // Chat-turn capture rides the hook plane (fires for query and stream).
+    if let Some(bus) = &asm.state.hooks {
+        bus.register(
+            dope_plugin::points::CHAT_TURN_END,
+            "memory",
+            Arc::new(MemoryCaptureHook { state: asm.late_state.clone() }),
+        );
+    }
+    // The 60s consolidation/retention tick is plugin-owned lifecycle: idle
+    // triggers and retention sweep on the blocking pool.
+    asm.lifecycle.on_start(
+        "memory",
+        Box::new(|state| {
+            let state = state.clone();
+            tokio::spawn(async move {
+                let mut ticker = tokio::time::interval(Duration::from_secs(60));
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    ticker.tick().await;
+                    let tick_state = state.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        dope_api::routes::memory::memory_tick(&tick_state);
+                    })
+                    .await;
+                }
+            });
+        }),
+    );
     Ok(())
 }
 
