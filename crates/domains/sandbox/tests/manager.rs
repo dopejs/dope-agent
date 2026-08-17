@@ -383,7 +383,7 @@ fn wait_execution_times_out() {
 fn close_cancels_active_executions() {
     let manager = test_manager(&temp_dir("close"));
     let cwd = temp_dir("close_cwd");
-    manager
+    let execution = manager
         .start_execution(ExecutionRequest {
             command: test_shell().to_string(),
             args: test_shell_args("sleep 5"),
@@ -397,10 +397,14 @@ fn close_cancels_active_executions() {
         })
         .expect("start execution");
 
+    // close() cancels everything but only waits ~2s best-effort (Go parity)
+    // and returns Ok regardless; on a loaded host the runner thread may
+    // settle the record slightly later, so assert through the test's own
+    // terminal wait instead of immediately after close.
     manager.close().expect("close");
-    let executions = manager.list_executions();
-    assert_eq!(executions.len(), 1);
-    assert_eq!(executions[0].status, ExecutionStatus::Cancelled);
+    let terminal = wait_for_terminal(&manager, &execution.execution_id);
+    assert_eq!(terminal.status, ExecutionStatus::Cancelled);
+    assert_eq!(manager.list_executions().len(), 1);
 }
 
 #[test]
