@@ -4,14 +4,32 @@
 
 Roadmap 80 (context/knowledge/memory program, slice 3). Depends on 058/059.
 
-## Design Root Alignment
+## Design Root Alignment (revised against the 058 base)
 
-Follows the TencentDB-Agent-Memory retrieval model (see 058): hybrid BM25 +
-vector scoring fused with RRF as the L1/L0 fallback behind the L3/L2
-bootstrap; results capped by count/character budget with a skip-on-timeout
-rule; memory exposed to agents as discoverable tools (search/recall) via
-the existing tool plane, never wholesale-injected. Wiki and codegraph
-collections register through the same 058 asset envelope.
+Follows the TencentDB-Agent-Memory retrieval model: hybrid BM25 + vector
+scoring fused with RRF as the L1/L0 fallback behind 059's L3/L2 bootstrap;
+results capped by count (default 5) and character budget with the 5000ms
+skip-on-timeout rule (a slow recall skips injection, never blocks the
+reply); memory exposed to agents as discoverable tools, never
+wholesale-injected. Wiki and codegraph collections register through the
+same 058 asset envelope (`kind=wiki|code_graph`).
+
+Timing pinned to the base:
+
+- **Index update timing**: the BM25 index updates on the `memory.*` event
+  stream (asset_written/superseded/revoked/expired) — no separate crawl of
+  the assets table; boot rebuilds from `list_all_memory_assets`.
+- **Query timing**: (a) dispatch assembly calls recall AFTER the 059
+  bootstrap when the remaining memory budget is non-zero; (b) agents call
+  the `memory_search` / `memory_recall` tools mid-run through the existing
+  tool plane; (c) the drill-down of every hit stays attached (`sourceLinks`
+  / `memberAssetIds` are never stripped).
+- **Visibility timing**: recall applies the same loadout filter as 059
+  (tenant ∧ Ready ∧ visibility/bindings) at query time, not index time, so
+  visibility changes take effect immediately without reindexing.
+- **Vector scoring**: optional, feature-flagged, embeddings via the
+  adapter plane; absent embeddings, BM25-only is the supported first
+  release mode.
 
 ## Goal
 
