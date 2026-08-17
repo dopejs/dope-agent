@@ -167,6 +167,10 @@ pub struct PluginManifest {
     pub provides: Vec<String>,
     pub requires: Vec<String>,
     pub hooks: Vec<ManifestHook>,
+    /// Seams this plugin serves over the process protocol (e.g.
+    /// `context.embedder`). Seam calls ride the same line-JSON channel with
+    /// point `seam:<name>:<op>`.
+    pub seams: Vec<String>,
     pub entry: ManifestEntry,
 }
 

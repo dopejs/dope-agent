@@ -274,6 +274,20 @@ impl App {
                     );
                 }
             }
+            // Seam providers: the first enabled external plugin declaring
+            // `context.embedder` serves the embedding seam (later
+            // declarations warn and are ignored — deterministic assembly).
+            if plugin.manifest.seams.iter().any(|s| s == "context.embedder") {
+                if asm.state.embedder.is_none() {
+                    asm.state.embedder =
+                        Some(Arc::new(external::ExternalEmbedder::new(host.clone())));
+                } else {
+                    eprintln!(
+                        "[dope] plugin {}: context.embedder already served; ignoring",
+                        host.id
+                    );
+                }
+            }
             external_hosts.push(host);
         }
         asm.state.plugins = Some(Arc::new(report));
@@ -1486,6 +1500,47 @@ mod tests {
                 panic!("malformed config must fail the boot");
             }
         }
+    }
+
+    /// Seam-RPC slice 1: an external plugin declaring the
+    /// `context.embedder` seam serves the embedding provider — embed calls
+    /// round-trip over the process protocol, and failures fall back to the
+    /// in-process default instead of breaking retrieval.
+    #[test]
+    fn external_plugin_serves_the_embedder_seam() {
+        let config = test_config();
+        let plugin_dir = std::path::Path::new(&config.data_dir).join("plugins/embedder");
+        std::fs::create_dir_all(&plugin_dir).expect("mkdir plugin");
+        std::fs::write(
+            plugin_dir.join("run.sh"),
+            concat!(
+                "while read line; do printf '%s\\n' '{\"outcome\":\"continue\",",
+                "\"payload\":{\"vector\":[0.5,0.5,0.0]}}'; done\n"
+            ),
+        )
+        .expect("write script");
+        std::fs::write(
+            plugin_dir.join("manifest.json"),
+            serde_json::json!({
+                "id": "embedder",
+                "summary": "external embedding provider",
+                "seams": ["context.embedder"],
+                "entry": {
+                    "kind": "process",
+                    "command": "/bin/sh",
+                    "args": ["run.sh"],
+                    "timeoutMs": 3000
+                }
+            })
+            .to_string(),
+        )
+        .expect("write manifest");
+
+        let app = App::new(config).expect("build app");
+        let embedder = app.state.embedder.as_deref().expect("embedder seam served");
+        assert_eq!(embedder.name(), "embedder");
+        assert_eq!(embedder.embed("anything"), vec![0.5, 0.5, 0.0]);
+        app.close();
     }
 
     /// Tier-2 end to end: an external plugin installed under

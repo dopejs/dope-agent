@@ -807,14 +807,18 @@ impl dope_plugin::Hook for ContextHook {
                     content: asset.content,
                 })
                 .collect();
-            // The vector ranker joins the fusion through the Embedder seam;
-            // the default is the deterministic hashed-ngram embedder (a
-            // neural provider replaces it here without touching the fusion).
-            let embedder = dope_context::HashedNgramEmbedder::default();
+            // The vector ranker joins the fusion through the Embedder seam:
+            // an installed external provider (state.embedder) wins, else the
+            // deterministic hashed-ngram default.
+            let default_embedder = dope_context::HashedNgramEmbedder::default();
+            let embedder: &dyn dope_context::Embedder = match state.embedder.as_deref() {
+                Some(external) => external,
+                None => &default_embedder,
+            };
             dope_context::retrieve_and_assemble(
                 &query,
                 &docs,
-                Some(&embedder),
+                Some(embedder),
                 self.config.retrieval_budget(),
                 &mut injected,
                 &mut record,

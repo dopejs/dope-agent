@@ -165,6 +165,10 @@ pub struct AppState {
     /// The plugin hook bus (waterfall interception points, pluginization
     /// phase 2). None only in test states built outside the app assembly.
     pub hooks: Option<Arc<dope_plugin::HookBus>>,
+    /// The embedding seam provider (an external plugin serving
+    /// `context.embedder`, when installed). None = the deterministic
+    /// in-process default.
+    pub embedder: Option<Arc<dyn dope_context::Embedder>>,
 }
 
 impl AppState {
@@ -214,6 +218,7 @@ impl AppState {
             tenant_migration_status: None,
             plugins: None,
             hooks: None,
+            embedder: None,
         }
     }
 }

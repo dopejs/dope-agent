@@ -251,10 +251,18 @@ external plugin is code execution with daemon privileges, same trust class
 as installing a capability. Distribution/verification flows ride the
 catalog trust tiers.
 
-Remaining for later slices: seam (service) dispatch over adapter RPC —
-serving a whole builtin seam (e.g. the memory consolidator or a channel)
-from an external process — and catalog-driven install/update lifecycle
-placing plugins into `<data_dir>/plugins/`.
+Seam dispatch (slice 2, 2026-08-17): manifests declare `seams`; calls
+ride the same line-JSON channel as hooks (point `seam:<name>:<op>`). The
+first served seam is `context.embedder`: install an external embedding
+process (neural or otherwise) and the vector ranker in both the context
+plugin and `/v1/retrieval/queries` switches to it — no daemon change, no
+fusion change. Failures fall back to the deterministic in-process
+embedder (availability first, logged). First declaration wins; duplicate
+providers warn and are ignored (deterministic assembly).
+
+Remaining for later slices: more seams over the process protocol (the
+memory consolidator, whole channel runtimes) and catalog-driven
+install/update lifecycle placing plugins into `<data_dir>/plugins/`.
 
 ## Sequencing
 

@@ -191,6 +191,60 @@ impl Hook for ExternalHook {
     }
 }
 
+/// The `context.embedder` seam served by an external plugin process:
+/// `embed` round-trips over the line-JSON channel (point
+/// `seam:context.embedder:embed`, payload `{text}` → `{payload: {vector}}`).
+/// Failures fall back to the deterministic in-process embedder — retrieval
+/// quality degrades, availability does not (the fallback is logged).
+pub(crate) struct ExternalEmbedder {
+    host: Arc<ExternalProcessHost>,
+    fallback: dope_context::HashedNgramEmbedder,
+}
+
+impl ExternalEmbedder {
+    pub fn new(host: Arc<ExternalProcessHost>) -> Self {
+        ExternalEmbedder { host, fallback: dope_context::HashedNgramEmbedder::default() }
+    }
+}
+
+impl dope_context::Embedder for ExternalEmbedder {
+    fn embed(&self, text: &str) -> Vec<f32> {
+        match self
+            .host
+            .call("seam:context.embedder:embed", &serde_json::json!({ "text": text }))
+        {
+            Ok(reply) => {
+                let vector = reply
+                    .payload
+                    .as_ref()
+                    .and_then(|p| p.get("vector"))
+                    .and_then(|v| serde_json::from_value::<Vec<f32>>(v.clone()).ok());
+                match vector {
+                    Some(vector) if !vector.is_empty() => vector,
+                    _ => {
+                        eprintln!(
+                            "[dope] external embedder {} returned no vector; using fallback",
+                            self.host.id
+                        );
+                        dope_context::Embedder::embed(&self.fallback, text)
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!(
+                    "[dope] external embedder {} failed ({err}); using fallback",
+                    self.host.id
+                );
+                dope_context::Embedder::embed(&self.fallback, text)
+            }
+        }
+    }
+
+    fn name(&self) -> &str {
+        &self.host.id
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

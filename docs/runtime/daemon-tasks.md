@@ -171,9 +171,17 @@ Pluginization precedes all further capability work.
       host with per-call timeout, one respawn, `onError: continue|veto`
       per hook; kill on close; catalog `kind=plugin`; end-to-end test
       (manifest on disk → chat turn rewritten by the child process)
-- [ ] Phase 3 later slices — seam (service) dispatch over adapter RPC
-      (serve a builtin seam from an external process) and catalog-driven
-      install/update into `<data_dir>/plugins/`
+- [x] Seam-RPC slice 1 (complete 2026-08-17): external plugins declare
+      `seams` in the manifest and serve them over the same line-JSON
+      process protocol (point `seam:<name>:<op>`); first seam:
+      `context.embedder` — an installed provider takes over the vector
+      ranker for the context plugin and the retrieval API (embed calls
+      round-trip to the child process; failures fall back to the
+      in-process default, availability first); first-declaration-wins,
+      duplicates warn
+- [ ] Phase 3 later slices — more seams over the process protocol
+      (consolidator, channel runtimes) and catalog-driven install/update
+      into `<data_dir>/plugins/`
 - [x] Session-strategy plugin, first slice (complete 2026-08-17):
       `dope-session` policy crate + `session-strategy` builtin at
       `chat/pre-dispatch`; deterministic frame-preserving window shaping

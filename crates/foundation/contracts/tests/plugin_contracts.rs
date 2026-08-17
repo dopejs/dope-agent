@@ -19,7 +19,7 @@ fn test_plugin_schemas_accept_canonical_fixtures() {
         ),
         (
             r##"schemas/plugin/plugin-manifest.schema.json"##,
-            r##"{"id":"session-strategy","version":"0.1.0","summary":"external session window","requires":["chat"],"hooks":[{"point":"chat/pre-dispatch","onError":"veto"}],"entry":{"kind":"process","command":"/bin/sh","args":["run.sh"],"timeoutMs":2000}}"##,
+            r##"{"id":"session-strategy","version":"0.1.0","summary":"external session window","requires":["chat"],"hooks":[{"point":"chat/pre-dispatch","onError":"veto"}],"seams":["context.embedder"],"entry":{"kind":"process","command":"/bin/sh","args":["run.sh"],"timeoutMs":2000}}"##,
         ),
         (
             r##"schemas/plugin/plugin-manifest.schema.json"##,

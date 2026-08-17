@@ -83,9 +83,13 @@ pub async fn query(
             content: asset.content.clone(),
         })
         .collect();
-    let embedder = dope_context::HashedNgramEmbedder::default();
+    let default_embedder = dope_context::HashedNgramEmbedder::default();
+    let embedder: &dyn dope_context::Embedder = match state.embedder.as_deref() {
+        Some(external) => external,
+        None => &default_embedder,
+    };
     let limit = if request.limit == 0 { DEFAULT_LIMIT } else { request.limit };
-    let hits = dope_context::retrieve_fused(&request.query, &docs, Some(&embedder))
+    let hits = dope_context::retrieve_fused(&request.query, &docs, Some(embedder))
         .into_iter()
         .take(limit)
         .enumerate()
