@@ -228,6 +228,7 @@ impl App {
         }
         let mut asm = plugins::Assembly {
             cfg: cfg.clone(),
+            profile: profile.clone(),
             env_scope,
             hosted,
             store,
@@ -1094,6 +1095,94 @@ mod tests {
         app.close();
     }
 
+    /// The session-strategy builtin registers at chat/pre-dispatch and
+    /// shapes an over-budget window with the operator's plugins.json
+    /// config: frame preserved, oldest history elided behind a marker,
+    /// current query kept.
+    #[tokio::test]
+    async fn session_strategy_shapes_window_with_profile_config() {
+        let config = test_config();
+        std::fs::write(
+            std::path::Path::new(&config.data_dir).join(dope_plugin::PROFILE_FILE_NAME),
+            serde_json::json!({
+                "entries": {
+                    "session-strategy": {
+                        "config": { "personalBudgetChars": 60, "keepRecent": 1 }
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .expect("write profile");
+        let app = App::new(config).expect("build app");
+        let report = app.state.plugins.as_ref().expect("report");
+        assert!(report.enabled("session-strategy"));
+        let hooks = app.state.hooks.as_ref().expect("hook bus");
+        assert!(hooks
+            .registrations()
+            .contains(&("chat/pre-dispatch".to_string(), "session-strategy".to_string())));
+
+        let mut payload = serde_json::json!({
+            "sourceKind": "chat",
+            "provider": "echo",
+            "model": "",
+            "messages": [
+                { "role": "system", "content": "persona frame" },
+                { "role": "user", "content": "old ".repeat(30) },
+                { "role": "assistant", "content": "older answer ".repeat(10) },
+                { "role": "user", "content": "current query" }
+            ]
+        });
+        let outcome = hooks.run(dope_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
+        assert!(outcome.allowed());
+        let messages = payload["messages"].as_array().expect("messages");
+        assert!(
+            messages.iter().any(|m| m["content"] == "persona frame"),
+            "frame preserved"
+        );
+        assert_eq!(
+            messages.last().expect("last")["content"],
+            "current query",
+            "current query kept by the keep-recent floor"
+        );
+        assert!(
+            messages
+                .iter()
+                .any(|m| m["content"].as_str().is_some_and(|c| c.contains("elided"))),
+            "elision marker present: {messages:?}"
+        );
+        app.close();
+    }
+
+    /// A malformed session-strategy config fails the boot loudly instead of
+    /// silently running default budgets.
+    #[tokio::test]
+    async fn malformed_session_strategy_config_fails_boot() {
+        let config = test_config();
+        let mut entries = std::collections::BTreeMap::new();
+        entries.insert(
+            "session-strategy".to_string(),
+            dope_plugin::PluginEntry {
+                enabled: None,
+                config: serde_json::json!({ "personalBudgetChars": "lots" })
+                    .as_object()
+                    .expect("object")
+                    .clone(),
+            },
+        );
+        let profile = dope_plugin::PluginProfile { disabled: vec![], entries };
+        match App::with_profile(config, profile) {
+            Err(AppError::PluginProfile(message)) => {
+                assert!(message.contains("session-strategy"), "{message}");
+            }
+            Err(other) => panic!("expected PluginProfile error, got {other}"),
+            Ok(app) => {
+                app.close();
+                panic!("malformed config must fail the boot");
+            }
+        }
+    }
+
     /// Tier-2 end to end: an external plugin installed under
     /// <data_dir>/plugins/ appears in the assembly report as
     /// source=external, its hooks register on the bus, and its process
@@ -1102,7 +1191,7 @@ mod tests {
     fn external_plugin_rewrites_chat_context_end_to_end() {
         let config = test_config();
         let plugin_dir =
-            std::path::Path::new(&config.data_dir).join("plugins/session-strategy");
+            std::path::Path::new(&config.data_dir).join("plugins/external-window");
         std::fs::create_dir_all(&plugin_dir).expect("mkdir plugin");
         std::fs::write(
             plugin_dir.join("run.sh"),
@@ -1115,7 +1204,7 @@ mod tests {
         std::fs::write(
             plugin_dir.join("manifest.json"),
             serde_json::json!({
-                "id": "session-strategy",
+                "id": "external-window",
                 "summary": "external session window",
                 "requires": ["chat"],
                 "hooks": [{ "point": "chat/turn-start", "onError": "veto" }],
@@ -1135,7 +1224,7 @@ mod tests {
         let external = report
             .plugins
             .iter()
-            .find(|p| p.id == "session-strategy")
+            .find(|p| p.id == "external-window")
             .expect("external plugin in report");
         assert!(external.enabled);
         assert_eq!(external.source, "external");
@@ -1143,7 +1232,7 @@ mod tests {
         assert!(
             hooks
                 .registrations()
-                .contains(&("chat/turn-start".to_string(), "session-strategy".to_string())),
+                .contains(&("chat/turn-start".to_string(), "external-window".to_string())),
             "external hook registered"
         );
 

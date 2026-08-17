@@ -100,6 +100,9 @@ pub(crate) struct WorkflowLauncherSeam(pub Arc<adapters::WorkflowLauncherImpl>);
 /// the API reads).
 pub(crate) struct Assembly {
     pub cfg: Config,
+    /// The resolved plugin profile: build functions read their entry's
+    /// `config` object through it.
+    pub profile: dope_plugin::PluginProfile,
     pub env_scope: &'static str,
     pub hosted: bool,
     pub store: Arc<parking_lot::Mutex<SQLiteStore>>,
@@ -227,6 +230,15 @@ pub(crate) const BUILTINS: &[BuiltinPlugin] = &[
             requires: &["llm"],
         },
         build: build_chat,
+    },
+    BuiltinPlugin {
+        descriptor: PluginDescriptor {
+            id: "session-strategy",
+            summary: "Session window policy: personal long-session and IM thread budgets",
+            provides: &["session.window-policy"],
+            requires: &["chat"],
+        },
+        build: build_session_strategy,
     },
     BuiltinPlugin {
         descriptor: PluginDescriptor {
@@ -550,6 +562,60 @@ fn build_chat(asm: &mut Assembly) -> Result<(), AppError> {
         chat.set_hooks(hooks);
     }
     asm.state.chat = Some(Arc::new(chat));
+    Ok(())
+}
+
+/// The session-strategy hook: deterministic frame-preserving window shaping
+/// at `chat/pre-dispatch` (see the `dope-session` crate). Runs before any
+/// external plugin hooks (builtins register first).
+struct SessionStrategyHook {
+    config: dope_session::SessionStrategyConfig,
+}
+
+impl dope_plugin::Hook for SessionStrategyHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+        let source_kind = payload
+            .get("sourceKind")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        let Some(messages_value) = payload.get("messages") else {
+            return dope_plugin::HookOutcome::Continue;
+        };
+        let Ok(messages) =
+            serde_json::from_value::<Vec<dope_session::WindowMessage>>(messages_value.clone())
+        else {
+            return dope_plugin::HookOutcome::Continue;
+        };
+        let shaped = dope_session::shape_window(
+            &messages,
+            self.config.budget_for(source_kind.as_deref()),
+            self.config.keep_recent_floor(),
+        );
+        if shaped.elided > 0 {
+            if let Ok(new_messages) = serde_json::to_value(&shaped.messages) {
+                payload["messages"] = new_messages;
+            }
+        }
+        dope_plugin::HookOutcome::Continue
+    }
+}
+
+fn build_session_strategy(asm: &mut Assembly) -> Result<(), AppError> {
+    let Some(bus) = asm.state.hooks.clone() else {
+        return Ok(());
+    };
+    // A malformed operator config fails the boot loudly (same posture as a
+    // malformed profile) instead of silently running default budgets.
+    let config_object = asm.profile.config_for("session-strategy");
+    let config: dope_session::SessionStrategyConfig =
+        serde_json::from_value(serde_json::Value::Object(config_object)).map_err(|err| {
+            AppError::PluginProfile(format!("session-strategy config: {err}"))
+        })?;
+    bus.register(
+        dope_plugin::points::CHAT_PRE_DISPATCH,
+        "session-strategy",
+        Arc::new(SessionStrategyHook { config }),
+    );
     Ok(())
 }
 

@@ -423,7 +423,8 @@ pub mod points {
     pub const CHAT_TURN_START: &str = "chat/turn-start";
     /// After full context assembly (skills, profile, continuity), before the
     /// dispatch is prepared/persisted. Payload:
-    /// `{provider, model, messages: [{role, content}]}`; hooks may rewrite
+    /// `{tenantId, threadId, sourceKind, provider, model,
+    /// messages: [{role, content}]}`; hooks may rewrite
     /// any of the three or halt to veto. Because the dispatch record is
     /// created after this point, whatever the hooks leave here is exactly
     /// what is logged and what the model sees ("model-visible = logged").

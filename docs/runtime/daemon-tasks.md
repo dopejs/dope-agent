@@ -174,8 +174,15 @@ Pluginization precedes all further capability work.
 - [ ] Phase 3 later slices — seam (service) dispatch over adapter RPC
       (serve a builtin seam from an external process) and catalog-driven
       install/update into `<data_dir>/plugins/`
-- [ ] Session/context management as plugins (`personal-session`,
-      `im-thread-session`) — after phase 2
+- [x] Session-strategy plugin, first slice (complete 2026-08-17):
+      `dope-session` policy crate + `session-strategy` builtin at
+      `chat/pre-dispatch`; deterministic frame-preserving window shaping
+      (system frame never elided, keepRecent floor, elision marker);
+      personal (48k) vs thread (`sourceKind=channel`, 16k) budgets;
+      operator config via the profile entry with fail-loud validation
+- [ ] Session-strategy later slices: compression-to-memory (elided spans
+      → L2 summaries), explicit session-frame objects, channel-native
+      thread segmentation
 - [ ] Knowledge retrieval (BM25+vector+RRF, assets-as-tools) — after the
       session-strategy slice
 - [ ] Agent-managed skills; audited self-improvement — sequence tail

@@ -755,6 +755,7 @@ dependencies = [
  "dope-sandbox",
  "dope-scheduler",
  "dope-secrets",
+ "dope-session",
  "dope-setupwizard",
  "dope-skills",
  "dope-slack",
@@ -1539,6 +1540,14 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "dope-session"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

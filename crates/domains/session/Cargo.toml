@@ -1,0 +1,10 @@
+[package]
+name = "dope-session"
+description = "Session strategy policies: deterministic context-window shaping for the chat/pre-dispatch hook"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

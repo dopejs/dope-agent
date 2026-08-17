@@ -415,6 +415,7 @@ impl Service {
         let mut payload = serde_json::json!({
             "tenantId": input.tenant_id,
             "threadId": input.thread_id,
+            "sourceKind": serde_json::to_value(input.source_kind).unwrap_or(Value::Null),
             "provider": dispatch_input.provider,
             "model": dispatch_input.model,
             "messages": serde_json::to_value(&dispatch_input.messages)

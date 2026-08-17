@@ -105,13 +105,33 @@ A veto surfaces as `ChatError::HookVetoed` → HTTP 403 and is recorded as a
 records (continuity turns render into messages per dispatch — the
 `derive_messages` shape); generalizing that log into a session-event model
 is folded into the session-strategy plugin slice, which attaches at
-`chat/pre-dispatch`:
+`chat/pre-dispatch`.
 
-- `personal-session` — long-session policy: session frame (goal/
-  constraints) never evicted, extraction-before-eviction into the memory
-  plane (058 write path), rendered-not-accumulated window.
-- `im-thread-session` — one context per thread for channels with native
-  threading.
+### Session-strategy plugin (first slice shipped 2026-08-17)
+
+The `session-strategy` builtin (policy engine: `crates/domains/session`)
+attaches at `chat/pre-dispatch` and shapes the assembled window
+deterministically — before the dispatch is persisted, so the shaped window
+is exactly what is logged and what the model sees. Mechanism:
+frame-preserving elision — system messages (persona, skills, safety) are
+the frame and never elided; the most recent `keepRecent` non-system
+messages are always kept; over-budget oldest history is replaced by one
+marker line pointing at thread continuity and the memory plane. Eviction
+is safe by construction: every turn is captured to L0 at settle
+independently of the window.
+
+Two strategies share the mechanism and differ by budget, keyed off the
+turn's `sourceKind`: **personal** (long-session default, 48k chars) and
+**thread** (`sourceKind=channel`, tight 16k chars — one context per
+thread; thread scoping itself comes from the continuity plane). Operator
+config via the profile entry
+(`entries.session-strategy.config.{personalBudgetChars,threadBudgetChars,keepRecent}`);
+a malformed config fails the boot loudly. Disabling the plugin restores
+unshaped windows.
+
+Later slices: compression-to-memory (elided spans summarized as L2 assets
+instead of dropped), session frame objects (explicit goal/constraint
+records), and channel-native thread segmentation policies.
 
 ## Phase 3 — out-of-process plugin providers (slice 1 shipped 2026-08-17)
 
