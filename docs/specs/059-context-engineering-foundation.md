@@ -1,143 +1,116 @@
-# 059 — Context Engineering Foundation (Write/Read Timing On The 058 Base)
+# 059 — Context Engineering Foundation
 
 ## Roadmap Context
 
 Roadmap 79, slice 2 of the context/knowledge/memory program. Revised
-2026-08-17 against the shipped 058 foundation: this spec now pins the
-concrete integration timing onto the implemented seams (`dope-memory`'s
-`capture`/`record_turn`/`idle_due`/`consolidate`, the `Consolidator`
-trait, the `WriteDecision` flow, the envelope's `bindings`, and the
-`memory.*` events) instead of describing them abstractly.
+2026-08-17: the memory *write path* (capture points, consolidation
+scheduling, the model-backed Consolidator, review timing) belongs to the
+memory plane itself and moved to 058 phase 2. This spec is context
+engineering proper: **how a dispatch's context gets assembled** —
+deterministically, inspectably, under budgets — from the sources the
+daemon owns.
 
 ## Design Root Alignment
 
-TencentDB-Agent-Memory model (see 058): L3/L2 bootstrap first under
-budgets, per-agent loadout from bindings + visibility, symbolic
-compression of tool logs, async consolidation off the request path.
+TencentDB-Agent-Memory (see 058): L3/L2 bootstrap first under explicit
+budgets; per-agent **loadout** instead of global injection; symbolic
+compression of bulky tool logs; nothing enters context without an
+on-demand path back to its evidence.
 
-## Part 1 — Write Timing (when memory gets written)
+## Goal
 
-The base has no producers by design; this slice wires them. The rule
-throughout: **nothing on the reply path blocks on memory**.
+A daemon-owned context assembly pipeline that builds each dispatch's
+context from typed sources under an explicit budget and records exactly
+what was included, what was excluded, and why — reconstructable after the
+fact. The model proposes nothing here: assembly is deterministic given the
+same inputs (control-plane determinism principle).
 
-### W1. L0 capture points
+## The Assembly Pipeline
 
-- **Chat turns**: `dope-chat::Service` calls `POST`-equivalent capture
-  (manager `create` L0Ref + `record_turn`) after a dispatch settles —
-  once per user turn, with source links `{thread: thread_id}`,
-  `{message: request_turn_id}`, `{run: dispatch/run id}`. The assistant
-  reply is part of the same turn's L0 window, not a second turn.
-- **Connector ingress**: the accepted branch of
-  `/v1/connectors/{id}/ingress/messages` captures with
-  `{message: delivery_id}` + `{thread/session}` links.
-- **Workflow completion**: terminal workflows capture one L0Ref with
-  `{run}`/`{workflow}` links so task outcomes are extractable evidence.
-- Capture is fire-and-forget from the caller's perspective: failures log
-  and never fail the originating request.
+### Sources (typed, ordered)
 
-### W2. Extraction scheduling (L0 → L1)
+1. **Persona** (Roadmap 57): the active agent profile projection.
+2. **Workspace bindings** (Roadmap 58): the dispatch's workspace/capability
+   context.
+3. **Thread continuity** (Roadmap 55): the bounded continuity preview.
+4. **Memory bootstrap** (058): the tenant's Ready L3, then Ready L2
+   scenarios newest-first — L1 atoms are never bulk-injected (they arrive
+   via retrieval (060) or drill-down on demand).
+5. **Retrieval results** (060, when shipped): recall over the remaining
+   memory budget.
 
-- `record_turn` returning `true` (turn-count N=5 or warm-up 1/2/4/8…)
-  enqueues a consolidation job for that tenant. Execution is a background
-  task handed to the scheduler plane (`dope-scheduler` workflow target
-  `memory_consolidation`), never inline with the reply.
-- **Idle trigger**: a scheduler tick every 60s sweeps `idle_due(tenant,
-  now)` (600s idle default) and enqueues due tenants.
-- The job builds the L0 window since `last_extract_at` from conversation
-  truth (thread continuity reads), then calls `Manager::consolidate`,
-  persists the written assets, publishes events, and renders projections
-  — exactly what the manual `/v1/memory/consolidate` route does today.
-- Deduplication: at most one in-flight consolidation per tenant (the
-  scheduler's per-target serialization).
+### Loadout resolution
 
-### W3. Model-backed Consolidator
+Eligible memory assets per dispatch = tenant match ∧ status Ready ∧
+visibility admits the caller (`private` → owner match, `team`,
+`agent` → the asset's `bindings` contains the active persona/agent id).
+Persona and workspace bindings supply the ids matched against `bindings`.
+Visibility is evaluated at assembly time, so changes take effect on the
+next dispatch without any rebuild.
 
-- Implements the 058 `Consolidator` trait over the **LLM dispatch plane**
-  (an internal system dispatch; no new inference machinery):
-  - `extract_l1`: prompt over the L0 window → JSON array of
-    `{atomType, title, content, sourceLinks}` (source links restricted to
-    ids present in the window — the extractor cannot invent citations;
-    invented ids are dropped and logged).
-  - `aggregate_l2`: prompt over ready atoms grouped by workspace/thread →
-    scenario drafts.
-  - `distill_l3`: prompt over ready scenarios → one persona draft
-    (superseding the prior L3, which the base already chains).
-- Config: `memory.consolidator.{provider,model,timeoutMs}` — defaults to
-  the daemon's default provider; consolidation failures record the run
-  with `error` and never retry more than once per trigger.
-- Extractor writes carry `owner = system:consolidator`; under the default
-  policy they auto-accept. Recorded decision: the stricter variant
-  (consolidator writes require approval) is a policy-hook swap, not a
-  redesign — operators choose via configuration in the operator shell.
+### Budgets
 
-### W4. Review timing (pending assets)
+- Per-source character allowances from configuration
+  (`context.budget.{persona,continuity,memory,retrieval}` — memory
+  default 4000 chars). Total context stays within
+  `context.budget.total`.
+- Overflow policy: sources truncate in reverse priority order (retrieval
+  first, persona last); every truncation/exclusion is recorded, never
+  silent.
 
-- Agent-authored and policy-gated writes sit in `status=pending`. They
-  surface in the operator shell's memory queue (list filter
-  `status=pending`) and resolve through the existing
-  `/v1/memory/assets/{id}/approve|reject` — memory-native review, NOT the
-  policy-engine approvals (that plane gates tool execution; mixing the
-  queues would bury memory reviews under run approvals). Recorded
-  decision.
+### AssemblyRecord
 
-### W5. Retention sweep timing
+Every assembled context produces an `AssemblyRecord`: the ordered list of
+included items (source kind, asset/preview id, chars), the excluded items
+with reasons (over-budget, visibility, timeout), and the budget totals.
+Records are inspectable via `GET /v1/context/assemblies/{id}` and linked
+from the dispatch (`context.assembled` event carries the id). This is the
+inspectability contract: an engineer can reconstruct exactly what the
+model saw.
 
-- `sweep_retention(now)` runs on the same 60s scheduler tick; expiries
-  persist + publish `memory.asset_expired`.
+### Symbolic tool-log compression
 
-## Part 2 — Read Timing (when memory enters context)
+Tool-call outputs above a size threshold externalize to
+`<data_dir>/memory/<tenant>/refs/<tool_call_id>.md`; context keeps a
+one-line symbol (`ref:<tool_call_id>` + summary). A `memory_ref_lookup`
+tool retrieves the full text by id on demand — token cost drops, full
+traceability stays.
 
-### R1. Loadout resolution
+### Dispatch integration
 
-- Per dispatch: eligible assets = tenant match ∧ status Ready ∧
-  (visibility private→owner match | team | agent→`bindings` contains the
-  active persona/agent id). Personas (Roadmap 57) and workspace bindings
-  (Roadmap 58) supply the ids matched against `bindings`.
+Chat/dispatch opt in per request (`context.memory=true`; default off
+until 060's retrieval ships alongside). With the flag off, behavior is
+byte-identical to today.
 
-### R2. Bootstrap injection (L3/L2 first)
+## In Scope
 
-- Chat assembly (opt-in flag `context.memory=true`, default off until 060
-  retrieval ships) prepends, in order and within budget:
-  1. the tenant's Ready L3 (persona) — at most one by construction;
-  2. Ready L2 scenarios ranked by `updated_at`, newest first,
-  until the memory budget (`context.memoryBudgetChars`, default 4000
-  chars) is exhausted. L1 atoms are NOT bulk-injected — they arrive via
-  retrieval (060) or drill-down on demand.
-- Every injected asset id is recorded in the dispatch's
-  `AssemblyRecord` (what was included, what was excluded and why) — the
-  inspectability contract from the original 059 goal.
-- Timeout rule (from the design root): assembly reads are in-memory
-  (manager state), so no skip-path is needed here; the retrieval
-  fallback in 060 carries the 5000ms skip-on-timeout rule.
-
-### R3. Symbolic tool-log compression
-
-- Tool-call outputs above a threshold externalize to
-  `<data_dir>/memory/<tenant>/refs/<tool_call_id>.md`; the context keeps
-  a one-line symbol (`ref:<tool_call_id>` + summary line). A
-  `memory_ref_lookup` tool retrieves full text by id on demand.
-
-## In Scope (implementation checklist)
-
-- Chat/ingress/workflow capture hooks (W1) behind a config flag.
-- Scheduler wiring for turn/idle triggers + retention (W2, W5).
-- `LlmConsolidator` implementing the trait over the dispatch plane (W3).
-- Loadout + bootstrap injection + AssemblyRecord in chat assembly (R1-R2).
-- Symbolic ref externalization + lookup tool (R3).
-- Operator-shell pending-review queue (W4) and the config surface.
+- A `context` domain crate: source registry, loadout resolver, budget
+  model, assembler, AssemblyRecord (+ store table via v3 migration).
+- Chat-service integration behind the opt-in flag.
+- `GET /v1/context/assemblies/{id}` + `context.assembled` event, schemas,
+  SDK.
+- Symbolic ref externalization + the `memory_ref_lookup` tool.
 
 ## Out Of Scope
 
-- Retrieval scoring and the memory-search tools (060); wiki/codegraph
-  kinds; bulk import; embedding anything.
+- Everything that writes memory (058 phase 2); retrieval scoring and
+  memory-search tools (060); learned/adaptive budget weights (082 —
+  proposals through the audited improvement loop only).
+
+## Fixed Decisions
+
+- Assembly is deterministic given the same inputs; no model-driven choice
+  inside the pipeline.
+- Every assembled context is reconstructable from its AssemblyRecord.
+- Recalled memory enters context with its citation intact, never as bare
+  text.
 
 ## Verification / Definition Of Done
 
-- End-to-end test: scripted conversation → captures → turn-trigger fires
-  → LlmConsolidator (fake provider in tests) writes atoms with real
-  source links → L2/L3 appear after their triggers → next dispatch's
-  AssemblyRecord shows the L3/L2 injection under budget.
-- Idle-trigger and warm-up schedule tests over a mocked clock.
-- Invented-citation drop test (extractor returns an unknown source id).
-- Reply-path latency assertion: capture + trigger enqueue add no
-  synchronous dispatch work beyond the in-memory bookkeeping call.
+- Golden tests: fixed sources → identical AssemblyRecord across runs.
+- Budget-overflow tests: exclusion ordering and recorded reasons.
+- Loadout tests: visibility/bindings changes reflected on the next
+  assembly.
+- End-to-end: a dispatch with the flag on shows the L3/L2 injection in
+  its AssemblyRecord; with the flag off, unchanged behavior.
+- Ref-compression round trip: externalized tool log retrievable by id.

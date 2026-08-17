@@ -94,11 +94,43 @@ scheduling are the next slices (059/060).
   `memory.consolidation_run`.
 - Schemas + contract tests, SDK methods, operator-shell read surface.
 
+## Phase 2 — Write Path Activation (producers and scheduling)
+
+Phase 1 shipped the plane with zero producers; phase 2 makes memory write
+itself. The rule throughout: nothing on the reply path blocks on memory.
+
+- **L0 capture points** (fire-and-forget; failures log, never fail the
+  originating request):
+  1. chat turns — `dope-chat` captures after a dispatch settles, source
+     links `{thread, message/turn, run}`; the assistant reply belongs to
+     the same turn's L0 window;
+  2. connector ingress — the accepted branch captures with
+     `{message: delivery_id}` + thread/session links;
+  3. workflow completion — terminal workflows capture one L0Ref with
+     `{run}/{workflow}` links.
+- **Extraction scheduling**: `record_turn` due (5-turn / warm-up
+  1-2-4-8…) enqueues a `memory_consolidation` job on the scheduler plane;
+  a 60s scheduler tick sweeps `idle_due` tenants (600s idle) and runs
+  `sweep_retention`; at most one in-flight pass per tenant.
+- **Model-backed Consolidator**: implements the phase-1 trait over the
+  LLM dispatch plane (internal system dispatch, own
+  `memory.consolidator.{provider,model,timeoutMs}` config). Guard: the
+  extractor cannot invent citations — source links must reference ids
+  present in the supplied L0 window; invented ids are dropped and logged.
+  Consolidation failures record the run's `error` and retry at most once
+  per trigger.
+- **Review timing**: pending assets resolve through the memory-native
+  `approve/reject` queue in the operator shell — deliberately NOT the
+  policy-engine approvals (that plane gates tool execution; mixing queues
+  would bury memory reviews under run approvals).
+
 ## Out Of Scope (deferred to 059/060)
 
-- Retrieval scoring (BM25/vector/RRF), assets-as-tools exposure, context
-  assembly, automatic pipeline scheduling, bulk cold-start import, wiki
-  and codegraph asset kinds (the envelope reserves the `kind` values).
+- Context assembly/loadout/budgets and symbolic compression (059 —
+  context engineering consumes this plane, it does not operate it).
+- Retrieval scoring (BM25/vector/RRF), assets-as-tools exposure, bulk
+  cold-start import, wiki and codegraph asset kinds (the envelope
+  reserves the `kind` values) — 060.
 
 ## Fixed Decisions
 

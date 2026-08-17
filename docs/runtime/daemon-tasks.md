@@ -127,14 +127,17 @@ TencentDB-Agent-Memory (layered L0-L3 + governed asset envelope), specs
       Markdown projection under `<data_dir>/memory/`; behavioral tests
 - [ ] Schemas under `schemas/api/` + contract tests; SDK methods;
       operator-shell read surface
-- [ ] Model-backed Consolidator + scheduler trigger wiring (spec 059 scope)
+- [ ] Phase 2 write-path activation (spec 058): capture hooks (chat turn
+      settle / ingress accept / workflow terminal), scheduler trigger
+      wiring (turn/idle/retention), LLM-dispatch-backed Consolidator with
+      invented-citation dropping, operator-shell review queue
 - [ ] Schema-inventory row for `memory_assets` (tenant-partitioned)
 
 ## Roadmaps 79-82 (specs 059-062) — designed, next in sequence
 
 - [x] Specs 059-062 authored and aligned to the design root
-- [ ] 79 context engineering (loadout, L3/L2 bootstrap, symbolic
-      compression, consolidation scheduling)
+- [ ] 79 context engineering (assembly pipeline, loadout, budgets,
+      AssemblyRecord, symbolic compression, opt-in dispatch integration)
 - [ ] 80 knowledge retrieval (BM25+vector+RRF, assets-as-tools)
 - [ ] 81 agent-managed skills; 82 audited self-improvement
 
