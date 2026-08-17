@@ -29,6 +29,7 @@ pub mod connectors;
 pub mod evaluation;
 pub mod evidence;
 pub mod execprofile;
+pub mod improvement;
 pub mod integrations;
 pub mod llm;
 pub mod mail;
@@ -145,6 +146,7 @@ pub fn router(state: AppState) -> Router {
         .merge(evaluation::router())
         .merge(evidence::router())
         .merge(execprofile::router())
+        .merge(improvement::router())
         .merge(integrations::router())
         .merge(llm::router())
         .merge(mail::router())

@@ -285,7 +285,27 @@ Pluginization precedes all further capability work.
 - [ ] Agent-managed skills later slices: operator-shell review surface
       diffs, revision proposals (supersede chains), sandbox requirement
       declarations
-- [ ] Audited self-improvement — first slice in progress
+- [x] Audited self-improvement, first slice (complete 2026-08-17):
+      `dope-improvement` crate + `self-improve` builtin plugin —
+      proposals target one plugin-profile config value, carry motivating
+      evidence (required) and the current→proposed diff, and are
+      rate-bounded per target per 24h window (operator config via the
+      profile entry, not agent-adjustable); `/v1/improvement/proposals`
+      (+ apply/reject/rollback) — apply snapshots the full prior profile
+      into the proposal (no change without a recorded rollback path) and
+      atomically rewrites plugins.json (restartRequired), rollback
+      restores the snapshot; white-box JSON persistence under
+      `<data_dir>/improvement/` survives restarts; full `improvement.*`
+      event audit chain
+- [ ] Self-improvement later slices: evaluation-plane follow-ups with
+      regression-triggered automatic rollback; more target types
+      (memory write-policy tuning, skill revisions via 061)
+- [x] Event-ledger defect fixed (found by the 062 tests): direct
+      `append_event` callers with an empty event_id collided on the
+      ON CONFLICT(event_id) DO NOTHING guard — the first empty-id event
+      inserted and every later one was silently dropped (system.*,
+      memory.*, context.assembled all affected); append_event now
+      assigns ids (and occurred_at) itself
 
 ## Working Rule
 

@@ -429,6 +429,15 @@ pub(crate) const BUILTINS: &[BuiltinPlugin] = &[
     },
     BuiltinPlugin {
         descriptor: PluginDescriptor {
+            id: "self-improve",
+            summary: "Audited self-improvement proposals over the plugin profile",
+            provides: &["improvement.manager"],
+            requires: &[],
+        },
+        build: build_self_improve,
+    },
+    BuiltinPlugin {
+        descriptor: PluginDescriptor {
             id: "channel-discord",
             summary: "Discord channel runtime (built at serve time)",
             provides: &["channel.discord"],
@@ -1394,6 +1403,16 @@ fn build_setup_wizard(asm: &mut Assembly) -> Result<(), AppError> {
         secrets: Some(secrets),
         ..SetupWizardDependencies::default()
     })));
+    Ok(())
+}
+
+fn build_self_improve(asm: &mut Assembly) -> Result<(), AppError> {
+    let config_object = asm.profile.config_for("self-improve");
+    let config: dope_improvement::ImprovementConfig =
+        serde_json::from_value(serde_json::Value::Object(config_object))
+            .map_err(|err| AppError::PluginProfile(format!("self-improve config: {err}")))?;
+    asm.state.improvement =
+        Some(Arc::new(dope_improvement::Manager::new(&asm.cfg.data_dir, config)));
     Ok(())
 }
 

@@ -1,0 +1,13 @@
+[package]
+name = "dope-improvement"
+description = "Audited self-improvement proposals: bounded config changes with evidence, approval, and rollback"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+parking_lot = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { workspace = true }

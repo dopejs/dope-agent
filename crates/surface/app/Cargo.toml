@@ -7,6 +7,7 @@ rust-version.workspace = true
 [dependencies]
 dope-plugin = { workspace = true }
 dope-session = { workspace = true }
+dope-improvement = { workspace = true }
 dope-context = { workspace = true }
 uuid = { workspace = true }
 # API surface: AppState + axum router assembly.

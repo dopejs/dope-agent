@@ -672,6 +672,7 @@ dependencies = [
  "dope-evidence",
  "dope-execprofile",
  "dope-identity",
+ "dope-improvement",
  "dope-imtypes",
  "dope-integrations",
  "dope-livevalidation",
@@ -738,6 +739,7 @@ dependencies = [
  "dope-execprofile",
  "dope-identity",
  "dope-im",
+ "dope-improvement",
  "dope-imtypes",
  "dope-integrations",
  "dope-livevalidation",
@@ -1149,6 +1151,17 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "dope-improvement"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 

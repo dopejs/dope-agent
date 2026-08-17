@@ -62,6 +62,19 @@ impl SQLiteStore {
         // legacy callers satisfy the T077 CHECK constraint — event.TenantID
         // first, then the cached default personal tenant.
         let mut event = event.clone();
+        // An empty event_id would collide on the ON CONFLICT(event_id)
+        // DO NOTHING guard: the first empty-id event inserts and every
+        // later one is silently dropped. Callers that publish through the
+        // bus get ids assigned there, but direct-append paths (system.*,
+        // memory.*, ...) reach here first — assign here so the ledger
+        // never loses events.
+        if event.event_id.trim().is_empty() {
+            let hex = uuid::Uuid::new_v4().simple().to_string();
+            event.event_id = format!("evt_{}", &hex[..16]);
+        }
+        if event.occurred_at == chrono::DateTime::<chrono::Utc>::MIN_UTC {
+            event.occurred_at = chrono::Utc::now();
+        }
         if event.tenant_id.trim().is_empty()
             && !dope_events::is_global_category(&event.category)
         {

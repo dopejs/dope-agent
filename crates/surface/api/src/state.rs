@@ -169,6 +169,8 @@ pub struct AppState {
     /// `context.embedder`, when installed). None = the deterministic
     /// in-process default.
     pub embedder: Option<Arc<dyn dope_context::Embedder>>,
+    /// Audited self-improvement proposals (the `self-improve` plugin).
+    pub improvement: Option<Arc<dope_improvement::Manager>>,
 }
 
 impl AppState {
@@ -219,6 +221,7 @@ impl AppState {
             plugins: None,
             hooks: None,
             embedder: None,
+            improvement: None,
         }
     }
 }
