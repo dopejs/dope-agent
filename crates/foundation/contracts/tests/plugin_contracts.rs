@@ -26,6 +26,10 @@ fn test_plugin_schemas_accept_canonical_fixtures() {
             r##"{"id":"observer","entry":{"kind":"process","command":"./observer"}}"##,
         ),
         (
+            r##"schemas/api/plugins-profile-update.response.schema.json"##,
+            r##"{"profile":{"disabled":["channel-discord"],"entries":{"session-strategy":{"enabled":true,"config":{"personalBudgetChars":1000}}}},"restartRequired":true}"##,
+        ),
+        (
             r##"schemas/api/plugins-report.schema.json"##,
             r##"{"plugins":[{"id":"llm","summary":"LLM dispatcher","source":"builtin","enabled":true,"provides":["llm.dispatcher"],"requires":[]},{"id":"webhooks","summary":"Webhook ingress","source":"builtin","enabled":false,"reason":"requires disabled plugin `billing`","provides":["webhooks.manager"],"requires":["billing"]}],"warnings":["profile disables unknown plugin `ghost`"]}"##,
         ),

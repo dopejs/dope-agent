@@ -3158,6 +3158,25 @@ export interface PluginsReport {
   hooks?: PluginHookRegistration[];
 }
 
+export interface PluginProfileEntry {
+  /** false disables the plugin; absent/true inherits the default (enabled). */
+  enabled?: boolean;
+  /** Plugin-scoped configuration, opaque to the kernel. */
+  config?: Record<string, unknown>;
+}
+
+/** The on-disk plugin profile (<data_dir>/plugins.json). Boot-time input. */
+export interface PluginProfile {
+  disabled?: string[];
+  entries?: Record<string, PluginProfileEntry>;
+}
+
+export interface PluginProfileUpdateResponse {
+  profile: PluginProfile;
+  /** Always true: the profile takes effect at the next daemon start. */
+  restartRequired: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Memory plane (Roadmap 78, spec 058)
 // ---------------------------------------------------------------------------
@@ -4311,6 +4330,14 @@ export class DopeClient {
 
   async listPlugins(tenantOptions?: TenantRequestOptions): Promise<PluginsReport> {
     return this.requestJSON<PluginsReport>("/v1/plugins", { tenant: tenantOptions });
+  }
+
+  async getPluginProfile(tenantOptions?: TenantRequestOptions): Promise<PluginProfile> {
+    return this.requestJSON<PluginProfile>("/v1/plugins/profile", { tenant: tenantOptions });
+  }
+
+  async updatePluginProfile(profile: PluginProfile, tenantOptions?: TenantRequestOptions): Promise<PluginProfileUpdateResponse> {
+    return this.requestJSON<PluginProfileUpdateResponse>("/v1/plugins/profile", { method: "PUT", body: profile, tenant: tenantOptions });
   }
 
   async listRoutines(tenantOptions?: TenantRequestOptions): Promise<{ items: RoutineResource[] }> {

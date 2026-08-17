@@ -82,6 +82,12 @@ plugin. Security posture outranks composability; this is a fixed decision.
   `AssemblyReport` (build order, enablement, reasons, warnings). Contracts:
   `schemas/plugin/plugin-profile.schema.json`,
   `schemas/api/plugins-report.schema.json`; SDK `listPlugins()`.
+- **Profile management** (added with the config surface): `GET/PUT
+  /v1/plugins/profile` read and atomically replace `plugins.json` (boot-time
+  effect; responses carry `restartRequired: true`); SDK
+  `getPluginProfile()`/`updatePluginProfile()`; the operator shell has a
+  Plugins section (`/plugins`) — assembly list with enable/disable toggles,
+  hook registrations, profile warnings, and the restart notice.
 
 ## Phase 2 — hookable agent loop (shipped 2026-08-17)
 

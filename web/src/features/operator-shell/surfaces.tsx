@@ -7,6 +7,8 @@ import type {
   CatalogItemResource,
   EvidenceBundleResource,
   ExecutionProfileResource,
+  PluginHookRegistration,
+  PluginStatusResource,
   RoutineResource,
   TriagePolicyResource,
   WebhookEndpointResource,
@@ -142,6 +144,68 @@ export function SupportEvidenceView({ bundles, state, reason }: { bundles: Evide
           </li>
         ))}
       </ul>
+    </SurfacePanel>
+  );
+}
+
+export function PluginsView({
+  plugins,
+  hooks = [],
+  warnings = [],
+  state,
+  reason,
+  restartRequired = false,
+  onToggle,
+}: {
+  plugins: PluginStatusResource[];
+  hooks?: PluginHookRegistration[];
+  warnings?: string[];
+  state: ViewState;
+  reason?: string;
+  /** True after a profile write in this session: changes apply on restart. */
+  restartRequired?: boolean;
+  onToggle?: (pluginId: string, enable: boolean) => void;
+}) {
+  return (
+    <SurfacePanel title="Plugin assembly" state={state} reason={reason}>
+      {restartRequired ? (
+        <p className="surface__notice" role="note">
+          Profile saved. Changes take effect after the daemon restarts.
+        </p>
+      ) : null}
+      <ul className="surface__list">
+        {plugins.map((p) => (
+          <li key={p.id} className="surface__row">
+            <span className="surface__name">{p.id}</span>
+            <span className={`status-chip status-${p.enabled ? "enabled" : "disabled"}`}>
+              {p.enabled ? "enabled" : "disabled"}
+            </span>
+            <span className="surface__meta">{p.source}</span>
+            <span className="surface__meta">{p.summary}</span>
+            {p.reason ? <span className="surface__reason">{p.reason}</span> : null}
+            <button type="button" onClick={() => onToggle?.(p.id, !p.enabled)}>
+              {p.enabled ? "Disable" : "Enable"}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {hooks.length > 0 ? (
+        <ul className="surface__list surface__hooks" aria-label="Hook registrations">
+          {hooks.map((h, i) => (
+            <li key={`${h.point}-${h.pluginId}-${i}`} className="surface__row">
+              <span className="surface__meta">{h.point}</span>
+              <span className="surface__name">{h.pluginId}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {warnings.length > 0 ? (
+        <ul className="surface__list surface__warnings" aria-label="Profile warnings">
+          {warnings.map((w) => (
+            <li key={w} className="surface__reason">{w}</li>
+          ))}
+        </ul>
+      ) : null}
     </SurfacePanel>
   );
 }

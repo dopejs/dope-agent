@@ -44,4 +44,32 @@ describe("plugin assembly SDK methods", () => {
     expect(result.warnings).toHaveLength(1);
     expect(result.hooks?.[0].point).toBe("chat/pre-dispatch");
   });
+
+  it("reads and writes the plugin profile", async () => {
+    const profile = {
+      disabled: ["channel-discord"],
+      entries: { "session-strategy": { config: { personalBudgetChars: 1000 } } },
+    };
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(jsonResponse({ profile, restartRequired: true }));
+    const client = createDopeClient({ baseURL: "https://daemon.test", fetchImpl });
+
+    const current = await client.getPluginProfile();
+    expect(current.disabled).toBeUndefined();
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "https://daemon.test/v1/plugins/profile",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    const updated = await client.updatePluginProfile(profile);
+    expect(updated.restartRequired).toBe(true);
+    expect(updated.profile.disabled).toEqual(["channel-discord"]);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "https://daemon.test/v1/plugins/profile",
+      expect.objectContaining({ method: "PUT" }),
+    );
+  });
 });

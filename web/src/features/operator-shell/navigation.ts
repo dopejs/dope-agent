@@ -31,6 +31,14 @@ export type ShellSection = {
 // quota, diagnostics, evaluation, and support into coherent navigation (FR-001).
 export const OPERATOR_SHELL_SECTIONS: ShellSection[] = [
   {
+    id: "plugins",
+    label: "Plugins",
+    surfaces: [
+      { id: "plugin-assembly", label: "Plugin assembly", route: "/plugins", requiresTenant: false },
+      { id: "plugin-profile", label: "Plugin profile", route: "/plugins/profile", requiresTenant: false, critical: { sideEffect: true } },
+    ],
+  },
+  {
     id: "memory",
     label: "Memory",
     surfaces: [

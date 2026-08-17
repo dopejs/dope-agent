@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/plugins-profile-update.response.schema.json",
+  "title": "PluginsProfileUpdateResponse",
+  "description": "PUT /v1/plugins/profile response: the persisted profile plus the restart requirement (the profile is boot-time input).",
+  "type": "object",
+  "required": ["profile", "restartRequired"],
+  "additionalProperties": false,
+  "properties": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "disabled": { "type": "array", "items": { "type": "string" } },
+        "entries": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "config": { "type": "object" }
+            }
+          }
+        }
+      }
+    },
+    "restartRequired": { "type": "boolean" }
+  }
+}

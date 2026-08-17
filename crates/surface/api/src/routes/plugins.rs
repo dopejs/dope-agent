@@ -1,11 +1,19 @@
-//! `/v1/plugins` — plugin assembly introspection.
+//! `/v1/plugins` — plugin assembly introspection and profile management.
 //!
-//! Returns the [`dope_plugin::AssemblyReport`] recorded at boot: every known
-//! plugin in build order with its resolved enablement (and the reason when
-//! disabled), plus warnings for profile entries that matched nothing. This is
-//! the daemon's `dump-config` equivalent for the plugin plane: what actually
-//! assembled, not what the profile intended.
+//! `GET /v1/plugins` returns the [`dope_plugin::AssemblyReport`] recorded at
+//! boot: every known plugin in build order with its resolved enablement (and
+//! the reason when disabled), plus warnings for profile entries that matched
+//! nothing. This is the daemon's `dump-config` equivalent for the plugin
+//! plane: what actually assembled, not what the profile intended.
+//!
+//! `GET/PUT /v1/plugins/profile` read and replace the on-disk profile
+//! (`<data_dir>/plugins.json`). The profile is boot-time input: a write is
+//! validated and persisted atomically but takes effect at the next daemon
+//! start (`restartRequired: true` in the response makes that explicit).
 
+use std::path::Path;
+
+use axum::body::Bytes;
 use axum::extract::State;
 use axum::routing::get;
 use axum::Router;
@@ -53,9 +61,52 @@ pub async fn list_plugins(State(state): State<AppState>) -> Result<Json<PluginsR
     Ok(Json(PluginsResponse { report: (**report).clone(), hooks }))
 }
 
+/// GET /v1/plugins/profile — the on-disk plugin profile (what the next boot
+/// assembles under). A missing file is the default (empty) profile.
+#[allow(clippy::unused_async)]
+pub async fn get_profile(
+    State(state): State<AppState>,
+) -> Result<Json<dope_plugin::PluginProfile>, ApiError> {
+    dope_plugin::PluginProfile::load(&state.config.data_dir)
+        .map(Json)
+        .map_err(|err| ApiError::internal(&format!("load plugin profile: {err}")))
+}
+
+/// PUT /v1/plugins/profile response.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileUpdateResponse {
+    pub profile: dope_plugin::PluginProfile,
+    /// Always true: the profile is boot-time input.
+    pub restart_required: bool,
+}
+
+/// PUT /v1/plugins/profile — validate and atomically replace plugins.json.
+#[allow(clippy::unused_async)]
+pub async fn put_profile(
+    State(state): State<AppState>,
+    body: Bytes,
+) -> Result<Json<ProfileUpdateResponse>, ApiError> {
+    let profile: dope_plugin::PluginProfile = super::decode_json_required(&body)?;
+    let dir = Path::new(&state.config.data_dir);
+    let path = dir.join(dope_plugin::PROFILE_FILE_NAME);
+    let encoded = serde_json::to_vec_pretty(&profile)
+        .map_err(|err| ApiError::internal(&format!("encode plugin profile: {err}")))?;
+    // Atomic replace: a crash mid-write must never leave a truncated
+    // profile that would then fail the next boot.
+    let tmp = dir.join(format!("{}.tmp", dope_plugin::PROFILE_FILE_NAME));
+    std::fs::create_dir_all(dir)
+        .and_then(|()| std::fs::write(&tmp, &encoded))
+        .and_then(|()| std::fs::rename(&tmp, &path))
+        .map_err(|err| ApiError::internal(&format!("write plugin profile: {err}")))?;
+    Ok(Json(ProfileUpdateResponse { profile, restart_required: true }))
+}
+
 /// The `/v1/plugins` route family.
 pub fn router() -> Router<AppState> {
-    Router::new().route("/v1/plugins", get(list_plugins))
+    Router::new()
+        .route("/v1/plugins", get(list_plugins))
+        .route("/v1/plugins/profile", get(get_profile).put(put_profile))
 }
 
 #[cfg(test)]
@@ -119,5 +170,59 @@ mod tests {
         let (status, json) = request_json(test_state(), "GET", "/v1/plugins", None).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(json["error"], "plugin assembly report is not configured");
+    }
+
+    /// A test state whose config.data_dir is unique (the shared tests_support
+    /// config points every test at one path; profile writes need isolation).
+    fn profile_test_state() -> crate::state::AppState {
+        let mut state = test_state();
+        let dir = std::env::temp_dir()
+            .join(format!("dope-plugins-profile-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        state.config.data_dir = dir.to_string_lossy().into_owned();
+        state
+    }
+
+    #[tokio::test]
+    async fn profile_get_defaults_put_roundtrips_and_rejects_malformed() {
+        let state = profile_test_state();
+
+        // Missing file: the default (empty) profile.
+        let (status, json) =
+            request_json(state.clone(), "GET", "/v1/plugins/profile", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["disabled"], serde_json::json!([]));
+
+        // PUT persists atomically and flags the restart requirement.
+        let update = serde_json::json!({
+            "disabled": ["channel-discord"],
+            "entries": { "session-strategy": { "config": { "personalBudgetChars": 1000 } } }
+        });
+        let (status, json) =
+            request_json(state.clone(), "PUT", "/v1/plugins/profile", Some(update.clone())).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["restartRequired"], true);
+        assert_eq!(json["profile"]["disabled"][0], "channel-discord");
+
+        // The write landed on disk and reads back.
+        let (status, json) = request_json(state.clone(), "GET", "/v1/plugins/profile", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["disabled"][0], "channel-discord");
+        assert_eq!(
+            json["entries"]["session-strategy"]["config"]["personalBudgetChars"],
+            1000
+        );
+
+        // Malformed body: 400, disk untouched.
+        let (status, _) = request_json(
+            state.clone(),
+            "PUT",
+            "/v1/plugins/profile",
+            Some(serde_json::json!({ "disabled": "not-an-array" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (_, json) = request_json(state, "GET", "/v1/plugins/profile", None).await;
+        assert_eq!(json["disabled"][0], "channel-discord", "malformed PUT changed nothing");
     }
 }

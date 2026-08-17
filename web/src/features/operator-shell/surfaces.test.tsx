@@ -75,3 +75,38 @@ describe("operator shell product surface views (Roadmap 70)", () => {
     expect(screen.getByText("redacted")).toBeTruthy();
   });
 });
+
+describe("plugin assembly surface (pluginization program)", () => {
+  afterEach(() => cleanup());
+
+  it("renders plugins with enablement, source, reason, hooks and warnings", async () => {
+    const { PluginsView } = await import("./surfaces");
+    const plugins = [
+      { id: "memory", summary: "Layered memory plane", source: "builtin", enabled: true, provides: ["memory.manager"], requires: ["llm"] },
+      { id: "webhooks", summary: "Webhook ingress", source: "builtin", enabled: false, reason: "requires disabled plugin `billing`", provides: [], requires: ["billing"] },
+    ];
+    const toggles: Array<[string, boolean]> = [];
+    render(
+      <PluginsView
+        plugins={plugins}
+        hooks={[{ point: "chat/turn-end", pluginId: "memory" }]}
+        warnings={["profile disables unknown plugin `ghost`"]}
+        state="ready"
+        restartRequired
+        onToggle={(id, enable) => toggles.push([id, enable])}
+      />,
+    );
+    expect(screen.getAllByText("memory")).toHaveLength(2); // plugin row + hook registration
+    expect(screen.getByText("requires disabled plugin `billing`")).toBeTruthy();
+    expect(screen.getByText("chat/turn-end")).toBeTruthy();
+    expect(screen.getByText("profile disables unknown plugin `ghost`")).toBeTruthy();
+    expect(screen.getByRole("note").textContent).toContain("restart");
+
+    screen.getAllByRole("button", { name: "Disable" })[0].click();
+    screen.getByRole("button", { name: "Enable" }).click();
+    expect(toggles).toEqual([
+      ["memory", false],
+      ["webhooks", true],
+    ]);
+  });
+});
