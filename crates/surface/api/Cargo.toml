@@ -6,6 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 dope-plugin = { workspace = true }
+dope-context = { workspace = true }
 # HTTP server stack (wave 6+): axum router over tower/tower-http, tokio runtime, hyper HTTP/1.
 axum = { workspace = true }
 tower = { workspace = true }

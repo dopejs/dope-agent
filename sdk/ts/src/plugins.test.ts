@@ -73,3 +73,18 @@ describe("plugin assembly SDK methods", () => {
     );
   });
 });
+
+describe("retrieval SDK method", () => {
+  it("posts retrieval queries and returns cited hits", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({ hits: [{ assetId: "mem_1", layer: "l1", content: "pnpm", rank: 1, sourceLinks: [{ kind: "thread", id: "thr_1" }] }] }),
+    );
+    const client = createDopeClient({ baseURL: "https://daemon.test", fetchImpl });
+    const result = await client.queryRetrieval({ query: "package manager" });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://daemon.test/v1/retrieval/queries",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(result.hits[0].sourceLinks[0].id).toBe("thr_1");
+  });
+});

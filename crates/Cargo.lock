@@ -665,6 +665,7 @@ dependencies = [
  "dope-computeruse",
  "dope-config",
  "dope-connectors",
+ "dope-context",
  "dope-delivery",
  "dope-evaluation",
  "dope-events",

@@ -40,6 +40,7 @@ pub mod providers;
 pub mod release;
 pub mod reminders;
 pub mod resources;
+pub mod retrieval;
 pub mod routine;
 pub mod runs;
 pub mod sandboxes;
@@ -154,6 +155,7 @@ pub fn router(state: AppState) -> Router {
         .merge(release::router())
         .merge(reminders::router())
         .merge(resources::router())
+        .merge(retrieval::router())
         .merge(routine::router())
         .merge(runs::router())
         .merge(sandboxes::router())

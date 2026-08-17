@@ -3171,6 +3171,20 @@ export interface PluginProfile {
   entries?: Record<string, PluginProfileEntry>;
 }
 
+export interface RetrievalHit {
+  assetId: string;
+  layer: string;
+  title?: string;
+  content: string;
+  rank: number;
+  sourceLinks: { kind: string; id: string; excerpt?: string }[];
+  memberAssetIds?: string[];
+}
+
+export interface RetrievalQueryResponse {
+  hits: RetrievalHit[];
+}
+
 export interface PluginProfileUpdateResponse {
   profile: PluginProfile;
   /** Always true: the profile takes effect at the next daemon start. */
@@ -4338,6 +4352,10 @@ export class DopeClient {
 
   async updatePluginProfile(profile: PluginProfile, tenantOptions?: TenantRequestOptions): Promise<PluginProfileUpdateResponse> {
     return this.requestJSON<PluginProfileUpdateResponse>("/v1/plugins/profile", { method: "PUT", body: profile, tenant: tenantOptions });
+  }
+
+  async queryRetrieval(input: { query: string; tenantId?: string; limit?: number }, tenantOptions?: TenantRequestOptions): Promise<RetrievalQueryResponse> {
+    return this.requestJSON<RetrievalQueryResponse>("/v1/retrieval/queries", { method: "POST", body: input, tenant: tenantOptions });
   }
 
   async listRoutines(tenantOptions?: TenantRequestOptions): Promise<{ items: RoutineResource[] }> {

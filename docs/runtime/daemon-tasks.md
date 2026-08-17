@@ -244,9 +244,14 @@ Pluginization precedes all further capability work.
       profile/binding/continuity/handoff pipeline; real-SQLite
       integration test round-trips continuity, profile selection, and
       binding resolution, and the app e2e runs tenant-scoped chat
-- [ ] Knowledge retrieval remainder (retrieval query API, document
-      collections, memory tools via MCP) — after the session-strategy
-      slice
+- [x] Retrieval query API (complete 2026-08-17): POST
+      /v1/retrieval/queries — the context plugin's fused ranking (BM25 +
+      recency + hashed n-gram vector, RRF) over Ready private/team L1
+      atoms as an on-demand surface; hits carry rank, source links, and
+      member ids (citations never stripped); SDK queryRetrieval()
+- [ ] Knowledge retrieval remainder (document collections/wiki envelope,
+      memory tools exposed to agents via MCP, persistent event-driven
+      index for large collections)
 - [ ] Agent-managed skills; audited self-improvement — sequence tail
 
 ## Working Rule
