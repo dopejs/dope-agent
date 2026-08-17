@@ -203,13 +203,27 @@ Pluginization precedes all further capability work.
       merged into the AssemblyRecord as `source: retrieval`; exposed a
       real memory-plane defect (truncated-v7 ids colliding within one
       millisecond) — fixed at root with restore-time healing
-- [ ] Context later slices: vector ranker joining the RRF fusion (needs
-      an embedding provider), symbolic tool-log compression + lookup
-      tool, binding-aware loadouts, dedicated assembly-record read API
-      if event queries prove insufficient
-- [ ] Session-strategy later slices: compression-to-memory (elided spans
-      → L2 summaries), explicit session-frame objects, channel-native
-      thread segmentation
+- [x] Vector ranker (complete 2026-08-17): `Embedder` seam in
+      dope-context with the deterministic hashed char-trigram embedder
+      (256-dim FNV feature hashing, L2-normalized, cosine) as default
+      provider joining the RRF fusion as the third ranker; candidacy =
+      BM25>0 OR cosine≥0.25; closes the CJK gap (character overlap
+      recalls what word tokens miss); a neural embedding provider
+      replaces the default through the seam without touching the fusion
+- [ ] Context later slices: neural embedding provider behind the
+      Embedder seam, symbolic tool-log compression + lookup tool,
+      binding-aware loadouts, dedicated assembly-record read API if
+      event queries prove insufficient
+- [x] Session compression-to-memory (complete 2026-08-17): an elided
+      span is captured as an L0 ref (thread source link, bounded
+      excerpt, owner system:session-strategy) through the governed
+      memory pipeline — the async consolidator distills it into L1/L2
+      with the write policy intact — and the elision marker cites the
+      captured asset (`captured as Memory[l0_ref …]`) so the model can
+      drill back; spans without a thread stay reachable via dispatch
+      records only (no evidence link to hang an L0 on)
+- [ ] Session-strategy later slices: explicit session-frame objects,
+      channel-native thread segmentation
 - [ ] Capture-path unification: channel turns through the turn-end hook
       (retiring the separate ingress capture) once dedupe semantics are
       settled

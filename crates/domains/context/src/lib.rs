@@ -258,13 +258,111 @@ fn bm25_scores(query: &str, docs: &[RetrievalDoc]) -> Vec<f64> {
     scores
 }
 
-/// Reciprocal-rank fusion (k=60) over two rankers — BM25 (positive scores
-/// only) and recency (the caller's newest-first order). Returns candidate
-/// doc indices, best first, capped at [`RETRIEVAL_MAX_CANDIDATES`]. Only
-/// docs with a positive BM25 score are candidates (recency alone never
-/// recalls unrelated memory). Deterministic: ties break on asset id.
+// ---------------------------------------------------------------------------
+// Embedder seam (the vector ranker's provider)
+// ---------------------------------------------------------------------------
+
+/// The embedding seam: any provider producing fixed-dimension vectors can
+/// serve the vector ranker. The default is the deterministic
+/// [`HashedNgramEmbedder`]; a neural embedding provider replaces it through
+/// this seam without touching the fusion.
+pub trait Embedder: Send + Sync {
+    fn embed(&self, text: &str) -> Vec<f32>;
+    fn name(&self) -> &str;
+}
+
+/// Deterministic character-trigram feature-hashing embedder (256-dim FNV,
+/// L2-normalized). Not a neural embedding — it is a *character-level*
+/// lexical vector space, which is precisely what the word-based BM25
+/// tokenizer lacks: CJK text and morphological variants overlap heavily on
+/// character trigrams while sharing zero word tokens.
+#[derive(Debug, Clone)]
+pub struct HashedNgramEmbedder {
+    dim: usize,
+}
+
+impl Default for HashedNgramEmbedder {
+    fn default() -> Self {
+        HashedNgramEmbedder { dim: 256 }
+    }
+}
+
+impl HashedNgramEmbedder {
+    fn hash(gram: &[char]) -> u64 {
+        // FNV-1a over the chars' UTF-32 bytes: stable across platforms.
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for c in gram {
+            for byte in (*c as u32).to_le_bytes() {
+                hash ^= u64::from(byte);
+                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+        hash
+    }
+}
+
+impl Embedder for HashedNgramEmbedder {
+    fn embed(&self, text: &str) -> Vec<f32> {
+        let chars: Vec<char> = text
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect();
+        let mut vector = vec![0.0f32; self.dim];
+        if chars.len() < 3 {
+            return vector;
+        }
+        for gram in chars.windows(3) {
+            let hash = Self::hash(gram);
+            let idx = (hash % self.dim as u64) as usize;
+            // Sign bit from a higher hash bit spreads mass over +/-
+            // (standard feature hashing; reduces collision bias).
+            let sign = if hash & (1 << 63) == 0 { 1.0 } else { -1.0 };
+            vector[idx] += sign;
+        }
+        let norm = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            for v in &mut vector {
+                *v /= norm;
+            }
+        }
+        vector
+    }
+
+    fn name(&self) -> &str {
+        "hashed-ngram-256"
+    }
+}
+
+fn cosine(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
+}
+
+/// Minimum cosine similarity for vector-only candidacy: below this a doc
+/// with no BM25 overlap stays out of the corpus (unrelated memory must not
+/// leak into context on hash noise).
+pub const VECTOR_MIN_SIMILARITY: f32 = 0.25;
+
+/// Two-ranker retrieval (BM25 + recency), kept for callers without an
+/// embedder. See [`retrieve_fused`].
 #[must_use]
 pub fn retrieve(query: &str, docs: &[RetrievalDoc]) -> Vec<usize> {
+    retrieve_fused(query, docs, None)
+}
+
+/// Reciprocal-rank fusion (k=60) over up to three rankers — BM25 (positive
+/// scores only), recency (the caller's newest-first order), and, when an
+/// embedder is supplied, cosine similarity over its vectors (docs at or
+/// above [`VECTOR_MIN_SIMILARITY`]). A doc is a candidate when the BM25 or
+/// the vector ranker admits it; recency alone never recalls unrelated
+/// memory. Returns candidate indices, best first, capped at
+/// [`RETRIEVAL_MAX_CANDIDATES`]. Deterministic: ties break on asset id.
+#[must_use]
+pub fn retrieve_fused(
+    query: &str,
+    docs: &[RetrievalDoc],
+    embedder: Option<&dyn Embedder>,
+) -> Vec<usize> {
     const RRF_K: f64 = 60.0;
     let scores = bm25_scores(query, docs);
     let mut bm25_ranked: Vec<usize> = (0..docs.len()).filter(|&i| scores[i] > 0.0).collect();
@@ -274,15 +372,51 @@ pub fn retrieve(query: &str, docs: &[RetrievalDoc]) -> Vec<usize> {
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| docs[a].asset_id.cmp(&docs[b].asset_id))
     });
-    if bm25_ranked.is_empty() {
+
+    let mut vector_ranked: Vec<usize> = Vec::new();
+    if let Some(embedder) = embedder {
+        let query_vector = embedder.embed(query);
+        if query_vector.iter().any(|v| *v != 0.0) {
+            let similarities: Vec<f32> = docs
+                .iter()
+                .map(|d| cosine(&query_vector, &embedder.embed(&format!("{} {}", d.title, d.content))))
+                .collect();
+            vector_ranked = (0..docs.len())
+                .filter(|&i| similarities[i] >= VECTOR_MIN_SIMILARITY)
+                .collect();
+            vector_ranked.sort_by(|&a, &b| {
+                similarities[b]
+                    .partial_cmp(&similarities[a])
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| docs[a].asset_id.cmp(&docs[b].asset_id))
+            });
+        }
+    }
+
+    // Candidates: admitted by BM25 or by the vector ranker.
+    let mut candidates: Vec<usize> = bm25_ranked.clone();
+    for &idx in &vector_ranked {
+        if !candidates.contains(&idx) {
+            candidates.push(idx);
+        }
+    }
+    if candidates.is_empty() {
         return Vec::new();
     }
-    let mut fused: Vec<(usize, f64)> = bm25_ranked
+
+    let rank_of = |ranking: &[usize], idx: usize| ranking.iter().position(|&i| i == idx);
+    let mut fused: Vec<(usize, f64)> = candidates
         .iter()
-        .enumerate()
-        .map(|(bm25_rank, &idx)| {
+        .map(|&idx| {
+            let mut rrf = 0.0;
+            if let Some(rank) = rank_of(&bm25_ranked, idx) {
+                rrf += 1.0 / (RRF_K + rank as f64 + 1.0);
+            }
+            if let Some(rank) = rank_of(&vector_ranked, idx) {
+                rrf += 1.0 / (RRF_K + rank as f64 + 1.0);
+            }
             // Recency rank = the caller's newest-first corpus index.
-            let rrf = 1.0 / (RRF_K + bm25_rank as f64 + 1.0) + 1.0 / (RRF_K + idx as f64 + 1.0);
+            rrf += 1.0 / (RRF_K + idx as f64 + 1.0);
             (idx, rrf)
         })
         .collect();
@@ -315,12 +449,13 @@ pub fn render_recall_message(doc: &RetrievalDoc) -> String {
 pub fn retrieve_and_assemble(
     query: &str,
     docs: &[RetrievalDoc],
+    embedder: Option<&dyn Embedder>,
     budget_chars: usize,
     messages: &mut Vec<ContextMessage>,
     record: &mut AssemblyRecord,
 ) {
     record.retrieval_budget_chars = budget_chars;
-    for idx in retrieve(query, docs) {
+    for idx in retrieve_fused(query, docs, embedder) {
         let doc = &docs[idx];
         let content_len = doc.content.trim().len();
         if content_len == 0 {
@@ -445,7 +580,7 @@ mod tests {
         ];
         let mut messages = Vec::new();
         let mut record = AssemblyRecord::default();
-        retrieve_and_assemble("pnpm", &docs, 50, &mut messages, &mut record);
+        retrieve_and_assemble("pnpm", &docs, None, 50, &mut messages, &mut record);
         assert_eq!(messages.len(), 1);
         assert!(messages[0].content.contains("Memory[l1 mem_a] (recalled):"));
         assert_eq!(record.included.len(), 1);
@@ -454,6 +589,47 @@ mod tests {
         assert_eq!(record.excluded[0].reason, "over_budget");
         assert_eq!(record.excluded[0].source, "retrieval");
         assert_eq!(record.retrieval_budget_chars, 50);
+    }
+
+    #[test]
+    fn vector_ranker_recalls_cjk_that_bm25_misses() {
+        let docs = vec![
+            doc("mem_lang", "中文回复偏好：所有回答使用中文"),
+            doc("mem_deploy", "docker compose up runs the stack"),
+        ];
+        // Word-level BM25 sees no shared token ("用中文回复" vs the doc's
+        // longer phrases), so the two-ranker path recalls nothing…
+        assert!(retrieve("请用中文回复我", &docs).is_empty());
+        // …while character-trigram vectors overlap heavily.
+        let embedder = HashedNgramEmbedder::default();
+        let picked = retrieve_fused("请用中文回复我", &docs, Some(&embedder));
+        assert_eq!(picked, vec![0], "CJK doc recalled, unrelated doc stays out");
+    }
+
+    #[test]
+    fn vector_similarity_threshold_blocks_unrelated_docs() {
+        let embedder = HashedNgramEmbedder::default();
+        let docs = vec![doc("mem_weather", "今天天气不错适合散步")];
+        assert!(
+            retrieve_fused("docker deployment pipeline", &docs, Some(&embedder)).is_empty(),
+            "no lexical or character overlap -> nothing recalled"
+        );
+        // Embedding determinism.
+        assert_eq!(embedder.embed("中文回复"), embedder.embed("中文回复"));
+        assert_eq!(embedder.name(), "hashed-ngram-256");
+    }
+
+    #[test]
+    fn fusion_keeps_bm25_results_and_is_deterministic_with_embedder() {
+        let embedder = HashedNgramEmbedder::default();
+        let docs = vec![
+            doc("mem_rust", "prefers rust for backend daemons"),
+            doc("mem_lunch", "eats lunch at noon"),
+        ];
+        let picked = retrieve_fused("rust backend", &docs, Some(&embedder));
+        assert_eq!(picked[0], 0);
+        assert!(picked.iter().all(|&i| docs[i].asset_id != "mem_lunch"));
+        assert_eq!(retrieve_fused("rust backend", &docs, Some(&embedder)), picked);
     }
 
     #[test]

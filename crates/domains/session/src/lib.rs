@@ -93,6 +93,10 @@ pub struct ShapedWindow {
     pub messages: Vec<WindowMessage>,
     /// Number of non-system messages elided (0 = untouched).
     pub elided: usize,
+    /// The elided messages, oldest first — the compression-to-memory input
+    /// (the caller captures them into the memory plane so eviction never
+    /// discards content).
+    pub elided_messages: Vec<WindowMessage>,
 }
 
 /// The marker inserted where messages were elided.
@@ -116,7 +120,11 @@ pub fn shape_window(
 ) -> ShapedWindow {
     let total: usize = messages.iter().map(|m| m.content.len()).sum();
     if total <= budget_chars {
-        return ShapedWindow { messages: messages.to_vec(), elided: 0 };
+        return ShapedWindow {
+            messages: messages.to_vec(),
+            elided: 0,
+            elided_messages: Vec::new(),
+        };
     }
 
     // Frame chars are mandatory; history fits in what remains.
@@ -147,25 +155,33 @@ pub fn shape_window(
 
     let elided = history_indices.len() - kept.len();
     if elided == 0 {
-        return ShapedWindow { messages: messages.to_vec(), elided: 0 };
+        return ShapedWindow {
+            messages: messages.to_vec(),
+            elided: 0,
+            elided_messages: Vec::new(),
+        };
     }
 
     // Rebuild: frame stays in place; the marker replaces the first elided
     // position so the model sees where history was cut.
     let mut out: Vec<WindowMessage> = Vec::with_capacity(messages.len() - elided + 1);
+    let mut elided_messages: Vec<WindowMessage> = Vec::with_capacity(elided);
     let mut marker_placed = false;
     for (idx, message) in messages.iter().enumerate() {
         if message.role == "system" || kept.contains(&idx) {
             out.push(message.clone());
-        } else if !marker_placed {
-            out.push(WindowMessage {
-                role: "system".to_string(),
-                content: elision_marker(elided),
-            });
-            marker_placed = true;
+        } else {
+            elided_messages.push(message.clone());
+            if !marker_placed {
+                out.push(WindowMessage {
+                    role: "system".to_string(),
+                    content: elision_marker(elided),
+                });
+                marker_placed = true;
+            }
         }
     }
-    ShapedWindow { messages: out, elided }
+    ShapedWindow { messages: out, elided, elided_messages }
 }
 
 #[cfg(test)]

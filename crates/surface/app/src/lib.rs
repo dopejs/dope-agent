@@ -1310,6 +1310,7 @@ mod tests {
 
         let mut payload = serde_json::json!({
             "sourceKind": "chat",
+            "threadId": "thr_evict",
             "provider": "echo",
             "model": "",
             "messages": [
@@ -1336,6 +1337,31 @@ mod tests {
                 .iter()
                 .any(|m| m["content"].as_str().is_some_and(|c| c.contains("elided"))),
             "elision marker present: {messages:?}"
+        );
+        // Compression-to-memory: the elided span was captured as an L0 ref
+        // linked to the thread, and the marker cites the captured asset.
+        let marker = messages
+            .iter()
+            .find(|m| m["content"].as_str().is_some_and(|c| c.contains("elided")))
+            .expect("marker");
+        assert!(
+            marker["content"].as_str().unwrap().contains("captured as Memory[l0_ref mem_"),
+            "marker cites the captured span: {marker:?}"
+        );
+        let assets = app
+            .state
+            .store
+            .lock()
+            .list_all_memory_assets()
+            .expect("list memory assets");
+        let span = assets
+            .iter()
+            .find(|asset| asset.title == "session_eviction")
+            .expect("elided span captured to the memory plane");
+        assert!(span.content.contains("old old"), "span holds the elided history");
+        assert!(
+            span.source_links.iter().any(|link| link.id == "thr_evict"),
+            "span links back to the thread"
         );
         app.close();
     }

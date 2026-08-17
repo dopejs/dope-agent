@@ -205,9 +205,9 @@ fn finish_mutation(
 // ---------------------------------------------------------------------------
 
 /// Fire-and-forget L0 capture + turn bookkeeping. Content is a bounded
-/// excerpt (truth stays behind the source links). Returns Some(extraction
-/// due) on success; failures log and return None — capture never fails the
-/// originating request.
+/// excerpt (truth stays behind the source links). Returns Some((asset id,
+/// extraction due)) on success; failures log and return None — capture
+/// never fails the originating request.
 pub fn capture_l0(
     state: &AppState,
     tenant_id: &str,
@@ -215,7 +215,7 @@ pub fn capture_l0(
     role: &str,
     text: &str,
     source_links: Vec<memory::SourceLink>,
-) -> Option<bool> {
+) -> Option<(String, bool)> {
     let manager = state.memory.as_deref()?;
     let excerpt: String = text.chars().take(2000).collect();
     let result = manager.create(memory::CreateAssetInput {
@@ -234,7 +234,8 @@ pub fn capture_l0(
             if let Err(err) = finish_mutation(state, "memory.asset_written", &asset) {
                 eprintln!("memory: persist capture failed: {err:?}");
             }
-            Some(manager.record_turn(tenant_id.trim(), chrono::Utc::now()))
+            let due = manager.record_turn(tenant_id.trim(), chrono::Utc::now());
+            Some((asset.asset_id, due))
         }
         Err(err) => {
             eprintln!("memory: capture failed: {err}");

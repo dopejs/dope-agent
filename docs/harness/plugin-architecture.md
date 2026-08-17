@@ -135,9 +135,17 @@ config via the profile entry
 a malformed config fails the boot loudly. Disabling the plugin restores
 unshaped windows.
 
-Later slices: compression-to-memory (elided spans summarized as L2 assets
-instead of dropped), session frame objects (explicit goal/constraint
-records), and channel-native thread segmentation policies.
+Compression-to-memory (second slice, 2026-08-17): eviction never
+plain-drops content. When the turn has a thread, the elided span is
+captured as an L0 ref (thread source link, bounded excerpt) through the
+governed memory pipeline — the async consolidator distills it into L1/L2
+off the reply path with the write policy intact — and the elision marker
+cites the captured asset (`…; elided span captured as Memory[l0_ref …]`)
+so the model can drill back. Threadless turns keep their spans reachable
+through dispatch records only.
+
+Later slices: session frame objects (explicit goal/constraint records)
+and channel-native thread segmentation policies.
 
 ### Context plugin (first slice shipped 2026-08-17)
 
@@ -169,13 +177,19 @@ reciprocal-rank fusion (k=60). Atoms with no lexical overlap are never
 recalled (recency alone cannot pull unrelated memory in); the top-8 fused
 candidates inject under `retrievalBudgetChars` (default 2000) as
 `Memory[l1 …] (recalled): …` system messages, merged into the same
-AssemblyRecord with `source: retrieval`. The tokenizer is language-naive
-(CJK splits coarsely on boundaries) — a vector ranker joins the fusion
-when an embedding provider lands, which is the designed third RRF input.
+AssemblyRecord with `source: retrieval`. The vector ranker (third slice, 2026-08-17) joins the fusion through the
+`Embedder` seam. Default provider: the deterministic hashed
+character-trigram embedder (256-dim FNV feature hashing, L2-normalized
+cosine) — a character-level vector space that recalls what the word-based
+BM25 tokenizer misses, CJK above all (`请用中文回复` matches
+`中文回复偏好` on trigrams with zero shared word tokens). Candidacy
+widens to BM25>0 OR cosine ≥ 0.25; below the threshold, hash noise never
+leaks unrelated memory into context. A neural embedding provider replaces
+the default through the seam without touching the fusion.
 
-Later slices: vector ranker, symbolic tool-log compression with a lookup
-tool, binding-aware loadouts (agent-visibility assets), and a dedicated
-assembly-record read API if event queries prove insufficient.
+Later slices: neural embedding provider, symbolic tool-log compression
+with a lookup tool, binding-aware loadouts (agent-visibility assets), and
+a dedicated assembly-record read API if event queries prove insufficient.
 
 ## Behavioral pluginization (shipped 2026-08-17)
 

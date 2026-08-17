@@ -727,9 +727,14 @@ impl dope_plugin::Hook for ContextHook {
                     content: asset.content,
                 })
                 .collect();
+            // The vector ranker joins the fusion through the Embedder seam;
+            // the default is the deterministic hashed-ngram embedder (a
+            // neural provider replaces it here without touching the fusion).
+            let embedder = dope_context::HashedNgramEmbedder::default();
             dope_context::retrieve_and_assemble(
                 &query,
                 &docs,
+                Some(&embedder),
                 self.config.retrieval_budget(),
                 &mut injected,
                 &mut record,
@@ -804,15 +809,23 @@ fn build_context(asm: &mut Assembly) -> Result<(), AppError> {
 /// The session-strategy hook: deterministic frame-preserving window shaping
 /// at `chat/pre-dispatch` (see the `dope-session` crate). Runs before any
 /// external plugin hooks (builtins register first).
+///
+/// Compression-to-memory: an elided span is never plain-dropped — when the
+/// turn has a thread (the evidence link), the span is captured as an L0 ref
+/// through the governed memory pipeline (the consolidator distills it into
+/// L1/L2 asynchronously, write policy intact) and the elision marker cites
+/// the captured asset so the model can drill back.
 struct SessionStrategyHook {
     config: dope_session::SessionStrategyConfig,
+    state: Arc<std::sync::OnceLock<AppState>>,
 }
 
 impl dope_plugin::Hook for SessionStrategyHook {
     fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+        use serde_json::Value;
         let source_kind = payload
             .get("sourceKind")
-            .and_then(serde_json::Value::as_str)
+            .and_then(Value::as_str)
             .map(str::to_string);
         let Some(messages_value) = payload.get("messages") else {
             return dope_plugin::HookOutcome::Continue;
@@ -822,15 +835,85 @@ impl dope_plugin::Hook for SessionStrategyHook {
         else {
             return dope_plugin::HookOutcome::Continue;
         };
-        let shaped = dope_session::shape_window(
+        let mut shaped = dope_session::shape_window(
             &messages,
             self.config.budget_for(source_kind.as_deref()),
             self.config.keep_recent_floor(),
         );
-        if shaped.elided > 0 {
-            if let Ok(new_messages) = serde_json::to_value(&shaped.messages) {
-                payload["messages"] = new_messages;
+        if shaped.elided == 0 {
+            return dope_plugin::HookOutcome::Continue;
+        }
+
+        // Capture the elided span before it leaves the window. Without a
+        // thread there is no evidence link to hang the L0 ref on; the span
+        // then remains reachable through the dispatch records only.
+        let thread_id = payload
+            .get("threadId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if !thread_id.is_empty() {
+            if let Some(state) = self.state.get() {
+                let tenant_id = payload
+                    .get("tenantId")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let span = shaped
+                    .elided_messages
+                    .iter()
+                    .map(|m| format!("{}: {}", m.role, m.content))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let captured = dope_api::routes::memory::capture_l0(
+                    state,
+                    &tenant_id,
+                    dope_memory::Actor {
+                        kind: dope_memory::ActorKind::System,
+                        id: "session-strategy".to_string(),
+                    },
+                    "session_eviction",
+                    &span,
+                    vec![dope_memory::SourceLink {
+                        kind: dope_memory::SourceKind::Thread,
+                        id: thread_id,
+                        ..dope_memory::SourceLink::default()
+                    }],
+                );
+                if let Some((asset_id, due)) = captured {
+                    // The marker cites the captured span: eviction leaves a
+                    // drill-down path, not a hole.
+                    if let Some(marker) = shaped
+                        .messages
+                        .iter_mut()
+                        .find(|m| m.content.contains("elided by the session-strategy"))
+                    {
+                        marker.content = format!(
+                            "{}; elided span captured as Memory[l0_ref {asset_id}]",
+                            marker.content.trim_end_matches(']'),
+                        );
+                        marker.content.push(']');
+                    }
+                    if due {
+                        let state = state.clone();
+                        let tenant_id = tenant_id.clone();
+                        std::thread::spawn(move || {
+                            if let Err(err) = dope_api::routes::memory::execute_consolidation(
+                                &state, &tenant_id, "turns", None,
+                            ) {
+                                eprintln!(
+                                    "memory: eviction-trigger consolidation failed: {err:?}"
+                                );
+                            }
+                        });
+                    }
+                }
             }
+        }
+
+        if let Ok(new_messages) = serde_json::to_value(&shaped.messages) {
+            payload["messages"] = new_messages;
         }
         dope_plugin::HookOutcome::Continue
     }
@@ -850,7 +933,7 @@ fn build_session_strategy(asm: &mut Assembly) -> Result<(), AppError> {
     bus.register(
         dope_plugin::points::CHAT_PRE_DISPATCH,
         "session-strategy",
-        Arc::new(SessionStrategyHook { config }),
+        Arc::new(SessionStrategyHook { config, state: asm.late_state.clone() }),
     );
     Ok(())
 }
@@ -1039,7 +1122,7 @@ impl dope_plugin::Hook for MemoryCaptureHook {
             return dope_plugin::HookOutcome::Continue;
         }
         let text = format!("user: {}\nassistant: {}", text_of("query").trim(), text_of("output"));
-        let due = dope_api::routes::memory::capture_l0(
+        let captured = dope_api::routes::memory::capture_l0(
             state,
             &tenant_id,
             dope_memory::Actor {
@@ -1050,7 +1133,7 @@ impl dope_plugin::Hook for MemoryCaptureHook {
             &text,
             links,
         );
-        if due == Some(true) {
+        if captured.is_some_and(|(_, due)| due) {
             // Consolidation is blocking LLM + store work; run it off the
             // reply path on a plain thread (hooks run on service threads
             // that may have no tokio context, e.g. the IM message loops).
