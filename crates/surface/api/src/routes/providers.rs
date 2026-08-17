@@ -9,17 +9,18 @@
 //! /v1/providers/{provider_id}/checks, and GET
 //! /v1/providers/{provider_id}/checks/{check_id}.
 //!
-//! Deliberately not ported (documented divergence, pending the Roadmap 74
-//! tenant-context work): the hosted credential-permission gates and
-//! per-tenant managed-auth variants — Go uses the local (non-tenant) paths
-//! when no tenant context is resolved, which is the only state the current
-//! router produces. Go's RunCheck builds a failed Check record for run
-//! errors; the Rust manager surfaces the error instead, so the handler
-//! synthesizes the failed record before persisting it.
+//! Tenant integration (Roadmap 76 pre-soak): with a resolved tenant context
+//! the auth read requires the integrations-manage credential permission and
+//! reads the tenant-scoped state; the managed-auth actions run the
+//! per-tenant variants and persist under the R37 composite storage key with
+//! the row bound to the tenant. Go's RunCheck builds a failed Check record
+//! for run errors; the Rust manager surfaces the error instead, so the
+//! handler synthesizes the failed record before persisting it.
 
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
@@ -29,7 +30,7 @@ use dope_events as events;
 use dope_providers as providers;
 
 use crate::error::ApiError;
-use crate::middleware::environment_scope_from_config;
+use crate::middleware::{environment_scope_from_config, TenantContext};
 use crate::state::AppState;
 
 use super::{decode_json_or_default, decode_json_required};
@@ -87,6 +88,78 @@ fn manager(state: &AppState) -> Result<&providers::Manager, ApiError> {
         .providers
         .as_deref()
         .ok_or_else(|| ApiError::internal("provider manager is not configured"))
+}
+
+/// Go writeCredentialDenial body.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CredentialDenial {
+    error: &'static str,
+    reason_code: &'static str,
+}
+
+fn credential_denial(reason_code: &'static str) -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        Json(CredentialDenial { error: "credential_access_denied", reason_code }),
+    )
+        .into_response()
+}
+
+/// Go requireHostedCredentialReadAny/Permission over IntegrationsManage:
+/// with a resolved tenant the caller must hold credential-inspection rights.
+/// Returns the tenant id ("" without a tenant context) or the denial.
+fn hosted_credential_tenant(
+    tenant: &Option<Extension<TenantContext>>,
+) -> Result<String, Response> {
+    let Some(tc) = tenant.as_ref().map(|extension| &extension.0.0) else {
+        return Ok(String::new());
+    };
+    if tc.tenant_id.trim().is_empty() {
+        return Ok(String::new());
+    }
+    if !dope_identity::can_inspect_credentials(
+        tc,
+        &[dope_identity::Permission::IntegrationsManage],
+    ) {
+        return Err(credential_denial("missing_permission"));
+    }
+    Ok(tc.tenant_id.trim().to_string())
+}
+
+/// Go persistManagedProviderState: the tenant path stores the auth state
+/// under the R37 composite key with the row tenant-bound; models replace
+/// under the plain provider id in both paths.
+fn persist_managed_provider_state(
+    state: &AppState,
+    tenant_id: &str,
+    auth: &providers::AuthState,
+    models: &[providers::Model],
+) -> Result<(), ApiError> {
+    let store = state.store.lock();
+    if tenant_id.is_empty() {
+        store
+            .upsert_provider_auth_state(auth)
+            .map_err(ApiError::from_store)?;
+    } else {
+        let mut stored = auth.clone();
+        stored.tenant_id = tenant_id.to_string();
+        stored.provider_id = format!("{}::{}", tenant_id, auth.provider_id.trim());
+        store
+            .upsert_provider_auth_state(&stored)
+            .map_err(ApiError::from_store)?;
+        store
+            .bind_row_tenant(
+                "provider_auth_states",
+                "provider_id",
+                &stored.provider_id,
+                tenant_id,
+            )
+            .map_err(ApiError::from_store)?;
+    }
+    store
+        .replace_provider_models(&auth.provider_id, models)
+        .map_err(ApiError::from_store)
 }
 
 /// Go llmPrepareStatusCode over ProvidersError: model/auth validation is 400,
@@ -199,17 +272,30 @@ async fn get_provider(
 /// GET /v1/providers/{provider_id}/auth (Go auth-state branch).
 async fn get_auth_state(
     State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
     Path(provider_id): Path<String>,
-) -> Result<Json<ProviderAuthStateResponse>, ApiError> {
-    let manager = manager(&state)?;
+) -> Response {
+    let manager = match manager(&state) {
+        Ok(manager) => manager,
+        Err(err) => return err.into_response(),
+    };
     let provider_id = provider_id.trim();
     if manager.get_profile(provider_id).is_none() {
-        return Err(ApiError::NotFound("not found".to_string()));
+        return ApiError::NotFound("not found".to_string()).into_response();
     }
-    manager
-        .get_auth_state(provider_id)
-        .map(|auth| Json(ProviderAuthStateResponse { auth }))
-        .ok_or_else(|| ApiError::NotFound("not found".to_string()))
+    let tenant_id = match hosted_credential_tenant(&tenant) {
+        Ok(tenant_id) => tenant_id,
+        Err(denial) => return denial,
+    };
+    let auth = if tenant_id.is_empty() {
+        manager.get_auth_state(provider_id)
+    } else {
+        manager.get_auth_state_for_tenant(provider_id, &tenant_id)
+    };
+    match auth {
+        Some(auth) => Json(ProviderAuthStateResponse { auth }).into_response(),
+        None => ApiError::NotFound("not found".to_string()).into_response(),
+    }
 }
 
 /// POST /v1/providers/{provider_id}/auth/{start|complete|refresh|revoke}
@@ -217,44 +303,72 @@ async fn get_auth_state(
 /// and model list, and publish the provider.auth_* event.
 async fn auth_action(
     State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
     Path((provider_id, action)): Path<(String, String)>,
-) -> Result<Json<ProviderAuthStateResponse>, ApiError> {
-    let manager = manager(&state)?;
+) -> Response {
+    let manager = match manager(&state) {
+        Ok(manager) => manager,
+        Err(err) => return err.into_response(),
+    };
     let provider_id = provider_id.trim().to_string();
     if manager.get_profile(&provider_id).is_none() {
-        return Err(ApiError::NotFound("not found".to_string()));
+        return ApiError::NotFound("not found".to_string()).into_response();
     }
-    let (result, event_name) = match action.as_str() {
-        "start" => (manager.start_managed_auth(&provider_id).await, "provider.auth_started"),
-        "complete" => {
-            (manager.complete_managed_auth(&provider_id).await, "provider.auth_completed")
-        }
-        "refresh" => {
-            (manager.refresh_managed_auth(&provider_id).await, "provider.auth_refreshed")
-        }
-        "revoke" => (manager.revoke_managed_auth(&provider_id).await, "provider.auth_revoked"),
-        _ => return Err(ApiError::NotFound("not found".to_string())),
+    let tenant_id = match hosted_credential_tenant(&tenant) {
+        Ok(tenant_id) => tenant_id,
+        Err(denial) => return denial,
     };
-    let (auth, models) = result.map_err(|err| map_providers_error(&err))?;
+    let (result, event_name) = if tenant_id.is_empty() {
+        match action.as_str() {
+            "start" => (manager.start_managed_auth(&provider_id).await, "provider.auth_started"),
+            "complete" => {
+                (manager.complete_managed_auth(&provider_id).await, "provider.auth_completed")
+            }
+            "refresh" => {
+                (manager.refresh_managed_auth(&provider_id).await, "provider.auth_refreshed")
+            }
+            "revoke" => (manager.revoke_managed_auth(&provider_id).await, "provider.auth_revoked"),
+            _ => return ApiError::NotFound("not found".to_string()).into_response(),
+        }
+    } else {
+        match action.as_str() {
+            "start" => (
+                manager.start_managed_auth_for_tenant(&provider_id, &tenant_id).await,
+                "provider.auth_started",
+            ),
+            "complete" => (
+                manager.complete_managed_auth_for_tenant(&provider_id, &tenant_id).await,
+                "provider.auth_completed",
+            ),
+            "refresh" => (
+                manager.refresh_managed_auth_for_tenant(&provider_id, &tenant_id).await,
+                "provider.auth_refreshed",
+            ),
+            "revoke" => (
+                manager.revoke_managed_auth_for_tenant(&provider_id, &tenant_id).await,
+                "provider.auth_revoked",
+            ),
+            _ => return ApiError::NotFound("not found".to_string()).into_response(),
+        }
+    };
+    let (auth, models) = match result {
+        Ok(pair) => pair,
+        Err(err) => return map_providers_error(&err).into_response(),
+    };
 
-    // Go persistManagedProviderState (local path).
-    {
-        let store = state.store.lock();
-        store
-            .upsert_provider_auth_state(&auth)
-            .map_err(ApiError::from_store)?;
-        store
-            .replace_provider_models(&auth.provider_id, &models)
-            .map_err(ApiError::from_store)?;
+    if let Err(err) = persist_managed_provider_state(&state, &tenant_id, &auth, &models) {
+        return err.into_response();
     }
-    publish_provider_event(
+    if let Err(err) = publish_provider_event(
         &state,
         event_name,
         "provider_auth",
         &auth.provider_id,
         auth_event_payload(&auth),
-    )?;
-    Ok(Json(ProviderAuthStateResponse { auth }))
+    ) {
+        return err.into_response();
+    }
+    Json(ProviderAuthStateResponse { auth }).into_response()
 }
 
 /// GET /v1/providers/{provider_id}/models (Go models branch).

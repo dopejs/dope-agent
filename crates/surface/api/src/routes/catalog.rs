@@ -10,7 +10,7 @@
 //! permission denied -> 403, unmet requirements / invalid item -> 400.
 
 use axum::body::Bytes;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use dope_catalog as catalog;
 
 use crate::error::ApiError;
+use crate::middleware::TenantContext;
 use crate::state::AppState;
 
 use super::{decode_json_or_default, decode_json_required};
@@ -69,8 +70,18 @@ fn manager(state: &AppState) -> Result<&catalog::Manager, ApiError> {
         .ok_or_else(|| ApiError::internal("catalog manager is not configured"))
 }
 
-/// Go catalogTenant: prefer the body tenant, fall back to ?tenantId=.
-fn resolve_tenant(body_tenant: &str, query: &TenantQuery) -> String {
+/// Go catalogTenant + the tenant-context override: a resolved tenant context
+/// wins over the body tenant, which wins over ?tenantId=.
+fn resolve_tenant(
+    tenant: &Option<Extension<TenantContext>>,
+    body_tenant: &str,
+    query: &TenantQuery,
+) -> String {
+    if let Some(tc) = tenant.as_ref().map(|extension| &extension.0.0) {
+        if !tc.tenant_id.trim().is_empty() {
+            return tc.tenant_id.trim().to_string();
+        }
+    }
     let trimmed = body_tenant.trim();
     if trimmed.is_empty() {
         query.tenant_id.trim().to_string()
@@ -115,12 +126,13 @@ async fn register_item(
 /// branch) — the tenant-scoped inspection projection.
 async fn inspect_item(
     State(state): State<AppState>,
+    tenant: Option<Extension<TenantContext>>,
     Path(item_id): Path<String>,
     Query(query): Query<TenantQuery>,
 ) -> Result<Json<catalog::Inspection>, ApiError> {
     let manager = manager(&state)?;
     let inspection = manager
-        .inspect(&resolve_tenant("", &query), item_id.trim())
+        .inspect(&resolve_tenant(&tenant, "", &query), item_id.trim())
         .map_err(map_catalog_error)?;
     Ok(Json(inspection))
 }
@@ -130,13 +142,14 @@ async fn inspect_item(
 /// unknown actions are 404.
 async fn enablement_action(
     State(state): State<AppState>,
+    tenant_context: Option<Extension<TenantContext>>,
     Path((item_id, action)): Path<(String, String)>,
     Query(query): Query<TenantQuery>,
     body: Bytes,
 ) -> Result<Json<catalog::Enablement>, ApiError> {
     let request: CatalogEnablementRequest = decode_json_or_default(&body)?;
     let manager = manager(&state)?;
-    let tenant = resolve_tenant(&request.tenant_id, &query);
+    let tenant = resolve_tenant(&tenant_context, &request.tenant_id, &query);
     let item_id = item_id.trim();
     let actor = request.actor.trim();
     let enablement = match action.as_str() {

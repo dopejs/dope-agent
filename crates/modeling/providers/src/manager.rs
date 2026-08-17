@@ -286,6 +286,17 @@ impl Manager {
         provider_id: &str,
         action: ManagedAction,
     ) -> Result<(AuthState, Vec<Model>), ProvidersError> {
+        self.run_managed_action_for_tenant(provider_id, "", action).await
+    }
+
+    /// Go runManagedActionForTenant: run the bridge action and bind the
+    /// resulting auth state to the tenant (empty = the local operator scope).
+    async fn run_managed_action_for_tenant(
+        &self,
+        provider_id: &str,
+        tenant_id: &str,
+        action: ManagedAction,
+    ) -> Result<(AuthState, Vec<Model>), ProvidersError> {
         let Some(bridge) = self.managed_bridge(provider_id) else {
             if self.get_profile(provider_id).is_some() {
                 return Err(ProvidersError::ManagedAuthUnsupported);
@@ -300,10 +311,43 @@ impl Manager {
             ManagedAction::Refresh => bridge.refresh().await?,
             ManagedAction::Revoke => bridge.revoke().await?,
         };
-        state.tenant_id = String::new();
+        state.tenant_id = tenant_id.trim().to_string();
         self.apply_managed_state(state.clone(), models.clone());
         self.load_profiles();
         Ok((state, models))
+    }
+
+    /// Go StartManagedAuthForTenant / Complete / Refresh / Revoke.
+    pub async fn start_managed_auth_for_tenant(
+        &self,
+        provider_id: &str,
+        tenant_id: &str,
+    ) -> Result<(AuthState, Vec<Model>), ProvidersError> {
+        self.run_managed_action_for_tenant(provider_id, tenant_id, ManagedAction::Start).await
+    }
+
+    pub async fn complete_managed_auth_for_tenant(
+        &self,
+        provider_id: &str,
+        tenant_id: &str,
+    ) -> Result<(AuthState, Vec<Model>), ProvidersError> {
+        self.run_managed_action_for_tenant(provider_id, tenant_id, ManagedAction::Complete).await
+    }
+
+    pub async fn refresh_managed_auth_for_tenant(
+        &self,
+        provider_id: &str,
+        tenant_id: &str,
+    ) -> Result<(AuthState, Vec<Model>), ProvidersError> {
+        self.run_managed_action_for_tenant(provider_id, tenant_id, ManagedAction::Refresh).await
+    }
+
+    pub async fn revoke_managed_auth_for_tenant(
+        &self,
+        provider_id: &str,
+        tenant_id: &str,
+    ) -> Result<(AuthState, Vec<Model>), ProvidersError> {
+        self.run_managed_action_for_tenant(provider_id, tenant_id, ManagedAction::Revoke).await
     }
 
     fn managed_bridge(&self, provider_id: &str) -> Option<Arc<dyn ManagedBridge>> {

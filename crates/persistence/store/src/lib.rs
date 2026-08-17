@@ -80,8 +80,16 @@ pub use telegram_setup::{
 };
 pub use thread_persistence::ThreadListQuery;
 
-/// The production schema head. The full 55-version migration list is added incrementally.
-pub const CURRENT_SCHEMA_VERSION: i64 = 55;
+/// The production schema head: the first-release baseline. The 55
+/// development-era migrations were collapsed into it (see migrations.rs);
+/// future migrations append as 2, 3, ...
+pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+
+/// The last development-era schema version before the baseline collapse.
+/// Databases stamped exactly at this legacy head hold a schema identical to
+/// the baseline and are re-stamped in place; anything older predates the
+/// first release and must be re-initialized.
+pub const LEGACY_DEV_SCHEMA_HEAD: i64 = 55;
 
 const DEFAULT_DATABASE_FILE: &str = "daemon.sqlite";
 
@@ -173,8 +181,21 @@ impl SQLiteStore {
         .map_err(|e| format!("ensure schema_migrations table: {e}"))?;
 
         let mut current = current_schema_version(&tx)?;
+        if current == LEGACY_DEV_SCHEMA_HEAD {
+            // Pre-release development database at the legacy head: its schema
+            // is byte-identical to the baseline (the baseline is the legacy
+            // chain's final product), so re-stamp it in place.
+            tx.execute("DELETE FROM schema_migrations", [])
+                .map_err(|e| format!("clear legacy schema migrations: {e}"))?;
+            record_schema_migration(&tx, 1, "baseline_v1_first_release")?;
+            current = 1;
+        }
         if current > CURRENT_SCHEMA_VERSION {
-            return Err(format!("database schema version {current} is newer than supported version {CURRENT_SCHEMA_VERSION}"));
+            return Err(format!(
+                "database schema version {current} is newer than supported version {CURRENT_SCHEMA_VERSION}; \
+                 pre-release development databases older than the legacy head ({LEGACY_DEV_SCHEMA_HEAD}) are \
+                 not upgradable — re-initialize the data directory"
+            ));
         }
 
         for migration in schema_migrations() {

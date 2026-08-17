@@ -26,21 +26,21 @@ fn scan_calendar_account(row: &Row) -> Result<dope_calendar::AccountProjection, 
     let updated_at: String = row.get(6).map_err(|e| e.to_string())?;
     parse_rfc3339(&updated_at)?;
     let document_json: String = row.get(7).map_err(|e| e.to_string())?;
-    serde_json::from_str(&document_json).map_err(|e| format!("decode calendar account: {e}"))
+    crate::crud::decode_json_field(&document_json).map_err(|e| format!("decode calendar account: {e}"))
 }
 
 fn scan_calendar_operation(row: &Row) -> Result<dope_calendar::Operation, String> {
     let updated_at: String = row.get(11).map_err(|e| e.to_string())?;
     parse_rfc3339(&updated_at)?;
     let document_json: String = row.get(12).map_err(|e| e.to_string())?;
-    serde_json::from_str(&document_json).map_err(|e| format!("decode calendar operation: {e}"))
+    crate::crud::decode_json_field(&document_json).map_err(|e| format!("decode calendar operation: {e}"))
 }
 
 fn scan_calendar_artifact(row: &Row) -> Result<dope_calendar::Artifact, String> {
     let created_at: String = row.get(6).map_err(|e| e.to_string())?;
     parse_rfc3339(&created_at)?;
     let document_json: String = row.get(7).map_err(|e| e.to_string())?;
-    serde_json::from_str(&document_json).map_err(|e| format!("decode calendar artifact: {e}"))
+    crate::crud::decode_json_field(&document_json).map_err(|e| format!("decode calendar artifact: {e}"))
 }
 
 impl SQLiteStore {

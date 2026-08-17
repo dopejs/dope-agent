@@ -81,6 +81,8 @@ pub use seeds::{count_seeded_rows, seed_pre_tenant_v21, SeedRowCounts};
 
 /// The head schema version BEFORE any Roadmap 35 tenant migration applied.
 /// v22+ added the tenant_id columns; v21 is the last "pre-tenant" head.
+/// Historical marker: the pre-baseline development schema staged fixtures at
+/// v21. With the first-release baseline collapse the fixture builds at head.
 pub const PRE_TENANT_SCHEMA_VERSION: i64 = 21;
 
 /// Fixed fixture timestamp, mirroring the Go ts constant ("2025-01-01T00:00:00Z").
@@ -107,8 +109,7 @@ pub fn open_fixture_connection(db_path: &str) -> Result<Connection, String> {
 /// in-scope tenant-owned table. The returned store is open at v21 - callers
 /// run apply_head_migrations on it to exercise the migrations + backfills.
 pub fn build_pre_tenant_v21_fixture(data_dir: &str) -> Result<SQLiteStore, String> {
-    let store = SQLiteStore::new_at_version(data_dir, PRE_TENANT_SCHEMA_VERSION)
-        .map_err(|e| format!("open v21 store: {e}"))?;
+    let store = SQLiteStore::new(data_dir).map_err(|e| format!("open store: {e}"))?;
     seed_pre_tenant_v21(&store).map_err(|e| format!("seed pre-tenant v21 fixture: {e}"))?;
     Ok(store)
 }

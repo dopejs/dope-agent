@@ -25,11 +25,11 @@ fn migrations_are_ordered_and_start_at_baseline() {
     let migrations = schema_migrations();
     assert!(migrations.len() >= 1);
     assert_eq!(migrations[0].version, 1);
-    assert_eq!(migrations[0].name, "baseline");
+    assert_eq!(migrations[0].name, "baseline_v1_first_release");
     for pair in migrations.windows(2) {
         assert!(pair[0].version < pair[1].version);
     }
-    assert_eq!(CURRENT_SCHEMA_VERSION, 55);
+    assert_eq!(CURRENT_SCHEMA_VERSION, 1);
 }
 
 fn store_conn_query(db_path: &str, query: &str) -> i64 {
@@ -489,7 +489,7 @@ fn manager_document_round_trips_through_sqlite() {
 
     store.delete_manager_document("triage", "t1").unwrap();
     assert_eq!(store.list_manager_documents("triage").unwrap().len(), 0);
-    assert_eq!(store.schema_version().unwrap(), 55);
+    assert_eq!(store.schema_version().unwrap(), dope_store::CURRENT_SCHEMA_VERSION);
 }
 #[test]
 fn sandbox_execution_round_trips_through_sqlite() {
@@ -519,14 +519,22 @@ fn sandbox_execution_round_trips_through_sqlite() {
     assert!(listed[0].completed_at.is_none());
 }
 #[test]
-fn migrate_to_version_applies_partial_schema_then_head() {
+fn legacy_dev_head_database_is_restamped_as_baseline() {
+    // A pre-release development database stamped at the legacy head (v55)
+    // holds the exact baseline schema; reopening re-stamps it as baseline v1.
     let dir = temp_dir("migratev");
-    let store = SQLiteStore::new_at_version(&dir, 21).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 21);
-
-    // Bring it to the head and confirm all 55 migrations are now applied.
-    store.migrate_to_version(55).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 55);
+    {
+        let store = SQLiteStore::new(&dir).unwrap();
+        let conn = rusqlite::Connection::open(store.db_path()).unwrap();
+        conn.execute("DELETE FROM schema_migrations", []).unwrap();
+        conn.execute(
+            "INSERT INTO schema_migrations (version, name, applied_at) VALUES (55, 'legacy_head', '2026-06-30T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+    }
+    let store = SQLiteStore::new(&dir).unwrap();
+    assert_eq!(store.schema_version().unwrap(), 1);
 }
 #[test]
 fn event_append_and_list_round_trip() {

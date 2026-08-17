@@ -1091,7 +1091,7 @@ mod tests {
                 .lock()
                 .schema_version()
                 .expect("schema version"),
-            55
+            dope_store::CURRENT_SCHEMA_VERSION
         );
         app2.close();
     }

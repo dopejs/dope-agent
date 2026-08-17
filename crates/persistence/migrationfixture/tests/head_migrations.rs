@@ -1,5 +1,5 @@
-//! Head migrations over the pre-tenant fixture must be loss-less: every row
-//! seeded at v21 survives the v22..head tenant-scoping migrations.
+//! The head re-check over the seeded fixture must be loss-less: every seeded
+//! row survives an idempotent migrate-to-head pass on the baseline schema.
 
 mod common;
 
@@ -12,7 +12,7 @@ use dope_migrationfixture::{
 fn head_migrations_are_loss_less_and_preserve_rows() {
     let dir = temp_dir("head_migrations");
     let store = build_pre_tenant_v21_fixture(&dir).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 21);
+    assert_eq!(store.schema_version().unwrap(), dope_store::CURRENT_SCHEMA_VERSION);
 
     let before = count_seeded_rows(&store).unwrap();
     apply_head_migrations(&store).unwrap();

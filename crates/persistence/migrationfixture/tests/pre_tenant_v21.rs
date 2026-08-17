@@ -1,18 +1,16 @@
-//! Pre-tenant (v21) fixture: every in-scope table carries its seeded parent +
-//! child rows and the store reports schema version 21.
+//! Legacy-core fixture: every in-scope table carries its seeded parent +
+//! child rows on the first-release baseline schema.
 
 mod common;
 
 use common::{count, open_conn, temp_dir};
-use dope_migrationfixture::{
-    build_pre_tenant_v21_fixture, count_seeded_rows, FIXTURE_TIMESTAMP, PRE_TENANT_SCHEMA_VERSION,
-};
+use dope_migrationfixture::{build_pre_tenant_v21_fixture, count_seeded_rows, FIXTURE_TIMESTAMP};
 
 #[test]
 fn pre_tenant_v21_fixture_seeds_all_parent_child_pairs() {
     let dir = temp_dir("pre_tenant_v21");
     let store = build_pre_tenant_v21_fixture(&dir).unwrap();
-    assert_eq!(store.schema_version().unwrap(), PRE_TENANT_SCHEMA_VERSION);
+    assert_eq!(store.schema_version().unwrap(), dope_store::CURRENT_SCHEMA_VERSION);
 
     let counts = count_seeded_rows(&store).unwrap();
     // Runtime chain: session -> run -> step -> tool_call + llm dispatch + checkpoint.

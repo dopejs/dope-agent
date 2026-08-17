@@ -325,7 +325,36 @@ is Go-era and therefore void for the Rust binary.
 - [ ] Close the hosted tenant-context remainder before the hosted soak:
       providers hosted credential-permission checks and per-tenant
       managed-auth variants, tenant-context overrides in
-      catalog/evidence/webhook handlers, by-id tenant guards
+      catalog/evidence/webhook handlers, by-id tenant guards, and the four
+      recorded handler divergences (llm setup-wizard gate, approval thread
+      projection, ingress credential audit, session profile projections)
+- [~] Stability hardening before the soak: the systematic Go-null sweep is
+      done (every raw `serde_json::from_str` over a `_raw`/`_json` text
+      column in the store now routes through the null-tolerant
+      `decode_json_field`, alongside the earlier decode_vec/decode_map and
+      serde `null_default` fixes); the 3x restart drill on the real test
+      data dir passed 2026-08-17 with recovery in 18s/10s/9s (classified
+      recovered; bound is 5 minutes). Recorded observation: boot blocks on
+      synchronous MCP websocket reconnects during restore (~10-20s with one
+      unreachable persisted server) — restore should mark remote MCP
+      servers for lazy start instead of blocking the listener; tracked as a
+      pre-soak follow-up together with the clippy `unwrap_used` audit over
+      non-test daemon paths
+- [x] First-release schema baseline (2026-08-17): migrations v1-v55
+      collapsed into the single `baseline_v1_first_release` (the exact
+      schema they produced, dumped from a migrated database — 464
+      statements); fresh databases create the baseline directly;
+      development databases at the legacy head (v55) are re-stamped in
+      place and anything older must re-initialize; migrationfixture's
+      pre-tenant v21 staging retired (no pre-baseline lineage ships);
+      future migrations append as v2+
+- [~] Install and auto-upgrade productization: `scripts/install.sh`
+      (build + install `dope` onto PATH + data-dir init) and
+      `scripts/upgrade.sh` (preflight → backup → build+install → restart →
+      postflight, with the restore script as the rollback path) are in;
+      remaining: a daemon-surfaced update check (needs a release feed,
+      which does not exist before the first release) and packaged binary
+      distribution
 - [x] Verify the soak harness, fault drills, and ops tooling run unmodified
       against the Rust daemon (2026-08-16: `scripts/production/run-soak.sh`
       targeted-validation run passed against the Rust binary on the real

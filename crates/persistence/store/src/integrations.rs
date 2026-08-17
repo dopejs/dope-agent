@@ -15,7 +15,7 @@ fn scan_integration(row: &Row) -> Result<dope_integrations::Resource, String> {
     let document_json: String = row.get(8).map_err(|e| e.to_string())?;
     // Go's json.Unmarshal is lenient (missing fields become zero values); mirror that so
     // pre-tenant seed rows whose document_json is a bare object round-trip as a default.
-    Ok(serde_json::from_str(&document_json).unwrap_or_default())
+    Ok(crate::crud::decode_json_field(&document_json).unwrap_or_default())
 }
 
 impl SQLiteStore {

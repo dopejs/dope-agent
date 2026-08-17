@@ -94,6 +94,16 @@ pub(crate) fn decode_map(raw: &Option<String>) -> Result<serde_json::Map<String,
     }
 }
 
+/// Null-tolerant JSON decode for NOT NULL text columns: Go marshals nil
+/// slices/maps/pointers as the literal `null` and Go-era rows carry it.
+pub(crate) fn decode_json_field<T: serde::de::DeserializeOwned + Default>(raw: &str) -> Result<T, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "null" {
+        return Ok(T::default());
+    }
+    serde_json::from_str(trimmed).map_err(|e| e.to_string())
+}
+
 pub(crate) fn decode_vec<T: serde::de::DeserializeOwned>(raw: &Option<String>) -> Result<Vec<T>, String> {
     match raw {
         None => Ok(Vec::new()),

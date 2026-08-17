@@ -1502,9 +1502,9 @@ fn scan_llm_dispatch(row: &Row) -> Result<dope_llm::Dispatch, String> {
 
     let status: dope_llm::DispatchStatus = parse_enum(&status)?;
     let messages: Vec<dope_llm::Message> =
-        serde_json::from_str(&messages_raw).map_err(|e| format!("decode llm dispatch messages: {e}"))?;
+        crate::crud::decode_json_field(&messages_raw).map_err(|e| format!("decode llm dispatch messages: {e}"))?;
     let usage: dope_llm::Usage =
-        serde_json::from_str(&usage_raw).map_err(|e| format!("decode llm dispatch usage: {e}"))?;
+        crate::crud::decode_json_field(&usage_raw).map_err(|e| format!("decode llm dispatch usage: {e}"))?;
     let partial = status == dope_llm::DispatchStatus::PartialFailed;
 
     Ok(dope_llm::Dispatch {

@@ -29,21 +29,21 @@ fn scan_mail_account(row: &Row) -> Result<dope_mail::AccountProjection, String> 
     let updated_at: String = row.get(6).map_err(|e| e.to_string())?;
     parse_rfc3339(&updated_at)?;
     let document_json: String = row.get(7).map_err(|e| e.to_string())?;
-    serde_json::from_str(&document_json).map_err(|e| format!("decode mail account: {e}"))
+    crate::crud::decode_json_field(&document_json).map_err(|e| format!("decode mail account: {e}"))
 }
 
 fn scan_mail_operation(row: &Row) -> Result<dope_mail::Operation, String> {
     let updated_at: String = row.get(14).map_err(|e| e.to_string())?;
     parse_rfc3339(&updated_at)?;
     let document_json: String = row.get(15).map_err(|e| e.to_string())?;
-    serde_json::from_str(&document_json).map_err(|e| format!("decode mail operation: {e}"))
+    crate::crud::decode_json_field(&document_json).map_err(|e| format!("decode mail operation: {e}"))
 }
 
 fn scan_mail_artifact(row: &Row) -> Result<dope_mail::Artifact, String> {
     let created_at: String = row.get(9).map_err(|e| e.to_string())?;
     parse_rfc3339(&created_at)?;
     let document_json: String = row.get(10).map_err(|e| e.to_string())?;
-    serde_json::from_str(&document_json).map_err(|e| format!("decode mail artifact: {e}"))
+    crate::crud::decode_json_field(&document_json).map_err(|e| format!("decode mail artifact: {e}"))
 }
 
 impl SQLiteStore {
