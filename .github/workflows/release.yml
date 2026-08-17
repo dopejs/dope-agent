@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-13
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: crates
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates
+          key: release-${{ matrix.target }}
+      - name: Build release binary
+        run: cargo build --release -p dope-cli --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG="dope-${VERSION}-${{ matrix.target }}"
+          mkdir -p "dist/${PKG}"
+          cp "target/${{ matrix.target }}/release/dope-cli" "dist/${PKG}/dope"
+          cp ../README.md "dist/${PKG}/" 2>/dev/null || true
+          tar -czf "dist/${PKG}.tar.gz" -C dist "${PKG}"
+          (cd dist && shasum -a 256 "${PKG}.tar.gz" > "${PKG}.tar.gz.sha256")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dope-${{ matrix.target }}
+          path: |
+            crates/dist/*.tar.gz
+            crates/dist/*.sha256
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Combined checksums
+        run: cat dist/*.sha256 > dist/SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          generate_release_notes: true
+          draft: false

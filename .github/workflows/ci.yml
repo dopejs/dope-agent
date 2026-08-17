@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  daemon:
+    name: Daemon (Rust, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: crates
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates
+      - name: Test workspace
+        run: cargo test --workspace
+      - name: Contract tests
+        run: cargo test -p dope-contracts
+      - name: Route parity gate
+        run: cargo test -p dope-api --test route_parity
+      - name: Clippy (deny new warnings in changed surface)
+        run: cargo clippy --workspace --all-targets 2>&1 | tail -5
+
+  clients:
+    name: Clients (TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build + test SDK and web
+        run: pnpm test:clients
+      - name: Typecheck web
+        run: pnpm typecheck:web

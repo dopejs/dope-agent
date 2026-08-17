@@ -351,10 +351,15 @@ is Go-era and therefore void for the Rust binary.
 - [~] Install and auto-upgrade productization: `scripts/install.sh`
       (build + install `dope` onto PATH + data-dir init) and
       `scripts/upgrade.sh` (preflight → backup → build+install → restart →
-      postflight, with the restore script as the rollback path) are in;
-      remaining: a daemon-surfaced update check (needs a release feed,
-      which does not exist before the first release) and packaged binary
-      distribution
+      postflight, with the restore script as the rollback path) are in.
+      CI and packaging exist as GitHub Actions (2026-08-17):
+      `.github/workflows/ci.yml` runs the Rust workspace suite, contract
+      tests, the route-parity gate, and the TypeScript client builds on
+      every push/PR to main (ubuntu + macos); `.github/workflows/release.yml`
+      builds `dope` for macOS (arm64/x64) and Linux (x64/arm64) on `v*`
+      tags and publishes tarballs + SHA256SUMS as a GitHub Release — which
+      also becomes the release feed for the daemon-surfaced update check
+      (remaining task, post-first-tag)
 - [x] Verify the soak harness, fault drills, and ops tooling run unmodified
       against the Rust daemon (2026-08-16: `scripts/production/run-soak.sh`
       targeted-validation run passed against the Rust binary on the real
