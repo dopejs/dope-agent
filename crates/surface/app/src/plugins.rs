@@ -628,9 +628,12 @@ impl ContextHook {
     /// Ready assets of one layer, newest first, visibility-filtered
     /// (private/team inject; restricted/agent wait for binding-aware
     /// loadouts and are recorded as excluded).
+    /// Binding-aware loadout: `agent`-visibility assets inject only when
+    /// their bindings contain the turn's active agent profile id.
     fn bootstrap_layer(
         memory: &MemoryManager,
         tenant_id: &str,
+        agent_profile_id: &str,
         layer: dope_memory::MemoryLayer,
         excluded: &mut Vec<dope_context::ExcludedItem>,
     ) -> Vec<dope_context::BootstrapAsset> {
@@ -638,21 +641,28 @@ impl ContextHook {
         assets.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         let mut views = Vec::with_capacity(assets.len());
         for asset in assets {
-            match asset.visibility {
-                dope_memory::Visibility::Private | dope_memory::Visibility::Team => {
-                    views.push(dope_context::BootstrapAsset {
-                        asset_id: asset.asset_id,
-                        layer: asset.layer.as_str().to_string(),
-                        title: asset.title,
-                        content: asset.content,
-                    });
+            let admitted = match asset.visibility {
+                dope_memory::Visibility::Private | dope_memory::Visibility::Team => true,
+                dope_memory::Visibility::Agent => {
+                    !agent_profile_id.trim().is_empty()
+                        && asset.bindings.iter().any(|b| b == agent_profile_id.trim())
                 }
-                _ => excluded.push(dope_context::ExcludedItem {
+                _ => false,
+            };
+            if admitted {
+                views.push(dope_context::BootstrapAsset {
+                    asset_id: asset.asset_id,
+                    layer: asset.layer.as_str().to_string(),
+                    title: asset.title,
+                    content: asset.content,
+                });
+            } else {
+                excluded.push(dope_context::ExcludedItem {
                     asset_id: asset.asset_id,
                     layer: asset.layer.as_str().to_string(),
                     reason: "visibility".to_string(),
                     source: "bootstrap".to_string(),
-                }),
+                });
             }
         }
         views
@@ -674,16 +684,23 @@ impl dope_plugin::Hook for ContextHook {
             .unwrap_or_default()
             .to_string();
 
+        let agent_profile_id = payload
+            .get("agentProfileId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
         let mut visibility_excluded = Vec::new();
         let mut candidates = Self::bootstrap_layer(
             memory,
             &tenant_id,
+            &agent_profile_id,
             dope_memory::MemoryLayer::L3,
             &mut visibility_excluded,
         );
         candidates.extend(Self::bootstrap_layer(
             memory,
             &tenant_id,
+            &agent_profile_id,
             dope_memory::MemoryLayer::L2,
             &mut visibility_excluded,
         ));
@@ -710,6 +727,7 @@ impl dope_plugin::Hook for ContextHook {
             let atoms = Self::bootstrap_layer(
                 memory,
                 &tenant_id,
+                &agent_profile_id,
                 dope_memory::MemoryLayer::L1,
                 &mut atom_excluded,
             );

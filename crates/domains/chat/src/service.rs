@@ -108,7 +108,9 @@ impl Service {
         }
         self.enforce_provider_setup_gate(&input.tenant_id, &dispatch_input.provider, "chat")?;
         let mut continuity = self.prepare_continuity(&input, &mut dispatch_input)?;
-        self.run_pre_dispatch_hooks(&input, &mut dispatch_input)?;
+        let agent_profile_id =
+            if has_active_profile { active_profile.profile_id.clone() } else { String::new() };
+        self.run_pre_dispatch_hooks(&input, &agent_profile_id, &mut dispatch_input)?;
 
         let dispatch = self
             .dispatcher
@@ -225,7 +227,9 @@ impl Service {
         }
         self.enforce_provider_setup_gate(&input.tenant_id, &dispatch_input.provider, "chat")?;
         let mut continuity = self.prepare_continuity(&input, &mut dispatch_input)?;
-        self.run_pre_dispatch_hooks(&input, &mut dispatch_input)?;
+        let agent_profile_id =
+            if has_active_profile { active_profile.profile_id.clone() } else { String::new() };
+        self.run_pre_dispatch_hooks(&input, &agent_profile_id, &mut dispatch_input)?;
 
         let dispatch = self
             .dispatcher
@@ -407,6 +411,7 @@ impl Service {
     fn run_pre_dispatch_hooks(
         &self,
         input: &QueryInput,
+        agent_profile_id: &str,
         dispatch_input: &mut CreateDispatchInput,
     ) -> Result<(), ChatError> {
         let Some(hooks) = &self.hooks else {
@@ -415,6 +420,7 @@ impl Service {
         let mut payload = serde_json::json!({
             "tenantId": input.tenant_id,
             "threadId": input.thread_id,
+            "agentProfileId": agent_profile_id,
             "sourceKind": serde_json::to_value(input.source_kind).unwrap_or(Value::Null),
             "provider": dispatch_input.provider,
             "model": dispatch_input.model,
