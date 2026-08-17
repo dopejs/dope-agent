@@ -28,6 +28,7 @@ pub mod mail;
 mod manager_documents;
 pub mod matrix_setup;
 pub mod mcp;
+pub mod memory;
 mod migrations;
 mod policy;
 pub mod profiles;
@@ -83,7 +84,7 @@ pub use thread_persistence::ThreadListQuery;
 /// The production schema head: the first-release baseline. The 55
 /// development-era migrations were collapsed into it (see migrations.rs);
 /// future migrations append as 2, 3, ...
-pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+pub const CURRENT_SCHEMA_VERSION: i64 = 2;
 
 /// The last development-era schema version before the baseline collapse.
 /// Databases stamped exactly at this legacy head hold a schema identical to

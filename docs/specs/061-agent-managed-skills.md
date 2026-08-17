@@ -6,6 +6,13 @@ Roadmap 81 (context/knowledge/memory program, slice 4). Depends on the
 operator catalog (Roadmap 68) and the sandbox skill execution plane
 (Roadmap 19).
 
+## Design Root Alignment
+
+Skills are memory assets in the 058 envelope (kind=skill): versioned,
+owner-attributed, private-first, extracted from successful workflows/tool
+runs, and — per both the TencentDB-Agent-Memory model and our catalog
+governance — explicitly reviewed before any team-visible publication.
+
 ## Goal
 
 Let the agent propose new or revised skills that become usable only through

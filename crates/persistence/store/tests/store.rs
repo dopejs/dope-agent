@@ -29,7 +29,7 @@ fn migrations_are_ordered_and_start_at_baseline() {
     for pair in migrations.windows(2) {
         assert!(pair[0].version < pair[1].version);
     }
-    assert_eq!(CURRENT_SCHEMA_VERSION, 1);
+    assert!(CURRENT_SCHEMA_VERSION >= 1);
 }
 
 fn store_conn_query(db_path: &str, query: &str) -> i64 {
@@ -534,7 +534,9 @@ fn legacy_dev_head_database_is_restamped_as_baseline() {
         .unwrap();
     }
     let store = SQLiteStore::new(&dir).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 1);
+    // The re-stamp lands on baseline v1, then any post-baseline migrations
+    // (v2+) apply on top.
+    assert_eq!(store.schema_version().unwrap(), dope_store::CURRENT_SCHEMA_VERSION);
 }
 #[test]
 fn event_append_and_list_round_trip() {

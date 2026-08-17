@@ -32,6 +32,7 @@ dope-calendar = { workspace = true }
 dope-mail = { workspace = true }
 dope-reminders = { workspace = true }
 dope-triage = { workspace = true }
+dope-memory.workspace = true
 dope-routine = { workspace = true }
 dope-webhook = { workspace = true }
 dope-catalog = { workspace = true }

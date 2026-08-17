@@ -439,9 +439,16 @@ gate; missing evidence must fail it, not be waived.
 
 ## Roadmap 78+: Context, Knowledge, And Memory Program
 
-Status: `[ ] gated` — entry gate is the Roadmap 77 ship decision. Until the
-gate opens, only design work (spec authoring) is authorized; no
-implementation.
+Status: `[~] in progress` — the implementation gate was opened by operator
+decision on 2026-08-17 (ahead of the Roadmap 77 ship decision; the
+launch-gate evidence work continues in parallel as operator-run activity).
+The memory design root is
+[TencentCloud/TencentDB-Agent-Memory](https://github.com/TencentCloud/TencentDB-Agent-Memory)
+— layered L0-L3 memory with deterministic drill-down, uniform governed
+memory assets (memory/skills/wiki/codegraph under one envelope), async
+consolidation pipelines, layered retrieval with BM25+vector+RRF fallback,
+assets-as-tools, and dual-layer white-box storage — adapted onto
+DopeAgent's planes per the revised `docs/specs/058`.
 
 ### Goal
 

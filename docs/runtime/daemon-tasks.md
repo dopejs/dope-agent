@@ -106,18 +106,37 @@ Residual (tracked under Roadmap 75): per-handler tenant-context integration
 - [ ] `LaunchGateEvidence` assembled; `POST /v1/release/launch-gate` executed
 - [ ] Ship / no-ship decision recorded with evidence index location
 
-## Roadmap 78+: Context, Knowledge, And Memory Program (gated)
+## Roadmap 78: Memory Plane Foundation (spec 058) — in progress
 
-Design authored 2026-08-16; implementation stays gated on the Roadmap 77
-ship decision:
+Gate opened by operator decision 2026-08-17; design root is
+TencentDB-Agent-Memory (layered L0-L3 + governed asset envelope), specs
+058-062 revised accordingly.
 
-- [x] Spec 058: memory plane foundation (types, write policy, retention,
-      attribution, reversal) — `docs/specs/058-memory-plane-foundation.md`
-- [x] Specs 059-062 authored: context engineering foundation, knowledge
-      retrieval, agent-managed skills, audited self-improvement
-      (`docs/specs/059..062`, mapped to Roadmaps 79-82 in
-      `docs/specs/README.md`)
-- [ ] Implementation (Roadmaps 78-82) — blocked until the launch gate ships
+- [x] `dope-memory` crate: uniform asset envelope (kind/layer/owner/
+      tenant/visibility/status/version/bindings), L1 atoms with mandatory
+      source links, L2/L3 with member drill-down, policy-gated write
+      lifecycle (accept/require-approval/reject, fail closed), supersede
+      chains, revoke tombstones, retention sweep, consolidation seam
+      (Consolidator trait + trigger bookkeeping: 5-turn/600s-idle/50-atom/
+      warm-up-doubling config) and Markdown rendering
+- [x] Store: v2 `memory_assets` migration on the baseline + typed DAO +
+      boot restore
+- [x] API family `/v1/memory/*` (assets CRUD-by-supersede, drilldown,
+      approve/reject/revoke, visibility gate, capture, manual consolidate)
+      with events (`memory.*`), tenant-context override, and the white-box
+      Markdown projection under `<data_dir>/memory/`; behavioral tests
+- [ ] Schemas under `schemas/api/` + contract tests; SDK methods;
+      operator-shell read surface
+- [ ] Model-backed Consolidator + scheduler trigger wiring (spec 059 scope)
+- [ ] Schema-inventory row for `memory_assets` (tenant-partitioned)
+
+## Roadmaps 79-82 (specs 059-062) — designed, next in sequence
+
+- [x] Specs 059-062 authored and aligned to the design root
+- [ ] 79 context engineering (loadout, L3/L2 bootstrap, symbolic
+      compression, consolidation scheduling)
+- [ ] 80 knowledge retrieval (BM25+vector+RRF, assets-as-tools)
+- [ ] 81 agent-managed skills; 82 audited self-improvement
 
 ## Working Rule
 

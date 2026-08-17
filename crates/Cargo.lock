@@ -677,6 +677,7 @@ dependencies = [
  "dope-llm",
  "dope-mail",
  "dope-mcp",
+ "dope-memory",
  "dope-opsreadiness",
  "dope-orchestration",
  "dope-policy",
@@ -742,6 +743,7 @@ dependencies = [
  "dope-managedproviders",
  "dope-matrix",
  "dope-mcp",
+ "dope-memory",
  "dope-policy",
  "dope-providers",
  "dope-reminders",
@@ -1283,6 +1285,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dope-memory"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
 name = "dope-migrationfixture"
 version = "0.1.0"
 dependencies = [
@@ -1590,6 +1604,7 @@ dependencies = [
  "dope-livevalidation",
  "dope-llm",
  "dope-mail",
+ "dope-memory",
  "dope-orchestration",
  "dope-policy",
  "dope-profiles",

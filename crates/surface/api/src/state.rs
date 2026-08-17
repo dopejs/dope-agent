@@ -45,6 +45,7 @@ use dope_execprofile::Manager as ExecProfileManager;
 use dope_reminders::Manager as RemindersManager;
 use dope_routine::Manager as RoutineManager;
 use dope_scheduler::Scheduler;
+use dope_memory::Manager as MemoryManager;
 use dope_triage::Manager as TriageManager;
 use dope_webhook::Manager as WebhookManager;
 
@@ -106,6 +107,8 @@ pub struct AppState {
     /// Go Dependencies.Triage.
     ///
     pub triage: Option<Arc<TriageManager>>,
+    /// Memory plane manager (Roadmap 78, spec 058).
+    pub memory: Option<Arc<MemoryManager>>,
     /// Go Dependencies.Routines.
     ///
     pub routines: Option<Arc<RoutineManager>>,
@@ -183,6 +186,7 @@ impl AppState {
             mail: None,
             reminders: None,
             triage: None,
+            memory: None,
             routines: None,
             webhooks: None,
             catalog: None,

@@ -3031,5 +3031,34 @@ pub fn schema_migrations() -> Vec<SchemaMigration> {
             r#"CREATE UNIQUE INDEX IF NOT EXISTS uq_workspaces_tenant_default ON workspaces(tenant_id) WHERE is_default = 1;;"#
                 .to_string(),
         ],
+    },
+    SchemaMigration {
+        version: 2,
+        name: "memory_assets".to_string(),
+        statements: vec![
+            r#"CREATE TABLE IF NOT EXISTS memory_assets (
+                asset_id TEXT PRIMARY KEY,
+                tenant_id TEXT,
+                kind TEXT NOT NULL,
+                layer TEXT NOT NULL,
+                status TEXT NOT NULL,
+                visibility TEXT NOT NULL,
+                atom_type TEXT,
+                owner_kind TEXT NOT NULL,
+                owner_id TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                supersedes_asset_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                document_json TEXT NOT NULL
+            );"#
+                .to_string(),
+            r#"CREATE INDEX IF NOT EXISTS idx_memory_assets_tenant_layer
+                ON memory_assets(tenant_id, layer, status, updated_at DESC);"#
+                .to_string(),
+            r#"CREATE INDEX IF NOT EXISTS idx_memory_assets_supersedes
+                ON memory_assets(supersedes_asset_id);"#
+                .to_string(),
+        ],
     }]
 }

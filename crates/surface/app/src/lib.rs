@@ -67,6 +67,7 @@ use dope_store::{
     BillingRepositoryHandle, ComputerUseStoreHandle, EvaluationStoreHandle,
     LiveValidationStoreHandle, SQLiteStore, SecretStoreHandle, SetupWizardStoreHandle,
 };
+use dope_memory::Manager as MemoryManager;
 use dope_triage::Manager as TriageManager;
 use dope_webhook::Manager as WebhookManager;
 
@@ -353,6 +354,10 @@ impl App {
         routine_manager.with_store(store.clone());
         let routines = Arc::new(routine_manager);
 
+        // --- memory plane (Roadmap 78; policy + consolidator defaults, the
+        // model-backed consolidator lands with spec 059) ---
+        let memory = Arc::new(MemoryManager::new(env_scope, None, None, None));
+
         // --- triage ---
         let mut triage_manager = TriageManager::new(env_scope);
         triage_manager.with_store(store.clone());
@@ -467,6 +472,7 @@ impl App {
         state.mail = Some(mail.clone());
         state.reminders = Some(reminders.clone());
         state.triage = Some(triage.clone());
+        state.memory = Some(memory.clone());
         state.routines = Some(routines.clone());
         state.webhooks = Some(webhooks.clone());
         state.catalog = Some(catalog.clone());

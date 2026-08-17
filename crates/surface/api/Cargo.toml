@@ -51,6 +51,7 @@ dope-execprofile = { workspace = true }
 dope-evidence = { workspace = true }
 dope-connectors = { workspace = true }
 dope-imtypes = { workspace = true }
+dope-memory = { workspace = true }
 dope-threads = { workspace = true }
 dope-profiles = { workspace = true }
 dope-bindings = { workspace = true }

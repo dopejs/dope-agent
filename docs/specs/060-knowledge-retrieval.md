@@ -4,6 +4,15 @@
 
 Roadmap 80 (context/knowledge/memory program, slice 3). Depends on 058/059.
 
+## Design Root Alignment
+
+Follows the TencentDB-Agent-Memory retrieval model (see 058): hybrid BM25 +
+vector scoring fused with RRF as the L1/L0 fallback behind the L3/L2
+bootstrap; results capped by count/character budget with a skip-on-timeout
+rule; memory exposed to agents as discoverable tools (search/recall) via
+the existing tool plane, never wholesale-injected. Wiki and codegraph
+collections register through the same 058 asset envelope.
+
 ## Goal
 
 Source-linked retrieval over the memory plane and operator-registered

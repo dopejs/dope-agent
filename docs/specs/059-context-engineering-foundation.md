@@ -5,6 +5,16 @@
 Roadmap 79 (context/knowledge/memory program, slice 2). Gated on the
 Roadmap 77 ship decision; depends on 058 (memory plane).
 
+## Design Root Alignment
+
+Follows the TencentDB-Agent-Memory model (see 058): context bootstrap loads
+L3/L2 assets first under explicit budgets; the per-agent **loadout** (which
+assets an agent sees) comes from the asset envelope's bindings + visibility
+resolved against the persona (Roadmap 57) and workspace bindings
+(Roadmap 58); tool logs compress symbolically (external refs retrievable by
+id) instead of inlining. This slice also wires the 058 consolidation seam
+to the scheduler plane (turn/idle/volume/warm-up triggers).
+
 ## Goal
 
 Deterministic, inspectable context assembly: a daemon-owned pipeline that

@@ -33,6 +33,7 @@ pub mod integrations;
 pub mod llm;
 pub mod mail;
 pub mod mcp;
+pub mod memory;
 pub mod policy;
 pub mod providers;
 pub mod release;
@@ -145,6 +146,7 @@ pub fn router(state: AppState) -> Router {
         .merge(llm::router())
         .merge(mail::router())
         .merge(mcp::router())
+        .merge(memory::router())
         .merge(policy::router())
         .merge(providers::router())
         .merge(release::router())
