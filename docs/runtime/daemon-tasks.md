@@ -272,7 +272,20 @@ Pluginization precedes all further capability work.
 - [ ] Knowledge retrieval remainder (document collections/wiki envelope,
       memory tools exposed to agents via MCP, persistent event-driven
       index for large collections)
-- [ ] Agent-managed skills; audited self-improvement — sequence tail
+- [x] Agent-managed skills, first slice (complete 2026-08-17): proposals
+      are `kind=skill` L1 memory assets — the L1 validator forces
+      motivating evidence and the write policy forces agent authorship
+      into the existing review queue; `/v1/skills/proposals` (draft/list)
+      + `/{assetId}/publish` (Ready-only guard) is the sole path into the
+      runtime: writes `<data_dir>/skills/<id>/SKILL.md`, registers a
+      Community catalog item whose version source records
+      `memory:<assetId>` (permanent provenance), reloads the registry,
+      emits `skill.proposal_published`; pending proposals are never
+      loadable (registry only scans the skills dir)
+- [ ] Agent-managed skills later slices: operator-shell review surface
+      diffs, revision proposals (supersede chains), sandbox requirement
+      declarations
+- [ ] Audited self-improvement — first slice in progress
 
 ## Working Rule
 

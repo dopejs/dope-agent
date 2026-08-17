@@ -204,6 +204,12 @@ fn finish_mutation(
 // chat/connector/workflow families and the app scheduler tick call these.
 // ---------------------------------------------------------------------------
 
+/// Resolved-tenant helper shared with the skill-proposal family: a resolved
+/// tenant context overrides any caller-supplied tenant.
+pub fn route_tenant(tenant: &Option<Extension<TenantContext>>, fallback: &str) -> String {
+    context_tenant(tenant, fallback)
+}
+
 /// Persists + publishes + projects one manager-created asset (the
 /// full-content capture path for context refs, which must not go through
 /// capture_l0's excerpt truncation).

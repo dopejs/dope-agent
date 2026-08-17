@@ -46,6 +46,7 @@ pub mod runs;
 pub mod sandboxes;
 pub mod sessions;
 pub mod setupwizard;
+pub mod skill_proposals;
 pub mod triage;
 pub mod workflows;
 pub mod workspace_bindings;
@@ -161,6 +162,7 @@ pub fn router(state: AppState) -> Router {
         .merge(sandboxes::router())
         .merge(sessions::router())
         .merge(setupwizard::router())
+        .merge(skill_proposals::router())
         .merge(triage::router())
         .merge(workflows::router())
         .merge(workspace_bindings::router())
