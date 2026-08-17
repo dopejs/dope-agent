@@ -250,6 +250,17 @@ pub(crate) const BUILTINS: &[BuiltinPlugin] = &[
         build: build_capabilities,
     },
     BuiltinPlugin {
+        // Declared before chat so the context/session hooks that consume it
+        // can require it (build order among independent managers is free).
+        descriptor: PluginDescriptor {
+            id: "memory",
+            summary: "Layered memory plane (L0-L3) with LLM consolidation",
+            provides: &["memory.manager"],
+            requires: &["llm"],
+        },
+        build: build_memory,
+    },
+    BuiltinPlugin {
         descriptor: PluginDescriptor {
             id: "chat",
             summary: "Chat query service over the LLM dispatcher",
@@ -257,6 +268,18 @@ pub(crate) const BUILTINS: &[BuiltinPlugin] = &[
             requires: &["llm"],
         },
         build: build_chat,
+    },
+    BuiltinPlugin {
+        // Registered at chat/pre-dispatch BEFORE session-strategy: context
+        // injects the memory bootstrap, then session-strategy shapes the
+        // window (bootstrap messages are system-frame and survive elision).
+        descriptor: PluginDescriptor {
+            id: "context",
+            summary: "Default context assembly: memory bootstrap injection under budget",
+            provides: &["context.assembler"],
+            requires: &["chat", "memory"],
+        },
+        build: build_context,
     },
     BuiltinPlugin {
         descriptor: PluginDescriptor {
@@ -329,15 +352,6 @@ pub(crate) const BUILTINS: &[BuiltinPlugin] = &[
             requires: &["scheduler"],
         },
         build: build_routines,
-    },
-    BuiltinPlugin {
-        descriptor: PluginDescriptor {
-            id: "memory",
-            summary: "Layered memory plane (L0-L3) with LLM consolidation",
-            provides: &["memory.manager"],
-            requires: &["llm"],
-        },
-        build: build_memory,
     },
     BuiltinPlugin {
         descriptor: PluginDescriptor {
@@ -597,6 +611,145 @@ fn build_chat(asm: &mut Assembly) -> Result<(), AppError> {
         chat.set_hooks(hooks);
     }
     asm.state.chat = Some(Arc::new(chat));
+    Ok(())
+}
+
+/// The default context-assembly hook: injects the tenant's Ready L3/L2
+/// memory bootstrap into the system frame under a budget, with citations
+/// inline, and records the decision as a `context.assembled` event. Runs
+/// before session-strategy in the pre-dispatch waterfall; later hooks
+/// (builtin or external) may rewrite or veto the result.
+struct ContextHook {
+    state: Arc<std::sync::OnceLock<AppState>>,
+    config: dope_context::ContextConfig,
+}
+
+impl ContextHook {
+    /// Ready assets of one layer, newest first, visibility-filtered
+    /// (private/team inject; restricted/agent wait for binding-aware
+    /// loadouts and are recorded as excluded).
+    fn bootstrap_layer(
+        memory: &MemoryManager,
+        tenant_id: &str,
+        layer: dope_memory::MemoryLayer,
+        excluded: &mut Vec<dope_context::ExcludedItem>,
+    ) -> Vec<dope_context::BootstrapAsset> {
+        let mut assets = memory.list(tenant_id, Some(layer), Some(dope_memory::AssetStatus::Ready));
+        assets.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        let mut views = Vec::with_capacity(assets.len());
+        for asset in assets {
+            match asset.visibility {
+                dope_memory::Visibility::Private | dope_memory::Visibility::Team => {
+                    views.push(dope_context::BootstrapAsset {
+                        asset_id: asset.asset_id,
+                        layer: asset.layer.as_str().to_string(),
+                        title: asset.title,
+                        content: asset.content,
+                    });
+                }
+                _ => excluded.push(dope_context::ExcludedItem {
+                    asset_id: asset.asset_id,
+                    layer: asset.layer.as_str().to_string(),
+                    reason: "visibility".to_string(),
+                }),
+            }
+        }
+        views
+    }
+}
+
+impl dope_plugin::Hook for ContextHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+        use serde_json::Value;
+        let Some(state) = self.state.get() else {
+            return dope_plugin::HookOutcome::Continue;
+        };
+        let Some(memory) = state.memory.as_deref() else {
+            return dope_plugin::HookOutcome::Continue;
+        };
+        let tenant_id = payload
+            .get("tenantId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+
+        let mut visibility_excluded = Vec::new();
+        let mut candidates = Self::bootstrap_layer(
+            memory,
+            &tenant_id,
+            dope_memory::MemoryLayer::L3,
+            &mut visibility_excluded,
+        );
+        candidates.extend(Self::bootstrap_layer(
+            memory,
+            &tenant_id,
+            dope_memory::MemoryLayer::L2,
+            &mut visibility_excluded,
+        ));
+        let (injected, mut record) = dope_context::assemble(&candidates, self.config.budget());
+        record.excluded.extend(visibility_excluded);
+        if record.is_empty() {
+            return dope_plugin::HookOutcome::Continue;
+        }
+
+        // Splice the bootstrap in front of the first non-system message so
+        // it joins the frame (persona/skills) rather than the history.
+        if let Some(messages) = payload.get_mut("messages").and_then(Value::as_array_mut) {
+            let insert_at = messages
+                .iter()
+                .position(|m| m.get("role").and_then(Value::as_str) != Some("system"))
+                .unwrap_or(messages.len());
+            for (offset, message) in injected.iter().enumerate() {
+                messages.insert(
+                    insert_at + offset,
+                    serde_json::json!({ "role": message.role, "content": message.content }),
+                );
+            }
+        }
+
+        // Inspectability: the assembly decision is an event (best effort).
+        let mut event_payload = serde_json::Map::new();
+        event_payload.insert(
+            "record".to_string(),
+            serde_json::to_value(&record).unwrap_or(Value::Null),
+        );
+        event_payload.insert("tenantId".to_string(), Value::String(tenant_id));
+        if let Some(thread_id) = payload.get("threadId").and_then(Value::as_str) {
+            event_payload.insert("threadId".to_string(), Value::String(thread_id.to_string()));
+        }
+        let event = dope_events::Event {
+            category: "context".to_string(),
+            name: "context.assembled".to_string(),
+            resource: dope_events::Resource {
+                kind: "context_assembly".to_string(),
+                id: uuid::Uuid::now_v7().to_string(),
+            },
+            payload: event_payload,
+            ..dope_events::Event::default()
+        };
+        let event = state
+            .store
+            .lock()
+            .append_event(&event)
+            .unwrap_or(event);
+        state.event_bus.publish(event);
+        dope_plugin::HookOutcome::Continue
+    }
+}
+
+fn build_context(asm: &mut Assembly) -> Result<(), AppError> {
+    let Some(bus) = asm.state.hooks.clone() else {
+        return Ok(());
+    };
+    let config_object = asm.profile.config_for("context");
+    let config: dope_context::ContextConfig =
+        serde_json::from_value(serde_json::Value::Object(config_object))
+            .map_err(|err| AppError::PluginProfile(format!("context config: {err}")))?;
+    bus.register(
+        dope_plugin::points::CHAT_PRE_DISPATCH,
+        "context",
+        Arc::new(ContextHook { state: asm.late_state.clone(), config }),
+    );
     Ok(())
 }
 

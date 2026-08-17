@@ -188,6 +188,18 @@ Pluginization precedes all further capability work.
       skipped — ingress capture covers them); connector runtimes stay
       kernel-hosted (recorded decision: !Send transport threads) until
       the seam-RPC slice
+- [x] Context plugin, first slice (complete 2026-08-17): `dope-context`
+      crate + `context` builtin at `chat/pre-dispatch` (before
+      session-strategy); deterministic memory bootstrap injection (Ready
+      L3 → L2 newest-first, private/team visibility, inline citations,
+      L1 never bulk-injected) under `memoryBudgetChars` (default 4000);
+      `context.assembled` event carries the AssemblyRecord (inclusions +
+      excluded-with-reason); composition with session-strategy and
+      external hooks proven by test
+- [ ] Context later slices: retrieval over the remaining budget
+      (BM25+RRF), symbolic tool-log compression + lookup tool,
+      binding-aware loadouts, dedicated assembly-record read API if
+      event queries prove insufficient
 - [ ] Session-strategy later slices: compression-to-memory (elided spans
       → L2 summaries), explicit session-frame objects, channel-native
       thread segmentation

@@ -1097,7 +1097,7 @@ mod tests {
         // Lifecycle registrations are plugin-owned.
         let start_ids: Vec<&str> =
             app.lifecycle.starts.iter().map(|(id, _)| id.as_str()).collect();
-        assert_eq!(start_ids, ["scheduler", "reminders", "memory"]);
+        assert_eq!(start_ids, ["memory", "scheduler", "reminders"]);
         let close_ids: Vec<&str> =
             app.lifecycle.closes.iter().map(|(id, _)| id.as_str()).collect();
         assert_eq!(close_ids, ["sandbox", "scheduler", "reminders"]);
@@ -1126,6 +1126,135 @@ mod tests {
             .find(|asset| asset.title == "chat_turn")
             .expect("turn captured as L0 asset via the hook");
         assert!(captured.content.contains("remember this fact"));
+        app.close();
+    }
+
+    /// The default context plugin injects the tenant's Ready memory
+    /// bootstrap at chat/pre-dispatch — before session-strategy in the
+    /// waterfall — with the citation inline, and records the decision as a
+    /// context.assembled event. Later hooks still reshape the result
+    /// (composition proof: a tiny session budget elides history but the
+    /// injected bootstrap survives as frame).
+    #[tokio::test]
+    async fn context_plugin_injects_memory_bootstrap_and_composes() {
+        let config = test_config();
+        std::fs::write(
+            std::path::Path::new(&config.data_dir).join(dope_plugin::PROFILE_FILE_NAME),
+            serde_json::json!({
+                "entries": {
+                    "session-strategy": { "config": { "personalBudgetChars": 40, "keepRecent": 1 } }
+                }
+            })
+            .to_string(),
+        )
+        .expect("write profile");
+        let app = App::new(config).expect("build app");
+        let hooks = app.state.hooks.as_ref().expect("hook bus");
+        // Waterfall order: context injects before session-strategy shapes.
+        let pre_dispatch: Vec<String> = hooks
+            .registrations()
+            .into_iter()
+            .filter(|(point, _)| point == "chat/pre-dispatch")
+            .map(|(_, plugin)| plugin)
+            .collect();
+        assert_eq!(pre_dispatch, ["context", "session-strategy"]);
+
+        // Seed a Ready L3 persona in the local operator scope through the
+        // real governed chain: L1 atom (with source links) -> L2 scenario
+        // (members) -> L3 persona (members).
+        let memory = app.state.memory.as_deref().expect("memory wired");
+        let operator = dope_memory::Actor {
+            kind: dope_memory::ActorKind::Operator,
+            id: "op".to_string(),
+        };
+        let (l1, _) = memory
+            .create(dope_memory::CreateAssetInput {
+                kind: dope_memory::AssetKind::ChatMemory,
+                layer: dope_memory::MemoryLayer::L1,
+                owner: operator.clone(),
+                visibility: dope_memory::Visibility::Private,
+                atom_type: Some(dope_memory::AtomType::Preference),
+                title: "language".to_string(),
+                content: "replies in Chinese".to_string(),
+                source_links: vec![dope_memory::SourceLink {
+                    kind: dope_memory::SourceKind::Thread,
+                    id: "thr_seed".to_string(),
+                    ..dope_memory::SourceLink::default()
+                }],
+                ..dope_memory::CreateAssetInput::default()
+            })
+            .expect("seed L1 atom");
+        let (l2, _) = memory
+            .create(dope_memory::CreateAssetInput {
+                kind: dope_memory::AssetKind::ChatMemory,
+                layer: dope_memory::MemoryLayer::L2,
+                owner: operator.clone(),
+                visibility: dope_memory::Visibility::Private,
+                title: "workflow".to_string(),
+                content: "communication preferences".to_string(),
+                member_asset_ids: vec![l1.asset_id.clone()],
+                ..dope_memory::CreateAssetInput::default()
+            })
+            .expect("seed L2 scenario");
+        let (asset, _) = memory
+            .create(dope_memory::CreateAssetInput {
+                kind: dope_memory::AssetKind::ChatMemory,
+                layer: dope_memory::MemoryLayer::L3,
+                owner: operator,
+                visibility: dope_memory::Visibility::Private,
+                title: "persona".to_string(),
+                content: "Chinese-speaking operator".to_string(),
+                member_asset_ids: vec![l2.asset_id.clone()],
+                ..dope_memory::CreateAssetInput::default()
+            })
+            .expect("seed L3 persona");
+
+        let mut payload = serde_json::json!({
+            "tenantId": "",
+            "sourceKind": "chat",
+            "provider": "echo",
+            "model": "",
+            "messages": [
+                { "role": "system", "content": "frame" },
+                { "role": "user", "content": "old history ".repeat(20) },
+                { "role": "user", "content": "current" }
+            ]
+        });
+        let outcome = hooks.run(dope_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
+        assert!(outcome.allowed());
+        let messages = payload["messages"].as_array().expect("messages");
+        let bootstrap = messages
+            .iter()
+            .find(|m| {
+                m["content"]
+                    .as_str()
+                    .is_some_and(|c| c.contains(&format!("Memory[l3 {}]", asset.asset_id)))
+            })
+            .expect("bootstrap injected with citation");
+        assert_eq!(bootstrap["role"], "system");
+        assert!(
+            bootstrap["content"].as_str().unwrap().contains("Chinese-speaking operator"),
+            "content injected"
+        );
+        // Session-strategy still shaped the window afterwards: history
+        // elided, bootstrap (system frame) survived, current query kept.
+        assert!(messages.iter().any(|m| m["content"]
+            .as_str()
+            .is_some_and(|c| c.contains("elided by the session-strategy"))));
+        assert_eq!(messages.last().unwrap()["content"], "current");
+
+        // The assembly decision is recorded as a context.assembled event.
+        let events = app
+            .state
+            .store
+            .lock()
+            .list_events(&dope_events::Filter::default())
+            .expect("list events");
+        let assembled = events
+            .iter()
+            .find(|e| e.name == "context.assembled")
+            .expect("context.assembled event recorded");
+        assert_eq!(assembled.payload["record"]["included"][0]["assetId"], asset.asset_id);
         app.close();
     }
 

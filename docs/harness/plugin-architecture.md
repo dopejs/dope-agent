@@ -139,6 +139,35 @@ Later slices: compression-to-memory (elided spans summarized as L2 assets
 instead of dropped), session frame objects (explicit goal/constraint
 records), and channel-native thread segmentation policies.
 
+### Context plugin (first slice shipped 2026-08-17)
+
+The `context` builtin (policy engine: `crates/domains/context`) is the
+default context manager, and other plugins modify its result by design —
+it runs first in the `chat/pre-dispatch` waterfall, then
+`session-strategy` shapes the window, then any later builtin/external
+hook may rewrite or veto.
+
+What it does, deterministically: injects the tenant's memory bootstrap —
+Ready L3 personas first, then Ready L2 scenarios, newest first
+(private/team visibility; restricted/agent wait for binding-aware
+loadouts) — as system-frame messages under
+`entries.context.config.memoryBudgetChars` (default 4000, fail-loud
+validation). Every injected message carries its citation inline
+(`Memory[l3 mem_xxx] title: content`): recalled memory is evidence, never
+bare text. L1 atoms are never bulk-injected (drill-down/retrieval only,
+per the design root). Every pass emits a `context.assembled` event whose
+`AssemblyRecord` lists inclusions (asset, layer, chars) and exclusions
+with reasons (`over_budget`/`empty_content`/`visibility`) — nothing
+enters or misses the context silently, and an engineer can reconstruct
+what memory the model saw for any dispatch. Because injection happens
+before the dispatch is prepared, the persisted dispatch record carries
+the bootstrap verbatim (model-visible = logged holds).
+
+Later slices: retrieval over the remaining budget (BM25+RRF), symbolic
+tool-log compression with a lookup tool, binding-aware loadouts
+(agent-visibility assets), and a dedicated assembly-record read API if
+event queries prove insufficient.
+
 ## Behavioral pluginization (shipped 2026-08-17)
 
 Assembly-level pluginization (phase 1) made subsystems disableable; this
