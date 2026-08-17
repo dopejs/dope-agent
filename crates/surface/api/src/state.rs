@@ -159,6 +159,9 @@ pub struct AppState {
     /// Go Dependencies.TenantMigrationStatus. None behaves as if all
     /// backfills are complete.
     pub tenant_migration_status: Option<Arc<dyn MigrationStatus>>,
+    /// Plugin assembly report (which plugins resolved enabled/disabled and
+    /// why). None only in test states built outside the app assembly.
+    pub plugins: Option<Arc<dope_plugin::AssemblyReport>>,
 }
 
 impl AppState {
@@ -206,6 +209,7 @@ impl AppState {
             live_validation: None,
             audit_emitter: None,
             tenant_migration_status: None,
+            plugins: None,
         }
     }
 }

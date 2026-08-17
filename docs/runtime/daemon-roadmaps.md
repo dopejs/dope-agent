@@ -467,23 +467,29 @@ engineering, agent-managed skills, and audited self-improvement
 
 ### Program Shape
 
-The upstream specs are authored (2026-08-16) and mapped in
-[`../specs/README.md`](../specs/README.md): 058 → Roadmap 78, 059 → 79,
-060 → 80, 061 → 81, 062 → 82. Implementation of every slice stays gated on
-the Roadmap 77 ship decision:
+> **Planning-flow change (2026-08-17, operator):** the numbered-spec
+> authoring flow is retired for new work. Features are planned directly in
+> design docs and implemented; specs 001-062 remain as historical record.
 
-1. **Memory plane foundation** — memory types, data model, write policy,
-   retention, attribution, reversal (recommended first slice, spec 058)
-2. **Context engineering** — context assembly over threads/continuity/
-   workspace bindings (R54-58 surfaces are the substrate)
-3. **Knowledge retrieval** — retrieval over the memory plane with
-   source-linking
-4. **Agent-managed skills** — extending the operator catalog (R68) with
-   agent-proposed, operator-approved skill lifecycle
-5. **Self-improvement design** — review- and audit-gated behavior change
-
-Each spec follows the existing `docs/specs/` authoring standard and the
-roadmap-per-slice delivery unit. Numbering continues from Roadmap 78.
+1. **Memory plane foundation** — complete 2026-08-17 (Roadmap 78, from
+   spec 058): layered assets, governed write lifecycle, LLM consolidation,
+   live capture at chat/ingress/workflow.
+2. **Agent pluginization** — inserted ahead of all further capability work
+   by operator decision 2026-08-17; reference architecture
+   [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness).
+   Design + status: [`../harness/plugin-architecture.md`](../harness/plugin-architecture.md).
+   Phase 1 (plugin kernel, builtin plugin assembly, `/v1/plugins`) landed
+   2026-08-17; phase 2 is the hookable agent loop; phase 3 is
+   out-of-process plugin providers.
+3. **Session/context management as plugins** — deferred until
+   pluginization phase 2; the session-strategy seam hosts the
+   `personal-session` (long-session) and `im-thread-session`
+   (context-per-thread) default plugins.
+4. **Knowledge retrieval** — retrieval over the memory plane with
+   source-linking (BM25+vector+RRF root design).
+5. **Agent-managed skills** — extending the operator catalog (R68) with
+   agent-proposed, operator-approved skill lifecycle.
+6. **Self-improvement** — review- and audit-gated behavior change.
 
 ---
 

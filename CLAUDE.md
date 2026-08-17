@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Planned feature scope lives in plain markdown under `specs/<NNN>-<name>/` and `docs/specs/` (Spec Kit tooling was removed; the documents remain authoritative).
+Historical feature scope lives in plain markdown under `specs/<NNN>-<name>/` and `docs/specs/` (Spec Kit tooling was removed; specs 001-062 are frozen history). Since 2026-08-17 new features are planned directly in design docs (e.g. `docs/harness/plugin-architecture.md`) and implemented — no spec numbering.
 
 ## Project Overview
 

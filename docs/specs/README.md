@@ -1,5 +1,11 @@
 # Docs Specs Index
 
+> **Retired flow (2026-08-17, operator decision):** the numbered-spec
+> authoring flow ends here. Specs 001-062 are frozen historical record; new
+> features are planned directly in design docs (e.g.
+> [`docs/harness/plugin-architecture.md`](../harness/plugin-architecture.md))
+> and implemented.
+
 ## Purpose
 
 `docs/specs/` stores upstream product specs for roadmap slices, authored directly as

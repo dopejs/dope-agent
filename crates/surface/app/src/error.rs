@@ -10,6 +10,8 @@ pub enum AppError {
     Config(#[from] dope_config::ConfigError),
     #[error("store: {0}")]
     Store(String),
+    #[error("plugin profile: {0}")]
+    PluginProfile(String),
     #[error("secrets backend: {0}")]
     Secrets(String),
     #[error("skills registry: {0}")]

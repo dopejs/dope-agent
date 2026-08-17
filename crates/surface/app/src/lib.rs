@@ -1,78 +1,45 @@
-//! dope-app — the daemon application assembly (port of
-//! daemon/internal/app/app.go). Builds every manager, populates the
-//! dope-api AppState, and serves the axum router until shutdown.
+//! dope-app — the daemon application assembly. The trust-boundary kernel
+//! (store, event bus, identity, auth, policy, secrets, audit) is built
+//! directly; every other subsystem assembles as a builtin plugin
+//! (`plugins::BUILTINS`) whose enablement is resolved from the per-data-dir
+//! profile `<data_dir>/plugins.json`. The resolved [`dope_plugin::AssemblyReport`]
+//! lands on `AppState.plugins` for `/v1/plugins` introspection.
 
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use dope_activation::{
-    BillingProjectorAdapter as ActivationBillingProjectorAdapter,
-    ChatRunnerAdapter as ActivationChatRunnerAdapter, Service as ActivationService,
-    SqliteActivationStore,
-};
 use dope_api::AppState;
 use dope_audit::Emitter as AuditEmitter;
-use dope_billing::Manager as BillingManager;
-use dope_calendar::Manager as CalendarManager;
-use dope_capabilities::Supervisor as CapabilitiesSupervisor;
-use dope_chat::{ChatStore, Service as ChatService};
 use dope_checkpoints::Manager as CheckpointsManager;
-use dope_computeruse::{
-    Dependencies as ComputerUseDependencies, Manager as ComputerUseManager, SqliteArtifactRecorder,
-};
 use dope_config::{Config, Environment};
-use dope_connectors::Supervisor as ConnectorsSupervisor;
 use dope_discord::{GatewayTransport as DiscordGatewayTransport, new_runtime as new_discord_runtime};
+use dope_events::Bus;
+use dope_identity::auth::Manager as AuthManager;
+use dope_identity::{Manager as IdentityManager, Store as IdentityStore};
 use dope_im::MessageLoop;
 use dope_matrix::{
     ClientTransportConfig as MatrixClientTransportConfig, new_client_transport as new_matrix_transport,
     new_runtime as new_matrix_runtime,
 };
+use dope_policy::Engine as PolicyEngine;
+use dope_router::SessionRouter;
+use dope_runtime::Manager as RuntimeManager;
+use dope_secrets::Manager as SecretsManager;
 use dope_slack::{
     WebApiTransport as SlackWebApiTransport, WebApiTransportConfig as SlackWebApiTransportConfig,
     new_runtime as new_slack_runtime,
 };
+use dope_store::{SQLiteStore, SecretStoreHandle};
 use dope_telegram::{
     BotApiTransport as TelegramBotApiTransport, BotApiTransportConfig as TelegramBotApiTransportConfig,
     Runtime as TelegramRuntime,
 };
-use dope_delivery::{ConnectorAdapter, Manager as DeliveryManager, TestSinkAdapter};
-use dope_evaluation::{Dependencies as EvaluationDependencies, Manager as EvaluationManager};
-use dope_events::Bus;
-use dope_evidence::{Manager as EvidenceManager, RoutineCollector};
-use dope_execprofile::{Manager as ExecProfileManager, SandboxHealthChecker};
-use dope_identity::auth::Manager as AuthManager;
-use dope_identity::{Manager as IdentityManager, Store as IdentityStore};
-use dope_integrations::Manager as IntegrationsManager;
-use dope_livevalidation::{
-    Dependencies as LiveValidationDependencies, Manager as LiveValidationManager,
-};
-use dope_llm::Dispatcher;
-use dope_mail::Manager as MailManager;
-use dope_mcp::Manager as McpManager;
-use dope_policy::Engine as PolicyEngine;
-use dope_reminders::{Dependencies as RemindersDependencies, Manager as RemindersManager};
-use dope_router::SessionRouter;
-use dope_runtime::Manager as RuntimeManager;
-use dope_sandbox::Manager as SandboxManager;
-use dope_scheduler::{Dependencies as SchedulerDependencies, Scheduler};
-use dope_secrets::Manager as SecretsManager;
-use dope_setupwizard::{
-    ServiceDependencies as SetupWizardDependencies, new_service as new_setup_wizard,
-};
-use dope_skills::Registry as SkillsRegistry;
-use dope_store::{
-    BillingRepositoryHandle, ComputerUseStoreHandle, EvaluationStoreHandle,
-    LiveValidationStoreHandle, SQLiteStore, SecretStoreHandle, SetupWizardStoreHandle,
-};
-use dope_memory::Manager as MemoryManager;
-use dope_triage::Manager as TriageManager;
-use dope_webhook::Manager as WebhookManager;
 
 mod adapters;
 mod error;
+mod plugins;
 mod restore;
 
 pub use error::AppError;
@@ -85,16 +52,13 @@ pub fn environment_scope(environment: Environment) -> &'static str {
     }
 }
 
-/// The daemon application (port of Go `app.App`). The manager instances
-/// live inside [`dope_api::AppState`]; the fields retained here are the ones
-/// with explicit lifecycle (`start`/`close`) in Go `Run`/`Close`.
+/// The daemon application. The manager instances live inside
+/// [`dope_api::AppState`]; lifecycle-bearing managers (scheduler, reminders,
+/// sandboxes) are read back from the state in `serve`/`close`.
 pub struct App {
     pub config: Config,
     pub state: AppState,
     event_bus: Arc<Bus>,
-    sandboxes: Option<Arc<SandboxManager>>,
-    scheduler: Option<Arc<Scheduler>>,
-    reminders: Option<Arc<RemindersManager>>,
     /// Dedicated SQLite connection shared by the connector message loops and
     /// the four channel-connector runtimes (the runtimes take
     /// Arc<SQLiteStore>, which cannot be derived from the Mutex-wrapped
@@ -104,19 +68,20 @@ pub struct App {
     /// App::close. None until serve runs (or when all connectors are disabled).
     connector_runtimes: parking_lot::Mutex<Option<ConnectorRuntimes>>,
     closed: AtomicBool,
-    /// Test-only visibility into the seam adapters wired in App::new (wave 8
-    /// parity): each manager keeps its hooks behind private fields, so the
+    /// Test-only visibility into the seam adapters wired by the builtin
+    /// plugins: each manager keeps its hooks behind private fields, so the
     /// wiring tests assert through these captured clones instead.
     #[cfg(test)]
     wiring: AppWiring,
 }
 
-/// The seam adapters wired into the managers in App::new, captured for the
-/// wiring tests. Every field is Some when the corresponding wave-8 adapter is
-/// wired (activation store/billing/chat, computeruse artifact recorder,
-/// execprofile sandbox health checker, evidence routine collector, delivery
-/// connector adapter, mcp execution starter + secret resolver).
+/// The seam adapters wired into the managers by the builtin plugins,
+/// captured for the wiring tests. Every field is Some when the corresponding
+/// adapter is wired (activation store/billing/chat, computeruse artifact
+/// recorder, execprofile sandbox health checker, evidence routine collector,
+/// delivery connector adapter, mcp execution starter + secret resolver).
 #[cfg(test)]
+#[derive(Default)]
 pub struct AppWiring {
     pub activation_store: Option<Arc<dope_activation::SqliteActivationStore>>,
     pub activation_billing: Option<Arc<dope_activation::BillingProjectorAdapter>>,
@@ -131,10 +96,11 @@ pub struct AppWiring {
 
 /// The four channel-connector runtimes (Go app.App fields discordRuntime,
 /// telegramRuntime, slackRuntime, matrixRuntime). Each is None when the
-/// connector is disabled in config. The telegram/matrix runtimes drive a
-/// blocking transport loop from a dedicated thread (start runs the loop on
-/// the calling thread), so they are stored as Arc to share with the thread;
-/// discord/slack start non-blocking and stay inline.
+/// connector is disabled in config or its channel plugin is disabled in the
+/// profile. The telegram/matrix runtimes drive a blocking transport loop
+/// from a dedicated thread (start runs the loop on the calling thread), so
+/// they are stored as Arc to share with the thread; discord/slack start
+/// non-blocking and stay inline.
 struct ConnectorRuntimes {
     discord: Option<dope_discord::Runtime>,
     telegram: Option<Arc<TelegramRuntime>>,
@@ -144,14 +110,28 @@ struct ConnectorRuntimes {
 }
 
 impl App {
-    /// Builds the full application: config, store + migrations, every
-    /// manager, and the populated API state. Port of Go `app.New`.
+    /// Builds the full application under the profile at
+    /// `<data_dir>/plugins.json` (default profile when the file is absent; a
+    /// malformed profile fails the boot loudly).
     pub fn new(cfg: Config) -> Result<Self, AppError> {
+        plugins::ensure_data_dir(&cfg.data_dir);
+        let profile = dope_plugin::PluginProfile::load(&cfg.data_dir)
+            .map_err(|err| AppError::PluginProfile(err.to_string()))?;
+        Self::with_profile(cfg, profile)
+    }
+
+    /// Builds the application under an explicit plugin profile: kernel
+    /// first, then every enabled builtin plugin in declared order, then the
+    /// persisted-state restore.
+    pub fn with_profile(
+        cfg: Config,
+        profile: dope_plugin::PluginProfile,
+    ) -> Result<Self, AppError> {
         let data_dir = cfg.data_dir.clone();
         let env_scope = environment_scope(cfg.environment);
         let hosted = cfg.environment == Environment::Prod;
 
-        // --- SQLite store (migrations run inside SQLiteStore::new).
+        // --- kernel: SQLite store (migrations run inside SQLiteStore::new).
         // The primary handle is shared by the API state and the
         // parking_lot::Mutex-based managers; sandbox/mcp/chat require a
         // std::sync::Mutex handle (their concrete constructor types), so a
@@ -168,10 +148,8 @@ impl App {
         #[allow(clippy::arc_with_non_send_sync)] // port-mandated Arc<SQLiteStore>
         let connector_store = Arc::new(SQLiteStore::new(&data_dir).map_err(AppError::Store)?);
 
-        // --- event bus ---
+        // --- kernel: event bus + core managers ---
         let event_bus = Arc::new(Bus::new());
-
-        // --- core managers ---
         let session_router = Arc::new(SessionRouter::new());
         let runtime = Arc::new(RuntimeManager::new());
         let checkpoints = Arc::new(CheckpointsManager::new(store.clone(), runtime.clone()));
@@ -183,7 +161,9 @@ impl App {
             Arc::new(IdentityManager::new(erased))
         };
 
-        // --- secrets (tenant secret lifecycle + local value backend) ---
+        // --- kernel: secrets (tenant secret lifecycle + local value backend).
+        // Trust-boundary decision: identity, auth, policy, secrets and audit
+        // stay in the kernel and are not disableable plugins.
         let secret_backend = Arc::new(
             dope_secrets::LocalBackend::new(Path::new(&data_dir).join("tenant-secret-values"))
                 .map_err(|err| AppError::Secrets(err.to_string()))?,
@@ -196,342 +176,83 @@ impl App {
             secret_backend.clone(),
         ));
 
-        // --- LLM dispatcher (echo fallback + managed CLI providers) ---
-        let llm = Arc::new(Dispatcher::new());
-        if cfg.llm.default_timeout_ms > 0 {
-            llm.set_default_timeout(Duration::from_millis(cfg.llm.default_timeout_ms as u64));
-        }
-        if cfg.llm.default_max_retries > 0 {
-            llm.set_default_retries(cfg.llm.default_max_retries);
-        }
-        if !cfg.llm.default_model.trim().is_empty() {
-            llm.set_default_model(&cfg.llm.default_model);
-        }
-        let managed_registry: Arc<dyn dope_providers::ManagedRegistry> =
-            Arc::new(dope_managedproviders::Registry::new(&cfg, None));
-        for bridge in managed_registry.list() {
-            llm.register_provider(bridge.provider());
-        }
-        // Deterministic in-process fallback so the daemon always has a
-        // default provider (Go registers echo in dispatcher.go).
-        llm.register_provider(Arc::new(dope_llm::EchoProvider::new()));
-        let default_provider = if cfg.llm.default_provider.trim().is_empty() {
-            "echo".to_string()
-        } else {
-            cfg.llm.default_provider.clone()
-        };
-        let _ = llm.set_default_provider(&default_provider);
-
-        // --- skills registry ---
-        let skills = Arc::new(
-            SkillsRegistry::new(&data_dir).map_err(|err| AppError::Skills(err.to_string()))?,
-        );
-
-        // --- sandbox + MCP (share the std::sync::Mutex store handle) ---
-        let sandboxes = Arc::new(SandboxManager::new(
-            cfg.clone(),
-            Some(secondary.clone()),
-            (*event_bus).clone(),
-            PolicyEngine::new(),
-        ));
-        // TODO(app wiring): sandbox persistence + secret resolution are
-        // wired; the sandbox secret manager is a second instance sharing the
-        // same store/backend because set_secret_manager takes ownership.
-        sandboxes.set_secret_manager(SecretsManager::new(
-            secret_store.clone(),
-            secret_backend.clone(),
-        ));
-        let mcp_starter = Arc::new(adapters::McpExecutionStarter::new(sandboxes.clone()));
-        let mcp_secret_resolver =
-            Arc::new(adapters::McpSecretResolver::new(store.clone(), secret_manager.clone()));
-        let mcp = Arc::new(McpManager::new(
-            cfg.clone(),
-            Some(secondary.clone()),
-            Some((*event_bus).clone()),
-            Some(mcp_starter.clone()),
-            Some(PolicyEngine::new()),
-            None, // TODO(app wiring): concrete MCP transports are deferred
-        ));
-        mcp.set_secret_manager(mcp_secret_resolver.clone());
-
-        // --- domain managers ---
-        let integrations = Arc::new(IntegrationsManager::new(env_scope));
-        let calendar = Arc::new(CalendarManager::new(env_scope));
-        let mail = Arc::new(MailManager::new(env_scope));
-        let providers = Arc::new(dope_providers::new_manager(
-            cfg.llm.clone(),
-            Some(llm.clone()),
-            vec![managed_registry],
-        ));
-        let connectors = Arc::new(ConnectorsSupervisor::new());
-        let capabilities = Arc::new(CapabilitiesSupervisor::new());
-        let chat = Arc::new(ChatService::new_service(
-            llm.clone(),
-            Some(providers.clone()),
-            Some(skills.clone()),
-            Some((*event_bus).clone()),
-            Some(secondary.clone() as Arc<dyn ChatStore>),
-        ));
-
-        // --- billing (store-backed repository handle) ---
-        let billing_repo = Arc::new(BillingRepositoryHandle::new(
-            SQLiteStore::new(&data_dir).map_err(AppError::Store)?,
-        ));
-        let billing = Arc::new(BillingManager::new(billing_repo));
-
-        // --- activation (SQLite store + billing/chat adapters, wave 8 parity) ---
-        let activation_store = Arc::new(
-            SqliteActivationStore::new(SQLiteStore::new(&data_dir).map_err(AppError::Store)?)
-                .map_err(AppError::Store)?,
-        );
-        let activation_billing = Arc::new(ActivationBillingProjectorAdapter::new(billing.clone()));
-        let activation_chat = Arc::new(ActivationChatRunnerAdapter::new(Some(chat.clone())));
-        let activation = Arc::new(ActivationService::with_sqlite(
-            activation_store.clone(),
-            Some(activation_billing.clone()),
-            Some(activation_chat.clone()),
-            env_scope,
-            hosted,
-        ));
-
-        // --- computer use (store-backed handle) ---
-        let computeruse_store = Arc::new(ComputerUseStoreHandle::new(
-            SQLiteStore::new(&data_dir).map_err(AppError::Store)?,
-        ));
-        let computeruse_recorder = Arc::new(SqliteArtifactRecorder::new(
-            computeruse_store.clone() as Arc<dyn dope_computeruse::Store>,
-            &data_dir,
-            env_scope,
-        ));
-        let computer_use = Arc::new(ComputerUseManager::new(ComputerUseDependencies {
-            environment_scope: env_scope.to_string(),
-            runtime: Some(runtime.clone()),
-            policy: Some(policy_engine.clone()),
-            store: computeruse_store,
-            driver: None,
-            artifacts: Some(computeruse_recorder.clone()),
-        }));
-
-        // --- delivery (test sink + channel-connector adapters) ---
-        let delivery_connector = Arc::new(ConnectorAdapter::new(store.clone()));
-        let delivery = Arc::new(DeliveryManager::new(
-            env_scope,
-            (*event_bus).clone(),
-            store.clone(),
-            vec![Arc::new(TestSinkAdapter::new()), delivery_connector.clone()],
-        ));
-
-        // --- workflow launcher shared by scheduler/reminders/webhooks ---
-        let workflow_launcher = Arc::new(adapters::WorkflowLauncherImpl::new(runtime.clone()));
-
-        // --- scheduler ---
-        let scheduler = Arc::new(Scheduler::new(SchedulerDependencies {
-            environment: cfg.environment,
-            runtime: runtime.clone(),
-            event_bus: Some((*event_bus).clone()),
-            store: store.clone(),
-            workflow_launcher: Some(workflow_launcher.clone()),
-            clock: None,
-            tick_interval: Duration::ZERO,
-        }));
-
-        // --- reminders ---
-        let reminders = Arc::new(RemindersManager::new(RemindersDependencies {
-            environment_scope: env_scope.to_string(),
-            store: store.clone(),
-            event_bus: Some((*event_bus).clone()),
-            delivery: Some((*delivery).clone()),
-            workflow_launcher: Some(workflow_launcher.clone()),
-            clock: None,
-            tick_interval: Duration::ZERO,
-        }));
-
-        // --- routines (compiled onto the scheduler through the adapter) ---
-        let mut routine_manager = dope_routine::Manager::new(
-            env_scope,
-            Box::new(adapters::RoutineSchedulerAdapter::new(scheduler.clone())),
-        );
-        routine_manager.with_store(store.clone());
-        let routines = Arc::new(routine_manager);
-
-        // --- memory plane (Roadmap 78 phase 2: LLM-dispatch-backed
-        // consolidator; empty provider/model resolve to daemon defaults) ---
-        let memory = Arc::new(MemoryManager::new(
-            env_scope,
-            None,
-            Some(Arc::new(adapters::LlmConsolidator::new(llm.clone()))),
-            None,
-        ));
-
-        // --- triage ---
-        let mut triage_manager = TriageManager::new(env_scope);
-        triage_manager.with_store(store.clone());
-        let triage = Arc::new(triage_manager);
-
-        // --- webhooks (firer launches scheduled workflows; quota gate backed
-        // by the billing plane — Roadmap 75) ---
-        let mut webhook_manager = WebhookManager::new(
-            env_scope,
-            Some(Box::new(adapters::WebhookFirerImpl::new(workflow_launcher))),
-            Some(Box::new(adapters::WebhookQuotaGateImpl::new(
-                billing.clone(),
-                store.clone(),
-                event_bus.clone(),
-                env_scope,
-            ))),
-        );
-        webhook_manager.with_store(store.clone());
-        let webhooks = Arc::new(webhook_manager);
-
-        // --- catalog / exec profiles / evidence (sandbox-backed requirement
-        // checker + identity-backed permission gate — Roadmap 75) ---
-        let mut catalog_manager = dope_catalog::Manager::new(
-            env_scope,
-            Some(Box::new(adapters::CatalogSandboxRequirementChecker::new(
-                sandboxes.clone(),
-            ))),
-            Some(Box::new(adapters::CatalogTenantPermissionGate::new(store.clone()))),
-        );
-        catalog_manager.with_store(store.clone());
-        let catalog = Arc::new(catalog_manager);
-        #[cfg(test)]
-        let execprofile_health = Arc::new(SandboxHealthChecker::new(Some(sandboxes.clone())));
-        let mut exec_profile_manager = ExecProfileManager::new(
-            env_scope,
-            Some(Box::new(SandboxHealthChecker::new(Some(sandboxes.clone())))),
-            Some(Box::new(adapters::ExecProfileSandboxRequirementChecker::new(
-                sandboxes.clone(),
-            ))),
-            Some(Box::new(adapters::ExecProfileTenantPermissionGate::new(store.clone()))),
-        );
-        exec_profile_manager.with_store(store.clone());
-        let exec_profiles = Arc::new(exec_profile_manager);
-        #[cfg(test)]
-        let evidence_collector = Arc::new(RoutineCollector::new(Some(routines.clone())));
-        let mut evidence_manager = EvidenceManager::new(
-            env_scope,
-            Some(Box::new(RoutineCollector::new(Some(routines.clone())))),
-            Some(Box::new(adapters::EvidenceSupportPermissionGate::new(store.clone()))),
-        );
-        evidence_manager.with_store(store.clone());
-        let evidence = Arc::new(evidence_manager);
-
-        // --- evaluation (SQLite-backed Store handle) ---
-        let evaluation_store = Arc::new(EvaluationStoreHandle::new(
-            SQLiteStore::new(&data_dir).map_err(AppError::Store)?,
-        ));
-        let evaluation = Arc::new(EvaluationManager::new(EvaluationDependencies {
-            environment_scope: env_scope.to_string(),
-            store: Some(evaluation_store),
-            fixtures_dir: String::new(),
-            runtime_recorder: None,
-            billing: Some(billing.clone()),
-            hosted_billing: hosted,
-            clock: None,
-        }));
-
-        // --- live validation (SQLite-backed Store handle) ---
-        let live_validation_store = Arc::new(LiveValidationStoreHandle::new(
-            SQLiteStore::new(&data_dir).map_err(AppError::Store)?,
-        ));
-        let live_validation = Arc::new(LiveValidationManager::new(LiveValidationDependencies {
-            environment_scope: env_scope.to_string(),
-            store: Some(live_validation_store),
-            enabled: true,
-            billing: Some(billing.clone()),
-            hosted_billing: hosted,
-            clock: None,
-            ledger_event_sink: None,
-            candidate_tool_class_resolver: None,
-        }));
-
-        // --- setup wizard (SQLite-backed Store handle) ---
-        let setup_wizard_store = Arc::new(SetupWizardStoreHandle::new(
-            SQLiteStore::new(&data_dir).map_err(AppError::Store)?,
-        ));
-        let setup_wizard = Arc::new(new_setup_wizard(SetupWizardDependencies {
-            store: Some(setup_wizard_store),
-            secrets: Some(secret_manager.clone()),
-            ..SetupWizardDependencies::default()
-        }));
-
-        // --- audit emitter ---
+        // --- kernel: audit emitter ---
         let audit_emitter = Arc::new(AuditEmitter::new(event_bus.clone()));
 
-        // --- API state ---
+        // --- kernel state population ---
         let mut state = AppState::new(cfg.clone(), event_bus.clone(), store.clone());
-        state.policy = Some(policy_engine.clone());
-        state.auth = Some(auth_manager.clone());
-        state.identity = Some(identity_manager.clone());
-        state.router = Some(session_router.clone());
+        state.policy = Some(policy_engine);
+        state.auth = Some(auth_manager);
+        state.identity = Some(identity_manager);
+        state.router = Some(session_router);
         state.runtime = Some(runtime.clone());
-        state.llm = Some(llm.clone());
-        state.chat = Some(chat.clone());
-        state.providers = Some(providers.clone());
-        state.skills = Some(skills.clone());
-        state.sandboxes = Some(sandboxes.clone());
-        state.secrets = Some(secret_manager.clone());
-        state.mcp = Some(mcp.clone());
-        state.integrations = Some(integrations.clone());
-        state.calendar = Some(calendar.clone());
-        state.mail = Some(mail.clone());
-        state.reminders = Some(reminders.clone());
-        state.triage = Some(triage.clone());
-        state.memory = Some(memory.clone());
-        state.routines = Some(routines.clone());
-        state.webhooks = Some(webhooks.clone());
-        state.catalog = Some(catalog.clone());
-        state.exec_profiles = Some(exec_profiles.clone());
-        state.evidence = Some(evidence.clone());
-        state.connectors = Some(connectors.clone());
-        state.capabilities = Some(capabilities.clone());
-        state.computer_use = Some(computer_use.clone());
-        state.scheduler = Some(scheduler.clone());
-        state.delivery = Some(delivery.clone());
-        state.billing = Some(billing.clone());
-        state.activation = Some(activation.clone());
-        state.setup_wizard = Some(setup_wizard.clone());
-        state.checkpoints = Some(checkpoints.clone());
-        state.evaluation = Some(evaluation.clone());
-        state.live_validation = Some(live_validation.clone());
-        state.audit_emitter = Some(audit_emitter.clone());
+        state.secrets = Some(secret_manager);
+        state.checkpoints = Some(checkpoints);
+        state.audit_emitter = Some(audit_emitter);
         state.tenant_migration_status = Some(Arc::new(adapters::NoMigrationInProgress));
 
+        // --- kernel seams consumed by plugins ---
+        let mut seams = dope_plugin::SeamMap::new();
+        seams.put(plugins::SecretStoreSeam(secret_store));
+        seams.put(plugins::SecretBackendSeam(secret_backend));
+        seams.put(plugins::WorkflowLauncherSeam(Arc::new(
+            adapters::WorkflowLauncherImpl::new(runtime),
+        )));
+
+        // --- plugin assembly ---
+        let report = dope_plugin::resolve(&plugins::descriptors(), &profile);
+        for warning in &report.warnings {
+            eprintln!("[dope] plugin profile: {warning}");
+        }
+        let mut asm = plugins::Assembly {
+            cfg: cfg.clone(),
+            env_scope,
+            hosted,
+            store,
+            secondary,
+            event_bus: event_bus.clone(),
+            state,
+            seams,
+            #[cfg(test)]
+            wiring: AppWiring::default(),
+        };
+        for plugin in plugins::BUILTINS {
+            if report.enabled(plugin.descriptor.id) {
+                (plugin.build)(&mut asm)?;
+            }
+        }
+        asm.state.plugins = Some(Arc::new(report));
+
         // Restore persisted in-memory state from SQLite (Go
-        // recoverPersistedStateWithSecrets, called in app.New right before the
-        // connector runtimes are built). Idempotent: every Restore replaces the
-        // in-memory registry wholesale.
-        restore::recover_persisted_state(&state, &event_bus, cfg.environment)?;
+        // recoverPersistedStateWithSecrets). Idempotent: every Restore
+        // replaces the in-memory registry wholesale; disabled plugins are
+        // skipped by restore's per-manager Some guards.
+        restore::recover_persisted_state(&asm.state, &event_bus, cfg.environment)?;
 
         Ok(App {
             config: cfg,
-            state,
+            state: asm.state,
             event_bus,
-            sandboxes: Some(sandboxes),
-            scheduler: Some(scheduler),
-            reminders: Some(reminders),
             connector_store,
             connector_runtimes: parking_lot::Mutex::new(None),
             closed: AtomicBool::new(false),
             #[cfg(test)]
-            wiring: AppWiring {
-                activation_store: Some(activation_store),
-                activation_billing: Some(activation_billing),
-                activation_chat: Some(activation_chat),
-                computeruse_recorder: Some(computeruse_recorder),
-                execprofile_health: Some(execprofile_health),
-                evidence_collector: Some(evidence_collector),
-                delivery_connector: Some(delivery_connector),
-                mcp_starter: Some(mcp_starter),
-                mcp_secret_resolver: Some(mcp_secret_resolver),
-            },
+            wiring: asm.wiring,
         })
     }
 
     /// Loads the effective config (env + config.json) and builds the app.
-    /// Port of Go `app.New()` (config.Load inside).
     pub fn from_env() -> Result<Self, AppError> {
         Self::new(dope_config::load()?)
+    }
+
+    /// True when `id` resolved enabled in the plugin assembly (states built
+    /// without a report — tests — behave as all-enabled).
+    fn plugin_enabled(&self, id: &str) -> bool {
+        self.state
+            .plugins
+            .as_ref()
+            .is_none_or(|report| report.enabled(id))
     }
 
     /// The axum router over the populated state (port of Go
@@ -550,8 +271,8 @@ impl App {
 
         self.start_background_loops();
 
-        // Wave 8: construct + start the enabled channel-connector runtimes
-        // before serving (Go Run: discord -> telegram -> slack -> matrix).
+        // Construct + start the enabled channel-connector runtimes before
+        // serving (Go Run: discord -> telegram -> slack -> matrix).
         let mut runtimes = self.build_connector_runtimes().await?;
         self.start_connector_runtimes(&mut runtimes)?;
         *self.connector_runtimes.lock() = Some(runtimes);
@@ -587,12 +308,12 @@ impl App {
     /// Starts the background loops (scheduler, reminders) best-effort;
     /// failures are logged, not fatal (the sync ports record lifecycle only).
     fn start_background_loops(&self) {
-        if let Some(scheduler) = &self.scheduler {
+        if let Some(scheduler) = &self.state.scheduler {
             if let Err(err) = scheduler.start() {
                 eprintln!("[dope] scheduler start failed: {err}");
             }
         }
-        if let Some(reminders) = &self.reminders {
+        if let Some(reminders) = &self.state.reminders {
             if let Err(err) = reminders.start() {
                 eprintln!("[dope] reminders start failed: {err}");
             }
@@ -661,20 +382,20 @@ impl App {
         if let Some(err) = first_err {
             eprintln!("[dope] connector close error: {err}");
         }
-        if let Some(scheduler) = &self.scheduler {
+        if let Some(scheduler) = &self.state.scheduler {
             let _ = scheduler.close();
         }
-        if let Some(reminders) = &self.reminders {
+        if let Some(reminders) = &self.state.reminders {
             reminders.close();
         }
-        if let Some(sandboxes) = &self.sandboxes {
+        if let Some(sandboxes) = &self.state.sandboxes {
             let _ = sandboxes.close();
         }
         self.event_bus.close();
     }
 
     // ---------------------------------------------------------------------
-    // Wave 8: channel-connector runtimes
+    // Channel-connector runtimes
     // ---------------------------------------------------------------------
 
     /// Builds one connector message loop over the shared managers (port of Go
@@ -683,8 +404,8 @@ impl App {
     /// over the same runtime/checkpoints/bus/store/chat deps — matching Go's
     /// per-runtime im.NewMessageLoop(sessionRouter, ...) construction.
     fn connector_message_loop(&self) -> MessageLoop {
-        let runtime = self.state.runtime.clone().expect("runtime wired in App::new");
-        let chat = self.state.chat.clone().expect("chat wired in App::new");
+        let runtime = self.state.runtime.clone().expect("runtime wired in kernel");
+        let chat = self.state.chat.clone().expect("chat plugin enabled (channel requires)");
         MessageLoop::new(
             SessionRouter::new(),
             runtime.clone(),
@@ -718,22 +439,24 @@ impl App {
     }
 
     /// Constructs the four connector runtimes for the enabled connectors in
-    /// config (Go app.New connector block). Disabled connectors return
-    /// Ok(None) from their new_runtime, so no network or credential is
-    /// touched unless the connector is explicitly enabled.
+    /// config (Go app.New connector block). A connector builds only when its
+    /// config flag AND its channel plugin are enabled, so no network or
+    /// credential is touched unless both agree.
     async fn build_connector_runtimes(&self) -> Result<ConnectorRuntimes, AppError> {
         let connector_cfg = &self.config.connectors;
         let supervisor = self
             .state
             .connectors
             .clone()
-            .expect("connectors supervisor wired in App::new");
+            .expect("connectors supervisor plugin enabled (channel requires)");
         let store = Some(self.connector_store.clone());
         let bus = Some((*self.event_bus).clone());
 
         // --- discord ---
+        let discord_enabled =
+            connector_cfg.discord.enabled && self.plugin_enabled("channel-discord");
         let discord_cfg = dope_discord::Config {
-            enabled: connector_cfg.discord.enabled,
+            enabled: discord_enabled,
             connector_id: connector_cfg.discord.connector_id.clone(),
             display_name: connector_cfg.discord.display_name.clone(),
             delivery_mode: connector_cfg.discord.delivery_mode.clone(),
@@ -744,16 +467,15 @@ impl App {
             allowed_channel_ids: connector_cfg.discord.allowed_channel_ids.clone(),
             tenant_id: String::new(),
         };
-        let discord_transport: Option<Box<dyn dope_discord::Transport>> =
-            if connector_cfg.discord.enabled {
-                Some(Box::new(
-                    DiscordGatewayTransport::new(discord_cfg.clone()).map_err(|err| {
-                        AppError::ConnectorRuntime(format!("discord transport: {err}"))
-                    })?,
-                ))
-            } else {
-                None
-            };
+        let discord_transport: Option<Box<dyn dope_discord::Transport>> = if discord_enabled {
+            Some(Box::new(
+                DiscordGatewayTransport::new(discord_cfg.clone()).map_err(|err| {
+                    AppError::ConnectorRuntime(format!("discord transport: {err}"))
+                })?,
+            ))
+        } else {
+            None
+        };
         let discord = new_discord_runtime(
             discord_cfg,
             Some(dope_telemetry::Logger::new(&self.config.log_level)),
@@ -769,8 +491,10 @@ impl App {
         .map_err(|err| AppError::ConnectorRuntime(format!("discord runtime: {err}")))?;
 
         // --- telegram ---
+        let telegram_enabled =
+            connector_cfg.telegram.enabled && self.plugin_enabled("channel-telegram");
         let telegram_cfg = dope_telegram::Config {
-            enabled: connector_cfg.telegram.enabled,
+            enabled: telegram_enabled,
             connector_id: connector_cfg.telegram.connector_id.clone(),
             display_name: connector_cfg.telegram.display_name.clone(),
             bot_token: connector_cfg.telegram.bot_token.clone(),
@@ -778,23 +502,22 @@ impl App {
             tenant_id: String::new(),
             allowments: restore::telegram_allowments_from_config(&connector_cfg.telegram),
         };
-        let telegram_transport: Option<Arc<dyn dope_telegram::Transport>> =
-            if connector_cfg.telegram.enabled {
-                Some(Arc::new(
-                    TelegramBotApiTransport::new(TelegramBotApiTransportConfig {
-                        connector_id: connector_cfg.telegram.connector_id.clone(),
-                        bot_token: connector_cfg.telegram.bot_token.clone(),
-                        bot_username: connector_cfg.telegram.bot_username.clone(),
-                        base_url: connector_cfg.telegram.bot_api_base_url.clone(),
-                        ..Default::default()
-                    })
-                    .map_err(|err| {
-                        AppError::ConnectorRuntime(format!("telegram transport: {err}"))
-                    })?,
-                ))
-            } else {
-                None
-            };
+        let telegram_transport: Option<Arc<dyn dope_telegram::Transport>> = if telegram_enabled {
+            Some(Arc::new(
+                TelegramBotApiTransport::new(TelegramBotApiTransportConfig {
+                    connector_id: connector_cfg.telegram.connector_id.clone(),
+                    bot_token: connector_cfg.telegram.bot_token.clone(),
+                    bot_username: connector_cfg.telegram.bot_username.clone(),
+                    base_url: connector_cfg.telegram.bot_api_base_url.clone(),
+                    ..Default::default()
+                })
+                .map_err(|err| {
+                    AppError::ConnectorRuntime(format!("telegram transport: {err}"))
+                })?,
+            ))
+        } else {
+            None
+        };
         let telegram = TelegramRuntime::new(
             telegram_cfg,
             supervisor.clone(),
@@ -807,8 +530,9 @@ impl App {
         .map(Arc::new);
 
         // --- slack ---
+        let slack_enabled = connector_cfg.slack.enabled && self.plugin_enabled("channel-slack");
         let slack_cfg = dope_slack::Config {
-            enabled: connector_cfg.slack.enabled,
+            enabled: slack_enabled,
             connector_id: connector_cfg.slack.connector_id.clone(),
             display_name: connector_cfg.slack.display_name.clone(),
             workspace_binding_id: connector_cfg.slack.workspace_binding_id.clone(),
@@ -826,19 +550,18 @@ impl App {
                 .await
                 .unwrap_or_default()
         };
-        let slack_transport: Option<Arc<dyn dope_slack::Transport>> =
-            if connector_cfg.slack.enabled {
-                Some(Arc::new(SlackWebApiTransport::new(
-                    SlackWebApiTransportConfig {
-                        connector_id: connector_cfg.slack.connector_id.clone(),
-                        base_url: connector_cfg.slack.api_base_url.clone(),
-                        bot_token: slack_token,
-                        ..Default::default()
-                    },
-                )))
-            } else {
-                None
-            };
+        let slack_transport: Option<Arc<dyn dope_slack::Transport>> = if slack_enabled {
+            Some(Arc::new(SlackWebApiTransport::new(
+                SlackWebApiTransportConfig {
+                    connector_id: connector_cfg.slack.connector_id.clone(),
+                    base_url: connector_cfg.slack.api_base_url.clone(),
+                    bot_token: slack_token,
+                    ..Default::default()
+                },
+            )))
+        } else {
+            None
+        };
         let slack = new_slack_runtime(
             slack_cfg,
             supervisor.clone(),
@@ -850,8 +573,9 @@ impl App {
         .map_err(|err| AppError::ConnectorRuntime(format!("slack runtime: {err}")))?;
 
         // --- matrix ---
+        let matrix_enabled = connector_cfg.matrix.enabled && self.plugin_enabled("channel-matrix");
         let matrix_cfg = dope_matrix::types::Config {
-            enabled: connector_cfg.matrix.enabled,
+            enabled: matrix_enabled,
             connector_id: connector_cfg.matrix.connector_id.clone(),
             display_name: connector_cfg.matrix.display_name.clone(),
             homeserver_url: connector_cfg.matrix.homeserver_url.clone(),
@@ -861,24 +585,23 @@ impl App {
             allowed_direct_user_ids: connector_cfg.matrix.allowed_direct_user_ids.clone(),
             configured_commands: connector_cfg.matrix.configured_commands.clone(),
         };
-        let matrix_transport: Option<Box<dyn dope_matrix::Transport>> =
-            if connector_cfg.matrix.enabled {
-                Some(Box::new(
-                    new_matrix_transport(MatrixClientTransportConfig {
-                        connector_id: connector_cfg.matrix.connector_id.clone(),
-                        homeserver_url: connector_cfg.matrix.homeserver_url.clone(),
-                        bot_access_token: connector_cfg.matrix.bot_access_token.clone(),
-                        selected_room_ids: connector_cfg.matrix.selected_room_ids.clone(),
-                        allowed_direct_user_ids: connector_cfg.matrix.allowed_direct_user_ids.clone(),
-                        ..Default::default()
-                    })
-                    .map_err(|err| {
-                        AppError::ConnectorRuntime(format!("matrix transport: {err}"))
-                    })?,
-                ))
-            } else {
-                None
-            };
+        let matrix_transport: Option<Box<dyn dope_matrix::Transport>> = if matrix_enabled {
+            Some(Box::new(
+                new_matrix_transport(MatrixClientTransportConfig {
+                    connector_id: connector_cfg.matrix.connector_id.clone(),
+                    homeserver_url: connector_cfg.matrix.homeserver_url.clone(),
+                    bot_access_token: connector_cfg.matrix.bot_access_token.clone(),
+                    selected_room_ids: connector_cfg.matrix.selected_room_ids.clone(),
+                    allowed_direct_user_ids: connector_cfg.matrix.allowed_direct_user_ids.clone(),
+                    ..Default::default()
+                })
+                .map_err(|err| {
+                    AppError::ConnectorRuntime(format!("matrix transport: {err}"))
+                })?,
+            ))
+        } else {
+            None
+        };
         let matrix = new_matrix_runtime(
             matrix_cfg,
             supervisor.clone(),
@@ -1053,6 +776,11 @@ mod tests {
         assert!(app.state.evaluation.is_some());
         assert!(app.state.live_validation.is_some());
 
+        // The default profile resolves every builtin plugin enabled.
+        let report = app.state.plugins.as_ref().expect("assembly report");
+        assert!(report.plugins.iter().all(|p| p.enabled), "all builtins enabled");
+        assert!(report.warnings.is_empty());
+
         let router = app.router();
         let response = router
             .clone()
@@ -1125,6 +853,65 @@ mod tests {
         app2.close();
     }
 
+    /// Disabling a leaf plugin leaves its manager unwired (the API answers
+    /// not-wired) while the rest of the assembly is unaffected, and the
+    /// report records the decision.
+    #[tokio::test]
+    async fn disabled_leaf_plugin_leaves_manager_unwired() {
+        let config = test_config();
+        let profile = dope_plugin::PluginProfile {
+            disabled: vec!["triage".to_string()],
+            ..Default::default()
+        };
+        let app = App::with_profile(config, profile).expect("build app");
+        assert!(app.state.triage.is_none(), "triage unwired");
+        assert!(app.state.chat.is_some(), "unrelated plugins unaffected");
+        let report = app.state.plugins.as_ref().expect("report");
+        assert!(!report.enabled("triage"));
+        let triage = report.plugins.iter().find(|p| p.id == "triage").expect("entry");
+        assert_eq!(triage.reason.as_deref(), Some("disabled by profile"));
+        app.close();
+    }
+
+    /// Disabling a dependency transitively disables its dependents — the
+    /// fail-closed gates (webhook quota, billing enforcement) can never run
+    /// half-wired.
+    #[tokio::test]
+    async fn disabling_billing_transitively_disables_dependents() {
+        let config = test_config();
+        let profile = dope_plugin::PluginProfile {
+            disabled: vec!["billing".to_string()],
+            ..Default::default()
+        };
+        let app = App::with_profile(config, profile).expect("build app");
+        assert!(app.state.billing.is_none());
+        assert!(app.state.activation.is_none(), "activation requires billing");
+        assert!(app.state.webhooks.is_none(), "webhooks require billing");
+        assert!(app.state.evaluation.is_none(), "evaluation requires billing");
+        assert!(app.state.live_validation.is_none(), "live-validation requires billing");
+        let report = app.state.plugins.as_ref().expect("report");
+        let webhooks = report.plugins.iter().find(|p| p.id == "webhooks").expect("entry");
+        assert_eq!(
+            webhooks.reason.as_deref(),
+            Some("requires disabled plugin `billing`")
+        );
+        app.close();
+    }
+
+    /// A profile written to <data_dir>/plugins.json is picked up by App::new.
+    #[tokio::test]
+    async fn profile_file_in_data_dir_is_loaded() {
+        let config = test_config();
+        std::fs::write(
+            std::path::Path::new(&config.data_dir).join(dope_plugin::PROFILE_FILE_NAME),
+            serde_json::json!({ "disabled": ["memory"] }).to_string(),
+        )
+        .expect("write profile");
+        let app = App::new(config).expect("build app");
+        assert!(app.state.memory.is_none(), "memory disabled via plugins.json");
+        app.close();
+    }
+
     /// Connector runtimes are skipped when every connector is disabled (no
     /// network, no credentials), and are constructed when a connector is
     /// enabled with a token. Restore is idempotent: rebuilding the app against
@@ -1181,10 +968,35 @@ mod tests {
         app3.close();
     }
 
-    /// Wave 8 parity: every seam adapter is wired into its manager (activation
-    /// store/billing/chat, computeruse artifact recorder, execprofile sandbox
-    /// health checker, evidence routine collector, delivery connector adapter,
-    /// mcp execution starter + secret resolver).
+    /// Disabling a channel plugin gates the runtime even when the connector
+    /// config flag is on: profile wins, no network or credential is touched.
+    #[tokio::test]
+    async fn disabled_channel_plugin_gates_connector_runtime() {
+        let mut config = test_config();
+        config.connectors.discord.enabled = true;
+        config.connectors.discord.bot_token = "test-token".to_string();
+        config.connectors.discord.connector_id = "discord-test".to_string();
+        config.connectors.discord.display_name = "Discord Test".to_string();
+        let profile = dope_plugin::PluginProfile {
+            disabled: vec!["channel-discord".to_string()],
+            ..Default::default()
+        };
+        let app = App::with_profile(config, profile).expect("build app");
+        let runtimes = app
+            .build_connector_runtimes()
+            .await
+            .expect("build connector runtimes");
+        assert!(
+            runtimes.discord.is_none(),
+            "channel-discord disabled -> runtime skipped despite config flag"
+        );
+        app.close();
+    }
+
+    /// Every seam adapter is wired into its manager by the builtin plugins
+    /// (activation store/billing/chat, computeruse artifact recorder,
+    /// execprofile sandbox health checker, evidence routine collector,
+    /// delivery connector adapter, mcp execution starter + secret resolver).
     #[test]
     fn wired_seam_adapters_are_non_none() {
         let config = test_config();

@@ -680,6 +680,7 @@ dependencies = [
  "dope-memory",
  "dope-opsreadiness",
  "dope-orchestration",
+ "dope-plugin",
  "dope-policy",
  "dope-profiles",
  "dope-providers",
@@ -744,6 +745,7 @@ dependencies = [
  "dope-matrix",
  "dope-mcp",
  "dope-memory",
+ "dope-plugin",
  "dope-policy",
  "dope-providers",
  "dope-reminders",
@@ -943,6 +945,7 @@ name = "dope-contracts"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dope-plugin",
  "parking_lot",
  "serde_json",
  "thiserror 2.0.20",
@@ -1352,6 +1355,16 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "uuid",
+]
+
+[[package]]
+name = "dope-plugin"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

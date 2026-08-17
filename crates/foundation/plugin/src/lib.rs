@@ -1,0 +1,492 @@
+//! dope-plugin — the plugin kernel.
+//!
+//! Everything outside the trust-boundary kernel (store, event bus, identity,
+//! auth, policy, secrets, audit) assembles as a plugin: a named unit that
+//! declares what it provides and what it requires, and whose enablement is
+//! resolved from a per-data-dir profile (`<data_dir>/plugins.json`) before
+//! the daemon builds. Two tiers share this kernel: builtin plugins compiled
+//! into the daemon (tier 1) and out-of-process providers reached over the
+//! adapter/capability/MCP planes (tier 2, later phase).
+//!
+//! The kernel owns three mechanisms:
+//! - **resolution** — profile + declared `requires` edges decide which
+//!   plugins build; disabling a plugin transitively disables its dependents,
+//!   and every decision is recorded in an [`AssemblyReport`] (nothing is
+//!   silently dropped).
+//! - **seams** — a typed registry ([`SeamMap`]) through which plugins share
+//!   intermediates during assembly without depending on each other's crates.
+//! - **hooks** — a waterfall [`HookBus`]: ordered interception points where a
+//!   handler may mutate the payload or halt the action (the agent-loop hook
+//!   points attach in the pluginization phase 2).
+
+use std::any::{Any, TypeId};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::Path;
+use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
+
+/// Static identity + dependency declaration for one plugin.
+#[derive(Debug, Clone, Copy)]
+pub struct PluginDescriptor {
+    /// Stable kebab-case id, unique across the assembly.
+    pub id: &'static str,
+    /// One-line human summary shown in the assembly report.
+    pub summary: &'static str,
+    /// Seam/service names this plugin provides (informational).
+    pub provides: &'static [&'static str],
+    /// Plugin ids that must be enabled for this plugin to build. Descriptor
+    /// order must list dependencies before dependents.
+    pub requires: &'static [&'static str],
+}
+
+/// Per-plugin entry in the profile file.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PluginEntry {
+    /// `Some(false)` disables the plugin; `None`/`Some(true)` inherits the
+    /// default (enabled).
+    pub enabled: Option<bool>,
+    /// Free-form plugin-scoped configuration, opaque to the kernel.
+    pub config: serde_json::Map<String, serde_json::Value>,
+}
+
+/// The on-disk plugin profile (`<data_dir>/plugins.json`). A missing file is
+/// the default profile: every builtin enabled, no overrides.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PluginProfile {
+    /// Plugin ids disabled wholesale.
+    pub disabled: Vec<String>,
+    /// Per-plugin overrides keyed by plugin id (BTreeMap for stable dumps).
+    pub entries: BTreeMap<String, PluginEntry>,
+}
+
+/// Profile load failure. A malformed profile fails the boot loudly instead of
+/// silently assembling a different daemon than the operator configured.
+#[derive(Debug)]
+pub enum ProfileError {
+    Read(std::io::Error),
+    Parse(serde_json::Error),
+}
+
+impl std::fmt::Display for ProfileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProfileError::Read(err) => write!(f, "read plugins.json: {err}"),
+            ProfileError::Parse(err) => write!(f, "parse plugins.json: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for ProfileError {}
+
+/// The profile file name inside the data dir.
+pub const PROFILE_FILE_NAME: &str = "plugins.json";
+
+impl PluginProfile {
+    /// Loads `<data_dir>/plugins.json`; a missing file yields the default
+    /// profile, a malformed one is an error.
+    pub fn load(data_dir: &str) -> Result<Self, ProfileError> {
+        let path = Path::new(data_dir).join(PROFILE_FILE_NAME);
+        let raw = match std::fs::read(&path) {
+            Ok(raw) => raw,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self::default());
+            }
+            Err(err) => return Err(ProfileError::Read(err)),
+        };
+        serde_json::from_slice(&raw).map_err(ProfileError::Parse)
+    }
+
+    /// True when the profile explicitly disables `id`.
+    fn explicitly_disabled(&self, id: &str) -> bool {
+        self.disabled.iter().any(|d| d == id)
+            || self
+                .entries
+                .get(id)
+                .and_then(|entry| entry.enabled)
+                .is_some_and(|enabled| !enabled)
+    }
+
+    /// The plugin-scoped config object for `id` (empty when absent).
+    #[must_use]
+    pub fn config_for(&self, id: &str) -> serde_json::Map<String, serde_json::Value> {
+        self.entries
+            .get(id)
+            .map(|entry| entry.config.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// Resolved status of one plugin in the assembly.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginStatus {
+    pub id: String,
+    pub summary: String,
+    /// Where the plugin comes from; `builtin` until tier-2 providers ship.
+    pub source: String,
+    pub enabled: bool,
+    /// Why the plugin is disabled; absent when enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub provides: Vec<String>,
+    pub requires: Vec<String>,
+}
+
+/// The full assembly decision record: one entry per known plugin in build
+/// order, plus warnings for profile entries that matched nothing.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssemblyReport {
+    pub plugins: Vec<PluginStatus>,
+    pub warnings: Vec<String>,
+}
+
+impl AssemblyReport {
+    /// True when `id` resolved enabled.
+    #[must_use]
+    pub fn enabled(&self, id: &str) -> bool {
+        self.plugins.iter().any(|p| p.id == id && p.enabled)
+    }
+}
+
+/// Resolves the effective enablement of `descriptors` (in declared order)
+/// under `profile`. A plugin is disabled either explicitly by the profile or
+/// transitively when any of its `requires` resolved disabled; the reason
+/// records which. Profile ids that match no descriptor become warnings.
+#[must_use]
+pub fn resolve(descriptors: &[PluginDescriptor], profile: &PluginProfile) -> AssemblyReport {
+    let known: HashSet<&str> = descriptors.iter().map(|d| d.id).collect();
+    let mut warnings = Vec::new();
+    for id in &profile.disabled {
+        if !known.contains(id.as_str()) {
+            warnings.push(format!("profile disables unknown plugin `{id}`"));
+        }
+    }
+    for id in profile.entries.keys() {
+        if !known.contains(id.as_str()) {
+            warnings.push(format!("profile configures unknown plugin `{id}`"));
+        }
+    }
+
+    let mut enabled: HashMap<&str, bool> = HashMap::new();
+    let mut plugins = Vec::with_capacity(descriptors.len());
+    for desc in descriptors {
+        let mut reason = None;
+        if profile.explicitly_disabled(desc.id) {
+            reason = Some("disabled by profile".to_string());
+        } else {
+            for req in desc.requires {
+                // Dependencies are declared before dependents; a forward or
+                // unknown reference is a descriptor bug surfaced as disabled.
+                match enabled.get(req) {
+                    Some(true) => {}
+                    Some(false) => {
+                        reason = Some(format!("requires disabled plugin `{req}`"));
+                        break;
+                    }
+                    None => {
+                        reason = Some(format!("requires unknown plugin `{req}`"));
+                        break;
+                    }
+                }
+            }
+        }
+        let is_enabled = reason.is_none();
+        enabled.insert(desc.id, is_enabled);
+        plugins.push(PluginStatus {
+            id: desc.id.to_string(),
+            summary: desc.summary.to_string(),
+            source: "builtin".to_string(),
+            enabled: is_enabled,
+            reason,
+            provides: desc.provides.iter().map(ToString::to_string).collect(),
+            requires: desc.requires.iter().map(ToString::to_string).collect(),
+        });
+    }
+    AssemblyReport { plugins, warnings }
+}
+
+/// Typed seam registry: assembly-time sharing of intermediates between
+/// plugins, keyed by type. Values are stored as-is (no Send/Sync bound —
+/// assembly is single-threaded); consumers get clones.
+#[derive(Default)]
+pub struct SeamMap {
+    map: HashMap<TypeId, Box<dyn Any>>,
+}
+
+impl SeamMap {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Registers `value` under its type, replacing any previous value.
+    pub fn put<T: 'static>(&mut self, value: T) {
+        self.map.insert(TypeId::of::<T>(), Box::new(value));
+    }
+
+    /// A clone of the registered `T`, if any plugin provided one.
+    #[must_use]
+    pub fn get<T: Clone + 'static>(&self) -> Option<T> {
+        self.map
+            .get(&TypeId::of::<T>())
+            .and_then(|boxed| boxed.downcast_ref::<T>())
+            .cloned()
+    }
+
+    #[must_use]
+    pub fn contains<T: 'static>(&self) -> bool {
+        self.map.contains_key(&TypeId::of::<T>())
+    }
+}
+
+/// Outcome of one hook handler in a waterfall run.
+pub enum HookOutcome {
+    /// Pass the (possibly mutated) payload to the next handler.
+    Continue,
+    /// Stop the waterfall and veto the action with a reason.
+    Halt(String),
+}
+
+/// One interception handler. Handlers run in registration order and may
+/// mutate the payload before the next handler sees it.
+pub trait Hook: Send + Sync {
+    fn handle(&self, payload: &mut serde_json::Value) -> HookOutcome;
+}
+
+/// Result of running a hook point.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HookRunResult {
+    /// `Some((plugin_id, reason))` when a handler halted the waterfall.
+    pub halted: Option<(String, String)>,
+    /// Number of handlers that ran (including the halting one).
+    pub ran: usize,
+}
+
+impl HookRunResult {
+    #[must_use]
+    pub fn allowed(&self) -> bool {
+        self.halted.is_none()
+    }
+}
+
+/// Waterfall hook bus. Points are string-named (`agent/pre-step`,
+/// `tools/pre-execute`, ...); registration order per point is run order.
+#[derive(Default)]
+pub struct HookBus {
+    handlers: parking_lot::RwLock<HashMap<String, Vec<(String, Arc<dyn Hook>)>>>,
+}
+
+impl HookBus {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Registers `hook` for `point`, attributed to `plugin_id`.
+    pub fn register(&self, point: &str, plugin_id: &str, hook: Arc<dyn Hook>) {
+        self.handlers
+            .write()
+            .entry(point.to_string())
+            .or_default()
+            .push((plugin_id.to_string(), hook));
+    }
+
+    /// Runs the waterfall for `point` over `payload`. Handlers mutate the
+    /// payload in order; a [`HookOutcome::Halt`] stops the run.
+    pub fn run(&self, point: &str, payload: &mut serde_json::Value) -> HookRunResult {
+        let handlers = {
+            let guard = self.handlers.read();
+            guard.get(point).cloned().unwrap_or_default()
+        };
+        let mut ran = 0;
+        for (plugin_id, hook) in handlers {
+            ran += 1;
+            if let HookOutcome::Halt(reason) = hook.handle(payload) {
+                return HookRunResult { halted: Some((plugin_id, reason)), ran };
+            }
+        }
+        HookRunResult { halted: None, ran }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const A: PluginDescriptor = PluginDescriptor {
+        id: "a",
+        summary: "base",
+        provides: &["a-svc"],
+        requires: &[],
+    };
+    const B: PluginDescriptor = PluginDescriptor {
+        id: "b",
+        summary: "depends on a",
+        provides: &[],
+        requires: &["a"],
+    };
+    const C: PluginDescriptor = PluginDescriptor {
+        id: "c",
+        summary: "depends on b",
+        provides: &[],
+        requires: &["b"],
+    };
+
+    #[test]
+    fn default_profile_enables_everything() {
+        let report = resolve(&[A, B, C], &PluginProfile::default());
+        assert!(report.plugins.iter().all(|p| p.enabled));
+        assert!(report.warnings.is_empty());
+        assert!(report.enabled("a") && report.enabled("b") && report.enabled("c"));
+    }
+
+    #[test]
+    fn explicit_disable_cascades_to_dependents() {
+        let profile = PluginProfile {
+            disabled: vec!["a".to_string()],
+            ..Default::default()
+        };
+        let report = resolve(&[A, B, C], &profile);
+        assert!(!report.enabled("a"));
+        assert_eq!(
+            report.plugins[0].reason.as_deref(),
+            Some("disabled by profile")
+        );
+        assert!(!report.enabled("b"));
+        assert_eq!(
+            report.plugins[1].reason.as_deref(),
+            Some("requires disabled plugin `a`")
+        );
+        assert!(!report.enabled("c"));
+        assert_eq!(
+            report.plugins[2].reason.as_deref(),
+            Some("requires disabled plugin `b`")
+        );
+    }
+
+    #[test]
+    fn entry_enabled_false_disables_and_unknown_ids_warn() {
+        let mut entries = BTreeMap::new();
+        entries.insert(
+            "b".to_string(),
+            PluginEntry { enabled: Some(false), config: serde_json::Map::new() },
+        );
+        entries.insert("nope".to_string(), PluginEntry::default());
+        let profile = PluginProfile {
+            disabled: vec!["ghost".to_string()],
+            entries,
+        };
+        let report = resolve(&[A, B, C], &profile);
+        assert!(report.enabled("a"));
+        assert!(!report.enabled("b"));
+        assert!(!report.enabled("c"));
+        assert_eq!(report.warnings.len(), 2, "ghost + nope warned: {:?}", report.warnings);
+    }
+
+    #[test]
+    fn unknown_requirement_is_disabled_not_a_panic() {
+        const BROKEN: PluginDescriptor = PluginDescriptor {
+            id: "broken",
+            summary: "forward dep",
+            provides: &[],
+            requires: &["later"],
+        };
+        let report = resolve(&[BROKEN], &PluginProfile::default());
+        assert!(!report.enabled("broken"));
+        assert_eq!(
+            report.plugins[0].reason.as_deref(),
+            Some("requires unknown plugin `later`")
+        );
+    }
+
+    #[test]
+    fn profile_load_missing_default_and_malformed_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let data_dir = dir.path().to_string_lossy().into_owned();
+        let profile = PluginProfile::load(&data_dir).expect("missing file is default");
+        assert_eq!(profile, PluginProfile::default());
+
+        std::fs::write(dir.path().join(PROFILE_FILE_NAME), b"{not json").expect("write");
+        assert!(matches!(
+            PluginProfile::load(&data_dir),
+            Err(ProfileError::Parse(_))
+        ));
+
+        std::fs::write(
+            dir.path().join(PROFILE_FILE_NAME),
+            serde_json::json!({
+                "disabled": ["channel-discord"],
+                "entries": { "memory": { "enabled": true, "config": { "k": 1 } } }
+            })
+            .to_string(),
+        )
+        .expect("write");
+        let profile = PluginProfile::load(&data_dir).expect("well-formed profile");
+        assert!(profile.explicitly_disabled("channel-discord"));
+        assert!(!profile.explicitly_disabled("memory"));
+        assert_eq!(
+            profile.config_for("memory").get("k"),
+            Some(&serde_json::json!(1))
+        );
+    }
+
+    #[test]
+    fn seam_map_round_trip() {
+        #[derive(Clone, PartialEq, Debug)]
+        struct Marker(u32);
+        let mut seams = SeamMap::new();
+        assert!(!seams.contains::<Marker>());
+        seams.put(Marker(7));
+        assert!(seams.contains::<Marker>());
+        assert_eq!(seams.get::<Marker>(), Some(Marker(7)));
+        assert_eq!(seams.get::<String>(), None);
+    }
+
+    #[test]
+    fn hook_bus_waterfall_mutates_in_order_and_halts() {
+        struct Add(&'static str);
+        impl Hook for Add {
+            fn handle(&self, payload: &mut serde_json::Value) -> HookOutcome {
+                let list = payload.as_array_mut().expect("array payload");
+                list.push(serde_json::json!(self.0));
+                HookOutcome::Continue
+            }
+        }
+        struct Veto;
+        impl Hook for Veto {
+            fn handle(&self, _payload: &mut serde_json::Value) -> HookOutcome {
+                HookOutcome::Halt("policy says no".to_string())
+            }
+        }
+
+        let bus = HookBus::new();
+        bus.register("tools/pre-execute", "p1", Arc::new(Add("first")));
+        bus.register("tools/pre-execute", "p2", Arc::new(Add("second")));
+        let mut payload = serde_json::json!([]);
+        let result = bus.run("tools/pre-execute", &mut payload);
+        assert!(result.allowed());
+        assert_eq!(result.ran, 2);
+        assert_eq!(payload, serde_json::json!(["first", "second"]));
+
+        bus.register("tools/pre-execute", "p3", Arc::new(Veto));
+        bus.register("tools/pre-execute", "p4", Arc::new(Add("never")));
+        let mut payload = serde_json::json!([]);
+        let result = bus.run("tools/pre-execute", &mut payload);
+        assert_eq!(
+            result.halted,
+            Some(("p3".to_string(), "policy says no".to_string()))
+        );
+        assert_eq!(result.ran, 3, "halt stops the waterfall before p4");
+        assert_eq!(payload, serde_json::json!(["first", "second"]));
+
+        // Unregistered point: no handlers, allowed.
+        let mut payload = serde_json::json!({});
+        let result = bus.run("agent/pre-step", &mut payload);
+        assert!(result.allowed());
+        assert_eq!(result.ran, 0);
+    }
+}

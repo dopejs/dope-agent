@@ -138,13 +138,34 @@ TencentDB-Agent-Memory (layered L0-L3 + governed asset envelope), specs
       (atoms without verifiable evidence are discarded)
 - [x] Schema-inventory row for `memory_assets` (tenant-partitioned)
 
-## Roadmaps 79-82 (specs 059-062) — designed, next in sequence
+## Agent Pluginization Program — planning flow: direct design docs
 
-- [x] Specs 059-062 authored and aligned to the design root
-- [ ] 79 context engineering (assembly pipeline, loadout, budgets,
-      AssemblyRecord, symbolic compression, opt-in dispatch integration)
-- [ ] 80 knowledge retrieval (BM25+vector+RRF, assets-as-tools)
-- [ ] 81 agent-managed skills; 82 audited self-improvement
+Spec numbering retired 2026-08-17 (operator); plan of record is
+[`../harness/plugin-architecture.md`](../harness/plugin-architecture.md).
+Pluginization precedes all further capability work.
+
+- [x] Phase 1 — plugin kernel + builtin assembly (complete 2026-08-17):
+      `dope-plugin` crate (descriptors, profile-driven resolution with
+      transitive disable + warnings, `<data_dir>/plugins.json`, SeamMap,
+      waterfall HookBus); trust-boundary kernel carved out (store/bus/
+      identity/auth/policy/secrets/audit, not disableable); every other
+      subsystem re-expressed as one of 31 builtin plugins with declared
+      `requires` edges; channel plugins gate serve-time runtime
+      construction; `GET /v1/plugins` report + profile/report schemas +
+      contract tests + SDK `listPlugins()`; behavior-identical under the
+      default profile
+- [ ] Phase 2 — hookable agent loop: turn/step flow with
+      `agent/pre-step` / `tools/pre-execute` / `tools/post` / `turn/end`
+      hook points; append-only session log with `derive_messages`
+      projection ("model-visible = logged")
+- [ ] Phase 3 — out-of-process plugin providers: manifest schema, catalog
+      `kind=plugin`, lifecycle over adapter RPC / capability supervision /
+      MCP
+- [ ] Session/context management as plugins (`personal-session`,
+      `im-thread-session`) — after phase 2
+- [ ] Knowledge retrieval (BM25+vector+RRF, assets-as-tools) — after the
+      session-strategy slice
+- [ ] Agent-managed skills; audited self-improvement — sequence tail
 
 ## Working Rule
 

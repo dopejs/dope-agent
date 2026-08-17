@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/plugins-report.schema.json",
+  "title": "PluginsReport",
+  "description": "GET /v1/plugins response: the boot-time plugin assembly report in build order.",
+  "type": "object",
+  "required": ["plugins", "warnings"],
+  "additionalProperties": false,
+  "properties": {
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "summary", "source", "enabled", "provides", "requires"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "summary": { "type": "string" },
+          "source": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "reason": { "type": "string" },
+          "provides": { "type": "array", "items": { "type": "string" } },
+          "requires": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

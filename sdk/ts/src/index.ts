@@ -3129,6 +3129,28 @@ export type LaunchGateDecision = { result: "ship" | "no_ship"; reasons?: string[
 
 
 // ---------------------------------------------------------------------------
+// Plugin assembly (agent pluginization, phase 1)
+// ---------------------------------------------------------------------------
+
+export interface PluginStatusResource {
+  id: string;
+  summary: string;
+  /** Where the plugin comes from; "builtin" until out-of-process providers ship. */
+  source: string;
+  enabled: boolean;
+  /** Why the plugin is disabled; absent when enabled. */
+  reason?: string;
+  provides: string[];
+  requires: string[];
+}
+
+/** GET /v1/plugins — the boot-time plugin assembly report. */
+export interface PluginsReport {
+  plugins: PluginStatusResource[];
+  warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Memory plane (Roadmap 78, spec 058)
 // ---------------------------------------------------------------------------
 
@@ -4277,6 +4299,10 @@ export class DopeClient {
 
   async consolidateMemory(input?: { tenantId?: string; trigger?: string }, tenantOptions?: TenantRequestOptions): Promise<MemoryConsolidationRun> {
     return this.requestJSON<MemoryConsolidationRun>("/v1/memory/consolidate", { method: "POST", body: input ?? {}, tenant: tenantOptions });
+  }
+
+  async listPlugins(tenantOptions?: TenantRequestOptions): Promise<PluginsReport> {
+    return this.requestJSON<PluginsReport>("/v1/plugins", { tenant: tenantOptions });
   }
 
   async listRoutines(tenantOptions?: TenantRequestOptions): Promise<{ items: RoutineResource[] }> {
