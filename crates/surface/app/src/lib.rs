@@ -1323,6 +1323,57 @@ mod tests {
         app.close();
     }
 
+    /// Symbolic compression: an oversized non-frame message externalizes to
+    /// an L0 memory ref (full content preserved) and the window keeps a
+    /// preview plus the citation; the current query is never externalized.
+    #[tokio::test]
+    async fn context_plugin_externalizes_oversized_content() {
+        let config = test_config();
+        let app = App::new(config).expect("build app");
+        let hooks = app.state.hooks.as_ref().expect("hook bus");
+        let big = "log line ".repeat(1200); // > 8000 chars
+        let mut payload = serde_json::json!({
+            "tenantId": "",
+            "threadId": "thr_refs",
+            "sourceKind": "chat",
+            "provider": "echo",
+            "model": "",
+            "messages": [
+                { "role": "system", "content": "frame" },
+                { "role": "user", "content": big },
+                { "role": "user", "content": "current query" }
+            ]
+        });
+        let outcome = hooks.run(dope_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
+        assert!(outcome.allowed());
+        let messages = payload["messages"].as_array().expect("messages");
+        let externalized = messages
+            .iter()
+            .find(|m| m["content"].as_str().is_some_and(|c| c.contains("[externalized:")))
+            .expect("oversized message externalized");
+        assert!(
+            externalized["content"].as_str().unwrap().len() < 500,
+            "window keeps only the preview + citation"
+        );
+        assert_eq!(
+            messages.last().unwrap()["content"], "current query",
+            "current query untouched"
+        );
+        let assets = app
+            .state
+            .store
+            .lock()
+            .list_all_memory_assets()
+            .expect("list assets");
+        let asset = assets
+            .iter()
+            .find(|asset| asset.title == "context_ref")
+            .expect("ref asset persisted");
+        assert!(asset.content.len() > 8000, "full content preserved in the ref");
+        assert!(asset.source_links.iter().any(|l| l.id == "thr_refs"));
+        app.close();
+    }
+
     /// The session-strategy builtin registers at chat/pre-dispatch and
     /// shapes an over-budget window with the operator's plugins.json
     /// config: frame preserved, oldest history elided behind a marker,

@@ -40,6 +40,9 @@ pub struct ContextConfig {
     pub memory_budget_chars: usize,
     /// Character budget for query-time recall of L1 atoms.
     pub retrieval_budget_chars: usize,
+    /// Non-system messages longer than this externalize to a memory ref
+    /// (symbolic compression); 0 uses the default.
+    pub ref_threshold_chars: usize,
 }
 
 /// Default memory bootstrap budget (chars of asset content).
@@ -48,6 +51,8 @@ pub const DEFAULT_MEMORY_BUDGET_CHARS: usize = 4000;
 pub const DEFAULT_RETRIEVAL_BUDGET_CHARS: usize = 2000;
 /// Maximum scored candidates considered per retrieval pass.
 pub const RETRIEVAL_MAX_CANDIDATES: usize = 8;
+/// Default externalization threshold for oversized message content.
+pub const DEFAULT_REF_THRESHOLD_CHARS: usize = 8000;
 
 impl ContextConfig {
     #[must_use]
@@ -65,6 +70,15 @@ impl ContextConfig {
             self.retrieval_budget_chars
         } else {
             DEFAULT_RETRIEVAL_BUDGET_CHARS
+        }
+    }
+
+    #[must_use]
+    pub fn ref_threshold(&self) -> usize {
+        if self.ref_threshold_chars > 0 {
+            self.ref_threshold_chars
+        } else {
+            DEFAULT_REF_THRESHOLD_CHARS
         }
     }
 }

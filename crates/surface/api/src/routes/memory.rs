@@ -204,6 +204,15 @@ fn finish_mutation(
 // chat/connector/workflow families and the app scheduler tick call these.
 // ---------------------------------------------------------------------------
 
+/// Persists + publishes + projects one manager-created asset (the
+/// full-content capture path for context refs, which must not go through
+/// capture_l0's excerpt truncation).
+pub fn persist_capture(state: &AppState, asset: &memory::MemoryAsset) {
+    if let Err(err) = finish_mutation(state, "memory.asset_written", asset) {
+        eprintln!("memory: persist capture failed: {err:?}");
+    }
+}
+
 /// Fire-and-forget L0 capture + turn bookkeeping. Content is a bounded
 /// excerpt (truth stays behind the source links). Returns Some((asset id,
 /// extraction due)) on success; failures log and return None — capture

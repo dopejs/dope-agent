@@ -684,6 +684,68 @@ impl dope_plugin::Hook for ContextHook {
             .unwrap_or_default()
             .to_string();
 
+        // Symbolic compression: oversized non-frame messages externalize to
+        // an L0 memory ref (full content preserved, thread source link) and
+        // the window keeps a preview plus the citation — token cost drops,
+        // the evidence path stays (GET /v1/memory/assets/{id}). The last
+        // user message (the current query) is never externalized, and
+        // without a thread there is no evidence link, so nothing changes.
+        let thread_id_for_refs = payload
+            .get("threadId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if !thread_id_for_refs.is_empty() {
+            let threshold = self.config.ref_threshold();
+            if let Some(messages) = payload.get_mut("messages").and_then(Value::as_array_mut) {
+                let last_user_idx = messages
+                    .iter()
+                    .rposition(|m| m.get("role").and_then(Value::as_str) == Some("user"));
+                for (idx, message) in messages.iter_mut().enumerate() {
+                    if Some(idx) == last_user_idx {
+                        continue;
+                    }
+                    let role = message.get("role").and_then(Value::as_str).unwrap_or_default();
+                    if role == "system" {
+                        continue;
+                    }
+                    let Some(content) = message.get("content").and_then(Value::as_str) else {
+                        continue;
+                    };
+                    if content.len() <= threshold {
+                        continue;
+                    }
+                    let created = memory.create(dope_memory::CreateAssetInput {
+                        kind: dope_memory::AssetKind::ChatMemory,
+                        layer: dope_memory::MemoryLayer::L0Ref,
+                        tenant_id: tenant_id.clone(),
+                        owner: dope_memory::Actor {
+                            kind: dope_memory::ActorKind::System,
+                            id: "context".to_string(),
+                        },
+                        visibility: dope_memory::Visibility::Private,
+                        title: "context_ref".to_string(),
+                        content: content.to_string(),
+                        source_links: vec![dope_memory::SourceLink {
+                            kind: dope_memory::SourceKind::Thread,
+                            id: thread_id_for_refs.clone(),
+                            ..dope_memory::SourceLink::default()
+                        }],
+                        ..dope_memory::CreateAssetInput::default()
+                    });
+                    if let Ok((asset, _)) = created {
+                        dope_api::routes::memory::persist_capture(state, &asset);
+                        let preview: String = content.chars().take(200).collect();
+                        message["content"] = Value::String(format!(
+                            "{preview}… [externalized: full content at Memory[l0_ref {}]]",
+                            asset.asset_id
+                        ));
+                    }
+                }
+            }
+        }
+
         let agent_profile_id = payload
             .get("agentProfileId")
             .and_then(Value::as_str)

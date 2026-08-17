@@ -210,10 +210,22 @@ Pluginization precedes all further capability work.
       BM25>0 OR cosine≥0.25; closes the CJK gap (character overlap
       recalls what word tokens miss); a neural embedding provider
       replaces the default through the seam without touching the fusion
+- [x] Binding-aware loadout (complete 2026-08-17): chat/pre-dispatch
+      payload carries agentProfileId; `agent`-visibility assets inject
+      only when their bindings contain the active profile id (fail
+      closed, recorded as excluded/visibility) — bootstrap and retrieval
+      corpora alike
+- [x] Symbolic compression (complete 2026-08-17): non-frame messages
+      over `refThresholdChars` (default 8000) externalize to a
+      full-content L0 ref (thread source link, persisted + published +
+      projected via persist_capture); the window keeps a 200-char
+      preview plus the `Memory[l0_ref …]` citation; the current query is
+      never externalized; threadless turns skip (no evidence link)
 - [ ] Context later slices: neural embedding provider behind the
-      Embedder seam, symbolic tool-log compression + lookup tool,
-      binding-aware loadouts, dedicated assembly-record read API if
-      event queries prove insufficient
+      Embedder seam (operator decision on provider), dedicated
+      assembly-record read API if event queries prove insufficient
+- [ ] Daemon update check + prebuilt-binary installer — post-first-tag
+      by design (no published release to check against until v0.1.0)
 - [x] Session compression-to-memory (complete 2026-08-17): an elided
       span is captured as an L0 ref (thread source link, bounded
       excerpt, owner system:session-strategy) through the governed
