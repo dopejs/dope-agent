@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/create-memory-asset.request.schema.json",
+  "title": "CreateMemoryAssetRequest",
+  "type": "object",
+  "required": ["owner"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "type": "string", "enum": ["chat_memory", "skill", "wiki", "code_graph"] },
+    "layer": { "type": "string", "enum": ["l0_ref", "l1", "l2", "l3"] },
+    "tenantId": { "type": "string" },
+    "owner": { "$ref": "memory-asset-resource.schema.json#/$defs/actor" },
+    "visibility": { "type": "string", "enum": ["private", "team", "restricted", "agent"] },
+    "atomType": { "type": "string", "enum": ["fact", "preference", "constraint", "event", "decision", "reference"] },
+    "title": { "type": "string" },
+    "content": { "type": "string" },
+    "memberAssetIds": { "type": "array", "items": { "type": "string" } },
+    "sourceLinks": { "type": "array", "items": { "$ref": "memory-asset-resource.schema.json#/$defs/sourceLink" } },
+    "retentionClass": { "type": "string" },
+    "bindings": { "type": "array", "items": { "type": "string" } },
+    "supersedesAssetId": { "type": "string" }
+  }
+}

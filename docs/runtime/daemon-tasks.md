@@ -106,7 +106,7 @@ Residual (tracked under Roadmap 75): per-handler tenant-context integration
 - [ ] `LaunchGateEvidence` assembled; `POST /v1/release/launch-gate` executed
 - [ ] Ship / no-ship decision recorded with evidence index location
 
-## Roadmap 78: Memory Plane Foundation (spec 058) — in progress
+## Roadmap 78: Memory Plane Foundation (spec 058) — complete 2026-08-17
 
 Gate opened by operator decision 2026-08-17; design root is
 TencentDB-Agent-Memory (layered L0-L3 + governed asset envelope), specs
@@ -125,13 +125,18 @@ TencentDB-Agent-Memory (layered L0-L3 + governed asset envelope), specs
       approve/reject/revoke, visibility gate, capture, manual consolidate)
       with events (`memory.*`), tenant-context override, and the white-box
       Markdown projection under `<data_dir>/memory/`; behavioral tests
-- [ ] Schemas under `schemas/api/` + contract tests; SDK methods;
-      operator-shell read surface
-- [ ] Phase 2 write-path activation (spec 058): capture hooks (chat turn
-      settle / ingress accept / workflow terminal), scheduler trigger
-      wiring (turn/idle/retention), LLM-dispatch-backed Consolidator with
-      invented-citation dropping, operator-shell review queue
-- [ ] Schema-inventory row for `memory_assets` (tenant-partitioned)
+- [x] Schemas under `schemas/api/` (memory-asset-resource,
+      create-memory-asset.request, memory-consolidation-run) + contract
+      tests; SDK memory methods + tests; operator-shell Memory section
+      (assets view + pending-review queue with approve/reject)
+- [x] Phase 2 write-path activation (spec 058): capture hooks live at chat
+      turn settle, connector ingress accept, and workflow terminal
+      (fire-and-forget); turn-trigger consolidation runs off the reply path
+      on the blocking pool; the 60s app tick sweeps idle triggers and
+      retention; the LLM-dispatch-backed Consolidator extracts L1/L2/L3
+      over the daemon's default provider with invented citations dropped
+      (atoms without verifiable evidence are discarded)
+- [x] Schema-inventory row for `memory_assets` (tenant-partitioned)
 
 ## Roadmaps 79-82 (specs 059-062) — designed, next in sequence
 

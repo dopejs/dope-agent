@@ -956,9 +956,46 @@ fn advance_workflow_execution(
         workflow = orchestration::reconcile_status(workflow, Utc::now());
         persist_workflow_detail(state, &workflow).map_err(ApiError::from_store)?;
         if !progressed {
+            capture_terminal_workflow_memory(state, &workflow);
             return Ok(workflow);
         }
     }
+}
+
+/// Spec 058 phase 2 W1: terminal workflows capture one L0 memory ref so task
+/// outcomes are extractable evidence (fire-and-forget).
+fn capture_terminal_workflow_memory(state: &AppState, workflow: &orchestration::Workflow) {
+    if !matches!(
+        workflow.status,
+        orchestration::WorkflowStatus::Completed
+            | orchestration::WorkflowStatus::Failed
+            | orchestration::WorkflowStatus::Cancelled
+    ) {
+        return;
+    }
+    let text = format!(
+        "workflow {} ({}) finished with status {}",
+        workflow.workflow_id,
+        workflow.goal,
+        workflow.status.as_str()
+    );
+    let _ = super::memory::capture_l0(
+        state,
+        "",
+        dope_memory::Actor {
+            kind: dope_memory::ActorKind::System,
+            id: "workflow".to_string(),
+        },
+        "workflow_result",
+        &text,
+        vec![
+            dope_memory::SourceLink {
+                kind: dope_memory::SourceKind::Run,
+                id: workflow.run_id.clone(),
+                ..dope_memory::SourceLink::default()
+            },
+        ],
+    );
 }
 
 /// Starts one Ready workflow step: creates the runtime step (Planning →

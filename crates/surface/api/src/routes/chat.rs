@@ -115,9 +115,65 @@ pub async fn handle_chat_query(
             } else {
                 StatusCode::OK
             };
+            capture_memory_turn(&state, tenant.as_ref().map(|e| &e.0.0), &request, &execution.result);
             (status, Json(build_chat_query_response(&execution.result))).into_response()
         }
         Err(err) => llm_prepare_error(&err).into_response(),
+    }
+}
+
+/// Spec 058 phase 2 W1: capture the settled chat turn as an L0 memory ref
+/// (fire-and-forget) and, when the turn trigger fires, run consolidation off
+/// the reply path.
+fn capture_memory_turn(
+    state: &AppState,
+    tenant: Option<&dope_identity::TenantContext>,
+    request: &ChatQueryRequest,
+    result: &QueryResult,
+) {
+    let tenant_id = tenant
+        .map(|tc| tc.tenant_id.trim().to_string())
+        .unwrap_or_default();
+    let mut links = Vec::new();
+    if !result.thread_id.trim().is_empty() {
+        links.push(dope_memory::SourceLink {
+            kind: dope_memory::SourceKind::Thread,
+            id: result.thread_id.clone(),
+            ..dope_memory::SourceLink::default()
+        });
+    }
+    if !result.dispatch.dispatch_id.trim().is_empty() {
+        links.push(dope_memory::SourceLink {
+            kind: dope_memory::SourceKind::Run,
+            id: result.dispatch.dispatch_id.clone(),
+            ..dope_memory::SourceLink::default()
+        });
+    }
+    if links.is_empty() {
+        return;
+    }
+    let text = format!(
+        "user: {}\nassistant: {}",
+        request.query.trim(),
+        result.dispatch.output
+    );
+    let due = super::memory::capture_l0(
+        state,
+        &tenant_id,
+        dope_memory::Actor { kind: dope_memory::ActorKind::System, id: "chat".to_string() },
+        "chat_turn",
+        &text,
+        links,
+    );
+    if due == Some(true) {
+        let state = state.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Err(err) =
+                super::memory::execute_consolidation(&state, &tenant_id, "turns", None)
+            {
+                eprintln!("memory: turn-trigger consolidation failed: {err:?}");
+            }
+        });
     }
 }
 

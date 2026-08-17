@@ -354,9 +354,14 @@ impl App {
         routine_manager.with_store(store.clone());
         let routines = Arc::new(routine_manager);
 
-        // --- memory plane (Roadmap 78; policy + consolidator defaults, the
-        // model-backed consolidator lands with spec 059) ---
-        let memory = Arc::new(MemoryManager::new(env_scope, None, None, None));
+        // --- memory plane (Roadmap 78 phase 2: LLM-dispatch-backed
+        // consolidator; empty provider/model resolve to daemon defaults) ---
+        let memory = Arc::new(MemoryManager::new(
+            env_scope,
+            None,
+            Some(Arc::new(adapters::LlmConsolidator::new(llm.clone()))),
+            None,
+        ));
 
         // --- triage ---
         let mut triage_manager = TriageManager::new(env_scope);
@@ -591,6 +596,24 @@ impl App {
             if let Err(err) = reminders.start() {
                 eprintln!("[dope] reminders start failed: {err}");
             }
+        }
+        // Memory tick (spec 058 phase 2 W2/W5): every 60s run idle-triggered
+        // consolidation and the retention sweep. Blocking work (store + LLM
+        // consolidation) runs on the blocking pool.
+        if self.state.memory.is_some() {
+            let state = self.state.clone();
+            tokio::spawn(async move {
+                let mut ticker = tokio::time::interval(Duration::from_secs(60));
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    ticker.tick().await;
+                    let tick_state = state.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        dope_api::routes::memory::memory_tick(&tick_state);
+                    })
+                    .await;
+                }
+            });
         }
     }
 

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/memory-consolidation-run.schema.json",
+  "title": "MemoryConsolidationRun",
+  "type": "object",
+  "required": ["runId", "trigger", "extractedL1", "aggregatedL2", "distilledL3", "startedAt", "completedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "runId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "trigger": { "type": "string" },
+    "extractedL1": { "type": "integer" },
+    "aggregatedL2": { "type": "integer" },
+    "distilledL3": { "type": "integer" },
+    "pendingApproval": { "type": "integer" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "error": { "type": "string" }
+  }
+}

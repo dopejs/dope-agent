@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/memory-asset-resource.schema.json",
+  "title": "MemoryAssetResource",
+  "type": "object",
+  "required": ["assetId", "kind", "layer", "owner", "visibility", "status", "version", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "$defs": {
+    "actor": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["operator", "agent", "system"] },
+        "id": { "type": "string" }
+      }
+    },
+    "sourceLink": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["thread", "run", "event", "message", "asset", "external"] },
+        "id": { "type": "string" },
+        "excerpt": { "type": "string" }
+      }
+    }
+  },
+  "properties": {
+    "assetId": { "type": "string" },
+    "kind": { "type": "string", "enum": ["chat_memory", "skill", "wiki", "code_graph"] },
+    "layer": { "type": "string", "enum": ["l0_ref", "l1", "l2", "l3"] },
+    "tenantId": { "type": "string" },
+    "owner": { "$ref": "#/$defs/actor" },
+    "visibility": { "type": "string", "enum": ["private", "team", "restricted", "agent"] },
+    "status": { "type": "string", "enum": ["pending", "ready", "superseded", "revoked", "expired"] },
+    "version": { "type": "integer" },
+    "supersedesAssetId": { "type": "string" },
+    "bindings": { "type": "array", "items": { "type": "string" } },
+    "atomType": { "type": "string", "enum": ["fact", "preference", "constraint", "event", "decision", "reference"] },
+    "title": { "type": "string" },
+    "content": { "type": "string" },
+    "memberAssetIds": { "type": "array", "items": { "type": "string" } },
+    "sourceLinks": { "type": "array", "items": { "$ref": "#/$defs/sourceLink" } },
+    "retentionClass": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "readyAt": { "type": "string", "format": "date-time" },
+    "revokedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "statusReason": { "type": "string" }
+  }
+}

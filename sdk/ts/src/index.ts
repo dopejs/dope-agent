@@ -3127,6 +3127,94 @@ export type LaunchGateEvidenceInput = {
 };
 export type LaunchGateDecision = { result: "ship" | "no_ship"; reasons?: string[]; nonKnowledgeParityComplete: boolean; gateStatement: string };
 
+
+// ---------------------------------------------------------------------------
+// Memory plane (Roadmap 78, spec 058)
+// ---------------------------------------------------------------------------
+
+export type MemoryAssetKind = "chat_memory" | "skill" | "wiki" | "code_graph";
+export type MemoryLayer = "l0_ref" | "l1" | "l2" | "l3";
+export type MemoryVisibility = "private" | "team" | "restricted" | "agent";
+export type MemoryAssetStatus = "pending" | "ready" | "superseded" | "revoked" | "expired";
+export type MemoryAtomType = "fact" | "preference" | "constraint" | "event" | "decision" | "reference";
+
+export interface MemoryActor {
+  kind: "operator" | "agent" | "system";
+  id: string;
+}
+
+export interface MemorySourceLink {
+  kind: "thread" | "run" | "event" | "message" | "asset" | "external";
+  id: string;
+  excerpt?: string;
+}
+
+export interface MemoryAssetResource {
+  assetId: string;
+  kind: MemoryAssetKind;
+  layer: MemoryLayer;
+  tenantId?: string;
+  owner: MemoryActor;
+  visibility: MemoryVisibility;
+  status: MemoryAssetStatus;
+  version: number;
+  supersedesAssetId?: string;
+  bindings?: string[];
+  atomType?: MemoryAtomType;
+  title?: string;
+  content?: string;
+  memberAssetIds?: string[];
+  sourceLinks?: MemorySourceLink[];
+  retentionClass?: string;
+  createdAt: string;
+  updatedAt: string;
+  readyAt?: string;
+  revokedAt?: string;
+  expiresAt?: string;
+  statusReason?: string;
+}
+
+export interface CreateMemoryAssetInput {
+  kind?: MemoryAssetKind;
+  layer?: MemoryLayer;
+  tenantId?: string;
+  owner: MemoryActor;
+  visibility?: MemoryVisibility;
+  atomType?: MemoryAtomType;
+  title?: string;
+  content?: string;
+  memberAssetIds?: string[];
+  sourceLinks?: MemorySourceLink[];
+  retentionClass?: string;
+  bindings?: string[];
+  supersedesAssetId?: string;
+}
+
+export type MemoryWriteDecision = "accept" | { require_approval: { reason: string } } | { reject: { reason: string } };
+
+export interface MemoryAssetDecision {
+  asset: MemoryAssetResource;
+  decision: MemoryWriteDecision;
+}
+
+export interface MemoryDrilldownNode {
+  asset: MemoryAssetResource;
+  members?: MemoryDrilldownNode[];
+}
+
+export interface MemoryConsolidationRun {
+  runId: string;
+  tenantId?: string;
+  trigger: string;
+  extractedL1: number;
+  aggregatedL2: number;
+  distilledL3: number;
+  pendingApproval?: number;
+  startedAt: string;
+  completedAt: string;
+  error?: string;
+}
+
 export class DopeClientError extends Error {
   readonly status: number;
   readonly code?: string;
@@ -4143,6 +4231,53 @@ export class DopeClient {
   }
 
   // --- Roadmap 66: routine builder ---
+
+
+  // --- Memory plane (Roadmap 78, spec 058) ---
+
+  async listMemoryAssets(
+    query?: { layer?: MemoryLayer; status?: MemoryAssetStatus; tenantId?: string },
+    tenantOptions?: TenantRequestOptions,
+  ): Promise<{ items: MemoryAssetResource[] }> {
+    const params = new URLSearchParams();
+    if (query?.layer) params.set("layer", query.layer);
+    if (query?.status) params.set("status", query.status);
+    if (query?.tenantId) params.set("tenantId", query.tenantId);
+    const suffix = params.size > 0 ? `?${params.toString()}` : "";
+    return this.requestJSON<{ items: MemoryAssetResource[] }>(`/v1/memory/assets${suffix}`, { tenant: tenantOptions });
+  }
+
+  async createMemoryAsset(input: CreateMemoryAssetInput, tenantOptions?: TenantRequestOptions): Promise<MemoryAssetDecision> {
+    return this.requestJSON<MemoryAssetDecision>("/v1/memory/assets", { method: "POST", body: input, tenant: tenantOptions });
+  }
+
+  async getMemoryAsset(assetId: string, tenantOptions?: TenantRequestOptions): Promise<MemoryAssetResource> {
+    return this.requestJSON<MemoryAssetResource>(`/v1/memory/assets/${encodeURIComponent(assetId)}`, { tenant: tenantOptions });
+  }
+
+  async getMemoryDrilldown(assetId: string, tenantOptions?: TenantRequestOptions): Promise<MemoryDrilldownNode> {
+    return this.requestJSON<MemoryDrilldownNode>(`/v1/memory/assets/${encodeURIComponent(assetId)}/drilldown`, { tenant: tenantOptions });
+  }
+
+  async approveMemoryAsset(assetId: string, actor: MemoryActor, tenantOptions?: TenantRequestOptions): Promise<MemoryAssetResource> {
+    return this.requestJSON<MemoryAssetResource>(`/v1/memory/assets/${encodeURIComponent(assetId)}/approve`, { method: "POST", body: { actor }, tenant: tenantOptions });
+  }
+
+  async rejectMemoryAsset(assetId: string, reason: string, tenantOptions?: TenantRequestOptions): Promise<MemoryAssetResource> {
+    return this.requestJSON<MemoryAssetResource>(`/v1/memory/assets/${encodeURIComponent(assetId)}/reject`, { method: "POST", body: { reason }, tenant: tenantOptions });
+  }
+
+  async revokeMemoryAsset(assetId: string, reason: string, tenantOptions?: TenantRequestOptions): Promise<MemoryAssetResource> {
+    return this.requestJSON<MemoryAssetResource>(`/v1/memory/assets/${encodeURIComponent(assetId)}/revoke`, { method: "POST", body: { reason }, tenant: tenantOptions });
+  }
+
+  async setMemoryAssetVisibility(assetId: string, visibility: MemoryVisibility, tenantOptions?: TenantRequestOptions): Promise<MemoryAssetDecision> {
+    return this.requestJSON<MemoryAssetDecision>(`/v1/memory/assets/${encodeURIComponent(assetId)}/visibility`, { method: "POST", body: { visibility }, tenant: tenantOptions });
+  }
+
+  async consolidateMemory(input?: { tenantId?: string; trigger?: string }, tenantOptions?: TenantRequestOptions): Promise<MemoryConsolidationRun> {
+    return this.requestJSON<MemoryConsolidationRun>("/v1/memory/consolidate", { method: "POST", body: input ?? {}, tenant: tenantOptions });
+  }
 
   async listRoutines(tenantOptions?: TenantRequestOptions): Promise<{ items: RoutineResource[] }> {
     return this.requestJSON<{ items: RoutineResource[] }>("/v1/routines", { tenant: tenantOptions });

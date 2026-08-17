@@ -382,7 +382,7 @@ pub enum MemoryError {
 }
 
 fn new_id(prefix: &str) -> String {
-    let hex = uuid::Uuid::new_v4().simple().to_string();
+    let hex = uuid::Uuid::now_v7().simple().to_string();
     format!("{prefix}_{}", &hex[..16])
 }
 
@@ -456,6 +456,8 @@ impl Manager {
         if input.content.trim().is_empty() && input.layer != MemoryLayer::L0Ref {
             return Err(MemoryError::ContentRequired);
         }
+        // L0 refs may carry a bounded excerpt (the extraction window's text
+        // cache); truth stays in the conversation stores the links point at.
         match input.layer {
             MemoryLayer::L0Ref | MemoryLayer::L1 => {
                 if input.source_links.is_empty() {
@@ -871,6 +873,36 @@ impl Manager {
 
         run.completed_at = Utc::now();
         (run, written)
+    }
+
+    /// Tenants with consolidation bookkeeping (for the scheduler tick).
+    #[must_use]
+    pub fn tenants_with_bookkeeping(&self) -> Vec<String> {
+        self.inner.read().consolidation.keys().cloned().collect()
+    }
+
+    /// Builds the L0 window for a tenant: the captured L0 refs since the
+    /// last extraction pass, mapped to extractor items (each item's text is
+    /// the ref's bounded excerpt; its source link points at conversation
+    /// truth).
+    #[must_use]
+    pub fn pending_l0_window(&self, tenant_id: &str) -> Vec<L0Item> {
+        let since = self
+            .inner
+            .read()
+            .consolidation
+            .get(tenant_id.trim())
+            .and_then(|s| s.last_extract_at);
+        self.list(tenant_id, Some(MemoryLayer::L0Ref), Some(AssetStatus::Ready))
+            .into_iter()
+            .filter(|asset| since.map_or(true, |t| asset.created_at > t))
+            .map(|asset| L0Item {
+                source: asset.source_links.first().cloned().unwrap_or_default(),
+                role: asset.title.clone(),
+                text: asset.content.clone(),
+                occurred_at: asset.created_at,
+            })
+            .collect()
     }
 
     /// Applies retention expiry at `now`; returns the expired assets (for

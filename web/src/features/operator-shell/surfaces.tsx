@@ -10,6 +10,7 @@ import type {
   RoutineResource,
   TriagePolicyResource,
   WebhookEndpointResource,
+  MemoryAssetResource,
 } from "@dope/client";
 
 import type { ViewState } from "./navigation";
@@ -138,6 +139,54 @@ export function SupportEvidenceView({ bundles, state, reason }: { bundles: Evide
             <span className="surface__name">{b.scope.kind}{b.scope.ref ? `:${b.scope.ref}` : ""}</span>
             <span className={`status-chip status-${b.redactionStatus}`}>{b.redactionStatus}</span>
             <span className="surface__meta">{(b.sections ?? []).length} section(s)</span>
+          </li>
+        ))}
+      </ul>
+    </SurfacePanel>
+  );
+}
+
+export function MemoryAssetsView({ assets, state, reason }: { assets: MemoryAssetResource[]; state: ViewState; reason?: string }) {
+  return (
+    <SurfacePanel title="Memory assets" state={state} reason={reason}>
+      <ul className="surface__list">
+        {assets.map((a) => (
+          <li key={a.assetId} className="surface__row">
+            <span className="surface__name">{a.title || a.assetId}</span>
+            <span className="surface__meta">{a.layer}</span>
+            <span className="surface__meta">{a.status}</span>
+            <span className="surface__meta">{a.visibility}</span>
+            <span className="surface__meta">v{a.version}</span>
+          </li>
+        ))}
+      </ul>
+    </SurfacePanel>
+  );
+}
+
+export function MemoryReviewView({
+  pending,
+  state,
+  reason,
+  onApprove,
+  onReject,
+}: {
+  pending: MemoryAssetResource[];
+  state: ViewState;
+  reason?: string;
+  onApprove?: (assetId: string) => void;
+  onReject?: (assetId: string) => void;
+}) {
+  return (
+    <SurfacePanel title="Memory pending review" state={state} reason={reason}>
+      <ul className="surface__list">
+        {pending.map((a) => (
+          <li key={a.assetId} className="surface__row">
+            <span className="surface__name">{a.title || a.assetId}</span>
+            <span className="surface__meta">{a.owner.kind}:{a.owner.id}</span>
+            <span className="surface__meta">{a.statusReason ?? ""}</span>
+            <button type="button" onClick={() => onApprove?.(a.assetId)}>Approve</button>
+            <button type="button" onClick={() => onReject?.(a.assetId)}>Reject</button>
           </li>
         ))}
       </ul>

@@ -198,6 +198,119 @@ fn finish_mutation(
     Ok(())
 }
 
+
+// ---------------------------------------------------------------------------
+// Reusable write-path helpers (spec 058 phase 2): the capture hooks in the
+// chat/connector/workflow families and the app scheduler tick call these.
+// ---------------------------------------------------------------------------
+
+/// Fire-and-forget L0 capture + turn bookkeeping. Content is a bounded
+/// excerpt (truth stays behind the source links). Returns Some(extraction
+/// due) on success; failures log and return None — capture never fails the
+/// originating request.
+pub fn capture_l0(
+    state: &AppState,
+    tenant_id: &str,
+    owner: memory::Actor,
+    role: &str,
+    text: &str,
+    source_links: Vec<memory::SourceLink>,
+) -> Option<bool> {
+    let manager = state.memory.as_deref()?;
+    let excerpt: String = text.chars().take(2000).collect();
+    let result = manager.create(memory::CreateAssetInput {
+        kind: memory::AssetKind::ChatMemory,
+        layer: memory::MemoryLayer::L0Ref,
+        tenant_id: tenant_id.trim().to_string(),
+        owner,
+        visibility: memory::Visibility::Private,
+        title: role.trim().to_string(),
+        content: excerpt,
+        source_links,
+        ..memory::CreateAssetInput::default()
+    });
+    match result {
+        Ok((asset, _)) => {
+            if let Err(err) = finish_mutation(state, "memory.asset_written", &asset) {
+                eprintln!("memory: persist capture failed: {err:?}");
+            }
+            Some(manager.record_turn(tenant_id.trim(), chrono::Utc::now()))
+        }
+        Err(err) => {
+            eprintln!("memory: capture failed: {err}");
+            None
+        }
+    }
+}
+
+/// Runs one consolidation pass: builds the pending L0 window when none is
+/// supplied, refines through the Consolidator, persists + publishes every
+/// written asset, and records the run event.
+pub fn execute_consolidation(
+    state: &AppState,
+    tenant_id: &str,
+    trigger: &str,
+    window: Option<Vec<memory::L0Item>>,
+) -> Result<memory::ConsolidationRun, ApiError> {
+    let manager = manager(state)?;
+    let tenant_id = tenant_id.trim();
+    let window = match window {
+        Some(window) if !window.is_empty() => window,
+        _ => manager.pending_l0_window(tenant_id),
+    };
+    let (run, written) = manager.consolidate(tenant_id, trigger, &window);
+    for asset in &written {
+        finish_mutation(state, "memory.asset_written", asset)?;
+    }
+    let mut payload = serde_json::Map::new();
+    payload.insert("tenantId".to_string(), serde_json::json!(run.tenant_id));
+    payload.insert("trigger".to_string(), serde_json::json!(run.trigger));
+    payload.insert("extractedL1".to_string(), serde_json::json!(run.extracted_l1));
+    payload.insert("aggregatedL2".to_string(), serde_json::json!(run.aggregated_l2));
+    payload.insert("distilledL3".to_string(), serde_json::json!(run.distilled_l3));
+    if !run.error.is_empty() {
+        payload.insert("error".to_string(), serde_json::json!(run.error));
+    }
+    let event = events::Event {
+        category: "memory".to_string(),
+        name: "memory.consolidation_run".to_string(),
+        environment_scope: environment_scope_from_config(&state.config),
+        resource: events::Resource {
+            kind: "memory_consolidation".to_string(),
+            id: run.run_id.clone(),
+        },
+        payload,
+        ..events::Event::default()
+    };
+    let stored = state
+        .store
+        .lock()
+        .append_event(&event)
+        .map_err(ApiError::from_store)?;
+    state.event_bus.publish(stored);
+    Ok(run)
+}
+
+/// The 60s scheduler tick: idle-triggered consolidation for every tenant
+/// with bookkeeping, plus the retention sweep. Errors log; the tick never
+/// aborts.
+pub fn memory_tick(state: &AppState) {
+    let Some(manager) = state.memory.as_deref() else { return };
+    let now = chrono::Utc::now();
+    for tenant in manager.tenants_with_bookkeeping() {
+        if manager.idle_due(&tenant, now) {
+            if let Err(err) = execute_consolidation(state, &tenant, "idle", None) {
+                eprintln!("memory: idle consolidation for {tenant} failed: {err:?}");
+            }
+        }
+    }
+    for expired in manager.sweep_retention(now) {
+        if let Err(err) = finish_mutation(state, "memory.asset_expired", &expired) {
+            eprintln!("memory: retention persist failed: {err:?}");
+        }
+    }
+}
+
 /// GET /v1/memory/assets.
 async fn list_assets(
     State(state): State<AppState>,
@@ -362,44 +475,18 @@ async fn capture(
     ))
 }
 
-/// POST /v1/memory/consolidate — the manual consolidation trigger over an
-/// optional caller-supplied L0 window.
+/// POST /v1/memory/consolidate — the manual consolidation trigger; the L0
+/// window defaults to the tenant's pending captures.
 async fn consolidate(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     body: Bytes,
 ) -> Result<Json<memory::ConsolidationRun>, ApiError> {
     let request: ConsolidateRequest = decode_json_or_default(&body)?;
-    let manager = manager(&state)?;
     let tenant_id = context_tenant(&tenant, &request.tenant_id);
     let trigger = if request.trigger.trim().is_empty() { "manual" } else { request.trigger.trim() };
-    let (run, written) = manager.consolidate(&tenant_id, trigger, &request.window);
-    for asset in &written {
-        finish_mutation(&state, "memory.asset_written", asset)?;
-    }
-    let mut payload = serde_json::Map::new();
-    payload.insert("tenantId".to_string(), serde_json::json!(run.tenant_id));
-    payload.insert("trigger".to_string(), serde_json::json!(run.trigger));
-    payload.insert("extractedL1".to_string(), serde_json::json!(run.extracted_l1));
-    payload.insert("aggregatedL2".to_string(), serde_json::json!(run.aggregated_l2));
-    payload.insert("distilledL3".to_string(), serde_json::json!(run.distilled_l3));
-    let event = events::Event {
-        category: "memory".to_string(),
-        name: "memory.consolidation_run".to_string(),
-        environment_scope: environment_scope_from_config(&state.config),
-        resource: events::Resource {
-            kind: "memory_consolidation".to_string(),
-            id: run.run_id.clone(),
-        },
-        payload,
-        ..events::Event::default()
-    };
-    let stored = state
-        .store
-        .lock()
-        .append_event(&event)
-        .map_err(ApiError::from_store)?;
-    state.event_bus.publish(stored);
+    let window = if request.window.is_empty() { None } else { Some(request.window) };
+    let run = execute_consolidation(&state, &tenant_id, trigger, window)?;
     Ok(Json(run))
 }
 

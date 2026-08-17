@@ -1014,6 +1014,31 @@ async fn ingress_messages(
         },
     )?;
 
+    // Spec 058 phase 2 W1: capture the accepted inbound message as an L0
+    // memory ref (fire-and-forget; never affects the ingress outcome).
+    let _ = super::memory::capture_l0(
+        &state,
+        &tenant_id,
+        dope_memory::Actor {
+            kind: dope_memory::ActorKind::System,
+            id: format!("connector:{}", connector.connector_id),
+        },
+        "inbound_message",
+        &request.message.text,
+        vec![
+            dope_memory::SourceLink {
+                kind: dope_memory::SourceKind::Message,
+                id: message_record.delivery_id.clone(),
+                ..dope_memory::SourceLink::default()
+            },
+            dope_memory::SourceLink {
+                kind: dope_memory::SourceKind::Thread,
+                id: session.session_id.clone(),
+                ..dope_memory::SourceLink::default()
+            },
+        ],
+    );
+
     Ok((
         StatusCode::ACCEPTED,
         Json(ConnectorIngressMessageResponse {

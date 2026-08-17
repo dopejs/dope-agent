@@ -823,10 +823,13 @@ mod hook_wiring_tests {
     use dope_webhook::QuotaGate as _;
 
     fn test_store() -> Arc<parking_lot::Mutex<dope_store::SQLiteStore>> {
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "dope-hook-wiring-{}",
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+            "dope-hook-wiring-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
         ));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         Arc::new(parking_lot::Mutex::new(
             dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
@@ -1041,5 +1044,353 @@ impl dope_evidence::PermissionGate for EvidenceSupportPermissionGate {
             self.store.lock().get_tenant(tenant_id),
             Ok(Some(tenant)) if tenant.status == dope_identity::LifecycleStatus::Active
         )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Roadmap 78 phase 2: the LLM-dispatch-backed memory Consolidator.
+// ---------------------------------------------------------------------------
+
+/// Memory consolidator over the LLM dispatch plane (spec 058 phase 2).
+///
+/// Each trait method issues one internal system dispatch (empty provider/
+/// model resolve to the daemon defaults) whose prompt demands a strict JSON
+/// reply, then parses it tolerantly (first JSON array/object in the text).
+/// Guard: extracted source links must reference ids present in the supplied
+/// L0 window — invented citations are dropped and logged, so the extractor
+/// can never fabricate evidence.
+pub struct LlmConsolidator {
+    dispatcher: Arc<dope_llm::Dispatcher>,
+}
+
+impl LlmConsolidator {
+    #[must_use]
+    pub fn new(dispatcher: Arc<dope_llm::Dispatcher>) -> Self {
+        Self { dispatcher }
+    }
+
+    fn dispatch_json(&self, system: &str, user: String) -> Result<serde_json::Value, String> {
+        let input = dope_llm::CreateDispatchInput {
+            provider: String::new(),
+            model: String::new(),
+            messages: vec![
+                dope_llm::Message {
+                    role: dope_llm::MessageRole::System,
+                    content: system.to_string(),
+                },
+                dope_llm::Message { role: dope_llm::MessageRole::User, content: user },
+            ],
+            ..dope_llm::CreateDispatchInput::default()
+        };
+        let dispatch = self
+            .dispatcher
+            .prepare(input, false)
+            .map_err(|err| format!("prepare consolidation dispatch: {err}"))?;
+        let cancel = dope_llm::CancelToken::new();
+        let dispatcher = Arc::clone(&self.dispatcher);
+        let settled = consolidator_runtime()?
+            .block_on(async move { dispatcher.dispatch(dispatch, &cancel).await })
+            .map_err(|err| format!("consolidation dispatch failed: {err}"))?;
+        extract_json(&settled.output)
+            .ok_or_else(|| "consolidation reply carried no JSON".to_string())
+    }
+}
+
+/// The consolidator's IO runtime: consolidation always runs off the main
+/// runtime (spawn_blocking / scheduler tick threads), and the dispatcher's
+/// futures need a tokio reactor. One shared runtime, never dropped (a
+/// per-call runtime dropped from an async-adjacent context panics).
+fn consolidator_runtime() -> Result<Arc<tokio::runtime::Runtime>, String> {
+    static RUNTIME: std::sync::OnceLock<Arc<tokio::runtime::Runtime>> = std::sync::OnceLock::new();
+    if let Some(runtime) = RUNTIME.get() {
+        return Ok(Arc::clone(runtime));
+    }
+    let built = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_name("memory-consolidator")
+        .worker_threads(1)
+        .build()
+        .map_err(|err| format!("build consolidator runtime: {err}"))?;
+    let _ = RUNTIME.set(Arc::new(built));
+    Ok(Arc::clone(RUNTIME.get().expect("consolidator runtime initialized")))
+}
+
+/// Finds the first JSON array or object embedded in a model reply.
+fn extract_json(text: &str) -> Option<serde_json::Value> {
+    for open in ['[', '{'] {
+        if let Some(start) = text.find(open) {
+            let mut depth = 0i64;
+            let mut in_string = false;
+            let mut escaped = false;
+            for (offset, ch) in text[start..].char_indices() {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                match ch {
+                    '\\' if in_string => escaped = true,
+                    '"' => in_string = !in_string,
+                    '[' | '{' if !in_string => depth += 1,
+                    ']' | '}' if !in_string => {
+                        depth -= 1;
+                        if depth == 0 {
+                            let candidate = &text[start..=start + offset];
+                            if let Ok(value) = serde_json::from_str(candidate) {
+                                return Some(value);
+                            }
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    None
+}
+
+const EXTRACT_SYSTEM_PROMPT: &str = "You extract atomic memories from a conversation window. \
+Reply with ONLY a JSON array; each element: {\"atomType\": one of \
+fact|preference|constraint|event|decision|reference, \"title\": short label, \
+\"content\": one self-contained sentence, \"sourceIds\": array of the window item ids the \
+atom derives from}. Extract only what the window supports; no speculation.";
+
+const SCENARIO_SYSTEM_PROMPT: &str = "You aggregate memory atoms into scenario blocks. \
+Reply with ONLY a JSON array; each element: {\"title\": scenario label, \"content\": a concise \
+Markdown block summarizing the related atoms}. Merge related atoms; skip singletons that fit \
+no scenario.";
+
+const PERSONA_SYSTEM_PROMPT: &str = "You distill scenario blocks into one persona/core profile. \
+Reply with ONLY a JSON object: {\"title\": profile label, \"content\": a concise Markdown \
+profile of durable preferences, constraints, and patterns}.";
+
+impl dope_memory::Consolidator for LlmConsolidator {
+    fn extract_l1(
+        &self,
+        _tenant_id: &str,
+        window: &[dope_memory::L0Item],
+    ) -> Result<Vec<dope_memory::AtomDraft>, String> {
+        if window.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut lines = String::new();
+        for item in window {
+            lines.push_str(&format!(
+                "- id={} role={} at={}: {}\n",
+                item.source.id,
+                item.role,
+                item.occurred_at.to_rfc3339(),
+                item.text.replace('\n', " "),
+            ));
+        }
+        let value = self.dispatch_json(EXTRACT_SYSTEM_PROMPT, lines)?;
+        let Some(items) = value.as_array() else {
+            return Err("extraction reply is not a JSON array".to_string());
+        };
+        let known: std::collections::HashMap<&str, &dope_memory::SourceLink> =
+            window.iter().map(|item| (item.source.id.as_str(), &item.source)).collect();
+        let mut drafts = Vec::new();
+        for item in items {
+            let content = item["content"].as_str().unwrap_or("").trim().to_string();
+            if content.is_empty() {
+                continue;
+            }
+            let mut source_links = Vec::new();
+            if let Some(ids) = item["sourceIds"].as_array() {
+                for id in ids {
+                    let Some(id) = id.as_str() else { continue };
+                    match known.get(id) {
+                        Some(link) => source_links.push((*link).clone()),
+                        None => eprintln!(
+                            "memory: consolidator invented citation {id}; dropped"
+                        ),
+                    }
+                }
+            }
+            if source_links.is_empty() {
+                // No verifiable citation -> the atom is unattributable; drop
+                // it entirely (fail closed on evidence).
+                eprintln!("memory: dropping atom without verifiable citations: {content}");
+                continue;
+            }
+            let atom_type = item["atomType"]
+                .as_str()
+                .and_then(|raw| serde_json::from_value(serde_json::json!(raw)).ok());
+            drafts.push(dope_memory::AtomDraft {
+                atom_type,
+                title: item["title"].as_str().unwrap_or("").trim().to_string(),
+                content,
+                source_links,
+            });
+        }
+        Ok(drafts)
+    }
+
+    fn aggregate_l2(
+        &self,
+        _tenant_id: &str,
+        atoms: &[dope_memory::MemoryAsset],
+    ) -> Result<Vec<dope_memory::AtomDraft>, String> {
+        if atoms.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut lines = String::new();
+        for atom in atoms {
+            lines.push_str(&format!(
+                "- [{}] {}: {}\n",
+                atom.atom_type.map(|a| a.as_str()).unwrap_or("fact"),
+                atom.title,
+                atom.content.replace('\n', " "),
+            ));
+        }
+        let value = self.dispatch_json(SCENARIO_SYSTEM_PROMPT, lines)?;
+        let Some(items) = value.as_array() else {
+            return Err("scenario reply is not a JSON array".to_string());
+        };
+        Ok(items
+            .iter()
+            .filter_map(|item| {
+                let content = item["content"].as_str().unwrap_or("").trim().to_string();
+                if content.is_empty() {
+                    return None;
+                }
+                Some(dope_memory::AtomDraft {
+                    atom_type: None,
+                    title: item["title"].as_str().unwrap_or("").trim().to_string(),
+                    content,
+                    source_links: Vec::new(),
+                })
+            })
+            .collect())
+    }
+
+    fn distill_l3(
+        &self,
+        _tenant_id: &str,
+        scenarios: &[dope_memory::MemoryAsset],
+    ) -> Result<Option<dope_memory::AtomDraft>, String> {
+        if scenarios.is_empty() {
+            return Ok(None);
+        }
+        let mut lines = String::new();
+        for scenario in scenarios {
+            lines.push_str(&format!("## {}\n{}\n\n", scenario.title, scenario.content));
+        }
+        let value = self.dispatch_json(PERSONA_SYSTEM_PROMPT, lines)?;
+        let content = value["content"].as_str().unwrap_or("").trim().to_string();
+        if content.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(dope_memory::AtomDraft {
+            atom_type: None,
+            title: value["title"].as_str().unwrap_or("").trim().to_string(),
+            content,
+            source_links: Vec::new(),
+        }))
+    }
+}
+
+#[cfg(test)]
+mod consolidator_tests {
+    use super::*;
+    use dope_memory::Consolidator as _;
+
+    /// Provider stub replying with a fixed body regardless of input.
+    struct StaticProvider {
+        body: String,
+    }
+
+    impl dope_llm::Provider for StaticProvider {
+        fn name(&self) -> &str {
+            "static"
+        }
+
+        fn complete<'a>(
+            &'a self,
+            _request: dope_llm::ProviderRequest,
+        ) -> futures::future::BoxFuture<'a, Result<dope_llm::ProviderResponse, dope_llm::ProviderError>>
+        {
+            let body = self.body.clone();
+            Box::pin(async move {
+                Ok(dope_llm::ProviderResponse {
+                    output: body,
+                    finish_reason: "stop".to_string(),
+                    ..dope_llm::ProviderResponse::default()
+                })
+            })
+        }
+
+        fn stream<'a>(
+            &'a self,
+            request: dope_llm::ProviderRequest,
+            _emit: dope_llm::StreamEmitter<'a>,
+        ) -> futures::future::BoxFuture<'a, Result<dope_llm::ProviderResponse, dope_llm::ProviderError>>
+        {
+            self.complete(request)
+        }
+    }
+
+    fn consolidator_with(body: &str) -> LlmConsolidator {
+        let dispatcher = dope_llm::Dispatcher::new();
+        dispatcher.register_provider(Arc::new(StaticProvider { body: body.to_string() }));
+        let _ = dispatcher.set_default_provider("static");
+        dispatcher.set_default_model("static-1");
+        LlmConsolidator::new(Arc::new(dispatcher))
+    }
+
+    fn window() -> Vec<dope_memory::L0Item> {
+        vec![dope_memory::L0Item {
+            source: dope_memory::SourceLink {
+                kind: dope_memory::SourceKind::Message,
+                id: "msg_1".to_string(),
+                ..dope_memory::SourceLink::default()
+            },
+            role: "chat_turn".to_string(),
+            text: "user: 用中文回复我\nassistant: 好的".to_string(),
+            occurred_at: chrono::Utc::now(),
+        }]
+    }
+
+    #[test]
+    fn extracts_atoms_and_drops_invented_citations() {
+        let consolidator = consolidator_with(
+            r#"Here you go:
+[
+  {"atomType": "preference", "title": "语言偏好", "content": "The user prefers Chinese replies.", "sourceIds": ["msg_1"]},
+  {"atomType": "fact", "title": "invented", "content": "Fabricated claim.", "sourceIds": ["msg_999"]}
+]"#,
+        );
+        let drafts = consolidator.extract_l1("", &window()).expect("extract");
+        // The atom with only an invented citation is dropped entirely.
+        assert_eq!(drafts.len(), 1, "{drafts:?}");
+        assert_eq!(drafts[0].source_links[0].id, "msg_1");
+        assert_eq!(drafts[0].atom_type, Some(dope_memory::AtomType::Preference));
+    }
+
+    #[test]
+    fn scenario_and_persona_replies_parse() {
+        let consolidator =
+            consolidator_with(r#"[{"title": "沟通偏好", "content": "- prefers Chinese"}]"#);
+        let atoms = vec![dope_memory::MemoryAsset {
+            asset_id: "mem_a".to_string(),
+            content: "prefers Chinese".to_string(),
+            ..dope_memory::MemoryAsset::default()
+        }];
+        let scenarios = consolidator.aggregate_l2("", &atoms).expect("aggregate");
+        assert_eq!(scenarios.len(), 1);
+
+        let consolidator =
+            consolidator_with(r#"{"title": "画像", "content": "Chinese-speaking operator"}"#);
+        let persona = consolidator
+            .distill_l3("", &[dope_memory::MemoryAsset::default()])
+            .expect("distill");
+        assert!(persona.is_some());
+    }
+
+    #[test]
+    fn non_json_reply_is_an_error_not_a_panic() {
+        let consolidator = consolidator_with("I could not comply.");
+        let err = consolidator.extract_l1("", &window()).expect_err("must error");
+        assert!(err.contains("no JSON"), "{err}");
     }
 }
