@@ -3103,7 +3103,7 @@ export type WebhookCreateResult = { endpoint: WebhookEndpointResource; secret: s
 
 export type CatalogRequirement = { key: string; description?: string };
 export type CatalogVersion = { version: string; source: string; checksum?: string; requirements?: CatalogRequirement[]; publishedAt: string };
-export type CatalogItemResource = { itemId: string; kind: "skill" | "mcp_server" | "capability"; name: string; trustTier: "official" | "verified" | "community" | "untrusted"; permissions?: string[]; versions: CatalogVersion[]; createdAt: string; updatedAt: string };
+export type CatalogItemResource = { itemId: string; kind: "skill" | "mcp_server" | "capability" | "plugin"; name: string; trustTier: "official" | "verified" | "community" | "untrusted"; permissions?: string[]; versions: CatalogVersion[]; createdAt: string; updatedAt: string };
 export type CatalogEnablementResource = { tenantId?: string; itemId: string; state: "enabled" | "disabled"; activeVersion?: string; versionStack?: string[]; history: { action: string; version?: string; actor?: string; reason?: string; occurredAt: string }[]; updatedAt: string };
 export type CatalogInspection = { item: CatalogItemResource; enablement: CatalogEnablementResource; unmetRequirements?: CatalogRequirement[]; permissionSatisfied: boolean };
 

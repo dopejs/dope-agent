@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/plugin/plugin-manifest.schema.json",
+  "title": "PluginManifest",
+  "description": "manifest.json of one external (tier-2) plugin under <data_dir>/plugins/<dir>/. The plugin runs as a supervised stdio child speaking line-JSON: request {point, payload}, response {outcome, reason?, payload?}.",
+  "type": "object",
+  "required": ["id", "entry"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string" },
+    "summary": { "type": "string" },
+    "provides": { "type": "array", "items": { "type": "string" } },
+    "requires": { "type": "array", "items": { "type": "string" } },
+    "hooks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["point"],
+        "additionalProperties": false,
+        "properties": {
+          "point": { "type": "string", "minLength": 1 },
+          "onError": { "type": "string", "enum": ["continue", "veto"] }
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "required": ["kind", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["process"] },
+        "command": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "timeoutMs": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

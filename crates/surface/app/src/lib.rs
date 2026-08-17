@@ -39,6 +39,7 @@ use dope_telegram::{
 
 mod adapters;
 mod error;
+mod external;
 mod plugins;
 mod restore;
 
@@ -67,6 +68,9 @@ pub struct App {
     /// Constructed connector runtimes, filled by App::serve and closed by
     /// App::close. None until serve runs (or when all connectors are disabled).
     connector_runtimes: parking_lot::Mutex<Option<ConnectorRuntimes>>,
+    /// External plugin process hosts (tier 2): spawned lazily on first hook
+    /// call, killed in App::close.
+    external_plugins: Vec<Arc<external::ExternalProcessHost>>,
     closed: AtomicBool,
     /// Test-only visibility into the seam adapters wired by the builtin
     /// plugins: each manager keeps its hooks behind private fields, so the
@@ -203,8 +207,22 @@ impl App {
             adapters::WorkflowLauncherImpl::new(runtime),
         )));
 
-        // --- plugin assembly ---
-        let report = dope_plugin::resolve(&plugins::descriptors(), &profile);
+        // --- plugin assembly: builtins first, then discovered externals
+        // (tier 2). Third-party manifest problems are warnings, not boot
+        // failures.
+        let (external_plugins_found, external_warnings) =
+            dope_plugin::discover_external(&data_dir);
+        let mut specs: Vec<dope_plugin::PluginSpec> = plugins::descriptors()
+            .iter()
+            .map(dope_plugin::PluginSpec::from_descriptor)
+            .collect();
+        specs.extend(
+            external_plugins_found
+                .iter()
+                .map(|plugin| dope_plugin::PluginSpec::from_manifest(&plugin.manifest)),
+        );
+        let mut report = dope_plugin::resolve_specs(&specs, &profile);
+        report.warnings.extend(external_warnings);
         for warning in &report.warnings {
             eprintln!("[dope] plugin profile: {warning}");
         }
@@ -225,6 +243,32 @@ impl App {
                 (plugin.build)(&mut asm)?;
             }
         }
+        // Enabled external plugins get a lazy process host; their declared
+        // hooks proxy over stdio line-JSON with the manifest's error policy.
+        let mut external_hosts = Vec::new();
+        for plugin in &external_plugins_found {
+            if !report.enabled(plugin.manifest.id.trim()) {
+                continue;
+            }
+            let host = external::ExternalProcessHost::new(plugin);
+            if let Some(bus) = &asm.state.hooks {
+                for hook in &plugin.manifest.hooks {
+                    if hook.point.trim().is_empty() {
+                        continue;
+                    }
+                    bus.register(
+                        &hook.point,
+                        &host.id,
+                        Arc::new(external::ExternalHook::new(
+                            host.clone(),
+                            &hook.point,
+                            hook.on_error,
+                        )),
+                    );
+                }
+            }
+            external_hosts.push(host);
+        }
         asm.state.plugins = Some(Arc::new(report));
 
         // Restore persisted in-memory state from SQLite (Go
@@ -239,6 +283,7 @@ impl App {
             event_bus,
             connector_store,
             connector_runtimes: parking_lot::Mutex::new(None),
+            external_plugins: external_hosts,
             closed: AtomicBool::new(false),
             #[cfg(test)]
             wiring: asm.wiring,
@@ -394,6 +439,9 @@ impl App {
         }
         if let Some(sandboxes) = &self.state.sandboxes {
             let _ = sandboxes.close();
+        }
+        for host in &self.external_plugins {
+            host.close();
         }
         self.event_bus.close();
     }
@@ -1042,6 +1090,77 @@ mod tests {
                 .iter()
                 .any(|message| message.content == "hook window"),
             "persisted dispatch logs the hook-injected message"
+        );
+        app.close();
+    }
+
+    /// Tier-2 end to end: an external plugin installed under
+    /// <data_dir>/plugins/ appears in the assembly report as
+    /// source=external, its hooks register on the bus, and its process
+    /// rewrites the chat context through the real assembly.
+    #[test]
+    fn external_plugin_rewrites_chat_context_end_to_end() {
+        let config = test_config();
+        let plugin_dir =
+            std::path::Path::new(&config.data_dir).join("plugins/session-strategy");
+        std::fs::create_dir_all(&plugin_dir).expect("mkdir plugin");
+        std::fs::write(
+            plugin_dir.join("run.sh"),
+            concat!(
+                "while read line; do printf '%s\\n' '{\"outcome\":\"continue\",",
+                "\"payload\":{\"query\":\"rewritten by external\"}}'; done\n"
+            ),
+        )
+        .expect("write script");
+        std::fs::write(
+            plugin_dir.join("manifest.json"),
+            serde_json::json!({
+                "id": "session-strategy",
+                "summary": "external session window",
+                "requires": ["chat"],
+                "hooks": [{ "point": "chat/turn-start", "onError": "veto" }],
+                "entry": {
+                    "kind": "process",
+                    "command": "/bin/sh",
+                    "args": ["run.sh"],
+                    "timeoutMs": 3000
+                }
+            })
+            .to_string(),
+        )
+        .expect("write manifest");
+
+        let app = App::new(config).expect("build app");
+        let report = app.state.plugins.as_ref().expect("report");
+        let external = report
+            .plugins
+            .iter()
+            .find(|p| p.id == "session-strategy")
+            .expect("external plugin in report");
+        assert!(external.enabled);
+        assert_eq!(external.source, "external");
+        let hooks = app.state.hooks.as_ref().expect("hook bus");
+        assert!(
+            hooks
+                .registrations()
+                .contains(&("chat/turn-start".to_string(), "session-strategy".to_string())),
+            "external hook registered"
+        );
+
+        let chat = app.state.chat.clone().expect("chat wired");
+        let execution = chat
+            .query(
+                dope_chat::QueryInput {
+                    query: "original".to_string(),
+                    provider: "echo".to_string(),
+                    ..Default::default()
+                },
+                &dope_chat::CancellationToken::new(),
+            )
+            .expect("query through external plugin");
+        assert_eq!(
+            execution.result.query, "rewritten by external",
+            "the external process rewrote the turn's query"
         );
         app.close();
     }

@@ -44,6 +44,7 @@ string_enum!(ItemKind {
     Skill => "skill",
     McpServer => "mcp_server",
     Capability => "capability",
+    Plugin => "plugin",
 });
 
 string_enum!(TrustTier {
@@ -475,9 +476,12 @@ fn resolve_version(item: &CatalogItem, version: &str) -> Option<Version> {
     item.version(version)
 }
 
-/// Go `validKind`.
+/// Go `validKind` (extended with `plugin` for the pluginization program).
 fn valid_kind(kind: ItemKind) -> bool {
-    matches!(kind, ItemKind::Skill | ItemKind::McpServer | ItemKind::Capability)
+    matches!(
+        kind,
+        ItemKind::Skill | ItemKind::McpServer | ItemKind::Capability | ItemKind::Plugin
+    )
 }
 
 /// Go `time.Time.IsZero`: the Go zero time is 0001-01-01T00:00:00Z.

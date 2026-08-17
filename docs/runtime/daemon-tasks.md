@@ -163,9 +163,17 @@ Pluginization precedes all further capability work.
       vetoes are 403 + `chat.hook.vetoed` events; `/v1/plugins` reports
       hook registrations; session-log generalization folded into the
       session-strategy plugin slice
-- [ ] Phase 3 — out-of-process plugin providers: manifest schema, catalog
-      `kind=plugin`, lifecycle over adapter RPC / capability supervision /
-      MCP
+- [x] Phase 3 slice 1 — external hook plugins (complete 2026-08-17):
+      plugin-manifest schema; `<data_dir>/plugins/` discovery with
+      warnings-not-boot-failures for bad third-party manifests; externals
+      resolved through the same profile/requires machinery (`source:
+      external`, duplicates lose to builtins); lazy stdio line-JSON process
+      host with per-call timeout, one respawn, `onError: continue|veto`
+      per hook; kill on close; catalog `kind=plugin`; end-to-end test
+      (manifest on disk → chat turn rewritten by the child process)
+- [ ] Phase 3 later slices — seam (service) dispatch over adapter RPC
+      (serve a builtin seam from an external process) and catalog-driven
+      install/update into `<data_dir>/plugins/`
 - [ ] Session/context management as plugins (`personal-session`,
       `im-thread-session`) — after phase 2
 - [ ] Knowledge retrieval (BM25+vector+RRF, assets-as-tools) — after the

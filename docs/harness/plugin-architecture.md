@@ -113,12 +113,40 @@ is folded into the session-strategy plugin slice, which attaches at
 - `im-thread-session` — one context per thread for channels with native
   threading.
 
-## Phase 3 — out-of-process plugin providers
+## Phase 3 — out-of-process plugin providers (slice 1 shipped 2026-08-17)
 
-Plugin manifest schema under `schemas/plugin/`, catalog `kind=plugin`,
-install/lifecycle through the existing supervision planes, seam dispatch
-over adapter RPC. After this, the memory consolidator, retrieval scorers,
-or a whole channel can live outside the daemon process.
+Shipped: external plugins as supervised stdio processes attaching to the
+hook plane.
+
+- **Manifest** (`schemas/plugin/plugin-manifest.schema.json`): id/version/
+  summary/provides/requires, `hooks: [{point, onError}]`, `entry: {kind:
+  "process", command, args, timeoutMs}`.
+- **Discovery**: `<data_dir>/plugins/<dir>/manifest.json` at boot.
+  Third-party content never bricks the boot — malformed manifests are
+  skipped with report warnings (unlike the operator-owned profile, which
+  fails loudly). Externals resolve through the same profile/`requires`
+  machinery as builtins and appear in `/v1/plugins` as `source:
+  "external"`; duplicate ids lose to builtins.
+- **Process host**: lazy spawn on first hook call, line-JSON protocol
+  (request `{point, payload}` → response `{outcome, reason?, payload?}`,
+  response payload replaces the hook payload), per-call timeout, one
+  respawn per call for a dead child, killed on daemon close. Failures
+  follow the hook's `onError` policy: `continue` (availability first,
+  default) or `veto` (fail closed — policy plugins). An external process
+  can therefore rewrite context or veto turns exactly like a builtin hook
+  (proven end to end: manifest on disk → assembly → chat turn rewritten by
+  the child process).
+- **Catalog**: `kind=plugin` accepted by the install catalog.
+
+Trust note: manifests execute commands from the data dir — installing an
+external plugin is code execution with daemon privileges, same trust class
+as installing a capability. Distribution/verification flows ride the
+catalog trust tiers.
+
+Remaining for later slices: seam (service) dispatch over adapter RPC —
+serving a whole builtin seam (e.g. the memory consolidator or a channel)
+from an external process — and catalog-driven install/update lifecycle
+placing plugins into `<data_dir>/plugins/`.
 
 ## Sequencing
 

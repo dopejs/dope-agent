@@ -18,6 +18,14 @@ fn test_plugin_schemas_accept_canonical_fixtures() {
             r##"{}"##,
         ),
         (
+            r##"schemas/plugin/plugin-manifest.schema.json"##,
+            r##"{"id":"session-strategy","version":"0.1.0","summary":"external session window","requires":["chat"],"hooks":[{"point":"chat/pre-dispatch","onError":"veto"}],"entry":{"kind":"process","command":"/bin/sh","args":["run.sh"],"timeoutMs":2000}}"##,
+        ),
+        (
+            r##"schemas/plugin/plugin-manifest.schema.json"##,
+            r##"{"id":"observer","entry":{"kind":"process","command":"./observer"}}"##,
+        ),
+        (
             r##"schemas/api/plugins-report.schema.json"##,
             r##"{"plugins":[{"id":"llm","summary":"LLM dispatcher","source":"builtin","enabled":true,"provides":["llm.dispatcher"],"requires":[]},{"id":"webhooks","summary":"Webhook ingress","source":"builtin","enabled":false,"reason":"requires disabled plugin `billing`","provides":["webhooks.manager"],"requires":["billing"]}],"warnings":["profile disables unknown plugin `ghost`"]}"##,
         ),

@@ -119,6 +119,127 @@ impl PluginProfile {
     }
 }
 
+// ---------------------------------------------------------------------------
+// External plugin manifests (tier 2, pluginization phase 3)
+// ---------------------------------------------------------------------------
+
+/// Error policy for one external hook registration: what happens when the
+/// plugin process fails (spawn failure, protocol error, timeout).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookErrorPolicy {
+    /// Failure is logged and the turn proceeds (availability first).
+    #[default]
+    Continue,
+    /// Failure vetoes the action (fail closed — for policy plugins).
+    Veto,
+}
+
+/// One hook registration requested by an external plugin.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ManifestHook {
+    /// Hook point name (e.g. `chat/pre-dispatch`).
+    pub point: String,
+    pub on_error: HookErrorPolicy,
+}
+
+/// How the external plugin runs. `kind` is `process` (stdio line-JSON child)
+/// for now; adapter-rpc/MCP transports arrive later.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ManifestEntry {
+    pub kind: String,
+    pub command: String,
+    pub args: Vec<String>,
+    /// Per-hook-call timeout in milliseconds (default 2000).
+    pub timeout_ms: u64,
+}
+
+/// The `manifest.json` of one external plugin under
+/// `<data_dir>/plugins/<dir>/`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PluginManifest {
+    pub id: String,
+    pub version: String,
+    pub summary: String,
+    pub provides: Vec<String>,
+    pub requires: Vec<String>,
+    pub hooks: Vec<ManifestHook>,
+    pub entry: ManifestEntry,
+}
+
+/// A discovered external plugin: its manifest plus the directory it lives in
+/// (the working directory for its process).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternalPlugin {
+    pub manifest: PluginManifest,
+    pub dir: std::path::PathBuf,
+}
+
+/// The external plugins directory name inside the data dir.
+pub const EXTERNAL_PLUGINS_DIR: &str = "plugins";
+
+/// Scans `<data_dir>/plugins/*/manifest.json`. Third-party content must not
+/// brick the boot: malformed or invalid manifests are skipped with a warning
+/// instead of failing (unlike the operator-owned profile). Results are
+/// sorted by directory name for a stable assembly order.
+#[must_use]
+pub fn discover_external(data_dir: &str) -> (Vec<ExternalPlugin>, Vec<String>) {
+    let root = Path::new(data_dir).join(EXTERNAL_PLUGINS_DIR);
+    let mut plugins = Vec::new();
+    let mut warnings = Vec::new();
+    let entries = match std::fs::read_dir(&root) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return (plugins, warnings),
+        Err(err) => {
+            warnings.push(format!("read {}: {err}", root.display()));
+            return (plugins, warnings);
+        }
+    };
+    let mut dirs: Vec<std::path::PathBuf> = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .collect();
+    dirs.sort();
+    for dir in dirs {
+        let manifest_path = dir.join("manifest.json");
+        let raw = match std::fs::read(&manifest_path) {
+            Ok(raw) => raw,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                warnings.push(format!("{}: no manifest.json", dir.display()));
+                continue;
+            }
+            Err(err) => {
+                warnings.push(format!("{}: {err}", manifest_path.display()));
+                continue;
+            }
+        };
+        let manifest: PluginManifest = match serde_json::from_slice(&raw) {
+            Ok(manifest) => manifest,
+            Err(err) => {
+                warnings.push(format!("{}: {err}", manifest_path.display()));
+                continue;
+            }
+        };
+        if manifest.id.trim().is_empty() {
+            warnings.push(format!("{}: manifest id is required", manifest_path.display()));
+            continue;
+        }
+        if manifest.entry.kind != "process" || manifest.entry.command.trim().is_empty() {
+            warnings.push(format!(
+                "{}: entry must be kind=process with a command",
+                manifest_path.display()
+            ));
+            continue;
+        }
+        plugins.push(ExternalPlugin { manifest, dir });
+    }
+    (plugins, warnings)
+}
+
 /// Resolved status of one plugin in the assembly.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -152,13 +273,59 @@ impl AssemblyReport {
     }
 }
 
+/// A plugin to resolve: the owned, source-tagged form shared by builtin
+/// descriptors and discovered external manifests.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PluginSpec {
+    pub id: String,
+    pub summary: String,
+    /// `builtin` or `external`.
+    pub source: String,
+    pub provides: Vec<String>,
+    pub requires: Vec<String>,
+}
+
+impl PluginSpec {
+    #[must_use]
+    pub fn from_descriptor(desc: &PluginDescriptor) -> Self {
+        PluginSpec {
+            id: desc.id.to_string(),
+            summary: desc.summary.to_string(),
+            source: "builtin".to_string(),
+            provides: desc.provides.iter().map(ToString::to_string).collect(),
+            requires: desc.requires.iter().map(ToString::to_string).collect(),
+        }
+    }
+
+    #[must_use]
+    pub fn from_manifest(manifest: &PluginManifest) -> Self {
+        PluginSpec {
+            id: manifest.id.trim().to_string(),
+            summary: manifest.summary.clone(),
+            source: "external".to_string(),
+            provides: manifest.provides.clone(),
+            requires: manifest.requires.clone(),
+        }
+    }
+}
+
 /// Resolves the effective enablement of `descriptors` (in declared order)
-/// under `profile`. A plugin is disabled either explicitly by the profile or
-/// transitively when any of its `requires` resolved disabled; the reason
-/// records which. Profile ids that match no descriptor become warnings.
+/// under `profile`. See [`resolve_specs`].
 #[must_use]
 pub fn resolve(descriptors: &[PluginDescriptor], profile: &PluginProfile) -> AssemblyReport {
-    let known: HashSet<&str> = descriptors.iter().map(|d| d.id).collect();
+    let specs: Vec<PluginSpec> = descriptors.iter().map(PluginSpec::from_descriptor).collect();
+    resolve_specs(&specs, profile)
+}
+
+/// Resolves the effective enablement of `specs` (in declared order — builtins
+/// first, externals after, dependencies before dependents) under `profile`.
+/// A plugin is disabled either explicitly by the profile, transitively when
+/// any of its `requires` resolved disabled, or when its id duplicates an
+/// earlier spec; the reason records which. Profile ids that match no spec
+/// become warnings.
+#[must_use]
+pub fn resolve_specs(specs: &[PluginSpec], profile: &PluginProfile) -> AssemblyReport {
+    let known: HashSet<&str> = specs.iter().map(|s| s.id.as_str()).collect();
     let mut warnings = Vec::new();
     for id in &profile.disabled {
         if !known.contains(id.as_str()) {
@@ -172,16 +339,18 @@ pub fn resolve(descriptors: &[PluginDescriptor], profile: &PluginProfile) -> Ass
     }
 
     let mut enabled: HashMap<&str, bool> = HashMap::new();
-    let mut plugins = Vec::with_capacity(descriptors.len());
-    for desc in descriptors {
+    let mut plugins = Vec::with_capacity(specs.len());
+    for spec in specs {
         let mut reason = None;
-        if profile.explicitly_disabled(desc.id) {
+        if enabled.contains_key(spec.id.as_str()) {
+            reason = Some("duplicate plugin id".to_string());
+        } else if profile.explicitly_disabled(&spec.id) {
             reason = Some("disabled by profile".to_string());
         } else {
-            for req in desc.requires {
+            for req in &spec.requires {
                 // Dependencies are declared before dependents; a forward or
-                // unknown reference is a descriptor bug surfaced as disabled.
-                match enabled.get(req) {
+                // unknown reference is surfaced as disabled.
+                match enabled.get(req.as_str()) {
                     Some(true) => {}
                     Some(false) => {
                         reason = Some(format!("requires disabled plugin `{req}`"));
@@ -195,15 +364,17 @@ pub fn resolve(descriptors: &[PluginDescriptor], profile: &PluginProfile) -> Ass
             }
         }
         let is_enabled = reason.is_none();
-        enabled.insert(desc.id, is_enabled);
+        if !enabled.contains_key(spec.id.as_str()) {
+            enabled.insert(spec.id.as_str(), is_enabled);
+        }
         plugins.push(PluginStatus {
-            id: desc.id.to_string(),
-            summary: desc.summary.to_string(),
-            source: "builtin".to_string(),
+            id: spec.id.clone(),
+            summary: spec.summary.clone(),
+            source: spec.source.clone(),
             enabled: is_enabled,
             reason,
-            provides: desc.provides.iter().map(ToString::to_string).collect(),
-            requires: desc.requires.iter().map(ToString::to_string).collect(),
+            provides: spec.provides.clone(),
+            requires: spec.requires.clone(),
         });
     }
     AssemblyReport { plugins, warnings }
@@ -469,6 +640,88 @@ mod tests {
             profile.config_for("memory").get("k"),
             Some(&serde_json::json!(1))
         );
+    }
+
+    #[test]
+    fn discover_external_reads_valid_manifests_and_warns_on_bad_ones() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let data_dir = dir.path().to_string_lossy().into_owned();
+
+        // No plugins dir at all: empty, no warnings.
+        let (plugins, warnings) = discover_external(&data_dir);
+        assert!(plugins.is_empty() && warnings.is_empty());
+
+        let root = dir.path().join(EXTERNAL_PLUGINS_DIR);
+        // Valid plugin.
+        std::fs::create_dir_all(root.join("good")).expect("mkdir");
+        std::fs::write(
+            root.join("good/manifest.json"),
+            serde_json::json!({
+                "id": "session-strategy",
+                "summary": "external session window",
+                "requires": ["chat"],
+                "hooks": [{ "point": "chat/pre-dispatch", "onError": "veto" }],
+                "entry": { "kind": "process", "command": "/bin/sh", "args": ["run.sh"], "timeoutMs": 500 }
+            })
+            .to_string(),
+        )
+        .expect("write");
+        // Malformed JSON.
+        std::fs::create_dir_all(root.join("broken")).expect("mkdir");
+        std::fs::write(root.join("broken/manifest.json"), b"{nope").expect("write");
+        // Missing manifest.
+        std::fs::create_dir_all(root.join("empty")).expect("mkdir");
+        // Missing entry command.
+        std::fs::create_dir_all(root.join("no-entry")).expect("mkdir");
+        std::fs::write(
+            root.join("no-entry/manifest.json"),
+            serde_json::json!({ "id": "x", "entry": { "kind": "process" } }).to_string(),
+        )
+        .expect("write");
+
+        let (plugins, warnings) = discover_external(&data_dir);
+        assert_eq!(plugins.len(), 1, "only the valid manifest loads: {warnings:?}");
+        let plugin = &plugins[0];
+        assert_eq!(plugin.manifest.id, "session-strategy");
+        assert_eq!(plugin.manifest.hooks[0].on_error, HookErrorPolicy::Veto);
+        assert_eq!(plugin.manifest.entry.timeout_ms, 500);
+        assert_eq!(plugin.dir, root.join("good"));
+        assert_eq!(warnings.len(), 3, "broken + empty + no-entry warned: {warnings:?}");
+    }
+
+    #[test]
+    fn resolve_specs_handles_externals_and_duplicates() {
+        let specs = vec![
+            PluginSpec::from_descriptor(&A),
+            PluginSpec {
+                id: "ext".to_string(),
+                summary: "external".to_string(),
+                source: "external".to_string(),
+                provides: vec![],
+                requires: vec!["a".to_string()],
+            },
+            // Duplicate of a builtin id: disabled, builtin wins.
+            PluginSpec {
+                id: "a".to_string(),
+                summary: "impostor".to_string(),
+                source: "external".to_string(),
+                provides: vec![],
+                requires: vec![],
+            },
+        ];
+        let report = resolve_specs(&specs, &PluginProfile::default());
+        assert!(report.enabled("a") && report.enabled("ext"));
+        assert_eq!(report.plugins[1].source, "external");
+        assert!(!report.plugins[2].enabled);
+        assert_eq!(report.plugins[2].reason.as_deref(), Some("duplicate plugin id"));
+
+        // Disabling the builtin dependency cascades into the external.
+        let profile = PluginProfile {
+            disabled: vec!["a".to_string()],
+            ..Default::default()
+        };
+        let report = resolve_specs(&specs, &profile);
+        assert!(!report.enabled("ext"));
     }
 
     #[test]

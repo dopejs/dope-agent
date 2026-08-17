@@ -27,7 +27,7 @@
   },
   "properties": {
     "itemId": { "type": "string" },
-    "kind": { "type": "string", "enum": ["skill", "mcp_server", "capability"] },
+    "kind": { "type": "string", "enum": ["skill", "mcp_server", "capability", "plugin"] },
     "name": { "type": "string" },
     "trustTier": { "type": "string", "enum": ["official", "verified", "community", "untrusted"] },
     "permissions": { "type": "array", "items": { "type": "string" } },
