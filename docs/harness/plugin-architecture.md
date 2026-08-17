@@ -163,10 +163,19 @@ what memory the model saw for any dispatch. Because injection happens
 before the dispatch is prepared, the persisted dispatch record carries
 the bootstrap verbatim (model-visible = logged holds).
 
-Later slices: retrieval over the remaining budget (BM25+RRF), symbolic
-tool-log compression with a lookup tool, binding-aware loadouts
-(agent-visibility assets), and a dedicated assembly-record read API if
-event queries prove insufficient.
+Query-time retrieval (second slice, 2026-08-17): the turn's last user
+message recalls Ready L1 atoms through BM25 + recency rankers fused with
+reciprocal-rank fusion (k=60). Atoms with no lexical overlap are never
+recalled (recency alone cannot pull unrelated memory in); the top-8 fused
+candidates inject under `retrievalBudgetChars` (default 2000) as
+`Memory[l1 …] (recalled): …` system messages, merged into the same
+AssemblyRecord with `source: retrieval`. The tokenizer is language-naive
+(CJK splits coarsely on boundaries) — a vector ranker joins the fusion
+when an embedding provider lands, which is the designed third RRF input.
+
+Later slices: vector ranker, symbolic tool-log compression with a lookup
+tool, binding-aware loadouts (agent-visibility assets), and a dedicated
+assembly-record read API if event queries prove insufficient.
 
 ## Behavioral pluginization (shipped 2026-08-17)
 

@@ -381,9 +381,13 @@ pub enum MemoryError {
     InvalidVisibilityChange,
 }
 
+// The full v7 hex keeps ids time-sortable AND unique. Truncating to the
+// first 16 chars (as this once did) leaves ~12 random bits after the
+// millisecond timestamp, so assets created in the same millisecond — the
+// consolidator's batch writes, every test — collided and silently
+// overwrote each other.
 fn new_id(prefix: &str) -> String {
-    let hex = uuid::Uuid::now_v7().simple().to_string();
-    format!("{prefix}_{}", &hex[..16])
+    format!("{prefix}_{}", uuid::Uuid::now_v7().simple())
 }
 
 fn visibility_rank(v: Visibility) -> u8 {
@@ -439,12 +443,17 @@ impl Manager {
     }
 
     /// Boot restore (oldest-first so supersede chains replay in order).
+    /// Duplicate ids are collapsed (last write wins) — data written under
+    /// the truncated-id bug held colliding ids, and replaying them verbatim
+    /// would surface one asset multiple times in every listing.
     pub fn restore(&self, assets: Vec<MemoryAsset>) {
         let mut inner = self.inner.write();
         inner.by_id.clear();
         inner.ids.clear();
         for asset in assets {
-            inner.ids.push(asset.asset_id.clone());
+            if !inner.by_id.contains_key(&asset.asset_id) {
+                inner.ids.push(asset.asset_id.clone());
+            }
             inner.by_id.insert(asset.asset_id.clone(), asset);
         }
     }

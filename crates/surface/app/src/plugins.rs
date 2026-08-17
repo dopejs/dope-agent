@@ -651,6 +651,7 @@ impl ContextHook {
                     asset_id: asset.asset_id,
                     layer: asset.layer.as_str().to_string(),
                     reason: "visibility".to_string(),
+                    source: "bootstrap".to_string(),
                 }),
             }
         }
@@ -686,8 +687,55 @@ impl dope_plugin::Hook for ContextHook {
             dope_memory::MemoryLayer::L2,
             &mut visibility_excluded,
         ));
-        let (injected, mut record) = dope_context::assemble(&candidates, self.config.budget());
+        let (mut injected, mut record) = dope_context::assemble(&candidates, self.config.budget());
         record.excluded.extend(visibility_excluded);
+
+        // Query-time recall of L1 atoms (BM25 + recency, RRF fusion) over
+        // the retrieval budget. The query is the turn's last user message;
+        // atoms with no lexical overlap are never recalled.
+        let query = payload
+            .get("messages")
+            .and_then(Value::as_array)
+            .and_then(|messages| {
+                messages
+                    .iter()
+                    .rev()
+                    .find(|m| m.get("role").and_then(Value::as_str) == Some("user"))
+            })
+            .and_then(|m| m.get("content").and_then(Value::as_str))
+            .unwrap_or_default()
+            .to_string();
+        if !query.trim().is_empty() {
+            let mut atom_excluded = Vec::new();
+            let atoms = Self::bootstrap_layer(
+                memory,
+                &tenant_id,
+                dope_memory::MemoryLayer::L1,
+                &mut atom_excluded,
+            );
+            // Visibility-excluded atoms are only recorded when retrieval
+            // actually runs (they were candidates for this query's corpus).
+            record.excluded.extend(atom_excluded.into_iter().map(|mut item| {
+                item.source = "retrieval".to_string();
+                item
+            }));
+            let docs: Vec<dope_context::RetrievalDoc> = atoms
+                .into_iter()
+                .map(|asset| dope_context::RetrievalDoc {
+                    asset_id: asset.asset_id,
+                    title: asset.title,
+                    content: asset.content,
+                })
+                .collect();
+            dope_context::retrieve_and_assemble(
+                &query,
+                &docs,
+                self.config.retrieval_budget(),
+                &mut injected,
+                &mut record,
+            );
+        }
+
         if record.is_empty() {
             return dope_plugin::HookOutcome::Continue;
         }

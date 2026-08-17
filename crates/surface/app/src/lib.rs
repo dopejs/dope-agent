@@ -1217,7 +1217,7 @@ mod tests {
             "messages": [
                 { "role": "system", "content": "frame" },
                 { "role": "user", "content": "old history ".repeat(20) },
-                { "role": "user", "content": "current" }
+                { "role": "user", "content": "what language should replies use" }
             ]
         });
         let outcome = hooks.run(dope_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
@@ -1241,7 +1241,21 @@ mod tests {
         assert!(messages.iter().any(|m| m["content"]
             .as_str()
             .is_some_and(|c| c.contains("elided by the session-strategy"))));
-        assert_eq!(messages.last().unwrap()["content"], "current");
+        assert_eq!(
+            messages.last().unwrap()["content"],
+            "what language should replies use"
+        );
+        // Query-time recall: the L1 atom lexically matching the query is
+        // injected with its citation and the (recalled) marker.
+        let recalled = messages
+            .iter()
+            .find(|m| {
+                m["content"]
+                    .as_str()
+                    .is_some_and(|c| c.contains(&format!("Memory[l1 {}]", l1.asset_id)))
+            })
+            .unwrap_or_else(|| panic!("matching L1 atom recalled; messages: {messages:?}"));
+        assert!(recalled["content"].as_str().unwrap().contains("(recalled)"));
 
         // The assembly decision is recorded as a context.assembled event.
         let events = app
@@ -1255,6 +1269,15 @@ mod tests {
             .find(|e| e.name == "context.assembled")
             .expect("context.assembled event recorded");
         assert_eq!(assembled.payload["record"]["included"][0]["assetId"], asset.asset_id);
+        let record_included = assembled.payload["record"]["included"]
+            .as_array()
+            .expect("included array");
+        assert!(
+            record_included
+                .iter()
+                .any(|item| item["source"] == "retrieval" && item["assetId"] == l1.asset_id),
+            "retrieval inclusion recorded: {record_included:?}"
+        );
         app.close();
     }
 

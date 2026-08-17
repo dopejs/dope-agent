@@ -196,10 +196,17 @@ Pluginization precedes all further capability work.
       `context.assembled` event carries the AssemblyRecord (inclusions +
       excluded-with-reason); composition with session-strategy and
       external hooks proven by test
-- [ ] Context later slices: retrieval over the remaining budget
-      (BM25+RRF), symbolic tool-log compression + lookup tool,
-      binding-aware loadouts, dedicated assembly-record read API if
-      event queries prove insufficient
+- [x] Context retrieval slice (complete 2026-08-17): query-time recall of
+      Ready L1 atoms — BM25 (k1=1.2, b=0.75) + recency rankers fused with
+      RRF (k=60, zero-score atoms never recalled), top-8 candidates under
+      `retrievalBudgetChars` (default 2000), `(recalled)` citations,
+      merged into the AssemblyRecord as `source: retrieval`; exposed a
+      real memory-plane defect (truncated-v7 ids colliding within one
+      millisecond) — fixed at root with restore-time healing
+- [ ] Context later slices: vector ranker joining the RRF fusion (needs
+      an embedding provider), symbolic tool-log compression + lookup
+      tool, binding-aware loadouts, dedicated assembly-record read API
+      if event queries prove insufficient
 - [ ] Session-strategy later slices: compression-to-memory (elided spans
       → L2 summaries), explicit session-frame objects, channel-native
       thread segmentation
