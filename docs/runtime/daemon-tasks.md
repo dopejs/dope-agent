@@ -233,8 +233,20 @@ Pluginization precedes all further capability work.
       workflow captures now honor the due turn-trigger (consolidation off
       the request path); workflow captures remain tenantless by design
       (Workflow carries no tenant field — environment scope only)
-- [ ] Knowledge retrieval (BM25+vector+RRF, assets-as-tools) — after the
-      session-strategy slice
+- [x] ChatStore adapter closure (complete 2026-08-17): all 14 deferred
+      ChatStore methods now delegate to the native dope-store
+      implementations (`resolve_binding_selection` composes the store's
+      rule lookups + selectability checks through the
+      `dope_bindings::resolve_selection` precedence port with fail-closed
+      candidate precomputation; `list_handoff_links_for_thread` maps to
+      `list_handoff_links`) — tenant+thread chat on the real daemon
+      previously failed with "not ported" errors and now runs the full
+      profile/binding/continuity/handoff pipeline; real-SQLite
+      integration test round-trips continuity, profile selection, and
+      binding resolution, and the app e2e runs tenant-scoped chat
+- [ ] Knowledge retrieval remainder (retrieval query API, document
+      collections, memory tools via MCP) — after the session-strategy
+      slice
 - [ ] Agent-managed skills; audited self-improvement — sequence tail
 
 ## Working Rule

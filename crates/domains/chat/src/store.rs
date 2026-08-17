@@ -117,10 +117,11 @@ pub trait ChatStore: Send + Sync {
     ) -> Result<ContinuityPreview, String>;
 }
 
-/// Adapter for the `dope-store` SQLite store. The dispatch-persistence and
-/// event-append methods delegate to SQLite; every other method is not ported
-/// to `dope-store` yet and fails with a deferred error (see the module
-/// documentation).
+/// Adapter for the `dope-store` SQLite store: every ChatStore method
+/// delegates to the native dope-store implementation. `resolve_binding_selection`
+/// composes the store's channel/account rule lookups and selectability
+/// checks through `dope_bindings::resolve_selection` (the Go precedence
+/// port), preserving the fail-closed semantics.
 impl ChatStore for std::sync::Mutex<dope_store::SQLiteStore> {
     fn upsert_llm_dispatch(&self, dispatch: &Dispatch) -> Result<(), String> {
         self.lock().map_err(|_| "lock sqlite store".to_string())?.upsert_llm_dispatch(dispatch)
@@ -128,97 +129,185 @@ impl ChatStore for std::sync::Mutex<dope_store::SQLiteStore> {
     fn append_event(&self, event: &Event) -> Result<Event, String> {
         self.lock().map_err(|_| "lock sqlite store".to_string())?.append_event(event)
     }
-    fn list_setup_sessions(&self, _tenant_id: &str) -> Result<Vec<SetupSession>, String> {
-        Err(deferred("list_setup_sessions"))
+    fn list_setup_sessions(&self, tenant_id: &str) -> Result<Vec<SetupSession>, String> {
+        self.lock().map_err(|_| "lock sqlite store".to_string())?.list_setup_sessions(tenant_id)
     }
     fn active_agent_profile_selection(
         &self,
-        _tenant_id: &str,
+        tenant_id: &str,
     ) -> Result<Option<(AgentProfile, ActiveSelection)>, String> {
-        Err(deferred("active_agent_profile_selection"))
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            .active_agent_profile_selection(tenant_id)
     }
     fn record_runtime_profile_projection(
         &self,
-        _projection: &RuntimeProjection,
+        projection: &RuntimeProjection,
     ) -> Result<RuntimeProjection, String> {
-        Err(deferred("record_runtime_profile_projection"))
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            .record_runtime_profile_projection(projection.clone())
     }
     fn resolve_binding_selection(
         &self,
-        _params: &BindingResolutionParams,
+        params: &BindingResolutionParams,
     ) -> Result<EffectiveBindingSelection, String> {
-        Err(deferred("resolve_binding_selection"))
+        let guard = self.lock().map_err(|_| "lock sqlite store".to_string())?;
+        let tenant_id = params.tenant_id.trim();
+        let channel_binding =
+            guard.resolve_channel_binding(tenant_id, &params.channel_scope_ref)?;
+        let account_binding =
+            guard.resolve_account_binding(tenant_id, &params.account_scope_ref)?;
+        let tenant_default_workspace_id = guard
+            .ensure_default_workspace(tenant_id)
+            .map(|ws| ws.workspace_id)
+            .unwrap_or_default();
+
+        // The resolver's availability oracles only ever probe the candidate
+        // ids below; precompute their selectability so the closures own
+        // plain sets (the store guard is neither Send nor Sync).
+        let mut profile_candidates: Vec<String> = Vec::new();
+        let mut workspace_candidates: Vec<String> = vec![tenant_default_workspace_id.clone()];
+        profile_candidates.push(params.tenant_default_profile_id.clone());
+        for rule in [channel_binding.as_ref(), account_binding.as_ref()].into_iter().flatten() {
+            profile_candidates.push(rule.selected_profile_id.clone());
+            workspace_candidates.push(rule.selected_workspace_id.clone());
+        }
+        let mut selectable_profiles = std::collections::HashSet::new();
+        for id in profile_candidates {
+            let id = id.trim().to_string();
+            if !id.is_empty() && guard.is_profile_selectable(tenant_id, &id)? {
+                selectable_profiles.insert(id);
+            }
+        }
+        let mut selectable_workspaces = std::collections::HashSet::new();
+        for id in workspace_candidates {
+            let id = id.trim().to_string();
+            if !id.is_empty() && guard.is_workspace_selectable(tenant_id, &id)? {
+                selectable_workspaces.insert(id);
+            }
+        }
+        drop(guard);
+
+        let input = dope_bindings::ResolutionInput {
+            channel_binding,
+            account_binding,
+            tenant_default_profile_id: params.tenant_default_profile_id.clone(),
+            tenant_default_profile_version_id: params.tenant_default_profile_version_id.clone(),
+            tenant_default_workspace_id,
+            profile_available: Some(Box::new(move |id: &str| {
+                selectable_profiles.contains(id.trim())
+            })),
+            workspace_available: Some(Box::new(move |id: &str| {
+                selectable_workspaces.contains(id.trim())
+            })),
+        };
+        Ok(dope_bindings::resolve_selection(&input))
     }
     fn effective_capability_visibility(
         &self,
-        _tenant_id: &str,
-        _profile_id: &str,
-        _workspace_id: &str,
-        _capability_id: &str,
+        tenant_id: &str,
+        profile_id: &str,
+        workspace_id: &str,
+        capability_id: &str,
     ) -> Result<CapabilityDecision, String> {
-        Err(deferred("effective_capability_visibility"))
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            // The chat pipeline carries no scope-visibility limits (Go parity:
+            // the service call passes none; limits ride the bindings routes).
+            .effective_capability_visibility(tenant_id, profile_id, workspace_id, capability_id, &[])
     }
     fn record_runtime_binding_evidence(
         &self,
-        _evidence: &RuntimeBindingEvidence,
+        evidence: &RuntimeBindingEvidence,
     ) -> Result<RuntimeBindingEvidence, String> {
-        Err(deferred("record_runtime_binding_evidence"))
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            .record_runtime_binding_evidence(evidence.clone())
     }
     fn get_thread_for_tenant(
         &self,
-        _tenant_id: &str,
-        _thread_id: &str,
+        tenant_id: &str,
+        thread_id: &str,
     ) -> Result<Option<Thread>, String> {
-        Err(deferred("get_thread_for_tenant"))
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            .get_thread_for_tenant(tenant_id, thread_id)
     }
     fn list_continuity_turns(
         &self,
-        _query: &ContinuityLookupQuery,
+        query: &ContinuityLookupQuery,
     ) -> Result<Vec<ContinuityTurn>, String> {
-        Err(deferred("list_continuity_turns"))
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            .list_continuity_turns(&store_continuity_query(query))
     }
     fn list_continuity_turns_outside_session_segment(
         &self,
-        _query: &ContinuityLookupQuery,
+        query: &ContinuityLookupQuery,
     ) -> Result<Vec<ContinuityTurn>, String> {
-        Err(deferred("list_continuity_turns_outside_session_segment"))
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            .list_continuity_turns_outside_session_segment(&store_continuity_query(query))
     }
     fn list_handoff_links_for_thread(
         &self,
-        _tenant_id: &str,
-        _thread_id: &str,
-        _limit: i64,
+        tenant_id: &str,
+        thread_id: &str,
+        limit: i64,
     ) -> Result<Vec<HandoffLink>, String> {
-        Err(deferred("list_handoff_links_for_thread"))
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            .list_handoff_links(tenant_id, thread_id, limit)
     }
     fn list_handoff_source_references_for_link(
         &self,
-        _tenant_id: &str,
-        _link_id: &str,
+        tenant_id: &str,
+        link_id: &str,
     ) -> Result<Vec<HandoffSourceReference>, String> {
-        Err(deferred("list_handoff_source_references_for_link"))
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            .list_handoff_source_references_for_link(tenant_id, link_id)
     }
-    fn save_continuity_turn(&self, _turn: &ContinuityTurn) -> Result<ContinuityTurn, String> {
-        Err(deferred("save_continuity_turn"))
+    fn save_continuity_turn(&self, turn: &ContinuityTurn) -> Result<ContinuityTurn, String> {
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            .save_continuity_turn(turn)
     }
     fn mark_handoff_source_references_consumed(
         &self,
-        _tenant_id: &str,
-        _link_id: &str,
-        _response_turn_id: &str,
-        _now: DateTime<Utc>,
+        tenant_id: &str,
+        link_id: &str,
+        response_turn_id: &str,
+        now: DateTime<Utc>,
     ) -> Result<(), String> {
-        Err(deferred("mark_handoff_source_references_consumed"))
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            .mark_handoff_source_references_consumed(tenant_id, link_id, response_turn_id, Some(now))
     }
     fn save_continuity_preview(
         &self,
-        _preview: &ContinuityPreview,
-        _items: &[ContinuityPreviewItem],
+        preview: &ContinuityPreview,
+        items: &[ContinuityPreviewItem],
     ) -> Result<ContinuityPreview, String> {
-        Err(deferred("save_continuity_preview"))
+        // The store mutates item ids/order in place; the trait exposes an
+        // immutable slice, so hand it an owned copy.
+        let mut items = items.to_vec();
+        self.lock()
+            .map_err(|_| "lock sqlite store".to_string())?
+            .save_continuity_preview(preview.clone(), &mut items)
     }
 }
 
-fn deferred(name: &str) -> String {
-    format!("chat store method not ported to dope-store: {name}")
+/// Maps the chat-crate lookup query onto the store's own query struct.
+fn store_continuity_query(
+    query: &ContinuityLookupQuery,
+) -> dope_store::thread_continuity::ContinuityLookupQuery {
+    dope_store::thread_continuity::ContinuityLookupQuery {
+        tenant_id: query.tenant_id.clone(),
+        thread_id: query.thread_id.clone(),
+        session_segment_id: query.session_segment_id.clone(),
+        limit: query.limit,
+        now: query.now,
+    }
 }

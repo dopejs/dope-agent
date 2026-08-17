@@ -1566,23 +1566,74 @@ fn sqlite_store_adapter_ports_dispatch_and_defers_continuity() {
         .expect("found");
     assert_eq!(got, dispatch);
 
-    // The un-ported store surface fails explicitly instead of degrading.
+    // The full ChatStore surface now delegates to the native dope-store
+    // implementations: continuity round-trips against real SQLite.
+    // Continuity turns FK onto threads + segments: seed those first.
+    store
+        .upsert_thread(&Thread {
+            thread_id: "thr_adapter".to_string(),
+            tenant_id: "ten_adapter".to_string(),
+            lifecycle_state: dope_threads::LifecycleState::Active,
+            current_session_segment_id: "seg".to_string(),
+            source_kind: SourceKind::Chat,
+            source_summary: "adapter test".to_string(),
+            last_activity_at: now,
+            created_at: now,
+            updated_at: now,
+            retention_expires_at: None,
+            redaction_status: RedactionStatus::Redacted,
+        })
+        .expect("seed thread");
+    store
+        .upsert_thread_session_segment(&dope_threads::SessionSegment {
+            session_segment_id: "seg".to_string(),
+            thread_id: "thr_adapter".to_string(),
+            tenant_id: "ten_adapter".to_string(),
+            session_id: String::new(),
+            generation: 1,
+            state: "active".to_string(),
+            started_at: now,
+            ended_at: None,
+            last_active_at: now,
+            reset_from_session_segment_id: String::new(),
+            partial_evidence: false,
+        })
+        .expect("seed segment");
     let chat_store: &dyn ChatStore = &std::sync::Mutex::new(store);
-    let err = chat_store
-        .list_continuity_turns(&dope_chat::ContinuityLookupQuery::default())
-        .expect_err("deferred method errors");
-    assert!(err.contains("not ported to dope-store"), "{err}");
-    let err = chat_store
-        .save_continuity_turn(&continuity_turn(
-            "t",
-            "seg",
-            1,
-            ContinuityRole::User,
-            "x",
-            now,
-        ))
-        .expect_err("deferred method errors");
-    assert!(err.contains("save_continuity_turn"), "{err}");
+    let mut turn = continuity_turn("t", "seg", 1, ContinuityRole::User, "x", now);
+    turn.tenant_id = "ten_adapter".to_string();
+    turn.thread_id = "thr_adapter".to_string();
+    let saved = chat_store
+        .save_continuity_turn(&turn)
+        .expect("save continuity turn against real sqlite");
+    assert!(!saved.continuity_turn_id.is_empty());
+    let listed = chat_store
+        .list_continuity_turns(&dope_chat::ContinuityLookupQuery {
+            tenant_id: "ten_adapter".to_string(),
+            thread_id: "thr_adapter".to_string(),
+            session_segment_id: "seg".to_string(),
+            ..Default::default()
+        })
+        .expect("list continuity turns against real sqlite");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].continuity_turn_id, saved.continuity_turn_id);
+
+    // Profile selection resolves (the store seeds a default profile), and
+    // binding resolution composes through the precedence port.
+    let selection = chat_store
+        .active_agent_profile_selection("ten_adapter")
+        .expect("active profile selection");
+    assert!(selection.is_some(), "default profile seeded and selected");
+    let resolution = chat_store
+        .resolve_binding_selection(&dope_chat::BindingResolutionParams {
+            tenant_id: "ten_adapter".to_string(),
+            ..Default::default()
+        })
+        .expect("binding resolution");
+    // No bindings and no defaults on a fresh tenant: outcome is a
+    // deterministic non-panicking selection (exact outcome is the
+    // precedence port's business; the adapter just must not defer).
+    let _ = resolution;
 }
 
 // ------------------------------------------------------------------------

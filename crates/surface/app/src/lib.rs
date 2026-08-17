@@ -1108,6 +1108,9 @@ mod tests {
                 dope_chat::QueryInput {
                     query: "remember this fact".to_string(),
                     provider: "echo".to_string(),
+                    // Tenant-scoped chat exercises the full ChatStore
+                    // delegation (profile selection auto-seeds a default).
+                    tenant_id: "ten_hook".to_string(),
                     ..Default::default()
                 },
                 &dope_chat::CancellationToken::new(),
