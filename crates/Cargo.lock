@@ -868,6 +868,7 @@ dependencies = [
  "dope-config",
  "dope-events",
  "dope-llm",
+ "dope-plugin",
  "dope-profiles",
  "dope-providers",
  "dope-setupwizard",

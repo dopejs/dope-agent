@@ -3144,10 +3144,18 @@ export interface PluginStatusResource {
   requires: string[];
 }
 
+export interface PluginHookRegistration {
+  /** Hook point name, e.g. "chat/pre-dispatch". */
+  point: string;
+  pluginId: string;
+}
+
 /** GET /v1/plugins — the boot-time plugin assembly report. */
 export interface PluginsReport {
   plugins: PluginStatusResource[];
   warnings: string[];
+  /** Hook-bus registrations made during assembly. */
+  hooks?: PluginHookRegistration[];
 }
 
 // ---------------------------------------------------------------------------

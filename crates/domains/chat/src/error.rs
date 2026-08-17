@@ -61,6 +61,18 @@ pub enum ChatError {
     /// Sync/async bridge failures (per-call Tokio runtime).
     #[error("runtime bridge failed: {0}")]
     Runtime(String),
+    /// A hook handler vetoed the turn (pluginization phase 2). Carries the
+    /// hook point, the registering plugin id, and the handler's reason.
+    #[error("turn vetoed by plugin `{plugin_id}` at {point}: {reason}")]
+    HookVetoed {
+        point: String,
+        plugin_id: String,
+        reason: String,
+    },
+    /// A hook handler left the payload in a shape the pipeline cannot read
+    /// back (e.g. non-message objects in `messages`).
+    #[error("hook payload invalid at {point}: {reason}")]
+    HookPayload { point: String, reason: String },
 }
 
 impl ChatError {

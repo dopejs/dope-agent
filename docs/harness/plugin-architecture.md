@@ -83,14 +83,29 @@ plugin. Security posture outranks composability; this is a fixed decision.
   `schemas/plugin/plugin-profile.schema.json`,
   `schemas/api/plugins-report.schema.json`; SDK `listPlugins()`.
 
-## Phase 2 — hookable agent loop (next)
+## Phase 2 — hookable agent loop (shipped 2026-08-17)
 
-Restructure chat/dispatch into an explicit turn/step flow with hook points
-on the `HookBus` (`agent/pre-step`, `tools/pre-execute`, `tools/post`,
-`turn/end`), and establish the session-log invariant: context is **derived**
-from the append-only session record (a `derive_messages` projection), not
-accumulated ad hoc — anything model-visible is logged first. This is the
-seam the session-strategy plugins attach to:
+The chat pipeline (query and stream) now runs three kernel hook points:
+
+- `chat/turn-start` — before prompt assembly; hooks may rewrite the query
+  or halt (veto). Payload: `{tenantId, threadId, query, sourceKind}`.
+- `chat/pre-dispatch` — after full context assembly (skills, profile,
+  continuity), before the dispatch is prepared and persisted; hooks may
+  rewrite provider/model/messages or halt. **This ordering is the
+  "model-visible = logged" invariant**: the dispatch record is created
+  after the hooks run, so what is persisted is byte-identical to what the
+  provider receives (covered by tests at the service layer and end-to-end
+  through the real assembly).
+- `chat/turn-end` — after the dispatch settled and continuity was
+  persisted; observational (a halt only stops later handlers).
+
+A veto surfaces as `ChatError::HookVetoed` → HTTP 403 and is recorded as a
+`chat.hook.vetoed` event. `GET /v1/plugins` reports every hook registration
+(`hooks: [{point, pluginId}]`). Context already derives from persisted
+records (continuity turns render into messages per dispatch — the
+`derive_messages` shape); generalizing that log into a session-event model
+is folded into the session-strategy plugin slice, which attaches at
+`chat/pre-dispatch`:
 
 - `personal-session` — long-session policy: session frame (goal/
   constraints) never evicted, extraction-before-eviction into the memory

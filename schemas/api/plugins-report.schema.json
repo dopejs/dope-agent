@@ -27,6 +27,18 @@
     "warnings": {
       "type": "array",
       "items": { "type": "string" }
+    },
+    "hooks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["point", "pluginId"],
+        "additionalProperties": false,
+        "properties": {
+          "point": { "type": "string" },
+          "pluginId": { "type": "string" }
+        }
+      }
     }
   }
 }

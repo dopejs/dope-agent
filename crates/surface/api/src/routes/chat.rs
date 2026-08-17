@@ -462,7 +462,12 @@ fn llm_prepare_status_code(err: &ChatError) -> StatusCode {
 }
 
 /// ApiError for a prepare failure, carrying the Go `llmPrepareStatusCode`.
+/// A plugin hook veto (pluginization phase 2) is a policy decision, not a
+/// server fault: 403.
 fn llm_prepare_error(err: &ChatError) -> ApiError {
+    if matches!(err, ChatError::HookVetoed { .. }) {
+        return ApiError::Forbidden(err.to_string());
+    }
     if llm_prepare_status_code(err) == StatusCode::BAD_REQUEST {
         ApiError::BadRequest(err.to_string())
     } else {

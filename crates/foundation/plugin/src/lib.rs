@@ -243,6 +243,27 @@ impl SeamMap {
     }
 }
 
+/// Canonical hook point names. Points are plain strings so plugins can add
+/// their own; these constants are the daemon-defined seams.
+pub mod points {
+    /// Start of a chat turn, before prompt assembly. Payload:
+    /// `{tenantId, threadId, query, sourceKind}`; hooks may rewrite `query`
+    /// or halt to veto the turn.
+    pub const CHAT_TURN_START: &str = "chat/turn-start";
+    /// After full context assembly (skills, profile, continuity), before the
+    /// dispatch is prepared/persisted. Payload:
+    /// `{provider, model, messages: [{role, content}]}`; hooks may rewrite
+    /// any of the three or halt to veto. Because the dispatch record is
+    /// created after this point, whatever the hooks leave here is exactly
+    /// what is logged and what the model sees ("model-visible = logged").
+    pub const CHAT_PRE_DISPATCH: &str = "chat/pre-dispatch";
+    /// End of a chat turn, after the dispatch settled and continuity was
+    /// persisted. Payload: `{dispatchId, tenantId, threadId, query, output,
+    /// status, sourceKind, requestTurnId, responseTurnId}`. Observational:
+    /// a halt only stops later handlers, never the turn.
+    pub const CHAT_TURN_END: &str = "chat/turn-end";
+}
+
 /// Outcome of one hook handler in a waterfall run.
 pub enum HookOutcome {
     /// Pass the (possibly mutated) payload to the next handler.
@@ -293,6 +314,22 @@ impl HookBus {
             .entry(point.to_string())
             .or_default()
             .push((plugin_id.to_string(), hook));
+    }
+
+    /// Every registration as `(point, plugin_id)` pairs, points sorted for a
+    /// stable dump (registration order preserved within a point).
+    #[must_use]
+    pub fn registrations(&self) -> Vec<(String, String)> {
+        let guard = self.handlers.read();
+        let mut points: Vec<&String> = guard.keys().collect();
+        points.sort();
+        let mut out = Vec::new();
+        for point in points {
+            for (plugin_id, _) in &guard[point] {
+                out.push((point.clone(), plugin_id.clone()));
+            }
+        }
+        out
     }
 
     /// Runs the waterfall for `point` over `payload`. Handlers mutate the

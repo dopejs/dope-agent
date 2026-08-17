@@ -162,6 +162,9 @@ pub struct AppState {
     /// Plugin assembly report (which plugins resolved enabled/disabled and
     /// why). None only in test states built outside the app assembly.
     pub plugins: Option<Arc<dope_plugin::AssemblyReport>>,
+    /// The plugin hook bus (waterfall interception points, pluginization
+    /// phase 2). None only in test states built outside the app assembly.
+    pub hooks: Option<Arc<dope_plugin::HookBus>>,
 }
 
 impl AppState {
@@ -210,6 +213,7 @@ impl AppState {
             audit_emitter: None,
             tenant_migration_status: None,
             plugins: None,
+            hooks: None,
         }
     }
 }

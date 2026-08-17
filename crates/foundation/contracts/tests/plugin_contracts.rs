@@ -21,6 +21,10 @@ fn test_plugin_schemas_accept_canonical_fixtures() {
             r##"schemas/api/plugins-report.schema.json"##,
             r##"{"plugins":[{"id":"llm","summary":"LLM dispatcher","source":"builtin","enabled":true,"provides":["llm.dispatcher"],"requires":[]},{"id":"webhooks","summary":"Webhook ingress","source":"builtin","enabled":false,"reason":"requires disabled plugin `billing`","provides":["webhooks.manager"],"requires":["billing"]}],"warnings":["profile disables unknown plugin `ghost`"]}"##,
         ),
+        (
+            r##"schemas/api/plugins-report.schema.json"##,
+            r##"{"plugins":[],"warnings":[],"hooks":[{"point":"chat/pre-dispatch","pluginId":"session-strategy"},{"point":"chat/turn-end","pluginId":"memory"}]}"##,
+        ),
     ];
     validate_fixtures(&validator, fixtures);
 }

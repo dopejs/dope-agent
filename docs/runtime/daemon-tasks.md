@@ -154,10 +154,15 @@ Pluginization precedes all further capability work.
       construction; `GET /v1/plugins` report + profile/report schemas +
       contract tests + SDK `listPlugins()`; behavior-identical under the
       default profile
-- [ ] Phase 2 — hookable agent loop: turn/step flow with
-      `agent/pre-step` / `tools/pre-execute` / `tools/post` / `turn/end`
-      hook points; append-only session log with `derive_messages`
-      projection ("model-visible = logged")
+- [x] Phase 2 — hookable agent loop (complete 2026-08-17): chat query and
+      stream run `chat/turn-start` (query rewrite / veto),
+      `chat/pre-dispatch` (provider/model/messages rewrite / veto, ordered
+      before dispatch persist so the record is byte-identical to what the
+      provider receives — "model-visible = logged", proven by service and
+      end-to-end assembly tests), and `chat/turn-end` (observational);
+      vetoes are 403 + `chat.hook.vetoed` events; `/v1/plugins` reports
+      hook registrations; session-log generalization folded into the
+      session-strategy plugin slice
 - [ ] Phase 3 — out-of-process plugin providers: manifest schema, catalog
       `kind=plugin`, lifecycle over adapter RPC / capability supervision /
       MCP

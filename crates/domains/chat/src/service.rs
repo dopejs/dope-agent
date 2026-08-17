@@ -69,6 +69,8 @@ impl Service {
         cancel: &CancellationToken,
     ) -> Result<QueryExecution, ChatError> {
         self.ensure_configured()?;
+        let mut input = input;
+        self.run_turn_start_hooks(&mut input)?;
 
         let (mut dispatch_input, selected_skills) = self.build_dispatch_input(&input)?;
         let (active_profile, active_selection, has_active_profile) =
@@ -106,6 +108,7 @@ impl Service {
         }
         self.enforce_provider_setup_gate(&input.tenant_id, &dispatch_input.provider, "chat")?;
         let mut continuity = self.prepare_continuity(&input, &mut dispatch_input)?;
+        self.run_pre_dispatch_hooks(&input, &mut dispatch_input)?;
 
         let dispatch = self
             .dispatcher
@@ -167,6 +170,7 @@ impl Service {
             ..QueryResult::default()
         };
         apply_continuity_result(&mut result, &continuity);
+        self.run_turn_end_hooks(&input, &result);
         let exec_error = match exec_result {
             Ok(_) => None,
             Err(failed) => Some(ChatError::Dispatch(failed.error.to_string())),
@@ -186,6 +190,8 @@ impl Service {
         E: FnMut(StreamChunk) -> Result<(), ChatError> + Send,
     {
         self.ensure_configured()?;
+        let mut input = input;
+        self.run_turn_start_hooks(&mut input)?;
 
         let (mut dispatch_input, selected_skills) = self.build_dispatch_input(&input)?;
         let (active_profile, active_selection, has_active_profile) =
@@ -219,6 +225,7 @@ impl Service {
         }
         self.enforce_provider_setup_gate(&input.tenant_id, &dispatch_input.provider, "chat")?;
         let mut continuity = self.prepare_continuity(&input, &mut dispatch_input)?;
+        self.run_pre_dispatch_hooks(&input, &mut dispatch_input)?;
 
         let dispatch = self
             .dispatcher
@@ -308,6 +315,7 @@ impl Service {
             ..QueryResult::default()
         };
         apply_continuity_result(&mut result, &continuity);
+        self.run_turn_end_hooks(&input, &result);
         let exec_error = match exec_result {
             Ok(_) => None,
             Err(failed) => Some(ChatError::Dispatch(failed.error.to_string())),
@@ -353,6 +361,141 @@ impl Service {
     /// because `new_service` requires a dispatcher. Kept for surface parity.
     fn ensure_configured(&self) -> Result<(), ChatError> {
         Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Plugin hook points (pluginization phase 2)
+    // ------------------------------------------------------------------
+
+    /// `chat/turn-start`: hooks may rewrite the query or veto the turn.
+    fn run_turn_start_hooks(&self, input: &mut QueryInput) -> Result<(), ChatError> {
+        let Some(hooks) = &self.hooks else {
+            return Ok(());
+        };
+        let mut payload = serde_json::json!({
+            "tenantId": input.tenant_id,
+            "threadId": input.thread_id,
+            "query": input.query,
+            "sourceKind": serde_json::to_value(input.source_kind).unwrap_or(Value::Null),
+        });
+        let outcome = hooks.run(dope_plugin::points::CHAT_TURN_START, &mut payload);
+        if let Some((plugin_id, reason)) = outcome.halted {
+            self.publish_hook_veto(
+                dope_plugin::points::CHAT_TURN_START,
+                &plugin_id,
+                &reason,
+                &input.scope,
+            );
+            return Err(ChatError::HookVetoed {
+                point: dope_plugin::points::CHAT_TURN_START.to_string(),
+                plugin_id,
+                reason,
+            });
+        }
+        if outcome.ran > 0 {
+            if let Some(query) = payload.get("query").and_then(Value::as_str) {
+                input.query = query.to_string();
+            }
+        }
+        Ok(())
+    }
+
+    /// `chat/pre-dispatch`: runs after full context assembly and before the
+    /// dispatch is prepared/persisted, so whatever the hooks leave in
+    /// provider/model/messages is exactly what is logged on the dispatch
+    /// record and what the model sees ("model-visible = logged").
+    fn run_pre_dispatch_hooks(
+        &self,
+        input: &QueryInput,
+        dispatch_input: &mut CreateDispatchInput,
+    ) -> Result<(), ChatError> {
+        let Some(hooks) = &self.hooks else {
+            return Ok(());
+        };
+        let mut payload = serde_json::json!({
+            "tenantId": input.tenant_id,
+            "threadId": input.thread_id,
+            "provider": dispatch_input.provider,
+            "model": dispatch_input.model,
+            "messages": serde_json::to_value(&dispatch_input.messages)
+                .unwrap_or_else(|_| Value::Array(Vec::new())),
+        });
+        let outcome = hooks.run(dope_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
+        if let Some((plugin_id, reason)) = outcome.halted {
+            self.publish_hook_veto(
+                dope_plugin::points::CHAT_PRE_DISPATCH,
+                &plugin_id,
+                &reason,
+                &input.scope,
+            );
+            return Err(ChatError::HookVetoed {
+                point: dope_plugin::points::CHAT_PRE_DISPATCH.to_string(),
+                plugin_id,
+                reason,
+            });
+        }
+        if outcome.ran > 0 {
+            if let Some(provider) = payload.get("provider").and_then(Value::as_str) {
+                dispatch_input.provider = provider.to_string();
+            }
+            if let Some(model) = payload.get("model").and_then(Value::as_str) {
+                dispatch_input.model = model.to_string();
+            }
+            if let Some(messages) = payload.get("messages") {
+                dispatch_input.messages = serde_json::from_value(messages.clone()).map_err(
+                    |err| ChatError::HookPayload {
+                        point: dope_plugin::points::CHAT_PRE_DISPATCH.to_string(),
+                        reason: format!("messages: {err}"),
+                    },
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// `chat/turn-end`: observational; a halt only stops later handlers.
+    fn run_turn_end_hooks(&self, input: &QueryInput, result: &QueryResult) {
+        let Some(hooks) = &self.hooks else {
+            return;
+        };
+        let mut payload = serde_json::json!({
+            "dispatchId": result.dispatch.dispatch_id,
+            "tenantId": input.tenant_id,
+            "threadId": result.thread_id,
+            "query": result.query,
+            "output": result.dispatch.output,
+            "status": dispatch_status_str(result.dispatch.status),
+            "sourceKind": serde_json::to_value(input.source_kind).unwrap_or(Value::Null),
+            "requestTurnId": result.request_turn_id,
+            "responseTurnId": result.response_turn_id,
+        });
+        let _ = hooks.run(dope_plugin::points::CHAT_TURN_END, &mut payload);
+    }
+
+    /// Best-effort `chat.hook.vetoed` event so vetoes are auditable.
+    fn publish_hook_veto(&self, point: &str, plugin_id: &str, reason: &str, scope: &dope_events::Scope) {
+        let mut payload: Map<String, Value> = Map::new();
+        payload.insert("point".to_string(), Value::String(point.to_string()));
+        payload.insert("pluginId".to_string(), Value::String(plugin_id.to_string()));
+        payload.insert("reason".to_string(), Value::String(reason.to_string()));
+        let event = normalize_event(dope_events::Event {
+            category: "chat".to_string(),
+            name: "chat.hook.vetoed".to_string(),
+            scope: scope.clone(),
+            resource: dope_events::Resource {
+                kind: "hook_point".to_string(),
+                id: point.to_string(),
+            },
+            payload,
+            ..dope_events::Event::default()
+        });
+        let event = match self.store.as_deref() {
+            Some(store) => store.append_event(&event).unwrap_or(event),
+            None => event,
+        };
+        if let Some(bus) = &self.event_bus {
+            bus.publish(event);
+        }
     }
 
     // ------------------------------------------------------------------

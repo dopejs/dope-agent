@@ -190,6 +190,10 @@ impl App {
         state.checkpoints = Some(checkpoints);
         state.audit_emitter = Some(audit_emitter);
         state.tenant_migration_status = Some(Arc::new(adapters::NoMigrationInProgress));
+        // The hook bus is kernel infrastructure: plugins register handlers on
+        // it during assembly, consumers (chat) run the hook points.
+        let hook_bus = Arc::new(dope_plugin::HookBus::new());
+        state.hooks = Some(hook_bus);
 
         // --- kernel seams consumed by plugins ---
         let mut seams = dope_plugin::SeamMap::new();
@@ -989,6 +993,55 @@ mod tests {
         assert!(
             runtimes.discord.is_none(),
             "channel-discord disabled -> runtime skipped despite config flag"
+        );
+        app.close();
+    }
+
+    /// The kernel hook bus reaches the chat pipeline: a pre-dispatch hook
+    /// registered on the app's bus mutates what the echo provider sees, and
+    /// the persisted dispatch record carries the same mutation
+    /// (model-visible = logged), end to end through the real assembly.
+    #[test]
+    fn chat_hook_bus_is_wired_end_to_end() {
+        let config = test_config();
+        let app = App::new(config).expect("build app");
+        let hooks = app.state.hooks.clone().expect("hook bus wired");
+        struct Inject;
+        impl dope_plugin::Hook for Inject {
+            fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+                let messages = payload["messages"].as_array_mut().expect("messages");
+                messages.insert(
+                    0,
+                    serde_json::json!({ "role": "system", "content": "hook window" }),
+                );
+                dope_plugin::HookOutcome::Continue
+            }
+        }
+        hooks.register(
+            dope_plugin::points::CHAT_PRE_DISPATCH,
+            "test-plugin",
+            Arc::new(Inject),
+        );
+
+        let chat = app.state.chat.clone().expect("chat wired");
+        let execution = chat
+            .query(
+                dope_chat::QueryInput {
+                    query: "hello".to_string(),
+                    provider: "echo".to_string(),
+                    ..Default::default()
+                },
+                &dope_chat::CancellationToken::new(),
+            )
+            .expect("query through the assembled app");
+        assert!(
+            execution
+                .result
+                .dispatch
+                .messages
+                .iter()
+                .any(|message| message.content == "hook window"),
+            "persisted dispatch logs the hook-injected message"
         );
         app.close();
     }

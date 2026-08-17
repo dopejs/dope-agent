@@ -9,21 +9,48 @@
 use axum::extract::State;
 use axum::routing::get;
 use axum::Router;
+use serde::Serialize;
 
 use crate::error::ApiError;
 use crate::response::Json;
 use crate::state::AppState;
 
+/// One hook-bus registration in the report.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookRegistration {
+    pub point: String,
+    pub plugin_id: String,
+}
+
+/// GET /v1/plugins response: the assembly report plus the hook-bus
+/// registrations made during assembly.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginsResponse {
+    #[serde(flatten)]
+    pub report: dope_plugin::AssemblyReport,
+    pub hooks: Vec<HookRegistration>,
+}
+
 /// GET /v1/plugins — the boot-time plugin assembly report.
 #[allow(clippy::unused_async)]
-pub async fn list_plugins(
-    State(state): State<AppState>,
-) -> Result<Json<dope_plugin::AssemblyReport>, ApiError> {
+pub async fn list_plugins(State(state): State<AppState>) -> Result<Json<PluginsResponse>, ApiError> {
     let report = state
         .plugins
         .as_ref()
         .ok_or_else(|| ApiError::internal("plugin assembly report is not configured"))?;
-    Ok(Json((**report).clone()))
+    let hooks = state
+        .hooks
+        .as_ref()
+        .map(|bus| {
+            bus.registrations()
+                .into_iter()
+                .map(|(point, plugin_id)| HookRegistration { point, plugin_id })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(Json(PluginsResponse { report: (**report).clone(), hooks }))
 }
 
 /// The `/v1/plugins` route family.
@@ -64,8 +91,20 @@ mod tests {
         );
         state.plugins = Some(Arc::new(report));
 
+        let bus = dope_plugin::HookBus::new();
+        struct Noop;
+        impl dope_plugin::Hook for Noop {
+            fn handle(&self, _p: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+                dope_plugin::HookOutcome::Continue
+            }
+        }
+        bus.register(dope_plugin::points::CHAT_TURN_END, "beta", Arc::new(Noop));
+        state.hooks = Some(Arc::new(bus));
+
         let (status, json) = request_json(state, "GET", "/v1/plugins", None).await;
         assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["hooks"][0]["point"], "chat/turn-end");
+        assert_eq!(json["hooks"][0]["pluginId"], "beta");
         assert_eq!(json["plugins"][0]["id"], "alpha");
         assert_eq!(json["plugins"][0]["enabled"], false);
         assert_eq!(json["plugins"][0]["reason"], "disabled by profile");

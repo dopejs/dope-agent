@@ -175,6 +175,9 @@ pub struct Service {
     pub(crate) skills: Option<Arc<dope_skills::Registry>>,
     pub(crate) event_bus: Option<dope_events::Bus>,
     pub(crate) store: Option<Arc<dyn ChatStore>>,
+    /// The plugin hook bus (pluginization phase 2). Absent = no hook points
+    /// run and the pipeline behaves exactly as before.
+    pub(crate) hooks: Option<Arc<dope_plugin::HookBus>>,
 }
 
 impl Service {
@@ -195,6 +198,14 @@ impl Service {
             skills,
             event_bus,
             store,
+            hooks: None,
         }
+    }
+
+    /// Attaches the plugin hook bus; the `chat/turn-start`,
+    /// `chat/pre-dispatch`, and `chat/turn-end` points run on every
+    /// query/stream once set.
+    pub fn set_hooks(&mut self, hooks: Arc<dope_plugin::HookBus>) {
+        self.hooks = Some(hooks);
     }
 }

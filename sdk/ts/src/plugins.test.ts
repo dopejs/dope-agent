@@ -29,6 +29,7 @@ describe("plugin assembly SDK methods", () => {
         },
       ],
       warnings: ["profile disables unknown plugin `ghost`"],
+      hooks: [{ point: "chat/pre-dispatch", pluginId: "session-strategy" }],
     };
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse(report));
     const client = createDopeClient({ baseURL: "https://daemon.test", fetchImpl });
@@ -41,5 +42,6 @@ describe("plugin assembly SDK methods", () => {
     expect(result.plugins).toHaveLength(2);
     expect(result.plugins[1].reason).toContain("billing");
     expect(result.warnings).toHaveLength(1);
+    expect(result.hooks?.[0].point).toBe("chat/pre-dispatch");
   });
 });

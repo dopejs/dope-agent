@@ -1897,3 +1897,203 @@ fn blocked_openai_setup_session() -> SetupSession {
         unsupported_reason_code: String::new(),
     }
 }
+
+// ------------------------------------------------------------------------
+// Behavior: plugin hook points (pluginization phase 2)
+// ------------------------------------------------------------------------
+
+struct RewriteQueryHook;
+impl dope_plugin::Hook for RewriteQueryHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+        payload["query"] = serde_json::Value::String("rewritten query".to_string());
+        dope_plugin::HookOutcome::Continue
+    }
+}
+
+struct InjectWindowHook;
+impl dope_plugin::Hook for InjectWindowHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+        let messages = payload["messages"].as_array_mut().expect("messages array");
+        messages.insert(
+            0,
+            serde_json::json!({ "role": "system", "content": "session-strategy window" }),
+        );
+        dope_plugin::HookOutcome::Continue
+    }
+}
+
+struct VetoHook;
+impl dope_plugin::Hook for VetoHook {
+    fn handle(&self, _payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+        dope_plugin::HookOutcome::Halt("tenant policy forbids this turn".to_string())
+    }
+}
+
+struct RecordTurnEndHook(Arc<RwLock<Option<serde_json::Value>>>);
+impl dope_plugin::Hook for RecordTurnEndHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+        *self.0.write() = Some(payload.clone());
+        dope_plugin::HookOutcome::Continue
+    }
+}
+
+/// A turn-start veto surfaces as HookVetoed before any dispatch exists, and
+/// the veto is recorded as a `chat.hook.vetoed` event.
+#[test]
+fn turn_start_hook_veto_blocks_the_turn() {
+    let provider = TestProvider::new("chat-test");
+    let dispatcher = new_dispatcher(Arc::new(provider.clone()));
+    let store = FakeStore::new();
+    let mut svc = service(dispatcher, None, Some(store.clone() as Arc<dyn ChatStore>));
+    let hooks = Arc::new(dope_plugin::HookBus::new());
+    hooks.register(
+        dope_plugin::points::CHAT_TURN_START,
+        "policy-plugin",
+        Arc::new(VetoHook),
+    );
+    svc.set_hooks(hooks);
+
+    let err = svc
+        .query(
+            base_query("chat-test", "m1", "hello"),
+            &CancellationToken::new(),
+        )
+        .expect_err("veto must fail the turn");
+    match err {
+        ChatError::HookVetoed { point, plugin_id, reason } => {
+            assert_eq!(point, dope_plugin::points::CHAT_TURN_START);
+            assert_eq!(plugin_id, "policy-plugin");
+            assert_eq!(reason, "tenant policy forbids this turn");
+        }
+        other => panic!("expected HookVetoed, got {other:?}"),
+    }
+    assert!(provider.requests.read().is_empty(), "no dispatch reached the provider");
+    assert!(store.dispatches().is_empty(), "no dispatch persisted");
+    assert!(
+        store
+            .inner
+            .read()
+            .events
+            .iter()
+            .any(|event| event.name == "chat.hook.vetoed"),
+        "veto recorded as chat.hook.vetoed event"
+    );
+}
+
+/// Pre-dispatch mutations are both model-visible (the provider request
+/// carries them) and logged (the persisted dispatch record carries the same
+/// messages): the "model-visible = logged" invariant.
+#[test]
+fn pre_dispatch_mutation_is_model_visible_and_logged() {
+    let provider = TestProvider::new("chat-test");
+    let dispatcher = new_dispatcher(Arc::new(provider.clone()));
+    let store = FakeStore::new();
+    let mut svc = service(dispatcher, None, Some(store.clone() as Arc<dyn ChatStore>));
+    let hooks = Arc::new(dope_plugin::HookBus::new());
+    hooks.register(
+        dope_plugin::points::CHAT_PRE_DISPATCH,
+        "session-strategy",
+        Arc::new(InjectWindowHook),
+    );
+    svc.set_hooks(hooks);
+
+    let execution = svc
+        .query(
+            base_query("chat-test", "m1", "hello"),
+            &CancellationToken::new(),
+        )
+        .expect("query succeeds");
+    assert!(execution.exec_error.is_none());
+
+    assert!(
+        provider.saw_message("session-strategy window"),
+        "the model saw the hook-injected message"
+    );
+    let dispatches = store.dispatches();
+    assert!(!dispatches.is_empty());
+    assert!(
+        dispatches.iter().all(|dispatch| dispatch
+            .messages
+            .first()
+            .is_some_and(|message| message.content == "session-strategy window")),
+        "every persisted dispatch record logs exactly what the model saw"
+    );
+}
+
+/// turn-start can rewrite the query and turn-end observes the settled turn.
+#[test]
+fn turn_start_rewrite_and_turn_end_observation() {
+    let provider = TestProvider::new("chat-test");
+    let dispatcher = new_dispatcher(Arc::new(provider.clone()));
+    let store = FakeStore::new();
+    let mut svc = service(dispatcher, None, Some(store.clone() as Arc<dyn ChatStore>));
+    let hooks = Arc::new(dope_plugin::HookBus::new());
+    let seen = Arc::new(RwLock::new(None));
+    hooks.register(
+        dope_plugin::points::CHAT_TURN_START,
+        "rewriter",
+        Arc::new(RewriteQueryHook),
+    );
+    hooks.register(
+        dope_plugin::points::CHAT_TURN_END,
+        "observer",
+        Arc::new(RecordTurnEndHook(Arc::clone(&seen))),
+    );
+    svc.set_hooks(hooks);
+
+    let execution = svc
+        .query(
+            base_query("chat-test", "m1", "original query"),
+            &CancellationToken::new(),
+        )
+        .expect("query succeeds");
+    assert_eq!(execution.result.query, "rewritten query");
+    assert!(
+        provider.saw_message("rewritten query"),
+        "the model saw the rewritten query"
+    );
+    let payload = seen.read().clone().expect("turn-end hook ran");
+    assert_eq!(payload["query"], "rewritten query");
+    assert_eq!(payload["output"], "reply:m1");
+    assert_eq!(payload["status"], "completed");
+    assert_eq!(
+        payload["dispatchId"],
+        execution.result.dispatch.dispatch_id.as_str()
+    );
+}
+
+/// The stream path runs the same hook points as query.
+#[test]
+fn stream_runs_hook_points() {
+    let provider = TestProvider::new("chat-test");
+    let dispatcher = new_dispatcher(Arc::new(provider.clone()));
+    let store = FakeStore::new();
+    let mut svc = service(dispatcher, None, Some(store.clone() as Arc<dyn ChatStore>));
+    let hooks = Arc::new(dope_plugin::HookBus::new());
+    hooks.register(
+        dope_plugin::points::CHAT_PRE_DISPATCH,
+        "session-strategy",
+        Arc::new(InjectWindowHook),
+    );
+    svc.set_hooks(hooks);
+
+    let mut chunks: Vec<StreamChunk> = Vec::new();
+    let execution = svc
+        .stream(
+            base_query("chat-test", "m1", "hello"),
+            &CancellationToken::new(),
+            Some(|chunk: StreamChunk| {
+                chunks.push(chunk);
+                Ok(())
+            }),
+        )
+        .expect("stream succeeds");
+    assert!(execution.exec_error.is_none());
+    assert!(!chunks.is_empty());
+    assert!(provider.saw_message("session-strategy window"));
+    let dispatches = store.dispatches();
+    assert!(dispatches.iter().all(|dispatch| dispatch
+        .messages
+        .first()
+        .is_some_and(|message| message.content == "session-strategy window")));
+}

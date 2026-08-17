@@ -539,14 +539,17 @@ fn build_capabilities(asm: &mut Assembly) -> Result<(), AppError> {
 
 fn build_chat(asm: &mut Assembly) -> Result<(), AppError> {
     let llm = asm.state.llm.clone().expect("llm plugin built");
-    let chat = Arc::new(ChatService::new_service(
+    let mut chat = ChatService::new_service(
         llm,
         asm.state.providers.clone(),
         asm.state.skills.clone(),
         Some((*asm.event_bus).clone()),
         Some(asm.secondary.clone() as Arc<dyn ChatStore>),
-    ));
-    asm.state.chat = Some(chat);
+    );
+    if let Some(hooks) = asm.state.hooks.clone() {
+        chat.set_hooks(hooks);
+    }
+    asm.state.chat = Some(Arc::new(chat));
     Ok(())
 }
 

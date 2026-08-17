@@ -6,6 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 dope-llm.workspace = true
+dope-plugin.workspace = true
 dope-store.workspace = true
 dope-events.workspace = true
 dope-threads.workspace = true
