@@ -300,9 +300,15 @@ pub fn execute_subprocess(
     }
     cancel.register_child(child);
 
-    let result = loop {
+    enum WaitOutcome {
+        Finished(std::process::ExitStatus),
+        WaitFailed(std::io::Error),
+    }
+    let outcome = loop {
         if cancel.is_cancelled() {
-            break cancelled_subprocess_result(
+            // The cancelled path kills the child itself, so the readers are
+            // joined only after the (inherently truncated) snapshot.
+            let result = cancelled_subprocess_result(
                 launch,
                 pid,
                 cancel,
@@ -310,32 +316,39 @@ pub fn execute_subprocess(
                 &stdout_capture,
                 &stderr_capture,
             );
+            for handle in readers {
+                let _ = handle.join();
+            }
+            return result;
         }
         match cancel.try_wait_child() {
-            Ok(Some(status)) => {
-                break finish_subprocess_result(
-                    launch,
-                    pid,
-                    started_at,
-                    status,
-                    &stdout_capture,
-                    &stderr_capture,
-                );
-            }
+            Ok(Some(status)) => break WaitOutcome::Finished(status),
             Ok(None) => {}
-            Err(err) => {
-                break io_capture_failed_result(pid, err, &stdout_capture, &stderr_capture);
-            }
+            Err(err) => break WaitOutcome::WaitFailed(err),
         }
         std::thread::sleep(Duration::from_millis(10));
     };
 
-    // Go command.Wait() waits for the stdout/stderr copy goroutines; join the
-    // pipe readers so the captures are complete before the result is read.
+    // Go command.Wait() waits for the stdout/stderr copy goroutines; the
+    // child has exited (pipes at EOF), so join the pipe readers BEFORE the
+    // result snapshots the capture buffers — reading them first drops output
+    // still in flight on a loaded host.
     for handle in readers {
         let _ = handle.join();
     }
-    result
+    match outcome {
+        WaitOutcome::Finished(status) => finish_subprocess_result(
+            launch,
+            pid,
+            started_at,
+            status,
+            &stdout_capture,
+            &stderr_capture,
+        ),
+        WaitOutcome::WaitFailed(err) => {
+            io_capture_failed_result(pid, err, &stdout_capture, &stderr_capture)
+        }
+    }
 }
 
 /// Reads a child pipe into a shared capture buffer until EOF.

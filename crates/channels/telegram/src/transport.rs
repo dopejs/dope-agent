@@ -580,7 +580,17 @@ mod tests {
             let thread = thread::spawn(move || {
                 while !flag.load(AtomicOrdering::SeqCst) {
                     match listener.accept() {
-                        Ok((stream, _)) => handle_connection(stream, &handler),
+                        Ok((stream, _)) => {
+                            // On macOS/BSD the accepted stream inherits the
+                            // listener's non-blocking mode; restore blocking
+                            // IO so the request read never fails WouldBlock
+                            // while the client's bytes are in flight (the
+                            // CI-only status-line flake). A read timeout
+                            // keeps the test bounded.
+                            let _ = stream.set_nonblocking(false);
+                            let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                            handle_connection(stream, &handler);
+                        }
                         Err(ref err) if err.kind() == std::io::ErrorKind::WouldBlock => {
                             thread::sleep(Duration::from_millis(2));
                         }

@@ -77,10 +77,17 @@ mod test_server {
                 }
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        // On macOS/BSD the accepted stream inherits the
+                        // listener's non-blocking mode; restore blocking IO so
+                        // reading the request never fails with WouldBlock when
+                        // the client's bytes are still in flight (the CI-only
+                        // status-line flake). A read timeout keeps the test
+                        // bounded, and a bad connection never kills the server.
+                        let _ = stream.set_nonblocking(false);
+                        let _ = stream
+                            .set_read_timeout(Some(std::time::Duration::from_secs(5)));
                         let handler = Arc::clone(&handler);
-                        if handle_connection(&mut stream, &*handler).is_err() {
-                            break;
-                        }
+                        let _ = handle_connection(&mut stream, &*handler);
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         std::thread::sleep(std::time::Duration::from_millis(10));
