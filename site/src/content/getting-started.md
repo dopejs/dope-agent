@@ -6,26 +6,30 @@ web shell, and chat-channel connectors. The daemon owns runtime state,
 provider dispatch, policy gates, memory, and event fan-out; clients are
 thin consumers of its HTTP API.
 
-## Install from a release
+## Install
 
-Grab the latest release from
-[GitHub Releases](https://github.com/dopejs/dope-agent/releases). Each
-release ships prebuilt tarballs for macOS and Linux (arm64 + x86_64) with
-a `SHA256SUMS` file:
+One line (macOS and Linux, arm64 + x86_64):
 
 ```bash
-# Example: Apple Silicon macOS
-curl -LO https://github.com/dopejs/dope-agent/releases/latest/download/dope-0.1.0-aarch64-apple-darwin.tar.gz
-tar xzf dope-0.1.0-aarch64-apple-darwin.tar.gz
-cd dope-0.1.0-aarch64-apple-darwin
-# binaries: dope (daemon) and dope-tui (terminal client)
-sudo install -m 755 dope dope-tui /usr/local/bin/
+curl -fsSL https://agent.dopejs.com/install.sh | sh
 ```
 
-Or use the install script from a checkout:
+The installer detects your platform, downloads the latest
+[GitHub Release](https://github.com/dopejs/dope-agent/releases), verifies
+its SHA-256 against the release's `SHA256SUMS`, and installs `dope` (the
+daemon) and `dope-tui` (the terminal client) into `~/.local/bin` or
+`/usr/local/bin`. Pin a version or destination with:
 
 ```bash
-./scripts/install.sh
+DOPE_VERSION=v0.1.0 DOPE_INSTALL_DIR=~/bin sh -c "$(curl -fsSL https://agent.dopejs.com/install.sh)"
+```
+
+Prefer manual? Grab a tarball from the releases page:
+
+```bash
+curl -LO https://github.com/dopejs/dope-agent/releases/latest/download/dope-0.1.0-aarch64-apple-darwin.tar.gz
+tar xzf dope-0.1.0-aarch64-apple-darwin.tar.gz
+sudo install -m 755 dope-0.1.0-aarch64-apple-darwin/{dope,dope-tui} /usr/local/bin/
 ```
 
 ## Build from source

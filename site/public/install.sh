@@ -1,0 +1,90 @@
+#!/bin/sh
+# DopeAgent installer — https://agent.dopejs.com/install.sh
+#
+#   curl -fsSL https://agent.dopejs.com/install.sh | sh
+#
+# Detects OS/arch, downloads the latest GitHub release tarball, verifies
+# its SHA-256 against the release's SHA256SUMS, and installs `dope` and
+# `dope-tui` into an existing PATH directory (~/.local/bin or
+# /usr/local/bin). Override the version with DOPE_VERSION=v0.1.0 and the
+# destination with DOPE_INSTALL_DIR=/some/bin.
+
+set -eu
+
+REPO="dopejs/dope-agent"
+
+say()  { printf '\033[1m[dope]\033[0m %s\n' "$1"; }
+fail() { printf '\033[1;31m[dope]\033[0m %s\n' "$1" >&2; exit 1; }
+
+# --- detect platform ------------------------------------------------------
+OS=$(uname -s)
+ARCH=$(uname -m)
+case "$OS" in
+  Darwin) SYS="apple-darwin" ;;
+  Linux)  SYS="unknown-linux-gnu" ;;
+  *) fail "unsupported OS: $OS (prebuilt binaries cover macOS and Linux; build from source: https://github.com/$REPO)" ;;
+esac
+case "$ARCH" in
+  arm64|aarch64) CPU="aarch64" ;;
+  x86_64|amd64)  CPU="x86_64" ;;
+  *) fail "unsupported architecture: $ARCH" ;;
+esac
+TARGET="${CPU}-${SYS}"
+
+# --- resolve version ------------------------------------------------------
+if [ -n "${DOPE_VERSION:-}" ]; then
+  TAG="$DOPE_VERSION"
+else
+  TAG=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" | sed 's#.*/tag/##')
+  [ -n "$TAG" ] || fail "could not resolve the latest release tag"
+fi
+VERSION="${TAG#v}"
+PKG="dope-${VERSION}-${TARGET}"
+BASE="https://github.com/$REPO/releases/download/$TAG"
+
+say "installing DopeAgent $TAG for $TARGET"
+
+# --- download + verify ----------------------------------------------------
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+curl -fsSL -o "$TMP/$PKG.tar.gz" "$BASE/$PKG.tar.gz" \
+  || fail "download failed: $BASE/$PKG.tar.gz"
+if curl -fsSL -o "$TMP/SHA256SUMS" "$BASE/SHA256SUMS" 2>/dev/null; then
+  EXPECTED=$(grep "$PKG.tar.gz" "$TMP/SHA256SUMS" | awk '{print $1}' | head -1)
+  if [ -n "$EXPECTED" ]; then
+    if command -v shasum >/dev/null 2>&1; then
+      ACTUAL=$(shasum -a 256 "$TMP/$PKG.tar.gz" | awk '{print $1}')
+    else
+      ACTUAL=$(sha256sum "$TMP/$PKG.tar.gz" | awk '{print $1}')
+    fi
+    [ "$EXPECTED" = "$ACTUAL" ] || fail "SHA-256 mismatch for $PKG.tar.gz"
+    say "checksum verified"
+  fi
+fi
+tar -xzf "$TMP/$PKG.tar.gz" -C "$TMP"
+
+# --- install --------------------------------------------------------------
+if [ -n "${DOPE_INSTALL_DIR:-}" ]; then
+  DEST="$DOPE_INSTALL_DIR"
+elif [ -d "$HOME/.local/bin" ] && case ":$PATH:" in *":$HOME/.local/bin:"*) true ;; *) false ;; esac; then
+  DEST="$HOME/.local/bin"
+else
+  DEST="/usr/local/bin"
+fi
+mkdir -p "$DEST" 2>/dev/null || true
+
+install_bin() {
+  if [ -w "$DEST" ]; then
+    install -m 755 "$1" "$DEST/"
+  else
+    say "sudo needed to write $DEST"
+    sudo install -m 755 "$1" "$DEST/"
+  fi
+}
+install_bin "$TMP/$PKG/dope"
+[ -f "$TMP/$PKG/dope-tui" ] && install_bin "$TMP/$PKG/dope-tui"
+
+say "installed to $DEST: dope$([ -f "$TMP/$PKG/dope-tui" ] && printf ', dope-tui')"
+say "start the daemon:   dope        (data: ~/.dope, http://127.0.0.1:19191)"
+say "terminal client:    dope-tui"
+say "docs:               https://agent.dopejs.com"

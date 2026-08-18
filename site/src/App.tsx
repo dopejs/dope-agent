@@ -121,11 +121,13 @@ function Landing() {
         </div>
         <pre className="hero__terminal">
           <code>
-            {`$ dope
-[dope] listening on http://127.0.0.1:19191
+            {`$ curl -fsSL https://agent.dopejs.com/install.sh | sh
+[dope] installing DopeAgent v0.1.0 for aarch64-apple-darwin
+[dope] checksum verified
+[dope] installed to ~/.local/bin: dope, dope-tui
 
-$ curl -s localhost:19191/v1/chat/query \\
-    -d '{"query":"hello","provider":"echo"}'`}
+$ dope
+[dope] listening on http://127.0.0.1:19191`}
           </code>
         </pre>
       </section>
