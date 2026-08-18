@@ -121,10 +121,10 @@ function Landing() {
         </div>
         <pre className="hero__terminal">
           <code>
-            {`$ make daemon-run-test
-[dope] listening on http://127.0.0.1:19192
+            {`$ dope
+[dope] listening on http://127.0.0.1:19191
 
-$ curl -s localhost:19192/v1/chat/query \\
+$ curl -s localhost:19191/v1/chat/query \\
     -d '{"query":"hello","provider":"echo"}'`}
           </code>
         </pre>

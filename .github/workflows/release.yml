@@ -35,14 +35,15 @@ jobs:
         with:
           workspaces: crates
           key: release-${{ matrix.target }}
-      - name: Build release binary
-        run: cargo build --release -p dope-cli --target ${{ matrix.target }}
+      - name: Build release binaries
+        run: cargo build --release -p dope-cli -p dope-tui --target ${{ matrix.target }}
       - name: Package
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           PKG="dope-${VERSION}-${{ matrix.target }}"
           mkdir -p "dist/${PKG}"
           cp "target/${{ matrix.target }}/release/dope-cli" "dist/${PKG}/dope"
+          cp "target/${{ matrix.target }}/release/dope-tui" "dist/${PKG}/dope-tui"
           cp ../README.md "dist/${PKG}/" 2>/dev/null || true
           tar -czf "dist/${PKG}.tar.gz" -C dist "${PKG}"
           (cd dist && shasum -a 256 "${PKG}.tar.gz" > "${PKG}.tar.gz.sha256")
