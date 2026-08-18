@@ -35,6 +35,15 @@ jobs:
         with:
           workspaces: crates
           key: release-${{ matrix.target }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Build web shell
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:clients
       - name: Build release binaries
         run: cargo build --release -p dope-cli -p dope-tui --target ${{ matrix.target }}
       - name: Package
@@ -44,6 +53,7 @@ jobs:
           mkdir -p "dist/${PKG}"
           cp "target/${{ matrix.target }}/release/dope-cli" "dist/${PKG}/dope"
           cp "target/${{ matrix.target }}/release/dope-tui" "dist/${PKG}/dope-tui"
+          cp -r ../web/dist "dist/${PKG}/web"
           cp ../README.md "dist/${PKG}/" 2>/dev/null || true
           tar -czf "dist/${PKG}.tar.gz" -C dist "${PKG}"
           (cd dist && shasum -a 256 "${PKG}.tar.gz" > "${PKG}.tar.gz.sha256")

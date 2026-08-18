@@ -83,8 +83,16 @@ install_bin() {
 }
 install_bin "$TMP/$PKG/dope"
 [ -f "$TMP/$PKG/dope-tui" ] && install_bin "$TMP/$PKG/dope-tui"
+if [ -d "$TMP/$PKG/web" ]; then
+  WEB_DIR="$HOME/.local/share/dope/web"
+  mkdir -p "$WEB_DIR"
+  rm -rf "$WEB_DIR"
+  cp -R "$TMP/$PKG/web" "$WEB_DIR"
+  say "web shell assets: $WEB_DIR"
+fi
 
 say "installed to $DEST: dope$([ -f "$TMP/$PKG/dope-tui" ] && printf ', dope-tui')"
-say "start the daemon:   dope        (data: ~/.dope, http://127.0.0.1:19191)"
-say "terminal client:    dope-tui"
+say "start the daemon:   dope daemon start   (data: ~/.dope, http://127.0.0.1:19191)"
+say "terminal client:    dope tui"
+say "web shell:          dope web"
 say "docs:               https://agent.dopejs.com"

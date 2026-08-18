@@ -51,20 +51,27 @@ pnpm build:clients
 
 ## Run the daemon
 
-With an installed release binary, just run it:
+The `dope` CLI manages everything:
 
 ```bash
-dope                              # release build defaults to prod:
-                                  # data dir ~/.dope, 127.0.0.1:19191
-curl -s http://127.0.0.1:19191/healthz
+dope daemon start                 # background daemon: pidfile + logfile
+dope daemon status                # pid, health, version
+dope daemon stop                  # graceful stop
+dope daemon run                   # foreground (for services/systemd)
+
+dope tui                          # terminal client
+dope web                          # serve + open the web operator shell
+dope config show                  # effective configuration
+dope config set llm.defaultProvider claude_code_cli
+dope config edit                  # $EDITOR on config.json (validated)
 ```
 
 DopeAgent has two environments, selected by `DOPE_ENV`:
 
 | Mode | Data dir | Bind address | Command |
 |------|----------|--------------|---------|
-| prod (release default) | `~/.dope` | `127.0.0.1:19191` | `dope` |
-| test | `~/.dope-test` | `127.0.0.1:19192` | `DOPE_ENV=test dope` |
+| prod (release default) | `~/.dope` | `127.0.0.1:19191` | `dope daemon start` |
+| test | `~/.dope-test` | `127.0.0.1:19192` | `DOPE_ENV=test dope daemon start` |
 
 From a source checkout, the Make targets wrap the same thing and default
 to the **test** environment (the safe development default):
@@ -95,7 +102,7 @@ OpenAI-compatible endpoint) — see **Configuration**.
 ## Terminal UI
 
 ```bash
-dope-tui                          # full-screen Claude-Code-style client
+dope tui                          # full-screen Claude-Code-style client
 ```
 
 The TUI includes a live daemon event stream viewer (`/events`).

@@ -51,12 +51,13 @@ const assets  = await client.listMemoryAssets({ layer: "l1", status: "ready" });
 
 ## Terminal UI
 
-`dope-tui` is the full-screen terminal client: conversations, thread
-continuity, and a live daemon event stream (`/events`).
+`dope tui` launches the full-screen terminal client: conversations,
+thread continuity, and a live daemon event stream (`/events`).
 
 ## Web operator shell
 
-The React web shell (`pnpm dev:web`) is the operator console: memory
+`dope web` serves the installed web shell locally and opens your
+browser. It is the operator console: memory
 assets + review queue, **Plugins** (assembly report, enable/disable,
 hooks), channels, routines, providers, quota, diagnostics, evaluation,
 and support surfaces.

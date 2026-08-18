@@ -126,8 +126,10 @@ function Landing() {
 [dope] checksum verified
 [dope] installed to ~/.local/bin: dope, dope-tui
 
-$ dope
-[dope] listening on http://127.0.0.1:19191`}
+$ dope daemon start
+daemon started (pid 51234, http://127.0.0.1:19191)
+
+$ dope tui`}
           </code>
         </pre>
       </section>
