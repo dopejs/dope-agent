@@ -18,11 +18,11 @@ use crate::types::{self, SystemInfoResponse};
 pub mod activation;
 pub mod auth;
 pub mod billing;
-pub mod catalog;
-pub mod chat;
 pub mod calendar;
 pub mod capabilities;
+pub mod catalog;
 pub mod channel_management;
+pub mod chat;
 pub mod computer_use;
 pub mod config;
 pub mod connectors;
@@ -32,6 +32,7 @@ pub mod execprofile;
 pub mod improvement;
 pub mod integrations;
 pub mod llm;
+pub mod loopforge;
 pub mod mail;
 pub mod mcp;
 pub mod memory;
@@ -63,8 +64,7 @@ pub(crate) fn decode_json_required<T: serde::de::DeserializeOwned>(
             "request body is required".to_string(),
         ));
     }
-    serde_json::from_slice(body)
-        .map_err(|err| crate::error::ApiError::BadRequest(err.to_string()))
+    serde_json::from_slice(body).map_err(|err| crate::error::ApiError::BadRequest(err.to_string()))
 }
 
 /// Decodes a JSON request body where the Go handler tolerates the EOF decode
@@ -76,8 +76,7 @@ pub(crate) fn decode_json_or_default<T: Default + serde::de::DeserializeOwned>(
     if body.is_empty() {
         return Ok(T::default());
     }
-    serde_json::from_slice(body)
-        .map_err(|err| crate::error::ApiError::BadRequest(err.to_string()))
+    serde_json::from_slice(body).map_err(|err| crate::error::ApiError::BadRequest(err.to_string()))
 }
 
 /// `/healthz` payload (Go: `{"ok": true, "service": "dope"}`).
@@ -98,13 +97,18 @@ pub struct VersionResponse {
 /// GET /healthz — liveness probe.
 #[allow(clippy::unused_async)]
 pub async fn healthz() -> Json<HealthzResponse> {
-    Json(HealthzResponse { ok: true, service: "dope" })
+    Json(HealthzResponse {
+        ok: true,
+        service: "dope",
+    })
 }
 
 /// GET /version — daemon version.
 #[allow(clippy::unused_async)]
 pub async fn version(State(state): State<AppState>) -> Json<VersionResponse> {
-    Json(VersionResponse { version: state.config.version.clone() })
+    Json(VersionResponse {
+        version: state.config.version.clone(),
+    })
 }
 
 /// GET /v1/system/info — environment introspection (Go
@@ -125,11 +129,14 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/version", get(version))
         .route("/v1/system/info", get(system_info))
+        .merge(loopforge::router())
         .merge(mcp::ingress_router())
-        .merge(auth::open_router().route_layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            crate::middleware::with_environment,
-        )));
+        .merge(
+            auth::open_router().route_layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                crate::middleware::with_environment,
+            )),
+        );
 
     let protected_routes = Router::new()
         .merge(activation::router())
@@ -202,10 +209,22 @@ pub(crate) mod tests_support {
             version: "0.1.0".to_string(),
             llm: dope_config::LlmConfig::default(),
             connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
-                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
-                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
-                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+                discord: dope_config::DiscordConnectorConfig {
+                    enabled: false,
+                    ..Default::default()
+                },
+                telegram: dope_config::TelegramConnectorConfig {
+                    enabled: false,
+                    ..Default::default()
+                },
+                slack: dope_config::SlackConnectorConfig {
+                    enabled: false,
+                    ..Default::default()
+                },
+                matrix: dope_config::MatrixConnectorConfig {
+                    enabled: false,
+                    ..Default::default()
+                },
             },
         }
     }
@@ -240,7 +259,9 @@ pub(crate) mod tests_support {
         };
         let response = app.oneshot(request).await.expect("oneshot");
         let status = response.status();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.expect("body");
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
         let json = if bytes.is_empty() {
             serde_json::Value::Null
         } else {
@@ -270,10 +291,22 @@ mod tests {
             version: "0.1.0".to_string(),
             llm: dope_config::LlmConfig::default(),
             connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
-                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
-                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
-                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+                discord: dope_config::DiscordConnectorConfig {
+                    enabled: false,
+                    ..Default::default()
+                },
+                telegram: dope_config::TelegramConnectorConfig {
+                    enabled: false,
+                    ..Default::default()
+                },
+                slack: dope_config::SlackConnectorConfig {
+                    enabled: false,
+                    ..Default::default()
+                },
+                matrix: dope_config::MatrixConnectorConfig {
+                    enabled: false,
+                    ..Default::default()
+                },
             },
         }
     }
@@ -296,7 +329,9 @@ mod tests {
             .expect("request");
         let response = app.oneshot(request).await.expect("oneshot");
         let status = response.status();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.expect("body");
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
         let json = serde_json::from_slice(&bytes).expect("json body");
         (status, json)
     }

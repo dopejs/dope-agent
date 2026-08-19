@@ -11,16 +11,22 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
+use crate::routes::loopforge::LoopforgeProjectContext;
 use dope_activation::Service as ActivationService;
 use dope_billing::Manager as BillingManager;
 use dope_calendar::Manager as CalendarManager;
 use dope_capabilities::Supervisor as CapabilitiesSupervisor;
+use dope_catalog::Manager as CatalogManager;
+use dope_chat::Service as ChatService;
+use dope_checkpoints::Manager as CheckpointsManager;
 use dope_computeruse::Manager as ComputerUseManager;
 use dope_config::Config;
 use dope_connectors::Supervisor as ConnectorsSupervisor;
 use dope_delivery::Manager as DeliveryManager;
 use dope_evaluation::Manager as EvaluationManager;
 use dope_events::Bus;
+use dope_evidence::Manager as EvidenceManager;
+use dope_execprofile::Manager as ExecProfileManager;
 use dope_identity::auth::Manager as AuthManager;
 use dope_identity::{Manager as IdentityManager, Store as IdentityStore};
 use dope_integrations::Manager as IntegrationsManager;
@@ -28,24 +34,19 @@ use dope_livevalidation::Manager as LiveValidationManager;
 use dope_llm::Dispatcher;
 use dope_mail::Manager as MailManager;
 use dope_mcp::Manager as McpManager;
+use dope_memory::Manager as MemoryManager;
 use dope_policy::Engine;
 use dope_providers::Manager as ProvidersManager;
+use dope_reminders::Manager as RemindersManager;
 use dope_router::SessionRouter;
+use dope_routine::Manager as RoutineManager;
 use dope_runtime::Manager as RuntimeManager;
 use dope_sandbox::Manager as SandboxManager;
+use dope_scheduler::Scheduler;
 use dope_secrets::Manager as SecretsManager;
 use dope_setupwizard::Service as SetupWizardService;
 use dope_skills::Registry;
 use dope_store::SQLiteStore;
-use dope_catalog::Manager as CatalogManager;
-use dope_chat::Service as ChatService;
-use dope_checkpoints::Manager as CheckpointsManager;
-use dope_evidence::Manager as EvidenceManager;
-use dope_execprofile::Manager as ExecProfileManager;
-use dope_reminders::Manager as RemindersManager;
-use dope_routine::Manager as RoutineManager;
-use dope_scheduler::Scheduler;
-use dope_memory::Manager as MemoryManager;
 use dope_triage::Manager as TriageManager;
 use dope_webhook::Manager as WebhookManager;
 
@@ -171,6 +172,8 @@ pub struct AppState {
     pub embedder: Option<Arc<dyn dope_context::Embedder>>,
     /// Audited self-improvement proposals (the `self-improve` plugin).
     pub improvement: Option<Arc<dope_improvement::Manager>>,
+    /// Last accepted redacted Loopforge project context.
+    pub loopforge_context: Arc<Mutex<Option<LoopforgeProjectContext>>>,
 }
 
 impl AppState {
@@ -222,6 +225,7 @@ impl AppState {
             hooks: None,
             embedder: None,
             improvement: None,
+            loopforge_context: Arc::new(Mutex::new(None)),
         }
     }
 }
