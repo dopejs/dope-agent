@@ -19,7 +19,7 @@ import pluginsDoc from "./content/plugins.md?raw";
 import skillsImprovementDoc from "./content/skills-improvement.md?raw";
 import usageDoc from "./content/usage.md?raw";
 
-const REPO = "https://github.com/dopejs/dope-agent";
+const REPO = "https://github.com/dopejs/kura";
 
 type DocPage = { slug: string; title: string; body: string };
 
@@ -119,13 +119,13 @@ function Landing() {
             Get started
           </Link>
           <a className="button" href={`${REPO}/releases`}>
-            Download v0.1.0
+            Download v0.2.0
           </a>
         </div>
         <pre className="hero__terminal">
           <code>
             {`$ curl -fsSL https://agent.dopejs.com/install.sh | sh
-[dope] installing Kura v0.1.0 for aarch64-apple-darwin
+[dope] installing Kura v0.2.0 for aarch64-apple-darwin
 [dope] checksum verified
 [dope] installed to ~/.local/bin: dope, dope-tui
 

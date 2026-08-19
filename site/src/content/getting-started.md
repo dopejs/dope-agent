@@ -15,21 +15,21 @@ curl -fsSL https://agent.dopejs.com/install.sh | sh
 ```
 
 The installer detects your platform, downloads the latest
-[GitHub Release](https://github.com/dopejs/dope-agent/releases), verifies
+[GitHub Release](https://github.com/dopejs/kura/releases), verifies
 its SHA-256 against the release's `SHA256SUMS`, and installs `dope` (the
 daemon) and `dope-tui` (the terminal client) into `~/.local/bin` or
 `/usr/local/bin`. Pin a version or destination with:
 
 ```bash
-DOPE_VERSION=v0.1.0 DOPE_INSTALL_DIR=~/bin sh -c "$(curl -fsSL https://agent.dopejs.com/install.sh)"
+DOPE_VERSION=v0.2.0 DOPE_INSTALL_DIR=~/bin sh -c "$(curl -fsSL https://agent.dopejs.com/install.sh)"
 ```
 
 Prefer manual? Grab a tarball from the releases page:
 
 ```bash
-curl -LO https://github.com/dopejs/dope-agent/releases/latest/download/dope-0.1.0-aarch64-apple-darwin.tar.gz
-tar xzf dope-0.1.0-aarch64-apple-darwin.tar.gz
-sudo install -m 755 dope-0.1.0-aarch64-apple-darwin/{dope,dope-tui} /usr/local/bin/
+curl -LO https://github.com/dopejs/kura/releases/latest/download/dope-0.2.0-aarch64-apple-darwin.tar.gz
+tar xzf dope-0.2.0-aarch64-apple-darwin.tar.gz
+sudo install -m 755 dope-0.2.0-aarch64-apple-darwin/{dope,dope-tui} /usr/local/bin/
 ```
 
 ## Build from source
@@ -37,8 +37,8 @@ sudo install -m 755 dope-0.1.0-aarch64-apple-darwin/{dope,dope-tui} /usr/local/b
 Requirements: Rust (1.85+), pnpm (for the web client).
 
 ```bash
-git clone https://github.com/dopejs/dope-agent
-cd dope-agent
+git clone https://github.com/dopejs/kura
+cd kura
 
 # Daemon + TUI
 make daemon-build                 # cargo build --release -p dope-cli

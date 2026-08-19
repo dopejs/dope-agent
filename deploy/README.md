@@ -27,8 +27,8 @@ One installer handles both OSes and registers a background service that starts
 on boot: **launchd** on macOS, **systemd** on Linux.
 
 ```bash
-git clone https://github.com/dopejs/dope-agent.git
-cd dope-agent
+git clone https://github.com/dopejs/kura.git
+cd kura
 ./deploy/install.sh
 ```
 
@@ -56,7 +56,7 @@ Useful variants:
 ### One-line bootstrap
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dopejs/dope-agent/main/deploy/get.sh | bash
+curl -fsSL https://raw.githubusercontent.com/dopejs/kura/main/deploy/get.sh | bash
 # pass through env/flags:
 curl -fsSL .../get.sh | DOPE_ENV=test bash
 curl -fsSL .../get.sh | bash -s -- --no-service

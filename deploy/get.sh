@@ -2,7 +2,7 @@
 #
 # Kura one-line bootstrap.
 #
-#   curl -fsSL https://raw.githubusercontent.com/dopejs/dope-agent/main/deploy/get.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/dopejs/kura/main/deploy/get.sh | bash
 #
 # Clones (or updates) the repo into a cache dir and runs deploy/install.sh.
 # Requires: git, Rust (cargo). All install.sh flags/env pass through, e.g.:
@@ -16,7 +16,7 @@
 #
 set -euo pipefail
 
-REPO_URL="${DOPE_REPO_URL:-https://github.com/dopejs/dope-agent.git}"
+REPO_URL="${DOPE_REPO_URL:-https://github.com/dopejs/kura.git}"
 REF="${DOPE_REF:-main}"
 CACHE_DIR="${DOPE_SRC_DIR:-${HOME}/.cache/dope-agent/src}"
 

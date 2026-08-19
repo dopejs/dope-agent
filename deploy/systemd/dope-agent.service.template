@@ -5,7 +5,7 @@
 # (/etc/systemd/system). For a system service the installer also writes
 # User=/Group= lines after @SYSTEM_USER_BLOCK@.
 Description=Kura daemon (personal agent OS control plane)
-Documentation=https://github.com/dopejs/dope-agent
+Documentation=https://github.com/dopejs/kura
 After=network-online.target
 Wants=network-online.target
 

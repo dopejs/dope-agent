@@ -6,12 +6,12 @@
 # Detects OS/arch, downloads the latest GitHub release tarball, verifies
 # its SHA-256 against the release's SHA256SUMS, and installs `dope` and
 # `dope-tui` into an existing PATH directory (~/.local/bin or
-# /usr/local/bin). Override the version with DOPE_VERSION=v0.1.0 and the
+# /usr/local/bin). Override the version with DOPE_VERSION=v0.2.0 and the
 # destination with DOPE_INSTALL_DIR=/some/bin.
 
 set -eu
 
-REPO="dopejs/dope-agent"
+REPO="dopejs/kura"
 
 say()  { printf '\033[1m[dope]\033[0m %s\n' "$1"; }
 fail() { printf '\033[1;31m[dope]\033[0m %s\n' "$1" >&2; exit 1; }
