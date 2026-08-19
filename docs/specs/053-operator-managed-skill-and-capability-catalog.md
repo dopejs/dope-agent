@@ -13,7 +13,7 @@ Primary source documents:
 
 ## Background
 
-OpenClaw and HermesAgent emphasize skills and extensibility. DopeAgent already has MCP,
+OpenClaw and HermesAgent emphasize skills and extensibility. Kura already has MCP,
 skills, sandbox, and capability primitives, but public parity requires an operator-managed
 catalog with enablement, permission, version, rollback, and hosted-safe install policy.
 Agent-generated skills remain later work after memory.
@@ -85,7 +85,7 @@ than being replaced wholesale.
 
 ## Definition Of Done
 
-- DopeAgent has skill/capability catalog parity for operator-managed extensions without
+- Kura has skill/capability catalog parity for operator-managed extensions without
   entering agent-managed skill generation.
 
 ## Recommended `/speckit-specify` Input

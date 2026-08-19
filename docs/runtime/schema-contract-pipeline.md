@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines how DopeAgent keeps daemon contracts enforceable.
+This document defines how Kura keeps daemon contracts enforceable.
 
 P0 uses committed JSON Schema files as the durable contract source for:
 

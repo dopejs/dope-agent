@@ -11,7 +11,7 @@ program's implementation gate was opened by operator decision on 2026-08-17
 
 The memory management philosophy follows
 [TencentCloud/TencentDB-Agent-Memory](https://github.com/TencentCloud/TencentDB-Agent-Memory),
-adapted onto DopeAgent's planes. The adopted core ideas:
+adapted onto Kura's planes. The adopted core ideas:
 
 1. **Layered memory pyramid (L0→L3)** — raw conversation (L0), extracted
    atoms (L1: facts/preferences/constraints/events), scenario blocks (L2),
@@ -37,7 +37,7 @@ adapted onto DopeAgent's planes. The adopted core ideas:
 7. **Private-first sharing** — new assets default to the owner's private
    visibility; wider visibility is an explicit, auditable transition.
 
-These compose with DopeAgent's binding constraints rather than replacing
+These compose with Kura's binding constraints rather than replacing
 them: attribution/scoping/reversibility stay mandatory, recalled memory
 stays evidence-not-truth (the drill-down path IS the citation), and every
 write stays policy-gated.

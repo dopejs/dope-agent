@@ -448,7 +448,7 @@ The memory design root is
 memory assets (memory/skills/wiki/codegraph under one envelope), async
 consolidation pipelines, layered retrieval with BM25+vector+RRF fallback,
 assets-as-tools, and dual-layer white-box storage — adapted onto
-DopeAgent's planes per the revised `docs/specs/058`.
+Kura's planes per the revised `docs/specs/058`.
 
 ### Goal
 

@@ -6,7 +6,7 @@ Historical feature scope lives in plain markdown under `specs/<NNN>-<name>/` and
 
 ## Project Overview
 
-DopeAgent is a personal agent OS with a Rust daemon backend, React web UI, Rust TUI (`dope-tui`), and a shared TypeScript client SDK. The daemon is the system spine owning runtime state, provider dispatch, policy gates, and event fan-out. Clients are thin consumers.
+Kura is a personal agent OS with a Rust daemon backend, React web UI, Rust TUI (`dope-tui`), and a shared TypeScript client SDK. The daemon is the system spine owning runtime state, provider dispatch, policy gates, and event fan-out. Clients are thin consumers.
 
 ## Build & Development Commands
 

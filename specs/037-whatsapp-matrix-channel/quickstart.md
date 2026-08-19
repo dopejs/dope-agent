@@ -46,7 +46,7 @@ by an operator, redacted in all evidence, and isolated from normal production te
    - Matrix tenant-provided bot setup through the hosted setup wizard
    - Matrix runtime under the shared connector supervisor
    - explicit direct allowment and allowed-room mention/command gating
-   - unsupported setup outcomes for DopeAgent-hosted homeserver provisioning, Matrix
+   - unsupported setup outcomes for Kura-hosted homeserver provisioning, Matrix
      account provisioning, local-only sessions, and unsupported unofficial automation
    - unsupported outcomes for encrypted rooms, undecryptable events, E2EE key/session
      management, files, voice, calls, reactions, bridge metadata, broad rich media,
@@ -76,7 +76,7 @@ Required targeted cases:
 - federation/sync/network failures classified
 - homeserver/bot ownership mismatch and cross-tenant binding blocked
 - exactly one homeserver/bot binding active per Matrix connector
-- DopeAgent-hosted homeserver provisioning and Matrix account provisioning unsupported
+- Kura-hosted homeserver provisioning and Matrix account provisioning unsupported
 - no selected room or direct allowment returns `action-required`
 - cancelled setup preserves redacted audit evidence
 - direct unencrypted text from explicitly allowed sender accepted

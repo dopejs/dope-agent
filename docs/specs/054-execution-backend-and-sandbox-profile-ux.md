@@ -14,7 +14,7 @@ Primary source documents:
 
 ## Background
 
-HermesAgent advertises multiple execution backends. DopeAgent has stronger sandbox and
+HermesAgent advertises multiple execution backends. Kura has stronger sandbox and
 requirement primitives, but users need to understand which execution profiles exist, what
 they allow, and why a tool cannot run.
 

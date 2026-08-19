@@ -25,7 +25,7 @@ use tokio::sync::mpsc;
 
 use client::{ChatQueryInput, ChatQueryResponse, Client};
 
-/// DopeAgent full-screen terminal client.
+/// Kura full-screen terminal client.
 #[derive(Parser, Debug)]
 #[command(name = "dope-tui", version)]
 struct Cli {
@@ -232,7 +232,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         input: String::new(),
         messages: vec![Message {
             role: Role::System,
-            content: "DopeAgent (type /help)".to_string(),
+            content: "Kura (type /help)".to_string(),
             done: true,
         }],
         history: Vec::new(),
@@ -259,7 +259,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         app.model = state.model;
         app.thread_id = state.thread_id;
         if app.messages.is_empty() {
-            app.push(Role::System, "DopeAgent (type /help)".to_string(), true);
+            app.push(Role::System, "Kura (type /help)".to_string(), true);
         }
     }
 

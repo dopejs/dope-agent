@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document captures where OpenClaw appears to have architectural improvement space and what design direction DopeAgent may take in response.
+This document captures where OpenClaw appears to have architectural improvement space and what design direction Kura may take in response.
 
 This is not a dismissal of OpenClaw. It is a gap analysis against our target of a long-lived personal agent OS with stronger runtime, context, and memory boundaries.
 
@@ -224,7 +224,7 @@ Coding, architecture, voice, browser, calendar, and messaging should all be doma
 
 ## Summary Table
 
-| Area | OpenClaw Pattern | Main Risk | DopeAgent Direction |
+| Area | OpenClaw Pattern | Main Risk | Kura Direction |
 | --- | --- | --- | --- |
 | Gateway | many responsibilities in one daemon | large failure and ownership surface | split shell, runtime, adapters, tools, UI logically |
 | Workspace files | prompt files act like runtime state | implicit truth and weak auditability | keep overlays, move truth into structured state |
@@ -235,7 +235,7 @@ Coding, architecture, voice, browser, calendar, and messaging should all be doma
 | Protocol | one broad WS method surface | evolution and versioning pressure | separate logical APIs |
 | Product layering | rich features, loose domain boundaries | abstraction drift | core primitives plus domain packs |
 
-## Implication For DopeAgent
+## Implication For Kura
 
 The target should not be "build OpenClaw again."
 

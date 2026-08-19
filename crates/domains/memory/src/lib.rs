@@ -1,7 +1,7 @@
 //! dope-memory: the memory plane foundation (Roadmap 78, spec 058).
 //!
 //! Layered memory following the TencentDB-Agent-Memory model adapted onto
-//! DopeAgent's planes: L0 is the existing conversation truth (referenced,
+//! Kura's planes: L0 is the existing conversation truth (referenced,
 //! never duplicated), L1 atoms extract typed facts with mandatory source
 //! links, L2 scenarios aggregate atoms, L3 distills the persona/core
 //! profile — every layer carrying a deterministic drill-down path to the

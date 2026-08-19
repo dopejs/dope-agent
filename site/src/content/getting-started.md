@@ -1,6 +1,6 @@
 # Getting Started
 
-DopeAgent is a **personal agent OS**: a local Rust daemon (the control
+Kura is a **personal agent OS**: a local Rust daemon (the control
 plane) plus thin clients — a full-screen terminal UI (`dope-tui`), a React
 web shell, and chat-channel connectors. The daemon owns runtime state,
 provider dispatch, policy gates, memory, and event fan-out; clients are
@@ -66,7 +66,7 @@ dope config set llm.defaultProvider claude_code_cli
 dope config edit                  # $EDITOR on config.json (validated)
 ```
 
-DopeAgent has two environments, selected by `DOPE_ENV`:
+Kura has two environments, selected by `DOPE_ENV`:
 
 | Mode | Data dir | Bind address | Command |
 |------|----------|--------------|---------|

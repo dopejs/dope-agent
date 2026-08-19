@@ -1,4 +1,4 @@
-/* DopeAgent site — dark, technical, quiet. */
+/* Kura site — dark, technical, quiet. */
 :root {
   --bg: #0b0e14;
   --bg-raise: #11151f;
@@ -32,9 +32,9 @@ code, pre { font-family: var(--mono); font-size: 0.88em; }
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
 }
-.brand { color: var(--text); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.01em; }
+.brand { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--text); font-weight: 700; font-size: 1.05rem; letter-spacing: 0; }
 .brand:hover { text-decoration: none; }
-.brand__mark { color: var(--accent-2); margin-right: 0.35rem; }
+.brand__mark { display: block; width: 1.55rem; height: 1.55rem; }
 .header__nav { display: flex; gap: 1.4rem; }
 .header__nav a { color: var(--text-dim); font-size: 0.95rem; }
 .header__nav a:hover, .header__nav a.active { color: var(--text); text-decoration: none; }

@@ -37,15 +37,15 @@ connector slice.
 
 **Rationale**: Tenant-provided bot accounts keep account ownership, homeserver choice,
 room membership, rollback, and credential responsibility in the tenant boundary while
-allowing DopeAgent to validate readiness and route policy. DopeAgent-hosted homeserver
+allowing Kura to validate readiness and route policy. Kura-hosted homeserver
 operation would add account lifecycle, federation, moderation, abuse, backup, and
 operational responsibilities outside the roadmap.
 
 **Alternatives considered**:
 
-- DopeAgent operates a shared Matrix homeserver and provisions accounts: rejected because
+- Kura operates a shared Matrix homeserver and provisions accounts: rejected because
   it expands the roadmap into hosted Matrix infrastructure and moderation.
-- Support both tenant-provided and DopeAgent-hosted accounts: rejected because it doubles
+- Support both tenant-provided and Kura-hosted accounts: rejected because it doubles
   setup, diagnostics, rollback, and credential lifecycle paths before the simpler hosted
   connector path is proven.
 

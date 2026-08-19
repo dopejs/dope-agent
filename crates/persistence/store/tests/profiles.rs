@@ -193,6 +193,7 @@ fn active_selection_and_runtime_projections() {
     // Lazy default: no selection yet → ensure_default_agent_profile seeds one.
     let (profile, selection) = store.active_agent_profile_selection("ten_1").unwrap().expect("default selection");
     assert_eq!(profile.display_name, "Default Agent");
+    assert_eq!(profile.display_identity.name, "Kura");
     assert_eq!(selection.selection_scope, "tenant_default");
     assert_eq!(selection.selection_reason, dope_profiles::SelectionReason::DEFAULT_SEEDED);
 

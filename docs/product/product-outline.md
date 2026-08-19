@@ -2,7 +2,7 @@
 
 ## Positioning
 
-DopeAgent is a personal agent operating system rather than a single-purpose coding agent.
+Kura is a personal agent operating system rather than a single-purpose coding agent.
 
 It should support:
 
@@ -23,7 +23,7 @@ Most current agent products are prompt shells with lightweight memory. They can 
 - replay and audit
 - explicit separation between host shell and agent core
 
-DopeAgent should instead be built as:
+Kura should instead be built as:
 
 - a host shell and control plane
 - a runtime plane for runs, steps, and checkpoints

@@ -4,7 +4,7 @@
 
 This document records the completion boundary for `Roadmap 10: Managed Coding Providers`.
 
-The goal of this roadmap was not to add more `baseURL + apiKey` providers. The goal was to make DopeAgent understand provider profiles backed by managed login state and local coding-plan tooling.
+The goal of this roadmap was not to add more `baseURL + apiKey` providers. The goal was to make Kura understand provider profiles backed by managed login state and local coding-plan tooling.
 
 ## What Is Implemented
 

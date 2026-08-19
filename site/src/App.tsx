@@ -1,4 +1,4 @@
-// DopeAgent official site: landing page + full documentation. Docs are
+// Kura official site: landing page + full documentation. Docs are
 // markdown, rendered client-side; the architecture chapter imports the
 // repository's real design doc so the site can never drift from it.
 
@@ -39,7 +39,9 @@ const DOCS: DocPage[] = [
 
 function ScrollToTop() {
   const { pathname } = useLocation();
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
   return null;
 }
 
@@ -47,7 +49,8 @@ function Header() {
   return (
     <header className="header">
       <Link to="/" className="brand">
-        <span className="brand__mark">⬡</span> DopeAgent
+        <img className="brand__mark" src="/kura-mark.svg" alt="" />
+        <span>Kura</span>
       </Link>
       <nav className="header__nav">
         <NavLink to="/docs/getting-started">Docs</NavLink>
@@ -122,7 +125,7 @@ function Landing() {
         <pre className="hero__terminal">
           <code>
             {`$ curl -fsSL https://agent.dopejs.com/install.sh | sh
-[dope] installing DopeAgent v0.1.0 for aarch64-apple-darwin
+[dope] installing Kura v0.1.0 for aarch64-apple-darwin
 [dope] checksum verified
 [dope] installed to ~/.local/bin: dope, dope-tui
 
@@ -197,7 +200,7 @@ function DocsLayout() {
 function Footer() {
   return (
     <footer className="footer">
-      <span>DopeAgent — a personal agent OS.</span>
+      <span>Kura — a personal agent OS.</span>
       <span>
         <a href={REPO}>GitHub</a> · <a href={`${REPO}/releases`}>Releases</a> ·{" "}
         <a href={`${REPO}/issues`}>Issues</a>

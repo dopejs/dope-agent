@@ -1,6 +1,6 @@
 # JavaScript Runtime Prototype
 
-This directory contains the early JavaScript runtime prototype that was created before the repository structure and the `DopeAgent: Go daemon + TS clients` decision were finalized.
+This directory contains the early JavaScript runtime prototype that was created before the repository structure and the `Kura: Go daemon + TS clients` decision were finalized.
 
 Status:
 

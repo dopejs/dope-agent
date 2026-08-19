@@ -6,7 +6,7 @@
 
 ## Decision
 
-For P0, DopeAgent should use:
+For P0, Kura should use:
 
 - Go for the daemon core
 - TypeScript for operator-facing clients
@@ -15,7 +15,7 @@ For P0, DopeAgent should use:
 
 The recommended headline architecture is:
 
-- `DopeAgent: Go daemon + TS clients`
+- `Kura: Go daemon + TS clients`
 
 ## Why This Is The Recommendation
 

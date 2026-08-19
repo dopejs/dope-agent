@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DopeAgent in-place upgrade orchestrator: preflight -> backup -> build+
+# Kura in-place upgrade orchestrator: preflight -> backup -> build+
 # install -> restart -> postflight. Production data requires the explicit
 # DOPE_LIVE_OPT_IN=yes guard, matching the rest of the production scripts.
 set -euo pipefail

@@ -1,4 +1,4 @@
-//! dope — the DopeAgent command line.
+//! dope — the Kura command line.
 //!
 //! ```text
 //! dope daemon run|start|stop|status   manage the daemon process
@@ -22,7 +22,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "dope",
     version,
-    about = "DopeAgent — a personal agent OS",
+    about = "Kura — a personal agent OS",
     propagate_version = true
 )]
 struct Cli {

@@ -15,7 +15,7 @@ Primary source documents:
 
 ## Background
 
-After non-knowledge parity specs land, DopeAgent needs one release gate proving the hosted
+After non-knowledge parity specs land, Kura needs one release gate proving the hosted
 product can run with real channels, real providers, routines, diagnostics, quota, support
 evidence, backup, restore, upgrade, and rollback. This is the entry gate for
 context/knowledge/memory work.
@@ -94,7 +94,7 @@ or validators only where the public beta gate needs stronger evidence.
 
 ## Definition Of Done
 
-- DopeAgent has defensible hosted/public non-knowledge parity evidence.
+- Kura has defensible hosted/public non-knowledge parity evidence.
 - The team can start context/knowledge/memory design from a stable product and operations
   baseline rather than using memory to fill product gaps.
 

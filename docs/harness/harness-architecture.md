@@ -2,7 +2,7 @@
 
 ## Purpose
 
-DopeAgent is no longer only a daemon plus connectors. Once skill loading became a first-class daemon contract, the system started moving into **harness engineering**.
+Kura is no longer only a daemon plus connectors. Once skill loading became a first-class daemon contract, the system started moving into **harness engineering**.
 
 The harness is the substrate that makes agent execution:
 
@@ -273,7 +273,7 @@ evidence recorded, while full-duration hosted daemon release soak remains a
 
 ### Post-Roadmap 43: Non-Knowledge Parity Before Context And Memory
 
-After hosted productization, DopeAgent still needs one final non-knowledge parity family
+After hosted productization, Kura still needs one final non-knowledge parity family
 before context, knowledge, and memory should become the main differentiators:
 
 - Roadmap 44: roadmap authority and release truth reconciliation using the standalone

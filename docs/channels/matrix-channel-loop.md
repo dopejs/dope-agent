@@ -14,7 +14,7 @@ room. Missing credentials, invalid or revoked bot tokens, unsupported homeserver
 failures, redaction suppression, and missing route policies stay terminal and
 operator-visible.
 
-DopeAgent does not host a Matrix homeserver, create Matrix accounts, manage E2EE key
+Kura does not host a Matrix homeserver, create Matrix accounts, manage E2EE key
 sessions, or bridge WhatsApp. If an operator needs one of those surfaces, rollback is to
 disable Matrix ingress and delivery eligibility while retaining setup, diagnostic, smoke,
 and route evidence for support review.

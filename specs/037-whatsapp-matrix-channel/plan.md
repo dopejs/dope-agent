@@ -13,13 +13,13 @@ boundaries already used by Discord, Telegram, and Slack.
 
 The implementation is additive: introduce a provider-specific Matrix connector package
 for tenant-provided Matrix bot accounts on tenant-selected homeservers, validate
-homeserver/account/room readiness without operating a DopeAgent Matrix homeserver,
+homeserver/account/room readiness without operating a Kura Matrix homeserver,
 support unencrypted text DMs and allowed rooms with bot mention or configured command,
 dedupe by homeserver plus room/direct conversation plus Matrix event ID while retaining
 sync or transaction identity as evidence, send final foreground replies, expose Matrix as
 a connector-backed background delivery target, and publish redacted setup, route,
 diagnostic, conformance, and smoke evidence. Phase 52 does not include WhatsApp,
-DopeAgent-hosted homeserver provisioning, encrypted rooms, E2EE key/session management,
+Kura-hosted homeserver provisioning, encrypted rooms, E2EE key/session management,
 voice/calls, media-rich workflows, bridge automation, or memory-based personalization.
 
 ## Technical Context
@@ -75,7 +75,7 @@ connector diagnostics become stale after 15 minutes, and retained connector evid
 expires from normal inspection after 90 days unless an authorized longer retention policy
 applies.
 **Constraints**: Matrix setup uses tenant-provided bot accounts on tenant-selected
-homeservers only. DopeAgent does not operate a shared Matrix homeserver or provision
+homeservers only. Kura does not operate a shared Matrix homeserver or provision
 Matrix accounts in phase 52. Direct messages are accepted only from eligible senders and
 tenant-allowed routes. Room messages are accepted only for tenant-allowed unencrypted
 rooms and only when the message includes a bot mention or configured command. Encrypted
@@ -87,7 +87,7 @@ appear in setup results, diagnostics, events, fixtures, logs, support output,
 conformance evidence, or smoke evidence.
 **Scale/Scope**: One whole roadmap slice, Phase 52. Required coverage is Matrix only,
 using fake transport tests and provider-specific regression against the Roadmap 48 shared
-conformance contract. WhatsApp, future channel management UX, DopeAgent-hosted Matrix
+conformance contract. WhatsApp, future channel management UX, Kura-hosted Matrix
 homeserver provisioning, encrypted room support, broad media, calls/voice, bridge
 automation, and additional provider domains remain out of scope.
 
@@ -292,7 +292,7 @@ Contract risks, ordered by severity:
 5. Matrix diagnostics can leak access tokens, event bodies, room/user IDs, homeserver
    details, or cross-tenant content. The design redacts all evidence by default and
    suppresses detail when redaction confidence is insufficient.
-6. DopeAgent-hosted homeserver provisioning would introduce account lifecycle,
+6. Kura-hosted homeserver provisioning would introduce account lifecycle,
    federation, abuse, moderation, and operational responsibilities outside this roadmap.
    The design explicitly excludes hosted homeserver operation and Matrix account
    provisioning.

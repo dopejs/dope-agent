@@ -1,6 +1,6 @@
 # Memory
 
-DopeAgent's memory plane follows the layered
+Kura's memory plane follows the layered
 [TencentDB-Agent-Memory](https://github.com/TencentCloud/TencentDB-Agent-Memory)
 model: a pyramid of governed, attributable, reversible assets.
 

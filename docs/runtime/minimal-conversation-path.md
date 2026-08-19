@@ -16,7 +16,7 @@ This split is structural, not optional. Provider integration and two client surf
 - `Roadmap 6` is complete
 - `Roadmap 7` is complete
 
-That means DopeAgent daemon can already:
+That means Kura daemon can already:
 
 - load a real provider from config
 - accept a single-turn query

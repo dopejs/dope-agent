@@ -12,7 +12,7 @@ Primary source documents:
 
 ## Background
 
-OpenClaw-style systems often use workspace prompt files as runtime inputs. DopeAgent's
+OpenClaw-style systems often use workspace prompt files as runtime inputs. Kura's
 direction is to keep editable files as overlays while moving runtime truth into structured
 state. Before memory work begins, persona and profile configuration must be structured,
 auditable, and bindable to channels and workspaces.

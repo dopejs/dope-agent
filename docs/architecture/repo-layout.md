@@ -6,7 +6,7 @@
 
 ## Purpose
 
-This document defines the planned repository structure for DopeAgent before daemon implementation begins in earnest.
+This document defines the planned repository structure for Kura before daemon implementation begins in earnest.
 
 The structure is designed to support:
 

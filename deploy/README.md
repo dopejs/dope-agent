@@ -1,6 +1,6 @@
 # Deploy & Install
 
-How to install and run DopeAgent for real use. DopeAgent is a **daemon** (the
+How to install and run Kura for real use. Kura is a **daemon** (the
 control plane) plus thin clients (Web UI, TUI). Installing means getting the
 daemon running as a background service; clients then connect to it.
 

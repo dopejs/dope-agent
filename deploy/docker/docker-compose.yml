@@ -1,4 +1,4 @@
-# DopeAgent via Docker Compose.
+# Kura via Docker Compose.
 #
 #   cd deploy/docker
 #   docker compose up -d --build

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# DopeAgent uninstaller. Removes the service and the installed binary.
+# Kura uninstaller. Removes the service and the installed binary.
 # Data (the data directory: runs, events, config) is KEPT unless --purge.
 #
 # Overrides:

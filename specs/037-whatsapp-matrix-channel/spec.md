@@ -86,7 +86,7 @@ Authorized operators can inspect Matrix connector health, setup status, routing 
 - Matrix cannot provide a hosted-safe setup or operation path.
 - Matrix supported behavior changes before implementation planning or before release.
 - A tenant attempts to configure both WhatsApp and Matrix in phase 52.
-- A tenant attempts to configure Matrix through unsupported unofficial automation, local-only sessions, a DopeAgent-operated shared homeserver, raw secrets outside the supported setup path, or behavior that violates provider policy.
+- A tenant attempts to configure Matrix through unsupported unofficial automation, local-only sessions, a Kura-operated shared homeserver, raw secrets outside the supported setup path, or behavior that violates provider policy.
 - A tenant-selected homeserver is unreachable, unsupported, rate-limited, misconfigured, or rejects required bot account and room operations.
 - Matrix account, room, sender, user, device, or federation identity cannot be proven tenant-owned or cannot be mapped to exactly one tenant route.
 - Provider authorization is revoked, expires, loses required permissions, or is blocked by provider approval after setup was previously ready.
@@ -107,7 +107,7 @@ Authorized operators can inspect Matrix connector health, setup status, routing 
 - **FR-004**: The Matrix connector MUST satisfy the shared channel connector conformance contract for tenant ownership, permission-gated inspection, account binding, routing decisions, durable deduplication, redaction, diagnostics, and foreground versus background delivery separation.
 - **FR-005**: The Matrix connector MUST reference the shared channel connector conformance behavior for routing, dedupe, diagnostics, redaction, delivery boundaries, and outcome vocabulary instead of redefining those shared meanings.
 - **FR-006**: The system MUST offer a tenant-scoped hosted Matrix setup path for a tenant-provided Matrix bot account on a tenant-selected homeserver, supporting retry, replacement, cancellation, disablement, readiness status, route policy validation, diagnostic probes, and redacted setup evidence.
-- **FR-006a**: The system MUST NOT operate a shared hosted Matrix homeserver, provision Matrix accounts for tenants, or require tenants to move rooms to DopeAgent-controlled Matrix infrastructure in phase 52.
+- **FR-006a**: The system MUST NOT operate a shared hosted Matrix homeserver, provision Matrix accounts for tenants, or require tenants to move rooms to Kura-controlled Matrix infrastructure in phase 52.
 - **FR-007**: Setup MUST use the standard terminal states `ready`, `degraded`, `unavailable`, `cancelled`, and `action-required`, with actionable remediation for invalid bot authorization, missing permissions, ownership mismatch, unsupported homeserver behavior, unsafe setup mode, provider unavailability, and network failure.
 - **FR-008**: The system MUST preserve tenant, connector, tenant-selected Matrix homeserver, Matrix bot account identity, Matrix room or direct conversation identity, sender identity, and Matrix event identity for every accepted inbound message, foreground reply, diagnostic, setup attempt, and connector-backed delivery outcome.
 - **FR-009**: The system MUST prevent cross-tenant routing by rejecting or blocking messages when provider account, room, sender, conversation, connector state, or route policy cannot be associated with exactly one active tenant route.
@@ -164,7 +164,7 @@ Authorized operators can inspect Matrix connector health, setup status, routing 
 - Roadmap 48 channel connector conformance and the previous production channel connector slices are available as upstream contracts for phase 52.
 - Phase 52 implements one channel only: Matrix; WhatsApp is rejected for this phase and remains out of scope unless a later roadmap phase selects it.
 - Matrix must have a provider-compliant hosted setup and operation path before implementation planning proceeds.
-- Phase 52 uses tenant-provided Matrix bot accounts on tenant-selected homeservers; DopeAgent-operated shared Matrix homeserver provisioning is out of scope.
+- Phase 52 uses tenant-provided Matrix bot accounts on tenant-selected homeservers; Kura-operated shared Matrix homeserver provisioning is out of scope.
 - Direct conversation support is required for unencrypted Matrix text messages. Room behavior is included only for unencrypted text messages in tenant-allowed rooms where messages include a bot mention or configured command.
 - End-to-end encrypted Matrix rooms, undecryptable events, and Matrix key/session management are out of scope for phase 52.
 - Final-only foreground replies are sufficient for the first phase; richer reply progression, interactive controls, media, calls, voice, and provider-specific controls are allowed only when they still report supported, limited, failed, or unsupported status explicitly.

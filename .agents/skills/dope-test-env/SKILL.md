@@ -1,9 +1,9 @@
 ---
 name: dope-test-env
-description: Use when working on DopeAgent locally and you need to start, inspect, debug, or validate the daemon without touching production state. Default to the test environment at ~/.dope-test and port 19192 unless the user explicitly requests production.
+description: Use when working on Kura locally and you need to start, inspect, debug, or validate the daemon without touching production state. Default to the test environment at ~/.dope-test and port 19192 unless the user explicitly requests production.
 ---
 
-# DopeAgent Test Environment
+# Kura Test Environment
 
 Use this skill for local development and debugging in this repository.
 

@@ -13,7 +13,7 @@ It answers four questions:
 
 ## Definition
 
-The daemon is the T0 system process of DopeAgent.
+The daemon is the T0 system process of Kura.
 
 It is a long-running local-first or server-hosted process that acts as the system spine for:
 
@@ -163,7 +163,7 @@ This document should directly feed:
 
 ## Short Version
 
-The daemon is the authoritative system spine of DopeAgent.
+The daemon is the authoritative system spine of Kura.
 
 It owns truth, routing, runtime, supervision, and recovery.
 

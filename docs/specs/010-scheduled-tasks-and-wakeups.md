@@ -2,7 +2,7 @@
 
 Status: proposed
 
-Authority: This document is the authoritative upstream spec for the roadmap slice that turns DopeAgent from a reactive daemon into a triggerable personal agent.
+Authority: This document is the authoritative upstream spec for the roadmap slice that turns Kura from a reactive daemon into a triggerable personal agent.
 
 Primary source documents:
 - `docs/product/personal-agent-non-knowledge-roadmap-split.md` (removed 2026-08, in git history)

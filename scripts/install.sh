@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DopeAgent first-release installer: builds the Rust daemon from this
+# Kura first-release installer: builds the Rust daemon from this
 # checkout and installs the `dope` binary onto PATH. Safe to re-run; it
 # never touches an existing data directory's contents.
 set -euo pipefail

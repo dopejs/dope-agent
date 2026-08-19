@@ -7,7 +7,7 @@ This document defines the primary module boundaries for P0.
 It is derived from:
 
 - the P0 feature scope
-- the decision to use `DopeAgent: Go daemon + TS clients`
+- the decision to use `Kura: Go daemon + TS clients`
 - the requirement that the daemon is a T0 long-lived process
 
 The main goal is to decide:

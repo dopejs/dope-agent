@@ -14,7 +14,7 @@ Primary source documents:
 ## Background
 
 OpenClaw-style parity depends on multi-channel reach. After Discord, Telegram, and Slack,
-DopeAgent needs one more materially different connector: WhatsApp for personal mobile
+Kura needs one more materially different connector: WhatsApp for personal mobile
 messaging reach, or Matrix for open federated rooms with lower platform risk.
 
 ## Goal
@@ -85,7 +85,7 @@ explicit.
 
 ## Definition Of Done
 
-- DopeAgent has a fourth real channel option and a documented provider-risk decision.
+- Kura has a fourth real channel option and a documented provider-risk decision.
 
 ## Recommended `/speckit-specify` Input
 

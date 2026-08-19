@@ -136,7 +136,7 @@ pub fn execute_safe_live_smoke<T: SmokeTransport>(
     let sent = input.transport.send_reply(OutboundReply {
         connector_id: input.connector_id.clone(),
         channel_id: room_id,
-        content: "DopeAgent Matrix smoke validation".to_string(),
+        content: "Kura Matrix smoke validation".to_string(),
         reply_to_external_message_id: String::new(),
     })?;
     let binding_id = if binding.homeserver_binding_id.trim().is_empty() {

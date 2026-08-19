@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines the repository-default local development workflow for DopeAgent.
+This document defines the repository-default local development workflow for Kura.
 
 The goal is simple:
 

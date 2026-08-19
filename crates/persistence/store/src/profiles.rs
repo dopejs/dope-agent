@@ -80,7 +80,7 @@ impl SQLiteStore {
             &dope_profiles::MutationInput {
                 display_name: "Default Agent".to_string(),
                 display_identity: dope_profiles::DisplayIdentity {
-                    name: "DopeAgent".to_string(),
+                    name: "Kura".to_string(),
                     safe_summary: "Default personal assistant profile".to_string(),
                     ..dope_profiles::DisplayIdentity::default()
                 },
@@ -1036,7 +1036,7 @@ fn ensure_default_agent_profile_tx(tx: &Transaction, tenant_id: &str, now: DateT
         tenant_id: tenant_id.to_string(),
         display_name: "Default Agent".to_string(),
         display_identity: dope_profiles::DisplayIdentity {
-            name: "DopeAgent".to_string(),
+            name: "Kura".to_string(),
             safe_summary: "Default personal assistant profile".to_string(),
             ..dope_profiles::DisplayIdentity::default()
         },

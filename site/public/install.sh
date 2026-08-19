@@ -1,5 +1,5 @@
 #!/bin/sh
-# DopeAgent installer — https://agent.dopejs.com/install.sh
+# Kura installer — https://agent.dopejs.com/install.sh
 #
 #   curl -fsSL https://agent.dopejs.com/install.sh | sh
 #
@@ -42,7 +42,7 @@ VERSION="${TAG#v}"
 PKG="dope-${VERSION}-${TARGET}"
 BASE="https://github.com/$REPO/releases/download/$TAG"
 
-say "installing DopeAgent $TAG for $TARGET"
+say "installing Kura $TAG for $TARGET"
 
 # --- download + verify ----------------------------------------------------
 TMP=$(mktemp -d)

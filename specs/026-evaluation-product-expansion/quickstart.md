@@ -7,7 +7,7 @@ It does not require production state or live connector access.
 
 ## Environment
 
-Use the default DopeAgent test environment:
+Use the default Kura test environment:
 
 ```bash
 make daemon-run-test

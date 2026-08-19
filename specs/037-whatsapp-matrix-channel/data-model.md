@@ -34,7 +34,7 @@ using a tenant-provided bot account on a tenant-selected homeserver.
 - `ready` requires valid bot authorization, reachable tenant-selected homeserver,
   validated account binding, passing conformance gates, and at least one valid direct or
   room route policy.
-- DopeAgent-hosted homeserver provisioning and Matrix account provisioning cannot
+- Kura-hosted homeserver provisioning and Matrix account provisioning cannot
   transition setup to `ready` in phase 52.
 - `degraded`, `unavailable`, and `action-required` must include remediation-bearing
   diagnostic linkage.
@@ -305,7 +305,7 @@ Represents Matrix's conformance declaration.
 - `connectorKind`: `matrix`
 - `coreInvariantResults`: pass/fail results for phase 48 core invariants.
 - `providerSurfaceResults`: supported/limited/unsupported results for tenant-provided
-  bot setup, DopeAgent-hosted homeserver provisioning, direct messages, allowed room
+  bot setup, Kura-hosted homeserver provisioning, direct messages, allowed room
   mention routing, allowed room command routing, unencrypted text, encrypted rooms,
   undecryptable events, E2EE key/session management, final-only replies,
   connector-backed delivery, media, voice, calls, reactions, bridge automation, thinking,
@@ -319,7 +319,7 @@ Represents Matrix's conformance declaration.
 
 - Hosted-ready requires all core invariants to pass.
 - Unsupported optional surfaces must not weaken core invariants.
-- DopeAgent-hosted homeserver provisioning, encrypted rooms, undecryptable events,
+- Kura-hosted homeserver provisioning, encrypted rooms, undecryptable events,
   key/session management, broad media, voice, calls, bridge automation, thinking, and
   incremental visible updates remain unsupported for phase 52 unless explicitly recut.
 

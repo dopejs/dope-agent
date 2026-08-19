@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document explains how to operate the first closed IM loop in DopeAgent.
+This document explains how to operate the first closed IM loop in Kura.
 
 The current supported IM channel is:
 

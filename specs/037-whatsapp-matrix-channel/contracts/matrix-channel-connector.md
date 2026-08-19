@@ -9,7 +9,7 @@ channel connector conformance contract for the new Matrix connector.
 |------|-----------------|---------------|--------------|
 | Provider selection | Matrix is the chosen provider and WhatsApp is rejected for phase 52 | Planning blocked | Spec clarification and provider-risk research |
 | Tenant-provided bot setup | Tenant submits Matrix bot authorization for a tenant-selected homeserver without exposing raw credentials | `action-required` or `degraded` with `auth_missing` diagnostic | Fake setup tests; redaction tests |
-| Unsupported setup modes | DopeAgent-hosted homeserver provisioning, Matrix account provisioning, local-only sessions, bridge automation, and unsupported unofficial automation are rejected | `unsupported` setup outcome or `action-required` diagnostic | Unsupported setup tests |
+| Unsupported setup modes | Kura-hosted homeserver provisioning, Matrix account provisioning, local-only sessions, bridge automation, and unsupported unofficial automation are rejected | `unsupported` setup outcome or `action-required` diagnostic | Unsupported setup tests |
 | Homeserver and bot binding | Exactly one tenant-selected homeserver and bot account are bound to one connector | `degraded` or `action-required` with repair evidence | Binding cardinality tests; tenant isolation tests |
 | Homeserver support | Homeserver is reachable and supports required authenticated client, sync, room, and send behavior | `unavailable`, `degraded`, or `action-required` | Homeserver capability tests |
 | Route policy | At least one direct allowment or selected room policy exists before ingress can create runs | `action-required` until configured | Route policy validation tests |
@@ -35,7 +35,7 @@ channel connector conformance contract for the new Matrix connector.
 | Selected room inaccessible, stale, encrypted, missing membership, or missing send permission | `degraded` or `action-required` | No | Per-room validation result |
 | Matrix provider/homeserver rate-limited | `degraded` | No until recovered | Rate-limit diagnostic and retry-after evidence when available |
 | User cancels setup | `cancelled` | No | Redacted audit evidence, no unrelated state deleted |
-| DopeAgent-hosted homeserver or account provisioning requested | `action-required` or unsupported setup outcome | No | Unsupported setup remediation evidence |
+| Kura-hosted homeserver or account provisioning requested | `action-required` or unsupported setup outcome | No | Unsupported setup remediation evidence |
 
 Terminal states must reuse the hosted setup wizard vocabulary: `ready`, `degraded`,
 `unavailable`, `cancelled`, and `action-required`.
@@ -128,7 +128,7 @@ Phase 52 reply progression declaration:
 | Local network unavailable, sync failed, reconnect failed, federation failed, or retry exhausted | `network_failed` | `unavailable` or `degraded` | `operator` |
 | Duplicate inbound homeserver/room-or-direct/event after replay | `duplicate_inbound` | `degraded` | `none_required` |
 | Reply send failed after assistant work | `reply_failed` | `degraded` | `operator` |
-| DopeAgent-hosted homeserver provisioning, account provisioning, encrypted rooms, undecryptable events, E2EE key/session management, files, voice, calls, reactions, bridge automation, rich media, thinking, or incremental update | `unsupported_capability` | `unsupported_capability` | `none_required` |
+| Kura-hosted homeserver provisioning, account provisioning, encrypted rooms, undecryptable events, E2EE key/session management, files, voice, calls, reactions, bridge automation, rich media, thinking, or incremental update | `unsupported_capability` | `unsupported_capability` | `none_required` |
 | Unclassified Matrix connector failure | `unknown_connector_failure` | `degraded` | `operator` |
 
 ## Freshness, Retention, And Redaction
@@ -165,8 +165,8 @@ Matrix must declare:
 
 - Core invariants: all pass before ready.
 - Tenant-provided bot account setup: required.
-- DopeAgent-hosted homeserver provisioning: unsupported for phase 52.
-- DopeAgent Matrix account provisioning: unsupported for phase 52.
+- Kura-hosted homeserver provisioning: unsupported for phase 52.
+- Kura Matrix account provisioning: unsupported for phase 52.
 - Direct messages: supported only for explicitly allowed senders or direct routes.
 - Room messages: supported only for selected unencrypted rooms with bot mention or
   configured command.
@@ -239,7 +239,7 @@ Implementation is incomplete until these cases are covered:
 - homeserver unreachable and federation/sync failures map to actionable diagnostics
 - ownership mismatch or cross-tenant homeserver/bot/room binding fails closed
 - exactly one homeserver/bot binding is active per Matrix connector
-- DopeAgent-hosted homeserver provisioning and Matrix account provisioning are rejected
+- Kura-hosted homeserver provisioning and Matrix account provisioning are rejected
 - no selected room or direct allowment returns `action-required`
 - cancelled setup preserves audit evidence without deleting unrelated state
 - direct unencrypted text from explicitly allowed sender accepted

@@ -13,7 +13,7 @@ Primary source documents:
 
 ## Background
 
-Hermes-style parity includes handling message overload. DopeAgent should first support
+Hermes-style parity includes handling message overload. Kura should first support
 explicit-rule and operator-configured inbox triage before memory-driven personalization or
 learned prioritization exists.
 

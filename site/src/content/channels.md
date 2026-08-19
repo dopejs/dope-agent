@@ -1,6 +1,6 @@
 # Channels
 
-DopeAgent speaks IM natively: Discord, Telegram, Slack, and Matrix
+Kura speaks IM natively: Discord, Telegram, Slack, and Matrix
 connectors run inside the daemon, each as a `channel-*` plugin. Feishu/
 Lark calendar and mail ride the integrations plane.
 

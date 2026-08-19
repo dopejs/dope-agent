@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 64" role="img" aria-labelledby="kura-wordmark-title">
+  <title id="kura-wordmark-title">Kura</title>
+  <path fill="#58D6AE" d="M8 7h9a4 4 0 0 1 4 4v42a4 4 0 0 1-4 4H8V7Z"/>
+  <path fill="#7896FF" d="M20 28 40 7h16L33 31l-13-3Z"/>
+  <path fill="#7896FF" d="m20 36 13-3 23 24H40L20 36Z"/>
+  <text x="78" y="46" fill="#F3F6FC" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="40" font-weight="650" letter-spacing="0">Kura</text>
+</svg>

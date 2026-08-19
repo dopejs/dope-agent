@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# DopeAgent one-line bootstrap.
+# Kura one-line bootstrap.
 #
 #   curl -fsSL https://raw.githubusercontent.com/dopejs/dope-agent/main/deploy/get.sh | bash
 #

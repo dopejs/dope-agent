@@ -14,7 +14,7 @@ Primary source documents:
 
 ## Background
 
-DopeAgent has a connector supervisor, IM loop, Discord implementation, and delivery plane.
+Kura has a connector supervisor, IM loop, Discord implementation, and delivery plane.
 Public parity requires more channels, but adding them one by one without a conformance
 contract would create inconsistent routing, dedupe, reply, repair, and tenant behavior.
 

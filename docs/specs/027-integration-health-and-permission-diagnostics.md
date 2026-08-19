@@ -19,7 +19,7 @@ Primary source documents:
 
 ## Background
 
-DopeAgent can model personal integrations, tenant-owned credentials, live validation, and
+Kura can model personal integrations, tenant-owned credentials, live validation, and
 evaluation workflows. The remaining reliability gap is that real external systems fail in
 provider-specific ways: missing application scopes, user OAuth not granted, tenant app
 approval pending, expired tokens, rate limits, provider outages, network failures, and

@@ -1,10 +1,10 @@
 [Unit]
-# DopeAgent systemd service template.
+# Kura systemd service template.
 # Tokens (@NAME@) are substituted by deploy/install.sh.
 # Works both as a user service (systemctl --user) and a system service
 # (/etc/systemd/system). For a system service the installer also writes
 # User=/Group= lines after @SYSTEM_USER_BLOCK@.
-Description=DopeAgent daemon (personal agent OS control plane)
+Description=Kura daemon (personal agent OS control plane)
 Documentation=https://github.com/dopejs/dope-agent
 After=network-online.target
 Wants=network-online.target

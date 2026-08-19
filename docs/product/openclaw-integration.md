@@ -2,7 +2,7 @@
 
 ## Position
 
-OpenClaw is the current feature benchmark for DopeAgent, but it is not a required architecture or implementation base.
+OpenClaw is the current feature benchmark for Kura, but it is not a required architecture or implementation base.
 
 We may choose one of three paths:
 

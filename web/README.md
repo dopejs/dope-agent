@@ -1,6 +1,6 @@
 # Web Client
 
-This package is the operator-facing Web shell surface for DopeAgent.
+This package is the operator-facing Web shell surface for Kura.
 
 Role:
 

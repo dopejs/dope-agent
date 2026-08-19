@@ -21,7 +21,7 @@ The goal is not to add abstract connector plumbing again. The goal is to close o
 - issue a single-turn model request
 - send the assistant reply back through the same IM channel
 
-That is the minimum product bar for saying DopeAgent can actually talk through IM.
+That is the minimum product bar for saying Kura can actually talk through IM.
 
 ## Why This Is A Separate Roadmap
 
@@ -70,7 +70,7 @@ This does **not** mean Discord is the final strategic channel. It means Discord 
 
 ### Goal
 
-Make DopeAgent able to receive and answer IM messages through one real connector using the existing daemon runtime and provider system.
+Make Kura able to receive and answer IM messages through one real connector using the existing daemon runtime and provider system.
 
 Delivery result:
 
@@ -148,7 +148,7 @@ Task definition of done:
 
 ### Roadmap Definition Of Done
 
-- DopeAgent can carry one real IM conversation turn through a real connector
+- Kura can carry one real IM conversation turn through a real connector
 - the connector is supervised, configurable, and observable through daemon APIs
 - inbound routing and outbound reply behavior are durable enough for operator use
 - docs, schemas, and tests are aligned with the actual IM loop

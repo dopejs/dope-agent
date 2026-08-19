@@ -1,4 +1,4 @@
-# DopeAgent
+# Kura
 
 A personal agent OS: a local daemon (control plane) plus thin clients — a React
 web UI, a full-screen Rust TUI, and chat-channel connectors.

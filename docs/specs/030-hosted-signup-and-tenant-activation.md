@@ -13,7 +13,7 @@ Primary source documents:
 
 ## Background
 
-DopeAgent has tenant identity, token grants, hosted operation, and an operator shell. A
+Kura has tenant identity, token grants, hosted operation, and an operator shell. A
 public hosted product still needs a first-run path where an unfamiliar user can activate a
 personal tenant, understand the active environment, and complete one useful action without
 manual API calls.

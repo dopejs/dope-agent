@@ -1569,6 +1569,10 @@ export function App() {
   return (
     <main className="operator-shell">
       <section className="hero-panel">
+        <div className="product-brand" aria-label="Kura">
+          <img src="/kura-mark.svg" alt="" />
+          <span>Kura</span>
+        </div>
         <div>
           <p className="eyebrow">Operator Shell</p>
           <h1>Single control surface for onboarding, approvals, activity, and diagnostics.</h1>

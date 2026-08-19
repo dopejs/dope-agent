@@ -26,7 +26,7 @@ OpenClaw is the comparison target for product completeness. Our architecture may
 
 ## P0: Required To Be In The Same Product Category
 
-P0 defines the minimum feature set required for DopeAgent to count as a serious OpenClaw-class personal agent daemon.
+P0 defines the minimum feature set required for Kura to count as a serious OpenClaw-class personal agent daemon.
 
 ### 1. Daemon And Gateway Core
 
@@ -88,7 +88,7 @@ This does not require OpenClaw-style markdown memory. It only requires that the 
 
 ## P1: Strong Product Parity
 
-P1 brings DopeAgent closer to OpenClaw's broader platform value.
+P1 brings Kura closer to OpenClaw's broader platform value.
 
 ### 1. Richer Channel Coverage
 

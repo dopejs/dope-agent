@@ -25,6 +25,6 @@ and were removed 2026-08 (see git history).
 ## Add New Docs Here When
 
 - the document changes product scope
-- the document compares DopeAgent against benchmark products
+- the document compares Kura against benchmark products
 - the document changes phased product priorities
 - the document explains why the system should or should not emulate another product surface

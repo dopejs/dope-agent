@@ -1,6 +1,6 @@
-# crates/ — DopeAgent Rust Workspace
+# crates/ — Kura Rust Workspace
 
-The Rust rewrite of the DopeAgent daemon control plane. This workspace fully
+The Rust rewrite of the Kura daemon control plane. This workspace fully
 replaces the former Go `daemon/` (deleted); see `crates/MIGRATION.md` for the
 migration record.
 

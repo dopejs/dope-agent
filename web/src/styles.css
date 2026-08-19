@@ -91,6 +91,22 @@ textarea {
     var(--paper);
 }
 
+.product-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  color: var(--ink);
+  font-size: 1.15rem;
+  font-weight: 750;
+}
+
+.product-brand img {
+  display: block;
+  width: 30px;
+  height: 30px;
+}
+
 .eyebrow,
 .section-kicker,
 .banner-label,

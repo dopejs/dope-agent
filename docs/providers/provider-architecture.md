@@ -50,7 +50,7 @@ This layer answers:
 
 ### 2. Auth Mode
 
-This is how DopeAgent obtains usable access for that provider profile.
+This is how Kura obtains usable access for that provider profile.
 
 Examples:
 

@@ -1,7 +1,7 @@
 # Context & Session
 
 For a personal agent, **context management is session management** — and
-in DopeAgent both are plugins on the `chat/pre-dispatch` waterfall, so any
+in Kura both are plugins on the `chat/pre-dispatch` waterfall, so any
 plugin (builtin or external) can modify or replace the policy.
 
 ## The default context plugin

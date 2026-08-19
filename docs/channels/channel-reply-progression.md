@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines how DopeAgent should model reply progression across channels.
+This document defines how Kura should model reply progression across channels.
 
 The key rule is:
 
@@ -26,9 +26,9 @@ The two most important visible phases are:
 1. `thinking`
 2. `incremental output`
 
-If a channel can support them, DopeAgent should support them.
+If a channel can support them, Kura should support them.
 
-If a channel cannot support them, DopeAgent should wait for the full reply and then send a final message.
+If a channel cannot support them, Kura should wait for the full reply and then send a final message.
 
 ## Capability Model
 

@@ -70,7 +70,7 @@ Response:
       "activeVersionId": "profv_default_3",
       "tenantDefault": true,
       "displayIdentity": {
-        "name": "DopeAgent",
+        "name": "Kura",
         "safeSummary": "Default personal assistant profile"
       },
       "persona": {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# DopeAgent installer.
+# Kura installer.
 #
 # Builds the daemon from source, installs the `dope` binary, initializes the
 # data directory, and (unless --no-service) registers a background service:
@@ -79,7 +79,7 @@ HEALTH_HOST="${DOPE_BIND_ADDR%:*}"; [[ "${HEALTH_HOST}" == "0.0.0.0" || -z "${HE
 HEALTH_PORT="${DOPE_BIND_ADDR##*:}"
 HEALTH_URL="http://${HEALTH_HOST}:${HEALTH_PORT}/healthz"
 
-info "${BOLD}DopeAgent install${RST}  env=${DOPE_ENV}  bind=${DOPE_BIND_ADDR}"
+info "${BOLD}Kura install${RST}  env=${DOPE_ENV}  bind=${DOPE_BIND_ADDR}"
 echo "    binary   -> ${DOPE_BIN}"
 echo "    data dir -> ${DOPE_DATA_DIR}"
 echo "    health   -> ${HEALTH_URL}"
