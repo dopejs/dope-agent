@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to build and publish
+        required: true
+        default: v0.2.0
 
 permissions:
   contents: write
@@ -17,17 +23,21 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-15-intel
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
     runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
     defaults:
       run:
         working-directory: crates
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -48,7 +58,7 @@ jobs:
         run: cargo build --release -p dope-cli -p dope-tui --target ${{ matrix.target }}
       - name: Package
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           PKG="dope-${VERSION}-${{ matrix.target }}"
           mkdir -p "dist/${PKG}"
           cp "target/${{ matrix.target }}/release/dope-cli" "dist/${PKG}/dope"
@@ -77,6 +87,7 @@ jobs:
         run: cat dist/*.sha256 > dist/SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
           files: |
             dist/*.tar.gz
             dist/SHA256SUMS
