@@ -11,7 +11,7 @@ thin consumers of its HTTP API.
 One line (macOS and Linux, arm64 + x86_64):
 
 ```bash
-curl -fsSL https://agent.kurajs.com/install.sh | sh
+curl -fsSL https://kura.dopejs.com/install.sh | sh
 ```
 
 The installer detects your platform, downloads the latest
@@ -23,7 +23,7 @@ daemon) and `kura-tui` (the terminal client) into `~/.local/bin` or
 Pin a version or destination with:
 
 ```bash
-KURA_VERSION=v0.2.4 KURA_INSTALL_DIR=~/bin sh -c "$(curl -fsSL https://agent.kurajs.com/install.sh)"
+KURA_VERSION=v0.2.4 KURA_INSTALL_DIR=~/bin sh -c "$(curl -fsSL https://kura.dopejs.com/install.sh)"
 ```
 
 Prefer manual? Grab a tarball from the releases page:

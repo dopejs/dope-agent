@@ -1,225 +1,128 @@
-// Kura official site: landing page + full documentation. Docs are
-// markdown, rendered client-side; the architecture chapter imports the
-// repository's real design doc so the site can never drift from it.
+import { useEffect, useState, type ReactNode } from "react";
 
-import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useEffect } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-
-import architectureDoc from "../../docs/harness/plugin-architecture.md?raw";
-import apiDoc from "./content/api.md?raw";
-import channelsDoc from "./content/channels.md?raw";
-import configurationDoc from "./content/configuration.md?raw";
-import contextSessionDoc from "./content/context-session.md?raw";
-import externalPluginsDoc from "./content/external-plugins.md?raw";
-import gettingStartedDoc from "./content/getting-started.md?raw";
-import memoryDoc from "./content/memory.md?raw";
-import pluginsDoc from "./content/plugins.md?raw";
-import skillsImprovementDoc from "./content/skills-improvement.md?raw";
-import usageDoc from "./content/usage.md?raw";
+import { writeLanguagePreference } from "./language-preference";
+import { localeForPath, SITE_LOCALES, type SiteLocale } from "./locales";
+import { SearchDialog } from "./SearchDialog";
+import type { PageLink, SitePage, SitePayload } from "./types";
 
 const REPO = "https://github.com/dopejs/kura";
 
-type DocPage = { slug: string; title: string; body: string };
+interface AppProps {
+  readonly payload: SitePayload;
+  readonly initialLocalePath: string;
+}
 
-const DOCS: DocPage[] = [
-  { slug: "getting-started", title: "Getting Started", body: gettingStartedDoc },
-  { slug: "usage", title: "Usage", body: usageDoc },
-  { slug: "configuration", title: "Configuration", body: configurationDoc },
-  { slug: "plugins", title: "Plugins", body: pluginsDoc },
-  { slug: "external-plugins", title: "External Plugins", body: externalPluginsDoc },
-  { slug: "memory", title: "Memory", body: memoryDoc },
-  { slug: "context-session", title: "Context & Session", body: contextSessionDoc },
-  { slug: "skills-improvement", title: "Skills & Self-Improvement", body: skillsImprovementDoc },
-  { slug: "channels", title: "Channels", body: channelsDoc },
-  { slug: "api", title: "API Reference", body: apiDoc },
-  { slug: "architecture", title: "Architecture (design doc)", body: architectureDoc },
-];
+const DOCS = [
+  ["Getting Started", "/docs/getting-started/"], ["Usage", "/docs/usage/"],
+  ["Configuration", "/docs/configuration/"], ["Plugins", "/docs/plugins/"],
+  ["External Plugins", "/docs/external-plugins/"], ["Memory", "/docs/memory/"],
+  ["Context & Session", "/docs/context-session/"], ["Skills & Self-Improvement", "/docs/skills-improvement/"],
+  ["Channels", "/docs/channels/"], ["API Reference", "/docs/api/"],
+  ["Architecture", "/docs/architecture/"],
+] as const;
 
-function ScrollToTop() {
-  const { pathname } = useLocation();
+function Header({ page, locale, onLocaleChange }: { readonly page: SitePage; readonly locale: SiteLocale; onLocaleChange(path: string): void }): ReactNode {
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
-  return null;
-}
-
-function Header() {
-  return (
-    <header className="header">
-      <Link to="/" className="brand">
-        <img className="brand__mark" src="/kura-mark-inverse.svg" alt="" />
-        <span>Kura</span>
-      </Link>
-      <nav className="header__nav">
-        <NavLink to="/docs/getting-started">Docs</NavLink>
-        <a href={`${REPO}/releases`}>Releases</a>
-        <a href={REPO}>GitHub</a>
+    const handler = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault(); setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+  const toggleTheme = (): void => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("kura-theme", next);
+  };
+  return <>
+    <header className="site-header">
+      <a className="brand" href="/" aria-label="Kura home"><img src="/kura-mark.svg" alt="" /><span>Kura</span><small>{locale.ui.preRelease}</small></a>
+      <nav className={menuOpen ? "top-nav top-nav--open" : "top-nav"} aria-label="Primary">
+        <a href="/" aria-current={page.route === "/" ? "page" : undefined}>{locale.ui.overview}</a>
+        <a href="/docs/getting-started/" aria-current={page.route.startsWith("/docs/") ? "page" : undefined}>{locale.ui.docs}</a>
+        <a href={`${REPO}/releases`}>{locale.ui.releases}</a>
       </nav>
+      <div className="header-tools">
+        <button className="search-trigger" type="button" onClick={() => setSearchOpen(true)}><span aria-hidden="true">⌕</span><span>{locale.ui.search}</span><kbd>⌘ K</kbd></button>
+        <select className="locale-select" aria-label={locale.ui.language} value={locale.path} onChange={(event) => onLocaleChange(event.currentTarget.value)}>
+          {SITE_LOCALES.map((candidate) => <option key={candidate.path || "zh-Hans"} value={candidate.path}>{candidate.label}</option>)}
+        </select>
+        <button className="icon-button" type="button" aria-label={locale.ui.appearance} title={locale.ui.appearance} onClick={toggleTheme}>◐</button>
+        <a className="icon-button" href={REPO} aria-label="GitHub">GH</a>
+        <button className="mobile-menu" type="button" aria-label={locale.ui.menu} aria-expanded={menuOpen} onClick={() => setMenuOpen((value) => !value)}>{menuOpen ? "×" : "☰"}</button>
+      </div>
     </header>
-  );
+    <SearchDialog open={searchOpen} locale={locale} onClose={() => setSearchOpen(false)} />
+  </>;
 }
 
-const FEATURES: Array<{ title: string; body: string; to: string }> = [
-  {
-    title: "Everything is a plugin",
-    body:
-      "31+ builtin plugins over a small trust-boundary kernel. Disable, configure, or replace any of them from one profile file — dependencies resolve transitively and the assembly report tells you exactly what is running and why.",
-    to: "/docs/plugins",
-  },
-  {
-    title: "Layered memory (L0–L3)",
-    body:
-      "Episodes → atoms → scenarios → personas, every layer attributable and reversible. Five capture paths write automatically; an LLM consolidator distills upward; invented citations are discarded.",
-    to: "/docs/memory",
-  },
-  {
-    title: "A context engine that cites",
-    body:
-      "Memory bootstrap under budget, BM25+vector+RRF recall, symbolic compression of oversized content — every injected line carries its citation, and every decision lands in an inspectable AssemblyRecord.",
-    to: "/docs/context-session",
-  },
-  {
-    title: "Sessions that never forget",
-    body:
-      "Frame-preserving windows: long personal sessions (48k) and one-context-per-IM-thread (16k). Evicted spans are captured to memory first and the elision marker cites them — the model can always drill back.",
-    to: "/docs/context-session",
-  },
-  {
-    title: "External plugins, any language",
-    body:
-      "Drop a manifest + process under plugins/. Attach to the hook waterfall, veto turns, rewrite context, or serve whole seams (bring your own embedding model) over a line-JSON stdio protocol.",
-    to: "/docs/external-plugins",
-  },
-  {
-    title: "Governed autonomy",
-    body:
-      "The agent proposes skills and config improvements; the operator approves. Evidence required, rate-bounded, rollback recorded before anything applies, full event audit chain.",
-    to: "/docs/skills-improvement",
-  },
-];
-
-function Landing() {
-  return (
-    <main className="landing">
-      <section className="hero">
-        <p className="hero__kicker">model-visible = logged</p>
-        <h1>
-          A <em>personal agent OS</em> you can open up and read.
-        </h1>
-        <p className="hero__sub">
-          A Rust daemon that owns runtime, memory, context, and policy — with a
-          plugin architecture where session management, retrieval, and even the
-          embedding model are swappable parts. Thin clients: terminal, web,
-          and your IM channels.
-        </p>
-        <div className="hero__actions">
-          <Link className="button button--primary" to="/docs/getting-started">
-            Get started
-          </Link>
-          <a className="button" href={`${REPO}/releases`}>
-            Download v0.2.4
-          </a>
-        </div>
-        <pre className="hero__terminal">
-          <code>
-            {`$ curl -fsSL https://agent.kurajs.com/install.sh | sh
-[kura] installing Kura v0.2.4 for aarch64-apple-darwin
+function Home({ locale }: { readonly locale: SiteLocale }): ReactNode {
+  return <main className="home-page">
+    <section className="hero">
+      <div className="hero__copy">
+        <p className="eyebrow">model-visible = logged</p>
+        <h1>A <em>personal agent OS</em> you can open up and read.</h1>
+        <p className="hero__lead">A Rust daemon that owns runtime, memory, context, and policy — with a plugin architecture where session management, retrieval, and even the embedding model are swappable parts.</p>
+        <div className="hero__actions"><a className="button button--brand" href="/docs/getting-started/">{locale.ui.getStarted}</a><a className="button" href={`${REPO}/releases`}>{locale.ui.download}</a></div>
+      </div>
+      <div className="hero__visual" aria-hidden="true"><img src="/kura-mark.svg" alt="" /><span className="orbit orbit--one" /><span className="orbit orbit--two" /></div>
+    </section>
+    <section className="terminal" aria-label="Install Kura"><pre><code>{`$ curl -fsSL https://kura.dopejs.com/install.sh | sh
 [kura] checksum verified
-[kura] installed to ~/.local/bin: kura, kura-tui
+[kura] installed: kura, kura-tui
 
 $ kura daemon start
-daemon started (pid 51234, http://127.0.0.1:19191)
+daemon started at http://127.0.0.1:19191
 
-$ kura tui`}
-          </code>
-        </pre>
-      </section>
-
-      <section className="features">
-        {FEATURES.map((feature) => (
-          <Link key={feature.title} to={feature.to} className="feature">
-            <h3>{feature.title}</h3>
-            <p>{feature.body}</p>
-          </Link>
-        ))}
-      </section>
-
-      <section className="strip">
-        <div>
-          <h2>Built to be audited</h2>
-          <p>
-            Every mutation is an event. Every context assembly is a record.
-            Every memory cites its source. Every agent-authored change waits
-            for your approval and carries its rollback. The daemon&apos;s
-            entire composition is one <code>GET /v1/plugins</code> away.
-          </p>
-        </div>
-        <div>
-          <h2>Channels included</h2>
-          <p>
-            Discord, Telegram, Slack, and Matrix connectors run in-daemon —
-            off by default, allowlist-gated, one context per thread. Feishu
-            calendar &amp; mail ride the integrations plane.
-          </p>
-        </div>
-      </section>
-      <Footer />
-    </main>
-  );
+$ kura tui`}</code></pre></section>
+    <section className="features">
+      {[
+        ["Everything is a plugin", "31+ built-in plugins over a small trust-boundary kernel. Disable, configure, or replace capabilities from one profile."],
+        ["Layered memory", "Episodes, atoms, scenarios, and personas remain attributable, reversible, and inspectable."],
+        ["A context engine that cites", "Hybrid recall and symbolic compression under budget, with a citation attached to every injected source."],
+        ["Sessions that never forget", "Frame-preserving windows capture evicted spans to memory before context is compacted."],
+        ["External plugins, any language", "Attach manifests and isolated processes to the hook waterfall over a line-JSON protocol."],
+        ["Governed autonomy", "Skills and configuration improvements require evidence, approval, audit history, and rollback."],
+      ].map(([title, body], index) => <article key={title}><span>{String(index + 1).padStart(2, "0")}</span><h2>{title}</h2><p>{body}</p></article>)}
+    </section>
+  </main>;
 }
 
-function DocsLayout() {
-  const { pathname } = useLocation();
-  const current = DOCS.find((doc) => pathname.endsWith(`/${doc.slug}`));
-  return (
-    <div className="docs">
-      <aside className="docs__sidebar">
-        <p className="docs__sidebar-title">Documentation</p>
-        <nav>
-          {DOCS.map((doc) => (
-            <NavLink key={doc.slug} to={`/docs/${doc.slug}`}>
-              {doc.title}
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-      <article className="docs__body">
-        {current ? (
-          <Markdown remarkPlugins={[remarkGfm]}>{current.body}</Markdown>
-        ) : (
-          <Navigate to="/docs/getting-started" replace />
-        )}
-        <Footer />
-      </article>
-    </div>
-  );
+function Sidebar({ page, locale }: { readonly page: SitePage; readonly locale: SiteLocale }): ReactNode {
+  return <aside className="sidebar" aria-label={locale.ui.documentation}><h2>{locale.ui.documentation}</h2>{DOCS.map(([title, href]) => <a key={href} href={href} aria-current={page.href === href ? "page" : undefined}>{title}</a>)}</aside>;
 }
 
-function Footer() {
-  return (
-    <footer className="footer">
-      <span>Kura — a personal agent OS.</span>
-      <span>
-        <a href={REPO}>GitHub</a> · <a href={`${REPO}/releases`}>Releases</a> ·{" "}
-        <a href={`${REPO}/issues`}>Issues</a>
-      </span>
-    </footer>
-  );
+function Outline({ page, locale }: { readonly page: SitePage; readonly locale: SiteLocale }): ReactNode {
+  if (page.tableOfContents.length === 0) return null;
+  return <aside className="outline" aria-label={locale.ui.onThisPage}><h2>{locale.ui.onThisPage}</h2>{page.tableOfContents.map((item) => <a key={item.id} className={`outline-${String(item.level)}`} href={`#${item.id}`}>{item.title}</a>)}</aside>;
 }
 
-export default function App() {
-  return (
-    <>
-      <ScrollToTop />
-      <Header />
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/docs" element={<DocsLayout />} />
-        <Route path="/docs/:slug" element={<DocsLayout />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </>
-  );
+function Pagination({ previous, next, locale }: { readonly previous?: PageLink; readonly next?: PageLink; readonly locale: SiteLocale }): ReactNode {
+  const link = (item: PageLink | undefined, direction: "previous" | "next") => item === undefined ? <span /> : <a className={`page-link page-link--${direction}`} href={item.href}><small>{direction === "previous" ? locale.ui.previous : locale.ui.next}</small><strong>{item.title}</strong></a>;
+  return <nav className="pagination" aria-label="Pagination">{link(previous, "previous")}{link(next, "next")}</nav>;
+}
+
+function Footer(): ReactNode { return <footer className="site-footer"><span>Kura — an inspectable personal agent OS.</span><span>© 2026 Kura contributors</span></footer>; }
+
+export function App({ payload, initialLocalePath }: AppProps): ReactNode {
+  const [localePath, setLocalePath] = useState(initialLocalePath);
+  const locale = localeForPath(localePath);
+  const changeLocale = (path: string): void => {
+    const next = localeForPath(path);
+    writeLanguagePreference(next.path); setLocalePath(next.path);
+    document.documentElement.lang = next.lang; document.documentElement.dir = next.dir ?? "ltr";
+  };
+  return <div className="site" dir={locale.dir ?? "ltr"}>
+    <Header page={payload.page} locale={locale} onLocaleChange={changeLocale} />
+    {payload.page.layout === "home" ? <Home locale={locale} /> : <div className="docs-grid">
+      <Sidebar page={payload.page} locale={locale} />
+      <main className="doc-main"><p className="language-notice">{locale.ui.englishOnly}</p><article className="doc-content" dangerouslySetInnerHTML={{ __html: payload.page.html }} /><p className="last-updated">{locale.ui.lastUpdated}: <time dateTime={payload.page.lastUpdated}>{payload.page.lastUpdated.slice(0, 10)}</time></p><Pagination previous={payload.previous} next={payload.next} locale={locale} /></main>
+      <Outline page={payload.page} locale={locale} />
+    </div>}
+    <Footer />
+  </div>;
 }

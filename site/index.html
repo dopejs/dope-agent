@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,6 +8,14 @@
     <meta name="theme-color" content="#0b0e14" />
     <link rel="icon" type="image/svg+xml" href="/kura-mark.svg" media="(prefers-color-scheme: light)" />
     <link rel="icon" type="image/svg+xml" href="/kura-mark-inverse.svg" media="(prefers-color-scheme: dark)" />
+    <script>
+      (() => {
+        const saved = localStorage.getItem("kura-theme");
+        const dark = saved === "dark" ||
+          (saved === null && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

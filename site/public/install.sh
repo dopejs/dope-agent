@@ -1,7 +1,7 @@
 #!/bin/sh
-# Kura installer — https://agent.kurajs.com/install.sh
+# Kura installer — https://kura.dopejs.com/install.sh
 #
-#   curl -fsSL https://agent.kurajs.com/install.sh | sh
+#   curl -fsSL https://kura.dopejs.com/install.sh | sh
 #
 # Detects OS/arch, downloads the latest GitHub release tarball, verifies
 # its SHA-256 against the release's SHA256SUMS, and installs `kura` and
@@ -95,4 +95,4 @@ say "installed to $DEST: kura$([ -f "$TMP/$PKG/kura-tui" ] && printf ', kura-tui
 say "start the daemon:   kura daemon start   (data: ~/.kura, http://127.0.0.1:19191)"
 say "terminal client:    kura tui"
 say "web shell:          kura web"
-say "docs:               https://agent.kurajs.com"
+say "docs:               https://kura.dopejs.com"

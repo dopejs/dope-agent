@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      - "scripts/build-site.mjs"
       - "docs/harness/plugin-architecture.md"
+      - "pnpm-lock.yaml"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
