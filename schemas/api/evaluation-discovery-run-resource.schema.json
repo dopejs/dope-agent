@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/evaluation-discovery-run-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/evaluation-discovery-run-resource.schema.json",
   "title": "EvaluationDiscoveryRunResource",
   "type": "object",
   "required": ["discoveryRunId", "status", "sourceKinds", "windowStart", "windowEnd", "maxInspectedRecords", "maxEmittedCandidates", "costBudget", "inspectedRecords", "emittedCandidates", "startedAt", "updatedAt"],

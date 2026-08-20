@@ -80,7 +80,7 @@ contracts remain authoritative.
 - Web tests for setup, channel repair, session reset, profile binding, routine creation,
   provider diagnostics, quota denial, and support evidence navigation.
 - SDK build and tests.
-- Manual hosted `DOPE_ENV=test` walkthrough for public beta happy path and one repair path.
+- Manual hosted `KURA_ENV=test` walkthrough for public beta happy path and one repair path.
 
 ## Definition Of Done
 

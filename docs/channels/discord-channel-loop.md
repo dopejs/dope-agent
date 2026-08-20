@@ -59,10 +59,10 @@ Operator prerequisites:
 
 ## Configuration
 
-Configuration comes from the active environment config file and `DOPE_*` environment variables.
+Configuration comes from the active environment config file and `KURA_*` environment variables.
 
-- development/test default: `~/.dope-test/config.json`
-- production explicit env: `~/.dope/config.json`
+- development/test default: `~/.kura-test/config.json`
+- production explicit env: `~/.kura/config.json`
 
 The Discord connector config shape is:
 
@@ -74,7 +74,7 @@ The Discord connector config shape is:
       "connectorId": "discord-main",
       "displayName": "Discord Main",
       "deliveryMode": "gateway",
-      "botTokenEnv": "DOPE_DISCORD_BOT_TOKEN",
+      "botTokenEnv": "KURA_DISCORD_BOT_TOKEN",
       "requireMention": true,
       "respondInDM": true,
       "allowedGuildIds": ["123456789012345678"],
@@ -86,16 +86,16 @@ The Discord connector config shape is:
 
 Relevant environment variables:
 
-- `DOPE_CONNECTORS_DISCORD_ENABLED`
-- `DOPE_CONNECTORS_DISCORD_CONNECTOR_ID`
-- `DOPE_CONNECTORS_DISCORD_DISPLAY_NAME`
-- `DOPE_CONNECTORS_DISCORD_DELIVERY_MODE`
-- `DOPE_CONNECTORS_DISCORD_BOT_TOKEN`
-- `DOPE_CONNECTORS_DISCORD_BOT_TOKEN_ENV`
-- `DOPE_CONNECTORS_DISCORD_REQUIRE_MENTION`
-- `DOPE_CONNECTORS_DISCORD_RESPOND_IN_DM`
-- `DOPE_CONNECTORS_DISCORD_ALLOWED_GUILD_IDS`
-- `DOPE_CONNECTORS_DISCORD_ALLOWED_CHANNEL_IDS`
+- `KURA_CONNECTORS_DISCORD_ENABLED`
+- `KURA_CONNECTORS_DISCORD_CONNECTOR_ID`
+- `KURA_CONNECTORS_DISCORD_DISPLAY_NAME`
+- `KURA_CONNECTORS_DISCORD_DELIVERY_MODE`
+- `KURA_CONNECTORS_DISCORD_BOT_TOKEN`
+- `KURA_CONNECTORS_DISCORD_BOT_TOKEN_ENV`
+- `KURA_CONNECTORS_DISCORD_REQUIRE_MENTION`
+- `KURA_CONNECTORS_DISCORD_RESPOND_IN_DM`
+- `KURA_CONNECTORS_DISCORD_ALLOWED_GUILD_IDS`
+- `KURA_CONNECTORS_DISCORD_ALLOWED_CHANNEL_IDS`
 
 Current `deliveryMode` support:
 

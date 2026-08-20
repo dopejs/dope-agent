@@ -216,12 +216,12 @@ and summary settings without redefining delivery behavior.
   target configuration, background result routing, retry and suppression behavior,
   separation of execution truth from delivery truth, durable history across restart,
   contract coverage for delivery-facing resources or events, and one manual
-  `DOPE_ENV=test` notification or summary flow.
+  `KURA_ENV=test` notification or summary flow.
 - **Observability Impact**: Operators must be able to inspect active delivery targets,
   environment-scoped preferences, retry state, suppression reasons, failed-delivery
   causes, and the relationship between execution outcome and delivery outcome without
   depending on raw channel logs.
-- **Environment & Secrets**: Work defaults to `DOPE_ENV=test`. Delivery behavior must
+- **Environment & Secrets**: Work defaults to `KURA_ENV=test`. Delivery behavior must
   remain environment-scoped. Live user-facing connectors are optional for initial
   validation, and any credentials used for delivery targets remain operator-owned and
   redacted from operator-visible history.

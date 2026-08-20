@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use dope_api::AppState;
-use dope_config::Environment;
-use dope_events::Bus;
-use dope_store::calendar::CalendarOperationFilter;
-use dope_store::mail::MailOperationFilter;
+use kura_api::AppState;
+use kura_config::Environment;
+use kura_events::Bus;
+use kura_store::calendar::CalendarOperationFilter;
+use kura_store::mail::MailOperationFilter;
 
 use crate::environment_scope;
 use crate::error::AppError;
@@ -15,44 +15,44 @@ use crate::error::AppError;
 /// Builds the telegram allowments from the connector config allow-lists
 /// (port of Go telegramAllowmentsFromConfig).
 pub(crate) fn telegram_allowments_from_config(
-    cfg: &dope_config::TelegramConnectorConfig,
-) -> Vec<dope_telegram::AllowmentValidation> {
+    cfg: &kura_config::TelegramConnectorConfig,
+) -> Vec<kura_telegram::AllowmentValidation> {
     let mut items = Vec::new();
-    let mut push = |scope_type: dope_telegram::ScopeType,
+    let mut push = |scope_type: kura_telegram::ScopeType,
                     scope_id: &str,
-                    group_gate: dope_telegram::GroupGate| {
+                    group_gate: kura_telegram::GroupGate| {
         let scope_id = scope_id.trim();
         if scope_id.is_empty() {
             return;
         }
-        items.push(dope_telegram::AllowmentValidation {
+        items.push(kura_telegram::AllowmentValidation {
             scope_type,
             scope_id: scope_id.to_string(),
             enabled: true,
             group_gate: Some(group_gate),
-            validation_state: dope_telegram::AllowmentValidationState::Valid,
+            validation_state: kura_telegram::AllowmentValidationState::Valid,
             ..Default::default()
         });
     };
     for id in &cfg.allowed_user_ids {
         push(
-            dope_telegram::ScopeType::User,
+            kura_telegram::ScopeType::User,
             id,
-            dope_telegram::GroupGate::NotApplicable,
+            kura_telegram::GroupGate::NotApplicable,
         );
     }
     for id in &cfg.allowed_direct_chat_ids {
         push(
-            dope_telegram::ScopeType::DirectChat,
+            kura_telegram::ScopeType::DirectChat,
             id,
-            dope_telegram::GroupGate::NotApplicable,
+            kura_telegram::GroupGate::NotApplicable,
         );
     }
     for id in &cfg.allowed_group_ids {
         push(
-            dope_telegram::ScopeType::Group,
+            kura_telegram::ScopeType::Group,
             id,
-            dope_telegram::GroupGate::MentionOrCommandRequired,
+            kura_telegram::GroupGate::MentionOrCommandRequired,
         );
     }
     items
@@ -143,8 +143,8 @@ pub(crate) fn recover_persisted_state(
         let local_token_ids: Vec<String> = tokens
             .iter()
             .filter(|token| {
-                token.mode == dope_identity::auth::PairingMode::Local
-                    && token.status == dope_identity::auth::TokenStatus::Active
+                token.mode == kura_identity::auth::PairingMode::Local
+                    && token.status == kura_identity::auth::TokenStatus::Active
             })
             .map(|token| token.token_id.clone())
             .collect();
@@ -152,7 +152,7 @@ pub(crate) fn recover_persisted_state(
         // present); failures are logged, not fatal, matching the store-level
         // tenant fallback used by the connector runtimes.
         if let Err(err) = identity.bootstrap_local(&local_token_ids) {
-            eprintln!("[dope] local identity bootstrap failed: {err}");
+            eprintln!("[kura] local identity bootstrap failed: {err}");
         }
         let _ = store.lock().seed_default_tenant_cache();
     }
@@ -231,7 +231,7 @@ pub(crate) fn recover_persisted_state(
     // Re-publish persisted events on the live bus (Go ListEvents -> Publish).
     let events = store
         .lock()
-        .list_events(&dope_events::Filter::default())
+        .list_events(&kura_events::Filter::default())
         .map_err(load_err("load persisted events"))?;
     for event in events {
         event_bus.publish(event);

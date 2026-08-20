@@ -239,7 +239,7 @@ impl Manager {
             return Err(AuthError::PairingCodeInvalid);
         }
 
-        let token_secret = format!("dope_{}", random_id(24));
+        let token_secret = format!("kura_{}", random_id(24));
         let token = AccessToken {
             token_id: format!("tok_{}", random_id(8)),
             principal_id: String::new(),
@@ -276,7 +276,7 @@ impl Manager {
             return Err(AuthError::TokenInvalid);
         }
         let now = Utc::now();
-        let token_secret = format!("dope_{}", random_id(24));
+        let token_secret = format!("kura_{}", random_id(24));
         let token = AccessToken {
             token_id: format!("tok_{}", random_id(8)),
             principal_id: input.principal_id,
@@ -345,7 +345,7 @@ impl Manager {
             return Err(AuthError::TokenExpired);
         }
 
-        let replacement_secret = format!("dope_{}", random_id(24));
+        let replacement_secret = format!("kura_{}", random_id(24));
         let replacement = AccessToken {
             token_id: format!("tok_{}", random_id(8)),
             principal_id: old_token.principal_id.clone(),

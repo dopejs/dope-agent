@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
-use dope_connectors::{DiagnosticReasonCode, RedactionStatus};
+use kura_connectors::{DiagnosticReasonCode, RedactionStatus};
 
 use crate::diagnostics::{contains_unsafe_evidence, safe_evidence};
 use crate::util::{first_non_empty, is_unset_time};

@@ -45,6 +45,6 @@ evidence without exposing sensitive material.
 ## Verification
 
 Before Roadmap 41 is complete, run targeted Go tests, full daemon tests,
-contract tests, client tests/build, daemon smoke in `~/.dope-test`, and the
+contract tests, client tests/build, daemon smoke in `~/.kura-test`, and the
 Roadmap 39 soak rerun with Roadmap 40 live validation and Roadmap 41 product
 workflows included.

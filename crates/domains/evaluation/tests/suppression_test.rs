@@ -4,12 +4,12 @@ mod common;
 
 use chrono::DateTime;
 use chrono::Utc;
-use dope_evaluation::{
+use kura_evaluation::{
     CreateSuppressionInput, DiscoveredCandidate, ProductResourceKind, SourceKind,
     filter_suppressed_candidates, find_active_suppression, new_suppression_record,
     revoke_suppression_record, suppression_applies,
 };
-use dope_evaluation::SuppressionRecord;
+use kura_evaluation::SuppressionRecord;
 
 fn ts(s: &str) -> DateTime<Utc> {
     s.parse::<DateTime<Utc>>().expect("ts")
@@ -42,7 +42,7 @@ fn new_suppression_record_defaults_and_requires_target() {
         now,
     )
     .expect_err("missing target must fail");
-    assert!(matches!(err, dope_evaluation::EvaluationError::ProductSuppressionTargetRequired));
+    assert!(matches!(err, kura_evaluation::EvaluationError::ProductSuppressionTargetRequired));
 }
 
 #[test]

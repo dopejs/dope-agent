@@ -41,7 +41,7 @@ impl DiagnosticProbe for DefaultDiagnosticProbe {
                     } else {
                         match secrets.get(&session.tenant_id, &secret_ref).await {
                             Ok(_) => {}
-                            Err(SetupError::Secrets(dope_secrets::SecretsError::SecretNotFound)) => {
+                            Err(SetupError::Secrets(kura_secrets::SecretsError::SecretNotFound)) => {
                                 let (st, o, r) = classify_diagnostic_reason(REASON_CREDENTIAL_MISSING); classified = (st, REASON_CREDENTIAL_MISSING.to_string(), r, o);
                             }
                             Err(_) => {

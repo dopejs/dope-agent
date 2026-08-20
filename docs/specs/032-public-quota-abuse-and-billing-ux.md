@@ -80,7 +80,7 @@ not a new accounting ledger.
 - API, SDK, and web tests for quota dashboard and denial detail.
 - Permission tests for billing visibility.
 - Regression tests proving denials remain fail-closed before side effects.
-- Manual `DOPE_ENV=test` walkthrough for exhausted quota and abuse restriction.
+- Manual `KURA_ENV=test` walkthrough for exhausted quota and abuse restriction.
 
 ## Definition Of Done
 

@@ -145,7 +145,7 @@ daemon/
 │   │   └── adapter_runtime_test.go           # NEW
 │   └── app/app.go                            # wire adapter runtime + register adapter backends in managers
 ├── cmd/
-│   └── dope-integration-adapter/             # NEW: reference adapter skeleton binary (no real provider)
+│   └── kura-integration-adapter/             # NEW: reference adapter skeleton binary (no real provider)
 │       └── main.go
 └── go.mod / go.sum                           # no new external deps expected
 

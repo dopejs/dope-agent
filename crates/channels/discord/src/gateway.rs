@@ -13,8 +13,8 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use tokio_tungstenite::tungstenite::Message;
 
-use dope_connectors::DiagnosticReasonCode;
-use dope_imtypes::InboundMessage;
+use kura_connectors::DiagnosticReasonCode;
+use kura_imtypes::InboundMessage;
 
 use crate::transport::{GatewayMessage, GatewayTransportInner, TransportLifecycleEvent};
 use crate::DiscordError;
@@ -40,7 +40,7 @@ pub(crate) fn spawn_gateway(
     handle: Arc<dyn Fn(InboundMessage) + Send + Sync>,
 ) -> Result<(), DiscordError> {
     std::thread::Builder::new()
-        .name("dope-discord-gateway".to_string())
+        .name("kura-discord-gateway".to_string())
         .spawn(move || {
             let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build();
             match runtime {
@@ -100,8 +100,8 @@ async fn connect_and_listen(
             "intents": GATEWAY_INTENTS,
             "properties": {
                 "os": "linux",
-                "browser": "dope-agent",
-                "device": "dope-agent",
+                "browser": "kura-agent",
+                "device": "kura-agent",
             },
         },
     });

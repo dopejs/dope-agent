@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/live-validation-started.event.schema.json",
+  "$id": "https://kura.local/schemas/events/live-validation-started.event.schema.json",
   "title": "LiveValidationStartedEvent",
   "allOf": [
     { "$ref": "./runtime-event.schema.json" },

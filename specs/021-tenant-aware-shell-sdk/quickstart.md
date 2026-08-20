@@ -3,7 +3,7 @@
 ## Preconditions
 
 - Work from branch `022-tenant-aware-shell-sdk`.
-- Use the default test daemon environment: `~/.dope-test` and `127.0.0.1:19192`.
+- Use the default test daemon environment: `~/.kura-test` and `127.0.0.1:19192`.
 - Do not use live connectors or production state for this roadmap.
 
 ## Implementation Order

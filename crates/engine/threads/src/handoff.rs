@@ -93,7 +93,7 @@ pub struct HandoffLink {
     pub first_destination_response_id: String,
     pub source_reference_status: HandoffSourceReferenceStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub active_profile_projection: Option<dope_profiles::RuntimeProjection>,
+    pub active_profile_projection: Option<kura_profiles::RuntimeProjection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

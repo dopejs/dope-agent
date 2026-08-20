@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
-use dope_identity::LifecycleStatus;
-use dope_identity::Role;
-use dope_identity::TenantContext;
-use dope_identity::permissions_for_role;
+use kura_identity::LifecycleStatus;
+use kura_identity::Role;
+use kura_identity::TenantContext;
+use kura_identity::permissions_for_role;
 use parking_lot::Mutex;
 
 use crate::error::LiveValidationError;

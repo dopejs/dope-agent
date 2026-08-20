@@ -9,15 +9,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_delivery::{
+use kura_delivery::{
     ConnectorAdapter, ConnectorBinding, ConnectorReplySender, DeliveryAdapter, DeliveryOutcome,
     DeliveryPreference, DeliveryTarget, Manager, OutcomeInput, OutcomeStatus, PreferenceScopeKind,
     ResultClass, TargetKind, TargetStatus,
 };
-use dope_events::Bus;
-use dope_imtypes::{DeliveryDirection, OutboundReply, SentReply};
-use dope_runtime::{Run, RunStatus};
-use dope_store::{
+use kura_events::Bus;
+use kura_imtypes::{DeliveryDirection, OutboundReply, SentReply};
+use kura_runtime::{Run, RunStatus};
+use kura_store::{
     MatrixHostedSetupRecord, SQLiteStore, SlackHostedSetupRecord, TelegramHostedSetupRecord,
 };
 use parking_lot::Mutex;

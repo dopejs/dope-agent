@@ -7,7 +7,7 @@
 mod common;
 
 use common::{schema_root_dir, validate_fixtures, Fixture};
-use dope_contracts::Validator;
+use kura_contracts::Validator;
 
 #[test]
 fn test_launch_gate_decision_schema_accepts_canonical_fixtures() {

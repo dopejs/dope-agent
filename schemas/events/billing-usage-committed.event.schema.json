@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/billing-usage-committed.event.schema.json",
+  "$id": "https://kura.local/schemas/events/billing-usage-committed.event.schema.json",
   "title": "BillingUsageCommittedEvent",
   "type": "object",
   "required": ["eventId", "sequence", "category", "name", "occurredAt", "scope", "resource", "payload"],

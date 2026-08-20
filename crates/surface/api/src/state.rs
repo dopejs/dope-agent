@@ -11,43 +11,43 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use dope_activation::Service as ActivationService;
-use dope_billing::Manager as BillingManager;
-use dope_calendar::Manager as CalendarManager;
-use dope_capabilities::Supervisor as CapabilitiesSupervisor;
-use dope_catalog::Manager as CatalogManager;
-use dope_chat::Service as ChatService;
-use dope_checkpoints::Manager as CheckpointsManager;
-use dope_computeruse::Manager as ComputerUseManager;
-use dope_config::Config;
-use dope_connectors::Supervisor as ConnectorsSupervisor;
-use dope_delivery::Manager as DeliveryManager;
-use dope_evaluation::Manager as EvaluationManager;
-use dope_events::Bus;
-use dope_evidence::Manager as EvidenceManager;
-use dope_execprofile::Manager as ExecProfileManager;
-use dope_identity::auth::Manager as AuthManager;
-use dope_identity::{Manager as IdentityManager, Store as IdentityStore};
-use dope_integrations::Manager as IntegrationsManager;
-use dope_livevalidation::Manager as LiveValidationManager;
-use dope_llm::Dispatcher;
-use dope_mail::Manager as MailManager;
-use dope_mcp::Manager as McpManager;
-use dope_memory::Manager as MemoryManager;
-use dope_policy::Engine;
-use dope_providers::Manager as ProvidersManager;
-use dope_reminders::Manager as RemindersManager;
-use dope_router::SessionRouter;
-use dope_routine::Manager as RoutineManager;
-use dope_runtime::Manager as RuntimeManager;
-use dope_sandbox::Manager as SandboxManager;
-use dope_scheduler::Scheduler;
-use dope_secrets::Manager as SecretsManager;
-use dope_setupwizard::Service as SetupWizardService;
-use dope_skills::Registry;
-use dope_store::SQLiteStore;
-use dope_triage::Manager as TriageManager;
-use dope_webhook::Manager as WebhookManager;
+use kura_activation::Service as ActivationService;
+use kura_billing::Manager as BillingManager;
+use kura_calendar::Manager as CalendarManager;
+use kura_capabilities::Supervisor as CapabilitiesSupervisor;
+use kura_catalog::Manager as CatalogManager;
+use kura_chat::Service as ChatService;
+use kura_checkpoints::Manager as CheckpointsManager;
+use kura_computeruse::Manager as ComputerUseManager;
+use kura_config::Config;
+use kura_connectors::Supervisor as ConnectorsSupervisor;
+use kura_delivery::Manager as DeliveryManager;
+use kura_evaluation::Manager as EvaluationManager;
+use kura_events::Bus;
+use kura_evidence::Manager as EvidenceManager;
+use kura_execprofile::Manager as ExecProfileManager;
+use kura_identity::auth::Manager as AuthManager;
+use kura_identity::{Manager as IdentityManager, Store as IdentityStore};
+use kura_integrations::Manager as IntegrationsManager;
+use kura_livevalidation::Manager as LiveValidationManager;
+use kura_llm::Dispatcher;
+use kura_mail::Manager as MailManager;
+use kura_mcp::Manager as McpManager;
+use kura_memory::Manager as MemoryManager;
+use kura_policy::Engine;
+use kura_providers::Manager as ProvidersManager;
+use kura_reminders::Manager as RemindersManager;
+use kura_router::SessionRouter;
+use kura_routine::Manager as RoutineManager;
+use kura_runtime::Manager as RuntimeManager;
+use kura_sandbox::Manager as SandboxManager;
+use kura_scheduler::Scheduler;
+use kura_secrets::Manager as SecretsManager;
+use kura_setupwizard::Service as SetupWizardService;
+use kura_skills::Registry;
+use kura_store::SQLiteStore;
+use kura_triage::Manager as TriageManager;
+use kura_webhook::Manager as WebhookManager;
 
 /// Read-only view of the tenant-backfill migration gate the API needs.
 /// Port of Go's api.MigrationStatus interface; the app layer supplies an
@@ -61,7 +61,7 @@ pub trait MigrationStatus: Send + Sync {
 ///
 /// logger is intentionally skipped (the Go field is *slog.Logger; the Rust
 /// surface has no equivalent yet — telemetry is out of scope for this wave).
-/// reminders is a placeholder because the dope-reminders crate has not been
+/// reminders is a placeholder because the kura-reminders crate has not been
 /// ported yet (see MISSING-MANAGERS note below).
 #[derive(Clone)]
 pub struct AppState {
@@ -155,22 +155,22 @@ pub struct AppState {
     /// Go Dependencies.LiveValidation.
     pub live_validation: Option<Arc<LiveValidationManager>>,
     /// Go Dependencies.AuditEmitter (emits audit.cross_tenant_access_denied).
-    pub audit_emitter: Option<Arc<dope_audit::Emitter>>,
+    pub audit_emitter: Option<Arc<kura_audit::Emitter>>,
     /// Go Dependencies.TenantMigrationStatus. None behaves as if all
     /// backfills are complete.
     pub tenant_migration_status: Option<Arc<dyn MigrationStatus>>,
     /// Plugin assembly report (which plugins resolved enabled/disabled and
     /// why). None only in test states built outside the app assembly.
-    pub plugins: Option<Arc<dope_plugin::AssemblyReport>>,
+    pub plugins: Option<Arc<kura_plugin::AssemblyReport>>,
     /// The plugin hook bus (waterfall interception points, pluginization
     /// phase 2). None only in test states built outside the app assembly.
-    pub hooks: Option<Arc<dope_plugin::HookBus>>,
+    pub hooks: Option<Arc<kura_plugin::HookBus>>,
     /// The embedding seam provider (an external plugin serving
     /// `context.embedder`, when installed). None = the deterministic
     /// in-process default.
-    pub embedder: Option<Arc<dyn dope_context::Embedder>>,
+    pub embedder: Option<Arc<dyn kura_context::Embedder>>,
     /// Audited self-improvement proposals (the `self-improve` plugin).
-    pub improvement: Option<Arc<dope_improvement::Manager>>,
+    pub improvement: Option<Arc<kura_improvement::Manager>>,
 }
 
 impl AppState {

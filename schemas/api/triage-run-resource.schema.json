@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/triage-run-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/triage-run-resource.schema.json",
   "title": "TriageRunResource",
   "type": "object",
   "required": ["runId", "policyId", "messageCount", "decisions", "createdAt"],

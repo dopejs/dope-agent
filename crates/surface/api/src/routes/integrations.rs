@@ -4,8 +4,8 @@
 //!
 //! Surface (Go parity):
 //! - `GET/POST /v1/integrations` — list (tenant-scoped when a tenant context
-//!   is resolved) / create. Fully ported on dope-integrations Manager +
-//!   dope-store integrations DAO + integration.registered event.
+//!   is resolved) / create. Fully ported on kura-integrations Manager +
+//!   kura-store integrations DAO + integration.registered event.
 //! - `GET/DELETE /v1/integrations/{id}` — detail / disconnect. The by-id
 //!   tenant guard (Go withByIDTenantGuard on integrations.integration_id) is
 //!   applied inline. Fully ported (manager.disconnect + integration.disconnected).
@@ -18,7 +18,7 @@
 //! - `/v1/integrations/{id}/diagnostics` + `{id}/diagnostics/runs` — the
 //!   diagnostics list/create dispatch (Go handleIntegrationDiagnostics). The
 //!   tenant/permission gates and cross-tenant non-disclosure (404) are fully
-//!   ported; the handlers persist diagnostic results/runs through the dope-store
+//!   ported; the handlers persist diagnostic results/runs through the kura-store
 //!   integration_diagnostics DAOs (SaveIntegrationDiagnosticResult /
 //!   SaveIntegrationDiagnosticRun / LatestIntegrationDiagnosticResults).
 //! - `/v1/integration-diagnostics/runs` + `/runs/{run_id}` — list/detail
@@ -59,9 +59,9 @@ use axum::{Json as AxumJson, Router};
 use chrono::{DateTime, Utc};
 use serde_json::{Map, Value};
 
-use dope_events as events;
-use dope_identity::{can_inspect_credentials, has_permission, Permission};
-use dope_integrations::{
+use kura_events as events;
+use kura_identity::{can_inspect_credentials, has_permission, Permission};
+use kura_integrations::{
     classify_provider_evidence, complete_diagnostic_run, diagnostic_defaults,
     diagnostic_remediation_hint, diagnostic_retention_expiry, first_non_empty,
     is_unavailable_probe_error, DiagnosticInspectionInput, DiagnosticManager,
@@ -177,7 +177,7 @@ async fn create_integration(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     body: Bytes,
-) -> Result<(StatusCode, Json<dope_integrations::Resource>), ApiError> {
+) -> Result<(StatusCode, Json<kura_integrations::Resource>), ApiError> {
     let manager = integrations_manager(&state)?;
     let mut tenant_id = String::new();
     if let Some(tc) = tenant.as_ref() {
@@ -188,13 +188,13 @@ async fn create_integration(
     }
     let input: CreateIntegrationRequest = decode_json_body(&body)?;
     let item = manager
-        .create(dope_integrations::CreateInput {
+        .create(kura_integrations::CreateInput {
             tenant_id: tenant_id.clone(),
             integration_id: input.integration_id.clone(),
             domain_kind: input.domain_kind.clone(),
             display_name: input.display_name.clone(),
             account_binding: input.account_binding.clone(),
-            backend_binding: dope_integrations::BackendBinding {
+            backend_binding: kura_integrations::BackendBinding {
                 backend_kind: input.backend_kind,
                 backend_ref_id: input.backend_ref_id.clone(),
                 backend_display_name: input.backend_display_name.clone(),
@@ -203,13 +203,13 @@ async fn create_integration(
                 // Go handleIntegrations: fake-local always supports probe
                 // reads; otherwise the backend kind must support the domain.
                 supports_probe_read: input.backend_kind
-                    == dope_integrations::BackendKind::FakeLocal
-                    || dope_integrations::backend_kind_supports_domain(
+                    == kura_integrations::BackendKind::FakeLocal
+                    || kura_integrations::backend_kind_supports_domain(
                         input.backend_kind,
                         &input.domain_kind,
                     ),
                 supports_probe_mutation: input.backend_kind
-                    == dope_integrations::BackendKind::FakeLocal,
+                    == kura_integrations::BackendKind::FakeLocal,
             },
             canonical_default: input.canonical_default,
             environment_scope: environment_scope_from_config(&state.config),
@@ -237,7 +237,7 @@ async fn get_integration(
     method: Method,
     uri: Uri,
     Path(integration_id): Path<String>,
-) -> Result<Json<dope_integrations::Resource>, ApiError> {
+) -> Result<Json<kura_integrations::Resource>, ApiError> {
     let manager = integrations_manager(&state)?;
     guard_integration_resource(
         &state,
@@ -270,7 +270,7 @@ async fn disconnect_integration(
     uri: Uri,
     Path(integration_id): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<dope_integrations::Resource>, ApiError> {
+) -> Result<Json<kura_integrations::Resource>, ApiError> {
     let manager = integrations_manager(&state)?;
     guard_integration_resource(
         &state,
@@ -317,7 +317,7 @@ async fn update_integration_readiness(
     uri: Uri,
     Path(integration_id): Path<String>,
     body: Bytes,
-) -> Result<Json<dope_integrations::Resource>, ApiError> {
+) -> Result<Json<kura_integrations::Resource>, ApiError> {
     let manager = integrations_manager(&state)?;
     guard_integration_resource(
         &state,
@@ -347,7 +347,7 @@ async fn update_integration_readiness(
     let item = manager
         .update_readiness(
             &integration_id,
-            dope_integrations::UpdateReadinessInput {
+            kura_integrations::UpdateReadinessInput {
                 readiness_status: input.readiness_status,
                 auth_state: input.auth_state.as_str().to_string(),
                 health_state: input.health_state.as_str().to_string(),
@@ -388,7 +388,7 @@ async fn set_integration_default(
     method: Method,
     uri: Uri,
     Path(integration_id): Path<String>,
-) -> Result<Json<dope_integrations::Resource>, ApiError> {
+) -> Result<Json<kura_integrations::Resource>, ApiError> {
     let manager = integrations_manager(&state)?;
     guard_integration_resource(
         &state,
@@ -681,7 +681,7 @@ async fn get_integration_diagnostic_run(
 /// handleIntegrationDiagnosticSmoke). Tenant/permission/risky-probe gates,
 /// probe inputs built through the integrations manager, per-probe diagnostic
 /// results persisted, smoke-completed event published. The smoke report row
-/// itself (Go SaveSmokeMatrixReport) has no dope-store DAO yet, so it is not
+/// itself (Go SaveSmokeMatrixReport) has no kura-store DAO yet, so it is not
 /// persisted.
 async fn run_integration_diagnostic_smoke(
     State(state): State<AppState>,
@@ -797,9 +797,9 @@ async fn apply_integration_diagnostic_retention(
 /// GET /v1/integration-diagnostics/reason-codes — the reason-code catalog
 /// (Go handleIntegrationDiagnosticReasonCodes). Fully ported.
 async fn integration_diagnostic_reason_codes(
-) -> Result<Json<ListResponse<dope_integrations::DiagnosticReasonCodeDefinition>>, ApiError> {
+) -> Result<Json<ListResponse<kura_integrations::DiagnosticReasonCodeDefinition>>, ApiError> {
     Ok(Json(ListResponse {
-        items: dope_integrations::default_diagnostic_reason_code_catalog(),
+        items: kura_integrations::default_diagnostic_reason_code_catalog(),
     }))
 }
 
@@ -841,7 +841,7 @@ async fn integration_adapter_rpc(
 
 /// Go handleIntegrations / handleIntegrationRoutes nil-manager branch: 500
 /// with the stable message.
-fn integrations_manager(state: &AppState) -> Result<&dope_integrations::Manager, ApiError> {
+fn integrations_manager(state: &AppState) -> Result<&kura_integrations::Manager, ApiError> {
     state
         .integrations
         .as_deref()
@@ -871,7 +871,7 @@ async fn guard_integration_resource(
 
 /// Go requireHostedCredentialPermission: resolved tenant + exact permission.
 fn require_permission(
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     permission: Permission,
 ) -> Result<(), ApiError> {
     if !has_permission(&tc.permissions, permission) {
@@ -884,7 +884,7 @@ fn require_permission(
 /// (writeCredentialDenial(403, "tenant_context_missing")).
 fn require_tenant(
     tenant: Option<&TenantContext>,
-) -> Result<&dope_identity::TenantContext, ApiError> {
+) -> Result<&kura_identity::TenantContext, ApiError> {
     let Some(tc) = tenant else {
         return Err(credential_denial());
     };
@@ -903,9 +903,9 @@ fn credential_denial() -> ApiError {
 
 /// Go handleIntegrationDisconnect / readiness / default error mapping:
 /// IntegrationNotFound -> 404, everything else -> 400.
-fn map_integration_error(err: dope_integrations::IntegrationError) -> ApiError {
+fn map_integration_error(err: kura_integrations::IntegrationError) -> ApiError {
     match err {
-        dope_integrations::IntegrationError::IntegrationNotFound => {
+        kura_integrations::IntegrationError::IntegrationNotFound => {
             ApiError::NotFound("not found".to_string())
         }
         other => ApiError::BadRequest(other.to_string()),
@@ -915,15 +915,15 @@ fn map_integration_error(err: dope_integrations::IntegrationError) -> ApiError {
 /// Go handleIntegrationDefault binding group: same domain kind, environment
 /// scope and account key.
 fn same_binding_group(
-    left: &dope_integrations::Resource,
-    right: &dope_integrations::Resource,
+    left: &kura_integrations::Resource,
+    right: &kura_integrations::Resource,
 ) -> bool {
     left.domain_kind.trim() == right.domain_kind.trim()
         && left.environment_scope.trim() == right.environment_scope.trim()
         && account_key(left) == account_key(right)
 }
 
-fn account_key(item: &dope_integrations::Resource) -> String {
+fn account_key(item: &kura_integrations::Resource) -> String {
     item.account_binding
         .as_ref()
         .map(|binding| binding.account_key.trim().to_string())
@@ -935,7 +935,7 @@ fn account_key(item: &dope_integrations::Resource) -> String {
 /// tenant id).
 fn persist_integration(
     state: &AppState,
-    item: &dope_integrations::Resource,
+    item: &kura_integrations::Resource,
 ) -> Result<(), ApiError> {
     state
         .store
@@ -951,7 +951,7 @@ fn publish_integration_event(
     state: &AppState,
     tenant: Option<&TenantContext>,
     name: &str,
-    item: &dope_integrations::Resource,
+    item: &kura_integrations::Resource,
 ) -> Result<(), ApiError> {
     let account_key = account_key(item);
     let payload = match name {
@@ -1157,9 +1157,9 @@ fn diagnostic_reason_from_probe_result(result: &ProbeResult) -> DiagnosticReason
 /// Go inspectDiagnosticCapability: inspect, then overlay probe evidence when
 /// the backend supports probe reads.
 fn inspect_diagnostic_capability(
-    manager: Option<&dope_integrations::Manager>,
+    manager: Option<&kura_integrations::Manager>,
     diagnostic_manager: &DiagnosticManager,
-    resource: &dope_integrations::Resource,
+    resource: &kura_integrations::Resource,
     input: DiagnosticInspectionInput,
 ) -> DiagnosticResult {
     let mut result = diagnostic_manager.inspect(input.clone());
@@ -1208,7 +1208,7 @@ fn inspect_diagnostic_capability(
 
 /// Go publishIntegrationDiagnosticResultEventsAndAudit: the event fan-out
 /// (state-changed + redaction-failed) per persisted diagnostic result. The Go
-/// tenant-audit write has no dope-store DAO yet and is not ported.
+/// tenant-audit write has no kura-store DAO yet and is not ported.
 fn publish_diagnostic_result_events(
     state: &AppState,
     tenant: Option<&TenantContext>,
@@ -1252,10 +1252,10 @@ struct SmokeProbe {
 
 /// Go buildSmokeProbeInputs. Cross-tenant probes 404 (never disclosed).
 fn build_smoke_probe_inputs(
-    manager: &dope_integrations::Manager,
-    tc: &dope_identity::TenantContext,
+    manager: &kura_integrations::Manager,
+    tc: &kura_identity::TenantContext,
     input: &CreateIntegrationDiagnosticSmokeRequest,
-) -> Result<(Vec<SmokeProbe>, Vec<dope_integrations::Resource>), ApiError> {
+) -> Result<(Vec<SmokeProbe>, Vec<kura_integrations::Resource>), ApiError> {
     let probe_requests: Vec<CreateIntegrationDiagnosticSmokeProbe> = if input.probes.is_empty() {
         // Go buildSmokeProbeInputs: a missing probe list defaults to one
         // fully-gated read-only probe for the request integration.
@@ -1441,7 +1441,7 @@ fn smoke_probe_outcome(
 /// (status/domainSummary/artifactRefs + probe outcomes) in the Go wire shape.
 fn build_smoke_report_json(
     report_id: &str,
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     started_at: DateTime<Utc>,
     outcomes: &[SmokeOutcomeBuild],
 ) -> serde_json::Value {
@@ -1553,28 +1553,28 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-integrations".to_string(),
+            data_dir: "/tmp/kura-api-integrations".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig {
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                telegram: dope_config::TelegramConnectorConfig {
+                telegram: kura_config::TelegramConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                slack: dope_config::SlackConnectorConfig {
+                slack: kura_config::SlackConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                matrix: dope_config::MatrixConnectorConfig {
+                matrix: kura_config::MatrixConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
@@ -1583,16 +1583,16 @@ mod tests {
     }
 
     fn test_state() -> AppState {
-        let dir = std::env::temp_dir().join(format!("dope-api-integrations-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-integrations-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store)
+        AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store)
     }
 
     fn with_manager(mut state: AppState) -> AppState {
-        state.integrations = Some(Arc::new(dope_integrations::Manager::new("test")));
+        state.integrations = Some(Arc::new(kura_integrations::Manager::new("test")));
         state
     }
 
@@ -1619,7 +1619,7 @@ mod tests {
     ) -> Request<Body> {
         let mut req = request(method, uri, body);
         req.extensions_mut()
-            .insert(TenantContext(dope_identity::TenantContext {
+            .insert(TenantContext(kura_identity::TenantContext {
                 tenant_id: tenant_id.to_string(),
                 principal_id: format!("prn_{tenant_id}"),
                 permissions,
@@ -1648,7 +1648,7 @@ mod tests {
             tenant_id,
             id,
             display,
-            dope_integrations::BackendKind::FakeLocal,
+            kura_integrations::BackendKind::FakeLocal,
             false,
             false,
         );
@@ -1659,28 +1659,28 @@ mod tests {
         tenant_id: &str,
         id: &str,
         display: &str,
-        backend_kind: dope_integrations::BackendKind,
+        backend_kind: kura_integrations::BackendKind,
         supports_probe_read: bool,
         supports_probe_mutation: bool,
     ) {
         let manager = state.integrations.as_ref().expect("manager");
         manager
-            .create(dope_integrations::CreateInput {
+            .create(kura_integrations::CreateInput {
                 tenant_id: tenant_id.to_string(),
                 integration_id: id.to_string(),
                 domain_kind: "calendar".to_string(),
                 display_name: display.to_string(),
-                account_binding: dope_integrations::AccountBinding {
+                account_binding: kura_integrations::AccountBinding {
                     account_key: format!("acct_{id}"),
-                    ..dope_integrations::AccountBinding::default()
+                    ..kura_integrations::AccountBinding::default()
                 },
-                backend_binding: dope_integrations::BackendBinding {
+                backend_binding: kura_integrations::BackendBinding {
                     backend_kind,
                     supports_probe_read,
                     supports_probe_mutation,
-                    ..dope_integrations::BackendBinding::default()
+                    ..kura_integrations::BackendBinding::default()
                 },
-                ..dope_integrations::CreateInput::default()
+                ..kura_integrations::CreateInput::default()
             })
             .expect("create fixture");
     }
@@ -1781,7 +1781,7 @@ mod tests {
         assert_eq!(stored[0].integration_id, "integration_main");
         assert_eq!(
             stored[0].readiness_status,
-            dope_integrations::ReadinessStatus::Unavailable
+            kura_integrations::ReadinessStatus::Unavailable
         );
     }
 
@@ -1918,7 +1918,7 @@ mod tests {
             "ten_diag",
             "integration_feishu",
             "Feishu Calendar",
-            dope_integrations::BackendKind::FeishuLark,
+            kura_integrations::BackendKind::FeishuLark,
             false,
             false,
         );
@@ -1926,13 +1926,13 @@ mod tests {
         manager
             .update_readiness(
                 "integration_feishu",
-                dope_integrations::UpdateReadinessInput {
-                    readiness_status: dope_integrations::ReadinessStatus::Degraded,
-                    auth_state: dope_integrations::AuthState::Authorized.as_str().to_string(),
-                    health_state: dope_integrations::HealthState::Degraded.as_str().to_string(),
+                kura_integrations::UpdateReadinessInput {
+                    readiness_status: kura_integrations::ReadinessStatus::Degraded,
+                    auth_state: kura_integrations::AuthState::Authorized.as_str().to_string(),
+                    health_state: kura_integrations::HealthState::Degraded.as_str().to_string(),
                     reason: "scope missing for calendar.read with bearer secret-token".to_string(),
                     required_operator_action: "grant calendar scope".to_string(),
-                    ..dope_integrations::UpdateReadinessInput::default()
+                    ..kura_integrations::UpdateReadinessInput::default()
                 },
             )
             .expect("update readiness");
@@ -2044,7 +2044,7 @@ mod tests {
             .store
             .lock()
             .latest_integration_diagnostic_results(
-                &dope_integrations::DiagnosticResultFilter {
+                &kura_integrations::DiagnosticResultFilter {
                     tenant_id: "ten_a".to_string(),
                     integration_id: "integration_a".to_string(),
                     ..Default::default()
@@ -2061,23 +2061,23 @@ mod tests {
     /// with the smoke report id, and the smoke-completed event is published.
     #[tokio::test]
     async fn smoke_persists_results_and_publishes_event() {
-        let bus = Arc::new(dope_events::Bus::new());
+        let bus = Arc::new(kura_events::Bus::new());
         let dir = std::env::temp_dir().join(format!(
-            "dope-api-integration-smoke-{}",
+            "kura-api-integration-smoke-{}",
             Uuid::now_v7()
         ));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
         let mut state = AppState::new(test_config(), bus.clone(), store);
-        state.integrations = Some(Arc::new(dope_integrations::Manager::new("test")));
+        state.integrations = Some(Arc::new(kura_integrations::Manager::new("test")));
         create_fixture_with(
             &state,
             "ten_smoke",
             "integration_smoke",
             "Smoke Calendar",
-            dope_integrations::BackendKind::FakeLocal,
+            kura_integrations::BackendKind::FakeLocal,
             true,
             false,
         );
@@ -2105,7 +2105,7 @@ mod tests {
             .store
             .lock()
             .latest_integration_diagnostic_results(
-                &dope_integrations::DiagnosticResultFilter {
+                &kura_integrations::DiagnosticResultFilter {
                     tenant_id: "ten_smoke".to_string(),
                     integration_id: "integration_smoke".to_string(),
                     ..Default::default()
@@ -2117,13 +2117,13 @@ mod tests {
         assert_eq!(results[0].smoke_report_id, "smoke_api_1");
 
         // The smoke-completed event is published for the report.
-        let published = bus.list(&dope_events::Filter {
+        let published = bus.list(&kura_events::Filter {
             category: "integration".to_string(),
             ..Default::default()
         });
         assert!(
             published.iter().any(|event| {
-                event.name == dope_events::INTEGRATION_DIAGNOSTIC_SMOKE_COMPLETED_NAME
+                event.name == kura_events::INTEGRATION_DIAGNOSTIC_SMOKE_COMPLETED_NAME
                     && event.resource.id == "smoke_api_1"
             }),
             "published: {published:?}"
@@ -2135,18 +2135,18 @@ mod tests {
     /// to Expired and a retention-applied event is published.
     #[tokio::test]
     async fn retention_apply_flips_expired_records_and_publishes_event() {
-        let bus = Arc::new(dope_events::Bus::new());
+        let bus = Arc::new(kura_events::Bus::new());
         let dir = std::env::temp_dir().join(format!(
-            "dope-api-integration-retention-{}",
+            "kura-api-integration-retention-{}",
             Uuid::now_v7()
         ));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
         let state = AppState::new(test_config(), bus.clone(), store);
         let created_at = Utc::now() - chrono::Duration::days(91);
-        let record = dope_integrations::new_diagnostic_retention_record(
+        let record = kura_integrations::new_diagnostic_retention_record(
             "ten_retention",
             "diagnostic_run",
             "diag_run_expired",
@@ -2174,13 +2174,13 @@ mod tests {
         let raw = json.to_string();
         assert!(raw.contains("\"retentionState\":\"expired\""), "body: {raw}");
 
-        let published = bus.list(&dope_events::Filter {
+        let published = bus.list(&kura_events::Filter {
             category: "integration".to_string(),
             ..Default::default()
         });
         assert!(
             published.iter().any(|event| {
-                event.name == dope_events::INTEGRATION_DIAGNOSTIC_RETENTION_APPLIED_NAME
+                event.name == kura_events::INTEGRATION_DIAGNOSTIC_RETENTION_APPLIED_NAME
                     && event.resource.id == record.retention_record_id
             }),
             "published: {published:?}"

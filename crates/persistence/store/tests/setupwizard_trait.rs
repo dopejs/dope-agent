@@ -1,4 +1,4 @@
-//! Trait-surface tests for `dope_setupwizard::Store` implemented by
+//! Trait-surface tests for `kura_setupwizard::Store` implemented by
 //! `SetupWizardStoreHandle` (the Send + Sync newtype over the SQLite store).
 //! Exercises the exact async trait methods the setup-wizard service calls:
 //! session save/get/list and attempt append/list.
@@ -6,14 +6,14 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_setupwizard::{
+use kura_setupwizard::{
     RedactionStatus, RemediationOwner, SafeUseMode, SetupAttempt, SetupOperation,
     SetupSession, SetupState, SetupStyle, Store, TargetKind,
 };
-use dope_store::{SQLiteStore, SetupWizardStoreHandle};
+use kura_store::{SQLiteStore, SetupWizardStoreHandle};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_sw_trait_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_sw_trait_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

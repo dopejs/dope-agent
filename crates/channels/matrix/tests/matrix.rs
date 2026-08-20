@@ -1,4 +1,4 @@
-//! Behavioral tests for the dope-matrix crate (port of the Go package's
+//! Behavioral tests for the kura-matrix crate (port of the Go package's
 //! _test.go files): redaction, dedupe, replies, provider decisions, route
 //! decisions, setup evaluation, conformance surfaces, unsupported kinds,
 //! diagnostics freshness, readiness, smoke evidence, client transport REST
@@ -8,22 +8,22 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use dope_chat::Service;
-use dope_checkpoints::Manager as CheckpointManager;
-use dope_connectors::{
+use kura_chat::Service;
+use kura_checkpoints::Manager as CheckpointManager;
+use kura_connectors::{
     ConformanceResultStatus, SurfaceSupport, Supervisor, core_invariant_areas,
 };
-use dope_events::Bus;
-use dope_im::MessageLoop;
-use dope_imtypes::OutboundReply;
-use dope_llm::{
+use kura_events::Bus;
+use kura_im::MessageLoop;
+use kura_imtypes::OutboundReply;
+use kura_llm::{
     Dispatcher, Provider, ProviderError, ProviderRequest, ProviderResponse, StreamEmitter, Usage,
 };
-use dope_matrix::*;
-use dope_router::SessionRouter;
-use dope_runtime::Manager as RuntimeManager;
-use dope_store::matrix_setup::MatrixHostedSetupRecord;
-use dope_store::SQLiteStore;
+use kura_matrix::*;
+use kura_router::SessionRouter;
+use kura_runtime::Manager as RuntimeManager;
+use kura_store::matrix_setup::MatrixHostedSetupRecord;
+use kura_store::SQLiteStore;
 use futures::future::BoxFuture;
 
 fn ts(y: i32, mo: u32, d: u32, h: u32, mi: u32, s: u32) -> DateTime<Utc> {
@@ -291,7 +291,7 @@ fn decide_route_accepts_direct_and_room_invocation_gate() {
                 validation_state: RoutePolicyState::Valid,
                 ..ConversationRoute::default()
             }],
-            configured_commands: vec!["!dope".to_string()],
+            configured_commands: vec!["!kura".to_string()],
             validation_state: RoutePolicyState::Valid,
             ..RoutePolicy::default()
         },
@@ -496,7 +496,7 @@ fn conformance_profile_declares_matrix_surfaces() {
     }
     for (surface, want) in [
         ("tenant_provided_bot_setup", SurfaceSupport::Supported),
-        ("dopeagent_hosted_homeserver", SurfaceSupport::Unsupported),
+        ("kuraagent_hosted_homeserver", SurfaceSupport::Unsupported),
         ("matrix_account_provisioning", SurfaceSupport::Unsupported),
         ("direct_message", SurfaceSupport::Supported),
         ("allowed_room_mention", SurfaceSupport::Supported),
@@ -696,7 +696,7 @@ fn client_transport_sends_matrix_text_reply_with_bearer_token() {
     assert_eq!(sent.external_message_id, "$reply1");
     assert!(
         saw_path.lock().expect("lock").contains(
-            "/_matrix/client/v3/rooms/%21room:example.org/send/m.room.message/dope_event1"
+            "/_matrix/client/v3/rooms/%21room:example.org/send/m.room.message/kura_event1"
         ),
         "unexpected send path: {}",
         saw_path.lock().expect("lock")
@@ -1014,12 +1014,12 @@ impl Provider for EchoTestProvider {
                 .first()
                 .map(|m| m.content.clone())
                 .unwrap_or_default();
-            emit(dope_llm::StreamChunk {
+            emit(kura_llm::StreamChunk {
                 delta: "reply:".to_string(),
                 output: "reply:".to_string(),
                 ..Default::default()
             })?;
-            emit(dope_llm::StreamChunk {
+            emit(kura_llm::StreamChunk {
                 delta: content.clone(),
                 output: format!("reply:{content}"),
                 finish_reason: "stop".to_string(),
@@ -1101,7 +1101,7 @@ fn runtime_config(commands: bool) -> Config {
         ..Config::default()
     };
     if commands {
-        cfg.configured_commands = vec!["!dope".to_string()];
+        cfg.configured_commands = vec!["!kura".to_string()];
     }
     cfg
 }

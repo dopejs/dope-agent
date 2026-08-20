@@ -96,7 +96,7 @@ readiness must rerun them after Roadmaps 40 and 41.
 - Backup and restore MUST be documented and tested.
 - Migration verification MUST include preflight and postflight checks.
 - Soak MUST run for a documented minimum duration; the first production-readiness baseline
-  MUST include at least a 24-hour `DOPE_ENV=test` soak unless the roadmap explicitly
+  MUST include at least a 24-hour `KURA_ENV=test` soak unless the roadmap explicitly
   records a shorter temporary threshold and why it is acceptable.
 - Soak MUST exercise long-running runtime, scheduler, integration, delivery, approval,
   quota, tenant switching, and evaluation behavior.
@@ -119,7 +119,7 @@ readiness must rerun them after Roadmaps 40 and 41.
 ## Verification Expectations
 
 - Automated backup/restore regression where practical.
-- Long-running `DOPE_ENV=test` soak script or documented test harness.
+- Long-running `KURA_ENV=test` soak script or documented test harness.
 - Soak report fixture or generated artifact recording duration, workload, restarts, injected
   faults, recovery times, resource-growth observations, and pass/fail result.
 - Real-account smoke checklist for enabled providers.

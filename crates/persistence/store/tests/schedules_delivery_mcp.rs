@@ -4,20 +4,20 @@
 //! servers/tools) are created before their dependent rows.
 
 use chrono::{DateTime, Utc};
-use dope_store::delivery::{
+use kura_store::delivery::{
     DeliveryAttemptRecord, DeliveryOutcomeFilter, DeliveryOutcomeRecord, DeliveryPreferenceRecord,
     DeliverySummaryWindowRecord, DeliveryTargetRecord,
 };
-use dope_store::mcp::{
+use kura_store::mcp::{
     MCPServerRecord, MCPServerStateRecord, MCPToolExposureRuleRecord, MCPToolRecord,
 };
-use dope_store::schedule::{
+use kura_store::schedule::{
     ScheduleDispatchAttemptRecord, ScheduleRecord, ScheduleTargetRecord,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_sdm_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_sdm_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

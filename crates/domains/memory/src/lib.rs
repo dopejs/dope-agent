@@ -1,4 +1,4 @@
-//! dope-memory: the memory plane foundation (Roadmap 78, spec 058).
+//! kura-memory: the memory plane foundation (Roadmap 78, spec 058).
 //!
 //! Layered memory following the TencentDB-Agent-Memory model adapted onto
 //! Kura's planes: L0 is the existing conversation truth (referenced,
@@ -11,7 +11,7 @@
 //! ready assets are immutable and change by supersede; revocation
 //! tombstones; retention expiry is a recorded transition.
 //!
-//! The manager is persistence-free (store DAOs live in dope-store per the
+//! The manager is persistence-free (store DAOs live in kura-store per the
 //! workspace's persistence-inversion rule); callers persist mutations and
 //! restore state at boot.
 

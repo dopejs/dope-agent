@@ -4,15 +4,15 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
-use dope_billing::DenialPayload;
-use dope_billing::ResolveInput;
-use dope_billing::UsageReservation;
-use dope_billing::live_validation_operation_key;
-use dope_billing::reserve_live_validation_preflight;
-use dope_identity::Permission;
-use dope_identity::TenantContext;
-use dope_identity::evaluate_permission;
-use dope_identity::tenantctx;
+use kura_billing::DenialPayload;
+use kura_billing::ResolveInput;
+use kura_billing::UsageReservation;
+use kura_billing::live_validation_operation_key;
+use kura_billing::reserve_live_validation_preflight;
+use kura_identity::Permission;
+use kura_identity::TenantContext;
+use kura_identity::evaluate_permission;
+use kura_identity::tenantctx;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -50,7 +50,7 @@ pub struct Dependencies {
     pub environment_scope: String,
     pub store: Option<Arc<dyn Store>>,
     pub enabled: bool,
-    pub billing: Option<Arc<dope_billing::Manager>>,
+    pub billing: Option<Arc<kura_billing::Manager>>,
     pub hosted_billing: bool,
     pub clock: Option<Clock>,
     pub ledger_event_sink: Option<LedgerEventSink>,
@@ -62,7 +62,7 @@ pub struct Manager {
     environment_scope: String,
     store: Option<Arc<dyn Store>>,
     enabled: bool,
-    billing: Option<Arc<dope_billing::Manager>>,
+    billing: Option<Arc<kura_billing::Manager>>,
     hosted_billing: bool,
     clock: Clock,
     ledger_event_sink: Option<LedgerEventSink>,
@@ -585,11 +585,11 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use dope_identity::LifecycleStatus;
-    use dope_identity::Role;
-    use dope_identity::TenantContext;
-    use dope_identity::permissions_for_role;
-    use dope_identity::tenantctx;
+    use kura_identity::LifecycleStatus;
+    use kura_identity::Role;
+    use kura_identity::TenantContext;
+    use kura_identity::permissions_for_role;
+    use kura_identity::tenantctx;
 
     use crate::error::LiveValidationError;
     use crate::error::StartFailure;

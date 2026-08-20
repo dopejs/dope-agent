@@ -16,7 +16,7 @@ fn new_store_id(prefix: &str) -> String {
     format!("{prefix}_{}", &hex[..16])
 }
 
-fn decode_workspace(raw: &str) -> Result<dope_bindings::Workspace, String> {
+fn decode_workspace(raw: &str) -> Result<kura_bindings::Workspace, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode workspace document: {e}"))
 }
 
@@ -35,7 +35,7 @@ impl SQLiteStore {
     /// Go `EnsureDefaultWorkspace`: lazily and idempotently provisions one
     /// default personal workspace per tenant. Concurrent first-access converges
     /// on a single record via the partial unique index.
-    pub fn ensure_default_workspace(&self, tenant_id: &str) -> Result<dope_bindings::Workspace, String> {
+    pub fn ensure_default_workspace(&self, tenant_id: &str) -> Result<kura_bindings::Workspace, String> {
         let tenant_id = tenant_id.trim().to_string();
         if tenant_id.is_empty() {
             return Err("tenant id is required".to_string());
@@ -44,15 +44,15 @@ impl SQLiteStore {
             return Ok(ws);
         }
         let now = Utc::now();
-        let ws = dope_bindings::Workspace {
+        let ws = kura_bindings::Workspace {
             workspace_id: new_store_id("ws"),
             tenant_id: tenant_id.clone(),
             display_name: "Personal Workspace".to_string(),
-            status: dope_bindings::WorkspaceStatus::ACTIVE,
+            status: kura_bindings::WorkspaceStatus::ACTIVE,
             is_default: true,
             owner_principal_id: "system".to_string(),
-            repair_status: dope_bindings::RepairStatus::HEALTHY,
-            redaction_status: dope_bindings::RedactionStatus::NOT_REQUIRED,
+            repair_status: kura_bindings::RepairStatus::HEALTHY,
+            redaction_status: kura_bindings::RedactionStatus::NOT_REQUIRED,
             created_at: now,
             updated_at: now,
             archived_at: None,
@@ -76,7 +76,7 @@ impl SQLiteStore {
         }
     }
 
-    fn default_workspace(&self, tenant_id: &str) -> Result<Option<dope_bindings::Workspace>, String> {
+    fn default_workspace(&self, tenant_id: &str) -> Result<Option<kura_bindings::Workspace>, String> {
         let mut stmt = self
             .conn
             .prepare("SELECT document_json FROM workspaces WHERE tenant_id = ?1 AND is_default = 1")
@@ -92,28 +92,28 @@ impl SQLiteStore {
     /// Go `CreateWorkspace`: creates a non-default tenant-scoped workspace.
     pub fn create_workspace(
         &self,
-        actor: &dope_identity::TenantContext,
+        actor: &kura_identity::TenantContext,
         display_name: &str,
-    ) -> Result<(dope_bindings::Workspace, String), String> {
+    ) -> Result<(kura_bindings::Workspace, String), String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_bindings::BindingError::ExplicitActorRequired.to_string());
+            return Err(kura_bindings::BindingError::ExplicitActorRequired.to_string());
         }
-        dope_bindings::validate_workspace_mutation(&dope_bindings::WorkspaceMutationInput {
+        kura_bindings::validate_workspace_mutation(&kura_bindings::WorkspaceMutationInput {
             display_name: display_name.to_string(),
-            status: dope_bindings::WorkspaceStatus::ACTIVE,
+            status: kura_bindings::WorkspaceStatus::ACTIVE,
         })
         .map_err(|e| e.to_string())?;
         let now = Utc::now();
         let audit_id = new_store_id("audit_binding");
-        let ws = dope_bindings::Workspace {
+        let ws = kura_bindings::Workspace {
             workspace_id: new_store_id("ws"),
             tenant_id: actor.tenant_id.clone(),
-            display_name: dope_bindings::safe_label(display_name),
-            status: dope_bindings::WorkspaceStatus::ACTIVE,
+            display_name: kura_bindings::safe_label(display_name),
+            status: kura_bindings::WorkspaceStatus::ACTIVE,
             is_default: false,
             owner_principal_id: actor.principal_id.clone(),
-            repair_status: dope_bindings::RepairStatus::HEALTHY,
-            redaction_status: dope_bindings::RedactionStatus::NOT_REQUIRED,
+            repair_status: kura_bindings::RepairStatus::HEALTHY,
+            redaction_status: kura_bindings::RedactionStatus::NOT_REQUIRED,
             created_at: now,
             updated_at: now,
             archived_at: None,
@@ -147,36 +147,36 @@ impl SQLiteStore {
     /// workspace. No hard delete.
     pub fn update_workspace_status(
         &self,
-        actor: &dope_identity::TenantContext,
+        actor: &kura_identity::TenantContext,
         workspace_id: &str,
-        status: dope_bindings::WorkspaceStatus,
-    ) -> Result<(dope_bindings::Workspace, String), String> {
+        status: kura_bindings::WorkspaceStatus,
+    ) -> Result<(kura_bindings::Workspace, String), String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_bindings::BindingError::ExplicitActorRequired.to_string());
+            return Err(kura_bindings::BindingError::ExplicitActorRequired.to_string());
         }
-        let is_known = status == dope_bindings::WorkspaceStatus::ARCHIVED
-            || status == dope_bindings::WorkspaceStatus::DISABLED
-            || status == dope_bindings::WorkspaceStatus::ACTIVE;
+        let is_known = status == kura_bindings::WorkspaceStatus::ARCHIVED
+            || status == kura_bindings::WorkspaceStatus::DISABLED
+            || status == kura_bindings::WorkspaceStatus::ACTIVE;
         if !is_known {
-            return Err(dope_bindings::invalid_binding_reason("workspace_status_invalid").to_string());
+            return Err(kura_bindings::invalid_binding_reason("workspace_status_invalid").to_string());
         }
         let mut ws = self
             .get_workspace(&actor.tenant_id, workspace_id)?
             .ok_or_else(|| "workspace not found".to_string())?;
-        if ws.is_default && status != dope_bindings::WorkspaceStatus::ACTIVE {
-            return Err(dope_bindings::invalid_binding_reason("default_workspace_not_retirable").to_string());
+        if ws.is_default && status != kura_bindings::WorkspaceStatus::ACTIVE {
+            return Err(kura_bindings::invalid_binding_reason("default_workspace_not_retirable").to_string());
         }
         let now = Utc::now();
         let audit_id = new_store_id("audit_binding");
         ws.status = status.clone();
         ws.updated_at = now;
-        if status == dope_bindings::WorkspaceStatus::ARCHIVED {
+        if status == kura_bindings::WorkspaceStatus::ARCHIVED {
             ws.archived_at = Some(now);
-            ws.repair_status = dope_bindings::RepairStatus::DISABLED;
-        } else if status == dope_bindings::WorkspaceStatus::DISABLED {
-            ws.repair_status = dope_bindings::RepairStatus::DISABLED;
+            ws.repair_status = kura_bindings::RepairStatus::DISABLED;
+        } else if status == kura_bindings::WorkspaceStatus::DISABLED {
+            ws.repair_status = kura_bindings::RepairStatus::DISABLED;
         } else {
-            ws.repair_status = dope_bindings::RepairStatus::HEALTHY;
+            ws.repair_status = kura_bindings::RepairStatus::HEALTHY;
             ws.archived_at = None;
         }
         let tx = self
@@ -205,7 +205,7 @@ impl SQLiteStore {
     }
 
     /// Go `ListWorkspaces`: tenant workspaces, default first.
-    pub fn list_workspaces(&self, tenant_id: &str, limit: i64) -> Result<Vec<dope_bindings::Workspace>, String> {
+    pub fn list_workspaces(&self, tenant_id: &str, limit: i64) -> Result<Vec<kura_bindings::Workspace>, String> {
         let limit = if limit <= 0 || limit > 200 { 50 } else { limit };
         let _ = self.ensure_default_workspace(tenant_id)?;
         let mut stmt = self
@@ -225,7 +225,7 @@ impl SQLiteStore {
     }
 
     /// Go `GetWorkspace`: one workspace by id within the tenant.
-    pub fn get_workspace(&self, tenant_id: &str, workspace_id: &str) -> Result<Option<dope_bindings::Workspace>, String> {
+    pub fn get_workspace(&self, tenant_id: &str, workspace_id: &str) -> Result<Option<kura_bindings::Workspace>, String> {
         let mut stmt = self
             .conn
             .prepare("SELECT document_json FROM workspaces WHERE tenant_id = ?1 AND workspace_id = ?2")
@@ -248,7 +248,7 @@ impl SQLiteStore {
         }
         match self.get_workspace(tenant_id, workspace_id)? {
             None => Ok(false),
-            Some(ws) => Ok(ws.status == dope_bindings::WorkspaceStatus::ACTIVE),
+            Some(ws) => Ok(ws.status == kura_bindings::WorkspaceStatus::ACTIVE),
         }
     }
 }
@@ -283,9 +283,9 @@ pub(crate) fn insert_binding_audit_tx(tx: &Transaction, row: &BindingAuditRow) -
         "outcome": row.outcome,
         "permissionGate": row.permission_gate,
         "reasonCode": row.reason_code,
-        "safeSummary": dope_bindings::safe_label(&row.safe_summary),
-        "previousSelectionSummary": dope_bindings::safe_label(&row.previous_selection_summary),
-        "resultingSelectionSummary": dope_bindings::safe_label(&row.resulting_selection_summary),
+        "safeSummary": kura_bindings::safe_label(&row.safe_summary),
+        "previousSelectionSummary": kura_bindings::safe_label(&row.previous_selection_summary),
+        "resultingSelectionSummary": kura_bindings::safe_label(&row.resulting_selection_summary),
         "occurredAt": now_rfc3339(&row.occurred_at),
     })
     .to_string();
@@ -305,7 +305,7 @@ pub(crate) fn insert_binding_audit_tx(tx: &Transaction, row: &BindingAuditRow) -
             row.outcome,
             row.permission_gate,
             row.reason_code,
-            dope_bindings::safe_label(&row.safe_summary),
+            kura_bindings::safe_label(&row.safe_summary),
             now_rfc3339(&row.occurred_at),
             "redacted",
             document,
@@ -315,7 +315,7 @@ pub(crate) fn insert_binding_audit_tx(tx: &Transaction, row: &BindingAuditRow) -
     Ok(())
 }
 
-fn insert_workspace_tx(tx: &Transaction, ws: &dope_bindings::Workspace) -> Result<(), String> {
+fn insert_workspace_tx(tx: &Transaction, ws: &kura_bindings::Workspace) -> Result<(), String> {
     let document_json = serde_json::to_string(ws).map_err(|e| format!("marshal workspace: {e}"))?;
     tx.execute(
         r#"INSERT INTO workspaces (
@@ -325,7 +325,7 @@ fn insert_workspace_tx(tx: &Transaction, ws: &dope_bindings::Workspace) -> Resul
         params![
             ws.workspace_id,
             ws.tenant_id,
-            dope_bindings::safe_label(&ws.display_name),
+            kura_bindings::safe_label(&ws.display_name),
             ws.status.as_str(),
             bool_to_int(ws.is_default),
             ws.owner_principal_id,
@@ -341,7 +341,7 @@ fn insert_workspace_tx(tx: &Transaction, ws: &dope_bindings::Workspace) -> Resul
     Ok(())
 }
 
-fn update_workspace_tx(tx: &Transaction, ws: &dope_bindings::Workspace) -> Result<(), String> {
+fn update_workspace_tx(tx: &Transaction, ws: &kura_bindings::Workspace) -> Result<(), String> {
     let document_json = serde_json::to_string(ws).map_err(|e| format!("marshal workspace: {e}"))?;
     tx.execute(
         r#"UPDATE workspaces SET
@@ -349,7 +349,7 @@ fn update_workspace_tx(tx: &Transaction, ws: &dope_bindings::Workspace) -> Resul
             updated_at = ?5, archived_at = ?6, document_json = ?7
         WHERE tenant_id = ?8 AND workspace_id = ?9"#,
         params![
-            dope_bindings::safe_label(&ws.display_name),
+            kura_bindings::safe_label(&ws.display_name),
             ws.status.as_str(),
             ws.repair_status.as_str(),
             ws.redaction_status.as_str(),

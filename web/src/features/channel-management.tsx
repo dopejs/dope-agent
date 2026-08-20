@@ -6,7 +6,7 @@ import type {
   ChannelConnectorListResponse,
   ChannelConnectorResource,
   ChannelManagementSupportEvidence
-} from "@dope/client";
+} from "@kura/client";
 
 type ChannelManagementProps = {
   connectors?: ChannelConnectorListResponse | null;

@@ -1,4 +1,4 @@
-use dope_computeruse::{
+use kura_computeruse::{
     Action, ActionKind, ActionStatus, Artifact, ArtifactKind, CreateSessionInput, Driver,
     MemoryDriver, Session, SessionStatus,
 };

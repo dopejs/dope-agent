@@ -3,7 +3,7 @@
 //! against a real SQLite store; here the un-ported store surface is exercised
 //! through a `ChatStore` fake (mirroring the Go store semantics for turn/
 //! preview saving), and the ported dispatch/event subset is additionally
-//! verified against the real `dope_store::SQLiteStore` adapter.
+//! verified against the real `kura_store::SQLiteStore` adapter.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -11,26 +11,26 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use dope_bindings::{
+use kura_bindings::{
     CapabilityDecision, EffectiveBindingSelection, EffectiveVisibility, ResolutionOutcome,
     RuntimeBindingEvidence,
 };
-use dope_chat::{
+use kura_chat::{
     CancellationToken, ChatError, ChatStore, OPENAI_COMPATIBLE_PROVIDER_NAME, QueryInput,
     QueryResult, Service, StreamChunk, compile_prompt_messages, continuity_source_kind,
     inject_continuity_messages, response_continuity_source_event_key, terminal_dispatch_event,
 };
-use dope_events::{Bus, Event, Filter, Scope};
-use dope_llm::{
+use kura_events::{Bus, Event, Filter, Scope};
+use kura_llm::{
     CancelToken, Dispatch, DispatchStatus, Dispatcher, Message, MessageRole, Provider,
     ProviderError, ProviderRequest, ProviderResponse, StreamEmitter, Usage,
 };
-use dope_profiles::{ActiveSelection, AgentProfile, RuntimeProjection};
-use dope_setupwizard::{
+use kura_profiles::{ActiveSelection, AgentProfile, RuntimeProjection};
+use kura_setupwizard::{
     RemediationOwner, SafeUseMode, SetupSession, SetupState, SetupStyle, TARGET_OPENAI_COMPATIBLE,
     TargetKind,
 };
-use dope_threads::{
+use kura_threads::{
     ContinuityDecision, ContinuityItemKind, ContinuityMode, ContinuityPreview,
     ContinuityPreviewItem, ContinuityReason, ContinuityRole, ContinuityStatus, ContinuityTurn,
     HandoffLink, HandoffSourceReference, HandoffSourceReferenceDecision,
@@ -101,12 +101,12 @@ impl Provider for TestProvider {
         let requests = Arc::clone(&self.requests);
         Box::pin(async move {
             requests.write().push(request.clone());
-            emit(dope_llm::StreamChunk {
+            emit(kura_llm::StreamChunk {
                 delta: "reply:".to_string(),
                 output: "reply:".to_string(),
                 ..Default::default()
             })?;
-            emit(dope_llm::StreamChunk {
+            emit(kura_llm::StreamChunk {
                 delta: request.model.clone(),
                 output: format!("reply:{}", request.model),
                 finish_reason: "stop".to_string(),
@@ -332,7 +332,7 @@ impl ChatStore for FakeStore {
 
     fn resolve_binding_selection(
         &self,
-        _params: &dope_chat::BindingResolutionParams,
+        _params: &kura_chat::BindingResolutionParams,
     ) -> Result<EffectiveBindingSelection, String> {
         let inner = self.inner.read();
         Ok(inner.binding_resolution.clone().unwrap_or_default())
@@ -387,7 +387,7 @@ impl ChatStore for FakeStore {
 
     fn list_continuity_turns(
         &self,
-        query: &dope_chat::ContinuityLookupQuery,
+        query: &kura_chat::ContinuityLookupQuery,
     ) -> Result<Vec<ContinuityTurn>, String> {
         let inner = self.inner.read();
         let now = query.now.unwrap_or_else(Utc::now);
@@ -417,7 +417,7 @@ impl ChatStore for FakeStore {
 
     fn list_continuity_turns_outside_session_segment(
         &self,
-        query: &dope_chat::ContinuityLookupQuery,
+        query: &kura_chat::ContinuityLookupQuery,
     ) -> Result<Vec<ContinuityTurn>, String> {
         let inner = self.inner.read();
         let now = query.now.unwrap_or_else(Utc::now);
@@ -552,7 +552,7 @@ impl ChatStore for FakeStore {
         if out.continuity_preview_id.is_empty() {
             out.continuity_preview_id = format!("contprev_{}", hex_token());
         }
-        let policy = dope_threads::default_continuity_policy();
+        let policy = kura_threads::default_continuity_policy();
         if out.window_policy_id.is_empty() {
             out.window_policy_id = policy.window_policy_id;
             out.max_prior_turns = policy.max_prior_turns;
@@ -610,7 +610,7 @@ fn write_file(path: &Path, content: &str) {
 
 /// Registry with a `shared` skill (sandbox declaration) and two overlays,
 /// mirroring Go `newChatSkillRegistry`.
-fn skill_registry() -> Arc<dope_skills::Registry> {
+fn skill_registry() -> Arc<kura_skills::Registry> {
     let home = tempfile::tempdir().expect("home temp dir");
     let data = tempfile::tempdir().expect("data temp dir");
     write_file(&home.path().join("AGENTS.md"), "home overlay");
@@ -627,7 +627,7 @@ fn skill_registry() -> Arc<dope_skills::Registry> {
         &data.path().join("skills").join("shared").join("SKILL.md"),
         &skill,
     );
-    let registry = dope_skills::Registry::with_roots(
+    let registry = kura_skills::Registry::with_roots(
         &home.path().join(".agents").to_string_lossy(),
         data.path().to_str().expect("data path"),
     )
@@ -692,7 +692,7 @@ fn base_query(provider: &str, model: &str, query: &str) -> QueryInput {
 
 fn service(
     dispatcher: Arc<Dispatcher>,
-    skills: Option<Arc<dope_skills::Registry>>,
+    skills: Option<Arc<kura_skills::Registry>>,
     store: Option<Arc<dyn ChatStore>>,
 ) -> Service {
     Service::new_service(dispatcher, None, skills, Some(Bus::new()), store)
@@ -776,8 +776,8 @@ fn query_returns_selected_skill_contracts_and_events() {
 /// Go `TestQueryBlocksOpenAICompatibleWhenSetupSessionBlocksDependentUse`.
 #[test]
 fn query_blocks_openai_compatible_when_setup_session_blocks_dependent_use() {
-    use dope_config::{LlmConfig, OpenAiCompatibleProviderConfig};
-    use dope_providers::new_manager;
+    use kura_config::{LlmConfig, OpenAiCompatibleProviderConfig};
+    use kura_providers::new_manager;
 
     let dispatcher = new_dispatcher(Arc::new(TestProvider::new(OPENAI_COMPATIBLE_PROVIDER_NAME)));
     let provider_manager = new_manager(
@@ -1488,7 +1488,7 @@ fn query_returns_dispatch_cancelled_when_token_killed() {
 #[test]
 fn manager_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<dope_chat::Service>();
+    assert_send_sync::<kura_chat::Service>();
 }
 
 
@@ -1511,23 +1511,23 @@ fn cancellation_token_parent_kill_cancels_children() {
     child.kill();
     assert!(child.is_cancelled());
     assert!(!parent.is_cancelled());
-    // link_to bridges into the dope-llm cancel token polled by the dispatcher.
+    // link_to bridges into the kura-llm cancel token polled by the dispatcher.
     let parent = CancellationToken::new();
-    let dope = CancelToken::new();
-    let _link = parent.link_to(&dope);
-    assert!(!dope.is_cancelled());
+    let kura = CancelToken::new();
+    let _link = parent.link_to(&kura);
+    assert!(!kura.is_cancelled());
     parent.kill();
-    assert!(dope.is_cancelled());
+    assert!(kura.is_cancelled());
 }
 
 // ------------------------------------------------------------------------
-// dope-store adapter (ported subset + explicit deferred surface)
+// kura-store adapter (ported subset + explicit deferred surface)
 // ------------------------------------------------------------------------
 
 #[test]
 fn sqlite_store_adapter_ports_dispatch_and_defers_continuity() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let store = dope_store::SQLiteStore::new(dir.path().to_str().expect("path")).expect("store");
+    let store = kura_store::SQLiteStore::new(dir.path().to_str().expect("path")).expect("store");
     let now = Utc::now();
     let dispatch = Dispatch {
         dispatch_id: "d_1".to_string(),
@@ -1566,14 +1566,14 @@ fn sqlite_store_adapter_ports_dispatch_and_defers_continuity() {
         .expect("found");
     assert_eq!(got, dispatch);
 
-    // The full ChatStore surface now delegates to the native dope-store
+    // The full ChatStore surface now delegates to the native kura-store
     // implementations: continuity round-trips against real SQLite.
     // Continuity turns FK onto threads + segments: seed those first.
     store
         .upsert_thread(&Thread {
             thread_id: "thr_adapter".to_string(),
             tenant_id: "ten_adapter".to_string(),
-            lifecycle_state: dope_threads::LifecycleState::Active,
+            lifecycle_state: kura_threads::LifecycleState::Active,
             current_session_segment_id: "seg".to_string(),
             source_kind: SourceKind::Chat,
             source_summary: "adapter test".to_string(),
@@ -1585,7 +1585,7 @@ fn sqlite_store_adapter_ports_dispatch_and_defers_continuity() {
         })
         .expect("seed thread");
     store
-        .upsert_thread_session_segment(&dope_threads::SessionSegment {
+        .upsert_thread_session_segment(&kura_threads::SessionSegment {
             session_segment_id: "seg".to_string(),
             thread_id: "thr_adapter".to_string(),
             tenant_id: "ten_adapter".to_string(),
@@ -1608,7 +1608,7 @@ fn sqlite_store_adapter_ports_dispatch_and_defers_continuity() {
         .expect("save continuity turn against real sqlite");
     assert!(!saved.continuity_turn_id.is_empty());
     let listed = chat_store
-        .list_continuity_turns(&dope_chat::ContinuityLookupQuery {
+        .list_continuity_turns(&kura_chat::ContinuityLookupQuery {
             tenant_id: "ten_adapter".to_string(),
             thread_id: "thr_adapter".to_string(),
             session_segment_id: "seg".to_string(),
@@ -1625,7 +1625,7 @@ fn sqlite_store_adapter_ports_dispatch_and_defers_continuity() {
         .expect("active profile selection");
     assert!(selection.is_some(), "default profile seeded and selected");
     let resolution = chat_store
-        .resolve_binding_selection(&dope_chat::BindingResolutionParams {
+        .resolve_binding_selection(&kura_chat::BindingResolutionParams {
             tenant_id: "ten_adapter".to_string(),
             ..Default::default()
         })
@@ -1769,18 +1769,18 @@ fn stream_chunk_round_trips_camel_case_wire() {
 
 #[test]
 fn compile_prompt_messages_lays_out_overlays_skills_and_query() {
-    let overlay = dope_skills::Overlay {
+    let overlay = kura_skills::Overlay {
         overlay_id: "o1".to_string(),
-        source: dope_skills::Source::DataDir,
+        source: kura_skills::Source::DataDir,
         body: "be helpful".to_string(),
-        ..dope_skills::Overlay::default()
+        ..kura_skills::Overlay::default()
     };
-    let skill = dope_skills::Skill {
+    let skill = kura_skills::Skill {
         skill_id: "shared".to_string(),
         name: "shared".to_string(),
         description: "data skill".to_string(),
         body: "data instructions".to_string(),
-        ..dope_skills::Skill::default()
+        ..kura_skills::Skill::default()
     };
     let messages = compile_prompt_messages("hello", &[skill], vec![overlay]);
     assert_eq!(messages.len(), 3);
@@ -1935,7 +1935,7 @@ fn blocked_openai_setup_session() -> SetupSession {
         diagnostic_source_kind: String::new(),
         diagnostic_source_id: String::new(),
         diagnostic_allowed_use: Vec::new(),
-        redaction_status: dope_setupwizard::RedactionStatus::Redacted,
+        redaction_status: kura_setupwizard::RedactionStatus::Redacted,
         resource_refs: Vec::new(),
         redacted_evidence: HashMap::new(),
         oauth_state_ref: String::new(),
@@ -1954,37 +1954,37 @@ fn blocked_openai_setup_session() -> SetupSession {
 // ------------------------------------------------------------------------
 
 struct RewriteQueryHook;
-impl dope_plugin::Hook for RewriteQueryHook {
-    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+impl kura_plugin::Hook for RewriteQueryHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> kura_plugin::HookOutcome {
         payload["query"] = serde_json::Value::String("rewritten query".to_string());
-        dope_plugin::HookOutcome::Continue
+        kura_plugin::HookOutcome::Continue
     }
 }
 
 struct InjectWindowHook;
-impl dope_plugin::Hook for InjectWindowHook {
-    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+impl kura_plugin::Hook for InjectWindowHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> kura_plugin::HookOutcome {
         let messages = payload["messages"].as_array_mut().expect("messages array");
         messages.insert(
             0,
             serde_json::json!({ "role": "system", "content": "session-strategy window" }),
         );
-        dope_plugin::HookOutcome::Continue
+        kura_plugin::HookOutcome::Continue
     }
 }
 
 struct VetoHook;
-impl dope_plugin::Hook for VetoHook {
-    fn handle(&self, _payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
-        dope_plugin::HookOutcome::Halt("tenant policy forbids this turn".to_string())
+impl kura_plugin::Hook for VetoHook {
+    fn handle(&self, _payload: &mut serde_json::Value) -> kura_plugin::HookOutcome {
+        kura_plugin::HookOutcome::Halt("tenant policy forbids this turn".to_string())
     }
 }
 
 struct RecordTurnEndHook(Arc<RwLock<Option<serde_json::Value>>>);
-impl dope_plugin::Hook for RecordTurnEndHook {
-    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+impl kura_plugin::Hook for RecordTurnEndHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> kura_plugin::HookOutcome {
         *self.0.write() = Some(payload.clone());
-        dope_plugin::HookOutcome::Continue
+        kura_plugin::HookOutcome::Continue
     }
 }
 
@@ -1996,9 +1996,9 @@ fn turn_start_hook_veto_blocks_the_turn() {
     let dispatcher = new_dispatcher(Arc::new(provider.clone()));
     let store = FakeStore::new();
     let mut svc = service(dispatcher, None, Some(store.clone() as Arc<dyn ChatStore>));
-    let hooks = Arc::new(dope_plugin::HookBus::new());
+    let hooks = Arc::new(kura_plugin::HookBus::new());
     hooks.register(
-        dope_plugin::points::CHAT_TURN_START,
+        kura_plugin::points::CHAT_TURN_START,
         "policy-plugin",
         Arc::new(VetoHook),
     );
@@ -2012,7 +2012,7 @@ fn turn_start_hook_veto_blocks_the_turn() {
         .expect_err("veto must fail the turn");
     match err {
         ChatError::HookVetoed { point, plugin_id, reason } => {
-            assert_eq!(point, dope_plugin::points::CHAT_TURN_START);
+            assert_eq!(point, kura_plugin::points::CHAT_TURN_START);
             assert_eq!(plugin_id, "policy-plugin");
             assert_eq!(reason, "tenant policy forbids this turn");
         }
@@ -2040,9 +2040,9 @@ fn pre_dispatch_mutation_is_model_visible_and_logged() {
     let dispatcher = new_dispatcher(Arc::new(provider.clone()));
     let store = FakeStore::new();
     let mut svc = service(dispatcher, None, Some(store.clone() as Arc<dyn ChatStore>));
-    let hooks = Arc::new(dope_plugin::HookBus::new());
+    let hooks = Arc::new(kura_plugin::HookBus::new());
     hooks.register(
-        dope_plugin::points::CHAT_PRE_DISPATCH,
+        kura_plugin::points::CHAT_PRE_DISPATCH,
         "session-strategy",
         Arc::new(InjectWindowHook),
     );
@@ -2078,15 +2078,15 @@ fn turn_start_rewrite_and_turn_end_observation() {
     let dispatcher = new_dispatcher(Arc::new(provider.clone()));
     let store = FakeStore::new();
     let mut svc = service(dispatcher, None, Some(store.clone() as Arc<dyn ChatStore>));
-    let hooks = Arc::new(dope_plugin::HookBus::new());
+    let hooks = Arc::new(kura_plugin::HookBus::new());
     let seen = Arc::new(RwLock::new(None));
     hooks.register(
-        dope_plugin::points::CHAT_TURN_START,
+        kura_plugin::points::CHAT_TURN_START,
         "rewriter",
         Arc::new(RewriteQueryHook),
     );
     hooks.register(
-        dope_plugin::points::CHAT_TURN_END,
+        kura_plugin::points::CHAT_TURN_END,
         "observer",
         Arc::new(RecordTurnEndHook(Arc::clone(&seen))),
     );
@@ -2120,9 +2120,9 @@ fn stream_runs_hook_points() {
     let dispatcher = new_dispatcher(Arc::new(provider.clone()));
     let store = FakeStore::new();
     let mut svc = service(dispatcher, None, Some(store.clone() as Arc<dyn ChatStore>));
-    let hooks = Arc::new(dope_plugin::HookBus::new());
+    let hooks = Arc::new(kura_plugin::HookBus::new());
     hooks.register(
-        dope_plugin::points::CHAT_PRE_DISPATCH,
+        kura_plugin::points::CHAT_PRE_DISPATCH,
         "session-strategy",
         Arc::new(InjectWindowHook),
     );

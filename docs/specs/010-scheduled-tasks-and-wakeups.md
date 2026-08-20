@@ -69,7 +69,7 @@ Add a first-class trigger plane for one-shot, recurring, and background wakeup e
 
 - targeted scheduler and API tests
 - restart recovery coverage for persisted schedules
-- one manual `DOPE_ENV=test` recurring schedule verification
+- one manual `KURA_ENV=test` recurring schedule verification
 
 ## Definition Of Done
 

@@ -4,14 +4,14 @@
 
 Verify that `websocket` becomes the first additional MCP transport beyond `stdio` and
 `streamable-http`, with explicit capability truth, bounded reconnect behavior, and normal
-runtime tool-call provenance in `DOPE_ENV=test`.
+runtime tool-call provenance in `KURA_ENV=test`.
 
 ## Prerequisites
 
-- local test daemon only; do not use `~/.dope`
+- local test daemon only; do not use `~/.kura`
 - authenticated local pairing or an existing bearer token
 - one local websocket MCP helper server provided by this repository after implementation
-- a test secret stored in `~/.dope-test/mcp-secrets.json` for websocket auth verification
+- a test secret stored in `~/.kura-test/mcp-secrets.json` for websocket auth verification
 
 ## Suggested Verification Flow
 
@@ -30,7 +30,7 @@ cd daemon && go run ./cmd/mcp-websocket-helper --listen 127.0.0.1:19234
 3. Inspect transport capability truth before creating a server.
 
 ```bash
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/mcp/transports
 ```
 
@@ -45,7 +45,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "serverId":"websocket-phase23",
@@ -63,7 +63,7 @@ curl -sS -X POST \
   }' \
   http://127.0.0.1:19192/v1/mcp/servers
 
-curl -sS -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/mcp/servers/websocket-phase23/start
 ```
 
@@ -76,7 +76,7 @@ Expected outcome after implementation:
 5. Discover tools and invoke one tool through the existing runtime tool-call plane.
 
 ```bash
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/mcp/servers/websocket-phase23/tools
 ```
 
@@ -128,7 +128,7 @@ Covered by the targeted and full regression runs:
 
 ## Recorded Manual Verification
 
-Recorded on 2026-04-21 in `DOPE_ENV=test` against the local test daemon and the
+Recorded on 2026-04-21 in `KURA_ENV=test` against the local test daemon and the
 repo-owned websocket helper server:
 
 1. Started the daemon with `make daemon-run-test`.
@@ -141,9 +141,9 @@ cd daemon && go run ./cmd/mcp-websocket-helper --listen 127.0.0.1:19234
 3. Completed the operator inspection walkthrough with:
 
 ```bash
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" http://127.0.0.1:19192/v1/mcp/transports
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" http://127.0.0.1:19192/v1/config
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" http://127.0.0.1:19192/v1/mcp/servers/websocket-phase23
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" http://127.0.0.1:19192/v1/mcp/transports
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" http://127.0.0.1:19192/v1/config
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" http://127.0.0.1:19192/v1/mcp/servers/websocket-phase23
 ```
 
 Recorded outcome:
@@ -191,7 +191,7 @@ Recorded outcome:
 
 ## Notes
 
-- This quickstart intentionally keeps verification in `DOPE_ENV=test`.
+- This quickstart intentionally keeps verification in `KURA_ENV=test`.
 - The helper server is part of verification infrastructure, not a second MCP control
   plane.
 - `stdio` and `streamable-http` verification remains covered by existing phase 21 and

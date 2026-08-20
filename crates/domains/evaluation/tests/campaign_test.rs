@@ -8,14 +8,14 @@ use std::collections::HashMap;
 
 use chrono::DateTime;
 use chrono::Utc;
-use dope_evaluation::{
+use kura_evaluation::{
     CampaignRunnerInput, CampaignSourceSelection, CampaignTransition,
     CreateCampaignInput, EvaluationError, ProductLifecycleStatus, ProductResourceKind,
     ReplayCampaign, ReplayMode, RetentionState, SuppressionState, build_campaign_attempt_group,
     build_campaign_replay_launch_plan, build_campaign_runner_plan, campaign_idempotency_scope,
     campaign_item_from_selection, create_replay_campaign, transition_replay_campaign,
 };
-use dope_evaluation::{CampaignAttemptAggregationInput, CampaignItem};
+use kura_evaluation::{CampaignAttemptAggregationInput, CampaignItem};
 
 fn ts(s: &str) -> DateTime<Utc> {
     s.parse::<DateTime<Utc>>().expect("ts")

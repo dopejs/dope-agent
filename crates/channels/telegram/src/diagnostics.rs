@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use dope_connectors::{
+use kura_connectors::{
     ConnectorDiagnosticState, DiagnosticReasonCode, FreshnessState, LifecycleState,
     RedactionStatus, RemediationOwner, RetrySafety,
 };

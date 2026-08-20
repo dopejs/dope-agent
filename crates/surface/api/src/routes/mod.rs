@@ -78,7 +78,7 @@ pub(crate) fn decode_json_or_default<T: Default + serde::de::DeserializeOwned>(
     serde_json::from_slice(body).map_err(|err| crate::error::ApiError::BadRequest(err.to_string()))
 }
 
-/// `/healthz` payload (Go: `{"ok": true, "service": "dope"}`).
+/// `/healthz` payload (Go: `{"ok": true, "service": "kura"}`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthzResponse {
@@ -98,7 +98,7 @@ pub struct VersionResponse {
 pub async fn healthz() -> Json<HealthzResponse> {
     Json(HealthzResponse {
         ok: true,
-        service: "dope",
+        service: "kura",
     })
 }
 
@@ -198,28 +198,28 @@ pub(crate) mod tests_support {
 
     use crate::state::AppState;
 
-    pub(crate) fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    pub(crate) fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-test".to_string(),
+            data_dir: "/tmp/kura-api-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig {
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                telegram: dope_config::TelegramConnectorConfig {
+                telegram: kura_config::TelegramConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                slack: dope_config::SlackConnectorConfig {
+                slack: kura_config::SlackConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                matrix: dope_config::MatrixConnectorConfig {
+                matrix: kura_config::MatrixConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
@@ -230,12 +230,12 @@ pub(crate) mod tests_support {
     /// AppState with only the required core; managers stay None and are
     /// injected per test module.
     pub(crate) fn test_state() -> AppState {
-        let dir = std::env::temp_dir().join(format!("dope-api-routes-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-routes-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store)
+        AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store)
     }
 
     /// Sends one request against the assembled router and decodes the JSON
@@ -280,28 +280,28 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-test".to_string(),
+            data_dir: "/tmp/kura-api-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig {
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                telegram: dope_config::TelegramConnectorConfig {
+                telegram: kura_config::TelegramConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                slack: dope_config::SlackConnectorConfig {
+                slack: kura_config::SlackConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                matrix: dope_config::MatrixConnectorConfig {
+                matrix: kura_config::MatrixConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
@@ -311,12 +311,12 @@ mod tests {
 
     /// Builds an AppState with only the required core; managers stay None.
     fn test_state() -> AppState {
-        let dir = std::env::temp_dir().join(format!("dope-api-routes-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-routes-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store)
+        AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store)
     }
 
     async fn get_json(uri: &str) -> (StatusCode, serde_json::Value) {
@@ -338,7 +338,7 @@ mod tests {
     async fn healthz_returns_ok() {
         let (status, json) = get_json("/healthz").await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(json, serde_json::json!({ "ok": true, "service": "dope" }));
+        assert_eq!(json, serde_json::json!({ "ok": true, "service": "kura" }));
     }
 
     #[tokio::test]
@@ -352,18 +352,18 @@ mod tests {
     async fn system_info_returns_environment_projection() {
         let (status, json) = get_json("/v1/system/info").await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(json["service"], "dope");
+        assert_eq!(json["service"], "kura");
         assert_eq!(json["environment"], "test");
         assert_eq!(json["version"], "0.1.0");
         assert_eq!(json["bindAddr"], "127.0.0.1:19192");
-        assert_eq!(json["dataDir"], "/tmp/dope-api-test");
+        assert_eq!(json["dataDir"], "/tmp/kura-api-test");
         assert_eq!(json["logLevel"], "info");
     }
 
     #[tokio::test]
     async fn protected_routes_require_auth_when_auth_is_configured() {
         let mut state = test_state();
-        state.auth = Some(Arc::new(dope_identity::auth::Manager::new()));
+        state.auth = Some(Arc::new(kura_identity::auth::Manager::new()));
         let app = router(state);
 
         // Protected route without a token: 401 (Go protected()).

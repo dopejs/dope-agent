@@ -135,7 +135,7 @@ As an operator, I can inspect activation failures by user and tenant context usi
 
 - **Compatibility Impact**: This feature adds hosted activation behavior, activation-state projection, first-run shell behavior, client-facing activation representation, and tenant-scoped audit expectations. Existing tenant identity, token grant, tenant-aware shell, quota, and hosted operational profile behavior must remain compatible.
 - **Migration / Rollback**: Existing hosted users and tenants must be resolved without duplicate personal tenants. Rollback should disable the guided activation surface and safe first-action workflow while preserving existing tenant identity and audit records. Activation records already created must remain readable for support and review.
-- **Verification Strategy**: Required validation includes first-run signup and invite flows, idempotent personal tenant resolution, activation state projection, quota baseline projection, tenant isolation, failure reason coverage, audit visibility, restart durability, client representation coverage, and a manual `DOPE_ENV=test` walkthrough from no active setup to first useful action.
+- **Verification Strategy**: Required validation includes first-run signup and invite flows, idempotent personal tenant resolution, activation state projection, quota baseline projection, tenant isolation, failure reason coverage, audit visibility, restart durability, client representation coverage, and a manual `KURA_ENV=test` walkthrough from no active setup to first useful action.
 - **Observability Impact**: The feature must add or update operator-visible activation diagnostics, stable failure reasons, audit records, and metadata-only first-action completion evidence so activation failures can be investigated without direct storage inspection.
 - **Environment & Secrets**: Development and automated validation must default to the test environment. Activation must not require live connectors, production secrets, payment provider credentials, enterprise identity credentials, or privileged organization setup. Diagnostics and audit evidence must avoid raw secrets and credential-bearing values.
 
@@ -164,4 +164,4 @@ As an operator, I can inspect activation failures by user and tenant context usi
 - Hosted activation is product behavior and must be visible from the hosted shell; it is not a developer-only runbook.
 - Default quota and plan projection for new users can be represented before payment checkout exists, but checkout and billing administration remain out of scope.
 - Enterprise SSO, organization administration, memory, context recall, and personalized knowledge behavior remain out of scope for this phase.
-- Test verification uses `DOPE_ENV=test` behavior by default and does not touch production user data.
+- Test verification uses `KURA_ENV=test` behavior by default and does not touch production user data.

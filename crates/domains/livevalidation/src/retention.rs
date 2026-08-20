@@ -3,7 +3,7 @@
 use chrono::DateTime;
 use chrono::Utc;
 
-use dope_identity::tenantctx;
+use kura_identity::tenantctx;
 
 use crate::error::LiveValidationError;
 use crate::manager::Manager;
@@ -58,8 +58,8 @@ impl Manager {
 #[cfg(test)]
 mod tests {
 
-    use dope_identity::TenantContext;
-    use dope_identity::tenantctx;
+    use kura_identity::TenantContext;
+    use kura_identity::tenantctx;
 
     use crate::testutil::manager_without_store;
     use crate::types::RetentionAppliesTo;

@@ -9,7 +9,7 @@ make daemon-run-test
 make daemon-test-status
 ```
 
-Do not use live connector credentials, production tenants, or `~/.dope` for Phase 48
+Do not use live connector credentials, production tenants, or `~/.kura` for Phase 48
 acceptance unless an operator explicitly chooses a separate live validation path.
 
 ## Targeted Verification

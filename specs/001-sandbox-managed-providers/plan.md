@@ -44,8 +44,8 @@ making undeclared access fail closed and operator-visible.
 - Verification and observability: PASS. The plan names targeted provider, sandbox, API,
   contract, and full-suite verification, plus operator-visible provenance and failure
   classification expectations.
-- Environment and secrets: PASS. The plan keeps local work in `DOPE_ENV=test`, preserves
-  `~/.dope-test` / `~/.dope` separation, and treats credential-bearing provider local state
+- Environment and secrets: PASS. The plan keeps local work in `KURA_ENV=test`, preserves
+  `~/.kura-test` / `~/.kura` separation, and treats credential-bearing provider local state
   as sensitive and redacted.
 
 Post-design re-check:

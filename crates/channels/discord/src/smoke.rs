@@ -7,7 +7,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::redaction_status_redacted;
-use dope_connectors::{DiagnosticReasonCode, RedactionStatus};
+use kura_connectors::{DiagnosticReasonCode, RedactionStatus};
 
 /// Go `SmokeStatus`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

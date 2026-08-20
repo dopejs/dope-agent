@@ -11,23 +11,23 @@ use rusqlite::{params, Row};
 use crate::crud::{enum_str, marshal_map, now_rfc3339, null_string, opt_time_string};
 use crate::SQLiteStore;
 
-fn scan_session_document(row: &Row) -> Result<dope_computeruse::Session, String> {
+fn scan_session_document(row: &Row) -> Result<kura_computeruse::Session, String> {
     let document: String = row.get(0).map_err(|e| e.to_string())?;
     serde_json::from_str(&document).map_err(|e| format!("decode computer-use session: {e}"))
 }
 
-fn scan_action_document(row: &Row) -> Result<dope_computeruse::Action, String> {
+fn scan_action_document(row: &Row) -> Result<kura_computeruse::Action, String> {
     let document: String = row.get(0).map_err(|e| e.to_string())?;
     serde_json::from_str(&document).map_err(|e| format!("decode computer-use action: {e}"))
 }
 
-fn scan_artifact_document(row: &Row) -> Result<dope_computeruse::Artifact, String> {
+fn scan_artifact_document(row: &Row) -> Result<kura_computeruse::Artifact, String> {
     let document: String = row.get(0).map_err(|e| e.to_string())?;
     serde_json::from_str(&document).map_err(|e| format!("decode computer-use artifact: {e}"))
 }
 
 impl SQLiteStore {
-    pub fn upsert_computer_use_session(&self, session: &dope_computeruse::Session) -> Result<(), String> {
+    pub fn upsert_computer_use_session(&self, session: &kura_computeruse::Session) -> Result<(), String> {
         let document_json =
             serde_json::to_string(session).map_err(|e| format!("marshal computer-use session: {e}"))?;
         let trusted_scope_json = match &session.trusted_page_scope {
@@ -92,7 +92,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         run_id: &str,
-    ) -> Result<Vec<dope_computeruse::Session>, String> {
+    ) -> Result<Vec<kura_computeruse::Session>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -117,7 +117,7 @@ impl SQLiteStore {
         environment_scope: &str,
         run_id: &str,
         session_id: &str,
-    ) -> Result<Option<dope_computeruse::Session>, String> {
+    ) -> Result<Option<kura_computeruse::Session>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -134,7 +134,7 @@ impl SQLiteStore {
         };
         scan_session_document(row).map(Some)
     }
-    pub fn upsert_computer_use_action(&self, action: &dope_computeruse::Action) -> Result<(), String> {
+    pub fn upsert_computer_use_action(&self, action: &kura_computeruse::Action) -> Result<(), String> {
         let document_json =
             serde_json::to_string(action).map_err(|e| format!("marshal computer-use action: {e}"))?;
         let target_match_context_json = match &action.target_match_context {
@@ -221,7 +221,7 @@ impl SQLiteStore {
         environment_scope: &str,
         run_id: &str,
         session_id: &str,
-    ) -> Result<Vec<dope_computeruse::Action>, String> {
+    ) -> Result<Vec<kura_computeruse::Action>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -247,7 +247,7 @@ impl SQLiteStore {
         run_id: &str,
         session_id: &str,
         action_id: &str,
-    ) -> Result<Option<dope_computeruse::Action>, String> {
+    ) -> Result<Option<kura_computeruse::Action>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -274,7 +274,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         approval_id: &str,
-    ) -> Result<Option<dope_computeruse::Action>, String> {
+    ) -> Result<Option<kura_computeruse::Action>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -289,7 +289,7 @@ impl SQLiteStore {
             .query(params![
                 environment_scope.trim(),
                 approval_id.trim(),
-                dope_computeruse::ActionStatus::WaitingApproval.as_str(),
+                kura_computeruse::ActionStatus::WaitingApproval.as_str(),
             ])
             .map_err(|e| e.to_string())?;
         let Some(row) = rows.next().map_err(|e| e.to_string())? else {
@@ -298,7 +298,7 @@ impl SQLiteStore {
         scan_action_document(row).map(Some)
     }
 
-    pub fn upsert_computer_use_artifact(&self, artifact: &dope_computeruse::Artifact) -> Result<(), String> {
+    pub fn upsert_computer_use_artifact(&self, artifact: &kura_computeruse::Artifact) -> Result<(), String> {
         let document_json =
             serde_json::to_string(artifact).map_err(|e| format!("marshal computer-use artifact: {e}"))?;
 
@@ -356,7 +356,7 @@ impl SQLiteStore {
         environment_scope: &str,
         run_id: &str,
         action_id: &str,
-    ) -> Result<Vec<dope_computeruse::Artifact>, String> {
+    ) -> Result<Vec<kura_computeruse::Artifact>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -380,7 +380,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         artifact_id: &str,
-    ) -> Result<Option<dope_computeruse::Artifact>, String> {
+    ) -> Result<Option<kura_computeruse::Artifact>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -406,7 +406,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         interrupted_at: &chrono::DateTime<chrono::Utc>,
-    ) -> Result<(Vec<dope_computeruse::Session>, Vec<dope_computeruse::Action>), String> {
+    ) -> Result<(Vec<kura_computeruse::Session>, Vec<kura_computeruse::Action>), String> {
         let mut updated_sessions = Vec::new();
         {
             let mut stmt = self
@@ -420,9 +420,9 @@ impl SQLiteStore {
             let mut rows = stmt
                 .query(params![
                     environment_scope.trim(),
-                    dope_computeruse::SessionStatus::Starting.as_str(),
-                    dope_computeruse::SessionStatus::Active.as_str(),
-                    dope_computeruse::SessionStatus::Blocked.as_str(),
+                    kura_computeruse::SessionStatus::Starting.as_str(),
+                    kura_computeruse::SessionStatus::Active.as_str(),
+                    kura_computeruse::SessionStatus::Blocked.as_str(),
                 ])
                 .map_err(|e| e.to_string())?;
             while let Some(row) = rows.next().map_err(|e| e.to_string())? {
@@ -431,7 +431,7 @@ impl SQLiteStore {
         }
 
         for session in updated_sessions.iter_mut() {
-            session.status = dope_computeruse::SessionStatus::Interrupted;
+            session.status = kura_computeruse::SessionStatus::Interrupted;
             session.interrupted_at = Some(*interrupted_at);
             session.updated_at = *interrupted_at;
             self.upsert_computer_use_session(session)?;
@@ -450,9 +450,9 @@ impl SQLiteStore {
             let mut rows = stmt
                 .query(params![
                     environment_scope.trim(),
-                    dope_computeruse::ActionStatus::Requested.as_str(),
-                    dope_computeruse::ActionStatus::WaitingApproval.as_str(),
-                    dope_computeruse::ActionStatus::Running.as_str(),
+                    kura_computeruse::ActionStatus::Requested.as_str(),
+                    kura_computeruse::ActionStatus::WaitingApproval.as_str(),
+                    kura_computeruse::ActionStatus::Running.as_str(),
                 ])
                 .map_err(|e| e.to_string())?;
             while let Some(row) = rows.next().map_err(|e| e.to_string())? {
@@ -461,8 +461,8 @@ impl SQLiteStore {
         }
 
         for action in updated_actions.iter_mut() {
-            action.status = dope_computeruse::ActionStatus::Interrupted;
-            action.failure_class = dope_computeruse::FailureClass::Interrupted.as_str().to_string();
+            action.status = kura_computeruse::ActionStatus::Interrupted;
+            action.failure_class = kura_computeruse::FailureClass::Interrupted.as_str().to_string();
             action.failure_reason = "daemon restarted before computer-use action completed".to_string();
             action.updated_at = *interrupted_at;
             action.completed_at = Some(*interrupted_at);
@@ -473,17 +473,17 @@ impl SQLiteStore {
     }
 }
 
-// --- dope_computeruse::Store trait impl (Send + Sync handle over the DAOs) ---
+// --- kura_computeruse::Store trait impl (Send + Sync handle over the DAOs) ---
 //
 // rusqlite's Connection is Send but not Sync, so SQLiteStore cannot be the
-// trait's `Send + Sync` self type directly. Following the dope_secrets::Store
+// trait's `Send + Sync` self type directly. Following the kura_secrets::Store
 // precedent (see secrets.rs), the workspace convention shares the store as
 // `Arc<parking_lot::Mutex<SQLiteStore>>`; the mutex is wrapped in the local
 // `ComputerUseStoreHandle` newtype, which satisfies Send + Sync and serializes
 // access exactly like the Go daemon's single-connection store.
 
 /// Send + Sync handle over the SQLite store implementing
-/// dope_computeruse::Store. Construct from a fresh store and share as
+/// kura_computeruse::Store. Construct from a fresh store and share as
 /// `Arc<ComputerUseStoreHandle>` with the computer-use manager.
 pub struct ComputerUseStoreHandle(pub parking_lot::Mutex<SQLiteStore>);
 
@@ -493,12 +493,12 @@ impl ComputerUseStoreHandle {
     }
 }
 
-impl dope_computeruse::Store for ComputerUseStoreHandle {
-    fn upsert_computer_use_session(&self, session: &dope_computeruse::Session) -> Result<(), String> {
+impl kura_computeruse::Store for ComputerUseStoreHandle {
+    fn upsert_computer_use_session(&self, session: &kura_computeruse::Session) -> Result<(), String> {
         self.0.lock().upsert_computer_use_session(session)
     }
 
-    fn list_computer_use_sessions(&self, environment: &str, run_id: &str) -> Result<Vec<dope_computeruse::Session>, String> {
+    fn list_computer_use_sessions(&self, environment: &str, run_id: &str) -> Result<Vec<kura_computeruse::Session>, String> {
         self.0.lock().list_computer_use_sessions(environment, run_id)
     }
 
@@ -507,11 +507,11 @@ impl dope_computeruse::Store for ComputerUseStoreHandle {
         environment: &str,
         run_id: &str,
         session_id: &str,
-    ) -> Result<Option<dope_computeruse::Session>, String> {
+    ) -> Result<Option<kura_computeruse::Session>, String> {
         self.0.lock().get_computer_use_session(environment, run_id, session_id)
     }
 
-    fn upsert_computer_use_action(&self, action: &dope_computeruse::Action) -> Result<(), String> {
+    fn upsert_computer_use_action(&self, action: &kura_computeruse::Action) -> Result<(), String> {
         self.0.lock().upsert_computer_use_action(action)
     }
 
@@ -520,7 +520,7 @@ impl dope_computeruse::Store for ComputerUseStoreHandle {
         environment: &str,
         run_id: &str,
         session_id: &str,
-    ) -> Result<Vec<dope_computeruse::Action>, String> {
+    ) -> Result<Vec<kura_computeruse::Action>, String> {
         self.0.lock().list_computer_use_actions(environment, run_id, session_id)
     }
 
@@ -530,7 +530,7 @@ impl dope_computeruse::Store for ComputerUseStoreHandle {
         run_id: &str,
         session_id: &str,
         action_id: &str,
-    ) -> Result<Option<dope_computeruse::Action>, String> {
+    ) -> Result<Option<kura_computeruse::Action>, String> {
         self.0.lock().get_computer_use_action(environment, run_id, session_id, action_id)
     }
 
@@ -538,11 +538,11 @@ impl dope_computeruse::Store for ComputerUseStoreHandle {
         &self,
         environment: &str,
         approval_id: &str,
-    ) -> Result<Option<dope_computeruse::Action>, String> {
+    ) -> Result<Option<kura_computeruse::Action>, String> {
         self.0.lock().find_pending_computer_use_action_by_approval(environment, approval_id)
     }
 
-    fn upsert_computer_use_artifact(&self, artifact: &dope_computeruse::Artifact) -> Result<(), String> {
+    fn upsert_computer_use_artifact(&self, artifact: &kura_computeruse::Artifact) -> Result<(), String> {
         self.0.lock().upsert_computer_use_artifact(artifact)
     }
 
@@ -551,11 +551,11 @@ impl dope_computeruse::Store for ComputerUseStoreHandle {
         environment: &str,
         run_id: &str,
         action_id: &str,
-    ) -> Result<Vec<dope_computeruse::Artifact>, String> {
+    ) -> Result<Vec<kura_computeruse::Artifact>, String> {
         self.0.lock().list_computer_use_artifacts_for_action(environment, run_id, action_id)
     }
 
-    fn get_computer_use_artifact(&self, environment: &str, artifact_id: &str) -> Result<Option<dope_computeruse::Artifact>, String> {
+    fn get_computer_use_artifact(&self, environment: &str, artifact_id: &str) -> Result<Option<kura_computeruse::Artifact>, String> {
         self.0.lock().get_computer_use_artifact(environment, artifact_id)
     }
 
@@ -563,7 +563,7 @@ impl dope_computeruse::Store for ComputerUseStoreHandle {
         &self,
         environment: &str,
         now: chrono::DateTime<chrono::Utc>,
-    ) -> Result<(Vec<dope_computeruse::Session>, Vec<dope_computeruse::Action>), String> {
+    ) -> Result<(Vec<kura_computeruse::Session>, Vec<kura_computeruse::Action>), String> {
         self.0.lock().mark_inflight_computer_use_interrupted(environment, &now)
     }
 }

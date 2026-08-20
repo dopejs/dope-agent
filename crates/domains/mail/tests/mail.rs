@@ -1,5 +1,5 @@
-use dope_integrations::{BackendBinding, BackendKind, ReadinessStatus, Resource};
-use dope_mail::{
+use kura_integrations::{BackendBinding, BackendKind, ReadinessStatus, Resource};
+use kura_mail::{
     apply_attachment_policy, evaluate_attachment, join_recipients, live_validation_matrix_rows,
     summarize_draft_input, validate_explicit_recipients, AttachmentReference,
     AttachmentResolutionStatus, ComposeMode, CreateDraftInput, DeliveryState, DraftStatus,

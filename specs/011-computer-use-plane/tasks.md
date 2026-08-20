@@ -69,7 +69,7 @@
 
 **Goal**: Computer-use steps run inside normal runs and workflows, reuse sessions only within the owning run or workflow, and preserve backward-compatible non-computer-use execution.
 
-**Independent Test**: Execute one `DOPE_ENV=test` workflow that combines a computer-use step with another capability family, confirm the workflow exposes session, action, and linked evidence summaries through normal step and tool-call truth, and verify a schedule-owned or operator-owned run does not leak session reuse across boundaries.
+**Independent Test**: Execute one `KURA_ENV=test` workflow that combines a computer-use step with another capability family, confirm the workflow exposes session, action, and linked evidence summaries through normal step and tool-call truth, and verify a schedule-owned or operator-owned run does not leak session reuse across boundaries.
 
 ### Tests for User Story 2
 
@@ -118,7 +118,7 @@
 - [X] T039 [P] Update browser-first capability docs and operator guidance in `docs/runtime/operator-trust-model.md`, `docs/runtime/daemon-roadmaps.md`, and `docs/harness/harness-architecture.md`
 - [X] T040 [P] Add performance coverage for session lookup, action completion, and artifact metadata latency in `daemon/internal/api/server_test.go` and `daemon/internal/computeruse/manager_test.go`
 - [X] T041 [P] Finalize schema fixture and validator coverage for `schemas/events/runtime-event.schema.json`, `schemas/api/create-computer-use-session.request.schema.json`, `schemas/api/computer-use-session-resource.schema.json`, `schemas/api/computer-use-session-list.response.schema.json`, `schemas/api/create-computer-use-action.request.schema.json`, `schemas/api/computer-use-action-resource.schema.json`, `schemas/api/computer-use-action-list.response.schema.json`, `schemas/api/computer-use-artifact-resource.schema.json`, `schemas/api/computer-use-artifact-content.response.schema.json`, `schemas/api/tool-call-resource.schema.json`, `schemas/api/tool-call-list.response.schema.json`, `schemas/api/workflow-step-resource.schema.json`, `schemas/events/computer-use-session-created.event.schema.json`, `schemas/events/computer-use-session-status-changed.event.schema.json`, `schemas/events/computer-use-action-requested.event.schema.json`, `schemas/events/computer-use-action-status-changed.event.schema.json`, `schemas/events/computer-use-action-target-mismatch.event.schema.json`, and `schemas/events/computer-use-artifact-recorded.event.schema.json` in `daemon/internal/contracts/contracts_test.go`
-- [X] T042 [P] Run manual `DOPE_ENV=test` browser verification and record observed results in `specs/011-computer-use-plane/quickstart.md`
+- [X] T042 [P] Run manual `KURA_ENV=test` browser verification and record observed results in `specs/011-computer-use-plane/quickstart.md`
 - [X] T043 Record automated verification commands, residual risks, and rollback notes in `specs/011-computer-use-plane/plan.md` and `specs/011-computer-use-plane/quickstart.md`
 
 ---
@@ -199,7 +199,7 @@ Task: "T035 [US3] Implement artifact metadata persistence and content retrieval 
 1. Complete Phase 1: Setup.
 2. Complete Phase 2: Foundational.
 3. Complete Phase 3: User Story 1.
-4. Validate browser session creation, inspect-before-act approval, denial, explicit rejection of unsupported browser surface expansion, and minimal evidence history in `DOPE_ENV=test`.
+4. Validate browser session creation, inspect-before-act approval, denial, explicit rejection of unsupported browser surface expansion, and minimal evidence history in `KURA_ENV=test`.
 5. Stop if only the MVP computer-use safety surface is needed.
 
 ### Incremental Delivery

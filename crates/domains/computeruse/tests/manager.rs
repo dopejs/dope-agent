@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
-use dope_computeruse::{
+use kura_computeruse::{
     Action, Artifact, CreateSessionInput, Dependencies, Manager, Session, SessionStatus, Store,
 };
-use dope_runtime::{CreateRunInput, RunStatus};
+use kura_runtime::{CreateRunInput, RunStatus};
 
 #[derive(Default)]
 struct MemStore {
@@ -55,7 +55,7 @@ impl Store for MemStore {
 
 #[test]
 fn create_and_close_session() {
-    let runtime = std::sync::Arc::new(dope_runtime::Manager::new());
+    let runtime = std::sync::Arc::new(kura_runtime::Manager::new());
     let run = runtime.create_run(CreateRunInput { entrypoint: "browse".to_string(), ..CreateRunInput::default() }).unwrap();
     assert_eq!(run.status, RunStatus::Queued);
 

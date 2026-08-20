@@ -1,12 +1,12 @@
 [package]
-name = "dope-core"
+name = "kura-core"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-protocol.workspace = true
-dope-model-provider.workspace = true
+kura-protocol.workspace = true
+kura-model-provider.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 futures.workspace = true

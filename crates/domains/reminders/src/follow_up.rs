@@ -9,10 +9,10 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_identity::tenantctx;
-use dope_integrations::diagnostic_failure_for_reason;
-use dope_integrations::DiagnosticReasonCode;
-use dope_store::SQLiteStore;
+use kura_identity::tenantctx;
+use kura_integrations::diagnostic_failure_for_reason;
+use kura_integrations::DiagnosticReasonCode;
+use kura_store::SQLiteStore;
 use parking_lot::Mutex;
 
 use crate::types::{FollowUpLink, FollowUpLinkKind, ReminderError};

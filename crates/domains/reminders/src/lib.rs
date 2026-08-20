@@ -1,10 +1,10 @@
-//! dope-reminders: port of daemon/internal/reminders — the reminder ledger manager
+//! kura-reminders: port of daemon/internal/reminders — the reminder ledger manager
 //! (create/acknowledge/complete/dismiss/cancel/snooze/reschedule, tick-based due
 //! detection, delivery linkage, workflow-launch behavior), follow-up link staleness
 //! refresh, and the live-validation support-matrix row for reminder lifecycle
 //! mutations.
 //!
-//! The manager is a synchronous port (like dope-delivery / dope-scheduler):
+//! The manager is a synchronous port (like kura-delivery / kura-scheduler):
 //! context.Context is dropped, the catch-up + tick loop runs in a detached std thread
 //! when `start` is called, and the store is shared as Arc<parking_lot::Mutex<SQLiteStore>>
 //! so the manager is Send + Sync for axum AppState.

@@ -2,15 +2,15 @@
 
 ## Purpose
 
-Validate the completed MCP runtime and catalog slice locally in `DOPE_ENV=test`
+Validate the completed MCP runtime and catalog slice locally in `KURA_ENV=test`
 without touching production state.
 
 ## Environment Used For Recorded Verification
 
-- Repository root: `/Users/John/Code/dope-agent`
-- Environment: `DOPE_ENV=test`
+- Repository root: `/Users/John/Code/kura-agent`
+- Environment: `KURA_ENV=test`
 - Daemon bind address: `127.0.0.1:19192`
-- Data dir: `~/.dope-test`
+- Data dir: `~/.kura-test`
 - Remote MCP endpoint used for positive-path verification: `https://mcp.context7.com/mcp`
 
 ## Automated Verification
@@ -18,7 +18,7 @@ without touching production state.
 ### Targeted daemon packages
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./internal/mcp ./internal/api ./internal/runtime ./internal/app ./internal/store ./internal/contracts
 ```
 
@@ -27,7 +27,7 @@ Result: passed.
 ### Contract verification
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-contract-test
 ```
 
@@ -36,7 +36,7 @@ Result: passed.
 ### Full daemon regression
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./...
 ```
 
@@ -50,7 +50,7 @@ already running.
 ### 1. Start the test daemon
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-run-test
 ```
 
@@ -63,7 +63,7 @@ curl --noproxy '*' -sS http://127.0.0.1:19192/healthz
 Observed result:
 
 ```json
-{"ok":true,"service":"dope"}
+{"ok":true,"service":"kura"}
 ```
 
 ### 2. Verify a truthful unavailable local template
@@ -71,8 +71,8 @@ Observed result:
 `filesystem` script install:
 
 ```bash
-cd /Users/John/Code/dope-agent
-DOPE_ENV=test ./scripts/install-mcp-catalog-entry.sh filesystem
+cd /Users/John/Code/kura-agent
+KURA_ENV=test ./scripts/install-mcp-catalog-entry.sh filesystem
 ```
 
 Observed result:
@@ -87,7 +87,7 @@ availabilityReason=default bundled stdio command requires a local command overri
 
 This verified the repo helper path while preserving truthful local-template status:
 
-- defaults to `DOPE_ENV=test`
+- defaults to `KURA_ENV=test`
 - performs local pairing bootstrap when no bearer token is provided
 - does not imply the bundled filesystem default is runnable on a host where only `npx`
   is present
@@ -97,8 +97,8 @@ This verified the repo helper path while preserving truthful local-template stat
 `github` install without `GITHUB_TOKEN`:
 
 ```bash
-cd /Users/John/Code/dope-agent
-DOPE_ENV=test DOPE_MCP_INSTALL_RAW_RESPONSE=1 ./scripts/install-mcp-catalog-entry.sh github
+cd /Users/John/Code/kura-agent
+KURA_ENV=test KURA_MCP_INSTALL_RAW_RESPONSE=1 ./scripts/install-mcp-catalog-entry.sh github
 ```
 
 Observed result:
@@ -118,8 +118,8 @@ This is the recorded blocked-path proof for the bundled credential-backed catalo
 `Context7` install:
 
 ```bash
-cd /Users/John/Code/dope-agent
-DOPE_ENV=test DOPE_MCP_INSTALL_RAW_RESPONSE=1 ./scripts/install-mcp-catalog-entry.sh context7
+cd /Users/John/Code/kura-agent
+KURA_ENV=test KURA_MCP_INSTALL_RAW_RESPONSE=1 ./scripts/install-mcp-catalog-entry.sh context7
 ```
 
 Observed result:

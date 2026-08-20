@@ -357,7 +357,7 @@ pub struct Operation {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub failure_reason: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub diagnostic_failure: Option<dope_integrations::DiagnosticFailureProjection>,
+    pub diagnostic_failure: Option<kura_integrations::DiagnosticFailureProjection>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub background_send_permitted: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -615,21 +615,21 @@ pub struct OperationFilter {
 }
 
 pub trait Backend: Send + Sync {
-    fn supports_resource(&self, resource: &dope_integrations::Resource) -> bool;
-    fn project_account(&self, resource: &dope_integrations::Resource) -> Result<AccountProjection, MailError>;
-    fn list_threads(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &ListThreadsInput) -> Result<Vec<ThreadSnapshot>, MailError>;
-    fn get_thread(&self, resource: &dope_integrations::Resource, account: &AccountProjection, thread_id: &str) -> Result<ThreadSnapshot, MailError>;
-    fn get_message(&self, resource: &dope_integrations::Resource, account: &AccountProjection, message_id: &str) -> Result<MessageSnapshot, MailError>;
-    fn list_drafts(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &ListDraftsInput) -> Result<Vec<DraftSnapshot>, MailError>;
-    fn get_draft(&self, resource: &dope_integrations::Resource, account: &AccountProjection, draft_id: &str) -> Result<DraftSnapshot, MailError>;
-    fn create_draft(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &CreateDraftInput) -> Result<(DraftSnapshot, Vec<AttachmentReference>), MailError>;
-    fn update_draft(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &UpdateDraftInput) -> Result<(DraftSnapshot, Vec<AttachmentReference>), MailError>;
-    fn send_message(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &SendMessageInput) -> Result<(MessageSnapshot, Vec<AttachmentReference>), MailError>;
-    fn send_draft(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &SendDraftInput) -> Result<(DraftSnapshot, MessageSnapshot, Vec<AttachmentReference>), MailError>;
-    fn reply_message(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &ReplyMessageInput) -> Result<(Option<DraftSnapshot>, Option<MessageSnapshot>, Vec<AttachmentReference>), MailError>;
-    fn forward_message(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &ForwardMessageInput) -> Result<(Option<DraftSnapshot>, Option<MessageSnapshot>, Vec<AttachmentReference>), MailError>;
-    fn resolve_attachments(&self, resource: &dope_integrations::Resource, account: &AccountProjection, refs: &[AttachmentRefInput], parent_kind: &str, parent_id: &str) -> Vec<AttachmentReference>;
-    fn download_attachment(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &DownloadAttachmentInput) -> Result<AttachmentReference, MailError>;
+    fn supports_resource(&self, resource: &kura_integrations::Resource) -> bool;
+    fn project_account(&self, resource: &kura_integrations::Resource) -> Result<AccountProjection, MailError>;
+    fn list_threads(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &ListThreadsInput) -> Result<Vec<ThreadSnapshot>, MailError>;
+    fn get_thread(&self, resource: &kura_integrations::Resource, account: &AccountProjection, thread_id: &str) -> Result<ThreadSnapshot, MailError>;
+    fn get_message(&self, resource: &kura_integrations::Resource, account: &AccountProjection, message_id: &str) -> Result<MessageSnapshot, MailError>;
+    fn list_drafts(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &ListDraftsInput) -> Result<Vec<DraftSnapshot>, MailError>;
+    fn get_draft(&self, resource: &kura_integrations::Resource, account: &AccountProjection, draft_id: &str) -> Result<DraftSnapshot, MailError>;
+    fn create_draft(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &CreateDraftInput) -> Result<(DraftSnapshot, Vec<AttachmentReference>), MailError>;
+    fn update_draft(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &UpdateDraftInput) -> Result<(DraftSnapshot, Vec<AttachmentReference>), MailError>;
+    fn send_message(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &SendMessageInput) -> Result<(MessageSnapshot, Vec<AttachmentReference>), MailError>;
+    fn send_draft(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &SendDraftInput) -> Result<(DraftSnapshot, MessageSnapshot, Vec<AttachmentReference>), MailError>;
+    fn reply_message(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &ReplyMessageInput) -> Result<(Option<DraftSnapshot>, Option<MessageSnapshot>, Vec<AttachmentReference>), MailError>;
+    fn forward_message(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &ForwardMessageInput) -> Result<(Option<DraftSnapshot>, Option<MessageSnapshot>, Vec<AttachmentReference>), MailError>;
+    fn resolve_attachments(&self, resource: &kura_integrations::Resource, account: &AccountProjection, refs: &[AttachmentRefInput], parent_kind: &str, parent_id: &str) -> Vec<AttachmentReference>;
+    fn download_attachment(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &DownloadAttachmentInput) -> Result<AttachmentReference, MailError>;
     fn restore_integration_state(&self, integration_id: &str, threads: Vec<ThreadSnapshot>, messages: Vec<MessageSnapshot>, drafts: Vec<DraftSnapshot>, attachments: Vec<AttachmentReference>);
 }
 
@@ -818,17 +818,17 @@ pub fn attachment_artifact(operation: &Operation, item: &AttachmentReference) ->
 }
 
 #[must_use]
-pub fn live_validation_matrix_rows() -> Vec<dope_livevalidation::MatrixRow> {
+pub fn live_validation_matrix_rows() -> Vec<kura_livevalidation::MatrixRow> {
     let classes = [
-        dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::MAIL_DRAFT_CREATE),
-        dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::MAIL_DRAFT_UPDATE),
-        dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::MAIL_SEND),
-        dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::MAIL_REPLY),
-        dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::MAIL_FORWARD),
+        kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::MAIL_DRAFT_CREATE),
+        kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::MAIL_DRAFT_UPDATE),
+        kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::MAIL_SEND),
+        kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::MAIL_REPLY),
+        kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::MAIL_FORWARD),
     ];
     let mut rows = Vec::new();
     for tool_class in classes {
-        if let Some(row) = dope_livevalidation::default_matrix_row(&tool_class) {
+        if let Some(row) = kura_livevalidation::default_matrix_row(&tool_class) {
             rows.push(row);
         }
     }

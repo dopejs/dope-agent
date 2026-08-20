@@ -8,9 +8,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::Utc;
-use dope_events::{Bus, Filter};
-use dope_policy::Engine;
-use dope_sandbox::{
+use kura_events::{Bus, Filter};
+use kura_policy::Engine;
+use kura_sandbox::{
     AccessRequest, ApprovalMode, BackendAvailabilityStatus, BackendCapabilityProfile,
     BackendHostStatus, BackendKind, BackendSelectionOutcome, CaptureBuffer, ConsumerContractView,
     ConsumerKind, ConsumerPolicyRecord, ConsumerRequirementDeclaration, DecisionResolution,
@@ -22,34 +22,34 @@ use dope_sandbox::{
     derived_secret_variants, evaluate_access_decision, first_non_empty, hex_encode, is_terminal,
     redact_secret_text, within_any,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_sandbox_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_sandbox_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("create temp dir");
     dir.to_string_lossy().to_string()
 }
 
-fn test_config(data_dir: &str) -> dope_config::Config {
-    dope_config::Config {
-        environment: dope_config::Environment::Test,
+fn test_config(data_dir: &str) -> kura_config::Config {
+    kura_config::Config {
+        environment: kura_config::Environment::Test,
         bind_addr: "127.0.0.1:19192".to_string(),
         data_dir: data_dir.to_string(),
         log_level: "info".to_string(),
         version: "dev".to_string(),
-        llm: dope_config::LlmConfig {
-            claude: dope_config::ManagedCliProviderConfig {
+        llm: kura_config::LlmConfig {
+            claude: kura_config::ManagedCliProviderConfig {
                 work_dir: "~".to_string(),
                 ..Default::default()
             },
-            codex: dope_config::ManagedCliProviderConfig {
+            codex: kura_config::ManagedCliProviderConfig {
                 work_dir: "~".to_string(),
                 ..Default::default()
             },
             ..Default::default()
         },
-        connectors: dope_config::ConnectorConfig::default(),
+        connectors: kura_config::ConnectorConfig::default(),
     }
 }
 
@@ -63,7 +63,7 @@ fn test_manager(data_dir: &str) -> Manager {
     )
 }
 
-fn wait_for_terminal(manager: &Manager, execution_id: &str) -> dope_sandbox::Execution {
+fn wait_for_terminal(manager: &Manager, execution_id: &str) -> kura_sandbox::Execution {
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     loop {
         let execution = manager
@@ -118,7 +118,7 @@ fn test_consumer_view(
             consumer_id: consumer_id.to_string(),
             operation_kind: "prompt_execution".to_string(),
             decision: DecisionResolution::Allow,
-            approval_status: dope_sandbox::DecisionApprovalStatus::NotApplicable,
+            approval_status: kura_sandbox::DecisionApprovalStatus::NotApplicable,
             secret_resolution: SecretResolution::NotApplicable,
             started_at: Utc::now(),
             status: PolicyRecordStatus::PreflightAllowed,
@@ -629,11 +629,11 @@ fn restore_cancels_pending_managed_provider_finalization() {
     );
 }
 
-/// Minimal in-memory secret metadata store implementing dope_secrets::Store.
+/// Minimal in-memory secret metadata store implementing kura_secrets::Store.
 #[derive(Default)]
 struct FakeSecretStore {
-    secrets: Mutex<HashMap<String, dope_secrets::TenantSecret>>,
-    versions: Mutex<HashMap<String, dope_secrets::SecretVersion>>,
+    secrets: Mutex<HashMap<String, kura_secrets::TenantSecret>>,
+    versions: Mutex<HashMap<String, kura_secrets::SecretVersion>>,
 }
 
 impl FakeSecretStore {
@@ -642,12 +642,12 @@ impl FakeSecretStore {
     }
 }
 
-impl dope_secrets::Store for FakeSecretStore {
+impl kura_secrets::Store for FakeSecretStore {
     fn create_secret<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
-        version: dope_secrets::SecretVersion,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        secret: kura_secrets::TenantSecret,
+        version: kura_secrets::SecretVersion,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             self.secrets
                 .lock()
@@ -663,8 +663,8 @@ impl dope_secrets::Store for FakeSecretStore {
 
     fn update_secret_metadata<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        secret: kura_secrets::TenantSecret,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             self.secrets
                 .lock()
@@ -676,10 +676,10 @@ impl dope_secrets::Store for FakeSecretStore {
 
     fn rotate_secret<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
+        secret: kura_secrets::TenantSecret,
         _previous_version_id: &'a str,
-        version: dope_secrets::SecretVersion,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        version: kura_secrets::SecretVersion,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             self.secrets
                 .lock()
@@ -695,8 +695,8 @@ impl dope_secrets::Store for FakeSecretStore {
 
     fn disable_secret<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        secret: kura_secrets::TenantSecret,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             self.secrets
                 .lock()
@@ -710,7 +710,7 @@ impl dope_secrets::Store for FakeSecretStore {
         &'a self,
         tenant_id: &'a str,
         secret_ref: &'a str,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Option<dope_secrets::TenantSecret>>> {
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Option<kura_secrets::TenantSecret>>> {
         Box::pin(async move {
             Ok(self
                 .secrets
@@ -726,7 +726,7 @@ impl dope_secrets::Store for FakeSecretStore {
         &'a self,
         tenant_id: &'a str,
         secret_version_id: &'a str,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Option<dope_secrets::SecretVersion>>>
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Option<kura_secrets::SecretVersion>>>
     {
         Box::pin(async move {
             Ok(self
@@ -742,7 +742,7 @@ impl dope_secrets::Store for FakeSecretStore {
     fn list_secrets<'a>(
         &'a self,
         _tenant_id: &'a str,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Vec<dope_secrets::TenantSecret>>> {
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Vec<kura_secrets::TenantSecret>>> {
         Box::pin(async move { Ok(self.secrets.lock().unwrap().values().cloned().collect()) })
     }
 }
@@ -759,21 +759,21 @@ fn sandbox_secret_scope_uses_active_tenant_and_fails_closed() {
     );
 
     let backend_dir = temp_dir("secret_scope_backend");
-    let backend = dope_secrets::LocalBackend::new(&backend_dir).expect("local backend");
+    let backend = kura_secrets::LocalBackend::new(&backend_dir).expect("local backend");
     let secret_store = Arc::new(FakeSecretStore::new());
-    let secret_manager = dope_secrets::Manager::new(secret_store.clone(), Arc::new(backend));
-    futures::executor::block_on(secret_manager.create(dope_secrets::CreateInput {
+    let secret_manager = kura_secrets::Manager::new(secret_store.clone(), Arc::new(backend));
+    futures::executor::block_on(secret_manager.create(kura_secrets::CreateInput {
         tenant_id: "ten_a".to_string(),
         secret_ref: "SANDBOX_TOKEN".to_string(),
         value: "tenant-a".to_string(),
-        ..dope_secrets::CreateInput::default()
+        ..kura_secrets::CreateInput::default()
     }))
     .expect("create tenant A secret");
-    futures::executor::block_on(secret_manager.create(dope_secrets::CreateInput {
+    futures::executor::block_on(secret_manager.create(kura_secrets::CreateInput {
         tenant_id: "ten_b".to_string(),
         secret_ref: "SANDBOX_TOKEN".to_string(),
         value: "tenant-b".to_string(),
-        ..dope_secrets::CreateInput::default()
+        ..kura_secrets::CreateInput::default()
     }))
     .expect("create tenant B secret");
     manager.set_secret_manager(secret_manager);
@@ -810,12 +810,12 @@ fn sandbox_secret_scope_uses_active_tenant_and_fails_closed() {
     );
 
     // With the active tenant the secret resolves and the decision is allowed.
-    let context = dope_identity::TenantContext {
+    let context = kura_identity::TenantContext {
         tenant_id: "ten_b".to_string(),
         principal_id: "prn_b".to_string(),
         ..Default::default()
     };
-    let allowed = dope_identity::tenantctx::with_context(context, || {
+    let allowed = kura_identity::tenantctx::with_context(context, || {
         manager.explain(request).expect("explain with tenant")
     });
     assert_eq!(allowed.resolution, DecisionResolution::Allow);
@@ -864,12 +864,12 @@ fn approval_matches_execution_matches_sandbox_and_tool_call() {
         profile_id: "subprocess_default".to_string(),
         ..Default::default()
     };
-    let execution = dope_sandbox::Execution {
+    let execution = kura_sandbox::Execution {
         resource_kind: "capability".to_string(),
         resource_id: "shell".to_string(),
         ..Default::default()
     };
-    let sandbox_approval = dope_policy::Approval {
+    let sandbox_approval = kura_policy::Approval {
         approval_id: "approval_1".to_string(),
         action: "sandbox.execute".to_string(),
         resource_kind: "sandbox_profile".to_string(),
@@ -882,7 +882,7 @@ fn approval_matches_execution_matches_sandbox_and_tool_call() {
         &profile
     ));
 
-    let tool_approval = dope_policy::Approval {
+    let tool_approval = kura_policy::Approval {
         approval_id: "approval_2".to_string(),
         action: "tool_call.execute".to_string(),
         resource_kind: "capability".to_string(),
@@ -895,7 +895,7 @@ fn approval_matches_execution_matches_sandbox_and_tool_call() {
         &profile
     ));
 
-    let unrelated = dope_policy::Approval {
+    let unrelated = kura_policy::Approval {
         approval_id: "approval_3".to_string(),
         action: "calendar.create_event".to_string(),
         resource_kind: "calendar".to_string(),

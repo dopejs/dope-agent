@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/billing-quota-dashboard.response.schema.json",
+  "$id": "https://kura.local/schemas/api/billing-quota-dashboard.response.schema.json",
   "title": "BillingQuotaDashboardResponse",
   "type": "object",
   "required": ["plan", "sections", "generatedAt"],

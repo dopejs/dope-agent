@@ -1,4 +1,4 @@
-//! Trait-surface tests for `dope_computeruse::Store` implemented by
+//! Trait-surface tests for `kura_computeruse::Store` implemented by
 //! `ComputerUseStoreHandle` (the Send + Sync newtype over the SQLite store).
 //! The underlying DAOs are covered by tests/computeruse.rs; here we exercise
 //! the exact trait methods a manager/route would call through the handle.
@@ -6,15 +6,15 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_computeruse::{
+use kura_computeruse::{
     Action, ActionKind, ActionStatus, Artifact, ArtifactKind, ArtifactStatus, PageSummary,
     RiskLevel, Session, SessionStatus, Store, TargetMatchContext, TrustedPageScope,
 };
-use dope_runtime::{Run, RunStatus};
-use dope_store::{ComputerUseStoreHandle, SQLiteStore};
+use kura_runtime::{Run, RunStatus};
+use kura_store::{ComputerUseStoreHandle, SQLiteStore};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_cu_trait_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_cu_trait_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

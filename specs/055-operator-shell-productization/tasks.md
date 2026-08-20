@@ -2,7 +2,7 @@
 
 **Spec**: [spec.md](./spec.md) | **Plan**: [plan.md](./plan.md) | **Roadmap**: 70
 
-- [X] T001 [Setup] Inspect SDK DopeClient + web App/feature structure.
+- [X] T001 [Setup] Inspect SDK KuraClient + web App/feature structure.
 - [X] T002 [SDK] Add typed types + client methods for triage/routines/webhooks/catalog/execution profiles.
 - [X] T003 [SDK] product-surfaces.test.ts: routing assertions for the new methods.
 - [X] T004 [Web] operator-shell navigation IA: sections/surfaces for all public surfaces + critical expectations.

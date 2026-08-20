@@ -4,15 +4,15 @@
 //! preview persistence, and tenant isolation.
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use dope_store::thread_continuity::ContinuityLookupQuery;
-use dope_store::SQLiteStore;
-use dope_threads::{
+use kura_store::thread_continuity::ContinuityLookupQuery;
+use kura_store::SQLiteStore;
+use kura_threads::{
     ContinuityItemKind, ContinuityPreview, ContinuityPreviewItem, ContinuityRole,
     ContinuityStatus, ContinuityTurn, RedactionStatus, SessionSegment, SourceKind, Thread,
 };
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -21,7 +21,7 @@ fn thread(thread_id: &str, tenant_id: &str, now: DateTime<Utc>) -> Thread {
     Thread {
         thread_id: thread_id.to_string(),
         tenant_id: tenant_id.to_string(),
-        lifecycle_state: dope_threads::LifecycleState::Active,
+        lifecycle_state: kura_threads::LifecycleState::Active,
         current_session_segment_id: format!("seg_{thread_id}"),
         source_kind: SourceKind::Chat,
         source_summary: "continuity test".to_string(),
@@ -172,8 +172,8 @@ fn continuity_preview_save_and_detail() {
             artifact_ref: String::new(),
             artifact_excerpt_id: String::new(),
             handoff_source_reference_id: String::new(),
-            decision: dope_threads::ContinuityDecision::Included,
-            reason_code: dope_threads::ContinuityReason::IncludedRecent,
+            decision: kura_threads::ContinuityDecision::Included,
+            reason_code: kura_threads::ContinuityReason::IncludedRecent,
             acceptance_sequence: 1,
             source_timestamp: None,
             safe_summary: "included turn".to_string(),
@@ -191,8 +191,8 @@ fn continuity_preview_save_and_detail() {
             artifact_ref: "art_1".to_string(),
             artifact_excerpt_id: "excerpt_1".to_string(),
             handoff_source_reference_id: String::new(),
-            decision: dope_threads::ContinuityDecision::Excluded,
-            reason_code: dope_threads::ContinuityReason::TooOld,
+            decision: kura_threads::ContinuityDecision::Excluded,
+            reason_code: kura_threads::ContinuityReason::TooOld,
             acceptance_sequence: 0,
             source_timestamp: None,
             safe_summary: "stale artifact".to_string(),
@@ -202,8 +202,8 @@ fn continuity_preview_save_and_detail() {
     ];
     let saved = store.save_continuity_preview(preview, &mut items).unwrap();
     assert!(!saved.continuity_preview_id.is_empty());
-    assert_eq!(saved.window_policy_id, dope_threads::DEFAULT_CONTINUITY_WINDOW_POLICY_ID, "policy defaulted");
-    assert_eq!(saved.max_prior_turns, dope_threads::DEFAULT_CONTINUITY_MAX_PRIOR_TURNS);
+    assert_eq!(saved.window_policy_id, kura_threads::DEFAULT_CONTINUITY_WINDOW_POLICY_ID, "policy defaulted");
+    assert_eq!(saved.max_prior_turns, kura_threads::DEFAULT_CONTINUITY_MAX_PRIOR_TURNS);
     assert_eq!(saved.assembly_duration_ms, 1000, "duration computed from started/completed");
     assert!(saved.retention_expires_at > now, "retention defaulted");
     assert_eq!(items[0].item_order, 0);
@@ -217,7 +217,7 @@ fn continuity_preview_save_and_detail() {
     assert_eq!(detail.preview.status, ContinuityStatus::Applied);
     assert_eq!(detail.items.len(), 2);
     assert_eq!(detail.items[0].item_kind, ContinuityItemKind::Turn);
-    assert_eq!(detail.items[1].reason_code, dope_threads::ContinuityReason::TooOld);
+    assert_eq!(detail.items[1].reason_code, kura_threads::ContinuityReason::TooOld);
 
     // Missing / cross-tenant / other-thread detail → None.
     assert!(store.get_continuity_preview_detail("ten_1", "thr_2", "contprev_missing").unwrap().is_none());

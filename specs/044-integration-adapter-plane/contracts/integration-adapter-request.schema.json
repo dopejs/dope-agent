@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://dopejs.dev/schemas/capability/integration-adapter/request.json",
+  "$id": "https://kurajs.dev/schemas/capability/integration-adapter/request.json",
   "title": "IntegrationAdapterRequest",
   "description": "Daemon -> adapter request envelope for one Backend operation. The adapter performs provider request/response mapping only; it MUST NOT record any ledger, idempotency, or side-effect-evidence state.",
   "type": "object",

@@ -1,5 +1,5 @@
 //! SQLite CRUD for tenant secrets and secret versions plus the
-//! `dope_secrets::Store` trait implementation. Ported from
+//! `kura_secrets::Store` trait implementation. Ported from
 //! `daemon/internal/store/secrets.go` (CreateSecret, UpdateSecretMetadata,
 //! RotateSecret, DisableSecret, GetSecretByRef, GetSecretVersion,
 //! ListSecrets). The raw secret value never touches this store; only the
@@ -22,43 +22,43 @@ fn nullable_time_string(value: &Option<DateTime<Utc>>) -> Option<String> {
         .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true))
 }
 
-fn secret_status_str(status: dope_secrets::SecretStatus) -> &'static str {
+fn secret_status_str(status: kura_secrets::SecretStatus) -> &'static str {
     match status {
-        dope_secrets::SecretStatus::Active => "active",
-        dope_secrets::SecretStatus::Disabled => "disabled",
-        dope_secrets::SecretStatus::PendingRemediation => "pending_remediation",
+        kura_secrets::SecretStatus::Active => "active",
+        kura_secrets::SecretStatus::Disabled => "disabled",
+        kura_secrets::SecretStatus::PendingRemediation => "pending_remediation",
     }
 }
 
-fn secret_version_status_str(status: dope_secrets::SecretVersionStatus) -> &'static str {
+fn secret_version_status_str(status: kura_secrets::SecretVersionStatus) -> &'static str {
     match status {
-        dope_secrets::SecretVersionStatus::Active => "active",
-        dope_secrets::SecretVersionStatus::Superseded => "superseded",
-        dope_secrets::SecretVersionStatus::Disabled => "disabled",
-        dope_secrets::SecretVersionStatus::PendingRemediation => "pending_remediation",
+        kura_secrets::SecretVersionStatus::Active => "active",
+        kura_secrets::SecretVersionStatus::Superseded => "superseded",
+        kura_secrets::SecretVersionStatus::Disabled => "disabled",
+        kura_secrets::SecretVersionStatus::PendingRemediation => "pending_remediation",
     }
 }
 
-fn secret_status_from_str(value: &str) -> Result<dope_secrets::SecretStatus, String> {
+fn secret_status_from_str(value: &str) -> Result<kura_secrets::SecretStatus, String> {
     match value {
-        "active" => Ok(dope_secrets::SecretStatus::Active),
-        "disabled" => Ok(dope_secrets::SecretStatus::Disabled),
-        "pending_remediation" => Ok(dope_secrets::SecretStatus::PendingRemediation),
+        "active" => Ok(kura_secrets::SecretStatus::Active),
+        "disabled" => Ok(kura_secrets::SecretStatus::Disabled),
+        "pending_remediation" => Ok(kura_secrets::SecretStatus::PendingRemediation),
         other => Err(format!("invalid secret status {other}")),
     }
 }
 
-fn secret_version_status_from_str(value: &str) -> Result<dope_secrets::SecretVersionStatus, String> {
+fn secret_version_status_from_str(value: &str) -> Result<kura_secrets::SecretVersionStatus, String> {
     match value {
-        "active" => Ok(dope_secrets::SecretVersionStatus::Active),
-        "superseded" => Ok(dope_secrets::SecretVersionStatus::Superseded),
-        "disabled" => Ok(dope_secrets::SecretVersionStatus::Disabled),
-        "pending_remediation" => Ok(dope_secrets::SecretVersionStatus::PendingRemediation),
+        "active" => Ok(kura_secrets::SecretVersionStatus::Active),
+        "superseded" => Ok(kura_secrets::SecretVersionStatus::Superseded),
+        "disabled" => Ok(kura_secrets::SecretVersionStatus::Disabled),
+        "pending_remediation" => Ok(kura_secrets::SecretVersionStatus::PendingRemediation),
         other => Err(format!("invalid secret version status {other}")),
     }
 }
 
-fn marshal_document(document: &Option<dope_secrets::Document>) -> Result<String, String> {
+fn marshal_document(document: &Option<kura_secrets::Document>) -> Result<String, String> {
     match document {
         None => Ok("{}".to_string()),
         Some(doc) => serde_json::to_string(doc).map_err(|e| format!("marshal tenant secret document: {e}")),
@@ -85,14 +85,14 @@ fn decode_tenant_secret(
     rotated_at: Option<String>,
     disabled_at: Option<String>,
     document_raw: Option<String>,
-) -> Result<dope_secrets::TenantSecret, String> {
+) -> Result<kura_secrets::TenantSecret, String> {
     let document = match document_raw {
         Some(raw) if !raw.trim().is_empty() && raw.trim() != "{}" => {
             Some(serde_json::from_str(&raw).map_err(|e| format!("decode tenant secret document: {e}"))?)
         }
         _ => None,
     };
-    Ok(dope_secrets::TenantSecret {
+    Ok(kura_secrets::TenantSecret {
         secret_id,
         tenant_id,
         secret_ref,
@@ -133,8 +133,8 @@ fn decode_secret_version(
     created_at: String,
     activated_at: Option<String>,
     superseded_at: Option<String>,
-) -> Result<dope_secrets::SecretVersion, String> {
-    Ok(dope_secrets::SecretVersion {
+) -> Result<kura_secrets::SecretVersion, String> {
+    Ok(kura_secrets::SecretVersion {
         secret_version_id,
         secret_id,
         tenant_id,
@@ -158,8 +158,8 @@ fn secret_version_row(row: &Row) -> Result<SecretVersionRow, rusqlite::Error> {
 impl SQLiteStore {
     pub fn create_tenant_secret(
         &self,
-        secret: &dope_secrets::TenantSecret,
-        version: &dope_secrets::SecretVersion,
+        secret: &kura_secrets::TenantSecret,
+        version: &kura_secrets::SecretVersion,
     ) -> Result<(), String> {
         let document_json = marshal_document(&secret.document)?;
         let tx = self
@@ -172,7 +172,7 @@ impl SQLiteStore {
             .map_err(|e| format!("commit create tenant secret transaction: {e}"))
     }
 
-    pub fn update_secret_metadata(&self, secret: &dope_secrets::TenantSecret) -> Result<(), String> {
+    pub fn update_secret_metadata(&self, secret: &kura_secrets::TenantSecret) -> Result<(), String> {
         let document_json = marshal_document(&secret.document)?;
         self.conn
             .execute(
@@ -196,9 +196,9 @@ impl SQLiteStore {
 
     pub fn rotate_tenant_secret(
         &self,
-        secret: &dope_secrets::TenantSecret,
+        secret: &kura_secrets::TenantSecret,
         previous_version_id: &str,
-        mut version: dope_secrets::SecretVersion,
+        mut version: kura_secrets::SecretVersion,
     ) -> Result<(), String> {
         let tx = self
             .conn
@@ -220,7 +220,7 @@ impl SQLiteStore {
                  SET status = ?1, superseded_at = ?2
                  WHERE tenant_id = ?3 AND secret_version_id = ?4",
                 params![
-                    secret_version_status_str(dope_secrets::SecretVersionStatus::Superseded),
+                    secret_version_status_str(kura_secrets::SecretVersionStatus::Superseded),
                     now_rfc3339(&now),
                     secret.tenant_id,
                     previous_version_id,
@@ -245,7 +245,7 @@ impl SQLiteStore {
         tx.commit().map_err(|e| format!("commit rotate tenant secret transaction: {e}"))
     }
 
-    pub fn disable_tenant_secret(&self, secret: &dope_secrets::TenantSecret) -> Result<(), String> {
+    pub fn disable_tenant_secret(&self, secret: &kura_secrets::TenantSecret) -> Result<(), String> {
         self.conn
             .execute(
                 "UPDATE tenant_secrets
@@ -264,7 +264,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn get_secret_by_ref(&self, tenant_id: &str, secret_ref: &str) -> Result<Option<dope_secrets::TenantSecret>, String> {
+    pub fn get_secret_by_ref(&self, tenant_id: &str, secret_ref: &str) -> Result<Option<kura_secrets::TenantSecret>, String> {
         let result: Result<TenantSecretRow, rusqlite::Error> = self.conn.query_row(
             r#"SELECT secret_id, tenant_id, secret_ref, display_name, status, active_version_id,
                       disabled_reason, remediation_reason, created_at, updated_at, rotated_at,
@@ -280,7 +280,7 @@ impl SQLiteStore {
         }
     }
 
-    pub fn get_secret_version(&self, tenant_id: &str, secret_version_id: &str) -> Result<Option<dope_secrets::SecretVersion>, String> {
+    pub fn get_secret_version(&self, tenant_id: &str, secret_version_id: &str) -> Result<Option<kura_secrets::SecretVersion>, String> {
         let result: Result<SecretVersionRow, rusqlite::Error> = self.conn.query_row(
             r#"SELECT secret_version_id, secret_id, tenant_id, secret_ref, version_number, status,
                       value_backend_ref, created_at, activated_at, superseded_at
@@ -295,7 +295,7 @@ impl SQLiteStore {
         }
     }
 
-    pub fn list_secrets(&self, tenant_id: &str) -> Result<Vec<dope_secrets::TenantSecret>, String> {
+    pub fn list_secrets(&self, tenant_id: &str) -> Result<Vec<kura_secrets::TenantSecret>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -318,7 +318,7 @@ impl SQLiteStore {
 
 fn insert_tenant_secret(
     tx: &rusqlite::Transaction,
-    secret: &dope_secrets::TenantSecret,
+    secret: &kura_secrets::TenantSecret,
     document_json: &str,
 ) -> Result<(), String> {
     tx.execute(
@@ -349,7 +349,7 @@ fn insert_tenant_secret(
 
 fn insert_tenant_secret_version(
     tx: &rusqlite::Transaction,
-    version: &dope_secrets::SecretVersion,
+    version: &kura_secrets::SecretVersion,
 ) -> Result<(), String> {
     tx.execute(
         r#"INSERT INTO tenant_secret_versions (
@@ -372,7 +372,7 @@ fn insert_tenant_secret_version(
     .map_err(|e| format!("insert tenant secret version: {e}"))?;
     Ok(())
 }
-// --- dope_secrets::Store trait impl (async wrapper over the sync DAOs) ---
+// --- kura_secrets::Store trait impl (async wrapper over the sync DAOs) ---
 //
 // rusqlite's Connection is Send but not Sync, so SQLiteStore cannot be the
 // trait's `Send + Sync` self type directly. The workspace convention shares
@@ -383,7 +383,7 @@ fn insert_tenant_secret_version(
 // single-connection store.
 
 /// Send + Sync handle over the SQLite store implementing
-/// [`dope_secrets::Store`]. Construct from a fresh store and share as
+/// [`kura_secrets::Store`]. Construct from a fresh store and share as
 /// `Arc<SecretStoreHandle>` with the secrets manager.
 pub struct SecretStoreHandle(pub parking_lot::Mutex<SQLiteStore>);
 
@@ -393,47 +393,47 @@ impl SecretStoreHandle {
     }
 }
 
-impl dope_secrets::Store for SecretStoreHandle {
+impl kura_secrets::Store for SecretStoreHandle {
     fn create_secret<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
-        version: dope_secrets::SecretVersion,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        secret: kura_secrets::TenantSecret,
+        version: kura_secrets::SecretVersion,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             let store = self.0.lock();
-            store.create_tenant_secret(&secret, &version).map_err(dope_secrets::SecretsError::Store)
+            store.create_tenant_secret(&secret, &version).map_err(kura_secrets::SecretsError::Store)
         })
     }
 
     fn update_secret_metadata<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        secret: kura_secrets::TenantSecret,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             let store = self.0.lock();
-            store.update_secret_metadata(&secret).map_err(dope_secrets::SecretsError::Store)
+            store.update_secret_metadata(&secret).map_err(kura_secrets::SecretsError::Store)
         })
     }
 
     fn rotate_secret<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
+        secret: kura_secrets::TenantSecret,
         previous_version_id: &'a str,
-        version: dope_secrets::SecretVersion,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        version: kura_secrets::SecretVersion,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             let store = self.0.lock();
-            store.rotate_tenant_secret(&secret, previous_version_id, version).map_err(dope_secrets::SecretsError::Store)
+            store.rotate_tenant_secret(&secret, previous_version_id, version).map_err(kura_secrets::SecretsError::Store)
         })
     }
 
     fn disable_secret<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        secret: kura_secrets::TenantSecret,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             let store = self.0.lock();
-            store.disable_tenant_secret(&secret).map_err(dope_secrets::SecretsError::Store)
+            store.disable_tenant_secret(&secret).map_err(kura_secrets::SecretsError::Store)
         })
     }
 
@@ -441,10 +441,10 @@ impl dope_secrets::Store for SecretStoreHandle {
         &'a self,
         tenant_id: &'a str,
         secret_ref: &'a str,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Option<dope_secrets::TenantSecret>>> {
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Option<kura_secrets::TenantSecret>>> {
         Box::pin(async move {
             let store = self.0.lock();
-            store.get_secret_by_ref(tenant_id, secret_ref).map_err(dope_secrets::SecretsError::Store)
+            store.get_secret_by_ref(tenant_id, secret_ref).map_err(kura_secrets::SecretsError::Store)
         })
     }
 
@@ -452,20 +452,20 @@ impl dope_secrets::Store for SecretStoreHandle {
         &'a self,
         tenant_id: &'a str,
         secret_version_id: &'a str,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Option<dope_secrets::SecretVersion>>> {
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Option<kura_secrets::SecretVersion>>> {
         Box::pin(async move {
             let store = self.0.lock();
-            store.get_secret_version(tenant_id, secret_version_id).map_err(dope_secrets::SecretsError::Store)
+            store.get_secret_version(tenant_id, secret_version_id).map_err(kura_secrets::SecretsError::Store)
         })
     }
 
     fn list_secrets<'a>(
         &'a self,
         tenant_id: &'a str,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Vec<dope_secrets::TenantSecret>>> {
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Vec<kura_secrets::TenantSecret>>> {
         Box::pin(async move {
             let store = self.0.lock();
-            store.list_secrets(tenant_id).map_err(dope_secrets::SecretsError::Store)
+            store.list_secrets(tenant_id).map_err(kura_secrets::SecretsError::Store)
         })
     }
 }

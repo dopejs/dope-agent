@@ -59,7 +59,7 @@ different shapes.
 - Production-sized sample: rejected because Roadmap 39 is an operational correctness gate,
   not a scale/load benchmark.
 
-## Decision: Make the first baseline soak a 24-hour `DOPE_ENV=test` run
+## Decision: Make the first baseline soak a 24-hour `KURA_ENV=test` run
 
 **Rationale**: The upstream roadmap requires at least 24 hours unless a shorter temporary
 threshold is explicitly recorded. A full-day test-environment soak is the minimum useful

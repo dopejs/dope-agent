@@ -16,13 +16,13 @@ use axum::routing::{get, post};
 use axum::Router;
 use serde::Serialize;
 
-use dope_improvement::{ImprovementError, ImprovementProposal, ProposeInput};
+use kura_improvement::{ImprovementError, ImprovementProposal, ProposeInput};
 
 use crate::error::ApiError;
 use crate::response::Json;
 use crate::state::AppState;
 
-fn manager(state: &AppState) -> Result<&dope_improvement::Manager, ApiError> {
+fn manager(state: &AppState) -> Result<&kura_improvement::Manager, ApiError> {
     state
         .improvement
         .as_deref()
@@ -49,15 +49,15 @@ fn publish_event(state: &AppState, name: &str, proposal: &ImprovementProposal) {
     if !proposal.reason.is_empty() {
         payload.insert("reason".to_string(), serde_json::json!(proposal.reason));
     }
-    let event = dope_events::Event {
+    let event = kura_events::Event {
         category: "improvement".to_string(),
         name: name.to_string(),
-        resource: dope_events::Resource {
+        resource: kura_events::Resource {
             kind: "improvement_proposal".to_string(),
             id: proposal.proposal_id.clone(),
         },
         payload,
-        ..dope_events::Event::default()
+        ..kura_events::Event::default()
     };
     let event = state.store.lock().append_event(&event).unwrap_or(event);
     state.event_bus.publish(event);
@@ -65,10 +65,10 @@ fn publish_event(state: &AppState, name: &str, proposal: &ImprovementProposal) {
 
 /// Atomically writes the profile (same tmp+rename discipline as the
 /// profile PUT route).
-fn write_profile(state: &AppState, profile: &dope_plugin::PluginProfile) -> Result<(), ApiError> {
+fn write_profile(state: &AppState, profile: &kura_plugin::PluginProfile) -> Result<(), ApiError> {
     let dir = std::path::Path::new(&state.config.data_dir);
-    let path = dir.join(dope_plugin::PROFILE_FILE_NAME);
-    let tmp = dir.join(format!("{}.tmp", dope_plugin::PROFILE_FILE_NAME));
+    let path = dir.join(kura_plugin::PROFILE_FILE_NAME);
+    let tmp = dir.join(format!("{}.tmp", kura_plugin::PROFILE_FILE_NAME));
     let encoded = serde_json::to_vec_pretty(profile)
         .map_err(|err| ApiError::internal(&format!("encode plugin profile: {err}")))?;
     std::fs::create_dir_all(dir)
@@ -117,7 +117,7 @@ pub async fn apply(
     let Some(proposal) = improvement.get(&proposal_id) else {
         return Err(ApiError::NotFound("improvement proposal not found".to_string()));
     };
-    let profile = dope_plugin::PluginProfile::load(&state.config.data_dir)
+    let profile = kura_plugin::PluginProfile::load(&state.config.data_dir)
         .map_err(|err| ApiError::internal(&format!("load plugin profile: {err}")))?;
     let prior = serde_json::to_value(&profile)
         .map_err(|err| ApiError::internal(&format!("snapshot profile: {err}")))?;
@@ -174,7 +174,7 @@ pub async fn rollback(
     let Some(proposal) = improvement.get(&proposal_id) else {
         return Err(ApiError::NotFound("improvement proposal not found".to_string()));
     };
-    let prior: dope_plugin::PluginProfile =
+    let prior: kura_plugin::PluginProfile =
         serde_json::from_value(proposal.prior_profile.clone()).map_err(|err| {
             ApiError::Conflict(format!("proposal carries no restorable snapshot: {err}"))
         })?;
@@ -205,12 +205,12 @@ mod tests {
     fn improvement_state() -> crate::state::AppState {
         let mut state = test_state();
         let dir = std::env::temp_dir()
-            .join(format!("dope-improve-{}", uuid::Uuid::now_v7()));
+            .join(format!("kura-improve-{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         state.config.data_dir = dir.to_string_lossy().into_owned();
-        state.improvement = Some(Arc::new(dope_improvement::Manager::new(
+        state.improvement = Some(Arc::new(kura_improvement::Manager::new(
             &state.config.data_dir,
-            dope_improvement::ImprovementConfig::default(),
+            kura_improvement::ImprovementConfig::default(),
         )));
         state
     }
@@ -250,7 +250,7 @@ mod tests {
         assert_eq!(json["restartRequired"], true);
         assert_eq!(json["proposal"]["status"], "applied");
         let profile =
-            dope_plugin::PluginProfile::load(&state.config.data_dir).expect("profile");
+            kura_plugin::PluginProfile::load(&state.config.data_dir).expect("profile");
         assert_eq!(
             profile.entries["session-strategy"].config["personalBudgetChars"],
             serde_json::json!(64000)
@@ -267,7 +267,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "{json}");
         assert_eq!(json["proposal"]["status"], "rolled_back");
         let profile =
-            dope_plugin::PluginProfile::load(&state.config.data_dir).expect("profile");
+            kura_plugin::PluginProfile::load(&state.config.data_dir).expect("profile");
         assert!(
             !profile.entries.contains_key("session-strategy"),
             "prior (empty) profile restored"
@@ -277,7 +277,7 @@ mod tests {
         let events = state
             .store
             .lock()
-            .list_events(&dope_events::Filter::default())
+            .list_events(&kura_events::Filter::default())
             .expect("events");
         for name in ["improvement.proposed", "improvement.applied", "improvement.rolled_back"] {
             assert!(events.iter().any(|e| e.name == name), "missing {name}");

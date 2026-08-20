@@ -47,7 +47,7 @@ release-readiness linkage; `go test ./...` in `daemon/`; `make daemon-contract-t
 `pnpm test:clients`; `pnpm build`; `make daemon-run-test`; `make daemon-test-status`;
 `go mod tidy` from `daemon/` after implementation.  
 **Target Platform**: Local-first daemon and hosted daemon behavior, verified by default
-in the isolated test environment (`~/.dope-test`, `127.0.0.1:19192`). Live connector and
+in the isolated test environment (`~/.kura-test`, `127.0.0.1:19192`). Live connector and
 real-account smoke use only explicit safe credentials and tenant approval.  
 **Project Type**: Multi-surface daemon product change spanning provider classification,
 integration health resources, user remediation projection, persistence, API contracts,
@@ -90,7 +90,7 @@ diagnostic execution.
   classification fixtures, Feishu/Lark readiness, unsupported-domain projection,
   freshness, redaction, retention, permission denial, cross-tenant leakage, audit/events,
   smoke report fixtures, SDK/web projections, and release-readiness evidence.
-- **Environment and secrets** - PASS. Default execution uses `~/.dope-test`; live
+- **Environment and secrets** - PASS. Default execution uses `~/.kura-test`; live
   connectors or real-account smoke require explicit safe credentials, tenant approval,
   and dual approval for non-idempotent or externally visible probes. Secrets, tokens,
   authorization headers, and credential-bearing payloads are never exposed.
@@ -223,7 +223,7 @@ operators until retention expiry.
 - **Verification and observability** - PASS. Quickstart names targeted package tests,
   full daemon tests, schema contract tests, client tests, daemon smoke, redaction checks,
   cross-tenant leakage checks, retention checks, and final readiness evidence.
-- **Environment and secrets** - PASS. Design defaults to `~/.dope-test`, requires
+- **Environment and secrets** - PASS. Design defaults to `~/.kura-test`, requires
   explicit safe credentials for live smoke, blocks risky probes without dual approval,
   and fails closed when redaction cannot be proven.
 

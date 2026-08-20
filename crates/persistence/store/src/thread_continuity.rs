@@ -25,15 +25,15 @@ fn is_unique_constraint_error(err: &str) -> bool {
     err.to_uppercase().contains("UNIQUE")
 }
 
-fn scan_continuity_turn(raw: &str) -> Result<dope_threads::ContinuityTurn, String> {
+fn scan_continuity_turn(raw: &str) -> Result<kura_threads::ContinuityTurn, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode continuity turn document: {e}"))
 }
 
-fn scan_continuity_preview(raw: &str) -> Result<dope_threads::ContinuityPreview, String> {
+fn scan_continuity_preview(raw: &str) -> Result<kura_threads::ContinuityPreview, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode continuity preview document: {e}"))
 }
 
-fn scan_continuity_preview_item(raw: &str) -> Result<dope_threads::ContinuityPreviewItem, String> {
+fn scan_continuity_preview_item(raw: &str) -> Result<kura_threads::ContinuityPreviewItem, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode continuity preview item document: {e}"))
 }
 
@@ -49,7 +49,7 @@ pub struct ContinuityLookupQuery {
 
 impl SQLiteStore {
     /// Go `SaveContinuityTurn` with the retry loop for unique/busy errors.
-    pub fn save_continuity_turn(&self, turn: &dope_threads::ContinuityTurn) -> Result<dope_threads::ContinuityTurn, String> {
+    pub fn save_continuity_turn(&self, turn: &kura_threads::ContinuityTurn) -> Result<kura_threads::ContinuityTurn, String> {
         let mut last_err: Option<String> = None;
         for attempt in 0..5 {
             match self.save_continuity_turn_once(turn) {
@@ -69,7 +69,7 @@ impl SQLiteStore {
         self.save_continuity_turn_once(turn)
     }
 
-    fn save_continuity_turn_once(&self, turn: &dope_threads::ContinuityTurn) -> Result<dope_threads::ContinuityTurn, String> {
+    fn save_continuity_turn_once(&self, turn: &kura_threads::ContinuityTurn) -> Result<kura_threads::ContinuityTurn, String> {
         let mut turn = turn.clone();
         if is_unset_time(&turn.recorded_at) {
             turn.recorded_at = Utc::now();
@@ -80,7 +80,7 @@ impl SQLiteStore {
         if turn.continuity_turn_id.is_empty() {
             turn.continuity_turn_id = new_store_id("turn");
         }
-        dope_threads::validate_continuity_turn(&turn)
+        kura_threads::validate_continuity_turn(&turn)
             .map_err(|e| format!("validate continuity turn: {e}"))?;
         let tx = self
             .conn
@@ -114,10 +114,10 @@ impl SQLiteStore {
     }
 
     /// Go `ListContinuityTurns`: current-session turns with full evidence.
-    pub fn list_continuity_turns(&self, query: &ContinuityLookupQuery) -> Result<Vec<dope_threads::ContinuityTurn>, String> {
+    pub fn list_continuity_turns(&self, query: &ContinuityLookupQuery) -> Result<Vec<kura_threads::ContinuityTurn>, String> {
         let now = query.now.unwrap_or_else(Utc::now);
         let limit = if query.limit <= 0 {
-            dope_threads::DEFAULT_CONTINUITY_MAX_PRIOR_TURNS as i64 + 64
+            kura_threads::DEFAULT_CONTINUITY_MAX_PRIOR_TURNS as i64 + 64
         } else {
             query.limit
         };
@@ -151,10 +151,10 @@ impl SQLiteStore {
     }
 
     /// Go `ListContinuityTurnsOutsideSessionSegment`: reset-boundary turns.
-    pub fn list_continuity_turns_outside_session_segment(&self, query: &ContinuityLookupQuery) -> Result<Vec<dope_threads::ContinuityTurn>, String> {
+    pub fn list_continuity_turns_outside_session_segment(&self, query: &ContinuityLookupQuery) -> Result<Vec<kura_threads::ContinuityTurn>, String> {
         let now = query.now.unwrap_or_else(Utc::now);
         let limit = if query.limit <= 0 {
-            dope_threads::DEFAULT_CONTINUITY_MAX_PRIOR_TURNS as i64 + 64
+            kura_threads::DEFAULT_CONTINUITY_MAX_PRIOR_TURNS as i64 + 64
         } else {
             query.limit
         };
@@ -186,24 +186,24 @@ impl SQLiteStore {
     /// transaction, filling Go's defaults.
     pub fn save_continuity_preview(
         &self,
-        mut preview: dope_threads::ContinuityPreview,
-        items: &mut [dope_threads::ContinuityPreviewItem],
-    ) -> Result<dope_threads::ContinuityPreview, String> {
+        mut preview: kura_threads::ContinuityPreview,
+        items: &mut [kura_threads::ContinuityPreviewItem],
+    ) -> Result<kura_threads::ContinuityPreview, String> {
         let now = Utc::now();
         if preview.continuity_preview_id.is_empty() {
             preview.continuity_preview_id = new_store_id("contprev");
         }
         if preview.window_policy_id.is_empty() {
-            let policy = dope_threads::default_continuity_policy();
+            let policy = kura_threads::default_continuity_policy();
             preview.window_policy_id = policy.window_policy_id;
             preview.max_prior_turns = policy.max_prior_turns;
             preview.active_window_days = policy.active_window_days;
         }
         if preview.max_prior_turns == 0 {
-            preview.max_prior_turns = dope_threads::DEFAULT_CONTINUITY_MAX_PRIOR_TURNS;
+            preview.max_prior_turns = kura_threads::DEFAULT_CONTINUITY_MAX_PRIOR_TURNS;
         }
         if preview.active_window_days == 0 {
-            preview.active_window_days = dope_threads::DEFAULT_CONTINUITY_ACTIVE_DAYS;
+            preview.active_window_days = kura_threads::DEFAULT_CONTINUITY_ACTIVE_DAYS;
         }
         if is_unset_time(&preview.assembly_started_at) {
             preview.assembly_started_at = now;
@@ -246,7 +246,7 @@ impl SQLiteStore {
         tenant_id: &str,
         thread_id: &str,
         limit: i64,
-    ) -> Result<Vec<dope_threads::ContinuityPreview>, String> {
+    ) -> Result<Vec<kura_threads::ContinuityPreview>, String> {
         let limit = if limit <= 0 { 10 } else { limit };
         let mut stmt = self
             .conn
@@ -273,7 +273,7 @@ impl SQLiteStore {
         tenant_id: &str,
         thread_id: &str,
         preview_id: &str,
-    ) -> Result<Option<dope_threads::ContinuityPreviewDetail>, String> {
+    ) -> Result<Option<kura_threads::ContinuityPreviewDetail>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -304,14 +304,14 @@ impl SQLiteStore {
             let item_raw: String = row.get(0).map_err(|e| e.to_string())?;
             items.push(scan_continuity_preview_item(&item_raw)?);
         }
-        Ok(Some(dope_threads::ContinuityPreviewDetail { preview, items }))
+        Ok(Some(kura_threads::ContinuityPreviewDetail { preview, items }))
     }
 
     pub fn get_continuity_turn_by_source_event_key(
         &self,
         tenant_id: &str,
         source_event_key: &str,
-    ) -> Result<Option<dope_threads::ContinuityTurn>, String> {
+    ) -> Result<Option<kura_threads::ContinuityTurn>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -337,7 +337,7 @@ fn fmt_time(dt: DateTime<Utc>) -> String {
     dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
 }
 
-fn insert_continuity_turn_tx(tx: &Transaction, turn: &dope_threads::ContinuityTurn) -> Result<(), String> {
+fn insert_continuity_turn_tx(tx: &Transaction, turn: &kura_threads::ContinuityTurn) -> Result<(), String> {
     let document_json = serde_json::to_string(turn).map_err(|e| format!("marshal continuity turn: {e}"))?;
     let source_timestamp = turn.source_timestamp.filter(|t| !is_unset_time(t)).map(|t| fmt_time(t));
     tx.execute(
@@ -372,7 +372,7 @@ fn insert_continuity_turn_tx(tx: &Transaction, turn: &dope_threads::ContinuityTu
     Ok(())
 }
 
-fn insert_continuity_preview_tx(tx: &Transaction, preview: &dope_threads::ContinuityPreview) -> Result<(), String> {
+fn insert_continuity_preview_tx(tx: &Transaction, preview: &kura_threads::ContinuityPreview) -> Result<(), String> {
     let document_json = serde_json::to_string(preview).map_err(|e| format!("marshal continuity preview: {e}"))?;
     tx.execute(
         r#"INSERT INTO thread_continuity_previews (
@@ -410,7 +410,7 @@ fn insert_continuity_preview_tx(tx: &Transaction, preview: &dope_threads::Contin
     Ok(())
 }
 
-fn insert_continuity_preview_item_tx(tx: &Transaction, item: &dope_threads::ContinuityPreviewItem) -> Result<(), String> {
+fn insert_continuity_preview_item_tx(tx: &Transaction, item: &kura_threads::ContinuityPreviewItem) -> Result<(), String> {
     let document_json = serde_json::to_string(item).map_err(|e| format!("marshal continuity preview item: {e}"))?;
     let source_timestamp = item.source_timestamp.filter(|t| !is_unset_time(t)).map(|t| fmt_time(t));
     let sequence: Option<i64> = if item.acceptance_sequence > 0 { Some(item.acceptance_sequence) } else { None };

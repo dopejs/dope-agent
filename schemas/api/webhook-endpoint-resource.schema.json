@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/webhook-endpoint-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/webhook-endpoint-resource.schema.json",
   "title": "WebhookEndpointResource",
   "type": "object",
   "required": ["webhookId", "name", "targetKind", "targetRef", "status", "secretFingerprint", "createdAt", "updatedAt"],

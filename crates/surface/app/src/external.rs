@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use dope_plugin::{ExternalPlugin, Hook, HookErrorPolicy, HookOutcome};
+use kura_plugin::{ExternalPlugin, Hook, HookErrorPolicy, HookOutcome};
 
 /// Default per-hook-call timeout when the manifest leaves `timeoutMs` unset.
 const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_millis(2000);
@@ -177,7 +177,7 @@ impl Hook for ExternalHook {
             Err(err) => match self.on_error {
                 HookErrorPolicy::Continue => {
                     eprintln!(
-                        "[dope] external plugin {} hook {} failed (continuing): {err}",
+                        "[kura] external plugin {} hook {} failed (continuing): {err}",
                         self.host.id, self.point
                     );
                     HookOutcome::Continue
@@ -198,16 +198,16 @@ impl Hook for ExternalHook {
 /// quality degrades, availability does not (the fallback is logged).
 pub(crate) struct ExternalEmbedder {
     host: Arc<ExternalProcessHost>,
-    fallback: dope_context::HashedNgramEmbedder,
+    fallback: kura_context::HashedNgramEmbedder,
 }
 
 impl ExternalEmbedder {
     pub fn new(host: Arc<ExternalProcessHost>) -> Self {
-        ExternalEmbedder { host, fallback: dope_context::HashedNgramEmbedder::default() }
+        ExternalEmbedder { host, fallback: kura_context::HashedNgramEmbedder::default() }
     }
 }
 
-impl dope_context::Embedder for ExternalEmbedder {
+impl kura_context::Embedder for ExternalEmbedder {
     fn embed(&self, text: &str) -> Vec<f32> {
         match self
             .host
@@ -223,19 +223,19 @@ impl dope_context::Embedder for ExternalEmbedder {
                     Some(vector) if !vector.is_empty() => vector,
                     _ => {
                         eprintln!(
-                            "[dope] external embedder {} returned no vector; using fallback",
+                            "[kura] external embedder {} returned no vector; using fallback",
                             self.host.id
                         );
-                        dope_context::Embedder::embed(&self.fallback, text)
+                        kura_context::Embedder::embed(&self.fallback, text)
                     }
                 }
             }
             Err(err) => {
                 eprintln!(
-                    "[dope] external embedder {} failed ({err}); using fallback",
+                    "[kura] external embedder {} failed ({err}); using fallback",
                     self.host.id
                 );
-                dope_context::Embedder::embed(&self.fallback, text)
+                kura_context::Embedder::embed(&self.fallback, text)
             }
         }
     }
@@ -253,9 +253,9 @@ mod tests {
         let dir = tempfile_dir::tempdir();
         std::fs::write(dir.path.join("run.sh"), script).expect("write script");
         let plugin = ExternalPlugin {
-            manifest: dope_plugin::PluginManifest {
+            manifest: kura_plugin::PluginManifest {
                 id: "ext-test".to_string(),
-                entry: dope_plugin::ManifestEntry {
+                entry: kura_plugin::ManifestEntry {
                     kind: "process".to_string(),
                     command: "/bin/sh".to_string(),
                     args: vec!["run.sh".to_string()],
@@ -282,7 +282,7 @@ mod tests {
         pub fn tempdir() -> TempDirGuard {
             static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let path = std::env::temp_dir().join(format!(
-                "dope-external-{}-{}",
+                "kura-external-{}-{}",
                 std::process::id(),
                 COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
             ));
@@ -344,9 +344,9 @@ mod tests {
     fn spawn_failure_follows_policy() {
         let dir = tempfile_dir::tempdir();
         let plugin = ExternalPlugin {
-            manifest: dope_plugin::PluginManifest {
+            manifest: kura_plugin::PluginManifest {
                 id: "ghost".to_string(),
-                entry: dope_plugin::ManifestEntry {
+                entry: kura_plugin::ManifestEntry {
                     kind: "process".to_string(),
                     command: "/nonexistent/binary".to_string(),
                     args: vec![],

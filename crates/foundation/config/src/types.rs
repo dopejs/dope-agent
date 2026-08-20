@@ -2,13 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Daemon runtime environment, selected by `DOPE_ENV` / `DOPE_VERSION`.
+/// Daemon runtime environment, selected by `KURA_ENV` / `KURA_VERSION`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Environment {
-    /// Production environment: `~/.dope`, bind `127.0.0.1:19191`.
+    /// Production environment: `~/.kura`, bind `127.0.0.1:19191`.
     Prod,
-    /// Test environment: `~/.dope-test`, bind `127.0.0.1:19192`.
+    /// Test environment: `~/.kura-test`, bind `127.0.0.1:19192`.
     Test,
 }
 
@@ -277,11 +277,11 @@ pub struct MatrixConnectorConfig {
     pub configured_commands: Vec<String>,
 }
 
-/// Default data dir per environment: `~/.dope-test` / `~/.dope`.
+/// Default data dir per environment: `~/.kura-test` / `~/.kura`.
 pub(crate) fn default_data_dir(env: Environment) -> &'static str {
     match env {
-        Environment::Test => "~/.dope-test",
-        Environment::Prod => "~/.dope",
+        Environment::Test => "~/.kura-test",
+        Environment::Prod => "~/.kura",
     }
 }
 

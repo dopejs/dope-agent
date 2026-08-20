@@ -16,7 +16,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use dope_catalog as catalog;
+use kura_catalog as catalog;
 
 use crate::error::ApiError;
 use crate::middleware::TenantContext;
@@ -170,7 +170,7 @@ mod tests {
 
     fn state_with_manager() -> crate::state::AppState {
         let mut state = test_state();
-        state.catalog = Some(Arc::new(dope_catalog::Manager::new("test", None, None)));
+        state.catalog = Some(Arc::new(kura_catalog::Manager::new("test", None, None)));
         state
     }
 

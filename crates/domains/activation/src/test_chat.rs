@@ -3,7 +3,7 @@
 
 use chrono::DateTime;
 use chrono::Utc;
-use dope_identity::AUDIT_OUTCOME_SUCCEEDED;
+use kura_identity::AUDIT_OUTCOME_SUCCEEDED;
 use serde_json::Map;
 use serde_json::Value;
 
@@ -356,7 +356,7 @@ fn forbidden_activation_evidence_key(key: &str) -> bool {
 mod tests {
     use std::sync::Arc;
 
-    use dope_identity::TenantContext;
+    use kura_identity::TenantContext;
     use serde_json::json;
 
     use super::*;

@@ -80,7 +80,7 @@ execution path.
 
 - Fake Telegram transport tests for routing, dedupe, reply, failure, and reconnect.
 - Contract tests for connector resource and event schemas.
-- Manual `DOPE_ENV=test` smoke using safe Telegram credentials or structured skip.
+- Manual `KURA_ENV=test` smoke using safe Telegram credentials or structured skip.
 
 ## Definition Of Done
 

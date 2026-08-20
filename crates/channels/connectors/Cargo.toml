@@ -1,5 +1,5 @@
 [package]
-name = "dope-connectors"
+name = "kura-connectors"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
@@ -10,7 +10,7 @@ serde_json.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 parking_lot.workspace = true
-dope-livevalidation.workspace = true
+kura-livevalidation.workspace = true
 
 [dev-dependencies]
-dope-livevalidation.workspace = true
+kura-livevalidation.workspace = true

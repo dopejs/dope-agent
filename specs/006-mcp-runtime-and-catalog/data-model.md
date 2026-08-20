@@ -12,7 +12,7 @@
   - `transportKind`: `stdio` or `streamable-http`
   - `sourceKind`: `bundled`
   - `tags`: classification such as `local`, `remote`, `docs`, `credentials`, `database`
-  - `immediateUse`: boolean flag for entries intended to work in `DOPE_ENV=test` without extra credentials or host infrastructure
+  - `immediateUse`: boolean flag for entries intended to work in `KURA_ENV=test` without extra credentials or host infrastructure
   - `prerequisites`: host or dependency requirements, each with machine-readable kind plus operator text
   - `secretRequirements`: declared optional or required secret refs, never raw secret values
   - `environmentEligibility`: allowed environments such as `test` and `prod`

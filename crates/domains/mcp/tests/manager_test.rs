@@ -1,5 +1,5 @@
-//! Integration tests for the dope-mcp crate: round-trip persistence (in-memory and via
-//! dope-store), manager behavior (registry, exposure, authorization, lifecycle with a
+//! Integration tests for the kura-mcp crate: round-trip persistence (in-memory and via
+//! kura-store), manager behavior (registry, exposure, authorization, lifecycle with a
 //! fake transport, catalog install/lifecycle), and pure-helper coverage (framing,
 //! redaction, backoff, websocket endpoint validation).
 
@@ -12,23 +12,23 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::Utc;
-use dope_mcp::catalog::{
+use kura_mcp::catalog::{
     fingerprint_create_server_spec, requires_offline_verified_local_command,
 };
-use dope_mcp::manager::{
+use kura_mcp::manager::{
     redact_string, sanitize_websocket_endpoint_for_projection, validate_websocket_endpoint,
 };
-use dope_mcp::transport::read_framed_message;
-use dope_mcp::types::*;
-use dope_mcp::{
+use kura_mcp::transport::read_framed_message;
+use kura_mcp::types::*;
+use kura_mcp::{
     McpError, Session, SessionPipes, Transport, is_terminal_status, live_validation_matrix_rows,
     restart_backoff_delay,
 };
 use serde_json::{Map, Value};
 
-fn test_cfg(data_dir: &str) -> dope_config::Config {
-    dope_config::Config {
-        environment: dope_config::Environment::Test,
+fn test_cfg(data_dir: &str) -> kura_config::Config {
+    kura_config::Config {
+        environment: kura_config::Environment::Test,
         bind_addr: "127.0.0.1:19192".to_string(),
         data_dir: data_dir.to_string(),
         log_level: "info".to_string(),
@@ -43,7 +43,7 @@ fn streamable_server_input(server_id: &str) -> CreateServerInput {
         server_id: server_id.to_string(),
         display_name: "Test Server".to_string(),
         enabled: true,
-        sandbox_profile_id: dope_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
+        sandbox_profile_id: kura_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
         declaration_id: format!("mcp_server:{server_id}:lifecycle.start"),
         transport_kind: TransportKind::StreamableHTTP,
         endpoint: "https://example.test/mcp".to_string(),
@@ -118,11 +118,11 @@ struct FakeAttachedExecutionStarter {
     children: Mutex<HashMap<String, std::process::Child>>,
 }
 
-impl dope_mcp::AttachedExecutionStarter for FakeAttachedExecutionStarter {
+impl kura_mcp::AttachedExecutionStarter for FakeAttachedExecutionStarter {
     fn start_attached_execution(
         &self,
-        _request: &dope_sandbox::ExecutionRequest,
-    ) -> Result<(dope_sandbox::Execution, Option<dope_mcp::AttachedExecution>), String> {
+        _request: &kura_sandbox::ExecutionRequest,
+    ) -> Result<(kura_sandbox::Execution, Option<kura_mcp::AttachedExecution>), String> {
         let mut child = std::process::Command::new(common::fake_mcp_server_bin())
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -130,12 +130,12 @@ impl dope_mcp::AttachedExecutionStarter for FakeAttachedExecutionStarter {
             .spawn()
             .map_err(|err| format!("spawn fake mcp server: {err}"))?;
         let execution_id = format!("fake-exec-{}", self.next_id.fetch_add(1, Ordering::SeqCst));
-        let execution = dope_sandbox::Execution {
+        let execution = kura_sandbox::Execution {
             execution_id: execution_id.clone(),
-            status: dope_sandbox::ExecutionStatus::Running,
-            ..dope_sandbox::Execution::default()
+            status: kura_sandbox::ExecutionStatus::Running,
+            ..kura_sandbox::Execution::default()
         };
-        let attached = dope_mcp::AttachedExecution {
+        let attached = kura_mcp::AttachedExecution {
             execution: execution.clone(),
             stdin: Some(Box::new(child.stdin.take().expect("child stdin"))),
             stdout: Some(Box::new(child.stdout.take().expect("child stdout"))),
@@ -148,42 +148,42 @@ impl dope_mcp::AttachedExecutionStarter for FakeAttachedExecutionStarter {
     fn cancel_execution(
         &self,
         execution_id: &str,
-    ) -> Result<(dope_sandbox::Execution, bool), String> {
+    ) -> Result<(kura_sandbox::Execution, bool), String> {
         if let Some(mut child) = self.children.lock().unwrap().remove(execution_id) {
             let _ = child.kill();
             let _ = child.wait();
         }
         Ok((
-            dope_sandbox::Execution {
+            kura_sandbox::Execution {
                 execution_id: execution_id.to_string(),
-                status: dope_sandbox::ExecutionStatus::Cancelled,
-                ..dope_sandbox::Execution::default()
+                status: kura_sandbox::ExecutionStatus::Cancelled,
+                ..kura_sandbox::Execution::default()
             },
             true,
         ))
     }
 
-    fn get_execution(&self, execution_id: &str) -> Option<dope_sandbox::Execution> {
-        Some(dope_sandbox::Execution {
+    fn get_execution(&self, execution_id: &str) -> Option<kura_sandbox::Execution> {
+        Some(kura_sandbox::Execution {
             execution_id: execution_id.to_string(),
-            status: dope_sandbox::ExecutionStatus::Completed,
-            ..dope_sandbox::Execution::default()
+            status: kura_sandbox::ExecutionStatus::Completed,
+            ..kura_sandbox::Execution::default()
         })
     }
 
     fn persist_consumer_view(
         &self,
-        _view: &dope_sandbox::ConsumerContractView,
+        _view: &kura_sandbox::ConsumerContractView,
     ) -> Result<(), String> {
         Ok(())
     }
 
-    fn get_profile(&self, profile_id: &str) -> Option<dope_sandbox::Profile> {
-        Some(dope_sandbox::Profile {
+    fn get_profile(&self, profile_id: &str) -> Option<kura_sandbox::Profile> {
+        Some(kura_sandbox::Profile {
             profile_id: profile_id.to_string(),
-            backend_kind: dope_sandbox::BackendKind::Subprocess,
+            backend_kind: kura_sandbox::BackendKind::Subprocess,
             active: true,
-            ..dope_sandbox::Profile::default()
+            ..kura_sandbox::Profile::default()
         })
     }
 }
@@ -217,11 +217,11 @@ fn server_serde_round_trip_uses_camel_case_wire() {
         sandbox_profile_id: "subprocess_default".to_string(),
         declaration_id: "mcp_server:filesystem:lifecycle.start".to_string(),
         declaration: Declaration {
-            execution_mode: dope_sandbox::ExecutionMode::Subprocess,
-            allowed_backend_kinds: vec![dope_sandbox::BackendKind::Subprocess],
+            execution_mode: kura_sandbox::ExecutionMode::Subprocess,
+            allowed_backend_kinds: vec![kura_sandbox::BackendKind::Subprocess],
             read_roots: vec!["/tmp/root".to_string()],
-            network_mode: dope_sandbox::NetworkMode::Deny,
-            approval_mode: dope_sandbox::ApprovalMode::Allow,
+            network_mode: kura_sandbox::NetworkMode::Deny,
+            approval_mode: kura_sandbox::ApprovalMode::Allow,
             required_enforcement_strength: "declared_only".to_string(),
             active: true,
             ..Declaration::default()
@@ -281,7 +281,7 @@ fn exposure_rule_serde_round_trip() {
 
 #[test]
 fn manager_registers_updates_and_lists_servers() {
-    let manager = dope_mcp::Manager::new(test_cfg("~/.dope-test"), None, None, None, None, None);
+    let manager = kura_mcp::Manager::new(test_cfg("~/.kura-test"), None, None, None, None, None);
     let (resource, created) = manager.create_server(streamable_server_input("srv-1")).unwrap();
     assert!(created);
     assert_eq!(resource.server.server_id, "srv-1");
@@ -318,7 +318,7 @@ fn manager_registers_updates_and_lists_servers() {
 
 #[test]
 fn manager_rejects_invalid_servers() {
-    let manager = dope_mcp::Manager::new(test_cfg("~/.dope-test"), None, None, None, None, None);
+    let manager = kura_mcp::Manager::new(test_cfg("~/.kura-test"), None, None, None, None, None);
     // missing server id
     let err = manager
         .create_server(CreateServerInput::default())
@@ -392,8 +392,8 @@ fn manager_rejects_invalid_servers() {
 #[test]
 fn manager_start_discovers_tools_and_supports_stop() {
     let session = FakeSession::new("session-1", vec![fake_tool("lookup")]);
-    let manager = dope_mcp::Manager::new(
-        test_cfg("~/.dope-test"),
+    let manager = kura_mcp::Manager::new(
+        test_cfg("~/.kura-test"),
         None,
         None,
         None,
@@ -431,7 +431,7 @@ fn manager_start_discovers_tools_and_supports_stop() {
 
 #[test]
 fn manager_start_fails_for_stdio_without_sandbox_manager() {
-    let manager = dope_mcp::Manager::new(test_cfg("~/.dope-test"), None, None, None, None, None);
+    let manager = kura_mcp::Manager::new(test_cfg("~/.kura-test"), None, None, None, None, None);
     manager
         .create_server(CreateServerInput {
             server_id: "srv-1".to_string(),
@@ -452,7 +452,7 @@ fn manager_start_fails_for_stdio_without_sandbox_manager() {
 fn manager_start_fails_when_transport_open_fails() {
     // The default manager transport mux installs the concrete transports; a
     // streamable-http server pointing at a dead local port fails at transport open.
-    let manager = dope_mcp::Manager::new(test_cfg("~/.dope-test"), None, None, None, None, None);
+    let manager = kura_mcp::Manager::new(test_cfg("~/.kura-test"), None, None, None, None, None);
     manager
         .create_server(CreateServerInput {
             server_id: "srv-1".to_string(),
@@ -477,8 +477,8 @@ fn manager_stdio_start_discovers_tools_and_calls_tool() {
         next_id: AtomicU64::new(1),
         children: Mutex::new(HashMap::new()),
     });
-    let manager = dope_mcp::Manager::new(
-        test_cfg("~/.dope-test"),
+    let manager = kura_mcp::Manager::new(
+        test_cfg("~/.kura-test"),
         None,
         None,
         Some(starter),
@@ -490,7 +490,7 @@ fn manager_stdio_start_discovers_tools_and_calls_tool() {
             server_id: "srv-stdio".to_string(),
             display_name: "Stdio Server".to_string(),
             enabled: true,
-            sandbox_profile_id: dope_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
+            sandbox_profile_id: kura_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
             declaration_id: "d".to_string(),
             transport_kind: TransportKind::Stdio,
             command: common::fake_mcp_server_bin().to_string(),
@@ -562,7 +562,7 @@ fn manager_stdio_start_discovers_tools_and_calls_tool() {
 
 /// Polls the server state until it reaches `expected` or the timeout elapses.
 fn wait_for_status(
-    manager: &dope_mcp::Manager,
+    manager: &kura_mcp::Manager,
     server_id: &str,
     expected: LifecycleStatus,
     timeout: Duration,
@@ -587,9 +587,9 @@ fn wait_for_status(
 #[test]
 fn manager_update_exposure_and_authorize_tool() {
     let session = FakeSession::new("session-1", vec![fake_tool("lookup")]);
-    let policy = dope_policy::Engine::new();
-    let manager = dope_mcp::Manager::new(
-        test_cfg("~/.dope-test"),
+    let policy = kura_policy::Engine::new();
+    let manager = kura_mcp::Manager::new(
+        test_cfg("~/.kura-test"),
         None,
         None,
         None,
@@ -696,7 +696,7 @@ fn manager_update_exposure_and_authorize_tool() {
 
 #[test]
 fn bundled_catalog_entries_are_sorted_and_context7_installs() {
-    let manager = dope_mcp::Manager::new(test_cfg("~/.dope-test"), None, None, None, None, None);
+    let manager = kura_mcp::Manager::new(test_cfg("~/.kura-test"), None, None, None, None, None);
     let entries = manager.list_catalog();
     assert_eq!(entries.len(), 5);
     let ids: Vec<&str> = entries.iter().map(|entry| entry.id.as_str()).collect();
@@ -736,7 +736,7 @@ fn bundled_catalog_entries_are_sorted_and_context7_installs() {
 
 #[test]
 fn catalog_install_blocks_manual_server_id_collision() {
-    let manager = dope_mcp::Manager::new(test_cfg("~/.dope-test"), None, None, None, None, None);
+    let manager = kura_mcp::Manager::new(test_cfg("~/.kura-test"), None, None, None, None, None);
     manager.create_server(streamable_server_input("context7")).unwrap();
     let result = manager
         .install_catalog_entry("context7", &CatalogInstallInput::default(), InstallMethod::Api)
@@ -752,7 +752,7 @@ fn requires_offline_verified_local_command_matches_bundled_stdio_default() {
         command: "npx".to_string(),
         args: vec!["-y".to_string(), "@modelcontextprotocol/server-filesystem".to_string()],
         declaration: Some(Declaration {
-            network_mode: dope_sandbox::NetworkMode::Deny,
+            network_mode: kura_sandbox::NetworkMode::Deny,
             ..Declaration::default()
         }),
         ..CreateServerInput::default()
@@ -763,7 +763,7 @@ fn requires_offline_verified_local_command_matches_bundled_stdio_default() {
         command: "npx".to_string(),
         args: vec!["-y".to_string(), "some-other-package".to_string()],
         declaration: Some(Declaration {
-            network_mode: dope_sandbox::NetworkMode::Deny,
+            network_mode: kura_sandbox::NetworkMode::Deny,
             ..Declaration::default()
         }),
         ..CreateServerInput::default()
@@ -777,7 +777,7 @@ fn fingerprint_create_server_spec_is_stable() {
         command: "npx".to_string(),
         args: vec!["-y".to_string(), "@modelcontextprotocol/server-filesystem".to_string()],
         declaration: Some(Declaration {
-            network_mode: dope_sandbox::NetworkMode::Deny,
+            network_mode: kura_sandbox::NetworkMode::Deny,
             ..Declaration::default()
         }),
         ..CreateServerInput::default()
@@ -798,7 +798,7 @@ fn fingerprint_create_server_spec_is_stable() {
 // ---------------------------------------------------------------------------
 
 fn temp_data_dir(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("dope-mcp-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura-mcp-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -807,8 +807,8 @@ fn temp_data_dir(name: &str) -> std::path::PathBuf {
 #[test]
 fn manager_persists_and_restores_servers_from_store() {
     let dir = temp_data_dir("restore");
-    let store = Arc::new(Mutex::new(dope_store::SQLiteStore::new(dir.to_str().unwrap()).unwrap()));
-    let manager = dope_mcp::Manager::new(
+    let store = Arc::new(Mutex::new(kura_store::SQLiteStore::new(dir.to_str().unwrap()).unwrap()));
+    let manager = kura_mcp::Manager::new(
         test_cfg(dir.to_str().unwrap()),
         Some(Arc::clone(&store)),
         None,
@@ -831,7 +831,7 @@ fn manager_persists_and_restores_servers_from_store() {
     assert!(created);
 
     // a fresh manager over the same store restores the registry
-    let manager2 = dope_mcp::Manager::new(
+    let manager2 = kura_mcp::Manager::new(
         test_cfg(dir.to_str().unwrap()),
         Some(Arc::clone(&store)),
         None,
@@ -853,10 +853,10 @@ fn manager_persists_and_restores_servers_from_store() {
 #[test]
 fn manager_restore_marks_tools_stale_and_reloads_exposure() {
     let dir = temp_data_dir("restore-tools");
-    let store = Arc::new(Mutex::new(dope_store::SQLiteStore::new(dir.to_str().unwrap()).unwrap()));
+    let store = Arc::new(Mutex::new(kura_store::SQLiteStore::new(dir.to_str().unwrap()).unwrap()));
 
     let session = FakeSession::new("session-1", vec![fake_tool("lookup")]);
-    let manager = dope_mcp::Manager::new(
+    let manager = kura_mcp::Manager::new(
         test_cfg(dir.to_str().unwrap()),
         Some(Arc::clone(&store)),
         None,
@@ -883,7 +883,7 @@ fn manager_restore_marks_tools_stale_and_reloads_exposure() {
 
     // fresh manager without a transport: restore must reload tools and mark them stale
     // (state is not Healthy after daemon restart) and reload the exposure rule.
-    let manager2 = dope_mcp::Manager::new(
+    let manager2 = kura_mcp::Manager::new(
         test_cfg(dir.to_str().unwrap()),
         Some(Arc::clone(&store)),
         None,
@@ -950,7 +950,7 @@ fn websocket_endpoint_validation() {
 
 #[test]
 fn transport_capabilities_and_terminal_status() {
-    let manager = dope_mcp::Manager::new(test_cfg("~/.dope-test"), None, None, None, None, None);
+    let manager = kura_mcp::Manager::new(test_cfg("~/.kura-test"), None, None, None, None, None);
     let capabilities = manager.list_transport_capabilities();
     assert_eq!(capabilities.len(), 3);
     assert_eq!(capabilities[0].transport_kind, TransportKind::Stdio);
@@ -989,7 +989,7 @@ fn secret_resolution_falls_back_to_mcp_secrets_file() {
         serde_json::json!({ "TOKEN": "  topsecret  " }).to_string(),
     )
     .unwrap();
-    let manager = dope_mcp::Manager::new(test_cfg(dir.to_str().unwrap()), None, None, None, None, None);
+    let manager = kura_mcp::Manager::new(test_cfg(dir.to_str().unwrap()), None, None, None, None, None);
     let (resolved, _) = manager
         .create_server(CreateServerInput {
             server_id: "srv-1".to_string(),

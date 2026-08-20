@@ -42,15 +42,15 @@ fn is_unique_constraint_error(err: &str) -> bool {
     err.to_uppercase().contains("UNIQUE")
 }
 
-fn scan_binding_rule(raw: &str) -> Result<dope_bindings::BindingRule, String> {
+fn scan_binding_rule(raw: &str) -> Result<kura_bindings::BindingRule, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode binding rule document: {e}"))
 }
 
-fn scan_visibility_policy(raw: &str) -> Result<dope_bindings::CapabilityVisibilityPolicy, String> {
+fn scan_visibility_policy(raw: &str) -> Result<kura_bindings::CapabilityVisibilityPolicy, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode capability visibility policy document: {e}"))
 }
 
-fn scan_binding_evidence(raw: &str) -> Result<dope_bindings::RuntimeBindingEvidence, String> {
+fn scan_binding_evidence(raw: &str) -> Result<kura_bindings::RuntimeBindingEvidence, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode runtime binding evidence document: {e}"))
 }
 
@@ -74,16 +74,16 @@ impl SQLiteStore {
     /// Go `CreateBindingRule`.
     pub fn create_binding_rule(
         &self,
-        actor: &dope_identity::TenantContext,
-        req: &dope_bindings::CreateBindingRequest,
-    ) -> Result<(dope_bindings::BindingRule, String), String> {
+        actor: &kura_identity::TenantContext,
+        req: &kura_bindings::CreateBindingRequest,
+    ) -> Result<(kura_bindings::BindingRule, String), String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_bindings::BindingError::ExplicitActorRequired.to_string());
+            return Err(kura_bindings::BindingError::ExplicitActorRequired.to_string());
         }
         let profile_selectable = self.is_profile_selectable(&actor.tenant_id, &req.selected_profile_id)?;
         let workspace_selectable = self.is_workspace_selectable(&actor.tenant_id, &req.selected_workspace_id)?;
         let scope_available = self.binding_scope_available(&actor.tenant_id, &req.scope_kind, &req.scope_ref)?;
-        let mutation = dope_bindings::BindingMutationInput {
+        let mutation = kura_bindings::BindingMutationInput {
             scope_kind: req.scope_kind.clone(),
             scope_ref: req.scope_ref.clone(),
             selected_profile_id: req.selected_profile_id.clone(),
@@ -92,29 +92,29 @@ impl SQLiteStore {
             scope_connector_supported: true,
             profile_selectable: profile_selectable || req.selected_profile_id.trim().is_empty(),
             workspace_selectable: workspace_selectable || req.selected_workspace_id.trim().is_empty(),
-            ..dope_bindings::BindingMutationInput::default()
+            ..kura_bindings::BindingMutationInput::default()
         };
-        dope_bindings::validate_binding_mutation(&mutation).map_err(|e| e.to_string())?;
+        kura_bindings::validate_binding_mutation(&mutation).map_err(|e| e.to_string())?;
         let now = Utc::now();
         let audit_id = new_store_id("audit_binding");
-        let rule = dope_bindings::BindingRule {
+        let rule = kura_bindings::BindingRule {
             binding_id: new_store_id("bnd"),
             tenant_id: actor.tenant_id.clone(),
             scope_kind: req.scope_kind.clone(),
             scope_ref: req.scope_ref.trim().to_string(),
             selected_profile_id: req.selected_profile_id.trim().to_string(),
             selected_workspace_id: req.selected_workspace_id.trim().to_string(),
-            status: dope_bindings::BindingStatus::ACTIVE,
-            repair_status: dope_bindings::RepairStatus::HEALTHY,
-            validation_status: dope_bindings::ValidationStatus::VALID,
+            status: kura_bindings::BindingStatus::ACTIVE,
+            repair_status: kura_bindings::RepairStatus::HEALTHY,
+            validation_status: kura_bindings::ValidationStatus::VALID,
             actor_principal_id: actor.principal_id.clone(),
             audit_event_id: audit_id.clone(),
             resulting_selection_summary: binding_selection_summary(&req.selected_profile_id, &req.selected_workspace_id),
-            redaction_status: dope_bindings::RedactionStatus::REDACTED,
+            redaction_status: kura_bindings::RedactionStatus::REDACTED,
             created_at: now,
             updated_at: now,
             disabled_at: None,
-            ..dope_bindings::BindingRule::default()
+            ..kura_bindings::BindingRule::default()
         };
         let tx = self
             .conn
@@ -122,7 +122,7 @@ impl SQLiteStore {
             .map_err(|e| format!("begin create binding rule: {e}"))?;
         if let Err(err) = insert_binding_rule_tx(&tx, &rule) {
             if is_unique_constraint_error(&err) {
-                return Err(dope_bindings::invalid_binding_reason("active_binding_already_exists").to_string());
+                return Err(kura_bindings::invalid_binding_reason("active_binding_already_exists").to_string());
             }
             return Err(err);
         }
@@ -150,12 +150,12 @@ impl SQLiteStore {
     /// Go `UpdateBindingRule`.
     pub fn update_binding_rule(
         &self,
-        actor: &dope_identity::TenantContext,
+        actor: &kura_identity::TenantContext,
         binding_id: &str,
-        req: &dope_bindings::UpdateBindingRequest,
-    ) -> Result<(dope_bindings::BindingRule, String), String> {
+        req: &kura_bindings::UpdateBindingRequest,
+    ) -> Result<(kura_bindings::BindingRule, String), String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_bindings::BindingError::ExplicitActorRequired.to_string());
+            return Err(kura_bindings::BindingError::ExplicitActorRequired.to_string());
         }
         let mut rule = self
             .get_binding_rule(&actor.tenant_id, binding_id)?
@@ -165,9 +165,9 @@ impl SQLiteStore {
         let audit_id = new_store_id("audit_binding");
         let mut event_kind = "binding.updated".to_string();
         if req.disable {
-            rule.status = dope_bindings::BindingStatus::DISABLED;
+            rule.status = kura_bindings::BindingStatus::DISABLED;
             rule.disabled_at = Some(now);
-            rule.repair_status = dope_bindings::RepairStatus::DISABLED;
+            rule.repair_status = kura_bindings::RepairStatus::DISABLED;
             event_kind = "binding.disabled".to_string();
         } else {
             if !req.selected_profile_id.trim().is_empty() {
@@ -178,7 +178,7 @@ impl SQLiteStore {
             }
             let profile_selectable = self.is_profile_selectable(&actor.tenant_id, &rule.selected_profile_id)?;
             let workspace_selectable = self.is_workspace_selectable(&actor.tenant_id, &rule.selected_workspace_id)?;
-            let mutation = dope_bindings::BindingMutationInput {
+            let mutation = kura_bindings::BindingMutationInput {
                 scope_kind: rule.scope_kind.clone(),
                 scope_ref: rule.scope_ref.clone(),
                 selected_profile_id: rule.selected_profile_id.clone(),
@@ -187,9 +187,9 @@ impl SQLiteStore {
                 scope_connector_supported: true,
                 profile_selectable: profile_selectable || rule.selected_profile_id.is_empty(),
                 workspace_selectable: workspace_selectable || rule.selected_workspace_id.is_empty(),
-                ..dope_bindings::BindingMutationInput::default()
+                ..kura_bindings::BindingMutationInput::default()
             };
-            dope_bindings::validate_binding_mutation(&mutation).map_err(|e| e.to_string())?;
+            kura_bindings::validate_binding_mutation(&mutation).map_err(|e| e.to_string())?;
             rule.resulting_selection_summary =
                 binding_selection_summary(&rule.selected_profile_id, &rule.selected_workspace_id);
         }
@@ -224,9 +224,9 @@ impl SQLiteStore {
     }
 
     /// Go `RemoveBindingRule`: deletes the rule while preserving audit evidence.
-    pub fn remove_binding_rule(&self, actor: &dope_identity::TenantContext, binding_id: &str) -> Result<String, String> {
+    pub fn remove_binding_rule(&self, actor: &kura_identity::TenantContext, binding_id: &str) -> Result<String, String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_bindings::BindingError::ExplicitActorRequired.to_string());
+            return Err(kura_bindings::BindingError::ExplicitActorRequired.to_string());
         }
         let rule = self
             .get_binding_rule(&actor.tenant_id, binding_id)?
@@ -265,11 +265,11 @@ impl SQLiteStore {
     /// Go `RepairBindingRule`: recomputes repair status from current references.
     pub fn repair_binding_rule(
         &self,
-        actor: &dope_identity::TenantContext,
+        actor: &kura_identity::TenantContext,
         binding_id: &str,
-    ) -> Result<(dope_bindings::BindingRule, String), String> {
+    ) -> Result<(kura_bindings::BindingRule, String), String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_bindings::BindingError::ExplicitActorRequired.to_string());
+            return Err(kura_bindings::BindingError::ExplicitActorRequired.to_string());
         }
         let mut rule = self
             .get_binding_rule(&actor.tenant_id, binding_id)?
@@ -306,7 +306,7 @@ impl SQLiteStore {
     }
 
     /// Go `ListBindingRules` with freshly computed repair status.
-    pub fn list_binding_rules(&self, tenant_id: &str, limit: i64) -> Result<Vec<dope_bindings::BindingRule>, String> {
+    pub fn list_binding_rules(&self, tenant_id: &str, limit: i64) -> Result<Vec<kura_bindings::BindingRule>, String> {
         let limit = if limit <= 0 || limit > 200 { 50 } else { limit };
         let mut stmt = self
             .conn
@@ -328,7 +328,7 @@ impl SQLiteStore {
     }
 
     /// Go `GetBindingRule` with freshly computed repair status.
-    pub fn get_binding_rule(&self, tenant_id: &str, binding_id: &str) -> Result<Option<dope_bindings::BindingRule>, String> {
+    pub fn get_binding_rule(&self, tenant_id: &str, binding_id: &str) -> Result<Option<kura_bindings::BindingRule>, String> {
         let mut stmt = self
             .conn
             .prepare("SELECT document_json FROM binding_rules WHERE tenant_id = ?1 AND binding_id = ?2")
@@ -347,21 +347,21 @@ impl SQLiteStore {
     }
 
     /// Go `ResolveChannelBinding`.
-    pub fn resolve_channel_binding(&self, tenant_id: &str, scope_ref: &str) -> Result<Option<dope_bindings::BindingRule>, String> {
-        self.resolve_active_binding(tenant_id, &dope_bindings::ScopeKind::CHANNEL, scope_ref)
+    pub fn resolve_channel_binding(&self, tenant_id: &str, scope_ref: &str) -> Result<Option<kura_bindings::BindingRule>, String> {
+        self.resolve_active_binding(tenant_id, &kura_bindings::ScopeKind::CHANNEL, scope_ref)
     }
 
     /// Go `ResolveAccountBinding`.
-    pub fn resolve_account_binding(&self, tenant_id: &str, scope_ref: &str) -> Result<Option<dope_bindings::BindingRule>, String> {
-        self.resolve_active_binding(tenant_id, &dope_bindings::ScopeKind::INTEGRATION_ACCOUNT, scope_ref)
+    pub fn resolve_account_binding(&self, tenant_id: &str, scope_ref: &str) -> Result<Option<kura_bindings::BindingRule>, String> {
+        self.resolve_active_binding(tenant_id, &kura_bindings::ScopeKind::INTEGRATION_ACCOUNT, scope_ref)
     }
 
     pub fn resolve_active_binding(
         &self,
         tenant_id: &str,
-        kind: &dope_bindings::ScopeKind,
+        kind: &kura_bindings::ScopeKind,
         scope_ref: &str,
-    ) -> Result<Option<dope_bindings::BindingRule>, String> {
+    ) -> Result<Option<kura_bindings::BindingRule>, String> {
         let scope_ref = scope_ref.trim();
         if scope_ref.is_empty() {
             return Ok(None);
@@ -384,7 +384,7 @@ impl SQLiteStore {
     }
 
     /// Go `repairStatusFor`.
-    pub fn repair_status_for(&self, rule: &dope_bindings::BindingRule) -> Result<dope_bindings::RepairStatus, String> {
+    pub fn repair_status_for(&self, rule: &kura_bindings::BindingRule) -> Result<kura_bindings::RepairStatus, String> {
         let mut profile_selectable = true;
         if !rule.selected_profile_id.trim().is_empty() {
             profile_selectable = self.is_profile_selectable(&rule.tenant_id, &rule.selected_profile_id)?;
@@ -394,7 +394,7 @@ impl SQLiteStore {
             workspace_selectable = self.is_workspace_selectable(&rule.tenant_id, &rule.selected_workspace_id)?;
         }
         let scope_available = self.binding_scope_available(&rule.tenant_id, &rule.scope_kind, &rule.scope_ref)?;
-        Ok(dope_bindings::repair_status_for_references(
+        Ok(kura_bindings::repair_status_for_references(
             &rule.status,
             profile_selectable,
             workspace_selectable,
@@ -408,14 +408,14 @@ impl SQLiteStore {
     pub fn binding_scope_available(
         &self,
         _tenant_id: &str,
-        kind: &dope_bindings::ScopeKind,
+        kind: &kura_bindings::ScopeKind,
         scope_ref: &str,
     ) -> Result<bool, String> {
         let scope_ref = scope_ref.trim();
         if scope_ref.is_empty() {
             return Ok(false);
         }
-        if *kind != dope_bindings::ScopeKind::INTEGRATION_ACCOUNT {
+        if *kind != kura_bindings::ScopeKind::INTEGRATION_ACCOUNT {
             return Ok(true);
         }
         let count: i64 = self
@@ -434,13 +434,13 @@ impl SQLiteStore {
     /// Go `SetCapabilityVisibility`: upsert with a stable policy id.
     pub fn set_capability_visibility(
         &self,
-        actor: &dope_identity::TenantContext,
-        req: &dope_bindings::SetVisibilityRequest,
-    ) -> Result<(dope_bindings::CapabilityVisibilityPolicy, String), String> {
+        actor: &kura_identity::TenantContext,
+        req: &kura_bindings::SetVisibilityRequest,
+    ) -> Result<(kura_bindings::CapabilityVisibilityPolicy, String), String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_bindings::BindingError::ExplicitActorRequired.to_string());
+            return Err(kura_bindings::BindingError::ExplicitActorRequired.to_string());
         }
-        dope_bindings::validate_capability_visibility_mutation(&dope_bindings::CapabilityVisibilityMutationInput {
+        kura_bindings::validate_capability_visibility_mutation(&kura_bindings::CapabilityVisibilityMutationInput {
             scope_kind: req.scope_kind.clone(),
             scope_ref: req.scope_ref.clone(),
             capability_id: req.capability_id.clone(),
@@ -449,7 +449,7 @@ impl SQLiteStore {
         .map_err(|e| e.to_string())?;
         let now = Utc::now();
         let audit_id = new_store_id("audit_binding");
-        let mut policy = dope_bindings::CapabilityVisibilityPolicy {
+        let mut policy = kura_bindings::CapabilityVisibilityPolicy {
             policy_id: new_store_id("cvp"),
             tenant_id: actor.tenant_id.clone(),
             scope_kind: req.scope_kind.clone(),
@@ -457,8 +457,8 @@ impl SQLiteStore {
             capability_id: req.capability_id.trim().to_string(),
             visibility: req.visibility.clone(),
             actor_principal_id: actor.principal_id.clone(),
-            validation_status: dope_bindings::ValidationStatus::VALID,
-            redaction_status: dope_bindings::RedactionStatus::REDACTED,
+            validation_status: kura_bindings::ValidationStatus::VALID,
+            redaction_status: kura_bindings::RedactionStatus::REDACTED,
             created_at: now,
             updated_at: now,
         };
@@ -521,7 +521,7 @@ impl SQLiteStore {
     pub fn capability_visibility_id(
         &self,
         tenant_id: &str,
-        scope_kind: &dope_bindings::VisibilityScopeKind,
+        scope_kind: &kura_bindings::VisibilityScopeKind,
         scope_ref: &str,
         capability_id: &str,
     ) -> Result<Option<String>, String> {
@@ -546,9 +546,9 @@ impl SQLiteStore {
     pub fn list_capability_visibility(
         &self,
         tenant_id: &str,
-        scope_kind: &dope_bindings::VisibilityScopeKind,
+        scope_kind: &kura_bindings::VisibilityScopeKind,
         scope_ref: &str,
-    ) -> Result<Vec<dope_bindings::CapabilityVisibilityPolicy>, String> {
+    ) -> Result<Vec<kura_bindings::CapabilityVisibilityPolicy>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -575,17 +575,17 @@ impl SQLiteStore {
         tenant_id: &str,
         profile_id: &str,
         workspace_id: &str,
-    ) -> Result<(std::collections::HashMap<String, dope_bindings::Visibility>, std::collections::HashMap<String, dope_bindings::Visibility>), String> {
+    ) -> Result<(std::collections::HashMap<String, kura_bindings::Visibility>, std::collections::HashMap<String, kura_bindings::Visibility>), String> {
         let mut profile_policies = std::collections::HashMap::new();
         let mut workspace_policies = std::collections::HashMap::new();
         if !profile_id.trim().is_empty() {
-            let items = self.list_capability_visibility(tenant_id, &dope_bindings::VisibilityScopeKind::PROFILE, profile_id)?;
+            let items = self.list_capability_visibility(tenant_id, &kura_bindings::VisibilityScopeKind::PROFILE, profile_id)?;
             for p in items {
                 profile_policies.insert(p.capability_id.clone(), p.visibility);
             }
         }
         if !workspace_id.trim().is_empty() {
-            let items = self.list_capability_visibility(tenant_id, &dope_bindings::VisibilityScopeKind::WORKSPACE, workspace_id)?;
+            let items = self.list_capability_visibility(tenant_id, &kura_bindings::VisibilityScopeKind::WORKSPACE, workspace_id)?;
             for p in items {
                 workspace_policies.insert(p.capability_id.clone(), p.visibility);
             }
@@ -600,11 +600,11 @@ impl SQLiteStore {
         profile_id: &str,
         workspace_id: &str,
         capability_id: &str,
-        limits: &[dope_bindings::ScopeVisibility],
-    ) -> Result<dope_bindings::CapabilityDecision, String> {
+        limits: &[kura_bindings::ScopeVisibility],
+    ) -> Result<kura_bindings::CapabilityDecision, String> {
         let (profile_policies, workspace_policies) =
             self.capability_visibility_for_scopes(tenant_id, profile_id, workspace_id)?;
-        Ok(dope_bindings::resolve_capability_visibility(&dope_bindings::VisibilityInput {
+        Ok(kura_bindings::resolve_capability_visibility(&kura_bindings::VisibilityInput {
             capability_id: capability_id.trim().to_string(),
             limits: limits.to_vec(),
             profile_policy: profile_policies.get(capability_id.trim()).cloned().unwrap_or_default(),
@@ -617,8 +617,8 @@ impl SQLiteStore {
     /// Go `RecordRuntimeBindingEvidence`: append-only durable evidence.
     pub fn record_runtime_binding_evidence(
         &self,
-        mut evidence: dope_bindings::RuntimeBindingEvidence,
-    ) -> Result<dope_bindings::RuntimeBindingEvidence, String> {
+        mut evidence: kura_bindings::RuntimeBindingEvidence,
+    ) -> Result<kura_bindings::RuntimeBindingEvidence, String> {
         if evidence.projection_id.trim().is_empty() {
             evidence.projection_id = new_store_id("brp");
         }
@@ -626,7 +626,7 @@ impl SQLiteStore {
             evidence.occurred_at = Utc::now();
         }
         if evidence.redaction_status.is_empty() {
-            evidence.redaction_status = dope_bindings::RedactionStatus::REDACTED;
+            evidence.redaction_status = kura_bindings::RedactionStatus::REDACTED;
         }
         let capability_summary = serde_json::to_string(&evidence.capability_visibility)
             .map_err(|e| format!("marshal capability visibility summary: {e}"))?;
@@ -669,7 +669,7 @@ impl SQLiteStore {
         resource_kind: &str,
         resource_id: &str,
         limit: i64,
-    ) -> Result<Vec<dope_bindings::RuntimeBindingEvidence>, String> {
+    ) -> Result<Vec<kura_bindings::RuntimeBindingEvidence>, String> {
         let limit = if limit <= 0 || limit > 100 { 20 } else { limit };
         let mut query = String::from("SELECT document_json FROM binding_runtime_projections WHERE tenant_id = ?1");
         let mut args: Vec<rusqlite::types::Value> = vec![tenant_id.trim().to_string().into()];
@@ -702,13 +702,13 @@ impl SQLiteStore {
         tenant_id: &str,
         resource_kind: &str,
         resource_id: &str,
-    ) -> Result<Option<dope_bindings::RuntimeBindingEvidence>, String> {
+    ) -> Result<Option<kura_bindings::RuntimeBindingEvidence>, String> {
         let items = self.list_runtime_binding_evidence(tenant_id, resource_kind, resource_id, 1)?;
         Ok(items.into_iter().next())
     }
 }
 
-fn insert_binding_rule_tx(tx: &Transaction, rule: &dope_bindings::BindingRule) -> Result<(), String> {
+fn insert_binding_rule_tx(tx: &Transaction, rule: &kura_bindings::BindingRule) -> Result<(), String> {
     let document_json = serde_json::to_string(rule).map_err(|e| format!("marshal binding rule: {e}"))?;
     tx.execute(
         r#"INSERT INTO binding_rules (
@@ -744,7 +744,7 @@ fn insert_binding_rule_tx(tx: &Transaction, rule: &dope_bindings::BindingRule) -
     Ok(())
 }
 
-fn update_binding_rule_tx(tx: &Transaction, rule: &dope_bindings::BindingRule) -> Result<(), String> {
+fn update_binding_rule_tx(tx: &Transaction, rule: &kura_bindings::BindingRule) -> Result<(), String> {
     let document_json = serde_json::to_string(rule).map_err(|e| format!("marshal binding rule: {e}"))?;
     tx.execute(
         r#"UPDATE binding_rules SET

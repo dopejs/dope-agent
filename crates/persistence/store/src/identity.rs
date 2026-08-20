@@ -17,7 +17,7 @@ fn new_tenant_audit_event_id() -> String {
     format!("audit_{}", &hex[..16])
 }
 
-fn scan_pairing(row: &Row) -> Result<dope_identity::auth::Pairing, String> {
+fn scan_pairing(row: &Row) -> Result<kura_identity::auth::Pairing, String> {
     let pairing_id: String = row.get(0).map_err(|e| e.to_string())?;
     let mode: String = row.get(1).map_err(|e| e.to_string())?;
     let label: String = row.get(2).map_err(|e| e.to_string())?;
@@ -29,7 +29,7 @@ fn scan_pairing(row: &Row) -> Result<dope_identity::auth::Pairing, String> {
     let expires_at: String = row.get(8).map_err(|e| e.to_string())?;
     let completed_at: Option<String> = row.get(9).map_err(|e| e.to_string())?;
 
-    Ok(dope_identity::auth::Pairing {
+    Ok(kura_identity::auth::Pairing {
         pairing_id,
         mode: parse_enum(&mode)?,
         label,
@@ -43,7 +43,7 @@ fn scan_pairing(row: &Row) -> Result<dope_identity::auth::Pairing, String> {
     })
 }
 
-fn scan_access_token(row: &Row) -> Result<dope_identity::auth::AccessToken, String> {
+fn scan_access_token(row: &Row) -> Result<kura_identity::auth::AccessToken, String> {
     let token_id: String = row.get(0).map_err(|e| e.to_string())?;
     let principal_id: Option<String> = row.get(1).map_err(|e| e.to_string())?;
     let label: String = row.get(2).map_err(|e| e.to_string())?;
@@ -60,7 +60,7 @@ fn scan_access_token(row: &Row) -> Result<dope_identity::auth::AccessToken, Stri
     let rotated_from_token_id: Option<String> = row.get(13).map_err(|e| e.to_string())?;
     let rotated_to_token_id: Option<String> = row.get(14).map_err(|e| e.to_string())?;
 
-    Ok(dope_identity::auth::AccessToken {
+    Ok(kura_identity::auth::AccessToken {
         token_id,
         principal_id: principal_id.unwrap_or_default(),
         label,
@@ -79,7 +79,7 @@ fn scan_access_token(row: &Row) -> Result<dope_identity::auth::AccessToken, Stri
     })
 }
 
-fn scan_tenant(row: &Row) -> Result<dope_identity::Tenant, String> {
+fn scan_tenant(row: &Row) -> Result<kura_identity::Tenant, String> {
     let tenant_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_kind: String = row.get(1).map_err(|e| e.to_string())?;
     let display_name: String = row.get(2).map_err(|e| e.to_string())?;
@@ -89,7 +89,7 @@ fn scan_tenant(row: &Row) -> Result<dope_identity::Tenant, String> {
     let created_by_principal_id: Option<String> = row.get(6).map_err(|e| e.to_string())?;
     let default_owner_principal_id: Option<String> = row.get(7).map_err(|e| e.to_string())?;
 
-    Ok(dope_identity::Tenant {
+    Ok(kura_identity::Tenant {
         tenant_id,
         tenant_kind: parse_enum(&tenant_kind)?,
         display_name,
@@ -106,7 +106,7 @@ fn scan_tenant(row: &Row) -> Result<dope_identity::Tenant, String> {
     })
 }
 
-fn scan_principal(row: &Row) -> Result<dope_identity::Principal, String> {
+fn scan_principal(row: &Row) -> Result<kura_identity::Principal, String> {
     let principal_id: String = row.get(0).map_err(|e| e.to_string())?;
     let principal_kind: String = row.get(1).map_err(|e| e.to_string())?;
     let display_name: String = row.get(2).map_err(|e| e.to_string())?;
@@ -117,7 +117,7 @@ fn scan_principal(row: &Row) -> Result<dope_identity::Principal, String> {
     let disabled_at: Option<String> = row.get(7).map_err(|e| e.to_string())?;
     let removed_at: Option<String> = row.get(8).map_err(|e| e.to_string())?;
 
-    Ok(dope_identity::Principal {
+    Ok(kura_identity::Principal {
         principal_id,
         principal_kind: parse_enum(&principal_kind)?,
         display_name,
@@ -130,7 +130,7 @@ fn scan_principal(row: &Row) -> Result<dope_identity::Principal, String> {
     })
 }
 
-fn scan_membership(row: &Row) -> Result<dope_identity::Membership, String> {
+fn scan_membership(row: &Row) -> Result<kura_identity::Membership, String> {
     let membership_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let principal_id: String = row.get(2).map_err(|e| e.to_string())?;
@@ -142,7 +142,7 @@ fn scan_membership(row: &Row) -> Result<dope_identity::Membership, String> {
     let accepted_at: Option<String> = row.get(8).map_err(|e| e.to_string())?;
     let removed_at: Option<String> = row.get(9).map_err(|e| e.to_string())?;
 
-    Ok(dope_identity::Membership {
+    Ok(kura_identity::Membership {
         membership_id,
         tenant_id,
         principal_id,
@@ -156,7 +156,7 @@ fn scan_membership(row: &Row) -> Result<dope_identity::Membership, String> {
     })
 }
 
-fn scan_tenant_invitation(row: &Row) -> Result<dope_identity::TenantInvitation, String> {
+fn scan_tenant_invitation(row: &Row) -> Result<kura_identity::TenantInvitation, String> {
     let invitation_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let invited_principal_id: String = row.get(2).map_err(|e| e.to_string())?;
@@ -168,7 +168,7 @@ fn scan_tenant_invitation(row: &Row) -> Result<dope_identity::TenantInvitation, 
     let expires_at: Option<String> = row.get(8).map_err(|e| e.to_string())?;
     let decided_at: Option<String> = row.get(9).map_err(|e| e.to_string())?;
 
-    Ok(dope_identity::TenantInvitation {
+    Ok(kura_identity::TenantInvitation {
         invitation_id,
         tenant_id,
         invited_principal_id,
@@ -182,7 +182,7 @@ fn scan_tenant_invitation(row: &Row) -> Result<dope_identity::TenantInvitation, 
     })
 }
 
-fn scan_token_tenant_grant(row: &Row) -> Result<dope_identity::TokenTenantGrant, String> {
+fn scan_token_tenant_grant(row: &Row) -> Result<kura_identity::TokenTenantGrant, String> {
     let grant_id: String = row.get(0).map_err(|e| e.to_string())?;
     let token_id: String = row.get(1).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(2).map_err(|e| e.to_string())?;
@@ -193,7 +193,7 @@ fn scan_token_tenant_grant(row: &Row) -> Result<dope_identity::TokenTenantGrant,
     let revoked_at: Option<String> = row.get(7).map_err(|e| e.to_string())?;
     let granted_by_principal_id: Option<String> = row.get(8).map_err(|e| e.to_string())?;
 
-    Ok(dope_identity::TokenTenantGrant {
+    Ok(kura_identity::TokenTenantGrant {
         grant_id,
         token_id,
         tenant_id,
@@ -206,7 +206,7 @@ fn scan_token_tenant_grant(row: &Row) -> Result<dope_identity::TokenTenantGrant,
     })
 }
 
-fn scan_tenant_audit_event(row: &Row) -> Result<dope_identity::TenantAuditEvent, String> {
+fn scan_tenant_audit_event(row: &Row) -> Result<kura_identity::TenantAuditEvent, String> {
     let audit_event_id: String = row.get(0).map_err(|e| e.to_string())?;
     let event_kind: String = row.get(1).map_err(|e| e.to_string())?;
     let tenant_id: Option<String> = row.get(2).map_err(|e| e.to_string())?;
@@ -226,7 +226,7 @@ fn scan_tenant_audit_event(row: &Row) -> Result<dope_identity::TenantAuditEvent,
         }
     };
 
-    Ok(dope_identity::TenantAuditEvent {
+    Ok(kura_identity::TenantAuditEvent {
         audit_event_id,
         event_kind,
         tenant_id: tenant_id.unwrap_or_default(),
@@ -241,7 +241,7 @@ fn scan_tenant_audit_event(row: &Row) -> Result<dope_identity::TenantAuditEvent,
 }
 
 impl SQLiteStore {
-    pub fn upsert_pairing(&self, pairing: &dope_identity::auth::Pairing) -> Result<(), String> {
+    pub fn upsert_pairing(&self, pairing: &kura_identity::auth::Pairing) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO auth_pairings (
@@ -275,7 +275,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_pairings(&self) -> Result<Vec<dope_identity::auth::Pairing>, String> {
+    pub fn list_pairings(&self) -> Result<Vec<kura_identity::auth::Pairing>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -293,7 +293,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn upsert_access_token(&self, token: &dope_identity::auth::AccessToken) -> Result<(), String> {
+    pub fn upsert_access_token(&self, token: &kura_identity::auth::AccessToken) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO auth_tokens (
@@ -338,7 +338,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_access_tokens(&self) -> Result<Vec<dope_identity::auth::AccessToken>, String> {
+    pub fn list_access_tokens(&self) -> Result<Vec<kura_identity::auth::AccessToken>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -357,17 +357,17 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn list_token_authorities(&self) -> Result<Vec<dope_identity::TokenAuthority>, String> {
+    pub fn list_token_authorities(&self) -> Result<Vec<kura_identity::TokenAuthority>, String> {
         let tokens = self.list_access_tokens()?;
         let mut items = Vec::with_capacity(tokens.len());
         for token in tokens {
             let status = match token.status {
-                dope_identity::auth::TokenStatus::Active => dope_identity::LifecycleStatus::Active,
-                dope_identity::auth::TokenStatus::Revoked => dope_identity::LifecycleStatus::Revoked,
-                dope_identity::auth::TokenStatus::Expired => dope_identity::LifecycleStatus::Expired,
-                dope_identity::auth::TokenStatus::Rotated => dope_identity::LifecycleStatus::Rotated,
+                kura_identity::auth::TokenStatus::Active => kura_identity::LifecycleStatus::Active,
+                kura_identity::auth::TokenStatus::Revoked => kura_identity::LifecycleStatus::Revoked,
+                kura_identity::auth::TokenStatus::Expired => kura_identity::LifecycleStatus::Expired,
+                kura_identity::auth::TokenStatus::Rotated => kura_identity::LifecycleStatus::Rotated,
             };
-            items.push(dope_identity::TokenAuthority {
+            items.push(kura_identity::TokenAuthority {
                 token_id: token.token_id,
                 principal_id: token.principal_id,
                 default_tenant_id: token.default_tenant_id,
@@ -378,7 +378,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn upsert_tenant(&self, tenant: &dope_identity::Tenant) -> Result<(), String> {
+    pub fn upsert_tenant(&self, tenant: &kura_identity::Tenant) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO tenants (
@@ -408,7 +408,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn get_tenant(&self, tenant_id: &str) -> Result<Option<dope_identity::Tenant>, String> {
+    pub fn get_tenant(&self, tenant_id: &str) -> Result<Option<kura_identity::Tenant>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -425,7 +425,7 @@ impl SQLiteStore {
         scan_tenant(row).map(Some)
     }
 
-    pub fn list_tenants(&self, filter: &dope_identity::TenantFilter) -> Result<Vec<dope_identity::Tenant>, String> {
+    pub fn list_tenants(&self, filter: &kura_identity::TenantFilter) -> Result<Vec<kura_identity::Tenant>, String> {
         let mut sql = String::from(
             r#"SELECT tenant_id, tenant_kind, display_name, status, created_at, updated_at,
                 created_by_principal_id, default_owner_principal_id
@@ -456,7 +456,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn upsert_principal(&self, principal: &dope_identity::Principal) -> Result<(), String> {
+    pub fn upsert_principal(&self, principal: &kura_identity::Principal) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO principals (
@@ -488,7 +488,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn get_principal(&self, principal_id: &str) -> Result<Option<dope_identity::Principal>, String> {
+    pub fn get_principal(&self, principal_id: &str) -> Result<Option<kura_identity::Principal>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -505,7 +505,7 @@ impl SQLiteStore {
         scan_principal(row).map(Some)
     }
 
-    pub fn list_principals(&self, filter: &dope_identity::PrincipalFilter) -> Result<Vec<dope_identity::Principal>, String> {
+    pub fn list_principals(&self, filter: &kura_identity::PrincipalFilter) -> Result<Vec<kura_identity::Principal>, String> {
         let mut sql = String::from(
             r#"SELECT p.principal_id, p.principal_kind, p.display_name, p.status,
                 p.default_tenant_id, p.created_at, p.updated_at, p.disabled_at, p.removed_at
@@ -539,7 +539,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn upsert_membership(&self, membership: &dope_identity::Membership) -> Result<(), String> {
+    pub fn upsert_membership(&self, membership: &kura_identity::Membership) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO memberships (
@@ -573,7 +573,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_memberships(&self, filter: &dope_identity::MembershipFilter) -> Result<Vec<dope_identity::Membership>, String> {
+    pub fn list_memberships(&self, filter: &kura_identity::MembershipFilter) -> Result<Vec<kura_identity::Membership>, String> {
         let mut sql = String::from(
             r#"SELECT membership_id, tenant_id, principal_id, role, status, invitation_id,
                 created_at, updated_at, accepted_at, removed_at
@@ -608,7 +608,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn upsert_tenant_invitation(&self, invitation: &dope_identity::TenantInvitation) -> Result<(), String> {
+    pub fn upsert_tenant_invitation(&self, invitation: &kura_identity::TenantInvitation) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO tenant_invitations (
@@ -642,7 +642,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_tenant_invitations(&self, filter: &dope_identity::InvitationFilter) -> Result<Vec<dope_identity::TenantInvitation>, String> {
+    pub fn list_tenant_invitations(&self, filter: &kura_identity::InvitationFilter) -> Result<Vec<kura_identity::TenantInvitation>, String> {
         let mut sql = String::from(
             r#"SELECT invitation_id, tenant_id, invited_principal_id, invited_by_principal_id,
                 role, status, created_at, updated_at, expires_at, decided_at
@@ -677,7 +677,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn upsert_token_tenant_grant(&self, grant: &dope_identity::TokenTenantGrant) -> Result<(), String> {
+    pub fn upsert_token_tenant_grant(&self, grant: &kura_identity::TokenTenantGrant) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO token_tenant_grants (
@@ -709,7 +709,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_token_tenant_grants(&self, token_id: &str) -> Result<Vec<dope_identity::TokenTenantGrant>, String> {
+    pub fn list_token_tenant_grants(&self, token_id: &str) -> Result<Vec<kura_identity::TokenTenantGrant>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -728,7 +728,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn append_tenant_audit_event(&self, event: &dope_identity::TenantAuditEvent) -> Result<dope_identity::TenantAuditEvent, String> {
+    pub fn append_tenant_audit_event(&self, event: &kura_identity::TenantAuditEvent) -> Result<kura_identity::TenantAuditEvent, String> {
         let mut event = event.clone();
         if event.audit_event_id.is_empty() {
             event.audit_event_id = new_tenant_audit_event_id();
@@ -767,7 +767,7 @@ impl SQLiteStore {
         Ok(event)
     }
 
-    pub fn list_tenant_audit_events(&self, filter: &dope_identity::AuditEventFilter) -> Result<Vec<dope_identity::TenantAuditEvent>, String> {
+    pub fn list_tenant_audit_events(&self, filter: &kura_identity::AuditEventFilter) -> Result<Vec<kura_identity::TenantAuditEvent>, String> {
         let mut sql = String::from(
             r#"SELECT audit_event_id, event_kind, tenant_id, principal_id, target_principal_id,
                 token_id, outcome, reason_code, created_at, document_json
@@ -811,7 +811,7 @@ impl SQLiteStore {
     }
 }
 
-// --- dope_identity::Store trait implementation -------------------------------
+// --- kura_identity::Store trait implementation -------------------------------
 //
 // The manager-facing persistence surface (rs/identity/src/manager.rs) is backed
 // by the sync DAOs above; every store failure is wrapped into
@@ -830,68 +830,68 @@ impl std::fmt::Display for IdentityStoreError {
 
 impl std::error::Error for IdentityStoreError {}
 
-fn identity_store_err(message: String) -> dope_identity::IdentityError {
-    dope_identity::IdentityError::Store(Box::new(IdentityStoreError(message)))
+fn identity_store_err(message: String) -> kura_identity::IdentityError {
+    kura_identity::IdentityError::Store(Box::new(IdentityStoreError(message)))
 }
 
-impl dope_identity::ResolverStore for SQLiteStore {
-    fn get_principal(&self, principal_id: &str) -> Result<Option<dope_identity::Principal>, dope_identity::IdentityError> {
+impl kura_identity::ResolverStore for SQLiteStore {
+    fn get_principal(&self, principal_id: &str) -> Result<Option<kura_identity::Principal>, kura_identity::IdentityError> {
         self.get_principal(principal_id).map_err(identity_store_err)
     }
 
-    fn get_tenant(&self, tenant_id: &str) -> Result<Option<dope_identity::Tenant>, dope_identity::IdentityError> {
+    fn get_tenant(&self, tenant_id: &str) -> Result<Option<kura_identity::Tenant>, kura_identity::IdentityError> {
         self.get_tenant(tenant_id).map_err(identity_store_err)
     }
 
-    fn list_memberships(&self, filter: &dope_identity::MembershipFilter) -> Result<Vec<dope_identity::Membership>, dope_identity::IdentityError> {
+    fn list_memberships(&self, filter: &kura_identity::MembershipFilter) -> Result<Vec<kura_identity::Membership>, kura_identity::IdentityError> {
         self.list_memberships(filter).map_err(identity_store_err)
     }
 
-    fn list_token_tenant_grants(&self, token_id: &str) -> Result<Vec<dope_identity::TokenTenantGrant>, dope_identity::IdentityError> {
+    fn list_token_tenant_grants(&self, token_id: &str) -> Result<Vec<kura_identity::TokenTenantGrant>, kura_identity::IdentityError> {
         self.list_token_tenant_grants(token_id).map_err(identity_store_err)
     }
 }
 
-impl dope_identity::AuditStore for SQLiteStore {
-    fn append_tenant_audit_event(&self, event: dope_identity::TenantAuditEvent) -> Result<dope_identity::TenantAuditEvent, dope_identity::IdentityError> {
+impl kura_identity::AuditStore for SQLiteStore {
+    fn append_tenant_audit_event(&self, event: kura_identity::TenantAuditEvent) -> Result<kura_identity::TenantAuditEvent, kura_identity::IdentityError> {
         self.append_tenant_audit_event(&event).map_err(identity_store_err)
     }
 }
 
-impl dope_identity::Store for SQLiteStore {
-    fn upsert_tenant(&self, tenant: &dope_identity::Tenant) -> Result<(), dope_identity::IdentityError> {
+impl kura_identity::Store for SQLiteStore {
+    fn upsert_tenant(&self, tenant: &kura_identity::Tenant) -> Result<(), kura_identity::IdentityError> {
         self.upsert_tenant(tenant).map_err(identity_store_err)
     }
 
-    fn upsert_principal(&self, principal: &dope_identity::Principal) -> Result<(), dope_identity::IdentityError> {
+    fn upsert_principal(&self, principal: &kura_identity::Principal) -> Result<(), kura_identity::IdentityError> {
         self.upsert_principal(principal).map_err(identity_store_err)
     }
 
-    fn upsert_membership(&self, membership: &dope_identity::Membership) -> Result<(), dope_identity::IdentityError> {
+    fn upsert_membership(&self, membership: &kura_identity::Membership) -> Result<(), kura_identity::IdentityError> {
         self.upsert_membership(membership).map_err(identity_store_err)
     }
 
-    fn upsert_tenant_invitation(&self, invitation: &dope_identity::TenantInvitation) -> Result<(), dope_identity::IdentityError> {
+    fn upsert_tenant_invitation(&self, invitation: &kura_identity::TenantInvitation) -> Result<(), kura_identity::IdentityError> {
         self.upsert_tenant_invitation(invitation).map_err(identity_store_err)
     }
 
-    fn upsert_token_tenant_grant(&self, grant: &dope_identity::TokenTenantGrant) -> Result<(), dope_identity::IdentityError> {
+    fn upsert_token_tenant_grant(&self, grant: &kura_identity::TokenTenantGrant) -> Result<(), kura_identity::IdentityError> {
         self.upsert_token_tenant_grant(grant).map_err(identity_store_err)
     }
 
-    fn list_tenants(&self, filter: &dope_identity::TenantFilter) -> Result<Vec<dope_identity::Tenant>, dope_identity::IdentityError> {
+    fn list_tenants(&self, filter: &kura_identity::TenantFilter) -> Result<Vec<kura_identity::Tenant>, kura_identity::IdentityError> {
         self.list_tenants(filter).map_err(identity_store_err)
     }
 
-    fn list_principals(&self, filter: &dope_identity::PrincipalFilter) -> Result<Vec<dope_identity::Principal>, dope_identity::IdentityError> {
+    fn list_principals(&self, filter: &kura_identity::PrincipalFilter) -> Result<Vec<kura_identity::Principal>, kura_identity::IdentityError> {
         self.list_principals(filter).map_err(identity_store_err)
     }
 
-    fn list_tenant_invitations(&self, filter: &dope_identity::InvitationFilter) -> Result<Vec<dope_identity::TenantInvitation>, dope_identity::IdentityError> {
+    fn list_tenant_invitations(&self, filter: &kura_identity::InvitationFilter) -> Result<Vec<kura_identity::TenantInvitation>, kura_identity::IdentityError> {
         self.list_tenant_invitations(filter).map_err(identity_store_err)
     }
 
-    fn list_token_authorities(&self) -> Result<Vec<dope_identity::TokenAuthority>, dope_identity::IdentityError> {
+    fn list_token_authorities(&self) -> Result<Vec<kura_identity::TokenAuthority>, kura_identity::IdentityError> {
         self.list_token_authorities().map_err(identity_store_err)
     }
 }

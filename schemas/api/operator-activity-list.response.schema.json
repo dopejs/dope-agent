@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/operator-activity-list.response.schema.json",
+  "$id": "https://kura.local/schemas/api/operator-activity-list.response.schema.json",
   "title": "OperatorActivityListResponse",
   "type": "object",
   "required": ["environmentScope", "items", "generatedAt"],

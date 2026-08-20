@@ -20,8 +20,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use dope_events as events;
-use dope_memory as memory;
+use kura_events as events;
+use kura_memory as memory;
 
 use crate::error::ApiError;
 use crate::middleware::{environment_scope_from_config, TenantContext};
@@ -514,7 +514,7 @@ mod tests {
 
     fn state_with_manager() -> crate::state::AppState {
         let mut state = test_state();
-        state.memory = Some(Arc::new(dope_memory::Manager::new("test", None, None, None)));
+        state.memory = Some(Arc::new(kura_memory::Manager::new("test", None, None, None)));
         state
     }
 

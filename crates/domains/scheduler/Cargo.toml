@@ -1,17 +1,17 @@
 [package]
-name = "dope-scheduler"
+name = "kura-scheduler"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-runtime.workspace = true
-dope-orchestration.workspace = true
-dope-calendar.workspace = true
-dope-mail.workspace = true
-dope-events.workspace = true
-dope-store.workspace = true
-dope-config.workspace = true
+kura-runtime.workspace = true
+kura-orchestration.workspace = true
+kura-calendar.workspace = true
+kura-mail.workspace = true
+kura-events.workspace = true
+kura-store.workspace = true
+kura-config.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true

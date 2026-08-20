@@ -60,7 +60,7 @@ introduced.
 ## Decision: Resolve Tenant Context In Protected Route Middleware
 
 After bearer authentication and token persistence, protected API routes resolve a tenant
-context from the principal default tenant or `X-Dope-Tenant-ID`. The request proceeds only
+context from the principal default tenant or `X-Kura-Tenant-ID`. The request proceeds only
 when both principal access and token grants allow the resolved tenant.
 
 **Rationale**: A single middleware boundary gives later routes one invariant: accepted

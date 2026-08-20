@@ -43,7 +43,7 @@ pub const MATRIX_DURABLE_IDENTITY_RULE: &str =
     "tenant_id + connector_id + homeserver_id + conversation_id + matrix_event_id";
 
 pub const MATRIX_SURFACE_TENANT_PROVIDED_BOT_SETUP: &str = "tenant_provided_bot_setup";
-pub const MATRIX_SURFACE_HOSTED_HOMESERVER: &str = "dopeagent_hosted_homeserver";
+pub const MATRIX_SURFACE_HOSTED_HOMESERVER: &str = "kuraagent_hosted_homeserver";
 pub const MATRIX_SURFACE_ACCOUNT_PROVISIONING: &str = "matrix_account_provisioning";
 pub const MATRIX_SURFACE_DIRECT_MESSAGE: &str = "direct_message";
 pub const MATRIX_SURFACE_ALLOWED_ROOM_MENTION: &str = "allowed_room_mention";

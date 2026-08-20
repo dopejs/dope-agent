@@ -35,7 +35,7 @@ pub struct RetrievalHit {
     pub content: String,
     /// 1-based fused rank (RRF order).
     pub rank: usize,
-    pub source_links: Vec<dope_memory::SourceLink>,
+    pub source_links: Vec<kura_memory::SourceLink>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub member_asset_ids: Vec<String>,
 }
@@ -64,32 +64,32 @@ pub async fn query(
     };
     let mut atoms = memory.list(
         &request.tenant_id,
-        Some(dope_memory::MemoryLayer::L1),
-        Some(dope_memory::AssetStatus::Ready),
+        Some(kura_memory::MemoryLayer::L1),
+        Some(kura_memory::AssetStatus::Ready),
     );
     atoms.retain(|asset| {
         matches!(
             asset.visibility,
-            dope_memory::Visibility::Private | dope_memory::Visibility::Team
+            kura_memory::Visibility::Private | kura_memory::Visibility::Team
         )
     });
     // Newest first: the corpus index doubles as the recency rank.
     atoms.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-    let docs: Vec<dope_context::RetrievalDoc> = atoms
+    let docs: Vec<kura_context::RetrievalDoc> = atoms
         .iter()
-        .map(|asset| dope_context::RetrievalDoc {
+        .map(|asset| kura_context::RetrievalDoc {
             asset_id: asset.asset_id.clone(),
             title: asset.title.clone(),
             content: asset.content.clone(),
         })
         .collect();
-    let default_embedder = dope_context::HashedNgramEmbedder::default();
-    let embedder: &dyn dope_context::Embedder = match state.embedder.as_deref() {
+    let default_embedder = kura_context::HashedNgramEmbedder::default();
+    let embedder: &dyn kura_context::Embedder = match state.embedder.as_deref() {
         Some(external) => external,
         None => &default_embedder,
     };
     let limit = if request.limit == 0 { DEFAULT_LIMIT } else { request.limit };
-    let hits = dope_context::retrieve_fused(&request.query, &docs, Some(embedder))
+    let hits = kura_context::retrieve_fused(&request.query, &docs, Some(embedder))
         .into_iter()
         .take(limit)
         .enumerate()
@@ -121,24 +121,24 @@ mod tests {
 
     use super::super::tests_support::{request_json, test_state};
 
-    fn seed_atom(manager: &dope_memory::Manager, content: &str) {
+    fn seed_atom(manager: &kura_memory::Manager, content: &str) {
         manager
-            .create(dope_memory::CreateAssetInput {
-                kind: dope_memory::AssetKind::ChatMemory,
-                layer: dope_memory::MemoryLayer::L1,
-                owner: dope_memory::Actor {
-                    kind: dope_memory::ActorKind::Operator,
+            .create(kura_memory::CreateAssetInput {
+                kind: kura_memory::AssetKind::ChatMemory,
+                layer: kura_memory::MemoryLayer::L1,
+                owner: kura_memory::Actor {
+                    kind: kura_memory::ActorKind::Operator,
                     id: "op".to_string(),
                 },
-                visibility: dope_memory::Visibility::Private,
-                atom_type: Some(dope_memory::AtomType::Fact),
+                visibility: kura_memory::Visibility::Private,
+                atom_type: Some(kura_memory::AtomType::Fact),
                 content: content.to_string(),
-                source_links: vec![dope_memory::SourceLink {
-                    kind: dope_memory::SourceKind::Thread,
+                source_links: vec![kura_memory::SourceLink {
+                    kind: kura_memory::SourceKind::Thread,
                     id: "thr_1".to_string(),
-                    ..dope_memory::SourceLink::default()
+                    ..kura_memory::SourceLink::default()
                 }],
-                ..dope_memory::CreateAssetInput::default()
+                ..kura_memory::CreateAssetInput::default()
             })
             .expect("seed atom");
     }
@@ -146,7 +146,7 @@ mod tests {
     #[tokio::test]
     async fn query_returns_cited_hits_and_validates_input() {
         let mut state = test_state();
-        let manager = Arc::new(dope_memory::Manager::new("test", None, None, None));
+        let manager = Arc::new(kura_memory::Manager::new("test", None, None, None));
         seed_atom(&manager, "pnpm is the package manager for web projects");
         seed_atom(&manager, "lunch happens at noon");
         state.memory = Some(manager);

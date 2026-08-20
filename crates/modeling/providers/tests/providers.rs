@@ -2,11 +2,11 @@
 
 use std::sync::Arc;
 
-use dope_config::LlmConfig;
-use dope_llm::{Dispatcher, EchoProvider};
-use dope_providers::{new_check_id, new_manager};
+use kura_config::LlmConfig;
+use kura_llm::{Dispatcher, EchoProvider};
+use kura_providers::{new_check_id, new_manager};
 
-fn manager_with_echo() -> dope_providers::Manager {
+fn manager_with_echo() -> kura_providers::Manager {
     let dispatcher = Arc::new(Dispatcher::new());
     dispatcher.register_provider(Arc::new(EchoProvider::new()));
     new_manager(LlmConfig::default(), Some(dispatcher), vec![])

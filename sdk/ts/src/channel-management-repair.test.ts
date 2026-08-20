@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDopeClient } from "./index.js";
+import { createKuraClient } from "./index.js";
 
 function response(payload: unknown): Response {
   return new Response(JSON.stringify(payload), { status: 202, headers: { "Content-Type": "application/json" } });
@@ -9,7 +9,7 @@ function response(payload: unknown): Response {
 describe("channel management repair SDK", () => {
   it("normalizes repair, reconnect, and credential rotation action kinds", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(response({ repairActionId: "repair_1" })));
-    const client = createDopeClient({ baseURL: "http://127.0.0.1:19192", fetchImpl });
+    const client = createKuraClient({ baseURL: "http://127.0.0.1:19192", fetchImpl });
 
     await client.startChannelConnectorRepair("slack-main");
     await client.reconnectChannelConnector("slack-main");

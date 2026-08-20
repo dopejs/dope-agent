@@ -602,1192 +602,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dope-activation"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-billing",
- "dope-chat",
- "dope-identity",
- "dope-llm",
- "dope-store",
- "futures",
- "parking_lot",
- "rusqlite",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "dope-adapterprovider"
-version = "0.2.3"
-dependencies = [
- "dope-adapterrpc",
- "serde_json",
-]
-
-[[package]]
-name = "dope-adapterref"
-version = "0.2.3"
-dependencies = [
- "dope-adapterrpc",
- "serde_json",
-]
-
-[[package]]
-name = "dope-adapterrpc"
-version = "0.2.3"
-dependencies = [
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-api"
-version = "0.2.3"
-dependencies = [
- "axum",
- "chrono",
- "dope-activation",
- "dope-audit",
- "dope-billing",
- "dope-bindings",
- "dope-calendar",
- "dope-capabilities",
- "dope-catalog",
- "dope-chat",
- "dope-checkpoints",
- "dope-computeruse",
- "dope-config",
- "dope-connectors",
- "dope-context",
- "dope-delivery",
- "dope-evaluation",
- "dope-events",
- "dope-evidence",
- "dope-execprofile",
- "dope-identity",
- "dope-improvement",
- "dope-imtypes",
- "dope-integrations",
- "dope-livevalidation",
- "dope-llm",
- "dope-mail",
- "dope-mcp",
- "dope-memory",
- "dope-opsreadiness",
- "dope-orchestration",
- "dope-plugin",
- "dope-policy",
- "dope-profiles",
- "dope-providers",
- "dope-reminders",
- "dope-router",
- "dope-routine",
- "dope-runtime",
- "dope-sandbox",
- "dope-scheduler",
- "dope-secrets",
- "dope-setupwizard",
- "dope-skills",
- "dope-store",
- "dope-threads",
- "dope-triage",
- "dope-webhook",
- "futures",
- "hyper",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tokio-stream",
- "tower",
- "tower-http",
- "uuid",
-]
-
-[[package]]
-name = "dope-app"
-version = "0.2.3"
-dependencies = [
- "axum",
- "chrono",
- "dope-activation",
- "dope-api",
- "dope-audit",
- "dope-billing",
- "dope-calendar",
- "dope-capabilities",
- "dope-catalog",
- "dope-chat",
- "dope-checkpoints",
- "dope-computeruse",
- "dope-config",
- "dope-connectors",
- "dope-context",
- "dope-delivery",
- "dope-discord",
- "dope-evaluation",
- "dope-events",
- "dope-evidence",
- "dope-execprofile",
- "dope-identity",
- "dope-im",
- "dope-improvement",
- "dope-imtypes",
- "dope-integrations",
- "dope-livevalidation",
- "dope-llm",
- "dope-mail",
- "dope-managedproviders",
- "dope-matrix",
- "dope-mcp",
- "dope-memory",
- "dope-plugin",
- "dope-policy",
- "dope-providers",
- "dope-reminders",
- "dope-router",
- "dope-routine",
- "dope-runtime",
- "dope-sandbox",
- "dope-scheduler",
- "dope-secrets",
- "dope-session",
- "dope-setupwizard",
- "dope-skills",
- "dope-slack",
- "dope-store",
- "dope-telegram",
- "dope-telemetry",
- "dope-triage",
- "dope-webhook",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tower",
- "uuid",
-]
-
-[[package]]
-name = "dope-artifacts"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-computeruse",
- "sha2",
-]
-
-[[package]]
-name = "dope-audit"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-billing",
- "dope-events",
- "dope-identity",
- "dope-integrations",
- "dope-secrets",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-billing"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
-name = "dope-bindings"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-calendar"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-adapterrpc",
- "dope-integrations",
- "dope-livevalidation",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-capabilities"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-adapterref",
- "dope-adapterrpc",
- "parking_lot",
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-catalog"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-store",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-chat"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-bindings",
- "dope-config",
- "dope-events",
- "dope-llm",
- "dope-plugin",
- "dope-profiles",
- "dope-providers",
- "dope-setupwizard",
- "dope-skills",
- "dope-store",
- "dope-threads",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "dope-checkpoints"
-version = "0.2.3"
-dependencies = [
- "dope-runtime",
- "dope-store",
- "parking_lot",
-]
-
-[[package]]
-name = "dope-cli"
-version = "0.2.3"
-dependencies = [
- "axum",
- "clap",
- "dope-app",
- "dope-config",
- "serde_json",
- "tokio",
- "ureq",
-]
-
-[[package]]
-name = "dope-computeruse"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-policy",
- "dope-runtime",
- "dope-store",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "dope-config"
-version = "0.2.3"
-dependencies = [
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-connectors"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-livevalidation",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-context"
-version = "0.2.3"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "dope-contracts"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-plugin",
- "parking_lot",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-core"
-version = "0.2.3"
-dependencies = [
- "dope-model-provider",
- "dope-protocol",
- "futures",
- "parking_lot",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
-name = "dope-delivery"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-calendar",
- "dope-events",
- "dope-imtypes",
- "dope-integrations",
- "dope-livevalidation",
- "dope-mail",
- "dope-runtime",
- "dope-store",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-discord"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-chat",
- "dope-checkpoints",
- "dope-connectors",
- "dope-events",
- "dope-im",
- "dope-imtypes",
- "dope-llm",
- "dope-router",
- "dope-runtime",
- "dope-store",
- "dope-telemetry",
- "futures",
- "futures-util",
- "parking_lot",
- "rustls 0.22.4",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "tokio-tungstenite",
- "ureq",
- "uuid",
-]
-
-[[package]]
-name = "dope-evaluation"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-billing",
- "dope-identity",
- "dope-livevalidation",
- "dope-orchestration",
- "dope-runtime",
- "dope-store",
- "parking_lot",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "dope-events"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-billing",
- "dope-bindings",
- "dope-evaluation",
- "dope-integrations",
- "dope-livevalidation",
- "dope-opsreadiness",
- "dope-profiles",
- "dope-threads",
- "parking_lot",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "dope-evidence"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-routine",
- "dope-store",
- "parking_lot",
- "regex",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-execprofile"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-config",
- "dope-events",
- "dope-policy",
- "dope-sandbox",
- "dope-store",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-feishulark"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-adapterprovider",
- "dope-adapterrpc",
- "dope-calendar",
- "dope-integrations",
- "dope-mail",
- "serde",
- "serde_json",
- "ureq",
-]
-
-[[package]]
-name = "dope-identity"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "hex",
- "parking_lot",
- "rand 0.10.2",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
-name = "dope-im"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-chat",
- "dope-checkpoints",
- "dope-connectors",
- "dope-events",
- "dope-imtypes",
- "dope-llm",
- "dope-router",
- "dope-runtime",
- "dope-store",
- "dope-threads",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-improvement"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "parking_lot",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "dope-imtypes"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-router",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "dope-integrations"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-livevalidation",
- "dope-setupwizard",
- "parking_lot",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-inventory"
-version = "0.2.3"
-dependencies = [
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-livevalidation"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-billing",
- "dope-identity",
- "parking_lot",
- "serde",
- "thiserror 2.0.20",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "dope-llm"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "dope-mail"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-adapterrpc",
- "dope-integrations",
- "dope-livevalidation",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-managedproviders"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-config",
- "dope-llm",
- "dope-providers",
- "dope-sandbox",
- "dope-setupwizard",
- "dope-store",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "dope-matrix"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-chat",
- "dope-checkpoints",
- "dope-connectors",
- "dope-events",
- "dope-im",
- "dope-imtypes",
- "dope-llm",
- "dope-router",
- "dope-runtime",
- "dope-store",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "ureq",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "dope-mcp"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-config",
- "dope-events",
- "dope-livevalidation",
- "dope-policy",
- "dope-sandbox",
- "dope-store",
- "futures-util",
- "http",
- "parking_lot",
- "rustls 0.22.4",
- "serde",
- "serde_json",
- "sha1",
- "sha2",
- "thiserror 2.0.20",
- "tokio",
- "tokio-tungstenite",
- "ureq",
- "url",
-]
-
-[[package]]
-name = "dope-memory"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-migrationfixture"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-connectors",
- "dope-integrations",
- "dope-providers",
- "dope-store",
- "rusqlite",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "dope-model-provider"
-version = "0.2.3"
-dependencies = [
- "async-stream",
- "bytes",
- "dope-protocol",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-opsreadiness"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-integrations",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "dope-orchestration"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-calendar",
- "dope-capabilities",
- "dope-computeruse",
- "dope-config",
- "dope-integrations",
- "dope-mail",
- "dope-profiles",
- "dope-runtime",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-plugin"
-version = "0.2.3"
-dependencies = [
- "parking_lot",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "dope-policy"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-integrations",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-profiles"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-protocol"
-version = "0.2.3"
-dependencies = [
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "dope-providers"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-config",
- "dope-llm",
- "dope-setupwizard",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
-name = "dope-reminders"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-calendar",
- "dope-delivery",
- "dope-events",
- "dope-identity",
- "dope-integrations",
- "dope-livevalidation",
- "dope-mail",
- "dope-migrationfixture",
- "dope-router",
- "dope-runtime",
- "dope-scheduler",
- "dope-store",
- "parking_lot",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-router"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-routine"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-store",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-runtime"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-calendar",
- "dope-integrations",
- "dope-livevalidation",
- "dope-mail",
- "dope-profiles",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-sandbox"
-version = "0.2.3"
-dependencies = [
- "base64",
- "chrono",
- "dope-audit",
- "dope-config",
- "dope-events",
- "dope-identity",
- "dope-policy",
- "dope-secrets",
- "dope-store",
- "futures",
- "libc",
- "md-5",
- "parking_lot",
- "serde",
- "serde_json",
- "sha1",
- "sha2",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-scheduler"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "chrono-tz",
- "dope-calendar",
- "dope-config",
- "dope-events",
- "dope-mail",
- "dope-orchestration",
- "dope-runtime",
- "dope-store",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-secrets"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "dope-session"
-version = "0.2.3"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "dope-setupwizard"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-identity",
- "dope-secrets",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
-name = "dope-skills"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-identity",
- "dope-sandbox",
- "dope-secrets",
- "parking_lot",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
-name = "dope-slack"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-chat",
- "dope-checkpoints",
- "dope-connectors",
- "dope-events",
- "dope-im",
- "dope-imtypes",
- "dope-llm",
- "dope-router",
- "dope-runtime",
- "dope-secrets",
- "dope-store",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "ureq",
- "uuid",
-]
-
-[[package]]
-name = "dope-store"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-billing",
- "dope-bindings",
- "dope-calendar",
- "dope-capabilities",
- "dope-computeruse",
- "dope-connectors",
- "dope-evaluation",
- "dope-events",
- "dope-identity",
- "dope-imtypes",
- "dope-integrations",
- "dope-livevalidation",
- "dope-llm",
- "dope-mail",
- "dope-memory",
- "dope-orchestration",
- "dope-policy",
- "dope-profiles",
- "dope-providers",
- "dope-router",
- "dope-runtime",
- "dope-secrets",
- "dope-setupwizard",
- "dope-threads",
- "parking_lot",
- "rusqlite",
- "serde",
- "serde_json",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "dope-telegram"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-chat",
- "dope-checkpoints",
- "dope-connectors",
- "dope-events",
- "dope-im",
- "dope-imtypes",
- "dope-llm",
- "dope-router",
- "dope-runtime",
- "dope-secrets",
- "dope-store",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "ureq",
- "uuid",
-]
-
-[[package]]
-name = "dope-telemetry"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "parking_lot",
-]
-
-[[package]]
-name = "dope-tenancy"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-audit",
- "dope-bindings",
- "dope-calendar",
- "dope-computeruse",
- "dope-connectors",
- "dope-delivery",
- "dope-evaluation",
- "dope-events",
- "dope-identity",
- "dope-integrations",
- "dope-llm",
- "dope-mail",
- "dope-orchestration",
- "dope-policy",
- "dope-profiles",
- "dope-providers",
- "dope-router",
- "dope-runtime",
- "dope-store",
- "dope-threads",
-]
-
-[[package]]
-name = "dope-threads"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-profiles",
- "regex",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "dope-triage"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-store",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
-name = "dope-tui"
-version = "0.2.3"
-dependencies = [
- "clap",
- "crossterm",
- "futures",
- "ratatui",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "dope-webhook"
-version = "0.2.3"
-dependencies = [
- "chrono",
- "dope-store",
- "parking_lot",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
 name = "either"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2401,6 +1215,1192 @@ dependencies = [
  "hashbrown 0.16.1",
  "portable-atomic",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-activation"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures",
+ "kura-billing",
+ "kura-chat",
+ "kura-identity",
+ "kura-llm",
+ "kura-store",
+ "parking_lot",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "kura-adapterprovider"
+version = "0.2.4"
+dependencies = [
+ "kura-adapterrpc",
+ "serde_json",
+]
+
+[[package]]
+name = "kura-adapterref"
+version = "0.2.4"
+dependencies = [
+ "kura-adapterrpc",
+ "serde_json",
+]
+
+[[package]]
+name = "kura-adapterrpc"
+version = "0.2.4"
+dependencies = [
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-api"
+version = "0.2.4"
+dependencies = [
+ "axum",
+ "chrono",
+ "futures",
+ "hyper",
+ "kura-activation",
+ "kura-audit",
+ "kura-billing",
+ "kura-bindings",
+ "kura-calendar",
+ "kura-capabilities",
+ "kura-catalog",
+ "kura-chat",
+ "kura-checkpoints",
+ "kura-computeruse",
+ "kura-config",
+ "kura-connectors",
+ "kura-context",
+ "kura-delivery",
+ "kura-evaluation",
+ "kura-events",
+ "kura-evidence",
+ "kura-execprofile",
+ "kura-identity",
+ "kura-improvement",
+ "kura-imtypes",
+ "kura-integrations",
+ "kura-livevalidation",
+ "kura-llm",
+ "kura-mail",
+ "kura-mcp",
+ "kura-memory",
+ "kura-opsreadiness",
+ "kura-orchestration",
+ "kura-plugin",
+ "kura-policy",
+ "kura-profiles",
+ "kura-providers",
+ "kura-reminders",
+ "kura-router",
+ "kura-routine",
+ "kura-runtime",
+ "kura-sandbox",
+ "kura-scheduler",
+ "kura-secrets",
+ "kura-setupwizard",
+ "kura-skills",
+ "kura-store",
+ "kura-threads",
+ "kura-triage",
+ "kura-webhook",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-stream",
+ "tower",
+ "tower-http",
+ "uuid",
+]
+
+[[package]]
+name = "kura-app"
+version = "0.2.4"
+dependencies = [
+ "axum",
+ "chrono",
+ "futures",
+ "kura-activation",
+ "kura-api",
+ "kura-audit",
+ "kura-billing",
+ "kura-calendar",
+ "kura-capabilities",
+ "kura-catalog",
+ "kura-chat",
+ "kura-checkpoints",
+ "kura-computeruse",
+ "kura-config",
+ "kura-connectors",
+ "kura-context",
+ "kura-delivery",
+ "kura-discord",
+ "kura-evaluation",
+ "kura-events",
+ "kura-evidence",
+ "kura-execprofile",
+ "kura-identity",
+ "kura-im",
+ "kura-improvement",
+ "kura-imtypes",
+ "kura-integrations",
+ "kura-livevalidation",
+ "kura-llm",
+ "kura-mail",
+ "kura-managedproviders",
+ "kura-matrix",
+ "kura-mcp",
+ "kura-memory",
+ "kura-plugin",
+ "kura-policy",
+ "kura-providers",
+ "kura-reminders",
+ "kura-router",
+ "kura-routine",
+ "kura-runtime",
+ "kura-sandbox",
+ "kura-scheduler",
+ "kura-secrets",
+ "kura-session",
+ "kura-setupwizard",
+ "kura-skills",
+ "kura-slack",
+ "kura-store",
+ "kura-telegram",
+ "kura-telemetry",
+ "kura-triage",
+ "kura-webhook",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tower",
+ "uuid",
+]
+
+[[package]]
+name = "kura-artifacts"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-computeruse",
+ "sha2",
+]
+
+[[package]]
+name = "kura-audit"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-billing",
+ "kura-events",
+ "kura-identity",
+ "kura-integrations",
+ "kura-secrets",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-billing"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
+name = "kura-bindings"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-calendar"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-adapterrpc",
+ "kura-integrations",
+ "kura-livevalidation",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-capabilities"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-adapterref",
+ "kura-adapterrpc",
+ "parking_lot",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-catalog"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-chat"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures",
+ "kura-bindings",
+ "kura-config",
+ "kura-events",
+ "kura-llm",
+ "kura-plugin",
+ "kura-profiles",
+ "kura-providers",
+ "kura-setupwizard",
+ "kura-skills",
+ "kura-store",
+ "kura-threads",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "kura-checkpoints"
+version = "0.2.4"
+dependencies = [
+ "kura-runtime",
+ "kura-store",
+ "parking_lot",
+]
+
+[[package]]
+name = "kura-cli"
+version = "0.2.4"
+dependencies = [
+ "axum",
+ "clap",
+ "kura-app",
+ "kura-config",
+ "serde_json",
+ "tokio",
+ "ureq",
+]
+
+[[package]]
+name = "kura-computeruse"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-policy",
+ "kura-runtime",
+ "kura-store",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "kura-config"
+version = "0.2.4"
+dependencies = [
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-connectors"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-livevalidation",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-context"
+version = "0.2.4"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "kura-contracts"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-plugin",
+ "parking_lot",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-core"
+version = "0.2.4"
+dependencies = [
+ "futures",
+ "kura-model-provider",
+ "kura-protocol",
+ "parking_lot",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
+name = "kura-delivery"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-calendar",
+ "kura-events",
+ "kura-imtypes",
+ "kura-integrations",
+ "kura-livevalidation",
+ "kura-mail",
+ "kura-runtime",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-discord"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures",
+ "futures-util",
+ "kura-chat",
+ "kura-checkpoints",
+ "kura-connectors",
+ "kura-events",
+ "kura-im",
+ "kura-imtypes",
+ "kura-llm",
+ "kura-router",
+ "kura-runtime",
+ "kura-store",
+ "kura-telemetry",
+ "parking_lot",
+ "rustls 0.22.4",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-tungstenite",
+ "ureq",
+ "uuid",
+]
+
+[[package]]
+name = "kura-evaluation"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-billing",
+ "kura-identity",
+ "kura-livevalidation",
+ "kura-orchestration",
+ "kura-runtime",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "kura-events"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-billing",
+ "kura-bindings",
+ "kura-evaluation",
+ "kura-integrations",
+ "kura-livevalidation",
+ "kura-opsreadiness",
+ "kura-profiles",
+ "kura-threads",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "kura-evidence"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-routine",
+ "kura-store",
+ "parking_lot",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-execprofile"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-config",
+ "kura-events",
+ "kura-policy",
+ "kura-sandbox",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-feishulark"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-adapterprovider",
+ "kura-adapterrpc",
+ "kura-calendar",
+ "kura-integrations",
+ "kura-mail",
+ "serde",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
+name = "kura-identity"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "hex",
+ "parking_lot",
+ "rand 0.10.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
+name = "kura-im"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures",
+ "kura-chat",
+ "kura-checkpoints",
+ "kura-connectors",
+ "kura-events",
+ "kura-imtypes",
+ "kura-llm",
+ "kura-router",
+ "kura-runtime",
+ "kura-store",
+ "kura-threads",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-improvement"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "kura-imtypes"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-router",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "kura-integrations"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-livevalidation",
+ "kura-setupwizard",
+ "parking_lot",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-inventory"
+version = "0.2.4"
+dependencies = [
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-livevalidation"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-billing",
+ "kura-identity",
+ "parking_lot",
+ "serde",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "kura-llm"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "kura-mail"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-adapterrpc",
+ "kura-integrations",
+ "kura-livevalidation",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-managedproviders"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures",
+ "kura-config",
+ "kura-llm",
+ "kura-providers",
+ "kura-sandbox",
+ "kura-setupwizard",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "kura-matrix"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures",
+ "kura-chat",
+ "kura-checkpoints",
+ "kura-connectors",
+ "kura-events",
+ "kura-im",
+ "kura-imtypes",
+ "kura-llm",
+ "kura-router",
+ "kura-runtime",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "ureq",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "kura-mcp"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures-util",
+ "http",
+ "kura-config",
+ "kura-events",
+ "kura-livevalidation",
+ "kura-policy",
+ "kura-sandbox",
+ "kura-store",
+ "parking_lot",
+ "rustls 0.22.4",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-tungstenite",
+ "ureq",
+ "url",
+]
+
+[[package]]
+name = "kura-memory"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-migrationfixture"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-connectors",
+ "kura-integrations",
+ "kura-providers",
+ "kura-store",
+ "rusqlite",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "kura-model-provider"
+version = "0.2.4"
+dependencies = [
+ "async-stream",
+ "bytes",
+ "futures",
+ "kura-protocol",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-opsreadiness"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-integrations",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "kura-orchestration"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-calendar",
+ "kura-capabilities",
+ "kura-computeruse",
+ "kura-config",
+ "kura-integrations",
+ "kura-mail",
+ "kura-profiles",
+ "kura-runtime",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-plugin"
+version = "0.2.4"
+dependencies = [
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "kura-policy"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-integrations",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-profiles"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-protocol"
+version = "0.2.4"
+dependencies = [
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "kura-providers"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures",
+ "kura-config",
+ "kura-llm",
+ "kura-setupwizard",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
+name = "kura-reminders"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-calendar",
+ "kura-delivery",
+ "kura-events",
+ "kura-identity",
+ "kura-integrations",
+ "kura-livevalidation",
+ "kura-mail",
+ "kura-migrationfixture",
+ "kura-router",
+ "kura-runtime",
+ "kura-scheduler",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-router"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-routine"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-runtime"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-calendar",
+ "kura-integrations",
+ "kura-livevalidation",
+ "kura-mail",
+ "kura-profiles",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-sandbox"
+version = "0.2.4"
+dependencies = [
+ "base64",
+ "chrono",
+ "futures",
+ "kura-audit",
+ "kura-config",
+ "kura-events",
+ "kura-identity",
+ "kura-policy",
+ "kura-secrets",
+ "kura-store",
+ "libc",
+ "md-5",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-scheduler"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "kura-calendar",
+ "kura-config",
+ "kura-events",
+ "kura-mail",
+ "kura-orchestration",
+ "kura-runtime",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-secrets"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "kura-session"
+version = "0.2.4"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "kura-setupwizard"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures",
+ "kura-identity",
+ "kura-secrets",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
+name = "kura-skills"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-identity",
+ "kura-sandbox",
+ "kura-secrets",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
+name = "kura-slack"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures",
+ "kura-chat",
+ "kura-checkpoints",
+ "kura-connectors",
+ "kura-events",
+ "kura-im",
+ "kura-imtypes",
+ "kura-llm",
+ "kura-router",
+ "kura-runtime",
+ "kura-secrets",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "ureq",
+ "uuid",
+]
+
+[[package]]
+name = "kura-store"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-billing",
+ "kura-bindings",
+ "kura-calendar",
+ "kura-capabilities",
+ "kura-computeruse",
+ "kura-connectors",
+ "kura-evaluation",
+ "kura-events",
+ "kura-identity",
+ "kura-imtypes",
+ "kura-integrations",
+ "kura-livevalidation",
+ "kura-llm",
+ "kura-mail",
+ "kura-memory",
+ "kura-orchestration",
+ "kura-policy",
+ "kura-profiles",
+ "kura-providers",
+ "kura-router",
+ "kura-runtime",
+ "kura-secrets",
+ "kura-setupwizard",
+ "kura-threads",
+ "parking_lot",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "kura-telegram"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "futures",
+ "kura-chat",
+ "kura-checkpoints",
+ "kura-connectors",
+ "kura-events",
+ "kura-im",
+ "kura-imtypes",
+ "kura-llm",
+ "kura-router",
+ "kura-runtime",
+ "kura-secrets",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "ureq",
+ "uuid",
+]
+
+[[package]]
+name = "kura-telemetry"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "parking_lot",
+]
+
+[[package]]
+name = "kura-tenancy"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-audit",
+ "kura-bindings",
+ "kura-calendar",
+ "kura-computeruse",
+ "kura-connectors",
+ "kura-delivery",
+ "kura-evaluation",
+ "kura-events",
+ "kura-identity",
+ "kura-integrations",
+ "kura-llm",
+ "kura-mail",
+ "kura-orchestration",
+ "kura-policy",
+ "kura-profiles",
+ "kura-providers",
+ "kura-router",
+ "kura-runtime",
+ "kura-store",
+ "kura-threads",
+]
+
+[[package]]
+name = "kura-threads"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-profiles",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "kura-triage"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
+name = "kura-tui"
+version = "0.2.4"
+dependencies = [
+ "clap",
+ "crossterm",
+ "futures",
+ "ratatui",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "kura-webhook"
+version = "0.2.4"
+dependencies = [
+ "chrono",
+ "kura-store",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+ "uuid",
 ]
 
 [[package]]

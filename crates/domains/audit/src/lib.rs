@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use dope_events::{Bus, Event, Resource};
+use kura_events::{Bus, Event, Resource};
 mod builders;
 
 pub use builders::{
@@ -15,7 +15,7 @@ pub use builders::{
     BillingAuditInput, CredentialAuditInput, IntegrationDiagnosticAuditInput,
 };
 
-use dope_identity::tenantctx;
+use kura_identity::tenantctx;
 use thiserror::Error;
 
 /// Stable structured log code emitted alongside the cross-tenant denial event.

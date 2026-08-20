@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_config::LlmConfig;
-use dope_llm::{CancelToken, CreateDispatchInput, Dispatcher, Message, MessageRole, PrepareError};
-use dope_setupwizard::{Service, ServiceDependencies, SetupSession, new_service};
+use kura_config::LlmConfig;
+use kura_llm::{CancelToken, CreateDispatchInput, Dispatcher, Message, MessageRole, PrepareError};
+use kura_setupwizard::{Service, ServiceDependencies, SetupSession, new_service};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
@@ -41,7 +41,7 @@ pub struct Check {
     pub error_code: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub error_message: String,
-    pub usage: dope_llm::Usage,
+    pub usage: kura_llm::Usage,
     pub created_at: chrono::DateTime<Utc>,
     pub completed_at: chrono::DateTime<Utc>,
 }
@@ -501,7 +501,7 @@ impl Manager {
 
     // -- setup gate -----------------------------------------------------------
 
-    pub fn setup_dependent_use_decision(&self, session: &SetupSession, capability: &str) -> dope_setupwizard::DependentUseDecision {
+    pub fn setup_dependent_use_decision(&self, session: &SetupSession, capability: &str) -> kura_setupwizard::DependentUseDecision {
         let service: Service = new_service(ServiceDependencies::default());
         service.dependent_use_decision(session, capability)
     }
@@ -514,9 +514,9 @@ impl Manager {
         max_retries: i64,
         session: &SetupSession,
         capability: &str,
-    ) -> Result<(ResolvedDispatch, dope_setupwizard::DependentUseDecision), ProvidersError> {
+    ) -> Result<(ResolvedDispatch, kura_setupwizard::DependentUseDecision), ProvidersError> {
         let decision = self.setup_dependent_use_decision(session, capability);
-        if decision.safe_use_mode == dope_setupwizard::SafeUseMode::Blocked {
+        if decision.safe_use_mode == kura_setupwizard::SafeUseMode::Blocked {
             let effective_provider = if provider_id.trim().is_empty() {
                 self.default_provider_id()
             } else {

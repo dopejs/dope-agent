@@ -32,12 +32,12 @@ struct Cli {
     /// Daemon base URL.
     #[arg(
         long,
-        env = "DOPE_DAEMON_URL",
+        env = "KURA_DAEMON_URL",
         default_value = "http://127.0.0.1:19192"
     )]
     daemon_url: String,
     /// Access token for daemon auth.
-    #[arg(long, env = "DOPE_ACCESS_TOKEN")]
+    #[arg(long, env = "KURA_ACCESS_TOKEN")]
     token: Option<String>,
     /// Optional provider override.
     #[arg(long)]

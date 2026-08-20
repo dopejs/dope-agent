@@ -19,8 +19,8 @@ Non-live replay remains the default.
 6. Inspect gate status from the shell or with:
 
    ```bash
-   curl -H "Authorization: Bearer $DOPE_TOKEN" \
-     -H "X-Dope-Tenant-ID: $DOPE_TENANT_ID" \
+   curl -H "Authorization: Bearer $KURA_TOKEN" \
+     -H "X-Kura-Tenant-ID: $KURA_TENANT_ID" \
      http://127.0.0.1:19192/v1/live-validations
    ```
 

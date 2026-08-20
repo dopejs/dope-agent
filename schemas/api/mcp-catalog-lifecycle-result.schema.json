@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/mcp-catalog-lifecycle-result.schema.json",
+  "$id": "https://kura.local/schemas/api/mcp-catalog-lifecycle-result.schema.json",
   "title": "MCPCatalogLifecycleResult",
   "type": "object",
   "required": ["actionId", "action", "status", "serverId", "auditEventIds"],

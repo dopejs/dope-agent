@@ -19,12 +19,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use dope_events::{Bus, Event, Resource, Scope};
-use dope_store::delivery::{
+use kura_events::{Bus, Event, Resource, Scope};
+use kura_store::delivery::{
     DeliveryAttemptRecord, DeliveryOutcomeFilter, DeliveryOutcomeRecord,
     DeliveryPreferenceRecord, DeliverySummaryWindowRecord, DeliveryTargetRecord,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 use parking_lot::Mutex;
 use serde_json::{json, Map, Value};
 

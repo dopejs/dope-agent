@@ -323,4 +323,4 @@ Roadmap 57 is not complete until all five user stories, contracts, schemas, migr
 - `[US#]` labels map tasks to user stories in [spec.md](./spec.md).
 - Every production behavior task includes or depends on targeted tests.
 - Keep changes additive and rollback-safe; do not hard-delete profile evidence or rewrite historical runtime records.
-- Default all local validation to `~/.dope-test`; do not use live connectors or production tenants for this roadmap.
+- Default all local validation to `~/.kura-test`; do not use live connectors or production tenants for this roadmap.

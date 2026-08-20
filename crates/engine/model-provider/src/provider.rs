@@ -1,4 +1,4 @@
-use dope_protocol::ResponseItem;
+use kura_protocol::ResponseItem;
 use futures::stream::BoxStream;
 use serde::Deserialize;
 use serde::Serialize;

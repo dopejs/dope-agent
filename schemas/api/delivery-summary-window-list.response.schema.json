@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/delivery-summary-window-list.response.schema.json",
+  "$id": "https://kura.local/schemas/api/delivery-summary-window-list.response.schema.json",
   "title": "DeliverySummaryWindowListResponse",
   "type": "object",
   "required": ["items"],

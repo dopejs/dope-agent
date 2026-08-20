@@ -83,7 +83,7 @@ workflow on top of existing identity primitives.
 - API, SDK, and web tests for first-run activation states.
 - Tenant isolation tests for activation projections.
 - Restart test proving activation state survives daemon restart.
-- Manual `DOPE_ENV=test` walkthrough from no active setup to first useful action.
+- Manual `KURA_ENV=test` walkthrough from no active setup to first useful action.
 
 ## Definition Of Done
 

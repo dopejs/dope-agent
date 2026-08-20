@@ -4,7 +4,7 @@
 
 The TypeScript SDK is the only tenant transport abstraction used by browser and automated
 callers. Callers can configure a default tenant and override the tenant for one request
-without constructing `X-Dope-Tenant-ID` manually.
+without constructing `X-Kura-Tenant-ID` manually.
 
 ## Public Types
 
@@ -13,7 +13,7 @@ export type TenantRequestOptions = {
   tenantId?: string;
 };
 
-export type DopeClientOptions = {
+export type KuraClientOptions = {
   baseURL: string;
   accessToken?: string;
   fetchImpl?: typeof fetch;
@@ -35,10 +35,10 @@ contracts:
 ## Header Propagation
 
 - If `TenantRequestOptions.tenantId` is present and non-empty, the SDK sends
-  `X-Dope-Tenant-ID` with that value for that request.
-- Otherwise, if `DopeClientOptions.defaultTenantId` is present and non-empty, the SDK sends
-  `X-Dope-Tenant-ID` with the default tenant id.
-- Otherwise, the SDK omits `X-Dope-Tenant-ID` and preserves server-resolved default tenant
+  `X-Kura-Tenant-ID` with that value for that request.
+- Otherwise, if `KuraClientOptions.defaultTenantId` is present and non-empty, the SDK sends
+  `X-Kura-Tenant-ID` with the default tenant id.
+- Otherwise, the SDK omits `X-Kura-Tenant-ID` and preserves server-resolved default tenant
   behavior.
 - Stream and non-stream request helpers follow the same rule.
 - SDK callers must not need to pass raw tenant headers.
@@ -51,7 +51,7 @@ optional trailing `TenantRequestOptions` argument.
 Examples:
 
 ```ts
-const client = createDopeClient({
+const client = createKuraClient({
   baseURL: "http://127.0.0.1:19192",
   accessToken: token,
   defaultTenantId: "ten_personal"
@@ -85,11 +85,11 @@ authorization denials.
 
 ## Stable Denial Mapping
 
-`DopeClientError` remains the public error class. For tenant authorization denials, it
+`KuraClientError` remains the public error class. For tenant authorization denials, it
 must expose stable metadata:
 
 ```ts
-class DopeClientError extends Error {
+class KuraClientError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly tenantDenied?: boolean;

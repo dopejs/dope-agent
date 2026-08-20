@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/evaluation-replay-failed.event.schema.json",
+  "$id": "https://kura.local/schemas/events/evaluation-replay-failed.event.schema.json",
   "title": "EvaluationReplayFailedEvent",
   "allOf": [
     { "$ref": "./runtime-event.schema.json" },

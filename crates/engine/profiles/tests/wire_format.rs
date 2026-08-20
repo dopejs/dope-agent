@@ -2,11 +2,11 @@
 //! daemon/internal/contracts/agent_profile_contracts_test.go. Deserializing
 //! and re-serializing must reproduce the exact JSON the Go daemon emits.
 
-use dope_profiles::{
+use kura_profiles::{
     AgentProfile, MutationResult, ProfilesError, RuntimeProjection, validate_mutation,
     validation_reason_code,
 };
-use dope_profiles::{MutationInput, OverlayValidationState};
+use kura_profiles::{MutationInput, OverlayValidationState};
 
 const AGENT_PROFILE_RESOURCE: &str = r#"{"profileId":"prof_1","tenantId":"ten_57","displayName":"Support Agent","displayIdentity":{"name":"Support","safeSummary":"Support"},"persona":{"tone":"direct","safeSummary":"Direct support persona"},"defaultProviderPreference":{"providerId":"openai_compatible","model":"gpt-test","validationState":"valid"},"safetyDefaults":{"approvalPosture":"ask","validationState":"valid"},"status":"active","activeVersionId":"profv_1","tenantDefault":true,"overlayReferenceCount":1,"createdAt":"2026-05-12T10:00:00Z","updatedAt":"2026-05-12T10:00:00Z","redactionStatus":"redacted"}"#;
 

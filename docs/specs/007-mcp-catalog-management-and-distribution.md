@@ -63,7 +63,7 @@ lifecycle, source provenance, and drift visibility.
 - drift detection between installed resource and current catalog definition
 - prerequisite revalidation after install
 - operator-visible lifecycle truth in API, events, and docs
-- verification in `DOPE_ENV=test`
+- verification in `KURA_ENV=test`
 
 ### Out Of Scope
 
@@ -162,7 +162,7 @@ Acceptance expectations:
 - targeted daemon tests for uninstall, reinstall, refresh, drift classification, and
   prerequisite revalidation
 - contract coverage for new catalog-management resources and events
-- manual `DOPE_ENV=test` workflow covering at least one install-to-remove or
+- manual `KURA_ENV=test` workflow covering at least one install-to-remove or
   install-to-refresh cycle
 
 ## Definition Of Done

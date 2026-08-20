@@ -114,7 +114,7 @@
 - [X] T035 [P] Add schedule performance verification for create/detail latency and due-time detection in `daemon/internal/api/server_test.go`, `daemon/internal/scheduler/scheduler_test.go`, and `daemon/internal/app/app_test.go`
 - [X] T036 [P] Update schedule contract fixtures and validator coverage in `daemon/internal/contracts/contracts_test.go`, `schemas/api/create-schedule.request.schema.json`, `schemas/api/schedule-resource.schema.json`, `schemas/api/schedule-list.response.schema.json`, `schemas/api/schedule-trigger-resource.schema.json`, `schemas/api/schedule-attempt-resource.schema.json`, `schemas/events/schedule-created.event.schema.json`, `schemas/events/schedule-status-changed.event.schema.json`, `schemas/events/schedule-dispatch-attempted.event.schema.json`, `schemas/events/schedule-dispatch-recorded.event.schema.json`, and `schemas/events/schedule-retry-scheduled.event.schema.json`
 - [X] T037 [P] Document schedule lifecycle, restart catch-up, and operator usage in `docs/runtime/daemon-roadmaps.md`, `docs/harness/harness-architecture.md`, and `specs/010-scheduled-tasks-wakeups/quickstart.md`
-- [X] T038 [P] Run manual `DOPE_ENV=test` schedule verification and record observed results in `specs/010-scheduled-tasks-wakeups/quickstart.md`
+- [X] T038 [P] Run manual `KURA_ENV=test` schedule verification and record observed results in `specs/010-scheduled-tasks-wakeups/quickstart.md`
 - [X] T039 Record automated verification commands, residual risks, and rollback notes in `specs/010-scheduled-tasks-wakeups/quickstart.md` and `specs/010-scheduled-tasks-wakeups/plan.md`
 
 ---
@@ -195,7 +195,7 @@ Task: "T031 [US3] Implement dispatch-time target-reference resolution and invali
 1. Complete Phase 1: Setup.
 2. Complete Phase 2: Foundational.
 3. Complete Phase 3: User Story 1.
-4. Validate one-time schedule creation, pending inspection, and single downstream dispatch in `DOPE_ENV=test`.
+4. Validate one-time schedule creation, pending inspection, and single downstream dispatch in `KURA_ENV=test`.
 5. Stop if only the MVP trigger plane is needed.
 
 ### Incremental Delivery

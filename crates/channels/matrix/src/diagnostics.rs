@@ -3,13 +3,13 @@
 //!
 //! The base classification helpers (status/remediation/retry-safety/severity
 //! per reason code and the 15-minute freshness rule) are ported locally from
-//! daemon/internal/connectors/diagnostics.go because dope-connectors currently
+//! daemon/internal/connectors/diagnostics.go because kura-connectors currently
 //! exposes only the diagnostic *types*; the shared types are imported.
 
 use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, Utc};
-use dope_connectors::{
+use kura_connectors::{
     ConnectorDiagnosticState, DiagnosticReasonCode, FreshnessState, LifecycleState,
     RedactionStatus, RemediationOwner, RetrySafety,
 };

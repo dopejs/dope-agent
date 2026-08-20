@@ -7,24 +7,24 @@ use std::sync::atomic::{AtomicI32, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
-use dope_chat::{CancellationToken, Service};
-use dope_checkpoints::Manager as CheckpointManager;
-use dope_connectors::{Connector, RedactionStatus, Status};
-use dope_events::{Bus, Filter};
-use dope_im::{MessageLoop, ReplyProgressor, ReplySender};
-use dope_imtypes::{
+use kura_chat::{CancellationToken, Service};
+use kura_checkpoints::Manager as CheckpointManager;
+use kura_connectors::{Connector, RedactionStatus, Status};
+use kura_events::{Bus, Filter};
+use kura_im::{MessageLoop, ReplyProgressor, ReplySender};
+use kura_imtypes::{
     DeliveryDirection, DeliveryStatus, InboundMessage, OutboundReply, ReplyCapabilities,
     ReplyEdit, SentReply, ThinkingSignal,
 };
-use dope_llm::{
+use kura_llm::{
     Dispatcher, Provider, ProviderError, ProviderRequest, ProviderResponse, StreamEmitter,
     Usage,
 };
-use dope_router::{SessionKind, SessionRouter};
-use dope_runtime::{Manager as RuntimeManager, RunStatus, StepStatus};
-use dope_store::channel_management::RoutePolicy;
-use dope_store::SQLiteStore;
-use dope_threads::{
+use kura_router::{SessionKind, SessionRouter};
+use kura_runtime::{Manager as RuntimeManager, RunStatus, StepStatus};
+use kura_store::channel_management::RoutePolicy;
+use kura_store::SQLiteStore;
+use kura_threads::{
     LifecycleActionKind, LifecycleMutationInput, LifecycleState, ParticipationDecisionValue,
     RoutingOutcome,
 };
@@ -72,12 +72,12 @@ impl Provider for EchoTestProvider {
                 .first()
                 .map(|m| m.content.clone())
                 .unwrap_or_default();
-            emit(dope_llm::StreamChunk {
+            emit(kura_llm::StreamChunk {
                 delta: "reply:".to_string(),
                 output: "reply:".to_string(),
                 ..Default::default()
             })?;
-            emit(dope_llm::StreamChunk {
+            emit(kura_llm::StreamChunk {
                 delta: content.clone(),
                 output: format!("reply:{content}"),
                 finish_reason: "stop".to_string(),
@@ -138,7 +138,7 @@ impl Provider for LongTestProvider {
                 runes[24..].iter().collect::<String>(),
             ];
             for segment in segments {
-                emit(dope_llm::StreamChunk {
+                emit(kura_llm::StreamChunk {
                     delta: segment,
                     ..Default::default()
                 })?;
@@ -180,12 +180,12 @@ impl Provider for PartialFailureTestProvider {
                 .first()
                 .map(|m| m.content.clone())
                 .unwrap_or_default();
-            emit(dope_llm::StreamChunk {
+            emit(kura_llm::StreamChunk {
                 delta: "reply:".to_string(),
                 output: "reply:".to_string(),
                 ..Default::default()
             })?;
-            emit(dope_llm::StreamChunk {
+            emit(kura_llm::StreamChunk {
                 delta: content.clone(),
                 output: format!("reply:{content}"),
                 ..Default::default()
@@ -586,7 +586,7 @@ fn message_loop_applies_group_room_participation_policy_before_assistant_work() 
     let mut mentioned = inbound.clone();
     mentioned.external_message_id = "room_policy_msg_2".to_string();
     mentioned.provider_message_id = "room_policy_msg_2".to_string();
-    mentioned.content = "@dope please respond".to_string();
+    mentioned.content = "@kura please respond".to_string();
     mentioned.mentioned = true;
     let accepted = loop_
         .process_single_turn(&connector, &mentioned, &sender, &cancel)
@@ -795,17 +795,17 @@ fn message_loop_preserves_partial_reply_when_provider_stream_fails_after_visible
 
 #[test]
 fn conversation_shape_for_ingress_source_maps_web_originated_surface() {
-    let shape = dope_im::conversation_shape_for_ingress_source(
-        dope_threads::SourceKind::Shell,
+    let shape = kura_im::conversation_shape_for_ingress_source(
+        kura_threads::SourceKind::Shell,
         "web",
         &InboundMessage::default(),
     );
-    assert_eq!(shape, dope_threads::ConversationShape::Web);
+    assert_eq!(shape, kura_threads::ConversationShape::Web);
 }
 
 #[test]
 fn split_reply_content_respects_rune_limit() {
-    use dope_im::split_reply_content;
+    use kura_im::split_reply_content;
     assert_eq!(split_reply_content("hello", 0), vec!["hello".to_string()]);
     assert_eq!(split_reply_content("hello", 10), vec!["hello".to_string()]);
     assert_eq!(split_reply_content("hello", 2), vec!["he".to_string(), "ll".to_string(), "o".to_string()]);
@@ -816,7 +816,7 @@ fn split_reply_content_respects_rune_limit() {
 
 #[test]
 fn classify_error_returns_class_for_classified_errors() {
-    use dope_im::{ClassifiedError, classify_error};
+    use kura_im::{ClassifiedError, classify_error};
     use std::io;
 
     let plain: Box<dyn std::error::Error + Send + Sync> = Box::new(io::Error::new(io::ErrorKind::Other, "nope"));
@@ -828,6 +828,6 @@ fn classify_error_returns_class_for_classified_errors() {
         Box::new(io::Error::new(io::ErrorKind::TimedOut, "dial timed out")),
     ));
     assert_eq!(classify_error(Some(classified.as_ref())), "connector.timeout");
-    assert_eq!(dope_im::safe_reply_failure_reason(Some(classified.as_ref())), "connector.timeout");
-    assert_eq!(dope_im::safe_reply_failure_reason(None), "reply_failed");
+    assert_eq!(kura_im::safe_reply_failure_reason(Some(classified.as_ref())), "connector.timeout");
+    assert_eq!(kura_im::safe_reply_failure_reason(None), "reply_failed");
 }

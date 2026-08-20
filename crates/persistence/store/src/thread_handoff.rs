@@ -27,17 +27,17 @@ fn nullable_time(value: &Option<DateTime<Utc>>) -> Option<String> {
         .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true))
 }
 
-fn scan_handoff_link(raw: &str) -> Result<dope_threads::HandoffLink, String> {
+fn scan_handoff_link(raw: &str) -> Result<kura_threads::HandoffLink, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode handoff link document: {e}"))
 }
 
-fn scan_handoff_source_reference(raw: &str) -> Result<dope_threads::HandoffSourceReference, String> {
+fn scan_handoff_source_reference(raw: &str) -> Result<kura_threads::HandoffSourceReference, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode handoff source reference document: {e}"))
 }
 
 impl SQLiteStore {
     /// Go `SaveHandoffLink` (upsert on handoff_link_id).
-    pub fn save_handoff_link(&self, mut link: dope_threads::HandoffLink) -> Result<dope_threads::HandoffLink, String> {
+    pub fn save_handoff_link(&self, mut link: kura_threads::HandoffLink) -> Result<kura_threads::HandoffLink, String> {
         if link.handoff_link_id.is_empty() {
             link.handoff_link_id = new_store_id("handoff");
         }
@@ -108,7 +108,7 @@ impl SQLiteStore {
     /// Go `SaveHandoffSourceReferences`: batch insert of source references.
     pub fn save_handoff_source_references(
         &self,
-        refs: &mut [dope_threads::HandoffSourceReference],
+        refs: &mut [kura_threads::HandoffSourceReference],
     ) -> Result<(), String> {
         for index in 0..refs.len() {
             let mut reference = refs[index].clone();
@@ -160,7 +160,7 @@ impl SQLiteStore {
     }
 
     /// Go `ListHandoffLinksForThread`: links where the thread is source or destination.
-    pub fn list_handoff_links(&self, tenant_id: &str, thread_id: &str, limit: i64) -> Result<Vec<dope_threads::HandoffLink>, String> {
+    pub fn list_handoff_links(&self, tenant_id: &str, thread_id: &str, limit: i64) -> Result<Vec<kura_threads::HandoffLink>, String> {
         let limit = if limit <= 0 { 20 } else { limit };
         let mut stmt = self
             .conn
@@ -180,7 +180,7 @@ impl SQLiteStore {
     }
 
     /// Go `GetHandoffLink`.
-    pub fn get_handoff_link(&self, tenant_id: &str, handoff_link_id: &str) -> Result<Option<dope_threads::HandoffLink>, String> {
+    pub fn get_handoff_link(&self, tenant_id: &str, handoff_link_id: &str) -> Result<Option<kura_threads::HandoffLink>, String> {
         let mut stmt = self
             .conn
             .prepare("SELECT document_json FROM thread_handoff_links WHERE tenant_id = ?1 AND handoff_link_id = ?2")
@@ -198,7 +198,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         handoff_link_id: &str,
-    ) -> Result<Vec<dope_threads::HandoffSourceReference>, String> {
+    ) -> Result<Vec<kura_threads::HandoffSourceReference>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -229,7 +229,7 @@ impl SQLiteStore {
         let mut link = self
             .get_handoff_link(tenant_id, handoff_link_id)?
             .ok_or_else(|| format!("handoff link {handoff_link_id} not found"))?;
-        link.source_reference_status = dope_threads::HandoffSourceReferenceStatus::Consumed;
+        link.source_reference_status = kura_threads::HandoffSourceReferenceStatus::Consumed;
         link.first_destination_response_id = first_destination_response_id.to_string();
         link.consumed_at = Some(consumed_at);
         self.save_handoff_link(link)?;
@@ -237,8 +237,8 @@ impl SQLiteStore {
         let refs = self.list_handoff_source_references_for_link(tenant_id, handoff_link_id)?;
         for mut reference in refs {
             reference.consumed_at = Some(consumed_at);
-            if reference.decision == dope_threads::HandoffSourceReferenceDecision::Referenced {
-                reference.decision = dope_threads::HandoffSourceReferenceDecision::Consumed;
+            if reference.decision == kura_threads::HandoffSourceReferenceDecision::Referenced {
+                reference.decision = kura_threads::HandoffSourceReferenceDecision::Consumed;
             }
             let document_json = serde_json::to_string(&reference)
                 .map_err(|e| format!("marshal handoff source reference {}: {e}", reference.handoff_source_reference_id))?;

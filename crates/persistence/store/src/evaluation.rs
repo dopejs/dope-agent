@@ -15,7 +15,7 @@ use crate::crud::{enum_str, now_rfc3339, null_string, opt_time_string};
 use crate::SQLiteStore;
 
 impl SQLiteStore {
-    pub fn upsert_replay_candidate(&self, item: &dope_evaluation::ReplayCandidate) -> Result<(), String> {
+    pub fn upsert_replay_candidate(&self, item: &kura_evaluation::ReplayCandidate) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal replay candidate: {e}"))?;
         self.conn
@@ -57,8 +57,8 @@ impl SQLiteStore {
 
     pub fn list_replay_candidates(
         &self,
-        filter: &dope_evaluation::CandidateFilter,
-    ) -> Result<Vec<dope_evaluation::ReplayCandidate>, String> {
+        filter: &kura_evaluation::CandidateFilter,
+    ) -> Result<Vec<kura_evaluation::ReplayCandidate>, String> {
         let mut sql = String::from(
             r#"SELECT document_json
             FROM evaluation_replay_candidates
@@ -69,15 +69,15 @@ impl SQLiteStore {
             sql.push_str(" AND environment_scope = ?");
             args.push(Value::Text(filter.environment_scope.trim().to_string()));
         }
-        if filter.candidate_kind != dope_evaluation::CandidateKind::default() {
+        if filter.candidate_kind != kura_evaluation::CandidateKind::default() {
             sql.push_str(" AND candidate_kind = ?");
             args.push(Value::Text(enum_str(&filter.candidate_kind)));
         }
-        if filter.source_kind != dope_evaluation::SourceKind::default() {
+        if filter.source_kind != kura_evaluation::SourceKind::default() {
             sql.push_str(" AND source_kind = ?");
             args.push(Value::Text(enum_str(&filter.source_kind)));
         }
-        if filter.readiness_status != dope_evaluation::ReadinessStatus::default() {
+        if filter.readiness_status != kura_evaluation::ReadinessStatus::default() {
             sql.push_str(" AND readiness_status = ?");
             args.push(Value::Text(enum_str(&filter.readiness_status)));
         }
@@ -106,7 +106,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         candidate_id: &str,
-    ) -> Result<Option<dope_evaluation::ReplayCandidate>, String> {
+    ) -> Result<Option<kura_evaluation::ReplayCandidate>, String> {
         let mut sql = String::from(
             "SELECT document_json FROM evaluation_replay_candidates WHERE candidate_id = ?",
         );
@@ -129,7 +129,7 @@ impl SQLiteStore {
         Ok(Some(item))
     }
 
-    pub fn upsert_replay_attempt(&self, item: &dope_evaluation::ReplayAttempt) -> Result<(), String> {
+    pub fn upsert_replay_attempt(&self, item: &kura_evaluation::ReplayAttempt) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal replay attempt: {e}"))?;
         self.conn
@@ -173,8 +173,8 @@ impl SQLiteStore {
 
     pub fn list_replay_attempts(
         &self,
-        filter: &dope_evaluation::AttemptFilter,
-    ) -> Result<Vec<dope_evaluation::ReplayAttempt>, String> {
+        filter: &kura_evaluation::AttemptFilter,
+    ) -> Result<Vec<kura_evaluation::ReplayAttempt>, String> {
         let mut sql = String::from(
             r#"SELECT document_json
             FROM evaluation_replay_attempts
@@ -189,7 +189,7 @@ impl SQLiteStore {
             sql.push_str(" AND candidate_id = ?");
             args.push(Value::Text(filter.candidate_id.trim().to_string()));
         }
-        if filter.status != dope_evaluation::ReplayAttemptStatus::default() {
+        if filter.status != kura_evaluation::ReplayAttemptStatus::default() {
             sql.push_str(" AND status = ?");
             args.push(Value::Text(enum_str(&filter.status)));
         }
@@ -218,7 +218,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         attempt_id: &str,
-    ) -> Result<Option<dope_evaluation::ReplayAttempt>, String> {
+    ) -> Result<Option<kura_evaluation::ReplayAttempt>, String> {
         let mut sql = String::from(
             "SELECT document_json FROM evaluation_replay_attempts WHERE attempt_id = ?",
         );
@@ -241,7 +241,7 @@ impl SQLiteStore {
         Ok(Some(item))
     }
 
-    pub fn upsert_comparison_result(&self, item: &dope_evaluation::ComparisonResult) -> Result<(), String> {
+    pub fn upsert_comparison_result(&self, item: &kura_evaluation::ComparisonResult) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal comparison result: {e}"))?;
         self.conn
@@ -277,8 +277,8 @@ impl SQLiteStore {
 
     pub fn list_comparison_results(
         &self,
-        filter: &dope_evaluation::ComparisonFilter,
-    ) -> Result<Vec<dope_evaluation::ComparisonResult>, String> {
+        filter: &kura_evaluation::ComparisonFilter,
+    ) -> Result<Vec<kura_evaluation::ComparisonResult>, String> {
         let mut sql = String::from(
             r#"SELECT document_json
             FROM evaluation_comparisons
@@ -297,7 +297,7 @@ impl SQLiteStore {
             sql.push_str(" AND attempt_id = ?");
             args.push(Value::Text(filter.attempt_id.trim().to_string()));
         }
-        if filter.terminal_status != dope_evaluation::ComparisonTerminalStatus::default() {
+        if filter.terminal_status != kura_evaluation::ComparisonTerminalStatus::default() {
             sql.push_str(" AND terminal_status = ?");
             args.push(Value::Text(enum_str(&filter.terminal_status)));
         }
@@ -326,7 +326,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         comparison_id: &str,
-    ) -> Result<Option<dope_evaluation::ComparisonResult>, String> {
+    ) -> Result<Option<kura_evaluation::ComparisonResult>, String> {
         let mut sql = String::from(
             "SELECT document_json FROM evaluation_comparisons WHERE comparison_id = ?",
         );
@@ -349,7 +349,7 @@ impl SQLiteStore {
         Ok(Some(item))
     }
 
-    pub fn upsert_regression_fixture(&self, item: &dope_evaluation::RegressionFixture) -> Result<(), String> {
+    pub fn upsert_regression_fixture(&self, item: &kura_evaluation::RegressionFixture) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal regression fixture: {e}"))?;
         self.conn
@@ -384,8 +384,8 @@ impl SQLiteStore {
 
     pub fn list_regression_fixtures(
         &self,
-        filter: &dope_evaluation::FixtureFilter,
-    ) -> Result<Vec<dope_evaluation::RegressionFixture>, String> {
+        filter: &kura_evaluation::FixtureFilter,
+    ) -> Result<Vec<kura_evaluation::RegressionFixture>, String> {
         let mut sql = String::from(
             r#"SELECT document_json
             FROM evaluation_regression_fixtures
@@ -396,7 +396,7 @@ impl SQLiteStore {
             sql.push_str(" AND environment_scope = ?");
             args.push(Value::Text(filter.environment_scope.trim().to_string()));
         }
-        if filter.domain_class != dope_evaluation::FixtureDomainClass::default() {
+        if filter.domain_class != kura_evaluation::FixtureDomainClass::default() {
             sql.push_str(" AND domain_class = ?");
             args.push(Value::Text(enum_str(&filter.domain_class)));
         }
@@ -425,7 +425,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         fixture_id: &str,
-    ) -> Result<Option<dope_evaluation::RegressionFixture>, String> {
+    ) -> Result<Option<kura_evaluation::RegressionFixture>, String> {
         let mut sql = String::from(
             "SELECT document_json FROM evaluation_regression_fixtures WHERE fixture_id = ?",
         );
@@ -450,7 +450,7 @@ impl SQLiteStore {
 }
 
 
-// --- dope_evaluation::Store trait impl (sync wrapper over the DAOs) ---
+// --- kura_evaluation::Store trait impl (sync wrapper over the DAOs) ---
 //
 // rusqlite's Connection is Send but not Sync, so SQLiteStore cannot be the
 // trait's `Send + Sync` self type directly. The workspace convention shares
@@ -460,7 +460,7 @@ impl SQLiteStore {
 // SecretStoreHandle / ComputerUseStoreHandle for the same pattern).
 
 /// Send + Sync handle over the SQLite store implementing
-/// [`dope_evaluation::Store`]. Construct from a fresh store and share as
+/// [`kura_evaluation::Store`]. Construct from a fresh store and share as
 /// `Arc<EvaluationStoreHandle>` with the evaluation manager.
 pub struct EvaluationStoreHandle(pub parking_lot::Mutex<SQLiteStore>);
 
@@ -470,117 +470,117 @@ impl EvaluationStoreHandle {
     }
 }
 
-impl dope_evaluation::Store for EvaluationStoreHandle {
+impl kura_evaluation::Store for EvaluationStoreHandle {
     fn upsert_replay_candidate(
         &self,
-        item: dope_evaluation::ReplayCandidate,
-    ) -> Result<(), dope_evaluation::EvaluationError> {
+        item: kura_evaluation::ReplayCandidate,
+    ) -> Result<(), kura_evaluation::EvaluationError> {
         let store = self.0.lock();
         store
             .upsert_replay_candidate(&item)
-            .map_err(dope_evaluation::EvaluationError::Store)
+            .map_err(kura_evaluation::EvaluationError::Store)
     }
 
     fn list_replay_candidates(
         &self,
-        filter: &dope_evaluation::CandidateFilter,
-    ) -> Result<Vec<dope_evaluation::ReplayCandidate>, dope_evaluation::EvaluationError> {
+        filter: &kura_evaluation::CandidateFilter,
+    ) -> Result<Vec<kura_evaluation::ReplayCandidate>, kura_evaluation::EvaluationError> {
         let store = self.0.lock();
         store
             .list_replay_candidates(filter)
-            .map_err(dope_evaluation::EvaluationError::Store)
+            .map_err(kura_evaluation::EvaluationError::Store)
     }
 
     fn get_replay_candidate(
         &self,
         environment_scope: &str,
         candidate_id: &str,
-    ) -> Result<Option<dope_evaluation::ReplayCandidate>, dope_evaluation::EvaluationError> {
+    ) -> Result<Option<kura_evaluation::ReplayCandidate>, kura_evaluation::EvaluationError> {
         let store = self.0.lock();
         store
             .get_replay_candidate(environment_scope, candidate_id)
-            .map_err(dope_evaluation::EvaluationError::Store)
+            .map_err(kura_evaluation::EvaluationError::Store)
     }
 
     fn upsert_replay_attempt(
         &self,
-        item: dope_evaluation::ReplayAttempt,
-    ) -> Result<(), dope_evaluation::EvaluationError> {
+        item: kura_evaluation::ReplayAttempt,
+    ) -> Result<(), kura_evaluation::EvaluationError> {
         let store = self.0.lock();
         store
             .upsert_replay_attempt(&item)
-            .map_err(dope_evaluation::EvaluationError::Store)
+            .map_err(kura_evaluation::EvaluationError::Store)
     }
 
     fn list_replay_attempts(
         &self,
-        filter: &dope_evaluation::AttemptFilter,
-    ) -> Result<Vec<dope_evaluation::ReplayAttempt>, dope_evaluation::EvaluationError> {
+        filter: &kura_evaluation::AttemptFilter,
+    ) -> Result<Vec<kura_evaluation::ReplayAttempt>, kura_evaluation::EvaluationError> {
         let store = self.0.lock();
         store
             .list_replay_attempts(filter)
-            .map_err(dope_evaluation::EvaluationError::Store)
+            .map_err(kura_evaluation::EvaluationError::Store)
     }
 
     fn get_replay_attempt(
         &self,
         environment_scope: &str,
         attempt_id: &str,
-    ) -> Result<Option<dope_evaluation::ReplayAttempt>, dope_evaluation::EvaluationError> {
+    ) -> Result<Option<kura_evaluation::ReplayAttempt>, kura_evaluation::EvaluationError> {
         let store = self.0.lock();
         store
             .get_replay_attempt(environment_scope, attempt_id)
-            .map_err(dope_evaluation::EvaluationError::Store)
+            .map_err(kura_evaluation::EvaluationError::Store)
     }
 
     fn upsert_comparison_result(
         &self,
-        item: dope_evaluation::ComparisonResult,
-    ) -> Result<(), dope_evaluation::EvaluationError> {
+        item: kura_evaluation::ComparisonResult,
+    ) -> Result<(), kura_evaluation::EvaluationError> {
         let store = self.0.lock();
         store
             .upsert_comparison_result(&item)
-            .map_err(dope_evaluation::EvaluationError::Store)
+            .map_err(kura_evaluation::EvaluationError::Store)
     }
 
     fn list_comparison_results(
         &self,
-        filter: &dope_evaluation::ComparisonFilter,
-    ) -> Result<Vec<dope_evaluation::ComparisonResult>, dope_evaluation::EvaluationError> {
+        filter: &kura_evaluation::ComparisonFilter,
+    ) -> Result<Vec<kura_evaluation::ComparisonResult>, kura_evaluation::EvaluationError> {
         let store = self.0.lock();
         store
             .list_comparison_results(filter)
-            .map_err(dope_evaluation::EvaluationError::Store)
+            .map_err(kura_evaluation::EvaluationError::Store)
     }
 
     fn get_comparison_result(
         &self,
         environment_scope: &str,
         comparison_id: &str,
-    ) -> Result<Option<dope_evaluation::ComparisonResult>, dope_evaluation::EvaluationError> {
+    ) -> Result<Option<kura_evaluation::ComparisonResult>, kura_evaluation::EvaluationError> {
         let store = self.0.lock();
         store
             .get_comparison_result(environment_scope, comparison_id)
-            .map_err(dope_evaluation::EvaluationError::Store)
+            .map_err(kura_evaluation::EvaluationError::Store)
     }
 
     fn upsert_regression_fixture(
         &self,
-        item: dope_evaluation::RegressionFixture,
-    ) -> Result<(), dope_evaluation::EvaluationError> {
+        item: kura_evaluation::RegressionFixture,
+    ) -> Result<(), kura_evaluation::EvaluationError> {
         let store = self.0.lock();
         store
             .upsert_regression_fixture(&item)
-            .map_err(dope_evaluation::EvaluationError::Store)
+            .map_err(kura_evaluation::EvaluationError::Store)
     }
 
     fn list_regression_fixtures(
         &self,
-        filter: &dope_evaluation::FixtureFilter,
-    ) -> Result<Vec<dope_evaluation::RegressionFixture>, dope_evaluation::EvaluationError> {
+        filter: &kura_evaluation::FixtureFilter,
+    ) -> Result<Vec<kura_evaluation::RegressionFixture>, kura_evaluation::EvaluationError> {
         let store = self.0.lock();
         store
             .list_regression_fixtures(filter)
-            .map_err(dope_evaluation::EvaluationError::Store)
+            .map_err(kura_evaluation::EvaluationError::Store)
     }
 }

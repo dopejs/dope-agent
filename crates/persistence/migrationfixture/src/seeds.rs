@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use rusqlite::{params, Connection};
 
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 use crate::{open_fixture_connection, FIXTURE_TIMESTAMP};
 

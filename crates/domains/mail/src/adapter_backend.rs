@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use dope_integrations::Resource;
+use kura_integrations::Resource;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -58,13 +58,13 @@ struct OptionalDraftMessage {
 }
 
 pub struct AdapterBackend {
-    client: dope_adapterrpc::Client,
+    client: kura_adapterrpc::Client,
     deadline: Duration,
     provider_kind: String,
 }
 
 impl AdapterBackend {
-    pub fn new(client: dope_adapterrpc::Client, deadline: Duration) -> Self {
+    pub fn new(client: kura_adapterrpc::Client, deadline: Duration) -> Self {
         AdapterBackend { client, deadline, provider_kind: String::new() }
     }
 
@@ -98,11 +98,11 @@ impl AdapterBackend {
         self.map_err(result)
     }
 
-    fn map_err(&self, err: Result<(), dope_adapterrpc::Error>) -> Result<(), MailError> {
+    fn map_err(&self, err: Result<(), kura_adapterrpc::Error>) -> Result<(), MailError> {
         match err {
             Ok(()) => Ok(()),
             Err(e) => {
-                if dope_adapterrpc::is_ambiguous(&e) {
+                if kura_adapterrpc::is_ambiguous(&e) {
                     return Err(MailError::Adapter(AdapterFailure {
                         class: "ambiguous_commit".to_string(),
                         provider_kind: self.provider_kind.clone(),
@@ -111,13 +111,13 @@ impl AdapterBackend {
                         unavailable: false,
                     }));
                 }
-                if let dope_adapterrpc::Error::Adapter(ae) = &e {
+                if let kura_adapterrpc::Error::Adapter(ae) = &e {
                     return Err(MailError::Adapter(AdapterFailure {
                         class: stable_failure_class(ae),
                         provider_kind: self.provider_kind.clone(),
                         detail: ae.detail.clone(),
                         ambiguous: false,
-                        unavailable: ae.kind == dope_adapterrpc::FailureKind::Unavailable,
+                        unavailable: ae.kind == kura_adapterrpc::FailureKind::Unavailable,
                     }));
                 }
                 Err(MailError::AdapterTransport(e.to_string()))
@@ -126,16 +126,16 @@ impl AdapterBackend {
     }
 }
 
-fn stable_failure_class(ae: &dope_adapterrpc::AdapterError) -> String {
+fn stable_failure_class(ae: &kura_adapterrpc::AdapterError) -> String {
     if !ae.detail.is_empty() {
         return ae.detail.clone();
     }
     match ae.kind {
-        dope_adapterrpc::FailureKind::Auth => "user_access_token_invalid".to_string(),
-        dope_adapterrpc::FailureKind::Scope => "scope_not_granted".to_string(),
-        dope_adapterrpc::FailureKind::RateLimited => "rate_limited".to_string(),
-        dope_adapterrpc::FailureKind::Unavailable => "service_unavailable".to_string(),
-        dope_adapterrpc::FailureKind::Malformed => "malformed_provider_response".to_string(),
+        kura_adapterrpc::FailureKind::Auth => "user_access_token_invalid".to_string(),
+        kura_adapterrpc::FailureKind::Scope => "scope_not_granted".to_string(),
+        kura_adapterrpc::FailureKind::RateLimited => "rate_limited".to_string(),
+        kura_adapterrpc::FailureKind::Unavailable => "service_unavailable".to_string(),
+        kura_adapterrpc::FailureKind::Malformed => "malformed_provider_response".to_string(),
         _ => "provider_internal_error".to_string(),
     }
 }

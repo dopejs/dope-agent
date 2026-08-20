@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use dope_connectors::{DiagnosticReasonCode, RedactionStatus};
+use kura_connectors::{DiagnosticReasonCode, RedactionStatus};
 use serde::{Deserialize, Serialize};
 
 use crate::diagnostics::{contains_unsafe_evidence, safe_evidence};

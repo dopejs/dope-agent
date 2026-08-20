@@ -18,13 +18,13 @@ pub struct MemoryAssetFilter {
     pub kind: String,
 }
 
-fn scan_asset(row: &Row) -> Result<dope_memory::MemoryAsset, String> {
+fn scan_asset(row: &Row) -> Result<kura_memory::MemoryAsset, String> {
     let document: String = row.get(0).map_err(|e| e.to_string())?;
     decode_json_field(&document)
 }
 
 impl SQLiteStore {
-    pub fn upsert_memory_asset(&self, asset: &dope_memory::MemoryAsset) -> Result<(), String> {
+    pub fn upsert_memory_asset(&self, asset: &kura_memory::MemoryAsset) -> Result<(), String> {
         let document = serde_json::to_string(asset)
             .map_err(|e| format!("marshal memory asset {}: {e}", asset.asset_id))?;
         self.conn
@@ -71,7 +71,7 @@ impl SQLiteStore {
     pub fn get_memory_asset(
         &self,
         asset_id: &str,
-    ) -> Result<Option<dope_memory::MemoryAsset>, String> {
+    ) -> Result<Option<kura_memory::MemoryAsset>, String> {
         let mut stmt = self
             .conn
             .prepare("SELECT document_json FROM memory_assets WHERE asset_id = ?1")
@@ -86,7 +86,7 @@ impl SQLiteStore {
     pub fn list_memory_assets(
         &self,
         filter: &MemoryAssetFilter,
-    ) -> Result<Vec<dope_memory::MemoryAsset>, String> {
+    ) -> Result<Vec<kura_memory::MemoryAsset>, String> {
         let mut sql = String::from(
             "SELECT document_json FROM memory_assets WHERE 1=1",
         );
@@ -121,7 +121,7 @@ impl SQLiteStore {
 
     /// Boot restore: every asset row (all tenants), oldest-first so
     /// supersede chains replay in order.
-    pub fn list_all_memory_assets(&self) -> Result<Vec<dope_memory::MemoryAsset>, String> {
+    pub fn list_all_memory_assets(&self) -> Result<Vec<kura_memory::MemoryAsset>, String> {
         let mut stmt = self
             .conn
             .prepare("SELECT document_json FROM memory_assets ORDER BY created_at ASC, asset_id ASC")

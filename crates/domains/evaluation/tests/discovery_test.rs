@@ -5,7 +5,7 @@ mod common;
 
 use chrono::DateTime;
 use chrono::Utc;
-use dope_evaluation::{
+use kura_evaluation::{
     CandidateScoringInput, DISCOVERY_PARTIAL_REASON_MAX_INSPECTED_RECORDS, DiscoveryPolicy,
     DiscoveryProgress, DiscoverySourceFilter, DiscoverySourceRecord, EvaluationError,
     ProductLifecycleStatus, RedactionStatus, ReadinessStatus, ScoreBand, SourceKind, SourceRef,
@@ -77,7 +77,7 @@ fn build_discovery_run_from_policy_rejects_invalid_bounds() {
 #[test]
 fn apply_discovery_run_progress_marks_partial_at_bounds() {
     let now = ts("2026-04-29T10:00:00Z");
-    let run = dope_evaluation::DiscoveryRun {
+    let run = kura_evaluation::DiscoveryRun {
         discovery_run_id: "run_1".to_string(),
         tenant_id: "ten_eval".to_string(),
         status: ProductLifecycleStatus::Running,
@@ -266,7 +266,7 @@ struct FakeReader {
     last_limit: std::sync::atomic::AtomicI64,
 }
 
-impl dope_evaluation::DiscoverySourceReader for FakeReader {
+impl kura_evaluation::DiscoverySourceReader for FakeReader {
     fn list_discovery_sources(
         &self,
         filter: &DiscoverySourceFilter,
@@ -299,7 +299,7 @@ fn read_discovery_source_refs_normalizes_bounds_and_rejects_cross_tenant_rows() 
     .expect("ReadDiscoverySourceRefs");
     assert_eq!(
         reader.last_limit.load(std::sync::atomic::Ordering::Relaxed),
-        dope_evaluation::DEFAULT_PRODUCT_PAGE_LIMIT,
+        kura_evaluation::DEFAULT_PRODUCT_PAGE_LIMIT,
         "expected default product page limit to be normalized into the reader filter"
     );
     assert_eq!(cursor, "cursor_next");

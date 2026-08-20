@@ -48,7 +48,7 @@ build` if client bundles change. Run `go test ./...` and `go mod tidy` from `dae
 after implementation. Use `make daemon-run-test` and `make daemon-test-status` for
 manual test-environment walkthrough.  
 **Target Platform**: Hosted/test daemon and browser shell using the default test
-environment (`DOPE_ENV=test`, `~/.dope-test`, `127.0.0.1:19192`) for local validation.
+environment (`KURA_ENV=test`, `~/.kura-test`, `127.0.0.1:19192`) for local validation.
 Production behavior uses the same protected tenant contracts but live provider
 credentials and real OAuth approval are not required for default verification.  
 **Project Type**: Multi-surface product change spanning daemon API and persistence,
@@ -92,7 +92,7 @@ action-required classifications until selected for full wizard coverage.
   tests, contract tests, SDK/web tests, restart durability, tenant isolation,
   redaction, dependent-use gating, operator diagnostics, and manual test-environment
   walkthrough evidence.
-- **Environment and secrets** - PASS. Default work uses `~/.dope-test` and fake
+- **Environment and secrets** - PASS. Default work uses `~/.kura-test` and fake
   credential/OAuth fixtures. Live credentials, production secrets, enterprise SSO,
   external managed secret managers, and new provider domains are out of scope.
 
@@ -229,7 +229,7 @@ disabled during rollback.
 - **Verification and observability** - PASS. Quickstart names Go tests, contract tests,
   SDK/web tests, restart durability, tenant isolation, redaction, dependent-use gating,
   daemon health smoke, and operator diagnostic evidence.
-- **Environment and secrets** - PASS. Design defaults to `DOPE_ENV=test`, fake secrets,
+- **Environment and secrets** - PASS. Design defaults to `KURA_ENV=test`, fake secrets,
   and safe OAuth fixtures. Live provider credentials, production secrets, external
   managed secret managers, and enterprise identity are out of scope.
 

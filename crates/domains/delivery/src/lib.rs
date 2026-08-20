@@ -227,15 +227,15 @@ pub struct DeliveryOutcome {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub calendar_operation_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub calendar_operation_summaries: Vec<dope_calendar::OperationSummary>,
+    pub calendar_operation_summaries: Vec<kura_calendar::OperationSummary>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mail_operation_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mail_operation_summaries: Vec<dope_mail::OperationSummary>,
+    pub mail_operation_summaries: Vec<kura_mail::OperationSummary>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attempts: Vec<DeliveryAttempt>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub diagnostic_failure: Option<dope_integrations::DiagnosticFailureProjection>,
+    pub diagnostic_failure: Option<kura_integrations::DiagnosticFailureProjection>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

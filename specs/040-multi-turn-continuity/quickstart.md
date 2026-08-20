@@ -1,7 +1,7 @@
 # Quickstart: Non-Knowledge Multi-Turn Continuity
 
 This walkthrough verifies Roadmap 55 in the local test environment. Default to
-`~/.dope-test` and `127.0.0.1:19192`; do not use production tenants or live connector
+`~/.kura-test` and `127.0.0.1:19192`; do not use production tenants or live connector
 credentials unless a later release-readiness gate explicitly approves a safe live smoke.
 
 ## Prerequisites
@@ -48,7 +48,7 @@ make daemon-test-status
 Expected:
 
 - Daemon responds on the test bind address.
-- Data directory is `~/.dope-test`.
+- Data directory is `~/.kura-test`.
 - No production connector credentials are required.
 
 ## 2. Run Focused Daemon Tests

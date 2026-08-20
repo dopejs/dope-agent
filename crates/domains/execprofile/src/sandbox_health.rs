@@ -6,22 +6,22 @@
 
 use std::sync::Arc;
 
-use dope_sandbox::BackendAvailabilityStatus;
-use dope_sandbox::BackendCapabilityProfile;
+use kura_sandbox::BackendAvailabilityStatus;
+use kura_sandbox::BackendCapabilityProfile;
 
 use crate::ExecutionProfile;
 use crate::HealthChecker;
 use crate::HealthStatus;
 
 /// Source of the sandbox backend-capability view (injectable in tests; the
-/// real source is `dope_sandbox::Manager`).
+/// real source is `kura_sandbox::Manager`).
 pub trait SandboxCapabilitySource: Send + Sync {
     fn backend_capabilities(&self) -> Vec<BackendCapabilityProfile>;
 }
 
-impl SandboxCapabilitySource for dope_sandbox::Manager {
+impl SandboxCapabilitySource for kura_sandbox::Manager {
     fn backend_capabilities(&self) -> Vec<BackendCapabilityProfile> {
-        dope_sandbox::Manager::backend_capabilities(self)
+        kura_sandbox::Manager::backend_capabilities(self)
     }
 }
 

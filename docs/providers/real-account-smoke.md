@@ -29,13 +29,13 @@ external integration adapter plane (Roadmap 59). Its real-account smoke is built
 - The raw provider message is never forwarded into diagnostics or smoke output; only the
   stable, redacted failure-class token and reason code are recorded.
 
-The real provider runs only when `DOPE_INTEGRATION_ADAPTER` names the adapter binary and
-`DOPE_ADAPTER_PROVIDER=feishu_lark` is set; default development/CI uses the fake backend.
+The real provider runs only when `KURA_INTEGRATION_ADAPTER` names the adapter binary and
+`KURA_ADAPTER_PROVIDER=feishu_lark` is set; default development/CI uses the fake backend.
 
 ## Mail (Feishu/Lark, Roadmap 63)
 
 The mail domain has a real Feishu/Lark provider on the same adapter plane
-(`DOPE_ADAPTER_DOMAIN=mail`). Its smoke is `opsreadiness.MailRealAccountSmoke`: pass with safe
+(`KURA_ADAPTER_DOMAIN=mail`). Its smoke is `opsreadiness.MailRealAccountSmoke`: pass with safe
 operator credentials + exercised send/reply/forward rows, else an explicit structured skip
 (default reason: "safe Feishu/Lark mail credentials unavailable in this environment"). No
 message content beyond redacted evidence and no credential material is exposed.

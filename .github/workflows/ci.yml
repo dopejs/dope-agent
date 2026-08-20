@@ -32,9 +32,9 @@ jobs:
       - name: Test workspace
         run: cargo test --workspace
       - name: Contract tests
-        run: cargo test -p dope-contracts
+        run: cargo test -p kura-contracts
       - name: Route parity gate
-        run: cargo test -p dope-api --test route_parity
+        run: cargo test -p kura-api --test route_parity
       - name: Clippy (deny new warnings in changed surface)
         run: cargo clippy --workspace --all-targets 2>&1 | tail -5
 

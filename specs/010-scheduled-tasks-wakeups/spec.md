@@ -112,7 +112,7 @@ An operator can distinguish whether a scheduled task failed to dispatch, launche
 
 - **Compatibility Impact**: Additive API, schema, event, and storage surface changes for schedule resources, schedule history, and schedule-linked runtime projections.
 - **Migration / Rollback**: Additive persistence for schedules and dispatch history is required. Rollback is a revert of schedule-specific resources and routes while preserving already-created runs and workflows as historical execution truth.
-- **Verification Strategy**: Required validation includes targeted scheduler tests, API and contract coverage for schedule resources and events, restart recovery coverage for persisted schedules including bounded overdue catch-up behavior, and one manual `DOPE_ENV=test` recurring schedule verification.
+- **Verification Strategy**: Required validation includes targeted scheduler tests, API and contract coverage for schedule resources and events, restart recovery coverage for persisted schedules including bounded overdue catch-up behavior, and one manual `KURA_ENV=test` recurring schedule verification.
 - **Observability Impact**: Operator-visible events, logs, and history must show schedule creation, pause or resume, cancellation, dispatch attempts, dispatch failures, successful launches, and links to downstream execution truth.
 - **Environment & Secrets**: Schedule behavior must remain isolated per environment. Test-environment verification must not require production connectors or production secrets unless explicitly configured for a live integration scenario.
 
@@ -121,7 +121,7 @@ An operator can distinguish whether a scheduled task failed to dispatch, launche
 ### Measurable Outcomes
 
 - **SC-001**: Operators can create and inspect a one-time scheduled task in under 2 minutes without using raw database access or log inspection.
-- **SC-002**: In manual `DOPE_ENV=test` verification, a created one-time schedule launches exactly one normal run or workflow at its due time and exposes that linkage through operator-visible surfaces.
+- **SC-002**: In manual `KURA_ENV=test` verification, a created one-time schedule launches exactly one normal run or workflow at its due time and exposes that linkage through operator-visible surfaces.
 - **SC-003**: In automated verification, paused recurring schedules produce zero unintended dispatches while paused across repeated due-time checks.
 - **SC-004**: In automated verification, 100% of exercised schedule outcomes are distinguishable as dispatch failure, downstream execution failure, successful dispatch, paused, or cancelled without consulting raw logs.
 - **SC-004a**: In automated verification, repeated dispatch-side failures expose retry budget progression, next retry time, and a terminal exhausted outcome through operator-visible schedule surfaces.

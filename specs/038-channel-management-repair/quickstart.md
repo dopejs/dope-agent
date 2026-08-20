@@ -1,7 +1,7 @@
 # Quickstart: Channel Management And Repair UX
 
 This walkthrough verifies Roadmap 53 in the local test environment. Default to
-`~/.dope-test` and `127.0.0.1:19192`; do not use production tenants or live connector
+`~/.kura-test` and `127.0.0.1:19192`; do not use production tenants or live connector
 credentials unless a later release-readiness gate explicitly approves a safe live smoke.
 
 ## Prerequisites
@@ -36,7 +36,7 @@ make daemon-test-status
 Expected:
 
 - Daemon responds on the test bind address.
-- Data directory is `~/.dope-test`.
+- Data directory is `~/.kura-test`.
 - No production connector credentials are required.
 
 ## 2. Run Focused Daemon Tests
@@ -208,8 +208,8 @@ remaining risk, validation timestamp, retention expiry, and redaction status.
 
 ### Walkthrough Notes - 2026-05-11
 
-- Test daemon: `make daemon-run-test` started `127.0.0.1:19192` with `~/.dope-test`;
-  `make daemon-test-status` returned `{"ok":true,"service":"dope"}`.
+- Test daemon: `make daemon-run-test` started `127.0.0.1:19192` with `~/.kura-test`;
+  `make daemon-test-status` returned `{"ok":true,"service":"kura"}`.
 - Seed source: local pairing token against the test daemon plus two seeded connector
   registrations, `telegram-r53-1778431447975` and `matrix-r53-1778431447975`.
 - Connector kinds covered: Telegram ready connector and Matrix failed/action-required

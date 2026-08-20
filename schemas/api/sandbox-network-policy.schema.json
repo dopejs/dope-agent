@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/sandbox-network-policy.schema.json",
+  "$id": "https://kura.local/schemas/api/sandbox-network-policy.schema.json",
   "title": "SandboxNetworkPolicy",
   "type": "object",
   "required": ["mode", "allowedHosts", "allowedPorts", "allowLoopback", "enforcementMode"],

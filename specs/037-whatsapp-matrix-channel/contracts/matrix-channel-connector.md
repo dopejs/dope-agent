@@ -216,7 +216,7 @@ Recommended Phase 52 surface names:
   `GET /v1/connectors/{connectorId}/matrix-smoke`,
   `GET /v1/live-validations/matrix-smoke`, and
   `GET /v1/live-validations/matrix-conformance`.
-- Config: `connectors.matrix` in `config.json`, `DOPE_CONNECTORS_MATRIX_*`
+- Config: `connectors.matrix` in `config.json`, `KURA_CONNECTORS_MATRIX_*`
   environment overrides, and `/v1/config.connectors.matrix`.
 - Schemas: `matrix-hosted-setup-resource`, `matrix-route-policy-resource`,
   `matrix-smoke-evidence-resource`, and

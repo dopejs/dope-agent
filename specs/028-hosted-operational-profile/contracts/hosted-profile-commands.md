@@ -9,8 +9,8 @@ operational profile without requiring host-native service managers.
 
 | Field | Required Value |
 |-------|----------------|
-| Environment | `DOPE_ENV=test` by default |
-| Data directory | `~/.dope-test` by default |
+| Environment | `KURA_ENV=test` by default |
+| Data directory | `~/.kura-test` by default |
 | Daemon address | `127.0.0.1:19192` by default |
 | Live connectors | Disabled unless explicit operator opt-in exists |
 | Supervisor mode | Repo-owned foreground supervisor |
@@ -49,7 +49,7 @@ the behaviors above are mandatory.
 ## Contract Tests
 
 - provisioning creates or verifies all required directories
-- default command execution targets `~/.dope-test`, not `~/.dope`
+- default command execution targets `~/.kura-test`, not `~/.kura`
 - production data access without explicit opt-in exits with a non-zero status
 - generated output includes run identity and artifact path
 - generated output excludes credential-bearing values

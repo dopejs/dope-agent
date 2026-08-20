@@ -172,9 +172,9 @@ verification for Roadmap 45 closure.
 
 - [X] T046 [P] Update hosted activation operator notes and rollback guidance in `docs/runtime/hosted-tenant-activation.md` and link them from `docs/runtime/production-operations.md`
 - [X] T047 [P] Update final implementation evidence, first-run 30-second review evidence, operator 10-minute diagnostic drill evidence, and any residual gaps in `specs/030-hosted-tenant-activation/quickstart.md`
-- [X] T048 Run `make daemon-contract-test`, `pnpm test:clients`, and `pnpm build` from `/Users/John/Code/dope-agent` and fix activation-related failures in `schemas/`, `sdk/ts/`, and `web/`
-- [X] T049 Run `go test ./...` and `go mod tidy` from `/Users/John/Code/dope-agent/daemon` and fix activation-related failures or unintended module drift in `daemon/`
-- [X] T050 Run the manual `DOPE_ENV=test` walkthrough from `specs/030-hosted-tenant-activation/quickstart.md` using `make daemon-run-test` and `make daemon-test-status`, including signup/invite landing, pre-first-action restart, 30-second first-run review, and 10-minute diagnostic drill evidence, then record verification evidence in `specs/030-hosted-tenant-activation/quickstart.md`
+- [X] T048 Run `make daemon-contract-test`, `pnpm test:clients`, and `pnpm build` from `/Users/John/Code/kura-agent` and fix activation-related failures in `schemas/`, `sdk/ts/`, and `web/`
+- [X] T049 Run `go test ./...` and `go mod tidy` from `/Users/John/Code/kura-agent/daemon` and fix activation-related failures or unintended module drift in `daemon/`
+- [X] T050 Run the manual `KURA_ENV=test` walkthrough from `specs/030-hosted-tenant-activation/quickstart.md` using `make daemon-run-test` and `make daemon-test-status`, including signup/invite landing, pre-first-action restart, 30-second first-run review, and 10-minute diagnostic drill evidence, then record verification evidence in `specs/030-hosted-tenant-activation/quickstart.md`
 
 ---
 

@@ -147,7 +147,7 @@ impl SQLiteStore {
     /// Scans the runs table without a tenant filter. Test-only: production callers MUST
     /// use the tenancy layer's list_runs_for_tenant so cross-tenant rows do not leak
     /// out of the read path.
-    pub fn list_runs_all_tenants_for_test(&self) -> Result<Vec<dope_runtime::Run>, String> {
+    pub fn list_runs_all_tenants_for_test(&self) -> Result<Vec<kura_runtime::Run>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -185,7 +185,7 @@ impl SQLiteStore {
     /// Returns all runs whose tenant_id matches tenant_id in ascending creation order.
     /// Pass A semantics: pre-backfill rows whose tenant_id is still NULL are NOT
     /// returned (fail-closed).
-    pub fn list_runs_for_tenant_raw(&self, tenant_id: &str) -> Result<Vec<dope_runtime::Run>, String> {
+    pub fn list_runs_for_tenant_raw(&self, tenant_id: &str) -> Result<Vec<kura_runtime::Run>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -212,7 +212,7 @@ impl SQLiteStore {
         &self,
         run_id: &str,
         tenant_id: &str,
-    ) -> Result<Option<dope_runtime::Run>, String> {
+    ) -> Result<Option<kura_runtime::Run>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -237,7 +237,7 @@ impl SQLiteStore {
     }
 
     /// Mirrors list_sessions but filtered by tenant. NULL-tenant rows are excluded.
-    pub fn list_sessions_for_tenant_raw(&self, tenant_id: &str) -> Result<Vec<dope_router::Session>, String> {
+    pub fn list_sessions_for_tenant_raw(&self, tenant_id: &str) -> Result<Vec<kura_router::Session>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -257,7 +257,7 @@ impl SQLiteStore {
     }
 
     /// Mirrors list_steps but filtered by tenant (and run). NULL-tenant rows excluded.
-    pub fn list_steps_for_tenant_raw(&self, tenant_id: &str, run_id: &str) -> Result<Vec<dope_runtime::Step>, String> {
+    pub fn list_steps_for_tenant_raw(&self, tenant_id: &str, run_id: &str) -> Result<Vec<kura_runtime::Step>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -283,7 +283,7 @@ impl SQLiteStore {
         tenant_id: &str,
         run_id: &str,
         step_id: &str,
-    ) -> Result<Vec<dope_runtime::ToolCall>, String> {
+    ) -> Result<Vec<kura_runtime::ToolCall>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -309,7 +309,7 @@ impl SQLiteStore {
     }
 
     /// Mirrors list_llm_dispatches but filtered by tenant (newest first).
-    pub fn list_llm_dispatches_for_tenant_raw(&self, tenant_id: &str) -> Result<Vec<dope_llm::Dispatch>, String> {
+    pub fn list_llm_dispatches_for_tenant_raw(&self, tenant_id: &str) -> Result<Vec<kura_llm::Dispatch>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -335,7 +335,7 @@ impl SQLiteStore {
         &self,
         dispatch_id: &str,
         tenant_id: &str,
-    ) -> Result<Option<dope_llm::Dispatch>, String> {
+    ) -> Result<Option<kura_llm::Dispatch>, String> {
         match self.lookup_row_tenant("llm_dispatches", "dispatch_id", dispatch_id)? {
             Some(owner) if !owner.is_empty() && owner != tenant_id => {
                 return Err(Self::ERR_CROSS_TENANT_ROW.to_string());
@@ -416,7 +416,7 @@ impl SQLiteStore {
     pub fn list_latest_checkpoints_for_tenant_raw(
         &self,
         tenant_id: &str,
-    ) -> Result<Vec<dope_runtime::RunCheckpoint>, String> {
+    ) -> Result<Vec<kura_runtime::RunCheckpoint>, String> {
         let all = self.list_latest_checkpoints()?;
         if all.is_empty() {
             return Ok(all);
@@ -457,7 +457,7 @@ impl SQLiteStore {
     /// Persists a run row binding tenant_id in the same INSERT. Returns
     /// ERR_CROSS_TENANT_ROW if the row exists and is owned by a different tenant —
     /// the existing row is preserved.
-    pub fn upsert_run_for_tenant_safe(&self, run: &dope_runtime::Run, tenant_id: &str) -> Result<(), String> {
+    pub fn upsert_run_for_tenant_safe(&self, run: &kura_runtime::Run, tenant_id: &str) -> Result<(), String> {
         if tenant_id.is_empty() {
             return Err("UpsertRunForTenantSafe: empty tenantID".to_string());
         }
@@ -512,7 +512,7 @@ impl SQLiteStore {
     }
 
     /// Persists a session row binding tenant_id in the same statement.
-    pub fn upsert_session_for_tenant_safe(&self, session: &dope_router::Session, tenant_id: &str) -> Result<(), String> {
+    pub fn upsert_session_for_tenant_safe(&self, session: &kura_router::Session, tenant_id: &str) -> Result<(), String> {
         if tenant_id.is_empty() {
             return Err("UpsertSessionForTenantSafe: empty tenantID".to_string());
         }
@@ -568,7 +568,7 @@ impl SQLiteStore {
     }
 
     /// Persists an llm dispatch row binding tenant_id in the same statement.
-    pub fn upsert_llm_dispatch_for_tenant_safe(&self, dispatch: &dope_llm::Dispatch, tenant_id: &str) -> Result<(), String> {
+    pub fn upsert_llm_dispatch_for_tenant_safe(&self, dispatch: &kura_llm::Dispatch, tenant_id: &str) -> Result<(), String> {
         if tenant_id.is_empty() {
             return Err("UpsertLLMDispatchForTenantSafe: empty tenantID".to_string());
         }
@@ -640,7 +640,7 @@ impl SQLiteStore {
     /// Persists a step row binding tenant_id in the same statement. Cross-tenant
     /// collisions are atomically refused — tenant A's row is never modified by tenant
     /// B's write attempt.
-    pub fn upsert_step_for_tenant_safe(&self, step: &dope_runtime::Step, tenant_id: &str) -> Result<(), String> {
+    pub fn upsert_step_for_tenant_safe(&self, step: &kura_runtime::Step, tenant_id: &str) -> Result<(), String> {
         if tenant_id.is_empty() {
             return Err("UpsertStepForTenantSafe: empty tenantID".to_string());
         }
@@ -695,7 +695,7 @@ impl SQLiteStore {
     }
 
     /// Persists a tool_call row binding tenant_id in the same statement.
-    pub fn upsert_tool_call_for_tenant_safe(&self, tool_call: &dope_runtime::ToolCall, tenant_id: &str) -> Result<(), String> {
+    pub fn upsert_tool_call_for_tenant_safe(&self, tool_call: &kura_runtime::ToolCall, tenant_id: &str) -> Result<(), String> {
         if tenant_id.is_empty() {
             return Err("UpsertToolCallForTenantSafe: empty tenantID".to_string());
         }
@@ -795,7 +795,7 @@ impl SQLiteStore {
     /// (Require + SaveCheckpoint + BindRunCheckpointsTenant).
     pub fn save_checkpoint_for_tenant_safe(
         &self,
-        checkpoint: &dope_runtime::RunCheckpoint,
+        checkpoint: &kura_runtime::RunCheckpoint,
         tenant_id: &str,
     ) -> Result<(), String> {
         if tenant_id.is_empty() {
@@ -876,9 +876,9 @@ impl SQLiteStore {
     /// (NULL tenant_id, non-global category) are claimed atomically.
     pub fn append_event_for_tenant_raw(
         &self,
-        event: &dope_events::Event,
+        event: &kura_events::Event,
         tenant_id: &str,
-    ) -> Result<dope_events::Event, String> {
+    ) -> Result<kura_events::Event, String> {
         if tenant_id.is_empty() {
             return Err("AppendEventForTenantRaw: empty tenantID".to_string());
         }
@@ -938,7 +938,7 @@ impl SQLiteStore {
             } else {
                 // NULL tenant_id row. Global categories are never claimed; non-global
                 // rows are pre-backfill compatibility and are claimed atomically.
-                if dope_events::is_global_category(&existing_category) {
+                if kura_events::is_global_category(&existing_category) {
                     return Err(Self::ERR_CROSS_TENANT_ROW.to_string());
                 }
                 self.conn
@@ -969,8 +969,8 @@ impl SQLiteStore {
     pub fn list_events_for_tenant_raw(
         &self,
         tenant_id: &str,
-        filter: &dope_events::Filter,
-    ) -> Result<Vec<dope_events::Event>, String> {
+        filter: &kura_events::Filter,
+    ) -> Result<Vec<kura_events::Event>, String> {
         let mut sql = String::from(
             r#"SELECT rowid, event_id, environment_scope, category, name, occurred_at, session_id,
                 run_id, workflow_id, workflow_step_id, schedule_id, schedule_attempt_id, step_id,
@@ -1023,7 +1023,7 @@ impl SQLiteStore {
     }
 
     /// Mirrors list_approvals but filtered by tenant.
-    pub fn list_approvals_for_tenant_raw(&self, tenant_id: &str) -> Result<Vec<dope_policy::Approval>, String> {
+    pub fn list_approvals_for_tenant_raw(&self, tenant_id: &str) -> Result<Vec<kura_policy::Approval>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -1044,7 +1044,7 @@ impl SQLiteStore {
     }
 
     /// Mirrors list_decisions but filtered by tenant.
-    pub fn list_decisions_for_tenant_raw(&self, tenant_id: &str) -> Result<Vec<dope_policy::Decision>, String> {
+    pub fn list_decisions_for_tenant_raw(&self, tenant_id: &str) -> Result<Vec<kura_policy::Decision>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -1098,7 +1098,7 @@ impl SQLiteStore {
         tenant_id: &str,
         environment_scope: &str,
         run_id: &str,
-    ) -> Result<Vec<dope_orchestration::Workflow>, String> {
+    ) -> Result<Vec<kura_orchestration::Workflow>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -1295,7 +1295,7 @@ impl SQLiteStore {
 // Scanners (self-contained; the sibling modules keep theirs private)
 // ---------------------------------------------------------------------------
 
-fn scan_run(row: &Row) -> Result<dope_runtime::Run, String> {
+fn scan_run(row: &Row) -> Result<kura_runtime::Run, String> {
     let run_id: String = row.get(0).map_err(|e| e.to_string())?;
     let session_id: Option<String> = row.get(1).map_err(|e| e.to_string())?;
     let schedule_id: Option<String> = row.get(2).map_err(|e| e.to_string())?;
@@ -1308,7 +1308,7 @@ fn scan_run(row: &Row) -> Result<dope_runtime::Run, String> {
     let created_at: String = row.get(9).map_err(|e| e.to_string())?;
     let updated_at: String = row.get(10).map_err(|e| e.to_string())?;
 
-    Ok(dope_runtime::Run {
+    Ok(kura_runtime::Run {
         run_id,
         session_id: session_id.unwrap_or_default(),
         schedule_id: schedule_id.unwrap_or_default(),
@@ -1320,12 +1320,12 @@ fn scan_run(row: &Row) -> Result<dope_runtime::Run, String> {
         goal,
         created_at: parse_rfc3339(&created_at)?,
         updated_at: parse_rfc3339(&updated_at)?,
-        ..dope_runtime::Run::default()
+        ..kura_runtime::Run::default()
     })
 }
 
 /// The get_run_for_tenant_raw scan: run columns plus tenant_id at index 11.
-fn scan_run_tenant(row: &Row) -> Result<dope_runtime::Run, String> {
+fn scan_run_tenant(row: &Row) -> Result<kura_runtime::Run, String> {
     let run_id: String = row.get(0).map_err(|e| e.to_string())?;
     let session_id: Option<String> = row.get(1).map_err(|e| e.to_string())?;
     let schedule_id: Option<String> = row.get(2).map_err(|e| e.to_string())?;
@@ -1338,7 +1338,7 @@ fn scan_run_tenant(row: &Row) -> Result<dope_runtime::Run, String> {
     let created_at: String = row.get(9).map_err(|e| e.to_string())?;
     let updated_at: String = row.get(10).map_err(|e| e.to_string())?;
 
-    Ok(dope_runtime::Run {
+    Ok(kura_runtime::Run {
         run_id,
         session_id: session_id.unwrap_or_default(),
         schedule_id: schedule_id.unwrap_or_default(),
@@ -1350,11 +1350,11 @@ fn scan_run_tenant(row: &Row) -> Result<dope_runtime::Run, String> {
         goal,
         created_at: parse_rfc3339(&created_at)?,
         updated_at: parse_rfc3339(&updated_at)?,
-        ..dope_runtime::Run::default()
+        ..kura_runtime::Run::default()
     })
 }
 
-fn scan_session(row: &Row) -> Result<dope_router::Session, String> {
+fn scan_session(row: &Row) -> Result<kura_router::Session, String> {
     let session_id: String = row.get(0).map_err(|e| e.to_string())?;
     let kind: String = row.get(1).map_err(|e| e.to_string())?;
     let status: String = row.get(2).map_err(|e| e.to_string())?;
@@ -1369,7 +1369,7 @@ fn scan_session(row: &Row) -> Result<dope_router::Session, String> {
     let last_active_at: String = row.get(11).map_err(|e| e.to_string())?;
     let last_reset_at: Option<String> = row.get(12).map_err(|e| e.to_string())?;
 
-    Ok(dope_router::Session {
+    Ok(kura_router::Session {
         session_id,
         kind: parse_enum(&kind)?,
         status: parse_enum(&status)?,
@@ -1387,7 +1387,7 @@ fn scan_session(row: &Row) -> Result<dope_router::Session, String> {
     })
 }
 
-fn scan_step(row: &Row) -> Result<dope_runtime::Step, String> {
+fn scan_step(row: &Row) -> Result<kura_runtime::Step, String> {
     let step_id: String = row.get(0).map_err(|e| e.to_string())?;
     let run_id: String = row.get(1).map_err(|e| e.to_string())?;
     let workflow_id: Option<String> = row.get(2).map_err(|e| e.to_string())?;
@@ -1401,7 +1401,7 @@ fn scan_step(row: &Row) -> Result<dope_runtime::Step, String> {
     let created_at: String = row.get(10).map_err(|e| e.to_string())?;
     let updated_at: String = row.get(11).map_err(|e| e.to_string())?;
 
-    Ok(dope_runtime::Step {
+    Ok(kura_runtime::Step {
         step_id,
         run_id,
         workflow_id: workflow_id.unwrap_or_default(),
@@ -1417,7 +1417,7 @@ fn scan_step(row: &Row) -> Result<dope_runtime::Step, String> {
     })
 }
 
-fn scan_tool_call(row: &Row) -> Result<dope_runtime::ToolCall, String> {
+fn scan_tool_call(row: &Row) -> Result<kura_runtime::ToolCall, String> {
     let tool_call_id: String = row.get(0).map_err(|e| e.to_string())?;
     let run_id: String = row.get(1).map_err(|e| e.to_string())?;
     let step_id: String = row.get(2).map_err(|e| e.to_string())?;
@@ -1447,7 +1447,7 @@ fn scan_tool_call(row: &Row) -> Result<dope_runtime::ToolCall, String> {
     let created_at: String = row.get(26).map_err(|e| e.to_string())?;
     let updated_at: String = row.get(27).map_err(|e| e.to_string())?;
 
-    Ok(dope_runtime::ToolCall {
+    Ok(kura_runtime::ToolCall {
         tool_call_id,
         run_id,
         step_id,
@@ -1476,11 +1476,11 @@ fn scan_tool_call(row: &Row) -> Result<dope_runtime::ToolCall, String> {
         sandbox: decode_map(&sandbox_json)?,
         integration_bindings: decode_vec(&integration_bindings_json)?,
         error: error_text.unwrap_or_default(),
-        ..dope_runtime::ToolCall::default()
+        ..kura_runtime::ToolCall::default()
     })
 }
 
-fn scan_llm_dispatch(row: &Row) -> Result<dope_llm::Dispatch, String> {
+fn scan_llm_dispatch(row: &Row) -> Result<kura_llm::Dispatch, String> {
     let dispatch_id: String = row.get(0).map_err(|e| e.to_string())?;
     let provider: String = row.get(1).map_err(|e| e.to_string())?;
     let model: String = row.get(2).map_err(|e| e.to_string())?;
@@ -1500,14 +1500,14 @@ fn scan_llm_dispatch(row: &Row) -> Result<dope_llm::Dispatch, String> {
     let started_at: Option<String> = row.get(16).map_err(|e| e.to_string())?;
     let completed_at: Option<String> = row.get(17).map_err(|e| e.to_string())?;
 
-    let status: dope_llm::DispatchStatus = parse_enum(&status)?;
-    let messages: Vec<dope_llm::Message> =
+    let status: kura_llm::DispatchStatus = parse_enum(&status)?;
+    let messages: Vec<kura_llm::Message> =
         crate::crud::decode_json_field(&messages_raw).map_err(|e| format!("decode llm dispatch messages: {e}"))?;
-    let usage: dope_llm::Usage =
+    let usage: kura_llm::Usage =
         crate::crud::decode_json_field(&usage_raw).map_err(|e| format!("decode llm dispatch usage: {e}"))?;
-    let partial = status == dope_llm::DispatchStatus::PartialFailed;
+    let partial = status == kura_llm::DispatchStatus::PartialFailed;
 
-    Ok(dope_llm::Dispatch {
+    Ok(kura_llm::Dispatch {
         dispatch_id,
         provider,
         model,
@@ -1530,7 +1530,7 @@ fn scan_llm_dispatch(row: &Row) -> Result<dope_llm::Dispatch, String> {
     })
 }
 
-fn scan_approval(row: &Row) -> Result<dope_policy::Approval, String> {
+fn scan_approval(row: &Row) -> Result<kura_policy::Approval, String> {
     let approval_id: String = row.get(0).map_err(|e| e.to_string())?;
     let action: String = row.get(1).map_err(|e| e.to_string())?;
     let resource_kind: Option<String> = row.get(2).map_err(|e| e.to_string())?;
@@ -1545,7 +1545,7 @@ fn scan_approval(row: &Row) -> Result<dope_policy::Approval, String> {
     let comment: Option<String> = row.get(11).map_err(|e| e.to_string())?;
     let integration_bindings_json: Option<String> = row.get(12).map_err(|e| e.to_string())?;
 
-    Ok(dope_policy::Approval {
+    Ok(kura_policy::Approval {
         approval_id,
         action,
         resource_kind: resource_kind.unwrap_or_default(),
@@ -1563,7 +1563,7 @@ fn scan_approval(row: &Row) -> Result<dope_policy::Approval, String> {
     })
 }
 
-fn scan_decision(row: &Row) -> Result<dope_policy::Decision, String> {
+fn scan_decision(row: &Row) -> Result<kura_policy::Decision, String> {
     let decision_id: String = row.get(0).map_err(|e| e.to_string())?;
     let action: String = row.get(1).map_err(|e| e.to_string())?;
     let resource_kind: Option<String> = row.get(2).map_err(|e| e.to_string())?;
@@ -1573,7 +1573,7 @@ fn scan_decision(row: &Row) -> Result<dope_policy::Decision, String> {
     let approval_id: Option<String> = row.get(6).map_err(|e| e.to_string())?;
     let created_at: String = row.get(7).map_err(|e| e.to_string())?;
 
-    Ok(dope_policy::Decision {
+    Ok(kura_policy::Decision {
         decision_id,
         action,
         resource_kind: resource_kind.unwrap_or_default(),
@@ -1626,7 +1626,7 @@ fn scan_schedule(row: &Row) -> Result<crate::schedule::ScheduleRecord, String> {
 
 /// Reads the same columns as the sibling events scanner plus the tenant_id column
 /// (index 18) and surfaces it on the event.
-fn scan_event_with_tenant(row: &Row) -> Result<dope_events::Event, String> {
+fn scan_event_with_tenant(row: &Row) -> Result<kura_events::Event, String> {
     let sequence: i64 = row.get(0).map_err(|e| e.to_string())?;
     let event_id: String = row.get(1).map_err(|e| e.to_string())?;
     let environment_scope: Option<String> = row.get(2).map_err(|e| e.to_string())?;
@@ -1647,7 +1647,7 @@ fn scan_event_with_tenant(row: &Row) -> Result<dope_events::Event, String> {
     let payload_json: Option<String> = row.get(17).map_err(|e| e.to_string())?;
     let tenant_id: Option<String> = row.get(18).map_err(|e| e.to_string())?;
 
-    Ok(dope_events::Event {
+    Ok(kura_events::Event {
         event_id,
         sequence,
         environment_scope: environment_scope.unwrap_or_default(),
@@ -1655,7 +1655,7 @@ fn scan_event_with_tenant(row: &Row) -> Result<dope_events::Event, String> {
         category,
         name,
         occurred_at: parse_rfc3339(&occurred_at)?,
-        scope: dope_events::Scope {
+        scope: kura_events::Scope {
             session_id: session_id.unwrap_or_default(),
             run_id: run_id.unwrap_or_default(),
             workflow_id: workflow_id.unwrap_or_default(),
@@ -1665,9 +1665,9 @@ fn scan_event_with_tenant(row: &Row) -> Result<dope_events::Event, String> {
             step_id: step_id.unwrap_or_default(),
             connector_id: connector_id.unwrap_or_default(),
             capability_id: capability_id.unwrap_or_default(),
-            ..dope_events::Scope::default()
+            ..kura_events::Scope::default()
         },
-        resource: dope_events::Resource { kind: resource_kind, id: resource_id },
+        resource: kura_events::Resource { kind: resource_kind, id: resource_id },
         payload: decode_map(&payload_json)?,
     })
 }
@@ -1677,7 +1677,7 @@ fn scan_event_with_tenant(row: &Row) -> Result<dope_events::Event, String> {
 // ---------------------------------------------------------------------------
 
 /// Collects the columns the events INSERT needs, keeping append_event_for_tenant_safe
-/// independent of the higher-level dope_events::Event type for testability.
+/// independent of the higher-level kura_events::Event type for testability.
 #[derive(Debug, Clone, Default)]
 pub struct AppendEventInput {
     pub event_id: String,

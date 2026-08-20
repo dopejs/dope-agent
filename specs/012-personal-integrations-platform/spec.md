@@ -54,7 +54,7 @@ environment rules instead of each domain inventing separate connection behavior.
 stable substrate. Rebuilding auth and readiness rules per domain would recreate the same
 operational risk in multiple places.
 
-**Independent Test**: Execute representative integration-backed work in `DOPE_ENV=test`
+**Independent Test**: Execute representative integration-backed work in `KURA_ENV=test`
 using at least one repo-owned fake or local integration path, then confirm the run or
 workflow truth retains integration identity, readiness, approval, and redacted
 secret-scope provenance in a shared way that is not domain-specific.
@@ -165,7 +165,7 @@ contract without redefining connection lifecycle concepts.
   coupling delivery outcomes to connection health.
 - **FR-011**: The system MUST provide at least one repo-owned fake or local integration
   verification path so integration readiness, auth-state transitions, and provenance can
-  be validated in `DOPE_ENV=test`.
+  be validated in `KURA_ENV=test`.
 - **FR-012**: Existing non-personal-system runtime behavior MUST continue to work without
   adopting the new integration substrate unless a workflow or feature explicitly uses an
   integration-backed domain.
@@ -205,11 +205,11 @@ contract without redefining connection lifecycle concepts.
   workflow, and approval coverage for integration lifecycle, readiness transitions, and
   binding projection; contract coverage for shared integration resources and events;
   restart coverage for durable readiness truth; and one repo-owned fake or local
-  integration path in `DOPE_ENV=test`.
+  integration path in `KURA_ENV=test`.
 - **Observability Impact**: Operators must be able to inspect integration identity,
   readiness transitions, degraded or unavailable causes, redacted provenance, and
   environment scope without reading raw config files or provider logs.
-- **Environment & Secrets**: Work defaults to `DOPE_ENV=test`. Live personal-system
+- **Environment & Secrets**: Work defaults to `KURA_ENV=test`. Live personal-system
   connectors are not required to validate the phase. Secret-backed material remains
   operator-owned, environment-scoped, and redacted in operator-visible history.
 
@@ -223,7 +223,7 @@ contract without redefining connection lifecycle concepts.
 - **SC-002**: In automated verification, 100% of exercised readiness transitions preserve
   account identity when known, environment scope, and redacted provenance without
   requiring raw secret inspection.
-- **SC-003**: At least one repo-owned fake or local integration path in `DOPE_ENV=test`
+- **SC-003**: At least one repo-owned fake or local integration path in `KURA_ENV=test`
   can demonstrate initial setup, auth-pending transition, healthy readiness, and a
   degraded or unavailable outcome end to end.
 - **SC-004**: During planning review for later personal domains, at least two downstream

@@ -3,7 +3,7 @@
 //! Routes under the /v1/calendar prefix: account projections (provider sync
 //! surface), event list/create/get/update/cancel, availability queries, and
 //! the operation ledger (diagnostics). Every backend-backed handler funnels
-//! through `dope_calendar::Manager`; the activity ledger (accounts,
+//! through `kura_calendar::Manager`; the activity ledger (accounts,
 //! operations, artifacts) is mirrored into the SQLite store and re-published
 //! on the event bus exactly like the Go `recordCalendar*` helpers, with the
 //! resolved tenant context bound onto tenant-owned event rows.
@@ -19,10 +19,10 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use dope_billing::{integration_operation_key, Category, ReserveInput, ResolveInput, UsageReservation};
-use dope_calendar as calendar;
-use dope_events as events;
-use dope_integrations as integrations;
+use kura_billing::{integration_operation_key, Category, ReserveInput, ResolveInput, UsageReservation};
+use kura_calendar as calendar;
+use kura_events as events;
+use kura_integrations as integrations;
 
 use crate::error::ApiError;
 use crate::middleware::{environment_scope_from_config, guard_resource_for_tenant, TenantContext};
@@ -617,7 +617,7 @@ async fn get_operation(
 /// Reserves quota for one calendar operation. Mirrors the Go helper: no
 /// resolved tenant → no reservation; nil billing manager → allowed in
 /// non-hosted environments, denied in hosted ones; otherwise delegate to
-/// `dope_billing::Manager::reserve` and surface denials as errors.
+/// `kura_billing::Manager::reserve` and surface denials as errors.
 async fn begin_integration_operation_quota(
     state: &AppState,
     tenant: Option<&TenantContext>,
@@ -632,7 +632,7 @@ async fn begin_integration_operation_quota(
     if tc.0.tenant_id.is_empty() {
         return Ok(UsageReservation::default());
     }
-    let hosted = matches!(state.config.environment, dope_config::Environment::Prod);
+    let hosted = matches!(state.config.environment, kura_config::Environment::Prod);
     let operation_key = integration_operation_key(&tc.0.tenant_id, domain, operation_id, client_key);
     let Some(billing) = &state.billing else {
         if hosted {
@@ -1150,19 +1150,19 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-calendar-test".to_string(),
+            data_dir: "/tmp/kura-api-calendar-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
-                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
-                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
-                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
+                telegram: kura_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
+                slack: kura_config::SlackConnectorConfig { enabled: false, ..Default::default() },
+                matrix: kura_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
             },
         }
     }
@@ -1170,12 +1170,12 @@ mod tests {
     /// AppState with calendar + integrations managers wired (billing stays
     /// None — the test environment allows without a manager, like Go).
     fn test_state() -> AppState {
-        let dir = std::env::temp_dir().join(format!("dope-api-calendar-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-calendar-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        let mut state = AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store);
+        let mut state = AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store);
         state.calendar = Some(Arc::new(calendar::Manager::new("test")));
         state.integrations = Some(Arc::new(integrations::Manager::new("test")));
         state
@@ -1232,7 +1232,7 @@ mod tests {
         }
         let mut req = builder.body(Body::from(body.unwrap_or("").to_string())).expect("request");
         if let Some(tenant_id) = tenant {
-            let ctx = dope_identity::TenantContext { tenant_id: tenant_id.to_string(), ..Default::default() };
+            let ctx = kura_identity::TenantContext { tenant_id: tenant_id.to_string(), ..Default::default() };
             req.extensions_mut().insert(TenantContext(ctx));
         }
         let response = app.clone().oneshot(req).await.expect("oneshot");
@@ -1290,7 +1290,7 @@ mod tests {
         let persisted = state
             .store
             .lock()
-            .list_calendar_operations("test", &dope_store::calendar::CalendarOperationFilter::default())
+            .list_calendar_operations("test", &kura_store::calendar::CalendarOperationFilter::default())
             .expect("list operations");
         // The default list (calendar-a) also persists its operation, so the
         // ledger holds the explicit list + default list + busy_free entries.

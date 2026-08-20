@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/connector-ingress-message.response.schema.json",
+  "$id": "https://kura.local/schemas/api/connector-ingress-message.response.schema.json",
   "title": "ConnectorIngressMessageResponse",
   "type": "object",
   "required": ["ingressId", "connectorId", "outcome", "reasonCode", "redactionStatus", "acceptedAt", "sessionCreated", "runCreated"],

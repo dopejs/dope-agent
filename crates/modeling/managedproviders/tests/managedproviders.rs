@@ -7,15 +7,15 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
-use dope_llm::{CancelToken, Message, MessageRole, Provider as _, ProviderRequest};
-use dope_managedproviders::{
+use kura_llm::{CancelToken, Message, MessageRole, Provider as _, ProviderRequest};
+use kura_managedproviders::{
     Bridge, ClaudeBridge, ClaudeCLIProvider, CodexBridge, Manager, CLAUDE_PROVIDER_ID,
     CODEX_PROVIDER_ID, ExecRunner, ManagedProviderOperationPlan, Registry, RunError, RunResult,
     Runner, SandboxManager, SandboxRunner, build_managed_provider_consumer_view,
     classify_cli_error, new_managed_provider_operation_id,
 };
-use dope_providers::{AuthStatus, ManagedRegistry, ManagedBridge};
-use dope_sandbox::{
+use kura_providers::{AuthStatus, ManagedRegistry, ManagedBridge};
+use kura_sandbox::{
     ApprovalMode, BackendKind, ConsumerContractView, ConsumerKind, Decision,
     DecisionApprovalStatus, DecisionResolution, ExecutionRequest, ExecutionStatus,
     LocalStateAccessMode, ManagedProviderActionKind, Profile, Result as SandboxResult,
@@ -26,25 +26,25 @@ use dope_sandbox::{
 // Fixtures
 // ---------------------------------------------------------------------------
 
-fn test_cfg(data_dir: &str) -> dope_config::Config {
-    dope_config::Config {
-        environment: dope_config::Environment::Test,
+fn test_cfg(data_dir: &str) -> kura_config::Config {
+    kura_config::Config {
+        environment: kura_config::Environment::Test,
         bind_addr: String::new(),
         data_dir: data_dir.to_string(),
         log_level: "info".to_string(),
         version: "test".to_string(),
-        llm: dope_config::LlmConfig {
-            claude: dope_config::ManagedCliProviderConfig {
+        llm: kura_config::LlmConfig {
+            claude: kura_config::ManagedCliProviderConfig {
                 cli_path: "/usr/bin/claude".to_string(),
                 ..Default::default()
             },
-            codex: dope_config::ManagedCliProviderConfig {
+            codex: kura_config::ManagedCliProviderConfig {
                 cli_path: "/usr/bin/codex".to_string(),
                 ..Default::default()
             },
             ..Default::default()
         },
-        connectors: dope_config::ConnectorConfig::default(),
+        connectors: kura_config::ConnectorConfig::default(),
     }
 }
 
@@ -112,11 +112,11 @@ impl SandboxStub {
         Profile {
             profile_id: profile_id.to_string(),
             backend_kind: BackendKind::Subprocess,
-            approval_policy: dope_sandbox::ApprovalPolicy {
+            approval_policy: kura_sandbox::ApprovalPolicy {
                 mode: ApprovalMode::Allow,
                 ..Default::default()
             },
-            network_policy: dope_sandbox::NetworkPolicy {
+            network_policy: kura_sandbox::NetworkPolicy {
                 enforcement_mode: "declared_only".to_string(),
                 ..Default::default()
             },
@@ -126,13 +126,13 @@ impl SandboxStub {
 }
 
 impl SandboxManager for SandboxStub {
-    fn start_execution(&self, request: ExecutionRequest) -> Result<dope_sandbox::Execution, String> {
+    fn start_execution(&self, request: ExecutionRequest) -> Result<kura_sandbox::Execution, String> {
         self.executions.lock().unwrap().push(RecordedExecution {
             profile_id: request.profile_id.clone(),
             metadata: request.metadata.clone(),
             consumer: request.consumer.clone(),
         });
-        Ok(dope_sandbox::Execution {
+        Ok(kura_sandbox::Execution {
             execution_id: "exec-1".to_string(),
             profile_id: request.profile_id,
             backend_kind: BackendKind::Subprocess,
@@ -160,7 +160,7 @@ impl SandboxManager for SandboxStub {
         })
     }
 
-    fn wait_execution(&self, execution_id: &str) -> Result<dope_sandbox::Execution, String> {
+    fn wait_execution(&self, execution_id: &str) -> Result<kura_sandbox::Execution, String> {
         let (profile_id, metadata, consumer) = {
             let recorded = self.executions.lock().unwrap();
             let Some(entry) = recorded.first() else {
@@ -168,7 +168,7 @@ impl SandboxManager for SandboxStub {
             };
             (entry.profile_id.clone(), entry.metadata.clone(), entry.consumer.clone())
         };
-        Ok(dope_sandbox::Execution {
+        Ok(kura_sandbox::Execution {
             execution_id: execution_id.to_string(),
             profile_id: profile_id.clone(),
             backend_kind: BackendKind::Subprocess,
@@ -197,7 +197,7 @@ impl SandboxManager for SandboxStub {
     fn finalize_execution(
         &self,
         _execution_id: &str,
-        _finalization: dope_sandbox::ExecutionFinalization,
+        _finalization: kura_sandbox::ExecutionFinalization,
     ) -> Result<(), String> {
         Ok(())
     }
@@ -206,7 +206,7 @@ impl SandboxManager for SandboxStub {
         &self,
         profile_id: &str,
         _execution_id: &str,
-        _access: &dope_sandbox::AccessRequest,
+        _access: &kura_sandbox::AccessRequest,
     ) -> Result<Decision, String> {
         Ok(Decision {
             decision_id: "decision-1".to_string(),
@@ -240,7 +240,7 @@ fn write_text_file(path: &std::path::Path, content: &str) {
 
 #[test]
 fn claude_detect_login_required() {
-    let home = std::env::temp_dir().join(format!("dope-mp-claude-{}", uuid_suffix()));
+    let home = std::env::temp_dir().join(format!("kura-mp-claude-{}", uuid_suffix()));
     let cfg = test_cfg(home.to_str().unwrap());
     let runner: Arc<dyn Runner> = Arc::new(RunnerStub::new(|_cmd, _args| {
         ok_result(r#"{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}"#)
@@ -253,7 +253,7 @@ fn claude_detect_login_required() {
 
 #[test]
 fn claude_provider_maps_auth_failure() {
-    let home = std::env::temp_dir().join(format!("dope-mp-claude-auth-{}", uuid_suffix()));
+    let home = std::env::temp_dir().join(format!("kura-mp-claude-auth-{}", uuid_suffix()));
     let cfg = test_cfg(home.to_str().unwrap());
     let runner: Arc<dyn Runner> = Arc::new(RunnerStub::new(|_cmd, _args| {
         ok_result(r#"{"is_error":true,"result":"Not logged in · Please run /login"}"#)
@@ -271,7 +271,7 @@ fn claude_provider_maps_auth_failure() {
 
 #[test]
 fn codex_detect_and_model_catalog() {
-    let home = std::env::temp_dir().join(format!("dope-mp-codex-{}", uuid_suffix()));
+    let home = std::env::temp_dir().join(format!("kura-mp-codex-{}", uuid_suffix()));
     write_text_file(&home.join(".codex/auth.json"), &serde_json::json!({
         "auth_mode": "chatgpt",
         "tokens": { "account_id": "acct_1", "access_token": "header.payload.sig" },
@@ -299,7 +299,7 @@ fn codex_detect_and_model_catalog() {
 
 #[test]
 fn codex_provider_reads_cli_output_file() {
-    let home = std::env::temp_dir().join(format!("dope-mp-codex-out-{}", uuid_suffix()));
+    let home = std::env::temp_dir().join(format!("kura-mp-codex-out-{}", uuid_suffix()));
     let cfg = test_cfg(home.to_str().unwrap());
     let runner: Arc<dyn Runner> = Arc::new(RunnerStub::new(|_cmd, args| {
         let mut output_path = String::new();
@@ -313,7 +313,7 @@ fn codex_provider_reads_cli_output_file() {
         ok_result("ok")
     }));
     let bridge = CodexBridge::new(home.to_str().unwrap(), &cfg, runner, None);
-    let provider = dope_managedproviders::CodexCLIProvider { bridge: Arc::new(bridge) };
+    let provider = kura_managedproviders::CodexCLIProvider { bridge: Arc::new(bridge) };
     let request = ProviderRequest {
         model: "gpt-5.4".to_string(),
         messages: vec![Message { role: MessageRole::User, content: "hello".to_string() }],
@@ -325,8 +325,8 @@ fn codex_provider_reads_cli_output_file() {
 
 #[test]
 fn consumer_view_scopes_secrets_per_consumer_instance() {
-    let evaluation = dope_managedproviders::ManagedProviderOperationEvaluation {
-        declaration: dope_sandbox::ManagedProviderRequirementDeclaration {
+    let evaluation = kura_managedproviders::ManagedProviderOperationEvaluation {
+        declaration: kura_sandbox::ManagedProviderRequirementDeclaration {
             approval_mode: ApprovalMode::Allow,
             enforcement_strength: "declared_only".to_string(),
             sensitive_state_classes: vec!["settings_file".to_string()],
@@ -349,7 +349,7 @@ fn consumer_view_scopes_secrets_per_consumer_instance() {
         operation_id: "operation_claude".to_string(),
         provider_id: CLAUDE_PROVIDER_ID.to_string(),
         action: ManagedProviderActionKind::PromptExecution,
-        profile_id: dope_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE.to_string(),
+        profile_id: kura_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE.to_string(),
         requested_by: "test".to_string(),
         local_state: vec![sensitive(CLAUDE_PROVIDER_ID, "settings_file", "settings.json")],
         ..Default::default()
@@ -358,7 +358,7 @@ fn consumer_view_scopes_secrets_per_consumer_instance() {
         operation_id: "operation_codex".to_string(),
         provider_id: CODEX_PROVIDER_ID.to_string(),
         action: ManagedProviderActionKind::PromptExecution,
-        profile_id: dope_sandbox::PROFILE_ID_MANAGED_PROVIDER_CODEX.to_string(),
+        profile_id: kura_sandbox::PROFILE_ID_MANAGED_PROVIDER_CODEX.to_string(),
         requested_by: "test".to_string(),
         local_state: vec![sensitive(CODEX_PROVIDER_ID, "settings_file", "config.toml")],
         ..Default::default()
@@ -374,11 +374,11 @@ fn consumer_view_scopes_secrets_per_consumer_instance() {
 
 #[test]
 fn registry_uses_managed_provider_home_under_data_dir_in_test_environment() {
-    let base = std::env::temp_dir().join(format!("dope-mp-home-{}", uuid_suffix()));
-    let data_dir = base.join("dope-data");
+    let base = std::env::temp_dir().join(format!("kura-mp-home-{}", uuid_suffix()));
+    let data_dir = base.join("kura-data");
     let cfg = test_cfg(data_dir.to_str().unwrap());
     let registry = Registry::new(&cfg, None);
-    assert_eq!(registry.home_dir(), dope_config::managed_provider_home_dir(&cfg));
+    assert_eq!(registry.home_dir(), kura_config::managed_provider_home_dir(&cfg));
     let claude = registry.claude_bridge().expect("claude bridge");
     assert_eq!(claude.home_dir, registry.home_dir());
     assert!(registry.get(CLAUDE_PROVIDER_ID).is_some());
@@ -387,12 +387,12 @@ fn registry_uses_managed_provider_home_under_data_dir_in_test_environment() {
 
 #[test]
 fn codex_detect_fails_closed_when_local_state_escapes_declaration() {
-    let home = std::env::temp_dir().join(format!("dope-mp-codex-escape-{}", uuid_suffix()));
+    let home = std::env::temp_dir().join(format!("kura-mp-codex-escape-{}", uuid_suffix()));
     write_text_file(&home.join(".codex/models_cache.json"), &serde_json::json!({
         "models": [{"slug": "gpt-5.4"}],
     }).to_string());
     write_text_file(&home.join(".codex/config.toml"), "model = \"gpt-5.4\"");
-    let outside_path = std::env::temp_dir().join(format!("dope-outside-auth-{}.json", uuid_suffix()));
+    let outside_path = std::env::temp_dir().join(format!("kura-outside-auth-{}.json", uuid_suffix()));
     write_text_file(&outside_path, &serde_json::json!({
         "auth_mode": "chatgpt",
         "tokens": { "account_id": "acct_1", "access_token": "secret-token" },
@@ -414,7 +414,7 @@ fn codex_detect_fails_closed_when_local_state_escapes_declaration() {
 
 #[test]
 fn registry_routes_claude_detect_through_sandbox() {
-    let home = std::env::temp_dir().join(format!("dope-mp-sandbox-claude-{}", uuid_suffix()));
+    let home = std::env::temp_dir().join(format!("kura-mp-sandbox-claude-{}", uuid_suffix()));
     let sandbox = Arc::new(SandboxStub::new(
         r#"{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}"#,
         true,
@@ -422,7 +422,7 @@ fn registry_routes_claude_detect_through_sandbox() {
     let cfg = test_cfg(home.to_str().unwrap());
     let runner: Arc<dyn Runner> = Arc::new(SandboxRunner {
         manager: Some(sandbox.clone()),
-        profile_id: dope_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE.to_string(),
+        profile_id: kura_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE.to_string(),
         provider_id: CLAUDE_PROVIDER_ID.to_string(),
         roots: vec![
             home.join("work").to_string_lossy().into_owned(),
@@ -442,7 +442,7 @@ fn registry_routes_claude_detect_through_sandbox() {
     assert_eq!(state.status, AuthStatus::LoginRequired);
     let recorded = sandbox.recorded();
     assert_eq!(recorded.len(), 1);
-    assert_eq!(recorded[0].profile_id, dope_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE);
+    assert_eq!(recorded[0].profile_id, kura_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE);
     assert_eq!(
         recorded[0].metadata.get("managedProviderAction").map(String::as_str),
         Some("auth_status"),
@@ -454,8 +454,8 @@ fn registry_routes_claude_detect_through_sandbox() {
 }
 
 #[test]
-fn registry_implements_dope_providers_managed_registry() {
-    let home = std::env::temp_dir().join(format!("dope-mp-mreg-{}", uuid_suffix()));
+fn registry_implements_kura_providers_managed_registry() {
+    let home = std::env::temp_dir().join(format!("kura-mp-mreg-{}", uuid_suffix()));
     let cfg = test_cfg(home.to_str().unwrap());
     let claude_runner: Arc<dyn Runner> = Arc::new(RunnerStub::new(|_cmd, _args| {
         ok_result(r#"{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}"#)
@@ -471,7 +471,7 @@ fn registry_implements_dope_providers_managed_registry() {
     assert_eq!(bridges.len(), 2);
     let claude = ManagedRegistry::get(&registry, CLAUDE_PROVIDER_ID).expect("claude");
     assert_eq!(claude.provider_id(), CLAUDE_PROVIDER_ID);
-    assert_eq!(claude.family(), dope_providers::Family::ClaudeCodeCLI);
+    assert_eq!(claude.family(), kura_providers::Family::ClaudeCodeCLI);
     let (state, models) = futures::executor::block_on(claude.detect()).expect("detect");
     assert_eq!(state.provider_id, CLAUDE_PROVIDER_ID);
     assert_eq!(models.len(), 2);
@@ -543,8 +543,8 @@ fn uuid_suffix() -> String {
 
 /// Builds a registry with stub-runner bridges and a manager over a fresh store.
 fn manager_with_store() -> (Manager, std::path::PathBuf) {
-    let base = std::env::temp_dir().join(format!("dope-mp-store-{}", uuid_suffix()));
-    let data_dir = base.join("dope-data");
+    let base = std::env::temp_dir().join(format!("kura-mp-store-{}", uuid_suffix()));
+    let data_dir = base.join("kura-data");
     let cfg = test_cfg(data_dir.to_str().unwrap());
     let claude_runner: Arc<dyn Runner> = Arc::new(RunnerStub::new(|_cmd, _args| {
         ok_result(r#"{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}"#)
@@ -556,28 +556,28 @@ fn manager_with_store() -> (Manager, std::path::PathBuf) {
         Arc::new(ClaudeBridge::new(&home(&cfg), &cfg, claude_runner, None)),
         Arc::new(CodexBridge::new(&home(&cfg), &cfg, codex_runner, None)),
     ]);
-    let store = dope_store::SQLiteStore::new(data_dir.to_str().unwrap()).expect("open store");
+    let store = kura_store::SQLiteStore::new(data_dir.to_str().unwrap()).expect("open store");
     (Manager::new(cfg, registry, Some(store)), base)
 }
 
-fn home(cfg: &dope_config::Config) -> String {
-    dope_config::managed_provider_home_dir(cfg)
+fn home(cfg: &kura_config::Config) -> String {
+    kura_config::managed_provider_home_dir(cfg)
 }
 
-fn setup_session(state: dope_setupwizard::SetupState) -> dope_setupwizard::SetupSession {
+fn setup_session(state: kura_setupwizard::SetupState) -> kura_setupwizard::SetupSession {
     let now = Utc::now();
-    dope_setupwizard::SetupSession {
+    kura_setupwizard::SetupSession {
         setup_session_id: "session-1".to_string(),
         tenant_id: "tenant-1".to_string(),
         actor_principal_id: String::new(),
-        target_id: dope_setupwizard::TARGET_OPENAI_COMPATIBLE.to_string(),
-        target_kind: dope_setupwizard::TargetKind::Provider,
-        setup_style: dope_setupwizard::SetupStyle::SubmittedSecret,
+        target_id: kura_setupwizard::TARGET_OPENAI_COMPATIBLE.to_string(),
+        target_kind: kura_setupwizard::TargetKind::Provider,
+        setup_style: kura_setupwizard::SetupStyle::SubmittedSecret,
         state,
         reason_code: String::new(),
         retryable: false,
-        remediation_owner: dope_setupwizard::RemediationOwner::ProductUser,
-        safe_use_mode: dope_setupwizard::SafeUseMode::Blocked,
+        remediation_owner: kura_setupwizard::RemediationOwner::ProductUser,
+        safe_use_mode: kura_setupwizard::SafeUseMode::Blocked,
         allowed_capabilities: Vec::new(),
         current_attempt_id: String::new(),
         diagnostic_result_id: String::new(),
@@ -586,7 +586,7 @@ fn setup_session(state: dope_setupwizard::SetupState) -> dope_setupwizard::Setup
         diagnostic_source_kind: String::new(),
         diagnostic_source_id: String::new(),
         diagnostic_allowed_use: Vec::new(),
-        redaction_status: dope_setupwizard::RedactionStatus::Redacted,
+        redaction_status: kura_setupwizard::RedactionStatus::Redacted,
         resource_refs: Vec::new(),
         redacted_evidence: HashMap::new(),
         oauth_state_ref: String::new(),
@@ -648,15 +648,15 @@ fn manager_run_check_persists_passed_check() {
     let check = manager
         .run_check(CLAUDE_PROVIDER_ID, "provider_check_1", "claude-opus-4-6", "ping")
         .expect("check");
-    assert_eq!(check.status, dope_providers::CheckStatus::Passed);
+    assert_eq!(check.status, kura_providers::CheckStatus::Passed);
     assert_eq!(check.model, "claude-opus-4-6");
-    assert_eq!(check.family, dope_providers::Family::ClaudeCodeCLI);
+    assert_eq!(check.family, kura_providers::Family::ClaudeCodeCLI);
 
     let stored = manager
         .get_check(CLAUDE_PROVIDER_ID, "provider_check_1")
         .expect("get check")
         .expect("check exists");
-    assert_eq!(stored.status, dope_providers::CheckStatus::Passed);
+    assert_eq!(stored.status, kura_providers::CheckStatus::Passed);
 
     let listed = manager.list_checks(CLAUDE_PROVIDER_ID).expect("list");
     assert_eq!(listed.len(), 1);
@@ -668,29 +668,29 @@ fn manager_run_check_unknown_provider_persists_failed_check() {
     let check = manager
         .run_check("nonexistent", "provider_check_2", "", "")
         .expect("check");
-    assert_eq!(check.status, dope_providers::CheckStatus::Failed);
+    assert_eq!(check.status, kura_providers::CheckStatus::Failed);
     assert_eq!(check.error_code, "provider_check_failed");
 }
 
 #[test]
 fn manager_setup_gate_blocks_unready_session() {
     let (manager, _base) = manager_with_store();
-    let blocked = setup_session(dope_setupwizard::SetupState::NotStarted);
+    let blocked = setup_session(kura_setupwizard::SetupState::NotStarted);
     let err = manager
         .resolve_with_setup_gate(CLAUDE_PROVIDER_ID, "claude-opus-4-6", &blocked, "provider.use")
         .unwrap_err();
     assert!(err.to_string().contains("unavailable"), "err: {err}");
 
-    let ready = setup_session(dope_setupwizard::SetupState::Ready);
+    let ready = setup_session(kura_setupwizard::SetupState::Ready);
     let decision = manager
         .resolve_with_setup_gate(CLAUDE_PROVIDER_ID, "claude-opus-4-6", &ready, "provider.use")
         .expect("decision");
-    assert_eq!(decision.safe_use_mode, dope_setupwizard::SafeUseMode::Normal);
+    assert_eq!(decision.safe_use_mode, kura_setupwizard::SafeUseMode::Normal);
 }
 
 #[test]
 fn manager_missing_store_is_noop_for_persistence() {
-    let base = std::env::temp_dir().join(format!("dope-mp-nostore-{}", uuid_suffix()));
+    let base = std::env::temp_dir().join(format!("kura-mp-nostore-{}", uuid_suffix()));
     let cfg = test_cfg(base.to_str().unwrap());
     let runner: Arc<dyn Runner> = Arc::new(RunnerStub::new(|_cmd, _args| {
         ok_result(r#"{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}"#)
@@ -704,5 +704,5 @@ fn manager_missing_store_is_noop_for_persistence() {
     let check = manager
         .run_check(CLAUDE_PROVIDER_ID, "provider_check_3", "claude-opus-4-6", "ping")
         .expect("check");
-    assert_eq!(check.status, dope_providers::CheckStatus::Passed);
+    assert_eq!(check.status, kura_providers::CheckStatus::Passed);
 }

@@ -7,7 +7,7 @@ Validate the implemented MCP execution-plane roadmap locally without touching pr
 ## Prerequisites
 
 - Work from the repository root on branch `003-mcp-execution-plane`
-- Use the default test environment (`DOPE_ENV=test`)
+- Use the default test environment (`KURA_ENV=test`)
 - Have Go available locally
 - Keep production state and live secrets out of scope for verification
 
@@ -16,7 +16,7 @@ Validate the implemented MCP execution-plane roadmap locally without touching pr
 Run the daemon packages most likely to change in this slice:
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./internal/mcp ./internal/sandbox ./internal/api ./internal/app ./internal/store ./internal/policy ./internal/contracts
 ```
 
@@ -36,7 +36,7 @@ During targeted verification, confirm that:
 If API, schema, or event surfaces change, run the repository contract check:
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-contract-test
 ```
 
@@ -45,7 +45,7 @@ make daemon-contract-test
 Run the full Go test suite before claiming the roadmap is ready:
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./...
 ```
 
@@ -53,11 +53,11 @@ go test ./...
 
 Recorded on `2026-04-19` from the repository workspace:
 
-- `cd /Users/John/Code/dope-agent/daemon && go test ./internal/mcp ./internal/sandbox ./internal/api ./internal/app ./internal/store ./internal/policy ./internal/contracts`
+- `cd /Users/John/Code/kura-agent/daemon && go test ./internal/mcp ./internal/sandbox ./internal/api ./internal/app ./internal/store ./internal/policy ./internal/contracts`
   - result: passed
-- `cd /Users/John/Code/dope-agent && make daemon-contract-test`
+- `cd /Users/John/Code/kura-agent && make daemon-contract-test`
   - result: passed
-- `cd /Users/John/Code/dope-agent/daemon && go test ./...`
+- `cd /Users/John/Code/kura-agent/daemon && go test ./...`
   - result: passed
 
 Timing note:
@@ -74,7 +74,7 @@ If you need to inspect daemon behavior directly after implementation:
 1. Start the test daemon:
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-run-test
 ```
 

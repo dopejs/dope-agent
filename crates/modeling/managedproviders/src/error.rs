@@ -44,11 +44,11 @@ pub enum Error {
 }
 
 impl Error {
-    /// Maps a crate error into the `dope-providers` error surface so the
-    /// registry can be consumed through `dope_providers::ManagedRegistry`.
+    /// Maps a crate error into the `kura-providers` error surface so the
+    /// registry can be consumed through `kura_providers::ManagedRegistry`.
     #[must_use]
-    pub fn map_providers_error(err: Error) -> dope_providers::ProvidersError {
-        dope_providers::ProvidersError::ProviderAuthUnavailable(err.to_string())
+    pub fn map_providers_error(err: Error) -> kura_providers::ProvidersError {
+        kura_providers::ProvidersError::ProviderAuthUnavailable(err.to_string())
     }
 }
 

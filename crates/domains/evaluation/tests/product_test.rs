@@ -7,7 +7,7 @@ mod common;
 
 use chrono::DateTime;
 use chrono::Utc;
-use dope_evaluation::{
+use kura_evaluation::{
     CandidateEvidenceInput, DEFAULT_PRODUCT_PAGE_LIMIT, EvaluationError, FixtureDomainClass,
     FixtureReviewDecision, FixtureRevisionInput, MAX_PRODUCT_PAGE_LIMIT, ProductFixtureInput,
     ProductLifecycleStatus, RedactionPolicy, RedactionStatus, RetentionState, SourceKind,
@@ -99,7 +99,7 @@ fn product_fixture_lifecycle_create_review_suppress_retention() {
 fn product_fixture_creation_rejects_suppressed_expired_or_failed_evidence() {
     let now = ts("2026-04-29T10:00:00Z");
     let mut candidate = fixture_candidate(now);
-    candidate.suppression_state = dope_evaluation::SuppressionState::Suppressed;
+    candidate.suppression_state = kura_evaluation::SuppressionState::Suppressed;
     let err = create_product_fixture_from_candidate(
         ProductFixtureInput {
             tenant_id: "ten_eval".to_string(),
@@ -263,7 +263,7 @@ fn candidate_evidence_from_payload_redacts_before_persist() {
     let evidence = candidate_evidence_from_payload(CandidateEvidenceInput {
         tenant_id: "ten_eval".to_string(),
         discovered_candidate_id: "candidate_1".to_string(),
-        source_refs: vec![dope_evaluation::SourceRef {
+        source_refs: vec![kura_evaluation::SourceRef {
             kind: SourceKind::Run,
             id: "run_1".to_string(),
             ..Default::default()
@@ -321,7 +321,7 @@ fn normalize_product_limit_bounds_lists() {
 #[test]
 fn validate_discovery_policy_rejects_bounds_and_window_ordering() {
     let now = ts("2026-04-29T10:00:00Z");
-    let policy = dope_evaluation::DiscoveryPolicy {
+    let policy = kura_evaluation::DiscoveryPolicy {
         policy_id: "policy_1".to_string(),
         tenant_id: "ten_eval".to_string(),
         enabled: true,
@@ -340,14 +340,14 @@ fn validate_discovery_policy_rejects_bounds_and_window_ordering() {
 #[test]
 fn repo_managed_fixture_cannot_be_edited_through_product_path() {
     let now = ts("2026-04-29T10:00:00Z");
-    let repo_fixture = dope_evaluation::ProductManagedFixture {
+    let repo_fixture = kura_evaluation::ProductManagedFixture {
         fixture_id: "fixture_repo_schedule".to_string(),
         tenant_id: "ten_eval".to_string(),
         display_name: "Repo Fixture".to_string(),
         domain_class: FixtureDomainClass::Schedule,
         source_kind: SourceKind::Fixture.as_str().to_string(),
         review_state: ProductLifecycleStatus::Approved,
-        suppression_state: dope_evaluation::SuppressionState::None,
+        suppression_state: kura_evaluation::SuppressionState::None,
         retention_state: RetentionState::Active,
         created_at: now,
         updated_at: now,

@@ -118,7 +118,7 @@
 - [X] T039 Run `go mod tidy` in `daemon/` and record any module fallout in `specs/016-tasks-reminders/plan.md`
 - [X] T040 Add reminder performance smoke coverage for create or inspect latency, due detection latency, occurrence transition persistence, and delivery-link projection timing in `daemon/internal/reminders/manager_test.go`, `daemon/internal/api/server_test.go`, and `specs/016-tasks-reminders/quickstart.md`
 - [X] T041 Run reminder automated verification in `daemon/` with `go test ./internal/reminders ./internal/api ./internal/store ./internal/app ./internal/runtime ./internal/orchestration ./internal/scheduler ./internal/delivery ./internal/contracts ./internal/calendar ./internal/mail`, targeted reminder route tests, and `make daemon-contract-test`, then record results in `specs/016-tasks-reminders/quickstart.md`
-- [X] T042 Run the manual `DOPE_ENV=test` reminder walkthrough for notification-only delivery, shared delivery preference or digest reuse, recurring rollover, snooze, workflow success, workflow-start failure, calendar-linked follow-up, and one non-calendar follow-up link case, then record observed results and rollback notes in `specs/016-tasks-reminders/quickstart.md` and `specs/016-tasks-reminders/plan.md`
+- [X] T042 Run the manual `KURA_ENV=test` reminder walkthrough for notification-only delivery, shared delivery preference or digest reuse, recurring rollover, snooze, workflow success, workflow-start failure, calendar-linked follow-up, and one non-calendar follow-up link case, then record observed results and rollback notes in `specs/016-tasks-reminders/quickstart.md` and `specs/016-tasks-reminders/plan.md`
 
 ---
 
@@ -198,7 +198,7 @@ Task: "T032 [US3] Implement reminder-triggered workflow launch wiring with separ
 1. Complete Phase 1: Setup.
 2. Complete Phase 2: Foundational.
 3. Complete Phase 3: User Story 1.
-4. Validate reminder creation, inspection, due processing, and shared-delivery linkage in `DOPE_ENV=test`.
+4. Validate reminder creation, inspection, due processing, and shared-delivery linkage in `KURA_ENV=test`.
 5. Treat this as the first executable checkpoint only; roadmap 31 is not closed until US2, US3, and Phase 6 complete.
 
 ### Incremental Delivery

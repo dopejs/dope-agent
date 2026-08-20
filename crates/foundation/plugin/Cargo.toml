@@ -1,5 +1,5 @@
 [package]
-name = "dope-plugin"
+name = "kura-plugin"
 description = "Plugin kernel: descriptors, profile-driven assembly resolution, seam registry, hook bus"
 edition.workspace = true
 version.workspace = true

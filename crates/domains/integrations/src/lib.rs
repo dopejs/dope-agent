@@ -334,14 +334,14 @@ impl Backend for FakeBackend {
 }
 
 #[must_use]
-pub fn live_validation_matrix_rows() -> Vec<dope_livevalidation::MatrixRow> {
+pub fn live_validation_matrix_rows() -> Vec<kura_livevalidation::MatrixRow> {
     let classes = [
-        dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::INTEGRATION_PROBE_READ),
-        dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::INTEGRATION_PROBE_MUTATION),
+        kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::INTEGRATION_PROBE_READ),
+        kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::INTEGRATION_PROBE_MUTATION),
     ];
     let mut rows = Vec::new();
     for tool_class in classes {
-        if let Some(row) = dope_livevalidation::default_matrix_row(&tool_class) {
+        if let Some(row) = kura_livevalidation::default_matrix_row(&tool_class) {
             rows.push(row);
         }
     }

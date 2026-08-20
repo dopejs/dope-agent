@@ -1,14 +1,14 @@
 # Repository Guidelines
 
-> **MIGRATION COMPLETE (2026-08):** the Go `daemon/` control plane has been fully replaced by the Rust workspace (`crates/`) and deleted. The daemon's user-facing binary is `kura` (Cargo package `dope-cli`, under `crates/surface/cli`), wired by `dope-app` (`crates/surface/app`), with the HTTP API in `dope-api`. `make daemon-build` / `daemon-test` / `daemon-contract-test` now map to `cargo` equivalents. Any remaining `daemon/`-related text below is historical.
+> **MIGRATION COMPLETE (2026-08):** the Go `daemon/` control plane has been fully replaced by the Rust workspace (`crates/`) and deleted. The daemon's user-facing binary is `kura` (Cargo package `kura-cli`, under `crates/surface/cli`), wired by `kura-app` (`crates/surface/app`), with the HTTP API in `kura-api`. `make daemon-build` / `daemon-test` / `daemon-contract-test` now map to `cargo` equivalents. Any remaining `daemon/`-related text below is historical.
 
 ## Project Structure & Module Organization
 
-The Rust workspace `crates/` is the daemon control plane (runtime, providers, channels, store, API, and harness). `web/` is the web client and `crates/surface/tui/` is the Rust terminal client (`kura-tui`, Cargo package `dope-tui`). `sdk/ts/` holds the TypeScript client SDK used by both. `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providecrates/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
+The Rust workspace `crates/` is the daemon control plane (runtime, providers, channels, store, API, and harness). `web/` is the web client and `crates/surface/tui/` is the Rust terminal client (`kura-tui`, Cargo package `kura-tui`). `sdk/ts/` holds the TypeScript client SDK used by both. `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providecrates/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
 
 ## Build, Test, and Development Commands
 
-- `make daemon-run-test`: start the daemon in the default test environment (`~/.dope-test`, `127.0.0.1:19192`).
+- `make daemon-run-test`: start the daemon in the default test environment (`~/.kura-test`, `127.0.0.1:19192`).
 - `make daemon-run-test-live`: start the test daemon with live connectors enabled.
 - `make daemon-test-status`: check the local test daemon health.
 - `go test ./...` (run in `daemon/`): execute all Go tests.
@@ -41,7 +41,7 @@ Follow the existing imperative commit style: `Complete roadmap 15 skill registry
 
 ## Security & Configuration Tips
 
-Default development work must use the test environment, not `~/.dope`. Never assume live connectors or managed providers are safe to touch; make the environment explicit. Treat secrets in config as operator-owned material and avoid logging or echoing them in tests, scripts, or API output.
+Default development work must use the test environment, not `~/.kura`. Never assume live connectors or managed providers are safe to touch; make the environment explicit. Treat secrets in config as operator-owned material and avoid logging or echoing them in tests, scripts, or API output.
 
 ## Feature Planning
 

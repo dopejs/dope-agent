@@ -3,9 +3,9 @@
 ## Preconditions
 
 - Work from branch `023-billing-quotas-usage`.
-- Use the default test daemon environment: `~/.dope-test` and `127.0.0.1:19192`.
+- Use the default test daemon environment: `~/.kura-test` and `127.0.0.1:19192`.
 - Use fake tenants, fake integrations, and fake artifacts only.
-- Do not touch `~/.dope`, production tenants, live connectors, payment-provider
+- Do not touch `~/.kura`, production tenants, live connectors, payment-provider
   credentials, invoice systems, tax systems, or revenue-recognition systems for this
   roadmap.
 - Review the planning contracts before implementation:
@@ -111,7 +111,7 @@ Expected targeted coverage:
 - 2026-04-28: `make daemon-contract-test`, `pnpm test:clients`, and `pnpm build` from repository root passed.
 - 2026-04-28: `go test ./...` and `go mod tidy` from `daemon/` passed after the latest billing lifecycle changes; `daemon/go.mod` and `daemon/go.sum` had no diff.
 - 2026-04-28: `go test ./internal/api ./internal/billing` from `daemon/` passed after adding run-launch hosted fail-closed and local development allow coverage.
-- 2026-04-28: `make daemon-run-test` started the test daemon on `127.0.0.1:19192`, and `make daemon-test-status` returned `{"ok":true,"service":"dope"}`. Broader smoke evidence was completed by later automated coverage and test-environment smoke entries below.
+- 2026-04-28: `make daemon-run-test` started the test daemon on `127.0.0.1:19192`, and `make daemon-test-status` returned `{"ok":true,"service":"kura"}`. Broader smoke evidence was completed by later automated coverage and test-environment smoke entries below.
 - 2026-04-28: final verification pass: `go test ./...` from `daemon/`, `make daemon-contract-test`, `pnpm test:clients`, and `pnpm build` from repository root all passed.
 - 2026-04-28: `go test ./internal/billing ./internal/store` from `daemon/` passed after adding carryover and store-backed effective quota projection tests.
 - 2026-04-28: final post-projection verification pass: `go test ./...`, `go mod tidy`, `make daemon-contract-test`, `pnpm test:clients`, and `pnpm build` all passed.
@@ -137,14 +137,14 @@ Expected targeted coverage:
 - 2026-04-29: `go test ./...` and `go mod tidy` from `daemon/` passed after completing the US2 quota gate implementation checkpoint.
 - 2026-04-29: `go test ./internal/store ./internal/billing` from `daemon/` passed after moving SQLite-backed reservations through a single transactional store path and adding concurrent last-unit storage coverage.
 - 2026-04-29: `go test ./...` and `go mod tidy` from `daemon/` passed after completing the US3 transactional reservation storage checkpoint.
-- 2026-04-29: T118 test-environment smoke passed: `make daemon-run-test` started the daemon on `127.0.0.1:19192`, `make daemon-test-status` returned `{"ok":true,"service":"dope"}`, and the test daemon was stopped afterward.
+- 2026-04-29: T118 test-environment smoke passed: `make daemon-run-test` started the daemon on `127.0.0.1:19192`, `make daemon-test-status` returned `{"ok":true,"service":"kura"}`, and the test daemon was stopped afterward.
 - 2026-04-29: post-review regression verification passed for `go test -count=1 ./internal/scheduler ./internal/computeruse ./internal/evaluation` and targeted API quota tests covering background workflow run denial, background workflow mail tenant restoration, workflow mail denial, and run denial.
 - 2026-04-29: post-review full verification passed: `go test ./...`, `go mod tidy`, `make daemon-contract-test`, `pnpm test:clients`, and `pnpm build`.
-- 2026-04-29: post-review test-environment smoke passed: `make daemon-run-test` started the daemon on `127.0.0.1:19192`, `make daemon-test-status` returned `{"ok":true,"service":"dope"}`, and the test daemon was stopped afterward.
+- 2026-04-29: post-review test-environment smoke passed: `make daemon-run-test` started the daemon on `127.0.0.1:19192`, `make daemon-test-status` returned `{"ok":true,"service":"kura"}`, and the test daemon was stopped afterward.
 - 2026-04-29: final post-review verification passed after pre-reserving background workflow run and workflow quotas before runtime run creation: `go test ./...`, `go mod tidy`, `make daemon-contract-test`, `pnpm test:clients`, `pnpm build`, and `make daemon-run-test` plus `make daemon-test-status` with the test daemon stopped afterward.
 - 2026-04-29: post-review transaction fix verification passed after moving SQLite-backed billing lifecycle resolution and multi-category reservations into store-level transactions: `go test -count=1 ./internal/store -run 'TestSQLiteStoreResolveUsageCommitsCounterReservationAndEventInOneTransaction|TestSQLiteStoreReserveAllUsageDeniesAtomicallyWithoutPriorCategoryReservation'` and `go test -count=1 ./internal/billing ./internal/store ./internal/api ./internal/evaluation` passed.
 - 2026-04-29: final transaction-fix verification passed: an initial `go test ./...` exposed a transient Docker runtime probe timeout in `internal/sandbox`; `go test -count=1 ./internal/sandbox` passed immediately afterward, and a full rerun of `go test ./...` passed. `go mod tidy`, `make daemon-contract-test`, `pnpm test:clients`, and `pnpm build` passed.
-- 2026-04-29: final transaction-fix test-environment smoke passed: `make daemon-run-test` started the daemon on `127.0.0.1:19192`, `make daemon-test-status` returned `{"ok":true,"service":"dope"}`, the test daemon was stopped, and `127.0.0.1:19192` had no remaining listener.
+- 2026-04-29: final transaction-fix test-environment smoke passed: `make daemon-run-test` started the daemon on `127.0.0.1:19192`, `make daemon-test-status` returned `{"ok":true,"service":"kura"}`, the test daemon was stopped, and `127.0.0.1:19192` had no remaining listener.
 - 2026-04-29: final smoke-evidence review fix passed after removing the stale open-smoke note and adding per-step smoke evidence coverage: `go test -count=1 ./internal/contracts -run TestBillingQuickstartSmokeChecklistCoversRequiredEvidence`, `go test ./...`, `go mod tidy`, `make daemon-contract-test`, `pnpm test:clients`, `pnpm build`, and `git diff --check` passed; `daemon/go.mod` and `daemon/go.sum` had no diff, and `127.0.0.1:19192` had no listener.
 
 ## Manual Test-Environment Smoke
@@ -204,7 +204,7 @@ test-environment daemon health plus automated coverage for each operator smoke a
 
 | Smoke Step | Evidence |
 |------------|----------|
-| 1-3. Start daemon, timer, and health check | `make daemon-run-test` and `make daemon-test-status` returned `{"ok":true,"service":"dope"}` on 2026-04-29; the daemon was stopped and `127.0.0.1:19192` had no remaining listener. |
+| 1-3. Start daemon, timer, and health check | `make daemon-run-test` and `make daemon-test-status` returned `{"ok":true,"service":"kura"}` on 2026-04-29; the daemon was stopped and `127.0.0.1:19192` had no remaining listener. |
 | 4. Seed finite, same-shaped, and unlimited/development tenants | Shared billing/API fixtures seed finite, unlimited, development, and cross-tenant cases; covered by `go test ./internal/billing ./internal/api ./internal/store`. |
 | 5. Tenant A owner inspects plan and usage | `daemon/internal/api/hosted_billing_test.go` covers finite/unlimited/development billing inspection, quota projection fields, denials, adjustments, and tenant evidence. |
 | 6. Exhaust run quota and deny before run creation | `daemon/internal/api/billing_enforcement_test.go` covers stable `quota_denied` run-launch denial before `runtime.CreateRun`. |

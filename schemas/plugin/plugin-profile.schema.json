@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/plugin/plugin-profile.schema.json",
+  "$id": "https://kura.local/schemas/plugin/plugin-profile.schema.json",
   "title": "PluginProfile",
   "description": "The per-data-dir plugin profile (<data_dir>/plugins.json). A missing file is the default profile: every builtin plugin enabled, no overrides.",
   "type": "object",

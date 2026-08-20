@@ -3,10 +3,10 @@
 
 mod common;
 
-use dope_delivery::{OutcomeInput, ResultClass};
+use kura_delivery::{OutcomeInput, ResultClass};
 
 use common::{manager_with, seed_delivery_preference_state, ScriptedAdapter};
-use dope_delivery::TargetKind;
+use kura_delivery::TargetKind;
 
 #[test]
 fn latest_summary_for_run_and_workflow() {
@@ -22,7 +22,7 @@ fn latest_summary_for_run_and_workflow() {
             ..OutcomeInput::default()
         })
         .unwrap();
-    assert_eq!(outcome.status, dope_delivery::OutcomeStatus::Delivered);
+    assert_eq!(outcome.status, kura_delivery::OutcomeStatus::Delivered);
 
     let (summary, ok) = manager.latest_summary_for_run("run_linkage").unwrap();
     assert!(ok);

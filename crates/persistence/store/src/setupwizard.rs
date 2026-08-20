@@ -1,5 +1,5 @@
 //! SQLite CRUD for the setup wizard (migration r46 `setup_sessions` /
-//! `setup_attempts` tables) plus the `dope_setupwizard::Store` trait impl.
+//! `setup_attempts` tables) plus the `kura_setupwizard::Store` trait impl.
 //! Follows the evaluation.rs convention: `document_json` holds the whole
 //! serialized domain value and the denormalized columns drive filtering.
 //! Session ids are deterministic (`setup_<tenant>_<target>_<style>`, see
@@ -14,7 +14,7 @@ use crate::SQLiteStore;
 impl SQLiteStore {
     pub fn save_setup_session(
         &self,
-        item: &dope_setupwizard::SetupSession,
+        item: &kura_setupwizard::SetupSession,
     ) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal setup session: {e}"))?;
@@ -64,7 +64,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         session_id: &str,
-    ) -> Result<Option<dope_setupwizard::SetupSession>, String> {
+    ) -> Result<Option<kura_setupwizard::SetupSession>, String> {
         let mut sql = String::from(
             "SELECT document_json FROM setup_sessions WHERE setup_session_id = ?",
         );
@@ -90,7 +90,7 @@ impl SQLiteStore {
     pub fn list_setup_sessions(
         &self,
         tenant_id: &str,
-    ) -> Result<Vec<dope_setupwizard::SetupSession>, String> {
+    ) -> Result<Vec<kura_setupwizard::SetupSession>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -110,7 +110,7 @@ impl SQLiteStore {
 
     pub fn append_setup_attempt(
         &self,
-        item: &dope_setupwizard::SetupAttempt,
+        item: &kura_setupwizard::SetupAttempt,
     ) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal setup attempt: {e}"))?;
@@ -156,7 +156,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         session_id: &str,
-    ) -> Result<Vec<dope_setupwizard::SetupAttempt>, String> {
+    ) -> Result<Vec<kura_setupwizard::SetupAttempt>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -175,7 +175,7 @@ impl SQLiteStore {
     }
 }
 
-// --- dope_setupwizard::Store trait impl (async wrapper over the DAOs) ---
+// --- kura_setupwizard::Store trait impl (async wrapper over the DAOs) ---
 //
 // rusqlite's Connection is Send but not Sync, so SQLiteStore cannot be the
 // trait's `Send + Sync` self type directly. The mutex is wrapped in the
@@ -183,7 +183,7 @@ impl SQLiteStore {
 // SecretStoreHandle / ComputerUseStoreHandle).
 
 /// Send + Sync handle over the SQLite store implementing
-/// [`dope_setupwizard::Store`]. Construct from a fresh store and share as
+/// [`kura_setupwizard::Store`]. Construct from a fresh store and share as
 /// `Arc<SetupWizardStoreHandle>` with the setup-wizard service.
 pub struct SetupWizardStoreHandle(pub parking_lot::Mutex<SQLiteStore>);
 
@@ -193,16 +193,16 @@ impl SetupWizardStoreHandle {
     }
 }
 
-impl dope_setupwizard::Store for SetupWizardStoreHandle {
+impl kura_setupwizard::Store for SetupWizardStoreHandle {
     fn save_setup_session(
         &self,
-        session: dope_setupwizard::SetupSession,
-    ) -> dope_setupwizard::BoxFuture<'_, Result<(), dope_setupwizard::SetupError>> {
+        session: kura_setupwizard::SetupSession,
+    ) -> kura_setupwizard::BoxFuture<'_, Result<(), kura_setupwizard::SetupError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .save_setup_session(&session)
-                .map_err(dope_setupwizard::SetupError::Store)
+                .map_err(kura_setupwizard::SetupError::Store)
         })
     }
 
@@ -210,39 +210,39 @@ impl dope_setupwizard::Store for SetupWizardStoreHandle {
         &self,
         tenant_id: &str,
         session_id: &str,
-    ) -> dope_setupwizard::BoxFuture<'_, Result<Option<dope_setupwizard::SetupSession>, dope_setupwizard::SetupError>> {
+    ) -> kura_setupwizard::BoxFuture<'_, Result<Option<kura_setupwizard::SetupSession>, kura_setupwizard::SetupError>> {
         let tenant_id = tenant_id.to_string();
         let session_id = session_id.to_string();
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .get_setup_session(&tenant_id, &session_id)
-                .map_err(dope_setupwizard::SetupError::Store)
+                .map_err(kura_setupwizard::SetupError::Store)
         })
     }
 
     fn list_setup_sessions(
         &self,
         tenant_id: &str,
-    ) -> dope_setupwizard::BoxFuture<'_, Result<Vec<dope_setupwizard::SetupSession>, dope_setupwizard::SetupError>> {
+    ) -> kura_setupwizard::BoxFuture<'_, Result<Vec<kura_setupwizard::SetupSession>, kura_setupwizard::SetupError>> {
         let tenant_id = tenant_id.to_string();
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .list_setup_sessions(&tenant_id)
-                .map_err(dope_setupwizard::SetupError::Store)
+                .map_err(kura_setupwizard::SetupError::Store)
         })
     }
 
     fn append_setup_attempt(
         &self,
-        attempt: dope_setupwizard::SetupAttempt,
-    ) -> dope_setupwizard::BoxFuture<'_, Result<(), dope_setupwizard::SetupError>> {
+        attempt: kura_setupwizard::SetupAttempt,
+    ) -> kura_setupwizard::BoxFuture<'_, Result<(), kura_setupwizard::SetupError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .append_setup_attempt(&attempt)
-                .map_err(dope_setupwizard::SetupError::Store)
+                .map_err(kura_setupwizard::SetupError::Store)
         })
     }
 
@@ -250,14 +250,14 @@ impl dope_setupwizard::Store for SetupWizardStoreHandle {
         &self,
         tenant_id: &str,
         session_id: &str,
-    ) -> dope_setupwizard::BoxFuture<'_, Result<Vec<dope_setupwizard::SetupAttempt>, dope_setupwizard::SetupError>> {
+    ) -> kura_setupwizard::BoxFuture<'_, Result<Vec<kura_setupwizard::SetupAttempt>, kura_setupwizard::SetupError>> {
         let tenant_id = tenant_id.to_string();
         let session_id = session_id.to_string();
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .list_setup_attempts(&tenant_id, &session_id)
-                .map_err(dope_setupwizard::SetupError::Store)
+                .map_err(kura_setupwizard::SetupError::Store)
         })
     }
 }

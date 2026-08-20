@@ -6,7 +6,7 @@ use crate::types::SideEffectLedgerEntry;
 
 /// Emits structured evidence when a side-effect ledger entry changes. Go
 /// threads `context.Context`; in Rust the tenant context lives in the
-/// `dope_identity::tenantctx` task-local, so the sink only receives the event
+/// `kura_identity::tenantctx` task-local, so the sink only receives the event
 /// name and the entry.
 pub type LedgerEventSink = Arc<dyn Fn(&str, &SideEffectLedgerEntry) + Send + Sync>;
 

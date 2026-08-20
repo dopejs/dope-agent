@@ -4,17 +4,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_chat::CancellationToken;
-use dope_connectors::{
+use kura_chat::CancellationToken;
+use kura_connectors::{
     CapabilityProfile, ConformanceArea, ConformanceResultStatus, Connector,
     DiagnosticReasonCode, GroupRoomCapabilities, HandoffCapabilities, RegisterInput, Status,
     Supervisor, SurfaceSupport, core_invariant_areas,
 };
-use dope_events::{Bus, Event, Resource, Scope};
-use dope_im::MessageLoop;
-use dope_imtypes::InboundMessage;
-use dope_router::SessionKind;
-use dope_store::{
+use kura_events::{Bus, Event, Resource, Scope};
+use kura_im::MessageLoop;
+use kura_imtypes::InboundMessage;
+use kura_router::SessionKind;
+use kura_store::{
     ConnectorAccountBindingSummary, SQLiteStore, TelegramAllowmentRecord,
     TelegramHostedSetupRecord, TelegramUpdateEvidenceRecord,
 };
@@ -572,15 +572,15 @@ impl std::error::Error for PlainError {}
 mod tests {
     use super::*;
     use chrono::TimeZone;
-    use dope_chat::Service as ChatService;
-    use dope_checkpoints::Manager as CheckpointManager;
-    use dope_events::Filter;
-    use dope_im::ReplySender;
-    use dope_imtypes::OutboundReply;
-    use dope_llm::{Dispatcher, Provider, ProviderError, ProviderRequest, ProviderResponse, StreamEmitter, Usage};
-    use dope_router::SessionRouter;
-    use dope_runtime::Manager as RuntimeManager;
-    use dope_store::SQLiteStore;
+    use kura_chat::Service as ChatService;
+    use kura_checkpoints::Manager as CheckpointManager;
+    use kura_events::Filter;
+    use kura_im::ReplySender;
+    use kura_imtypes::OutboundReply;
+    use kura_llm::{Dispatcher, Provider, ProviderError, ProviderRequest, ProviderResponse, StreamEmitter, Usage};
+    use kura_router::SessionRouter;
+    use kura_runtime::Manager as RuntimeManager;
+    use kura_store::SQLiteStore;
     use futures::future::BoxFuture;
     use tempfile::tempdir;
 
@@ -650,12 +650,12 @@ mod tests {
                     .first()
                     .map(|m| m.content.clone())
                     .unwrap_or_default();
-                emit(dope_llm::StreamChunk {
+                emit(kura_llm::StreamChunk {
                     delta: "reply:".to_string(),
                     output: "reply:".to_string(),
                     ..Default::default()
                 })?;
-                emit(dope_llm::StreamChunk {
+                emit(kura_llm::StreamChunk {
                     delta: content.clone(),
                     output: format!("reply:{content}"),
                     finish_reason: "stop".to_string(),
@@ -759,7 +759,7 @@ mod tests {
     fn runtime_enforces_telegram_group_mention_and_command_gate() {
         let transport = Arc::new(FakeTransport::new());
         let mut cfg = base_config();
-        cfg.bot_username = "dope_test_bot".to_string();
+        cfg.bot_username = "kura_test_bot".to_string();
         cfg.allowments = vec![AllowmentValidation {
             scope_type: ScopeType::Group,
             scope_id: "group_1".to_string(),
@@ -803,7 +803,7 @@ mod tests {
                 message_id: "message_group_mentioned".to_string(),
                 chat_id: "group_1".to_string(),
                 sender_id: "user_1".to_string(),
-                text: "@dope_test_bot summarize this".to_string(),
+                text: "@kura_test_bot summarize this".to_string(),
                 conversation_type: ConversationType::Group,
                 ..InboundUpdate::default()
             })
@@ -817,13 +817,13 @@ mod tests {
                 message_id: "message_group_command".to_string(),
                 chat_id: "group_1".to_string(),
                 sender_id: "user_1".to_string(),
-                text: "/dope summarize this".to_string(),
+                text: "/kura summarize this".to_string(),
                 conversation_type: ConversationType::Group,
                 ..InboundUpdate::default()
             })
             .expect("command group message normalized");
         assert!(command.mentioned);
-        assert_eq!(command.content, "/dope summarize this");
+        assert_eq!(command.content, "/kura summarize this");
     }
 
     // Go TestRuntimeRejectsUnsupportedTelegramSurfaces.

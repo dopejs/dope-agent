@@ -7,7 +7,7 @@ Validate the implemented Roadmap 19 slice locally without touching production st
 ## Prerequisites
 
 - Work from the repository root on branch `004-skill-tool-sandbox`
-- Use the default test environment (`DOPE_ENV=test`)
+- Use the default test environment (`KURA_ENV=test`)
 - Have Go available locally
 - Keep production state, live connectors, and live secrets out of scope for verification
 
@@ -16,7 +16,7 @@ Validate the implemented Roadmap 19 slice locally without touching production st
 Run the daemon packages most likely to change in this slice:
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./internal/skills ./internal/api ./internal/runtime ./internal/sandbox ./internal/store ./internal/policy ./internal/app ./internal/contracts
 ```
 
@@ -38,7 +38,7 @@ During targeted verification, confirm that:
 If API, schema, or event surfaces change, run the repository contract check:
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-contract-test
 ```
 
@@ -47,7 +47,7 @@ make daemon-contract-test
 Run the full Go test suite before claiming the roadmap is ready:
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./...
 ```
 
@@ -58,7 +58,7 @@ If you need to inspect daemon behavior directly after implementation:
 1. Start the test daemon:
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-run-test
 ```
 
@@ -96,10 +96,10 @@ This quickstart assumes changes are limited to:
 
 Record final results in the implementation change set once the slice is executed:
 
-- `2026-04-19`: `cd /Users/John/Code/dope-agent/daemon && go test ./internal/api ./internal/sandbox ./internal/skills ./internal/runtime ./internal/store` ✅
-- `2026-04-19`: `cd /Users/John/Code/dope-agent/daemon && go test ./internal/app ./internal/contracts` ✅
-- `2026-04-19`: `cd /Users/John/Code/dope-agent && make daemon-contract-test` ✅
-- `2026-04-19`: `cd /Users/John/Code/dope-agent/daemon && go test ./...` ✅
+- `2026-04-19`: `cd /Users/John/Code/kura-agent/daemon && go test ./internal/api ./internal/sandbox ./internal/skills ./internal/runtime ./internal/store` ✅
+- `2026-04-19`: `cd /Users/John/Code/kura-agent/daemon && go test ./internal/app ./internal/contracts` ✅
+- `2026-04-19`: `cd /Users/John/Code/kura-agent && make daemon-contract-test` ✅
+- `2026-04-19`: `cd /Users/John/Code/kura-agent/daemon && go test ./...` ✅
 - timing note: targeted regression tests cover `<=100 ms` manifest validation and approval
   preflight overhead for the in-scope tool-call path
 

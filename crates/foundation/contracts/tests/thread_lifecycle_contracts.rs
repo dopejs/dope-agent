@@ -7,7 +7,7 @@
 mod common;
 
 use common::{schema_root_dir, validate_fixtures, Fixture};
-use dope_contracts::Validator;
+use kura_contracts::Validator;
 
 #[test]
 fn test_thread_lifecycle_a_p_i_and_event_contracts() {

@@ -354,7 +354,7 @@ pub struct Operation {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub failure_reason: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub diagnostic_failure: Option<dope_integrations::DiagnosticFailureProjection>,
+    pub diagnostic_failure: Option<kura_integrations::DiagnosticFailureProjection>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub run_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -562,14 +562,14 @@ pub struct OperationFilter {
 }
 
 pub trait Backend: Send + Sync {
-    fn project_account(&self, resource: &dope_integrations::Resource) -> Result<AccountProjection, CalendarError>;
-    fn list_events(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &ListEventsInput) -> Result<Vec<Event>, CalendarError>;
-    fn get_event(&self, resource: &dope_integrations::Resource, account: &AccountProjection, event_id: &str) -> Result<Event, CalendarError>;
-    fn busy_free(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &BusyFreeInput) -> Result<AvailabilityQuery, CalendarError>;
-    fn create_event(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &CreateEventInput) -> Result<Event, CalendarError>;
-    fn update_event(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &UpdateEventInput) -> Result<Event, CalendarError>;
-    fn cancel_event(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &CancelEventInput) -> Result<Event, CalendarError>;
-    fn update_attendees(&self, resource: &dope_integrations::Resource, account: &AccountProjection, input: &UpdateAttendeesInput) -> Result<Event, CalendarError>;
+    fn project_account(&self, resource: &kura_integrations::Resource) -> Result<AccountProjection, CalendarError>;
+    fn list_events(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &ListEventsInput) -> Result<Vec<Event>, CalendarError>;
+    fn get_event(&self, resource: &kura_integrations::Resource, account: &AccountProjection, event_id: &str) -> Result<Event, CalendarError>;
+    fn busy_free(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &BusyFreeInput) -> Result<AvailabilityQuery, CalendarError>;
+    fn create_event(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &CreateEventInput) -> Result<Event, CalendarError>;
+    fn update_event(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &UpdateEventInput) -> Result<Event, CalendarError>;
+    fn cancel_event(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &CancelEventInput) -> Result<Event, CalendarError>;
+    fn update_attendees(&self, resource: &kura_integrations::Resource, account: &AccountProjection, input: &UpdateAttendeesInput) -> Result<Event, CalendarError>;
     fn restore_integration_state(&self, integration_id: &str, events: Vec<Event>);
 }
 
@@ -646,16 +646,16 @@ pub fn clone_operation_summaries(items: &[OperationSummary]) -> Vec<OperationSum
 }
 
 #[must_use]
-pub fn live_validation_matrix_rows() -> Vec<dope_livevalidation::MatrixRow> {
+pub fn live_validation_matrix_rows() -> Vec<kura_livevalidation::MatrixRow> {
     let classes = [
-        dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::CALENDAR_EVENT_CREATE),
-        dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::CALENDAR_EVENT_UPDATE),
-        dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::CALENDAR_EVENT_CANCEL),
-        dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::CALENDAR_ATTENDEE_UPDATE),
+        kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::CALENDAR_EVENT_CREATE),
+        kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::CALENDAR_EVENT_UPDATE),
+        kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::CALENDAR_EVENT_CANCEL),
+        kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::CALENDAR_ATTENDEE_UPDATE),
     ];
     let mut rows = Vec::new();
     for tool_class in classes {
-        if let Some(row) = dope_livevalidation::default_matrix_row(&tool_class) {
+        if let Some(row) = kura_livevalidation::default_matrix_row(&tool_class) {
             rows.push(row);
         }
     }

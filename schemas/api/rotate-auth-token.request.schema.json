@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/rotate-auth-token.request.schema.json",
+  "$id": "https://kura.local/schemas/api/rotate-auth-token.request.schema.json",
   "title": "RotateAuthTokenRequest",
   "type": "object",
   "additionalProperties": false,

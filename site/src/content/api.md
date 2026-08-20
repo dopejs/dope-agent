@@ -2,7 +2,7 @@
 
 The daemon exposes a single HTTP API (default `127.0.0.1:19192` in test,
 `:19191` in prod). Everything is JSON; contracts live as JSON Schemas
-under `schemas/` in the repo and the TypeScript SDK (`@dope/client`)
+under `schemas/` in the repo and the TypeScript SDK (`@kura/client`)
 mirrors them.
 
 ## Authentication
@@ -50,9 +50,9 @@ behind bearer-token auth** (pairing flow: `POST /v1/auth/pairings/start`).
 ## SDK
 
 ```bash
-pnpm add @dope/client
+pnpm add @kura/client
 ```
 
-`createDopeClient({ baseURL, token })` → typed methods for every family:
+`createKuraClient({ baseURL, token })` → typed methods for every family:
 `queryChat`, `streamChatQuery`, `listMemoryAssets`, `queryRetrieval`,
 `listPlugins`, `updatePluginProfile`, `listThreads`, and 100+ more.

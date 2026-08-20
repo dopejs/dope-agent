@@ -167,9 +167,9 @@ verification for Roadmap 46 closure.
 - [X] T053 [P] Update OpenAI-compatible and Feishu/Lark setup guidance in `docs/providers/openai-compatible-setup.md` and `docs/providers/feishu-lark-setup.md`
 - [X] T054 [P] Update schema inventory and setup contract fixture documentation in `schemas/api/README.md` and `daemon/internal/contracts/testdata/setupwizard/README.md`
 - [X] T055 [P] Update final implementation evidence, 30-second setup review evidence, 10-minute operator diagnostic drill evidence, restart recovery evidence, and residual gaps in `specs/031-credential-oauth-wizard/quickstart.md`
-- [X] T056 Run `make daemon-contract-test`, `pnpm test:clients`, and `pnpm build` from `/Users/John/Code/dope-agent` and fix setup-related failures in `schemas/`, `sdk/ts/`, and `web/`
-- [X] T057 Run `go test ./...` and `go mod tidy` from `/Users/John/Code/dope-agent/daemon` and fix setup-related failures or unintended module drift in `daemon/`
-- [X] T058 Run the manual `DOPE_ENV=test` walkthrough from `specs/031-credential-oauth-wizard/quickstart.md` using `make daemon-run-test` and `make daemon-test-status`, including activated tenant setup, OpenAI-compatible fake secret redaction proof, Feishu/Lark OAuth fixture proof, retry/replace/cancel/disable, restart recovery, and operator diagnostic drill evidence
+- [X] T056 Run `make daemon-contract-test`, `pnpm test:clients`, and `pnpm build` from `/Users/John/Code/kura-agent` and fix setup-related failures in `schemas/`, `sdk/ts/`, and `web/`
+- [X] T057 Run `go test ./...` and `go mod tidy` from `/Users/John/Code/kura-agent/daemon` and fix setup-related failures or unintended module drift in `daemon/`
+- [X] T058 Run the manual `KURA_ENV=test` walkthrough from `specs/031-credential-oauth-wizard/quickstart.md` using `make daemon-run-test` and `make daemon-test-status`, including activated tenant setup, OpenAI-compatible fake secret redaction proof, Feishu/Lark OAuth fixture proof, retry/replace/cancel/disable, restart recovery, and operator diagnostic drill evidence
 
 ---
 
@@ -262,7 +262,7 @@ Task: "T044 [P] [US3] Add SDK and web diagnostics tests in sdk/ts/src/index.test
 - `go test ./...` passes from `daemon/`.
 - `go mod tidy` from `daemon/` produces no unintended drift.
 - `make daemon-contract-test`, `pnpm test:clients`, and `pnpm build` pass.
-- Manual `DOPE_ENV=test` walkthrough evidence is recorded in `quickstart.md`.
+- Manual `KURA_ENV=test` walkthrough evidence is recorded in `quickstart.md`.
 - No raw credential or OAuth material appears in setup state, diagnostics, audit, logs,
   fixtures, SDK output, or web output.
 - Cross-tenant setup/session/evidence isolation and degraded allowed-capability gating

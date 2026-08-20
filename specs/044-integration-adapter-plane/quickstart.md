@@ -1,6 +1,6 @@
 # Quickstart: External Integration Adapter Plane
 
-Audience: a developer verifying the plane locally. Default environment is `~/.dope-test`
+Audience: a developer verifying the plane locally. Default environment is `~/.kura-test`
 (`127.0.0.1:19192`). The test env defaults to the in-daemon **fake** backend; the adapter
 plane is opt-in per integration.
 
@@ -8,7 +8,7 @@ plane is opt-in per integration.
 
 ```bash
 make daemon-build                     # daemon binary
-go build ./daemon/cmd/dope-integration-adapter   # reference adapter skeleton (no real provider)
+go build ./daemon/cmd/kura-integration-adapter   # reference adapter skeleton (no real provider)
 ```
 
 ## Run the contract + plane tests

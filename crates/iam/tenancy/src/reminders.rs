@@ -2,17 +2,17 @@
 //! Port of daemon/internal/store/tenancy/reminders.go.
 
 use crate::{emit_denial, require, TenancyError};
-use dope_store::reminders::{ReminderOccurrenceRecord, ReminderRecord};
+use kura_store::reminders::{ReminderOccurrenceRecord, ReminderRecord};
 
 /// Tenant-aware accessor for the reminders family.
 pub struct Reminders {
     store: crate::SQLiteStore,
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl Reminders {
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         Reminders { store, emitter }
     }
 

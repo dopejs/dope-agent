@@ -21,7 +21,7 @@ binding, hard profile deletion, or agent-generated profile mutation.
 
 **Language/Version**: Go 1.24 daemon/control-plane code; TypeScript 5.7 SDK and client
 tests; React 19/Vite 7 web surface; JSON Schema contracts under `schemas/`; markdown
-runtime/operator docs.  
+runtime/operator docs.
 **Primary Dependencies**: Existing tenant identity and audit packages in
 `daemon/internal/identity`; SQLite store and tenant-safe access patterns in
 `daemon/internal/store` and `daemon/internal/store/tenancy`; thread lifecycle and runtime
@@ -34,26 +34,26 @@ SDK in `sdk/ts/src`; web shell in `web/src`; TUI/operator surface in `tui/src`.
 for profile records, profile versions, tenant-default active profile selection, overlay
 references, profile audit/event documents, runtime profile projections, and compatibility
 metadata for default profile seeding. No destructive rewrite of existing provider,
-thread, session, run, workflow, handoff, or prompt/config evidence is allowed.  
+thread, session, run, workflow, handoff, or prompt/config evidence is allowed.
 **Testing**: Targeted Go tests under `daemon/internal/identity`, `daemon/internal/profiles`
 or equivalent domain package, `daemon/internal/store`, `daemon/internal/store/tenancy`,
 `daemon/internal/api`, `daemon/internal/chat`, `daemon/internal/events`,
 `daemon/internal/threads`, and `daemon/internal/contracts`; schema/fixture validation via
 `make daemon-contract-test`; SDK/Web/TUI coverage via `pnpm test:clients`; client build
 via `pnpm build`; full daemon coverage via `go test ./...` from `daemon/`; `go mod tidy`
-from `daemon/` after implementation.  
+from `daemon/` after implementation.
 **Target Platform**: Local-first daemon and hosted daemon behavior, with API, TypeScript
 SDK, Web, TUI/operator shell, runtime projection, and test-environment verification.
-Default local verification uses `~/.dope-test` and `127.0.0.1:19192`.  
+Default local verification uses `~/.kura-test` and `127.0.0.1:19192`.
 **Project Type**: Multi-surface daemon product feature spanning API, persistence,
 contracts, identity permissions, profile domain policy, provider default projection,
 thread/session/run/workflow/handoff runtime evidence, SDK, Web, TUI/operator shell, events/audit,
-migration, redaction, restart recovery, and docs.  
+migration, redaction, restart recovery, and docs.
 **Performance Goals**: Authorized operators can identify which profile version influenced
 a representative behavior change within 5 minutes using product evidence. Profile list,
 detail, active selection, and runtime projection reads should fit existing operator-shell
 expectations and must not add user-visible latency to starting new work beyond a single
-tenant-scoped profile resolution.  
+tenant-scoped profile resolution.
 **Constraints**: Profile reads/runtime inspection require `profiles.inspect`; profile
 create/update/activation/archive/disable/overlay mutation/rollback require
 `profiles.manage`. Each tenant has one tenant-default active profile in Phase 57.
@@ -63,7 +63,7 @@ scope while runtime evidence may reference the profile. Overlay files are explic
 references, not hidden primary truth. The feature must not add memory retrieval, learned
 preferences, channel/workspace/account binding, capability binding, skill generation,
 semantic knowledge retrieval, long-term personalization, or autonomous multi-agent
-collaboration.  
+collaboration.
 **Scale/Scope**: One whole roadmap slice, Phase 57. Required surfaces are store, profile
 domain model, identity permissions, API, schema, events, SDK, Web, TUI/operator shell,
 thread/session/run/workflow/handoff runtime profile projection, default profile migration,
@@ -91,7 +91,7 @@ evidence preservation, and non-memory guarantees.
   tenant isolation, validation failures, version retention, rollback, archive/disable,
   active profile projection on threads/sessions/runs/workflows/handoffs, restart recovery,
   redaction, SDK/client contracts, web/TUI coverage, and explicit non-use of memory.
-- **Environment and secrets** - PASS. Local work defaults to `~/.dope-test` with fake or
+- **Environment and secrets** - PASS. Local work defaults to `~/.kura-test` with fake or
   seeded tenant/provider/thread evidence. Live connectors and production tenants are not
   required. Profile, overlay, provider, and audit output must not expose secrets, raw
   provider payloads, unsafe overlay content, disallowed message bodies, or cross-tenant

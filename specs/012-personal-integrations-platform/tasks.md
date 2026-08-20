@@ -41,7 +41,7 @@
 
 **Goal**: Operators can create, inspect, and update daemon-owned integration resources with explicit readiness, account binding, provenance, and canonical-default truth.
 
-**Independent Test**: Create two integration records for the same account in `DOPE_ENV=test`, move them through `not_configured`, `auth_pending`, `healthy`, `degraded`, and `unavailable`, promote one as canonical default, and confirm list/detail routes expose readiness, account identity, environment scope, and provenance without raw config access.
+**Independent Test**: Create two integration records for the same account in `KURA_ENV=test`, move them through `not_configured`, `auth_pending`, `healthy`, `degraded`, and `unavailable`, promote one as canonical default, and confirm list/detail routes expose readiness, account identity, environment scope, and provenance without raw config access.
 
 ### Tests for User Story 1
 
@@ -67,7 +67,7 @@
 and approval plane using fake integration probes, with redacted integration provenance
 attached to runs, tool calls, workflow steps, and approvals.
 
-**Independent Test**: In `DOPE_ENV=test`, create a run, execute one read-only fake
+**Independent Test**: In `KURA_ENV=test`, create a run, execute one read-only fake
 integration probe and one approval-gated mutation probe against the canonical-default
 integration, exercise the same binding projection through a representative workflow
 execution path, then confirm runtime, workflow-step, approval, and tool-call truth
@@ -125,7 +125,7 @@ explicit unavailable blocking.
 
 - [X] T036 [P] Update integration operator guidance and roadmap docs in `docs/runtime/operator-trust-model.md`, `docs/runtime/daemon-roadmaps.md`, `docs/harness/harness-architecture.md`, and `docs/runtime/daemon-api-and-event-model.md`
 - [X] T037 [P] Finalize schema fixtures and validator coverage for all integration API and event surfaces in `daemon/internal/contracts/contracts_test.go` and `daemon/internal/contracts/validator.go`
-- [X] T038 [P] Run the manual `DOPE_ENV=test` fake integration walkthrough and record observed results in `specs/012-personal-integrations-platform/quickstart.md`
+- [X] T038 [P] Run the manual `KURA_ENV=test` fake integration walkthrough and record observed results in `specs/012-personal-integrations-platform/quickstart.md`
 - [X] T039 Record automated verification commands, residual risks, and rollback notes in `specs/012-personal-integrations-platform/plan.md` and `specs/012-personal-integrations-platform/quickstart.md`
 - [X] T042 [P] Add regression coverage proving integration readiness gating does not rewrite delivery or notification outcomes in `daemon/internal/api/workflows_test.go`, `daemon/internal/runtime/runtime_test.go`, and `daemon/internal/policy/policy_test.go`
 - [X] T043 [P] Document the integration-readiness versus delivery-outcome boundary in `docs/runtime/operator-trust-model.md`, `docs/runtime/daemon-roadmaps.md`, and `docs/specs/013-delivery-and-notifications.md`
@@ -208,7 +208,7 @@ Task: "T033 [US3] Implement reusable integration binding snapshot builders for f
 
 1. Complete Phase 1: Setup.
 2. Complete Phase 2: Foundational.
-3. Complete Phase 3: User Story 1, then validate integration create/list/detail, readiness transitions, and canonical-default behavior in `DOPE_ENV=test`.
+3. Complete Phase 3: User Story 1, then validate integration create/list/detail, readiness transitions, and canonical-default behavior in `KURA_ENV=test`.
 4. Continue through Phase 4 so integration-backed execution is covered on runtime, workflow, and approval truth rather than stopping at the operator-readiness surface.
 5. Complete Phase 5 and Phase 6 before declaring roadmap 27 closed.
 

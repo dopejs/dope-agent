@@ -6,20 +6,20 @@
 //!
 //! The manager is a synchronous port: Go's context.Context plumbing is dropped and the
 //! in-memory registry is guarded by parking_lot::RwLock with insertion-ordered server
-//! ids, mirroring the dope-runtime / dope-orchestration manager pattern. SQLite
-//! persistence goes through dope-store's MCP CRUD (servers, server states, tools,
-//! tool exposure rules) and events fan out through dope-events' Bus plus the store
+//! ids, mirroring the kura-runtime / kura-orchestration manager pattern. SQLite
+//! persistence goes through kura-store's MCP CRUD (servers, server states, tools,
+//! tool exposure rules) and events fan out through kura-events' Bus plus the store
 //! event ledger.
 //!
 //! Deferred parts (documented at each site):
 //! - The sandbox execution starter (AttachedExecutionStarter) is a trait with no
 //!   workspace implementation yet; the manager behaves exactly like the Go manager with a
 //!   nil sandbox manager (ErrSandboxManagerMissing for stdio lifecycle).
-//! - Tenant-context resolution (tenantctx) and the async dope-secrets manager bridge
+//! - Tenant-context resolution (tenantctx) and the async kura-secrets manager bridge
 //!   are not ported; secret resolution falls back to the mcp-secrets.json file in the
 //!   data dir (the Go nil-secret-manager path) unless a SecretResolver is injected.
 //! - Approval/decision SQLite persistence (store.UpsertApproval / UpsertDecision) and
-//!   store.HasActiveMCPToolCalls are not yet in dope-store; the corresponding Go calls
+//!   store.HasActiveMCPToolCalls are not yet in kura-store; the corresponding Go calls
 //!   are no-ops / skipped.
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -160,19 +160,19 @@ pub fn is_terminal_status(status: LifecycleStatus) -> bool {
 
 /// Go string(Environment) — "test" / "prod".
 #[must_use]
-pub fn environment_scope(environment: dope_config::Environment) -> String {
+pub fn environment_scope(environment: kura_config::Environment) -> String {
     match environment {
-        dope_config::Environment::Prod => "prod".to_string(),
-        dope_config::Environment::Test => "test".to_string(),
+        kura_config::Environment::Prod => "prod".to_string(),
+        kura_config::Environment::Test => "test".to_string(),
     }
 }
 
 /// Go LiveValidationMatrixRows (live_validation.go): MCP tool calls are unsupported by
 /// the default live-validation support matrix.
 #[must_use]
-pub fn live_validation_matrix_rows() -> Vec<dope_livevalidation::MatrixRow> {
-    let tool_class = dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::MCP_TOOL_CALL);
-    match dope_livevalidation::default_matrix_row(&tool_class) {
+pub fn live_validation_matrix_rows() -> Vec<kura_livevalidation::MatrixRow> {
+    let tool_class = kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::MCP_TOOL_CALL);
+    match kura_livevalidation::default_matrix_row(&tool_class) {
         Some(row) => vec![row],
         None => Vec::new(),
     }
@@ -228,7 +228,7 @@ pub fn clone_ints(items: &[i64]) -> Vec<i64> {
 
 /// Go cloneBackendKinds.
 #[must_use]
-pub fn clone_backend_kinds(items: &[dope_sandbox::BackendKind]) -> Vec<dope_sandbox::BackendKind> {
+pub fn clone_backend_kinds(items: &[kura_sandbox::BackendKind]) -> Vec<kura_sandbox::BackendKind> {
     items.to_vec()
 }
 

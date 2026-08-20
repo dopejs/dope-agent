@@ -6,8 +6,8 @@ use std::io::Read;
 use std::sync::Arc;
 use std::time::Duration;
 
-use dope_connectors::{DiagnosticReasonCode, RedactionStatus};
-use dope_imtypes::{OutboundReply, ReplyCapabilities, SentReply};
+use kura_connectors::{DiagnosticReasonCode, RedactionStatus};
+use kura_imtypes::{OutboundReply, ReplyCapabilities, SentReply};
 use serde::de::DeserializeOwned;
 
 use crate::destinations::{

@@ -6,8 +6,8 @@
 //! record structs and the occurrence filter are reachable from this integration test.
 
 use chrono::Utc;
-use dope_runtime::{Run, RunStatus};
-use dope_store::{
+use kura_runtime::{Run, RunStatus};
+use kura_store::{
     consumer_policy::ConsumerPolicyRecordRecord,
     reminders::{
         ReminderActionRecord, ReminderOccurrenceFilter, ReminderOccurrenceRecord, ReminderRecord,
@@ -17,7 +17,7 @@ use dope_store::{
 };
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
-  createDopeClient,
+  createKuraClient,
   type ActivationDiagnosticListResponse,
   type ActivationStateResource,
   type AgentProfileDetailResponse,
@@ -50,7 +50,7 @@ import {
   type ChannelConnectorListResponse,
   type ChannelManagementActionInput,
   type ChannelManagementSupportEvidence
-} from "@dope/client";
+} from "@kura/client";
 import { ChannelManagementView } from "../features/channel-management";
 import { AgentProfileEditor } from "../features/agent-profiles/AgentProfileEditor";
 import { AgentProfileHistory } from "../features/agent-profiles/AgentProfileHistory";
@@ -204,7 +204,7 @@ export function App() {
   const canExportBillingEvidence = hasPermission(activeTenant, "billing.evidence_export");
 
   function buildClient(defaultTenantId = activeTenantId) {
-    return createDopeClient({
+    return createKuraClient({
       baseURL: daemonURL,
       accessToken: accessToken.trim() || undefined,
       defaultTenantId: defaultTenantId || undefined
@@ -2850,7 +2850,7 @@ function membershipStatusFor(items: MembershipResource[]): MembershipStatus {
 }
 
 function preferenceKey(daemonURL: string, principalId: string): string {
-  return `dope.activeTenant.${daemonURL.trim()}.${principalId}`;
+  return `kura.activeTenant.${daemonURL.trim()}.${principalId}`;
 }
 
 function readTenantPreference(daemonURL: string, principalId: string): string | undefined {

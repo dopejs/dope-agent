@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/integration-diagnostic-list.response.schema.json",
+  "$id": "https://kura.local/schemas/api/integration-diagnostic-list.response.schema.json",
   "title": "IntegrationDiagnosticListResponse",
   "type": "object",
   "required": ["items"],

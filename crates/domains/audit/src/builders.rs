@@ -4,8 +4,8 @@
 //! The evaluation-product and live-validation builders follow once their domain types land.
 
 use chrono::{DateTime, Utc};
-use dope_identity::TenantAuditEvent;
-use dope_identity::AUDIT_OUTCOME_SUCCEEDED;
+use kura_identity::TenantAuditEvent;
+use kura_identity::AUDIT_OUTCOME_SUCCEEDED;
 
 pub const BILLING_AUDIT_EVENT_KIND: &str = "billing.audit_recorded";
 pub const CREDENTIAL_EVENT_KIND: &str = "credential.audit_recorded";
@@ -37,7 +37,7 @@ fn now_if_zero(dt: DateTime<Utc>) -> DateTime<Utc> {
 pub struct BillingAuditInput {
     pub tenant_id: String,
     pub principal_id: String,
-    pub category: dope_billing::Category,
+    pub category: kura_billing::Category,
     pub operation_key: String,
     pub reservation_id: String,
     pub adjustment_id: String,
@@ -88,11 +88,11 @@ pub fn build_billing_audit_event(input: &BillingAuditInput) -> TenantAuditEvent 
     }
 }
 
-pub fn default_billing_audit_retention_policy(tenant_id: &str) -> dope_billing::AuditRetentionPolicy {
-    dope_billing::AuditRetentionPolicy {
+pub fn default_billing_audit_retention_policy(tenant_id: &str) -> kura_billing::AuditRetentionPolicy {
+    kura_billing::AuditRetentionPolicy {
         tenant_id: tenant_id.to_string(),
         retention_mode: "indefinite".to_string(),
-        ..dope_billing::AuditRetentionPolicy::default()
+        ..kura_billing::AuditRetentionPolicy::default()
     }
 }
 
@@ -100,9 +100,9 @@ pub fn default_billing_audit_retention_policy(tenant_id: &str) -> dope_billing::
 pub struct CredentialAuditInput {
     pub tenant_id: String,
     pub principal_id: String,
-    pub resource_kind: dope_secrets::ResourceKind,
+    pub resource_kind: kura_secrets::ResourceKind,
     pub resource_id: String,
-    pub action: dope_secrets::AuditAction,
+    pub action: kura_secrets::AuditAction,
     pub outcome: String,
     pub reason_code: String,
     pub secret_ref: String,
@@ -127,7 +127,7 @@ pub fn build_credential_audit_event(input: &CredentialAuditInput) -> TenantAudit
         document.insert("secretVersionId".to_string(), serde_json::json!(input.secret_version_id));
     }
     if !input.secret_refs.is_empty() {
-        document.insert("secretRefs".to_string(), serde_json::json!(dope_secrets::redact_secret_refs(&input.secret_refs)));
+        document.insert("secretRefs".to_string(), serde_json::json!(kura_secrets::redact_secret_refs(&input.secret_refs)));
         document.insert("secretRefCount".to_string(), serde_json::json!(input.secret_refs.len()));
     }
     TenantAuditEvent {
@@ -150,10 +150,10 @@ pub struct IntegrationDiagnosticAuditInput {
     pub target_kind: String,
     pub target_id: String,
     pub outcome: String,
-    pub reason_code: dope_integrations::DiagnosticReasonCode,
+    pub reason_code: kura_integrations::DiagnosticReasonCode,
     pub diagnostic_run_id: String,
     pub smoke_report_id: String,
-    pub redaction_status: dope_integrations::RedactionStatus,
+    pub redaction_status: kura_integrations::RedactionStatus,
     pub created_at: DateTime<Utc>,
 }
 

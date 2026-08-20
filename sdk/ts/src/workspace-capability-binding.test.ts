@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDopeClient } from "./index";
+import { createKuraClient } from "./index";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -51,7 +51,7 @@ describe("workspace and capability binding SDK", () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(jsonResponse({ policyId: "cvp_1", tenantId: "ten_58", scopeKind: "workspace", scopeRef: "ws_1", capabilityId: "tool.shell", visibility: "hidden", validationStatus: "valid" }));
 
-    const client = createDopeClient({ baseURL: "http://localhost:19192", fetchImpl, accessToken: "t" });
+    const client = createKuraClient({ baseURL: "http://localhost:19192", fetchImpl, accessToken: "t" });
 
     const workspaces = await client.listWorkspaces();
     expect(workspaces.workspaces[0].isDefault).toBe(true);
@@ -77,7 +77,7 @@ describe("workspace and capability binding SDK", () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ workspaces: [{ ...workspace(), tenantId: undefined }] }));
-    const client = createDopeClient({ baseURL: "http://localhost:19192", fetchImpl, accessToken: "t" });
+    const client = createKuraClient({ baseURL: "http://localhost:19192", fetchImpl, accessToken: "t" });
     const workspaces = await client.listWorkspaces();
     // An older daemon/client omitting tenantId must still parse without error.
     expect(workspaces.workspaces[0].workspaceId).toBe("ws_1");

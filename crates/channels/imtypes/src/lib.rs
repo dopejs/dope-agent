@@ -14,7 +14,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-pub use dope_router::SessionKind;
+pub use kura_router::SessionKind;
 
 /// Delivery direction of a [`MessageRecord`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

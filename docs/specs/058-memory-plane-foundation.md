@@ -101,7 +101,7 @@ itself. The rule throughout: nothing on the reply path blocks on memory.
 
 - **L0 capture points** (fire-and-forget; failures log, never fail the
   originating request):
-  1. chat turns — `dope-chat` captures after a dispatch settles, source
+  1. chat turns — `kura-chat` captures after a dispatch settles, source
      links `{thread, message/turn, run}`; the assistant reply belongs to
      the same turn's L0 window;
   2. connector ingress — the accepted branch captures with

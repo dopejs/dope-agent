@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::util::{is_go_zero_time, now_utc, payload};
 use crate::{Event, Resource};
-use dope_evaluation::{ProductLifecycleStatus, ProductResourceKind, RedactionStatus};
+use kura_evaluation::{ProductLifecycleStatus, ProductResourceKind, RedactionStatus};
 
 pub const EVALUATION_PRODUCT_AUDIT_RECORDED_NAME: &str = "evaluation.product_audit_recorded";
 pub const EVALUATION_PRODUCT_REDACTION_FAILED_NAME: &str = "evaluation.product_redaction_failed";

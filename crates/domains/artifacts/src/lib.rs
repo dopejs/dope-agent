@@ -8,7 +8,7 @@ use std::path::Path;
 use chrono::Utc;
 use sha2::{Digest, Sha256};
 
-use dope_computeruse::{Artifact, ArtifactCaptureRequest, ArtifactStatus};
+use kura_computeruse::{Artifact, ArtifactCaptureRequest, ArtifactStatus};
 
 pub struct Service {
     data_dir: String,

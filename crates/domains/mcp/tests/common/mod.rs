@@ -1,4 +1,4 @@
-//! Shared test helpers for the dope-mcp integration tests: a fake stdio MCP server
+//! Shared test helpers for the kura-mcp integration tests: a fake stdio MCP server
 //! subprocess launcher (the `fake-mcp-server` bin target), a minimal in-process HTTP
 //! server speaking the MCP streamable-http JSON-RPC shape, and a minimal in-process
 //! WebSocket server (RFC 6455 handshake + masked text frames) answering the same
@@ -7,7 +7,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 
-use dope_mcp::transport::{RpcRequest, RpcResponse};
+use kura_mcp::transport::{RpcRequest, RpcResponse};
 use serde_json::json;
 
 /// Path of the fake stdio MCP server binary (built by cargo for this package).
@@ -73,7 +73,7 @@ pub fn fake_response(request: &RpcRequest) -> RpcResponse {
             jsonrpc: "2.0".to_string(),
             id,
             result: None,
-            error: Some(dope_mcp::transport::RpcError {
+            error: Some(kura_mcp::transport::RpcError {
                 code: -32601,
                 message: format!("method not found: {}", request.method),
             }),

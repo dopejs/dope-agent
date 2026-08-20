@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use dope_identity::{LifecycleStatus, Role, TenantContext, permissions_for_role};
-use dope_setupwizard::{
+use kura_identity::{LifecycleStatus, Role, TenantContext, permissions_for_role};
+use kura_setupwizard::{
     catalog_targets, new_service, MemoryStore, ServiceDependencies, SetupState, SupportStatus,
     SetupStyle, TARGET_OPENAI_COMPATIBLE,
 };
@@ -28,7 +28,7 @@ fn viewer() -> TenantContext {
     }
 }
 
-fn service() -> dope_setupwizard::Service {
+fn service() -> kura_setupwizard::Service {
     new_service(ServiceDependencies {
         store: Some(Arc::new(MemoryStore::default())),
         ..ServiceDependencies::default()
@@ -47,7 +47,7 @@ fn catalog_lists_supported_targets_sorted() {
 async fn start_creates_in_progress_session() {
     let service = service();
     let session = service
-        .start(dope_setupwizard::StartInput {
+        .start(kura_setupwizard::StartInput {
             tenant_context: admin(),
             target_id: TARGET_OPENAI_COMPATIBLE.to_string(),
             setup_style: SetupStyle::SubmittedSecret,
@@ -64,7 +64,7 @@ async fn start_creates_in_progress_session() {
 async fn start_denies_viewer() {
     let service = service();
     let err = service
-        .start(dope_setupwizard::StartInput {
+        .start(kura_setupwizard::StartInput {
             tenant_context: viewer(),
             target_id: TARGET_OPENAI_COMPATIBLE.to_string(),
             setup_style: SetupStyle::SubmittedSecret,
@@ -72,14 +72,14 @@ async fn start_denies_viewer() {
         })
         .await
         .unwrap_err();
-    assert!(matches!(err, dope_setupwizard::SetupError::PermissionDenied));
+    assert!(matches!(err, kura_setupwizard::SetupError::PermissionDenied));
 }
 
 #[tokio::test]
 async fn list_targets_projects_current_session() {
     let service = service();
     let _ = service
-        .start(dope_setupwizard::StartInput {
+        .start(kura_setupwizard::StartInput {
             tenant_context: admin(),
             target_id: TARGET_OPENAI_COMPATIBLE.to_string(),
             setup_style: SetupStyle::SubmittedSecret,

@@ -1,15 +1,15 @@
 [package]
-name = "dope-feishulark"
+name = "kura-feishulark"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-adapterrpc.workspace = true
-dope-adapterprovider.workspace = true
-dope-calendar.workspace = true
-dope-mail.workspace = true
-dope-integrations.workspace = true
+kura-adapterrpc.workspace = true
+kura-adapterprovider.workspace = true
+kura-calendar.workspace = true
+kura-mail.workspace = true
+kura-integrations.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true

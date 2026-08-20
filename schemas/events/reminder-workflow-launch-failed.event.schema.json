@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/reminder-workflow-launch-failed.event.schema.json",
+  "$id": "https://kura.local/schemas/events/reminder-workflow-launch-failed.event.schema.json",
   "allOf": [
     { "$ref": "./runtime-event.schema.json" },
     {

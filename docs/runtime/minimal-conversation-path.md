@@ -119,8 +119,8 @@ The implementation uses the existing daemon LLM dispatch plane rather than creat
 
 Daemon config now includes an `llm` section in the active environment config file.
 
-- development/test default: `~/.dope-test/config.json`
-- production explicit env: `~/.dope/config.json`
+- development/test default: `~/.kura-test/config.json`
+- production explicit env: `~/.kura/config.json`
 
 Example:
 
@@ -146,19 +146,19 @@ Supported secret paths:
 
 - `llm.openaiCompatible.apiKey` in config file
 - `llm.openaiCompatible.apiKeyEnv` pointing to an environment variable
-- direct env override via `DOPE_LLM_OPENAI_COMPATIBLE_API_KEY`
+- direct env override via `KURA_LLM_OPENAI_COMPATIBLE_API_KEY`
 
 Relevant overrides:
 
-- `DOPE_LLM_DEFAULT_PROVIDER`
-- `DOPE_LLM_DEFAULT_MODEL`
-- `DOPE_LLM_DEFAULT_TIMEOUT_MS`
-- `DOPE_LLM_DEFAULT_MAX_RETRIES`
-- `DOPE_LLM_OPENAI_COMPATIBLE_BASE_URL`
-- `DOPE_LLM_OPENAI_COMPATIBLE_API_KEY`
-- `DOPE_LLM_OPENAI_COMPATIBLE_API_KEY_ENV`
-- `DOPE_LLM_OPENAI_COMPATIBLE_MODEL`
-- `DOPE_LLM_OPENAI_COMPATIBLE_TIMEOUT_MS`
+- `KURA_LLM_DEFAULT_PROVIDER`
+- `KURA_LLM_DEFAULT_MODEL`
+- `KURA_LLM_DEFAULT_TIMEOUT_MS`
+- `KURA_LLM_DEFAULT_MAX_RETRIES`
+- `KURA_LLM_OPENAI_COMPATIBLE_BASE_URL`
+- `KURA_LLM_OPENAI_COMPATIBLE_API_KEY`
+- `KURA_LLM_OPENAI_COMPATIBLE_API_KEY_ENV`
+- `KURA_LLM_OPENAI_COMPATIBLE_MODEL`
+- `KURA_LLM_OPENAI_COMPATIBLE_TIMEOUT_MS`
 
 `GET /v1/config` now redacts provider secrets and exposes only redaction metadata.
 

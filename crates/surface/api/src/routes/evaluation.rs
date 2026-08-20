@@ -36,9 +36,9 @@
 //! The tenant-scoped evaluation product family (discovery policies/runs,
 //! discovered candidates, product fixtures + revisions + review/suppress,
 //! suppressions, replay campaigns, dashboard projections, tool-call
-//! inspections, retention/apply) is fully ported on the dope-store
+//! inspections, retention/apply) is fully ported on the kura-store
 //! evaluation_product DAOs (`crates/persistence/store`) with the
-//! dope_evaluation domain helpers (build_discovery_run_from_policy,
+//! kura_evaluation domain helpers (build_discovery_run_from_policy,
 //! create_product_fixture_from_candidate, create_replay_campaign, ...). The
 //! tenant is read from the resolved tenant context (400 when absent, matching
 //! Go evaluationProductTenantIDFromRequest); capability-gated mutations check
@@ -48,12 +48,12 @@
 //!
 //! NOT PORTED (manager/store method missing — reported, not duplicated):
 //! - `POST /v1/live-validations/{telegram|slack}-smoke`: the Go api layer
-//!   delegates the evidence build to the connectors packages; dope-api does not
-//!   depend on dope-telegram/dope-slack, so the recorders are not ported.
+//!   delegates the evidence build to the connectors packages; kura-api does not
+//!   depend on kura-telegram/kura-slack, so the recorders are not ported.
 //! - matrix safe-live smoke: Go runs a provider probe through a
 //!   `matrixSmokeExecutor`; no Rust equivalent exists (non-safe-live records
 //!   are built inline exactly like Go's `matrixSmokeRecordFromRequest`).
-//! - `recordLiveValidationAudit`: dope-audit has no live-validation event
+//! - `recordLiveValidationAudit`: kura-audit has no live-validation event
 //!   builder yet (best-effort in Go; errors are ignored there).
 //! - the store-persistence half of Go `publishEvent`: the Rust bus is
 //!   in-memory; events are published to `state.event_bus` only.
@@ -65,7 +65,7 @@
 //!
 //! Tenant scoping: the replay-ledger routes are environment-scoped (the
 //! manager fills the scope); the live-validation manager reads the resolved
-//! tenant from the `dope_identity::tenantctx` task-local; the connector
+//! tenant from the `kura_identity::tenantctx` task-local; the connector
 //! smoke/conformance routes require a resolved tenant context plus
 //! credential-inspection authority (403 credential denial otherwise).
 
@@ -80,13 +80,13 @@ use axum::routing::{get, post};
 use axum::Router;
 use axum::Json as AxumJson;
 use chrono::{DateTime, Utc};
-use dope_evaluation::{
+use kura_evaluation::{
     CandidateFilter, ComparisonFilter, ComparisonResult, CreateComparisonInput,
     CreateReplayAttemptInput, EvaluationError, FixtureFilter, ReplayAttempt, ReplayAttemptStatus,
     ReplayCandidate, ReplayMode, RegressionFixture,
 };
-use dope_identity::{has_permission, Permission};
-use dope_livevalidation::{
+use kura_identity::{has_permission, Permission};
+use kura_livevalidation::{
     ApprovalMode, ApprovalStatus, ApprovalTarget, Attempt, AttemptFilter, AttemptStatus, Comparison,
     FreshApproval, KillSwitch, KillSwitchFilter, KillSwitchScope, LiveValidationError, MatrixRow,
     ReconciliationResolution, ReconciliationResolutionValue, RetentionPolicy, SafetyClass,
@@ -208,7 +208,7 @@ struct LiveValidationSupportMatrixResponse {
 struct LiveValidationDiscordConformanceResponse {
     tenant_id: String,
     connector_id: String,
-    items: Vec<dope_connectors::ConformanceResult>,
+    items: Vec<kura_connectors::ConformanceResult>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -431,14 +431,14 @@ struct RecordMatrixSmokeRequest {
 // ---------------------------------------------------------------------------
 
 /// Go manager == nil check for the evaluation manager (500).
-fn evaluation_manager(state: &AppState) -> Result<Arc<dope_evaluation::Manager>, ApiError> {
+fn evaluation_manager(state: &AppState) -> Result<Arc<kura_evaluation::Manager>, ApiError> {
     state.evaluation.clone().ok_or_else(|| {
         ApiError::Internal("evaluation manager is not configured".to_string())
     })
 }
 
 /// Go manager == nil check for the live-validation manager (500).
-fn live_validation_manager(state: &AppState) -> Result<Arc<dope_livevalidation::Manager>, ApiError> {
+fn live_validation_manager(state: &AppState) -> Result<Arc<kura_livevalidation::Manager>, ApiError> {
     state.live_validation.clone().ok_or_else(|| {
         ApiError::Internal("live validation manager is not configured".to_string())
     })
@@ -490,7 +490,7 @@ fn live_validation_tool_classes(items: &[String]) -> Vec<ToolClass> {
 /// credential-inspection authority (or one of the manage permissions).
 fn require_hosted_credential_read_any(
     tenant: Option<&TenantContext>,
-    manage_permissions: &[dope_identity::Permission],
+    manage_permissions: &[kura_identity::Permission],
 ) -> Result<(), EvaluationApiError> {
     let Some(tc) = tenant else {
         return Err(EvaluationApiError::CredentialDenial {
@@ -502,7 +502,7 @@ fn require_hosted_credential_read_any(
             reason_code: "credential_denied:missing_tenant".to_string(),
         });
     }
-    if !dope_identity::can_inspect_credentials(&tc.0, manage_permissions) {
+    if !kura_identity::can_inspect_credentials(&tc.0, manage_permissions) {
         return Err(EvaluationApiError::CredentialDenial {
             reason_code: "credential_denied:missing_permission".to_string(),
         });
@@ -525,9 +525,9 @@ fn require_live_validation_execute(
             reason_code: "credential_denied:missing_tenant".to_string(),
         });
     }
-    if !dope_identity::has_permission(
+    if !kura_identity::has_permission(
         &tc.0.permissions,
-        dope_identity::Permission::LiveValidationExecute,
+        kura_identity::Permission::LiveValidationExecute,
     ) {
         return Err(EvaluationApiError::CredentialDenial {
             reason_code: "live_validation_execute_required".to_string(),
@@ -538,7 +538,7 @@ fn require_live_validation_execute(
 
 /// Resolved tenant id for response/filter fields (Go tenantctx.FromContext).
 /// Prefers the request's TenantContext extension (installed by protected())
-/// and falls back to the dope_identity tenantctx task-local.
+/// and falls back to the kura_identity tenantctx task-local.
 fn resolved_tenant_id(tenant: Option<&TenantContext>) -> String {
     if let Some(tc) = tenant {
         let id = tc.0.tenant_id.trim().to_string();
@@ -546,7 +546,7 @@ fn resolved_tenant_id(tenant: Option<&TenantContext>) -> String {
             return id;
         }
     }
-    dope_identity::tenantctx::from_context()
+    kura_identity::tenantctx::from_context()
         .map(|tc| tc.tenant_id)
         .unwrap_or_default()
 }
@@ -558,10 +558,10 @@ async fn with_tenant_context<T, F>(tenant: Option<&TenantContext>, fut: F) -> T
 where
     F: std::future::Future<Output = T>,
 {
-    if dope_identity::tenantctx::from_context().is_some() {
+    if kura_identity::tenantctx::from_context().is_some() {
         fut.await
     } else if let Some(tc) = tenant {
-        dope_identity::tenantctx::scope(tc.0.clone(), fut).await
+        kura_identity::tenantctx::scope(tc.0.clone(), fut).await
     } else {
         fut.await
     }
@@ -570,9 +570,9 @@ where
 /// Go writeBillingDenial: 503 unless the cause is a quota denial (429); the
 /// stable DenialPayload body when present, otherwise writeError.
 fn billing_reservation_error(
-    reservation: dope_evaluation::BillingReservationError,
+    reservation: kura_evaluation::BillingReservationError,
 ) -> EvaluationApiError {
-    let status = if matches!(reservation.error, dope_billing::BillingError::QuotaDenied) {
+    let status = if matches!(reservation.error, kura_billing::BillingError::QuotaDenied) {
         StatusCode::TOO_MANY_REQUESTS
     } else {
         StatusCode::SERVICE_UNAVAILABLE
@@ -599,20 +599,20 @@ fn publish_evaluation_replay_event(state: &AppState, name: &str, attempt: &Repla
     payload.insert("resultRunId".to_string(), json!(attempt.result_run_id));
     payload.insert("resultWorkflowId".to_string(), json!(attempt.result_workflow_id));
     payload.insert("blockedReasons".to_string(), json!(attempt.blocked_reasons));
-    let event = dope_events::Event {
+    let event = kura_events::Event {
         category: "evaluation".to_string(),
         name: name.to_string(),
-        scope: dope_events::Scope {
+        scope: kura_events::Scope {
             run_id: attempt.result_run_id.clone(),
             workflow_id: attempt.result_workflow_id.clone(),
-            ..dope_events::Scope::default()
+            ..kura_events::Scope::default()
         },
-        resource: dope_events::Resource {
+        resource: kura_events::Resource {
             kind: "replay_attempt".to_string(),
             id: attempt.attempt_id.clone(),
         },
         payload,
-        ..dope_events::Event::default()
+        ..kura_events::Event::default()
     };
     state.event_bus.publish(event);
 }
@@ -630,15 +630,15 @@ fn publish_evaluation_comparison_event(state: &AppState, comparison: &Comparison
     payload.insert("terminalStatus".to_string(), json!(comparison.terminal_status.as_str()));
     payload.insert("environmentScope".to_string(), json!(comparison.environment_scope));
     payload.insert("driftPlanes".to_string(), json!(planes));
-    let event = dope_events::Event {
+    let event = kura_events::Event {
         category: "evaluation".to_string(),
         name: "evaluation.comparison_completed".to_string(),
-        resource: dope_events::Resource {
+        resource: kura_events::Resource {
             kind: "replay_comparison".to_string(),
             id: comparison.comparison_id.clone(),
         },
         payload,
-        ..dope_events::Event::default()
+        ..kura_events::Event::default()
     };
     state.event_bus.publish(event);
 }
@@ -647,11 +647,11 @@ fn publish_evaluation_comparison_event(state: &AppState, comparison: &Comparison
 /// (blocked / awaiting-approval / started).
 fn publish_live_validation_start_event(state: &AppState, result: &StartResult) {
     let name = match result.attempt.status.as_str() {
-        AttemptStatus::BLOCKED => dope_events::LIVE_VALIDATION_BLOCKED_NAME,
-        AttemptStatus::AWAITING_APPROVAL => dope_events::LIVE_VALIDATION_AWAITING_APPROVAL_NAME,
-        _ => dope_events::LIVE_VALIDATION_STARTED_NAME,
+        AttemptStatus::BLOCKED => kura_events::LIVE_VALIDATION_BLOCKED_NAME,
+        AttemptStatus::AWAITING_APPROVAL => kura_events::LIVE_VALIDATION_AWAITING_APPROVAL_NAME,
+        _ => kura_events::LIVE_VALIDATION_STARTED_NAME,
     };
-    let event = dope_events::live_validation_attempt_event(
+    let event = kura_events::live_validation_attempt_event(
         name,
         result.attempt.clone(),
         &result.denials,
@@ -665,13 +665,13 @@ fn publish_live_validation_start_event(state: &AppState, result: &StartResult) {
 
 async fn run_live_validation_start(
     state: &AppState,
-    manager: &dope_livevalidation::Manager,
+    manager: &kura_livevalidation::Manager,
     input: StartInput,
 ) -> Result<(StatusCode, StartResult), EvaluationApiError> {
     match manager.start(input).await {
         Ok(result) => {
             publish_live_validation_start_event(state, &result);
-            // Go recordLiveValidationAudit — no dope_audit live-validation
+            // Go recordLiveValidationAudit — no kura_audit live-validation
             // builder yet (best-effort in Go; errors ignored).
             Ok((StatusCode::ACCEPTED, result))
         }
@@ -740,7 +740,7 @@ async fn create_replay_candidate(
         serde_json::from_value(value).map_err(|err| ApiError::BadRequest(err.to_string()))?
     };
     // Go: fixture replay candidates are managed by repo fixtures.
-    if input.candidate_kind == dope_evaluation::CandidateKind::Fixture {
+    if input.candidate_kind == kura_evaluation::CandidateKind::Fixture {
         return Err(ApiError::BadRequest(
             "fixture replay candidates are managed by repo fixtures".to_string(),
         ));
@@ -868,11 +868,11 @@ async fn list_replay_attempts(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<ReplayAttemptListResponse>, ApiError> {
     let manager = evaluation_manager(&state)?;
-    let filter = dope_evaluation::AttemptFilter {
+    let filter = kura_evaluation::AttemptFilter {
         candidate_id: params.get("candidateId").cloned().unwrap_or_default(),
         status: parse_enum(params.get("status").map(String::as_str).unwrap_or("")),
         limit: query_int(&params, "limit"),
-        ..dope_evaluation::AttemptFilter::default()
+        ..kura_evaluation::AttemptFilter::default()
     };
     let items = manager
         .list_replay_attempts(&filter)
@@ -1053,14 +1053,14 @@ async fn live_validation_ledger(
 ) -> Result<Json<LiveValidationLedgerResponse>, ApiError> {
     let manager = live_validation_manager(&state)?;
     let tenant_id = resolved_tenant_id(tenant.as_ref().map(|t| &t.0));
-    let filter = dope_livevalidation::LedgerFilter {
+    let filter = kura_livevalidation::LedgerFilter {
         tenant_id: tenant_id.clone(),
         validation_id: validation_id.clone(),
         tool_class: ToolClass::new(params.get("toolClass").cloned().unwrap_or_default()),
         // The outcome query filter is not ported: LedgerOutcome is defined in
-        // the private ledger module and not re-exported by dope-livevalidation.
+        // the private ledger module and not re-exported by kura-livevalidation.
         limit: query_int(&params, "limit"),
-        ..dope_livevalidation::LedgerFilter::default()
+        ..kura_livevalidation::LedgerFilter::default()
     };
     let items = manager.list_ledger_entries(filter).await.map_err(ApiError::internal)?;
     Ok(Json(LiveValidationLedgerResponse {
@@ -1080,8 +1080,8 @@ async fn live_validation_abort(
     let item = with_tenant_context(tenant.as_ref().map(|t| &t.0), manager.abort(&validation_id))
         .await
         .map_err(|err| ApiError::BadRequest(err.to_string()))?;
-    let event = dope_events::live_validation_attempt_event(
-        dope_events::LIVE_VALIDATION_ABORTED_NAME,
+    let event = kura_events::live_validation_attempt_event(
+        kura_events::LIVE_VALIDATION_ABORTED_NAME,
         item.clone(),
         &[],
     );
@@ -1109,7 +1109,7 @@ async fn live_validation_compare(
     let comparison = with_tenant_context(tenant.as_ref().map(|t| &t.0), manager.create_comparison(&validation_id))
         .await
         .map_err(|err| ApiError::BadRequest(err.to_string()))?;
-    let event = dope_events::live_validation_comparison_event(comparison.clone());
+    let event = kura_events::live_validation_comparison_event(comparison.clone());
     state.event_bus.publish(event);
     Ok((StatusCode::ACCEPTED, AxumJson(comparison)))
 }
@@ -1145,7 +1145,7 @@ async fn live_validation_reconcile(
             }
             other => ApiError::BadRequest(other.to_string()),
         })?;
-    let event = dope_events::live_validation_reconciliation_event(resolution.clone());
+    let event = kura_events::live_validation_reconciliation_event(resolution.clone());
     state.event_bus.publish(event);
     Ok(Json(resolution))
 }
@@ -1211,8 +1211,8 @@ async fn set_kill_switch(
             }
             other => ApiError::BadRequest(other.to_string()),
         })?;
-    let event = dope_events::live_validation_attempt_event(
-        dope_events::LIVE_VALIDATION_KILL_SWITCH_CHANGED_NAME,
+    let event = kura_events::live_validation_attempt_event(
+        kura_events::LIVE_VALIDATION_KILL_SWITCH_CHANGED_NAME,
         Attempt {
             tenant_id: item.tenant_id.clone(),
             validation_id: item.kill_switch_id.clone(),
@@ -1254,7 +1254,7 @@ async fn live_validation_connector_conformance(
     let _manager = live_validation_manager(&state)?;
     require_hosted_credential_read_any(
         tenant.as_ref().map(|t| &t.0),
-        &[dope_identity::Permission::ConnectorsManage],
+        &[kura_identity::Permission::ConnectorsManage],
     )?;
     let tenant_id = tenant.as_ref().map(|t| t.0.0.tenant_id.clone()).unwrap_or_default();
     let connector_id = params
@@ -1286,11 +1286,11 @@ async fn live_validation_discord_smoke(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<dope_store::DiscordSmokeEvidenceRecord>, EvaluationApiError> {
+) -> Result<Json<kura_store::DiscordSmokeEvidenceRecord>, EvaluationApiError> {
     let _manager = live_validation_manager(&state)?;
     require_hosted_credential_read_any(
         tenant.as_ref().map(|t| &t.0),
-        &[dope_identity::Permission::ConnectorsManage],
+        &[kura_identity::Permission::ConnectorsManage],
     )?;
     let tenant_id = tenant.as_ref().map(|t| t.0.0.tenant_id.clone()).unwrap_or_default();
     let connector_id = params
@@ -1316,11 +1316,11 @@ async fn live_validation_telegram_smoke(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<dope_store::TelegramSmokeEvidenceRecord>, EvaluationApiError> {
+) -> Result<Json<kura_store::TelegramSmokeEvidenceRecord>, EvaluationApiError> {
     let _manager = live_validation_manager(&state)?;
     require_hosted_credential_read_any(
         tenant.as_ref().map(|t| &t.0),
-        &[dope_identity::Permission::ConnectorsManage],
+        &[kura_identity::Permission::ConnectorsManage],
     )?;
     let tenant_id = tenant.as_ref().map(|t| t.0.0.tenant_id.clone()).unwrap_or_default();
     let connector_id = params
@@ -1351,7 +1351,7 @@ async fn live_validation_slack_smoke(
     let _manager = live_validation_manager(&state)?;
     require_hosted_credential_read_any(
         tenant.as_ref().map(|t| &t.0),
-        &[dope_identity::Permission::ConnectorsManage],
+        &[kura_identity::Permission::ConnectorsManage],
     )?;
     let tenant_id = tenant.as_ref().map(|t| t.0.0.tenant_id.clone()).unwrap_or_default();
     let connector_id = params
@@ -1377,11 +1377,11 @@ async fn live_validation_matrix_smoke(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<dope_store::MatrixSmokeEvidenceRecord>, EvaluationApiError> {
+) -> Result<Json<kura_store::MatrixSmokeEvidenceRecord>, EvaluationApiError> {
     let _manager = live_validation_manager(&state)?;
     require_hosted_credential_read_any(
         tenant.as_ref().map(|t| &t.0),
-        &[dope_identity::Permission::ConnectorsManage],
+        &[kura_identity::Permission::ConnectorsManage],
     )?;
     let tenant_id = tenant.as_ref().map(|t| t.0.0.tenant_id.clone()).unwrap_or_default();
     let connector_id = params
@@ -1410,7 +1410,7 @@ async fn record_matrix_smoke(
     tenant: Option<Extension<TenantContext>>,
     Query(params): Query<HashMap<String, String>>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<dope_store::MatrixSmokeEvidenceRecord>), EvaluationApiError> {
+) -> Result<(StatusCode, AxumJson<kura_store::MatrixSmokeEvidenceRecord>), EvaluationApiError> {
     let _manager = live_validation_manager(&state)?;
     require_live_validation_execute(tenant.as_ref().map(|t| &t.0))?;
     let tenant_id = tenant.as_ref().map(|t| t.0.0.tenant_id.clone()).unwrap_or_default();
@@ -1443,7 +1443,7 @@ async fn record_matrix_smoke(
 fn matrix_smoke_record_from_request(
     tenant_id: &str,
     input: &RecordMatrixSmokeRequest,
-) -> Result<dope_store::MatrixSmokeEvidenceRecord, EvaluationApiError> {
+) -> Result<kura_store::MatrixSmokeEvidenceRecord, EvaluationApiError> {
     let mode = input.authorization_mode.trim();
     let status = input.status.trim();
     let mode = if mode.is_empty() { "unavailable" } else { mode };
@@ -1479,7 +1479,7 @@ fn matrix_smoke_record_from_request(
             "No live Matrix hosted smoke was run; release review must consume this structured skip."
                 .to_string();
     }
-    Ok(dope_store::MatrixSmokeEvidenceRecord {
+    Ok(kura_store::MatrixSmokeEvidenceRecord {
         smoke_evidence_id: format!("matrix_smoke_{connector_id}"),
         tenant_id: tenant_id.to_string(),
         connector_id,
@@ -1498,7 +1498,7 @@ fn matrix_smoke_record_from_request(
 
 /// Go projectSlackSmokeEvidenceResource (setupwizard.go).
 fn project_slack_smoke_evidence_resource(
-    record: &dope_store::SlackSmokeEvidenceRecord,
+    record: &kura_store::SlackSmokeEvidenceRecord,
 ) -> SlackSmokeEvidenceResource {
     SlackSmokeEvidenceResource {
         smoke_evidence_id: record.smoke_evidence_id.clone(),
@@ -1526,7 +1526,7 @@ fn project_slack_smoke_evidence_resource(
 /// The tenant-scoped evaluation product routes (discovery-policies,
 /// discovery-runs, discovered-candidates, product-fixtures, suppressions,
 /// campaigns, dashboard, tool-call-inspections, retention/apply) are not
-/// registered: their SQLiteStore DAOs do not exist in dope-store (see the
+/// registered: their SQLiteStore DAOs do not exist in kura-store (see the
 /// module doc).
 #[must_use]
 // ---------------------------------------------------------------------------
@@ -1534,7 +1534,7 @@ fn project_slack_smoke_evidence_resource(
 // discovery runs, discovered candidates, product fixtures + revisions,
 // suppressions, replay campaigns, dashboard projections, tool-call
 // inspections, and retention/apply. All routes read the resolved tenant
-// context (400 when absent) and answer on the dope-store evaluation_product
+// context (400 when absent) and answer on the kura-store evaluation_product
 // DAOs; mutation routes requiring a capability check it with the
 // evaluation.manage wildcard (Go evaluationProductRequestHasPermission).
 // ---------------------------------------------------------------------------
@@ -1543,7 +1543,7 @@ fn project_slack_smoke_evidence_resource(
 #[serde(rename_all = "camelCase")]
 struct EvaluationProductListResponse<T> {
     tenant_id: String,
-    page: dope_evaluation::ProductPage,
+    page: kura_evaluation::ProductPage,
     items: Vec<T>,
 }
 
@@ -1554,7 +1554,7 @@ struct UpsertDiscoveryPolicyRequest {
     #[serde(default)]
     enabled: bool,
     #[serde(default)]
-    source_kinds: Vec<dope_evaluation::SourceKind>,
+    source_kinds: Vec<kura_evaluation::SourceKind>,
     #[serde(default)]
     window_start: DateTime<Utc>,
     #[serde(default)]
@@ -1585,7 +1585,7 @@ struct StartDiscoveryRunRequest {
     #[serde(default)]
     window_end: DateTime<Utc>,
     #[serde(default)]
-    source_kinds: Vec<dope_evaluation::SourceKind>,
+    source_kinds: Vec<kura_evaluation::SourceKind>,
     #[serde(default)]
     max_inspected_records: i64,
     #[serde(default)]
@@ -1606,7 +1606,7 @@ struct MaterializeProductFixtureRequest {
     fixture_id: String,
     display_name: String,
     #[serde(default)]
-    domain_class: dope_evaluation::FixtureDomainClass,
+    domain_class: kura_evaluation::FixtureDomainClass,
     #[serde(default)]
     fixture_payload: serde_json::Map<String, serde_json::Value>,
     #[serde(default)]
@@ -1666,7 +1666,7 @@ struct CreateCampaignRequest {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CampaignSourceSelectionRequest {
-    source_type: dope_evaluation::ProductResourceKind,
+    source_type: kura_evaluation::ProductResourceKind,
     source_id: String,
     #[serde(default)]
     source_snapshot: serde_json::Map<String, serde_json::Value>,
@@ -1678,20 +1678,20 @@ struct CampaignSourceSelectionRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProductFixtureMutationResponse {
-    fixture: dope_evaluation::ProductManagedFixture,
+    fixture: kura_evaluation::ProductManagedFixture,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    revision: Option<dope_evaluation::FixtureRevision>,
+    revision: Option<kura_evaluation::FixtureRevision>,
 }
 
 /// Go evaluationProductTenantIDFromRequest: a resolved tenant context is
 /// required (400 with the stable product-tenant message otherwise).
 fn evaluation_product_tenant(
     tenant: Option<&TenantContext>,
-) -> Result<&dope_identity::TenantContext, ApiError> {
+) -> Result<&kura_identity::TenantContext, ApiError> {
     match tenant {
         Some(tc) if !tc.0.tenant_id.trim().is_empty() => Ok(&tc.0),
         _ => Err(ApiError::BadRequest(
-            dope_evaluation::EvaluationError::ProductTenantRequired.to_string(),
+            kura_evaluation::EvaluationError::ProductTenantRequired.to_string(),
         )),
     }
 }
@@ -1699,7 +1699,7 @@ fn evaluation_product_tenant(
 /// Go evaluationProductRequestHasPermission: the specific permission or the
 /// evaluation.manage wildcard.
 fn evaluation_product_permission(
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     permission: Permission,
 ) -> bool {
     has_permission(&tc.permissions, permission)
@@ -1707,10 +1707,10 @@ fn evaluation_product_permission(
 }
 
 /// Go productPageFromRequest.
-fn product_page(params: &HashMap<String, String>) -> dope_evaluation::ProductPage {
-    dope_evaluation::ProductPage {
+fn product_page(params: &HashMap<String, String>) -> kura_evaluation::ProductPage {
+    kura_evaluation::ProductPage {
         cursor: params.get("cursor").cloned().unwrap_or_default(),
-        limit: dope_evaluation::normalize_product_limit(query_int(params, "limit")),
+        limit: kura_evaluation::normalize_product_limit(query_int(params, "limit")),
     }
 }
 
@@ -1719,7 +1719,7 @@ async fn list_discovery_policies(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<EvaluationProductListResponse<dope_evaluation::DiscoveryPolicy>>, ApiError> {
+) -> Result<Json<EvaluationProductListResponse<kura_evaluation::DiscoveryPolicy>>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     let enabled = match params.get("enabled") {
         Some(raw) if !raw.trim().is_empty() => Some(
@@ -1727,8 +1727,8 @@ async fn list_discovery_policies(
         ),
         _ => None,
     };
-    let filter = dope_evaluation::DiscoveryPolicyFilter {
-        base: dope_evaluation::ProductListFilter {
+    let filter = kura_evaluation::DiscoveryPolicyFilter {
+        base: kura_evaluation::ProductListFilter {
             tenant_id: tc.tenant_id.clone(),
             cursor: params.get("cursor").cloned().unwrap_or_default(),
             limit: query_int(&params, "limit"),
@@ -1748,7 +1748,7 @@ async fn get_discovery_policy(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(policy_id): Path<String>,
-) -> Result<Json<dope_evaluation::DiscoveryPolicy>, ApiError> {
+) -> Result<Json<kura_evaluation::DiscoveryPolicy>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     let item = state
         .store
@@ -1766,11 +1766,11 @@ async fn upsert_discovery_policy(
     tenant: Option<Extension<TenantContext>>,
     Path(policy_id): Path<String>,
     body: Bytes,
-) -> Result<Json<dope_evaluation::DiscoveryPolicy>, ApiError> {
+) -> Result<Json<kura_evaluation::DiscoveryPolicy>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     let input: UpsertDiscoveryPolicyRequest = decode_optional_json_body(&body)?;
     let now = Utc::now();
-    let item = dope_evaluation::DiscoveryPolicy {
+    let item = kura_evaluation::DiscoveryPolicy {
         policy_id: policy_id.clone(),
         tenant_id: tc.tenant_id.clone(),
         enabled: input.enabled,
@@ -1800,16 +1800,16 @@ async fn list_discovery_runs(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<EvaluationProductListResponse<dope_evaluation::DiscoveryRun>>, ApiError> {
+) -> Result<Json<EvaluationProductListResponse<kura_evaluation::DiscoveryRun>>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
-    let filter = dope_evaluation::DiscoveryRunFilter {
-        base: dope_evaluation::ProductListFilter {
+    let filter = kura_evaluation::DiscoveryRunFilter {
+        base: kura_evaluation::ProductListFilter {
             tenant_id: tc.tenant_id.clone(),
             cursor: params.get("cursor").cloned().unwrap_or_default(),
             limit: query_int(&params, "limit"),
         },
-        status: parse_enum::<dope_evaluation::ProductLifecycleStatus>(params.get("status").cloned().unwrap_or_default().as_str()),
-        source_kind: parse_enum::<dope_evaluation::SourceKind>(params.get("sourceKind").cloned().unwrap_or_default().as_str()),
+        status: parse_enum::<kura_evaluation::ProductLifecycleStatus>(params.get("status").cloned().unwrap_or_default().as_str()),
+        source_kind: parse_enum::<kura_evaluation::SourceKind>(params.get("sourceKind").cloned().unwrap_or_default().as_str()),
     };
     let items = state.store.lock().list_discovery_runs(&filter).map_err(ApiError::from_store)?;
     Ok(Json(EvaluationProductListResponse {
@@ -1825,12 +1825,12 @@ async fn start_discovery_run(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<dope_evaluation::DiscoveryRun>), ApiError> {
+) -> Result<(StatusCode, AxumJson<kura_evaluation::DiscoveryRun>), ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     let input: StartDiscoveryRunRequest = decode_optional_json_body(&body)?;
     let now = Utc::now();
     let policy = if input.policy_id.trim().is_empty() {
-        dope_evaluation::DiscoveryPolicy {
+        kura_evaluation::DiscoveryPolicy {
             policy_id: String::new(),
             tenant_id: tc.tenant_id.clone(),
             enabled: true,
@@ -1851,9 +1851,9 @@ async fn start_discovery_run(
             .ok_or_else(|| ApiError::NotFound("discovery policy not found".to_string()))?;
         existing
     };
-    let run = dope_evaluation::build_discovery_run_from_policy(
+    let run = kura_evaluation::build_discovery_run_from_policy(
         policy,
-        dope_evaluation::StartDiscoveryRunInput {
+        kura_evaluation::StartDiscoveryRunInput {
             window_start: input.window_start,
             window_end: input.window_end,
             source_kinds: input.source_kinds,
@@ -1877,7 +1877,7 @@ async fn get_discovery_run(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(discovery_run_id): Path<String>,
-) -> Result<Json<dope_evaluation::DiscoveryRun>, ApiError> {
+) -> Result<Json<kura_evaluation::DiscoveryRun>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     let item = state
         .store
@@ -1894,19 +1894,19 @@ async fn list_discovered_candidates(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<EvaluationProductListResponse<dope_evaluation::DiscoveredCandidate>>, ApiError> {
+) -> Result<Json<EvaluationProductListResponse<kura_evaluation::DiscoveredCandidate>>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
-    let filter = dope_evaluation::DiscoveredCandidateFilter {
-        base: dope_evaluation::ProductListFilter {
+    let filter = kura_evaluation::DiscoveredCandidateFilter {
+        base: kura_evaluation::ProductListFilter {
             tenant_id: tc.tenant_id.clone(),
             cursor: params.get("cursor").cloned().unwrap_or_default(),
             limit: query_int(&params, "limit"),
         },
         discovery_run_id: params.get("discoveryRunId").cloned().unwrap_or_default(),
-        source_kind: parse_enum::<dope_evaluation::SourceKind>(params.get("sourceKind").cloned().unwrap_or_default().as_str()),
-        readiness_status: parse_enum::<dope_evaluation::ReadinessStatus>(params.get("readinessStatus").cloned().unwrap_or_default().as_str()),
-        suppression_state: parse_enum::<dope_evaluation::SuppressionState>(params.get("suppressionState").cloned().unwrap_or_default().as_str()),
-        score_band: parse_enum::<dope_evaluation::ScoreBand>(params.get("scoreBand").cloned().unwrap_or_default().as_str()),
+        source_kind: parse_enum::<kura_evaluation::SourceKind>(params.get("sourceKind").cloned().unwrap_or_default().as_str()),
+        readiness_status: parse_enum::<kura_evaluation::ReadinessStatus>(params.get("readinessStatus").cloned().unwrap_or_default().as_str()),
+        suppression_state: parse_enum::<kura_evaluation::SuppressionState>(params.get("suppressionState").cloned().unwrap_or_default().as_str()),
+        score_band: parse_enum::<kura_evaluation::ScoreBand>(params.get("scoreBand").cloned().unwrap_or_default().as_str()),
     };
     let items = state.store.lock().list_discovered_candidates(&filter).map_err(ApiError::from_store)?;
     Ok(Json(EvaluationProductListResponse {
@@ -1922,7 +1922,7 @@ async fn get_discovered_candidate(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(discovered_candidate_id): Path<String>,
-) -> Result<Json<dope_evaluation::DiscoveredCandidate>, ApiError> {
+) -> Result<Json<kura_evaluation::DiscoveredCandidate>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     let item = state
         .store
@@ -1960,8 +1960,8 @@ async fn materialize_product_fixture(
         .get_latest_candidate_evidence(&tc.tenant_id, &discovered_candidate_id)
         .map_err(ApiError::from_store)?
         .ok_or_else(|| ApiError::BadRequest("candidate evidence not found".to_string()))?;
-    let (fixture, revision) = dope_evaluation::create_product_fixture_from_candidate(
-        dope_evaluation::ProductFixtureInput {
+    let (fixture, revision) = kura_evaluation::create_product_fixture_from_candidate(
+        kura_evaluation::ProductFixtureInput {
             fixture_id: input.fixture_id,
             tenant_id: tc.tenant_id.clone(),
             display_name: input.display_name,
@@ -1998,12 +1998,12 @@ async fn list_product_fixtures(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<EvaluationProductListResponse<dope_evaluation::ProductManagedFixture>>, ApiError> {
+) -> Result<Json<EvaluationProductListResponse<kura_evaluation::ProductManagedFixture>>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationFixtureRead) {
         return Err(ApiError::Forbidden("evaluation.fixture.read is required".to_string()));
     }
-    let filter = dope_evaluation::ProductListFilter {
+    let filter = kura_evaluation::ProductListFilter {
         tenant_id: tc.tenant_id.clone(),
         cursor: params.get("cursor").cloned().unwrap_or_default(),
         limit: query_int(&params, "limit"),
@@ -2022,7 +2022,7 @@ async fn get_product_fixture(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(fixture_id): Path<String>,
-) -> Result<Json<dope_evaluation::ProductManagedFixture>, ApiError> {
+) -> Result<Json<kura_evaluation::ProductManagedFixture>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationFixtureRead) {
         return Err(ApiError::Forbidden("evaluation.fixture.read is required".to_string()));
@@ -2043,7 +2043,7 @@ async fn list_fixture_revisions(
     tenant: Option<Extension<TenantContext>>,
     Path(fixture_id): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<EvaluationProductListResponse<dope_evaluation::FixtureRevision>>, ApiError> {
+) -> Result<Json<EvaluationProductListResponse<kura_evaluation::FixtureRevision>>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationFixtureRead) {
         return Err(ApiError::Forbidden("evaluation.fixture.read is required".to_string()));
@@ -2086,15 +2086,15 @@ async fn create_fixture_revision(
         .list_fixture_revisions(&tc.tenant_id, &fixture_id, 1)
         .map_err(ApiError::from_store)?;
     let next_revision_number = revisions.first().map(|r| r.revision_number + 1).unwrap_or(1);
-    let (updated, revision) = dope_evaluation::create_product_fixture_revision(
+    let (updated, revision) = kura_evaluation::create_product_fixture_revision(
         fixture,
-        dope_evaluation::FixtureRevisionInput {
+        kura_evaluation::FixtureRevisionInput {
             revision_id: input.revision_id,
             fixture_payload: input.fixture_payload,
             content_summary: input.content_summary,
             change_summary: input.change_summary,
             source_evidence_refs: input.source_evidence_refs,
-            redaction_status: dope_evaluation::RedactionStatus::Clean,
+            redaction_status: kura_evaluation::RedactionStatus::Clean,
             created_by: tc.principal_id.clone(),
         },
         next_revision_number,
@@ -2137,12 +2137,12 @@ async fn review_product_fixture_route(
         .map_err(ApiError::from_store)?
         .ok_or_else(|| ApiError::NotFound("product fixture not found".to_string()))?;
     let decision = match input.decision.as_str() {
-        "approved" => dope_evaluation::FixtureReviewDecision::Approved,
-        "rejected" => dope_evaluation::FixtureReviewDecision::Rejected,
-        "needs_changes" => dope_evaluation::FixtureReviewDecision::NeedsChanges,
+        "approved" => kura_evaluation::FixtureReviewDecision::Approved,
+        "rejected" => kura_evaluation::FixtureReviewDecision::Rejected,
+        "needs_changes" => kura_evaluation::FixtureReviewDecision::NeedsChanges,
         _ => return Err(ApiError::BadRequest("invalid fixture review decision".to_string())),
     };
-    let updated = dope_evaluation::review_product_fixture(
+    let updated = kura_evaluation::review_product_fixture(
         fixture,
         &input.revision_id,
         decision,
@@ -2174,7 +2174,7 @@ async fn suppress_product_fixture_route(
         .get_product_fixture(&tc.tenant_id, &fixture_id)
         .map_err(ApiError::from_store)?
         .ok_or_else(|| ApiError::NotFound("product fixture not found".to_string()))?;
-    let updated = dope_evaluation::suppress_product_fixture(fixture, Utc::now())
+    let updated = kura_evaluation::suppress_product_fixture(fixture, Utc::now())
         .map_err(|err| ApiError::BadRequest(err.to_string()))?;
     state
         .store
@@ -2190,11 +2190,11 @@ async fn create_suppression(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<dope_evaluation::SuppressionRecord>), ApiError> {
+) -> Result<(StatusCode, AxumJson<kura_evaluation::SuppressionRecord>), ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     let input: CreateSuppressionRequest = decode_optional_json_body(&body)?;
     let now = Utc::now();
-    let item = dope_evaluation::SuppressionRecord {
+    let item = kura_evaluation::SuppressionRecord {
         suppression_id: if input.suppression_id.is_empty() {
             format!("suppression_{}", now.timestamp_nanos_opt().unwrap_or_default())
         } else {
@@ -2225,12 +2225,12 @@ async fn list_replay_campaigns(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<EvaluationProductListResponse<dope_evaluation::ReplayCampaign>>, ApiError> {
+) -> Result<Json<EvaluationProductListResponse<kura_evaluation::ReplayCampaign>>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationCampaignRead) {
         return Err(ApiError::Forbidden("evaluation.campaign.read is required".to_string()));
     }
-    let filter = dope_evaluation::ProductListFilter {
+    let filter = kura_evaluation::ProductListFilter {
         tenant_id: tc.tenant_id.clone(),
         cursor: params.get("cursor").cloned().unwrap_or_default(),
         limit: query_int(&params, "limit"),
@@ -2250,15 +2250,15 @@ async fn create_replay_campaign_route(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<dope_evaluation::ReplayCampaign>), ApiError> {
+) -> Result<(StatusCode, AxumJson<kura_evaluation::ReplayCampaign>), ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationCampaignManage) {
         return Err(ApiError::Forbidden("evaluation.campaign.manage is required".to_string()));
     }
     let input: CreateCampaignRequest = decode_optional_json_body(&body)?;
     let selections = campaign_source_selections(&state, tc, &input.source_selections)?;
-    let (campaign, items) = dope_evaluation::create_replay_campaign(
-        dope_evaluation::CreateCampaignInput {
+    let (campaign, items) = kura_evaluation::create_replay_campaign(
+        kura_evaluation::CreateCampaignInput {
             campaign_id: input.campaign_id,
             tenant_id: tc.tenant_id.clone(),
             display_name: input.display_name,
@@ -2288,7 +2288,7 @@ async fn get_replay_campaign(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(campaign_id): Path<String>,
-) -> Result<Json<dope_evaluation::ReplayCampaign>, ApiError> {
+) -> Result<Json<kura_evaluation::ReplayCampaign>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationCampaignRead) {
         return Err(ApiError::Forbidden("evaluation.campaign.read is required".to_string()));
@@ -2309,12 +2309,12 @@ async fn list_campaign_items(
     tenant: Option<Extension<TenantContext>>,
     Path(campaign_id): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<EvaluationProductListResponse<dope_evaluation::CampaignItem>>, ApiError> {
+) -> Result<Json<EvaluationProductListResponse<kura_evaluation::CampaignItem>>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationCampaignRead) {
         return Err(ApiError::Forbidden("evaluation.campaign.read is required".to_string()));
     }
-    let filter = dope_evaluation::ProductListFilter {
+    let filter = kura_evaluation::ProductListFilter {
         tenant_id: tc.tenant_id.clone(),
         cursor: params.get("cursor").cloned().unwrap_or_default(),
         limit: query_int(&params, "limit"),
@@ -2338,12 +2338,12 @@ async fn list_campaign_attempt_groups(
     tenant: Option<Extension<TenantContext>>,
     Path(campaign_id): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<EvaluationProductListResponse<dope_evaluation::CampaignAttemptGroup>>, ApiError> {
+) -> Result<Json<EvaluationProductListResponse<kura_evaluation::CampaignAttemptGroup>>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationCampaignRead) {
         return Err(ApiError::Forbidden("evaluation.campaign.read is required".to_string()));
     }
-    let filter = dope_evaluation::ProductListFilter {
+    let filter = kura_evaluation::ProductListFilter {
         tenant_id: tc.tenant_id.clone(),
         cursor: params.get("cursor").cloned().unwrap_or_default(),
         limit: query_int(&params, "limit"),
@@ -2367,7 +2367,7 @@ async fn campaign_transition_route(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path((campaign_id, action)): Path<(String, String)>,
-) -> Result<Json<dope_evaluation::ReplayCampaign>, ApiError> {
+) -> Result<Json<kura_evaluation::ReplayCampaign>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationCampaignManage) {
         return Err(ApiError::Forbidden("evaluation.campaign.manage is required".to_string()));
@@ -2379,13 +2379,13 @@ async fn campaign_transition_route(
         .map_err(ApiError::from_store)?
         .ok_or_else(|| ApiError::NotFound("campaign not found".to_string()))?;
     let transition = match action.as_str() {
-        "start" => dope_evaluation::CampaignTransition::Start,
-        "complete" => dope_evaluation::CampaignTransition::Complete,
-        "cancel" => dope_evaluation::CampaignTransition::Cancel,
-        "publish-results" => dope_evaluation::CampaignTransition::Publish,
+        "start" => kura_evaluation::CampaignTransition::Start,
+        "complete" => kura_evaluation::CampaignTransition::Complete,
+        "cancel" => kura_evaluation::CampaignTransition::Cancel,
+        "publish-results" => kura_evaluation::CampaignTransition::Publish,
         _ => return Err(ApiError::NotFound("campaign route not found".to_string())),
     };
-    let updated = dope_evaluation::transition_replay_campaign(campaign, transition, Utc::now())
+    let updated = kura_evaluation::transition_replay_campaign(campaign, transition, Utc::now())
         .map_err(|err| ApiError::BadRequest(err.to_string()))?;
     state
         .store
@@ -2402,12 +2402,12 @@ async fn list_campaign_tool_call_inspections(
     tenant: Option<Extension<TenantContext>>,
     Path(campaign_id): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<EvaluationProductListResponse<dope_evaluation::ToolCallInspection>>, ApiError> {
+) -> Result<Json<EvaluationProductListResponse<kura_evaluation::ToolCallInspection>>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationInspectionRead) {
         return Err(ApiError::Forbidden("evaluation.inspection.read is required".to_string()));
     }
-    let filter = dope_evaluation::ProductListFilter {
+    let filter = kura_evaluation::ProductListFilter {
         tenant_id: tc.tenant_id.clone(),
         cursor: params.get("cursor").cloned().unwrap_or_default(),
         limit: query_int(&params, "limit"),
@@ -2430,12 +2430,12 @@ async fn list_dashboard_projections(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Query(params): Query<HashMap<String, String>>,
-) -> Result<Json<EvaluationProductListResponse<dope_evaluation::DashboardProjection>>, ApiError> {
+) -> Result<Json<EvaluationProductListResponse<kura_evaluation::DashboardProjection>>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationDashboardRead) {
         return Err(ApiError::Forbidden("evaluation.dashboard.read is required".to_string()));
     }
-    let filter = dope_evaluation::ProductListFilter {
+    let filter = kura_evaluation::ProductListFilter {
         tenant_id: tc.tenant_id.clone(),
         cursor: params.get("cursor").cloned().unwrap_or_default(),
         limit: query_int(&params, "limit"),
@@ -2455,7 +2455,7 @@ async fn get_tool_call_inspection(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(inspection_id): Path<String>,
-) -> Result<Json<dope_evaluation::ToolCallInspection>, ApiError> {
+) -> Result<Json<kura_evaluation::ToolCallInspection>, ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     if !evaluation_product_permission(tc, Permission::EvaluationInspectionRead) {
         return Err(ApiError::Forbidden("evaluation.inspection.read is required".to_string()));
@@ -2471,7 +2471,7 @@ async fn get_tool_call_inspection(
 
 /// POST /v1/evaluation/retention/apply — apply product retention (Go
 /// handleEvaluationProductRoutes retention/apply branch answers 501 "not
-/// enabled"; the dope-store apply_retention DAO exists, so this wave
+/// enabled"; the kura-store apply_retention DAO exists, so this wave
 /// implements the real handler with a dry_run flag).
 async fn apply_evaluation_retention(
     State(state): State<AppState>,
@@ -2480,8 +2480,8 @@ async fn apply_evaluation_retention(
 ) -> Result<(StatusCode, AxumJson<serde_json::Value>), ApiError> {
     let tc = evaluation_product_tenant(tenant.as_ref().map(|e| &e.0))?;
     let input: ApplyRetentionRequest = decode_optional_json_body(&body)?;
-    let filter = dope_evaluation::RetentionApplicationFilter {
-        base: dope_evaluation::ProductListFilter {
+    let filter = kura_evaluation::RetentionApplicationFilter {
+        base: kura_evaluation::ProductListFilter {
             tenant_id: tc.tenant_id.clone(),
             cursor: String::new(),
             limit: 0,
@@ -2501,12 +2501,12 @@ async fn apply_evaluation_retention(
 /// the store and snapshots the source state.
 fn campaign_source_selections(
     state: &AppState,
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     inputs: &[CampaignSourceSelectionRequest],
-) -> Result<Vec<dope_evaluation::CampaignSourceSelection>, ApiError> {
+) -> Result<Vec<kura_evaluation::CampaignSourceSelection>, ApiError> {
     let mut selections = Vec::with_capacity(inputs.len());
     for input in inputs {
-        let mut selection = dope_evaluation::CampaignSourceSelection {
+        let mut selection = kura_evaluation::CampaignSourceSelection {
             source_type: input.source_type.clone(),
             source_id: input.source_id.clone(),
             tenant_id: tc.tenant_id.clone(),
@@ -2515,14 +2515,14 @@ fn campaign_source_selections(
             ..Default::default()
         };
         match input.source_type {
-            dope_evaluation::ProductResourceKind::ProductFixture => {
+            kura_evaluation::ProductResourceKind::ProductFixture => {
                 let fixture = state
                     .store
                     .lock()
                     .get_product_fixture(&tc.tenant_id, &input.source_id)
                     .map_err(ApiError::from_store)?
                     .ok_or_else(|| {
-                        ApiError::BadRequest(dope_evaluation::EvaluationError::CampaignSelectionInvalid.to_string())
+                        ApiError::BadRequest(kura_evaluation::EvaluationError::CampaignSelectionInvalid.to_string())
                     })?;
                 selection.suppression_state = fixture.suppression_state.clone();
                 selection.retention_state = fixture.retention_state.clone();
@@ -2539,14 +2539,14 @@ fn campaign_source_selections(
                 .cloned()
                 .unwrap_or_default();
             }
-            dope_evaluation::ProductResourceKind::DiscoveredCandidate => {
+            kura_evaluation::ProductResourceKind::DiscoveredCandidate => {
                 let candidate = state
                     .store
                     .lock()
                     .get_discovered_candidate(&tc.tenant_id, &input.source_id)
                     .map_err(ApiError::from_store)?
                     .ok_or_else(|| {
-                        ApiError::BadRequest(dope_evaluation::EvaluationError::CampaignSelectionInvalid.to_string())
+                        ApiError::BadRequest(kura_evaluation::EvaluationError::CampaignSelectionInvalid.to_string())
                     })?;
                 selection.suppression_state = candidate.suppression_state.clone();
                 selection.retention_state = candidate.retention_state.clone();
@@ -2566,10 +2566,10 @@ fn campaign_source_selections(
             }
             _ => {
                 if selection.retention_state.as_str().is_empty() {
-                    selection.retention_state = dope_evaluation::RetentionState::Active;
+                    selection.retention_state = kura_evaluation::RetentionState::Active;
                 }
                 if selection.suppression_state.as_str().is_empty() {
-                    selection.suppression_state = dope_evaluation::SuppressionState::None;
+                    selection.suppression_state = kura_evaluation::SuppressionState::None;
                 }
             }
         }
@@ -2595,7 +2595,7 @@ struct CreateSuppressionRequest {
     #[serde(default)]
     suppression_id: String,
     #[serde(default)]
-    target_kind: dope_evaluation::ProductResourceKind,
+    target_kind: kura_evaluation::ProductResourceKind,
     #[serde(default)]
     target_id: String,
     #[serde(default)]
@@ -2615,7 +2615,7 @@ struct CreateSuppressionRequest {
 #[serde(rename_all = "camelCase")]
 struct ApplyRetentionRequest {
     #[serde(default)]
-    resource_kinds: Vec<dope_evaluation::ProductResourceKind>,
+    resource_kinds: Vec<kura_evaluation::ProductResourceKind>,
     #[serde(default)]
     dry_run: bool,
 }
@@ -2811,11 +2811,11 @@ mod tests {
 
     use axum::body::to_bytes;
     use axum::http::Request as HttpRequest;
-    use dope_events::Bus;
-    use dope_identity::{
+    use kura_events::Bus;
+    use kura_identity::{
         LifecycleStatus, Role, TenantContext as IdentityTenantContext, permissions_for_role,
     };
-    use dope_store::SQLiteStore;
+    use kura_store::SQLiteStore;
     use parking_lot::Mutex;
     use tower::ServiceExt;
     use uuid::Uuid;
@@ -2825,28 +2825,28 @@ mod tests {
         DateTime::<Utc>::from_timestamp_secs(1_777_456_800).expect("fixed clock")
     }
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-test".to_string(),
+            data_dir: "/tmp/kura-api-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig {
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                telegram: dope_config::TelegramConnectorConfig {
+                telegram: kura_config::TelegramConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                slack: dope_config::SlackConnectorConfig {
+                slack: kura_config::SlackConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                matrix: dope_config::MatrixConnectorConfig {
+                matrix: kura_config::MatrixConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
@@ -2855,7 +2855,7 @@ mod tests {
     }
 
     fn fresh_store() -> Arc<Mutex<SQLiteStore>> {
-        let dir = std::env::temp_dir().join(format!("dope-api-evaluation2-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-evaluation2-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         Arc::new(Mutex::new(
             SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
@@ -2869,8 +2869,8 @@ mod tests {
     }
 
     fn harness(
-        evaluation: Option<Arc<dope_evaluation::Manager>>,
-        live_validation: Option<Arc<dope_livevalidation::Manager>>,
+        evaluation: Option<Arc<kura_evaluation::Manager>>,
+        live_validation: Option<Arc<kura_livevalidation::Manager>>,
     ) -> Harness {
         let store = fresh_store();
         let bus = Arc::new(Bus::new());
@@ -2892,7 +2892,7 @@ mod tests {
         EvaluationError::Store(err)
     }
 
-    impl dope_evaluation::manager::Store for SqliteEvaluationStore {
+    impl kura_evaluation::manager::Store for SqliteEvaluationStore {
         fn upsert_replay_candidate(&self, item: ReplayCandidate) -> Result<(), EvaluationError> {
             self.store.lock().upsert_replay_candidate(&item).map_err(store_err)
         }
@@ -2917,7 +2917,7 @@ mod tests {
         }
         fn list_replay_attempts(
             &self,
-            filter: &dope_evaluation::AttemptFilter,
+            filter: &kura_evaluation::AttemptFilter,
         ) -> Result<Vec<ReplayAttempt>, EvaluationError> {
             self.store.lock().list_replay_attempts(filter).map_err(store_err)
         }
@@ -2964,8 +2964,8 @@ mod tests {
         }
     }
 
-    fn evaluation_manager(store: Arc<Mutex<SQLiteStore>>) -> Arc<dope_evaluation::Manager> {
-        Arc::new(dope_evaluation::Manager::new(dope_evaluation::Dependencies {
+    fn evaluation_manager(store: Arc<Mutex<SQLiteStore>>) -> Arc<kura_evaluation::Manager> {
+        Arc::new(kura_evaluation::Manager::new(kura_evaluation::Dependencies {
             environment_scope: "test".to_string(),
             store: Some(Arc::new(SqliteEvaluationStore { store })),
             fixtures_dir: String::new(),
@@ -2976,18 +2976,18 @@ mod tests {
         }))
     }
 
-    fn live_validation_manager(hosted_billing: bool) -> Arc<dope_livevalidation::Manager> {
-        Arc::new(dope_livevalidation::Manager::new(
-            dope_livevalidation::Dependencies {
+    fn live_validation_manager(hosted_billing: bool) -> Arc<kura_livevalidation::Manager> {
+        Arc::new(kura_livevalidation::Manager::new(
+            kura_livevalidation::Dependencies {
                 environment_scope: "test".to_string(),
-                // NOTE: the store stays None in these tests — dope-livevalidation
+                // NOTE: the store stays None in these tests — kura-livevalidation
                 // does not re-export LedgerOutcome, so its async Store trait is
                 // not implementable outside the crate (reported).
                 store: None,
                 enabled: true,
                 billing: None,
                 hosted_billing,
-                clock: Some(Arc::new(fixed_now) as dope_livevalidation::Clock),
+                clock: Some(Arc::new(fixed_now) as kura_livevalidation::Clock),
                 ledger_event_sink: None,
                 candidate_tool_class_resolver: None,
             },
@@ -3017,13 +3017,13 @@ mod tests {
     }
 
     /// Runs the request with a resolved tenant context installed in the
-    /// dope_identity tenantctx task-local (the live-validation manager reads it).
+    /// kura_identity tenantctx task-local (the live-validation manager reads it).
     async fn send_with_tenant(
         app: &axum::Router,
         req: HttpRequest<axum::body::Body>,
         tenant: IdentityTenantContext,
     ) -> (StatusCode, serde_json::Value) {
-        let response = dope_identity::tenantctx::scope(tenant, app.clone().oneshot(req))
+        let response = kura_identity::tenantctx::scope(tenant, app.clone().oneshot(req))
             .await
             .expect("oneshot");
         let status = response.status();
@@ -3077,9 +3077,9 @@ mod tests {
             tenant_id: tenant_id.to_string(),
             principal_id: principal_id.to_string(),
             permissions: vec![
-                dope_identity::Permission::LiveValidationExecute,
-                dope_identity::Permission::ConnectorsManage,
-                dope_identity::Permission::CredentialsInspect,
+                kura_identity::Permission::LiveValidationExecute,
+                kura_identity::Permission::ConnectorsManage,
+                kura_identity::Permission::CredentialsInspect,
             ],
             ..IdentityTenantContext::default()
         }
@@ -3092,18 +3092,18 @@ mod tests {
     fn curated_candidate(candidate_id: &str, tool_classes: Vec<String>) -> ReplayCandidate {
         ReplayCandidate {
             candidate_id: candidate_id.to_string(),
-            candidate_kind: dope_evaluation::CandidateKind::CuratedWork,
+            candidate_kind: kura_evaluation::CandidateKind::CuratedWork,
             display_name: "candidate".to_string(),
-            source_kind: dope_evaluation::SourceKind::Run,
+            source_kind: kura_evaluation::SourceKind::Run,
             source_id: "run_1".to_string(),
-            source_refs: vec![dope_evaluation::SourceRef {
-                kind: dope_evaluation::SourceKind::Run,
+            source_refs: vec![kura_evaluation::SourceRef {
+                kind: kura_evaluation::SourceKind::Run,
                 id: "run_1".to_string(),
                 route: String::new(),
             }],
             tool_classes,
             environment_scope: "test".to_string(),
-            readiness_status: dope_evaluation::ReadinessStatus::FullyReplayable,
+            readiness_status: kura_evaluation::ReadinessStatus::FullyReplayable,
             default_replay_mode: ReplayMode::NonLive,
             created_at: fixed_now(),
             updated_at: fixed_now(),
@@ -3138,13 +3138,13 @@ mod tests {
             .upsert_regression_fixture(&RegressionFixture {
                 fixture_id: "fixture_schedule_1".to_string(),
                 display_name: "Schedule fixture".to_string(),
-                domain_class: dope_evaluation::FixtureDomainClass::Schedule,
+                domain_class: kura_evaluation::FixtureDomainClass::Schedule,
                 source_refs: vec![],
                 captured_evidence_refs: vec![],
                 assumptions: vec![],
                 limitations: vec![],
                 expected_replay_mode: ReplayMode::NonLive,
-                expected_comparison_summary: dope_evaluation::PlaneSummaries::default(),
+                expected_comparison_summary: kura_evaluation::PlaneSummaries::default(),
                 candidate_id: "candidate_fixture".to_string(),
                 environment_scope: "test".to_string(),
                 created_at: fixed_now(),
@@ -3299,7 +3299,7 @@ mod tests {
         // The replay_started / replay_completed / comparison_completed events fired.
         let events = h
             .bus
-            .list(&dope_events::Filter {
+            .list(&kura_events::Filter {
                 category: "evaluation".to_string(),
                 ..Default::default()
             });
@@ -3334,7 +3334,7 @@ mod tests {
         let cases: Vec<(
             &str,
             IdentityTenantContext,
-            Arc<dope_livevalidation::Manager>,
+            Arc<kura_livevalidation::Manager>,
             String,
             StatusCode,
             Option<&str>,
@@ -3666,12 +3666,12 @@ mod tests {
         let h = harness(None, Some(live_validation_manager(false)));
         let app = crate::routes::router(h.state.clone());
         let tenant = smoke_tenant_context("ten_slack", "prn_operator");
-        // The POST recorder is not ported (dope-api has no dope-slack dep), so
+        // The POST recorder is not ported (kura-api has no kura-slack dep), so
         // seed the evidence through the store and verify the GET projection.
         {
             let store = h.store.lock();
             store
-                .save_slack_smoke_evidence(&dope_store::SlackSmokeEvidenceRecord {
+                .save_slack_smoke_evidence(&kura_store::SlackSmokeEvidenceRecord {
                     smoke_evidence_id: "slack_smoke_slack-main".to_string(),
                     tenant_id: "ten_slack".to_string(),
                     connector_id: "slack-main".to_string(),
@@ -3725,11 +3725,11 @@ mod tests {
         {
             let store = h.store.lock();
             store
-                .upsert_discovery_policy(dope_evaluation::DiscoveryPolicy {
+                .upsert_discovery_policy(kura_evaluation::DiscoveryPolicy {
                     policy_id: "policy_api".to_string(),
                     tenant_id: "ten_api".to_string(),
                     enabled: true,
-                    source_kinds: vec![dope_evaluation::SourceKind::Run],
+                    source_kinds: vec![kura_evaluation::SourceKind::Run],
                     window_start: now - chrono::Duration::hours(1),
                     window_end: now,
                     max_inspected_records: 10,
@@ -3808,27 +3808,27 @@ mod tests {
             let store = h.store.lock();
             store
                 .save_discovered_candidate(
-                    dope_evaluation::DiscoveredCandidate {
+                    kura_evaluation::DiscoveredCandidate {
                         discovered_candidate_id: "candidate_api_1".to_string(),
                         tenant_id: "ten_api".to_string(),
                         discovery_run_id: run_id,
-                        source_kind: dope_evaluation::SourceKind::Run,
+                        source_kind: kura_evaluation::SourceKind::Run,
                         source_id: "run_source_1".to_string(),
                         score: 0.9,
-                        score_band: dope_evaluation::ScoreBand::High,
-                        redaction_status: dope_evaluation::RedactionStatus::Redacted,
-                        readiness_status: dope_evaluation::ReadinessStatus::FullyReplayable,
-                        suppression_state: dope_evaluation::SuppressionState::None,
-                        retention_state: dope_evaluation::RetentionState::Active,
+                        score_band: kura_evaluation::ScoreBand::High,
+                        redaction_status: kura_evaluation::RedactionStatus::Redacted,
+                        readiness_status: kura_evaluation::ReadinessStatus::FullyReplayable,
+                        suppression_state: kura_evaluation::SuppressionState::None,
+                        retention_state: kura_evaluation::RetentionState::Active,
                         created_at: now,
                         updated_at: now,
                         ..Default::default()
                     },
-                    dope_evaluation::CandidateEvidence {
+                    kura_evaluation::CandidateEvidence {
                         evidence_id: "evidence_api_1".to_string(),
                         tenant_id: "ten_api".to_string(),
                         discovered_candidate_id: "candidate_api_1".to_string(),
-                        retention_state: dope_evaluation::RetentionState::Active,
+                        retention_state: kura_evaluation::RetentionState::Active,
                         created_at: now,
                         ..Default::default()
                     },
@@ -3883,11 +3883,11 @@ mod tests {
         {
             let store = h.store.lock();
             store
-                .save_discovery_run(dope_evaluation::DiscoveryRun {
+                .save_discovery_run(kura_evaluation::DiscoveryRun {
                     discovery_run_id: "discovery_run_fixture_api".to_string(),
                     tenant_id: "ten_fixture_api".to_string(),
-                    status: dope_evaluation::ProductLifecycleStatus::Completed,
-                    source_kinds: vec![dope_evaluation::SourceKind::Run],
+                    status: kura_evaluation::ProductLifecycleStatus::Completed,
+                    source_kinds: vec![kura_evaluation::SourceKind::Run],
                     window_start: now - chrono::Duration::hours(1),
                     window_end: now,
                     max_inspected_records: 10,
@@ -3900,29 +3900,29 @@ mod tests {
                 .expect("save run");
             store
                 .save_discovered_candidate(
-                    dope_evaluation::DiscoveredCandidate {
+                    kura_evaluation::DiscoveredCandidate {
                         discovered_candidate_id: "candidate_fixture_api".to_string(),
                         tenant_id: "ten_fixture_api".to_string(),
                         discovery_run_id: "discovery_run_fixture_api".to_string(),
-                        source_kind: dope_evaluation::SourceKind::Run,
+                        source_kind: kura_evaluation::SourceKind::Run,
                         source_id: "run_fixture_api".to_string(),
                         score: 0.9,
-                        score_band: dope_evaluation::ScoreBand::High,
-                        redaction_status: dope_evaluation::RedactionStatus::Redacted,
-                        readiness_status: dope_evaluation::ReadinessStatus::FullyReplayable,
-                        suppression_state: dope_evaluation::SuppressionState::None,
-                        retention_state: dope_evaluation::RetentionState::Active,
+                        score_band: kura_evaluation::ScoreBand::High,
+                        redaction_status: kura_evaluation::RedactionStatus::Redacted,
+                        readiness_status: kura_evaluation::ReadinessStatus::FullyReplayable,
+                        suppression_state: kura_evaluation::SuppressionState::None,
+                        retention_state: kura_evaluation::RetentionState::Active,
                         created_at: now,
                         updated_at: now,
                         ..Default::default()
                     },
-                    dope_evaluation::CandidateEvidence {
+                    kura_evaluation::CandidateEvidence {
                         evidence_id: "evidence_fixture_api".to_string(),
                         tenant_id: "ten_fixture_api".to_string(),
                         discovered_candidate_id: "candidate_fixture_api".to_string(),
                         redacted_payload: serde_json::json!({ "goal": "safe" }).as_object().cloned().unwrap_or_default(),
                         materialization_allowed: true,
-                        retention_state: dope_evaluation::RetentionState::Active,
+                        retention_state: kura_evaluation::RetentionState::Active,
                         created_at: now,
                         ..Default::default()
                     },
@@ -4100,16 +4100,16 @@ mod tests {
         {
             let store = h.store.lock();
             store
-                .upsert_product_fixture(dope_evaluation::ProductManagedFixture {
+                .upsert_product_fixture(kura_evaluation::ProductManagedFixture {
                     fixture_id: "product_fixture_campaign".to_string(),
                     tenant_id: "ten_api".to_string(),
                     display_name: "Campaign Fixture".to_string(),
-                    domain_class: dope_evaluation::FixtureDomainClass::Schedule,
+                    domain_class: kura_evaluation::FixtureDomainClass::Schedule,
                     source_kind: "run".to_string(),
                     current_revision_id: "revision_1".to_string(),
-                    review_state: dope_evaluation::ProductLifecycleStatus::Approved,
-                    suppression_state: dope_evaluation::SuppressionState::None,
-                    retention_state: dope_evaluation::RetentionState::Active,
+                    review_state: kura_evaluation::ProductLifecycleStatus::Approved,
+                    suppression_state: kura_evaluation::SuppressionState::None,
+                    retention_state: kura_evaluation::RetentionState::Active,
                     created_at: now_fixed(),
                     updated_at: now_fixed(),
                     ..Default::default()

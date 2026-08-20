@@ -10,7 +10,7 @@
 //!   round-trip through JSON so that policy validation (not serde) rejects
 //!   them with stable reason codes.
 //! - ID fields stay plain `String`. Go profile IDs are `prof_`-prefixed store
-//!   IDs (not UUIDs), so `dope_protocol::ProfileId` cannot be used here
+//!   IDs (not UUIDs), so `kura_protocol::ProfileId` cannot be used here
 //!   without breaking deserialization of existing documents.
 
 mod policy;

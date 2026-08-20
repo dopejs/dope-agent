@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { DopeClientError, createDopeClient, type MembershipResource, type SetupSessionResource, type TenantResource, type TenantSecretResource } from "./index.js";
+import { KuraClientError, createKuraClient, type MembershipResource, type SetupSessionResource, type TenantResource, type TenantSecretResource } from "./index.js";
 
 function mockJSONResponse(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -256,12 +256,12 @@ function billingEvidenceExportFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("DopeClient", () => {
+describe("KuraClient", () => {
   it("sends a non-stream chat request", async () => {
     let url = "";
     let authorization = "";
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       accessToken: "token",
       fetchImpl: async (input: string | URL | Request, init?: RequestInit) => {
@@ -350,7 +350,7 @@ describe("DopeClient", () => {
         updatedAt: "2026-04-24T10:02:00Z"
       }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       accessToken: "token",
       fetchImpl
@@ -380,8 +380,8 @@ describe("DopeClient", () => {
       .mockResolvedValueOnce(mockJSONResponse(200, {
         environment: "test",
         bindAddr: "127.0.0.1:19192",
-        dataDir: "/tmp/dope",
-        configFilePath: "/tmp/dope/config.json",
+        dataDir: "/tmp/kura",
+        configFilePath: "/tmp/kura/config.json",
         logLevel: "info",
         version: "dev",
         llm: {},
@@ -481,7 +481,7 @@ describe("DopeClient", () => {
         }]
       }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       accessToken: "token",
       defaultTenantId: "ten_discord",
@@ -572,7 +572,7 @@ describe("DopeClient", () => {
         }]
       }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       accessToken: "token",
       defaultTenantId: "ten_telegram",
@@ -671,7 +671,7 @@ describe("DopeClient", () => {
         }]
       }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       accessToken: "token",
       defaultTenantId: "ten_slack",
@@ -724,7 +724,7 @@ describe("DopeClient", () => {
           selectedRooms: [{ conversationId: "!room:example.org", conversationType: "room", roomSelectionState: "selected", validationState: "valid", redactionStatus: "redacted" }],
           allowedDirectUsers: ["@alice:example.org"],
           roomInvocationGate: "bot_mention_or_command_required",
-          configuredCommands: ["!dope"],
+          configuredCommands: ["!kura"],
           encryptedRoomPolicy: "unsupported",
           validationState: "valid",
           validatedAt: "2026-05-10T10:01:00Z",
@@ -777,7 +777,7 @@ describe("DopeClient", () => {
         }]
       }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       accessToken: "token",
       defaultTenantId: "ten_matrix",
@@ -924,7 +924,7 @@ describe("DopeClient", () => {
         }]
       }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       accessToken: "token",
       defaultTenantId: "ten_diag",
@@ -1006,7 +1006,7 @@ describe("DopeClient", () => {
         items: []
       }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       accessToken: "token",
       fetchImpl
@@ -1080,7 +1080,7 @@ describe("DopeClient", () => {
       .mockResolvedValueOnce(mockJSONResponse(200, productFixtureMutationFixture({ reviewState: "approved" })))
       .mockResolvedValueOnce(mockJSONResponse(200, productFixtureMutationFixture({ suppressionState: "suppressed" })));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       accessToken: "token",
       defaultTenantId: "ten_eval",
@@ -1147,7 +1147,7 @@ describe("DopeClient", () => {
       }))
       .mockResolvedValueOnce(mockJSONResponse(200, { inspectionId: "inspection_1", tenantId: "ten_eval", campaignId: "campaign_1", campaignItemId: "campaign_item_1", toolCallRef: "tool_call_1", classification: "live_validation_completed", redactionStatus: "redacted", createdAt: "2026-04-29T10:00:00Z", updatedAt: "2026-04-29T10:00:00Z" }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       accessToken: "token",
       defaultTenantId: "ten_eval",
@@ -1226,7 +1226,7 @@ describe("DopeClient", () => {
       .mockResolvedValueOnce(mockJSONResponse(202, { comparisonId: "cmp_1", validationId: "lv_1", candidateId: "candidate_1", baselineRef: "attempt_1", terminalStatus: "operator_action_needed", ledgerSummary: { operator_action_needed: 1 }, generatedAt: "2026-04-29T10:02:00Z" }))
       .mockResolvedValueOnce(mockJSONResponse(200, { items: [{ killSwitchId: "kill_1", scope: "tenant", tenantId: "ten_1", enabled: true, reason: "containment", changedBy: "prn_admin", changedAt: "2026-04-29T10:00:00Z" }] }))
       .mockResolvedValueOnce(mockJSONResponse(200, { killSwitchId: "kill_1", scope: "tenant", tenantId: "ten_1", enabled: true, reason: "containment", changedBy: "prn_admin", changedAt: "2026-04-29T10:00:00Z" }));
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       accessToken: "token",
       fetchImpl
@@ -1283,7 +1283,7 @@ describe("DopeClient", () => {
     });
 
     const deltas: string[] = [];
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       fetchImpl: async () =>
         new Response(body, {
@@ -1313,7 +1313,7 @@ describe("DopeClient", () => {
     });
 
     const seen: string[] = [];
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       accessToken: "token",
       fetchImpl: async () =>
@@ -1333,14 +1333,14 @@ describe("DopeClient", () => {
     expect(seen).toEqual(["policy.approval_requested:12"]);
   });
 
-  it("maps error responses into DopeClientError", async () => {
-    const client = createDopeClient({
+  it("maps error responses into KuraClientError", async () => {
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       fetchImpl: async () => mockJSONResponse(502, { error: "bad key", errorCode: "upstream_auth_failed" })
     });
 
     await expect(client.queryChat({ query: "hello" })).rejects.toMatchObject({
-      name: "DopeClientError",
+      name: "KuraClientError",
       status: 502,
       code: "upstream_auth_failed",
       message: "bad key"
@@ -1367,7 +1367,7 @@ describe("DopeClient", () => {
     } as typeof fetch;
 
     try {
-      const client = createDopeClient({
+      const client = createKuraClient({
         baseURL: "http://127.0.0.1:19192"
       });
 
@@ -1388,7 +1388,7 @@ describe("DopeClient", () => {
       }
     });
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       defaultTenantId: "ten_default",
       fetchImpl: async (_input, init) => {
@@ -1408,7 +1408,7 @@ describe("DopeClient", () => {
     await client.getActivity({}, { tenantId: "ten_override" });
     await client.streamChatQuery({ query: "hello" });
 
-    const tenantlessClient = createDopeClient({
+    const tenantlessClient = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       fetchImpl: async (_input, init) => {
         observedHeaders.push(init?.headers as Record<string, string>);
@@ -1417,10 +1417,10 @@ describe("DopeClient", () => {
     });
     await tenantlessClient.getActivity();
 
-    expect(observedHeaders[0]["X-Dope-Tenant-ID"]).toBe("ten_default");
-    expect(observedHeaders[1]["X-Dope-Tenant-ID"]).toBe("ten_override");
-    expect(observedHeaders[2]["X-Dope-Tenant-ID"]).toBe("ten_default");
-    expect(observedHeaders[3]["X-Dope-Tenant-ID"]).toBeUndefined();
+    expect(observedHeaders[0]["X-Kura-Tenant-ID"]).toBe("ten_default");
+    expect(observedHeaders[1]["X-Kura-Tenant-ID"]).toBe("ten_override");
+    expect(observedHeaders[2]["X-Kura-Tenant-ID"]).toBe("ten_default");
+    expect(observedHeaders[3]["X-Kura-Tenant-ID"]).toBeUndefined();
   });
 
   it("exports tenant helpers and maps stable tenant denial metadata", async () => {
@@ -1456,7 +1456,7 @@ describe("DopeClient", () => {
       .mockResolvedValueOnce(mockJSONResponse(200, { tenant, tenantContext: { principalId: "prn_1", tokenId: "tok_1", tenantId: tenant.tenantId, tenantSource: "explicit_header", permissions: ["tenant.manage"], resolvedAt: "2026-04-24T10:00:00Z" } }))
       .mockResolvedValueOnce(mockJSONResponse(403, { error: "tenant access denied", errorCode: "tenant_access_denied" }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       fetchImpl
     });
@@ -1465,7 +1465,7 @@ describe("DopeClient", () => {
     await expect(client.listTenants()).resolves.toMatchObject({ items: [{ tenantId: "ten_personal" }] });
     await expect(client.getTenant("ten_personal", { tenantId: "ten_personal" })).resolves.toMatchObject({ tenant: { tenantId: "ten_personal" } });
     await expect(client.getTenant("ten_denied", { tenantId: "ten_denied" })).rejects.toMatchObject({
-      name: "DopeClientError",
+      name: "KuraClientError",
       status: 403,
       code: "tenant_access_denied",
       tenantDenied: true,
@@ -1482,7 +1482,7 @@ describe("DopeClient", () => {
       .mockResolvedValueOnce(mockJSONResponse(200, { membership: { ...membership, status: "removed" } }))
       .mockResolvedValueOnce(mockJSONResponse(200, { items: [membership] }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       fetchImpl
     });
@@ -1493,18 +1493,18 @@ describe("DopeClient", () => {
     await client.listMemberships("ten_personal");
 
     expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/tenants/ten_personal/memberships", expect.objectContaining({
-      headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" })
+      headers: expect.objectContaining({ "X-Kura-Tenant-ID": "ten_personal" })
     }));
     expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/tenants/ten_personal/memberships/mem_1", expect.objectContaining({
       method: "PATCH",
-      headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" })
+      headers: expect.objectContaining({ "X-Kura-Tenant-ID": "ten_personal" })
     }));
     expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/tenants/ten_personal/memberships/mem_1", expect.objectContaining({
       method: "DELETE",
-      headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" })
+      headers: expect.objectContaining({ "X-Kura-Tenant-ID": "ten_personal" })
     }));
     const fourthCall = fetchImpl.mock.calls[3][1];
-    expect((fourthCall?.headers as Record<string, string>)["X-Dope-Tenant-ID"]).toBeUndefined();
+    expect((fourthCall?.headers as Record<string, string>)["X-Kura-Tenant-ID"]).toBeUndefined();
   });
 
   it("calls tenant secret helper routes with redacted resource types", async () => {
@@ -1518,7 +1518,7 @@ describe("DopeClient", () => {
       .mockResolvedValueOnce(mockJSONResponse(200, { secret: { ...secret, activeVersionId: "secver_2" } }))
       .mockResolvedValueOnce(mockJSONResponse(200, { secret: { ...secret, status: "disabled", disabledReason: "operator_request" } }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       fetchImpl,
       defaultTenantId: "ten_personal"
@@ -1532,7 +1532,7 @@ describe("DopeClient", () => {
     await client.disableTenantSecret("provider/api-key", { disabledReason: " operator_request " });
 
     expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/tenant-secrets/provider%2Fapi-key", expect.objectContaining({
-      headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" })
+      headers: expect.objectContaining({ "X-Kura-Tenant-ID": "ten_personal" })
     }));
     expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/tenant-secrets", expect.objectContaining({
       method: "POST",
@@ -1553,13 +1553,13 @@ describe("DopeClient", () => {
       error: "credential_access_denied",
       reasonCode: "credential_denied:missing_permission"
     }));
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       fetchImpl
     });
 
     await expect(client.listTenantSecrets({ tenantId: "ten_personal" })).rejects.toMatchObject({
-      name: "DopeClientError",
+      name: "KuraClientError",
       status: 403,
       code: "credential_denied:missing_permission",
       tenantDenied: true
@@ -1599,7 +1599,7 @@ describe("DopeClient", () => {
       .mockResolvedValueOnce(mockJSONResponse(200, { session: setupSessionResource({ state: "disabled", reasonCode: "disabled_by_user" }) }))
       .mockResolvedValueOnce(mockJSONResponse(200, { items: [{ setupSessionId: "setup_1", targetId: "provider.openai_compatible", diagnosticResultId: "diag_openai_setup", diagnosticRunId: "diag_run_openai_setup", diagnosticStage: "credential_probe", diagnosticSourceKind: "provider_check", diagnosticSourceId: "provider.openai_compatible", status: "ready", reasonCode: "healthy", retrySafety: "no_action_needed", remediationOwner: "none_required", checkedAt: "2026-05-06T00:01:00Z", staleAfter: "2026-05-06T00:11:00Z", redactionStatus: "redacted" }] }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       fetchImpl,
       defaultTenantId: "ten_personal"
@@ -1616,7 +1616,7 @@ describe("DopeClient", () => {
       resourceRefs: [{ kind: "telegram_allowment_validation", id: "direct_chat:chat_redacted" }]
     });
     await client.startSetupOAuth("setup_oauth_1", { redirectRoute: " /setup/oauth/feishu-lark/callback " });
-    await client.completeSetupOAuth("setup_oauth_1", { state: " oauth_state_ref_1 ", result: "denied", accountLabel: " Workspace ", code: " code_1 ", redirectUri: " https://dope.test/callback " });
+    await client.completeSetupOAuth("setup_oauth_1", { state: " oauth_state_ref_1 ", result: "denied", accountLabel: " Workspace ", code: " code_1 ", redirectUri: " https://kura.test/callback " });
     await client.retrySetup("setup_1");
     await client.replaceSetup("setup_1", {}, { tenantId: "ten_personal" });
     await client.cancelSetup("setup_1");
@@ -1625,7 +1625,7 @@ describe("DopeClient", () => {
 
     expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/setup/sessions", expect.objectContaining({
       method: "POST",
-      headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" }),
+      headers: expect.objectContaining({ "X-Kura-Tenant-ID": "ten_personal" }),
       body: JSON.stringify({ targetId: "provider.openai_compatible", setupStyle: "submitted_secret", source: "operator_shell" })
     }));
     expect(fetchImpl).toHaveBeenNthCalledWith(5, "http://127.0.0.1:19192/v1/setup/sessions/setup_1/submit-secret", expect.objectContaining({
@@ -1638,7 +1638,7 @@ describe("DopeClient", () => {
     }));
     expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/setup/sessions/setup_oauth_1/oauth/callback", expect.objectContaining({
       method: "POST",
-      body: JSON.stringify({ state: "oauth_state_ref_1", result: "denied", accountLabel: "Workspace", code: "code_1", redirectUri: "https://dope.test/callback" })
+      body: JSON.stringify({ state: "oauth_state_ref_1", result: "denied", accountLabel: "Workspace", code: "code_1", redirectUri: "https://kura.test/callback" })
     }));
     expect(fetchImpl).toHaveBeenNthCalledWith(11, "http://127.0.0.1:19192/v1/setup/sessions/setup_1/disable", expect.objectContaining({
       method: "POST",
@@ -1655,13 +1655,13 @@ describe("DopeClient", () => {
       retryable: false,
       remediationOwner: "tenant_admin"
     }));
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       fetchImpl
     });
 
     await expect(client.listSetupTargets({ tenantId: "ten_personal" })).rejects.toMatchObject({
-      name: "DopeClientError",
+      name: "KuraClientError",
       status: 403,
       code: "setup_denied:missing_permission",
       tenantDenied: true
@@ -1728,7 +1728,7 @@ describe("DopeClient", () => {
         updatedAt: "2026-04-28T10:03:00Z"
       }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       defaultTenantId: "ten_personal",
       fetchImpl
@@ -1750,13 +1750,13 @@ describe("DopeClient", () => {
     expect(dashboard.sections[0]?.items[0]?.restriction?.visibleReasonCode).toBe("abuse_restriction:temporary");
     expect(denial.classification).toBe("abuse_restriction");
 
-    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/billing/plan", expect.objectContaining({ headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_personal" }) }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/billing/plan", expect.objectContaining({ headers: expect.objectContaining({ "X-Kura-Tenant-ID": "ten_personal" }) }));
     expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/billing/usage", expect.anything());
     expect(fetchImpl).toHaveBeenNthCalledWith(3, "http://127.0.0.1:19192/v1/billing/quotas", expect.anything());
     expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://127.0.0.1:19192/v1/billing/denials", expect.anything());
-    expect(fetchImpl).toHaveBeenNthCalledWith(5, "http://127.0.0.1:19192/v1/billing/quota-dashboard", expect.objectContaining({ headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_support" }) }));
-    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/billing/denials/denial_1", expect.objectContaining({ headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_support" }) }));
-    expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/billing/denials/denial_1/evidence-export", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ "X-Dope-Tenant-ID": "ten_support" }) }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(5, "http://127.0.0.1:19192/v1/billing/quota-dashboard", expect.objectContaining({ headers: expect.objectContaining({ "X-Kura-Tenant-ID": "ten_support" }) }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://127.0.0.1:19192/v1/billing/denials/denial_1", expect.objectContaining({ headers: expect.objectContaining({ "X-Kura-Tenant-ID": "ten_support" }) }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(7, "http://127.0.0.1:19192/v1/billing/denials/denial_1/evidence-export", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ "X-Kura-Tenant-ID": "ten_support" }) }));
     expect(fetchImpl).toHaveBeenNthCalledWith(8, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/plan", expect.objectContaining({ method: "POST" }));
     expect(fetchImpl).toHaveBeenNthCalledWith(9, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/quota-overrides", expect.objectContaining({ method: "POST" }));
     expect(fetchImpl).toHaveBeenNthCalledWith(10, "http://127.0.0.1:19192/v1/admin/billing/tenants/ten_personal/manual-adjustments", expect.objectContaining({ method: "POST" }));
@@ -1796,7 +1796,7 @@ describe("DopeClient", () => {
         }]
       }));
 
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       accessToken: "token",
       defaultTenantId: "ten_personal",
@@ -1809,7 +1809,7 @@ describe("DopeClient", () => {
     const diagnostics = await client.getActivationDiagnostics();
 
     expect(fetchImpl).toHaveBeenNthCalledWith(1, "http://127.0.0.1:19192/v1/activation", expect.objectContaining({
-      headers: expect.objectContaining({ Authorization: "Bearer token", "X-Dope-Tenant-ID": "ten_personal" })
+      headers: expect.objectContaining({ Authorization: "Bearer token", "X-Kura-Tenant-ID": "ten_personal" })
     }));
     expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://127.0.0.1:19192/v1/activation", expect.objectContaining({
       method: "POST",
@@ -1828,7 +1828,7 @@ describe("DopeClient", () => {
     expect(diagnostics.items[0].reasonCode).toBe("activation_blocked:quota_baseline_unavailable");
   });
 
-  it("maps activation blocked payloads into DopeClientError metadata", async () => {
+  it("maps activation blocked payloads into KuraClientError metadata", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(mockJSONResponse(403, {
       error: "quota baseline is unavailable",
       code: "activation_blocked:quota_baseline_unavailable",
@@ -1837,7 +1837,7 @@ describe("DopeClient", () => {
       retryable: true,
       remediationOwner: "operator"
     }));
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       accessToken: "token",
       defaultTenantId: "ten_personal",
@@ -1856,7 +1856,7 @@ describe("DopeClient", () => {
     });
   });
 
-  it("maps quota denial payloads into DopeClientError", async () => {
+  it("maps quota denial payloads into KuraClientError", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(mockJSONResponse(429, {
       error: "quota exhausted",
       code: "quota_denied",
@@ -1869,13 +1869,13 @@ describe("DopeClient", () => {
       periodStart: "2026-04-01T00:00:00Z",
       periodEnd: "2026-05-01T00:00:00Z"
     }));
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192",
       fetchImpl
     });
 
     await expect(client.createRun({ entrypoint: "operator.shell.test" })).rejects.toMatchObject({
-      name: "DopeClientError",
+      name: "KuraClientError",
       status: 429,
       code: "quota_denied:run_launches_exhausted",
       quotaDenial: {

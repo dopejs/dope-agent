@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use dope_connectors::{DiagnosticReasonCode, LifecycleState, RedactionStatus};
+use kura_connectors::{DiagnosticReasonCode, LifecycleState, RedactionStatus};
 use serde::{Deserialize, Serialize};
 
 use crate::allowment::{

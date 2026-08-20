@@ -77,7 +77,7 @@ repair actions across the connector fleet.
 
 - Web, SDK, and API tests for list/detail/disable/repair flows.
 - Connector conformance regression after disable and re-enable.
-- Manual `DOPE_ENV=test` walkthrough with at least two connector kinds.
+- Manual `KURA_ENV=test` walkthrough with at least two connector kinds.
 
 ## Definition Of Done
 

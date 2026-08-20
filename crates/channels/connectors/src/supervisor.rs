@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_livevalidation::{
+use kura_livevalidation::{
     FakeOutcome, FakeOutcomeResult, SafetyClass, fake_outcome_result_for,
 };
 use parking_lot::{Mutex, RwLock};

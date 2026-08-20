@@ -22,19 +22,19 @@
 //! _telegram.go) are service-dependency wiring: `OAuthStartURLProvider`,
 //! `SubmittedSecretRecorder`, and `OAuthCallbackRecorder` implementations that
 //! the setup Service calls during oauth/start, submit-secret, and oauth/callback.
-//! They are deferred because they need the dope-slack/dope-matrix/dope-telegram
+//! They are deferred because they need the kura-slack/kura-matrix/kura-telegram
 //! crates (EvaluateHostedSetup etc.) and an HTTP client for the OAuth code
-//! exchange, neither of which is a dope-api dependency yet. What is portable here is ported: the slack hosted-setup
-//! resource projections (Go projectSlack*Resource) over the dope-store records,
+//! exchange, neither of which is a kura-api dependency yet. What is portable here is ported: the slack hosted-setup
+//! resource projections (Go projectSlack*Resource) over the kura-store records,
 //! the slack OAuth authorization-URL builder, and the pure helper functions.
 //!
 //! Known gaps:
 //! - submit-secret (and the connector-specific submitted-secret recorders) need
-//!   the setup service`s diagnostic probe, which dope-setupwizard wires only when
+//!   the setup service`s diagnostic probe, which kura-setupwizard wires only when
 //!   a secrets manager is configured (and the DiagnosticProbe trait is not
 //!   exported); until the service installs its default probe unconditionally the
 //!   submit flow answers 500 setup_failed:unexpected (Go`s default branch).
-//! - dope-setupwizard`s string enums derive serde from `rename_all =
+//! - kura-setupwizard`s string enums derive serde from `rename_all =
 //!   "snake_case"`, which renders SetupStyle::OAuth as `o_auth` instead of the
 //!   Go wire literal `oauth`; the request DTO accepts both (see
 //!   deserialize_setup_style), but session responses still carry `o_auth` until
@@ -47,7 +47,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json as AxumJson, Router};
 use chrono::{DateTime, Utc};
-use dope_setupwizard::{
+use kura_setupwizard::{
     DisableInput, OAuthCallbackInput, OAuthStartInput, ReplaceInput, SetupError, SetupStyle,
     StartInput, SubmitSecretInput,
 };
@@ -129,7 +129,7 @@ struct SetupSecretSubmitRequest {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     display_name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    resource_refs: Vec<dope_setupwizard::ResourceRef>,
+    resource_refs: Vec<kura_setupwizard::ResourceRef>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -145,7 +145,7 @@ struct SetupOAuthCallbackRequest {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     state: String,
     #[serde(default)]
-    result: Option<dope_setupwizard::OAuthResult>,
+    result: Option<kura_setupwizard::OAuthResult>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     account_label: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -161,10 +161,10 @@ struct SetupDisableRequest {
     disabled_reason: String,
 }
 
-/// Accepts the Go wire literal `"oauth"` for SetupStyle::OAuth. dope-setupwizard
+/// Accepts the Go wire literal `"oauth"` for SetupStyle::OAuth. kura-setupwizard
 /// derives its serde from `rename_all = "snake_case"`, which renders the variant
 /// `o_auth`; the API layer accepts both spellings (TODO: make the
-/// setupwizard string enums use explicit wire literals like dope-connectors).
+/// setupwizard string enums use explicit wire literals like kura-connectors).
 fn deserialize_setup_style<'de, D>(deserializer: D) -> Result<Option<SetupStyle>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -391,7 +391,7 @@ async fn setup_oauth_callback(
     };
     let request: SetupOAuthCallbackRequest = decode_json_body(&body)?;
     // Go's mapOAuthResult default treats an unknown/empty result as denied.
-    let result = request.result.unwrap_or(dope_setupwizard::OAuthResult::Denied);
+    let result = request.result.unwrap_or(kura_setupwizard::OAuthResult::Denied);
     let session = match service
         .complete_oauth(OAuthCallbackInput {
             tenant_context: tc,
@@ -608,7 +608,7 @@ fn setup_error_response(err: &SetupError) -> (StatusCode, AxumJson<serde_json::V
 /// tenant context maps to ErrTenantRequired (403 tenant_access denial).
 fn require_setup_tenant(
     tenant: Option<&TenantContext>,
-) -> Result<dope_identity::TenantContext, (StatusCode, AxumJson<serde_json::Value>)> {
+) -> Result<kura_identity::TenantContext, (StatusCode, AxumJson<serde_json::Value>)> {
     match tenant {
         Some(tc) if !tc.0.tenant_id.is_empty() => Ok(tc.0.clone()),
         _ => Err(setup_error_response(&SetupError::TenantRequired)),
@@ -626,7 +626,7 @@ fn decode_json_body<T: serde::de::DeserializeOwned>(body: &str) -> Result<T, Api
 // ---------------------------------------------------------------------------
 // Slack hosted-setup resource projections (Go projectSlackHostedSetupResource /
 // projectSlackRoutePolicyResource / projectSlackSmokeEvidenceResource, plus the
-// slack*Resource DTOs from setupwizard.go). These shape the dope-store hosted
+// slack*Resource DTOs from setupwizard.go). These shape the kura-store hosted
 // setup records for the /v1/connectors/{id}/slack-setup and smoke endpoints.
 // ---------------------------------------------------------------------------
 
@@ -684,7 +684,7 @@ pub struct SlackRoutePolicyResource {
     pub connector_id: String,
     pub workspace_binding_id: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub selected_channels: Vec<dope_store::SlackConversationRouteRecord>,
+    pub selected_channels: Vec<kura_store::SlackConversationRouteRecord>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allowed_dm_users: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -725,7 +725,7 @@ pub struct SlackSmokeEvidenceResource {
 /// Go projectSlackHostedSetupResource.
 #[must_use]
 pub fn project_slack_hosted_setup_resource(
-    record: &dope_store::SlackHostedSetupRecord,
+    record: &kura_store::SlackHostedSetupRecord,
 ) -> SlackHostedSetupResource {
     let workspace_binding = record.workspace_binding.as_ref().map(|binding| {
         SlackWorkspaceBindingResource {
@@ -768,7 +768,7 @@ pub fn project_slack_hosted_setup_resource(
 /// Go projectSlackRoutePolicyResource.
 #[must_use]
 pub fn project_slack_route_policy_resource(
-    record: &dope_store::SlackRoutePolicyRecord,
+    record: &kura_store::SlackRoutePolicyRecord,
 ) -> SlackRoutePolicyResource {
     SlackRoutePolicyResource {
         tenant_id: record.tenant_id.clone(),
@@ -790,7 +790,7 @@ pub fn project_slack_route_policy_resource(
 /// Go projectSlackSmokeEvidenceResource.
 #[must_use]
 pub fn project_slack_smoke_evidence_resource(
-    record: &dope_store::SlackSmokeEvidenceRecord,
+    record: &kura_store::SlackSmokeEvidenceRecord,
 ) -> SlackSmokeEvidenceResource {
     SlackSmokeEvidenceResource {
         smoke_evidence_id: record.smoke_evidence_id.clone(),
@@ -823,7 +823,7 @@ pub const SLACK_OAUTH_SCOPE: &str =
 /// authorize URL from the connector config. Returns Err for an unconfigured
 /// client id (Go "slack oauth client id is not configured").
 pub fn slack_authorization_url(
-    cfg: &dope_config::SlackConnectorConfig,
+    cfg: &kura_config::SlackConnectorConfig,
     oauth_state_ref: &str,
     redirect_route: &str,
 ) -> Result<String, String> {
@@ -893,7 +893,7 @@ pub fn slack_scopes_contain(scopes: &str, required: &str) -> bool {
 
 /// Go hasSlackRoutePolicyValidation.
 #[must_use]
-pub fn has_slack_route_policy_validation(refs: &[dope_setupwizard::ResourceRef]) -> bool {
+pub fn has_slack_route_policy_validation(refs: &[kura_setupwizard::ResourceRef]) -> bool {
     refs.iter()
         .any(|reference| reference.kind == "slack_route_policy_validation" && !reference.id.trim().is_empty())
 }
@@ -901,7 +901,7 @@ pub fn has_slack_route_policy_validation(refs: &[dope_setupwizard::ResourceRef])
 /// Go slackWorkspaceIDFromRouteRefs: the second "workspace/binding" path segment
 /// of a slack_route_policy_validation ref id.
 #[must_use]
-pub fn slack_workspace_id_from_route_refs(refs: &[dope_setupwizard::ResourceRef]) -> String {
+pub fn slack_workspace_id_from_route_refs(refs: &[kura_setupwizard::ResourceRef]) -> String {
     for reference in refs {
         if reference.kind != "slack_route_policy_validation" {
             continue;
@@ -916,42 +916,42 @@ pub fn slack_workspace_id_from_route_refs(refs: &[dope_setupwizard::ResourceRef]
 
 /// Go hasTelegramAllowmentValidation.
 #[must_use]
-pub fn has_telegram_allowment_validation(refs: &[dope_setupwizard::ResourceRef]) -> bool {
+pub fn has_telegram_allowment_validation(refs: &[kura_setupwizard::ResourceRef]) -> bool {
     refs.iter()
         .any(|reference| reference.kind == "telegram_allowment_validation" && !reference.id.trim().is_empty())
 }
 
 /// Go connectorReasonForTelegramSetup.
 #[must_use]
-pub fn connector_reason_for_telegram_setup(reason: &str) -> dope_connectors::DiagnosticReasonCode {
-    use dope_connectors::DiagnosticReasonCode;
+pub fn connector_reason_for_telegram_setup(reason: &str) -> kura_connectors::DiagnosticReasonCode {
+    use kura_connectors::DiagnosticReasonCode;
     match reason {
-        dope_setupwizard::REASON_CREDENTIAL_MISSING => DiagnosticReasonCode::AuthMissing,
-        dope_setupwizard::REASON_TELEGRAM_ALLOWMENT_MISSING
-        | dope_setupwizard::REASON_TELEGRAM_ALLOWMENT_INVALID => DiagnosticReasonCode::BlockedRoute,
-        dope_setupwizard::REASON_RATE_LIMITED => DiagnosticReasonCode::RateLimited,
-        dope_setupwizard::REASON_NETWORK_FAILED => DiagnosticReasonCode::NetworkFailed,
-        dope_setupwizard::REASON_PROVIDER_UNAVAILABLE => DiagnosticReasonCode::ProviderUnavailable,
+        kura_setupwizard::REASON_CREDENTIAL_MISSING => DiagnosticReasonCode::AuthMissing,
+        kura_setupwizard::REASON_TELEGRAM_ALLOWMENT_MISSING
+        | kura_setupwizard::REASON_TELEGRAM_ALLOWMENT_INVALID => DiagnosticReasonCode::BlockedRoute,
+        kura_setupwizard::REASON_RATE_LIMITED => DiagnosticReasonCode::RateLimited,
+        kura_setupwizard::REASON_NETWORK_FAILED => DiagnosticReasonCode::NetworkFailed,
+        kura_setupwizard::REASON_PROVIDER_UNAVAILABLE => DiagnosticReasonCode::ProviderUnavailable,
         _ => DiagnosticReasonCode::UnknownConnectorFailure,
     }
 }
 
 /// Go connectorReasonForSlackSetup.
 #[must_use]
-pub fn connector_reason_for_slack_setup(reason: &str) -> dope_connectors::DiagnosticReasonCode {
-    use dope_connectors::DiagnosticReasonCode;
+pub fn connector_reason_for_slack_setup(reason: &str) -> kura_connectors::DiagnosticReasonCode {
+    use kura_connectors::DiagnosticReasonCode;
     match reason {
-        dope_setupwizard::REASON_CREDENTIAL_MISSING
-        | dope_setupwizard::REASON_TOKEN_MISSING
-        | dope_setupwizard::REASON_TOKEN_EXPIRED
-        | dope_setupwizard::REASON_TOKEN_REVOKED => DiagnosticReasonCode::AuthMissing,
-        dope_setupwizard::REASON_SCOPE_MISSING
-        | dope_setupwizard::REASON_TENANT_APPROVAL_PENDING
-        | dope_setupwizard::REASON_TENANT_MISMATCH => DiagnosticReasonCode::PermissionMissing,
-        dope_setupwizard::REASON_NETWORK_FAILED => DiagnosticReasonCode::NetworkFailed,
-        dope_setupwizard::REASON_PROVIDER_UNAVAILABLE => DiagnosticReasonCode::ProviderUnavailable,
-        dope_setupwizard::REASON_SLACK_ROUTE_POLICY_MISSING
-        | dope_setupwizard::REASON_SLACK_ROUTE_POLICY_INVALID => DiagnosticReasonCode::BlockedRoute,
+        kura_setupwizard::REASON_CREDENTIAL_MISSING
+        | kura_setupwizard::REASON_TOKEN_MISSING
+        | kura_setupwizard::REASON_TOKEN_EXPIRED
+        | kura_setupwizard::REASON_TOKEN_REVOKED => DiagnosticReasonCode::AuthMissing,
+        kura_setupwizard::REASON_SCOPE_MISSING
+        | kura_setupwizard::REASON_TENANT_APPROVAL_PENDING
+        | kura_setupwizard::REASON_TENANT_MISMATCH => DiagnosticReasonCode::PermissionMissing,
+        kura_setupwizard::REASON_NETWORK_FAILED => DiagnosticReasonCode::NetworkFailed,
+        kura_setupwizard::REASON_PROVIDER_UNAVAILABLE => DiagnosticReasonCode::ProviderUnavailable,
+        kura_setupwizard::REASON_SLACK_ROUTE_POLICY_MISSING
+        | kura_setupwizard::REASON_SLACK_ROUTE_POLICY_INVALID => DiagnosticReasonCode::BlockedRoute,
         _ => DiagnosticReasonCode::UnknownConnectorFailure,
     }
 }
@@ -992,47 +992,47 @@ mod tests {
     use axum::body::{to_bytes, Body};
     use axum::http::Request;
     use chrono::Utc;
-    use dope_identity::{Permission, TenantContext as IdentityTenantContext};
-    use dope_store::SQLiteStore;
+    use kura_identity::{Permission, TenantContext as IdentityTenantContext};
+    use kura_store::SQLiteStore;
     use parking_lot::Mutex;
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-setupwizard-test".to_string(),
+            data_dir: "/tmp/kura-api-setupwizard-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
-                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
-                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
-                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
+                telegram: kura_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
+                slack: kura_config::SlackConnectorConfig { enabled: false, ..Default::default() },
+                matrix: kura_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
             },
         }
     }
 
     fn test_state() -> AppState {
         let dir = std::env::temp_dir().join(format!(
-            "dope-api-setupwizard-{}",
+            "kura-api-setupwizard-{}",
             Uuid::now_v7()
         ));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
             SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store)
+        AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store)
     }
 
     /// A state whose setup_wizard manager runs on an in-memory store, with the
     /// given actor permissions (Go setupwizard.NewService(MemoryStore)).
     fn service_state(tenant_id: &str) -> (AppState, String) {
         let mut state = test_state();
-        let service = dope_setupwizard::new_service(dope_setupwizard::ServiceDependencies {
-            store: Some(Arc::new(dope_setupwizard::MemoryStore::default())),
+        let service = kura_setupwizard::new_service(kura_setupwizard::ServiceDependencies {
+            store: Some(Arc::new(kura_setupwizard::MemoryStore::default())),
             ..Default::default()
         });
         state.setup_wizard = Some(Arc::new(service));
@@ -1100,7 +1100,7 @@ mod tests {
         assert!(items.len() >= 2, "expected proof targets, got {json}");
         let discord = items
             .iter()
-            .find(|t| t["targetId"] == dope_setupwizard::TARGET_DISCORD_CONNECTOR);
+            .find(|t| t["targetId"] == kura_setupwizard::TARGET_DISCORD_CONNECTOR);
         assert!(discord.is_some(), "expected Discord connector target, got {json}");
         assert_eq!(discord.expect("discord")["targetKind"], "connector");
 
@@ -1116,7 +1116,7 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED, "start body: {json}");
         let session_id = json["session"]["setupSessionId"].as_str().expect("session id").to_string();
 
-        // Submit-secret handler wiring + error mapping. NOTE: dope-setupwizard
+        // Submit-secret handler wiring + error mapping. NOTE: kura-setupwizard
         // installs its DefaultDiagnosticProbe only when a secrets manager is
         // configured (and the DiagnosticProbe trait is not exported), so without
         // one the service returns DiagnosticLinkNeeded; the Go test (which wires
@@ -1257,7 +1257,7 @@ mod tests {
     #[test]
     fn slack_resource_projections_map_store_records() {
         let now = Utc::now();
-        let record = dope_store::SlackHostedSetupRecord {
+        let record = kura_store::SlackHostedSetupRecord {
             tenant_id: "ten_slack_route".to_string(),
             connector_id: "slack-main".to_string(),
             connector_kind: "slack".to_string(),
@@ -1274,7 +1274,7 @@ mod tests {
             updated_at: now,
             validated_at: Some(now),
             retention_expires_at: now + chrono::Duration::days(90),
-            workspace_binding: Some(dope_store::SlackWorkspaceBinding {
+            workspace_binding: Some(kura_store::SlackWorkspaceBinding {
                 tenant_id: "ten_slack_route".to_string(),
                 connector_id: "slack-main".to_string(),
                 workspace_binding_id: "slack_workspace_binding_route".to_string(),
@@ -1287,11 +1287,11 @@ mod tests {
                 redaction_status: "redacted".to_string(),
                 safe_evidence: HashMap::new(),
             }),
-            route_policy: Some(dope_store::SlackRoutePolicyRecord {
+            route_policy: Some(kura_store::SlackRoutePolicyRecord {
                 tenant_id: "ten_slack_route".to_string(),
                 connector_id: "slack-main".to_string(),
                 workspace_binding_id: "slack_workspace_binding_route".to_string(),
-                selected_channels: vec![dope_store::SlackConversationRouteRecord {
+                selected_channels: vec![kura_store::SlackConversationRouteRecord {
                     conversation_id: "channel_redacted".to_string(),
                     conversation_type: "channel".to_string(),
                     selected_channel_state: "selected".to_string(),
@@ -1325,18 +1325,18 @@ mod tests {
     // client id fails closed.
     #[test]
     fn slack_authorization_url_builds_from_config() {
-        let mut cfg = dope_config::SlackConnectorConfig::default();
+        let mut cfg = kura_config::SlackConnectorConfig::default();
         cfg.oauth_client_id = "client_123".to_string();
         cfg.oauth_api_base_url = "https://slack.example".to_string();
-        let url = slack_authorization_url(&cfg, "state_ref_1", "https://dope.local/callback")
+        let url = slack_authorization_url(&cfg, "state_ref_1", "https://kura.local/callback")
             .expect("authorization url");
         assert!(url.starts_with("https://slack.example/oauth/v2/authorize?"), "{url}");
         assert!(url.contains("client_id=client_123"), "{url}");
         assert!(url.contains("state=state_ref_1"), "{url}");
-        assert!(url.contains("redirect_uri=https%3A%2F%2Fdope.local%2Fcallback"), "{url}");
+        assert!(url.contains("redirect_uri=https%3A%2F%2Fkura.local%2Fcallback"), "{url}");
         assert!(url.contains("scope="), "{url}");
 
-        let empty = dope_config::SlackConnectorConfig::default();
+        let empty = kura_config::SlackConnectorConfig::default();
         let err = slack_authorization_url(&empty, "state_ref_1", "").expect_err("expected error");
         assert_eq!(err, "slack oauth client id is not configured");
     }
@@ -1352,12 +1352,12 @@ mod tests {
         assert!(!slack_scopes_contain("users:read", "chat:write"));
 
         let refs = vec![
-            dope_setupwizard::ResourceRef {
+            kura_setupwizard::ResourceRef {
                 kind: "slack_route_policy_validation".to_string(),
                 id: "workspace_redacted/binding_1".to_string(),
                 route: String::new(),
             },
-            dope_setupwizard::ResourceRef {
+            kura_setupwizard::ResourceRef {
                 kind: "telegram_allowment_validation".to_string(),
                 id: "user:123".to_string(),
                 route: String::new(),
@@ -1368,11 +1368,11 @@ mod tests {
         assert!(has_telegram_allowment_validation(&refs));
 
         assert_eq!(
-            connector_reason_for_telegram_setup(dope_setupwizard::REASON_CREDENTIAL_MISSING).as_str(),
+            connector_reason_for_telegram_setup(kura_setupwizard::REASON_CREDENTIAL_MISSING).as_str(),
             "auth_missing"
         );
         assert_eq!(
-            connector_reason_for_slack_setup(dope_setupwizard::REASON_SCOPE_MISSING).as_str(),
+            connector_reason_for_slack_setup(kura_setupwizard::REASON_SCOPE_MISSING).as_str(),
             "permission_missing"
         );
     }

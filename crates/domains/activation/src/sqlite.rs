@@ -4,16 +4,16 @@
 //!
 //! - [`SqliteActivationStore`] implements [`crate::StateStore`],
 //!   [`crate::IdentityRepository`], and [`crate::AuditSink`] over a
-//!   `dope_store::SQLiteStore`, mirroring Go's `*SQLiteStore` satisfying all
+//!   `kura_store::SQLiteStore`, mirroring Go's `*SQLiteStore` satisfying all
 //!   three interfaces: the identity/audit methods delegate to the store's
 //!   identity DAOs, and the activation-state table (`activation_states`,
 //!   created by store migration 45) is written through a dedicated rusqlite
 //!   connection (the table has no DAO yet, matching the Go `store/activation.go`
 //!   SQL directly).
 //! - [`BillingProjectorAdapter`] projects the quota baseline from
-//!   `dope_billing::Manager::usage_summary` (Go `billingManager`).
+//!   `kura_billing::Manager::usage_summary` (Go `billingManager`).
 //! - [`ChatRunnerAdapter`] runs the hosted activation test chat through the
-//!   `dope_chat::Service` with the builtin `echo` provider (Go
+//!   `kura_chat::Service` with the builtin `echo` provider (Go
 //!   `activationChatRunner`).
 
 use std::sync::Arc;
@@ -21,17 +21,17 @@ use std::sync::Arc;
 use chrono::DateTime;
 use chrono::SecondsFormat;
 use chrono::Utc;
-use dope_billing::BillingError;
-use dope_billing::UsageSummary;
-use dope_identity::Membership;
-use dope_identity::MembershipFilter;
-use dope_identity::Principal;
-use dope_identity::PrincipalFilter;
-use dope_identity::Tenant;
-use dope_identity::TenantAuditEvent;
-use dope_identity::TenantFilter;
-use dope_identity::TokenTenantGrant;
-use dope_store::SQLiteStore;
+use kura_billing::BillingError;
+use kura_billing::UsageSummary;
+use kura_identity::Membership;
+use kura_identity::MembershipFilter;
+use kura_identity::Principal;
+use kura_identity::PrincipalFilter;
+use kura_identity::Tenant;
+use kura_identity::TenantAuditEvent;
+use kura_identity::TenantFilter;
+use kura_identity::TokenTenantGrant;
+use kura_store::SQLiteStore;
 use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::Map;
@@ -349,7 +349,7 @@ fn get_activation_state_for_principal_tenant(
 /// [`crate::IdentityRepository`], and [`crate::AuditSink`] seams (Go's
 /// `*SQLiteStore`).
 ///
-/// Identity and audit methods delegate to the `dope-store` identity DAOs. The
+/// Identity and audit methods delegate to the `kura-store` identity DAOs. The
 /// activation state table is written through a dedicated rusqlite connection
 /// to the same database file (the table is created by store migration 45 but
 /// has no DAO yet; the SQL mirrors `daemon/internal/store/activation.go`).
@@ -359,7 +359,7 @@ pub struct SqliteActivationStore {
 }
 
 impl SqliteActivationStore {
-    /// Opens the adapter over a fresh `dope-store` handle. The store applies
+    /// Opens the adapter over a fresh `kura-store` handle. The store applies
     /// the schema migrations (which create `activation_states`); the adapter
     /// additionally ensures the table exists so it can open the raw
     /// connection before the store migration runner runs.
@@ -486,15 +486,15 @@ impl AuditSink for SqliteActivationStore {
 // BillingProjectorAdapter
 // ---------------------------------------------------------------------------
 
-/// Quota baseline projector backed by `dope_billing::Manager::usage_summary`
+/// Quota baseline projector backed by `kura_billing::Manager::usage_summary`
 /// (Go `billingManager`).
 pub struct BillingProjectorAdapter {
-    billing: Arc<dope_billing::Manager>,
+    billing: Arc<kura_billing::Manager>,
 }
 
 impl BillingProjectorAdapter {
     #[must_use]
-    pub fn new(billing: Arc<dope_billing::Manager>) -> Self {
+    pub fn new(billing: Arc<kura_billing::Manager>) -> Self {
         Self { billing }
     }
 }
@@ -515,16 +515,16 @@ impl BillingProjector for BillingProjectorAdapter {
 // ChatRunnerAdapter
 // ---------------------------------------------------------------------------
 
-/// Runs the hosted activation test chat through the `dope-chat` service with
+/// Runs the hosted activation test chat through the `kura-chat` service with
 /// the builtin `echo` provider (Go `activationChatRunner` in
 /// `daemon/internal/app/activation_chat.go`).
 pub struct ChatRunnerAdapter {
-    service: Option<Arc<dope_chat::Service>>,
+    service: Option<Arc<kura_chat::Service>>,
 }
 
 impl ChatRunnerAdapter {
     #[must_use]
-    pub fn new(service: Option<Arc<dope_chat::Service>>) -> Self {
+    pub fn new(service: Option<Arc<kura_chat::Service>>) -> Self {
         Self { service }
     }
 }
@@ -547,25 +547,25 @@ impl ChatRunner for ChatRunnerAdapter {
                 message = DEFAULT_ACTIVATION_TEST_CHAT_MESSAGE.to_string();
             }
             let (exec, query_err) = match service.query(
-                dope_chat::QueryInput {
+                kura_chat::QueryInput {
                     query: message,
                     provider: "echo".to_string(),
                     model: "echo-v1".to_string(),
                     tenant_id: input.tenant_id,
-                    ..dope_chat::QueryInput::default()
+                    ..kura_chat::QueryInput::default()
                 },
-                &dope_chat::CancellationToken::new(),
+                &kura_chat::CancellationToken::new(),
             ) {
                 Ok(exec) => (exec, None),
-                Err(err) => (dope_chat::QueryExecution::default(), Some(err)),
+                Err(err) => (kura_chat::QueryExecution::default(), Some(err)),
             };
             let dispatch = &exec.result.dispatch;
-            let status = if dispatch.status == dope_llm::DispatchStatus::Cancelled {
+            let status = if dispatch.status == kura_llm::DispatchStatus::Cancelled {
                 crate::TestChatStatus::CANCELLED.into()
             } else if query_err.is_some()
                 || matches!(
                     dispatch.status,
-                    dope_llm::DispatchStatus::Failed | dope_llm::DispatchStatus::PartialFailed
+                    kura_llm::DispatchStatus::Failed | kura_llm::DispatchStatus::PartialFailed
                 )
             {
                 crate::TestChatStatus::FAILED.into()

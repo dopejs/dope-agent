@@ -1,11 +1,11 @@
 [package]
-name = "dope-model-provider"
+name = "kura-model-provider"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-protocol.workspace = true
+kura-protocol.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

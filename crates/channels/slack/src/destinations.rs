@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use dope_connectors::RedactionStatus;
+use kura_connectors::RedactionStatus;
 
 use crate::util::{first_non_empty, is_unset_time};
 

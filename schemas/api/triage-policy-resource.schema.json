@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/triage-policy-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/triage-policy-resource.schema.json",
   "title": "TriagePolicyResource",
   "type": "object",
   "required": ["policyId", "name", "rules", "defaultClassification", "createdAt", "updatedAt"],

@@ -7,7 +7,7 @@ Validate the implemented Roadmap 20 slice locally without touching production st
 ## Prerequisites
 
 - Work from the repository root on branch `005-sandbox-stronger-backends`
-- Use the default test environment (`DOPE_ENV=test`)
+- Use the default test environment (`KURA_ENV=test`)
 - Have Go available locally
 - Keep production state, live connectors, and live secrets out of scope for verification
 - For positive-path stronger-backend verification, use a host where `docker` is installed,
@@ -20,7 +20,7 @@ Validate the implemented Roadmap 20 slice locally without touching production st
 Run the daemon packages most likely to change in this slice:
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./internal/sandbox ./internal/api ./internal/skills ./internal/runtime ./internal/store ./internal/app ./internal/contracts ./internal/mcp
 ```
 
@@ -39,7 +39,7 @@ During targeted verification, confirm that:
 If API, schema, or event surfaces change, run the repository contract check:
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-contract-test
 ```
 
@@ -48,7 +48,7 @@ make daemon-contract-test
 Run the full Go test suite before claiming the roadmap is ready:
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./...
 ```
 
@@ -59,7 +59,7 @@ If you need to inspect daemon behavior directly after implementation:
 1. Start the test daemon:
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-run-test
 ```
 
@@ -98,11 +98,11 @@ This quickstart assumes changes are limited to:
 Recorded results for this implementation run (`2026-04-20`):
 
 - Targeted daemon package verification: passed
-  - `cd /Users/John/Code/dope-agent/daemon && go test ./internal/sandbox ./internal/api ./internal/skills ./internal/runtime ./internal/store ./internal/app ./internal/contracts ./internal/mcp`
+  - `cd /Users/John/Code/kura-agent/daemon && go test ./internal/sandbox ./internal/api ./internal/skills ./internal/runtime ./internal/store ./internal/app ./internal/contracts ./internal/mcp`
 - Contract verification: passed
-  - `cd /Users/John/Code/dope-agent && make daemon-contract-test`
+  - `cd /Users/John/Code/kura-agent && make daemon-contract-test`
 - Full daemon regression verification: passed
-  - `cd /Users/John/Code/dope-agent/daemon && go test ./...`
+  - `cd /Users/John/Code/kura-agent/daemon && go test ./...`
 - Positive-path stronger-backend coverage:
   - fake-`docker` sandbox execution and skill-backed runtime linkage passed in automated
     regression in `daemon/internal/sandbox/manager_test.go` and
@@ -113,14 +113,14 @@ Recorded results for this implementation run (`2026-04-20`):
     not installed there
   - real-`docker` verification passed on `zentalk-1` (`CentOS Stream 9`, `docker 29.4.0`,
     `go 1.24.0`) with:
-    `cd /root/dope-agent/daemon && PATH=/usr/local/go/bin:$PATH go test ./internal/api -run TestSkillToolCallLaunchUsesRealDockerSandboxExecution -v`
+    `cd /root/kura-agent/daemon && PATH=/usr/local/go/bin:$PATH go test ./internal/api -run TestSkillToolCallLaunchUsesRealDockerSandboxExecution -v`
 - Negative-path `docker required -> unsupported` coverage: passed in automated regression
   - explain-time access mismatch, runtime unavailable, missing-image, MCP lifecycle
     blocking, and restart/runtime provenance paths are covered in
     `daemon/internal/sandbox/manager_test.go`, `daemon/internal/api/server_test.go`, and
     `daemon/internal/mcp/manager_test.go`
 - stronger-backend package regression on the real-`docker` host: passed
-  - `cd /root/dope-agent/daemon && PATH=/usr/local/go/bin:$PATH go test ./internal/sandbox ./internal/api ./internal/mcp`
+  - `cd /root/kura-agent/daemon && PATH=/usr/local/go/bin:$PATH go test ./internal/sandbox ./internal/api ./internal/mcp`
 - Manual daemon/operator inspection walkthrough: passed on a `docker`-unavailable test host
   - validated pairing bootstrap plus `GET /v1/config`, `GET /v1/sandboxes/profiles`, and
     `POST /v1/sandboxes/explain`

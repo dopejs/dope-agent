@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/billing-evidence-export.response.schema.json",
+  "$id": "https://kura.local/schemas/api/billing-evidence-export.response.schema.json",
   "title": "BillingEvidenceExportResponse",
   "type": "object",
   "required": ["schemaVersion", "exportId", "generatedAt", "generatedByPrincipalId", "denial", "usageSnapshot", "effectiveLimitState", "auditRefs", "redactions"],

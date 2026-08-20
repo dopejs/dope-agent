@@ -7,17 +7,17 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
 
-use dope_connectors::{
+use kura_connectors::{
     CapabilityProfile, ConformanceResultStatus, Connector, DiagnosticReasonCode,
     GroupRoomCapabilities, HandoffCapabilities, RedactionStatus, RegisterInput, Status, Supervisor,
     SurfaceSupport, core_invariant_areas,
 };
-use dope_events::{Bus, Event, Resource, Scope};
-use dope_im::{MessageLoop, ReplySender};
-use dope_imtypes::{InboundMessage, OutboundReply, SentReply};
-use dope_router::SessionKind;
-use dope_store::SQLiteStore;
-use dope_store::slack_setup::{
+use kura_events::{Bus, Event, Resource, Scope};
+use kura_im::{MessageLoop, ReplySender};
+use kura_imtypes::{InboundMessage, OutboundReply, SentReply};
+use kura_router::SessionKind;
+use kura_store::SQLiteStore;
+use kura_store::slack_setup::{
     SlackConversationRouteRecord, SlackEventEvidenceRecord, SlackHostedSetupRecord,
     SlackRoutePolicyRecord, SlackWorkspaceBinding,
 };
@@ -275,7 +275,7 @@ impl Runtime {
             updated_at: Utc::now(),
             ..Connector::default()
         };
-        let cancel = dope_chat::CancellationToken::new();
+        let cancel = kura_chat::CancellationToken::new();
         let sender = TransportReplySender {
             transport: self.transport.as_ref(),
         };

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/replay-attempt-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/replay-attempt-resource.schema.json",
   "title": "ReplayAttemptResource",
   "type": "object",
   "required": ["attemptId", "candidateId", "sourceRefs", "environmentScope", "mode", "status", "safetyScope", "approvalHandling", "sideEffectHandling", "evidenceRefs", "blockedReasons", "createdAt", "updatedAt"],

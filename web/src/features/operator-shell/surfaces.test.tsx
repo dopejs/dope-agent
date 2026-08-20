@@ -8,7 +8,7 @@ import type {
   RoutineResource,
   TriagePolicyResource,
   WebhookEndpointResource,
-} from "@dope/client";
+} from "@kura/client";
 
 import {
   CatalogView,

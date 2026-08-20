@@ -1,12 +1,12 @@
 #!/bin/sh
-# Kura installer — https://agent.dopejs.com/install.sh
+# Kura installer — https://agent.kurajs.com/install.sh
 #
-#   curl -fsSL https://agent.dopejs.com/install.sh | sh
+#   curl -fsSL https://agent.kurajs.com/install.sh | sh
 #
 # Detects OS/arch, downloads the latest GitHub release tarball, verifies
 # its SHA-256 against the release's SHA256SUMS, and installs `kura` and
 # `kura-tui` into an existing PATH directory (~/.local/bin or
-# /usr/local/bin). Override the version with KURA_VERSION=v0.2.3 and the
+# /usr/local/bin). Override the version with KURA_VERSION=v0.2.4 and the
 # destination with KURA_INSTALL_DIR=/some/bin.
 
 set -eu
@@ -92,7 +92,7 @@ if [ -d "$TMP/$PKG/web" ]; then
 fi
 
 say "installed to $DEST: kura$([ -f "$TMP/$PKG/kura-tui" ] && printf ', kura-tui')"
-say "start the daemon:   kura daemon start   (data: ~/.dope, http://127.0.0.1:19191)"
+say "start the daemon:   kura daemon start   (data: ~/.kura, http://127.0.0.1:19191)"
 say "terminal client:    kura tui"
 say "web shell:          kura web"
-say "docs:               https://agent.dopejs.com"
+say "docs:               https://agent.kurajs.com"

@@ -7,7 +7,7 @@
 //! TestGroupRoomMigrationAndEvidencePersistence.
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use dope_threads::{
+use kura_threads::{
     build_runtime_projection, AllowlistStatus, ConversationShape, ConversationShapeEvidence,
     LifecycleState, MentionStatus, ParticipationDecision, ParticipationDecisionValue,
     RedactionStatus, ResetEvent, ResetEventStatus, RoutingOutcome, RuntimeProjectionInput,
@@ -15,10 +15,10 @@ use dope_threads::{
     SourceKind, SourceLinkage, Thread, GROUP_ROOM_REASON_ACCEPTED_QUALIFYING_MENTION,
     GROUP_ROOM_REASON_DUPLICATE_SOURCE_EVENT, GROUP_ROOM_REASON_SCOPED_RESET_SUCCEEDED,
 };
-use dope_store::{SQLiteStore, ThreadListQuery};
+use kura_store::{SQLiteStore, ThreadListQuery};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

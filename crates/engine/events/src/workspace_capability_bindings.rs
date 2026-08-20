@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::util::payload;
 use crate::{Event, Resource};
-use dope_bindings::{
+use kura_bindings::{
     RedactionStatus as BindingRedactionStatus, RuntimeBindingEvidence, Visibility,
     VisibilityScopeKind, safe_label, safe_reason,
 };

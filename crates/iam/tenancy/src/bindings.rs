@@ -1,7 +1,7 @@
 //! BindingAccessScope guards tenant-scoped binding and workspace access by permission.
 //! Port of daemon/internal/store/tenancy/bindings.go.
 
-use dope_identity::{Permission, has_permission};
+use kura_identity::{Permission, has_permission};
 
 /// Tenant-scoped permission scope for binding rules and workspaces.
 #[derive(Debug, Clone, Default)]
@@ -17,25 +17,25 @@ impl BindingAccessScope {
 
     /// Whether the scope may read the workspace.
     #[must_use]
-    pub fn can_inspect_workspace(&self, ws: &dope_bindings::Workspace) -> bool {
+    pub fn can_inspect_workspace(&self, ws: &kura_bindings::Workspace) -> bool {
         self.allows(&ws.tenant_id, Permission::BindingsInspect)
     }
 
     /// Whether the scope may mutate the workspace.
     #[must_use]
-    pub fn can_manage_workspace(&self, ws: &dope_bindings::Workspace) -> bool {
+    pub fn can_manage_workspace(&self, ws: &kura_bindings::Workspace) -> bool {
         self.allows(&ws.tenant_id, Permission::BindingsManage)
     }
 
     /// Whether the scope may read the binding rule.
     #[must_use]
-    pub fn can_inspect_binding(&self, rule: &dope_bindings::BindingRule) -> bool {
+    pub fn can_inspect_binding(&self, rule: &kura_bindings::BindingRule) -> bool {
         self.allows(&rule.tenant_id, Permission::BindingsInspect)
     }
 
     /// Whether the scope may mutate the binding rule.
     #[must_use]
-    pub fn can_manage_binding(&self, rule: &dope_bindings::BindingRule) -> bool {
+    pub fn can_manage_binding(&self, rule: &kura_bindings::BindingRule) -> bool {
         self.allows(&rule.tenant_id, Permission::BindingsManage)
     }
 

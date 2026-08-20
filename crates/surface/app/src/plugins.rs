@@ -8,7 +8,7 @@
 //! plugin and cannot be disabled. Everything else assembles here in declared
 //! order. Disabling a plugin leaves its `AppState` field `None`, which the
 //! API layer already answers with not-wired errors; dependents are
-//! transitively disabled by `dope_plugin::resolve`.
+//! transitively disabled by `kura_plugin::resolve`.
 //!
 //! The channel plugins (`channel-*`) build nothing at assembly time — their
 //! runtimes are constructed in `App::serve` — but their enablement gates the
@@ -19,50 +19,50 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use dope_activation::{
+use kura_activation::{
     BillingProjectorAdapter as ActivationBillingProjectorAdapter,
     ChatRunnerAdapter as ActivationChatRunnerAdapter, Service as ActivationService,
     SqliteActivationStore,
 };
-use dope_api::AppState;
-use dope_billing::Manager as BillingManager;
-use dope_calendar::Manager as CalendarManager;
-use dope_capabilities::Supervisor as CapabilitiesSupervisor;
-use dope_chat::{ChatStore, Service as ChatService};
-use dope_computeruse::{
+use kura_api::AppState;
+use kura_billing::Manager as BillingManager;
+use kura_calendar::Manager as CalendarManager;
+use kura_capabilities::Supervisor as CapabilitiesSupervisor;
+use kura_chat::{ChatStore, Service as ChatService};
+use kura_computeruse::{
     Dependencies as ComputerUseDependencies, Manager as ComputerUseManager, SqliteArtifactRecorder,
 };
-use dope_config::Config;
-use dope_connectors::Supervisor as ConnectorsSupervisor;
-use dope_delivery::{ConnectorAdapter, Manager as DeliveryManager, TestSinkAdapter};
-use dope_evaluation::{Dependencies as EvaluationDependencies, Manager as EvaluationManager};
-use dope_events::Bus;
-use dope_evidence::{Manager as EvidenceManager, RoutineCollector};
-use dope_execprofile::{Manager as ExecProfileManager, SandboxHealthChecker};
-use dope_integrations::Manager as IntegrationsManager;
-use dope_livevalidation::{
+use kura_config::Config;
+use kura_connectors::Supervisor as ConnectorsSupervisor;
+use kura_delivery::{ConnectorAdapter, Manager as DeliveryManager, TestSinkAdapter};
+use kura_evaluation::{Dependencies as EvaluationDependencies, Manager as EvaluationManager};
+use kura_events::Bus;
+use kura_evidence::{Manager as EvidenceManager, RoutineCollector};
+use kura_execprofile::{Manager as ExecProfileManager, SandboxHealthChecker};
+use kura_integrations::Manager as IntegrationsManager;
+use kura_livevalidation::{
     Dependencies as LiveValidationDependencies, Manager as LiveValidationManager,
 };
-use dope_llm::Dispatcher;
-use dope_mail::Manager as MailManager;
-use dope_mcp::Manager as McpManager;
-use dope_memory::Manager as MemoryManager;
-use dope_plugin::{PluginDescriptor, SeamMap};
-use dope_policy::Engine as PolicyEngine;
-use dope_reminders::{Dependencies as RemindersDependencies, Manager as RemindersManager};
-use dope_sandbox::Manager as SandboxManager;
-use dope_scheduler::{Dependencies as SchedulerDependencies, Scheduler};
-use dope_secrets::Manager as SecretsManager;
-use dope_setupwizard::{
+use kura_llm::Dispatcher;
+use kura_mail::Manager as MailManager;
+use kura_mcp::Manager as McpManager;
+use kura_memory::Manager as MemoryManager;
+use kura_plugin::{PluginDescriptor, SeamMap};
+use kura_policy::Engine as PolicyEngine;
+use kura_reminders::{Dependencies as RemindersDependencies, Manager as RemindersManager};
+use kura_sandbox::Manager as SandboxManager;
+use kura_scheduler::{Dependencies as SchedulerDependencies, Scheduler};
+use kura_secrets::Manager as SecretsManager;
+use kura_setupwizard::{
     ServiceDependencies as SetupWizardDependencies, new_service as new_setup_wizard,
 };
-use dope_skills::Registry as SkillsRegistry;
-use dope_store::{
+use kura_skills::Registry as SkillsRegistry;
+use kura_store::{
     BillingRepositoryHandle, ComputerUseStoreHandle, EvaluationStoreHandle,
     LiveValidationStoreHandle, SQLiteStore, SecretStoreHandle, SetupWizardStoreHandle,
 };
-use dope_triage::Manager as TriageManager;
-use dope_webhook::Manager as WebhookManager;
+use kura_triage::Manager as TriageManager;
+use kura_webhook::Manager as WebhookManager;
 
 use crate::adapters;
 use crate::AppError;
@@ -73,7 +73,7 @@ use crate::AppError;
 
 /// Managed-provider registry, provided by `llm`, consumed by `providers`.
 #[derive(Clone)]
-pub(crate) struct ManagedRegistrySeam(pub Arc<dyn dope_providers::ManagedRegistry>);
+pub(crate) struct ManagedRegistrySeam(pub Arc<dyn kura_providers::ManagedRegistry>);
 
 /// Secret metadata store handle (kernel-provided; `sandbox` builds its own
 /// secret-manager instance over it because `set_secret_manager` takes
@@ -83,7 +83,7 @@ pub(crate) struct SecretStoreSeam(pub Arc<SecretStoreHandle>);
 
 /// Secret value backend (kernel-provided, same consumer as the store seam).
 #[derive(Clone)]
-pub(crate) struct SecretBackendSeam(pub Arc<dope_secrets::LocalBackend>);
+pub(crate) struct SecretBackendSeam(pub Arc<kura_secrets::LocalBackend>);
 
 /// Workflow launcher over the runtime manager (kernel-provided; consumed by
 /// `scheduler` and `webhooks`).
@@ -124,7 +124,7 @@ pub(crate) struct Assembly {
     pub cfg: Config,
     /// The resolved plugin profile: build functions read their entry's
     /// `config` object through it.
-    pub profile: dope_plugin::PluginProfile,
+    pub profile: kura_plugin::PluginProfile,
     pub env_scope: &'static str,
     pub hosted: bool,
     pub store: Arc<parking_lot::Mutex<SQLiteStore>>,
@@ -474,7 +474,7 @@ pub(crate) const BUILTINS: &[BuiltinPlugin] = &[
     },
 ];
 
-/// The descriptor list in build order, for `dope_plugin::resolve`.
+/// The descriptor list in build order, for `kura_plugin::resolve`.
 pub(crate) fn descriptors() -> Vec<PluginDescriptor> {
     BUILTINS.iter().map(|plugin| plugin.descriptor).collect()
 }
@@ -495,14 +495,14 @@ fn build_llm(asm: &mut Assembly) -> Result<(), AppError> {
     if !asm.cfg.llm.default_model.trim().is_empty() {
         llm.set_default_model(&asm.cfg.llm.default_model);
     }
-    let managed_registry: Arc<dyn dope_providers::ManagedRegistry> =
-        Arc::new(dope_managedproviders::Registry::new(&asm.cfg, None));
+    let managed_registry: Arc<dyn kura_providers::ManagedRegistry> =
+        Arc::new(kura_managedproviders::Registry::new(&asm.cfg, None));
     for bridge in managed_registry.list() {
         llm.register_provider(bridge.provider());
     }
     // Deterministic in-process fallback so the daemon always has a default
     // provider (Go registers echo in dispatcher.go).
-    llm.register_provider(Arc::new(dope_llm::EchoProvider::new()));
+    llm.register_provider(Arc::new(kura_llm::EchoProvider::new()));
     let default_provider = if asm.cfg.llm.default_provider.trim().is_empty() {
         "echo".to_string()
     } else {
@@ -589,7 +589,7 @@ fn build_mail(asm: &mut Assembly) -> Result<(), AppError> {
 fn build_providers(asm: &mut Assembly) -> Result<(), AppError> {
     let llm = asm.state.llm.clone().expect("llm plugin built");
     let managed_registry = asm.seams.get::<ManagedRegistrySeam>().expect("llm registry seam").0;
-    asm.state.providers = Some(Arc::new(dope_providers::new_manager(
+    asm.state.providers = Some(Arc::new(kura_providers::new_manager(
         asm.cfg.llm.clone(),
         Some(llm),
         vec![managed_registry],
@@ -630,7 +630,7 @@ fn build_chat(asm: &mut Assembly) -> Result<(), AppError> {
 /// (builtin or external) may rewrite or veto the result.
 struct ContextHook {
     state: Arc<std::sync::OnceLock<AppState>>,
-    config: dope_context::ContextConfig,
+    config: kura_context::ContextConfig,
 }
 
 impl ContextHook {
@@ -643,30 +643,30 @@ impl ContextHook {
         memory: &MemoryManager,
         tenant_id: &str,
         agent_profile_id: &str,
-        layer: dope_memory::MemoryLayer,
-        excluded: &mut Vec<dope_context::ExcludedItem>,
-    ) -> Vec<dope_context::BootstrapAsset> {
-        let mut assets = memory.list(tenant_id, Some(layer), Some(dope_memory::AssetStatus::Ready));
+        layer: kura_memory::MemoryLayer,
+        excluded: &mut Vec<kura_context::ExcludedItem>,
+    ) -> Vec<kura_context::BootstrapAsset> {
+        let mut assets = memory.list(tenant_id, Some(layer), Some(kura_memory::AssetStatus::Ready));
         assets.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         let mut views = Vec::with_capacity(assets.len());
         for asset in assets {
             let admitted = match asset.visibility {
-                dope_memory::Visibility::Private | dope_memory::Visibility::Team => true,
-                dope_memory::Visibility::Agent => {
+                kura_memory::Visibility::Private | kura_memory::Visibility::Team => true,
+                kura_memory::Visibility::Agent => {
                     !agent_profile_id.trim().is_empty()
                         && asset.bindings.iter().any(|b| b == agent_profile_id.trim())
                 }
                 _ => false,
             };
             if admitted {
-                views.push(dope_context::BootstrapAsset {
+                views.push(kura_context::BootstrapAsset {
                     asset_id: asset.asset_id,
                     layer: asset.layer.as_str().to_string(),
                     title: asset.title,
                     content: asset.content,
                 });
             } else {
-                excluded.push(dope_context::ExcludedItem {
+                excluded.push(kura_context::ExcludedItem {
                     asset_id: asset.asset_id,
                     layer: asset.layer.as_str().to_string(),
                     reason: "visibility".to_string(),
@@ -678,14 +678,14 @@ impl ContextHook {
     }
 }
 
-impl dope_plugin::Hook for ContextHook {
-    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+impl kura_plugin::Hook for ContextHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> kura_plugin::HookOutcome {
         use serde_json::Value;
         let Some(state) = self.state.get() else {
-            return dope_plugin::HookOutcome::Continue;
+            return kura_plugin::HookOutcome::Continue;
         };
         let Some(memory) = state.memory.as_deref() else {
-            return dope_plugin::HookOutcome::Continue;
+            return kura_plugin::HookOutcome::Continue;
         };
         let tenant_id = payload
             .get("tenantId")
@@ -725,26 +725,26 @@ impl dope_plugin::Hook for ContextHook {
                     if content.len() <= threshold {
                         continue;
                     }
-                    let created = memory.create(dope_memory::CreateAssetInput {
-                        kind: dope_memory::AssetKind::ChatMemory,
-                        layer: dope_memory::MemoryLayer::L0Ref,
+                    let created = memory.create(kura_memory::CreateAssetInput {
+                        kind: kura_memory::AssetKind::ChatMemory,
+                        layer: kura_memory::MemoryLayer::L0Ref,
                         tenant_id: tenant_id.clone(),
-                        owner: dope_memory::Actor {
-                            kind: dope_memory::ActorKind::System,
+                        owner: kura_memory::Actor {
+                            kind: kura_memory::ActorKind::System,
                             id: "context".to_string(),
                         },
-                        visibility: dope_memory::Visibility::Private,
+                        visibility: kura_memory::Visibility::Private,
                         title: "context_ref".to_string(),
                         content: content.to_string(),
-                        source_links: vec![dope_memory::SourceLink {
-                            kind: dope_memory::SourceKind::Thread,
+                        source_links: vec![kura_memory::SourceLink {
+                            kind: kura_memory::SourceKind::Thread,
                             id: thread_id_for_refs.clone(),
-                            ..dope_memory::SourceLink::default()
+                            ..kura_memory::SourceLink::default()
                         }],
-                        ..dope_memory::CreateAssetInput::default()
+                        ..kura_memory::CreateAssetInput::default()
                     });
                     if let Ok((asset, _)) = created {
-                        dope_api::routes::memory::persist_capture(state, &asset);
+                        kura_api::routes::memory::persist_capture(state, &asset);
                         let preview: String = content.chars().take(200).collect();
                         message["content"] = Value::String(format!(
                             "{preview}… [externalized: full content at Memory[l0_ref {}]]",
@@ -765,17 +765,17 @@ impl dope_plugin::Hook for ContextHook {
             memory,
             &tenant_id,
             &agent_profile_id,
-            dope_memory::MemoryLayer::L3,
+            kura_memory::MemoryLayer::L3,
             &mut visibility_excluded,
         );
         candidates.extend(Self::bootstrap_layer(
             memory,
             &tenant_id,
             &agent_profile_id,
-            dope_memory::MemoryLayer::L2,
+            kura_memory::MemoryLayer::L2,
             &mut visibility_excluded,
         ));
-        let (mut injected, mut record) = dope_context::assemble(&candidates, self.config.budget());
+        let (mut injected, mut record) = kura_context::assemble(&candidates, self.config.budget());
         record.excluded.extend(visibility_excluded);
 
         // Query-time recall of L1 atoms (BM25 + recency, RRF fusion) over
@@ -799,7 +799,7 @@ impl dope_plugin::Hook for ContextHook {
                 memory,
                 &tenant_id,
                 &agent_profile_id,
-                dope_memory::MemoryLayer::L1,
+                kura_memory::MemoryLayer::L1,
                 &mut atom_excluded,
             );
             // Visibility-excluded atoms are only recorded when retrieval
@@ -808,9 +808,9 @@ impl dope_plugin::Hook for ContextHook {
                 item.source = "retrieval".to_string();
                 item
             }));
-            let docs: Vec<dope_context::RetrievalDoc> = atoms
+            let docs: Vec<kura_context::RetrievalDoc> = atoms
                 .into_iter()
-                .map(|asset| dope_context::RetrievalDoc {
+                .map(|asset| kura_context::RetrievalDoc {
                     asset_id: asset.asset_id,
                     title: asset.title,
                     content: asset.content,
@@ -819,12 +819,12 @@ impl dope_plugin::Hook for ContextHook {
             // The vector ranker joins the fusion through the Embedder seam:
             // an installed external provider (state.embedder) wins, else the
             // deterministic hashed-ngram default.
-            let default_embedder = dope_context::HashedNgramEmbedder::default();
-            let embedder: &dyn dope_context::Embedder = match state.embedder.as_deref() {
+            let default_embedder = kura_context::HashedNgramEmbedder::default();
+            let embedder: &dyn kura_context::Embedder = match state.embedder.as_deref() {
                 Some(external) => external,
                 None => &default_embedder,
             };
-            dope_context::retrieve_and_assemble(
+            kura_context::retrieve_and_assemble(
                 &query,
                 &docs,
                 Some(embedder),
@@ -835,7 +835,7 @@ impl dope_plugin::Hook for ContextHook {
         }
 
         if record.is_empty() {
-            return dope_plugin::HookOutcome::Continue;
+            return kura_plugin::HookOutcome::Continue;
         }
 
         // Splice the bootstrap in front of the first non-system message so
@@ -863,15 +863,15 @@ impl dope_plugin::Hook for ContextHook {
         if let Some(thread_id) = payload.get("threadId").and_then(Value::as_str) {
             event_payload.insert("threadId".to_string(), Value::String(thread_id.to_string()));
         }
-        let event = dope_events::Event {
+        let event = kura_events::Event {
             category: "context".to_string(),
             name: "context.assembled".to_string(),
-            resource: dope_events::Resource {
+            resource: kura_events::Resource {
                 kind: "context_assembly".to_string(),
                 id: uuid::Uuid::now_v7().to_string(),
             },
             payload: event_payload,
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         };
         let event = state
             .store
@@ -879,7 +879,7 @@ impl dope_plugin::Hook for ContextHook {
             .append_event(&event)
             .unwrap_or(event);
         state.event_bus.publish(event);
-        dope_plugin::HookOutcome::Continue
+        kura_plugin::HookOutcome::Continue
     }
 }
 
@@ -888,11 +888,11 @@ fn build_context(asm: &mut Assembly) -> Result<(), AppError> {
         return Ok(());
     };
     let config_object = asm.profile.config_for("context");
-    let config: dope_context::ContextConfig =
+    let config: kura_context::ContextConfig =
         serde_json::from_value(serde_json::Value::Object(config_object))
             .map_err(|err| AppError::PluginProfile(format!("context config: {err}")))?;
     bus.register(
-        dope_plugin::points::CHAT_PRE_DISPATCH,
+        kura_plugin::points::CHAT_PRE_DISPATCH,
         "context",
         Arc::new(ContextHook { state: asm.late_state.clone(), config }),
     );
@@ -900,7 +900,7 @@ fn build_context(asm: &mut Assembly) -> Result<(), AppError> {
 }
 
 /// The session-strategy hook: deterministic frame-preserving window shaping
-/// at `chat/pre-dispatch` (see the `dope-session` crate). Runs before any
+/// at `chat/pre-dispatch` (see the `kura-session` crate). Runs before any
 /// external plugin hooks (builtins register first).
 ///
 /// Compression-to-memory: an elided span is never plain-dropped — when the
@@ -909,32 +909,32 @@ fn build_context(asm: &mut Assembly) -> Result<(), AppError> {
 /// L1/L2 asynchronously, write policy intact) and the elision marker cites
 /// the captured asset so the model can drill back.
 struct SessionStrategyHook {
-    config: dope_session::SessionStrategyConfig,
+    config: kura_session::SessionStrategyConfig,
     state: Arc<std::sync::OnceLock<AppState>>,
 }
 
-impl dope_plugin::Hook for SessionStrategyHook {
-    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+impl kura_plugin::Hook for SessionStrategyHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> kura_plugin::HookOutcome {
         use serde_json::Value;
         let source_kind = payload
             .get("sourceKind")
             .and_then(Value::as_str)
             .map(str::to_string);
         let Some(messages_value) = payload.get("messages") else {
-            return dope_plugin::HookOutcome::Continue;
+            return kura_plugin::HookOutcome::Continue;
         };
         let Ok(messages) =
-            serde_json::from_value::<Vec<dope_session::WindowMessage>>(messages_value.clone())
+            serde_json::from_value::<Vec<kura_session::WindowMessage>>(messages_value.clone())
         else {
-            return dope_plugin::HookOutcome::Continue;
+            return kura_plugin::HookOutcome::Continue;
         };
-        let mut shaped = dope_session::shape_window(
+        let mut shaped = kura_session::shape_window(
             &messages,
             self.config.budget_for(source_kind.as_deref()),
             self.config.keep_recent_floor(),
         );
         if shaped.elided == 0 {
-            return dope_plugin::HookOutcome::Continue;
+            return kura_plugin::HookOutcome::Continue;
         }
 
         // Capture the elided span before it leaves the window. Without a
@@ -959,19 +959,19 @@ impl dope_plugin::Hook for SessionStrategyHook {
                     .map(|m| format!("{}: {}", m.role, m.content))
                     .collect::<Vec<_>>()
                     .join("\n");
-                let captured = dope_api::routes::memory::capture_l0(
+                let captured = kura_api::routes::memory::capture_l0(
                     state,
                     &tenant_id,
-                    dope_memory::Actor {
-                        kind: dope_memory::ActorKind::System,
+                    kura_memory::Actor {
+                        kind: kura_memory::ActorKind::System,
                         id: "session-strategy".to_string(),
                     },
                     "session_eviction",
                     &span,
-                    vec![dope_memory::SourceLink {
-                        kind: dope_memory::SourceKind::Thread,
+                    vec![kura_memory::SourceLink {
+                        kind: kura_memory::SourceKind::Thread,
                         id: thread_id,
-                        ..dope_memory::SourceLink::default()
+                        ..kura_memory::SourceLink::default()
                     }],
                 );
                 if let Some((asset_id, due)) = captured {
@@ -992,7 +992,7 @@ impl dope_plugin::Hook for SessionStrategyHook {
                         let state = state.clone();
                         let tenant_id = tenant_id.clone();
                         std::thread::spawn(move || {
-                            if let Err(err) = dope_api::routes::memory::execute_consolidation(
+                            if let Err(err) = kura_api::routes::memory::execute_consolidation(
                                 &state, &tenant_id, "turns", None,
                             ) {
                                 eprintln!(
@@ -1008,7 +1008,7 @@ impl dope_plugin::Hook for SessionStrategyHook {
         if let Ok(new_messages) = serde_json::to_value(&shaped.messages) {
             payload["messages"] = new_messages;
         }
-        dope_plugin::HookOutcome::Continue
+        kura_plugin::HookOutcome::Continue
     }
 }
 
@@ -1019,12 +1019,12 @@ fn build_session_strategy(asm: &mut Assembly) -> Result<(), AppError> {
     // A malformed operator config fails the boot loudly (same posture as a
     // malformed profile) instead of silently running default budgets.
     let config_object = asm.profile.config_for("session-strategy");
-    let config: dope_session::SessionStrategyConfig =
+    let config: kura_session::SessionStrategyConfig =
         serde_json::from_value(serde_json::Value::Object(config_object)).map_err(|err| {
             AppError::PluginProfile(format!("session-strategy config: {err}"))
         })?;
     bus.register(
-        dope_plugin::points::CHAT_PRE_DISPATCH,
+        kura_plugin::points::CHAT_PRE_DISPATCH,
         "session-strategy",
         Arc::new(SessionStrategyHook { config, state: asm.late_state.clone() }),
     );
@@ -1063,7 +1063,7 @@ fn build_activation(asm: &mut Assembly) -> Result<(), AppError> {
 fn build_computer_use(asm: &mut Assembly) -> Result<(), AppError> {
     let computeruse_store = Arc::new(ComputerUseStoreHandle::new(asm.open_store()?));
     let computeruse_recorder = Arc::new(SqliteArtifactRecorder::new(
-        computeruse_store.clone() as Arc<dyn dope_computeruse::Store>,
+        computeruse_store.clone() as Arc<dyn kura_computeruse::Store>,
         &asm.cfg.data_dir,
         asm.env_scope,
     ));
@@ -1114,7 +1114,7 @@ fn build_scheduler(asm: &mut Assembly) -> Result<(), AppError> {
         Box::new(|state| {
             if let Some(scheduler) = &state.scheduler {
                 if let Err(err) = scheduler.start() {
-                    eprintln!("[dope] scheduler start failed: {err}");
+                    eprintln!("[kura] scheduler start failed: {err}");
                 }
             }
         }),
@@ -1146,7 +1146,7 @@ fn build_reminders(asm: &mut Assembly) -> Result<(), AppError> {
         Box::new(|state| {
             if let Some(reminders) = &state.reminders {
                 if let Err(err) = reminders.start() {
-                    eprintln!("[dope] reminders start failed: {err}");
+                    eprintln!("[kura] reminders start failed: {err}");
                 }
             }
         }),
@@ -1164,7 +1164,7 @@ fn build_reminders(asm: &mut Assembly) -> Result<(), AppError> {
 
 fn build_routines(asm: &mut Assembly) -> Result<(), AppError> {
     let scheduler = asm.state.scheduler.clone().expect("scheduler plugin built");
-    let mut routine_manager = dope_routine::Manager::new(
+    let mut routine_manager = kura_routine::Manager::new(
         asm.env_scope,
         Box::new(adapters::RoutineSchedulerAdapter::new(scheduler)),
     );
@@ -1184,14 +1184,14 @@ struct MemoryCaptureHook {
     state: Arc<std::sync::OnceLock<AppState>>,
 }
 
-impl dope_plugin::Hook for MemoryCaptureHook {
-    fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+impl kura_plugin::Hook for MemoryCaptureHook {
+    fn handle(&self, payload: &mut serde_json::Value) -> kura_plugin::HookOutcome {
         use serde_json::Value;
         let text_of = |key: &str| -> String {
             payload.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
         };
         let Some(state) = self.state.get() else {
-            return dope_plugin::HookOutcome::Continue;
+            return kura_plugin::HookOutcome::Continue;
         };
         let tenant_id = text_of("tenantId");
         let thread_id = text_of("threadId");
@@ -1199,35 +1199,35 @@ impl dope_plugin::Hook for MemoryCaptureHook {
         let source_message_id = text_of("sourceMessageId");
         let mut links = Vec::new();
         if !source_message_id.trim().is_empty() {
-            links.push(dope_memory::SourceLink {
-                kind: dope_memory::SourceKind::Message,
+            links.push(kura_memory::SourceLink {
+                kind: kura_memory::SourceKind::Message,
                 id: source_message_id,
-                ..dope_memory::SourceLink::default()
+                ..kura_memory::SourceLink::default()
             });
         }
         if !thread_id.trim().is_empty() {
-            links.push(dope_memory::SourceLink {
-                kind: dope_memory::SourceKind::Thread,
+            links.push(kura_memory::SourceLink {
+                kind: kura_memory::SourceKind::Thread,
                 id: thread_id,
-                ..dope_memory::SourceLink::default()
+                ..kura_memory::SourceLink::default()
             });
         }
         if !dispatch_id.trim().is_empty() {
-            links.push(dope_memory::SourceLink {
-                kind: dope_memory::SourceKind::Run,
+            links.push(kura_memory::SourceLink {
+                kind: kura_memory::SourceKind::Run,
                 id: dispatch_id,
-                ..dope_memory::SourceLink::default()
+                ..kura_memory::SourceLink::default()
             });
         }
         if links.is_empty() {
-            return dope_plugin::HookOutcome::Continue;
+            return kura_plugin::HookOutcome::Continue;
         }
         let text = format!("user: {}\nassistant: {}", text_of("query").trim(), text_of("output"));
-        let captured = dope_api::routes::memory::capture_l0(
+        let captured = kura_api::routes::memory::capture_l0(
             state,
             &tenant_id,
-            dope_memory::Actor {
-                kind: dope_memory::ActorKind::System,
+            kura_memory::Actor {
+                kind: kura_memory::ActorKind::System,
                 id: "chat".to_string(),
             },
             "chat_turn",
@@ -1240,14 +1240,14 @@ impl dope_plugin::Hook for MemoryCaptureHook {
             // that may have no tokio context, e.g. the IM message loops).
             let state = state.clone();
             std::thread::spawn(move || {
-                if let Err(err) = dope_api::routes::memory::execute_consolidation(
+                if let Err(err) = kura_api::routes::memory::execute_consolidation(
                     &state, &tenant_id, "turns", None,
                 ) {
                     eprintln!("memory: turn-trigger consolidation failed: {err:?}");
                 }
             });
         }
-        dope_plugin::HookOutcome::Continue
+        kura_plugin::HookOutcome::Continue
     }
 }
 
@@ -1262,7 +1262,7 @@ fn build_memory(asm: &mut Assembly) -> Result<(), AppError> {
     // Chat-turn capture rides the hook plane (fires for query and stream).
     if let Some(bus) = &asm.state.hooks {
         bus.register(
-            dope_plugin::points::CHAT_TURN_END,
+            kura_plugin::points::CHAT_TURN_END,
             "memory",
             Arc::new(MemoryCaptureHook { state: asm.late_state.clone() }),
         );
@@ -1280,7 +1280,7 @@ fn build_memory(asm: &mut Assembly) -> Result<(), AppError> {
                     ticker.tick().await;
                     let tick_state = state.clone();
                     let _ = tokio::task::spawn_blocking(move || {
-                        dope_api::routes::memory::memory_tick(&tick_state);
+                        kura_api::routes::memory::memory_tick(&tick_state);
                     })
                     .await;
                 }
@@ -1317,7 +1317,7 @@ fn build_webhooks(asm: &mut Assembly) -> Result<(), AppError> {
 
 fn build_catalog(asm: &mut Assembly) -> Result<(), AppError> {
     let sandboxes = asm.state.sandboxes.clone().expect("sandbox plugin built");
-    let mut catalog_manager = dope_catalog::Manager::new(
+    let mut catalog_manager = kura_catalog::Manager::new(
         asm.env_scope,
         Some(Box::new(adapters::CatalogSandboxRequirementChecker::new(sandboxes))),
         Some(Box::new(adapters::CatalogTenantPermissionGate::new(asm.store.clone()))),
@@ -1408,11 +1408,11 @@ fn build_setup_wizard(asm: &mut Assembly) -> Result<(), AppError> {
 
 fn build_self_improve(asm: &mut Assembly) -> Result<(), AppError> {
     let config_object = asm.profile.config_for("self-improve");
-    let config: dope_improvement::ImprovementConfig =
+    let config: kura_improvement::ImprovementConfig =
         serde_json::from_value(serde_json::Value::Object(config_object))
             .map_err(|err| AppError::PluginProfile(format!("self-improve config: {err}")))?;
     asm.state.improvement =
-        Some(Arc::new(dope_improvement::Manager::new(&asm.cfg.data_dir, config)));
+        Some(Arc::new(kura_improvement::Manager::new(&asm.cfg.data_dir, config)));
     Ok(())
 }
 

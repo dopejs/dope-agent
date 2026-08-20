@@ -9,7 +9,7 @@
 //! action and advances its owning workflow.
 //!
 //! Deliberately not ported (documented divergence, matching the wave-8
-//! conventions): recordThreadApprovalProjection (dope-threads is not an api
+//! conventions): recordThreadApprovalProjection (kura-threads is not an api
 //! dependency; Go no-ops when the projection prerequisites are unmet).
 
 use std::collections::HashMap;
@@ -22,9 +22,9 @@ use axum::{Json, Router};
 use chrono::Utc;
 use serde::Serialize;
 
-use dope_events as events;
-use dope_policy as policy;
-use dope_sandbox as sandbox;
+use kura_events as events;
+use kura_policy as policy;
+use kura_sandbox as sandbox;
 
 use crate::error::ApiError;
 use crate::middleware::environment_scope_from_config;
@@ -188,7 +188,7 @@ fn sync_consumer_policy_record(
         state
             .store
             .lock()
-            .upsert_consumer_policy_record(&dope_store::ConsumerPolicyRecordRecord {
+            .upsert_consumer_policy_record(&kura_store::ConsumerPolicyRecordRecord {
                 policy_record_id: record.policy_record_id.clone(),
                 consumer_kind: record.consumer_kind.as_str().to_string(),
                 consumer_id: record.consumer_id.clone(),
@@ -469,7 +469,7 @@ async fn resolve_approval(
                                 &state,
                                 workflow,
                                 &tool_call,
-                                Some(dope_orchestration::StepStatus::Running),
+                                Some(kura_orchestration::StepStatus::Running),
                                 "",
                             )?;
                         }
@@ -490,7 +490,7 @@ mod tests {
 
     fn state_with_engine() -> crate::state::AppState {
         let mut state = test_state();
-        state.policy = Some(Arc::new(dope_policy::Engine::new()));
+        state.policy = Some(Arc::new(kura_policy::Engine::new()));
         state
     }
 

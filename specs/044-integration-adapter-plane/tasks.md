@@ -28,7 +28,7 @@ under `daemon/cmd/`; capability process home under `capabilities/`.
 
 - [X] T001 Add `BackendKind` value `adapter_rpc` (with constant + validation) in `daemon/internal/integrations/types.go`
 - [X] T002 [P] Create capability schema directory and index `schemas/capability/integration-adapter/README.md`
-- [X] T003 [P] Scaffold reference adapter binary entrypoint (stdio loop stub, no handlers yet) in `daemon/cmd/dope-integration-adapter/main.go`
+- [X] T003 [P] Scaffold reference adapter binary entrypoint (stdio loop stub, no handlers yet) in `daemon/cmd/kura-integration-adapter/main.go`
 - [X] T004 [P] Document the adapter process-home boundary in `capabilities/integrations/README.md`
 
 ---
@@ -45,7 +45,7 @@ under `daemon/cmd/`; capability process home under `capabilities/`.
 - [X] T008 Register the new capability + event schemas in the contract-test set so `make daemon-contract-test` validates them (`daemon/internal/contracts/`)
 - [X] T009 Implement RPC transport: subprocess spawn, newline-delimited JSON framing, `requestId` correlation, `context` deadline enforcement in `daemon/internal/integrations/adapterrpc/transport.go`
 - [X] T010 Implement RPC client: per-operation `dispatch(ctx, op, payload, creds)`, exact `contractVersion` handshake at readiness, response validation in `daemon/internal/integrations/adapterrpc/client.go`
-- [X] T011 Implement reference adapter contract handlers (deterministic `ok` responses for all calendar+mail operations) in `daemon/cmd/dope-integration-adapter/main.go`
+- [X] T011 Implement reference adapter contract handlers (deterministic `ok` responses for all calendar+mail operations) in `daemon/cmd/kura-integration-adapter/main.go`
 - [X] T012 [P] Unit tests for transport framing + deadline + correlation in `daemon/internal/integrations/adapterrpc/transport_test.go`
 
 **Checkpoint**: contract + transport + client + reference adapter exist; stories can begin
@@ -82,7 +82,7 @@ the in-flight operation is classified with correct single-ledger evidence.
 
 - [X] T020 [US2] Map adapter failure kinds to existing integration diagnostics + live-validation classification in `daemon/internal/integrations/adapterrpc/client.go`
 - [X] T021 [US2] Classify unconfirmed side-effecting writes as ambiguous-commit (FR-007a) via the existing manager live-validation path in `daemon/internal/calendar/adapter_backend.go` and `daemon/internal/mail/adapter_backend.go`
-- [X] T022 [US2] Extend reference adapter with seeded failure modes (crash, hang-past-deadline, unavailable, malformed payload, auth/scope) in `daemon/cmd/dope-integration-adapter/main.go`
+- [X] T022 [US2] Extend reference adapter with seeded failure modes (crash, hang-past-deadline, unavailable, malformed payload, auth/scope) in `daemon/cmd/kura-integration-adapter/main.go`
 - [X] T023 [US2] Tests: failure-injection proves daemon stays healthy, ambiguous-commit classification, diagnostic emitted, no partial ledger, and fail-closed when required evidence recording cannot complete (FR-013) in `daemon/internal/integrations/adapterrpc/failure_test.go`
 
 **Checkpoint**: adapter failures are contained and correctly classified

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Verify in `DOPE_ENV=test` that the daemon can:
+Verify in `KURA_ENV=test` that the daemon can:
 
 - create a run-scoped browser session
 - execute low-risk browser actions without approval and high-risk actions with explicit
@@ -13,10 +13,10 @@ Verify in `DOPE_ENV=test` that the daemon can:
 
 ## Prerequisites
 
-- local test daemon only; do not use `~/.dope`
+- local test daemon only; do not use `~/.kura`
 - authenticated local pairing or an existing bearer token
 - no production connectors or production secrets are required
-- a deterministic browser fixture page that is safe in `DOPE_ENV=test`
+- a deterministic browser fixture page that is safe in `KURA_ENV=test`
 
 Recommended fixture:
 
@@ -35,7 +35,7 @@ make daemon-run-test
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "entrypoint": "operator",
@@ -53,7 +53,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "driverKind": "browser"
@@ -71,7 +71,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"actionKind\": \"navigate\",
@@ -91,7 +91,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "actionKind": "input",
@@ -114,7 +114,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"resolution":"approved","comment":"phase 26 verification"}' \
   http://127.0.0.1:19192/v1/policy/approvals/$APPROVAL_ID/resolve
@@ -129,7 +129,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "actionKind": "click",
@@ -150,7 +150,7 @@ Expected outcome after implementation:
 8. Verify artifact inspection and content retrieval.
 
 ```bash
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/computer-use/artifacts/$ARTIFACT_ID
 ```
 
@@ -163,7 +163,7 @@ Expected outcome after implementation:
 
 Expected outcome after implementation:
 
-- at least one `DOPE_ENV=test` workflow combines computer use with another capability
+- at least one `KURA_ENV=test` workflow combines computer use with another capability
 - computer-use actions remain visible through workflow step and tool-call truth
 
 ## Automated Verification
@@ -190,7 +190,7 @@ Expected automated coverage after implementation:
 
 ## Observed Manual Verification
 
-Manual verification was completed in `DOPE_ENV=test` against the local daemon on
+Manual verification was completed in `KURA_ENV=test` against the local daemon on
 `127.0.0.1:19192`.
 
 Commands used:
@@ -200,39 +200,39 @@ make daemon-run-test
 make daemon-test-status
 curl -sS -X POST http://127.0.0.1:19192/v1/auth/pairings/start
 curl -sS -X POST http://127.0.0.1:19192/v1/auth/pairings/$PAIRING_ID/complete
-curl -sS -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"entrypoint":"operator","goal":"manual computer-use verification"}' \
   http://127.0.0.1:19192/v1/runs
-curl -sS -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"driverKind":"browser"}' \
   http://127.0.0.1:19192/v1/runs/$RUN_ID/computer-use/sessions
-curl -sS -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"actionKind":"snapshot"}' \
   http://127.0.0.1:19192/v1/runs/$RUN_ID/computer-use/sessions/$SESSION_ID/actions
-curl -sS -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"actionKind":"input","value":"Phase 26 test input","targetMatchContext":{"matchStrategy":"dom_selector","expectedSelector":"#name"}}' \
   http://127.0.0.1:19192/v1/runs/$RUN_ID/computer-use/sessions/$SESSION_ID/actions
-curl -sS -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"resolution":"approved","comment":"phase 26 verification"}' \
   http://127.0.0.1:19192/v1/policy/approvals/$APPROVAL_ID/resolve
-curl -sS -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"actionKind":"click","targetMatchContext":{"matchStrategy":"dom_selector","expectedSelector":"#missing-button"}}' \
   http://127.0.0.1:19192/v1/runs/$RUN_ID/computer-use/sessions/$SESSION_ID/actions
-curl -sS -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"resolution":"approved","comment":"phase 26 mismatch verification"}' \
   http://127.0.0.1:19192/v1/policy/approvals/$MISMATCH_APPROVAL_ID/resolve
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/computer-use/artifacts/$ARTIFACT_ID
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/computer-use/artifacts/$ARTIFACT_ID/content
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   "http://127.0.0.1:19192/v1/events?runId=$RUN_ID"
 ```
 
@@ -256,7 +256,7 @@ Observed results:
 
 ## Notes
 
-- Keep all verification in `DOPE_ENV=test`.
+- Keep all verification in `KURA_ENV=test`.
 - Prefer deterministic local fixture pages over public websites.
 - Manual verification should prove inspect-before-act behavior, not only successful browser
   automation.

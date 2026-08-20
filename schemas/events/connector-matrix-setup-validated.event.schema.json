@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/connector-matrix-setup-validated.event.schema.json",
+  "$id": "https://kura.local/schemas/events/connector-matrix-setup-validated.event.schema.json",
   "title": "ConnectorMatrixSetupValidatedEvent",
   "type": "object",
   "allOf": [

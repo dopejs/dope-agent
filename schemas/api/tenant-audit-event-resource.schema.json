@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/tenant-audit-event-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/tenant-audit-event-resource.schema.json",
   "title": "TenantAuditEventResource",
   "type": "object",
   "required": ["auditEventId", "eventKind", "outcome", "reasonCode", "createdAt"],

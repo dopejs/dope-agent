@@ -6,17 +6,17 @@
 //! # Layout
 //!
 //! - bridge: Bridge, Runner, RunResult, RunError, ExecRunner, SandboxRunner,
-//!   SandboxManager (trait), Registry, and the dope_providers ManagedRegistry
+//!   SandboxManager (trait), Registry, and the kura_providers ManagedRegistry
 //!   / ManagedBridge adapters.
-//! - claude: the Claude Code CLI bridge + dope_llm Provider shim.
-//! - codex: the Codex CLI bridge + dope_llm Provider shim.
+//! - claude: the Claude Code CLI bridge + kura_llm Provider shim.
+//! - codex: the Codex CLI bridge + kura_llm Provider shim.
 //! - evaluate: operation plans, preflight evaluation, consumer contract
 //!   views, and execution finalization (the bridges.go machinery).
 //! - manager: store-backed state/check management + the setup-wizard gate.
 //!
 //! # Porting notes / deferrals
 //!
-//! - context.Context is ported as dope_llm::CancelToken; all bridge methods
+//! - context.Context is ported as kura_llm::CancelToken; all bridge methods
 //!   are synchronous, matching the Go code (nothing streams).
 //! - The operation plan Go threads through context.Context is passed
 //!   explicitly to Runner::run.
@@ -24,7 +24,7 @@
 //!   before spawning; killing an in-flight child process on cancellation is
 //!   deferred (a sync port has no per-call worker to kill).
 //! - The sandbox-backed execution plane (sandbox.Manager) is not yet ported
-//!   in dope-sandbox (types only). The runner and preflight evaluation are
+//!   in kura-sandbox (types only). The runner and preflight evaluation are
 //!   ported against the SandboxManager trait, and Registry::new accepts
 //!   Option<Arc<dyn SandboxManager>>; when the concrete manager lands it
 //!   implements the trait. Live CLI auth-bridge execution through the sandbox

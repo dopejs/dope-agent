@@ -1,9 +1,9 @@
 [package]
-name = "dope-adapterprovider"
+name = "kura-adapterprovider"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-adapterrpc.workspace = true
+kura-adapterrpc.workspace = true
 serde_json = { workspace = true, features = ["raw_value"] }

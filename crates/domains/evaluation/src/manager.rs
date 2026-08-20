@@ -2,18 +2,18 @@
 //! replay candidate/fixture CRUD, live-validation handoff preparation, replay
 //! attempt creation with billing quota reservation, and plane-level comparison
 //! generation. The store stays behind the [Store] trait (implemented by
-//! dope-store's evaluation DAOs in the store crate / tests); billing goes
-//! through the dope-billing manager; the optional runtime recorder persists
+//! kura-store's evaluation DAOs in the store crate / tests); billing goes
+//! through the kura-billing manager; the optional runtime recorder persists
 //! completed non-live replays into the runtime plane.
 
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_billing::{
+use kura_billing::{
     BillingError, ReserveInput, ReserveResult, ResolveInput, UsageReservation,
     evaluation_operation_key, new_quota_state_unavailable_denial,
 };
-use dope_identity::tenantctx;
+use kura_identity::tenantctx;
 
 use crate::comparison::compare_attempt;
 use crate::error::{BillingReservationError, EvaluationError};
@@ -25,7 +25,7 @@ use crate::runtime_recorder::{ReplayRecordInput, RuntimeRecorder};
 use crate::types::*;
 use crate::util::{append_reasons, first_non_empty, new_id, replay_mode_default, zero_time_default};
 
-/// Go [Store] interface. Implementations map onto dope-store's evaluation
+/// Go [Store] interface. Implementations map onto kura-store's evaluation
 /// DAO methods (see rs/store/src/evaluation.rs).
 pub trait Store: Send + Sync {
     fn upsert_replay_candidate(&self, item: ReplayCandidate) -> Result<(), EvaluationError>;
@@ -48,7 +48,7 @@ pub struct Dependencies {
     pub store: Option<Arc<dyn Store>>,
     pub fixtures_dir: String,
     pub runtime_recorder: Option<Arc<dyn RuntimeRecorder>>,
-    pub billing: Option<Arc<dope_billing::Manager>>,
+    pub billing: Option<Arc<kura_billing::Manager>>,
     pub hosted_billing: bool,
     pub clock: Option<Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>>,
 }
@@ -59,7 +59,7 @@ pub struct Manager {
     store: Option<Arc<dyn Store>>,
     fixtures_dir: String,
     runtime_recorder: Option<Arc<dyn RuntimeRecorder>>,
-    billing_manager: Option<Arc<dope_billing::Manager>>,
+    billing_manager: Option<Arc<kura_billing::Manager>>,
     hosted_billing: bool,
     clock: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
@@ -483,7 +483,7 @@ impl Manager {
 
 /// Go [reserveEvaluationAttemptQuota] (manager.go).
 async fn reserve_evaluation_attempt_quota(
-    manager: &Option<Arc<dope_billing::Manager>>,
+    manager: &Option<Arc<kura_billing::Manager>>,
     tenant_id: &str,
     candidate_id: &str,
     attempt_id: &str,
@@ -511,7 +511,7 @@ async fn reserve_evaluation_attempt_quota(
     let result = manager
         .reserve(ReserveInput {
             tenant_id: tenant_id.to_string(),
-            category: dope_billing::Category::from(dope_billing::Category::REPLAY_EVALUATION_ATTEMPTS),
+            category: kura_billing::Category::from(kura_billing::Category::REPLAY_EVALUATION_ATTEMPTS),
             amount: 1,
             operation_key,
             reservation_point: "replay/evaluation attempt creation before work starts".to_string(),
@@ -536,7 +536,7 @@ async fn reserve_evaluation_attempt_quota(
 
 /// Go [releaseEvaluationAttemptReservation] (manager.go).
 async fn release_evaluation_attempt_reservation(
-    manager: &Option<Arc<dope_billing::Manager>>,
+    manager: &Option<Arc<kura_billing::Manager>>,
     reservation: &UsageReservation,
     reason: &str,
 ) {
@@ -559,7 +559,7 @@ async fn release_evaluation_attempt_reservation(
 
 /// Go [commitEvaluationAttemptReservation] (manager.go).
 async fn commit_evaluation_attempt_reservation(
-    manager: &Option<Arc<dope_billing::Manager>>,
+    manager: &Option<Arc<kura_billing::Manager>>,
     reservation: &UsageReservation,
     reason: &str,
 ) -> Result<(), EvaluationError> {

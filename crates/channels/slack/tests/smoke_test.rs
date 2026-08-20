@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use chrono::{TimeZone, Utc};
-use dope_slack::smoke::{
+use kura_slack::smoke::{
     AuthorizationMode, SmokeEvidence, SmokeInput, SmokeStatus, build_smoke_evidence,
 };
 

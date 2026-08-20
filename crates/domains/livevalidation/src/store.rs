@@ -1,5 +1,5 @@
 //! Persistence abstraction (port of `store.go`). The Go store interface is
-//! implemented by the daemon's store layer; in Rust `dope-store` (wave 5)
+//! implemented by the daemon's store layer; in Rust `kura-store` (wave 5)
 //! will implement this trait. The manager is persistence-optional: a missing
 //! store degrades each method to the Go `m.store == nil` behavior.
 

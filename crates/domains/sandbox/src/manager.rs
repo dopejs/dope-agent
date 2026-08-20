@@ -2,7 +2,7 @@
 //! policy evaluation, approval orchestration, persistence, and event fan-out.
 //!
 //! Ported from daemon/internal/sandbox/manager.go. Contexts are replaced by
-//! sync Rust (tenant context is read from the dope-identity task-local carrier);
+//! sync Rust (tenant context is read from the kura-identity task-local carrier);
 //! Go context.CancelFunc is a CancellationToken (AtomicBool + child.kill()).
 
 use std::collections::{HashMap, HashSet};
@@ -32,7 +32,7 @@ use crate::{
 
 /// Manager validation/lookup failures. The Go package surfaces sentinel errors
 /// (ErrCommandRequired, ErrExecutionNotFound); this crate exposes a typed enum
-/// in the style of dope-runtime.
+/// in the style of kura-runtime.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum SandboxError {
     #[error("sandbox command is required")]
@@ -86,7 +86,7 @@ pub(crate) struct PrepareOutcome {
     pub(crate) decision: Decision,
     pub(crate) launch: Option<LaunchSpec>,
     pub(crate) approval_id: String,
-    pub(crate) created_decision: Option<dope_policy::Decision>,
+    pub(crate) created_decision: Option<kura_policy::Decision>,
 }
 
 #[derive(Default)]
@@ -98,7 +98,7 @@ pub(crate) struct ManagerInner {
     pub(crate) execution_ids: Vec<String>,
     pub(crate) cancels: HashMap<String, CancellationToken>,
     pub(crate) pending_final: HashSet<String>,
-    pub(crate) secrets: Option<Arc<dope_secrets::Manager>>,
+    pub(crate) secrets: Option<Arc<kura_secrets::Manager>>,
 }
 
 /// Thread-safe sandbox manager mirroring the Go `Manager`: an in-memory
@@ -107,10 +107,10 @@ pub(crate) struct ManagerInner {
 /// process-execution threads can hold a handle.
 #[derive(Clone)]
 pub struct Manager {
-    cfg: Arc<dope_config::Config>,
-    store: Option<Arc<std::sync::Mutex<dope_store::SQLiteStore>>>,
-    event_bus: dope_events::Bus,
-    policy: Arc<dope_policy::Engine>,
+    cfg: Arc<kura_config::Config>,
+    store: Option<Arc<std::sync::Mutex<kura_store::SQLiteStore>>>,
+    event_bus: kura_events::Bus,
+    policy: Arc<kura_policy::Engine>,
     pub(crate) inner: Arc<parking_lot::RwLock<ManagerInner>>,
 }
 
@@ -119,10 +119,10 @@ impl Manager {
     /// with detected backend capabilities.
     #[must_use]
     pub fn new(
-        cfg: dope_config::Config,
-        store: Option<Arc<std::sync::Mutex<dope_store::SQLiteStore>>>,
-        event_bus: dope_events::Bus,
-        policy: dope_policy::Engine,
+        cfg: kura_config::Config,
+        store: Option<Arc<std::sync::Mutex<kura_store::SQLiteStore>>>,
+        event_bus: kura_events::Bus,
+        policy: kura_policy::Engine,
     ) -> Manager {
         let manager = Manager {
             cfg: Arc::new(cfg),
@@ -136,7 +136,7 @@ impl Manager {
     }
 
     /// Go `SetSecretManager`.
-    pub fn set_secret_manager(&self, secret_manager: dope_secrets::Manager) {
+    pub fn set_secret_manager(&self, secret_manager: kura_secrets::Manager) {
         self.inner.write().secrets = Some(Arc::new(secret_manager));
     }
 
@@ -840,7 +840,7 @@ impl Manager {
         profile: &Profile,
         execution: &mut Execution,
         create_approval: bool,
-    ) -> Result<(Decision, String, Option<dope_policy::Decision>), SandboxError> {
+    ) -> Result<(Decision, String, Option<kura_policy::Decision>), SandboxError> {
         let mut decision = evaluate_access_decision(profile, &execution.cwd, &execution.access);
         if let Some(declaration) = execution
             .consumer
@@ -911,21 +911,21 @@ impl Manager {
             if let Some(approval) = self.policy.get_approval(&requested_approval) {
                 if approval_matches_execution(&approval, execution, profile) {
                     match approval.status {
-                        dope_policy::ApprovalStatus::Approved => {
+                        kura_policy::ApprovalStatus::Approved => {
                             decision.resolution = DecisionResolution::Allow;
                             decision.approval_status = DecisionApprovalStatus::Approved;
                             decision.explanation =
                                 "sandbox execution is allowed by approved escalation".to_string();
                             return Ok((decision, requested_approval, None));
                         }
-                        dope_policy::ApprovalStatus::Rejected => {
+                        kura_policy::ApprovalStatus::Rejected => {
                             decision.resolution = DecisionResolution::Deny;
                             decision.approval_status = DecisionApprovalStatus::Rejected;
                             decision.explanation =
                                 "sandbox execution was rejected by approval policy".to_string();
                             return Ok((decision, requested_approval, None));
                         }
-                        dope_policy::ApprovalStatus::Pending => {
+                        kura_policy::ApprovalStatus::Pending => {
                             decision.approval_status = DecisionApprovalStatus::Pending;
                             return Ok((decision, requested_approval, None));
                         }
@@ -941,7 +941,7 @@ impl Manager {
 
         let (approval, created_decision) = self
             .policy
-            .request_approval(dope_policy::RequestApprovalInput {
+            .request_approval(kura_policy::RequestApprovalInput {
                 action: SANDBOX_APPROVAL_ACTION.to_string(),
                 resource_kind: SANDBOX_RESOURCE_KIND.to_string(),
                 resource_id: profile.profile_id.clone(),
@@ -958,7 +958,7 @@ impl Manager {
     }
 
     /// Go `resolveTenantSecretScope`: resolves the consumer's secret scope
-    /// against the active tenant (dope-identity task-local carrier), injecting
+    /// against the active tenant (kura-identity task-local carrier), injecting
     /// values into the request environment and failing closed without one.
     fn resolve_tenant_secret_scope(
         &self,
@@ -972,7 +972,7 @@ impl Manager {
         if consumer.secret_scope.is_empty() {
             return (String::new(), String::new());
         }
-        let tenant_context = match dope_identity::tenantctx::from_context() {
+        let tenant_context = match kura_identity::tenantctx::from_context() {
             Some(context) => context,
             None => {
                 for item in &mut consumer.secret_scope {
@@ -1003,7 +1003,7 @@ impl Manager {
                 continue;
             }
             let resolved =
-                futures::executor::block_on(secrets.resolve(dope_secrets::ResolveInput {
+                futures::executor::block_on(secrets.resolve(kura_secrets::ResolveInput {
                     tenant_id: tenant_context.tenant_id.trim().to_string(),
                     secret_ref: secret_ref.clone(),
                 }));
@@ -1019,15 +1019,15 @@ impl Manager {
                     env.insert(secret_ref.clone(), secret.value);
                     item.resolution = SecretResolution::Resolved;
                 }
-                Err(dope_secrets::SecretsError::SecretDisabled) => {
+                Err(kura_secrets::SecretsError::SecretDisabled) => {
                     item.resolution = SecretResolution::Denied;
                     return (
                         "secret_scope:disabled".to_string(),
                         "required sandbox secret is disabled".to_string(),
                     );
                 }
-                Err(dope_secrets::SecretsError::SecretNotFound)
-                | Err(dope_secrets::SecretsError::SecretVersionNotFound) => {
+                Err(kura_secrets::SecretsError::SecretNotFound)
+                | Err(kura_secrets::SecretsError::SecretVersionNotFound) => {
                     item.resolution = SecretResolution::Unavailable;
                     return (
                         "secret_scope:unavailable".to_string(),
@@ -1051,16 +1051,16 @@ impl Manager {
                 .map(|item| item.secret_ref.trim().to_string())
                 .collect();
             let audit_event =
-                dope_audit::build_credential_audit_event(&dope_audit::CredentialAuditInput {
+                kura_audit::build_credential_audit_event(&kura_audit::CredentialAuditInput {
                     tenant_id: tenant_context.tenant_id.trim().to_string(),
                     principal_id: tenant_context.principal_id.trim().to_string(),
-                    resource_kind: dope_secrets::ResourceKind::SandboxPolicy,
+                    resource_kind: kura_secrets::ResourceKind::SandboxPolicy,
                     resource_id: {
                         let resource_id = consumer_id(consumer);
                         first_non_empty(&[resource_id.as_str(), "sandbox"])
                     },
-                    action: dope_secrets::AuditAction::SecretUse,
-                    outcome: dope_identity::AUDIT_OUTCOME_SUCCEEDED.to_string(),
+                    action: kura_secrets::AuditAction::SecretUse,
+                    outcome: kura_identity::AUDIT_OUTCOME_SUCCEEDED.to_string(),
                     reason_code: "sandbox_secret_scope_prepared".to_string(),
                     secret_ref: String::new(),
                     secret_version_id: String::new(),
@@ -1090,7 +1090,7 @@ impl Manager {
             let document = serde_json::to_string(item).map_err(|err| {
                 SandboxError::Marshal("secret scope binding".to_string(), err.to_string())
             })?;
-            lock.upsert_secret_scope_binding(&dope_store::SecretScopeBindingRecord {
+            lock.upsert_secret_scope_binding(&kura_store::SecretScopeBindingRecord {
                 binding_id: secret_scope_binding_record_id(item),
                 consumer_kind: item.consumer_kind.as_str().to_string(),
                 consumer_id: item.consumer_id.clone(),
@@ -1110,7 +1110,7 @@ impl Manager {
             let document = serde_json::to_string(view).map_err(|err| {
                 SandboxError::Marshal("consumer policy view".to_string(), err.to_string())
             })?;
-            lock.upsert_consumer_policy_record(&dope_store::ConsumerPolicyRecordRecord {
+            lock.upsert_consumer_policy_record(&kura_store::ConsumerPolicyRecordRecord {
                 policy_record_id: record.policy_record_id.clone(),
                 consumer_kind: record.consumer_kind.as_str().to_string(),
                 consumer_id: record.consumer_id.clone(),
@@ -1145,7 +1145,7 @@ impl Manager {
         store
             .lock()
             .unwrap()
-            .upsert_sandbox_execution(&dope_store::SandboxExecutionRecord {
+            .upsert_sandbox_execution(&kura_store::SandboxExecutionRecord {
                 execution_id: execution.execution_id.clone(),
                 profile_id: execution.profile_id.clone(),
                 backend_kind: execution.backend_kind.as_str().to_string(),
@@ -1163,7 +1163,7 @@ impl Manager {
     fn persist_approval_artifacts(
         &self,
         approval_id: &str,
-        decision: &dope_policy::Decision,
+        decision: &kura_policy::Decision,
     ) -> Result<(), SandboxError> {
         let Some(store) = &self.store else {
             return Ok(());
@@ -1185,7 +1185,7 @@ impl Manager {
     fn publish_approval_requested(
         &self,
         approval_id: &str,
-        decision: &dope_policy::Decision,
+        decision: &kura_policy::Decision,
     ) -> Result<(), SandboxError> {
         let Some(approval) = self.policy.get_approval(approval_id) else {
             return Ok(());
@@ -1209,15 +1209,15 @@ impl Manager {
             "status".to_string(),
             serde_json::json!(approval.status.as_str()),
         );
-        self.publish_event(dope_events::Event {
+        self.publish_event(kura_events::Event {
             category: "policy".to_string(),
             name: "policy.approval_requested".to_string(),
-            resource: dope_events::Resource {
+            resource: kura_events::Resource {
                 kind: "approval".to_string(),
                 id: approval.approval_id.clone(),
             },
             payload: approval_payload,
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         })?;
 
         let mut decision_payload = serde_json::Map::new();
@@ -1239,15 +1239,15 @@ impl Manager {
             "approvalId".to_string(),
             serde_json::json!(decision.approval_id),
         );
-        self.publish_event(dope_events::Event {
+        self.publish_event(kura_events::Event {
             category: "policy".to_string(),
             name: "policy.decision_recorded".to_string(),
-            resource: dope_events::Resource {
+            resource: kura_events::Resource {
                 kind: "decision".to_string(),
                 id: decision.decision_id.clone(),
             },
             payload: decision_payload,
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         })?;
         Ok(())
     }
@@ -1284,15 +1284,15 @@ impl Manager {
         );
         merge_execution_payload_metadata(&mut payload, &execution.metadata);
         merge_consumer_payload(&mut payload, execution.consumer.as_ref());
-        self.publish_event(dope_events::Event {
+        self.publish_event(kura_events::Event {
             category: EVENT_CATEGORY.to_string(),
             name: "sandbox.execution_requested".to_string(),
-            resource: dope_events::Resource {
+            resource: kura_events::Resource {
                 kind: RESOURCE_KIND_EXECUTION.to_string(),
                 id: execution.execution_id.clone(),
             },
             payload,
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         }).map(|_| ())
     }
 
@@ -1348,15 +1348,15 @@ impl Manager {
             serde_json::json!(decision.explanation),
         );
         merge_consumer_payload(&mut payload, execution.consumer.as_ref());
-        self.publish_event(dope_events::Event {
+        self.publish_event(kura_events::Event {
             category: EVENT_CATEGORY.to_string(),
             name: "sandbox.decision_recorded".to_string(),
-            resource: dope_events::Resource {
+            resource: kura_events::Resource {
                 kind: RESOURCE_KIND_EXECUTION.to_string(),
                 id: execution.execution_id.clone(),
             },
             payload,
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         }).map(|_| ())
     }
 
@@ -1383,15 +1383,15 @@ impl Manager {
         );
         merge_execution_payload_metadata(&mut payload, &execution.metadata);
         merge_consumer_payload(&mut payload, execution.consumer.as_ref());
-        self.publish_event(dope_events::Event {
+        self.publish_event(kura_events::Event {
             category: EVENT_CATEGORY.to_string(),
             name: "sandbox.execution_started".to_string(),
-            resource: dope_events::Resource {
+            resource: kura_events::Resource {
                 kind: RESOURCE_KIND_EXECUTION.to_string(),
                 id: execution.execution_id.clone(),
             },
             payload,
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         }).map(|_| ())
     }
 
@@ -1457,22 +1457,22 @@ impl Manager {
         for (key, value) in &execution.result.backend_metadata {
             payload.insert(key.clone(), value.clone());
         }
-        self.publish_event(dope_events::Event {
+        self.publish_event(kura_events::Event {
             category: EVENT_CATEGORY.to_string(),
             name: name.to_string(),
-            resource: dope_events::Resource {
+            resource: kura_events::Resource {
                 kind: RESOURCE_KIND_EXECUTION.to_string(),
                 id: execution.execution_id.clone(),
             },
             payload,
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         }).map(|_| ())
     }
 
     fn publish_event(
         &self,
-        mut event: dope_events::Event,
-    ) -> Result<dope_events::Event, SandboxError> {
+        mut event: kura_events::Event,
+    ) -> Result<kura_events::Event, SandboxError> {
         if event.event_id.is_empty() {
             event.event_id = new_id("evt");
         }
@@ -1530,7 +1530,7 @@ impl Manager {
 }
 
 impl ManagerInner {
-    fn reload_builtins_locked(&mut self, cfg: &dope_config::Config) {
+    fn reload_builtins_locked(&mut self, cfg: &kura_config::Config) {
         let builtins = builtin_profiles(cfg);
         let capabilities = detect_backend_capabilities(cfg);
         self.profiles = HashMap::with_capacity(builtins.len());
@@ -1620,7 +1620,7 @@ fn merge_consumer_payload(
 /// Go `approvalMatchesExecution`.
 #[must_use]
 pub fn approval_matches_execution(
-    approval: &dope_policy::Approval,
+    approval: &kura_policy::Approval,
     execution: &Execution,
     profile: &Profile,
 ) -> bool {
@@ -2287,7 +2287,7 @@ pub fn resolve_managed_work_dir(home_dir: &str, configured: &str) -> String {
         }
         return clean_path(&format!("{}/{}", home_dir.trim_end_matches('/'), rest));
     }
-    match dope_config::resolve_dir(trimmed) {
+    match kura_config::resolve_dir(trimmed) {
         Ok(resolved) => clean_path(&resolved),
         Err(_) => {
             if home_dir.trim().is_empty() {
@@ -2305,7 +2305,7 @@ pub fn normalize_path(base: &str, value: &str) -> Result<String, String> {
     if trimmed.is_empty() {
         return Ok(base.trim().to_string());
     }
-    let resolved = dope_config::resolve_dir(trimmed).map_err(|err| err.to_string())?;
+    let resolved = kura_config::resolve_dir(trimmed).map_err(|err| err.to_string())?;
     if !std::path::Path::new(&resolved).is_absolute() {
         if base.trim().is_empty() {
             return Ok(clean_path(&resolved));
@@ -2449,7 +2449,7 @@ fn sorted_keys<V>(values: &HashMap<String, V>) -> Vec<String> {
 
 /// Go `detectBackendCapabilities`.
 fn detect_backend_capabilities(
-    cfg: &dope_config::Config,
+    cfg: &kura_config::Config,
 ) -> HashMap<BackendKind, BackendCapabilityProfile> {
     let mut capabilities: HashMap<BackendKind, BackendCapabilityProfile> = HashMap::new();
     capabilities.insert(
@@ -2472,7 +2472,7 @@ fn detect_backend_capabilities(
 }
 
 /// Go `detectDockerCapability`.
-fn detect_docker_capability(_cfg: &dope_config::Config) -> BackendCapabilityProfile {
+fn detect_docker_capability(_cfg: &kura_config::Config) -> BackendCapabilityProfile {
     let image = docker_image_for_execution();
     let mut capability = BackendCapabilityProfile {
         backend_kind: BackendKind::Docker,
@@ -2625,19 +2625,19 @@ fn find_on_path(name: &str) -> Option<String> {
 }
 
 /// Go `environment` string form (matches the config crate serialization).
-fn environment_str(environment: dope_config::Environment) -> &'static str {
+fn environment_str(environment: kura_config::Environment) -> &'static str {
     match environment {
-        dope_config::Environment::Prod => "prod",
-        dope_config::Environment::Test => "test",
+        kura_config::Environment::Prod => "prod",
+        kura_config::Environment::Test => "test",
     }
 }
 
 /// Go `builtinProfiles`.
-fn builtin_profiles(cfg: &dope_config::Config) -> Vec<Profile> {
+fn builtin_profiles(cfg: &kura_config::Config) -> Vec<Profile> {
     let data_dir = cfg.data_dir.trim().to_string();
     let home_dir = std::env::var("HOME").unwrap_or_default();
     let managed_home_dir = first_non_empty(&[
-        dope_config::managed_provider_home_dir(cfg).as_str(),
+        kura_config::managed_provider_home_dir(cfg).as_str(),
         home_dir.as_str(),
     ]);
     let agents_dir = if home_dir.is_empty() {
@@ -2686,10 +2686,10 @@ fn builtin_profiles(cfg: &dope_config::Config) -> Vec<Profile> {
                     "TERM".to_string(),
                 ],
                 injected_vars: HashMap::from([
-                    ("DOPE_DATA_DIR".to_string(), data_dir.clone()),
-                    ("DOPE_ENV".to_string(), env.to_string()),
+                    ("KURA_DATA_DIR".to_string(), data_dir.clone()),
+                    ("KURA_ENV".to_string(), env.to_string()),
                     ("HOME".to_string(), home_dir.clone()),
-                    ("DOPE_AGENTS_DIR".to_string(), agents_dir.clone()),
+                    ("KURA_AGENTS_DIR".to_string(), agents_dir.clone()),
                 ]),
                 redacted_vars: Vec::new(),
             },
@@ -2744,9 +2744,9 @@ fn builtin_profiles(cfg: &dope_config::Config) -> Vec<Profile> {
                 mode: EnvironmentMode::Clean,
                 allowed_vars: Vec::new(),
                 injected_vars: HashMap::from([
-                    ("DOPE_DATA_DIR".to_string(), data_dir.clone()),
-                    ("DOPE_ENV".to_string(), env.to_string()),
-                    ("DOPE_AGENTS_DIR".to_string(), agents_dir.clone()),
+                    ("KURA_DATA_DIR".to_string(), data_dir.clone()),
+                    ("KURA_ENV".to_string(), env.to_string()),
+                    ("KURA_AGENTS_DIR".to_string(), agents_dir.clone()),
                 ]),
                 redacted_vars: Vec::new(),
             },
@@ -2821,7 +2821,7 @@ fn builtin_profiles(cfg: &dope_config::Config) -> Vec<Profile> {
                 ],
                 injected_vars: HashMap::from([
                     ("HOME".to_string(), managed_home_dir.clone()),
-                    ("DOPE_ENV".to_string(), env.to_string()),
+                    ("KURA_ENV".to_string(), env.to_string()),
                 ]),
                 redacted_vars: Vec::new(),
             },
@@ -2895,7 +2895,7 @@ fn builtin_profiles(cfg: &dope_config::Config) -> Vec<Profile> {
                 ],
                 injected_vars: HashMap::from([
                     ("HOME".to_string(), managed_home_dir),
-                    ("DOPE_ENV".to_string(), env.to_string()),
+                    ("KURA_ENV".to_string(), env.to_string()),
                 ]),
                 redacted_vars: Vec::new(),
             },

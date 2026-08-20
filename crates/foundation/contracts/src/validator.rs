@@ -608,7 +608,7 @@ mod tests {
 
     fn temp_root(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "dope-contracts-test-{}-{tag}",
+            "kura-contracts-test-{}-{tag}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);

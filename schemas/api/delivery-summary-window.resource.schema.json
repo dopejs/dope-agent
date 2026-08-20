@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/delivery-summary-window.resource.schema.json",
+  "$id": "https://kura.local/schemas/api/delivery-summary-window.resource.schema.json",
   "title": "DeliverySummaryWindowResource",
   "type": "object",
   "required": ["summaryWindowId", "environmentScope", "targetId", "preferenceId", "status", "windowStartedAt", "windowEndsAt", "resultCount", "createdAt", "updatedAt"],

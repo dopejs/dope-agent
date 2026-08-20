@@ -2,7 +2,7 @@
 
 ## Goal
 
-Verify in `DOPE_ENV=test` that the primary web shell can:
+Verify in `KURA_ENV=test` that the primary web shell can:
 
 - show the active environment and current onboarding status
 - project daemon-owned readiness items and optional follow-up setup
@@ -12,8 +12,8 @@ Verify in `DOPE_ENV=test` that the primary web shell can:
 
 ## Prerequisites
 
-- local test daemon only; do not use `~/.dope`
-- authenticated local pairing or an existing bearer token in `DOPE_TOKEN`
+- local test daemon only; do not use `~/.kura`
+- authenticated local pairing or an existing bearer token in `KURA_TOKEN`
 - Node dependencies installed for the repo workspace
 - no live connectors or production secrets are required
 - the shell uses `web/` as the primary operator surface in this roadmap
@@ -39,7 +39,7 @@ make daemon-test-status
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "integrationId": "calendar-shell",
@@ -56,7 +56,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "readinessStatus": "degraded",
@@ -72,7 +72,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "action": "shell.test.approval",
@@ -88,7 +88,7 @@ curl -sS -X POST \
 
 ```bash
 RUN_RESPONSE=$(curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "entrypoint": "operator.shell.quickstart",
@@ -101,7 +101,7 @@ RUN_ID=$(printf '%s' "$RUN_RESPONSE" | jq -r '.runId')
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "goal": "Seed operator workflow"
@@ -112,7 +112,7 @@ curl -sS -X POST \
 ```bash
 SCHEDULE_FIRE_AT=$(date -u -v+5M '+%Y-%m-%dT%H:%M:%SZ')
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "trigger": {
@@ -134,19 +134,19 @@ curl -sS -X POST \
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/operator/onboarding | jq
 ```
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/operator/activity | jq
 ```
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/operator/diagnostics | jq
 ```
 
@@ -211,7 +211,7 @@ make daemon-contract-test
 
 ## Recorded Verification Notes
 
-Observed on 2026-04-24 in `DOPE_ENV=test`:
+Observed on 2026-04-24 in `KURA_ENV=test`:
 
 - seeded `calendar-shell` integration appeared in `/v1/operator/onboarding` and
   `/v1/operator/diagnostics` as degraded readiness with a required operator action

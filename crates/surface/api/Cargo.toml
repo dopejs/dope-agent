@@ -1,13 +1,13 @@
 [package]
-name = "dope-api"
+name = "kura-api"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-plugin = { workspace = true }
-dope-context = { workspace = true }
-dope-improvement = { workspace = true }
+kura-plugin = { workspace = true }
+kura-context = { workspace = true }
+kura-improvement = { workspace = true }
 # HTTP server stack (wave 6+): axum router over tower/tower-http, tokio runtime, hyper HTTP/1.
 axum = { workspace = true }
 tower = { workspace = true }
@@ -27,46 +27,46 @@ futures = { workspace = true }
 
 # Manager crates referenced by AppState (Go Dependencies) and/or the shared
 # DTO vocabulary (port of daemon/internal/api/types.go).
-dope-store = { workspace = true }
-dope-config = { workspace = true }
-dope-events = { workspace = true }
-dope-chat = { workspace = true }
-dope-runtime = { workspace = true }
-dope-router = { workspace = true }
-dope-policy = { workspace = true }
-dope-identity = { workspace = true }
-dope-llm = { workspace = true }
-dope-providers = { workspace = true }
-dope-skills = { workspace = true }
-dope-sandbox = { workspace = true }
-dope-secrets = { workspace = true }
-dope-mcp = { workspace = true }
-dope-integrations = { workspace = true }
-dope-calendar = { workspace = true }
-dope-mail = { workspace = true }
-dope-reminders = { workspace = true }
-dope-triage = { workspace = true }
-dope-routine = { workspace = true }
-dope-opsreadiness = { workspace = true }
-dope-webhook = { workspace = true }
-dope-catalog = { workspace = true }
-dope-execprofile = { workspace = true }
-dope-evidence = { workspace = true }
-dope-connectors = { workspace = true }
-dope-imtypes = { workspace = true }
-dope-memory = { workspace = true }
-dope-threads = { workspace = true }
-dope-profiles = { workspace = true }
-dope-bindings = { workspace = true }
-dope-capabilities = { workspace = true }
-dope-computeruse = { workspace = true }
-dope-scheduler = { workspace = true }
-dope-delivery = { workspace = true }
-dope-billing = { workspace = true }
-dope-activation = { workspace = true }
-dope-setupwizard = { workspace = true }
-dope-checkpoints = { workspace = true }
-dope-evaluation = { workspace = true }
-dope-livevalidation = { workspace = true }
-dope-audit = { workspace = true }
-dope-orchestration = { workspace = true }
+kura-store = { workspace = true }
+kura-config = { workspace = true }
+kura-events = { workspace = true }
+kura-chat = { workspace = true }
+kura-runtime = { workspace = true }
+kura-router = { workspace = true }
+kura-policy = { workspace = true }
+kura-identity = { workspace = true }
+kura-llm = { workspace = true }
+kura-providers = { workspace = true }
+kura-skills = { workspace = true }
+kura-sandbox = { workspace = true }
+kura-secrets = { workspace = true }
+kura-mcp = { workspace = true }
+kura-integrations = { workspace = true }
+kura-calendar = { workspace = true }
+kura-mail = { workspace = true }
+kura-reminders = { workspace = true }
+kura-triage = { workspace = true }
+kura-routine = { workspace = true }
+kura-opsreadiness = { workspace = true }
+kura-webhook = { workspace = true }
+kura-catalog = { workspace = true }
+kura-execprofile = { workspace = true }
+kura-evidence = { workspace = true }
+kura-connectors = { workspace = true }
+kura-imtypes = { workspace = true }
+kura-memory = { workspace = true }
+kura-threads = { workspace = true }
+kura-profiles = { workspace = true }
+kura-bindings = { workspace = true }
+kura-capabilities = { workspace = true }
+kura-computeruse = { workspace = true }
+kura-scheduler = { workspace = true }
+kura-delivery = { workspace = true }
+kura-billing = { workspace = true }
+kura-activation = { workspace = true }
+kura-setupwizard = { workspace = true }
+kura-checkpoints = { workspace = true }
+kura-evaluation = { workspace = true }
+kura-livevalidation = { workspace = true }
+kura-audit = { workspace = true }
+kura-orchestration = { workspace = true }

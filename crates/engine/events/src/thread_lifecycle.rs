@@ -6,7 +6,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use crate::util::{is_go_zero_time, now_utc, payload};
 use crate::wire;
 use crate::{Event, Resource, Scope};
-use dope_threads::{
+use kura_threads::{
     LifecycleAction, LifecycleActionKind, RedactionStatus, RuntimeProjection, SourceLinkage,
 };
 

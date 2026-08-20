@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_llm::{CancelToken, ProviderError, ProviderRequest, ProviderResponse, StreamChunk, Usage};
-use dope_providers::{AuthMode, AuthState, AuthStatus, Family, Model};
-use dope_sandbox::{
+use kura_llm::{CancelToken, ProviderError, ProviderRequest, ProviderResponse, StreamChunk, Usage};
+use kura_providers::{AuthMode, AuthState, AuthStatus, Family, Model};
+use kura_sandbox::{
     AccessRequest, DecisionResolution, LocalStateAccessMode, ManagedProviderActionKind,
     NetworkMode, SensitiveLocalStateAccessSummary,
 };
@@ -59,7 +59,7 @@ impl ClaudeBridge {
     /// Go `newClaudeBridge`.
     pub fn new(
         home_dir: &str,
-        cfg: &dope_config::Config,
+        cfg: &kura_config::Config,
         runner: Arc<dyn Runner>,
         sandboxes: Option<Arc<dyn SandboxManager>>,
     ) -> Self {
@@ -178,7 +178,7 @@ impl ClaudeBridge {
         let plan = ManagedProviderOperationPlan {
             provider_id: self.provider_id(),
             action,
-            profile_id: dope_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE.to_string(),
+            profile_id: kura_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE.to_string(),
             requested_by: format!("{REQUESTED_BY_PREFIX}{}", self.provider_id()),
             reason: "managed provider local state inspection".to_string(),
             declared_read: vec![filepath_join(&[&self.home_dir, ".claude", "settings.json"])],
@@ -206,7 +206,7 @@ impl ClaudeBridge {
             return Ok(SettingsEvaluation::Denied(ManagedProviderOperationEvaluation {
                 metadata: crate::evaluate::finalize_managed_provider_metadata(
                     &evaluation.metadata,
-                    dope_sandbox::ErrorClass::PolicyDenied.as_str(),
+                    kura_sandbox::ErrorClass::PolicyDenied.as_str(),
                 ),
                 ..evaluation
             }));
@@ -225,7 +225,7 @@ impl ClaudeBridge {
             operation_id: new_managed_provider_operation_id(),
             provider_id: self.provider_id(),
             action,
-            profile_id: dope_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE.to_string(),
+            profile_id: kura_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE.to_string(),
             requested_by: format!("{REQUESTED_BY_PREFIX}{}", self.provider_id()),
             reason: "managed provider bridge execution".to_string(),
             access: AccessRequest {
@@ -441,7 +441,7 @@ impl Bridge for ClaudeBridge {
         Ok((state, models))
     }
 
-    fn provider(&self) -> Arc<dyn dope_llm::Provider> {
+    fn provider(&self) -> Arc<dyn kura_llm::Provider> {
         Arc::new(ClaudeCLIProvider {
             bridge: Arc::new(self.clone_shallow()),
         })
@@ -479,7 +479,7 @@ impl ClaudeBridge {
     }
 }
 
-impl dope_llm::Provider for ClaudeCLIProvider {
+impl kura_llm::Provider for ClaudeCLIProvider {
     fn name(&self) -> &str {
         CLAUDE_PROVIDER_ID
     }
@@ -495,7 +495,7 @@ impl dope_llm::Provider for ClaudeCLIProvider {
     fn stream<'a>(
         &'a self,
         request: ProviderRequest,
-        emit: dope_llm::StreamEmitter<'a>,
+        emit: kura_llm::StreamEmitter<'a>,
     ) -> BoxFuture<'a, Result<ProviderResponse, ProviderError>> {
         let bridge = Arc::clone(&self.bridge);
         Box::pin(async move {

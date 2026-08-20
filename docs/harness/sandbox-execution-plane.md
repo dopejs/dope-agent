@@ -4,7 +4,7 @@
 
 This document defines the detailed design target for `Roadmap 16: Sandbox Execution Plane`.
 
-The sandbox system is not only a local command runner. It is the execution boundary for the Dope harness.
+The sandbox system is not only a local command runner. It is the execution boundary for the Kura harness.
 
 Its purpose is to make execution:
 
@@ -27,7 +27,7 @@ This is intentionally closer to:
 - HermesAgent's multi-backend execution substrate
 - Claude Code and Codex style permission and approval semantics
 
-but without inheriting workspace-specific assumptions that Dope does not currently have.
+but without inheriting workspace-specific assumptions that Kura does not currently have.
 
 ## Goals
 
@@ -133,8 +133,8 @@ It must also record:
 
 Sandbox defaults must respect the current environment split:
 
-- `test` uses `~/.dope-test`
-- `prod` uses `~/.dope`
+- `test` uses `~/.kura-test`
+- `prod` uses `~/.kura`
 
 Nothing in the sandbox design should collapse that separation.
 
@@ -572,7 +572,7 @@ It closed:
 - a common requirement declaration model shared by managed-provider bridges, the current skill registry and explicit skill-selection surfaces, and the current high-risk local tool-call path
 - explicit secret scope and redaction semantics for sandbox env injection and operator-visible projections
 - executable-skill env injection resolves from the active daemon data dir
-  (`~/.dope-test/skill-secrets.json` or `~/.dope/skill-secrets.json`) instead of shared
+  (`~/.kura-test/skill-secrets.json` or `~/.kura/skill-secrets.json`) instead of shared
   ambient process env
 - execution provenance that identifies which current consumer requested sandbox work or approval-gated preflight evaluation
 - the remaining non-converged current consumers beyond the initial managed-provider slice

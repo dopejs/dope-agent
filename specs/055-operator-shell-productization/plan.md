@@ -7,7 +7,7 @@
 Consolidate the web shell IA and extend the SDK to cover the Roadmap 65-69 product surfaces.
 Add a single navigation/state module (web/src/features/operator-shell) that organizes all public
 surfaces, declares critical-action expectations, preserves tenant selection, and resolves stable
-view states. Add typed @dope/client methods for triage, routines, webhooks, catalog, and
+view states. Add typed @kura/client methods for triage, routines, webhooks, catalog, and
 execution profiles so the shell consumes daemon APIs without bypass.
 
 ## Constitution Check

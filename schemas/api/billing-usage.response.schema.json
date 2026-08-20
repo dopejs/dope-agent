@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/billing-usage.response.schema.json",
+  "$id": "https://kura.local/schemas/api/billing-usage.response.schema.json",
   "title": "BillingUsageResponse",
   "type": "object",
   "required": ["planKey", "enforcementMode", "quotas"],

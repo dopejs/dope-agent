@@ -10,9 +10,9 @@ The target is not only to store a few local skill files. The target is to make s
 
 The daemon supports two agent roots.
 
-### Dope-Managed Root
+### Kura-Managed Root
 
-This is the active Dope data dir for the running environment.
+This is the active Kura data dir for the running environment.
 
 Expected files:
 
@@ -70,7 +70,7 @@ For overlay application:
 - home overlay is applied first
 - `dataDir` overlay is applied second
 
-This lets Dope-managed environment instructions narrow or override home-level defaults.
+This lets Kura-managed environment instructions narrow or override home-level defaults.
 
 ## Chat Behavior
 

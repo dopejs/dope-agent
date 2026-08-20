@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/create-tenant-invitation.request.schema.json",
+  "$id": "https://kura.local/schemas/api/create-tenant-invitation.request.schema.json",
   "title": "CreateTenantInvitationRequest",
   "type": "object",
   "required": ["invitedPrincipalId", "role"],

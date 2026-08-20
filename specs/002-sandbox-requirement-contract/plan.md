@@ -45,8 +45,8 @@ generic executable-skill subprocess support stay outside this slice.
 - Verification and observability: PASS. The plan requires targeted package tests, contract
   validation, restart-aware provenance checks, and operator-visible explanation updates for
   denied and preflight-only paths.
-- Environment and secrets: PASS. The plan keeps local work in `DOPE_ENV=test`, preserves
-  `~/.dope-test` / `~/.dope` separation, and treats secret scope, redaction, and env
+- Environment and secrets: PASS. The plan keeps local work in `KURA_ENV=test`, preserves
+  `~/.kura-test` / `~/.kura` separation, and treats secret scope, redaction, and env
   injection as first-class operator-facing behavior rather than incidental config handling.
 
 Post-design re-check:

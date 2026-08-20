@@ -1,8 +1,8 @@
 //! Live-validation row and test-sink fake-outcome tests (ports of live_validation_test.go
 //! and live_validation_fake_test.go).
 
-use dope_delivery::{live_validation_matrix_rows, TestSinkAdapter};
-use dope_livevalidation::{fake_outcome_result_for, FakeOutcome, MatrixApproval, SafetyClass};
+use kura_delivery::{live_validation_matrix_rows, TestSinkAdapter};
+use kura_livevalidation::{fake_outcome_result_for, FakeOutcome, MatrixApproval, SafetyClass};
 
 #[test]
 fn delivery_live_validation_rows_classify_dispatch_and_connector_send() {

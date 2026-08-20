@@ -7,7 +7,7 @@
 # Clones (or updates) the repo into a cache dir and runs deploy/install.sh.
 # Requires: git, Rust (cargo). All install.sh flags/env pass through, e.g.:
 #
-#   curl -fsSL .../get.sh | DOPE_ENV=test bash
+#   curl -fsSL .../get.sh | KURA_ENV=test bash
 #   curl -fsSL .../get.sh | bash -s -- --no-service
 #
 # NOTE: there is no prebuilt-binary release channel yet, so this builds from
@@ -16,9 +16,9 @@
 #
 set -euo pipefail
 
-REPO_URL="${DOPE_REPO_URL:-https://github.com/dopejs/kura.git}"
-REF="${DOPE_REF:-main}"
-CACHE_DIR="${DOPE_SRC_DIR:-${HOME}/.cache/dope-agent/src}"
+REPO_URL="${KURA_REPO_URL:-https://github.com/dopejs/kura.git}"
+REF="${KURA_REF:-main}"
+CACHE_DIR="${KURA_SRC_DIR:-${HOME}/.cache/kura-agent/src}"
 
 command -v git >/dev/null 2>&1 || { echo "error: git is required" >&2; exit 1; }
 

@@ -3,7 +3,7 @@
 //! adapter; nothing crosses a real transport.
 
 use chrono::{DateTime, Utc};
-use dope_livevalidation::{fake_outcome_result_for, FakeOutcome, FakeOutcomeResult, SafetyClass};
+use kura_livevalidation::{fake_outcome_result_for, FakeOutcome, FakeOutcomeResult, SafetyClass};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 

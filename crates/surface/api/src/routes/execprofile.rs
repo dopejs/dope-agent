@@ -14,7 +14,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use dope_execprofile as execprofile;
+use kura_execprofile as execprofile;
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -132,14 +132,14 @@ mod tests {
     use std::sync::Arc;
 
     fn state_with_manager() -> crate::state::AppState {
-        let manager = dope_execprofile::Manager::new("test", None, None, None);
+        let manager = kura_execprofile::Manager::new("test", None, None, None);
         manager
-            .register_profile(dope_execprofile::ExecutionProfile {
+            .register_profile(kura_execprofile::ExecutionProfile {
                 profile_id: "exec_profile_subprocess".to_string(),
                 name: "subprocess".to_string(),
-                backend_kind: dope_execprofile::BackendKind::Subprocess,
+                backend_kind: kura_execprofile::BackendKind::Subprocess,
                 provides: vec!["filesystem".to_string()],
-                ..dope_execprofile::ExecutionProfile::default()
+                ..kura_execprofile::ExecutionProfile::default()
             })
             .expect("register profile");
         let mut state = test_state();

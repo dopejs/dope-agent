@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/create-integration-diagnostic-smoke.request.schema.json",
+  "$id": "https://kura.local/schemas/api/create-integration-diagnostic-smoke.request.schema.json",
   "title": "CreateIntegrationDiagnosticSmokeRequest",
   "type": "object",
   "required": ["integrationId"],

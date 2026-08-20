@@ -1,10 +1,10 @@
 [package]
-name = "dope-artifacts"
+name = "kura-artifacts"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-computeruse.workspace = true
+kura-computeruse.workspace = true
 sha2.workspace = true
 chrono.workspace = true

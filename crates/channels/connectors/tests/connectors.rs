@@ -1,4 +1,4 @@
-//! Serde round-trip and behavioral tests for the dope-connectors wire types,
+//! Serde round-trip and behavioral tests for the kura-connectors wire types,
 //! the connector supervisor manager, and the conformance helpers. JSON
 //! assertions check the camelCase field names and snake_case enum values
 //! against the Go json tags; the behavioral tests port supervisor_test.go and
@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Duration, Utc};
-use dope_connectors::{
+use kura_connectors::{
     AccountBindingSummary, CapabilityProfile, ConformanceArea, ConformanceResult,
     ConformanceResultStatus, Connector, ConnectorDiagnosticState, ConnectorsError,
     DiagnosticReasonCode, FreshnessState, GroupRoomCapabilities, HandoffCapabilities,
@@ -21,7 +21,7 @@ use dope_connectors::{
     HANDOFF_SURFACE_DESTINATION_SUPPORT, HANDOFF_SURFACE_FIRST_RESPONSE_SOURCE_REFERENCES,
     HANDOFF_SURFACE_SOURCE_SUPPORT,
 };
-use dope_livevalidation::FakeOutcome;
+use kura_livevalidation::FakeOutcome;
 
 fn ts(s: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)

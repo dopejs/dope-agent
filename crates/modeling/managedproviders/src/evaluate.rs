@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use dope_sandbox::{
+use kura_sandbox::{
     AccessRequest, ApprovalMode, BackendKind, ConsumerContractView, ConsumerKind,
     ConsumerPolicyRecord, ConsumerRequirementDeclaration, DecisionApprovalStatus,
     DecisionResolution, ExecutionFinalization, ExecutionStatus, ManagedProviderActionKind,
@@ -80,7 +80,7 @@ pub fn evaluate_managed_provider_operation(
             backend_kind: BackendKind::Subprocess,
             read_roots: clone_roots(&first_non_empty_roots(&operation.declared_read, &operation.access.read_roots)),
             write_roots: clone_roots(&first_non_empty_roots(&operation.declared_write, &operation.access.write_roots)),
-            network_mode: operation.access.network_mode.unwrap_or(dope_sandbox::NetworkMode::Deny),
+            network_mode: operation.access.network_mode.unwrap_or(kura_sandbox::NetworkMode::Deny),
             allowed_hosts: clone_strings(&operation.access.allowed_hosts),
             allowed_ports: clone_ints(&operation.access.allowed_ports),
             approval_mode: ApprovalMode::Allow,
@@ -118,12 +118,12 @@ pub fn evaluate_managed_provider_operation(
         evaluation.operation.approval_status = decision.approval_status;
         if decision.resolution == DecisionResolution::Deny {
             evaluation.operation.status = ManagedProviderOperationStatus::Denied;
-            evaluation.operation.failure_class = dope_sandbox::ErrorClass::PolicyDenied.as_str().to_string();
+            evaluation.operation.failure_class = kura_sandbox::ErrorClass::PolicyDenied.as_str().to_string();
         }
         if decision.resolution == DecisionResolution::Ask {
             evaluation.operation.status = ManagedProviderOperationStatus::Denied;
             evaluation.operation.failure_class =
-                dope_sandbox::ErrorClass::ApprovalRequired.as_str().to_string();
+                kura_sandbox::ErrorClass::ApprovalRequired.as_str().to_string();
         }
         if let Some(profile) = manager.get_profile(&operation.profile_id) {
             evaluation.declaration.backend_kind = profile.backend_kind;
@@ -143,7 +143,7 @@ pub fn evaluate_managed_provider_operation(
         if !reads_within || !writes_within {
             evaluation.operation.decision = DecisionResolution::Deny;
             evaluation.operation.status = ManagedProviderOperationStatus::Denied;
-            evaluation.operation.failure_class = dope_sandbox::ErrorClass::PolicyDenied.as_str().to_string();
+            evaluation.operation.failure_class = kura_sandbox::ErrorClass::PolicyDenied.as_str().to_string();
         }
     }
 
@@ -288,7 +288,7 @@ pub fn build_managed_provider_consumer_view(
             consumer_id,
             operation_kind,
             profile_id: operation.profile_id.trim().to_string(),
-            execution_mode: dope_sandbox::ExecutionMode::Subprocess,
+            execution_mode: kura_sandbox::ExecutionMode::Subprocess,
             allowed_backend_kinds: vec![BackendKind::Subprocess],
             read_roots,
             write_roots,
@@ -362,7 +362,7 @@ pub fn finalize_managed_provider_execution_success(
 pub fn finalize_managed_provider_execution_failure(
     manager: Option<&dyn SandboxManager>,
     result: &RunResult,
-    err: &dope_llm::ProviderError,
+    err: &kura_llm::ProviderError,
 ) {
     let Some(manager) = manager else { return };
     if result.execution_id.trim().is_empty() {
@@ -370,7 +370,7 @@ pub fn finalize_managed_provider_execution_failure(
     }
     let mut finalization = ExecutionFinalization {
         status: Some(ExecutionStatus::Failed),
-        error_class: dope_sandbox::ErrorClass::ProviderFailed.as_str().to_string(),
+        error_class: kura_sandbox::ErrorClass::ProviderFailed.as_str().to_string(),
         error_code: "provider_error".to_string(),
         error: err.to_string().trim().to_string(),
     };
@@ -379,7 +379,7 @@ pub fn finalize_managed_provider_execution_failure(
         finalization.error_code = first_non_empty(&[&code, &finalization.error_code]);
     }
     if code == "upstream_auth_failed" {
-        finalization.error_class = dope_sandbox::ErrorClass::ProviderAuth.as_str().to_string();
+        finalization.error_class = kura_sandbox::ErrorClass::ProviderAuth.as_str().to_string();
     }
     let _ = manager.finalize_execution(&result.execution_id, finalization);
 }
@@ -406,7 +406,7 @@ pub fn local_state_summary(
     provider_id: &str,
     action: ManagedProviderActionKind,
     state_class: &str,
-    access_mode: dope_sandbox::LocalStateAccessMode,
+    access_mode: kura_sandbox::LocalStateAccessMode,
     path: &str,
     sensitive: bool,
 ) -> SensitiveLocalStateAccessSummary {
@@ -478,7 +478,7 @@ pub fn denied_evaluation(evaluation: ManagedProviderOperationEvaluation) -> Erro
         evaluation: ManagedProviderOperationEvaluation {
             metadata: finalize_managed_provider_metadata(
                 &evaluation.metadata,
-                dope_sandbox::ErrorClass::PolicyDenied.as_str(),
+                kura_sandbox::ErrorClass::PolicyDenied.as_str(),
             ),
             ..evaluation
         },

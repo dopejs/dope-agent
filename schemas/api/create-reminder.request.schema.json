@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/create-reminder.request.schema.json",
+  "$id": "https://kura.local/schemas/api/create-reminder.request.schema.json",
   "title": "CreateReminderRequest",
   "type": "object",
   "required": ["title", "trigger"],

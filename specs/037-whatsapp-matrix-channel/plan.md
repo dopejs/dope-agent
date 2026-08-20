@@ -56,7 +56,7 @@ tenant isolation, schema/contract fixtures, and live smoke structured skip; `go 
 ./...` from `daemon/`; `make daemon-contract-test`; `pnpm test:clients` and `pnpm build`
 only if SDK/web/TUI surfaces change; `go mod tidy` from `daemon/` after implementation.
 **Target Platform**: Local-first daemon and hosted daemon behavior. Local verification
-defaults to the isolated test environment (`~/.dope-test`, `127.0.0.1:19192`). Live
+defaults to the isolated test environment (`~/.kura-test`, `127.0.0.1:19192`). Live
 Matrix bot credentials and production tenants are not required for automated acceptance.
 Safe live Matrix validation, when explicitly used, is scoped to a test tenant,
 tenant-provided bot account, tenant-selected homeserver, unencrypted test rooms, and
@@ -116,7 +116,7 @@ automation, and additional provider domains remain out of scope.
   delivery separation, diagnostics, freshness, retention, redaction, rate-limit and
   homeserver/federation/network behavior, live smoke skip, schema contracts, and
   operator docs.
-- **Environment and secrets** - PASS. Local work defaults to `~/.dope-test` with fake
+- **Environment and secrets** - PASS. Local work defaults to `~/.kura-test` with fake
   Matrix transport and fake bot evidence. Real Matrix credentials, live connectors, and
   production tenants are used only in an explicit live validation path that can
   structured-skip when safe Matrix authorization is unavailable.

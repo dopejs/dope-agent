@@ -1,5 +1,5 @@
 // Operator-shell product surface views (Roadmap 70). Presentational components for the Roadmap
-// 65-71 surfaces, consuming @dope/client resource types. Each renders through SurfacePanel so the
+// 65-71 surfaces, consuming @kura/client resource types. Each renders through SurfacePanel so the
 // standard empty/error/denied/unsupported/loading states are consistent and explainable. Data
 // fetching is done by the host shell via the SDK (the shell never bypasses daemon APIs).
 
@@ -13,7 +13,7 @@ import type {
   TriagePolicyResource,
   WebhookEndpointResource,
   MemoryAssetResource,
-} from "@dope/client";
+} from "@kura/client";
 
 import type { ViewState } from "./navigation";
 

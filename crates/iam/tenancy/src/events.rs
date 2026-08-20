@@ -16,26 +16,26 @@ use crate::{require, TenancyError};
 pub struct Events {
     store: crate::SQLiteStore,
     #[allow(dead_code)]
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl Events {
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         Events { store, emitter }
     }
 
     /// Reports whether the given event category is global (NULL tenant_id allowed).
-    /// Delegates to dope_events::is_global_category so the global set has a single
+    /// Delegates to kura_events::is_global_category so the global set has a single
     /// source of truth in the events crate.
     #[must_use]
     pub fn is_global_category(category: &str) -> bool {
-        dope_events::is_global_category(category)
+        kura_events::is_global_category(category)
     }
 
     /// Persists a tenant-owned event with tenant_id pre-bound. Returns the persisted
     /// event including the assigned sequence and the bound tenant id.
-    pub fn append_event_for_tenant(&self, event: &dope_events::Event) -> Result<dope_events::Event, TenancyError> {
+    pub fn append_event_for_tenant(&self, event: &kura_events::Event) -> Result<kura_events::Event, TenancyError> {
         let tenant_id = require()?;
         if Self::is_global_category(&event.category) {
             return Err(TenancyError::Store(
@@ -49,7 +49,7 @@ impl Events {
 
     /// Returns persisted events whose tenant_id matches the caller. Global rows
     /// (tenant_id NULL) are NOT returned.
-    pub fn list_events_for_tenant(&self, filter: &dope_events::Filter) -> Result<Vec<dope_events::Event>, TenancyError> {
+    pub fn list_events_for_tenant(&self, filter: &kura_events::Filter) -> Result<Vec<kura_events::Event>, TenancyError> {
         let tenant_id = require()?;
         self.store.list_events_for_tenant_raw(&tenant_id, filter).map_err(TenancyError::from)
     }

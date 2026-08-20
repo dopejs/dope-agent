@@ -5,10 +5,10 @@ precedence:
 
 1. Built-in environment-aware defaults
 2. `<data_dir>/config.json`
-3. `DOPE_*` environment variables
+3. `KURA_*` environment variables
 
-Test env (`DOPE_ENV=test`) targets `~/.dope-test` and `127.0.0.1:19192`;
-production targets `~/.dope` and `127.0.0.1:19191`.
+Test env (`KURA_ENV=test`) targets `~/.kura-test` and `127.0.0.1:19192`;
+production targets `~/.kura` and `127.0.0.1:19191`.
 
 ## config.json shape
 
@@ -65,6 +65,6 @@ Runtime composition is configured separately in `<data_dir>/plugins.json`
 
 | Variable | Effect |
 |----------|--------|
-| `DOPE_ENV` | `test` / `prod` environment selection |
-| `DOPE_CONNECTORS_DISCORD_ENABLED` | opt into the live Discord connector |
-| `DOPE_*` | every config field has an env override |
+| `KURA_ENV` | `test` / `prod` environment selection |
+| `KURA_CONNECTORS_DISCORD_ENABLED` | opt into the live Discord connector |
+| `KURA_*` | every config field has an env override |

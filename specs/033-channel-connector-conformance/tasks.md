@@ -291,4 +291,4 @@ Task: "T061 [P] [US4] Add event contract tests for foreground reply failure and 
 - Tasks marked `[P]` touch different files or are safe to start before dependent implementation tasks.
 - Tests must fail before implementation tasks satisfy them.
 - Public schema or event changes require `make daemon-contract-test`.
-- Default verification uses `~/.dope-test`; live connector credentials and production tenants are out of scope.
+- Default verification uses `~/.kura-test`; live connector credentials and production tenants are out of scope.

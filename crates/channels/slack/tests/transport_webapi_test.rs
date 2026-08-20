@@ -4,12 +4,12 @@
 
 use std::sync::Arc;
 
-use dope_connectors::DiagnosticReasonCode;
-use dope_imtypes::OutboundReply;
-use dope_slack::diagnostics::diagnostic_reason_for_error;
-use dope_slack::readiness::WorkspaceBinding;
-use dope_slack::transport::Transport;
-use dope_slack::transport_webapi::{
+use kura_connectors::DiagnosticReasonCode;
+use kura_imtypes::OutboundReply;
+use kura_slack::diagnostics::diagnostic_reason_for_error;
+use kura_slack::readiness::WorkspaceBinding;
+use kura_slack::transport::Transport;
+use kura_slack::transport_webapi::{
     SlackHttpClient, WebApiError, WebApiTransport, WebApiTransportConfig,
 };
 

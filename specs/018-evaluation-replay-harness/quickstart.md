@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Validate roadmap 33 in `DOPE_ENV=test` by loading curated replay fixtures, launching a
+Validate roadmap 33 in `KURA_ENV=test` by loading curated replay fixtures, launching a
 default non-live replay from the web operator shell, generating a plane-level comparison,
 and confirming evaluation history survives daemon restart.
 
@@ -42,13 +42,13 @@ Expected coverage:
 
 Observed implementation run:
 
-- `cd daemon && GOCACHE=/tmp/dope-go-cache go test ./internal/evaluation ./internal/api ./internal/store ./internal/contracts ./internal/app`: pass
-- `GOCACHE=/tmp/dope-go-cache make daemon-contract-test`: pass
+- `cd daemon && GOCACHE=/tmp/kura-go-cache go test ./internal/evaluation ./internal/api ./internal/store ./internal/contracts ./internal/app`: pass
+- `GOCACHE=/tmp/kura-go-cache make daemon-contract-test`: pass
 - `pnpm build:sdk`: pass
 - `pnpm test:sdk`: pass
 - `pnpm test:web -- --runInBand`: pass
 - `pnpm build:web`: pass
-- `cd daemon && GOCACHE=/tmp/dope-go-cache go mod tidy`: pass with no `go.mod` or
+- `cd daemon && GOCACHE=/tmp/kura-go-cache go mod tidy`: pass with no `go.mod` or
   `go.sum` changes
 
 ## Manual Acceptance Flow
@@ -126,7 +126,7 @@ Observed implementation run:
 
 ## Recorded Manual Evidence
 
-`DOPE_ENV=test` daemon walkthrough on `127.0.0.1:19192`:
+`KURA_ENV=test` daemon walkthrough on `127.0.0.1:19192`:
 
 - Pairing flow created a local bearer token without exposing token material in logs.
 - `GET /v1/evaluation/replay-candidates` returned 3 curated fixture-backed candidates.

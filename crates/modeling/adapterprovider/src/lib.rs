@@ -9,7 +9,7 @@
 use std::io::{BufReader, Read, Write};
 use std::time::Duration;
 
-use dope_adapterrpc::{
+use kura_adapterrpc::{
     read_request, write_message, CodecError, FailureKind, Request, Response, Status,
     CONTRACT_VERSION,
 };
@@ -184,7 +184,7 @@ mod tests {
     use std::os::unix::net::UnixStream;
     use std::thread;
 
-    use dope_adapterrpc::{is_ambiguous, Client, Error};
+    use kura_adapterrpc::{is_ambiguous, Client, Error};
 
     struct HandlerFn(
         Box<

@@ -1,5 +1,5 @@
 [package]
-name = "dope-events"
+name = "kura-events"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
@@ -10,11 +10,11 @@ serde_json.workspace = true
 chrono.workspace = true
 parking_lot.workspace = true
 uuid = { workspace = true, features = ["v4"] }
-dope-profiles.workspace = true
-dope-threads.workspace = true
-dope-billing.workspace = true
-dope-integrations.workspace = true
-dope-opsreadiness.workspace = true
-dope-bindings.workspace = true
-dope-livevalidation.workspace = true
-dope-evaluation.workspace = true
+kura-profiles.workspace = true
+kura-threads.workspace = true
+kura-billing.workspace = true
+kura-integrations.workspace = true
+kura-opsreadiness.workspace = true
+kura-bindings.workspace = true
+kura-livevalidation.workspace = true
+kura-evaluation.workspace = true

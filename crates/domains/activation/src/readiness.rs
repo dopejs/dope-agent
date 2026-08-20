@@ -4,12 +4,12 @@
 use chrono::DateTime;
 use chrono::SecondsFormat;
 use chrono::Utc;
-use dope_billing::go_zero_time;
-use dope_billing::BillingError;
-use dope_billing::EffectiveQuota;
-use dope_billing::EnforcementMode;
-use dope_identity::Principal;
-use dope_identity::Tenant;
+use kura_billing::go_zero_time;
+use kura_billing::BillingError;
+use kura_billing::EffectiveQuota;
+use kura_billing::EnforcementMode;
+use kura_identity::Principal;
+use kura_identity::Tenant;
 use serde_json::Map;
 use serde_json::Value;
 
@@ -262,14 +262,14 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::TimeZone;
-    use dope_billing::BillingError;
-    use dope_billing::Category;
-    use dope_billing::EffectiveQuota;
-    use dope_billing::EnforcementMode;
-    use dope_billing::UsageSummary;
-    use dope_billing::Unit;
-    use dope_billing::PERIOD_ANCHOR_UTC;
-    use dope_identity::TenantContext;
+    use kura_billing::BillingError;
+    use kura_billing::Category;
+    use kura_billing::EffectiveQuota;
+    use kura_billing::EnforcementMode;
+    use kura_billing::UsageSummary;
+    use kura_billing::Unit;
+    use kura_billing::PERIOD_ANCHOR_UTC;
+    use kura_identity::TenantContext;
 
     use super::*;
     use crate::error::reason_code_from_error;

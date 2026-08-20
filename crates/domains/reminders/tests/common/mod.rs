@@ -1,4 +1,4 @@
-//! Shared helpers for the dope-reminders integration tests (port of the Go
+//! Shared helpers for the kura-reminders integration tests (port of the Go
 //! manager_test.go harness: fake clock, fake workflow launcher, temp SQLite store with a
 //! bootstrapped personal tenant + default-tenant cache, delivery target/preference
 //! seeding, and the reminders manager construction).
@@ -11,14 +11,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use dope_delivery::{
+use kura_delivery::{
     DeliveryAdapter, DeliveryPreference, DeliveryTarget, Manager as DeliveryManager,
     PreferenceScopeKind, ResultClass, TargetKind, TestSinkAdapter,
 };
-use dope_events::Bus;
-use dope_identity::{LifecycleStatus, Tenant, TenantKind};
-use dope_reminders::{Clock, Dependencies, Manager, WorkflowLaunchResult, WorkflowLauncher};
-use dope_store::SQLiteStore;
+use kura_events::Bus;
+use kura_identity::{LifecycleStatus, Tenant, TenantKind};
+use kura_reminders::{Clock, Dependencies, Manager, WorkflowLaunchResult, WorkflowLauncher};
+use kura_store::SQLiteStore;
 use parking_lot::Mutex;
 
 /// Go fakeClock.
@@ -67,7 +67,7 @@ impl FakeWorkflowLauncher {
 impl WorkflowLauncher for FakeWorkflowLauncher {
     fn launch_reminder_workflow(
         &self,
-        _cfg: &dope_reminders::WorkflowLaunchConfig,
+        _cfg: &kura_reminders::WorkflowLaunchConfig,
         _reminder_id: &str,
         _occurrence_id: &str,
     ) -> Result<WorkflowLaunchResult, String> {
@@ -109,7 +109,7 @@ pub const TEST_TENANT_ID: &str = "ten_test_personal";
 pub fn temp_dir() -> String {
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
     let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let dir = std::env::temp_dir().join(format!("dope_reminders_{}_{}", std::process::id(), n));
+    let dir = std::env::temp_dir().join(format!("kura_reminders_{}_{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

@@ -1,10 +1,10 @@
 [package]
-name = "dope-checkpoints"
+name = "kura-checkpoints"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-store.workspace = true
-dope-runtime.workspace = true
+kura-store.workspace = true
+kura-runtime.workspace = true
 parking_lot.workspace = true

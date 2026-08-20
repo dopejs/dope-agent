@@ -4,7 +4,7 @@
 mod common;
 
 use common::{open_conn, temp_dir};
-use dope_migrationfixture::{
+use kura_migrationfixture::{
     apply_head_migrations, build_pre_tenant_v21_fixture, count_seeded_rows,
 };
 
@@ -12,11 +12,11 @@ use dope_migrationfixture::{
 fn head_migrations_are_loss_less_and_preserve_rows() {
     let dir = temp_dir("head_migrations");
     let store = build_pre_tenant_v21_fixture(&dir).unwrap();
-    assert_eq!(store.schema_version().unwrap(), dope_store::CURRENT_SCHEMA_VERSION);
+    assert_eq!(store.schema_version().unwrap(), kura_store::CURRENT_SCHEMA_VERSION);
 
     let before = count_seeded_rows(&store).unwrap();
     apply_head_migrations(&store).unwrap();
-    assert_eq!(store.schema_version().unwrap(), dope_store::CURRENT_SCHEMA_VERSION);
+    assert_eq!(store.schema_version().unwrap(), kura_store::CURRENT_SCHEMA_VERSION);
 
     // Pre/post counts are equal for every seeded table.
     let after = count_seeded_rows(&store).unwrap();
@@ -45,10 +45,10 @@ fn head_migrations_are_loss_less_and_preserve_rows() {
 #[test]
 fn fixture_builder_runs_pre_tenant_then_head_then_roadmap_seeds() {
     let dir = temp_dir("fixture_builder");
-    let output = dope_migrationfixture::FixtureBuilder::new().build(&dir).unwrap();
+    let output = kura_migrationfixture::FixtureBuilder::new().build(&dir).unwrap();
     assert_eq!(
         output.store.schema_version().unwrap(),
-        dope_store::CURRENT_SCHEMA_VERSION
+        kura_store::CURRENT_SCHEMA_VERSION
     );
     // Pre-tenant tables carry their seeds.
     assert_eq!(output.counts.get("sessions"), Some(&1));

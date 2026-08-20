@@ -44,7 +44,7 @@ schemas; `go test ./...` in `daemon/`; `make daemon-contract-test`; `pnpm test:c
 `pnpm build`; `make daemon-run-test`; `make daemon-test-status`; `go mod tidy` from
 `daemon/` after implementation.  
 **Target Platform**: Local-first daemon and hosted daemon behavior, verified by default in
-the isolated test environment (`~/.dope-test`, `127.0.0.1:19192`). Live connector evidence
+the isolated test environment (`~/.kura-test`, `127.0.0.1:19192`). Live connector evidence
 is consumed only through Roadmap 40 live-validation records and does not require
 production connector access for normal acceptance.  
 **Project Type**: Multi-surface daemon product change spanning evaluation workflow logic,
@@ -88,7 +88,7 @@ evaluation execution.
   aggregation, live-validation linkage, pagination, query plans, cross-tenant leakage,
   SDK/web projections, contract schemas, and Roadmap 39 soak rerun with Roadmaps 40 and
   41 included.
-- **Environment and secrets** - PASS. Default execution uses `~/.dope-test`; live
+- **Environment and secrets** - PASS. Default execution uses `~/.kura-test`; live
   connector evidence is referenced only from explicit Roadmap 40 records. Secrets,
   credentials, raw tokens, and configured sensitive fields must be redacted before
   discovery evidence, fixtures, dashboards, audits, or inspection views are persisted or
@@ -216,7 +216,7 @@ live-validation ledger records remain available.
 - **Verification and observability** - PASS. Quickstart names targeted package tests,
   full daemon tests, schema contract tests, client tests, daemon smoke, cross-tenant
   leakage checks, query-plan checks, and final soak rerun evidence.
-- **Environment and secrets** - PASS. Design defaults to `~/.dope-test`, treats live
+- **Environment and secrets** - PASS. Design defaults to `~/.kura-test`, treats live
   evidence as Roadmap 40 records, and requires redaction before evidence is displayed,
   persisted, audited, or exported.
 

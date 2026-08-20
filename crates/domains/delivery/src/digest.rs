@@ -176,7 +176,7 @@ impl ManagerInner {
         self.store_window(&window)?;
         self.publish_event(
             "delivery.summary_emitted",
-            dope_events::Resource {
+            kura_events::Resource {
                 kind: "delivery_summary_window".to_string(),
                 id: window.summary_window_id.clone(),
             },

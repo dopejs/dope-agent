@@ -24,39 +24,39 @@ unsupported evidence rather than receiving implicit group or handoff behavior.
 
 **Language/Version**: Go 1.24 daemon/control-plane code; TypeScript 5.7 SDK and client
 tests; React 19/Vite 7 web surface; JSON Schema contracts under `schemas/`; markdown
-runtime/channel/operator docs.  
+runtime/channel/operator docs.
 **Primary Dependencies**: Existing `daemon/internal/threads`,
 `daemon/internal/store`, `daemon/internal/store/tenancy`, `daemon/internal/api`,
 `daemon/internal/chat`, `daemon/internal/events`, `daemon/internal/connectors`,
 `daemon/internal/im`, `daemon/internal/contracts`, `schemas/api`, `schemas/events`,
 `sdk/ts/src`, `web/src`, `tui/src`, Roadmap 54 lifecycle surfaces, Roadmap 55
-continuity surfaces, and channel connector conformance docs.  
+continuity surfaces, and channel connector conformance docs.
 **Storage**: Existing SQLite daemon store remains authoritative. Additive persistence is
 required for conversation shape/source-room metadata, participation policy projections,
 participation decisions, reset events scoped by conversation shape/source, handoff links,
 handoff source-turn reference eligibility, permission/redaction/retention metadata, and
 restart recovery. Existing thread, session segment, source linkage, lifecycle action,
 continuity turn, continuity preview, connector message, run, workflow, approval, and
-delivery records remain compatible and are not destructively rewritten.  
+delivery records remain compatible and are not destructively rewritten.
 **Testing**: Targeted Go tests under `daemon/internal/threads`, `daemon/internal/store`,
 `daemon/internal/store/tenancy`, `daemon/internal/api`, `daemon/internal/chat`,
 `daemon/internal/events`, `daemon/internal/connectors`, `daemon/internal/im`, and
 `daemon/internal/contracts`; schema/fixture validation via `make daemon-contract-test`;
 SDK/Web/TUI coverage via `pnpm test:clients`; client build via `pnpm build`; full daemon
 coverage via `go test ./...` from `daemon/`; `go mod tidy` from `daemon/` after
-implementation.  
+implementation.
 **Target Platform**: Local-first daemon and hosted daemon behavior, with API, TypeScript
 SDK, Web, TUI/operator shell, connector ingress, and supported channel handoff behavior.
-Default local verification uses `~/.dope-test` and `127.0.0.1:19192`.  
+Default local verification uses `~/.kura-test` and `127.0.0.1:19192`.
 **Project Type**: Multi-surface daemon product feature spanning API, persistence,
 contracts, thread lifecycle domain policy, chat handoff context bridge, connector
 ingress/conformance, SDK, Web, TUI/operator shell, events/audit, retention, redaction,
-restart recovery, and docs.  
+restart recovery, and docs.
 **Performance Goals**: Authorized operators can determine why a representative group
 message participated, did not participate, reset, or handed off within 5 minutes using
 product evidence. Handoff source-turn reference assembly for the first destination
 response must remain within Roadmap 55 default continuity assembly target of p95 under
-500 ms in the verification environment.  
+500 ms in the verification environment.
 **Constraints**: Default group/room participation requires both allowlist eligibility and
 a qualifying mention. Reset and handoff creation require `connectors.manage`. Inspection
 requires Roadmap 54 thread detail/inspection permission. Handoff creates or selects a
@@ -64,7 +64,7 @@ separate destination thread; source-turn references are eligible only for the fi
 destination response; source turns are never copied into destination history. The feature
 must not add group memory, team knowledge base behavior, semantic retrieval, summaries,
 autonomous delegation, long-term personalization, cross-room recall, or raw provider
-payload display.  
+payload display.
 **Scale/Scope**: One whole roadmap slice, Phase 56. Required surfaces are store, thread
 domain model, API, schema, events, SDK, Web, TUI/operator shell, connector conformance,
 supported connector ingress, chat handoff context bridge, restart recovery,
@@ -91,7 +91,7 @@ handoff traceability, and non-memory guarantees.
   allowlist-plus-mention policy, direct/group/room reset, source-specific reset scoping,
   channel-to-web and web-to-channel handoff, denied handoff, duplicate/replay handling,
   restart recovery, redaction, retention, connector conformance, and non-memory scope.
-- **Environment and secrets** - PASS. Local work defaults to `~/.dope-test` with fake or
+- **Environment and secrets** - PASS. Local work defaults to `~/.kura-test` with fake or
   seeded connector/runtime evidence. Live connectors and production tenants are not
   required. Evidence must not expose secrets, raw provider payloads, disallowed message
   bodies, unsafe connector metadata, or cross-tenant identifiers.

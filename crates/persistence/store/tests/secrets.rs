@@ -1,19 +1,19 @@
 //! Behavioral tests for the tenant-secrets DAOs (rs/store/src/secrets.rs),
 //! ported from daemon/internal/store/secrets.go behavior: create/list/get
 //! round-trips, transactional rotate with version superseding, disable, tenant
-//! isolation, plus the dope_secrets::Store trait surface through
+//! isolation, plus the kura_secrets::Store trait surface through
 //! SecretStoreHandle.
 
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
-use dope_secrets::{
+use kura_secrets::{
     SecretStatus, SecretVersion, SecretVersionStatus, Store, TenantSecret, ValueBackend,
 };
-use dope_store::{SecretStoreHandle, SQLiteStore};
+use kura_store::{SecretStoreHandle, SQLiteStore};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -133,7 +133,7 @@ async fn secrets_store_trait_round_trip() {
 
     let secret = secret_fixture("sec_t1", "ten_1", "trait.ref");
     let version = version_fixture(&secret, "sec_t1_v1");
-    let manager = dope_secrets::Manager::new(handle.clone(), Arc::new(NoopBackend));
+    let manager = kura_secrets::Manager::new(handle.clone(), Arc::new(NoopBackend));
 
     // Manager.Create is not available with a no-op backend value, so exercise
     // the Store trait directly (metadata only; values stay in the backend).
@@ -182,13 +182,13 @@ impl ValueBackend for NoopBackend {
         _secret_id: &'a str,
         _secret_version_id: &'a str,
         _value: &'a str,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<String>> {
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<String>> {
         Box::pin(async move { Ok("noop".to_string()) })
     }
-    fn get<'a>(&'a self, _backend_ref: &'a str) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<String>> {
+    fn get<'a>(&'a self, _backend_ref: &'a str) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<String>> {
         Box::pin(async move { Ok("value".to_string()) })
     }
-    fn delete<'a>(&'a self, _backend_ref: &'a str) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+    fn delete<'a>(&'a self, _backend_ref: &'a str) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move { Ok(()) })
     }
 }

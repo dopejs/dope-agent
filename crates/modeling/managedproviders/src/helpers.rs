@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use dope_llm::Message;
+use kura_llm::Message;
 
 /// Go `baseName`: `filepath.Base` of the trimmed value, or "" when the
 /// trimmed value is empty. The fallback keeps root-like values ("/") intact,

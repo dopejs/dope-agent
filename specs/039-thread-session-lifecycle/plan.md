@@ -23,37 +23,37 @@ summaries, autonomous pruning, or memory-driven routing.
 
 **Language/Version**: Go 1.24 daemon/control-plane code; TypeScript 5.7 SDK and web
 client; React 19/Vite 7 web surface; JSON Schema contracts under `schemas/`; markdown
-operator/runtime/channel docs.  
+operator/runtime/channel docs.
 **Primary Dependencies**: Existing `daemon/internal/router`, `daemon/internal/im`,
 `daemon/internal/imtypes`, `daemon/internal/runtime`, `daemon/internal/store`,
 `daemon/internal/store/tenancy`, `daemon/internal/api`, `daemon/internal/events`,
 `daemon/internal/connectors`, `daemon/internal/delivery`, `daemon/internal/policy`,
 `schemas/api`, `schemas/events`, `sdk/ts/src`, `web/src`, `tui/`, and runtime/channel
-docs under `docs/runtime` and `docs/channels`.  
+docs under `docs/runtime` and `docs/channels`.
 **Storage**: Existing SQLite daemon store remains authoritative. Additive persistence is
 required for thread resources, session segments, lifecycle transition audit, source
 linkage, current-thread uniqueness by tenant/connector/source account/source
 conversation, runtime projection references, redaction/retention metadata, and legacy
 session projection state. Existing `sessions`, `runs`, connector message, workflow,
-approval, delivery, and event tables remain readable and are not rewritten destructively.  
+approval, delivery, and event tables remain readable and are not rewritten destructively.
 **Testing**: Targeted Go tests under `daemon/internal/router`, `daemon/internal/im`,
 `daemon/internal/api`, `daemon/internal/store`, `daemon/internal/store/tenancy`,
 `daemon/internal/events`, `daemon/internal/connectors`, `daemon/internal/delivery`, and
 `daemon/internal/contracts`; schema/fixture validation via `make daemon-contract-test`;
 SDK/web/TUI client coverage via `pnpm test:clients`; client build via `pnpm build`; full
 daemon coverage via `go test ./...` from `daemon/`; `go mod tidy` from `daemon/` after
-implementation.  
+implementation.
 **Target Platform**: Local-first daemon and hosted daemon behavior, with API, TypeScript
 SDK, web, TUI/operator shell, and connector ingress behavior. Default local verification
-uses `~/.dope-test` and `127.0.0.1:19192`.  
+uses `~/.kura-test` and `127.0.0.1:19192`.
 **Project Type**: Multi-surface daemon product feature spanning API, persistence,
 contracts, connector ingress, runtime/session routing, SDK, web, TUI/operator shell,
-events/audit, retention, redaction, and docs.  
+events/audit, retention, redaction, and docs.
 **Performance Goals**: Authorized users can find and open any recent tenant thread in
 the verification dataset within 2 minutes. Authorized operators can trace a
 representative channel incident from source message to thread, session, run or workflow,
 approval, reply, and delivery facts within 5 minutes. Paginated thread lists return
-deterministic, non-duplicated page sequences.  
+deterministic, non-duplicated page sequences.
 **Constraints**: Redacted inspection requires `credentials.inspect`; reset, archive, and
 reopen require `connectors.manage`. Lifecycle mutations must fail closed if required
 audit evidence cannot be recorded. Reset preserves thread ID and creates a new active
@@ -61,7 +61,7 @@ session segment. Archive blocks future continuation and does not cancel already 
 runtime work. Lifecycle, source, and runtime projection evidence expires from normal
 inspection after 90 days unless an authorized tenant policy requires longer retention.
 The feature must not add memory recall, semantic summaries, context packing, autonomous
-pruning, or memory-driven routing.  
+pruning, or memory-driven routing.
 **Scale/Scope**: One whole roadmap slice, Phase 54. Required surfaces are store, API,
 schema, events, SDK, operator shell/TUI, web, connector ingress, runtime projections,
 restart recovery, migration/backfill support for legacy sessions, docs, and test
@@ -89,7 +89,7 @@ environment walkthrough.
   store, router, connector ingress, source uniqueness, reset, archive, reopen,
   permission denials, audit fail-closed behavior, restart recovery, legacy projection,
   runtime evidence linkage, redaction, retention, and non-memory guarantees.
-- **Environment and secrets** - PASS. Local work defaults to `~/.dope-test` with fake or
+- **Environment and secrets** - PASS. Local work defaults to `~/.kura-test` with fake or
   seeded connector/runtime evidence. Live connector credentials and production tenants
   are not required for automated acceptance. Thread support evidence is metadata-only
   and must not display secrets, raw provider payloads, or disallowed message bodies.

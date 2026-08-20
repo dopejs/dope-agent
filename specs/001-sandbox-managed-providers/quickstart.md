@@ -8,16 +8,16 @@ state.
 ## Prerequisites
 
 - Work from the repository root on branch `001-sandbox-managed-providers`
-- Use the default test environment (`DOPE_ENV=test`)
+- Use the default test environment (`KURA_ENV=test`)
 - Have Go available locally
-- In the test environment, managed-provider CLI state is isolated under `<DOPE_DATA_DIR>/managed-provider-home` rather than the real user home
+- In the test environment, managed-provider CLI state is isolated under `<KURA_DATA_DIR>/managed-provider-home` rather than the real user home
 
 ## Targeted Verification
 
 Run the targeted daemon packages most likely to change in this slice:
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./internal/managedproviders ./internal/sandbox ./internal/api ./internal/app ./internal/contracts
 ```
 
@@ -31,7 +31,7 @@ and external provider latency from this check.
 If API, schema, or event surfaces change, run the repository contract check:
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-contract-test
 ```
 
@@ -40,7 +40,7 @@ make daemon-contract-test
 Run the full Go test suite before claiming the slice is closed:
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./...
 ```
 
@@ -58,7 +58,7 @@ If you need to inspect the daemon behavior directly after implementation:
 1. Start the test daemon:
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-run-test
 ```
 

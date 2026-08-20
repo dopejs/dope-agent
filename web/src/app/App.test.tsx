@@ -89,8 +89,8 @@ const mockClient = {
 
 const createdClientOptions: unknown[] = [];
 
-vi.mock("@dope/client", () => ({
-  createDopeClient: (options: unknown) => {
+vi.mock("@kura/client", () => ({
+  createKuraClient: (options: unknown) => {
     createdClientOptions.push(options);
     return mockClient;
   }
@@ -2096,7 +2096,7 @@ describe("App", () => {
     expect(mockClient.getDiagnostics).toHaveBeenLastCalledWith({ plane: undefined, severity: undefined }, { tenantId: "ten_org" });
     expect(mockClient.streamEvents).toHaveBeenLastCalledWith({}, expect.anything(), { tenantId: "ten_org" });
     expect(emptySubscription.close).toHaveBeenCalled();
-    expect(window.localStorage.getItem("dope.activeTenant.http://127.0.0.1:19192.prn_1")).toBe("ten_org");
+    expect(window.localStorage.getItem("kura.activeTenant.http://127.0.0.1:19192.prn_1")).toBe("ten_org");
 
     cleanup();
     mockClient.getActivity.mockResolvedValue({

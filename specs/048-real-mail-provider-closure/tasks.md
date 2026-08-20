@@ -28,7 +28,7 @@ diagnostics/smoke.
 
 ## Phase 5: US3 — diagnostics, wiring, smoke
 - [X] T008 [US3] app wiring: mail adapter WithProviderKind(feishu_lark) when configured;
-  cmd DOPE_ADAPTER_DOMAIN=mail serves real mail provider.
+  cmd KURA_ADAPTER_DOMAIN=mail serves real mail provider.
 - [X] T009 [US3] diagnostics mapping test: auth/scope/token/rate failures -> stable reasons;
   no raw provider message/content leaks.
 - [X] T010 [US3] opsreadiness mail real-account smoke with structured skip; never exposes

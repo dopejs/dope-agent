@@ -90,7 +90,7 @@ safe to inspect and debug.
 and that is the main risk point where policy or audit truth can be bypassed if the design
 is weak.
 
-**Independent Test**: Run at least one workflow in `DOPE_ENV=test` that combines at
+**Independent Test**: Run at least one workflow in `KURA_ENV=test` that combines at
 least two consumer families, inspect the recorded handoffs between steps, and verify the
 workflow does not use any out-of-band execution path.
 
@@ -162,7 +162,7 @@ workflow does not use any out-of-band execution path.
   workflow state and completed-step history but mark the unfinished workflow as
   interrupted rather than automatically resuming it in phase 24.
 - **FR-013**: The system MUST allow operators to verify at least one mixed workflow
-  end-to-end using the daemon-owned runtime plane in `DOPE_ENV=test`.
+  end-to-end using the daemon-owned runtime plane in `KURA_ENV=test`.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -188,11 +188,11 @@ workflow does not use any out-of-band execution path.
 - **Verification Strategy**: Run targeted daemon tests for planning truth, ordered or
   graph execution, retries, cancellation, partial failure, and mixed-family workflows; run
   contract coverage for workflow-visible runtime and event surfaces; manually validate at
-  least one mixed workflow in `DOPE_ENV=test`.
+  least one mixed workflow in `KURA_ENV=test`.
 - **Observability Impact**: Operator-visible surfaces must explain workflow rationale,
   step ordering or graph relationships, approval and policy status per step, retry and
   cancellation activity, partial failure, and cross-family handoff truth.
-- **Environment & Secrets**: Validation stays in `DOPE_ENV=test` by default. Mixed
+- **Environment & Secrets**: Validation stays in `KURA_ENV=test` by default. Mixed
   workflows must continue to respect existing secret-redaction, approval, and sandbox
   controls for every concrete step.
 
@@ -203,7 +203,7 @@ workflow does not use any out-of-band execution path.
 - **SC-001**: Operators can explain why a workflow was planned in a particular sequence or
   graph within 5 minutes using daemon-visible inspection only.
 - **SC-002**: At least one workflow spanning at least two consumer families completes
-  end-to-end in `DOPE_ENV=test` without any out-of-band execution path.
+  end-to-end in `KURA_ENV=test` without any out-of-band execution path.
 - **SC-003**: 100% of validated retry, cancellation, and partial-failure scenarios remain
   reconstructable from operator-visible workflow history and events.
 - **SC-004**: 100% of validated approval-denied, policy-blocked, and
@@ -230,7 +230,7 @@ workflow does not use any out-of-band execution path.
   automatic mid-run replanning is out of scope for phase 24.
 - A workflow may expose partial side effects; automatic rollback of external side effects
   is out of scope unless an underlying tool already supports it.
-- The first validation target is operator-driven execution in `DOPE_ENV=test`; production
+- The first validation target is operator-driven execution in `KURA_ENV=test`; production
   rollout behavior can remain gated behind the same existing policy and approval controls.
 - Daemon restart preserves workflow audit truth and completed-step records, but automatic
   resume of interrupted in-flight workflows is out of scope for phase 24.

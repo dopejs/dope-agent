@@ -7,12 +7,12 @@ environment and evidence rules.
 ## Defaults
 
 - Use the test environment by default.
-- Data directory: `~/.dope-test`.
+- Data directory: `~/.kura-test`.
 - Daemon address: `127.0.0.1:19192`.
 - Live connectors: disabled unless an authorized operator explicitly opts in.
 - Evidence retention: 90 days by default unless an authorized policy requires longer.
 
-Do not point hosted-profile helpers at `~/.dope` or production user data unless the
+Do not point hosted-profile helpers at `~/.kura` or production user data unless the
 runbook explicitly marks the current step as production recovery.
 
 ## 1. Verify Existing Baseline
@@ -37,7 +37,7 @@ make daemon-test-status
 Expected evidence:
 
 - daemon health passes
-- data directory is `~/.dope-test`
+- data directory is `~/.kura-test`
 - daemon address is `127.0.0.1:19192`
 - live connector mode is disabled unless explicitly opted in
 
@@ -208,8 +208,8 @@ Recorded on 2026-04-30 Asia/Shanghai for branch
 - Full daemon tests: first `go test ./...` observed a transient `internal/app` SQLite `database is locked` failure in `TestAppRestartPreservesOperatorVisibleSandboxLinkageForCancelledToolCall`; the isolated test passed, and the full rerun passed.
 - Module tidy: `go mod tidy` from `daemon/` produced no `go.mod` or `go.sum` diff.
 - Contract tests: `make daemon-contract-test` passed.
-- Test daemon smoke: `make daemon-run-test` started the test daemon on `127.0.0.1:19192`; `make daemon-test-status` returned `{"ok":true,"service":"dope"}`; the test daemon was stopped after verification.
-- Hosted-profile targeted validation: with `DOPE_DATA_DIR=/tmp/dope-hosted-028`, `DOPE_HOSTED_RUN_ID=hosted_validation_028`, and `DOPE_HOSTED_DRY_RUN=1`, `provision`, `start`, `status`, `health`, `evidence-index`, and `stop` passed and produced `/tmp/dope-hosted-028/reports/hosted_validation_028/release-evidence-index.json`.
+- Test daemon smoke: `make daemon-run-test` started the test daemon on `127.0.0.1:19192`; `make daemon-test-status` returned `{"ok":true,"service":"kura"}`; the test daemon was stopped after verification.
+- Hosted-profile targeted validation: with `KURA_DATA_DIR=/tmp/kura-hosted-028`, `KURA_HOSTED_RUN_ID=hosted_validation_028`, and `KURA_HOSTED_DRY_RUN=1`, `provision`, `start`, `status`, `health`, `evidence-index`, and `stop` passed and produced `/tmp/kura-hosted-028/reports/hosted_validation_028/release-evidence-index.json`.
 - Stable-host smoke: `zentalk-1` (`VM-0-7-centos`, uptime 56 days) ran a dry-run hosted profile smoke using `/tmp/hosted-profile-028.sh`; run identity `stable_host_028` produced deployment, health, release-index, stop, and `reboot_recovery` supervisor evidence with `recoverySeconds: 60`.
 - Client tests/build: not run; hosted evidence is not exposed through SDK, web, or TUI surfaces in this implementation.
 
@@ -228,7 +228,7 @@ Recorded after fixing implementation gaps found during review:
 - `go test ./...` from `daemon/` passed.
 - `make daemon-contract-test` passed.
 - `go mod tidy` from `daemon/` produced no module diff.
-- Release-index targeted validation with `DOPE_HOSTED_HEALTH_COMMAND=false`
+- Release-index targeted validation with `KURA_HOSTED_HEALTH_COMMAND=false`
   produced `decision: no_ship`, failed `health_checks`, and failed missing
   `restore_evidence`.
 - Hosted release evidence validation now runs through
@@ -236,21 +236,21 @@ Recorded after fixing implementation gaps found during review:
   writes `release-evidence-validation.txt`, and the ship-ready contract fixture
   passes the validator in default readiness mode.
 - Stable-host supervisor smoke on `zentalk-1` used
-  `DOPE_HOSTED_DAEMON_COMMAND="sh -c 'while :; do sleep 1; done'"` and
-  `DOPE_HOSTED_HEALTH_COMMAND=true`; run identity `stable_host_028_fixed`
+  `KURA_HOSTED_DAEMON_COMMAND="sh -c 'while :; do sleep 1; done'"` and
+  `KURA_HOSTED_HEALTH_COMMAND=true`; run identity `stable_host_028_fixed`
   recorded `process_status=running`, `health=pass`, reboot-recovery evidence,
   and a clean stop.
 - Final stable-host supervisor smoke on `zentalk-1` used
-  `DOPE_HOSTED_DAEMON_COMMAND="sleep 300"` and `DOPE_HOSTED_HEALTH_COMMAND=true`;
+  `KURA_HOSTED_DAEMON_COMMAND="sleep 300"` and `KURA_HOSTED_HEALTH_COMMAND=true`;
   run identity `stable_host_028_final` recorded `supervisor_pid=2621861`,
   `process_status=running`, `health=pass`, release-index generation,
   reboot-recovery evidence, and a verified stopped process. Because the script
   was copied to `/tmp` outside the repo layout for this smoke,
-  `DOPE_HOSTED_SKIP_GO_VALIDATOR=1` was used there; Go validator execution is
+  `KURA_HOSTED_SKIP_GO_VALIDATOR=1` was used there; Go validator execution is
   covered by local contract and full daemon verification above.
 
 Residual risk: the stable-host smoke validates the repo-owned supervisor with a
-controlled long-running process. It still does not run the full Dope daemon on
+controlled long-running process. It still does not run the full Kura daemon on
 the remote host for a 24-hour release soak; that remains a release-readiness
 operation, not a local implementation test.
 

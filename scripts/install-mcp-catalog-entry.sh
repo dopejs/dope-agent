@@ -6,7 +6,7 @@ usage() {
   cat <<'EOF'
 usage: install-mcp-catalog-entry.sh <catalog-entry-id> [options]
 
-Install a bundled MCP catalog entry through the daemon API. Defaults to DOPE_ENV=test.
+Install a bundled MCP catalog entry through the daemon API. Defaults to KURA_ENV=test.
 
 Options:
   --server-id <id>            Override the installed MCP server id
@@ -24,11 +24,11 @@ Options:
   --help                      Show this help
 
 Environment:
-  DOPE_ENV                    Defaults to test
-  DOPE_BASE_URL               Optional daemon base URL override
-  DOPE_TOKEN                  Optional existing bearer token
-  DOPE_PAIR_LABEL             Optional local pairing label
-  DOPE_MCP_INSTALL_RAW_RESPONSE=1  Print the daemon JSON response after the summary
+  KURA_ENV                    Defaults to test
+  KURA_BASE_URL               Optional daemon base URL override
+  KURA_TOKEN                  Optional existing bearer token
+  KURA_PAIR_LABEL             Optional local pairing label
+  KURA_MCP_INSTALL_RAW_RESPONSE=1  Print the daemon JSON response after the summary
 EOF
 }
 
@@ -133,7 +133,7 @@ request_json() {
 }
 
 pair_local_token() {
-  local pair_label="${DOPE_PAIR_LABEL:-mcp-catalog-script}"
+  local pair_label="${KURA_PAIR_LABEL:-mcp-catalog-script}"
   request_json POST "${BASE_URL}/v1/auth/pairings/start" "{\"mode\":\"local\",\"label\":\"${pair_label}\"}"
   if [[ "${RESPONSE_CODE}" != "201" ]]; then
     echo "pairing start failed with HTTP ${RESPONSE_CODE}: ${RESPONSE_BODY}" >&2
@@ -147,7 +147,7 @@ pair_local_token() {
     echo "pairing completion failed with HTTP ${RESPONSE_CODE}: ${RESPONSE_BODY}" >&2
     exit 1
   fi
-  DOPE_TOKEN="$(json_get "${RESPONSE_BODY}" "accessToken")"
+  KURA_TOKEN="$(json_get "${RESPONSE_BODY}" "accessToken")"
 }
 
 ENTRY_ID="${1:-}"
@@ -157,7 +157,7 @@ if [[ -z "${ENTRY_ID}" || "${ENTRY_ID}" == "--help" ]]; then
 fi
 shift
 
-ENV_NAME="${DOPE_ENV:-test}"
+ENV_NAME="${KURA_ENV:-test}"
 case "${ENV_NAME}" in
   test)
     DEFAULT_BASE_URL="http://127.0.0.1:19192"
@@ -166,13 +166,13 @@ case "${ENV_NAME}" in
     DEFAULT_BASE_URL="http://127.0.0.1:19191"
     ;;
   *)
-    echo "unsupported DOPE_ENV: ${ENV_NAME}" >&2
+    echo "unsupported KURA_ENV: ${ENV_NAME}" >&2
     exit 1
     ;;
 esac
 
-BASE_URL="${DOPE_BASE_URL:-${DEFAULT_BASE_URL}}"
-DOPE_TOKEN="${DOPE_TOKEN:-}"
+BASE_URL="${KURA_BASE_URL:-${DEFAULT_BASE_URL}}"
+KURA_TOKEN="${KURA_TOKEN:-}"
 SERVER_ID=""
 DISPLAY_NAME=""
 SANDBOX_PROFILE_ID=""
@@ -230,7 +230,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --token)
-      DOPE_TOKEN="${2:-}"
+      KURA_TOKEN="${2:-}"
       shift 2
       ;;
     --help)
@@ -248,11 +248,11 @@ done
 require_command curl
 require_command python3
 
-if [[ -z "${DOPE_TOKEN}" ]]; then
+if [[ -z "${KURA_TOKEN}" ]]; then
   pair_local_token
 fi
 
-request_json GET "${BASE_URL}/v1/mcp/catalog/${ENTRY_ID}" "" "${DOPE_TOKEN}"
+request_json GET "${BASE_URL}/v1/mcp/catalog/${ENTRY_ID}" "" "${KURA_TOKEN}"
 if [[ "${RESPONSE_CODE}" != "200" ]]; then
   echo "catalog lookup failed for ${ENTRY_ID} with HTTP ${RESPONSE_CODE}: ${RESPONSE_BODY}" >&2
   exit 1
@@ -275,7 +275,7 @@ else
 fi
 INSTALL_BODY="$(build_install_body "${ARGS_JSON}" "${SECRET_REFS_JSON}")"
 
-request_json POST "${BASE_URL}/v1/mcp/catalog/${ENTRY_ID}/install" "${INSTALL_BODY}" "${DOPE_TOKEN}"
+request_json POST "${BASE_URL}/v1/mcp/catalog/${ENTRY_ID}/install" "${INSTALL_BODY}" "${KURA_TOKEN}"
 
 STATUS=""
 CATALOG_ENTRY_ID=""
@@ -301,7 +301,7 @@ if [[ -n "${AVAILABILITY_REASON}" ]]; then
   echo "availabilityReason=${AVAILABILITY_REASON}"
 fi
 
-if [[ "${DOPE_MCP_INSTALL_RAW_RESPONSE:-0}" == "1" ]]; then
+if [[ "${KURA_MCP_INSTALL_RAW_RESPONSE:-0}" == "1" ]]; then
   echo "${RESPONSE_BODY}"
 fi
 

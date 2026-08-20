@@ -2,7 +2,7 @@
 
 ## Goal
 
-Verify in `DOPE_ENV=test` that the daemon can:
+Verify in `KURA_ENV=test` that the daemon can:
 
 - project a calendar account from the shared integration substrate
 - expose primary calendar and primary timezone truth
@@ -14,7 +14,7 @@ Verify in `DOPE_ENV=test` that the daemon can:
 
 ## Prerequisites
 
-- local test daemon only; do not use `~/.dope`
+- local test daemon only; do not use `~/.kura`
 - authenticated local pairing or an existing bearer token
 - no production connectors or live calendar credentials are required
 - the repo-owned fake calendar backend is enabled through the fake integration path
@@ -34,7 +34,7 @@ make daemon-run-test
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "integrationId": "calendar-fake-primary",
@@ -54,7 +54,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "readinessStatus": "healthy",
@@ -74,7 +74,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/calendar/accounts
 ```
 
@@ -88,13 +88,13 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   "http://127.0.0.1:19192/v1/calendar/events?integrationId=calendar-fake-primary"
 ```
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   "http://127.0.0.1:19192/v1/calendar/events/$EVENT_ID?integrationId=calendar-fake-primary"
 ```
 
@@ -107,7 +107,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "integrationId": "calendar-fake-primary",
@@ -127,7 +127,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "integrationId": "calendar-fake-primary",
@@ -141,7 +141,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Phase 29 moved event",
@@ -153,7 +153,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}' \
   http://127.0.0.1:19192/v1/calendar/events/$EVENT_ID/cancel
@@ -169,7 +169,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "All day event",
@@ -182,7 +182,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "attendees": [{"email": "bob@example.com"}]
@@ -201,7 +201,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "targetId": "calendar-test-sink",
@@ -214,7 +214,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "preferenceId": "calendar-default-pref",
@@ -233,7 +233,7 @@ and delivery truth.
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "trigger": {
@@ -270,7 +270,7 @@ After the schedule completes, read the emitted `runId`, `workflowId`,
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/schedules/$SCHEDULE_ID
 ```
 
@@ -284,8 +284,8 @@ Expected outcome after implementation:
 
 Environment used for this run:
 
-- `DOPE_ENV=test`
-- `DOPE_DATA_DIR=/Users/John/Code/dope-agent/.tmp/calendar-manual`
+- `KURA_ENV=test`
+- `KURA_DATA_DIR=/Users/John/Code/kura-agent/.tmp/calendar-manual`
 - fake calendar integration `calendar-fake-primary`
 - delivery target `calendar-test-sink`
 - deterministic local skill `exec-skill`

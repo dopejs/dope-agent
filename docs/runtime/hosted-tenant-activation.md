@@ -7,7 +7,7 @@ without requiring direct storage inspection.
 
 ## Operator Boundaries
 
-- Default validation is `DOPE_ENV=test` with `~/.dope-test` and `127.0.0.1:19192`.
+- Default validation is `KURA_ENV=test` with `~/.kura-test` and `127.0.0.1:19192`.
 - Activation must not require live connectors, production secrets, payment checkout, or
   organization setup.
 - The required activation `test_chat` action uses the built-in `echo` provider so hosted
@@ -47,6 +47,6 @@ pnpm build
 cd crates && cargo test --workspace
 ```
 
-Then complete the `DOPE_ENV=test` walkthrough in
+Then complete the `KURA_ENV=test` walkthrough in
 `specs/030-hosted-tenant-activation/quickstart.md`, including restart durability before
 and after test chat plus a diagnostic drill for a quota-blocked activation.

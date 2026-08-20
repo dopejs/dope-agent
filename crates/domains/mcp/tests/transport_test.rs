@@ -11,8 +11,8 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
-use dope_mcp::types::{Server, TransportKind};
-use dope_mcp::{
+use kura_mcp::types::{Server, TransportKind};
+use kura_mcp::{
     McpError, SessionPipes, StdioTransport, StreamableHTTPTransport, Transport,
     TransportMux, WebsocketTransport,
 };

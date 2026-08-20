@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDopeClient } from "./index";
+import { createKuraClient } from "./index";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json" } });
@@ -17,7 +17,7 @@ describe("Roadmap 65-69 product surface SDK methods (operator shell, Roadmap 70)
       .mockResolvedValueOnce(jsonResponse({ item: { itemId: "ci_1", kind: "skill", name: "pdf", trustTier: "verified", versions: [], createdAt: "t", updatedAt: "t" }, enablement: { itemId: "ci_1", state: "disabled", history: [], updatedAt: "t" }, permissionSatisfied: true }))
       .mockResolvedValueOnce(jsonResponse({ requiredCapabilities: ["docker"], eligibleProfiles: [], missingCapabilities: { subprocess: ["docker"] } }));
 
-    const client = createDopeClient({ baseURL: "https://daemon.test", fetchImpl });
+    const client = createKuraClient({ baseURL: "https://daemon.test", fetchImpl });
 
     const policy = await client.createTriagePolicy({ name: "inbox", rules: [], defaultClassification: "fyi" });
     expect(policy.policyId).toBe("tp_1");
@@ -47,9 +47,9 @@ describe("Roadmap 65-69 product surface SDK methods (operator shell, Roadmap 70)
       .mockResolvedValueOnce(jsonResponse({ bundleId: "eb_1", scope: { kind: "routine", ref: "r_1" }, redactionStatus: "redacted", createdAt: "t", retentionExpiresAt: "t" }))
       .mockResolvedValueOnce(jsonResponse({ result: "no_ship", reasons: ["missing mail provider smoke entry"], nonKnowledgeParityComplete: false, gateStatement: "gate" }));
 
-    const client = createDopeClient({ baseURL: "https://daemon.test", fetchImpl });
+    const client = createKuraClient({ baseURL: "https://daemon.test", fetchImpl });
 
-    const bundle = await client.generateEvidenceBundle({ actor: "support@dope", scope: { kind: "routine", ref: "r_1" } });
+    const bundle = await client.generateEvidenceBundle({ actor: "support@kura", scope: { kind: "routine", ref: "r_1" } });
     expect(bundle.redactionStatus).toBe("redacted");
     const decision = await client.validateLaunchGate({ workloads: [], soakDurationMet: false });
     expect(decision.result).toBe("no_ship");

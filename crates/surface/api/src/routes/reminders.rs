@@ -32,11 +32,11 @@ use axum::http::{Method, StatusCode, Uri};
 use axum::routing::{get, post};
 use axum::Router;
 use chrono::{DateTime, Utc};
-use dope_reminders::{
+use kura_reminders::{
     ActionRecord, ActorKind, BehaviorMode, CreateInput, Occurrence, OccurrenceFilter, Reminder,
     ReminderError, State as ReminderState, TransitionInput, WorkflowLaunchConfig,
 };
-use dope_scheduler::{Trigger, TriggerKind};
+use kura_scheduler::{Trigger, TriggerKind};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -73,7 +73,7 @@ struct CreateReminderRequest {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ReminderFollowUpLinkRequest {
-    link_kind: dope_reminders::FollowUpLinkKind,
+    link_kind: kura_reminders::FollowUpLinkKind,
     source_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     environment_scope: String,
@@ -103,7 +103,7 @@ struct ReminderTransitionRequest {
 // ---------------------------------------------------------------------------
 
 /// `reminders_manager` — the shared manager lookup (Go `if manager == nil`).
-fn reminders_manager(state: &AppState) -> Result<&dope_reminders::Manager, ApiError> {
+fn reminders_manager(state: &AppState) -> Result<&kura_reminders::Manager, ApiError> {
     state
         .reminders
         .as_deref()
@@ -328,13 +328,13 @@ fn build_create_reminder_input(request: CreateReminderRequest) -> Result<CreateI
             })
         }
     };
-    let follow_up_link = request.follow_up_link.map(|link| dope_reminders::FollowUpLink {
+    let follow_up_link = request.follow_up_link.map(|link| kura_reminders::FollowUpLink {
         link_kind: link.link_kind,
         source_id: link.source_id.trim().to_string(),
         environment_scope: link.environment_scope.trim().to_string(),
         source_summary: link.source_summary.trim().to_string(),
         source_display_state: link.source_display_state.trim().to_string(),
-        ..dope_reminders::FollowUpLink::default()
+        ..kura_reminders::FollowUpLink::default()
     });
     Ok(CreateInput {
         title: request.title.trim().to_string(),
@@ -390,11 +390,11 @@ fn schedule_trigger_from_request(input: ScheduleTriggerRequest) -> Result<Trigge
 /// Go `buildCalendarAction` (daemon/internal/api/calendar_execution.go).
 fn build_calendar_action(
     request: Option<CalendarWorkflowActionRequest>,
-) -> Result<Option<dope_calendar::Action>, ApiError> {
+) -> Result<Option<kura_calendar::Action>, ApiError> {
     let Some(request) = request else {
         return Ok(None);
     };
-    let mut action = dope_calendar::Action {
+    let mut action = kura_calendar::Action {
         operation_class: request.operation_class,
         integration_id: request.integration_id.trim().to_string(),
         external_event_id: request.external_event_id.trim().to_string(),
@@ -412,7 +412,7 @@ fn build_calendar_action(
             .filter(|a| !a.is_empty())
             .collect(),
         reason: request.reason.trim().to_string(),
-        ..dope_calendar::Action::default()
+        ..kura_calendar::Action::default()
     };
     action.window_start = parse_optional_calendar_action_time(&request.window_start)
         .map_err(|e| ApiError::BadRequest(format!("parse windowStart: {e}")))?;
@@ -433,11 +433,11 @@ fn build_calendar_action(
 /// Go `buildMailAction` (daemon/internal/api/mail_execution.go).
 fn build_mail_action(
     request: Option<MailWorkflowActionRequest>,
-) -> Result<Option<dope_mail::Action>, ApiError> {
+) -> Result<Option<kura_mail::Action>, ApiError> {
     let Some(request) = request else {
         return Ok(None);
     };
-    let action = dope_mail::Action {
+    let action = kura_mail::Action {
         operation_class: request.operation_class,
         integration_id: request.integration_id.trim().to_string(),
         thread_id: request.thread_id.trim().to_string(),
@@ -462,13 +462,13 @@ fn build_mail_action(
 }
 
 /// Go `mailAttachmentInputs` (daemon/internal/api/mail_execution.go).
-fn mail_attachment_inputs(items: Vec<MailAttachmentRefRequest>) -> Vec<dope_mail::AttachmentRefInput> {
+fn mail_attachment_inputs(items: Vec<MailAttachmentRefRequest>) -> Vec<kura_mail::AttachmentRefInput> {
     if items.is_empty() {
         return Vec::new();
     }
     items
         .into_iter()
-        .map(|item| dope_mail::AttachmentRefInput {
+        .map(|item| kura_mail::AttachmentRefInput {
             attachment_ref_id: item.attachment_ref_id.trim().to_string(),
             display_name: item.display_name.trim().to_string(),
             media_type: item.media_type.trim().to_string(),
@@ -596,14 +596,14 @@ mod tests {
 
     use axum::body::to_bytes;
     use axum::http::Request as HttpRequest;
-    use dope_delivery::{
+    use kura_delivery::{
         DeliveryAdapter, DeliveryPreference, DeliveryTarget, Manager as DeliveryManager,
         PreferenceScopeKind, ResultClass, TargetKind, TestSinkAdapter,
     };
-    use dope_events::Bus;
-    use dope_identity::{LifecycleStatus, Tenant, TenantKind};
-    use dope_reminders::{Clock, Dependencies};
-    use dope_store::SQLiteStore;
+    use kura_events::Bus;
+    use kura_identity::{LifecycleStatus, Tenant, TenantKind};
+    use kura_reminders::{Clock, Dependencies};
+    use kura_store::SQLiteStore;
     use parking_lot::Mutex;
     use tower::ServiceExt;
     use uuid::Uuid;
@@ -631,23 +631,23 @@ mod tests {
 
     /// Go reminderWorkflowLauncherStub.
     struct FakeWorkflowLauncher {
-        result: dope_reminders::WorkflowLaunchResult,
+        result: kura_reminders::WorkflowLaunchResult,
         err: Option<String>,
     }
 
     impl FakeWorkflowLauncher {
-        fn ok(result: dope_reminders::WorkflowLaunchResult) -> Self {
+        fn ok(result: kura_reminders::WorkflowLaunchResult) -> Self {
             FakeWorkflowLauncher { result, err: None }
         }
     }
 
-    impl dope_reminders::WorkflowLauncher for FakeWorkflowLauncher {
+    impl kura_reminders::WorkflowLauncher for FakeWorkflowLauncher {
         fn launch_reminder_workflow(
             &self,
-            _cfg: &dope_reminders::WorkflowLaunchConfig,
+            _cfg: &kura_reminders::WorkflowLaunchConfig,
             _reminder_id: &str,
             _occurrence_id: &str,
-        ) -> Result<dope_reminders::WorkflowLaunchResult, String> {
+        ) -> Result<kura_reminders::WorkflowLaunchResult, String> {
             match &self.err {
                 Some(err) => Err(err.clone()),
                 None => Ok(self.result.clone()),
@@ -657,7 +657,7 @@ mod tests {
 
     struct Harness {
         state: AppState,
-        manager: dope_reminders::Manager,
+        manager: kura_reminders::Manager,
         clock: Arc<TestClock>,
     }
 
@@ -665,28 +665,28 @@ mod tests {
         value.parse().expect("valid rfc3339 timestamp")
     }
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-test".to_string(),
+            data_dir: "/tmp/kura-api-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig {
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                telegram: dope_config::TelegramConnectorConfig {
+                telegram: kura_config::TelegramConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                slack: dope_config::SlackConnectorConfig {
+                slack: kura_config::SlackConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                matrix: dope_config::MatrixConnectorConfig {
+                matrix: kura_config::MatrixConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
@@ -723,8 +723,8 @@ mod tests {
     /// Port of Go newReminderServerHarness: temp store, delivery test-sink
     /// target/preference, reminders manager with a fake clock, and an AppState
     /// wired with both managers.
-    fn harness(workflow_launcher: Option<Arc<dyn dope_reminders::WorkflowLauncher>>) -> Harness {
-        let dir = std::env::temp_dir().join(format!("dope-api-reminders-{}", Uuid::now_v7()));
+    fn harness(workflow_launcher: Option<Arc<dyn kura_reminders::WorkflowLauncher>>) -> Harness {
+        let dir = std::env::temp_dir().join(format!("kura-api-reminders-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
             SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
@@ -760,7 +760,7 @@ mod tests {
             })
             .expect("upsert preference");
         let clock = Arc::new(TestClock::new(dt("2026-04-23T09:00:00Z")));
-        let manager = dope_reminders::Manager::new(Dependencies {
+        let manager = kura_reminders::Manager::new(Dependencies {
             environment_scope: "test".to_string(),
             store: Arc::clone(&store),
             event_bus: Some((*bus).clone()),
@@ -891,8 +891,8 @@ mod tests {
     #[tokio::test]
     async fn lifecycle_routes_and_workflow_linkage() {
         // Port of Go TestReminderLifecycleRoutesAndWorkflowLinkage.
-        let launcher: Arc<dyn dope_reminders::WorkflowLauncher> = Arc::new(
-            FakeWorkflowLauncher::ok(dope_reminders::WorkflowLaunchResult {
+        let launcher: Arc<dyn kura_reminders::WorkflowLauncher> = Arc::new(
+            FakeWorkflowLauncher::ok(kura_reminders::WorkflowLaunchResult {
                 run_id: "run_reminder_api".to_string(),
                 workflow_id: "wf_reminder_api".to_string(),
             }),
@@ -1251,7 +1251,7 @@ mod tests {
             .body(axum::body::Body::empty())
             .expect("request");
         owner_req.extensions_mut().insert(TenantContext(
-            dope_identity::TenantContext {
+            kura_identity::TenantContext {
                 tenant_id: "tenant-a".to_string(),
                 ..Default::default()
             },
@@ -1264,7 +1264,7 @@ mod tests {
             .body(axum::body::Body::empty())
             .expect("request");
         other_req.extensions_mut().insert(TenantContext(
-            dope_identity::TenantContext {
+            kura_identity::TenantContext {
                 tenant_id: "tenant-b".to_string(),
                 ..Default::default()
             },

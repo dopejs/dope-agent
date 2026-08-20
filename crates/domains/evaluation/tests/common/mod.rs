@@ -1,6 +1,6 @@
-//! Shared helpers for the dope-evaluation behavioral tests: a memory store
+//! Shared helpers for the kura-evaluation behavioral tests: a memory store
 //! (port of the Go `memoryStore`), a SQLite-backed store adapter over the
-//! dope-store evaluation DAOs, a stub billing repository that fails closed,
+//! kura-store evaluation DAOs, a stub billing repository that fails closed,
 //! a counting runtime recorder, and fixture builders.
 
 #![allow(dead_code)]
@@ -10,10 +10,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use chrono::{DateTime, Utc};
 
-use dope_billing::{
+use kura_billing::{
     BillingError, Category, DenialPayload, ReserveInput, ReserveResult,
 };
-use dope_evaluation::{
+use kura_evaluation::{
     AttemptFilter, CandidateFilter, ComparisonFilter, ComparisonResult, EvaluationError,
     FixtureFilter, ReplayAttempt, ReplayCandidate, RegressionFixture, ReplayRecordInput,
     ReplayRecordResult, RuntimeRecorder, Store,
@@ -23,7 +23,7 @@ pub static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub fn temp_dir(name: &str) -> String {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("dope_evaluation_{name}_{}_{}", std::process::id(), n));
+    let dir = std::env::temp_dir().join(format!("kura_evaluation_{name}_{}_{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -42,19 +42,19 @@ pub fn test_replay_candidate(candidate_id: &str) -> ReplayCandidate {
     let now = fixed_now();
     ReplayCandidate {
         candidate_id: candidate_id.to_string(),
-        candidate_kind: dope_evaluation::CandidateKind::CuratedWork,
+        candidate_kind: kura_evaluation::CandidateKind::CuratedWork,
         display_name: format!("Replay Candidate {candidate_id}"),
-        source_kind: dope_evaluation::SourceKind::Run,
+        source_kind: kura_evaluation::SourceKind::Run,
         source_id: format!("run_{candidate_id}"),
-        source_refs: vec![dope_evaluation::SourceRef {
-            kind: dope_evaluation::SourceKind::Run,
+        source_refs: vec![kura_evaluation::SourceRef {
+            kind: kura_evaluation::SourceKind::Run,
             id: format!("run_{candidate_id}"),
             route: format!("/v1/runs/run_{candidate_id}"),
         }],
         environment_scope: "test".to_string(),
-        readiness_status: dope_evaluation::ReadinessStatus::FullyReplayable,
-        default_replay_mode: dope_evaluation::ReplayMode::NonLive,
-        expected_comparison: Some(dope_evaluation::PlaneSummaries {
+        readiness_status: kura_evaluation::ReadinessStatus::FullyReplayable,
+        default_replay_mode: kura_evaluation::ReplayMode::NonLive,
+        expected_comparison: Some(kura_evaluation::PlaneSummaries {
             runtime: "runtime captured".to_string(),
             policy: "policy captured".to_string(),
             evidence: "evidence captured".to_string(),
@@ -68,24 +68,24 @@ pub fn test_replay_candidate(candidate_id: &str) -> ReplayCandidate {
 
 /// Go `fixtureCandidate` / `fixtureEvidence` (product_fixture_test.go).
 #[must_use]
-pub fn fixture_candidate(now: DateTime<Utc>) -> dope_evaluation::DiscoveredCandidate {
-    dope_evaluation::DiscoveredCandidate {
+pub fn fixture_candidate(now: DateTime<Utc>) -> kura_evaluation::DiscoveredCandidate {
+    kura_evaluation::DiscoveredCandidate {
         discovered_candidate_id: "candidate_1".to_string(),
         tenant_id: "ten_eval".to_string(),
         discovery_run_id: "discovery_run_1".to_string(),
-        source_kind: dope_evaluation::SourceKind::Run,
+        source_kind: kura_evaluation::SourceKind::Run,
         source_id: "run_1".to_string(),
-        source_refs: vec![dope_evaluation::SourceRef {
-            kind: dope_evaluation::SourceKind::Run,
+        source_refs: vec![kura_evaluation::SourceRef {
+            kind: kura_evaluation::SourceKind::Run,
             id: "run_1".to_string(),
             route: "/v1/runs/run_1".to_string(),
         }],
         score: 0.9,
-        score_band: dope_evaluation::ScoreBand::High,
-        redaction_status: dope_evaluation::RedactionStatus::Redacted,
-        readiness_status: dope_evaluation::ReadinessStatus::FullyReplayable,
-        suppression_state: dope_evaluation::SuppressionState::None,
-        retention_state: dope_evaluation::RetentionState::Active,
+        score_band: kura_evaluation::ScoreBand::High,
+        redaction_status: kura_evaluation::RedactionStatus::Redacted,
+        readiness_status: kura_evaluation::ReadinessStatus::FullyReplayable,
+        suppression_state: kura_evaluation::SuppressionState::None,
+        retention_state: kura_evaluation::RetentionState::Active,
         created_at: now,
         updated_at: now,
         ..Default::default()
@@ -93,8 +93,8 @@ pub fn fixture_candidate(now: DateTime<Utc>) -> dope_evaluation::DiscoveredCandi
 }
 
 #[must_use]
-pub fn fixture_evidence(now: DateTime<Utc>) -> dope_evaluation::CandidateEvidence {
-    dope_evaluation::CandidateEvidence {
+pub fn fixture_evidence(now: DateTime<Utc>) -> kura_evaluation::CandidateEvidence {
+    kura_evaluation::CandidateEvidence {
         evidence_id: "evidence_1".to_string(),
         tenant_id: "ten_eval".to_string(),
         discovered_candidate_id: "candidate_1".to_string(),
@@ -103,7 +103,7 @@ pub fn fixture_evidence(now: DateTime<Utc>) -> dope_evaluation::CandidateEvidenc
             .cloned()
             .unwrap_or_default(),
         materialization_allowed: true,
-        retention_state: dope_evaluation::RetentionState::Active,
+        retention_state: kura_evaluation::RetentionState::Active,
         created_at: now,
         ..Default::default()
     }
@@ -172,11 +172,11 @@ impl Store for MemoryStore {
             .values()
             .filter(|item| {
                 (filter.environment_scope.is_empty() || item.environment_scope == filter.environment_scope)
-                    && (filter.candidate_kind == dope_evaluation::CandidateKind::default()
+                    && (filter.candidate_kind == kura_evaluation::CandidateKind::default()
                         || item.candidate_kind == filter.candidate_kind)
-                    && (filter.source_kind == dope_evaluation::SourceKind::default()
+                    && (filter.source_kind == kura_evaluation::SourceKind::default()
                         || item.source_kind == filter.source_kind)
-                    && (filter.readiness_status == dope_evaluation::ReadinessStatus::default()
+                    && (filter.readiness_status == kura_evaluation::ReadinessStatus::default()
                         || item.readiness_status == filter.readiness_status)
             })
             .cloned()
@@ -216,7 +216,7 @@ impl Store for MemoryStore {
             .filter(|item| {
                 (filter.environment_scope.is_empty() || item.environment_scope == filter.environment_scope)
                     && (filter.candidate_id.is_empty() || item.candidate_id == filter.candidate_id)
-                    && (filter.status == dope_evaluation::ReplayAttemptStatus::default()
+                    && (filter.status == kura_evaluation::ReplayAttemptStatus::default()
                         || item.status == filter.status)
             })
             .cloned()
@@ -257,7 +257,7 @@ impl Store for MemoryStore {
                 (filter.environment_scope.is_empty() || item.environment_scope == filter.environment_scope)
                     && (filter.candidate_id.is_empty() || item.candidate_id == filter.candidate_id)
                     && (filter.attempt_id.is_empty() || item.attempt_id == filter.attempt_id)
-                    && (filter.terminal_status == dope_evaluation::ComparisonTerminalStatus::default()
+                    && (filter.terminal_status == kura_evaluation::ComparisonTerminalStatus::default()
                         || item.terminal_status == filter.terminal_status)
             })
             .cloned()
@@ -296,7 +296,7 @@ impl Store for MemoryStore {
             .values()
             .filter(|item| {
                 (filter.environment_scope.is_empty() || item.environment_scope == filter.environment_scope)
-                    && (filter.domain_class == dope_evaluation::FixtureDomainClass::default()
+                    && (filter.domain_class == kura_evaluation::FixtureDomainClass::default()
                         || item.domain_class == filter.domain_class)
             })
             .cloned()
@@ -313,14 +313,14 @@ impl Store for MemoryStore {
     }
 }
 
-/// Store adapter over dope-store's SQLite evaluation DAOs (the production
-/// wiring for the manager's `Store` trait; dope-store itself cannot hold the
-/// impl because store already depends on dope-evaluation).
-pub struct SqliteStoreAdapter(pub parking_lot::Mutex<dope_store::SQLiteStore>);
+/// Store adapter over kura-store's SQLite evaluation DAOs (the production
+/// wiring for the manager's `Store` trait; kura-store itself cannot hold the
+/// impl because store already depends on kura-evaluation).
+pub struct SqliteStoreAdapter(pub parking_lot::Mutex<kura_store::SQLiteStore>);
 
 impl SqliteStoreAdapter {
     #[must_use]
-    pub fn new(store: dope_store::SQLiteStore) -> Self {
+    pub fn new(store: kura_store::SQLiteStore) -> Self {
         SqliteStoreAdapter(parking_lot::Mutex::new(store))
     }
 }
@@ -371,7 +371,7 @@ impl RuntimeRecorder for CountingRecorder {
     fn record_replay(
         &self,
         _input: ReplayRecordInput,
-    ) -> dope_evaluation::BoxFuture<'_, Result<ReplayRecordResult, EvaluationError>> {
+    ) -> kura_evaluation::BoxFuture<'_, Result<ReplayRecordResult, EvaluationError>> {
         self.calls.fetch_add(1, Ordering::Relaxed);
         Box::pin(async {
             Ok(ReplayRecordResult {
@@ -388,11 +388,11 @@ impl RuntimeRecorder for CountingRecorder {
 #[derive(Debug, Clone, Default)]
 pub struct QuotaDenyRepo;
 
-impl dope_billing::Repository for QuotaDenyRepo {
+impl kura_billing::Repository for QuotaDenyRepo {
     fn active_plan(
         &self,
         _tenant_id: &str,
-    ) -> dope_billing::BoxFuture<'_, Result<Option<dope_billing::TenantPlan>, BillingError>> {
+    ) -> kura_billing::BoxFuture<'_, Result<Option<kura_billing::TenantPlan>, BillingError>> {
         Box::pin(async { Ok(None) })
     }
     fn quota_override(
@@ -400,29 +400,29 @@ impl dope_billing::Repository for QuotaDenyRepo {
         _tenant_id: &str,
         _category: &Category,
         _at: DateTime<Utc>,
-    ) -> dope_billing::BoxFuture<'_, Result<Option<dope_billing::QuotaOverride>, BillingError>> {
+    ) -> kura_billing::BoxFuture<'_, Result<Option<kura_billing::QuotaOverride>, BillingError>> {
         Box::pin(async { Ok(None) })
     }
     fn open_period(
         &self,
         _tenant_id: &str,
-        _definition: &dope_billing::QuotaDefinition,
+        _definition: &kura_billing::QuotaDefinition,
         _at: DateTime<Utc>,
-    ) -> dope_billing::BoxFuture<'_, Result<dope_billing::QuotaPeriod, BillingError>> {
-        Box::pin(async { Ok(dope_billing::QuotaPeriod::default()) })
+    ) -> kura_billing::BoxFuture<'_, Result<kura_billing::QuotaPeriod, BillingError>> {
+        Box::pin(async { Ok(kura_billing::QuotaPeriod::default()) })
     }
     fn usage_counter(
         &self,
         _tenant_id: &str,
         _category: &Category,
         _quota_period_id: &str,
-    ) -> dope_billing::BoxFuture<'_, Result<Option<dope_billing::UsageCounter>, BillingError>> {
+    ) -> kura_billing::BoxFuture<'_, Result<Option<kura_billing::UsageCounter>, BillingError>> {
         Box::pin(async { Ok(None) })
     }
     fn save_usage_counter(
         &self,
-        _counter: dope_billing::UsageCounter,
-    ) -> dope_billing::BoxFuture<'_, Result<(), BillingError>> {
+        _counter: kura_billing::UsageCounter,
+    ) -> kura_billing::BoxFuture<'_, Result<(), BillingError>> {
         Box::pin(async { Ok(()) })
     }
     fn reservation_by_operation(
@@ -430,37 +430,37 @@ impl dope_billing::Repository for QuotaDenyRepo {
         _tenant_id: &str,
         _category: &Category,
         _operation_key: &str,
-    ) -> dope_billing::BoxFuture<'_, Result<Option<dope_billing::UsageReservation>, BillingError>> {
+    ) -> kura_billing::BoxFuture<'_, Result<Option<kura_billing::UsageReservation>, BillingError>> {
         Box::pin(async { Ok(None) })
     }
     fn save_reservation(
         &self,
-        _reservation: dope_billing::UsageReservation,
-    ) -> dope_billing::BoxFuture<'_, Result<(), BillingError>> {
+        _reservation: kura_billing::UsageReservation,
+    ) -> kura_billing::BoxFuture<'_, Result<(), BillingError>> {
         Box::pin(async { Ok(()) })
     }
     fn append_usage_event(
         &self,
-        _event: dope_billing::UsageEvent,
-    ) -> dope_billing::BoxFuture<'_, Result<(), BillingError>> {
+        _event: kura_billing::UsageEvent,
+    ) -> kura_billing::BoxFuture<'_, Result<(), BillingError>> {
         Box::pin(async { Ok(()) })
     }
     fn append_quota_denial(
         &self,
-        _denial: dope_billing::QuotaDenial,
-    ) -> dope_billing::BoxFuture<'_, Result<(), BillingError>> {
+        _denial: kura_billing::QuotaDenial,
+    ) -> kura_billing::BoxFuture<'_, Result<(), BillingError>> {
         Box::pin(async { Ok(()) })
     }
     fn list_pending_reservations(
         &self,
-    ) -> dope_billing::BoxFuture<'_, Result<Vec<dope_billing::UsageReservation>, BillingError>> {
+    ) -> kura_billing::BoxFuture<'_, Result<Vec<kura_billing::UsageReservation>, BillingError>> {
         Box::pin(async { Ok(Vec::new()) })
     }
     fn reserve_usage(
         &self,
         input: ReserveInput,
         _now: DateTime<Utc>,
-    ) -> dope_billing::BoxFuture<'_, Result<Option<ReserveResult>, BillingError>> {
+    ) -> kura_billing::BoxFuture<'_, Result<Option<ReserveResult>, BillingError>> {
         Box::pin(async move {
             let result = ReserveResult {
                 allowed: false,
@@ -483,8 +483,8 @@ impl dope_billing::Repository for QuotaDenyRepo {
 
 /// Tenant context with a fixed tenant id for quota-gated tests.
 #[must_use]
-pub fn tenant_context(tenant_id: &str) -> dope_identity::TenantContext {
-    dope_identity::TenantContext {
+pub fn tenant_context(tenant_id: &str) -> kura_identity::TenantContext {
+    kura_identity::TenantContext {
         tenant_id: tenant_id.to_string(),
         principal_id: format!("prn_{tenant_id}"),
         ..Default::default()

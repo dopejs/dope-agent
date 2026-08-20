@@ -77,7 +77,7 @@ Use the default personal tenant id returned by `/v1/auth/me`:
 ```bash
 curl -sS http://127.0.0.1:19192/v1/config \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Dope-Tenant-ID: <defaultTenantId>"
+  -H "X-Kura-Tenant-ID: <defaultTenantId>"
 ```
 
 Expected result: request succeeds and resolves to the selected tenant.
@@ -87,7 +87,7 @@ Use a made-up tenant id:
 ```bash
 curl -sS -i http://127.0.0.1:19192/v1/config \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Dope-Tenant-ID: tenant_not_allowed"
+  -H "X-Kura-Tenant-ID: tenant_not_allowed"
 ```
 
 Expected result: request is denied with stable tenant authorization error details and does
@@ -109,7 +109,7 @@ Invite another principal:
 ```bash
 curl -sS -X POST http://127.0.0.1:19192/v1/tenants/<organizationTenantId>/invitations \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Dope-Tenant-ID: <organizationTenantId>" \
+  -H "X-Kura-Tenant-ID: <organizationTenantId>" \
   -H 'Content-Type: application/json' \
   -d '{"invitedPrincipalId":"<principalId>","role":"operator"}'
 ```

@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use dope_adapterrpc::{Client, Error, CONTRACT_VERSION};
+use kura_adapterrpc::{Client, Error, CONTRACT_VERSION};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -168,7 +168,7 @@ pub struct AdapterHealthEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dope_adapterref::{new_pipe_client, new_pipe_client_with_options, Options};
+    use kura_adapterref::{new_pipe_client, new_pipe_client_with_options, Options};
 
     #[test]
     fn adapter_runtime_readiness_gate_and_observability() {

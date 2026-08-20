@@ -80,7 +80,7 @@ content, and cross-tenant data. `billing.view` alone is insufficient for export.
 
 For local operator verification, start the test daemon and run
 `scripts/phase47-public-quota-walkthrough.sh`. The script seeds only
-`~/.dope-test/daemon.sqlite`, then validates quota dashboard projection, ordinary and
+`~/.kura-test/daemon.sqlite`, then validates quota dashboard projection, ordinary and
 abuse denial detail, evidence export redactions, cross-tenant hiding, and unauthorized
 no-partial-data behavior.
 

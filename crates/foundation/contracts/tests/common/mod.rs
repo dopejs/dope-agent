@@ -27,7 +27,7 @@ pub fn schema_root_dir() -> PathBuf {
 
 /// Mirrors Go's mustValidateFixtures: every schemaPath -> fixture pair must
 /// validate cleanly.
-pub fn validate_fixtures(validator: &dope_contracts::Validator, fixtures: &[Fixture]) {
+pub fn validate_fixtures(validator: &kura_contracts::Validator, fixtures: &[Fixture]) {
     for (schema_path, fixture) in fixtures {
         validator
             .validate_relative(schema_path, fixture.as_bytes())

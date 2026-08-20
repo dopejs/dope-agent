@@ -6,7 +6,7 @@
 //! The live-validation family (UpsertLiveValidation*ForTenant &c.) and the
 //! evaluation-product family (evaluation_product.go: discovery policies, campaigns,
 //! product fixtures, dashboard projections) are NOT ported yet: they depend on
-//! dope-store live-validation / evaluation-product CRUD methods that have not landed.
+//! kura-store live-validation / evaluation-product CRUD methods that have not landed.
 //! They should be wired here when the underlying store methods exist.
 
 use crate::{emit_denial, require, TenancyError};
@@ -14,12 +14,12 @@ use crate::{emit_denial, require, TenancyError};
 /// Tenant-aware accessor for the evaluation family.
 pub struct Evaluation {
     store: crate::SQLiteStore,
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl Evaluation {
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         Evaluation { store, emitter }
     }
 
@@ -39,14 +39,14 @@ impl Evaluation {
 
     pub fn upsert_replay_candidate_for_tenant(
         &self,
-        item: &dope_evaluation::ReplayCandidate,
+        item: &kura_evaluation::ReplayCandidate,
     ) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_replay_candidate(item).map_err(TenancyError::from)?;
         self.bind_row("evaluation_replay_candidates", "candidate_id", &item.candidate_id, &tenant_id, "store:UpsertReplayCandidateForTenant", "evaluation_replay_candidate")
     }
 
-    pub fn upsert_replay_attempt_for_tenant(&self, item: &dope_evaluation::ReplayAttempt) -> Result<(), TenancyError> {
+    pub fn upsert_replay_attempt_for_tenant(&self, item: &kura_evaluation::ReplayAttempt) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_replay_attempt(item).map_err(TenancyError::from)?;
         self.bind_row("evaluation_replay_attempts", "attempt_id", &item.attempt_id, &tenant_id, "store:UpsertReplayAttemptForTenant", "evaluation_replay_attempt")
@@ -54,7 +54,7 @@ impl Evaluation {
 
     pub fn upsert_comparison_result_for_tenant(
         &self,
-        item: &dope_evaluation::ComparisonResult,
+        item: &kura_evaluation::ComparisonResult,
     ) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_comparison_result(item).map_err(TenancyError::from)?;
@@ -63,7 +63,7 @@ impl Evaluation {
 
     pub fn upsert_regression_fixture_for_tenant(
         &self,
-        item: &dope_evaluation::RegressionFixture,
+        item: &kura_evaluation::RegressionFixture,
     ) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_regression_fixture(item).map_err(TenancyError::from)?;

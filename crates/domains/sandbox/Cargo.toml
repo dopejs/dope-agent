@@ -1,17 +1,17 @@
 [package]
-name = "dope-sandbox"
+name = "kura-sandbox"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-config.workspace = true
-dope-store.workspace = true
-dope-events.workspace = true
-dope-policy.workspace = true
-dope-secrets.workspace = true
-dope-identity.workspace = true
-dope-audit.workspace = true
+kura-config.workspace = true
+kura-store.workspace = true
+kura-events.workspace = true
+kura-policy.workspace = true
+kura-secrets.workspace = true
+kura-identity.workspace = true
+kura-audit.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true

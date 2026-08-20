@@ -6,14 +6,14 @@ mod common;
 
 use std::sync::Arc;
 
-use dope_billing::Manager as BillingManager;
-use dope_evaluation::{
+use kura_billing::Manager as BillingManager;
+use kura_evaluation::{
     ApprovalHandling, AttemptFilter, CandidateFilter, CandidateKind, ComparisonFilter,
     ComparisonTerminalStatus, CreateComparisonInput, CreateReplayAttemptInput, Dependencies,
     DriftPlane, EvaluationError, FixtureDomainClass, FixtureFilter, Manager, ReadinessStatus,
     ReplayAttemptStatus, ReplayCandidate, ReplayMode, SideEffectHandling, SourceKind, SourceRef,
 };
-use dope_identity::tenantctx;
+use kura_identity::tenantctx;
 
 use common::{
     CountingRecorder, MemoryStore, QuotaDenyRepo, SqliteStoreAdapter, fixed_now, temp_dir,
@@ -87,7 +87,7 @@ fn manager_normalizes_nil_collections_for_api_responses() {
         updated_at: now,
         ..Default::default()
     });
-    store.insert_attempt(dope_evaluation::ReplayAttempt {
+    store.insert_attempt(kura_evaluation::ReplayAttempt {
         attempt_id: "attempt_legacy".to_string(),
         candidate_id: "candidate_legacy".to_string(),
         environment_scope: "test".to_string(),
@@ -97,7 +97,7 @@ fn manager_normalizes_nil_collections_for_api_responses() {
         updated_at: now,
         ..Default::default()
     });
-    store.insert_comparison(dope_evaluation::ComparisonResult {
+    store.insert_comparison(kura_evaluation::ComparisonResult {
         comparison_id: "comparison_legacy".to_string(),
         candidate_id: "candidate_legacy".to_string(),
         attempt_id: "attempt_legacy".to_string(),
@@ -106,7 +106,7 @@ fn manager_normalizes_nil_collections_for_api_responses() {
         generated_at: now,
         ..Default::default()
     });
-    store.insert_fixture(dope_evaluation::RegressionFixture {
+    store.insert_fixture(kura_evaluation::RegressionFixture {
         fixture_id: "fixture_legacy".to_string(),
         display_name: "Legacy Fixture".to_string(),
         domain_class: FixtureDomainClass::Schedule,
@@ -393,7 +393,7 @@ async fn comparison_can_use_baseline_attempt_evidence() {
         .upsert_replay_candidate(candidate)
         .expect("UpsertReplayCandidate returned error");
     let now = fixed_now();
-    let baseline = dope_evaluation::ReplayAttempt {
+    let baseline = kura_evaluation::ReplayAttempt {
         attempt_id: "attempt_baseline".to_string(),
         candidate_id: "candidate_baseline".to_string(),
         environment_scope: "test".to_string(),
@@ -540,7 +540,7 @@ async fn manager_replays_and_compares_required_fixture_classes() {
 
 #[tokio::test]
 async fn replay_evaluation_attempt_quota_denies_before_attempt_and_runtime_work() {
-    let store = SqliteStoreAdapter::new(dope_store::SQLiteStore::new(&temp_dir("quota_deny")).expect("store"));
+    let store = SqliteStoreAdapter::new(kura_store::SQLiteStore::new(&temp_dir("quota_deny")).expect("store"));
     let billing = BillingManager::with_clock(Arc::new(QuotaDenyRepo), fixed_now);
     let recorder = Arc::new(CountingRecorder::default());
     let manager = Manager::new(Dependencies {
@@ -568,7 +568,7 @@ async fn replay_evaluation_attempt_quota_denies_before_attempt_and_runtime_work(
         matches!(
             err,
             EvaluationError::BillingReservation(ref bre)
-                if matches!(bre.error, dope_billing::BillingError::QuotaDenied)
+                if matches!(bre.error, kura_billing::BillingError::QuotaDenied)
         ),
         "expected ErrQuotaDenied, got {err:?}"
     );

@@ -27,7 +27,7 @@ finite quotas are configured.
 
 **Language/Version**: Go 1.24 daemon/control-plane code; JSON Schema contracts under
 `schemas/`; TypeScript SDK resources must be updated because Roadmap 38 exposes tenant
-plan, quota, usage, denial, and adjustment surfaces.  
+plan, quota, usage, denial, and adjustment surfaces.
 **Primary Dependencies**: `daemon/internal/identity`, `daemon/internal/tenantctx`,
 `daemon/internal/store`, `daemon/internal/store/tenancy`, `daemon/internal/audit`,
 `daemon/internal/events`, `daemon/internal/runtime`, `daemon/internal/orchestration`,
@@ -35,26 +35,26 @@ plan, quota, usage, denial, and adjustment surfaces.
 `daemon/internal/sandbox`, `daemon/internal/artifacts`, `daemon/internal/evaluation`,
 `daemon/internal/api`, `daemon/internal/contracts`, `schemas/api`, and `schemas/events`.
 New billing and quota logic belongs in `daemon/internal/billing` rather than being
-embedded in individual launch or domain handlers.  
+embedded in individual launch or domain handlers.
 **Storage**: SQLite remains the durable metadata store. Add tenant-owned plan, quota
 definition, quota override, period, counter, reservation, usage event, denial, manual
 adjustment, and audit-retention policy records. Counter and reservation changes must run
-in one durable transaction per operation identity and quota period.  
+in one durable transaction per operation identity and quota period.
 **Testing**: `go test ./...` in `daemon/`, targeted package tests for billing/store/API/
 runtime/orchestration/integrations/artifacts/evaluation/audit/contracts, restart recovery
 tests for pending reservations, concurrent launch tests, `make daemon-contract-test`,
 `make daemon-run-test` plus the manual quota smoke, `pnpm test:clients`, `pnpm build`,
-and `go mod tidy` from `daemon/` after implementation.  
+and `go mod tidy` from `daemon/` after implementation.
 **Target Platform**: Local-first daemon and hosted daemon behavior using the default test
-environment for local verification (`~/.dope-test`, `127.0.0.1:19192`).  
+environment for local verification (`~/.kura-test`, `127.0.0.1:19192`).
 **Project Type**: Multi-domain daemon platform change: persistence migration, daemon API,
 SDK/client contracts, runtime and workflow launch gating, Roadmap 38 live-validation gate
 contract readiness, integration operation gating, storage/artifact accounting,
-replay/evaluation attempt gating, audit/event contracts, and operator documentation.  
+replay/evaluation attempt gating, audit/event contracts, and operator documentation.
 **Performance Goals**: Quota checks add one bounded tenant-scoped reservation transaction
 before each guarded operation. Plan and usage inspection for a seeded tenant remains
 completeable by a tenant owner in under 2 minutes, and the manual operator smoke explains
-denial/refund/adjustment evidence in under 15 minutes.  
+denial/refund/adjustment evidence in under 15 minutes.
 **Constraints**: Hosted quota enforcement fails closed when quota state is unavailable.
 Quota periods reset on UTC boundaries. Lowered quotas take effect immediately without
 rewriting existing usage. Storage/artifact bytes reserve an estimate before write and
@@ -65,7 +65,7 @@ restart recovery marks reservations operator-action-needed and denies duplicate 
 resolved. Billing and usage audit records retain indefinitely unless an explicit operator
 retention policy is applied. Billing administration uses the canonical `billing.manage`
 permission.
-Local-first development/unlimited plans remain explicit and non-denying by default.  
+Local-first development/unlimited plans remain explicit and non-denying by default.
 **Scale/Scope**: One daemon may host multiple tenants with finite plans and moderate
 volumes of runs, workflows, tool calls, live validation attempts, integrations, artifacts,
 and replay/evaluation attempts per tenant. The plan optimizes for correctness,
@@ -97,7 +97,7 @@ payment-provider metering.
   concurrent launches, lowered-quota enforcement, storage estimate reconciliation,
   fail-closed hosted denial, unlimited local plan behavior, audit retention, contract
   shapes, and matrix completeness.
-- **Environment and secrets** — PASS. Verification uses `~/.dope-test`, fake tenants, and
+- **Environment and secrets** — PASS. Verification uses `~/.kura-test`, fake tenants, and
   fake integrations by default. No production tenant, live connector, payment-provider
   credential, invoice system, tax system, or revenue-recognition integration is required.
 
@@ -206,7 +206,7 @@ implementation can be considered complete.
 - **Verification and observability** — PASS. `quickstart.md` names targeted package tests,
   contract checks, full daemon tests, client tests, test daemon smoke, audit evidence
   checks, restart recovery checks, and concurrency checks.
-- **Environment and secrets** — PASS. The design defaults to `~/.dope-test`, fake tenants,
+- **Environment and secrets** — PASS. The design defaults to `~/.kura-test`, fake tenants,
   fake integration operations, and no payment-provider credentials or live connector
   access.
 

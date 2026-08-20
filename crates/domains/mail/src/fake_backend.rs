@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, TimeZone, Utc};
-use dope_integrations::Resource;
+use kura_integrations::Resource;
 use parking_lot::Mutex;
 
 use crate::{
@@ -314,7 +314,7 @@ fn unique_strings(items: &[String]) -> Vec<String> {
 impl Backend for FakeBackend {
     fn supports_resource(&self, resource: &Resource) -> bool {
         resource.domain_kind.trim() == "mail"
-            && dope_integrations::backend_kind_supports_domain(resource.backend_binding.backend_kind, &resource.domain_kind)
+            && kura_integrations::backend_kind_supports_domain(resource.backend_binding.backend_kind, &resource.domain_kind)
     }
 
     fn project_account(&self, resource: &Resource) -> Result<AccountProjection, MailError> {

@@ -1,6 +1,6 @@
 use chrono::{TimeZone, Utc};
-use dope_integrations::DiagnosticReasonCode;
-use dope_opsreadiness::{
+use kura_integrations::DiagnosticReasonCode;
+use kura_opsreadiness::{
     build_integration_diagnostic_smoke_report, build_smoke_probe_outcome, generate_hosted_run_id,
     validate_hosted_profile, validate_hosted_redaction, HostedOperationalProfile, SmokeProbeInput,
     SmokeProbeResult, SmokeReportStatus,
@@ -21,7 +21,7 @@ fn hosted_profile_rejects_production_data_dir() {
         profile_name: "P1".to_string(),
         environment: "test".to_string(),
         host_class: "stable_test_host".to_string(),
-        data_directory: "~/.dope".to_string(),
+        data_directory: "~/.kura".to_string(),
         log_directory: "/logs".to_string(),
         artifact_directory: "/art".to_string(),
         backup_directory: "/bak".to_string(),

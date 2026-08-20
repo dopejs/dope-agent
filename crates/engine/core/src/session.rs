@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use dope_model_provider::ModelProvider;
-use dope_model_provider::Prompt;
-use dope_model_provider::ProviderError;
-use dope_model_provider::ResponseEvent;
-use dope_protocol::Event;
-use dope_protocol::EventMsg;
-use dope_protocol::ResponseItem;
-use dope_protocol::Role;
-use dope_protocol::ThreadId;
+use kura_model_provider::ModelProvider;
+use kura_model_provider::Prompt;
+use kura_model_provider::ProviderError;
+use kura_model_provider::ResponseEvent;
+use kura_protocol::Event;
+use kura_protocol::EventMsg;
+use kura_protocol::ResponseItem;
+use kura_protocol::Role;
+use kura_protocol::ThreadId;
 use futures::StreamExt;
 
 use crate::tools::ToolInvocation;
@@ -200,7 +200,7 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dope_model_provider::ToolSpec;
+    use kura_model_provider::ToolSpec;
     use futures::stream;
     use futures::stream::BoxStream;
     use parking_lot::Mutex;

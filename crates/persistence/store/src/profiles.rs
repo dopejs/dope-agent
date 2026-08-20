@@ -5,7 +5,7 @@
 //! RollbackAgentProfile, RetireAgentProfile) and `profile_projection.go`
 //! (ActiveAgentProfileSelection, RecordRuntimeProfileProjection,
 //! ListRuntimeProfileProjections). Records are persisted as serialized
-//! `dope_profiles` documents (document_json) plus the denormalized tenant
+//! `kura_profiles` documents (document_json) plus the denormalized tenant
 //! columns the schema keeps for scoping, exactly like the Go port.
 
 use chrono::{DateTime, Utc};
@@ -39,75 +39,75 @@ fn is_unset_time(dt: &DateTime<Utc>) -> bool {
     dt.timestamp() == 0 && dt.timestamp_subsec_nanos() == 0
 }
 
-fn scan_profile_document(raw: &str) -> Result<dope_profiles::AgentProfile, String> {
+fn scan_profile_document(raw: &str) -> Result<kura_profiles::AgentProfile, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode agent profile document: {e}"))
 }
 
-fn scan_version_document(raw: &str) -> Result<dope_profiles::ProfileVersion, String> {
+fn scan_version_document(raw: &str) -> Result<kura_profiles::ProfileVersion, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode agent profile version document: {e}"))
 }
 
-fn scan_selection_document(raw: &str) -> Result<dope_profiles::ActiveSelection, String> {
+fn scan_selection_document(raw: &str) -> Result<kura_profiles::ActiveSelection, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode active selection document: {e}"))
 }
 
-fn scan_overlay_document(raw: &str) -> Result<dope_profiles::OverlayReference, String> {
+fn scan_overlay_document(raw: &str) -> Result<kura_profiles::OverlayReference, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode overlay reference document: {e}"))
 }
 
-fn scan_audit_document(raw: &str) -> Result<dope_profiles::AuditEvent, String> {
+fn scan_audit_document(raw: &str) -> Result<kura_profiles::AuditEvent, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode profile audit event document: {e}"))
 }
 
-fn scan_projection_document(raw: &str) -> Result<dope_profiles::RuntimeProjection, String> {
+fn scan_projection_document(raw: &str) -> Result<kura_profiles::RuntimeProjection, String> {
     serde_json::from_str(raw).map_err(|e| format!("decode runtime profile projection document: {e}"))
 }
 
 impl SQLiteStore {
     // --- tx helpers (free functions mirroring Go's insertAgentProfileTx &c.) ---
 
-    pub fn ensure_default_agent_profile(&self, tenant_id: &str) -> Result<dope_profiles::AgentProfile, String> {
+    pub fn ensure_default_agent_profile(&self, tenant_id: &str) -> Result<kura_profiles::AgentProfile, String> {
         let items = self.list_agent_profiles(tenant_id, 1)?;
         if let Some(first) = items.items.into_iter().next() {
             return Ok(first);
         }
         let result = self.create_agent_profile(
-            &dope_identity::TenantContext {
+            &kura_identity::TenantContext {
                 tenant_id: tenant_id.to_string(),
                 principal_id: "system".to_string(),
-                ..dope_identity::TenantContext::default()
+                ..kura_identity::TenantContext::default()
             },
-            &dope_profiles::MutationInput {
+            &kura_profiles::MutationInput {
                 display_name: "Default Agent".to_string(),
-                display_identity: dope_profiles::DisplayIdentity {
+                display_identity: kura_profiles::DisplayIdentity {
                     name: "Kura".to_string(),
                     safe_summary: "Default personal assistant profile".to_string(),
-                    ..dope_profiles::DisplayIdentity::default()
+                    ..kura_profiles::DisplayIdentity::default()
                 },
-                persona: dope_profiles::Persona {
+                persona: kura_profiles::Persona {
                     tone: "direct".to_string(),
                     safe_summary: "Concise production-oriented behavior".to_string(),
-                    ..dope_profiles::Persona::default()
+                    ..kura_profiles::Persona::default()
                 },
-                default_provider_preference: dope_profiles::DefaultProviderPreference {
-                    validation_state: dope_profiles::OverlayValidationState::VALID,
-                    ..dope_profiles::DefaultProviderPreference::default()
+                default_provider_preference: kura_profiles::DefaultProviderPreference {
+                    validation_state: kura_profiles::OverlayValidationState::VALID,
+                    ..kura_profiles::DefaultProviderPreference::default()
                 },
-                safety_defaults: dope_profiles::SafetyDefaults {
+                safety_defaults: kura_profiles::SafetyDefaults {
                     approval_posture: "ask_for_risky_changes".to_string(),
-                    validation_state: dope_profiles::OverlayValidationState::VALID,
-                    ..dope_profiles::SafetyDefaults::default()
+                    validation_state: kura_profiles::OverlayValidationState::VALID,
+                    ..kura_profiles::SafetyDefaults::default()
                 },
-                legacy_mapping_evidence: dope_profiles::default_legacy_mapping_evidence(),
+                legacy_mapping_evidence: kura_profiles::default_legacy_mapping_evidence(),
                 activate: true,
                 reason_code: "default_seeded".to_string(),
-                overlay_references: dope_profiles::default_legacy_overlay_reference_inputs(),
+                overlay_references: kura_profiles::default_legacy_overlay_reference_inputs(),
             },
         )?;
         Ok(result.profile)
     }
 
-    pub fn list_agent_profiles(&self, tenant_id: &str, limit: i64) -> Result<dope_profiles::ListResponse, String> {
+    pub fn list_agent_profiles(&self, tenant_id: &str, limit: i64) -> Result<kura_profiles::ListResponse, String> {
         let limit = if limit <= 0 || limit > 200 { 50 } else { limit };
         let mut stmt = self
             .conn
@@ -135,11 +135,11 @@ impl SQLiteStore {
             let mut profile = scan_profile_document(&raw)?;
             profile.tenant_default = tenant_default == 1;
             profile.overlay_reference_count = overlay_count;
-            items.push(dope_profiles::redact_profile(profile));
+            items.push(kura_profiles::redact_profile(profile));
         }
-        Ok(dope_profiles::ListResponse {
+        Ok(kura_profiles::ListResponse {
             tenant_id: tenant_id.to_string(),
-            page: dope_profiles::Page {
+            page: kura_profiles::Page {
                 limit,
                 next_cursor: String::new(),
                 order: "updated_at_desc".to_string(),
@@ -152,15 +152,15 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         profile_id: &str,
-    ) -> Result<Option<dope_profiles::ProfileDetail>, String> {
+    ) -> Result<Option<kura_profiles::ProfileDetail>, String> {
         let Some(profile) = self.get_agent_profile(tenant_id, profile_id)? else {
             return Ok(None);
         };
         let versions = self.list_agent_profile_versions(tenant_id, profile_id, 50)?;
         let overlays = self.list_agent_profile_overlays(tenant_id, profile_id)?;
         let audits = self.list_agent_profile_audit_events(tenant_id, profile_id, 25)?;
-        Ok(Some(dope_profiles::ProfileDetail {
-            profile: dope_profiles::redact_profile(profile),
+        Ok(Some(kura_profiles::ProfileDetail {
+            profile: kura_profiles::redact_profile(profile),
             versions,
             overlay_references: overlays,
             audit_events: audits,
@@ -172,24 +172,24 @@ impl SQLiteStore {
     /// mutation result otherwise.
     pub fn create_agent_profile(
         &self,
-        actor: &dope_identity::TenantContext,
-        input: &dope_profiles::MutationInput,
-    ) -> Result<dope_profiles::MutationResult, String> {
+        actor: &kura_identity::TenantContext,
+        input: &kura_profiles::MutationInput,
+    ) -> Result<kura_profiles::MutationResult, String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_profiles::ProfilesError::ExplicitActorRequired.to_string());
+            return Err(kura_profiles::ProfilesError::ExplicitActorRequired.to_string());
         }
-        dope_profiles::validate_mutation(input).map_err(|e| e.to_string())?;
+        kura_profiles::validate_mutation(input).map_err(|e| e.to_string())?;
         self.validate_profile_mutation_against_store(input)?;
         let now = Utc::now();
         let profile_id = new_store_id("prof");
         let version_id = new_store_id("profv");
         let audit_id = new_store_id("audit_profile");
         let status = if input.activate {
-            dope_profiles::Status::ACTIVE
+            kura_profiles::Status::ACTIVE
         } else {
-            dope_profiles::Status::DRAFT
+            kura_profiles::Status::DRAFT
         };
-        let mut profile = dope_profiles::AgentProfile {
+        let mut profile = kura_profiles::AgentProfile {
             profile_id: profile_id.clone(),
             tenant_id: actor.tenant_id.clone(),
             display_name: input.display_name.trim().to_string(),
@@ -204,24 +204,24 @@ impl SQLiteStore {
             updated_at: now,
             created_by_principal_id: actor.principal_id.clone(),
             updated_by_principal_id: actor.principal_id.clone(),
-            redaction_status: dope_profiles::RedactionStatus::REDACTED,
-            ..dope_profiles::AgentProfile::default()
+            redaction_status: kura_profiles::RedactionStatus::REDACTED,
+            ..kura_profiles::AgentProfile::default()
         };
-        profile = dope_profiles::redact_profile(profile);
-        let version = dope_profiles::ProfileVersion {
+        profile = kura_profiles::redact_profile(profile);
+        let version = kura_profiles::ProfileVersion {
             profile_version_id: version_id.clone(),
             profile_id: profile_id.clone(),
             tenant_id: actor.tenant_id.clone(),
             version_number: 1,
             source_version_id: String::new(),
-            change_kind: dope_profiles::ChangeKind::CREATED,
+            change_kind: kura_profiles::ChangeKind::CREATED,
             change_summary: "Created profile".to_string(),
             snapshot: profile.clone(),
-            rollback_eligibility: dope_profiles::RollbackEligibility::ELIGIBLE,
+            rollback_eligibility: kura_profiles::RollbackEligibility::ELIGIBLE,
             actor_principal_id: actor.principal_id.clone(),
             created_at: now,
             audit_event_id: audit_id.clone(),
-            redaction_status: dope_profiles::RedactionStatus::REDACTED,
+            redaction_status: kura_profiles::RedactionStatus::REDACTED,
         };
         let tx = self
             .conn
@@ -237,21 +237,21 @@ impl SQLiteStore {
             &input.overlay_references,
             now,
         )?;
-        let mut selection = dope_profiles::ActiveSelection::default();
+        let mut selection = kura_profiles::ActiveSelection::default();
         if input.activate {
             selection = upsert_active_selection_tx(
                 &tx,
                 actor,
                 &profile,
                 &version_id,
-                dope_profiles::SelectionReason::DEFAULT_SEEDED,
+                kura_profiles::SelectionReason::DEFAULT_SEEDED,
                 &audit_id,
                 now,
             )?;
         }
         insert_profile_audit_tx(
             &tx,
-            &dope_profiles::AuditEvent {
+            &kura_profiles::AuditEvent {
                 audit_event_id: audit_id.clone(),
                 tenant_id: actor.tenant_id.clone(),
                 profile_id: profile_id.clone(),
@@ -263,11 +263,11 @@ impl SQLiteStore {
                 reason_code: default_reason(&input.reason_code, "user_created_profile"),
                 safe_summary: "Profile created".to_string(),
                 occurred_at: now,
-                redaction_status: dope_profiles::RedactionStatus::REDACTED,
+                redaction_status: kura_profiles::RedactionStatus::REDACTED,
             },
         )?;
         tx.commit().map_err(|e| format!("commit create agent profile: {e}"))?;
-        Ok(dope_profiles::MutationResult {
+        Ok(kura_profiles::MutationResult {
             profile,
             version,
             selection,
@@ -277,14 +277,14 @@ impl SQLiteStore {
 
     pub fn update_agent_profile(
         &self,
-        actor: &dope_identity::TenantContext,
+        actor: &kura_identity::TenantContext,
         profile_id: &str,
-        input: &dope_profiles::MutationInput,
-    ) -> Result<dope_profiles::MutationResult, String> {
+        input: &kura_profiles::MutationInput,
+    ) -> Result<kura_profiles::MutationResult, String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_profiles::ProfilesError::ExplicitActorRequired.to_string());
+            return Err(kura_profiles::ProfilesError::ExplicitActorRequired.to_string());
         }
-        dope_profiles::validate_mutation(input).map_err(|e| e.to_string())?;
+        kura_profiles::validate_mutation(input).map_err(|e| e.to_string())?;
         self.validate_profile_mutation_against_store(input)?;
         let mut current = self
             .get_agent_profile(&actor.tenant_id, profile_id)?
@@ -305,21 +305,21 @@ impl SQLiteStore {
         current.active_version_id = version_id.clone();
         current.updated_at = now;
         current.updated_by_principal_id = actor.principal_id.clone();
-        current = dope_profiles::redact_profile(current);
-        let version = dope_profiles::ProfileVersion {
+        current = kura_profiles::redact_profile(current);
+        let version = kura_profiles::ProfileVersion {
             profile_version_id: version_id.clone(),
             profile_id: profile_id.to_string(),
             tenant_id: actor.tenant_id.clone(),
             version_number,
             source_version_id,
-            change_kind: dope_profiles::ChangeKind::UPDATED,
+            change_kind: kura_profiles::ChangeKind::UPDATED,
             change_summary: "Updated profile".to_string(),
             snapshot: current.clone(),
-            rollback_eligibility: dope_profiles::RollbackEligibility::ELIGIBLE,
+            rollback_eligibility: kura_profiles::RollbackEligibility::ELIGIBLE,
             actor_principal_id: actor.principal_id.clone(),
             created_at: now,
             audit_event_id: audit_id.clone(),
-            redaction_status: dope_profiles::RedactionStatus::REDACTED,
+            redaction_status: kura_profiles::RedactionStatus::REDACTED,
         };
         let tx = self
             .conn
@@ -337,7 +337,7 @@ impl SQLiteStore {
         )?;
         insert_profile_audit_tx(
             &tx,
-            &dope_profiles::AuditEvent {
+            &kura_profiles::AuditEvent {
                 audit_event_id: audit_id.clone(),
                 tenant_id: actor.tenant_id.clone(),
                 profile_id: profile_id.to_string(),
@@ -349,26 +349,26 @@ impl SQLiteStore {
                 reason_code: default_reason(&input.reason_code, "user_updated_profile"),
                 safe_summary: "Profile updated".to_string(),
                 occurred_at: now,
-                redaction_status: dope_profiles::RedactionStatus::REDACTED,
+                redaction_status: kura_profiles::RedactionStatus::REDACTED,
             },
         )?;
         tx.commit().map_err(|e| format!("commit update agent profile: {e}"))?;
-        Ok(dope_profiles::MutationResult {
+        Ok(kura_profiles::MutationResult {
             profile: current,
             version,
-            selection: dope_profiles::ActiveSelection::default(),
+            selection: kura_profiles::ActiveSelection::default(),
             audit_event_id: audit_id,
         })
     }
 
     pub fn activate_agent_profile(
         &self,
-        actor: &dope_identity::TenantContext,
+        actor: &kura_identity::TenantContext,
         profile_id: &str,
-        input: &dope_profiles::ActivationInput,
-    ) -> Result<dope_profiles::ActiveSelection, String> {
+        input: &kura_profiles::ActivationInput,
+    ) -> Result<kura_profiles::ActiveSelection, String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_profiles::ProfilesError::ExplicitActorRequired.to_string());
+            return Err(kura_profiles::ProfilesError::ExplicitActorRequired.to_string());
         }
         let mut profile = self
             .get_agent_profile(&actor.tenant_id, profile_id)?
@@ -381,10 +381,10 @@ impl SQLiteStore {
         let version = self
             .get_agent_profile_version(&actor.tenant_id, profile_id, &version_id)?
             .ok_or_else(|| "agent profile not found".to_string())?;
-        dope_profiles::can_activate(&profile, &version).map_err(|e| e.to_string())?;
+        kura_profiles::can_activate(&profile, &version).map_err(|e| e.to_string())?;
         let now = Utc::now();
         let audit_id = new_store_id("audit_profile");
-        profile.status = dope_profiles::Status::ACTIVE;
+        profile.status = kura_profiles::Status::ACTIVE;
         profile.active_version_id = version_id.clone();
         profile.updated_at = now;
         profile.updated_by_principal_id = actor.principal_id.clone();
@@ -397,14 +397,14 @@ impl SQLiteStore {
             actor,
             &profile,
             &version_id,
-            dope_profiles::SelectionReason::USER_ACTIVATED,
+            kura_profiles::SelectionReason::USER_ACTIVATED,
             &audit_id,
             now,
         )?;
         update_agent_profile_tx(&tx, &profile)?;
         insert_profile_audit_tx(
             &tx,
-            &dope_profiles::AuditEvent {
+            &kura_profiles::AuditEvent {
                 audit_event_id: audit_id.clone(),
                 tenant_id: actor.tenant_id.clone(),
                 profile_id: profile_id.to_string(),
@@ -416,7 +416,7 @@ impl SQLiteStore {
                 reason_code: default_reason(&input.reason_code, "user_selected_default"),
                 safe_summary: "Profile activated".to_string(),
                 occurred_at: now,
-                redaction_status: dope_profiles::RedactionStatus::REDACTED,
+                redaction_status: kura_profiles::RedactionStatus::REDACTED,
             },
         )?;
         tx.commit().map_err(|e| format!("commit activate agent profile: {e}"))?;
@@ -428,7 +428,7 @@ impl SQLiteStore {
         tenant_id: &str,
         profile_id: &str,
         limit: i64,
-    ) -> Result<Vec<dope_profiles::ProfileVersion>, String> {
+    ) -> Result<Vec<kura_profiles::ProfileVersion>, String> {
         let limit = if limit <= 0 || limit > 200 { 50 } else { limit };
         let mut stmt = self
             .conn
@@ -449,15 +449,15 @@ impl SQLiteStore {
 
     pub fn rollback_agent_profile(
         &self,
-        actor: &dope_identity::TenantContext,
+        actor: &kura_identity::TenantContext,
         profile_id: &str,
-        input: &dope_profiles::RollbackInput,
-    ) -> Result<dope_profiles::MutationResult, String> {
+        input: &kura_profiles::RollbackInput,
+    ) -> Result<kura_profiles::MutationResult, String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_profiles::ProfilesError::ExplicitActorRequired.to_string());
+            return Err(kura_profiles::ProfilesError::ExplicitActorRequired.to_string());
         }
         if input.source_profile_version_id.trim().is_empty() {
-            return Err(dope_profiles::ProfilesError::ProfileNotActivatable.to_string());
+            return Err(kura_profiles::ProfilesError::ProfileNotActivatable.to_string());
         }
         let source = self
             .get_agent_profile_version(&actor.tenant_id, profile_id, &input.source_profile_version_id)?
@@ -465,20 +465,20 @@ impl SQLiteStore {
         let mut current = self
             .get_agent_profile(&actor.tenant_id, profile_id)?
             .ok_or_else(|| "agent profile not found".to_string())?;
-        if dope_profiles::rollback_eligibility_for(&current, &source) != dope_profiles::RollbackEligibility::ELIGIBLE {
-            return Err(dope_profiles::ProfilesError::ProfileNotActivatable.to_string());
+        if kura_profiles::rollback_eligibility_for(&current, &source) != kura_profiles::RollbackEligibility::ELIGIBLE {
+            return Err(kura_profiles::ProfilesError::ProfileNotActivatable.to_string());
         }
         let was_tenant_default = self.is_tenant_default_profile(&actor.tenant_id, profile_id)?;
         let source_overlays = self.list_agent_profile_overlays_for_version(&actor.tenant_id, profile_id, &source.profile_version_id)?;
-        let overlay_inputs: Vec<dope_profiles::OverlayReferenceInput> = source_overlays
+        let overlay_inputs: Vec<kura_profiles::OverlayReferenceInput> = source_overlays
             .iter()
-            .map(|overlay| dope_profiles::OverlayReferenceInput {
+            .map(|overlay| kura_profiles::OverlayReferenceInput {
                 reference_kind: overlay.reference_kind.clone(),
                 reference_uri: overlay.reference_uri.clone(),
                 scope: overlay.scope.clone(),
             })
             .collect();
-        let mutation_input = dope_profiles::MutationInput {
+        let mutation_input = kura_profiles::MutationInput {
             display_name: source.snapshot.display_name.clone(),
             display_identity: source.snapshot.display_identity.clone(),
             persona: source.snapshot.persona.clone(),
@@ -486,9 +486,9 @@ impl SQLiteStore {
             safety_defaults: source.snapshot.safety_defaults.clone(),
             legacy_mapping_evidence: source.snapshot.legacy_mapping_evidence.clone(),
             overlay_references: overlay_inputs.clone(),
-            ..dope_profiles::MutationInput::default()
+            ..kura_profiles::MutationInput::default()
         };
-        dope_profiles::validate_mutation(&mutation_input).map_err(|e| e.to_string())?;
+        kura_profiles::validate_mutation(&mutation_input).map_err(|e| e.to_string())?;
         self.validate_profile_mutation_against_store(&mutation_input)?;
         let now = Utc::now();
         let version_number = self.next_agent_profile_version(&actor.tenant_id, profile_id)?;
@@ -503,21 +503,21 @@ impl SQLiteStore {
         current.active_version_id = version_id.clone();
         current.updated_at = now;
         current.updated_by_principal_id = actor.principal_id.clone();
-        current = dope_profiles::redact_profile(current);
-        let version = dope_profiles::ProfileVersion {
+        current = kura_profiles::redact_profile(current);
+        let version = kura_profiles::ProfileVersion {
             profile_version_id: version_id.clone(),
             profile_id: profile_id.to_string(),
             tenant_id: actor.tenant_id.clone(),
             version_number,
             source_version_id: source.profile_version_id.clone(),
-            change_kind: dope_profiles::ChangeKind::ROLLED_BACK,
+            change_kind: kura_profiles::ChangeKind::ROLLED_BACK,
             change_summary: "Rolled back profile".to_string(),
             snapshot: current.clone(),
-            rollback_eligibility: dope_profiles::RollbackEligibility::ELIGIBLE,
+            rollback_eligibility: kura_profiles::RollbackEligibility::ELIGIBLE,
             actor_principal_id: actor.principal_id.clone(),
             created_at: now,
             audit_event_id: audit_id.clone(),
-            redaction_status: dope_profiles::RedactionStatus::REDACTED,
+            redaction_status: kura_profiles::RedactionStatus::REDACTED,
         };
         let tx = self
             .conn
@@ -526,21 +526,21 @@ impl SQLiteStore {
         update_agent_profile_tx(&tx, &current)?;
         insert_agent_profile_version_tx(&tx, &version)?;
         replace_overlay_references_tx(&tx, &actor.tenant_id, profile_id, &version_id, &overlay_inputs, now)?;
-        let mut selection = dope_profiles::ActiveSelection::default();
+        let mut selection = kura_profiles::ActiveSelection::default();
         if was_tenant_default {
             selection = upsert_active_selection_tx(
                 &tx,
                 actor,
                 &current,
                 &version_id,
-                dope_profiles::SelectionReason::ROLLBACK_ACTIVATED,
+                kura_profiles::SelectionReason::ROLLBACK_ACTIVATED,
                 &audit_id,
                 now,
             )?;
         }
         insert_profile_audit_tx(
             &tx,
-            &dope_profiles::AuditEvent {
+            &kura_profiles::AuditEvent {
                 audit_event_id: audit_id.clone(),
                 tenant_id: actor.tenant_id.clone(),
                 profile_id: profile_id.to_string(),
@@ -552,11 +552,11 @@ impl SQLiteStore {
                 reason_code: default_reason(&input.reason_code, "operator_reverted_persona"),
                 safe_summary: "Profile rolled back".to_string(),
                 occurred_at: now,
-                redaction_status: dope_profiles::RedactionStatus::REDACTED,
+                redaction_status: kura_profiles::RedactionStatus::REDACTED,
             },
         )?;
         tx.commit().map_err(|e| format!("commit rollback agent profile: {e}"))?;
-        Ok(dope_profiles::MutationResult {
+        Ok(kura_profiles::MutationResult {
             profile: current,
             version,
             selection,
@@ -566,18 +566,18 @@ impl SQLiteStore {
 
     pub fn retire_agent_profile(
         &self,
-        actor: &dope_identity::TenantContext,
+        actor: &kura_identity::TenantContext,
         profile_id: &str,
-        status: dope_profiles::Status,
-        input: &dope_profiles::RetirementInput,
-    ) -> Result<dope_profiles::MutationResult, String> {
+        status: kura_profiles::Status,
+        input: &kura_profiles::RetirementInput,
+    ) -> Result<kura_profiles::MutationResult, String> {
         if actor.tenant_id.trim().is_empty() || actor.principal_id.trim().is_empty() {
-            return Err(dope_profiles::ProfilesError::ExplicitActorRequired.to_string());
+            return Err(kura_profiles::ProfilesError::ExplicitActorRequired.to_string());
         }
         let mut profile = self
             .get_agent_profile(&actor.tenant_id, profile_id)?
             .ok_or_else(|| "agent profile not found".to_string())?;
-        if status != dope_profiles::Status::ARCHIVED && status != dope_profiles::Status::DISABLED {
+        if status != kura_profiles::Status::ARCHIVED && status != kura_profiles::Status::DISABLED {
             return Err(format!("unsupported retirement status {}", status.as_str()));
         }
         let was_tenant_default = self.is_tenant_default_profile(&actor.tenant_id, profile_id)?;
@@ -589,30 +589,30 @@ impl SQLiteStore {
         profile.active_version_id = version_id.clone();
         profile.updated_at = now;
         profile.updated_by_principal_id = actor.principal_id.clone();
-        if status == dope_profiles::Status::ARCHIVED {
+        if status == kura_profiles::Status::ARCHIVED {
             profile.archived_at = Some(now);
         } else {
             profile.disabled_at = Some(now);
         }
-        let mut version = dope_profiles::ProfileVersion {
+        let mut version = kura_profiles::ProfileVersion {
             profile_version_id: version_id.clone(),
             profile_id: profile_id.to_string(),
             tenant_id: actor.tenant_id.clone(),
             version_number,
             source_version_id: String::new(),
-            change_kind: dope_profiles::ChangeKind::ARCHIVED,
+            change_kind: kura_profiles::ChangeKind::ARCHIVED,
             change_summary: "Retired profile".to_string(),
             snapshot: profile.clone(),
-            rollback_eligibility: dope_profiles::RollbackEligibility::PROFILE_ARCHIVED,
+            rollback_eligibility: kura_profiles::RollbackEligibility::PROFILE_ARCHIVED,
             actor_principal_id: actor.principal_id.clone(),
             created_at: now,
             audit_event_id: audit_id.clone(),
-            redaction_status: dope_profiles::RedactionStatus::REDACTED,
+            redaction_status: kura_profiles::RedactionStatus::REDACTED,
         };
         let mut event_kind = "profile.archived";
-        if status == dope_profiles::Status::DISABLED {
-            version.change_kind = dope_profiles::ChangeKind::DISABLED;
-            version.rollback_eligibility = dope_profiles::RollbackEligibility::PROFILE_DISABLED;
+        if status == kura_profiles::Status::DISABLED {
+            version.change_kind = kura_profiles::ChangeKind::DISABLED;
+            version.rollback_eligibility = kura_profiles::RollbackEligibility::PROFILE_DISABLED;
             event_kind = "profile.disabled";
         }
         let tx = self
@@ -626,26 +626,26 @@ impl SQLiteStore {
             params![actor.tenant_id, profile_id],
         )
         .map_err(|e| format!("delete active selections for retired profile: {e}"))?;
-        let mut selection = dope_profiles::ActiveSelection::default();
+        let mut selection = kura_profiles::ActiveSelection::default();
         if was_tenant_default {
             let default_profile = ensure_default_agent_profile_tx(&tx, &actor.tenant_id, now)?;
             selection = upsert_active_selection_tx(
                 &tx,
-                &dope_identity::TenantContext {
+                &kura_identity::TenantContext {
                     tenant_id: actor.tenant_id.clone(),
                     principal_id: "system".to_string(),
-                    ..dope_identity::TenantContext::default()
+                    ..kura_identity::TenantContext::default()
                 },
                 &default_profile,
                 &default_profile.active_version_id,
-                dope_profiles::SelectionReason::SYSTEM_FALLBACK,
+                kura_profiles::SelectionReason::SYSTEM_FALLBACK,
                 &audit_id,
                 now,
             )?;
         }
         insert_profile_audit_tx(
             &tx,
-            &dope_profiles::AuditEvent {
+            &kura_profiles::AuditEvent {
                 audit_event_id: audit_id.clone(),
                 tenant_id: actor.tenant_id.clone(),
                 profile_id: profile_id.to_string(),
@@ -657,11 +657,11 @@ impl SQLiteStore {
                 reason_code: default_reason(&input.reason_code, "operator_retired_profile"),
                 safe_summary: "Profile retired".to_string(),
                 occurred_at: now,
-                redaction_status: dope_profiles::RedactionStatus::REDACTED,
+                redaction_status: kura_profiles::RedactionStatus::REDACTED,
             },
         )?;
         tx.commit().map_err(|e| format!("commit retire agent profile: {e}"))?;
-        Ok(dope_profiles::MutationResult {
+        Ok(kura_profiles::MutationResult {
             profile,
             version,
             selection,
@@ -677,7 +677,7 @@ impl SQLiteStore {
     pub fn active_agent_profile_selection(
         &self,
         tenant_id: &str,
-    ) -> Result<Option<(dope_profiles::AgentProfile, dope_profiles::ActiveSelection)>, String> {
+    ) -> Result<Option<(kura_profiles::AgentProfile, kura_profiles::ActiveSelection)>, String> {
         let found: Result<(String, String), rusqlite::Error> = self.conn.query_row(
             r#"SELECT p.document_json, s.document_json
             FROM agent_profile_active_selections s
@@ -702,8 +702,8 @@ impl SQLiteStore {
 
     pub fn record_runtime_profile_projection(
         &self,
-        mut projection: dope_profiles::RuntimeProjection,
-    ) -> Result<dope_profiles::RuntimeProjection, String> {
+        mut projection: kura_profiles::RuntimeProjection,
+    ) -> Result<kura_profiles::RuntimeProjection, String> {
         if projection.runtime_profile_projection_id.is_empty() {
             projection.runtime_profile_projection_id = new_store_id("rpp");
         }
@@ -755,7 +755,7 @@ impl SQLiteStore {
         resource_id: &str,
         thread_id: &str,
         limit: i64,
-    ) -> Result<Vec<dope_profiles::RuntimeProjection>, String> {
+    ) -> Result<Vec<kura_profiles::RuntimeProjection>, String> {
         let limit = if limit <= 0 || limit > 100 { 20 } else { limit };
         let mut query = String::from(
             "SELECT document_json FROM agent_profile_runtime_projections WHERE tenant_id = ?1",
@@ -790,7 +790,7 @@ impl SQLiteStore {
 
     // --- helpers ---
 
-    pub fn get_agent_profile(&self, tenant_id: &str, profile_id: &str) -> Result<Option<dope_profiles::AgentProfile>, String> {
+    pub fn get_agent_profile(&self, tenant_id: &str, profile_id: &str) -> Result<Option<kura_profiles::AgentProfile>, String> {
         let mut stmt = self
             .conn
             .prepare("SELECT document_json FROM agent_profiles WHERE tenant_id = ?1 AND profile_id = ?2")
@@ -805,7 +805,7 @@ impl SQLiteStore {
 
     /// Go `ListProviderModels`-backed validation: a non-empty provider
     /// preference must resolve to an available model.
-    pub fn validate_profile_mutation_against_store(&self, input: &dope_profiles::MutationInput) -> Result<(), String> {
+    pub fn validate_profile_mutation_against_store(&self, input: &kura_profiles::MutationInput) -> Result<(), String> {
         let provider_id = input.default_provider_preference.provider_id.trim();
         if provider_id.is_empty() {
             return Ok(());
@@ -833,22 +833,22 @@ impl SQLiteStore {
                 continue;
             }
             if !model.available {
-                return Err(dope_profiles::invalid_profile_reason("provider_model_unavailable").to_string());
+                return Err(kura_profiles::invalid_profile_reason("provider_model_unavailable").to_string());
             }
             if !input.default_provider_preference.reasoning_level.trim().is_empty()
                 && !model.reasoning_levels.iter().any(|r| r.trim() == input.default_provider_preference.reasoning_level.trim())
             {
-                return Err(dope_profiles::invalid_profile_reason("reasoning_level_unsupported_for_model").to_string());
+                return Err(kura_profiles::invalid_profile_reason("reasoning_level_unsupported_for_model").to_string());
             }
             return Ok(());
         }
         if !provider_known {
-            return Err(dope_profiles::invalid_profile_reason("provider_not_available").to_string());
+            return Err(kura_profiles::invalid_profile_reason("provider_not_available").to_string());
         }
         if model_id.is_empty() && (available_default || available_any) {
             return Ok(());
         }
-        Err(dope_profiles::invalid_profile_reason("provider_model_not_available").to_string())
+        Err(kura_profiles::invalid_profile_reason("provider_model_not_available").to_string())
     }
 
     pub fn is_tenant_default_profile(&self, tenant_id: &str, profile_id: &str) -> Result<bool, String> {
@@ -881,7 +881,7 @@ impl SQLiteStore {
         tenant_id: &str,
         profile_id: &str,
         version_id: &str,
-    ) -> Result<Option<dope_profiles::ProfileVersion>, String> {
+    ) -> Result<Option<kura_profiles::ProfileVersion>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -902,7 +902,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         profile_id: &str,
-    ) -> Result<Vec<dope_profiles::OverlayReference>, String> {
+    ) -> Result<Vec<kura_profiles::OverlayReference>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -928,7 +928,7 @@ impl SQLiteStore {
         tenant_id: &str,
         profile_id: &str,
         version_id: &str,
-    ) -> Result<Vec<dope_profiles::OverlayReference>, String> {
+    ) -> Result<Vec<kura_profiles::OverlayReference>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -951,7 +951,7 @@ impl SQLiteStore {
         tenant_id: &str,
         profile_id: &str,
         limit: i64,
-    ) -> Result<Vec<dope_profiles::AuditEvent>, String> {
+    ) -> Result<Vec<kura_profiles::AuditEvent>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -988,7 +988,7 @@ impl SQLiteStore {
     }
 }
 
-fn insert_agent_profile_tx(tx: &Transaction, profile: &dope_profiles::AgentProfile) -> Result<(), String> {
+fn insert_agent_profile_tx(tx: &Transaction, profile: &kura_profiles::AgentProfile) -> Result<(), String> {
     let document_json = serde_json::to_string(profile).map_err(|e| format!("marshal agent profile: {e}"))?;
     tx.execute(
         r#"INSERT INTO agent_profiles (
@@ -1016,7 +1016,7 @@ fn insert_agent_profile_tx(tx: &Transaction, profile: &dope_profiles::AgentProfi
     Ok(())
 }
 
-fn ensure_default_agent_profile_tx(tx: &Transaction, tenant_id: &str, now: DateTime<Utc>) -> Result<dope_profiles::AgentProfile, String> {
+fn ensure_default_agent_profile_tx(tx: &Transaction, tenant_id: &str, now: DateTime<Utc>) -> Result<kura_profiles::AgentProfile, String> {
     let mut stmt = tx
         .prepare(
             "SELECT document_json FROM agent_profiles
@@ -1031,52 +1031,52 @@ fn ensure_default_agent_profile_tx(tx: &Transaction, tenant_id: &str, now: DateT
     }
     let profile_id = new_store_id("prof");
     let version_id = new_store_id("profv");
-    let profile = dope_profiles::AgentProfile {
+    let profile = kura_profiles::AgentProfile {
         profile_id: profile_id.clone(),
         tenant_id: tenant_id.to_string(),
         display_name: "Default Agent".to_string(),
-        display_identity: dope_profiles::DisplayIdentity {
+        display_identity: kura_profiles::DisplayIdentity {
             name: "Kura".to_string(),
             safe_summary: "Default personal assistant profile".to_string(),
-            ..dope_profiles::DisplayIdentity::default()
+            ..kura_profiles::DisplayIdentity::default()
         },
-        persona: dope_profiles::Persona {
+        persona: kura_profiles::Persona {
             tone: "direct".to_string(),
             safe_summary: "Concise production-oriented behavior".to_string(),
-            ..dope_profiles::Persona::default()
+            ..kura_profiles::Persona::default()
         },
-        default_provider_preference: dope_profiles::DefaultProviderPreference {
-            validation_state: dope_profiles::OverlayValidationState::VALID,
-            ..dope_profiles::DefaultProviderPreference::default()
+        default_provider_preference: kura_profiles::DefaultProviderPreference {
+            validation_state: kura_profiles::OverlayValidationState::VALID,
+            ..kura_profiles::DefaultProviderPreference::default()
         },
-        safety_defaults: dope_profiles::SafetyDefaults {
+        safety_defaults: kura_profiles::SafetyDefaults {
             approval_posture: "ask_for_risky_changes".to_string(),
-            validation_state: dope_profiles::OverlayValidationState::VALID,
-            ..dope_profiles::SafetyDefaults::default()
+            validation_state: kura_profiles::OverlayValidationState::VALID,
+            ..kura_profiles::SafetyDefaults::default()
         },
-        legacy_mapping_evidence: dope_profiles::default_legacy_mapping_evidence(),
-        status: dope_profiles::Status::ACTIVE,
+        legacy_mapping_evidence: kura_profiles::default_legacy_mapping_evidence(),
+        status: kura_profiles::Status::ACTIVE,
         active_version_id: version_id.clone(),
         created_at: now,
         updated_at: now,
         created_by_principal_id: "system".to_string(),
         updated_by_principal_id: "system".to_string(),
-        redaction_status: dope_profiles::RedactionStatus::REDACTED,
-        ..dope_profiles::AgentProfile::default()
+        redaction_status: kura_profiles::RedactionStatus::REDACTED,
+        ..kura_profiles::AgentProfile::default()
     };
-    let version = dope_profiles::ProfileVersion {
+    let version = kura_profiles::ProfileVersion {
         profile_version_id: version_id.clone(),
         profile_id: profile_id.clone(),
         tenant_id: tenant_id.to_string(),
         version_number: 1,
-        change_kind: dope_profiles::ChangeKind::CREATED,
+        change_kind: kura_profiles::ChangeKind::CREATED,
         change_summary: "Seeded default profile".to_string(),
         snapshot: profile.clone(),
-        rollback_eligibility: dope_profiles::RollbackEligibility::ELIGIBLE,
+        rollback_eligibility: kura_profiles::RollbackEligibility::ELIGIBLE,
         actor_principal_id: "system".to_string(),
         created_at: now,
-        redaction_status: dope_profiles::RedactionStatus::REDACTED,
-        ..dope_profiles::ProfileVersion::default()
+        redaction_status: kura_profiles::RedactionStatus::REDACTED,
+        ..kura_profiles::ProfileVersion::default()
     };
     insert_agent_profile_tx(tx, &profile)?;
     insert_agent_profile_version_tx(tx, &version)?;
@@ -1085,13 +1085,13 @@ fn ensure_default_agent_profile_tx(tx: &Transaction, tenant_id: &str, now: DateT
         tenant_id,
         &profile_id,
         &version_id,
-        &dope_profiles::default_legacy_overlay_reference_inputs(),
+        &kura_profiles::default_legacy_overlay_reference_inputs(),
         now,
     )?;
     Ok(profile)
 }
 
-fn update_agent_profile_tx(tx: &Transaction, profile: &dope_profiles::AgentProfile) -> Result<(), String> {
+fn update_agent_profile_tx(tx: &Transaction, profile: &kura_profiles::AgentProfile) -> Result<(), String> {
     let document_json = serde_json::to_string(profile).map_err(|e| format!("marshal agent profile: {e}"))?;
     tx.execute(
         r#"UPDATE agent_profiles SET
@@ -1117,7 +1117,7 @@ fn update_agent_profile_tx(tx: &Transaction, profile: &dope_profiles::AgentProfi
     Ok(())
 }
 
-fn insert_agent_profile_version_tx(tx: &Transaction, version: &dope_profiles::ProfileVersion) -> Result<(), String> {
+fn insert_agent_profile_version_tx(tx: &Transaction, version: &kura_profiles::ProfileVersion) -> Result<(), String> {
     let document_json = serde_json::to_string(version).map_err(|e| format!("marshal agent profile version: {e}"))?;
     tx.execute(
         r#"INSERT INTO agent_profile_versions (
@@ -1147,24 +1147,24 @@ fn insert_agent_profile_version_tx(tx: &Transaction, version: &dope_profiles::Pr
 
 fn upsert_active_selection_tx(
     tx: &Transaction,
-    actor: &dope_identity::TenantContext,
-    profile: &dope_profiles::AgentProfile,
+    actor: &kura_identity::TenantContext,
+    profile: &kura_profiles::AgentProfile,
     version_id: &str,
-    reason: dope_profiles::SelectionReason,
+    reason: kura_profiles::SelectionReason,
     audit_id: &str,
     now: DateTime<Utc>,
-) -> Result<dope_profiles::ActiveSelection, String> {
-    let selection = dope_profiles::ActiveSelection {
+) -> Result<kura_profiles::ActiveSelection, String> {
+    let selection = kura_profiles::ActiveSelection {
         selection_id: new_store_id("sel"),
         tenant_id: actor.tenant_id.clone(),
         profile_id: profile.profile_id.clone(),
         profile_version_id: version_id.to_string(),
-        selection_scope: dope_profiles::SELECTION_SCOPE_TENANT_DEFAULT.to_string(),
+        selection_scope: kura_profiles::SELECTION_SCOPE_TENANT_DEFAULT.to_string(),
         selection_reason: reason,
         selected_by_principal_id: actor.principal_id.clone(),
         selected_at: now,
         audit_event_id: audit_id.to_string(),
-        redaction_status: dope_profiles::RedactionStatus::REDACTED,
+        redaction_status: kura_profiles::RedactionStatus::REDACTED,
     };
     let document_json = serde_json::to_string(&selection)
         .map_err(|e| format!("marshal active selection: {e}"))?;
@@ -1207,11 +1207,11 @@ fn replace_overlay_references_tx(
     tenant_id: &str,
     profile_id: &str,
     version_id: &str,
-    inputs: &[dope_profiles::OverlayReferenceInput],
+    inputs: &[kura_profiles::OverlayReferenceInput],
     now: DateTime<Utc>,
 ) -> Result<(), String> {
     for input in inputs {
-        let mut overlay = dope_profiles::normalize_overlay(input);
+        let mut overlay = kura_profiles::normalize_overlay(input);
         overlay.overlay_reference_id = new_store_id("ovr");
         overlay.tenant_id = tenant_id.to_string();
         overlay.profile_id = profile_id.to_string();
@@ -1249,7 +1249,7 @@ fn replace_overlay_references_tx(
     Ok(())
 }
 
-fn insert_profile_audit_tx(tx: &Transaction, audit: &dope_profiles::AuditEvent) -> Result<(), String> {
+fn insert_profile_audit_tx(tx: &Transaction, audit: &kura_profiles::AuditEvent) -> Result<(), String> {
     let document_json = serde_json::to_string(audit).map_err(|e| format!("marshal profile audit event: {e}"))?;
     tx.execute(
         r#"INSERT INTO agent_profile_audit_events (

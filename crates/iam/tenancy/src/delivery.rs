@@ -3,7 +3,7 @@
 //! delivery_summary_windows. Port of daemon/internal/store/tenancy/delivery.go.
 
 use crate::{emit_denial, require, TenancyError};
-use dope_store::delivery::{
+use kura_store::delivery::{
     DeliveryAttemptRecord, DeliveryOutcomeRecord, DeliveryPreferenceRecord,
     DeliverySummaryWindowRecord, DeliveryTargetRecord,
 };
@@ -11,12 +11,12 @@ use dope_store::delivery::{
 /// Tenant-aware accessor for the delivery family.
 pub struct Delivery {
     store: crate::SQLiteStore,
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl Delivery {
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         Delivery { store, emitter }
     }
 

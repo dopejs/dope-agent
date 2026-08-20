@@ -164,7 +164,7 @@
 - [X] T063 Run `make daemon-contract-test` using `Makefile`
 - [X] T064 Run `pnpm test:clients` using root `package.json`
 - [X] T065 Run `pnpm build` using root `package.json`
-- [X] T066 Perform the manual `DOPE_ENV=test` walkthrough from `specs/032-public-quota-ux/quickstart.md`
+- [X] T066 Perform the manual `KURA_ENV=test` walkthrough from `specs/032-public-quota-ux/quickstart.md`
 - [X] T067 Record verification results, rollback path, residual risks, and any unverified gaps in `specs/032-public-quota-ux/quickstart.md`
 
 ---

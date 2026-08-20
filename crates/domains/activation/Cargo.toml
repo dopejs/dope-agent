@@ -1,15 +1,15 @@
 [package]
-name = "dope-activation"
+name = "kura-activation"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-billing.workspace = true
-dope-chat.workspace = true
-dope-identity.workspace = true
-dope-llm.workspace = true
-dope-store.workspace = true
+kura-billing.workspace = true
+kura-chat.workspace = true
+kura-identity.workspace = true
+kura-llm.workspace = true
+kura-store.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -42,7 +42,7 @@ daemon-test-status`, `go mod tidy` from `daemon/` after implementation, and a ma
 stable-host smoke. Run `pnpm test:clients` and `pnpm build` only if SDK/web/TUI surfaces
 change.  
 **Target Platform**: Stable always-on test host or VPS using the default test environment
-(`DOPE_ENV=test`, `~/.dope-test`, `127.0.0.1:19192`) and a repo-owned foreground
+(`KURA_ENV=test`, `~/.kura-test`, `127.0.0.1:19192`) and a repo-owned foreground
 supervisor. Developer laptops are acceptable only for targeted validation, not release
 readiness evidence. Host-native service managers, Kubernetes, cloud-specific managed
 services, multi-region deployment, and payment production launch are out of scope.  
@@ -53,7 +53,7 @@ checklists.
 minutes; crash or reboot recovery returns daemon health within <=5 minutes or records
 failed recovery evidence; release evidence review completes in <=30 minutes; 100% of
 required evidence indexes match the reviewed commit, profile, and run identity.  
-**Constraints**: Default validation must not touch `~/.dope`, production user data, live
+**Constraints**: Default validation must not touch `~/.kura`, production user data, live
 connectors, or privileged credentials. Live connectors require explicit operator opt-in.
 Hosted operational evidence uses 90-day default retention unless an authorized policy
 requires longer. Release evidence mismatched to commit, profile, or run identity is a
@@ -84,8 +84,8 @@ rehearsal, repeated run identities, and bounded evidence retention.
 - **Verification and observability** - PASS. The plan names report contract tests,
   daemon smoke, stable-host smoke, backup/restore rehearsal, upgrade rehearsal,
   observability completeness, failure-owner classification, retention, and redaction.
-- **Environment and secrets** - PASS. Default execution uses `DOPE_ENV=test`,
-  `~/.dope-test`, and disabled live connectors. Privileged/live access is explicit, and
+- **Environment and secrets** - PASS. Default execution uses `KURA_ENV=test`,
+  `~/.kura-test`, and disabled live connectors. Privileged/live access is explicit, and
   raw credential material is forbidden in all generated evidence.
 
 No violations require justification. Proceed to Phase 0.
@@ -181,7 +181,7 @@ supervisor recovery evidence, and explicit no-ship conditions.
 1. Add hosted profile docs and evidence contracts without changing existing local test or
    production operation commands.
 2. Add repo-owned foreground supervisor and manifest/report helpers that default to
-   `DOPE_ENV=test`, `~/.dope-test`, and disabled live connectors.
+   `KURA_ENV=test`, `~/.kura-test`, and disabled live connectors.
 3. Add generated evidence paths with run identity and 90-day retention metadata; do not
    remove or rewrite existing Roadmap 39 evidence paths.
 4. Reuse existing backup/restore, upgrade, and soak helpers; extend them only where

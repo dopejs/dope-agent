@@ -3,7 +3,7 @@
 //! (UpsertWorkflow, ReplaceWorkflowSteps, ReplaceWorkflowDependencies,
 //! ReplaceWorkflowHandoffs, ListWorkflows, GetWorkflow, GetWorkflowByID,
 //! MarkInFlightWorkflowsInterrupted). The workflow document is decoded from
-//! `document_json` (the whole serialized `dope-orchestration` value) and the
+//! `document_json` (the whole serialized `kura-orchestration` value) and the
 //! steps/dependencies/handoffs are stored in their own tables, matching the Go
 //! read/decode path exactly. The tenant column is written as NULL until the
 //! tenancy package is ported.
@@ -149,7 +149,7 @@ fn scan_workflow_handoff_record(row: &Row) -> Result<WorkflowHandoffRecord, Stri
 }
 
 impl SQLiteStore {
-    pub fn upsert_workflow(&self, workflow: &dope_orchestration::Workflow) -> Result<(), String> {
+    pub fn upsert_workflow(&self, workflow: &kura_orchestration::Workflow) -> Result<(), String> {
         let document_json =
             serde_json::to_string(workflow).map_err(|e| format!("marshal workflow {}: {e}", workflow.workflow_id))?;
         self.conn
@@ -201,7 +201,7 @@ impl SQLiteStore {
     pub fn replace_workflow_steps(
         &self,
         workflow_id: &str,
-        steps: &[dope_orchestration::WorkflowStep],
+        steps: &[kura_orchestration::WorkflowStep],
     ) -> Result<(), String> {
         let tx = self
             .conn
@@ -245,7 +245,7 @@ impl SQLiteStore {
     pub fn replace_workflow_dependencies(
         &self,
         workflow_id: &str,
-        items: &[dope_orchestration::Dependency],
+        items: &[kura_orchestration::Dependency],
     ) -> Result<(), String> {
         let tx = self
             .conn
@@ -272,7 +272,7 @@ impl SQLiteStore {
     pub fn replace_workflow_handoffs(
         &self,
         workflow_id: &str,
-        items: &[dope_orchestration::Handoff],
+        items: &[kura_orchestration::Handoff],
     ) -> Result<(), String> {
         let tx = self
             .conn
@@ -296,7 +296,7 @@ impl SQLiteStore {
             .map_err(|e| format!("commit replace workflow handoffs {workflow_id}: {e}"))
     }
 
-    pub fn list_workflows(&self, environment_scope: &str, run_id: &str) -> Result<Vec<dope_orchestration::Workflow>, String> {
+    pub fn list_workflows(&self, environment_scope: &str, run_id: &str) -> Result<Vec<kura_orchestration::Workflow>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -324,7 +324,7 @@ impl SQLiteStore {
         environment_scope: &str,
         run_id: &str,
         workflow_id: &str,
-    ) -> Result<Option<dope_orchestration::Workflow>, String> {
+    ) -> Result<Option<kura_orchestration::Workflow>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -349,7 +349,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         workflow_id: &str,
-    ) -> Result<Option<dope_orchestration::Workflow>, String> {
+    ) -> Result<Option<kura_orchestration::Workflow>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -374,28 +374,28 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         interrupted_at: DateTime<Utc>,
-    ) -> Result<Vec<dope_orchestration::Workflow>, String> {
+    ) -> Result<Vec<kura_orchestration::Workflow>, String> {
         let items = self.list_interruptible_workflows(environment_scope)?;
         let mut updated = Vec::new();
         for mut workflow in items {
             let timestamp = interrupted_at.with_timezone(&Utc);
-            workflow.status = dope_orchestration::WorkflowStatus::Interrupted;
+            workflow.status = kura_orchestration::WorkflowStatus::Interrupted;
             workflow.updated_at = timestamp;
             workflow.interrupted_at = Some(timestamp);
             for step in &mut workflow.steps {
                 match step.status {
-                    dope_orchestration::StepStatus::Running
-                    | dope_orchestration::StepStatus::Ready
-                    | dope_orchestration::StepStatus::WaitingDependency => {
-                        step.status = dope_orchestration::StepStatus::Interrupted;
+                    kura_orchestration::StepStatus::Running
+                    | kura_orchestration::StepStatus::Ready
+                    | kura_orchestration::StepStatus::WaitingDependency => {
+                        step.status = kura_orchestration::StepStatus::Interrupted;
                         step.updated_at = timestamp;
                     }
                     _ => {}
                 }
             }
             for handoff in &mut workflow.handoffs {
-                if handoff.status == dope_orchestration::HandoffStatus::Pending {
-                    handoff.status = dope_orchestration::HandoffStatus::Invalid;
+                if handoff.status == kura_orchestration::HandoffStatus::Pending {
+                    handoff.status = kura_orchestration::HandoffStatus::Invalid;
                     handoff.invalid_reason = "daemon_restart_interrupted_workflow".to_string();
                 }
             }
@@ -407,7 +407,7 @@ impl SQLiteStore {
         Ok(updated)
     }
 
-    fn list_interruptible_workflows(&self, environment_scope: &str) -> Result<Vec<dope_orchestration::Workflow>, String> {
+    fn list_interruptible_workflows(&self, environment_scope: &str) -> Result<Vec<kura_orchestration::Workflow>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -423,9 +423,9 @@ impl SQLiteStore {
         let mut rows = stmt
             .query(params![
                 environment_scope.trim(),
-                dope_orchestration::WorkflowStatus::Planned.as_str(),
-                dope_orchestration::WorkflowStatus::Running.as_str(),
-                dope_orchestration::WorkflowStatus::Blocked.as_str(),
+                kura_orchestration::WorkflowStatus::Planned.as_str(),
+                kura_orchestration::WorkflowStatus::Running.as_str(),
+                kura_orchestration::WorkflowStatus::Blocked.as_str(),
             ])
             .map_err(|e| e.to_string())?;
         let mut items = Vec::new();
@@ -436,15 +436,15 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    fn decode_workflow_record(&self, record: WorkflowRecord) -> Result<dope_orchestration::Workflow, String> {
-        let mut workflow: dope_orchestration::Workflow = if record.document.is_empty() {
-            dope_orchestration::Workflow::default()
+    fn decode_workflow_record(&self, record: WorkflowRecord) -> Result<kura_orchestration::Workflow, String> {
+        let mut workflow: kura_orchestration::Workflow = if record.document.is_empty() {
+            kura_orchestration::Workflow::default()
         } else {
             serde_json::from_str(&record.document)
                 .map_err(|e| format!("decode workflow {}: {e}", record.workflow_id))?
         };
         if workflow.workflow_id.is_empty() {
-            workflow = dope_orchestration::Workflow {
+            workflow = kura_orchestration::Workflow {
                 workflow_id: record.workflow_id.clone(),
                 run_id: record.run_id.clone(),
                 schedule_id: record.schedule_id.clone(),
@@ -459,7 +459,7 @@ impl SQLiteStore {
                 started_at: record.started_at,
                 completed_at: record.completed_at,
                 interrupted_at: record.interrupted_at,
-                ..dope_orchestration::Workflow::default()
+                ..kura_orchestration::Workflow::default()
             };
         }
         workflow.schedule_id = record.schedule_id;
@@ -480,7 +480,7 @@ impl SQLiteStore {
         Ok(workflow)
     }
 
-    fn list_workflow_steps(&self, workflow_id: &str) -> Result<Vec<dope_orchestration::WorkflowStep>, String> {
+    fn list_workflow_steps(&self, workflow_id: &str) -> Result<Vec<kura_orchestration::WorkflowStep>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -496,8 +496,8 @@ impl SQLiteStore {
         let mut items = Vec::new();
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
             let record = scan_workflow_step_record(row)?;
-            let mut item: dope_orchestration::WorkflowStep = if record.document.is_empty() {
-                dope_orchestration::WorkflowStep::default()
+            let mut item: kura_orchestration::WorkflowStep = if record.document.is_empty() {
+                kura_orchestration::WorkflowStep::default()
             } else {
                 serde_json::from_str(&record.document)
                     .map_err(|e| format!("decode workflow step {}: {e}", record.workflow_step_id))?
@@ -517,7 +517,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    fn list_workflow_dependencies(&self, workflow_id: &str) -> Result<Vec<dope_orchestration::Dependency>, String> {
+    fn list_workflow_dependencies(&self, workflow_id: &str) -> Result<Vec<kura_orchestration::Dependency>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -531,14 +531,14 @@ impl SQLiteStore {
         let mut items = Vec::new();
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
             let record = scan_workflow_dependency_record(row)?;
-            let item: dope_orchestration::Dependency = serde_json::from_str(&record.document)
+            let item: kura_orchestration::Dependency = serde_json::from_str(&record.document)
                 .map_err(|e| format!("decode workflow dependency {}: {e}", record.dependency_id))?;
             items.push(item);
         }
         Ok(items)
     }
 
-    fn list_workflow_handoffs(&self, workflow_id: &str) -> Result<Vec<dope_orchestration::Handoff>, String> {
+    fn list_workflow_handoffs(&self, workflow_id: &str) -> Result<Vec<kura_orchestration::Handoff>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -552,7 +552,7 @@ impl SQLiteStore {
         let mut items = Vec::new();
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
             let record = scan_workflow_handoff_record(row)?;
-            let mut item: dope_orchestration::Handoff = serde_json::from_str(&record.document)
+            let mut item: kura_orchestration::Handoff = serde_json::from_str(&record.document)
                 .map_err(|e| format!("decode workflow handoff {}: {e}", record.handoff_id))?;
             item.status = parse_enum(&record.status)?;
             items.push(item);

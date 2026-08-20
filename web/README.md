@@ -5,7 +5,7 @@ This package is the operator-facing Web shell surface for Kura.
 Role:
 
 - client only
-- consumes daemon APIs through `@dope/client`
+- consumes daemon APIs through `@kura/client`
 - does not own runtime truth
 - does not assume daemon-side multi-turn memory
 

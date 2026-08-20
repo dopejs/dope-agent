@@ -178,9 +178,9 @@
 - [X] T083 [P] Add or update TUI operator projections if public Discord repair surfaces changed in tui/src/index.ts
 - [X] T084 Run focused daemon package tests from quickstart in daemon/
 - [X] T085 Run full daemon tests with go test ./... in daemon/
-- [X] T086 Run daemon contract verification with make daemon-contract-test in /Users/John/Code/dope-agent
-- [X] T087 Run client verification with pnpm test:clients in /Users/John/Code/dope-agent if SDK/web/TUI surfaces changed
-- [X] T088 Run client build with pnpm build in /Users/John/Code/dope-agent if SDK/web/TUI surfaces changed
+- [X] T086 Run daemon contract verification with make daemon-contract-test in /Users/John/Code/kura-agent
+- [X] T087 Run client verification with pnpm test:clients in /Users/John/Code/kura-agent if SDK/web/TUI surfaces changed
+- [X] T088 Run client build with pnpm build in /Users/John/Code/kura-agent if SDK/web/TUI surfaces changed
 - [X] T089 Run go mod tidy in daemon/
 - [X] T090 Record final rollback and residual live-smoke risk notes in specs/034-discord-production-hardening/quickstart.md
 

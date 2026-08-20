@@ -3,7 +3,7 @@
 **Input**: Design documents from `/specs/017-operator-shell-onboarding/`  
 **Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md), [data-model.md](./data-model.md), [contracts/operator-shell-surfaces.md](./contracts/operator-shell-surfaces.md), [quickstart.md](./quickstart.md)
 
-**Tests**: Constitution rules apply. This roadmap changes web client behavior, SDK contracts, daemon HTTP API contracts, and operator-visible projections, so targeted Go API tests, contract tests, SDK tests, web tests, and manual `DOPE_ENV=test` verification are required.
+**Tests**: Constitution rules apply. This roadmap changes web client behavior, SDK contracts, daemon HTTP API contracts, and operator-visible projections, so targeted Go API tests, contract tests, SDK tests, web tests, and manual `KURA_ENV=test` verification are required.
 
 **Organization**: Tasks are grouped by user story so each story can be implemented and verified as an independently testable increment.
 
@@ -39,7 +39,7 @@
 
 **Goal**: A first-time operator can open the primary web shell, understand readiness state, complete the minimum onboarding path, and run one bounded first useful action without using raw daemon routes.
 
-**Independent Test**: From a fresh `DOPE_ENV=test` environment, load the web shell, see the active environment and onboarding state, satisfy the minimum readiness set for the recommended bounded first useful action, run that action, and observe immediate result or status feedback in the shell.
+**Independent Test**: From a fresh `KURA_ENV=test` environment, load the web shell, see the active environment and onboarding state, satisfy the minimum readiness set for the recommended bounded first useful action, run that action, and observe immediate result or status feedback in the shell.
 
 ### Tests for User Story 1
 
@@ -62,7 +62,7 @@
 
 **Goal**: Operators can inspect and act on approvals from the shell, and inspect recent schedules, workflows, deliveries, and related activity without reconstructing raw daemon state.
 
-**Independent Test**: Seed a pending approval plus representative run, workflow, schedule, and delivery activity in `DOPE_ENV=test`, then use the web shell to inspect the approval inbox, approve or reject a pending item, and inspect recent activity through shell-resident authoritative detail panels.
+**Independent Test**: Seed a pending approval plus representative run, workflow, schedule, and delivery activity in `KURA_ENV=test`, then use the web shell to inspect the approval inbox, approve or reject a pending item, and inspect recent activity through shell-resident authoritative detail panels.
 
 ### Tests for User Story 2
 
@@ -85,7 +85,7 @@
 
 **Goal**: Operators can inspect diagnostic findings that distinguish readiness, approval, execution, and delivery failures from one web shell.
 
-**Independent Test**: Seed degraded readiness and blocked or failed work in `DOPE_ENV=test`, then use the web shell to inspect diagnostics that identify the failing plane, severity, recommended action, and detail route without reading raw logs first.
+**Independent Test**: Seed degraded readiness and blocked or failed work in `KURA_ENV=test`, then use the web shell to inspect diagnostics that identify the failing plane, severity, recommended action, and detail route without reading raw logs first.
 
 ### Tests for User Story 3
 
@@ -111,7 +111,7 @@
 - [X] T032 [P] Update feature walkthrough, verification notes, and rollback guidance in `specs/017-operator-shell-onboarding/quickstart.md` and `specs/017-operator-shell-onboarding/plan.md`
 - [X] T033 Run `go mod tidy` in `daemon/` and record module fallout in `specs/017-operator-shell-onboarding/plan.md`
 - [X] T034 Run automated verification for daemon, SDK, and web operator-shell paths, including local timing checks against operator projection and refresh targets, and record results in `specs/017-operator-shell-onboarding/quickstart.md` and `specs/017-operator-shell-onboarding/plan.md`
-- [X] T035 Run the manual `DOPE_ENV=test` onboarding walkthrough, restart the daemon to confirm resumable onboarding and durable recent activity, and record observed onboarding, approval, activity, diagnostics, and first useful action behavior in `specs/017-operator-shell-onboarding/quickstart.md` and `specs/017-operator-shell-onboarding/plan.md`
+- [X] T035 Run the manual `KURA_ENV=test` onboarding walkthrough, restart the daemon to confirm resumable onboarding and durable recent activity, and record observed onboarding, approval, activity, diagnostics, and first useful action behavior in `specs/017-operator-shell-onboarding/quickstart.md` and `specs/017-operator-shell-onboarding/plan.md`
 
 ---
 
@@ -197,7 +197,7 @@ Task: "T028 [US3] Finalize diagnostics schemas in schemas/api/operator-diagnosti
 1. Complete Phase 1: Setup.
 2. Complete Phase 2: Foundational.
 3. Complete Phase 3: User Story 1.
-4. Validate onboarding, readiness projection, and bounded first useful action in `DOPE_ENV=test`.
+4. Validate onboarding, readiness projection, and bounded first useful action in `KURA_ENV=test`.
 5. Treat this as the MVP checkpoint only; roadmap 32 is not closed until US2, US3, and Phase 6 are complete.
 
 ### Incremental Delivery

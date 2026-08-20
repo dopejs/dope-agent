@@ -28,6 +28,6 @@ the standalone mark at 16px or larger and the horizontal lockup at 96px or
 larger. Do not rotate it, add effects, recolor individual pieces, or place the
 two-color mark on a low-contrast background.
 
-The `dope` CLI name, package scopes, environment variables, API identifiers,
+The `kura` CLI name, package scopes, environment variables, API identifiers,
 and repository URL remain compatibility identifiers until a separately planned
 migration changes them.

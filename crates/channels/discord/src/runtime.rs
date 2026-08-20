@@ -1,5 +1,5 @@
 //! Connector runtime (port of runtime.go): wires a transport into the
-//! supervisor, the dope-im message loop, the SQLite store, and the event bus,
+//! supervisor, the kura-im message loop, the SQLite store, and the event bus,
 //! and drives the inbound/route/diagnostic/conformance persistence.
 
 use std::collections::HashMap;
@@ -8,19 +8,19 @@ use std::sync::mpsc::{self, Receiver};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_chat::CancellationToken;
-use dope_connectors::{
+use kura_chat::CancellationToken;
+use kura_connectors::{
     Connector, DiagnosticReasonCode, RegisterInput, ReportFailureInput, ReportHealthInput,
     Status, Supervisor,
 };
-use dope_events::{Bus, Event, Resource, Scope};
-use dope_im::MessageLoop;
-use dope_imtypes::InboundMessage;
-use dope_store::SQLiteStore;
-use dope_store::discord_setup::{
+use kura_events::{Bus, Event, Resource, Scope};
+use kura_im::MessageLoop;
+use kura_imtypes::InboundMessage;
+use kura_store::SQLiteStore;
+use kura_store::discord_setup::{
     DiscordDestinationValidationRecord, DiscordHostedSetupRecord,
 };
-use dope_telemetry::Logger;
+use kura_telemetry::Logger;
 use serde_json::{Map, Value};
 
 use crate::config::{
@@ -606,7 +606,7 @@ impl Runtime {
             return Ok(());
         };
         let profile = conformance_profile_for_setup(&self.inner.cfg, setup, now);
-        let (results, _) = dope_connectors::run_matrix_case(dope_connectors::MatrixCase {
+        let (results, _) = kura_connectors::run_matrix_case(kura_connectors::MatrixCase {
             scenario_id: format!("discord_hosted_setup_{}", self.inner.cfg.connector_id),
             tenant_id: setup.tenant_id.clone(),
             connector_kind: "discord".to_string(),
@@ -615,9 +615,9 @@ impl Runtime {
             provider_surface_results: profile.provider_surface_results.clone(),
             equivalent_durable_identity_rule_id: profile.equivalent_durable_identity_rule_id.clone(),
             equivalent_durable_identity_rule: profile.equivalent_durable_identity_rule.clone(),
-            redaction_status: dope_connectors::RedactionStatus::Redacted,
+            redaction_status: kura_connectors::RedactionStatus::Redacted,
             now,
-            ..dope_connectors::MatrixCase::default()
+            ..kura_connectors::MatrixCase::default()
         })
         .map_err(|err| crate::DiscordError::Other(err.to_string()))?;
         for result in results {

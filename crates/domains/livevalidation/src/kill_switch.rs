@@ -3,8 +3,8 @@
 use chrono::DateTime;
 use chrono::Utc;
 
-use dope_identity::can_resolve_live_validation_reconciliation;
-use dope_identity::tenantctx;
+use kura_identity::can_resolve_live_validation_reconciliation;
+use kura_identity::tenantctx;
 
 use crate::error::LiveValidationError;
 use crate::ledger::LedgerOutcome;
@@ -188,7 +188,7 @@ impl Manager {
 mod tests {
     use std::sync::Arc;
 
-    use dope_identity::tenantctx;
+    use kura_identity::tenantctx;
 
     use crate::error::StartFailure;
     use crate::ledger::LedgerOutcome;

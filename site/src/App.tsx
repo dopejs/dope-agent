@@ -119,13 +119,13 @@ function Landing() {
             Get started
           </Link>
           <a className="button" href={`${REPO}/releases`}>
-            Download v0.2.3
+            Download v0.2.4
           </a>
         </div>
         <pre className="hero__terminal">
           <code>
-            {`$ curl -fsSL https://agent.dopejs.com/install.sh | sh
-[kura] installing Kura v0.2.3 for aarch64-apple-darwin
+            {`$ curl -fsSL https://agent.kurajs.com/install.sh | sh
+[kura] installing Kura v0.2.4 for aarch64-apple-darwin
 [kura] checksum verified
 [kura] installed to ~/.local/bin: kura, kura-tui
 

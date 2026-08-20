@@ -12,8 +12,8 @@ use axum::routing::{get, post};
 use axum::{Json as AxumJson, Router};
 use serde::Deserialize;
 
-use dope_activation as activation;
-use dope_identity::{LifecycleStatus, TokenAuthority};
+use kura_activation as activation;
+use kura_identity::{LifecycleStatus, TokenAuthority};
 
 use crate::error::ApiError;
 use crate::middleware::{auth_token_authority, AuthenticatedToken, TenantContext};
@@ -199,7 +199,7 @@ fn activation_result(err: activation::ActivationError) -> Result<(StatusCode, Ax
 
 /// Requires a resolved tenant context (Go tenantContextFromContext, missing →
 /// 403 tenant denial).
-fn tenant_or_deny(tenant: Option<&dope_identity::TenantContext>) -> Result<dope_identity::TenantContext, ApiError> {
+fn tenant_or_deny(tenant: Option<&kura_identity::TenantContext>) -> Result<kura_identity::TenantContext, ApiError> {
     tenant
         .cloned()
         .ok_or_else(|| ApiError::Forbidden("tenant access denied".to_string()))
@@ -242,33 +242,33 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    use dope_identity as identity;
-    use dope_identity::{Membership, MembershipFilter, Principal, PrincipalFilter, Tenant, TenantFilter, TokenTenantGrant};
+    use kura_identity as identity;
+    use kura_identity::{Membership, MembershipFilter, Principal, PrincipalFilter, Tenant, TenantFilter, TokenTenantGrant};
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-activation-test".to_string(),
+            data_dir: "/tmp/kura-api-activation-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
-                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
-                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
-                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
+                telegram: kura_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
+                slack: kura_config::SlackConnectorConfig { enabled: false, ..Default::default() },
+                matrix: kura_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
             },
         }
     }
 
     fn test_state() -> AppState {
-        let dir = std::env::temp_dir().join(format!("dope-api-activation-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-activation-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store)
+        AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store)
     }
 
     /// In-memory [`activation::StateStore`] keyed by activation id.

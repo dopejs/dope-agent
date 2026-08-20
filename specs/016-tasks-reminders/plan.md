@@ -13,7 +13,7 @@ dedicated `daemon/internal/reminders` package that persists reminder resources,
 occurrence history, explicit lifecycle actions, lightweight follow-up links, and
 optional workflow-launch configuration while reusing scheduler trigger semantics,
 shared delivery routing, and the normal run/workflow execution path. Verification stays
-in `DOPE_ENV=test` and focuses on truthful distinction among reminder lifecycle truth,
+in `KURA_ENV=test` and focuses on truthful distinction among reminder lifecycle truth,
 workflow-launch truth, and delivery truth.
 
 ## Technical Context
@@ -32,9 +32,9 @@ additive reminder linkage on runs/workflows and latest-delivery linkage on remin
 occurrences; no binary blob storage is required in phase 31  
 **Testing**: `go test ./internal/reminders ./internal/api ./internal/store ./internal/app ./internal/runtime ./internal/orchestration ./internal/scheduler ./internal/delivery ./internal/contracts ./internal/calendar ./internal/mail`,
 `make daemon-contract-test`, targeted reminder-route and recurring-lifecycle regressions,
-and one manual `DOPE_ENV=test` walkthrough using `test_sink` delivery plus one
+and one manual `KURA_ENV=test` walkthrough using `test_sink` delivery plus one
 deterministic workflow-launch path  
-**Target Platform**: macOS/Linux local daemon in `DOPE_ENV=test` by default, using the
+**Target Platform**: macOS/Linux local daemon in `KURA_ENV=test` by default, using the
 existing localhost HTTP API, SQLite store, and operator-authenticated `/v1/*`
 control-plane routes  
 **Project Type**: Go daemon and harness control-plane service with schema-backed HTTP
@@ -80,10 +80,10 @@ close roadmap 31 without live third-party dependencies
   auto-acknowledgement, and delivery linkage inspectable.
 - Verification and observability: PASS. The design requires targeted package, contract,
   restart, recurring-rollover, and workflow-linkage regressions plus one manual
-  `DOPE_ENV=test` walkthrough. Operator-visible reminder resources and occurrence/action
+  `KURA_ENV=test` walkthrough. Operator-visible reminder resources and occurrence/action
   history replace raw-log reconstruction.
 - Environment and secrets: PASS. Local planning and later verification stay in
-  `DOPE_ENV=test`; notification-only reminder validation requires no live connectors; any
+  `KURA_ENV=test`; notification-only reminder validation requires no live connectors; any
   optional linked calendar/mail behavior reuses existing environment-scoped bindings and
   does not introduce new secret-bearing execution paths.
 
@@ -261,7 +261,7 @@ Executed on 2026-04-23:
 
 Executed on 2026-04-23:
 
-- primary `DOPE_ENV=test` walkthrough on `127.0.0.1:19192` confirmed:
+- primary `KURA_ENV=test` walkthrough on `127.0.0.1:19192` confirmed:
   - one-time notification-only reminder `rem_af1eaed57523b78a` created as `pending`
   - due occurrence `rem_occ_3906f2bc55225546` surfaced separately from delivery truth
   - linked delivery `delivery_e4272a3804c248ec` reused digest preference
@@ -288,7 +288,7 @@ Executed on 2026-04-23:
     reference
   - calendar-linked follow-up reminder `rem_bcff1ce4a5e978c3` stayed inspectable and
     projected `stale: true` for the missing calendar operation
-- isolated `DOPE_ENV=test` walkthrough on `127.0.0.1:19193` with empty home and data
+- isolated `KURA_ENV=test` walkthrough on `127.0.0.1:19193` with empty home and data
   roots confirmed workflow-start failure:
   - reminder `rem_0b8eb3856e4e7ac2` stayed `due` and then `overdue`
   - action history recorded `workflow_start_failed` with reason

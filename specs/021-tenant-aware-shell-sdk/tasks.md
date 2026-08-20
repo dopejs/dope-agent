@@ -53,7 +53,7 @@ SDK tenant plumbing and shell state slots required by all user stories.
 ### Foundational Implementation
 
 - [X] T008 Add `TenantRequestOptions`, tenant resource exports, membership resource exports, principal resource exports, permission exports, token grant exports, `defaultTenantId`, and internal tenant resolution helpers to `sdk/ts/src/index.ts`.
-- [X] T009 Update `requestJSON`, `streamEvents`, `streamChatQuery`, and `buildHeaders` in `sdk/ts/src/index.ts` so tenant intent is propagated through `X-Dope-Tenant-ID` only when a per-request override or client default is present.
+- [X] T009 Update `requestJSON`, `streamEvents`, `streamChatQuery`, and `buildHeaders` in `sdk/ts/src/index.ts` so tenant intent is propagated through `X-Kura-Tenant-ID` only when a per-request override or client default is present.
 - [X] T010 Add SDK wrappers for `getMe`, `listTenants`, and `getTenant` in `sdk/ts/src/index.ts` so the web shell can resolve identity and allowed tenants without raw fetch calls.
 - [X] T011 Add active tenant, allowed tenant list, projection generation, denied state, and tenant selection preference state types to `web/src/app/App.tsx`.
 - [X] T012 Add tenant switcher, stale projection, denied state, and membership panel style hooks to `web/src/styles.css` without changing existing non-tenant shell layout behavior.
@@ -89,9 +89,9 @@ before active tenant resolution.
 - [X] T021 [US1] Implement tenant selection preference read/write with daemon URL and principal scoping in `web/src/app/App.tsx`.
 - [X] T022 [US1] Implement denied tenant selection state and active tenant display text in `web/src/app/App.tsx`.
 - [X] T023 [US1] Finalize tenant switcher, denied state, single-tenant, and action-disabled visual styling in `web/src/styles.css`.
-- [X] T024 [US1] Update shell usage of `createDopeClient` in `web/src/app/App.tsx` so all tenant-scoped shell requests use the resolved active tenant through SDK options.
+- [X] T024 [US1] Update shell usage of `createKuraClient` in `web/src/app/App.tsx` so all tenant-scoped shell requests use the resolved active tenant through SDK options.
 
-**Checkpoint**: User Story 1 is independently functional and testable through `pnpm --filter @dope/web test`.
+**Checkpoint**: User Story 1 is independently functional and testable through `pnpm --filter @kura/web test`.
 
 ---
 
@@ -124,7 +124,7 @@ one concurrent active-tenant refresh batch after tenant resolution.
 - [X] T035 [US2] Implement stable denied projection state and active-tenant revocation handling in `web/src/app/App.tsx`.
 - [X] T036 [US2] Add stale, loading, denied, and cleared-detail visual states to `web/src/styles.css`.
 
-**Checkpoint**: User Story 2 is independently functional and testable through `pnpm --filter @dope/web test`.
+**Checkpoint**: User Story 2 is independently functional and testable through `pnpm --filter @kura/web test`.
 
 ---
 
@@ -142,20 +142,20 @@ stable denial mapping, and exported tenant resource types.
 
 - [X] T037 [P] [US3] Add SDK test for default tenant header propagation on representative tenant-scoped requests in `sdk/ts/src/index.test.ts`.
 - [X] T038 [P] [US3] Add SDK test proving per-request tenant override affects exactly one request and does not mutate the client default in `sdk/ts/src/index.test.ts`.
-- [X] T039 [P] [US3] Add SDK test proving omitted tenant configuration preserves server-resolved default tenant behavior by omitting `X-Dope-Tenant-ID` in `sdk/ts/src/index.test.ts`.
+- [X] T039 [P] [US3] Add SDK test proving omitted tenant configuration preserves server-resolved default tenant behavior by omitting `X-Kura-Tenant-ID` in `sdk/ts/src/index.test.ts`.
 - [X] T040 [P] [US3] Add SDK test proving `streamEvents` and `streamChatQuery` use the same tenant header resolution rules in `sdk/ts/src/index.test.ts`.
-- [X] T041 [P] [US3] Add SDK test proving tenant authorization denials map to stable `DopeClientError` metadata without raw message parsing in `sdk/ts/src/index.test.ts`.
+- [X] T041 [P] [US3] Add SDK test proving tenant authorization denials map to stable `KuraClientError` metadata without raw message parsing in `sdk/ts/src/index.test.ts`.
 - [X] T042 [P] [US3] Add SDK test coverage for tenant resource, membership resource, principal resource, permission, denial, and token grant exports in `sdk/ts/src/index.test.ts`.
 
 ### Implementation for User Story 3
 
 - [X] T043 [US3] Extend every tenant-scoped public SDK method in `sdk/ts/src/index.ts` with an optional trailing `TenantRequestOptions` argument while preserving existing call signatures.
-- [X] T044 [US3] Implement stable tenant denial metadata on `DopeClientError` and `toClientError` in `sdk/ts/src/index.ts`.
+- [X] T044 [US3] Implement stable tenant denial metadata on `KuraClientError` and `toClientError` in `sdk/ts/src/index.ts`.
 - [X] T045 [US3] Implement tenant API query helpers and membership query helper URL construction in `sdk/ts/src/index.ts` according to `specs/021-tenant-aware-shell-sdk/contracts/sdk-tenant-contract.md`.
 - [X] T046 [US3] Update generated SDK outputs in `sdk/ts/dist/index.js` and `sdk/ts/dist/index.d.ts` by running the package build after `sdk/ts/src/index.ts` changes.
 - [X] T047 [US3] Update SDK README tenant examples in `sdk/README.md` to document default tenant, per-request override, and omitted-tenant default behavior.
 
-**Checkpoint**: User Story 3 is independently functional and testable through `pnpm --filter @dope/client test`.
+**Checkpoint**: User Story 3 is independently functional and testable through `pnpm --filter @kura/client test`.
 
 ---
 
@@ -202,11 +202,11 @@ across all stories.
 
 - [X] T063 [P] Update `web/README.md` with tenant-aware shell smoke-test notes, including single personal tenant, multi-tenant switch, and membership role update checks.
 - [X] T064 [P] Update `specs/021-tenant-aware-shell-sdk/quickstart.md` with any final command or smoke-test changes discovered during implementation.
-- [X] T065 [P] Run `make daemon-contract-test` from `/Users/John/Code/dope-agent` and fix any schema or contract drift in `schemas/api/`.
-- [X] T066 [P] Run `pnpm test:clients` from `/Users/John/Code/dope-agent` and fix SDK/web/TUI client regressions in `sdk/ts/`, `web/`, or `tui/`.
-- [X] T067 Run `pnpm build` from `/Users/John/Code/dope-agent` and fix generated client or web build failures in `sdk/ts/dist/` and `web/dist/`.
-- [X] T068 Run `go test ./...` from `/Users/John/Code/dope-agent/daemon` if daemon files changed and fix failures in `daemon/internal/`.
-- [X] T069 Run `go mod tidy` from `/Users/John/Code/dope-agent/daemon` after daemon-side changes and commit any legitimate `daemon/go.mod` or `daemon/go.sum` updates.
+- [X] T065 [P] Run `make daemon-contract-test` from `/Users/John/Code/kura-agent` and fix any schema or contract drift in `schemas/api/`.
+- [X] T066 [P] Run `pnpm test:clients` from `/Users/John/Code/kura-agent` and fix SDK/web/TUI client regressions in `sdk/ts/`, `web/`, or `tui/`.
+- [X] T067 Run `pnpm build` from `/Users/John/Code/kura-agent` and fix generated client or web build failures in `sdk/ts/dist/` and `web/dist/`.
+- [X] T068 Run `go test ./...` from `/Users/John/Code/kura-agent/daemon` if daemon files changed and fix failures in `daemon/internal/`.
+- [X] T069 Run `go mod tidy` from `/Users/John/Code/kura-agent/daemon` after daemon-side changes and commit any legitimate `daemon/go.mod` or `daemon/go.sum` updates.
 - [X] T070 Manually validate the smoke flow in `specs/021-tenant-aware-shell-sdk/quickstart.md` against the test daemon and record any unverified paths in the final implementation notes.
 
 ---

@@ -2,7 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning  
 **Created**: 2026-04-20  
-**Feature**: [spec.md](/Users/John/Code/dope-agent/specs/007-mcp-catalog-management/spec.md)
+**Feature**: [spec.md](/Users/John/Code/kura-agent/specs/007-mcp-catalog-management/spec.md)
 
 ## Content Quality
 

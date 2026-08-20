@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDopeClient } from "./index";
+import { createKuraClient } from "./index";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json" } });
@@ -32,7 +32,7 @@ describe("plugin assembly SDK methods", () => {
       hooks: [{ point: "chat/pre-dispatch", pluginId: "session-strategy" }],
     };
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse(report));
-    const client = createDopeClient({ baseURL: "https://daemon.test", fetchImpl });
+    const client = createKuraClient({ baseURL: "https://daemon.test", fetchImpl });
 
     const result = await client.listPlugins();
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -53,7 +53,7 @@ describe("plugin assembly SDK methods", () => {
     const fetchImpl = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({}))
       .mockResolvedValueOnce(jsonResponse({ profile, restartRequired: true }));
-    const client = createDopeClient({ baseURL: "https://daemon.test", fetchImpl });
+    const client = createKuraClient({ baseURL: "https://daemon.test", fetchImpl });
 
     const current = await client.getPluginProfile();
     expect(current.disabled).toBeUndefined();
@@ -79,7 +79,7 @@ describe("retrieval SDK method", () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
       jsonResponse({ hits: [{ assetId: "mem_1", layer: "l1", content: "pnpm", rank: 1, sourceLinks: [{ kind: "thread", id: "thr_1" }] }] }),
     );
-    const client = createDopeClient({ baseURL: "https://daemon.test", fetchImpl });
+    const client = createKuraClient({ baseURL: "https://daemon.test", fetchImpl });
     const result = await client.queryRetrieval({ query: "package manager" });
     expect(fetchImpl).toHaveBeenCalledWith(
       "https://daemon.test/v1/retrieval/queries",

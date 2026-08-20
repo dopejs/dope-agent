@@ -10,7 +10,7 @@ use crate::crud::{
 };
 use crate::SQLiteStore;
 
-fn scan_session(row: &Row) -> Result<dope_router::Session, String> {
+fn scan_session(row: &Row) -> Result<kura_router::Session, String> {
     let session_id: String = row.get(0).map_err(|e| e.to_string())?;
     let kind: String = row.get(1).map_err(|e| e.to_string())?;
     let status: String = row.get(2).map_err(|e| e.to_string())?;
@@ -25,7 +25,7 @@ fn scan_session(row: &Row) -> Result<dope_router::Session, String> {
     let last_active_at: String = row.get(11).map_err(|e| e.to_string())?;
     let last_reset_at: Option<String> = row.get(12).map_err(|e| e.to_string())?;
 
-    Ok(dope_router::Session {
+    Ok(kura_router::Session {
         session_id,
         kind: parse_enum(&kind)?,
         status: parse_enum(&status)?,
@@ -43,7 +43,7 @@ fn scan_session(row: &Row) -> Result<dope_router::Session, String> {
     })
 }
 
-fn scan_capability(row: &Row) -> Result<dope_capabilities::Capability, String> {
+fn scan_capability(row: &Row) -> Result<kura_capabilities::Capability, String> {
     let capability_id: String = row.get(0).map_err(|e| e.to_string())?;
     let kind: String = row.get(1).map_err(|e| e.to_string())?;
     let display_name: String = row.get(2).map_err(|e| e.to_string())?;
@@ -58,7 +58,7 @@ fn scan_capability(row: &Row) -> Result<dope_capabilities::Capability, String> {
     let created_at: String = row.get(11).map_err(|e| e.to_string())?;
     let updated_at: String = row.get(12).map_err(|e| e.to_string())?;
 
-    Ok(dope_capabilities::Capability {
+    Ok(kura_capabilities::Capability {
         capability_id,
         kind,
         display_name,
@@ -75,7 +75,7 @@ fn scan_capability(row: &Row) -> Result<dope_capabilities::Capability, String> {
     })
 }
 
-fn scan_llm_dispatch(row: &Row) -> Result<dope_llm::Dispatch, String> {
+fn scan_llm_dispatch(row: &Row) -> Result<kura_llm::Dispatch, String> {
     let dispatch_id: String = row.get(0).map_err(|e| e.to_string())?;
     let provider: String = row.get(1).map_err(|e| e.to_string())?;
     let model: String = row.get(2).map_err(|e| e.to_string())?;
@@ -95,14 +95,14 @@ fn scan_llm_dispatch(row: &Row) -> Result<dope_llm::Dispatch, String> {
     let started_at: Option<String> = row.get(16).map_err(|e| e.to_string())?;
     let completed_at: Option<String> = row.get(17).map_err(|e| e.to_string())?;
 
-    let status: dope_llm::DispatchStatus = parse_enum(&status)?;
-    let messages: Vec<dope_llm::Message> =
+    let status: kura_llm::DispatchStatus = parse_enum(&status)?;
+    let messages: Vec<kura_llm::Message> =
         crate::crud::decode_json_field(&messages_raw).map_err(|e| format!("decode llm dispatch messages: {e}"))?;
-    let usage: dope_llm::Usage =
+    let usage: kura_llm::Usage =
         crate::crud::decode_json_field(&usage_raw).map_err(|e| format!("decode llm dispatch usage: {e}"))?;
-    let partial = status == dope_llm::DispatchStatus::PartialFailed;
+    let partial = status == kura_llm::DispatchStatus::PartialFailed;
 
-    Ok(dope_llm::Dispatch {
+    Ok(kura_llm::Dispatch {
         dispatch_id,
         provider,
         model,
@@ -126,7 +126,7 @@ fn scan_llm_dispatch(row: &Row) -> Result<dope_llm::Dispatch, String> {
 }
 
 impl SQLiteStore {
-    pub fn upsert_session(&self, session: &dope_router::Session) -> Result<(), String> {
+    pub fn upsert_session(&self, session: &kura_router::Session) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO sessions (
@@ -166,7 +166,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_sessions(&self) -> Result<Vec<dope_router::Session>, String> {
+    pub fn list_sessions(&self) -> Result<Vec<kura_router::Session>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -184,7 +184,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn upsert_capability(&self, capability: &dope_capabilities::Capability) -> Result<(), String> {
+    pub fn upsert_capability(&self, capability: &kura_capabilities::Capability) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO capabilities (
@@ -225,7 +225,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_capabilities(&self) -> Result<Vec<dope_capabilities::Capability>, String> {
+    pub fn list_capabilities(&self) -> Result<Vec<kura_capabilities::Capability>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -244,7 +244,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn upsert_llm_dispatch(&self, dispatch: &dope_llm::Dispatch) -> Result<(), String> {
+    pub fn upsert_llm_dispatch(&self, dispatch: &kura_llm::Dispatch) -> Result<(), String> {
         let messages_json =
             serde_json::to_string(&dispatch.messages).map_err(|e| format!("marshal llm dispatch messages: {e}"))?;
         let usage_json =
@@ -300,7 +300,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_llm_dispatches(&self) -> Result<Vec<dope_llm::Dispatch>, String> {
+    pub fn list_llm_dispatches(&self) -> Result<Vec<kura_llm::Dispatch>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -319,7 +319,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn get_llm_dispatch(&self, dispatch_id: &str) -> Result<Option<dope_llm::Dispatch>, String> {
+    pub fn get_llm_dispatch(&self, dispatch_id: &str) -> Result<Option<kura_llm::Dispatch>, String> {
         let mut stmt = self
             .conn
             .prepare(

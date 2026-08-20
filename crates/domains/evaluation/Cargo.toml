@@ -1,5 +1,5 @@
 [package]
-name = "dope-evaluation"
+name = "kura-evaluation"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
@@ -11,13 +11,13 @@ chrono.workspace = true
 thiserror.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 parking_lot.workspace = true
-dope-billing.workspace = true
-dope-livevalidation.workspace = true
-dope-identity.workspace = true
-dope-runtime.workspace = true
-dope-orchestration.workspace = true
+kura-billing.workspace = true
+kura-livevalidation.workspace = true
+kura-identity.workspace = true
+kura-runtime.workspace = true
+kura-orchestration.workspace = true
 
 [dev-dependencies]
-dope-store.workspace = true
+kura-store.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -91,11 +91,11 @@ tool-call plane with explicit approval and provenance truth
 ## Phase 4: User Story 2 - Operators Can Install Curated MCP Servers Into The Test Environment (Priority: P1)
 
 **Goal**: Provide a truthful bundled MCP catalog and converged install flows so
-operators can bring up starter MCP servers in `DOPE_ENV=test` without
+operators can bring up starter MCP servers in `KURA_ENV=test` without
 hand-authoring raw JSON
 
 **Independent Test**: Inspect the catalog, install representative starter
-definitions into `DOPE_ENV=test`, and verify each installed server appears as a
+definitions into `KURA_ENV=test`, and verify each installed server appears as a
 first-class MCP resource with truthful prerequisite, credential, and
 availability state.
 
@@ -112,7 +112,7 @@ availability state.
 
 - [x] T020 [US2] Implement bundled starter catalog definitions and truthful availability evaluation for `filesystem`, `Context7`, `GitHub`, `Postgres`, and `Slack` in `daemon/internal/mcp/catalog.go` and `daemon/internal/mcp/manager.go`
 - [x] T021 [US2] Implement daemon API catalog list, detail, and install routes plus install result projection in `daemon/internal/api/server.go` and `daemon/internal/api/types.go`
-- [x] T022 [US2] Implement repo-supported catalog installation workflow with `DOPE_ENV=test` default in `scripts/install-mcp-catalog-entry.sh`
+- [x] T022 [US2] Implement repo-supported catalog installation workflow with `KURA_ENV=test` default in `scripts/install-mcp-catalog-entry.sh`
 - [x] T023 [US2] Preserve installed-server origin, install method, operator-modified protection, and test-vs-production separation in `daemon/internal/mcp/manager.go`, `daemon/internal/store/store.go`, and `daemon/internal/api/server.go`
 - [x] T024 [P] [US2] Add additive API schemas for catalog list/detail/install surfaces and installed-server origin fields in `schemas/api/mcp-catalog-entry.schema.json`, `schemas/api/mcp-catalog-list.response.schema.json`, `schemas/api/mcp-catalog-detail.response.schema.json`, `schemas/api/mcp-catalog-install-request.schema.json`, `schemas/api/mcp-catalog-install-result.schema.json`, `schemas/api/mcp-server-resource.schema.json`, and `schemas/api/mcp-server-list.response.schema.json`
 - [x] T025 [P] [US2] Add install audit event schemas for requested, completed, and failed catalog actions in `schemas/events/mcp-catalog-install-requested.event.schema.json`, `schemas/events/mcp-catalog-install-completed.event.schema.json`, and `schemas/events/mcp-catalog-install-failed.event.schema.json`
@@ -189,7 +189,7 @@ aligned and operator-trustworthy
 - [x] T039 [P] Run `make daemon-contract-test` and record results in `specs/006-mcp-runtime-and-catalog/quickstart.md`
 - [x] T040 [P] Run targeted daemon verification in `daemon/internal/mcp`, `daemon/internal/api`, `daemon/internal/runtime`, `daemon/internal/app`, `daemon/internal/store`, and `daemon/internal/contracts`, then record results in `specs/006-mcp-runtime-and-catalog/quickstart.md`
 - [x] T041 [P] Run full daemon regression verification with `go test ./...` in `daemon/` and record results in `specs/006-mcp-runtime-and-catalog/quickstart.md`
-- [x] T042 [P] Execute the manual `DOPE_ENV=test` catalog install, invocation, unavailable-path, and operator-timing walkthrough and record evidence in `specs/006-mcp-runtime-and-catalog/quickstart.md`
+- [x] T042 [P] Execute the manual `KURA_ENV=test` catalog install, invocation, unavailable-path, and operator-timing walkthrough and record evidence in `specs/006-mcp-runtime-and-catalog/quickstart.md`
 
 ---
 
@@ -246,7 +246,7 @@ Task: "Add timing regression coverage for catalog list and install preflight sta
 # Launch implementation work on different files in parallel:
 Task: "Implement bundled starter catalog definitions and truthful availability evaluation for filesystem, Context7, GitHub, Postgres, and Slack in daemon/internal/mcp/catalog.go and daemon/internal/mcp/manager.go"
 Task: "Implement daemon API catalog list, detail, and install routes plus install result projection in daemon/internal/api/server.go and daemon/internal/api/types.go"
-Task: "Implement repo-supported catalog installation workflow with DOPE_ENV=test default in scripts/install-mcp-catalog-entry.sh"
+Task: "Implement repo-supported catalog installation workflow with KURA_ENV=test default in scripts/install-mcp-catalog-entry.sh"
 ```
 
 ---

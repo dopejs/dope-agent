@@ -6,12 +6,12 @@ unresolved clarification markers. Product clarifications are recorded in `spec.m
 
 ## R1. SDK tenant API shape
 
-**Decision**: Add `defaultTenantId?: string` to `DopeClientOptions` and add a small
+**Decision**: Add `defaultTenantId?: string` to `KuraClientOptions` and add a small
 `TenantRequestOptions` options bag with `tenantId?: string` for per-request override.
 Public tenant-scoped SDK methods accept the options bag as an optional trailing argument;
 methods that already accept query/input arguments keep those arguments unchanged and add
 the tenant options after them. Internally, all SDK request helpers accept the resolved
-tenant option and emit `X-Dope-Tenant-ID` only when a request override or client default
+tenant option and emit `X-Kura-Tenant-ID` only when a request override or client default
 is present.
 
 **Rationale**:
@@ -34,7 +34,7 @@ is present.
 
 ## R2. Stable tenant denial mapping
 
-**Decision**: Preserve `DopeClientError` as the public error class and add tenant-denial
+**Decision**: Preserve `KuraClientError` as the public error class and add tenant-denial
 metadata fields where the daemon supplies stable error information: `code`,
 `tenantDenied?: boolean`, and optional `denial?: TenantDenialResource`. The SDK maps
 known tenant-denial status/code combinations into these stable fields without requiring

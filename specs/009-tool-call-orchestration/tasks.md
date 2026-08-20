@@ -123,7 +123,7 @@ operator-visible retry, cancellation, and partial-failure truth
 **Goal**: Support mixed MCP, local-tool, and executable-skill workflows with explicit
 handoffs, distinct blocked outcomes, and restart-safe interruption truth
 
-**Independent Test**: Run at least one mixed workflow in `DOPE_ENV=test` using two
+**Independent Test**: Run at least one mixed workflow in `KURA_ENV=test` using two
 consumer families, inspect handoff records and workflow-step linkage, then trigger an
 approval or availability block and a daemon restart to verify blocked and interrupted
 states remain explicit.
@@ -157,7 +157,7 @@ restart-auditable without any execution bypass path
 - [X] T033 [P] Run `make daemon-contract-test` and record results in `specs/009-tool-call-orchestration/quickstart.md`
 - [X] T034 [P] Run targeted daemon verification in `daemon/internal/orchestration`, `daemon/internal/api`, `daemon/internal/runtime`, `daemon/internal/store`, `daemon/internal/app`, and `daemon/internal/contracts`, including legacy single-step regression, environment-scope isolation, and stated local timing targets, then record results in `specs/009-tool-call-orchestration/quickstart.md`
 - [X] T035 [P] Run full daemon regression verification with `go test ./...` in `daemon/` and record results in `specs/009-tool-call-orchestration/quickstart.md`
-- [X] T036 [P] Execute the manual `DOPE_ENV=test` mixed-workflow operator acceptance flow from `specs/009-tool-call-orchestration/quickstart.md` and record whether planning inspection completes within `<=5 min`, mixed execution succeeds without bypass paths, and existing non-workflow tool calls remain unaffected in `specs/009-tool-call-orchestration/quickstart.md`
+- [X] T036 [P] Execute the manual `KURA_ENV=test` mixed-workflow operator acceptance flow from `specs/009-tool-call-orchestration/quickstart.md` and record whether planning inspection completes within `<=5 min`, mixed execution succeeds without bypass paths, and existing non-workflow tool calls remain unaffected in `specs/009-tool-call-orchestration/quickstart.md`
 
 ---
 

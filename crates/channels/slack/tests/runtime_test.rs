@@ -8,32 +8,32 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::{Duration, TimeZone, Utc};
-use dope_checkpoints::Manager as CheckpointManager;
-use dope_connectors::{
+use kura_checkpoints::Manager as CheckpointManager;
+use kura_connectors::{
     DiagnosticReasonCode, RedactionStatus as ConnectorRedactionStatus, Supervisor, SurfaceSupport,
 };
-use dope_events::{Bus, Filter};
-use dope_im::MessageLoop;
-use dope_llm::{
+use kura_events::{Bus, Filter};
+use kura_im::MessageLoop;
+use kura_llm::{
     Dispatcher, Provider, ProviderError, ProviderRequest, ProviderResponse, StreamEmitter, Usage,
 };
-use dope_router::SessionRouter;
-use dope_runtime::Manager as RuntimeManager;
-use dope_store::SQLiteStore;
-use dope_store::slack_setup::{
+use kura_router::SessionRouter;
+use kura_runtime::Manager as RuntimeManager;
+use kura_store::SQLiteStore;
+use kura_store::slack_setup::{
     SlackConversationRouteRecord, SlackHostedSetupRecord, SlackRoutePolicyRecord,
     SlackWorkspaceBinding,
 };
 use futures::future::BoxFuture;
 use tempfile::TempDir;
 
-use dope_slack::destinations::{
+use kura_slack::destinations::{
     ConversationRoute, ConversationType, RoutePolicy, RouteValidationState, SelectedChannelState,
 };
-use dope_slack::readiness::{HostedSetupInput, OAuthState, TerminalState, WorkspaceBinding};
-use dope_slack::route::InboundEvent;
-use dope_slack::runtime::{Config, conformance_profile, new_runtime};
-use dope_slack::transport::{FakeTransport, Transport};
+use kura_slack::readiness::{HostedSetupInput, OAuthState, TerminalState, WorkspaceBinding};
+use kura_slack::route::InboundEvent;
+use kura_slack::runtime::{Config, conformance_profile, new_runtime};
+use kura_slack::transport::{FakeTransport, Transport};
 
 fn ts(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(y, mo, d, h, mi, 0)
@@ -86,12 +86,12 @@ impl Provider for EchoTestProvider {
                 .first()
                 .map(|m| m.content.clone())
                 .unwrap_or_default();
-            emit(dope_llm::StreamChunk {
+            emit(kura_llm::StreamChunk {
                 delta: "reply:".to_string(),
                 output: "reply:".to_string(),
-                ..dope_llm::StreamChunk::default()
+                ..kura_llm::StreamChunk::default()
             })?;
-            emit(dope_llm::StreamChunk {
+            emit(kura_llm::StreamChunk {
                 delta: content.clone(),
                 output: format!("reply:{content}"),
                 finish_reason: "stop".to_string(),
@@ -139,7 +139,7 @@ fn harness() -> Harness {
         .set_default_provider("echo")
         .expect("default provider");
     dispatcher.set_default_model("echo-v1");
-    let chat = dope_chat::Service::new_service(dispatcher, None, None, Some(bus.clone()), None);
+    let chat = kura_chat::Service::new_service(dispatcher, None, None, Some(bus.clone()), None);
     let runtime = Arc::new(RuntimeManager::new());
     let checkpoints = CheckpointManager::new(
         Arc::new(parking_lot::Mutex::new(
@@ -818,11 +818,11 @@ fn new_runtime_disabled_returns_none() {
 #[test]
 fn fake_transport_round_trips_replies() {
     let transport = FakeTransport::new(Vec::new());
-    let reply = dope_imtypes::OutboundReply {
+    let reply = kura_imtypes::OutboundReply {
         connector_id: "slack-main".to_string(),
         channel_id: "dm_redacted".to_string(),
         content: "hello".to_string(),
-        ..dope_imtypes::OutboundReply::default()
+        ..kura_imtypes::OutboundReply::default()
     };
     let sent = transport.send_reply(&reply).expect("send reply");
     assert_eq!(sent.external_message_id, "slack_reply_dm_redacted");

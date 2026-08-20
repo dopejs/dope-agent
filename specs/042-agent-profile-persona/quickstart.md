@@ -3,12 +3,12 @@
 ## Scope
 
 Use this guide to validate the Roadmap 57 implementation in the local test environment.
-Do not use production tenants, live connector credentials, or `~/.dope` by default.
+Do not use production tenants, live connector credentials, or `~/.kura` by default.
 
 ## Prerequisites
 
 - Worktree on branch `042-agent-profile-persona`.
-- Daemon test environment only: `~/.dope-test`, `127.0.0.1:19192`.
+- Daemon test environment only: `~/.kura-test`, `127.0.0.1:19192`.
 - No live connector accounts required.
 
 ## Environment

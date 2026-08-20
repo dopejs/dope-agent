@@ -62,7 +62,7 @@ Introduce a first-class computer-use capability plane that can be scheduled, orc
 
 - targeted capability and API tests
 - contract coverage for new computer-use resources or artifacts
-- one manual browser-based `DOPE_ENV=test` verification path
+- one manual browser-based `KURA_ENV=test` verification path
 
 ## Definition Of Done
 

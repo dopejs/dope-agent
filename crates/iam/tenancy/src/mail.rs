@@ -6,12 +6,12 @@ use crate::{emit_denial, require, TenancyError};
 /// Tenant-aware accessor for the mail family.
 pub struct Mail {
     store: crate::SQLiteStore,
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl Mail {
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         Mail { store, emitter }
     }
 
@@ -19,7 +19,7 @@ impl Mail {
         emit_denial(&self.emitter, surface, resource_kind);
     }
 
-    pub fn upsert_account_for_tenant(&self, item: &dope_mail::AccountProjection) -> Result<(), TenancyError> {
+    pub fn upsert_account_for_tenant(&self, item: &kura_mail::AccountProjection) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_mail_account(item).map_err(TenancyError::from)?;
         match self.store.bind_row_tenant("mail_accounts", "mail_account_id", &item.mail_account_id, &tenant_id) {
@@ -31,7 +31,7 @@ impl Mail {
         }
     }
 
-    pub fn upsert_operation_for_tenant(&self, item: &dope_mail::Operation) -> Result<(), TenancyError> {
+    pub fn upsert_operation_for_tenant(&self, item: &kura_mail::Operation) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_mail_operation(item).map_err(TenancyError::from)?;
         match self.store.bind_row_tenant("mail_operations", "operation_id", &item.operation_id, &tenant_id) {
@@ -43,7 +43,7 @@ impl Mail {
         }
     }
 
-    pub fn upsert_artifact_for_tenant(&self, item: &dope_mail::Artifact) -> Result<(), TenancyError> {
+    pub fn upsert_artifact_for_tenant(&self, item: &kura_mail::Artifact) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_mail_artifact(item).map_err(TenancyError::from)?;
         match self.store.bind_row_tenant("mail_artifacts", "artifact_id", &item.artifact_id, &tenant_id) {

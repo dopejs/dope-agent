@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { AgentProfileDetailResponse, AgentProfileListResponse, AgentProfileMutationInput } from "@dope/client";
+import type { AgentProfileDetailResponse, AgentProfileListResponse, AgentProfileMutationInput } from "@kura/client";
 
 type OverlayInput = NonNullable<AgentProfileMutationInput["overlayReferences"]>[number];
 

@@ -16,8 +16,8 @@ entries, reconciliation decisions, and comparisons for audit.
 Tenant containment uses:
 
 ```bash
-curl -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
-  -H "X-Dope-Tenant-ID: $DOPE_TENANT_ID" \
+curl -X POST -H "Authorization: Bearer $KURA_TOKEN" \
+  -H "X-Kura-Tenant-ID: $KURA_TENANT_ID" \
   -H "Content-Type: application/json" \
   -d '{"scope":"tenant","enabled":true,"reason":"operator containment"}' \
   http://127.0.0.1:19192/v1/live-validations/kill-switches
@@ -26,8 +26,8 @@ curl -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
 Inspect active switches with:
 
 ```bash
-curl -H "Authorization: Bearer $DOPE_TOKEN" \
-  -H "X-Dope-Tenant-ID: $DOPE_TENANT_ID" \
+curl -H "Authorization: Bearer $KURA_TOKEN" \
+  -H "X-Kura-Tenant-ID: $KURA_TENANT_ID" \
   http://127.0.0.1:19192/v1/live-validations/kill-switches
 ```
 

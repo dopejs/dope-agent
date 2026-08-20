@@ -2,16 +2,16 @@
 //!
 //! The manager keeps servers, per-server runtime states, discovered tools, tool
 //! exposure rules, and live sessions in memory behind a `parking_lot::RwLock` with
-//! insertion-ordered server ids (the `dope-runtime` pattern). Every mutating method
-//! persists through `dope-store`'s MCP CRUD when a store is installed and publishes
-//! events through `dope-events` (plus the store event ledger).
+//! insertion-ordered server ids (the `kura-runtime` pattern). Every mutating method
+//! persists through `kura-store`'s MCP CRUD when a store is installed and publishes
+//! events through `kura-events` (plus the store event ledger).
 //!
 //! Conventions vs the Go original:
 //! - `context.Context` is dropped (synchronous port). Background persistence in Go's
 //!   detached goroutines is just direct calls.
 //! - Tenant context (`tenantctx`) is not ported: `activeTenantID` is always "".
 //! - The store `HasActiveMCPToolCalls` guard and approval/decision SQLite persistence
-//!   are deferred (dope-store has no such CRUD yet); the corresponding checks are
+//!   are deferred (kura-store has no such CRUD yet); the corresponding checks are
 //!   skipped and persist_approval/persist_decision are no-ops.
 //! - watch_session / schedule_restart / schedule_websocket_reconnect run on detached
 //!   threads holding an Arc clone of the manager, mirroring Go goroutines.
@@ -22,7 +22,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
-use dope_events::Resource;
+use kura_events::Resource;
 use serde_json::{Map, Value};
 
 use crate::catalog::{
@@ -54,10 +54,10 @@ pub fn is_websocket_reconnect_requester(requested_by: &str) -> bool {
     requested_by.trim() == "mcp.websocket_reconnect"
 }
 
-/// Go `sandbox.AttachedExecution` (not yet in dope-sandbox): the process pipes handed
+/// Go `sandbox.AttachedExecution` (not yet in kura-sandbox): the process pipes handed
 /// to a stdio MCP transport. Ported here as part of the deferred sandbox integration.
 pub struct AttachedExecution {
-    pub execution: dope_sandbox::Execution,
+    pub execution: kura_sandbox::Execution,
     pub stdin: Option<Box<dyn std::io::Write + Send>>,
     pub stdout: Option<Box<dyn std::io::Read + Send>>,
     pub stderr: Option<Box<dyn std::io::Read + Send>>,
@@ -69,15 +69,15 @@ pub struct AttachedExecution {
 pub trait AttachedExecutionStarter: Send + Sync {
     fn start_attached_execution(
         &self,
-        request: &dope_sandbox::ExecutionRequest,
-    ) -> Result<(dope_sandbox::Execution, Option<AttachedExecution>), String>;
-    fn cancel_execution(&self, execution_id: &str) -> Result<(dope_sandbox::Execution, bool), String>;
-    fn get_execution(&self, execution_id: &str) -> Option<dope_sandbox::Execution>;
-    fn persist_consumer_view(&self, view: &dope_sandbox::ConsumerContractView) -> Result<(), String>;
-    fn get_profile(&self, profile_id: &str) -> Option<dope_sandbox::Profile>;
+        request: &kura_sandbox::ExecutionRequest,
+    ) -> Result<(kura_sandbox::Execution, Option<AttachedExecution>), String>;
+    fn cancel_execution(&self, execution_id: &str) -> Result<(kura_sandbox::Execution, bool), String>;
+    fn get_execution(&self, execution_id: &str) -> Option<kura_sandbox::Execution>;
+    fn persist_consumer_view(&self, view: &kura_sandbox::ConsumerContractView) -> Result<(), String>;
+    fn get_profile(&self, profile_id: &str) -> Option<kura_sandbox::Profile>;
 }
 
-/// Sync secret resolver replacing the (async, tenant-scoped) dope-secrets manager. The
+/// Sync secret resolver replacing the (async, tenant-scoped) kura-secrets manager. The
 /// Go fallback path (no secret manager) reads `mcp-secrets.json` from the data dir.
 pub trait SecretResolver: Send + Sync {
     fn resolve(&self, secret_ref: &str) -> Result<Option<String>, String>;
@@ -105,10 +105,10 @@ struct ManagerState {
 }
 
 struct ManagerInner {
-    cfg: dope_config::Config,
-    store: Option<Arc<Mutex<dope_store::SQLiteStore>>>,
-    event_bus: Option<dope_events::Bus>,
-    policy: Option<dope_policy::Engine>,
+    cfg: kura_config::Config,
+    store: Option<Arc<Mutex<kura_store::SQLiteStore>>>,
+    event_bus: Option<kura_events::Bus>,
+    policy: Option<kura_policy::Engine>,
     sandboxes: Option<Arc<dyn AttachedExecutionStarter>>,
     transport: Option<Arc<dyn Transport>>,
     secrets: parking_lot::RwLock<Option<Arc<dyn SecretResolver>>>,
@@ -125,10 +125,10 @@ pub struct Manager {
 impl Default for Manager {
     fn default() -> Self {
         Self::new(
-            dope_config::Config {
-                environment: dope_config::Environment::Test,
+            kura_config::Config {
+                environment: kura_config::Environment::Test,
                 bind_addr: "127.0.0.1:19192".to_string(),
-                data_dir: "~/.dope-test".to_string(),
+                data_dir: "~/.kura-test".to_string(),
                 log_level: "info".to_string(),
                 version: "dev".to_string(),
                 llm: Default::default(),
@@ -148,11 +148,11 @@ impl Manager {
     /// concrete stdio / streamable-http / websocket transports installed.
     #[must_use]
     pub fn new(
-        cfg: dope_config::Config,
-        store: Option<Arc<Mutex<dope_store::SQLiteStore>>>,
-        event_bus: Option<dope_events::Bus>,
+        cfg: kura_config::Config,
+        store: Option<Arc<Mutex<kura_store::SQLiteStore>>>,
+        event_bus: Option<kura_events::Bus>,
         sandboxes: Option<Arc<dyn AttachedExecutionStarter>>,
-        policy: Option<dope_policy::Engine>,
+        policy: Option<kura_policy::Engine>,
         transport: Option<Arc<dyn Transport>>,
     ) -> Self {
         let transport = match transport {
@@ -684,9 +684,9 @@ impl Manager {
         }
 
         let approval_mode = if rule.exposure_mode == ExposureMode::ApprovalRequired {
-            dope_sandbox::ApprovalMode::Ask
+            kura_sandbox::ApprovalMode::Ask
         } else {
-            dope_sandbox::ApprovalMode::Allow
+            kura_sandbox::ApprovalMode::Allow
         };
         let consumer = self.build_tool_consumer_view(
             &server,
@@ -713,13 +713,13 @@ impl Manager {
         let requested_by = first_non_empty(&[input.requested_by.trim(), "mcp"]);
         if input.approval_id.trim().is_empty() {
             let (mut approval, mut decision) = policy
-                .request_approval(dope_policy::RequestApprovalInput {
+                .request_approval(kura_policy::RequestApprovalInput {
                     action: "tool_call.execute".to_string(),
                     resource_kind: RESOURCE_KIND_TOOL.to_string(),
                     resource_id: approval_resource_id,
                     reason: "MCP tool execution requires approval".to_string(),
                     requested_by: requested_by.clone(),
-                    ..dope_policy::RequestApprovalInput::default()
+                    ..kura_policy::RequestApprovalInput::default()
                 })
                 .map_err(|e| McpError::Other(e.to_string()))?;
             approval.sandbox = consumer_view_map(&consumer);
@@ -731,10 +731,10 @@ impl Manager {
                 .expect("consumer view always carries a policy record");
             record.approval_id = approval.approval_id.clone();
             record.decision_id = decision.decision_id.clone();
-            record.decision = dope_sandbox::DecisionResolution::Ask;
-            record.approval_status = dope_sandbox::DecisionApprovalStatus::Pending;
-            record.status = dope_sandbox::PolicyRecordStatus::ApprovalPending;
-            record.failure_class = dope_sandbox::ErrorClass::ApprovalRequired.as_str().to_string();
+            record.decision = kura_sandbox::DecisionResolution::Ask;
+            record.approval_status = kura_sandbox::DecisionApprovalStatus::Pending;
+            record.status = kura_sandbox::PolicyRecordStatus::ApprovalPending;
+            record.failure_class = kura_sandbox::ErrorClass::ApprovalRequired.as_str().to_string();
             self.persist_approval(&approval)?;
             self.persist_decision(&decision)?;
             self.persist_consumer_view(&consumer)?;
@@ -784,14 +784,14 @@ impl Manager {
             .expect("consumer view always carries a policy record")
             .approval_id = approval.approval_id.clone();
         match approval.status {
-            dope_policy::ApprovalStatus::Approved => {
+            kura_policy::ApprovalStatus::Approved => {
                 let record = consumer
                     .policy_record
                     .as_mut()
                     .expect("consumer view always carries a policy record");
-                record.decision = dope_sandbox::DecisionResolution::Allow;
-                record.approval_status = dope_sandbox::DecisionApprovalStatus::Approved;
-                record.status = dope_sandbox::PolicyRecordStatus::PreflightAllowed;
+                record.decision = kura_sandbox::DecisionResolution::Allow;
+                record.approval_status = kura_sandbox::DecisionApprovalStatus::Approved;
+                record.status = kura_sandbox::PolicyRecordStatus::PreflightAllowed;
                 record.failure_class = String::new();
                 self.persist_consumer_view(&consumer)?;
                 Ok(ToolAuthorizationResponse {
@@ -803,15 +803,15 @@ impl Manager {
                     ..ToolAuthorizationResponse::default()
                 })
             }
-            dope_policy::ApprovalStatus::Rejected => {
+            kura_policy::ApprovalStatus::Rejected => {
                 let record = consumer
                     .policy_record
                     .as_mut()
                     .expect("consumer view always carries a policy record");
-                record.decision = dope_sandbox::DecisionResolution::Deny;
-                record.approval_status = dope_sandbox::DecisionApprovalStatus::Rejected;
-                record.status = dope_sandbox::PolicyRecordStatus::Denied;
-                record.failure_class = dope_sandbox::ErrorClass::ApprovalRejected.as_str().to_string();
+                record.decision = kura_sandbox::DecisionResolution::Deny;
+                record.approval_status = kura_sandbox::DecisionApprovalStatus::Rejected;
+                record.status = kura_sandbox::PolicyRecordStatus::Denied;
+                record.failure_class = kura_sandbox::ErrorClass::ApprovalRejected.as_str().to_string();
                 self.persist_consumer_view(&consumer)?;
                 Ok(ToolAuthorizationResponse {
                     status: ToolAuthorizationStatus::Rejected,
@@ -823,15 +823,15 @@ impl Manager {
                     ..ToolAuthorizationResponse::default()
                 })
             }
-            dope_policy::ApprovalStatus::Pending => {
+            kura_policy::ApprovalStatus::Pending => {
                 let record = consumer
                     .policy_record
                     .as_mut()
                     .expect("consumer view always carries a policy record");
-                record.decision = dope_sandbox::DecisionResolution::Ask;
-                record.approval_status = dope_sandbox::DecisionApprovalStatus::Pending;
-                record.status = dope_sandbox::PolicyRecordStatus::ApprovalPending;
-                record.failure_class = dope_sandbox::ErrorClass::ApprovalRequired.as_str().to_string();
+                record.decision = kura_sandbox::DecisionResolution::Ask;
+                record.approval_status = kura_sandbox::DecisionApprovalStatus::Pending;
+                record.status = kura_sandbox::PolicyRecordStatus::ApprovalPending;
+                record.failure_class = kura_sandbox::ErrorClass::ApprovalRequired.as_str().to_string();
                 self.persist_consumer_view(&consumer)?;
                 Ok(ToolAuthorizationResponse {
                     status: ToolAuthorizationStatus::Pending,
@@ -2278,7 +2278,7 @@ impl Manager {
         &self,
         server_id: &str,
         state: &mut ServerState,
-        execution: &dope_sandbox::Execution,
+        execution: &kura_sandbox::Execution,
         requested_stop: bool,
     ) {
         let now = Utc::now();
@@ -2291,12 +2291,12 @@ impl Manager {
             .unwrap_or_default();
         state.updated_at = now;
         match execution.status {
-            dope_sandbox::ExecutionStatus::Denied | dope_sandbox::ExecutionStatus::Unsupported => {
+            kura_sandbox::ExecutionStatus::Denied | kura_sandbox::ExecutionStatus::Unsupported => {
                 state.status = lifecycle_status_from_execution(execution);
                 state.health_reason =
                     first_non_empty(&[execution.result.error.as_str(), execution.decision.explanation.as_str()]);
             }
-            dope_sandbox::ExecutionStatus::Cancelled => {
+            kura_sandbox::ExecutionStatus::Cancelled => {
                 state.status = LifecycleStatus::Stopped;
                 if requested_stop {
                     state.health_reason = first_non_empty(&[state.health_reason.as_str(), "cancelled by operator"]);
@@ -2306,7 +2306,7 @@ impl Manager {
                 }
                 state.last_stopped_at = Some(now);
             }
-            dope_sandbox::ExecutionStatus::Completed => {
+            kura_sandbox::ExecutionStatus::Completed => {
                 if requested_stop {
                     state.status = LifecycleStatus::Stopped;
                     state.health_reason = first_non_empty(&[state.health_reason.as_str(), "stopped by operator"]);
@@ -2317,7 +2317,7 @@ impl Manager {
                     state.failure_count += 1;
                 }
             }
-            dope_sandbox::ExecutionStatus::Failed => {
+            kura_sandbox::ExecutionStatus::Failed => {
                 state.status = LifecycleStatus::Failed;
                 state.health_reason = first_non_empty(&[
                     execution.result.error.as_str(),
@@ -2447,11 +2447,11 @@ impl Manager {
     fn build_execution_request(
         &self,
         server: &Server,
-        consumer: &dope_sandbox::ConsumerContractView,
+        consumer: &kura_sandbox::ConsumerContractView,
         approval_id: &str,
-    ) -> Result<dope_sandbox::ExecutionRequest, McpError> {
+    ) -> Result<kura_sandbox::ExecutionRequest, McpError> {
         let env = self.resolve_secret_env(server)?;
-        let mut access = dope_sandbox::AccessRequest {
+        let mut access = kura_sandbox::AccessRequest {
             read_roots: clone_strings(&server.declaration.read_roots),
             write_roots: clone_strings(&server.declaration.write_roots),
             network_mode: Some(server.declaration.network_mode),
@@ -2468,7 +2468,7 @@ impl Manager {
         let mut metadata = HashMap::new();
         metadata.insert("mcpServerId".to_string(), server.server_id.clone());
         metadata.insert("transportKind".to_string(), server.transport_kind.as_str().to_string());
-        Ok(dope_sandbox::ExecutionRequest {
+        Ok(kura_sandbox::ExecutionRequest {
             profile_id: server.sandbox_profile_id.clone(),
             command: server.command.clone(),
             args: clone_strings(&server.args),
@@ -2483,7 +2483,7 @@ impl Manager {
             metadata,
             access,
             consumer: Some(consumer.clone()),
-            ..dope_sandbox::ExecutionRequest::default()
+            ..kura_sandbox::ExecutionRequest::default()
         })
     }
 
@@ -2492,16 +2492,16 @@ impl Manager {
         &self,
         server: &Server,
         requested_by: &str,
-    ) -> Result<dope_sandbox::ConsumerContractView, McpError> {
+    ) -> Result<kura_sandbox::ConsumerContractView, McpError> {
         self.build_consumer_view(
             server,
             &first_non_empty(&[requested_by.trim(), "mcp"]),
             "lifecycle.start",
             &server.declaration_id,
-            dope_sandbox::ApprovalMode::Allow,
-            dope_sandbox::DecisionResolution::Allow,
-            dope_sandbox::DecisionApprovalStatus::NotApplicable,
-            dope_sandbox::PolicyRecordStatus::PreflightAllowed,
+            kura_sandbox::ApprovalMode::Allow,
+            kura_sandbox::DecisionResolution::Allow,
+            kura_sandbox::DecisionApprovalStatus::NotApplicable,
+            kura_sandbox::PolicyRecordStatus::PreflightAllowed,
         )
     }
 
@@ -2512,8 +2512,8 @@ impl Manager {
         tool_name: &str,
         runtime_surface: &str,
         requested_by: &str,
-        approval_mode: dope_sandbox::ApprovalMode,
-    ) -> Result<dope_sandbox::ConsumerContractView, McpError> {
+        approval_mode: kura_sandbox::ApprovalMode,
+    ) -> Result<kura_sandbox::ConsumerContractView, McpError> {
         let declaration_id = format!(
             "{}:tool:{}:{}",
             server.declaration_id,
@@ -2526,9 +2526,9 @@ impl Manager {
             "tool_call.execute",
             &declaration_id,
             approval_mode,
-            dope_sandbox::DecisionResolution::Allow,
-            dope_sandbox::DecisionApprovalStatus::NotApplicable,
-            dope_sandbox::PolicyRecordStatus::PreflightAllowed,
+            kura_sandbox::DecisionResolution::Allow,
+            kura_sandbox::DecisionApprovalStatus::NotApplicable,
+            kura_sandbox::PolicyRecordStatus::PreflightAllowed,
         )
     }
 
@@ -2539,16 +2539,16 @@ impl Manager {
         requested_by: &str,
         operation_kind: &str,
         declaration_id: &str,
-        approval_mode: dope_sandbox::ApprovalMode,
-        decision: dope_sandbox::DecisionResolution,
-        approval_status: dope_sandbox::DecisionApprovalStatus,
-        status: dope_sandbox::PolicyRecordStatus,
-    ) -> Result<dope_sandbox::ConsumerContractView, McpError> {
+        approval_mode: kura_sandbox::ApprovalMode,
+        decision: kura_sandbox::DecisionResolution,
+        approval_status: kura_sandbox::DecisionApprovalStatus,
+        status: kura_sandbox::PolicyRecordStatus,
+    ) -> Result<kura_sandbox::ConsumerContractView, McpError> {
         let secret_scope = self.build_secret_scope(server)?;
-        Ok(dope_sandbox::ConsumerContractView {
-            declaration: Some(dope_sandbox::ConsumerRequirementDeclaration {
+        Ok(kura_sandbox::ConsumerContractView {
+            declaration: Some(kura_sandbox::ConsumerRequirementDeclaration {
                 declaration_id: declaration_id.trim().to_string(),
-                consumer_kind: dope_sandbox::ConsumerKind::McpServer,
+                consumer_kind: kura_sandbox::ConsumerKind::McpServer,
                 consumer_id: server.server_id.clone(),
                 operation_kind: operation_kind.to_string(),
                 profile_id: server.sandbox_profile_id.clone(),
@@ -2568,17 +2568,17 @@ impl Manager {
                     .trim()
                     .to_string(),
                 active: server.declaration.active,
-                source: dope_sandbox::Source::Builtin,
+                source: kura_sandbox::Source::Builtin,
             }),
             secret_scope: secret_scope.clone(),
-            policy_record: Some(dope_sandbox::ConsumerPolicyRecord {
+            policy_record: Some(kura_sandbox::ConsumerPolicyRecord {
                 policy_record_id: format!(
                     "policy_mcp_{}_{}_{}",
                     server.server_id,
                     operation_kind.replace('.', "_"),
                     policy_record_timestamp()
                 ),
-                consumer_kind: dope_sandbox::ConsumerKind::McpServer,
+                consumer_kind: kura_sandbox::ConsumerKind::McpServer,
                 consumer_id: server.server_id.clone(),
                 operation_kind: operation_kind.to_string(),
                 declaration_id: declaration_id.trim().to_string(),
@@ -2592,7 +2592,7 @@ impl Manager {
                 ]),
                 started_at: Utc::now(),
                 status,
-                ..dope_sandbox::ConsumerPolicyRecord::default()
+                ..kura_sandbox::ConsumerPolicyRecord::default()
             }),
         })
     }
@@ -2769,7 +2769,7 @@ impl Manager {
     fn build_secret_scope(
         &self,
         server: &Server,
-    ) -> Result<Vec<dope_sandbox::SecretScopeOutcome>, McpError> {
+    ) -> Result<Vec<kura_sandbox::SecretScopeOutcome>, McpError> {
         self.list_secret_bindings(server)
     }
 
@@ -2777,19 +2777,19 @@ impl Manager {
     fn list_secret_bindings(
         &self,
         server: &Server,
-    ) -> Result<Vec<dope_sandbox::SecretScopeOutcome>, McpError> {
+    ) -> Result<Vec<kura_sandbox::SecretScopeOutcome>, McpError> {
         let env_scope = match self.inner.cfg.environment {
-            dope_config::Environment::Test => dope_sandbox::SecretEnvironmentScope::Test,
-            dope_config::Environment::Prod => dope_sandbox::SecretEnvironmentScope::Prod,
+            kura_config::Environment::Test => kura_sandbox::SecretEnvironmentScope::Test,
+            kura_config::Environment::Prod => kura_sandbox::SecretEnvironmentScope::Prod,
         };
         let mut items = Vec::with_capacity(server.secret_refs.len());
         for secret_ref in &server.secret_refs {
-            items.push(dope_sandbox::SecretScopeOutcome {
-                consumer_kind: dope_sandbox::ConsumerKind::McpServer,
+            items.push(kura_sandbox::SecretScopeOutcome {
+                consumer_kind: kura_sandbox::ConsumerKind::McpServer,
                 consumer_id: server.server_id.clone(),
                 secret_ref: secret_ref.clone(),
                 environment_scope: env_scope,
-                default_source: Some(dope_sandbox::SecretDefaultSource::InstanceOverride),
+                default_source: Some(kura_sandbox::SecretDefaultSource::InstanceOverride),
                 default_rule_id: format!("mcp_server:{}", server.server_id),
                 delivery_kind: "environment_variable".to_string(),
                 redaction_rule: "value_redacted".to_string(),
@@ -2805,7 +2805,7 @@ impl Manager {
         let resolved_secrets = self.resolve_secret_values(&server.secret_refs)?;
         let mut env = HashMap::new();
         for item in secret_scope {
-            if item.resolution != dope_sandbox::SecretResolution::Resolved {
+            if item.resolution != kura_sandbox::SecretResolution::Resolved {
                 continue;
             }
             if let Some(value) = resolved_secrets.get(&item.secret_ref) {
@@ -2819,35 +2819,35 @@ impl Manager {
     fn resolve_secret_ref(
         &self,
         secret_ref: &str,
-        env_scope: dope_sandbox::SecretEnvironmentScope,
-    ) -> dope_sandbox::SecretResolution {
+        env_scope: kura_sandbox::SecretEnvironmentScope,
+    ) -> kura_sandbox::SecretResolution {
         match self.inner.cfg.environment {
-            dope_config::Environment::Test => {
-                if env_scope != dope_sandbox::SecretEnvironmentScope::Test
-                    && env_scope != dope_sandbox::SecretEnvironmentScope::Both
+            kura_config::Environment::Test => {
+                if env_scope != kura_sandbox::SecretEnvironmentScope::Test
+                    && env_scope != kura_sandbox::SecretEnvironmentScope::Both
                 {
-                    return dope_sandbox::SecretResolution::Denied;
+                    return kura_sandbox::SecretResolution::Denied;
                 }
             }
-            dope_config::Environment::Prod => {
-                if env_scope != dope_sandbox::SecretEnvironmentScope::Prod
-                    && env_scope != dope_sandbox::SecretEnvironmentScope::Both
+            kura_config::Environment::Prod => {
+                if env_scope != kura_sandbox::SecretEnvironmentScope::Prod
+                    && env_scope != kura_sandbox::SecretEnvironmentScope::Both
                 {
-                    return dope_sandbox::SecretResolution::Denied;
+                    return kura_sandbox::SecretResolution::Denied;
                 }
             }
         }
         match self.resolve_secret_values(&[secret_ref.to_string()]) {
             Ok(resolved) => {
                 if resolved.contains_key(secret_ref) {
-                    dope_sandbox::SecretResolution::Resolved
+                    kura_sandbox::SecretResolution::Resolved
                 } else {
-                    dope_sandbox::SecretResolution::Unavailable
+                    kura_sandbox::SecretResolution::Unavailable
                 }
             }
             // Go maps a missing tenant context to Denied; tenant context is not ported,
             // so every resolution failure is Unavailable.
-            Err(_) => dope_sandbox::SecretResolution::Unavailable,
+            Err(_) => kura_sandbox::SecretResolution::Unavailable,
         }
     }
 
@@ -2888,7 +2888,7 @@ impl Manager {
     }
 
     /// Go `persistConsumerView`.
-    fn persist_consumer_view(&self, view: &dope_sandbox::ConsumerContractView) -> Result<(), McpError> {
+    fn persist_consumer_view(&self, view: &kura_sandbox::ConsumerContractView) -> Result<(), McpError> {
         if let Some(sandboxes) = &self.inner.sandboxes {
             sandboxes
                 .persist_consumer_view(view)
@@ -2897,14 +2897,14 @@ impl Manager {
         Ok(())
     }
 
-    /// Go `persistApproval`. Deferred: dope-store has no approval CRUD yet, so this is
+    /// Go `persistApproval`. Deferred: kura-store has no approval CRUD yet, so this is
     /// a no-op (the in-memory policy engine already holds the record).
-    fn persist_approval(&self, _approval: &dope_policy::Approval) -> Result<(), McpError> {
+    fn persist_approval(&self, _approval: &kura_policy::Approval) -> Result<(), McpError> {
         Ok(())
     }
 
-    /// Go `persistDecision`. Deferred: dope-store has no decision CRUD yet.
-    fn persist_decision(&self, _decision: &dope_policy::Decision) -> Result<(), McpError> {
+    /// Go `persistDecision`. Deferred: kura-store has no decision CRUD yet.
+    fn persist_decision(&self, _decision: &kura_policy::Decision) -> Result<(), McpError> {
         Ok(())
     }
 
@@ -2918,7 +2918,7 @@ impl Manager {
         store
             .lock()
             .map_err(|_| McpError::Store("store lock poisoned".to_string()))?
-            .upsert_mcp_server(&dope_store::mcp::MCPServerRecord {
+            .upsert_mcp_server(&kura_store::mcp::MCPServerRecord {
                 server_id: server.server_id.clone(),
                 enabled: server.enabled,
                 updated_at: server.updated_at,
@@ -2937,7 +2937,7 @@ impl Manager {
         store
             .lock()
             .map_err(|_| McpError::Store("store lock poisoned".to_string()))?
-            .upsert_mcp_server_state(&dope_store::mcp::MCPServerStateRecord {
+            .upsert_mcp_server_state(&kura_store::mcp::MCPServerStateRecord {
                 server_id: state.server_id.clone(),
                 status: state.status.as_str().to_string(),
                 updated_at: state.updated_at,
@@ -2956,7 +2956,7 @@ impl Manager {
             let document = serde_json::to_string(tool).map_err(|e| {
                 McpError::Store(format!("marshal mcp tool {}/{}: {e}", server_id, tool.tool_name))
             })?;
-            records.push(dope_store::mcp::MCPToolRecord {
+            records.push(kura_store::mcp::MCPToolRecord {
                 server_id: tool.server_id.clone(),
                 tool_name: tool.tool_name.clone(),
                 discovery_status: tool.discovery_status.as_str().to_string(),
@@ -2986,7 +2986,7 @@ impl Manager {
         store
             .lock()
             .map_err(|_| McpError::Store("store lock poisoned".to_string()))?
-            .upsert_mcp_tool_exposure_rule(&dope_store::mcp::MCPToolExposureRuleRecord {
+            .upsert_mcp_tool_exposure_rule(&kura_store::mcp::MCPToolExposureRuleRecord {
                 server_id: rule.server_id.clone(),
                 tool_name: rule.tool_name.clone(),
                 runtime_surface: rule.runtime_surface.clone(),
@@ -3010,14 +3010,14 @@ impl Manager {
         if self.inner.event_bus.is_none() && self.inner.store.is_none() {
             return Ok(());
         }
-        let mut event = dope_events::Event {
+        let mut event = kura_events::Event {
             event_id: event_id(name),
             category: category.to_string(),
             name: name.to_string(),
             occurred_at: Utc::now(),
             resource,
             payload,
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         };
         if let Some(store) = &self.inner.store {
             let persisted = store
@@ -3039,18 +3039,18 @@ impl Manager {
         name: &str,
         resource: Resource,
         payload: Map<String, Value>,
-    ) -> Result<dope_events::Event, McpError> {
+    ) -> Result<kura_events::Event, McpError> {
         if self.inner.event_bus.is_none() && self.inner.store.is_none() {
-            return Ok(dope_events::Event::default());
+            return Ok(kura_events::Event::default());
         }
-        let mut event = dope_events::Event {
+        let mut event = kura_events::Event {
             event_id: event_id(name),
             category: "mcp".to_string(),
             name: name.to_string(),
             occurred_at: Utc::now(),
             resource,
             payload,
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         };
         if let Some(store) = &self.inner.store {
             let persisted = store
@@ -3182,7 +3182,7 @@ impl Manager {
             }
         }
         for summary in self.build_secret_summaries(server) {
-            if summary.resolution != dope_sandbox::SecretResolution::Resolved.as_str() {
+            if summary.resolution != kura_sandbox::SecretResolution::Resolved.as_str() {
                 return (
                     AvailabilityStatus::Blocked,
                     format!("{} is unavailable in {}", summary.secret_ref, summary.environment_scope),
@@ -3265,7 +3265,7 @@ impl Manager {
             if item.secret_ref != summary.secret_ref {
                 continue;
             }
-            summary.resolved = item.resolution == dope_sandbox::SecretResolution::Resolved.as_str();
+            summary.resolved = item.resolution == kura_sandbox::SecretResolution::Resolved.as_str();
             if !summary.resolved {
                 summary.blocked_reason =
                     format!("{} is unavailable in {}", item.secret_ref, item.environment_scope);
@@ -3531,7 +3531,7 @@ impl Manager {
                 ..CatalogLifecycleResult::default()
             }));
         }
-        // Go also blocks when store.HasActiveMCPToolCalls(server.ServerID); dope-store
+        // Go also blocks when store.HasActiveMCPToolCalls(server.ServerID); kura-store
         // does not expose that query yet, so the check is deferred.
         if fail_on_modified && server.operator_modified {
             return Ok(Some(CatalogLifecycleResult {
@@ -3577,7 +3577,7 @@ impl Manager {
     }
 
     /// Go `catalogRevalidationBusyBlockResult`. The store active-tool-call check is
-    /// deferred (dope-store has no such query).
+    /// deferred (kura-store has no such query).
     fn catalog_revalidation_busy_block_result(
         &self,
         _server: &Server,
@@ -3991,7 +3991,7 @@ impl Manager {
             return Vec::new();
         }
         let environment_scope = environment_scope(self.inner.cfg.environment);
-        let mut resolution_by_ref: HashMap<String, dope_sandbox::SecretResolution> = HashMap::new();
+        let mut resolution_by_ref: HashMap<String, kura_sandbox::SecretResolution> = HashMap::new();
         if let Ok(bindings) = self.list_secret_bindings(server) {
             for item in bindings {
                 resolution_by_ref.insert(item.secret_ref.clone(), item.resolution);
@@ -4002,7 +4002,7 @@ impl Manager {
             let resolution = resolution_by_ref
                 .get(secret_ref)
                 .copied()
-                .unwrap_or(dope_sandbox::SecretResolution::Unavailable);
+                .unwrap_or(kura_sandbox::SecretResolution::Unavailable);
             items.push(SecretSummary {
                 consumer_id: server.server_id.clone(),
                 secret_ref: secret_ref.clone(),
@@ -4130,14 +4130,14 @@ pub fn default_state_for_server(server: &Server) -> ServerState {
 
 /// Go `lifecycleStatusFromExecution`.
 #[must_use]
-pub fn lifecycle_status_from_execution(execution: &dope_sandbox::Execution) -> LifecycleStatus {
-    if execution.status == dope_sandbox::ExecutionStatus::Unsupported
-        || execution.decision.selection_outcome == Some(dope_sandbox::BackendSelectionOutcome::Unsupported)
+pub fn lifecycle_status_from_execution(execution: &kura_sandbox::Execution) -> LifecycleStatus {
+    if execution.status == kura_sandbox::ExecutionStatus::Unsupported
+        || execution.decision.selection_outcome == Some(kura_sandbox::BackendSelectionOutcome::Unsupported)
     {
         return LifecycleStatus::Unsupported;
     }
     if execution.result.error_code == "sandbox_profile_not_found"
-        || execution.result.error_class == dope_sandbox::ErrorClass::InvalidProfile.as_str()
+        || execution.result.error_class == kura_sandbox::ErrorClass::InvalidProfile.as_str()
     {
         return LifecycleStatus::Denied;
     }
@@ -4146,24 +4146,24 @@ pub fn lifecycle_status_from_execution(execution: &dope_sandbox::Execution) -> L
 
 /// Go `classifyExecutionFailure`.
 #[must_use]
-pub fn classify_execution_failure(execution: &dope_sandbox::Execution) -> String {
+pub fn classify_execution_failure(execution: &kura_sandbox::Execution) -> String {
     match execution.result.error_class.as_str() {
-        value if value == dope_sandbox::ErrorClass::LaunchFailed.as_str() => "launch_failed".to_string(),
-        value if value == dope_sandbox::ErrorClass::Timeout.as_str() => "timeout".to_string(),
-        value if value == dope_sandbox::ErrorClass::Cancelled.as_str() => "cancelled".to_string(),
-        value if value == dope_sandbox::ErrorClass::ProcessFailed.as_str() => {
+        value if value == kura_sandbox::ErrorClass::LaunchFailed.as_str() => "launch_failed".to_string(),
+        value if value == kura_sandbox::ErrorClass::Timeout.as_str() => "timeout".to_string(),
+        value if value == kura_sandbox::ErrorClass::Cancelled.as_str() => "cancelled".to_string(),
+        value if value == kura_sandbox::ErrorClass::ProcessFailed.as_str() => {
             "transport_runtime_failure".to_string()
         }
         value
-            if value == dope_sandbox::ErrorClass::PolicyDenied.as_str()
-                || value == dope_sandbox::ErrorClass::ApprovalRequired.as_str()
-                || value == dope_sandbox::ErrorClass::ApprovalRejected.as_str()
-                || value == dope_sandbox::ErrorClass::InvalidProfile.as_str() =>
+            if value == kura_sandbox::ErrorClass::PolicyDenied.as_str()
+                || value == kura_sandbox::ErrorClass::ApprovalRequired.as_str()
+                || value == kura_sandbox::ErrorClass::ApprovalRejected.as_str()
+                || value == kura_sandbox::ErrorClass::InvalidProfile.as_str() =>
         {
             "policy_denied".to_string()
         }
         _ => {
-            if execution.status == dope_sandbox::ExecutionStatus::Denied {
+            if execution.status == kura_sandbox::ExecutionStatus::Denied {
                 "policy_denied".to_string()
             } else {
                 execution.result.error_class.trim().to_string()
@@ -4178,7 +4178,7 @@ pub fn merge_catalog_install_input(
     entry: &CatalogEntry,
     input: &CatalogInstallInput,
     method: InstallMethod,
-    environment: dope_config::Environment,
+    environment: kura_config::Environment,
 ) -> CreateServerInput {
     let mut spec = entry.default_install_spec.clone();
     let mut server_id = input.server_id.trim().to_string();
@@ -4542,33 +4542,33 @@ pub fn session_id(active: Option<&SessionState>) -> String {
 
 /// Go `secretResolution`.
 #[must_use]
-pub fn secret_resolution(items: &[dope_sandbox::SecretScopeOutcome]) -> dope_sandbox::SecretResolution {
+pub fn secret_resolution(items: &[kura_sandbox::SecretScopeOutcome]) -> kura_sandbox::SecretResolution {
     if items.is_empty() {
-        return dope_sandbox::SecretResolution::NotApplicable;
+        return kura_sandbox::SecretResolution::NotApplicable;
     }
     for item in items {
-        if item.resolution == dope_sandbox::SecretResolution::Unavailable {
-            return dope_sandbox::SecretResolution::Unavailable;
+        if item.resolution == kura_sandbox::SecretResolution::Unavailable {
+            return kura_sandbox::SecretResolution::Unavailable;
         }
     }
     for item in items {
-        if item.resolution == dope_sandbox::SecretResolution::Denied {
-            return dope_sandbox::SecretResolution::Denied;
+        if item.resolution == kura_sandbox::SecretResolution::Denied {
+            return kura_sandbox::SecretResolution::Denied;
         }
     }
-    dope_sandbox::SecretResolution::Resolved
+    kura_sandbox::SecretResolution::Resolved
 }
 
 /// Go `consumeViewMap` (the name is a typo in the original): JSON round-trip of the
 /// consumer view into an arbitrary value.
 #[must_use]
-pub fn consumer_view_map(view: &dope_sandbox::ConsumerContractView) -> Option<Value> {
+pub fn consumer_view_map(view: &kura_sandbox::ConsumerContractView) -> Option<Value> {
     serde_json::to_value(view).ok()
 }
 
 /// Go `policy.approval_requested` event payload.
 #[must_use]
-pub fn approval_payload(approval: &dope_policy::Approval) -> Map<String, Value> {
+pub fn approval_payload(approval: &kura_policy::Approval) -> Map<String, Value> {
     let mut payload = Map::new();
     payload.insert("action".to_string(), Value::String(approval.action.clone()));
     payload.insert("resourceKind".to_string(), Value::String(approval.resource_kind.clone()));
@@ -4583,7 +4583,7 @@ pub fn approval_payload(approval: &dope_policy::Approval) -> Map<String, Value> 
 
 /// Go `policy.decision_recorded` event payload.
 #[must_use]
-pub fn decision_payload(decision: &dope_policy::Decision) -> Map<String, Value> {
+pub fn decision_payload(decision: &kura_policy::Decision) -> Map<String, Value> {
     let mut payload = Map::new();
     payload.insert("action".to_string(), Value::String(decision.action.clone()));
     payload.insert("resourceKind".to_string(), Value::String(decision.resource_kind.clone()));

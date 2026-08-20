@@ -3,7 +3,7 @@
 //! derives a planned step graph from a goal and the available consumers, the
 //! step-state transition helpers that drive execution, and an in-memory workflow
 //! manager backed by `parking_lot::RwLock` with insertion-ordered ids,
-//! mirroring the `dope-runtime` crate.
+//! mirroring the `kura-runtime` crate.
 //!
 //! The Go package's `Manager` is stateless: every method takes and returns a
 //! `Workflow` value. Those transformations are ported verbatim as free
@@ -96,7 +96,7 @@ string_enum!(BlockedReason {
 
 /// Manager validation/lookup failures. The Go package surfaces sentinel errors
 /// from its runtime-adjacent callers; the stateful manager exposes them as a
-/// typed enum in the style of `dope-runtime`.
+/// typed enum in the style of `kura-runtime`.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum OrchestrationError {
     #[error("workflow not found")]
@@ -119,9 +119,9 @@ pub struct CreateWorkflowInput {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub goal: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub calendar_action: Option<dope_calendar::Action>,
+    pub calendar_action: Option<kura_calendar::Action>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mail_action: Option<dope_mail::Action>,
+    pub mail_action: Option<kura_mail::Action>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -152,7 +152,7 @@ pub struct Workflow {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub latest_delivery_target_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub active_profile_projection: Option<dope_profiles::RuntimeProjection>,
+    pub active_profile_projection: Option<kura_profiles::RuntimeProjection>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -207,13 +207,13 @@ pub struct WorkflowStep {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub computer_use_action_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub computer_use_artifacts: Vec<dope_computeruse::Artifact>,
+    pub computer_use_artifacts: Vec<kura_computeruse::Artifact>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub integration_bindings: Vec<dope_integrations::BindingSummary>,
+    pub integration_bindings: Vec<kura_integrations::BindingSummary>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub calendar_operation_summaries: Vec<dope_calendar::OperationSummary>,
+    pub calendar_operation_summaries: Vec<kura_calendar::OperationSummary>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mail_operation_summaries: Vec<dope_mail::OperationSummary>,
+    pub mail_operation_summaries: Vec<kura_mail::OperationSummary>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -533,7 +533,7 @@ pub fn start_step_attempt(
 pub fn bind_tool_call(
     mut workflow: Workflow,
     workflow_step_id: &str,
-    tool_call: &dope_runtime::ToolCall,
+    tool_call: &kura_runtime::ToolCall,
     now: DateTime<Utc>,
 ) -> Workflow {
     if let Some(step) = workflow.steps.iter_mut().find(|step| step.workflow_step_id == workflow_step_id) {
@@ -554,7 +554,7 @@ pub fn bind_tool_call(
 #[must_use]
 pub fn apply_tool_call_result(
     mut workflow: Workflow,
-    tool_call: &dope_runtime::ToolCall,
+    tool_call: &kura_runtime::ToolCall,
     hinted_status: Option<StepStatus>,
     blocked_reason: &str,
     now: DateTime<Utc>,
@@ -566,7 +566,7 @@ pub fn apply_tool_call_result(
         step.mail_operation_summaries = tool_call.mail_operation_summaries.clone();
         step.updated_at = now;
         match tool_call.status {
-            dope_runtime::ToolCallStatus::Completed => {
+            kura_runtime::ToolCallStatus::Completed => {
                 step.status = StepStatus::Completed;
                 step.side_effects_visible = true;
                 step.output_summary = summarize_output(tool_call.output.as_ref());
@@ -577,15 +577,15 @@ pub fn apply_tool_call_result(
                     }
                 }
             }
-            dope_runtime::ToolCallStatus::Denied => {
+            kura_runtime::ToolCallStatus::Denied => {
                 step.status = StepStatus::Blocked;
                 step.blocked_reason =
                     first_non_empty(&[blocked_reason, BlockedReason::ApprovalDenied.as_str()]);
             }
-            dope_runtime::ToolCallStatus::Cancelled => {
+            kura_runtime::ToolCallStatus::Cancelled => {
                 step.status = StepStatus::Cancelled;
             }
-            dope_runtime::ToolCallStatus::Failed => {
+            kura_runtime::ToolCallStatus::Failed => {
                 step.last_failure_class = tool_call.failure_class.clone();
                 if tool_call.failure_class == "approval_rejected" || tool_call.failure_class.contains("approval") {
                     step.status = StepStatus::Blocked;
@@ -681,7 +681,7 @@ pub fn apply_computer_use_projection(
     workflow_step_id: &str,
     session_id: &str,
     actions: &[String],
-    artifacts: &[dope_computeruse::Artifact],
+    artifacts: &[kura_computeruse::Artifact],
     now: DateTime<Utc>,
 ) -> Workflow {
     if let Some(step) = workflow.steps.iter_mut().find(|step| step.workflow_step_id == workflow_step_id) {
@@ -699,10 +699,10 @@ pub fn apply_computer_use_projection(
 /// MCP/skill handoffs, then local capabilities.
 #[must_use]
 pub fn plan_workflow(
-    cfg: &dope_config::Config,
-    run: &dope_runtime::Run,
+    cfg: &kura_config::Config,
+    run: &kura_runtime::Run,
     input: &CreateWorkflowInput,
-    capability_supervisor: Option<&dope_capabilities::Supervisor>,
+    capability_supervisor: Option<&kura_capabilities::Supervisor>,
     skill_source: Option<&dyn SkillPlanningSource>,
     mcp_source: Option<&dyn MCPPlanningSource>,
 ) -> Workflow {
@@ -849,10 +849,10 @@ pub fn plan_workflow(
     workflow
 }
 
-fn environment_scope(env: dope_config::Environment) -> String {
+fn environment_scope(env: kura_config::Environment) -> String {
     match env {
-        dope_config::Environment::Prod => "prod".to_string(),
-        dope_config::Environment::Test => "test".to_string(),
+        kura_config::Environment::Prod => "prod".to_string(),
+        kura_config::Environment::Test => "test".to_string(),
     }
 }
 
@@ -880,7 +880,7 @@ fn pick_mcp_workflow_step(
             WorkflowStep {
                 workflow_step_id: new_workflow_step_id(),
                 title: format!("Use MCP tool {tool_name}"),
-                consumer_kind: dope_runtime::ToolCallInvocationKind::McpTool.as_str().to_string(),
+                consumer_kind: kura_runtime::ToolCallInvocationKind::McpTool.as_str().to_string(),
                 consumer_id: server.server_id.clone(),
                 tool_name,
                 input: Some(serde_json::json!({ "query": goal })),
@@ -916,7 +916,7 @@ fn pick_skill_workflow_step(
             WorkflowStep {
                 workflow_step_id: new_workflow_step_id(),
                 title: format!("Run executable skill {}", skill.skill_id),
-                consumer_kind: dope_runtime::ToolCallInvocationKind::Skill.as_str().to_string(),
+                consumer_kind: kura_runtime::ToolCallInvocationKind::Skill.as_str().to_string(),
                 consumer_id: skill.skill_id.clone(),
                 tool_name: skill.skill_id.clone(),
                 input: Some(serde_json::json!({ "args": vec![goal.to_string()] })),
@@ -967,15 +967,15 @@ fn pick_computer_use_workflow_step(goal: &str, now: DateTime<Utc>) -> (WorkflowS
     )
 }
 
-fn pick_calendar_workflow_step(action: &dope_calendar::Action, now: DateTime<Utc>) -> WorkflowStep {
+fn pick_calendar_workflow_step(action: &kura_calendar::Action, now: DateTime<Utc>) -> WorkflowStep {
     let title = match action.operation_class {
-        dope_calendar::OperationClass::ListEvents => "Inspect calendar events",
-        dope_calendar::OperationClass::GetEvent => "Inspect calendar event",
-        dope_calendar::OperationClass::BusyFree => "Inspect calendar availability",
-        dope_calendar::OperationClass::CreateEvent => "Create calendar event",
-        dope_calendar::OperationClass::UpdateEvent => "Update calendar event",
-        dope_calendar::OperationClass::CancelEvent => "Cancel calendar event",
-        dope_calendar::OperationClass::UpdateAttendees => "Run calendar operation",
+        kura_calendar::OperationClass::ListEvents => "Inspect calendar events",
+        kura_calendar::OperationClass::GetEvent => "Inspect calendar event",
+        kura_calendar::OperationClass::BusyFree => "Inspect calendar availability",
+        kura_calendar::OperationClass::CreateEvent => "Create calendar event",
+        kura_calendar::OperationClass::UpdateEvent => "Update calendar event",
+        kura_calendar::OperationClass::CancelEvent => "Cancel calendar event",
+        kura_calendar::OperationClass::UpdateAttendees => "Run calendar operation",
     };
     let consumer_id = {
         let trimmed = action.integration_id.trim().to_string();
@@ -997,20 +997,20 @@ fn pick_calendar_workflow_step(action: &dope_calendar::Action, now: DateTime<Utc
     }
 }
 
-fn pick_mail_workflow_step(action: &dope_mail::Action, now: DateTime<Utc>) -> WorkflowStep {
+fn pick_mail_workflow_step(action: &kura_mail::Action, now: DateTime<Utc>) -> WorkflowStep {
     let title = match action.operation_class {
-        dope_mail::OperationClass::ListThreads => "Inspect mail threads",
-        dope_mail::OperationClass::GetThread => "Inspect mail thread",
-        dope_mail::OperationClass::GetMessage => "Inspect mail message",
-        dope_mail::OperationClass::ListDrafts => "Inspect mail drafts",
-        dope_mail::OperationClass::GetDraft => "Inspect mail draft",
-        dope_mail::OperationClass::CreateDraft => "Create mail draft",
-        dope_mail::OperationClass::UpdateDraft => "Update mail draft",
-        dope_mail::OperationClass::SendMessage => "Send mail message",
-        dope_mail::OperationClass::SendDraft => "Send mail draft",
-        dope_mail::OperationClass::ReplyMessage => "Reply to mail message",
-        dope_mail::OperationClass::ForwardMessage => "Forward mail message",
-        dope_mail::OperationClass::DownloadAttachment => "Run mail operation",
+        kura_mail::OperationClass::ListThreads => "Inspect mail threads",
+        kura_mail::OperationClass::GetThread => "Inspect mail thread",
+        kura_mail::OperationClass::GetMessage => "Inspect mail message",
+        kura_mail::OperationClass::ListDrafts => "Inspect mail drafts",
+        kura_mail::OperationClass::GetDraft => "Inspect mail draft",
+        kura_mail::OperationClass::CreateDraft => "Create mail draft",
+        kura_mail::OperationClass::UpdateDraft => "Update mail draft",
+        kura_mail::OperationClass::SendMessage => "Send mail message",
+        kura_mail::OperationClass::SendDraft => "Send mail draft",
+        kura_mail::OperationClass::ReplyMessage => "Reply to mail message",
+        kura_mail::OperationClass::ForwardMessage => "Forward mail message",
+        kura_mail::OperationClass::DownloadAttachment => "Run mail operation",
     };
     let consumer_id = {
         let trimmed = action.integration_id.trim().to_string();
@@ -1033,14 +1033,14 @@ fn pick_mail_workflow_step(action: &dope_mail::Action, now: DateTime<Utc>) -> Wo
 }
 
 fn pick_local_workflow_step(
-    cfg: &dope_config::Config,
+    cfg: &kura_config::Config,
     goal: &str,
-    capability_supervisor: Option<&dope_capabilities::Supervisor>,
+    capability_supervisor: Option<&kura_capabilities::Supervisor>,
     now: DateTime<Utc>,
 ) -> (WorkflowStep, bool) {
     let Some(supervisor) = capability_supervisor else { return (WorkflowStep::default(), false); };
     for capability in supervisor.list() {
-        if capability.status == dope_capabilities::Status::Failed {
+        if capability.status == kura_capabilities::Status::Failed {
             continue;
         }
         match capability.kind.as_str() {
@@ -1049,7 +1049,7 @@ fn pick_local_workflow_step(
                     WorkflowStep {
                         workflow_step_id: new_workflow_step_id(),
                         title: "Run local shell capability".to_string(),
-                        consumer_kind: dope_runtime::ToolCallInvocationKind::LocalTool.as_str().to_string(),
+                        consumer_kind: kura_runtime::ToolCallInvocationKind::LocalTool.as_str().to_string(),
                         consumer_id: capability.capability_id.clone(),
                         tool_name: "shell".to_string(),
                         input: Some(serde_json::json!({
@@ -1071,7 +1071,7 @@ fn pick_local_workflow_step(
                     WorkflowStep {
                         workflow_step_id: new_workflow_step_id(),
                         title: "Run local exec capability".to_string(),
-                        consumer_kind: dope_runtime::ToolCallInvocationKind::LocalTool.as_str().to_string(),
+                        consumer_kind: kura_runtime::ToolCallInvocationKind::LocalTool.as_str().to_string(),
                         consumer_id: capability.capability_id.clone(),
                         tool_name: "exec".to_string(),
                         input: Some(serde_json::json!({
@@ -1101,7 +1101,7 @@ struct ManagerInner {
     workflow_ids: Vec<String>,
 }
 
-/// Thread-safe in-memory store of workflows, mirroring the `dope-runtime`
+/// Thread-safe in-memory store of workflows, mirroring the `kura-runtime`
 /// manager pattern: insertion-ordered ids, `parking_lot::RwLock` guard.
 pub struct Manager {
     inner: parking_lot::RwLock<ManagerInner>,
@@ -1141,10 +1141,10 @@ impl Manager {
     /// Plans a workflow for the run and stores it (Go `Manager.Plan`).
     pub fn plan(
         &self,
-        cfg: &dope_config::Config,
-        run: &dope_runtime::Run,
+        cfg: &kura_config::Config,
+        run: &kura_runtime::Run,
         input: &CreateWorkflowInput,
-        capability_supervisor: Option<&dope_capabilities::Supervisor>,
+        capability_supervisor: Option<&kura_capabilities::Supervisor>,
         skill_source: Option<&dyn SkillPlanningSource>,
         mcp_source: Option<&dyn MCPPlanningSource>,
     ) -> Workflow {
@@ -1299,7 +1299,7 @@ impl Manager {
         &self,
         workflow_id: &str,
         workflow_step_id: &str,
-        tool_call: &dope_runtime::ToolCall,
+        tool_call: &kura_runtime::ToolCall,
         now: DateTime<Utc>,
     ) -> Result<Workflow, OrchestrationError> {
         let mut inner = self.inner.write();
@@ -1313,7 +1313,7 @@ impl Manager {
     pub fn apply_tool_call_result(
         &self,
         workflow_id: &str,
-        tool_call: &dope_runtime::ToolCall,
+        tool_call: &kura_runtime::ToolCall,
         hinted_status: Option<StepStatus>,
         blocked_reason: &str,
         now: DateTime<Utc>,
@@ -1341,7 +1341,7 @@ impl Manager {
         workflow_step_id: &str,
         session_id: &str,
         actions: &[String],
-        artifacts: &[dope_computeruse::Artifact],
+        artifacts: &[kura_computeruse::Artifact],
         now: DateTime<Utc>,
     ) -> Result<Workflow, OrchestrationError> {
         let mut inner = self.inner.write();

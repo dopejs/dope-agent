@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use rusqlite::params;
 
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 use crate::seeds::exec_insert;
 use crate::FIXTURE_TIMESTAMP;

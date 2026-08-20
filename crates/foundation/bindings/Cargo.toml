@@ -1,5 +1,5 @@
 [package]
-name = "dope-bindings"
+name = "kura-bindings"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true

@@ -14,16 +14,16 @@ The goal is simple:
 
 ### Test
 
-- `DOPE_ENV=test`
-- data dir: `~/.dope-test`
-- config file: `~/.dope-test/config.json`
+- `KURA_ENV=test`
+- data dir: `~/.kura-test`
+- config file: `~/.kura-test/config.json`
 - bind addr: `127.0.0.1:19192`
 
 ### Production
 
-- `DOPE_ENV=prod`
-- data dir: `~/.dope`
-- config file: `~/.dope/config.json`
+- `KURA_ENV=prod`
+- data dir: `~/.kura`
+- config file: `~/.kura/config.json`
 - bind addr: `127.0.0.1:19191`
 
 ## Default Rule
@@ -66,7 +66,7 @@ If live IM validation is intentional, use:
 
 or explicitly override:
 
-- `DOPE_CONNECTORS_DISCORD_ENABLED=true make daemon-run-test`
+- `KURA_CONNECTORS_DISCORD_ENABLED=true make daemon-run-test`
 
 ## Agent Workflow
 
@@ -76,14 +76,14 @@ The repository-level agent instructions are in:
 
 The project-level skill is in:
 
-- `.agents/skills/dope-test-env/SKILL.md`
+- `.agents/skills/kura-test-env/SKILL.md`
 
 Both documents encode the same rule:
 
 - use the test environment by default
 - do not touch production state unless the user explicitly asks for it
-- if the expected daemon port is already occupied by an older Dope daemon, stop it and restart cleanly
-- if the listener is not a Dope daemon, treat it as a conflict instead of killing it automatically
+- if the expected daemon port is already occupied by an older Kura daemon, stop it and restart cleanly
+- if the listener is not a Kura daemon, treat it as a conflict instead of killing it automatically
 
 ## Verification
 

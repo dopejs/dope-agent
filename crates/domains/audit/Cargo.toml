@@ -1,15 +1,15 @@
 [package]
-name = "dope-audit"
+name = "kura-audit"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-events.workspace = true
-dope-identity.workspace = true
-dope-billing.workspace = true
-dope-secrets.workspace = true
-dope-integrations.workspace = true
+kura-events.workspace = true
+kura-identity.workspace = true
+kura-billing.workspace = true
+kura-secrets.workspace = true
+kura-integrations.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true

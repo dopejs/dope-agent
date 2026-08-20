@@ -53,8 +53,8 @@ pub enum TelegramError {
     Transport(String),
 }
 
-impl From<dope_connectors::ConnectorsError> for TelegramError {
-    fn from(err: dope_connectors::ConnectorsError) -> Self {
+impl From<kura_connectors::ConnectorsError> for TelegramError {
+    fn from(err: kura_connectors::ConnectorsError) -> Self {
         TelegramError::Supervisor(err.to_string())
     }
 }

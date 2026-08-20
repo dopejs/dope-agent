@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/live-validation-reconciliation-resolved.event.schema.json",
+  "$id": "https://kura.local/schemas/events/live-validation-reconciliation-resolved.event.schema.json",
   "title": "LiveValidationReconciliationResolvedEvent",
   "allOf": [
     { "$ref": "./runtime-event.schema.json" },

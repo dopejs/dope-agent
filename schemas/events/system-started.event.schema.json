@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/system-started.event.schema.json",
+  "$id": "https://kura.local/schemas/events/system-started.event.schema.json",
   "title": "SystemStartedEvent",
   "allOf": [
     {

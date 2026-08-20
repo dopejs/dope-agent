@@ -1,6 +1,6 @@
 //! `/v1/plugins` — plugin assembly introspection and profile management.
 //!
-//! `GET /v1/plugins` returns the [`dope_plugin::AssemblyReport`] recorded at
+//! `GET /v1/plugins` returns the [`kura_plugin::AssemblyReport`] recorded at
 //! boot: every known plugin in build order with its resolved enablement (and
 //! the reason when disabled), plus warnings for profile entries that matched
 //! nothing. This is the daemon's `dump-config` equivalent for the plugin
@@ -37,7 +37,7 @@ pub struct HookRegistration {
 #[serde(rename_all = "camelCase")]
 pub struct PluginsResponse {
     #[serde(flatten)]
-    pub report: dope_plugin::AssemblyReport,
+    pub report: kura_plugin::AssemblyReport,
     pub hooks: Vec<HookRegistration>,
 }
 
@@ -66,8 +66,8 @@ pub async fn list_plugins(State(state): State<AppState>) -> Result<Json<PluginsR
 #[allow(clippy::unused_async)]
 pub async fn get_profile(
     State(state): State<AppState>,
-) -> Result<Json<dope_plugin::PluginProfile>, ApiError> {
-    dope_plugin::PluginProfile::load(&state.config.data_dir)
+) -> Result<Json<kura_plugin::PluginProfile>, ApiError> {
+    kura_plugin::PluginProfile::load(&state.config.data_dir)
         .map(Json)
         .map_err(|err| ApiError::internal(&format!("load plugin profile: {err}")))
 }
@@ -76,7 +76,7 @@ pub async fn get_profile(
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileUpdateResponse {
-    pub profile: dope_plugin::PluginProfile,
+    pub profile: kura_plugin::PluginProfile,
     /// Always true: the profile is boot-time input.
     pub restart_required: bool,
 }
@@ -87,14 +87,14 @@ pub async fn put_profile(
     State(state): State<AppState>,
     body: Bytes,
 ) -> Result<Json<ProfileUpdateResponse>, ApiError> {
-    let profile: dope_plugin::PluginProfile = super::decode_json_required(&body)?;
+    let profile: kura_plugin::PluginProfile = super::decode_json_required(&body)?;
     let dir = Path::new(&state.config.data_dir);
-    let path = dir.join(dope_plugin::PROFILE_FILE_NAME);
+    let path = dir.join(kura_plugin::PROFILE_FILE_NAME);
     let encoded = serde_json::to_vec_pretty(&profile)
         .map_err(|err| ApiError::internal(&format!("encode plugin profile: {err}")))?;
     // Atomic replace: a crash mid-write must never leave a truncated
     // profile that would then fail the next boot.
-    let tmp = dir.join(format!("{}.tmp", dope_plugin::PROFILE_FILE_NAME));
+    let tmp = dir.join(format!("{}.tmp", kura_plugin::PROFILE_FILE_NAME));
     std::fs::create_dir_all(dir)
         .and_then(|()| std::fs::write(&tmp, &encoded))
         .and_then(|()| std::fs::rename(&tmp, &path))
@@ -120,36 +120,36 @@ mod tests {
     #[tokio::test]
     async fn list_plugins_returns_report() {
         let mut state = test_state();
-        let report = dope_plugin::resolve(
+        let report = kura_plugin::resolve(
             &[
-                dope_plugin::PluginDescriptor {
+                kura_plugin::PluginDescriptor {
                     id: "alpha",
                     summary: "test plugin",
                     provides: &["alpha.svc"],
                     requires: &[],
                 },
-                dope_plugin::PluginDescriptor {
+                kura_plugin::PluginDescriptor {
                     id: "beta",
                     summary: "dependent",
                     provides: &[],
                     requires: &["alpha"],
                 },
             ],
-            &dope_plugin::PluginProfile {
+            &kura_plugin::PluginProfile {
                 disabled: vec!["alpha".to_string()],
                 ..Default::default()
             },
         );
         state.plugins = Some(Arc::new(report));
 
-        let bus = dope_plugin::HookBus::new();
+        let bus = kura_plugin::HookBus::new();
         struct Noop;
-        impl dope_plugin::Hook for Noop {
-            fn handle(&self, _p: &mut serde_json::Value) -> dope_plugin::HookOutcome {
-                dope_plugin::HookOutcome::Continue
+        impl kura_plugin::Hook for Noop {
+            fn handle(&self, _p: &mut serde_json::Value) -> kura_plugin::HookOutcome {
+                kura_plugin::HookOutcome::Continue
             }
         }
-        bus.register(dope_plugin::points::CHAT_TURN_END, "beta", Arc::new(Noop));
+        bus.register(kura_plugin::points::CHAT_TURN_END, "beta", Arc::new(Noop));
         state.hooks = Some(Arc::new(bus));
 
         let (status, json) = request_json(state, "GET", "/v1/plugins", None).await;
@@ -177,7 +177,7 @@ mod tests {
     fn profile_test_state() -> crate::state::AppState {
         let mut state = test_state();
         let dir = std::env::temp_dir()
-            .join(format!("dope-plugins-profile-{}", uuid::Uuid::now_v7()));
+            .join(format!("kura-plugins-profile-{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         state.config.data_dir = dir.to_string_lossy().into_owned();
         state

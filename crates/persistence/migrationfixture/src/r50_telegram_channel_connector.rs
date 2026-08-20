@@ -3,7 +3,7 @@
 //!
 //! The Go fixture seeds via the store accessors SaveTelegramHostedSetup /
 //! SaveTelegramAllowment / SaveTelegramSmokeEvidence / SaveTelegramUpdateEvidence,
-//! which are not yet ported to dope-store. The tables exist (migration v46) and
+//! which are not yet ported to kura-store. The tables exist (migration v46) and
 //! the rows below replicate those accessors' exact column writes and
 //! document_json payloads.
 
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use rusqlite::params;
 
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 use crate::records::{
     telegram_allowment_document, telegram_hosted_setup_document, telegram_smoke_evidence_document,

@@ -7,10 +7,10 @@
 //! Wire compatibility with the Go package: string enums serialize as their exact snake_case
 //! values (`urgent`, `needs_reply`, ...) and structs use camelCase JSON keys with the same
 //! `omitempty` behavior as the Go structs, expressed as `skip_serializing_if` (matching the
-//! `dope-runtime` crate convention).
+//! `kura-runtime` crate convention).
 //!
-//! The Go `managerdoc.Store` persistence maps onto `dope_store::{put_document, list_documents}`
-//! against `dope_store::SQLiteStore`. A nil store is represented by `Option<&SQLiteStore>` and
+//! The Go `managerdoc.Store` persistence maps onto `kura_store::{put_document, list_documents}`
+//! against `kura_store::SQLiteStore`. A nil store is represented by `Option<&SQLiteStore>` and
 //! every persistence call is skipped while it is `None`.
 
 use std::collections::HashMap;
@@ -230,7 +230,7 @@ struct ManagerInner {
 pub struct Manager {
     inner: parking_lot::RwLock<ManagerInner>,
     env: String,
-    docs: Option<Arc<parking_lot::Mutex<dope_store::SQLiteStore>>>,
+    docs: Option<Arc<parking_lot::Mutex<kura_store::SQLiteStore>>>,
 }
 
 impl Manager {
@@ -245,7 +245,7 @@ impl Manager {
     }
 
     /// Go `WithStore`: installs durable persistence for triage policies and returns the manager.
-    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> &mut Self {
+    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<kura_store::SQLiteStore>>) -> &mut Self {
         self.docs = Some(store);
         self
     }
@@ -266,7 +266,7 @@ impl Manager {
     /// A no-op when no store is installed.
     pub fn load_from_store(&self) -> Result<(), String> {
         let Some(docs) = &self.docs else { return Ok(()); };
-        let policies = dope_store::list_documents::<Policy>(&docs.lock(), DOC_KIND_POLICY)?;
+        let policies = kura_store::list_documents::<Policy>(&docs.lock(), DOC_KIND_POLICY)?;
         self.restore(policies);
         Ok(())
     }
@@ -301,7 +301,7 @@ impl Manager {
             inner.ids.push(policy.policy_id.clone());
         }
         if let Some(docs) = &self.docs {
-            let _ = dope_store::put_document(&docs.lock(), DOC_KIND_POLICY, &policy.policy_id, &self.env, "", &policy);
+            let _ = kura_store::put_document(&docs.lock(), DOC_KIND_POLICY, &policy.policy_id, &self.env, "", &policy);
         }
         Ok(policy)
     }
@@ -311,7 +311,7 @@ impl Manager {
         self.inner.read().by_id.get(policy_id.trim()).cloned()
     }
 
-    /// Go `ListPolicies` (insertion order, mirroring the `dope-runtime` manager convention).
+    /// Go `ListPolicies` (insertion order, mirroring the `kura-runtime` manager convention).
     pub fn list_policies(&self) -> Vec<Policy> {
         let inner = self.inner.read();
         inner.ids.iter().filter_map(|id| inner.by_id.get(id).cloned()).collect()
@@ -463,7 +463,7 @@ fn valid_operator(op: ConditionOperator) -> bool {
     )
 }
 
-/// Go `newID`: `prefix` + 16 hex chars of random bytes. The reference `dope-runtime` crate
+/// Go `newID`: `prefix` + 16 hex chars of random bytes. The reference `kura-runtime` crate
 /// derives the same shape from a v4 UUID.
 #[must_use]
 fn new_id(prefix: &str) -> String {

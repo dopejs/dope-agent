@@ -1,6 +1,6 @@
 use chrono::Utc;
-use dope_capabilities::Supervisor;
-use dope_orchestration::{
+use kura_capabilities::Supervisor;
+use kura_orchestration::{
     apply_computer_use_projection, dependencies_missing, is_terminal_step_status,
     is_terminal_workflow_status, plan_workflow, shell_escape, summarize_output,
     AddDependencyInput, AddHandoffInput, AddWorkflowStepInput, BlockedReason,
@@ -9,21 +9,21 @@ use dope_orchestration::{
     SkillPlanningCandidate, SkillPlanningSource, StepStatus, Workflow, WorkflowStatus,
     WorkflowStep,
 };
-use dope_runtime::{Run, RunStatus, ToolCall, ToolCallStatus};
+use kura_runtime::{Run, RunStatus, ToolCall, ToolCallStatus};
 use serde_json::json;
 
-fn test_config() -> dope_config::Config {
-    dope_config::Config {
-        environment: dope_config::Environment::Test,
+fn test_config() -> kura_config::Config {
+    kura_config::Config {
+        environment: kura_config::Environment::Test,
         bind_addr: "127.0.0.1:19192".to_string(),
         data_dir: std::env::temp_dir()
-            .join("dope_orchestration")
+            .join("kura_orchestration")
             .to_string_lossy()
             .to_string(),
         log_level: "info".to_string(),
         version: "0.1.0".to_string(),
-        llm: dope_config::LlmConfig::default(),
-        connectors: dope_config::ConnectorConfig::default(),
+        llm: kura_config::LlmConfig::default(),
+        connectors: kura_config::ConnectorConfig::default(),
     }
 }
 
@@ -443,13 +443,13 @@ fn apply_computer_use_projection_records_artifacts() {
         .add_step(&workflow.workflow_id, AddWorkflowStepInput { title: "A".to_string(), consumer_kind: "computer_use".to_string(), consumer_id: "browser".to_string(), ..AddWorkflowStepInput::default() })
         .unwrap();
     let now = Utc::now();
-    let artifact = dope_computeruse::Artifact {
+    let artifact = kura_computeruse::Artifact {
         artifact_id: "art_1".to_string(),
         run_id: workflow.run_id.clone(),
-        kind: dope_computeruse::ArtifactKind::Screenshot,
-        status: dope_computeruse::ArtifactStatus::Available,
+        kind: kura_computeruse::ArtifactKind::Screenshot,
+        status: kura_computeruse::ArtifactStatus::Available,
         created_at: now,
-        ..dope_computeruse::Artifact::default()
+        ..kura_computeruse::Artifact::default()
     };
     let stored = manager.get_workflow(&workflow.workflow_id).unwrap();
     let wf = apply_computer_use_projection(
@@ -553,7 +553,7 @@ fn plan_planning_failed_without_consumers() {
 fn plan_local_shell_capability() {
     let supervisor = Supervisor::new();
     supervisor
-        .register(dope_capabilities::RegisterInput { capability_id: "cap_shell".to_string(), kind: "shell".to_string(), display_name: "Shell".to_string() })
+        .register(kura_capabilities::RegisterInput { capability_id: "cap_shell".to_string(), kind: "shell".to_string(), display_name: "Shell".to_string() })
         .unwrap();
     let workflow = plan_workflow(
         &test_config(),
@@ -640,10 +640,10 @@ fn plan_browser_goal_picks_computer_use() {
 
 #[test]
 fn plan_calendar_action_step() {
-    let action = dope_calendar::Action {
-        operation_class: dope_calendar::OperationClass::ListEvents,
+    let action = kura_calendar::Action {
+        operation_class: kura_calendar::OperationClass::ListEvents,
         integration_id: "cal_main".to_string(),
-        ..dope_calendar::Action::default()
+        ..kura_calendar::Action::default()
     };
     let workflow = plan_workflow(
         &test_config(),
@@ -667,9 +667,9 @@ fn plan_calendar_action_step() {
 
 #[test]
 fn plan_mail_action_step() {
-    let action = dope_mail::Action {
-        operation_class: dope_mail::OperationClass::SendMessage,
-        ..dope_mail::Action::default()
+    let action = kura_mail::Action {
+        operation_class: kura_mail::OperationClass::SendMessage,
+        ..kura_mail::Action::default()
     };
     let workflow = plan_workflow(
         &test_config(),
@@ -693,7 +693,7 @@ fn manager_plan_stores_workflow() {
     let manager = Manager::new();
     let supervisor = Supervisor::new();
     supervisor
-        .register(dope_capabilities::RegisterInput { capability_id: "cap_shell".to_string(), kind: "shell".to_string(), display_name: "Shell".to_string() })
+        .register(kura_capabilities::RegisterInput { capability_id: "cap_shell".to_string(), kind: "shell".to_string(), display_name: "Shell".to_string() })
         .unwrap();
     let workflow = manager.plan(
         &test_config(),
@@ -800,7 +800,7 @@ fn workflow_serialization_roundtrip() {
     assert_eq!(decoded, workflow);
 
     // Temp-dir file round trip, matching the store-crate test style.
-    let dir = std::env::temp_dir().join(format!("dope_orchestration_tests_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_orchestration_tests_{}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("workflow_roundtrip.json");
     std::fs::write(&path, &serialized).unwrap();

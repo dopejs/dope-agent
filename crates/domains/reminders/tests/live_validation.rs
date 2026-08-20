@@ -7,11 +7,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use common::temp_dir;
-use dope_livevalidation::{FakeOutcome, SafetyClass, ToolClass};
-use dope_reminders::{
+use kura_livevalidation::{FakeOutcome, SafetyClass, ToolClass};
+use kura_reminders::{
     live_validation_matrix_rows, Dependencies, Manager,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 use parking_lot::Mutex;
 
 #[test]

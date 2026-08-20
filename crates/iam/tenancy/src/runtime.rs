@@ -10,23 +10,23 @@
 //! - By-id lookups whose target row exists in another tenant return not-found AND emit
 //!   audit.cross_tenant_access_denied. The existence of the row is never leaked.
 
-use dope_llm::Dispatch;
-use dope_router::Session;
-use dope_runtime::{Run, RunCheckpoint, Step, ToolCall};
+use kura_llm::Dispatch;
+use kura_router::Session;
+use kura_runtime::{Run, RunCheckpoint, Step, ToolCall};
 
 use crate::{emit_denial, require, TenancyError};
 
 /// Tenant-aware accessor for the runtime spine.
 pub struct Runtime {
     store: crate::SQLiteStore,
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl Runtime {
     /// Constructs the accessor. emitter may be None (audit publication is skipped, but
     /// production callers should wire the daemon's shared emitter).
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         Runtime { store, emitter }
     }
 

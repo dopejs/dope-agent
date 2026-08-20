@@ -1,6 +1,6 @@
 
 use chrono::Utc;
-use dope_integrations::{
+use kura_integrations::{
     backend_kind_supports_domain, classify_provider_evidence,
     diagnostic_failure_for_operation_failure, BackendBinding, BackendKind, CreateInput,
     DiagnosticInspectionInput, DiagnosticManager, DiagnosticReasonCode, DiagnosticRetentionState,

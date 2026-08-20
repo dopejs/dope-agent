@@ -3,7 +3,7 @@
 //!
 //! The Go fixture seeds via the store accessors SaveSlackHostedSetup /
 //! SaveSlackRoutePolicy / SaveSlackSmokeEvidence / SaveSlackEventEvidence, which
-//! are not yet ported to dope-store. The tables exist (migration v47) and the
+//! are not yet ported to kura-store. The tables exist (migration v47) and the
 //! rows below replicate those accessors' exact column writes and document_json
 //! payloads.
 
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use rusqlite::params;
 
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 use crate::records::{
     slack_event_evidence_document, slack_hosted_setup_document, slack_route_policy_document,

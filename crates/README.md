@@ -12,15 +12,15 @@ migration record.
 - `channels/` — connectors (discord/slack/telegram/matrix), IM message loop
 - `modeling/` — providers, opsreadiness, and other modeling crates
 - `domains/` — chat, sandbox, mcp, skills, scheduler, delivery, calendar, mail, reminders, workflows, evaluation, and the rest of the domain managers
-- `persistence/` — SQLite store (`dope-store`) + DAOs
-- `surface/` — HTTP API (`dope-api`), CLI package (`dope-cli`, binary `kura`), terminal package (`dope-tui`, binary `kura-tui`)
+- `persistence/` — SQLite store (`kura-store`) + DAOs
+- `surface/` — HTTP API (`kura-api`), CLI package (`kura-cli`, binary `kura`), terminal package (`kura-tui`, binary `kura-tui`)
 
 ## Key binaries
 
 | Cargo package | Path | Purpose |
 |---------------|------|---------|
-| `dope-cli` | `surface/cli` | daemon entry point; emits the user-facing `kura` binary |
-| `dope-tui` | `surface/tui` | emits the user-facing `kura-tui` terminal client |
+| `kura-cli` | `surface/cli` | daemon entry point; emits the user-facing `kura` binary |
+| `kura-tui` | `surface/tui` | emits the user-facing `kura-tui` terminal client |
 
 ## Commands
 
@@ -34,5 +34,5 @@ cargo fmt --all -- --check
 Build the daemon binary:
 
 ```bash
-cargo build --release -p dope-cli
+cargo build --release -p kura-cli
 ```

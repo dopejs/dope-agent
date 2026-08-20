@@ -1,4 +1,4 @@
-//! Manager-behavior tests for dope-reminders, ported from the Go
+//! Manager-behavior tests for kura-reminders, ported from the Go
 //! daemon/internal/reminders/manager_test.go: tick-driven due occurrence creation with
 //! delivery outcome linkage, recurring missed/acknowledged history, workflow-linked
 //! acknowledge-on-success / stay-due-on-failure, follow-up link staleness refresh, and
@@ -12,15 +12,15 @@ use std::time::Instant;
 
 use chrono::{DateTime, Utc};
 use common::{harness, FakeWorkflowLauncher, HarnessOptions, TEST_TENANT_ID};
-use dope_delivery::OutcomeFilter;
-use dope_reminders::{
+use kura_delivery::OutcomeFilter;
+use kura_reminders::{
     ActionKind, BehaviorMode, Clock, CreateInput, FollowUpLink, FollowUpLinkKind, State,
     TransitionInput, WorkflowLaunchConfig, WorkflowLaunchResult,
 };
-use dope_integrations::DiagnosticReasonCode;
-use dope_router::{Session, SessionKind, SessionStatus};
-use dope_runtime::{Run, RunStatus};
-use dope_scheduler::{Trigger, TriggerKind};
+use kura_integrations::DiagnosticReasonCode;
+use kura_router::{Session, SessionKind, SessionStatus};
+use kura_runtime::{Run, RunStatus};
+use kura_scheduler::{Trigger, TriggerKind};
 
 fn dt(s: &str) -> DateTime<Utc> {
     s.parse().expect("valid rfc3339 timestamp")
@@ -90,7 +90,7 @@ fn tick_creates_due_occurrence_and_links_delivery_outcome() {
     assert_eq!(outcomes.len(), 1, "expected 1 delivery outcome");
     assert_eq!(
         outcomes[0].mode,
-        dope_delivery::DeliveryMode::Immediate,
+        kura_delivery::DeliveryMode::Immediate,
         "expected immediate reminder delivery: {:?}",
         outcomes[0]
     );
@@ -155,7 +155,7 @@ fn recurring_reminders_mark_missed_and_preserve_acknowledged_history() {
             &reminder.reminder_id,
             &TransitionInput {
                 occurrence_id: second_occurrence_id.clone(),
-                actor_kind: dope_reminders::ActorKind::User,
+                actor_kind: kura_reminders::ActorKind::User,
                 reason: "seen".to_string(),
                 ..TransitionInput::default()
             },
@@ -514,7 +514,7 @@ fn snooze_requires_snoozed_until_and_reschedules_next_due() {
         .manager
         .snooze(&reminder.reminder_id, &TransitionInput::default())
         .unwrap_err();
-    assert_eq!(err, dope_reminders::ReminderError::SnoozeRequired);
+    assert_eq!(err, kura_reminders::ReminderError::SnoozeRequired);
 
     let until = dt("2026-04-23T15:00:00Z");
     let (snoozed, occurrence, action) = h
@@ -572,7 +572,7 @@ fn reschedule_requires_trigger_and_rearms_reminder() {
         .manager
         .reschedule(&reminder.reminder_id, &TransitionInput::default())
         .unwrap_err();
-    assert_eq!(err, dope_reminders::ReminderError::InvalidTrigger);
+    assert_eq!(err, kura_reminders::ReminderError::InvalidTrigger);
 
     let later = dt("2026-04-24T09:00:00Z");
     let (rescheduled, _, action) = h

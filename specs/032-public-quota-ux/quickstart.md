@@ -12,7 +12,7 @@ make daemon-run-test
 make daemon-test-status
 ```
 
-Expected result: daemon health reports the test environment under `~/.dope-test` and
+Expected result: daemon health reports the test environment under `~/.kura-test` and
 `127.0.0.1:19192`.
 
 ## 2. Run Daemon Verification
@@ -73,7 +73,7 @@ The deterministic operator walkthrough can be run against the local test daemon:
 scripts/phase47-public-quota-walkthrough.sh
 ```
 
-It creates a local pairing token, seeds only `~/.dope-test/daemon.sqlite`, verifies the
+It creates a local pairing token, seeds only `~/.kura-test/daemon.sqlite`, verifies the
 dashboard, ordinary denial detail, abuse-restriction denial detail, structured evidence
 exports, cross-tenant hiding, and unauthorized no-partial-data behavior, then prints a
 sanitized JSON summary.
@@ -108,7 +108,7 @@ intact. Do not delete usage or audit records as part of rollback.
 Recorded on 2026-05-07:
 
 - PASS: `go test ./internal/billing ./internal/identity ./internal/contracts ./internal/store` plus `go test ./internal/api -run 'TestHostedBilling'` for the changed daemon paths after setting `GOCACHE` to a writable cache.
-- PASS: `GOCACHE=/private/tmp/dope-agent-gocache go test ./...` from `daemon/`.
+- PASS: `GOCACHE=/private/tmp/kura-agent-gocache go test ./...` from `daemon/`.
 - PASS: `make daemon-contract-test`.
 - PASS: `pnpm test:clients`.
 - PASS: `pnpm build`.
@@ -122,7 +122,7 @@ Recorded on 2026-05-07:
 
 Manual walkthrough status:
 
-- PASS: `make daemon-run-test` and `make daemon-test-status` against `~/.dope-test` on `127.0.0.1:19192`.
+- PASS: `make daemon-run-test` and `make daemon-test-status` against `~/.kura-test` on `127.0.0.1:19192`.
 - PASS: manual seeded walkthrough confirmed grouped quota dashboard sections, current and previous-period usage, near-limit status, visible override reason, explicit abuse restriction visibility with stable `abuse_restriction:temporary` reason code, denial detail recovery action, and structured evidence export audit references.
 
 Residual risks:

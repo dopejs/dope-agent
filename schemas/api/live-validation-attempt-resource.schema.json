@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/live-validation-attempt-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/live-validation-attempt-resource.schema.json",
   "title": "LiveValidationAttemptResource",
   "type": "object",
   "required": ["validationId", "candidateId", "requestedBy", "environmentScope", "requestedScope", "status", "permissionDecision", "quotaDecision", "killSwitchDecision", "approvalSummary", "ledgerSummary", "createdAt", "updatedAt"],

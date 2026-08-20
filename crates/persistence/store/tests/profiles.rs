@@ -5,15 +5,15 @@
 //! tenant-default active-selection + runtime projection paths.
 
 use chrono::{Duration, Utc};
-use dope_identity::TenantContext;
-use dope_profiles::{
+use kura_identity::TenantContext;
+use kura_profiles::{
     ActivationInput, AgentProfile, MutationInput, MutationResult, ProfileDetail, ProfileVersion,
     RetirementInput, RollbackInput, RuntimeProjection, Status,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -31,7 +31,7 @@ fn input(display_name: &str) -> MutationInput {
         display_name: display_name.to_string(),
         activate: true,
         reason_code: "test".to_string(),
-        overlay_references: dope_profiles::default_legacy_overlay_reference_inputs(),
+        overlay_references: kura_profiles::default_legacy_overlay_reference_inputs(),
         ..MutationInput::default()
     }
 }
@@ -41,7 +41,7 @@ fn assert_created(result: &MutationResult, tenant_id: &str, name: &str) {
     assert_eq!(result.profile.display_name, name);
     assert_eq!(result.profile.status, Status::ACTIVE);
     assert_eq!(result.version.version_number, 1);
-    assert_eq!(result.version.change_kind, dope_profiles::ChangeKind::CREATED);
+    assert_eq!(result.version.change_kind, kura_profiles::ChangeKind::CREATED);
     assert!(!result.audit_event_id.is_empty());
     assert!(!result.profile.profile_id.is_empty());
 }
@@ -82,7 +82,7 @@ fn profile_create_detail_update_round_trip() {
     assert_eq!(updated.profile.display_name, "Ops Agent v2");
     assert_eq!(updated.version.version_number, 2);
     assert_eq!(updated.version.source_version_id, created.version.profile_version_id);
-    assert_eq!(updated.version.change_kind, dope_profiles::ChangeKind::UPDATED);
+    assert_eq!(updated.version.change_kind, kura_profiles::ChangeKind::UPDATED);
 
     let versions = store.list_agent_profile_versions("ten_1", &profile_id, 10).unwrap();
     assert_eq!(versions.len(), 2);
@@ -158,7 +158,7 @@ fn profile_activate_rollback_and_retire() {
         )
         .unwrap();
     assert_eq!(rolled.version.version_number, 2);
-    assert_eq!(rolled.version.change_kind, dope_profiles::ChangeKind::ROLLED_BACK);
+    assert_eq!(rolled.version.change_kind, kura_profiles::ChangeKind::ROLLED_BACK);
     assert_eq!(rolled.version.source_version_id, draft.version.profile_version_id);
     assert!(store.is_tenant_default_profile("ten_1", &profile_id).unwrap());
 
@@ -174,9 +174,9 @@ fn profile_activate_rollback_and_retire() {
         .unwrap();
     assert_eq!(retired.profile.status, Status::ARCHIVED);
     assert!(retired.profile.archived_at.is_some());
-    assert_eq!(retired.version.change_kind, dope_profiles::ChangeKind::ARCHIVED);
-    assert_eq!(retired.version.rollback_eligibility, dope_profiles::RollbackEligibility::PROFILE_ARCHIVED);
-    assert_eq!(retired.selection.selection_reason, dope_profiles::SelectionReason::SYSTEM_FALLBACK);
+    assert_eq!(retired.version.change_kind, kura_profiles::ChangeKind::ARCHIVED);
+    assert_eq!(retired.version.rollback_eligibility, kura_profiles::RollbackEligibility::PROFILE_ARCHIVED);
+    assert_eq!(retired.selection.selection_reason, kura_profiles::SelectionReason::SYSTEM_FALLBACK);
     assert!(!store.is_tenant_default_profile("ten_1", &profile_id).unwrap());
 
     // Activating an archived profile is rejected.
@@ -195,22 +195,22 @@ fn active_selection_and_runtime_projections() {
     assert_eq!(profile.display_name, "Default Agent");
     assert_eq!(profile.display_identity.name, "Kura");
     assert_eq!(selection.selection_scope, "tenant_default");
-    assert_eq!(selection.selection_reason, dope_profiles::SelectionReason::DEFAULT_SEEDED);
+    assert_eq!(selection.selection_reason, kura_profiles::SelectionReason::DEFAULT_SEEDED);
 
     // A second tenant is independent.
     let (profile_b, _) = store.active_agent_profile_selection("ten_2").unwrap().expect("second tenant default");
     assert_ne!(profile_b.tenant_id, profile.tenant_id);
 
     let now = Utc::now();
-    let projection = dope_profiles::build_runtime_projection(
+    let projection = kura_profiles::build_runtime_projection(
         &profile,
         &selection,
-        dope_profiles::RuntimeProjectionInput {
-            resource_kind: dope_profiles::RuntimeResourceKind::RUN,
+        kura_profiles::RuntimeProjectionInput {
+            resource_kind: kura_profiles::RuntimeResourceKind::RUN,
             resource_id: "run_1".to_string(),
             run_id: "run_1".to_string(),
             occurred_at: Some(now),
-            ..dope_profiles::RuntimeProjectionInput::default()
+            ..kura_profiles::RuntimeProjectionInput::default()
         },
     );
     let stored: RuntimeProjection = store.record_runtime_profile_projection(projection.clone()).unwrap();

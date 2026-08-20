@@ -6,23 +6,23 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
-use dope_identity::LifecycleStatus;
-use dope_identity::Membership;
-use dope_identity::MembershipFilter;
-use dope_identity::Principal;
-use dope_identity::PrincipalFilter;
-use dope_identity::PrincipalKind;
-use dope_identity::Role;
-use dope_identity::Tenant;
-use dope_identity::TenantAuditEvent;
-use dope_identity::TenantContext;
-use dope_identity::TenantFilter;
-use dope_identity::TenantKind;
-use dope_identity::TokenAuthority;
-use dope_identity::TokenTenantGrant;
-use dope_identity::AUDIT_OUTCOME_DENIED;
-use dope_identity::AUDIT_OUTCOME_FAILED_CLOSED;
-use dope_identity::AUDIT_OUTCOME_SUCCEEDED;
+use kura_identity::LifecycleStatus;
+use kura_identity::Membership;
+use kura_identity::MembershipFilter;
+use kura_identity::Principal;
+use kura_identity::PrincipalFilter;
+use kura_identity::PrincipalKind;
+use kura_identity::Role;
+use kura_identity::Tenant;
+use kura_identity::TenantAuditEvent;
+use kura_identity::TenantContext;
+use kura_identity::TenantFilter;
+use kura_identity::TenantKind;
+use kura_identity::TokenAuthority;
+use kura_identity::TokenTenantGrant;
+use kura_identity::AUDIT_OUTCOME_DENIED;
+use kura_identity::AUDIT_OUTCOME_FAILED_CLOSED;
+use kura_identity::AUDIT_OUTCOME_SUCCEEDED;
 
 use crate::audit::AuditRecord;
 use crate::error::activation_error;
@@ -71,7 +71,7 @@ pub trait BillingProjector: Send + Sync {
         &self,
         tenant_id: &str,
         hosted: bool,
-    ) -> BoxFuture<'_, Result<dope_billing::UsageSummary, dope_billing::BillingError>>;
+    ) -> BoxFuture<'_, Result<kura_billing::UsageSummary, kura_billing::BillingError>>;
 }
 
 /// Runs the hosted activation test chat (Go `ChatRunner`).

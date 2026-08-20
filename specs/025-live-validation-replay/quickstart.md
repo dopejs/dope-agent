@@ -9,7 +9,7 @@ make daemon-run-test
 make daemon-test-status
 ```
 
-Do not use `~/.dope`, production tenants, or live connectors unless running the explicit
+Do not use `~/.kura`, production tenants, or live connectors unless running the explicit
 opt-in real-account smoke path.
 
 ## Planning Artifact Checks
@@ -100,7 +100,7 @@ pnpm test:clients
 pnpm build
 ```
 
-Manual smoke in `DOPE_ENV=test` must demonstrate from structured evidence:
+Manual smoke in `KURA_ENV=test` must demonstrate from structured evidence:
 
 - one successful supported side-effect replay,
 - one denied live validation request,
@@ -112,13 +112,13 @@ Manual smoke in `DOPE_ENV=test` must demonstrate from structured evidence:
 Useful inspection routes during the smoke:
 
 ```bash
-curl -H "Authorization: Bearer $DOPE_TOKEN" -H "X-Dope-Tenant-ID: $DOPE_TENANT_ID" \
+curl -H "Authorization: Bearer $KURA_TOKEN" -H "X-Kura-Tenant-ID: $KURA_TENANT_ID" \
   http://127.0.0.1:19192/v1/live-validations/$VALIDATION_ID/ledger
 
-curl -X POST -H "Authorization: Bearer $DOPE_TOKEN" -H "X-Dope-Tenant-ID: $DOPE_TENANT_ID" \
+curl -X POST -H "Authorization: Bearer $KURA_TOKEN" -H "X-Kura-Tenant-ID: $KURA_TENANT_ID" \
   http://127.0.0.1:19192/v1/live-validations/$VALIDATION_ID/compare
 
-curl -X POST -H "Authorization: Bearer $DOPE_TOKEN" -H "X-Dope-Tenant-ID: $DOPE_TENANT_ID" \
+curl -X POST -H "Authorization: Bearer $KURA_TOKEN" -H "X-Kura-Tenant-ID: $KURA_TENANT_ID" \
   -H "Content-Type: application/json" \
   -d '{"resolution":"confirmed_committed","reason":"provider state verified"}' \
   http://127.0.0.1:19192/v1/live-validations/$VALIDATION_ID/reconciliations/$AMBIGUOUS_COMMIT_ID/resolve
@@ -152,6 +152,6 @@ Rules:
 - `make daemon-contract-test` passed (`go test ./internal/contracts/...`).
 - `pnpm test:clients` passed: SDK 15 tests, web 13 tests, TUI 4 tests, and roadmap 7 node smoke.
 - `pnpm build` passed for SDK, web, and TUI clients.
-- `make daemon-run-test` started the `DOPE_ENV=test` daemon on `127.0.0.1:19192`; `make daemon-test-status` returned `{"ok":true,"service":"dope"}`. The daemon was then stopped with Ctrl-C, and a follow-up health check failed to connect, confirming shutdown.
-- Manual `DOPE_ENV=test` live-validation acceptance evidence is represented by the deterministic API, manager, ledger, fake-backend, restart, reconciliation, kill-switch, and non-live replay test suites above. These cover success, denial, unsupported tool class, ambiguous commit, reconciliation, kill-switch abort, restart inspection, and compatibility without requiring real external side effects.
+- `make daemon-run-test` started the `KURA_ENV=test` daemon on `127.0.0.1:19192`; `make daemon-test-status` returned `{"ok":true,"service":"kura"}`. The daemon was then stopped with Ctrl-C, and a follow-up health check failed to connect, confirming shutdown.
+- Manual `KURA_ENV=test` live-validation acceptance evidence is represented by the deterministic API, manager, ledger, fake-backend, restart, reconciliation, kill-switch, and non-live replay test suites above. These cover success, denial, unsupported tool class, ambiguous commit, reconciliation, kill-switch abort, restart inspection, and compatibility without requiring real external side effects.
 - Optional `make daemon-run-test-live` real-account smoke was skipped because no explicit safe live credentials or operator-selected side-effect scope were provided. Fake-backend coverage passed for integrations, calendar, mail, delivery, connectors, and reminders.

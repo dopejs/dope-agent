@@ -2950,7 +2950,7 @@ export type AgentProfileListResponse = {
   items: AgentProfileResource[];
 };
 
-export type DopeClientOptions = {
+export type KuraClientOptions = {
   baseURL: string;
   accessToken?: string;
   fetchImpl?: typeof fetch;
@@ -3278,7 +3278,7 @@ export interface MemoryConsolidationRun {
   error?: string;
 }
 
-export class DopeClientError extends Error {
+export class KuraClientError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly tenantDenied?: boolean;
@@ -3288,7 +3288,7 @@ export class DopeClientError extends Error {
 
   constructor(message: string, options: { status: number; code?: string; tenantDenied?: boolean; denial?: TenantDenialResource; quotaDenial?: BillingQuotaDenialPayload; activationFailure?: ActivationFailurePayload }) {
     super(message);
-    this.name = "DopeClientError";
+    this.name = "KuraClientError";
     this.status = options.status;
     this.code = options.code;
     this.tenantDenied = options.tenantDenied;
@@ -3298,13 +3298,13 @@ export class DopeClientError extends Error {
   }
 }
 
-export class DopeClient {
+export class KuraClient {
   private readonly baseURL: string;
   private readonly accessToken?: string;
   private readonly fetchImpl: typeof fetch;
   private readonly defaultTenantId?: string;
 
-  constructor(options: DopeClientOptions) {
+  constructor(options: KuraClientOptions) {
     this.baseURL = trimBaseURL(options.baseURL);
     this.accessToken = options.accessToken?.trim() || undefined;
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
@@ -3330,7 +3330,7 @@ export class DopeClient {
       throw await toClientError(response);
     }
     if (!response.body) {
-      throw new DopeClientError("chat stream response body is missing", { status: 500, code: "stream_body_missing" });
+      throw new KuraClientError("chat stream response body is missing", { status: 500, code: "stream_body_missing" });
     }
 
     let terminal: ChatQueryResponse | null = null;
@@ -3360,7 +3360,7 @@ export class DopeClient {
     });
 
     if (!terminal) {
-      throw new DopeClientError("chat stream ended without a terminal event", {
+      throw new KuraClientError("chat stream ended without a terminal event", {
         status: 502,
         code: "stream_terminal_event_missing"
       });
@@ -4469,7 +4469,7 @@ export class DopeClient {
         throw await toClientError(response);
       }
       if (!response.body) {
-        throw new DopeClientError("event stream response body is missing", { status: 500, code: "stream_body_missing" });
+        throw new KuraClientError("event stream response body is missing", { status: 500, code: "stream_body_missing" });
       }
 
       await readSSE(response.body, (event) => {
@@ -4542,7 +4542,7 @@ export class DopeClient {
     }
     const tenantId = this.resolveTenantId(tenantOptions);
     if (tenantId) {
-      headers["X-Dope-Tenant-ID"] = tenantId;
+      headers["X-Kura-Tenant-ID"] = tenantId;
     }
     return headers;
   }
@@ -4552,8 +4552,8 @@ export class DopeClient {
   }
 }
 
-export function createDopeClient(options: DopeClientOptions): DopeClient {
-  return new DopeClient(options);
+export function createKuraClient(options: KuraClientOptions): KuraClient {
+  return new KuraClient(options);
 }
 
 type QueryValue = string | number | boolean | undefined | null;
@@ -4615,7 +4615,7 @@ function normalizeStartSetupInput(input: StartSetupInput): StartSetupInput {
   };
 }
 
-async function toClientError(response: Response): Promise<DopeClientError> {
+async function toClientError(response: Response): Promise<KuraClientError> {
   let message = `request failed with status ${response.status}`;
   let code: string | undefined;
   let denial: TenantDenialResource | undefined;
@@ -4675,7 +4675,7 @@ async function toClientError(response: Response): Promise<DopeClientError> {
   }
 
   const tenantDenied = Boolean(denial) || isTenantDenialCode(code);
-  return new DopeClientError(message, { status: response.status, code, tenantDenied: tenantDenied || undefined, denial, quotaDenial, activationFailure });
+  return new KuraClientError(message, { status: response.status, code, tenantDenied: tenantDenied || undefined, denial, quotaDenial, activationFailure });
 }
 
 function isTenantDenialCode(code: string | undefined): boolean {

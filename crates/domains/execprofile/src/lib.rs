@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_store::{list_documents, put_document, SQLiteStore};
+use kura_store::{list_documents, put_document, SQLiteStore};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

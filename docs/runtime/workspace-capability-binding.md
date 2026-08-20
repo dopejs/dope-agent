@@ -101,7 +101,7 @@ evidence cannot be recorded (FR-011).
 - API: `/v1/workspaces`, `/v1/workspaces/{id}`, `/v1/bindings`, `/v1/bindings/{id}`,
   `/v1/bindings/{id}/repair`, `/v1/capability-visibility`. Thread detail and run detail each
   carry an additive `bindingProjection`.
-- SDK (`@dope/client`): `listWorkspaces`, `createWorkspace`, `updateWorkspace`,
+- SDK (`@kura/client`): `listWorkspaces`, `createWorkspace`, `updateWorkspace`,
   `listBindings`, `createBinding`, `updateBinding`, `removeBinding`, `repairBinding`,
   `listCapabilityVisibility`, `setCapabilityVisibility`.
 - Web: `web/src/features/workspace-capability-bindings/`.
@@ -153,4 +153,4 @@ These are intentional, documented limits of the current implementation:
 
 Rust: `crates/{foundation/bindings,persistence/store,surface/api,domains/chat,engine/events,iam/identity,foundation/contracts}`.
 Contracts/schemas: `make daemon-contract-test`. Clients: `pnpm test:clients`. Default local
-verification uses `~/.dope-test` on `127.0.0.1:19192`.
+verification uses `~/.kura-test` on `127.0.0.1:19192`.

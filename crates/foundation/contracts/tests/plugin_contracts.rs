@@ -3,7 +3,7 @@
 mod common;
 
 use common::{schema_root_dir, validate_fixtures, Fixture};
-use dope_contracts::Validator;
+use kura_contracts::Validator;
 
 #[test]
 fn test_plugin_schemas_accept_canonical_fixtures() {
@@ -41,26 +41,26 @@ fn test_plugin_schemas_accept_canonical_fixtures() {
     validate_fixtures(&validator, fixtures);
 }
 
-/// The report serialized by dope-plugin itself round-trips through the
+/// The report serialized by kura-plugin itself round-trips through the
 /// schema — the wire contract and the Rust type cannot drift silently.
 #[test]
 fn test_resolved_report_matches_schema() {
-    let report = dope_plugin::resolve(
+    let report = kura_plugin::resolve(
         &[
-            dope_plugin::PluginDescriptor {
+            kura_plugin::PluginDescriptor {
                 id: "alpha",
                 summary: "base",
                 provides: &["alpha.svc"],
                 requires: &[],
             },
-            dope_plugin::PluginDescriptor {
+            kura_plugin::PluginDescriptor {
                 id: "beta",
                 summary: "dependent",
                 provides: &[],
                 requires: &["alpha"],
             },
         ],
-        &dope_plugin::PluginProfile {
+        &kura_plugin::PluginProfile {
             disabled: vec!["alpha".to_string(), "ghost".to_string()],
             ..Default::default()
         },

@@ -23,7 +23,7 @@ No release-blocking defect is currently open from the implemented P0 daemon scop
 
 - release as a local-first single-user daemon, not as a multi-tenant control plane
 - treat SQLite schema upgrades as forward-only
-- take a backup of `~/.dope/daemon.sqlite` before upgrading across daemon versions
+- take a backup of `~/.kura/daemon.sqlite` before upgrading across daemon versions
 - do not market SSE framing as schema-stable yet; only the JSON event envelope is contract-tested
 
 ## Required Verification Steps

@@ -5,15 +5,15 @@
 //! evidence ordering.
 
 use chrono::{Duration, Utc};
-use dope_bindings::{
+use kura_bindings::{
     BindingStatus, CreateBindingRequest, RepairStatus, RuntimeBindingEvidence,
     SetVisibilityRequest, UpdateBindingRequest, Visibility, VisibilityScopeKind, WorkspaceStatus,
 };
-use dope_identity::TenantContext;
-use dope_store::SQLiteStore;
+use kura_identity::TenantContext;
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -31,11 +31,11 @@ fn seed_references(store: &SQLiteStore, tenant_id: &str) -> (String, String) {
     let profile = store
         .create_agent_profile(
             &actor(tenant_id, "prn_1"),
-            &dope_profiles::MutationInput {
+            &kura_profiles::MutationInput {
                 display_name: "Binding Profile".to_string(),
                 activate: true,
                 reason_code: "test".to_string(),
-                ..dope_profiles::MutationInput::default()
+                ..kura_profiles::MutationInput::default()
             },
         )
         .unwrap();
@@ -45,7 +45,7 @@ fn seed_references(store: &SQLiteStore, tenant_id: &str) -> (String, String) {
 
 fn channel_req(_tenant_id: &str, scope_ref: &str, profile_id: &str, workspace_id: &str) -> CreateBindingRequest {
     CreateBindingRequest {
-        scope_kind: dope_bindings::ScopeKind::CHANNEL,
+        scope_kind: kura_bindings::ScopeKind::CHANNEL,
         scope_ref: scope_ref.to_string(),
         selected_profile_id: profile_id.to_string(),
         selected_workspace_id: workspace_id.to_string(),
@@ -63,7 +63,7 @@ fn binding_rule_create_update_repair_remove_round_trip() {
         .create_binding_rule(&actor("ten_1", "prn_1"), &channel_req("ten_1", "discord:chan_1", &profile_id, &workspace_id))
         .unwrap();
     assert_eq!(rule.status, BindingStatus::ACTIVE);
-    assert_eq!(rule.scope_kind, dope_bindings::ScopeKind::CHANNEL);
+    assert_eq!(rule.scope_kind, kura_bindings::ScopeKind::CHANNEL);
     assert_eq!(rule.scope_ref, "discord:chan_1");
     assert_eq!(rule.selected_profile_id, profile_id);
     assert_eq!(rule.resulting_selection_summary, "profile+workspace");
@@ -144,8 +144,8 @@ fn binding_repair_tracks_reference_health() {
         .retire_agent_profile(
             &actor("ten_1", "prn_1"),
             &profile_id,
-            dope_profiles::Status::ARCHIVED,
-            &dope_profiles::RetirementInput::default(),
+            kura_profiles::Status::ARCHIVED,
+            &kura_profiles::RetirementInput::default(),
         )
         .unwrap();
     let (repaired, _) = store.repair_binding_rule(&actor("ten_1", "prn_1"), &rule.binding_id).unwrap();
@@ -244,21 +244,21 @@ fn runtime_binding_evidence_lists_newest_first_and_latest() {
     older.tenant_id = "ten_1".to_string();
     older.resource_kind = "run".to_string();
     older.resource_id = "run_1".to_string();
-    older.binding_scope = dope_bindings::BindingRuntimeScope::TENANT_DEFAULT;
-    older.classification = dope_bindings::Classification::DEFAULT;
+    older.binding_scope = kura_bindings::BindingRuntimeScope::TENANT_DEFAULT;
+    older.classification = kura_bindings::Classification::DEFAULT;
     older.selection_reason = "tenant_default".to_string();
     older.occurred_at = now;
 
     let mut newer = older.clone();
     newer.selected_profile_id = "prof_1".to_string();
-    newer.classification = dope_bindings::Classification::APPLIED;
+    newer.classification = kura_bindings::Classification::APPLIED;
     newer.occurred_at = now + Duration::minutes(5);
 
     let stored_older = store.record_runtime_binding_evidence(older.clone()).unwrap();
     let stored_newer = store.record_runtime_binding_evidence(newer.clone()).unwrap();
     assert!(!stored_older.projection_id.is_empty());
     assert!(!stored_newer.projection_id.is_empty());
-    assert_eq!(stored_newer.redaction_status, dope_bindings::RedactionStatus::REDACTED);
+    assert_eq!(stored_newer.redaction_status, kura_bindings::RedactionStatus::REDACTED);
 
     let listed = store.list_runtime_binding_evidence("ten_1", "run", "run_1", 20).unwrap();
     assert_eq!(listed.len(), 2);

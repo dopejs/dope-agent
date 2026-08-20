@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_store::{list_documents, put_document, SQLiteStore};
+use kura_store::{list_documents, put_document, SQLiteStore};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -212,7 +212,7 @@ struct ManagerInner {
 }
 
 /// Owns the operator catalog and per-tenant enablement. Items + enablements are in-memory with
-/// `restore`; a `dope_store::SQLiteStore` installed via `with_store` is used for
+/// `restore`; a `kura_store::SQLiteStore` installed via `with_store` is used for
 /// write-through persistence (None skips persistence, mirroring the Go nil store).
 pub struct Manager {
     inner: parking_lot::RwLock<ManagerInner>,

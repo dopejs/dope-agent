@@ -3,12 +3,12 @@
 mod common;
 
 use common::{open_conn, temp_dir};
-use dope_migrationfixture::{
+use kura_migrationfixture::{
     build_pre_tenant_v21_fixture, count_r41_evaluation_product_rows, apply_head_migrations,
     seed_r41_evaluation_product_rows,
 };
 
-fn head_store() -> (dope_store::SQLiteStore, String) {
+fn head_store() -> (kura_store::SQLiteStore, String) {
     let dir = temp_dir("r41");
     let store = build_pre_tenant_v21_fixture(&dir).unwrap();
     apply_head_migrations(&store).unwrap();

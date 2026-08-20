@@ -56,7 +56,7 @@ importers:
 
   web:
     dependencies:
-      '@dope/client':
+      '@kura/client':
         specifier: workspace:*
         version: link:../sdk/ts
       react:

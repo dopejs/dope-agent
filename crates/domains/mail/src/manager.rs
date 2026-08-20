@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_integrations::{BackendKind, ReadinessStatus, Resource};
+use kura_integrations::{BackendKind, ReadinessStatus, Resource};
 
 use crate::{
     attachment_artifact, attachment_refs_from_ids, collect_artifact_ids, draft_artifact,
@@ -665,7 +665,7 @@ impl Manager {
         operation.result_mode = ResultMode::Failed;
         operation.failure_class = failure_class.trim().to_string();
         operation.failure_reason = reason.trim().to_string();
-        let diagnostic = dope_integrations::diagnostic_failure_for_operation_failure(
+        let diagnostic = kura_integrations::diagnostic_failure_for_operation_failure(
             "mail",
             provider_kind,
             &operation.integration_id,
@@ -688,7 +688,7 @@ impl Manager {
         operation.result_mode = result_mode;
         operation.failure_class = failure_class.trim().to_string();
         operation.failure_reason = reason.trim().to_string();
-        let diagnostic = dope_integrations::diagnostic_failure_for_operation_failure(
+        let diagnostic = kura_integrations::diagnostic_failure_for_operation_failure(
             "mail",
             "",
             &operation.integration_id,

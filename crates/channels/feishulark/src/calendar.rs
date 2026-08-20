@@ -4,14 +4,14 @@
 use std::time::Duration;
 
 use chrono::{DateTime, NaiveDate, Utc};
-use dope_adapterprovider::{Handler, HandlerError, Operation};
-use dope_calendar::{
+use kura_adapterprovider::{Handler, HandlerError, Operation};
+use kura_calendar::{
     attendee_emails, resolve_attendee_requests, AccountProjection, Attendee, AttendeeRequest,
     AvailabilityQuery, BusyInterval, CancelEventInput, CreateEventInput, Event,
     EventLifecycleState, InvitationStatus, ListEventsInput, RSVPStatus,
     UpdateAttendeesInput, UpdateEventInput,
 };
-use dope_integrations::{ReadinessStatus, Resource};
+use kura_integrations::{ReadinessStatus, Resource};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
@@ -148,7 +148,7 @@ impl CalendarProvider {
         Ok(map_event(account, &out.event))
     }
 
-    fn busy_free(&self, token: &ScopedToken, account: &AccountProjection, input: &dope_calendar::BusyFreeInput, deadline: Option<Duration>) -> Result<AvailabilityQuery, ProviderFault> {
+    fn busy_free(&self, token: &ScopedToken, account: &AccountProjection, input: &kura_calendar::BusyFreeInput, deadline: Option<Duration>) -> Result<AvailabilityQuery, ProviderFault> {
         let body = serde_json::json!({
             "time_min": input.window_start.to_rfc3339(),
             "time_max": input.window_end.to_rfc3339(),
@@ -286,7 +286,7 @@ struct GetEventPayload {
 #[derive(Debug, Default, Deserialize)]
 struct BusyFreePayload {
     account: AccountProjection,
-    input: dope_calendar::BusyFreeInput,
+    input: kura_calendar::BusyFreeInput,
 }
 
 #[derive(Debug, Default, Deserialize)]

@@ -5,7 +5,7 @@
 //! -> child: cancelling a parent cancels every descendant, while cancelling a
 //! child only affects that subtree. This token mirrors that shape
 //! (`AtomicBool` + `child()`/`kill()`), and `link_to` bridges a token into the
-//! `dope_llm::CancelToken` the async dispatcher polls, so killing the chat
+//! `kura_llm::CancelToken` the async dispatcher polls, so killing the chat
 //! token aborts the blocking dispatch.
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -92,10 +92,10 @@ impl CancellationToken {
         }
     }
 
-    /// Bridges this token into a [`dope_llm::CancelToken`]: killing this token
+    /// Bridges this token into a [`kura_llm::CancelToken`]: killing this token
     /// cancels the LLM token, which aborts the async dispatcher polled inside
     /// the service's sync bridge.
-    pub fn link_to(&self, token: &dope_llm::CancelToken) -> KillLink<'_> {
+    pub fn link_to(&self, token: &kura_llm::CancelToken) -> KillLink<'_> {
         let target = token.clone();
         self.register_watcher(move || {
             target.cancel();

@@ -176,5 +176,5 @@ Docs updated with the implementation:
   - `workflow.status_changed`
   - `workflow.step_status_changed`
 - Verified on 2026-04-21 with a repo-owned MCP stdio helper plus executable skills in
-  `DOPE_ENV=test`, including blocked mixed-workflow truth before MCP allowlisting and a
+  `KURA_ENV=test`, including blocked mixed-workflow truth before MCP allowlisting and a
   successful mixed MCP+skill workflow after allowlisting.

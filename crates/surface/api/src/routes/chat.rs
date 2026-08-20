@@ -1,9 +1,9 @@
 //! Chat query route family (Go handleChatQuery / handleChatQueryStream).
 //!
 //! Port of the core chat endpoints in daemon/internal/api/server.go:
-//! - `POST /v1/chat/query` — one-shot chat query through `dope_chat::Service::query`.
+//! - `POST /v1/chat/query` — one-shot chat query through `kura_chat::Service::query`.
 //! - `POST /v1/chat/query/stream` — SSE streaming through
-//!   `dope_chat::Service::stream_channel` (the crate's std::thread + std mpsc
+//!   `kura_chat::Service::stream_channel` (the crate's std::thread + std mpsc
 //!   variant of the sync callback emitter) bridged onto an axum SSE response
 //!   via a pump thread and a tokio mpsc channel.
 //!
@@ -22,11 +22,11 @@ use axum::response::sse::{Event as SseEvent, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::Router;
-use dope_chat::{
+use kura_chat::{
     CancellationToken, ChatError, QueryExecution, QueryInput, QueryResult, StreamChunk,
 };
-use dope_llm::{Dispatch, DispatchStatus};
-use dope_threads::ContinuityStatus;
+use kura_llm::{Dispatch, DispatchStatus};
+use kura_threads::ContinuityStatus;
 use serde::Deserialize;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -123,7 +123,7 @@ pub async fn handle_chat_query(
 
 /// POST /v1/chat/query/stream — SSE chat stream (Go handleChatQueryStream).
 ///
-/// The sync `dope_chat::Service::stream` runs on a blocking task; its emit
+/// The sync `kura_chat::Service::stream` runs on a blocking task; its emit
 /// callback forwards each chunk as `chat.query.started` (first chunk) and
 /// `chat.query.delta` frames over a tokio mpsc channel, and the terminal
 /// `chat.query.completed|failed|cancelled|partial_failed` frame (with the
@@ -286,7 +286,7 @@ fn decode_json_body<T: serde::de::DeserializeOwned>(body: &Bytes) -> Result<T, A
     serde_json::from_slice(body).map_err(|err| ApiError::BadRequest(err.to_string()))
 }
 
-/// Maps the wire request onto `dope_chat::QueryInput`, trimming strings and
+/// Maps the wire request onto `kura_chat::QueryInput`, trimming strings and
 /// taking the tenant id from the resolved `TenantContext` extension when
 /// present (Go `tenantContextFromContext`).
 fn query_input_from_request(request: &ChatQueryRequest, tenant: Option<&TenantContext>) -> QueryInput {
@@ -304,9 +304,9 @@ fn query_input_from_request(request: &ChatQueryRequest, tenant: Option<&TenantCo
         continuity_mode: request.continuity.as_ref().map(|continuity| {
             let mode = continuity.mode.trim();
             if mode == "disabled" {
-                dope_threads::ContinuityMode::Disabled
+                kura_threads::ContinuityMode::Disabled
             } else {
-                dope_threads::ContinuityMode::Auto
+                kura_threads::ContinuityMode::Auto
             }
         }),
         ..QueryInput::default()
@@ -455,38 +455,38 @@ mod tests {
     use std::sync::Arc;
 
     use axum::body::Body;
-    use dope_chat::Service as ChatService;
+    use kura_chat::Service as ChatService;
     use axum::body::to_bytes;
     use axum::http::Request as HttpRequest;
-    use dope_events::Bus;
-    use dope_llm::Dispatcher;
-    use dope_store::SQLiteStore;
+    use kura_events::Bus;
+    use kura_llm::Dispatcher;
+    use kura_store::SQLiteStore;
     use parking_lot::Mutex;
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-test".to_string(),
+            data_dir: "/tmp/kura-api-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig {
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                telegram: dope_config::TelegramConnectorConfig {
+                telegram: kura_config::TelegramConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                slack: dope_config::SlackConnectorConfig {
+                slack: kura_config::SlackConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                matrix: dope_config::MatrixConnectorConfig {
+                matrix: kura_config::MatrixConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
@@ -495,7 +495,7 @@ mod tests {
     }
 
     fn new_store() -> Arc<Mutex<SQLiteStore>> {
-        let dir = std::env::temp_dir().join(format!("dope-api-chat-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-chat-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         Arc::new(Mutex::new(
             SQLiteStore::new(dir.to_str().expect("path")).expect("store"),

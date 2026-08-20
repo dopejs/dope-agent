@@ -1,12 +1,12 @@
 [package]
-name = "dope-livevalidation"
+name = "kura-livevalidation"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-billing.workspace = true
-dope-identity.workspace = true
+kura-billing.workspace = true
+kura-identity.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 chrono.workspace = true

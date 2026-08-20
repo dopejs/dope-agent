@@ -7,7 +7,7 @@ use rusqlite::{params, Row};
 use crate::crud::{enum_str, now_rfc3339, null_string, parse_rfc3339};
 use crate::SQLiteStore;
 
-fn scan_integration(row: &Row) -> Result<dope_integrations::Resource, String> {
+fn scan_integration(row: &Row) -> Result<kura_integrations::Resource, String> {
     // Go scans the explicit columns for queryability, then unmarshals document_json into
     // the item; the document is authoritative.
     let updated_at: String = row.get(7).map_err(|e| e.to_string())?;
@@ -19,7 +19,7 @@ fn scan_integration(row: &Row) -> Result<dope_integrations::Resource, String> {
 }
 
 impl SQLiteStore {
-    pub fn upsert_integration(&self, item: &dope_integrations::Resource) -> Result<(), String> {
+    pub fn upsert_integration(&self, item: &kura_integrations::Resource) -> Result<(), String> {
         let document_json = serde_json::to_string(item)
             .map_err(|e| format!("marshal integration {}: {e}", item.integration_id))?;
 
@@ -64,7 +64,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_integrations(&self, environment_scope: &str) -> Result<Vec<dope_integrations::Resource>, String> {
+    pub fn list_integrations(&self, environment_scope: &str) -> Result<Vec<kura_integrations::Resource>, String> {
         let mut stmt = self
             .conn
             .prepare(

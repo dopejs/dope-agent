@@ -13,7 +13,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use dope_triage as triage;
+use kura_triage as triage;
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -125,7 +125,7 @@ mod tests {
 
     fn state_with_manager() -> crate::state::AppState {
         let mut state = test_state();
-        state.triage = Some(Arc::new(dope_triage::Manager::new("test")));
+        state.triage = Some(Arc::new(kura_triage::Manager::new("test")));
         state
     }
 

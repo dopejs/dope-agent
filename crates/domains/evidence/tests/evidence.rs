@@ -2,15 +2,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_evidence::{
+use kura_evidence::{
     redact_sections, Bundle, Collector, EvidenceError, Manager, PermissionGate,
     RedactionStatus, Scope, ScopeKind, Section, DEFAULT_RETENTION,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 use serde_json::json;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_evidence_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_evidence_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -264,6 +264,6 @@ fn persistence_round_trip() {
 #[test]
 fn manager_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<dope_evidence::Manager>();
+    assert_send_sync::<kura_evidence::Manager>();
 }
 

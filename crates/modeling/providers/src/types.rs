@@ -219,7 +219,7 @@ pub trait ManagedBridge: Send + Sync {
     fn complete(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), ProvidersError>>;
     fn refresh(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), ProvidersError>>;
     fn revoke(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), ProvidersError>>;
-    fn provider(&self) -> Arc<dyn dope_llm::Provider>;
+    fn provider(&self) -> Arc<dyn kura_llm::Provider>;
 }
 
 /// A registry of managed provider bridges.
@@ -238,9 +238,9 @@ pub enum ProvidersError {
     #[error("tenant provider auth is unavailable: {0}")]
     ProviderAuthUnavailable(String),
     #[error(transparent)]
-    Prepare(#[from] dope_llm::PrepareError),
+    Prepare(#[from] kura_llm::PrepareError),
     #[error(transparent)]
-    Dispatch(#[from] dope_llm::FailedDispatch),
+    Dispatch(#[from] kura_llm::FailedDispatch),
 }
 
 impl Default for Family {

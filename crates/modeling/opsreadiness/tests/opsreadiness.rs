@@ -1,5 +1,5 @@
 use chrono::{TimeZone, Utc};
-use dope_opsreadiness::{
+use kura_opsreadiness::{
     BackupArtifact, HostedDeploymentManifest, TenantStateSummary, REQUIRED_FAULT_TYPES,
     REQUIRED_WORKLOAD_AREAS,
 };

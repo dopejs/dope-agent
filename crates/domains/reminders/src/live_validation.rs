@@ -1,7 +1,7 @@
 //! Port of daemon/internal/reminders/live_validation.go: the live-validation support
 //! matrix rows contributed by the reminders domain.
 
-use dope_livevalidation::{default_matrix_row, MatrixRow, ToolClass};
+use kura_livevalidation::{default_matrix_row, MatrixRow, ToolClass};
 
 /// Go LiveValidationMatrixRows: the reminder lifecycle mutation row from the default
 /// support matrix, or an empty list when the row is not defined.

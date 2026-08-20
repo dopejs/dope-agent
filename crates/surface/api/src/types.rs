@@ -4,7 +4,7 @@
 //! `skip_serializing_if` (empty string / empty vec / None / zero / false).
 //!
 //! Reminders DTO fields still use `serde_json::Value` placeholders where the
-//! real `dope_reminders` types should be wired (type-migration follow-on; the
+//! real `kura_reminders` types should be wired (type-migration follow-on; the
 //! crate is ported but the DTO wiring is not yet switched over).
 
 use std::collections::HashMap;
@@ -12,24 +12,24 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use dope_calendar as calendar;
-use dope_computeruse as computeruse;
-use dope_config as config;
-use dope_delivery as delivery;
-use dope_events as events;
-use dope_identity as identity;
-use dope_integrations as integrations;
-use dope_llm as llm;
-use dope_mail as mail;
-use dope_mcp as mcp;
-use dope_orchestration as orchestration;
-use dope_policy as policy;
-use dope_providers as providers;
-use dope_router as router;
-use dope_runtime as runtime;
-use dope_sandbox as sandbox;
-use dope_scheduler as scheduler;
-use dope_skills as skills;
+use kura_calendar as calendar;
+use kura_computeruse as computeruse;
+use kura_config as config;
+use kura_delivery as delivery;
+use kura_events as events;
+use kura_identity as identity;
+use kura_integrations as integrations;
+use kura_llm as llm;
+use kura_mail as mail;
+use kura_mcp as mcp;
+use kura_orchestration as orchestration;
+use kura_policy as policy;
+use kura_providers as providers;
+use kura_router as router;
+use kura_runtime as runtime;
+use kura_sandbox as sandbox;
+use kura_scheduler as scheduler;
+use kura_skills as skills;
 
 // ---------------------------------------------------------------------------
 // Serde helpers (Go omitempty equivalents)
@@ -64,7 +64,7 @@ pub struct SystemInfoResponse {
 #[must_use]
 pub fn build_system_info_response(cfg: &config::Config) -> SystemInfoResponse {
     SystemInfoResponse {
-        service: "dope".to_string(),
+        service: "kura".to_string(),
         environment: effective_environment(cfg),
         version: cfg.version.clone(),
         bind_addr: cfg.bind_addr.clone(),
@@ -1206,7 +1206,7 @@ pub struct CreateReminderRequest {
     pub title: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub details: String,
-    // dope-reminders is ported; migrate this serde_json::Value to reminders::BehaviorMode.
+    // kura-reminders is ported; migrate this serde_json::Value to reminders::BehaviorMode.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub behavior_mode: serde_json::Value,
     pub trigger: ScheduleTriggerRequest,
@@ -1235,7 +1235,7 @@ pub struct ReminderWorkflowLaunchRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReminderFollowUpLinkRequest {
-    // dope-reminders is ported; migrate to reminders::FollowUpLinkKind.
+    // kura-reminders is ported; migrate to reminders::FollowUpLinkKind.
     pub link_kind: serde_json::Value,
     pub source_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -1253,7 +1253,7 @@ pub struct ReminderTransitionRequest {
     pub occurrence_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reason: String,
-    // dope-reminders is ported; migrate to reminders::ActorKind.
+    // kura-reminders is ported; migrate to reminders::ActorKind.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub actor_kind: serde_json::Value,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -1301,7 +1301,7 @@ pub struct ScheduleWorkflowTargetRequest {
 }
 
 pub type ScheduleListResponse = ListResponse<scheduler::Schedule>;
-// dope-reminders is ported; migrate to reminders::{Reminder,Occurrence,ActionRecord}.
+// kura-reminders is ported; migrate to reminders::{Reminder,Occurrence,ActionRecord}.
 pub type ReminderListResponse = ListResponse<serde_json::Value>;
 pub type ReminderOccurrenceListResponse = ListResponse<serde_json::Value>;
 pub type ReminderActionListResponse = ListResponse<serde_json::Value>;
@@ -1584,18 +1584,18 @@ mod tests {
     #[test]
     fn system_info_response_round_trip() {
         let value = SystemInfoResponse {
-            service: "dope".to_string(),
+            service: "kura".to_string(),
             environment: "test".to_string(),
             version: "0.1.0".to_string(),
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope".to_string(),
+            data_dir: "/tmp/kura".to_string(),
             log_level: "info".to_string(),
         };
         round_trip(&value);
         let json = serde_json::to_value(&value).expect("serialize");
         // Go json tags: camelCase.
         assert_eq!(json["bindAddr"], "127.0.0.1:19192");
-        assert_eq!(json["dataDir"], "/tmp/dope");
+        assert_eq!(json["dataDir"], "/tmp/kura");
         assert_eq!(json["logLevel"], "info");
     }
 

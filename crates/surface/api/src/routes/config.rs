@@ -12,9 +12,9 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
 
-use dope_config as config;
-use dope_mcp as mcp;
-use dope_sandbox as sandbox;
+use kura_config as config;
+use kura_mcp as mcp;
+use kura_sandbox as sandbox;
 
 use crate::state::AppState;
 

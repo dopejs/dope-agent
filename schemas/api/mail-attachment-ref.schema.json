@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/mail-attachment-ref.schema.json",
+  "$id": "https://kura.local/schemas/api/mail-attachment-ref.schema.json",
   "title": "MailAttachmentRef",
   "type": "object",
   "additionalProperties": false,

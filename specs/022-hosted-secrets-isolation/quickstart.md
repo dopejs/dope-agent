@@ -3,8 +3,8 @@
 ## Preconditions
 
 - Work from branch `022-hosted-secrets-isolation`.
-- Use the default test daemon environment: `~/.dope-test` and `127.0.0.1:19192`.
-- Use fake credentials only. Do not touch `~/.dope`, production secrets, or live
+- Use the default test daemon environment: `~/.kura-test` and `127.0.0.1:19192`.
+- Use fake credentials only. Do not touch `~/.kura`, production secrets, or live
   connectors for this roadmap.
 - Review the R37 boundary test before editing credential-bearing packages:
   `daemon/internal/store/tenancy/r37_boundary_test.go`.
@@ -58,9 +58,9 @@ pnpm build
 Commands observed during implementation:
 
 ```bash
-GOCACHE=/tmp/dope-go-cache go test ./internal/secrets ./internal/store ./internal/store/migrationfixture ./internal/store/tenancy ./internal/app ./internal/api ./internal/integrations ./internal/providers ./internal/mcp ./internal/connectors ./internal/sandbox ./internal/audit ./internal/contracts
-GOCACHE=/tmp/dope-go-cache go test ./internal/...
-GOCACHE=/tmp/dope-go-cache go mod tidy
+GOCACHE=/tmp/kura-go-cache go test ./internal/secrets ./internal/store ./internal/store/migrationfixture ./internal/store/tenancy ./internal/app ./internal/api ./internal/integrations ./internal/providers ./internal/mcp ./internal/connectors ./internal/sandbox ./internal/audit ./internal/contracts
+GOCACHE=/tmp/kura-go-cache go test ./internal/...
+GOCACHE=/tmp/kura-go-cache go mod tidy
 ```
 
 ## Manual Test-Environment Smoke

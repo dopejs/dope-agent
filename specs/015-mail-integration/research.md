@@ -93,7 +93,7 @@
 
 ### Decision: Extend the repo-owned fake integration backend into a deterministic fake mail backend for verification
 
-- Rationale: The constitution requires `DOPE_ENV=test` by default and the spec allows a
+- Rationale: The constitution requires `KURA_ENV=test` by default and the spec allows a
   local or fake verification path. Extending the fake integration backend to supply one
   deterministic mailbox projection, seeded threads and messages, draft lifecycle, direct
   send, reply, and forward behavior is enough to validate mailbox projection, send-path

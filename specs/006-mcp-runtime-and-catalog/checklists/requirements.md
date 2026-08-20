@@ -2,7 +2,7 @@
 
 **Purpose**: Spec quality check for the MCP runtime and installable catalog slice  
 **Created**: 2026-04-20  
-**Feature**: [spec.md](/Users/John/Code/dope-agent/specs/006-mcp-runtime-and-catalog/spec.md)
+**Feature**: [spec.md](/Users/John/Code/kura-agent/specs/006-mcp-runtime-and-catalog/spec.md)
 
 ## Scope Quality
 

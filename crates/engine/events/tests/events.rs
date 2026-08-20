@@ -1,4 +1,4 @@
-use dope_events::{Event, Filter, Resource, Scope, is_global_category};
+use kura_events::{Event, Filter, Resource, Scope, is_global_category};
 
 #[test]
 fn event_round_trips_camel_case() {
@@ -51,7 +51,7 @@ fn filter_defaults_are_empty() {
 
 #[test]
 fn bus_publishes_and_filters_history_and_live_subscribers() {
-    use dope_events::{Bus, Event, Filter};
+    use kura_events::{Bus, Event, Filter};
 
     let bus = Bus::new();
     let (rx, sub) = bus.subscribe(Filter {

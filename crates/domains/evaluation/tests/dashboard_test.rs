@@ -5,7 +5,7 @@ mod common;
 
 use chrono::DateTime;
 use chrono::Utc;
-use dope_evaluation::{
+use kura_evaluation::{
     CampaignAttemptGroup, DashboardProjectionInput, DiscoveredCandidate, ProductLifecycleStatus,
     ProductManagedFixture, ReplayCampaign, RetentionState, SuppressionState,
     build_dashboard_projection, page_dashboard_projections,
@@ -124,17 +124,17 @@ fn build_dashboard_projection_aggregates_tenant_scoped_product_signals() {
 fn page_dashboard_projections_is_deterministic() {
     let now = ts("2026-04-29T10:00:00Z");
     let items = vec![
-        dope_evaluation::DashboardProjection {
+        kura_evaluation::DashboardProjection {
             projection_id: "projection_a".to_string(),
             generated_at: now - chrono::Duration::minutes(2),
             ..Default::default()
         },
-        dope_evaluation::DashboardProjection {
+        kura_evaluation::DashboardProjection {
             projection_id: "projection_c".to_string(),
             generated_at: now,
             ..Default::default()
         },
-        dope_evaluation::DashboardProjection {
+        kura_evaluation::DashboardProjection {
             projection_id: "projection_b".to_string(),
             generated_at: now - chrono::Duration::minutes(1),
             ..Default::default()

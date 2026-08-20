@@ -18,7 +18,7 @@ fn bool_int(value: bool) -> i64 {
 impl SQLiteStore {
     pub fn upsert_live_validation_attempt(
         &self,
-        item: &dope_livevalidation::Attempt,
+        item: &kura_livevalidation::Attempt,
     ) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal live validation attempt: {e}"))?;
@@ -64,7 +64,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         validation_id: &str,
-    ) -> Result<Option<dope_livevalidation::Attempt>, String> {
+    ) -> Result<Option<kura_livevalidation::Attempt>, String> {
         let mut sql = String::from(
             "SELECT document_json FROM live_validation_attempts WHERE validation_id = ?",
         );
@@ -89,8 +89,8 @@ impl SQLiteStore {
 
     pub fn list_live_validation_attempts(
         &self,
-        filter: &dope_livevalidation::AttemptFilter,
-    ) -> Result<Vec<dope_livevalidation::Attempt>, String> {
+        filter: &kura_livevalidation::AttemptFilter,
+    ) -> Result<Vec<kura_livevalidation::Attempt>, String> {
         let mut sql = String::from(
             r#"SELECT document_json
             FROM live_validation_attempts
@@ -123,7 +123,7 @@ impl SQLiteStore {
 
     pub fn upsert_live_validation_scope(
         &self,
-        item: &dope_livevalidation::SideEffectScope,
+        item: &kura_livevalidation::SideEffectScope,
         tenant_id: &str,
     ) -> Result<(), String> {
         let document_json =
@@ -154,7 +154,7 @@ impl SQLiteStore {
 
     pub fn upsert_live_validation_approval(
         &self,
-        item: &dope_livevalidation::FreshApproval,
+        item: &kura_livevalidation::FreshApproval,
     ) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal live validation approval: {e}"))?;
@@ -193,7 +193,7 @@ impl SQLiteStore {
 
     pub fn append_live_validation_ledger_entry(
         &self,
-        item: &dope_livevalidation::SideEffectLedgerEntry,
+        item: &kura_livevalidation::SideEffectLedgerEntry,
     ) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal live validation ledger entry: {e}"))?;
@@ -237,7 +237,7 @@ impl SQLiteStore {
     pub fn update_live_validation_ledger_outcome(
         &self,
         ledger_entry_id: &str,
-        outcome: &dope_livevalidation::LedgerOutcome,
+        outcome: &kura_livevalidation::LedgerOutcome,
         reason_code: &str,
     ) -> Result<(), String> {
         let raw: Option<String> = self
@@ -251,12 +251,12 @@ impl SQLiteStore {
         let Some(raw) = raw else {
             return Ok(());
         };
-        let mut item: dope_livevalidation::SideEffectLedgerEntry = serde_json::from_str(&raw)
+        let mut item: kura_livevalidation::SideEffectLedgerEntry = serde_json::from_str(&raw)
             .map_err(|e| format!("decode live validation ledger entry {ledger_entry_id}: {e}"))?;
         item.outcome = outcome.clone();
         item.reason_code = reason_code.trim().to_string();
         item.updated_at = chrono::Utc::now();
-        if dope_livevalidation::is_terminal_ledger_outcome(&item.outcome) && item.completed_at.is_none() {
+        if kura_livevalidation::is_terminal_ledger_outcome(&item.outcome) && item.completed_at.is_none() {
             item.completed_at = Some(item.updated_at);
         }
         let document_json = serde_json::to_string(&item)
@@ -272,8 +272,8 @@ impl SQLiteStore {
 
     pub fn list_live_validation_ledger_entries(
         &self,
-        filter: &dope_livevalidation::LedgerFilter,
-    ) -> Result<Vec<dope_livevalidation::SideEffectLedgerEntry>, String> {
+        filter: &kura_livevalidation::LedgerFilter,
+    ) -> Result<Vec<kura_livevalidation::SideEffectLedgerEntry>, String> {
         let mut sql = String::from(
             r#"SELECT document_json
             FROM live_validation_ledger_entries
@@ -310,7 +310,7 @@ impl SQLiteStore {
 
     pub fn upsert_live_validation_kill_switch(
         &self,
-        item: &dope_livevalidation::KillSwitch,
+        item: &kura_livevalidation::KillSwitch,
     ) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal live validation kill switch: {e}"))?;
@@ -342,8 +342,8 @@ impl SQLiteStore {
 
     pub fn list_live_validation_kill_switches(
         &self,
-        filter: &dope_livevalidation::KillSwitchFilter,
-    ) -> Result<Vec<dope_livevalidation::KillSwitch>, String> {
+        filter: &kura_livevalidation::KillSwitchFilter,
+    ) -> Result<Vec<kura_livevalidation::KillSwitch>, String> {
         let mut sql = String::from(
             r#"SELECT document_json
             FROM live_validation_kill_switches
@@ -374,7 +374,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         snapshot_id: &str,
-        rows: &[dope_livevalidation::MatrixRow],
+        rows: &[kura_livevalidation::MatrixRow],
     ) -> Result<(), String> {
         let document_json =
             serde_json::to_string(rows).map_err(|e| format!("marshal live validation matrix snapshot: {e}"))?;
@@ -408,7 +408,7 @@ impl SQLiteStore {
 
     pub fn save_live_validation_ambiguous_commit(
         &self,
-        item: &dope_livevalidation::AmbiguousCommit,
+        item: &kura_livevalidation::AmbiguousCommit,
     ) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal live validation ambiguous commit: {e}"))?;
@@ -445,7 +445,7 @@ impl SQLiteStore {
 
     pub fn save_live_validation_reconciliation_resolution(
         &self,
-        item: &dope_livevalidation::ReconciliationResolution,
+        item: &kura_livevalidation::ReconciliationResolution,
     ) -> Result<(), String> {
         let document_json = serde_json::to_string(item)
             .map_err(|e| format!("marshal live validation reconciliation resolution: {e}"))?;
@@ -478,7 +478,7 @@ impl SQLiteStore {
 
     pub fn save_live_validation_comparison(
         &self,
-        item: &dope_livevalidation::Comparison,
+        item: &kura_livevalidation::Comparison,
     ) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal live validation comparison: {e}"))?;
@@ -511,8 +511,8 @@ impl SQLiteStore {
 
     pub fn list_live_validation_comparisons(
         &self,
-        filter: &dope_livevalidation::ComparisonFilter,
-    ) -> Result<Vec<dope_livevalidation::Comparison>, String> {
+        filter: &kura_livevalidation::ComparisonFilter,
+    ) -> Result<Vec<kura_livevalidation::Comparison>, String> {
         let mut sql = String::from(
             r#"SELECT document_json
             FROM live_validation_comparisons
@@ -545,7 +545,7 @@ impl SQLiteStore {
 
     pub fn save_live_validation_retention_policy(
         &self,
-        item: &dope_livevalidation::RetentionPolicy,
+        item: &kura_livevalidation::RetentionPolicy,
     ) -> Result<(), String> {
         let document_json =
             serde_json::to_string(item).map_err(|e| format!("marshal live validation retention policy: {e}"))?;
@@ -596,7 +596,7 @@ fn list_documents<T: serde::de::DeserializeOwned>(
     Ok(items)
 }
 
-// --- dope_livevalidation::Store trait impl (async wrapper over the DAOs) ---
+// --- kura_livevalidation::Store trait impl (async wrapper over the DAOs) ---
 //
 // rusqlite's Connection is Send but not Sync, so SQLiteStore cannot be the
 // trait's `Send + Sync` self type directly. The mutex is wrapped in the
@@ -604,7 +604,7 @@ fn list_documents<T: serde::de::DeserializeOwned>(
 // SecretStoreHandle / ComputerUseStoreHandle).
 
 /// Send + Sync handle over the SQLite store implementing
-/// [`dope_livevalidation::Store`]. Construct from a fresh store and share as
+/// [`kura_livevalidation::Store`]. Construct from a fresh store and share as
 /// `Arc<LiveValidationStoreHandle>` with the live-validation manager.
 pub struct LiveValidationStoreHandle(pub parking_lot::Mutex<SQLiteStore>);
 
@@ -614,16 +614,16 @@ impl LiveValidationStoreHandle {
     }
 }
 
-impl dope_livevalidation::Store for LiveValidationStoreHandle {
+impl kura_livevalidation::Store for LiveValidationStoreHandle {
     fn upsert_attempt(
         &self,
-        item: dope_livevalidation::Attempt,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<(), dope_livevalidation::LiveValidationError>> {
+        item: kura_livevalidation::Attempt,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<(), kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .upsert_live_validation_attempt(&item)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
@@ -631,73 +631,73 @@ impl dope_livevalidation::Store for LiveValidationStoreHandle {
         &self,
         tenant_id: &str,
         validation_id: &str,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<Option<dope_livevalidation::Attempt>, dope_livevalidation::LiveValidationError>> {
+    ) -> kura_livevalidation::BoxFuture<'_, Result<Option<kura_livevalidation::Attempt>, kura_livevalidation::LiveValidationError>> {
         let tenant_id = tenant_id.to_string();
         let validation_id = validation_id.to_string();
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .get_live_validation_attempt(&tenant_id, &validation_id)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn list_attempts(
         &self,
-        filter: dope_livevalidation::AttemptFilter,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<Vec<dope_livevalidation::Attempt>, dope_livevalidation::LiveValidationError>> {
+        filter: kura_livevalidation::AttemptFilter,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<Vec<kura_livevalidation::Attempt>, kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .list_live_validation_attempts(&filter)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn upsert_scope(
         &self,
-        item: dope_livevalidation::SideEffectScope,
+        item: kura_livevalidation::SideEffectScope,
         tenant_id: &str,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<(), dope_livevalidation::LiveValidationError>> {
+    ) -> kura_livevalidation::BoxFuture<'_, Result<(), kura_livevalidation::LiveValidationError>> {
         let tenant_id = tenant_id.to_string();
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .upsert_live_validation_scope(&item, &tenant_id)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn upsert_approval(
         &self,
-        item: dope_livevalidation::FreshApproval,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<(), dope_livevalidation::LiveValidationError>> {
+        item: kura_livevalidation::FreshApproval,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<(), kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .upsert_live_validation_approval(&item)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn append_ledger_entry(
         &self,
-        item: dope_livevalidation::SideEffectLedgerEntry,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<(), dope_livevalidation::LiveValidationError>> {
+        item: kura_livevalidation::SideEffectLedgerEntry,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<(), kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .append_live_validation_ledger_entry(&item)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn update_ledger_entry_outcome(
         &self,
         ledger_entry_id: &str,
-        outcome: &dope_livevalidation::LedgerOutcome,
+        outcome: &kura_livevalidation::LedgerOutcome,
         reason_code: &str,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<(), dope_livevalidation::LiveValidationError>> {
+    ) -> kura_livevalidation::BoxFuture<'_, Result<(), kura_livevalidation::LiveValidationError>> {
         let ledger_entry_id = ledger_entry_id.to_string();
         let outcome = outcome.clone();
         let reason_code = reason_code.to_string();
@@ -705,43 +705,43 @@ impl dope_livevalidation::Store for LiveValidationStoreHandle {
             let store = self.0.lock();
             store
                 .update_live_validation_ledger_outcome(&ledger_entry_id, &outcome, &reason_code)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn list_ledger_entries(
         &self,
-        filter: dope_livevalidation::LedgerFilter,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<Vec<dope_livevalidation::SideEffectLedgerEntry>, dope_livevalidation::LiveValidationError>> {
+        filter: kura_livevalidation::LedgerFilter,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<Vec<kura_livevalidation::SideEffectLedgerEntry>, kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .list_live_validation_ledger_entries(&filter)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn upsert_kill_switch(
         &self,
-        item: dope_livevalidation::KillSwitch,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<(), dope_livevalidation::LiveValidationError>> {
+        item: kura_livevalidation::KillSwitch,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<(), kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .upsert_live_validation_kill_switch(&item)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn list_kill_switches(
         &self,
-        filter: dope_livevalidation::KillSwitchFilter,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<Vec<dope_livevalidation::KillSwitch>, dope_livevalidation::LiveValidationError>> {
+        filter: kura_livevalidation::KillSwitchFilter,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<Vec<kura_livevalidation::KillSwitch>, kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .list_live_validation_kill_switches(&filter)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
@@ -749,75 +749,75 @@ impl dope_livevalidation::Store for LiveValidationStoreHandle {
         &self,
         tenant_id: &str,
         snapshot_id: &str,
-        rows: Vec<dope_livevalidation::MatrixRow>,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<(), dope_livevalidation::LiveValidationError>> {
+        rows: Vec<kura_livevalidation::MatrixRow>,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<(), kura_livevalidation::LiveValidationError>> {
         let tenant_id = tenant_id.to_string();
         let snapshot_id = snapshot_id.to_string();
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .upsert_live_validation_support_matrix_snapshot(&tenant_id, &snapshot_id, &rows)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn save_ambiguous_commit(
         &self,
-        item: dope_livevalidation::AmbiguousCommit,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<(), dope_livevalidation::LiveValidationError>> {
+        item: kura_livevalidation::AmbiguousCommit,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<(), kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .save_live_validation_ambiguous_commit(&item)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn save_reconciliation_resolution(
         &self,
-        item: dope_livevalidation::ReconciliationResolution,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<(), dope_livevalidation::LiveValidationError>> {
+        item: kura_livevalidation::ReconciliationResolution,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<(), kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .save_live_validation_reconciliation_resolution(&item)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn save_comparison(
         &self,
-        item: dope_livevalidation::Comparison,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<(), dope_livevalidation::LiveValidationError>> {
+        item: kura_livevalidation::Comparison,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<(), kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .save_live_validation_comparison(&item)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn list_comparisons(
         &self,
-        filter: dope_livevalidation::ComparisonFilter,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<Vec<dope_livevalidation::Comparison>, dope_livevalidation::LiveValidationError>> {
+        filter: kura_livevalidation::ComparisonFilter,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<Vec<kura_livevalidation::Comparison>, kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .list_live_validation_comparisons(&filter)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 
     fn save_retention_policy(
         &self,
-        item: dope_livevalidation::RetentionPolicy,
-    ) -> dope_livevalidation::BoxFuture<'_, Result<(), dope_livevalidation::LiveValidationError>> {
+        item: kura_livevalidation::RetentionPolicy,
+    ) -> kura_livevalidation::BoxFuture<'_, Result<(), kura_livevalidation::LiveValidationError>> {
         Box::pin(async move {
             let store = self.0.lock();
             store
                 .save_live_validation_retention_policy(&item)
-                .map_err(dope_livevalidation::LiveValidationError::Store)
+                .map_err(kura_livevalidation::LiveValidationError::Store)
         })
     }
 }

@@ -7,9 +7,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
-use dope_connectors::RedactionStatus;
-use dope_im::ReplySender;
-use dope_imtypes::{OutboundReply, ReplyCapabilities, SentReply};
+use kura_connectors::RedactionStatus;
+use kura_im::ReplySender;
+use kura_imtypes::{OutboundReply, ReplyCapabilities, SentReply};
 use parking_lot::Mutex;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -680,7 +680,7 @@ mod tests {
                 200,
                 serde_json::to_vec(&json!({
                     "ok": true,
-                    "result": { "id": 42, "username": "dope_test_bot", "first_name": "Dope Test" },
+                    "result": { "id": 42, "username": "kura_test_bot", "first_name": "Kura Test" },
                 }))
                 .expect("encode getMe"),
             ),
@@ -706,7 +706,7 @@ mod tests {
 
         let binding = transport.validate_credential().expect("validate credential");
         assert_eq!(binding.connector_account_id, "telegram_bot_42");
-        assert_eq!(binding.provider_account_label, "dope_test_bot");
+        assert_eq!(binding.provider_account_label, "kura_test_bot");
         assert_eq!(binding.permission_state, PermissionState::Valid);
 
         let sent = transport
@@ -747,7 +747,7 @@ mod tests {
         let err = transport.validate_credential().expect_err("validation must fail");
         assert_eq!(
             diagnostic_reason_for_error(&err),
-            dope_connectors::DiagnosticReasonCode::AuthMissing
+            kura_connectors::DiagnosticReasonCode::AuthMissing
         );
     }
 

@@ -91,7 +91,7 @@
 
 ## Phase 5: User Story 3 - Prove long-running behavior under realistic faults (Priority: P1)
 
-**Goal**: Product engineers can run a 24-hour `DOPE_ENV=test` soak that exercises runtime, scheduler, integrations, delivery, approvals, quotas, tenant switching, and evaluation under restarts and external-service faults.
+**Goal**: Product engineers can run a 24-hour `KURA_ENV=test` soak that exercises runtime, scheduler, integrations, delivery, approvals, quotas, tenant switching, and evaluation under restarts and external-service faults.
 
 **Independent Test**: Run or validate the soak harness against a generated report containing duration, workload coverage, three restarts, fault drills, recovery classifications, resource observations, and hard-fail threshold results.
 
@@ -162,7 +162,7 @@
 - [X] T067 Run `make daemon-contract-test` from the repository root and record results in `specs/024-production-ops-soak/quickstart.md`
 - [X] T068 Run `pnpm test:clients` and `pnpm build` if client-visible surfaces changed, then record results or no-op rationale in `specs/024-production-ops-soak/quickstart.md`
 - [X] T069 Run the test daemon smoke with `make daemon-run-test` and `make daemon-test-status`, then record health and shutdown evidence in `specs/024-production-ops-soak/quickstart.md`
-- [X] T070 Run the 24-hour `DOPE_ENV=test` soak and record pass/fail results in `specs/024-production-ops-soak/quickstart.md`; if a temporary shorter threshold is used, record the rationale and mandatory follow-up full-duration rerun in `specs/024-production-ops-soak/quickstart.md`
+- [X] T070 Run the 24-hour `KURA_ENV=test` soak and record pass/fail results in `specs/024-production-ops-soak/quickstart.md`; if a temporary shorter threshold is used, record the rationale and mandatory follow-up full-duration rerun in `specs/024-production-ops-soak/quickstart.md`
 
 ---
 
@@ -246,5 +246,5 @@ After Phase 2, separate owners can work on US1 docs/scripts, US2 fixture/restore
 - `[P]` tasks touch different files and can run in parallel after their phase prerequisites.
 - Story labels map directly to `spec.md` user stories.
 - Contract, redaction, restart, and evidence validation are required production checks.
-- Default validation must use `~/.dope-test`; live connectors and real-account credentials require explicit opt-in.
+- Default validation must use `~/.kura-test`; live connectors and real-account credentials require explicit opt-in.
 - Completion requires the 24-hour soak evidence or an explicitly documented temporary shorter threshold with a follow-up full-duration rerun.

@@ -8,7 +8,7 @@ authorization responses that do not leak inaccessible tenant existence.
 
 ## Request Tenant Selection
 
-### Header: `X-Dope-Tenant-ID`
+### Header: `X-Kura-Tenant-ID`
 
 - Purpose: Select a non-default tenant for a protected request.
 - Required behavior:

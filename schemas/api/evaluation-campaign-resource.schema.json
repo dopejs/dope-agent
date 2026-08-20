@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/evaluation-campaign-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/evaluation-campaign-resource.schema.json",
   "title": "EvaluationCampaignContracts",
   "oneOf": [
     { "$ref": "#/$defs/replayCampaignResource" },

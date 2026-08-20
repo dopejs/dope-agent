@@ -5,14 +5,14 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_execprofile::{
+use kura_execprofile::{
     BackendKind, ExecutionProfile, HealthChecker, HealthStatus, Manager, RiskTier,
     SandboxCapabilitySource, SandboxHealthChecker,
 };
-use dope_sandbox::{BackendAvailabilityStatus, BackendCapabilityProfile, BackendKind as SandboxBackend};
+use kura_sandbox::{BackendAvailabilityStatus, BackendCapabilityProfile, BackendKind as SandboxBackend};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_execprofile_sandbox_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_execprofile_sandbox_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -128,11 +128,11 @@ fn manager_projects_sandbox_health() {
 
 #[test]
 fn manager_projects_real_sandbox_capabilities() {
-    // Real dope_sandbox::Manager integration: the subprocess backend is always
+    // Real kura_sandbox::Manager integration: the subprocess backend is always
     // detected as available, so a subprocess profile reports ready.
     let dir = temp_dir("real");
-    let cfg = dope_config::Config {
-        environment: dope_config::Environment::Test,
+    let cfg = kura_config::Config {
+        environment: kura_config::Environment::Test,
         bind_addr: "127.0.0.1:19192".to_string(),
         data_dir: dir.clone(),
         log_level: "info".to_string(),
@@ -140,7 +140,7 @@ fn manager_projects_real_sandbox_capabilities() {
         llm: Default::default(),
         connectors: Default::default(),
     };
-    let sandbox = dope_sandbox::Manager::new(cfg, None, dope_events::Bus::new(), dope_policy::Engine::new());
+    let sandbox = kura_sandbox::Manager::new(cfg, None, kura_events::Bus::new(), kura_policy::Engine::new());
     let manager = Manager::new(
         "test",
         Some(Box::new(SandboxHealthChecker::new(Some(Arc::new(sandbox))))),

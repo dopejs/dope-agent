@@ -1,9 +1,9 @@
-use dope_artifacts::Service;
-use dope_computeruse::{ArtifactCaptureRequest, ArtifactKind, ArtifactStatus};
+use kura_artifacts::Service;
+use kura_computeruse::{ArtifactCaptureRequest, ArtifactKind, ArtifactStatus};
 
 #[test]
 fn save_and_read_artifact() {
-    let dir = std::env::temp_dir().join(format!("dope_artifacts_test_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_artifacts_test_{}", std::process::id()));
     let service = Service::new(dir.to_str().unwrap());
     let request = ArtifactCaptureRequest {
         run_id: "r1".to_string(),
@@ -27,7 +27,7 @@ fn save_and_read_artifact() {
 
 #[test]
 fn artifact_id_is_deterministic() {
-    let dir = std::env::temp_dir().join(format!("dope_artifacts_det_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_artifacts_det_{}", std::process::id()));
     let service = Service::new(dir.to_str().unwrap());
     let make = |content: &[u8]| ArtifactCaptureRequest {
         run_id: "r1".to_string(),

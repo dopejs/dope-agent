@@ -1,14 +1,14 @@
 [package]
-name = "dope-migrationfixture"
+name = "kura-migrationfixture"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-store.workspace = true
-dope-providers.workspace = true
-dope-integrations.workspace = true
-dope-connectors.workspace = true
+kura-store.workspace = true
+kura-providers.workspace = true
+kura-integrations.workspace = true
+kura-connectors.workspace = true
 rusqlite.workspace = true
 chrono.workspace = true
 serde.workspace = true

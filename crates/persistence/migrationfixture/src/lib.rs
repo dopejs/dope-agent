@@ -1,4 +1,4 @@
-//! dope-migrationfixture: Rust port of the Go
+//! kura-migrationfixture: Rust port of the Go
 //! daemon/internal/store/migrationfixture package - reproducible SQLite
 //! fixtures for the store's migration regression suite (Roadmap 35 US2 / T066).
 //!
@@ -23,7 +23,7 @@
 //! WAL database). r37 uses the store's domain CRUD where it is ported; the
 //! r49-r51 channel-connector rows are written as raw SQL because the Go
 //! SaveDiscordHostedSetup/telegram/slack accessors are not yet ported to
-//! dope-store - the table schemas themselves exist (migrations v45-v47).
+//! kura-store - the table schemas themselves exist (migrations v45-v47).
 
 pub mod r37_credentials;
 pub mod r39_production_ops;
@@ -42,7 +42,7 @@ use std::time::Duration;
 
 use rusqlite::Connection;
 
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 pub use r37_credentials::{
     seed_r37_local_credential_files, seed_r37_local_credential_state, R37CredentialFixture,
@@ -119,9 +119,9 @@ pub fn build_pre_tenant_v21_fixture(data_dir: &str) -> Result<SQLiteStore, Strin
 ///
 /// Note: the Go implementation additionally registers migration-progress rows
 /// (Register*MigrationSteps); that tenancy-package plumbing is not ported to
-/// dope-store, so this only applies the schema migrations themselves.
+/// kura-store, so this only applies the schema migrations themselves.
 pub fn apply_head_migrations(store: &SQLiteStore) -> Result<(), String> {
-    store.migrate_to_version(dope_store::CURRENT_SCHEMA_VERSION)
+    store.migrate_to_version(kura_store::CURRENT_SCHEMA_VERSION)
 }
 
 /// Convenience builder that produces the full regression fixture: pre-tenant

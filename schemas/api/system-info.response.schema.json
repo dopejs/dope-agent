@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/system-info.response.schema.json",
+  "$id": "https://kura.local/schemas/api/system-info.response.schema.json",
   "title": "SystemInfoResponse",
   "type": "object",
   "required": ["service", "environment", "version", "bindAddr", "dataDir", "logLevel"],
@@ -8,7 +8,7 @@
   "properties": {
     "service": {
       "type": "string",
-      "const": "dope"
+      "const": "kura"
     },
     "environment": {
       "type": "string",

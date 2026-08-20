@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/live-validation-operator-action-needed.event.schema.json",
+  "$id": "https://kura.local/schemas/events/live-validation-operator-action-needed.event.schema.json",
   "title": "LiveValidationOperatorActionNeededEvent",
   "type": "object",
   "required": ["eventId", "sequence", "category", "name", "occurredAt", "resource", "payload"],

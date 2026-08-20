@@ -2,7 +2,7 @@
 
 ## Goal
 
-Verify in `DOPE_ENV=test` that the daemon can:
+Verify in `KURA_ENV=test` that the daemon can:
 
 - create one-time and recurring reminder resources distinct from raw schedules
 - surface explicit reminder occurrence lifecycle truth
@@ -14,7 +14,7 @@ Verify in `DOPE_ENV=test` that the daemon can:
 
 ## Prerequisites
 
-- local test daemon only; do not use `~/.dope`
+- local test daemon only; do not use `~/.kura`
 - authenticated local pairing or an existing bearer token
 - no production connectors or live personal integrations are required
 - a `test_sink` delivery target exists if you want to validate background reminder
@@ -39,7 +39,7 @@ make daemon-run-test
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "targetId": "reminder-test-sink",
@@ -52,7 +52,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "preferenceId": "reminder-default-pref",
@@ -84,7 +84,7 @@ WORKFLOW_FIRE_AT=$(date -u -v+3M '+%Y-%m-%dT%H:%M:%SZ')
 
 ```bash
 CREATE_RESPONSE=$(curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Pay utility bill",
@@ -109,13 +109,13 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/reminders
 ```
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/reminders/$REMINDER_ID
 ```
 
@@ -128,7 +128,7 @@ Expected outcome after implementation:
 
 ```bash
 OCCURRENCES_RESPONSE=$(curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   "http://127.0.0.1:19192/v1/reminders/occurrences?reminderId=$REMINDER_ID")
 printf '%s\n' "$OCCURRENCES_RESPONSE"
 ACTIVE_OCCURRENCE_ID=$(printf '%s' "$OCCURRENCES_RESPONSE" | jq -r '.items[0].occurrenceId')
@@ -144,7 +144,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}' \
   http://127.0.0.1:19192/v1/reminders/$REMINDER_ID/acknowledge
@@ -152,7 +152,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "snoozedUntil": "'"$SNOOZE_UNTIL"'"
@@ -162,7 +162,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"occurrenceId":"'$ACTIVE_OCCURRENCE_ID'"}' \
   http://127.0.0.1:19192/v1/reminders/$REMINDER_ID/complete
@@ -170,7 +170,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"occurrenceId":"'$ACTIVE_OCCURRENCE_ID'"}' \
   http://127.0.0.1:19192/v1/reminders/$REMINDER_ID/dismiss
@@ -178,7 +178,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "trigger": {
@@ -201,7 +201,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Review inbox triage",
@@ -226,7 +226,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Send morning summary",

@@ -1,18 +1,18 @@
 [package]
-name = "dope-telegram"
+name = "kura-telegram"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-imtypes.workspace = true
-dope-connectors.workspace = true
-dope-im.workspace = true
-dope-store.workspace = true
-dope-events.workspace = true
-dope-router.workspace = true
-dope-secrets.workspace = true
-dope-chat.workspace = true
+kura-imtypes.workspace = true
+kura-connectors.workspace = true
+kura-im.workspace = true
+kura-store.workspace = true
+kura-events.workspace = true
+kura-router.workspace = true
+kura-secrets.workspace = true
+kura-chat.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
@@ -25,6 +25,6 @@ ureq = { workspace = true, features = ["json"] }
 [dev-dependencies]
 tempfile = "3"
 futures.workspace = true
-dope-llm.workspace = true
-dope-runtime.workspace = true
-dope-checkpoints.workspace = true
+kura-llm.workspace = true
+kura-runtime.workspace = true
+kura-checkpoints.workspace = true

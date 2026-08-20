@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/replay-attempt-list.response.schema.json",
+  "$id": "https://kura.local/schemas/api/replay-attempt-list.response.schema.json",
   "title": "ReplayAttemptListResponse",
   "type": "object",
   "required": ["environmentScope", "items"],

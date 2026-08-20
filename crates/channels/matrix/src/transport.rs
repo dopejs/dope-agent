@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use dope_im::{ReplyProgressor, ReplySender};
-use dope_imtypes::{OutboundReply, ReplyCapabilities, SentReply};
+use kura_im::{ReplyProgressor, ReplySender};
+use kura_imtypes::{OutboundReply, ReplyCapabilities, SentReply};
 use parking_lot::Mutex;
 
 use crate::types::InboundEvent;
@@ -26,7 +26,7 @@ pub trait Transport: Send + Sync {
     fn close(&self) -> Result<(), String>;
 }
 
-/// A Transport is a dope-im ReplySender: `reply_progressor` stays `None`
+/// A Transport is a kura-im ReplySender: `reply_progressor` stays `None`
 /// because Matrix only supports final-only foreground replies (Go's
 /// replies.(ReplyProgressor) type assertion fails for the Matrix transport).
 impl ReplySender for dyn Transport {
@@ -39,7 +39,7 @@ impl ReplySender for dyn Transport {
     }
 }
 
-/// Adapts a [Transport] into a dope-im [ReplySender] value (trait-object to
+/// Adapts a [Transport] into a kura-im [ReplySender] value (trait-object to
 /// trait-object coercion is not automatic for unrelated traits).
 pub(crate) struct TransportReplySender<'a>(pub &'a dyn Transport);
 

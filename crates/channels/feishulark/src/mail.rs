@@ -4,9 +4,9 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use dope_adapterprovider::{Handler, HandlerError, Operation};
-use dope_integrations::{ReadinessStatus, Resource};
-use dope_mail::{
+use kura_adapterprovider::{Handler, HandlerError, Operation};
+use kura_integrations::{ReadinessStatus, Resource};
+use kura_mail::{
     apply_attachment_policy, AccountProjection, AttachmentReference, AttachmentRefInput,
     AttachmentResolutionStatus, ComposeMode, CreateDraftInput, Direction, DraftSnapshot,
     DraftStatus, DownloadAttachmentInput, ForwardMessageInput, ListDraftsInput,

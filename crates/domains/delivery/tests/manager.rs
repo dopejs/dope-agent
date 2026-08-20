@@ -8,13 +8,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
-use dope_delivery::{
+use kura_delivery::{
     DeliveryAdapter, DeliveryPreference, DeliveryTarget, OutcomeInput, OutcomeStatus,
     PreferenceScopeKind, ResultClass, SuppressionPolicy, TargetKind, TargetStatus,
 };
-use dope_events::Bus;
-use dope_integrations::DiagnosticReasonCode;
-use dope_store::delivery::DeliveryAttemptRecord;
+use kura_events::Bus;
+use kura_integrations::DiagnosticReasonCode;
+use kura_store::delivery::DeliveryAttemptRecord;
 
 use common::{manager_with, seed_delivery_preference_state, wait_for_outcome_status, ScriptedAdapter, store};
 
@@ -22,7 +22,7 @@ use common::{manager_with, seed_delivery_preference_state, wait_for_outcome_stat
 fn delivery_retries_without_failover_and_retains_attempt_history() {
     let store = store("retry");
     let adapter = ScriptedAdapter::new(TargetKind::TestSink, vec![Err("transient send failure".to_string())]);
-    let manager = dope_delivery::Manager::new("test", Bus::new(), Arc::clone(&store), vec![Arc::clone(&adapter) as Arc<dyn DeliveryAdapter>]);
+    let manager = kura_delivery::Manager::new("test", Bus::new(), Arc::clone(&store), vec![Arc::clone(&adapter) as Arc<dyn DeliveryAdapter>]);
     manager.configure_for_testing(3, Duration::from_millis(10), Duration::from_millis(20));
 
     let (primary, mut pref) = seed_delivery_preference_state(&manager, "primary-target");
@@ -52,8 +52,8 @@ fn delivery_retries_without_failover_and_retains_attempt_history() {
 
     let final_outcome = wait_for_outcome_status(&manager, &outcome.delivery_id, OutcomeStatus::Delivered);
     assert_eq!(final_outcome.attempts.len(), 2, "expected two attempts: {final_outcome:?}");
-    assert_eq!(final_outcome.attempts[0].status, dope_delivery::AttemptStatus::RetryableFailure);
-    assert_eq!(final_outcome.attempts[1].status, dope_delivery::AttemptStatus::Delivered);
+    assert_eq!(final_outcome.attempts[0].status, kura_delivery::AttemptStatus::RetryableFailure);
+    assert_eq!(final_outcome.attempts[1].status, kura_delivery::AttemptStatus::Delivered);
     assert_eq!(final_outcome.attempts[0].target_id, primary.target_id);
     assert_eq!(final_outcome.attempts[1].target_id, primary.target_id);
     assert_ne!(final_outcome.attempts[0].target_id, secondary.target_id);
@@ -67,7 +67,7 @@ fn delivery_restore_resumes_queued_attempt() {
     // First manager fails once and schedules a far-future retry; the test rewrites the
     // attempt next_retry_at through the store, exactly like the Go test.
     let first_adapter = ScriptedAdapter::new(TargetKind::TestSink, vec![Err("transient send failure".to_string())]);
-    let first = dope_delivery::Manager::new(
+    let first = kura_delivery::Manager::new(
         "test",
         Bus::new(),
         Arc::clone(&store),
@@ -102,7 +102,7 @@ fn delivery_restore_resumes_queued_attempt() {
     }).unwrap();
 
     let second_adapter = ScriptedAdapter::new(TargetKind::TestSink, Vec::new());
-    let second = dope_delivery::Manager::new(
+    let second = kura_delivery::Manager::new(
         "test",
         Bus::new(),
         Arc::clone(&store),
@@ -172,7 +172,7 @@ fn delivery_suppression_policy_suppresses_failure_class() {
             ..OutcomeInput::default()
         })
         .unwrap();
-    assert_eq!(outcome.mode, dope_delivery::DeliveryMode::Suppressed);
+    assert_eq!(outcome.mode, kura_delivery::DeliveryMode::Suppressed);
     assert_eq!(outcome.status, OutcomeStatus::Suppressed);
     assert_eq!(outcome.suppression_reason, "failure result suppressed by policy");
 }
@@ -188,7 +188,7 @@ fn delivery_no_active_preference_is_suppressed() {
             ..OutcomeInput::default()
         })
         .unwrap();
-    assert_eq!(outcome.mode, dope_delivery::DeliveryMode::Suppressed);
+    assert_eq!(outcome.mode, kura_delivery::DeliveryMode::Suppressed);
     assert_eq!(outcome.status, OutcomeStatus::Suppressed);
     assert_eq!(outcome.suppression_reason, "no active delivery preference");
 }
@@ -231,9 +231,9 @@ fn delivery_emit_is_idempotent_per_source() {
 
 #[test]
 fn delivery_test_sink_records_messages() {
-    use dope_delivery::TestSinkAdapter;
+    use kura_delivery::TestSinkAdapter;
     let sink = Arc::new(TestSinkAdapter::new());
-    let (manager, _store) = manager_with(vec![Arc::clone(&sink) as Arc<dyn dope_delivery::DeliveryAdapter>]);
+    let (manager, _store) = manager_with(vec![Arc::clone(&sink) as Arc<dyn kura_delivery::DeliveryAdapter>]);
     let (target, _) = seed_delivery_preference_state(&manager, "sink-target");
     let outcome = manager
         .emit_outcome(OutcomeInput {
@@ -305,16 +305,16 @@ fn delivery_missing_required_fields_error() {
             ..DeliveryTarget::default()
         })
         .unwrap_err();
-    assert_eq!(err, dope_delivery::DeliveryError::TargetIdRequired);
+    assert_eq!(err, kura_delivery::DeliveryError::TargetIdRequired);
     let err = manager
         .create_target(DeliveryTarget {
             target_id: "no-display".to_string(),
             ..DeliveryTarget::default()
         })
         .unwrap_err();
-    assert_eq!(err, dope_delivery::DeliveryError::DisplayNameRequired);
+    assert_eq!(err, kura_delivery::DeliveryError::DisplayNameRequired);
     let err = manager
         .upsert_preference(DeliveryPreference::default())
         .unwrap_err();
-    assert_eq!(err, dope_delivery::DeliveryError::PreferenceIdRequired);
+    assert_eq!(err, kura_delivery::DeliveryError::PreferenceIdRequired);
 }

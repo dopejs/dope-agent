@@ -1,12 +1,12 @@
 [package]
-name = "dope-execprofile"
+name = "kura-execprofile"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-store.workspace = true
-dope-sandbox.workspace = true
+kura-store.workspace = true
+kura-sandbox.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
@@ -15,6 +15,6 @@ parking_lot.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-dope-config.workspace = true
-dope-events.workspace = true
-dope-policy.workspace = true
+kura-config.workspace = true
+kura-events.workspace = true
+kura-policy.workspace = true

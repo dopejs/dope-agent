@@ -11,7 +11,7 @@ Design rule:
 - clients must share the same daemon contract layer
 - Web and TUI must not each implement ad-hoc HTTP/SSE logic
 - tenant-scoped callers should use SDK tenant options instead of constructing
-  `X-Dope-Tenant-ID` headers directly
+  `X-Kura-Tenant-ID` headers directly
 
 ## Tenant-Aware TypeScript Client
 
@@ -19,7 +19,7 @@ The TypeScript client can carry tenant intent at the client level or for one
 request:
 
 ```ts
-const client = createDopeClient({
+const client = createKuraClient({
   baseURL: "http://127.0.0.1:19192",
   accessToken,
   defaultTenantId: "ten_personal"
@@ -38,7 +38,7 @@ default tenant.
 Tenant identity and membership helpers are exposed through the same client:
 `getMe`, `listTenants`, `getTenant`, `listMemberships`, `updateMembershipRole`,
 and `removeMembership`. Tenant authorization failures surface through
-`DopeClientError.tenantDenied` and stable `denial` metadata when the daemon
+`KuraClientError.tenantDenied` and stable `denial` metadata when the daemon
 returns a tenant denial payload.
 
 Reserved for generated or maintained client SDKs.

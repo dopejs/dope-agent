@@ -14,9 +14,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_imtypes::{DeliveryDirection, DeliveryStatus, MessageRecord, OutboundReply, SentReply};
-use dope_store::SQLiteStore;
-use dope_store::connectors::ConnectorDeliveryBoundaryRecord;
+use kura_imtypes::{DeliveryDirection, DeliveryStatus, MessageRecord, OutboundReply, SentReply};
+use kura_store::SQLiteStore;
+use kura_store::connectors::ConnectorDeliveryBoundaryRecord;
 use parking_lot::Mutex;
 
 use crate::{DeliveryAdapter, DeliveryOutcome, DeliveryTarget, SendResult, TargetKind};

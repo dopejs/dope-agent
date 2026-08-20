@@ -4,9 +4,9 @@
 //! (`ErrBindingRepairRequired`, `providers.ErrProviderAuthUnavailable`,
 //! `skills.ErrSkillsRegistryMissing`) and wrapped store/LLM errors. This
 //! crate surfaces the same vocabulary as a typed enum in the style of the
-//! `dope-runtime` and `dope-orchestration` error enums.
+//! `kura-runtime` and `kura-orchestration` error enums.
 
-use dope_llm::PrepareError;
+use kura_llm::PrepareError;
 
 /// Chat query/stream failures. Payload strings carry the Go error text where
 /// the Go code wraps a plain error, so callers can surface the same messages.
@@ -41,13 +41,13 @@ pub enum ChatError {
     /// Store CRUD failures.
     #[error("store operation failed: {0}")]
     Store(String),
-    /// A store method the `dope-store` crate has not ported yet; the chat
+    /// A store method the `kura-store` crate has not ported yet; the chat
     /// service is written against the full Go store surface, and the
-    /// `dope-store` adapter fails these calls explicitly instead of silently
+    /// `kura-store` adapter fails these calls explicitly instead of silently
     /// degrading.
     #[error("store method not ported: {0}")]
     StoreMethodDeferred(String),
-    /// `dope-llm` dispatch preparation failures.
+    /// `kura-llm` dispatch preparation failures.
     #[error(transparent)]
     Prepare(#[from] PrepareError),
     /// Dispatch execution failure (Go exec error). The final dispatch record
@@ -77,9 +77,9 @@ pub enum ChatError {
 
 impl ChatError {
     /// Convenience wrapper for the deferred-store-method error so callers and
-    /// the `dope-store` adapter share one message shape.
+    /// the `kura-store` adapter share one message shape.
     #[must_use]
     pub fn deferred_store_method(name: &str) -> Self {
-        ChatError::StoreMethodDeferred(format!("{name} (not ported to dope-store)"))
+        ChatError::StoreMethodDeferred(format!("{name} (not ported to kura-store)"))
     }
 }

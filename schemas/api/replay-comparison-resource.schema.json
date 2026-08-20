@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/replay-comparison-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/replay-comparison-resource.schema.json",
   "title": "ReplayComparisonResource",
   "type": "object",
   "required": ["comparisonId", "candidateId", "baselineRef", "attemptId", "environmentScope", "terminalStatus", "runtimeSummary", "policySummary", "integrationSummary", "deliverySummary", "evidenceSummary", "confidence", "limitations", "driftFindings", "generatedAt"],

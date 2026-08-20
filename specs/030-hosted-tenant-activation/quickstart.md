@@ -7,8 +7,8 @@ operator explicitly authorizes a separate live run.
 ## Preconditions
 
 - Branch: `030-hosted-tenant-activation`
-- Environment: `DOPE_ENV=test`
-- Data root: `~/.dope-test`
+- Environment: `KURA_ENV=test`
+- Data root: `~/.kura-test`
 - Daemon address: `127.0.0.1:19192`
 - Live connectors: disabled
 - Production secrets: not required
@@ -127,7 +127,7 @@ operator explicitly authorizes a separate live run.
 - Passing `pnpm test:clients`.
 - Passing `pnpm build` when client bundles change.
 - `go mod tidy` produces no unintended module drift.
-- Manual `DOPE_ENV=test` walkthrough from no active setup to completed test chat.
+- Manual `KURA_ENV=test` walkthrough from no active setup to completed test chat.
 - Evidence that signup or invitation acceptance lands in activation without manual
   activation calls.
 - Evidence that first-run tenant, environment, quota, readiness, and next action are
@@ -145,15 +145,15 @@ operator explicitly authorizes a separate live run.
 - SDK and web tests cover activation loading, quota projection, blocked diagnostics,
   test chat completion metadata, stale tenant refresh, and no rendering of test chat
   message content.
-- Manual `DOPE_ENV=test` walkthrough on 2026-05-06 used `make daemon-run-test` against
+- Manual `KURA_ENV=test` walkthrough on 2026-05-06 used `make daemon-run-test` against
   `127.0.0.1:19192` and `make daemon-test-status` returned
-  `{"ok":true,"service":"dope"}` before each activation check. Production data, live
-  connectors, and `~/.dope` were not used.
+  `{"ok":true,"service":"kura"}` before each activation check. Production data, live
+  connectors, and `~/.kura` were not used.
 - Hosted signup/authentication was exercised through a test pairing flow, then
   `POST /v1/activation` with `{"source":"signup"}` returned activation
   `act_prn_0ab80aded6cd6170_ten_afb3b7aa4173b0bd` for personal tenant
   `ten_afb3b7aa4173b0bd` and principal `prn_0ab80aded6cd6170`. The bearer token was
-  treated as secret material and only recorded as `dope_cf3ace6...`.
+  treated as secret material and only recorded as `kura_cf3ace6...`.
 - First-run review completed within the 30-second target from the activation projection:
   status `active`, environment `test`, quota baseline `development` with
   `unlimited` enforcement and `billing_usage_summary` source, readiness items
@@ -201,4 +201,4 @@ operator explicitly authorizes a separate live run.
   `pnpm test:clients`, and the client build steps inside `pnpm test:clients` all
   completed successfully. The test daemon was started with `make daemon-run-test` on
   `127.0.0.1:19192`; after startup, `make daemon-test-status` returned
-  `{"ok":true,"service":"dope"}`. The daemon was stopped after the health check.
+  `{"ok":true,"service":"kura"}`. The daemon was stopped after the health check.

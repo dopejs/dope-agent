@@ -57,7 +57,7 @@ creating a hidden executor.
 the current runtime truth, approval boundaries, and audit model instead of becoming a
 special-case local tool path.
 
-**Independent Test**: Execute at least one `DOPE_ENV=test` workflow that combines a
+**Independent Test**: Execute at least one `KURA_ENV=test` workflow that combines a
 computer-use step with another capability family, then confirm every computer-use action
 appears as normal runtime truth with session linkage and operator-visible evidence.
 
@@ -215,11 +215,11 @@ distinguishable and backed by operator-visible evidence where applicable.
   tests for session lifecycle, approval gating, workflow integration, and failure-class
   handling; contract coverage for new computer-use resources or artifacts; restart
   coverage for persisted history and interrupted work; and one manual browser-based
-  `DOPE_ENV=test` verification path.
+  `KURA_ENV=test` verification path.
 - **Observability Impact**: Operator-visible surfaces must explain pending approvals,
   current browser target, action history, evidence artifacts, interruption outcomes, and
   failure-class distinctions without requiring raw-log reconstruction.
-- **Environment & Secrets**: Validation stays in `DOPE_ENV=test` by default. Browser
+- **Environment & Secrets**: Validation stays in `KURA_ENV=test` by default. Browser
   consumers and any downloaded or captured artifacts remain environment-scoped and must
   follow existing secret-handling and redaction rules. Production connectors or general
   desktop access are not required for this phase.
@@ -233,7 +233,7 @@ distinguishable and backed by operator-visible evidence where applicable.
 - **SC-002**: In validated successful browser-first runs, 100% of completed high-risk
   computer-use actions record operator-visible pre-action context, final outcome, and at
   least one linked evidence artifact without requiring raw log inspection.
-- **SC-003**: At least one `DOPE_ENV=test` workflow combining computer use with another
+- **SC-003**: At least one `KURA_ENV=test` workflow combining computer use with another
   capability family completes end-to-end without any out-of-band execution path.
 - **SC-004**: In automated verification, 100% of exercised policy denial, unavailable
   consumer, navigation failure, and target mismatch outcomes are distinguishable from one

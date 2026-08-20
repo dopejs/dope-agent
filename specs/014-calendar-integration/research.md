@@ -76,7 +76,7 @@
 
 ### Decision: Extend the repo-owned fake integration backend into a deterministic fake calendar backend for verification
 
-- Rationale: The constitution requires `DOPE_ENV=test` by default and the spec allows a
+- Rationale: The constitution requires `KURA_ENV=test` by default and the spec allows a
   local or fake verification path. Extending the fake integration backend to supply one
   deterministic primary calendar and timed single-event lifecycle is enough to validate
   account projection, mutation truth, stale-state handling, schedule/workflow linkage,

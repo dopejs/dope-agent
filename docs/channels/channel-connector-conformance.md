@@ -48,7 +48,7 @@ live-smoke evidence:
   that names the owner, reason, validation date, remaining risk, retention expiry, and
   redaction status
 
-Default verification uses fake connectors and fake credentials in `~/.dope-test`.
+Default verification uses fake connectors and fake credentials in `~/.kura-test`.
 Live connector credentials and production tenants are out of scope unless an operator
 chooses a separate live validation path.
 

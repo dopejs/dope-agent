@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/replay-drift-finding.schema.json",
+  "$id": "https://kura.local/schemas/api/replay-drift-finding.schema.json",
   "title": "ReplayDriftFinding",
   "type": "object",
   "required": ["findingId", "comparisonId", "plane", "severity", "summary", "createdAt"],

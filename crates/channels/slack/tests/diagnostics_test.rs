@@ -4,11 +4,11 @@
 use std::collections::HashMap;
 
 use chrono::{TimeZone, Utc};
-use dope_connectors::{DiagnosticReasonCode, RedactionStatus};
-use dope_slack::diagnostics::{
+use kura_connectors::{DiagnosticReasonCode, RedactionStatus};
+use kura_slack::diagnostics::{
     build_diagnostic_state, diagnostic_reason_for_error, diagnostic_reason_for_message,
 };
-use dope_slack::transport_webapi::WebApiError;
+use kura_slack::transport_webapi::WebApiError;
 
 #[test]
 fn diagnostic_reason_for_error_maps_slack_failures() {

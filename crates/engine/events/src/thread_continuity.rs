@@ -3,7 +3,7 @@
 use crate::util::{is_go_zero_time, now_utc, payload};
 use crate::wire;
 use crate::{Event, Resource, Scope};
-use dope_threads::{ContinuityPreview, ContinuityTurn};
+use kura_threads::{ContinuityPreview, ContinuityTurn};
 
 pub const THREAD_CONTINUITY_TURN_RECORDED_NAME: &str = "thread.continuity_turn_recorded";
 pub const THREAD_CONTINUITY_PREVIEW_RECORDED_NAME: &str = "thread.continuity_preview_recorded";

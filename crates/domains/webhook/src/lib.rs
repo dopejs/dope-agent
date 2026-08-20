@@ -8,8 +8,8 @@
 //! Wire compatibility with the Go package: string enums serialize as their exact snake_case values
 //! and structs use camelCase JSON keys with the same `omitempty` behavior (`skip_serializing_if`).
 //!
-//! The Go `managerdoc.Store` persistence maps onto `dope_store::{put_document, list_documents}`
-//! against `dope_store::SQLiteStore`; a nil store is `Option<&SQLiteStore>` and persistence is
+//! The Go `managerdoc.Store` persistence maps onto `kura_store::{put_document, list_documents}`
+//! against `kura_store::SQLiteStore`; a nil store is `Option<&SQLiteStore>` and persistence is
 //! skipped while `None`. The Go policy-hook interfaces (`Firer`, `QuotaGate`) become Rust
 //! traits with default all-pass/noop implementations. The Go `context.Context` parameters are
 //! dropped (sync port). HMAC-SHA256 (RFC 2104) is implemented on the workspace `sha2` crate.
@@ -220,7 +220,7 @@ pub struct Manager {
     env: String,
     firer: Box<dyn Firer>,
     quota: Box<dyn QuotaGate>,
-    docs: Option<Arc<parking_lot::Mutex<dope_store::SQLiteStore>>>,
+    docs: Option<Arc<parking_lot::Mutex<kura_store::SQLiteStore>>>,
 }
 
 impl Manager {
@@ -243,7 +243,7 @@ impl Manager {
 
     /// Go `WithStore`: installs durable persistence for webhook endpoints + secrets and returns
     /// the manager.
-    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> &mut Self {
+    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<kura_store::SQLiteStore>>) -> &mut Self {
         self.docs = Some(store);
         self
     }
@@ -252,7 +252,7 @@ impl Manager {
     /// A no-op when no store is installed.
     pub fn load_from_store(&self) -> Result<(), String> {
         let Some(docs) = &self.docs else { return Ok(()); };
-        let items: Vec<PersistedEndpoint> = dope_store::list_documents(&docs.lock(), DOC_KIND_WEBHOOK)?;
+        let items: Vec<PersistedEndpoint> = kura_store::list_documents(&docs.lock(), DOC_KIND_WEBHOOK)?;
         let mut inner = self.inner.write();
         for item in items {
             let endpoint = item.endpoint;
@@ -358,7 +358,7 @@ impl Manager {
         }
     }
 
-    /// Go `ListForTenant` (insertion order, mirroring the `dope-runtime` manager convention).
+    /// Go `ListForTenant` (insertion order, mirroring the `kura-runtime` manager convention).
     pub fn list_for_tenant(&self, tenant_id: &str) -> Vec<Endpoint> {
         let inner = self.inner.read();
         inner
@@ -481,7 +481,7 @@ impl Manager {
             endpoint: endpoint.clone(),
             secret_hex: encode_hex(secret),
         };
-        let _ = dope_store::put_document(
+        let _ = kura_store::put_document(
             &docs.lock(),
             DOC_KIND_WEBHOOK,
             &endpoint.webhook_id,
@@ -585,7 +585,7 @@ fn fingerprint(secret: &[u8]) -> String {
     format!("sha256:{}", &encode_hex(&digest)[..12])
 }
 
-/// Go `newID`: `prefix` + 16 hex chars of random bytes (reference `dope-runtime` convention).
+/// Go `newID`: `prefix` + 16 hex chars of random bytes (reference `kura-runtime` convention).
 #[must_use]
 fn new_id(prefix: &str) -> String {
     let hex = Uuid::new_v4().simple().to_string();

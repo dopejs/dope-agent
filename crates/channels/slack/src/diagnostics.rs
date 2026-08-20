@@ -1,14 +1,14 @@
 //! Slack diagnostics (port of diagnostics.go): failure classification into
 //! diagnostic reason codes, and the diagnostic-state builder with unsafe
 //! evidence redaction (Go's shared ClassifyDiagnostic is not yet ported into
-//! dope-connectors, so the classification is implemented here on top of the
-//! dope-connectors types).
+//! kura-connectors, so the classification is implemented here on top of the
+//! kura-connectors types).
 
 use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, Utc};
 
-use dope_connectors::{
+use kura_connectors::{
     ConnectorDiagnosticState, DiagnosticReasonCode, FreshnessState, LifecycleState,
     RedactionStatus, RemediationOwner, RetrySafety,
 };

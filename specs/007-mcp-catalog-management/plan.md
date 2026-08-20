@@ -15,14 +15,14 @@ drift and revalidation results through additive API, schema, event, and history 
 
 ## Technical Context
 
-**Language/Version**: Go 1.24.0; Bash for existing repo helper usage in verification; Markdown docs; JSON Schema contracts  
-**Primary Dependencies**: `daemon/internal/api`, `daemon/internal/app`, `daemon/internal/contracts`, `daemon/internal/events`, `daemon/internal/mcp`, `daemon/internal/runtime`, `daemon/internal/store`, `modernc.org/sqlite`  
-**Storage**: SQLite daemon state for MCP server documents, lifecycle state, tool exposure, and event history; additive catalog-management metadata persisted inside the existing `mcp_servers` document model; environment-scoped config and secret material under `~/.dope-test` or `~/.dope`  
-**Testing**: `go test ./internal/mcp ./internal/api ./internal/app ./internal/store ./internal/contracts`, `make daemon-contract-test`, `go test ./...`  
-**Target Platform**: macOS/Linux local daemon in `DOPE_ENV=test` by default, with MCP catalog entries spanning local stdio and remote `streamable-http` transports already introduced in Roadmap 21  
-**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts plus repo operator utilities  
-**Performance Goals**: Catalog-management inspection plus uninstall, refresh, reinstall, and revalidation preflight add no more than `<=100 ms` daemon-side overhead per request, excluding subprocess lifecycle latency, remote transport latency, and external service readiness  
-**Constraints**: Catalog management MUST stay additive to the existing MCP registry; uninstall MUST remove the active resource instead of creating an inactive tombstone model; uninstall, refresh, and reinstall MUST return `conflict` or `busy` while lifecycle or tool invocation is active; refresh and reinstall MUST fail closed on `operatorModified` or equivalent conflicting state; revalidation is operator-triggered only in this phase; source, revision, drift, and revalidation truth MUST stay redacted and environment-scoped  
+**Language/Version**: Go 1.24.0; Bash for existing repo helper usage in verification; Markdown docs; JSON Schema contracts
+**Primary Dependencies**: `daemon/internal/api`, `daemon/internal/app`, `daemon/internal/contracts`, `daemon/internal/events`, `daemon/internal/mcp`, `daemon/internal/runtime`, `daemon/internal/store`, `modernc.org/sqlite`
+**Storage**: SQLite daemon state for MCP server documents, lifecycle state, tool exposure, and event history; additive catalog-management metadata persisted inside the existing `mcp_servers` document model; environment-scoped config and secret material under `~/.kura-test` or `~/.kura`
+**Testing**: `go test ./internal/mcp ./internal/api ./internal/app ./internal/store ./internal/contracts`, `make daemon-contract-test`, `go test ./...`
+**Target Platform**: macOS/Linux local daemon in `KURA_ENV=test` by default, with MCP catalog entries spanning local stdio and remote `streamable-http` transports already introduced in Roadmap 21
+**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts plus repo operator utilities
+**Performance Goals**: Catalog-management inspection plus uninstall, refresh, reinstall, and revalidation preflight add no more than `<=100 ms` daemon-side overhead per request, excluding subprocess lifecycle latency, remote transport latency, and external service readiness
+**Constraints**: Catalog management MUST stay additive to the existing MCP registry; uninstall MUST remove the active resource instead of creating an inactive tombstone model; uninstall, refresh, and reinstall MUST return `conflict` or `busy` while lifecycle or tool invocation is active; refresh and reinstall MUST fail closed on `operatorModified` or equivalent conflicting state; revalidation is operator-triggered only in this phase; source, revision, drift, and revalidation truth MUST stay redacted and environment-scoped
 **Scale/Scope**: One daemon-managed MCP inventory for a small operator-managed environment (single digits to low dozens of installed servers, repeated maintenance actions on bundled catalog entries, and bounded event/history growth per action)
 
 ## Constitution Check
@@ -32,8 +32,8 @@ drift and revalidation results through additive API, schema, event, and history 
 - Roadmap closure: PASS. This plan closes Roadmap 22 only: managed lifecycle after MCP catalog install, source/version/drift truth, explicit revalidation, docs, and verification. It leaves marketplace distribution, additional transports, and orchestration in the already-recut later roadmaps.
 - Production-grade change control: PASS. The design extends the existing MCP manager, API routes, store documents, and event model instead of introducing a second package-management subsystem or hidden action path. Rollback is a single change-set revert of catalog-management metadata and action routes while preserving Roadmap 21 install and invocation behavior.
 - Contracts and auditability: PASS. The plan names the API routes, schemas, event families, persistence fields, docs, and verification artifacts that must change together so uninstall, refresh, reinstall, drift, and revalidation remain operator-visible.
-- Verification and observability: PASS. The plan requires targeted daemon tests, contract coverage, event/history verification, and a manual `DOPE_ENV=test` maintenance walkthrough. Operator-visible action results, drift classification, and revalidation outcomes are part of the design, not optional follow-up.
-- Environment and secrets: PASS. Local work remains in `DOPE_ENV=test`; no live environment is needed for planning; secret refs remain environment-scoped and operator-visible surfaces continue to redact secret values and supported derived forms.
+- Verification and observability: PASS. The plan requires targeted daemon tests, contract coverage, event/history verification, and a manual `KURA_ENV=test` maintenance walkthrough. Operator-visible action results, drift classification, and revalidation outcomes are part of the design, not optional follow-up.
+- Environment and secrets: PASS. Local work remains in `KURA_ENV=test`; no live environment is needed for planning; secret refs remain environment-scoped and operator-visible surfaces continue to redact secret values and supported derived forms.
 
 Post-design re-check:
 

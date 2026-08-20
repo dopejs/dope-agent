@@ -25,21 +25,21 @@ pub struct MailOperationFilter {
     pub draft_id: String,
 }
 
-fn scan_mail_account(row: &Row) -> Result<dope_mail::AccountProjection, String> {
+fn scan_mail_account(row: &Row) -> Result<kura_mail::AccountProjection, String> {
     let updated_at: String = row.get(6).map_err(|e| e.to_string())?;
     parse_rfc3339(&updated_at)?;
     let document_json: String = row.get(7).map_err(|e| e.to_string())?;
     crate::crud::decode_json_field(&document_json).map_err(|e| format!("decode mail account: {e}"))
 }
 
-fn scan_mail_operation(row: &Row) -> Result<dope_mail::Operation, String> {
+fn scan_mail_operation(row: &Row) -> Result<kura_mail::Operation, String> {
     let updated_at: String = row.get(14).map_err(|e| e.to_string())?;
     parse_rfc3339(&updated_at)?;
     let document_json: String = row.get(15).map_err(|e| e.to_string())?;
     crate::crud::decode_json_field(&document_json).map_err(|e| format!("decode mail operation: {e}"))
 }
 
-fn scan_mail_artifact(row: &Row) -> Result<dope_mail::Artifact, String> {
+fn scan_mail_artifact(row: &Row) -> Result<kura_mail::Artifact, String> {
     let created_at: String = row.get(9).map_err(|e| e.to_string())?;
     parse_rfc3339(&created_at)?;
     let document_json: String = row.get(10).map_err(|e| e.to_string())?;
@@ -47,7 +47,7 @@ fn scan_mail_artifact(row: &Row) -> Result<dope_mail::Artifact, String> {
 }
 
 impl SQLiteStore {
-    pub fn upsert_mail_account(&self, item: &dope_mail::AccountProjection) -> Result<(), String> {
+    pub fn upsert_mail_account(&self, item: &kura_mail::AccountProjection) -> Result<(), String> {
         let document_json = serde_json::to_string(item)
             .map_err(|e| format!("marshal mail account {}: {e}", item.mail_account_id))?;
 
@@ -89,7 +89,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_mail_accounts(&self, environment_scope: &str) -> Result<Vec<dope_mail::AccountProjection>, String> {
+    pub fn list_mail_accounts(&self, environment_scope: &str) -> Result<Vec<kura_mail::AccountProjection>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -107,7 +107,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn upsert_mail_operation(&self, item: &dope_mail::Operation) -> Result<(), String> {
+    pub fn upsert_mail_operation(&self, item: &kura_mail::Operation) -> Result<(), String> {
         let document_json = serde_json::to_string(item)
             .map_err(|e| format!("marshal mail operation {}: {e}", item.operation_id))?;
 
@@ -177,7 +177,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         filter: &MailOperationFilter,
-    ) -> Result<Vec<dope_mail::Operation>, String> {
+    ) -> Result<Vec<kura_mail::Operation>, String> {
         let mut sql = String::from(
             r#"SELECT operation_id, integration_id, mail_account_id, environment_scope, operation_class, status, result_mode, thread_id, message_id, draft_id, run_id, workflow_id, schedule_id, delivery_id, updated_at, document_json
             FROM mail_operations
@@ -256,13 +256,13 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         operation_id: &str,
-    ) -> Result<Option<dope_mail::Operation>, String> {
+    ) -> Result<Option<kura_mail::Operation>, String> {
         let wanted = operation_id.trim();
         let items = self.list_mail_operations(environment_scope, &MailOperationFilter::default())?;
         Ok(items.into_iter().find(|item| item.operation_id == wanted))
     }
 
-    pub fn upsert_mail_artifact(&self, item: &dope_mail::Artifact) -> Result<(), String> {
+    pub fn upsert_mail_artifact(&self, item: &kura_mail::Artifact) -> Result<(), String> {
         let document_json = serde_json::to_string(item)
             .map_err(|e| format!("marshal mail artifact {}: {e}", item.artifact_id))?;
 
@@ -317,7 +317,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         operation_id: &str,
-    ) -> Result<Vec<dope_mail::Artifact>, String> {
+    ) -> Result<Vec<kura_mail::Artifact>, String> {
         let mut sql = String::from(
             r#"SELECT artifact_id, operation_id, integration_id, environment_scope, kind, thread_id, message_id, draft_id, attachment_ref_id, created_at, document_json
             FROM mail_artifacts

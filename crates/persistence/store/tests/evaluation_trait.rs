@@ -1,4 +1,4 @@
-//! Trait-surface tests for `dope_evaluation::Store` implemented by
+//! Trait-surface tests for `kura_evaluation::Store` implemented by
 //! `EvaluationStoreHandle` (the Send + Sync newtype over the SQLite store).
 //! The underlying DAOs are covered by tests/evaluation.rs; here we exercise
 //! the exact trait methods an evaluation manager would call through the
@@ -7,16 +7,16 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_evaluation::{
+use kura_evaluation::{
     AttemptFilter, CandidateFilter, CandidateKind, ComparisonFilter, ComparisonResult,
     ComparisonTerminalStatus, FixtureDomainClass, FixtureFilter, ReadinessStatus,
     RegressionFixture, ReplayAttempt, ReplayAttemptStatus, ReplayCandidate, ReplayMode,
     SourceKind, Store,
 };
-use dope_store::{EvaluationStoreHandle, SQLiteStore};
+use kura_store::{EvaluationStoreHandle, SQLiteStore};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_eval_trait_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_eval_trait_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -56,9 +56,9 @@ fn make_attempt(id: &str, candidate_id: &str, scope: &str) -> ReplayAttempt {
         environment_scope: scope.to_string(),
         mode: ReplayMode::NonLive,
         status: ReplayAttemptStatus::Completed,
-        safety_scope: dope_evaluation::SafetyScope::default(),
-        approval_handling: dope_evaluation::ApprovalHandling::EvidenceOnly,
-        side_effect_handling: dope_evaluation::SideEffectHandling::EvidenceOnly,
+        safety_scope: kura_evaluation::SafetyScope::default(),
+        approval_handling: kura_evaluation::ApprovalHandling::EvidenceOnly,
+        side_effect_handling: kura_evaluation::SideEffectHandling::EvidenceOnly,
         launched_by: "trait_user".to_string(),
         change_window_label: "trait-release".to_string(),
         baseline_attempt_id: String::new(),
@@ -111,7 +111,7 @@ fn make_fixture(id: &str, scope: &str) -> RegressionFixture {
         assumptions: vec!["assumption".to_string()],
         limitations: Vec::new(),
         expected_replay_mode: ReplayMode::NonLive,
-        expected_comparison_summary: dope_evaluation::PlaneSummaries::default(),
+        expected_comparison_summary: kura_evaluation::PlaneSummaries::default(),
         candidate_id: String::new(),
         environment_scope: scope.to_string(),
         created_at: now,

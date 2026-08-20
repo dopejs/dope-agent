@@ -6,7 +6,7 @@
 //!
 //! Follow-up: `Session::active_profile_projection` is a JSON pass-through
 //! (`serde_json::Value`) because `profiles.RuntimeProjection` has not been
-//! ported to `dope-profiles` yet. Once it lands, swap the field type to the
+//! ported to `kura-profiles` yet. Once it lands, swap the field type to the
 //! real projection type without changing the wire format.
 
 use std::collections::HashMap;

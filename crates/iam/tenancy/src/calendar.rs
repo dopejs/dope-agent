@@ -6,12 +6,12 @@ use crate::{emit_denial, require, TenancyError};
 /// Tenant-aware accessor for the calendar family.
 pub struct Calendar {
     store: crate::SQLiteStore,
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl Calendar {
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         Calendar { store, emitter }
     }
 
@@ -19,7 +19,7 @@ impl Calendar {
         emit_denial(&self.emitter, surface, resource_kind);
     }
 
-    pub fn upsert_account_for_tenant(&self, item: &dope_calendar::AccountProjection) -> Result<(), TenancyError> {
+    pub fn upsert_account_for_tenant(&self, item: &kura_calendar::AccountProjection) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_calendar_account(item).map_err(TenancyError::from)?;
         match self.store.bind_row_tenant("calendar_accounts", "calendar_account_id", &item.calendar_account_id, &tenant_id) {
@@ -31,7 +31,7 @@ impl Calendar {
         }
     }
 
-    pub fn upsert_operation_for_tenant(&self, item: &dope_calendar::Operation) -> Result<(), TenancyError> {
+    pub fn upsert_operation_for_tenant(&self, item: &kura_calendar::Operation) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_calendar_operation(item).map_err(TenancyError::from)?;
         match self.store.bind_row_tenant("calendar_operations", "operation_id", &item.operation_id, &tenant_id) {
@@ -43,7 +43,7 @@ impl Calendar {
         }
     }
 
-    pub fn upsert_artifact_for_tenant(&self, item: &dope_calendar::Artifact) -> Result<(), TenancyError> {
+    pub fn upsert_artifact_for_tenant(&self, item: &kura_calendar::Artifact) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_calendar_artifact(item).map_err(TenancyError::from)?;
         match self.store.bind_row_tenant("calendar_artifacts", "artifact_id", &item.artifact_id, &tenant_id) {

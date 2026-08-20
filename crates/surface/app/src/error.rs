@@ -7,7 +7,7 @@ use std::io;
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("load config: {0}")]
-    Config(#[from] dope_config::ConfigError),
+    Config(#[from] kura_config::ConfigError),
     #[error("store: {0}")]
     Store(String),
     #[error("plugin profile: {0}")]

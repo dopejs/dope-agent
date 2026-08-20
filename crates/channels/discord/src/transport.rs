@@ -9,10 +9,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_connectors::{DiagnosticReasonCode, RedactionStatus};
-use dope_im::{ReplyProgressor, ReplySender};
-use dope_imtypes::{InboundMessage, OutboundReply, ReplyCapabilities, ReplyEdit, SentReply, ThinkingSignal};
-use dope_router::SessionKind;
+use kura_connectors::{DiagnosticReasonCode, RedactionStatus};
+use kura_im::{ReplyProgressor, ReplySender};
+use kura_imtypes::{InboundMessage, OutboundReply, ReplyCapabilities, ReplyEdit, SentReply, ThinkingSignal};
+use kura_router::SessionKind;
 
 use crate::config::Config;
 use crate::destinations::{DestinationType, DestinationValidation, DestinationValidationState};

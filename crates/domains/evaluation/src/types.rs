@@ -140,7 +140,7 @@ string_enum!(SuppressionState {
     Revoked => "revoked",
 });
 
-// Evaluation redaction status. Distinct from `dope_connectors::RedactionStatus`
+// Evaluation redaction status. Distinct from `kura_connectors::RedactionStatus`
 // (which carries `redacted`/`suppressed`/`redaction_failed` wire values for
 // connector conformance evidence); the Go evaluation package defines its own
 // `RedactionStatus` with `clean`/`redacted`/`failed`.

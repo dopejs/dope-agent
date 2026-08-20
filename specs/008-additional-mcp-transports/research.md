@@ -74,7 +74,7 @@ Implementation closure:
 - The reconnect budget is per disconnect episode rather than cumulative across the entire
   server lifetime; successful recovery resets the attempt counter before the next incident.
 
-### Decision: Real verification should use a repo-owned websocket MCP helper server in `DOPE_ENV=test`
+### Decision: Real verification should use a repo-owned websocket MCP helper server in `KURA_ENV=test`
 
 - Rationale: Phase 23 needs one real end-to-end websocket MCP server, but this repository
   does not yet have a bundled websocket catalog entry and should not rely on an external

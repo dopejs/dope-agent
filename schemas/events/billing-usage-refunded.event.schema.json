@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/billing-usage-refunded.event.schema.json",
+  "$id": "https://kura.local/schemas/events/billing-usage-refunded.event.schema.json",
   "title": "BillingUsageRefundedEvent",
   "type": "object",
   "required": ["eventId", "sequence", "category", "name", "occurredAt", "scope", "resource", "payload"],

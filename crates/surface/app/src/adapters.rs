@@ -3,33 +3,33 @@
 
 use std::sync::Arc;
 
-use dope_scheduler::WorkflowLauncher as _;
-use dope_store::SQLiteStore;
+use kura_scheduler::WorkflowLauncher as _;
+use kura_store::SQLiteStore;
 
 // ---------------------------------------------------------------------------
 // Identity store handle (Go store.SQLiteStore is the identity store; the
 // Rust SQLiteStore is !Sync, so the API layer erases it behind the
-// object-safe dope_identity::Store trait through this mutex handle).
+// object-safe kura_identity::Store trait through this mutex handle).
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 struct IdentityStoreError(String);
 
-fn identity_store_err(message: String) -> dope_identity::IdentityError {
-    dope_identity::IdentityError::Store(Box::new(IdentityStoreError(message)))
+fn identity_store_err(message: String) -> kura_identity::IdentityError {
+    kura_identity::IdentityError::Store(Box::new(IdentityStoreError(message)))
 }
 
 /// Send + Sync handle over the shared SQLite store implementing
-/// [`dope_identity::Store`], mirroring the erased-store pattern used by the
+/// [`kura_identity::Store`], mirroring the erased-store pattern used by the
 /// api test suite (TestIdentityStore).
 pub struct IdentityStoreHandle(pub Arc<parking_lot::Mutex<SQLiteStore>>);
 
-impl dope_identity::ResolverStore for IdentityStoreHandle {
+impl kura_identity::ResolverStore for IdentityStoreHandle {
     fn get_principal(
         &self,
         principal_id: &str,
-    ) -> Result<Option<dope_identity::Principal>, dope_identity::IdentityError> {
+    ) -> Result<Option<kura_identity::Principal>, kura_identity::IdentityError> {
         self.0
             .lock()
             .get_principal(principal_id)
@@ -38,7 +38,7 @@ impl dope_identity::ResolverStore for IdentityStoreHandle {
     fn get_tenant(
         &self,
         tenant_id: &str,
-    ) -> Result<Option<dope_identity::Tenant>, dope_identity::IdentityError> {
+    ) -> Result<Option<kura_identity::Tenant>, kura_identity::IdentityError> {
         self.0
             .lock()
             .get_tenant(tenant_id)
@@ -46,8 +46,8 @@ impl dope_identity::ResolverStore for IdentityStoreHandle {
     }
     fn list_memberships(
         &self,
-        filter: &dope_identity::MembershipFilter,
-    ) -> Result<Vec<dope_identity::Membership>, dope_identity::IdentityError> {
+        filter: &kura_identity::MembershipFilter,
+    ) -> Result<Vec<kura_identity::Membership>, kura_identity::IdentityError> {
         self.0
             .lock()
             .list_memberships(filter)
@@ -56,7 +56,7 @@ impl dope_identity::ResolverStore for IdentityStoreHandle {
     fn list_token_tenant_grants(
         &self,
         token_id: &str,
-    ) -> Result<Vec<dope_identity::TokenTenantGrant>, dope_identity::IdentityError> {
+    ) -> Result<Vec<kura_identity::TokenTenantGrant>, kura_identity::IdentityError> {
         self.0
             .lock()
             .list_token_tenant_grants(token_id)
@@ -64,11 +64,11 @@ impl dope_identity::ResolverStore for IdentityStoreHandle {
     }
 }
 
-impl dope_identity::AuditStore for IdentityStoreHandle {
+impl kura_identity::AuditStore for IdentityStoreHandle {
     fn append_tenant_audit_event(
         &self,
-        event: dope_identity::TenantAuditEvent,
-    ) -> Result<dope_identity::TenantAuditEvent, dope_identity::IdentityError> {
+        event: kura_identity::TenantAuditEvent,
+    ) -> Result<kura_identity::TenantAuditEvent, kura_identity::IdentityError> {
         self.0
             .lock()
             .append_tenant_audit_event(&event)
@@ -76,11 +76,11 @@ impl dope_identity::AuditStore for IdentityStoreHandle {
     }
 }
 
-impl dope_identity::Store for IdentityStoreHandle {
+impl kura_identity::Store for IdentityStoreHandle {
     fn upsert_tenant(
         &self,
-        tenant: &dope_identity::Tenant,
-    ) -> Result<(), dope_identity::IdentityError> {
+        tenant: &kura_identity::Tenant,
+    ) -> Result<(), kura_identity::IdentityError> {
         self.0
             .lock()
             .upsert_tenant(tenant)
@@ -88,8 +88,8 @@ impl dope_identity::Store for IdentityStoreHandle {
     }
     fn upsert_principal(
         &self,
-        principal: &dope_identity::Principal,
-    ) -> Result<(), dope_identity::IdentityError> {
+        principal: &kura_identity::Principal,
+    ) -> Result<(), kura_identity::IdentityError> {
         self.0
             .lock()
             .upsert_principal(principal)
@@ -97,8 +97,8 @@ impl dope_identity::Store for IdentityStoreHandle {
     }
     fn upsert_membership(
         &self,
-        membership: &dope_identity::Membership,
-    ) -> Result<(), dope_identity::IdentityError> {
+        membership: &kura_identity::Membership,
+    ) -> Result<(), kura_identity::IdentityError> {
         self.0
             .lock()
             .upsert_membership(membership)
@@ -106,8 +106,8 @@ impl dope_identity::Store for IdentityStoreHandle {
     }
     fn upsert_tenant_invitation(
         &self,
-        invitation: &dope_identity::TenantInvitation,
-    ) -> Result<(), dope_identity::IdentityError> {
+        invitation: &kura_identity::TenantInvitation,
+    ) -> Result<(), kura_identity::IdentityError> {
         self.0
             .lock()
             .upsert_tenant_invitation(invitation)
@@ -115,8 +115,8 @@ impl dope_identity::Store for IdentityStoreHandle {
     }
     fn upsert_token_tenant_grant(
         &self,
-        grant: &dope_identity::TokenTenantGrant,
-    ) -> Result<(), dope_identity::IdentityError> {
+        grant: &kura_identity::TokenTenantGrant,
+    ) -> Result<(), kura_identity::IdentityError> {
         self.0
             .lock()
             .upsert_token_tenant_grant(grant)
@@ -124,8 +124,8 @@ impl dope_identity::Store for IdentityStoreHandle {
     }
     fn list_tenants(
         &self,
-        filter: &dope_identity::TenantFilter,
-    ) -> Result<Vec<dope_identity::Tenant>, dope_identity::IdentityError> {
+        filter: &kura_identity::TenantFilter,
+    ) -> Result<Vec<kura_identity::Tenant>, kura_identity::IdentityError> {
         self.0
             .lock()
             .list_tenants(filter)
@@ -133,8 +133,8 @@ impl dope_identity::Store for IdentityStoreHandle {
     }
     fn list_principals(
         &self,
-        filter: &dope_identity::PrincipalFilter,
-    ) -> Result<Vec<dope_identity::Principal>, dope_identity::IdentityError> {
+        filter: &kura_identity::PrincipalFilter,
+    ) -> Result<Vec<kura_identity::Principal>, kura_identity::IdentityError> {
         self.0
             .lock()
             .list_principals(filter)
@@ -142,8 +142,8 @@ impl dope_identity::Store for IdentityStoreHandle {
     }
     fn list_tenant_invitations(
         &self,
-        filter: &dope_identity::InvitationFilter,
-    ) -> Result<Vec<dope_identity::TenantInvitation>, dope_identity::IdentityError> {
+        filter: &kura_identity::InvitationFilter,
+    ) -> Result<Vec<kura_identity::TenantInvitation>, kura_identity::IdentityError> {
         self.0
             .lock()
             .list_tenant_invitations(filter)
@@ -151,7 +151,7 @@ impl dope_identity::Store for IdentityStoreHandle {
     }
     fn list_token_authorities(
         &self,
-    ) -> Result<Vec<dope_identity::TokenAuthority>, dope_identity::IdentityError> {
+    ) -> Result<Vec<kura_identity::TokenAuthority>, kura_identity::IdentityError> {
         self.0
             .lock()
             .list_token_authorities()
@@ -164,12 +164,12 @@ impl dope_identity::Store for IdentityStoreHandle {
 // ---------------------------------------------------------------------------
 
 pub struct WorkflowLauncherImpl {
-    runtime: Arc<dope_runtime::Manager>,
+    runtime: Arc<kura_runtime::Manager>,
 }
 
 impl WorkflowLauncherImpl {
     #[must_use]
-    pub fn new(runtime: Arc<dope_runtime::Manager>) -> Self {
+    pub fn new(runtime: Arc<kura_runtime::Manager>) -> Self {
         Self { runtime }
     }
 
@@ -184,7 +184,7 @@ impl WorkflowLauncherImpl {
     ) -> Result<String, String> {
         let run = self
             .runtime
-            .create_run(dope_runtime::CreateRunInput {
+            .create_run(kura_runtime::CreateRunInput {
                 run_id: String::new(),
                 session_id: String::new(),
                 schedule_id: schedule_id.to_string(),
@@ -203,13 +203,13 @@ impl WorkflowLauncherImpl {
     }
 }
 
-impl dope_scheduler::WorkflowLauncher for WorkflowLauncherImpl {
+impl kura_scheduler::WorkflowLauncher for WorkflowLauncherImpl {
     fn launch_scheduled_workflow(
         &self,
-        target: &dope_scheduler::WorkflowTarget,
+        target: &kura_scheduler::WorkflowTarget,
         schedule_id: &str,
         schedule_attempt_id: &str,
-    ) -> Result<dope_scheduler::WorkflowLaunchResult, String> {
+    ) -> Result<kura_scheduler::WorkflowLaunchResult, String> {
         let goal = if target.workflow_goal.trim().is_empty() {
             target.run_goal.clone()
         } else {
@@ -223,28 +223,28 @@ impl dope_scheduler::WorkflowLauncher for WorkflowLauncherImpl {
             "",
             "",
         )?;
-        Ok(dope_scheduler::WorkflowLaunchResult {
+        Ok(kura_scheduler::WorkflowLaunchResult {
             run_id,
             workflow_id: String::new(),
-            downstream_status: dope_scheduler::DownstreamStatus::Running,
+            downstream_status: kura_scheduler::DownstreamStatus::Running,
         })
     }
 }
 
-impl dope_reminders::WorkflowLauncher for WorkflowLauncherImpl {
+impl kura_reminders::WorkflowLauncher for WorkflowLauncherImpl {
     fn launch_reminder_workflow(
         &self,
-        cfg: &dope_reminders::WorkflowLaunchConfig,
+        cfg: &kura_reminders::WorkflowLaunchConfig,
         reminder_id: &str,
         occurrence_id: &str,
-    ) -> Result<dope_reminders::WorkflowLaunchResult, String> {
+    ) -> Result<kura_reminders::WorkflowLaunchResult, String> {
         let goal = if cfg.workflow_goal.trim().is_empty() {
             cfg.run_goal.clone()
         } else {
             cfg.workflow_goal.clone()
         };
         let run_id = self.launch_run(&cfg.entrypoint, &goal, "", "", reminder_id, occurrence_id)?;
-        Ok(dope_reminders::WorkflowLaunchResult {
+        Ok(kura_reminders::WorkflowLaunchResult {
             run_id,
             workflow_id: String::new(),
         })
@@ -267,9 +267,9 @@ impl WebhookFirerImpl {
     }
 }
 
-impl dope_webhook::Firer for WebhookFirerImpl {
-    fn fire(&self, endpoint: &dope_webhook::Endpoint, _payload: &[u8]) -> Result<String, String> {
-        let target = dope_scheduler::WorkflowTarget {
+impl kura_webhook::Firer for WebhookFirerImpl {
+    fn fire(&self, endpoint: &kura_webhook::Endpoint, _payload: &[u8]) -> Result<String, String> {
+        let target = kura_scheduler::WorkflowTarget {
             session_id: String::new(),
             entrypoint: "operator".to_string(),
             run_goal: String::new(),
@@ -293,90 +293,90 @@ impl dope_webhook::Firer for WebhookFirerImpl {
 // ---------------------------------------------------------------------------
 // Routine scheduler adapter (Go *scheduler.Scheduler satisfies the routine
 // builder Scheduler interface; the Rust scheduler crate does not implement
-// dope_routine::Scheduler, so this local adapter performs the mapping).
+// kura_routine::Scheduler, so this local adapter performs the mapping).
 // ---------------------------------------------------------------------------
 
 pub struct RoutineSchedulerAdapter {
-    inner: Arc<dope_scheduler::Scheduler>,
+    inner: Arc<kura_scheduler::Scheduler>,
 }
 
 impl RoutineSchedulerAdapter {
     #[must_use]
-    pub fn new(inner: Arc<dope_scheduler::Scheduler>) -> Self {
+    pub fn new(inner: Arc<kura_scheduler::Scheduler>) -> Self {
         Self { inner }
     }
 }
 
 fn to_scheduler_trigger_kind(
-    kind: dope_routine::SchedulerTriggerKind,
-) -> dope_scheduler::TriggerKind {
+    kind: kura_routine::SchedulerTriggerKind,
+) -> kura_scheduler::TriggerKind {
     match kind {
-        dope_routine::SchedulerTriggerKind::Once => dope_scheduler::TriggerKind::Once,
-        dope_routine::SchedulerTriggerKind::Cron => dope_scheduler::TriggerKind::Cron,
+        kura_routine::SchedulerTriggerKind::Once => kura_scheduler::TriggerKind::Once,
+        kura_routine::SchedulerTriggerKind::Cron => kura_scheduler::TriggerKind::Cron,
     }
 }
 
 fn to_routine_trigger_kind(
-    kind: dope_scheduler::TriggerKind,
-) -> dope_routine::SchedulerTriggerKind {
+    kind: kura_scheduler::TriggerKind,
+) -> kura_routine::SchedulerTriggerKind {
     match kind {
-        dope_scheduler::TriggerKind::Once => dope_routine::SchedulerTriggerKind::Once,
-        dope_scheduler::TriggerKind::Cron => dope_routine::SchedulerTriggerKind::Cron,
+        kura_scheduler::TriggerKind::Once => kura_routine::SchedulerTriggerKind::Once,
+        kura_scheduler::TriggerKind::Cron => kura_routine::SchedulerTriggerKind::Cron,
     }
 }
 
-fn to_scheduler_target_kind(kind: dope_routine::SchedulerTargetKind) -> dope_scheduler::TargetKind {
+fn to_scheduler_target_kind(kind: kura_routine::SchedulerTargetKind) -> kura_scheduler::TargetKind {
     match kind {
-        dope_routine::SchedulerTargetKind::Run => dope_scheduler::TargetKind::Run,
-        dope_routine::SchedulerTargetKind::Workflow => dope_scheduler::TargetKind::Workflow,
+        kura_routine::SchedulerTargetKind::Run => kura_scheduler::TargetKind::Run,
+        kura_routine::SchedulerTargetKind::Workflow => kura_scheduler::TargetKind::Workflow,
     }
 }
 
-fn to_routine_target_kind(kind: dope_scheduler::TargetKind) -> dope_routine::SchedulerTargetKind {
+fn to_routine_target_kind(kind: kura_scheduler::TargetKind) -> kura_routine::SchedulerTargetKind {
     match kind {
-        dope_scheduler::TargetKind::Run => dope_routine::SchedulerTargetKind::Run,
-        dope_scheduler::TargetKind::Workflow => dope_routine::SchedulerTargetKind::Workflow,
+        kura_scheduler::TargetKind::Run => kura_routine::SchedulerTargetKind::Run,
+        kura_scheduler::TargetKind::Workflow => kura_routine::SchedulerTargetKind::Workflow,
     }
 }
 
 fn to_scheduler_backoff(
-    kind: dope_routine::SchedulerRetryBackoffKind,
-) -> dope_scheduler::RetryBackoffKind {
+    kind: kura_routine::SchedulerRetryBackoffKind,
+) -> kura_scheduler::RetryBackoffKind {
     match kind {
-        dope_routine::SchedulerRetryBackoffKind::Fixed => dope_scheduler::RetryBackoffKind::Fixed,
-        dope_routine::SchedulerRetryBackoffKind::Exponential => {
-            dope_scheduler::RetryBackoffKind::Exponential
+        kura_routine::SchedulerRetryBackoffKind::Fixed => kura_scheduler::RetryBackoffKind::Fixed,
+        kura_routine::SchedulerRetryBackoffKind::Exponential => {
+            kura_scheduler::RetryBackoffKind::Exponential
         }
     }
 }
 
 fn to_routine_backoff(
-    kind: dope_scheduler::RetryBackoffKind,
-) -> dope_routine::SchedulerRetryBackoffKind {
+    kind: kura_scheduler::RetryBackoffKind,
+) -> kura_routine::SchedulerRetryBackoffKind {
     match kind {
-        dope_scheduler::RetryBackoffKind::Fixed => dope_routine::SchedulerRetryBackoffKind::Fixed,
-        dope_scheduler::RetryBackoffKind::Exponential => {
-            dope_routine::SchedulerRetryBackoffKind::Exponential
+        kura_scheduler::RetryBackoffKind::Fixed => kura_routine::SchedulerRetryBackoffKind::Fixed,
+        kura_scheduler::RetryBackoffKind::Exponential => {
+            kura_routine::SchedulerRetryBackoffKind::Exponential
         }
     }
 }
 
-fn to_scheduler_create_input(input: &dope_routine::CreateInput) -> dope_scheduler::CreateInput {
-    dope_scheduler::CreateInput {
-        trigger: dope_scheduler::Trigger {
+fn to_scheduler_create_input(input: &kura_routine::CreateInput) -> kura_scheduler::CreateInput {
+    kura_scheduler::CreateInput {
+        trigger: kura_scheduler::Trigger {
             kind: to_scheduler_trigger_kind(input.trigger.kind),
             fire_at: input.trigger.fire_at,
             cron_expr: input.trigger.cron_expr.clone(),
             timezone: input.trigger.timezone.clone(),
             next_due_at: None,
         },
-        target: dope_scheduler::Target {
+        target: kura_scheduler::Target {
             kind: to_scheduler_target_kind(input.target.kind),
             revision: 0,
             active: input.target.active,
             run: None,
             workflow: input.target.workflow.as_ref().map(|workflow| {
-                dope_scheduler::WorkflowTarget {
+                kura_scheduler::WorkflowTarget {
                     session_id: String::new(),
                     entrypoint: workflow.entrypoint.clone(),
                     run_goal: String::new(),
@@ -388,7 +388,7 @@ fn to_scheduler_create_input(input: &dope_routine::CreateInput) -> dope_schedule
             summary: input.target.summary.clone(),
             updated_at: chrono::Utc::now(),
         },
-        retry_policy: dope_scheduler::RetryPolicy {
+        retry_policy: kura_scheduler::RetryPolicy {
             max_retries: input.retry_policy.max_retries,
             backoff_kind: to_scheduler_backoff(input.retry_policy.backoff_kind),
             base_delay_seconds: input.retry_policy.base_delay_seconds,
@@ -397,44 +397,44 @@ fn to_scheduler_create_input(input: &dope_routine::CreateInput) -> dope_schedule
     }
 }
 
-fn to_routine_schedule(schedule: dope_scheduler::Schedule) -> dope_routine::Schedule {
-    dope_routine::Schedule {
+fn to_routine_schedule(schedule: kura_scheduler::Schedule) -> kura_routine::Schedule {
+    kura_routine::Schedule {
         schedule_id: schedule.schedule_id,
         environment_scope: schedule.environment_scope,
         tenant_id: schedule.tenant_id,
         kind: match schedule.kind {
-            dope_scheduler::ScheduleKind::OneTime => dope_routine::ScheduleKind::OneTime,
-            dope_scheduler::ScheduleKind::Recurring => dope_routine::ScheduleKind::Recurring,
+            kura_scheduler::ScheduleKind::OneTime => kura_routine::ScheduleKind::OneTime,
+            kura_scheduler::ScheduleKind::Recurring => kura_routine::ScheduleKind::Recurring,
         },
         status: match schedule.status {
-            dope_scheduler::ScheduleStatus::Scheduled => dope_routine::ScheduleStatus::Scheduled,
-            dope_scheduler::ScheduleStatus::Active => dope_routine::ScheduleStatus::Active,
-            dope_scheduler::ScheduleStatus::Paused => dope_routine::ScheduleStatus::Paused,
-            dope_scheduler::ScheduleStatus::Cancelled => dope_routine::ScheduleStatus::Cancelled,
-            dope_scheduler::ScheduleStatus::Completed => dope_routine::ScheduleStatus::Completed,
-            dope_scheduler::ScheduleStatus::DispatchFailed => {
-                dope_routine::ScheduleStatus::DispatchFailed
+            kura_scheduler::ScheduleStatus::Scheduled => kura_routine::ScheduleStatus::Scheduled,
+            kura_scheduler::ScheduleStatus::Active => kura_routine::ScheduleStatus::Active,
+            kura_scheduler::ScheduleStatus::Paused => kura_routine::ScheduleStatus::Paused,
+            kura_scheduler::ScheduleStatus::Cancelled => kura_routine::ScheduleStatus::Cancelled,
+            kura_scheduler::ScheduleStatus::Completed => kura_routine::ScheduleStatus::Completed,
+            kura_scheduler::ScheduleStatus::DispatchFailed => {
+                kura_routine::ScheduleStatus::DispatchFailed
             }
         },
         target_ref_id: schedule.target_ref_id,
-        trigger: dope_routine::SchedulerTrigger {
+        trigger: kura_routine::SchedulerTrigger {
             kind: to_routine_trigger_kind(schedule.trigger.kind),
             fire_at: schedule.trigger.fire_at,
             cron_expr: schedule.trigger.cron_expr,
             timezone: schedule.trigger.timezone,
         },
-        target: dope_routine::SchedulerTarget {
+        target: kura_routine::SchedulerTarget {
             kind: to_routine_target_kind(schedule.target.kind),
             active: schedule.target.active,
             workflow: schedule.target.workflow.map(|workflow| {
-                dope_routine::SchedulerWorkflowTarget {
+                kura_routine::SchedulerWorkflowTarget {
                     entrypoint: workflow.entrypoint,
                     workflow_goal: workflow.workflow_goal,
                 }
             }),
             summary: schedule.target.summary,
         },
-        retry_policy: dope_routine::SchedulerRetryPolicy {
+        retry_policy: kura_routine::SchedulerRetryPolicy {
             max_retries: schedule.retry_policy.max_retries,
             backoff_kind: to_routine_backoff(schedule.retry_policy.backoff_kind),
             base_delay_seconds: schedule.retry_policy.base_delay_seconds,
@@ -445,8 +445,8 @@ fn to_routine_schedule(schedule: dope_scheduler::Schedule) -> dope_routine::Sche
     }
 }
 
-impl dope_routine::Scheduler for RoutineSchedulerAdapter {
-    fn create(&self, input: &dope_routine::CreateInput) -> Result<dope_routine::Schedule, String> {
+impl kura_routine::Scheduler for RoutineSchedulerAdapter {
+    fn create(&self, input: &kura_routine::CreateInput) -> Result<kura_routine::Schedule, String> {
         let schedule = self
             .inner
             .create(to_scheduler_create_input(input))
@@ -454,7 +454,7 @@ impl dope_routine::Scheduler for RoutineSchedulerAdapter {
         Ok(to_routine_schedule(schedule))
     }
 
-    fn pause(&self, schedule_id: &str) -> Result<(dope_routine::Schedule, bool), String> {
+    fn pause(&self, schedule_id: &str) -> Result<(kura_routine::Schedule, bool), String> {
         match self
             .inner
             .pause(schedule_id)
@@ -465,7 +465,7 @@ impl dope_routine::Scheduler for RoutineSchedulerAdapter {
         }
     }
 
-    fn resume(&self, schedule_id: &str) -> Result<(dope_routine::Schedule, bool), String> {
+    fn resume(&self, schedule_id: &str) -> Result<(kura_routine::Schedule, bool), String> {
         match self
             .inner
             .resume(schedule_id)
@@ -476,7 +476,7 @@ impl dope_routine::Scheduler for RoutineSchedulerAdapter {
         }
     }
 
-    fn cancel(&self, schedule_id: &str) -> Result<(dope_routine::Schedule, bool), String> {
+    fn cancel(&self, schedule_id: &str) -> Result<(kura_routine::Schedule, bool), String> {
         match self
             .inner
             .cancel(schedule_id)
@@ -487,10 +487,10 @@ impl dope_routine::Scheduler for RoutineSchedulerAdapter {
         }
     }
 
-    fn get(&self, schedule_id: &str) -> Result<(dope_routine::Schedule, bool), String> {
+    fn get(&self, schedule_id: &str) -> Result<(kura_routine::Schedule, bool), String> {
         match self.inner.get(schedule_id).map_err(|err| err.to_string())? {
             Some(schedule) => Ok((to_routine_schedule(schedule), true)),
-            None => Ok((dope_routine::Schedule::default(), false)),
+            None => Ok((kura_routine::Schedule::default(), false)),
         }
     }
 }
@@ -502,7 +502,7 @@ impl dope_routine::Scheduler for RoutineSchedulerAdapter {
 
 pub struct NoMigrationInProgress;
 
-impl dope_api::state::MigrationStatus for NoMigrationInProgress {
+impl kura_api::state::MigrationStatus for NoMigrationInProgress {
     fn in_progress(&self) -> bool {
         false
     }
@@ -515,8 +515,8 @@ impl dope_api::state::MigrationStatus for NoMigrationInProgress {
 
 // ---------------------------------------------------------------------------
 // MCP secret resolver (Go mcp.SetSecretManager with the tenant secret
-// manager): dope-mcp's SecretResolver seam is synchronous, while
-// dope-secrets::Manager::resolve is async (its store/backend futures are
+// manager): kura-mcp's SecretResolver seam is synchronous, while
+// kura-secrets::Manager::resolve is async (its store/backend futures are
 // plain sync work wrapped in BoxFuture), so the bridge blocks on a resolved
 // default personal tenant. Mirrors App::resolve_connector_secret's
 // tenant resolution.
@@ -524,20 +524,20 @@ impl dope_api::state::MigrationStatus for NoMigrationInProgress {
 
 pub struct McpSecretResolver {
     store: Arc<parking_lot::Mutex<SQLiteStore>>,
-    secrets: Arc<dope_secrets::Manager>,
+    secrets: Arc<kura_secrets::Manager>,
 }
 
 impl McpSecretResolver {
     #[must_use]
     pub fn new(
         store: Arc<parking_lot::Mutex<SQLiteStore>>,
-        secrets: Arc<dope_secrets::Manager>,
+        secrets: Arc<kura_secrets::Manager>,
     ) -> Self {
         Self { store, secrets }
     }
 }
 
-impl dope_mcp::SecretResolver for McpSecretResolver {
+impl kura_mcp::SecretResolver for McpSecretResolver {
     fn resolve(&self, secret_ref: &str) -> Result<Option<String>, String> {
         let tenant_id = self
             .store
@@ -547,7 +547,7 @@ impl dope_mcp::SecretResolver for McpSecretResolver {
         if tenant_id.trim().is_empty() {
             return Ok(None);
         }
-        let resolved = futures::executor::block_on(self.secrets.resolve(dope_secrets::ResolveInput {
+        let resolved = futures::executor::block_on(self.secrets.resolve(kura_secrets::ResolveInput {
             tenant_id,
             secret_ref: secret_ref.trim().to_string(),
         }))
@@ -558,7 +558,7 @@ impl dope_mcp::SecretResolver for McpSecretResolver {
 
 // ---------------------------------------------------------------------------
 // MCP attached-execution starter (Go attachedExecutionStarter): spawns the
-// MCP server command through the dope-sandbox execution plane, which returns
+// MCP server command through the kura-sandbox execution plane, which returns
 // live stdin/stdout pipes plus a runner thread (stderr is drained into the
 // sandbox capture buffer, so the stdio transport gets no stderr pipe — it
 // tolerates that by skipping its own drain thread). The remaining trait
@@ -566,26 +566,26 @@ impl dope_mcp::SecretResolver for McpSecretResolver {
 // ---------------------------------------------------------------------------
 
 pub struct McpExecutionStarter {
-    sandbox: Arc<dope_sandbox::Manager>,
+    sandbox: Arc<kura_sandbox::Manager>,
 }
 
 impl McpExecutionStarter {
     #[must_use]
-    pub fn new(sandbox: Arc<dope_sandbox::Manager>) -> Self {
+    pub fn new(sandbox: Arc<kura_sandbox::Manager>) -> Self {
         Self { sandbox }
     }
 }
 
-impl dope_mcp::AttachedExecutionStarter for McpExecutionStarter {
+impl kura_mcp::AttachedExecutionStarter for McpExecutionStarter {
     fn start_attached_execution(
         &self,
-        request: &dope_sandbox::ExecutionRequest,
-    ) -> Result<(dope_sandbox::Execution, Option<dope_mcp::AttachedExecution>), String> {
+        request: &kura_sandbox::ExecutionRequest,
+    ) -> Result<(kura_sandbox::Execution, Option<kura_mcp::AttachedExecution>), String> {
         let (execution, attached) = self
             .sandbox
             .start_attached_execution(request.clone())
             .map_err(|err| err.to_string())?;
-        let attached = attached.map(|attached| dope_mcp::AttachedExecution {
+        let attached = attached.map(|attached| kura_mcp::AttachedExecution {
             execution: attached.execution,
             stdin: attached
                 .stdin
@@ -601,26 +601,26 @@ impl dope_mcp::AttachedExecutionStarter for McpExecutionStarter {
     fn cancel_execution(
         &self,
         execution_id: &str,
-    ) -> Result<(dope_sandbox::Execution, bool), String> {
+    ) -> Result<(kura_sandbox::Execution, bool), String> {
         self.sandbox
             .cancel_execution(execution_id)
             .map_err(|err| err.to_string())
     }
 
-    fn get_execution(&self, execution_id: &str) -> Option<dope_sandbox::Execution> {
+    fn get_execution(&self, execution_id: &str) -> Option<kura_sandbox::Execution> {
         self.sandbox.get_execution(execution_id)
     }
 
     fn persist_consumer_view(
         &self,
-        view: &dope_sandbox::ConsumerContractView,
+        view: &kura_sandbox::ConsumerContractView,
     ) -> Result<(), String> {
         self.sandbox
             .persist_consumer_view(view)
             .map_err(|err| err.to_string())
     }
 
-    fn get_profile(&self, profile_id: &str) -> Option<dope_sandbox::Profile> {
+    fn get_profile(&self, profile_id: &str) -> Option<kura_sandbox::Profile> {
         self.sandbox.get_profile(profile_id)
     }
 }
@@ -640,18 +640,18 @@ impl dope_mcp::AttachedExecutionStarter for McpExecutionStarter {
 /// triggers stay allowed by recorded decision: quota enforcement is a hosted,
 /// per-tenant bound, and the local single-operator mode has no plan to charge.
 pub struct WebhookQuotaGateImpl {
-    billing: Arc<dope_billing::Manager>,
-    store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>,
-    events: Arc<dope_events::Bus>,
+    billing: Arc<kura_billing::Manager>,
+    store: Arc<parking_lot::Mutex<kura_store::SQLiteStore>>,
+    events: Arc<kura_events::Bus>,
     environment_scope: String,
 }
 
 impl WebhookQuotaGateImpl {
     #[must_use]
     pub fn new(
-        billing: Arc<dope_billing::Manager>,
-        store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>,
-        events: Arc<dope_events::Bus>,
+        billing: Arc<kura_billing::Manager>,
+        store: Arc<parking_lot::Mutex<kura_store::SQLiteStore>>,
+        events: Arc<kura_events::Bus>,
         environment_scope: &str,
     ) -> Self {
         Self {
@@ -667,16 +667,16 @@ impl WebhookQuotaGateImpl {
         payload.insert("tenantId".to_string(), serde_json::json!(tenant_id));
         payload.insert("webhookId".to_string(), serde_json::json!(webhook_id));
         payload.insert("reasonCode".to_string(), serde_json::json!(reason_code));
-        let event = dope_events::Event {
+        let event = kura_events::Event {
             category: "webhook".to_string(),
             name: "webhook.trigger_quota_denied".to_string(),
             environment_scope: self.environment_scope.clone(),
-            resource: dope_events::Resource {
+            resource: kura_events::Resource {
                 kind: "webhook".to_string(),
                 id: webhook_id.to_string(),
             },
             payload,
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         };
         if let Ok(stored) = self.store.lock().append_event(&event) {
             self.events.publish(stored);
@@ -684,7 +684,7 @@ impl WebhookQuotaGateImpl {
     }
 }
 
-impl dope_webhook::QuotaGate for WebhookQuotaGateImpl {
+impl kura_webhook::QuotaGate for WebhookQuotaGateImpl {
     fn allow(&self, tenant_id: &str, webhook_id: &str) -> (bool, String) {
         let tenant_id = tenant_id.trim();
         if tenant_id.is_empty() {
@@ -695,9 +695,9 @@ impl dope_webhook::QuotaGate for WebhookQuotaGateImpl {
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
         );
         let reserve = futures::executor::block_on(self.billing.reserve(
-            dope_billing::ReserveInput {
+            kura_billing::ReserveInput {
                 tenant_id: tenant_id.to_string(),
-                category: dope_billing::Category::WORKFLOW_LAUNCHES.into(),
+                category: kura_billing::Category::WORKFLOW_LAUNCHES.into(),
                 amount: 1,
                 operation_key: operation_key.clone(),
                 reservation_point: "webhook_trigger".to_string(),
@@ -712,9 +712,9 @@ impl dope_webhook::QuotaGate for WebhookQuotaGateImpl {
                 // reservation immediately (best-effort; a failed commit
                 // resolves through the billing recovery sweep).
                 let _ = futures::executor::block_on(self.billing.commit(
-                    dope_billing::ResolveInput {
+                    kura_billing::ResolveInput {
                         tenant_id: tenant_id.to_string(),
-                        category: dope_billing::Category::WORKFLOW_LAUNCHES.into(),
+                        category: kura_billing::Category::WORKFLOW_LAUNCHES.into(),
                         operation_key,
                         amount: 1,
                         reason_code: "webhook_trigger_fired".to_string(),
@@ -751,22 +751,22 @@ impl dope_webhook::QuotaGate for WebhookQuotaGateImpl {
 /// key is unmet — the gate fails closed rather than guessing at
 /// prerequisites the sandbox plane cannot attest.
 pub struct CatalogSandboxRequirementChecker {
-    sandbox: Arc<dope_sandbox::Manager>,
+    sandbox: Arc<kura_sandbox::Manager>,
 }
 
 impl CatalogSandboxRequirementChecker {
     #[must_use]
-    pub fn new(sandbox: Arc<dope_sandbox::Manager>) -> Self {
+    pub fn new(sandbox: Arc<kura_sandbox::Manager>) -> Self {
         Self { sandbox }
     }
 }
 
-impl dope_catalog::RequirementChecker for CatalogSandboxRequirementChecker {
+impl kura_catalog::RequirementChecker for CatalogSandboxRequirementChecker {
     fn unmet(
         &self,
         _tenant_id: &str,
-        requirements: &[dope_catalog::Requirement],
-    ) -> Vec<dope_catalog::Requirement> {
+        requirements: &[kura_catalog::Requirement],
+    ) -> Vec<kura_catalog::Requirement> {
         let backends = self.sandbox.backend_capabilities();
         requirements
             .iter()
@@ -776,7 +776,7 @@ impl dope_catalog::RequirementChecker for CatalogSandboxRequirementChecker {
                 !backends.iter().any(|backend| {
                     backend.backend_kind.as_str().eq_ignore_ascii_case(key)
                         && backend.availability_status
-                            == dope_sandbox::BackendAvailabilityStatus::Available
+                            == kura_sandbox::BackendAvailabilityStatus::Available
                 })
             })
             .cloned()
@@ -793,24 +793,24 @@ impl dope_catalog::RequirementChecker for CatalogSandboxRequirementChecker {
 /// authoritative protected() route middleware, which resolves the caller's
 /// token permissions.
 pub struct CatalogTenantPermissionGate {
-    store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>,
+    store: Arc<parking_lot::Mutex<kura_store::SQLiteStore>>,
 }
 
 impl CatalogTenantPermissionGate {
     #[must_use]
-    pub fn new(store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> Self {
+    pub fn new(store: Arc<parking_lot::Mutex<kura_store::SQLiteStore>>) -> Self {
         Self { store }
     }
 }
 
-impl dope_catalog::PermissionGate for CatalogTenantPermissionGate {
+impl kura_catalog::PermissionGate for CatalogTenantPermissionGate {
     fn allow(&self, tenant_id: &str, _permissions: &[String]) -> bool {
         let tenant_id = tenant_id.trim();
         if tenant_id.is_empty() {
             return true;
         }
         match self.store.lock().get_tenant(tenant_id) {
-            Ok(Some(tenant)) => tenant.status == dope_identity::LifecycleStatus::Active,
+            Ok(Some(tenant)) => tenant.status == kura_identity::LifecycleStatus::Active,
             _ => false,
         }
     }
@@ -819,39 +819,39 @@ impl dope_catalog::PermissionGate for CatalogTenantPermissionGate {
 #[cfg(test)]
 mod hook_wiring_tests {
     use super::*;
-    use dope_catalog::{PermissionGate as _, RequirementChecker as _};
-    use dope_webhook::QuotaGate as _;
+    use kura_catalog::{PermissionGate as _, RequirementChecker as _};
+    use kura_webhook::QuotaGate as _;
 
-    fn test_store() -> Arc<parking_lot::Mutex<dope_store::SQLiteStore>> {
+    fn test_store() -> Arc<parking_lot::Mutex<kura_store::SQLiteStore>> {
         static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "dope-hook-wiring-{}-{}",
+            "kura-hook-wiring-{}-{}",
             std::process::id(),
             COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         Arc::new(parking_lot::Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ))
     }
 
-    fn test_sandbox(store: &Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> Arc<dope_sandbox::Manager> {
-        let config = dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_sandbox(store: &Arc<parking_lot::Mutex<kura_store::SQLiteStore>>) -> Arc<kura_sandbox::Manager> {
+        let config = kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-hook-wiring".to_string(),
+            data_dir: "/tmp/kura-hook-wiring".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig::default(),
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig::default(),
         };
         let _ = store;
-        Arc::new(dope_sandbox::Manager::new(
+        Arc::new(kura_sandbox::Manager::new(
             config,
             None,
-            dope_events::Bus::new(),
-            dope_policy::Engine::new(),
+            kura_events::Bus::new(),
+            kura_policy::Engine::new(),
         ))
     }
 
@@ -860,9 +860,9 @@ mod hook_wiring_tests {
         let store = test_store();
         let checker = CatalogSandboxRequirementChecker::new(test_sandbox(&store));
         let requirements = vec![
-            dope_catalog::Requirement { key: "subprocess".to_string(), description: String::new() },
-            dope_catalog::Requirement { key: "backend:subprocess".to_string(), description: String::new() },
-            dope_catalog::Requirement { key: "warp_drive".to_string(), description: String::new() },
+            kura_catalog::Requirement { key: "subprocess".to_string(), description: String::new() },
+            kura_catalog::Requirement { key: "backend:subprocess".to_string(), description: String::new() },
+            kura_catalog::Requirement { key: "warp_drive".to_string(), description: String::new() },
         ];
         let unmet = checker.unmet("ten_a", &requirements);
         assert_eq!(unmet.len(), 1, "{unmet:?}");
@@ -881,13 +881,13 @@ mod hook_wiring_tests {
         let now = chrono::Utc::now();
         store
             .lock()
-            .upsert_tenant(&dope_identity::Tenant {
+            .upsert_tenant(&kura_identity::Tenant {
                 tenant_id: "ten_active".to_string(),
                 display_name: "Active".to_string(),
-                status: dope_identity::LifecycleStatus::Active,
+                status: kura_identity::LifecycleStatus::Active,
                 created_at: now,
                 updated_at: now,
-                tenant_kind: dope_identity::TenantKind::Organization,
+                tenant_kind: kura_identity::TenantKind::Organization,
                 created_by_principal_id: String::new(),
                 default_owner_principal_id: String::new(),
                 caller_membership_role: None,
@@ -901,13 +901,13 @@ mod hook_wiring_tests {
         // Disabled tenant: denied.
         store
             .lock()
-            .upsert_tenant(&dope_identity::Tenant {
+            .upsert_tenant(&kura_identity::Tenant {
                 tenant_id: "ten_disabled".to_string(),
                 display_name: "Disabled".to_string(),
-                status: dope_identity::LifecycleStatus::Disabled,
+                status: kura_identity::LifecycleStatus::Disabled,
                 created_at: now,
                 updated_at: now,
-                tenant_kind: dope_identity::TenantKind::Organization,
+                tenant_kind: kura_identity::TenantKind::Organization,
                 created_by_principal_id: String::new(),
                 default_owner_principal_id: String::new(),
                 caller_membership_role: None,
@@ -923,10 +923,10 @@ mod hook_wiring_tests {
     #[test]
     fn webhook_quota_gate_allows_local_and_fails_closed_without_quota_state() {
         let store = test_store();
-        let bus = Arc::new(dope_events::Bus::new());
+        let bus = Arc::new(kura_events::Bus::new());
         // A billing manager without a repository: hosted reservations fail
         // closed with quota_state_unavailable.
-        let billing = Arc::new(dope_billing::Manager::without_repo());
+        let billing = Arc::new(kura_billing::Manager::without_repo());
         let gate = WebhookQuotaGateImpl::new(billing, store.clone(), bus, "test");
 
         let (allowed, reason) = gate.allow("", "wh_local");
@@ -938,10 +938,10 @@ mod hook_wiring_tests {
         // The deny is auditable: the event ledger holds the denial.
         let events = store
             .lock()
-            .list_events(&dope_events::Filter {
+            .list_events(&kura_events::Filter {
                 environment_scope: "test".to_string(),
                 category: "webhook".to_string(),
-                ..dope_events::Filter::default()
+                ..kura_events::Filter::default()
             })
             .expect("list events");
         assert!(
@@ -956,17 +956,17 @@ mod hook_wiring_tests {
 /// sandbox backend (optionally `backend:`-prefixed); anything the sandbox
 /// plane cannot attest stays unmet — fail closed.
 pub struct ExecProfileSandboxRequirementChecker {
-    sandbox: Arc<dope_sandbox::Manager>,
+    sandbox: Arc<kura_sandbox::Manager>,
 }
 
 impl ExecProfileSandboxRequirementChecker {
     #[must_use]
-    pub fn new(sandbox: Arc<dope_sandbox::Manager>) -> Self {
+    pub fn new(sandbox: Arc<kura_sandbox::Manager>) -> Self {
         Self { sandbox }
     }
 }
 
-impl dope_execprofile::RequirementChecker for ExecProfileSandboxRequirementChecker {
+impl kura_execprofile::RequirementChecker for ExecProfileSandboxRequirementChecker {
     fn unmet(&self, requirements: &[String]) -> Vec<String> {
         let backends = self.sandbox.backend_capabilities();
         requirements
@@ -977,7 +977,7 @@ impl dope_execprofile::RequirementChecker for ExecProfileSandboxRequirementCheck
                 !backends.iter().any(|backend| {
                     backend.backend_kind.as_str().eq_ignore_ascii_case(key)
                         && backend.availability_status
-                            == dope_sandbox::BackendAvailabilityStatus::Available
+                            == kura_sandbox::BackendAvailabilityStatus::Available
                 })
             })
             .cloned()
@@ -989,12 +989,12 @@ impl dope_execprofile::RequirementChecker for ExecProfileSandboxRequirementCheck
 /// (Roadmap 75): tenant-less local selection stays allowed; a tenant-scoped
 /// selection requires an Active tenant — fail closed on unknown tenants.
 pub struct ExecProfileTenantPermissionGate {
-    store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>,
+    store: Arc<parking_lot::Mutex<kura_store::SQLiteStore>>,
 }
 
 impl ExecProfileTenantPermissionGate {
     #[must_use]
-    pub fn new(store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> Self {
+    pub fn new(store: Arc<parking_lot::Mutex<kura_store::SQLiteStore>>) -> Self {
         Self { store }
     }
 
@@ -1005,12 +1005,12 @@ impl ExecProfileTenantPermissionGate {
         }
         matches!(
             self.store.lock().get_tenant(tenant_id),
-            Ok(Some(tenant)) if tenant.status == dope_identity::LifecycleStatus::Active
+            Ok(Some(tenant)) if tenant.status == kura_identity::LifecycleStatus::Active
         )
     }
 }
 
-impl dope_execprofile::PermissionGate for ExecProfileTenantPermissionGate {
+impl kura_execprofile::PermissionGate for ExecProfileTenantPermissionGate {
     fn allow(&self, tenant_id: &str, _profile_id: &str) -> bool {
         self.tenant_active(tenant_id)
     }
@@ -1021,17 +1021,17 @@ impl dope_execprofile::PermissionGate for ExecProfileTenantPermissionGate {
 /// fail closed. The authoritative caller authentication stays with the
 /// protected() route middleware; this in-manager gate is defense-in-depth.
 pub struct EvidenceSupportPermissionGate {
-    store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>,
+    store: Arc<parking_lot::Mutex<kura_store::SQLiteStore>>,
 }
 
 impl EvidenceSupportPermissionGate {
     #[must_use]
-    pub fn new(store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> Self {
+    pub fn new(store: Arc<parking_lot::Mutex<kura_store::SQLiteStore>>) -> Self {
         Self { store }
     }
 }
 
-impl dope_evidence::PermissionGate for EvidenceSupportPermissionGate {
+impl kura_evidence::PermissionGate for EvidenceSupportPermissionGate {
     fn allow_support(&self, actor: &str, tenant_id: &str) -> bool {
         if actor.trim().is_empty() {
             return false;
@@ -1042,7 +1042,7 @@ impl dope_evidence::PermissionGate for EvidenceSupportPermissionGate {
         }
         matches!(
             self.store.lock().get_tenant(tenant_id),
-            Ok(Some(tenant)) if tenant.status == dope_identity::LifecycleStatus::Active
+            Ok(Some(tenant)) if tenant.status == kura_identity::LifecycleStatus::Active
         )
     }
 }
@@ -1060,33 +1060,33 @@ impl dope_evidence::PermissionGate for EvidenceSupportPermissionGate {
 /// L0 window — invented citations are dropped and logged, so the extractor
 /// can never fabricate evidence.
 pub struct LlmConsolidator {
-    dispatcher: Arc<dope_llm::Dispatcher>,
+    dispatcher: Arc<kura_llm::Dispatcher>,
 }
 
 impl LlmConsolidator {
     #[must_use]
-    pub fn new(dispatcher: Arc<dope_llm::Dispatcher>) -> Self {
+    pub fn new(dispatcher: Arc<kura_llm::Dispatcher>) -> Self {
         Self { dispatcher }
     }
 
     fn dispatch_json(&self, system: &str, user: String) -> Result<serde_json::Value, String> {
-        let input = dope_llm::CreateDispatchInput {
+        let input = kura_llm::CreateDispatchInput {
             provider: String::new(),
             model: String::new(),
             messages: vec![
-                dope_llm::Message {
-                    role: dope_llm::MessageRole::System,
+                kura_llm::Message {
+                    role: kura_llm::MessageRole::System,
                     content: system.to_string(),
                 },
-                dope_llm::Message { role: dope_llm::MessageRole::User, content: user },
+                kura_llm::Message { role: kura_llm::MessageRole::User, content: user },
             ],
-            ..dope_llm::CreateDispatchInput::default()
+            ..kura_llm::CreateDispatchInput::default()
         };
         let dispatch = self
             .dispatcher
             .prepare(input, false)
             .map_err(|err| format!("prepare consolidation dispatch: {err}"))?;
-        let cancel = dope_llm::CancelToken::new();
+        let cancel = kura_llm::CancelToken::new();
         let dispatcher = Arc::clone(&self.dispatcher);
         let settled = consolidator_runtime()?
             .block_on(async move { dispatcher.dispatch(dispatch, &cancel).await })
@@ -1164,12 +1164,12 @@ const PERSONA_SYSTEM_PROMPT: &str = "You distill scenario blocks into one person
 Reply with ONLY a JSON object: {\"title\": profile label, \"content\": a concise Markdown \
 profile of durable preferences, constraints, and patterns}.";
 
-impl dope_memory::Consolidator for LlmConsolidator {
+impl kura_memory::Consolidator for LlmConsolidator {
     fn extract_l1(
         &self,
         _tenant_id: &str,
-        window: &[dope_memory::L0Item],
-    ) -> Result<Vec<dope_memory::AtomDraft>, String> {
+        window: &[kura_memory::L0Item],
+    ) -> Result<Vec<kura_memory::AtomDraft>, String> {
         if window.is_empty() {
             return Ok(Vec::new());
         }
@@ -1187,7 +1187,7 @@ impl dope_memory::Consolidator for LlmConsolidator {
         let Some(items) = value.as_array() else {
             return Err("extraction reply is not a JSON array".to_string());
         };
-        let known: std::collections::HashMap<&str, &dope_memory::SourceLink> =
+        let known: std::collections::HashMap<&str, &kura_memory::SourceLink> =
             window.iter().map(|item| (item.source.id.as_str(), &item.source)).collect();
         let mut drafts = Vec::new();
         for item in items {
@@ -1216,7 +1216,7 @@ impl dope_memory::Consolidator for LlmConsolidator {
             let atom_type = item["atomType"]
                 .as_str()
                 .and_then(|raw| serde_json::from_value(serde_json::json!(raw)).ok());
-            drafts.push(dope_memory::AtomDraft {
+            drafts.push(kura_memory::AtomDraft {
                 atom_type,
                 title: item["title"].as_str().unwrap_or("").trim().to_string(),
                 content,
@@ -1229,8 +1229,8 @@ impl dope_memory::Consolidator for LlmConsolidator {
     fn aggregate_l2(
         &self,
         _tenant_id: &str,
-        atoms: &[dope_memory::MemoryAsset],
-    ) -> Result<Vec<dope_memory::AtomDraft>, String> {
+        atoms: &[kura_memory::MemoryAsset],
+    ) -> Result<Vec<kura_memory::AtomDraft>, String> {
         if atoms.is_empty() {
             return Ok(Vec::new());
         }
@@ -1254,7 +1254,7 @@ impl dope_memory::Consolidator for LlmConsolidator {
                 if content.is_empty() {
                     return None;
                 }
-                Some(dope_memory::AtomDraft {
+                Some(kura_memory::AtomDraft {
                     atom_type: None,
                     title: item["title"].as_str().unwrap_or("").trim().to_string(),
                     content,
@@ -1267,8 +1267,8 @@ impl dope_memory::Consolidator for LlmConsolidator {
     fn distill_l3(
         &self,
         _tenant_id: &str,
-        scenarios: &[dope_memory::MemoryAsset],
-    ) -> Result<Option<dope_memory::AtomDraft>, String> {
+        scenarios: &[kura_memory::MemoryAsset],
+    ) -> Result<Option<kura_memory::AtomDraft>, String> {
         if scenarios.is_empty() {
             return Ok(None);
         }
@@ -1281,7 +1281,7 @@ impl dope_memory::Consolidator for LlmConsolidator {
         if content.is_empty() {
             return Ok(None);
         }
-        Ok(Some(dope_memory::AtomDraft {
+        Ok(Some(kura_memory::AtomDraft {
             atom_type: None,
             title: value["title"].as_str().unwrap_or("").trim().to_string(),
             content,
@@ -1293,57 +1293,57 @@ impl dope_memory::Consolidator for LlmConsolidator {
 #[cfg(test)]
 mod consolidator_tests {
     use super::*;
-    use dope_memory::Consolidator as _;
+    use kura_memory::Consolidator as _;
 
     /// Provider stub replying with a fixed body regardless of input.
     struct StaticProvider {
         body: String,
     }
 
-    impl dope_llm::Provider for StaticProvider {
+    impl kura_llm::Provider for StaticProvider {
         fn name(&self) -> &str {
             "static"
         }
 
         fn complete<'a>(
             &'a self,
-            _request: dope_llm::ProviderRequest,
-        ) -> futures::future::BoxFuture<'a, Result<dope_llm::ProviderResponse, dope_llm::ProviderError>>
+            _request: kura_llm::ProviderRequest,
+        ) -> futures::future::BoxFuture<'a, Result<kura_llm::ProviderResponse, kura_llm::ProviderError>>
         {
             let body = self.body.clone();
             Box::pin(async move {
-                Ok(dope_llm::ProviderResponse {
+                Ok(kura_llm::ProviderResponse {
                     output: body,
                     finish_reason: "stop".to_string(),
-                    ..dope_llm::ProviderResponse::default()
+                    ..kura_llm::ProviderResponse::default()
                 })
             })
         }
 
         fn stream<'a>(
             &'a self,
-            request: dope_llm::ProviderRequest,
-            _emit: dope_llm::StreamEmitter<'a>,
-        ) -> futures::future::BoxFuture<'a, Result<dope_llm::ProviderResponse, dope_llm::ProviderError>>
+            request: kura_llm::ProviderRequest,
+            _emit: kura_llm::StreamEmitter<'a>,
+        ) -> futures::future::BoxFuture<'a, Result<kura_llm::ProviderResponse, kura_llm::ProviderError>>
         {
             self.complete(request)
         }
     }
 
     fn consolidator_with(body: &str) -> LlmConsolidator {
-        let dispatcher = dope_llm::Dispatcher::new();
+        let dispatcher = kura_llm::Dispatcher::new();
         dispatcher.register_provider(Arc::new(StaticProvider { body: body.to_string() }));
         let _ = dispatcher.set_default_provider("static");
         dispatcher.set_default_model("static-1");
         LlmConsolidator::new(Arc::new(dispatcher))
     }
 
-    fn window() -> Vec<dope_memory::L0Item> {
-        vec![dope_memory::L0Item {
-            source: dope_memory::SourceLink {
-                kind: dope_memory::SourceKind::Message,
+    fn window() -> Vec<kura_memory::L0Item> {
+        vec![kura_memory::L0Item {
+            source: kura_memory::SourceLink {
+                kind: kura_memory::SourceKind::Message,
                 id: "msg_1".to_string(),
-                ..dope_memory::SourceLink::default()
+                ..kura_memory::SourceLink::default()
             },
             role: "chat_turn".to_string(),
             text: "user: 用中文回复我\nassistant: 好的".to_string(),
@@ -1364,17 +1364,17 @@ mod consolidator_tests {
         // The atom with only an invented citation is dropped entirely.
         assert_eq!(drafts.len(), 1, "{drafts:?}");
         assert_eq!(drafts[0].source_links[0].id, "msg_1");
-        assert_eq!(drafts[0].atom_type, Some(dope_memory::AtomType::Preference));
+        assert_eq!(drafts[0].atom_type, Some(kura_memory::AtomType::Preference));
     }
 
     #[test]
     fn scenario_and_persona_replies_parse() {
         let consolidator =
             consolidator_with(r#"[{"title": "沟通偏好", "content": "- prefers Chinese"}]"#);
-        let atoms = vec![dope_memory::MemoryAsset {
+        let atoms = vec![kura_memory::MemoryAsset {
             asset_id: "mem_a".to_string(),
             content: "prefers Chinese".to_string(),
-            ..dope_memory::MemoryAsset::default()
+            ..kura_memory::MemoryAsset::default()
         }];
         let scenarios = consolidator.aggregate_l2("", &atoms).expect("aggregate");
         assert_eq!(scenarios.len(), 1);
@@ -1382,7 +1382,7 @@ mod consolidator_tests {
         let consolidator =
             consolidator_with(r#"{"title": "画像", "content": "Chinese-speaking operator"}"#);
         let persona = consolidator
-            .distill_l3("", &[dope_memory::MemoryAsset::default()])
+            .distill_l3("", &[kura_memory::MemoryAsset::default()])
             .expect("distill");
         assert!(persona.is_some());
     }

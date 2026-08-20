@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/provider-auth-state.response.schema.json",
+  "$id": "https://kura.local/schemas/api/provider-auth-state.response.schema.json",
   "title": "ProviderAuthStateResponse",
   "type": "object",
   "required": ["auth"],

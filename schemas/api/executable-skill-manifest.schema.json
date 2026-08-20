@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/executable-skill-manifest.schema.json",
+  "$id": "https://kura.local/schemas/api/executable-skill-manifest.schema.json",
   "title": "ExecutableSkillManifest",
   "type": "object",
   "required": ["entrypoint", "profileId", "backendKind", "approvalMode"],

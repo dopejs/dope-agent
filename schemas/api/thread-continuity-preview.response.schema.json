@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.dope.agent/api/thread-continuity-preview.response.schema.json",
+  "$id": "https://schemas.kura.agent/api/thread-continuity-preview.response.schema.json",
   "title": "ThreadContinuityPreviewResponse",
   "type": "object",
   "additionalProperties": false,

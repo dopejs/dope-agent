@@ -10,7 +10,7 @@ use crate::destinations::{
     selected_destinations_valid,
 };
 use crate::redaction_status_redacted;
-use dope_connectors::{DiagnosticReasonCode, LifecycleState, RedactionStatus};
+use kura_connectors::{DiagnosticReasonCode, LifecycleState, RedactionStatus};
 
 /// Go `ReadinessState`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -248,7 +248,7 @@ pub fn normalize_destination_evidence(
 mod tests {
     use super::*;
     use crate::destinations::DestinationType;
-    use dope_connectors::DiagnosticReasonCode;
+    use kura_connectors::DiagnosticReasonCode;
 
     fn ts() -> DateTime<Utc> {
         DateTime::parse_from_rfc3339("2026-05-07T10:00:00Z")

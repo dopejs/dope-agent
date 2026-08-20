@@ -9,14 +9,14 @@
 //! a shared skill id (insertion order into the index).
 //!
 //! The registry reads the filesystem only — there is no SQLite persistence,
-//! matching the Go package (which is why there is no `dope-store`
+//! matching the Go package (which is why there is no `kura-store`
 //! dependency). The Go nil-receiver guards (`ErrSkillsRegistryMissing`,
 //! empty results) are unrepresentable in Rust: construction always yields a
 //! valid registry.
 //!
 //! Tenant-scoped secret resolution (`resolve_executable_skill_secrets_for_tenant`)
-//! is the one async surface; it forwards to the async `dope-secrets` manager
-//! and reads the tenant context from the `dope-identity` task-local carrier.
+//! is the one async surface; it forwards to the async `kura-secrets` manager
+//! and reads the tenant context from the `kura-identity` task-local carrier.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -110,20 +110,20 @@ pub struct ExecutableManifest {
     pub working_dir: String,
     pub profile_id: String,
     #[serde(default)]
-    pub backend_kind: dope_sandbox::BackendKind,
+    pub backend_kind: kura_sandbox::BackendKind,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub read_roots: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub write_roots: Vec<String>,
     #[serde(default)]
-    pub network_mode: dope_sandbox::NetworkMode,
+    pub network_mode: kura_sandbox::NetworkMode,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allowed_hosts: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allowed_ports: Vec<i64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secret_refs: Vec<String>,
-    pub approval_mode: dope_sandbox::ApprovalMode,
+    pub approval_mode: kura_sandbox::ApprovalMode,
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub timeout_ms: i64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -358,11 +358,11 @@ pub fn resolve_executable_skill_secrets(
 
 /// Resolves executable-skill secret refs through the tenant secret manager
 /// for the active tenant context (Go `ResolveExecutableSkillSecretsForTenant`).
-/// This is the only async surface: it forwards to the async `dope-secrets`
+/// This is the only async surface: it forwards to the async `kura-secrets`
 /// manager. Fails closed when no tenant context is installed or when the
 /// manager is absent.
 pub async fn resolve_executable_skill_secrets_for_tenant(
-    secret_manager: Option<&dope_secrets::Manager>,
+    secret_manager: Option<&kura_secrets::Manager>,
     secret_refs: &[String],
 ) -> Result<HashMap<String, String>, SkillsError> {
     let refs = clean_strings(secret_refs);
@@ -373,11 +373,11 @@ pub async fn resolve_executable_skill_secrets_for_tenant(
     let Some(secret_manager) = secret_manager else {
         return Err(SkillsError::SecretManagerRequired);
     };
-    let tenant_id = dope_identity::tenantctx::require()
+    let tenant_id = kura_identity::tenantctx::require()
         .map_err(|_| SkillsError::TenantContextRequired)?;
     for secret_ref in &refs {
         let secret = secret_manager
-            .resolve(dope_secrets::ResolveInput {
+            .resolve(kura_secrets::ResolveInput {
                 tenant_id: tenant_id.clone(),
                 secret_ref: secret_ref.clone(),
             })
@@ -812,11 +812,11 @@ fn supports_required_strength(value: &str) -> bool {
     )
 }
 
-fn backend_kind_for_profile(profile_id: &str) -> dope_sandbox::BackendKind {
-    if profile_id.trim() == dope_sandbox::PROFILE_ID_DOCKER_DEFAULT {
-        dope_sandbox::BackendKind::Docker
+fn backend_kind_for_profile(profile_id: &str) -> kura_sandbox::BackendKind {
+    if profile_id.trim() == kura_sandbox::PROFILE_ID_DOCKER_DEFAULT {
+        kura_sandbox::BackendKind::Docker
     } else {
-        dope_sandbox::BackendKind::Subprocess
+        kura_sandbox::BackendKind::Subprocess
     }
 }
 
@@ -893,7 +893,7 @@ fn split_csv_ints(value: &str) -> Vec<i64> {
 }
 
 fn effective_environment() -> String {
-    match std::env::var("DOPE_ENV") {
+    match std::env::var("KURA_ENV") {
         Ok(value) if value.trim() == "prod" => "prod".to_string(),
         _ => "test".to_string(),
     }
@@ -911,28 +911,28 @@ fn build_skill_sandbox_view(
     skill_root: &str,
 ) -> Option<serde_json::Map<String, serde_json::Value>> {
     let normalized = normalize_skill_id(skill_id);
-    let view = dope_sandbox::ConsumerContractView {
-        declaration: Some(dope_sandbox::ConsumerRequirementDeclaration {
+    let view = kura_sandbox::ConsumerContractView {
+        declaration: Some(kura_sandbox::ConsumerRequirementDeclaration {
             declaration_id: format!("skill:{normalized}:selection"),
-            consumer_kind: dope_sandbox::ConsumerKind::Skill,
+            consumer_kind: kura_sandbox::ConsumerKind::Skill,
             consumer_id: normalized,
             operation_kind: "skill_selection".to_string(),
-            profile_id: dope_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
-            execution_mode: dope_sandbox::ExecutionMode::DeclarationOnly,
-            allowed_backend_kinds: vec![dope_sandbox::BackendKind::Subprocess],
+            profile_id: kura_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
+            execution_mode: kura_sandbox::ExecutionMode::DeclarationOnly,
+            allowed_backend_kinds: vec![kura_sandbox::BackendKind::Subprocess],
             read_roots: vec![skill_root.to_string()],
             write_roots: Vec::new(),
-            network_mode: Some(dope_sandbox::NetworkMode::Deny),
+            network_mode: Some(kura_sandbox::NetworkMode::Deny),
             allowed_hosts: Vec::new(),
             allowed_ports: Vec::new(),
             allow_loopback: false,
             secret_refs: Vec::new(),
-            approval_mode: Some(dope_sandbox::ApprovalMode::Allow),
+            approval_mode: Some(kura_sandbox::ApprovalMode::Allow),
             required_enforcement_strength: "declared_only".to_string(),
             active: true,
-            source: dope_sandbox::Source::Builtin,
+            source: kura_sandbox::Source::Builtin,
         }),
-        ..dope_sandbox::ConsumerContractView::default()
+        ..kura_sandbox::ConsumerContractView::default()
     };
     serde_json::to_value(&view)
         .ok()
@@ -1006,23 +1006,23 @@ fn first_non_empty(values: &[&str]) -> String {
 /// is enforced separately against the raw frontmatter value in
 /// `parse_executable_manifest` (Go can carry the raw string in its
 /// untyped enum, Rust cannot).
-fn parse_network_mode(value: &str) -> dope_sandbox::NetworkMode {
+fn parse_network_mode(value: &str) -> kura_sandbox::NetworkMode {
     match value.trim() {
-        "deny" => dope_sandbox::NetworkMode::Deny,
-        "allow_list" => dope_sandbox::NetworkMode::AllowList,
-        "full" => dope_sandbox::NetworkMode::Full,
-        _ => dope_sandbox::NetworkMode::Deny,
+        "deny" => kura_sandbox::NetworkMode::Deny,
+        "allow_list" => kura_sandbox::NetworkMode::AllowList,
+        "full" => kura_sandbox::NetworkMode::Full,
+        _ => kura_sandbox::NetworkMode::Deny,
     }
 }
 
 /// Unknown approval-mode values fall back to Ask as a placeholder; validity
 /// is enforced separately (see `parse_network_mode`).
-fn parse_approval_mode(value: &str) -> dope_sandbox::ApprovalMode {
+fn parse_approval_mode(value: &str) -> kura_sandbox::ApprovalMode {
     match value.trim() {
-        "allow" => dope_sandbox::ApprovalMode::Allow,
-        "ask" => dope_sandbox::ApprovalMode::Ask,
-        "deny" => dope_sandbox::ApprovalMode::Deny,
-        _ => dope_sandbox::ApprovalMode::Ask,
+        "allow" => kura_sandbox::ApprovalMode::Allow,
+        "ask" => kura_sandbox::ApprovalMode::Ask,
+        "deny" => kura_sandbox::ApprovalMode::Deny,
+        _ => kura_sandbox::ApprovalMode::Ask,
     }
 }
 

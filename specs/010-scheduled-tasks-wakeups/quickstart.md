@@ -2,7 +2,7 @@
 
 ## Goal
 
-Verify in `DOPE_ENV=test` that the daemon can:
+Verify in `KURA_ENV=test` that the daemon can:
 
 - create and inspect a one-time schedule before it fires
 - launch normal run or workflow truth when the schedule becomes due
@@ -11,10 +11,10 @@ Verify in `DOPE_ENV=test` that the daemon can:
 
 ## Prerequisites
 
-- local test daemon only; do not use `~/.dope`
+- local test daemon only; do not use `~/.kura`
 - authenticated local pairing or an existing bearer token
 - no production connectors or production secrets are required
-- one deterministic run or workflow target that is safe in `DOPE_ENV=test`
+- one deterministic run or workflow target that is safe in `KURA_ENV=test`
 
 ## Suggested Verification Flow
 
@@ -30,7 +30,7 @@ make daemon-run-test
 FIRE_AT=$(date -u -v+1M +"%Y-%m-%dT%H:%M:%SZ")
 
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"trigger\": {
@@ -64,7 +64,7 @@ Expected outcome after implementation:
 3. Inspect the schedule before its due time.
 
 ```bash
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/schedules/$SCHEDULE_ID
 ```
 
@@ -77,7 +77,7 @@ Expected outcome after implementation:
 4. Wait until the due time passes, then inspect the schedule again.
 
 ```bash
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/schedules/$SCHEDULE_ID
 ```
 
@@ -90,7 +90,7 @@ Expected outcome after implementation:
 5. Inspect the downstream run created by the schedule.
 
 ```bash
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/runs/$RUN_ID
 ```
 
@@ -104,7 +104,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "trigger": {
@@ -139,7 +139,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/schedules/$RECURRING_ID/pause
 ```
 
@@ -153,7 +153,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/schedules/$RECURRING_ID/resume
 ```
 
@@ -192,7 +192,7 @@ Expected automated coverage after implementation:
 
 ## Observed Results
 
-Validated on `2026-04-22` in `DOPE_ENV=test`.
+Validated on `2026-04-22` in `KURA_ENV=test`.
 
 Manual API smoke:
 
@@ -225,11 +225,11 @@ Observed automated coverage:
 Residual notes:
 
 - manual validation covered one-time run-target dispatch and recurring pause/resume commands; restart catch-up, retry exhaustion, and workflow-target dispatch were validated through automated suites.
-- the current `~/.dope-test` skill set did not include an executable workflow consumer, so live manual smoke stayed on run targets while workflow-target execution remained covered by deterministic automated regression.
+- the current `~/.kura-test` skill set did not include an executable workflow consumer, so live manual smoke stayed on run targets while workflow-target execution remained covered by deterministic automated regression.
 
 ## Notes
 
-- Keep all verification in `DOPE_ENV=test`.
+- Keep all verification in `KURA_ENV=test`.
 - Use deterministic run/workflow targets that do not require live connectors.
 - Manual verification should prove inspect-before-fire behavior, not only successful
   dispatch after the due time.

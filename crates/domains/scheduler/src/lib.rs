@@ -1,8 +1,8 @@
 //! Port of `daemon/internal/scheduler`: the schedule ledger, trigger due-time computation
 //! (one-time/cron), dispatch attempts with retry/exhaustion semantics, downstream
 //! run/workflow reconciliation, and catch-up of missed recurring intervals. The ledger is
-//! persisted through the `dope-store` schedule CRUD (`store/src/schedule.rs`), and domain
-//! events fan out over the `dope-events` Bus.
+//! persisted through the `kura-store` schedule CRUD (`store/src/schedule.rs`), and domain
+//! events fan out over the `kura-events` Bus.
 //!
 //! The Go package threads a `context.Context` through every method (used only for
 //! cancellation and tenant/identity plumbing) and runs a background catch-up + tick loop.
@@ -11,12 +11,12 @@
 //! `start`/`close` only track lifecycle state.
 //!
 //! Divergences from the Go manager (all documented at the call sites):
-//! - Event persistence via `store.AppendEvent` is excluded because `dope-store`'s events
+//! - Event persistence via `store.AppendEvent` is excluded because `kura-store`'s events
 //!   module is not yet public; events are published to the Bus only.
 //! - `store.UpsertRun`, `store.SaveThreadRuntimeProjectionForRun`, and
 //!   `store.GetThreadForSession` (thread-archive guard) are excluded for the same reason;
 //!   created runs live in the runtime manager, and the archived-thread guard is inert.
-//! - The billing quota reservation/commit/release branch (`dope-billing` Manager is async)
+//! - The billing quota reservation/commit/release branch (`kura-billing` Manager is async)
 //!   and the checkpoints save step are excluded.
 
 use std::collections::BTreeSet;
@@ -31,10 +31,10 @@ use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use dope_store::schedule::{
+use kura_store::schedule::{
     ScheduleDispatchAttemptRecord, ScheduleRecord, ScheduleTargetRecord,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 macro_rules! string_enum {
     ($name:ident { $first:ident => $first_s:literal $(, $v:ident => $s:literal)* $(,)? }) => {
@@ -252,9 +252,9 @@ pub struct WorkflowTarget {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub workflow_goal: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub calendar_action: Option<dope_calendar::Action>,
+    pub calendar_action: Option<kura_calendar::Action>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mail_action: Option<dope_mail::Action>,
+    pub mail_action: Option<kura_mail::Action>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -298,9 +298,9 @@ pub struct DispatchAttempt {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub latest_delivery_target_id: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub calendar_operation_summaries: Vec<dope_calendar::OperationSummary>,
+    pub calendar_operation_summaries: Vec<kura_calendar::OperationSummary>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mail_operation_summaries: Vec<dope_mail::OperationSummary>,
+    pub mail_operation_summaries: Vec<kura_mail::OperationSummary>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub skipped_reason: String,
     #[serde(default, skip_serializing_if = "is_zero_i64")]
@@ -380,9 +380,9 @@ impl Clock for RealClock {
 /// Go `Dependencies` for `New`. `clock`/tick defaults are applied in
 /// `Scheduler::new` (`RealClock`, 500ms) exactly like the Go constructor.
 pub struct Dependencies {
-    pub environment: dope_config::Environment,
-    pub runtime: Arc<dope_runtime::Manager>,
-    pub event_bus: Option<dope_events::Bus>,
+    pub environment: kura_config::Environment,
+    pub runtime: Arc<kura_runtime::Manager>,
+    pub event_bus: Option<kura_events::Bus>,
     pub store: Arc<Mutex<SQLiteStore>>,
     pub workflow_launcher: Option<Arc<dyn WorkflowLauncher>>,
     pub clock: Option<Box<dyn Clock>>,
@@ -390,9 +390,9 @@ pub struct Dependencies {
 }
 
 pub struct Scheduler {
-    environment: dope_config::Environment,
-    runtime: Arc<dope_runtime::Manager>,
-    event_bus: Option<dope_events::Bus>,
+    environment: kura_config::Environment,
+    runtime: Arc<kura_runtime::Manager>,
+    event_bus: Option<kura_events::Bus>,
     store: Arc<Mutex<SQLiteStore>>,
     workflow_launcher: Option<Arc<dyn WorkflowLauncher>>,
     clock: Box<dyn Clock>,
@@ -799,7 +799,7 @@ impl Scheduler {
         match target.kind {
             TargetKind::Run => {
                 // Go guards against archived threads via store.GetThreadForSession, which is
-                // not yet public in dope-store; the sync port treats every thread as active.
+                // not yet public in kura-store; the sync port treats every thread as active.
                 let run_target = match target.run.as_ref() {
                     Some(run_target) => run_target.clone(),
                     None => {
@@ -814,13 +814,13 @@ impl Scheduler {
                 };
                 // Go's billing branch pre-assigns input.RunID; without billing the runtime
                 // manager generates the id (CreateRunInput::run_id empty).
-                let input = dope_runtime::CreateRunInput {
+                let input = kura_runtime::CreateRunInput {
                     session_id: run_target.session_id,
                     schedule_id: schedule.schedule_id.clone(),
                     schedule_attempt_id: schedule.attempts[attempt_index].attempt_id.clone(),
                     entrypoint: run_target.entrypoint,
                     goal: run_target.goal,
-                    ..dope_runtime::CreateRunInput::default()
+                    ..kura_runtime::CreateRunInput::default()
                 };
                 let run = match self.runtime.create_run(input) {
                     Ok(run) => run,
@@ -835,7 +835,7 @@ impl Scheduler {
                     }
                 };
                 // Go persists the run via store.UpsertRun and saves a thread runtime
-                // projection; neither is public in dope-store yet, so the run lives in the
+                // projection; neither is public in kura-store yet, so the run lives in the
                 // runtime manager's in-memory ledger only.
                 let attempt = &mut schedule.attempts[attempt_index];
                 attempt.run_id = run.run_id.clone();
@@ -1271,7 +1271,7 @@ impl Scheduler {
     }
 
     /// Go `publishEvent`: builds the schedule event envelope and publishes to the Bus. The
-    /// Go store append (`AppendEvent`) is excluded (not public in dope-store yet).
+    /// Go store append (`AppendEvent`) is excluded (not public in kura-store yet).
     fn publish_event(
         &self,
         name: &str,
@@ -1282,21 +1282,21 @@ impl Scheduler {
         let Some(bus) = &self.event_bus else {
             return Ok(());
         };
-        let mut event = dope_events::Event {
+        let mut event = kura_events::Event {
             environment_scope: schedule.environment_scope.clone(),
             tenant_id: schedule.tenant_id.clone(),
             category: "schedule".to_string(),
             name: name.to_string(),
-            scope: dope_events::Scope {
+            scope: kura_events::Scope {
                 schedule_id: schedule.schedule_id.clone(),
-                ..dope_events::Scope::default()
+                ..kura_events::Scope::default()
             },
-            resource: dope_events::Resource {
+            resource: kura_events::Resource {
                 kind: "schedule".to_string(),
                 id: schedule.schedule_id.clone(),
             },
             payload: serde_json::Map::new(),
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         };
         event
             .payload
@@ -1587,25 +1587,25 @@ fn has_active_attempt(items: &[DispatchAttempt]) -> bool {
 }
 
 #[must_use]
-fn map_run_status(status: dope_runtime::RunStatus) -> DownstreamStatus {
+fn map_run_status(status: kura_runtime::RunStatus) -> DownstreamStatus {
     match status {
-        dope_runtime::RunStatus::Completed => DownstreamStatus::Completed,
-        dope_runtime::RunStatus::Failed => DownstreamStatus::Failed,
-        dope_runtime::RunStatus::Cancelled => DownstreamStatus::Cancelled,
+        kura_runtime::RunStatus::Completed => DownstreamStatus::Completed,
+        kura_runtime::RunStatus::Failed => DownstreamStatus::Failed,
+        kura_runtime::RunStatus::Cancelled => DownstreamStatus::Cancelled,
         _ => DownstreamStatus::Running,
     }
 }
 
 #[must_use]
-fn map_workflow_status(status: dope_orchestration::WorkflowStatus) -> DownstreamStatus {
+fn map_workflow_status(status: kura_orchestration::WorkflowStatus) -> DownstreamStatus {
     match status {
-        dope_orchestration::WorkflowStatus::Completed => DownstreamStatus::Completed,
-        dope_orchestration::WorkflowStatus::PlanningFailed
-        | dope_orchestration::WorkflowStatus::Failed
-        | dope_orchestration::WorkflowStatus::PartialFailed
-        | dope_orchestration::WorkflowStatus::Blocked => DownstreamStatus::Failed,
-        dope_orchestration::WorkflowStatus::Cancelled => DownstreamStatus::Cancelled,
-        dope_orchestration::WorkflowStatus::Interrupted => DownstreamStatus::Interrupted,
+        kura_orchestration::WorkflowStatus::Completed => DownstreamStatus::Completed,
+        kura_orchestration::WorkflowStatus::PlanningFailed
+        | kura_orchestration::WorkflowStatus::Failed
+        | kura_orchestration::WorkflowStatus::PartialFailed
+        | kura_orchestration::WorkflowStatus::Blocked => DownstreamStatus::Failed,
+        kura_orchestration::WorkflowStatus::Cancelled => DownstreamStatus::Cancelled,
+        kura_orchestration::WorkflowStatus::Interrupted => DownstreamStatus::Interrupted,
         _ => DownstreamStatus::Running,
     }
 }
@@ -1637,10 +1637,10 @@ fn first_non_empty(values: &[&str]) -> String {
 }
 
 #[must_use]
-fn environment_scope(environment: dope_config::Environment) -> String {
+fn environment_scope(environment: kura_config::Environment) -> String {
     match environment {
-        dope_config::Environment::Prod => "prod".to_string(),
-        dope_config::Environment::Test => "test".to_string(),
+        kura_config::Environment::Prod => "prod".to_string(),
+        kura_config::Environment::Test => "test".to_string(),
     }
 }
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/memory-consolidation-run.schema.json",
+  "$id": "https://kura.local/schemas/api/memory-consolidation-run.schema.json",
   "title": "MemoryConsolidationRun",
   "type": "object",
   "required": ["runId", "trigger", "extractedL1", "aggregatedL2", "distilledL3", "startedAt", "completedAt"],

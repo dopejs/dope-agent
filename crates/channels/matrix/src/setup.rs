@@ -2,7 +2,7 @@
 //! evaluation into a terminal setup state.
 
 use chrono::{Duration, Utc};
-use dope_connectors::{DiagnosticReasonCode, LifecycleState, RedactionStatus};
+use kura_connectors::{DiagnosticReasonCode, LifecycleState, RedactionStatus};
 
 use crate::is_unset_time;
 use crate::readiness::{homeserver_state, normalize_homeserver_binding, validate_homeserver_binding};

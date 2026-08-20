@@ -11,12 +11,12 @@ use crate::{emit_denial, require, TenancyError};
 /// Tenant-aware accessor for the integrations table.
 pub struct Integrations {
     store: crate::SQLiteStore,
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl Integrations {
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         Integrations { store, emitter }
     }
 
@@ -26,7 +26,7 @@ impl Integrations {
 
     /// Persists an integration row and binds its tenant_id. Pass A only wires ownership;
     /// readiness/credential probing remains owned by Roadmap 37 (untouched here).
-    pub fn upsert_integration_for_tenant(&self, item: &dope_integrations::Resource) -> Result<(), TenancyError> {
+    pub fn upsert_integration_for_tenant(&self, item: &kura_integrations::Resource) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         let owner = self
             .store

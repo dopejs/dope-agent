@@ -7,7 +7,7 @@
 //! ApplyExpiredDiagnosticRetentionRecords).
 //!
 //! The record types, enums, and pure freshness/retention helpers live in
-//! `dope-integrations` (diagnostics.rs / diagnostics_runtime.rs), matching the Go
+//! `kura-integrations` (diagnostics.rs / diagnostics_runtime.rs), matching the Go
 //! layout where the integrations package owns them and the store only persists
 //! them. The tenant-binding resolution (ResolveActiveTenantBinding) is not
 //! ported: tenant_id is written as-is (empty string when unbound), so the
@@ -22,7 +22,7 @@ use rusqlite::{params, params_from_iter, types::Value, Row};
 use crate::crud::{enum_str, now_rfc3339, null_string, opt_time_string};
 use crate::SQLiteStore;
 
-use dope_integrations::{
+use kura_integrations::{
     DiagnosticReasonCode, DiagnosticResult, DiagnosticResultFilter, DiagnosticRetentionRecord,
     DiagnosticRetentionState, DiagnosticRun, DiagnosticRunFilter, DiagnosticRunStatus,
     DiagnosticStatus, refresh_diagnostic_result_freshness,

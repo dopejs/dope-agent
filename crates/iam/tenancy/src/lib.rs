@@ -4,19 +4,19 @@
 //! tool_calls, llm_dispatches, checkpoints) and the per-domain accessors (approvals,
 //! bindings, calendar, computer_use, delivery, events, integrations, mail, profiles,
 //! reminders, schedules, threads, workflows, r37_resources, evaluation) resolve the
-//! acting tenant via dope_identity::tenantctx::require() (Go tenantctx.Require) and
-//! call the store's tenant-aware RAW methods from dope_store's tenancy module.
+//! acting tenant via kura_identity::tenantctx::require() (Go tenantctx.Require) and
+//! call the store's tenant-aware RAW methods from kura_store's tenancy module.
 //!
 //! Cross-tenant semantics (fail-closed, FR-006):
 //! - Reads return only rows whose tenant_id equals the caller's tenant; rows still NULL
 //!   pre-backfill are NOT returned.
 //! - By-id lookups whose target row exists in another tenant emit the audit denial
-//!   (dope_audit::Emitter::emit -> audit.cross_tenant_access_denied) and return
+//!   (kura_audit::Emitter::emit -> audit.cross_tenant_access_denied) and return
 //!   not-found WITHOUT leaking the row's existence.
 //! - Upserts whose target row is owned by a different tenant refuse the write
 //!   (ErrCrossTenantWrite) and emit the audit denial; the existing row is preserved.
 //!
-//! Not ported yet (depend on dope-store connector-domain / live-validation CRUD that has
+//! Not ported yet (depend on kura-store connector-domain / live-validation CRUD that has
 //! not landed): slack_setup.rs / telegram_setup.rs (Save/GetSlackHostedSetup + telegram
 //! equivalents), the live-validation family in evaluation.rs, and evaluation_product.rs
 //! (discovery policies, campaigns, fixtures, dashboard projections). They are documented
@@ -41,20 +41,20 @@ pub mod workflows;
 
 use std::fmt;
 
-pub use dope_store::SQLiteStore;
+pub use kura_store::SQLiteStore;
 pub use bindings::BindingAccessScope;
 pub use profiles::ProfileAccessScope;
 pub use threads::ThreadAccessScope;
 
 /// Re-export of the store's cross-tenant sentinel so callers can match on it without
 /// importing the store crate.
-pub const ERR_CROSS_TENANT_ROW: &str = dope_store::SQLiteStore::ERR_CROSS_TENANT_ROW;
+pub const ERR_CROSS_TENANT_ROW: &str = kura_store::SQLiteStore::ERR_CROSS_TENANT_ROW;
 
 /// Error type for the tenancy accessor layer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TenancyError {
     /// The acting tenant context is missing (re-export of
-    /// dope_identity::IdentityError::TenantContextRequired). Fail-closed.
+    /// kura_identity::IdentityError::TenantContextRequired). Fail-closed.
     TenantContextRequired,
     /// The target row is owned by a different tenant and the write was refused. The
     /// existing row is preserved and the audit denial was emitted.
@@ -77,10 +77,10 @@ impl fmt::Display for TenancyError {
 
 impl std::error::Error for TenancyError {}
 
-impl From<dope_identity::IdentityError> for TenancyError {
-    fn from(e: dope_identity::IdentityError) -> Self {
+impl From<kura_identity::IdentityError> for TenancyError {
+    fn from(e: kura_identity::IdentityError) -> Self {
         match e {
-            dope_identity::IdentityError::TenantContextRequired => TenancyError::TenantContextRequired,
+            kura_identity::IdentityError::TenantContextRequired => TenancyError::TenantContextRequired,
             other => TenancyError::Store(other.to_string()),
         }
     }
@@ -96,7 +96,7 @@ impl From<String> for TenancyError {
 /// or TenancyError::TenantContextRequired when none is installed. Every tenant-owned
 /// helper MUST call this first and reject on error.
 pub fn require() -> Result<String, TenancyError> {
-    dope_identity::tenantctx::require().map_err(TenancyError::from)
+    kura_identity::tenantctx::require().map_err(TenancyError::from)
 }
 
 /// tenantctx.Must port: panics when the tenant context is missing. Intended only for
@@ -107,7 +107,7 @@ pub fn must() -> String {
 
 /// Emits the cross-tenant access denial audit event when an emitter is wired. Mirrors
 /// the Go accessor emit(ctx, surface, resourceKind) -> audit.cross_tenant_access_denied.
-pub(crate) fn emit_denial(emitter: &Option<dope_audit::Emitter>, surface: &str, resource_kind: &str) {
+pub(crate) fn emit_denial(emitter: &Option<kura_audit::Emitter>, surface: &str, resource_kind: &str) {
     if let Some(emitter) = emitter {
         let _ = emitter.emit(surface, resource_kind);
     }

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Verify in `DOPE_ENV=test` that the daemon can:
+Verify in `KURA_ENV=test` that the daemon can:
 
 - register and inspect delivery targets that are separate from the immediate request
   channel
@@ -16,7 +16,7 @@ Verify in `DOPE_ENV=test` that the daemon can:
 
 ## Prerequisites
 
-- local test daemon only; do not use `~/.dope`
+- local test daemon only; do not use `~/.kura`
 - authenticated local pairing or an existing bearer token
 - no production connectors are required
 - the repo-owned `test_sink` delivery target kind is enabled in the test environment
@@ -37,7 +37,7 @@ make daemon-run-test
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "targetId": "test-sink-default",
@@ -57,7 +57,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "preferenceId": "user-default-test",
@@ -85,7 +85,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "trigger": {
@@ -119,13 +119,13 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/deliveries
 ```
 
 ```bash
 curl -sS \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/deliveries/$DELIVERY_ID
 ```
 
@@ -143,7 +143,7 @@ override below.
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "targetId": "test-sink-integration",
@@ -155,7 +155,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "preferenceId": "calendar-override-test",
@@ -183,7 +183,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}' \
   http://127.0.0.1:19192/v1/delivery/targets/test-sink-default/disable
@@ -200,7 +200,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "preferenceId": "user-default-test",
@@ -251,7 +251,7 @@ Expected automated coverage after implementation:
 
 ## Recorded Manual Results
 
-Observed on 2026-04-22 in `DOPE_ENV=test` against `http://127.0.0.1:19192`:
+Observed on 2026-04-22 in `KURA_ENV=test` against `http://127.0.0.1:19192`:
 
 - created target `manual-test-sink` and preference `manual-default-pref`
 - created one-time schedule `sched_20712ee47fcf87d5`

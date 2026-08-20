@@ -1,26 +1,26 @@
 //! Round-trip integration tests for the integration / calendar / mail domain CRUD methods
 //! ported from `daemon/internal/store/store.go`. Each test constructs a domain type, upserts
 //! it, lists/gets it back, and asserts key fields. Wiring required before these compile: add
-//! dope-integrations, dope-calendar, and dope-mail to the store crate's Cargo.toml and declare
+//! kura-integrations, kura-calendar, and kura-mail to the store crate's Cargo.toml and declare
 //! the modules in lib.rs (`calendar` and `mail` must be public so the filter types are
 //! reachable from this integration test).
 
 use chrono::Utc;
-use dope_calendar::{
+use kura_calendar::{
     AccountProjection as CalendarAccount, Artifact as CalendarArtifact,
     ArtifactKind as CalendarArtifactKind, Operation as CalendarOperation,
     OperationClass as CalendarOperationClass, OperationStatus as CalendarOperationStatus,
 };
-use dope_integrations::{AccountBinding, BackendBinding, BackendKind, ReadinessStatus, Resource};
-use dope_mail::{
+use kura_integrations::{AccountBinding, BackendBinding, BackendKind, ReadinessStatus, Resource};
+use kura_mail::{
     AccountProjection as MailAccount, Artifact as MailArtifact,
     ArtifactKind as MailArtifactKind, Operation as MailOperation,
     OperationClass as MailOperationClass, OperationStatus as MailOperationStatus, ResultMode,
 };
-use dope_store::{calendar::CalendarOperationFilter, mail::MailOperationFilter, SQLiteStore};
+use kura_store::{calendar::CalendarOperationFilter, mail::MailOperationFilter, SQLiteStore};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

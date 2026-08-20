@@ -1,11 +1,11 @@
 [package]
-name = "dope-threads"
+name = "kura-threads"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-profiles.workspace = true
+kura-profiles.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 chrono.workspace = true

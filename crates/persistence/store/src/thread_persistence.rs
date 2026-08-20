@@ -45,37 +45,37 @@ fn decode_document<T: serde::de::DeserializeOwned>(raw: &str, what: &str) -> Res
 }
 
 /// Scan a `threads` row by its document column (Go reads `document_json` only).
-fn scan_thread(row: &Row) -> Result<dope_threads::Thread, String> {
+fn scan_thread(row: &Row) -> Result<kura_threads::Thread, String> {
     let raw: String = row.get(0).map_err(|e| e.to_string())?;
     decode_document(&raw, "thread")
 }
 
-fn scan_session_segment(row: &Row) -> Result<dope_threads::SessionSegment, String> {
+fn scan_session_segment(row: &Row) -> Result<kura_threads::SessionSegment, String> {
     let raw: String = row.get(0).map_err(|e| e.to_string())?;
     decode_document(&raw, "thread session segment")
 }
 
-fn scan_source_linkage(row: &Row) -> Result<dope_threads::SourceLinkage, String> {
+fn scan_source_linkage(row: &Row) -> Result<kura_threads::SourceLinkage, String> {
     let raw: String = row.get(0).map_err(|e| e.to_string())?;
     decode_document(&raw, "thread source linkage")
 }
 
-fn scan_runtime_projection(row: &Row) -> Result<dope_threads::RuntimeProjection, String> {
+fn scan_runtime_projection(row: &Row) -> Result<kura_threads::RuntimeProjection, String> {
     let raw: String = row.get(0).map_err(|e| e.to_string())?;
     decode_document(&raw, "thread runtime projection")
 }
 
-fn scan_conversation_shape(row: &Row) -> Result<dope_threads::ConversationShapeEvidence, String> {
+fn scan_conversation_shape(row: &Row) -> Result<kura_threads::ConversationShapeEvidence, String> {
     let raw: String = row.get(0).map_err(|e| e.to_string())?;
     decode_document(&raw, "conversation shape evidence")
 }
 
-fn scan_participation_decision(row: &Row) -> Result<dope_threads::ParticipationDecision, String> {
+fn scan_participation_decision(row: &Row) -> Result<kura_threads::ParticipationDecision, String> {
     let raw: String = row.get(0).map_err(|e| e.to_string())?;
     decode_document(&raw, "participation decision")
 }
 
-fn scan_reset_event(row: &Row) -> Result<dope_threads::ResetEvent, String> {
+fn scan_reset_event(row: &Row) -> Result<kura_threads::ResetEvent, String> {
     let raw: String = row.get(0).map_err(|e| e.to_string())?;
     decode_document(&raw, "reset event")
 }
@@ -93,7 +93,7 @@ pub struct ThreadListQuery {
 impl SQLiteStore {
     /// Go `UpsertThread` — defaults created/updated timestamps and the redaction
     /// status, then upserts on `thread_id`.
-    pub fn upsert_thread(&self, thread: &dope_threads::Thread) -> Result<(), String> {
+    pub fn upsert_thread(&self, thread: &kura_threads::Thread) -> Result<(), String> {
         let mut thread = thread.clone();
         let now = Utc::now();
         if is_unset_time(&thread.created_at) {
@@ -146,7 +146,7 @@ impl SQLiteStore {
     }
 
     /// Go `UpsertThreadSessionSegment`.
-    pub fn upsert_thread_session_segment(&self, segment: &dope_threads::SessionSegment) -> Result<(), String> {
+    pub fn upsert_thread_session_segment(&self, segment: &kura_threads::SessionSegment) -> Result<(), String> {
         let mut segment = segment.clone();
         let now = Utc::now();
         if is_unset_time(&segment.started_at) {
@@ -200,7 +200,7 @@ impl SQLiteStore {
     }
 
     /// Go `GetThreadForTenant`.
-    pub fn get_thread_for_tenant(&self, tenant_id: &str, thread_id: &str) -> Result<Option<dope_threads::Thread>, String> {
+    pub fn get_thread_for_tenant(&self, tenant_id: &str, thread_id: &str) -> Result<Option<kura_threads::Thread>, String> {
         let mut stmt = self
             .conn
             .prepare("SELECT document_json FROM threads WHERE tenant_id = ?1 AND thread_id = ?2")
@@ -217,9 +217,9 @@ impl SQLiteStore {
     /// its thread.
     pub fn get_current_thread_for_source(
         &self,
-        key: &dope_threads::SourceContinuationKey,
-    ) -> Result<Option<dope_threads::Thread>, String> {
-        let normalized = dope_threads::normalize_source_continuation_key(key)
+        key: &kura_threads::SourceContinuationKey,
+    ) -> Result<Option<kura_threads::Thread>, String> {
+        let normalized = kura_threads::normalize_source_continuation_key(key)
             .map_err(|e| format!("normalize source continuation key: {e}"))?;
         let mut stmt = self
             .conn
@@ -284,7 +284,7 @@ impl SQLiteStore {
     /// Go `SaveThreadSourceLinkage` — when the linkage is current, first clears
     /// any existing current linkage for the same source, then upserts within a
     /// transaction.
-    pub fn save_thread_source_linkage(&self, linkage: &dope_threads::SourceLinkage) -> Result<(), String> {
+    pub fn save_thread_source_linkage(&self, linkage: &kura_threads::SourceLinkage) -> Result<(), String> {
         let mut linkage = linkage.clone();
         if linkage.linked_at.is_none() || is_unset_time(&linkage.linked_at.unwrap_or_default()) {
             linkage.linked_at = Some(Utc::now());
@@ -361,7 +361,7 @@ impl SQLiteStore {
     }
 
     /// Go `SaveThreadRuntimeProjection`.
-    pub fn save_thread_runtime_projection(&self, projection: &dope_threads::RuntimeProjection) -> Result<(), String> {
+    pub fn save_thread_runtime_projection(&self, projection: &kura_threads::RuntimeProjection) -> Result<(), String> {
         let mut projection = projection.clone();
         let occurred_at = if is_unset_time(&projection.occurred_at) {
             let now = Utc::now();
@@ -421,7 +421,7 @@ impl SQLiteStore {
 
     /// Go `ListThreadsForTenant` — archived threads sort last, then recency,
     /// then id; fetches limit+1 rows to derive the next cursor.
-    pub fn list_threads_for_tenant(&self, query: &ThreadListQuery) -> Result<dope_threads::ThreadListResponse, String> {
+    pub fn list_threads_for_tenant(&self, query: &ThreadListQuery) -> Result<kura_threads::ThreadListResponse, String> {
         let limit = if query.limit <= 0 { 20 } else { query.limit };
         let offset = match query.cursor.parse::<i64>() {
             Ok(parsed) if parsed > 0 => parsed,
@@ -461,16 +461,16 @@ impl SQLiteStore {
                 continue;
             }
             let thread = scan_thread(row)?;
-            items.push(dope_threads::build_thread_resource(&thread, ""));
+            items.push(kura_threads::build_thread_resource(&thread, ""));
         }
         let next_cursor = if count > limit {
             (offset + limit).to_string()
         } else {
             String::new()
         };
-        Ok(dope_threads::ThreadListResponse {
+        Ok(kura_threads::ThreadListResponse {
             tenant_id: query.tenant_id.clone(),
-            page: dope_threads::ThreadPage {
+            page: kura_threads::ThreadPage {
                 limit: limit as i32,
                 next_cursor,
                 order: "active_recent_archived_id".to_string(),
@@ -484,7 +484,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         thread_id: &str,
-    ) -> Result<Vec<dope_threads::SessionSegment>, String> {
+    ) -> Result<Vec<kura_threads::SessionSegment>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -508,7 +508,7 @@ impl SQLiteStore {
         tenant_id: &str,
         thread_id: &str,
         now: DateTime<Utc>,
-    ) -> Result<Vec<dope_threads::SourceLinkage>, String> {
+    ) -> Result<Vec<kura_threads::SourceLinkage>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -535,7 +535,7 @@ impl SQLiteStore {
         tenant_id: &str,
         thread_id: &str,
         now: DateTime<Utc>,
-    ) -> Result<Vec<dope_threads::RuntimeProjection>, String> {
+    ) -> Result<Vec<kura_threads::RuntimeProjection>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -560,7 +560,7 @@ impl SQLiteStore {
     /// evidence timestamps and retention, then upserts.
     pub fn save_conversation_shape_evidence(
         &self,
-        evidence: &dope_threads::ConversationShapeEvidence,
+        evidence: &kura_threads::ConversationShapeEvidence,
     ) -> Result<(), String> {
         let mut evidence = evidence.clone();
         if evidence.conversation_shape_id.trim().is_empty() {
@@ -627,7 +627,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         thread_id: &str,
-    ) -> Result<Option<dope_threads::ConversationShapeEvidence>, String> {
+    ) -> Result<Option<kura_threads::ConversationShapeEvidence>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -649,7 +649,7 @@ impl SQLiteStore {
     /// identity (unique index) resolves to the existing row instead of failing.
     pub fn save_participation_decision(
         &self,
-        decision: &dope_threads::ParticipationDecision,
+        decision: &kura_threads::ParticipationDecision,
     ) -> Result<(), String> {
         let mut decision = decision.clone();
         if decision.participation_decision_id.trim().is_empty() {
@@ -719,7 +719,7 @@ impl SQLiteStore {
         account_id: &str,
         conversation_id: &str,
         message_id: &str,
-    ) -> Result<Option<dope_threads::ParticipationDecision>, String> {
+    ) -> Result<Option<kura_threads::ParticipationDecision>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -745,7 +745,7 @@ impl SQLiteStore {
         tenant_id: &str,
         thread_id: &str,
         limit: i64,
-    ) -> Result<Vec<dope_threads::ParticipationDecision>, String> {
+    ) -> Result<Vec<kura_threads::ParticipationDecision>, String> {
         let limit = if limit <= 0 { 20 } else { limit };
         let mut stmt = self
             .conn
@@ -768,7 +768,7 @@ impl SQLiteStore {
     }
 
     /// Go `SaveResetEvent`.
-    pub fn save_reset_event(&self, event: &dope_threads::ResetEvent) -> Result<(), String> {
+    pub fn save_reset_event(&self, event: &kura_threads::ResetEvent) -> Result<(), String> {
         let mut event = event.clone();
         if event.reset_event_id.trim().is_empty() {
             event.reset_event_id = new_store_id("reset");
@@ -785,7 +785,7 @@ impl SQLiteStore {
             event.permission_gate = "connectors.manage".to_string();
         }
         if event.reason_code.trim().is_empty() {
-            event.reason_code = dope_threads::GROUP_ROOM_REASON_SCOPED_RESET_SUCCEEDED.to_string();
+            event.reason_code = kura_threads::GROUP_ROOM_REASON_SCOPED_RESET_SUCCEEDED.to_string();
         }
         let document = serde_json::to_string(&event)
             .map_err(|e| format!("marshal reset event {}: {e}", event.reset_event_id))?;
@@ -837,7 +837,7 @@ impl SQLiteStore {
         tenant_id: &str,
         thread_id: &str,
         limit: i64,
-    ) -> Result<Vec<dope_threads::ResetEvent>, String> {
+    ) -> Result<Vec<kura_threads::ResetEvent>, String> {
         let limit = if limit <= 0 { 20 } else { limit };
         let mut stmt = self
             .conn
@@ -863,9 +863,9 @@ impl SQLiteStore {
 /// Go `store.ThreadLifecycleMutationResult`.
 #[derive(Debug, Clone)]
 pub struct ThreadLifecycleMutationResult {
-    pub thread: dope_threads::Thread,
-    pub action: dope_threads::LifecycleAction,
-    pub segment: Option<dope_threads::SessionSegment>,
+    pub thread: kura_threads::Thread,
+    pub action: kura_threads::LifecycleAction,
+    pub segment: Option<kura_threads::SessionSegment>,
 }
 
 impl SQLiteStore {
@@ -877,11 +877,11 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         thread_id: &str,
-        kind: dope_threads::LifecycleActionKind,
-        input: &dope_threads::LifecycleMutationInput,
+        kind: kura_threads::LifecycleActionKind,
+        input: &kura_threads::LifecycleMutationInput,
     ) -> Result<Option<ThreadLifecycleMutationResult>, String> {
         if input.audit_event_id.trim().is_empty() {
-            return Err(dope_threads::ThreadsError::AuditEvidenceRequired.to_string());
+            return Err(kura_threads::ThreadsError::AuditEvidenceRequired.to_string());
         }
         let now = input.now.unwrap_or_else(Utc::now);
         let retention_expires_at = self.thread_retention_expiry(tenant_id, now)?;
@@ -906,27 +906,27 @@ impl SQLiteStore {
         let mut input = input.clone();
         input.now = Some(now);
         let (updated, mut action, segment) = match kind {
-            dope_threads::LifecycleActionKind::Reset => {
+            kura_threads::LifecycleActionKind::Reset => {
                 if input.new_segment_id.trim().is_empty() {
                     input.new_segment_id = format!("seg_{}_{}", thread_id, now.timestamp_nanos_opt().unwrap_or_default());
                 }
                 let (next, lifecycle_action, mut new_segment) =
-                    dope_threads::reset_thread(&thread, &input)
+                    kura_threads::reset_thread(&thread, &input)
                         .map_err(|e| e.to_string())?;
                 new_segment.generation = next_thread_segment_generation_tx(&tx, tenant_id, thread_id)?;
                 (next, lifecycle_action, Some(new_segment))
             }
-            dope_threads::LifecycleActionKind::Archive => {
+            kura_threads::LifecycleActionKind::Archive => {
                 let (next, lifecycle_action) =
-                    dope_threads::archive_thread(&thread, &input).map_err(|e| e.to_string())?;
+                    kura_threads::archive_thread(&thread, &input).map_err(|e| e.to_string())?;
                 (next, lifecycle_action, None)
             }
-            dope_threads::LifecycleActionKind::Reopen => {
+            kura_threads::LifecycleActionKind::Reopen => {
                 if !thread_reopen_eligible_tx(&tx, &thread)? {
-                    return Err(dope_threads::ThreadsError::LifecycleReopenNotEligible.to_string());
+                    return Err(kura_threads::ThreadsError::LifecycleReopenNotEligible.to_string());
                 }
                 let (next, lifecycle_action) =
-                    dope_threads::reopen_thread(&thread, &input).map_err(|e| e.to_string())?;
+                    kura_threads::reopen_thread(&thread, &input).map_err(|e| e.to_string())?;
                 (next, lifecycle_action, None)
             }
         };
@@ -937,7 +937,7 @@ impl SQLiteStore {
             upsert_thread_session_segment_tx(&tx, segment)?;
         }
         insert_thread_lifecycle_action_tx(&tx, &action)?;
-        if kind == dope_threads::LifecycleActionKind::Reset {
+        if kind == kura_threads::LifecycleActionKind::Reset {
             let shape = {
                 let mut stmt = tx
                     .prepare(
@@ -951,12 +951,12 @@ impl SQLiteStore {
                 let mut rows = stmt.query(params![tenant_id, thread_id]).map_err(|e| e.to_string())?;
                 match rows.next().map_err(|e| e.to_string())? {
                     Some(row) => scan_conversation_shape(row)?,
-                    None => dope_threads::ConversationShapeEvidence {
+                    None => kura_threads::ConversationShapeEvidence {
                         conversation_shape_id: String::new(),
                         tenant_id: tenant_id.to_string(),
                         thread_id: thread_id.to_string(),
                         session_segment_id: String::new(),
-                        shape: dope_threads::ConversationShape::Unknown,
+                        shape: kura_threads::ConversationShape::Unknown,
                         source_kind: None,
                         connector_id: String::new(),
                         connector_kind: String::new(),
@@ -964,15 +964,15 @@ impl SQLiteStore {
                         source_conversation_id: String::new(),
                         source_conversation_summary: String::new(),
                         participant_summary: String::new(),
-                        shape_evidence_status: dope_threads::ShapeEvidenceStatus::Proven,
+                        shape_evidence_status: kura_threads::ShapeEvidenceStatus::Proven,
                         recorded_at: None,
                         updated_at: None,
                         retention_expires_at: None,
-                        redaction_status: dope_threads::RedactionStatus::Redacted,
+                        redaction_status: kura_threads::RedactionStatus::Redacted,
                     },
                 }
             };
-            let mut reset_event = dope_threads::build_scoped_reset_event(&action, &shape);
+            let mut reset_event = kura_threads::build_scoped_reset_event(&action, &shape);
             reset_event.reset_event_id = format!("reset_{}", action.audit_event_id);
             reset_event.retention_expires_at = Some(retention_expires_at);
             insert_thread_reset_event_tx(&tx, &reset_event)?;
@@ -983,13 +983,13 @@ impl SQLiteStore {
 
     /// Go `GetThreadDetailForTenant` — the full operator detail view for a
     /// thread. The active-profile projection, continuity previews, and handoff
-    /// links are surfaced by store DAOs not yet ported to dope-store, so those
+    /// links are surfaced by store DAOs not yet ported to kura-store, so those
     /// fields are left empty (see the wave-8 surface plan).
     pub fn get_thread_detail_for_tenant(
         &self,
         tenant_id: &str,
         thread_id: &str,
-    ) -> Result<Option<dope_threads::ThreadDetailResponse>, String> {
+    ) -> Result<Option<kura_threads::ThreadDetailResponse>, String> {
         let Some(thread) = self.get_thread_for_tenant(tenant_id, thread_id)? else {
             return Ok(None);
         };
@@ -1009,8 +1009,8 @@ impl SQLiteStore {
             .map(|segment| segment.session_id.clone())
             .unwrap_or_default();
 
-        let mut response = dope_threads::ThreadDetailResponse {
-            thread: dope_threads::build_thread_resource(&thread, &current_session_id),
+        let mut response = kura_threads::ThreadDetailResponse {
+            thread: kura_threads::build_thread_resource(&thread, &current_session_id),
             session_segments: segments,
             source_linkages,
             runtime_projections,
@@ -1035,7 +1035,7 @@ impl SQLiteStore {
         tenant_id: &str,
         thread_id: &str,
         now: DateTime<Utc>,
-    ) -> Result<Vec<dope_threads::LifecycleAction>, String> {
+    ) -> Result<Vec<kura_threads::LifecycleAction>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -1049,7 +1049,7 @@ impl SQLiteStore {
         let mut items = Vec::new();
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
             let raw: String = row.get(0).map_err(|e| e.to_string())?;
-            let mut action: dope_threads::LifecycleAction =
+            let mut action: kura_threads::LifecycleAction =
                 serde_json::from_str(&raw).map_err(|e| format!("decode thread lifecycle action: {e}"))?;
             let expires_at = action.retention_expires_at.unwrap_or_else(|| {
                 self.thread_retention_expiry(tenant_id, action.completed_at)
@@ -1069,7 +1069,7 @@ impl SQLiteStore {
 /// `UpsertThreadSessionSegment` (used by lifecycle mutations).
 fn upsert_thread_session_segment_tx(
     tx: &rusqlite::Transaction<'_>,
-    segment: &dope_threads::SessionSegment,
+    segment: &kura_threads::SessionSegment,
 ) -> Result<(), String> {
     let mut segment = segment.clone();
     let now = Utc::now();
@@ -1125,8 +1125,8 @@ fn upsert_thread_session_segment_tx(
 /// row keyed on the prior state; a concurrent mutation fails the write.
 fn update_thread_lifecycle_tx(
     tx: &rusqlite::Transaction<'_>,
-    prior: &dope_threads::Thread,
-    updated: &dope_threads::Thread,
+    prior: &kura_threads::Thread,
+    updated: &kura_threads::Thread,
 ) -> Result<(), String> {
     let document = serde_json::to_string(updated)
         .map_err(|e| format!("marshal thread {}: {e}", updated.thread_id))?;
@@ -1166,7 +1166,7 @@ fn update_thread_lifecycle_tx(
         )
         .map_err(|e| format!("update thread lifecycle {}: {e}", updated.thread_id))?;
     if affected != 1 {
-        return Err(dope_threads::ThreadsError::LifecycleMutationConflict.to_string());
+        return Err(kura_threads::ThreadsError::LifecycleMutationConflict.to_string());
     }
     Ok(())
 }
@@ -1174,7 +1174,7 @@ fn update_thread_lifecycle_tx(
 /// Go `insertThreadLifecycleActionTx`.
 fn insert_thread_lifecycle_action_tx(
     tx: &rusqlite::Transaction<'_>,
-    action: &dope_threads::LifecycleAction,
+    action: &kura_threads::LifecycleAction,
 ) -> Result<(), String> {
     let document = serde_json::to_string(action)
         .map_err(|e| format!("marshal thread lifecycle action {}: {e}", action.lifecycle_action_id))?;
@@ -1202,7 +1202,7 @@ fn insert_thread_lifecycle_action_tx(
 /// Go `insertThreadResetEventTx`.
 fn insert_thread_reset_event_tx(
     tx: &rusqlite::Transaction<'_>,
-    event: &dope_threads::ResetEvent,
+    event: &kura_threads::ResetEvent,
 ) -> Result<(), String> {
     let mut event = event.clone();
     if event.reset_event_id.trim().is_empty() {
@@ -1212,7 +1212,7 @@ fn insert_thread_reset_event_tx(
         event.permission_gate = "connectors.manage".to_string();
     }
     if event.reason_code.trim().is_empty() {
-        event.reason_code = dope_threads::GROUP_ROOM_REASON_SCOPED_RESET_SUCCEEDED.to_string();
+        event.reason_code = kura_threads::GROUP_ROOM_REASON_SCOPED_RESET_SUCCEEDED.to_string();
     }
     let document = serde_json::to_string(&event)
         .map_err(|e| format!("marshal reset event {}: {e}", event.reset_event_id))?;
@@ -1280,7 +1280,7 @@ fn next_thread_segment_generation_tx(
 /// Go `threadReopenEligibleTx`.
 fn thread_reopen_eligible_tx(
     tx: &rusqlite::Transaction<'_>,
-    thread: &dope_threads::Thread,
+    thread: &kura_threads::Thread,
 ) -> Result<bool, String> {
     if thread.current_session_segment_id.trim().is_empty() {
         return Ok(false);
@@ -1297,7 +1297,7 @@ fn thread_reopen_eligible_tx(
     if segment_count != 1 {
         return Ok(false);
     }
-    if thread.source_kind != dope_threads::SourceKind::Channel {
+    if thread.source_kind != kura_threads::SourceKind::Channel {
         return Ok(true);
     }
     let source_count: i64 = tx

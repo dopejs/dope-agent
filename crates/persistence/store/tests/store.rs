@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use dope_store::{schema_migrations, SQLiteStore, CURRENT_SCHEMA_VERSION};
+use kura_store::{schema_migrations, SQLiteStore, CURRENT_SCHEMA_VERSION};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -37,15 +37,15 @@ fn store_conn_query(db_path: &str, query: &str) -> i64 {
     conn.query_row(query, [], |row| row.get(0)).unwrap()
 }
 use chrono::Utc;
-use dope_capabilities::{Capability, Status as CapabilityStatus};
-use dope_router::{Session, SessionKind, SessionStatus};
-use dope_events::{Event, Filter, Resource, Scope};
-use dope_llm::{Dispatch, DispatchStatus, Message, MessageRole, Usage};
-use dope_policy::{Approval, ApprovalStatus, Decision, DecisionOutcome};
-use dope_providers::{
+use kura_capabilities::{Capability, Status as CapabilityStatus};
+use kura_router::{Session, SessionKind, SessionStatus};
+use kura_events::{Event, Filter, Resource, Scope};
+use kura_llm::{Dispatch, DispatchStatus, Message, MessageRole, Usage};
+use kura_policy::{Approval, ApprovalStatus, Decision, DecisionOutcome};
+use kura_providers::{
     AuthMode, AuthState, AuthStatus, Check, CheckStatus, Family, Model, Preference,
 };
-use dope_runtime::{Run, RunCheckpoint, RunStatus, Step, StepStatus, ToolCall, ToolCallStatus};
+use kura_runtime::{Run, RunCheckpoint, RunStatus, Step, StepStatus, ToolCall, ToolCallStatus};
 
 fn make_run() -> Run {
     let now = Utc::now();
@@ -99,13 +99,13 @@ fn make_tool_call() -> ToolCall {
         input: Some(serde_json::json!({"q": "hi"})),
         output: Some(serde_json::json!({"r": 1})),
         sandbox,
-        integration_bindings: vec![dope_integrations::BindingSummary {
+        integration_bindings: vec![kura_integrations::BindingSummary {
             integration_id: "int_1".to_string(),
             domain_kind: "calendar".to_string(),
             display_name: "Calendar".to_string(),
-            readiness_at_invocation: dope_integrations::ReadinessStatus::Healthy,
-            backend_kind: dope_integrations::BackendKind::Native,
-            ..dope_integrations::BindingSummary::default()
+            readiness_at_invocation: kura_integrations::ReadinessStatus::Healthy,
+            backend_kind: kura_integrations::BackendKind::Native,
+            ..kura_integrations::BindingSummary::default()
         }],
         created_at: now,
         updated_at: now,
@@ -171,7 +171,7 @@ fn tool_call_round_trips_through_sqlite() {
     assert_eq!(got.sandbox.get("session"), Some(&serde_json::json!("s-1")));
     assert_eq!(got.integration_bindings.len(), 1);
     assert_eq!(got.integration_bindings[0].integration_id, "int_1");
-    assert_eq!(got.integration_bindings[0].backend_kind, dope_integrations::BackendKind::Native);
+    assert_eq!(got.integration_bindings[0].backend_kind, kura_integrations::BackendKind::Native);
 }
 
 #[test]
@@ -471,7 +471,7 @@ fn manager_document_round_trips_through_sqlite() {
     let dir = temp_dir("managdoc");
     let store = SQLiteStore::new(&dir).unwrap();
     let now = Utc::now();
-    let doc = dope_store::ManagerDocument {
+    let doc = kura_store::ManagerDocument {
         doc_kind: "triage".to_string(),
         doc_id: "t1".to_string(),
         environment_scope: "test".to_string(),
@@ -489,14 +489,14 @@ fn manager_document_round_trips_through_sqlite() {
 
     store.delete_manager_document("triage", "t1").unwrap();
     assert_eq!(store.list_manager_documents("triage").unwrap().len(), 0);
-    assert_eq!(store.schema_version().unwrap(), dope_store::CURRENT_SCHEMA_VERSION);
+    assert_eq!(store.schema_version().unwrap(), kura_store::CURRENT_SCHEMA_VERSION);
 }
 #[test]
 fn sandbox_execution_round_trips_through_sqlite() {
     let dir = temp_dir("sandboxexec");
     let store = SQLiteStore::new(&dir).unwrap();
     let now = Utc::now();
-    let record = dope_store::SandboxExecutionRecord {
+    let record = kura_store::SandboxExecutionRecord {
         execution_id: "exec_1".to_string(),
         profile_id: "prof_1".to_string(),
         backend_kind: "docker".to_string(),
@@ -536,7 +536,7 @@ fn legacy_dev_head_database_is_restamped_as_baseline() {
     let store = SQLiteStore::new(&dir).unwrap();
     // The re-stamp lands on baseline v1, then any post-baseline migrations
     // (v2+) apply on top.
-    assert_eq!(store.schema_version().unwrap(), dope_store::CURRENT_SCHEMA_VERSION);
+    assert_eq!(store.schema_version().unwrap(), kura_store::CURRENT_SCHEMA_VERSION);
 }
 #[test]
 fn event_append_and_list_round_trip() {

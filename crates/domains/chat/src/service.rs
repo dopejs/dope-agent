@@ -2,13 +2,13 @@
 //!
 //! The service compiles prompts (agent overlays + selected skills), resolves
 //! active-profile, binding, and continuity context, prepares and executes an
-//! LLM dispatch through `dope-llm`, persists the dispatch lifecycle and
+//! LLM dispatch through `kura-llm`, persists the dispatch lifecycle and
 //! continuity turns/previews through the store, and publishes `llm`,
 //! `thread`, `agent_profile`, and `binding` events on the bus.
 //!
 //! Go's `context.Context` maps to the synchronous [`CancellationToken`] API:
 //! `query` and `stream` block the caller (like Go) and bridge into the async
-//! `dope-llm` dispatcher through a per-call current-thread Tokio runtime.
+//! `kura-llm` dispatcher through a per-call current-thread Tokio runtime.
 //! Streaming is a callback emitter (`stream`, the faithful Go shape) plus a
 //! thread + `std::sync::mpsc` variant (`stream_channel`).
 
@@ -16,21 +16,21 @@ use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 use chrono::{DateTime, Utc};
-use dope_bindings::{
+use kura_bindings::{
     EffectiveBindingSelection, ResolutionOutcome, RuntimeBindingEvidenceInput,
     build_runtime_binding_evidence, enforce_executable,
 };
-use dope_llm::{
+use kura_llm::{
     CreateDispatchInput, Dispatch, DispatchStatus, Message, MessageRole, ProviderError,
 };
-use dope_profiles::{
+use kura_profiles::{
     APPLIED_BINDING_CLASSIFICATION_MARKER, ActiveSelection, AgentProfile,
     DEFERRED_BINDING_CLASSIFICATION_MARKER, RuntimeProjectionInput, RuntimeResourceKind,
     build_runtime_projection, safe_profile_summary,
 };
-use dope_setupwizard::{SafeUseMode, ServiceDependencies, TARGET_OPENAI_COMPATIBLE, new_service};
-use dope_skills::{Overlay, Registry, Skill};
-use dope_threads::{
+use kura_setupwizard::{SafeUseMode, ServiceDependencies, TARGET_OPENAI_COMPATIBLE, new_service};
+use kura_skills::{Overlay, Registry, Skill};
+use kura_threads::{
     ContinuityDecision, ContinuityItemKind, ContinuityMode, ContinuityPreview,
     ContinuityPreviewItem, ContinuityReason, ContinuityRole, ContinuityStatus, ContinuityTurn,
     HandoffSourceReference, HandoffSourceReferenceDecision, HandoffSourceReferenceEligibility,
@@ -142,12 +142,12 @@ impl Service {
         )?;
 
         // Execute on a fresh current-thread runtime; killing `cancel` cancels
-        // the dope-llm token and aborts the blocking dispatch.
+        // the kura-llm token and aborts the blocking dispatch.
         let runtime = bridge_runtime()?;
-        let dope_cancel = dope_llm::CancelToken::new();
+        let kura_cancel = kura_llm::CancelToken::new();
         let child = cancel.child();
-        let _link = child.link_to(&dope_cancel);
-        let exec_result = runtime.block_on(self.dispatcher.dispatch(dispatch, &dope_cancel));
+        let _link = child.link_to(&kura_cancel);
+        let exec_result = runtime.block_on(self.dispatcher.dispatch(dispatch, &kura_cancel));
 
         let final_dispatch = match &exec_result {
             Ok(d) => d.clone(),
@@ -263,12 +263,12 @@ impl Service {
         )?;
 
         let runtime = bridge_runtime()?;
-        let dope_cancel = dope_llm::CancelToken::new();
+        let kura_cancel = kura_llm::CancelToken::new();
         let child = cancel.child();
-        let _link = child.link_to(&dope_cancel);
+        let _link = child.link_to(&kura_cancel);
         let mut emit = emit.take();
         let exec_result = runtime.block_on(async {
-            let mut adapter = |chunk: dope_llm::StreamChunk| -> Result<(), ProviderError> {
+            let mut adapter = |chunk: kura_llm::StreamChunk| -> Result<(), ProviderError> {
                 let Some(emit) = emit.as_mut() else {
                     return Ok(());
                 };
@@ -292,7 +292,7 @@ impl Service {
                 emit(out).map_err(|err| ProviderError::Other(err.to_string()))
             };
             self.dispatcher
-                .dispatch_stream(dispatch, &dope_cancel, &mut adapter)
+                .dispatch_stream(dispatch, &kura_cancel, &mut adapter)
                 .await
         });
 
@@ -346,7 +346,7 @@ impl Service {
         let service = self.clone();
         let (tx, rx) = mpsc::sync_channel(capacity.max(1));
         let handle = std::thread::Builder::new()
-            .name("dope-chat-stream".to_string())
+            .name("kura-chat-stream".to_string())
             .spawn(move || {
                 service.stream(
                     input,
@@ -382,16 +382,16 @@ impl Service {
             "query": input.query,
             "sourceKind": serde_json::to_value(input.source_kind).unwrap_or(Value::Null),
         });
-        let outcome = hooks.run(dope_plugin::points::CHAT_TURN_START, &mut payload);
+        let outcome = hooks.run(kura_plugin::points::CHAT_TURN_START, &mut payload);
         if let Some((plugin_id, reason)) = outcome.halted {
             self.publish_hook_veto(
-                dope_plugin::points::CHAT_TURN_START,
+                kura_plugin::points::CHAT_TURN_START,
                 &plugin_id,
                 &reason,
                 &input.scope,
             );
             return Err(ChatError::HookVetoed {
-                point: dope_plugin::points::CHAT_TURN_START.to_string(),
+                point: kura_plugin::points::CHAT_TURN_START.to_string(),
                 plugin_id,
                 reason,
             });
@@ -427,16 +427,16 @@ impl Service {
             "messages": serde_json::to_value(&dispatch_input.messages)
                 .unwrap_or_else(|_| Value::Array(Vec::new())),
         });
-        let outcome = hooks.run(dope_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
+        let outcome = hooks.run(kura_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
         if let Some((plugin_id, reason)) = outcome.halted {
             self.publish_hook_veto(
-                dope_plugin::points::CHAT_PRE_DISPATCH,
+                kura_plugin::points::CHAT_PRE_DISPATCH,
                 &plugin_id,
                 &reason,
                 &input.scope,
             );
             return Err(ChatError::HookVetoed {
-                point: dope_plugin::points::CHAT_PRE_DISPATCH.to_string(),
+                point: kura_plugin::points::CHAT_PRE_DISPATCH.to_string(),
                 plugin_id,
                 reason,
             });
@@ -451,7 +451,7 @@ impl Service {
             if let Some(messages) = payload.get("messages") {
                 dispatch_input.messages = serde_json::from_value(messages.clone()).map_err(
                     |err| ChatError::HookPayload {
-                        point: dope_plugin::points::CHAT_PRE_DISPATCH.to_string(),
+                        point: kura_plugin::points::CHAT_PRE_DISPATCH.to_string(),
                         reason: format!("messages: {err}"),
                     },
                 )?;
@@ -477,25 +477,25 @@ impl Service {
             "requestTurnId": result.request_turn_id,
             "responseTurnId": result.response_turn_id,
         });
-        let _ = hooks.run(dope_plugin::points::CHAT_TURN_END, &mut payload);
+        let _ = hooks.run(kura_plugin::points::CHAT_TURN_END, &mut payload);
     }
 
     /// Best-effort `chat.hook.vetoed` event so vetoes are auditable.
-    fn publish_hook_veto(&self, point: &str, plugin_id: &str, reason: &str, scope: &dope_events::Scope) {
+    fn publish_hook_veto(&self, point: &str, plugin_id: &str, reason: &str, scope: &kura_events::Scope) {
         let mut payload: Map<String, Value> = Map::new();
         payload.insert("point".to_string(), Value::String(point.to_string()));
         payload.insert("pluginId".to_string(), Value::String(plugin_id.to_string()));
         payload.insert("reason".to_string(), Value::String(reason.to_string()));
-        let event = normalize_event(dope_events::Event {
+        let event = normalize_event(kura_events::Event {
             category: "chat".to_string(),
             name: "chat.hook.vetoed".to_string(),
             scope: scope.clone(),
-            resource: dope_events::Resource {
+            resource: kura_events::Resource {
                 kind: "hook_point".to_string(),
                 id: point.to_string(),
             },
             payload,
-            ..dope_events::Event::default()
+            ..kura_events::Event::default()
         });
         let event = match self.store.as_deref() {
             Some(store) => store.append_event(&event).unwrap_or(event),
@@ -1166,7 +1166,7 @@ impl Service {
 
     /// Go `publishContinuityEvent`: normalizes, persists, and publishes one
     /// thread-continuity event.
-    fn publish_continuity_event(&self, event: dope_events::Event) -> Result<(), ChatError> {
+    fn publish_continuity_event(&self, event: kura_events::Event) -> Result<(), ChatError> {
         let event = normalize_event(event);
         let event = if let Some(store) = self.store.as_deref() {
             store.append_event(&event).map_err(ChatError::Store)?
@@ -1354,15 +1354,15 @@ fn persist_dispatch(store: Option<&dyn ChatStore>, dispatch: &Dispatch) -> Resul
 /// Go `publishDispatchEvent`: builds the `llm.*` event payload and persists
 /// and publishes it. A nil bus short-circuits (Go returns a zero event).
 fn publish_dispatch_event(
-    event_bus: Option<&dope_events::Bus>,
+    event_bus: Option<&kura_events::Bus>,
     store: Option<&dyn ChatStore>,
-    scope: &dope_events::Scope,
+    scope: &kura_events::Scope,
     dispatch: &Dispatch,
     selected: &[Skill],
     name: &str,
-) -> Result<dope_events::Event, ChatError> {
+) -> Result<kura_events::Event, ChatError> {
     let Some(bus) = event_bus else {
-        return Ok(dope_events::Event::default());
+        return Ok(kura_events::Event::default());
     };
 
     let mut payload: Map<String, Value> = Map::new();
@@ -1429,16 +1429,16 @@ fn publish_dispatch_event(
         );
     }
 
-    let mut event = dope_events::Event {
+    let mut event = kura_events::Event {
         category: "llm".to_string(),
         name: name.to_string(),
         scope: scope.clone(),
-        resource: dope_events::Resource {
+        resource: kura_events::Resource {
             kind: "llm_dispatch".to_string(),
             id: dispatch.dispatch_id.clone(),
         },
         payload,
-        ..dope_events::Event::default()
+        ..kura_events::Event::default()
     };
     event = normalize_event(event);
     let event = if let Some(store) = store {
@@ -1637,7 +1637,7 @@ pub fn handoff_reference_continuity_reason(reference: &HandoffSourceReference) -
 }
 
 /// Builds the per-call current-thread Tokio runtime that bridges the sync
-/// service into the async `dope-llm` dispatcher. Time is enabled for the
+/// service into the async `kura-llm` dispatcher. Time is enabled for the
 /// dispatcher's per-attempt timeout.
 fn bridge_runtime() -> Result<tokio::runtime::Runtime, ChatError> {
     tokio::runtime::Builder::new_current_thread()

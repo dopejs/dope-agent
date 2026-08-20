@@ -4,15 +4,15 @@
 # Data (the data directory: runs, events, config) is KEPT unless --purge.
 #
 # Overrides:
-#   DOPE_BIN_DIR   default ~/.local/bin
-#   DOPE_DATA_DIR  default ~/.dope (prod) / ~/.dope-test with --env test
-#   --env test     target the test install (~/.dope-test)
+#   KURA_BIN_DIR   default ~/.local/bin
+#   KURA_DATA_DIR  default ~/.kura (prod) / ~/.kura-test with --env test
+#   --env test     target the test install (~/.kura-test)
 #   --system       Linux: remove the system-wide systemd unit (sudo)
 #   --purge        also delete the data directory  (DESTRUCTIVE, irreversible)
 #
 set -euo pipefail
 
-SERVICE_LABEL="com.dopejs.dope-agent"
+SERVICE_LABEL="com.kurajs.kura-agent"
 ENVN="prod"; SYSTEM_MODE=0; PURGE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -24,9 +24,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "${ENVN}" == "test" ]] && DEFAULT_DATA="${HOME}/.dope-test" || DEFAULT_DATA="${HOME}/.dope"
-DOPE_BIN_DIR="${DOPE_BIN_DIR:-${HOME}/.local/bin}"
-DOPE_DATA_DIR="${DOPE_DATA_DIR:-${DEFAULT_DATA}}"
+[[ "${ENVN}" == "test" ]] && DEFAULT_DATA="${HOME}/.kura-test" || DEFAULT_DATA="${HOME}/.kura"
+KURA_BIN_DIR="${KURA_BIN_DIR:-${HOME}/.local/bin}"
+KURA_DATA_DIR="${KURA_DATA_DIR:-${DEFAULT_DATA}}"
 OS="$(uname -s)"
 info() { printf '==> %s\n' "$*"; }
 
@@ -36,31 +36,31 @@ if [[ "${OS}" == "Darwin" ]]; then
   launchctl bootout "gui/$(id -u)/${SERVICE_LABEL}" 2>/dev/null || true
   [[ -f "${PLIST}" ]] && { rm -f "${PLIST}"; info "removed ${PLIST}"; }
 elif [[ "${SYSTEM_MODE}" == "1" ]]; then
-  sudo systemctl disable --now dope-agent.service 2>/dev/null || true
-  sudo rm -f /etc/systemd/system/dope-agent.service && sudo systemctl daemon-reload || true
+  sudo systemctl disable --now kura-agent.service 2>/dev/null || true
+  sudo rm -f /etc/systemd/system/kura-agent.service && sudo systemctl daemon-reload || true
   info "removed system systemd unit"
 else
-  systemctl --user disable --now dope-agent.service 2>/dev/null || true
-  rm -f "${HOME}/.config/systemd/user/dope-agent.service"
+  systemctl --user disable --now kura-agent.service 2>/dev/null || true
+  rm -f "${HOME}/.config/systemd/user/kura-agent.service"
   systemctl --user daemon-reload 2>/dev/null || true
   info "removed systemd user unit"
 fi
 
 # ---- remove binaries ----
 for binary in kura kura-tui; do
-  [[ -e "${DOPE_BIN_DIR}/${binary}" || -L "${DOPE_BIN_DIR}/${binary}" ]] \
-    && { rm -f "${DOPE_BIN_DIR}/${binary}"; info "removed ${DOPE_BIN_DIR}/${binary}"; }
+  [[ -e "${KURA_BIN_DIR}/${binary}" || -L "${KURA_BIN_DIR}/${binary}" ]] \
+    && { rm -f "${KURA_BIN_DIR}/${binary}"; info "removed ${KURA_BIN_DIR}/${binary}"; }
 done
 
 # ---- data ----
 if [[ "${PURGE}" == "1" ]]; then
-  if [[ -d "${DOPE_DATA_DIR}" ]]; then
-    printf 'About to DELETE all data at %s — type the path to confirm: ' "${DOPE_DATA_DIR}"
+  if [[ -d "${KURA_DATA_DIR}" ]]; then
+    printf 'About to DELETE all data at %s — type the path to confirm: ' "${KURA_DATA_DIR}"
     read -r confirm
-    [[ "${confirm}" == "${DOPE_DATA_DIR}" ]] || { echo "mismatch; aborting purge."; exit 1; }
-    rm -rf "${DOPE_DATA_DIR}"; info "purged ${DOPE_DATA_DIR}"
+    [[ "${confirm}" == "${KURA_DATA_DIR}" ]] || { echo "mismatch; aborting purge."; exit 1; }
+    rm -rf "${KURA_DATA_DIR}"; info "purged ${KURA_DATA_DIR}"
   fi
 else
-  info "data kept at ${DOPE_DATA_DIR} (use --purge to delete)"
+  info "data kept at ${KURA_DATA_DIR} (use --purge to delete)"
 fi
 info "uninstall complete."

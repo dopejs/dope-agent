@@ -60,7 +60,7 @@ testing. Complete Phase 1 and Phase 2 before beginning any user story.
 
 ### Tests for User Story 1
 
-- [X] T019 [P] [US1] Add resolver unit tests for default tenant selection, explicit X-Dope-Tenant-ID selection, disabled principal denial, removed membership denial, and no existence leakage in daemon/internal/identity/resolver_test.go
+- [X] T019 [P] [US1] Add resolver unit tests for default tenant selection, explicit X-Kura-Tenant-ID selection, disabled principal denial, removed membership denial, and no existence leakage in daemon/internal/identity/resolver_test.go
 - [X] T020 [P] [US1] Add audit unit tests for fail-closed tenant switch and denied access audit writes in daemon/internal/identity/audit_test.go
 - [X] T021 [P] [US1] Add API tests for /v1/auth/me tenant context, allowed and disallowed /v1/tenants/{tenantId} inspection, and protected route tenant resolution in daemon/internal/api/tenant_auth_test.go
 - [X] T022 [P] [US1] Add contract tests for auth/me, tenant context, tenant list, tenant detail, and stable error response schemas in daemon/internal/contracts/tenant_identity_contracts_test.go
@@ -70,7 +70,7 @@ testing. Complete Phase 1 and Phase 2 before beginning any user story.
 
 - [X] T024 [US1] Implement personal tenant and active principal bootstrap for local-first installations in daemon/internal/identity/manager.go
 - [X] T025 [US1] Implement token grant limitation for existing local tokens during bootstrap in daemon/internal/identity/manager.go
-- [X] T026 [US1] Implement tenant resolver for default tenant and X-Dope-Tenant-ID override rules in daemon/internal/identity/resolver.go
+- [X] T026 [US1] Implement tenant resolver for default tenant and X-Kura-Tenant-ID override rules in daemon/internal/identity/resolver.go
 - [X] T027 [US1] Implement tenant audit writer and fail-closed tenant switch denial behavior in daemon/internal/identity/audit.go
 - [X] T028 [US1] Add identity manager dependency and tenant context middleware to protected routes in daemon/internal/api/server.go
 - [X] T029 [US1] Add context helpers for resolved TenantContext in daemon/internal/api/types.go

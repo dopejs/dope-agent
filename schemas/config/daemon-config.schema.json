@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/config/daemon-config.schema.json",
+  "$id": "https://kura.local/schemas/config/daemon-config.schema.json",
   "title": "DaemonConfig",
   "type": "object",
   "additionalProperties": false,
@@ -16,7 +16,7 @@
     },
     "dataDir": {
       "type": "string",
-      "default": "~/.dope-test"
+      "default": "~/.kura-test"
     },
     "logLevel": {
       "type": "string",

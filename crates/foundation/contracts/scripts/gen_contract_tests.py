@@ -559,7 +559,7 @@ def emit_test_file(go_stem, cases):
         "mod common;",
         "",
         "use common::{schema_root_dir, validate_fixtures};",
-        "use dope_contracts::Validator;",
+        "use kura_contracts::Validator;",
         "",
     ]
     if any(op[0] == "ok" for _, ops in cases for op in ops):
@@ -720,7 +720,7 @@ def main():
         "",
         "/// Mirrors Go's mustValidateFixtures: every schemaPath -> fixture pair must",
         "/// validate cleanly.",
-        "pub fn validate_fixtures(validator: &dope_contracts::Validator, fixtures: &[Fixture]) {",
+        "pub fn validate_fixtures(validator: &kura_contracts::Validator, fixtures: &[Fixture]) {",
         "    for (schema_path, fixture) in fixtures {",
         "        validator",
         "            .validate_relative(schema_path, fixture.as_bytes())",

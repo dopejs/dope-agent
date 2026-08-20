@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/tenant-detail.response.schema.json",
+  "$id": "https://kura.local/schemas/api/tenant-detail.response.schema.json",
   "title": "TenantDetailResponse",
   "type": "object",
   "required": ["tenant", "tenantContext"],

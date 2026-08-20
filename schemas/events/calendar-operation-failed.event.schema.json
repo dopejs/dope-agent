@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/calendar-operation-failed.event.schema.json",
+  "$id": "https://kura.local/schemas/events/calendar-operation-failed.event.schema.json",
   "title": "CalendarOperationFailedEvent",
   "allOf": [
     { "$ref": "./runtime-event.schema.json" },

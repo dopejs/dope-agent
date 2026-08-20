@@ -38,10 +38,10 @@
 //!   protected() middleware still defers that audit write; handler-level
 //!   permission denials DO write the tenant.permission_denied audit exactly
 //!   like Go's RequirePermission.
-//! - dope-identity::Store for SQLiteStore does not exist in dope-store yet
+//! - kura-identity::Store for SQLiteStore does not exist in kura-store yet
 //!   (crates/persistence/store has every backing method; the trait impl is
 //!   missing). Tests bridge it with a local wrapper. Same for
-//!   dope-secrets::Store (no SQLite impl in dope-store) - tests use a local
+//!   kura-secrets::Store (no SQLite impl in kura-store) - tests use a local
 //!   in-memory store mirroring the secrets crate's FakeStore semantics.
 //! - the tenant-by-id guard (withByIDTenantGuard) does not apply to this
 //!   family in Go either; tenant scoping is the handler-level
@@ -60,13 +60,13 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
 
-use dope_identity::auth::{self, AccessToken, Pairing};
-use dope_identity::{
+use kura_identity::auth::{self, AccessToken, Pairing};
+use kura_identity::{
     can_inspect_credentials, evaluate_permission, has_permission, permissions_for_role,
     AuditEventFilter, InvitationFilter, LifecycleStatus, MembershipFilter, Permission,
     PrincipalFilter, Role, Tenant, TenantAuditEvent, TokenTenantGrant,
 };
-use dope_secrets::SecretsError;
+use kura_secrets::SecretsError;
 
 use crate::error::ApiError;
 use crate::middleware::{AuthenticatedToken, TenantContext};
@@ -147,7 +147,7 @@ impl IntoResponse for AuthApiError {
         match self {
             Self::Api(err) => err.into_response(),
             Self::TenantDenial => {
-                (StatusCode::FORBIDDEN, Json(dope_identity::stable_denial())).into_response()
+                (StatusCode::FORBIDDEN, Json(kura_identity::stable_denial())).into_response()
             }
             Self::CredentialDenial { reason_code } => (
                 StatusCode::FORBIDDEN,
@@ -242,7 +242,7 @@ struct CreateTenantSecretRequest {
     display_name: String,
     value: String,
     #[serde(default)]
-    document: Option<dope_secrets::Document>,
+    document: Option<kura_secrets::Document>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -251,7 +251,7 @@ struct UpdateTenantSecretRequest {
     #[serde(default)]
     display_name: Option<String>,
     #[serde(default)]
-    document: Option<dope_secrets::Document>,
+    document: Option<kura_secrets::Document>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -307,7 +307,7 @@ fn parse_optional_time(value: &str) -> Result<Option<DateTime<Utc>>, ApiError> {
 }
 
 /// Manager lookups (Go `if manager == nil { 500 }`).
-fn auth_manager(state: &AppState) -> Result<&dope_identity::auth::Manager, ApiError> {
+fn auth_manager(state: &AppState) -> Result<&kura_identity::auth::Manager, ApiError> {
     state
         .auth
         .as_deref()
@@ -316,14 +316,14 @@ fn auth_manager(state: &AppState) -> Result<&dope_identity::auth::Manager, ApiEr
 
 fn identity_manager(
     state: &AppState,
-) -> Result<&dope_identity::Manager<dyn dope_identity::Store + Send + Sync>, ApiError> {
+) -> Result<&kura_identity::Manager<dyn kura_identity::Store + Send + Sync>, ApiError> {
     state
         .identity
         .as_deref()
         .ok_or_else(|| ApiError::Internal("identity manager is not configured".to_string()))
 }
 
-fn secrets_manager(state: &AppState) -> Result<&dope_secrets::Manager, ApiError> {
+fn secrets_manager(state: &AppState) -> Result<&kura_secrets::Manager, ApiError> {
     state
         .secrets
         .as_deref()
@@ -347,7 +347,7 @@ fn tenant_context(
 /// tenant denial.
 fn require_permission(
     state: &AppState,
-    tenant: &dope_identity::TenantContext,
+    tenant: &kura_identity::TenantContext,
     permission: Permission,
 ) -> Result<(), AuthApiError> {
     if evaluate_permission(tenant, permission).allowed {
@@ -358,7 +358,7 @@ fn require_permission(
         tenant_id: tenant.tenant_id.clone(),
         principal_id: tenant.principal_id.clone(),
         token_id: tenant.token_id.clone(),
-        outcome: dope_identity::AUDIT_OUTCOME_DENIED.to_string(),
+        outcome: kura_identity::AUDIT_OUTCOME_DENIED.to_string(),
         reason_code: format!("permission_denied:{}", permission_wire(permission)),
         created_at: Utc::now(),
         ..TenantAuditEvent::default()
@@ -389,7 +389,7 @@ fn append_token_audit(
         tenant_id: tenant_id.to_string(),
         principal_id: principal_id.to_string(),
         token_id: token_id.to_string(),
-        outcome: dope_identity::AUDIT_OUTCOME_SUCCEEDED.to_string(),
+        outcome: kura_identity::AUDIT_OUTCOME_SUCCEEDED.to_string(),
         reason_code: reason_code.to_string(),
         created_at: Utc::now(),
         ..TenantAuditEvent::default()
@@ -425,9 +425,9 @@ fn active_grant_set(grants: &[TokenTenantGrant]) -> (Vec<String>, String) {
 /// Go allowedTenantsForToken: active grants x active memberships of the
 /// caller's principal, projected with caller membership fields.
 fn allowed_tenants_for_token(
-    store: &dope_store::SQLiteStore,
+    store: &kura_store::SQLiteStore,
     token: &AccessToken,
-    tenant_context: &dope_identity::TenantContext,
+    tenant_context: &kura_identity::TenantContext,
 ) -> Result<Vec<Tenant>, String> {
     let grants = store.list_token_tenant_grants(&token.token_id)?;
     let granted: HashMap<String, TokenTenantGrant> = grants
@@ -472,21 +472,21 @@ fn allowed_tenants_for_token(
 fn build_auth_me_response(
     state: &AppState,
     token: &AccessToken,
-    tenant_context: &dope_identity::TenantContext,
+    tenant_context: &kura_identity::TenantContext,
 ) -> Result<AuthMeResponse, ApiError> {
     let store = state.store.lock();
     let principal = store
         .get_principal(&tenant_context.principal_id)
         .map_err(ApiError::from_store)?
-        .ok_or_else(|| ApiError::internal(dope_identity::IdentityError::TenantAccessDenied))?;
+        .ok_or_else(|| ApiError::internal(kura_identity::IdentityError::TenantAccessDenied))?;
     let mut default_tenant = store
         .get_tenant(&principal.default_tenant_id)
         .map_err(ApiError::from_store)?
-        .ok_or_else(|| ApiError::internal(dope_identity::IdentityError::TenantAccessDenied))?;
+        .ok_or_else(|| ApiError::internal(kura_identity::IdentityError::TenantAccessDenied))?;
     let mut current_tenant = store
         .get_tenant(&tenant_context.tenant_id)
         .map_err(ApiError::from_store)?
-        .ok_or_else(|| ApiError::internal(dope_identity::IdentityError::TenantAccessDenied))?;
+        .ok_or_else(|| ApiError::internal(kura_identity::IdentityError::TenantAccessDenied))?;
     let allowed_tenants =
         allowed_tenants_for_token(&store, token, tenant_context).map_err(ApiError::from_store)?;
     let token_grants = store
@@ -522,7 +522,7 @@ fn project_tenant_audit_event(mut event: TenantAuditEvent) -> TenantAuditEvent {
         if document.contains_key(key) {
             document.insert(
                 key.to_string(),
-                serde_json::Value::String(dope_secrets::REDACTED_VALUE.to_string()),
+                serde_json::Value::String(kura_secrets::REDACTED_VALUE.to_string()),
             );
         }
     }
@@ -537,7 +537,7 @@ fn project_tenant_audit_event(mut event: TenantAuditEvent) -> TenantAuditEvent {
         if !refs.is_empty() {
             document.insert(
                 "secretRefs".to_string(),
-                serde_json::json!(dope_secrets::redact_secret_refs(&refs)),
+                serde_json::json!(kura_secrets::redact_secret_refs(&refs)),
             );
         }
     }
@@ -562,16 +562,16 @@ fn publish_pairing_event(
     for (key, value) in extra {
         payload.insert(key.to_string(), value.clone());
     }
-    let event = dope_events::Event {
+    let event = kura_events::Event {
         category: "system".to_string(),
         name: name.to_string(),
         environment_scope: crate::middleware::environment_scope_from_config(&state.config),
-        resource: dope_events::Resource {
+        resource: kura_events::Resource {
             kind: "pairing".to_string(),
             id: pairing.pairing_id.clone(),
         },
         payload,
-        ..dope_events::Event::default()
+        ..kura_events::Event::default()
     };
     let stored = state
         .store
@@ -606,7 +606,7 @@ fn credential_missing_permission() -> AuthApiError {
 /// or a manage permission (here SecretsManage).
 fn require_hosted_credential_read(
     tenant: &Option<Extension<TenantContext>>,
-) -> Result<&dope_identity::TenantContext, AuthApiError> {
+) -> Result<&kura_identity::TenantContext, AuthApiError> {
     let tc = tenant
         .as_ref()
         .map(|extension| &extension.0 .0)
@@ -624,7 +624,7 @@ fn require_hosted_credential_read(
 fn require_hosted_credential_permission(
     tenant: &Option<Extension<TenantContext>>,
     permission: Permission,
-) -> Result<&dope_identity::TenantContext, AuthApiError> {
+) -> Result<&kura_identity::TenantContext, AuthApiError> {
     let tc = tenant
         .as_ref()
         .map(|extension| &extension.0 .0)
@@ -661,9 +661,9 @@ fn map_secret_error(err: SecretsError) -> AuthApiError {
 struct CredentialAuditInput {
     tenant_id: String,
     principal_id: String,
-    resource_kind: dope_secrets::ResourceKind,
+    resource_kind: kura_secrets::ResourceKind,
     resource_id: String,
-    action: dope_secrets::AuditAction,
+    action: kura_secrets::AuditAction,
     secret_ref: String,
     secret_version_id: String,
 }
@@ -693,7 +693,7 @@ fn record_credential_audit(state: &AppState, input: CredentialAuditInput) -> Res
         event_kind: "credential.audit_recorded".to_string(),
         tenant_id: input.tenant_id,
         principal_id: input.principal_id,
-        outcome: dope_identity::AUDIT_OUTCOME_SUCCEEDED.to_string(),
+        outcome: kura_identity::AUDIT_OUTCOME_SUCCEEDED.to_string(),
         reason_code: String::new(),
         created_at: Utc::now(),
         document: Some(document),
@@ -936,7 +936,7 @@ async fn auth_token_rotate(
     let (allowed_tenant_ids, default_tenant_id) = active_grant_set(&old_grants);
     if allowed_tenant_ids.is_empty() {
         return Err(AuthApiError::Api(ApiError::BadRequest(
-            dope_identity::IdentityError::TokenGrantInvalid.to_string(),
+            kura_identity::IdentityError::TokenGrantInvalid.to_string(),
         )));
     }
     let reason = if request.reason.trim().is_empty() {
@@ -1100,7 +1100,7 @@ async fn tenant_create(
     let request: CreateTenantRequest = decode_json_body(&body)?;
     if !request.tenant_kind.is_empty() && request.tenant_kind != "organization" {
         return Err(AuthApiError::Api(ApiError::BadRequest(
-            dope_identity::IdentityError::TenantInvalid.to_string(),
+            kura_identity::IdentityError::TenantInvalid.to_string(),
         )));
     }
     let identity = identity_manager(&state)?;
@@ -1253,7 +1253,7 @@ async fn tenant_invitation_create(
     let invitation = identity
         .create_invitation(
             &tc.0,
-            dope_identity::CreateInvitationInput {
+            kura_identity::CreateInvitationInput {
                 tenant_id,
                 invited_principal_id: request.invited_principal_id,
                 role: Some(request.role),
@@ -1280,8 +1280,8 @@ async fn tenant_permissions(
     if tc.0.tenant_id != tenant_id {
         return Err(AuthApiError::TenantDenial);
     }
-    let mut items = Vec::with_capacity(dope_identity::ALL_SENSITIVE_PERMISSIONS.len() + 1);
-    for permission in dope_identity::ALL_SENSITIVE_PERMISSIONS
+    let mut items = Vec::with_capacity(kura_identity::ALL_SENSITIVE_PERMISSIONS.len() + 1);
+    for permission in kura_identity::ALL_SENSITIVE_PERMISSIONS
         .iter()
         .copied()
         .chain(std::iter::once(Permission::ReadOnlyInspect))
@@ -1413,7 +1413,7 @@ async fn principal_update(
         tenant_id: tc.0.tenant_id.clone(),
         principal_id: tc.0.principal_id.clone(),
         target_principal_id: principal.principal_id.clone(),
-        outcome: dope_identity::AUDIT_OUTCOME_SUCCEEDED.to_string(),
+        outcome: kura_identity::AUDIT_OUTCOME_SUCCEEDED.to_string(),
         reason_code: "principal_lifecycle_updated".to_string(),
         created_at: Utc::now(),
         ..TenantAuditEvent::default()
@@ -1486,7 +1486,7 @@ async fn tenant_secret_create(
     let tc = require_hosted_credential_permission(&tenant, Permission::SecretsManage)?;
     let request: CreateTenantSecretRequest = decode_json_body(&body)?;
     let secret = manager
-        .create(dope_secrets::CreateInput {
+        .create(kura_secrets::CreateInput {
             tenant_id: tc.tenant_id.clone(),
             secret_ref: request.secret_ref,
             display_name: request.display_name,
@@ -1500,9 +1500,9 @@ async fn tenant_secret_create(
         CredentialAuditInput {
             tenant_id: tc.tenant_id.clone(),
             principal_id: tc.principal_id.clone(),
-            resource_kind: dope_secrets::ResourceKind::TenantSecret,
+            resource_kind: kura_secrets::ResourceKind::TenantSecret,
             resource_id: secret.secret_id.clone(),
-            action: dope_secrets::AuditAction::SecretCreate,
+            action: kura_secrets::AuditAction::SecretCreate,
             secret_ref: secret.secret_ref.clone(),
             secret_version_id: String::new(),
         },
@@ -1536,7 +1536,7 @@ async fn tenant_secret_patch(
     let tc = require_hosted_credential_permission(&tenant, Permission::SecretsManage)?;
     let request: UpdateTenantSecretRequest = decode_json_body(&body)?;
     let secret = manager
-        .update_metadata(dope_secrets::UpdateMetadataInput {
+        .update_metadata(kura_secrets::UpdateMetadataInput {
             tenant_id: tc.tenant_id.clone(),
             secret_ref,
             display_name: request.display_name,
@@ -1549,9 +1549,9 @@ async fn tenant_secret_patch(
         CredentialAuditInput {
             tenant_id: tc.tenant_id.clone(),
             principal_id: tc.principal_id.clone(),
-            resource_kind: dope_secrets::ResourceKind::TenantSecret,
+            resource_kind: kura_secrets::ResourceKind::TenantSecret,
             resource_id: secret.secret_id.clone(),
-            action: dope_secrets::AuditAction::SecretUpdate,
+            action: kura_secrets::AuditAction::SecretUpdate,
             secret_ref: secret.secret_ref.clone(),
             secret_version_id: String::new(),
         },
@@ -1571,7 +1571,7 @@ async fn tenant_secret_rotate(
     let tc = require_hosted_credential_permission(&tenant, Permission::SecretsManage)?;
     let request: RotateTenantSecretRequest = decode_json_body(&body)?;
     let secret = manager
-        .rotate(dope_secrets::RotateInput {
+        .rotate(kura_secrets::RotateInput {
             tenant_id: tc.tenant_id.clone(),
             secret_ref,
             value: request.value,
@@ -1583,9 +1583,9 @@ async fn tenant_secret_rotate(
         CredentialAuditInput {
             tenant_id: tc.tenant_id.clone(),
             principal_id: tc.principal_id.clone(),
-            resource_kind: dope_secrets::ResourceKind::SecretVersion,
+            resource_kind: kura_secrets::ResourceKind::SecretVersion,
             resource_id: secret.secret_id.clone(),
-            action: dope_secrets::AuditAction::SecretRotate,
+            action: kura_secrets::AuditAction::SecretRotate,
             secret_ref: secret.secret_ref.clone(),
             secret_version_id: secret.active_version_id.clone(),
         },
@@ -1605,7 +1605,7 @@ async fn tenant_secret_disable(
     let tc = require_hosted_credential_permission(&tenant, Permission::SecretsManage)?;
     let request: DisableTenantSecretRequest = decode_json_body(&body)?;
     let secret = manager
-        .disable(dope_secrets::DisableInput {
+        .disable(kura_secrets::DisableInput {
             tenant_id: tc.tenant_id.clone(),
             secret_ref,
             disabled_reason: request.disabled_reason,
@@ -1617,9 +1617,9 @@ async fn tenant_secret_disable(
         CredentialAuditInput {
             tenant_id: tc.tenant_id.clone(),
             principal_id: tc.principal_id.clone(),
-            resource_kind: dope_secrets::ResourceKind::TenantSecret,
+            resource_kind: kura_secrets::ResourceKind::TenantSecret,
             resource_id: secret.secret_id.clone(),
-            action: dope_secrets::AuditAction::SecretDisable,
+            action: kura_secrets::AuditAction::SecretDisable,
             secret_ref: secret.secret_ref.clone(),
             secret_version_id: String::new(),
         },
@@ -1635,16 +1635,16 @@ mod tests {
 
     use axum::body::to_bytes;
     use axum::http::Request as HttpRequest;
-    use dope_events::Bus;
-    use dope_secrets::{LocalBackend, SecretVersionStatus};
-    use dope_store::SQLiteStore;
+    use kura_events::Bus;
+    use kura_secrets::{LocalBackend, SecretVersionStatus};
+    use kura_store::SQLiteStore;
     use parking_lot::Mutex;
     use tower::ServiceExt;
     use uuid::Uuid;
 
     // -----------------------------------------------------------------------
-    // Test doubles: dope-store has not implemented dope_identity::Store for
-    // SQLiteStore nor dope_secrets::Store; these local wrappers bridge the
+    // Test doubles: kura-store has not implemented kura_identity::Store for
+    // SQLiteStore nor kura_secrets::Store; these local wrappers bridge the
     // managers over the real SQLiteStore / in-memory secret rows.
     // -----------------------------------------------------------------------
 
@@ -1659,46 +1659,46 @@ mod tests {
 
     impl std::error::Error for StoreError {}
 
-    fn identity_store_err(err: String) -> dope_identity::IdentityError {
-        dope_identity::IdentityError::Store(Box::new(StoreError(err)))
+    fn identity_store_err(err: String) -> kura_identity::IdentityError {
+        kura_identity::IdentityError::Store(Box::new(StoreError(err)))
     }
 
     struct TestIdentityStore {
         store: Arc<Mutex<SQLiteStore>>,
     }
 
-    impl dope_identity::ResolverStore for TestIdentityStore {
+    impl kura_identity::ResolverStore for TestIdentityStore {
         fn get_principal(
             &self,
             principal_id: &str,
-        ) -> Result<Option<dope_identity::Principal>, dope_identity::IdentityError> {
+        ) -> Result<Option<kura_identity::Principal>, kura_identity::IdentityError> {
             self.store.lock().get_principal(principal_id).map_err(identity_store_err)
         }
         fn get_tenant(
             &self,
             tenant_id: &str,
-        ) -> Result<Option<dope_identity::Tenant>, dope_identity::IdentityError> {
+        ) -> Result<Option<kura_identity::Tenant>, kura_identity::IdentityError> {
             self.store.lock().get_tenant(tenant_id).map_err(identity_store_err)
         }
         fn list_memberships(
             &self,
-            filter: &dope_identity::MembershipFilter,
-        ) -> Result<Vec<dope_identity::Membership>, dope_identity::IdentityError> {
+            filter: &kura_identity::MembershipFilter,
+        ) -> Result<Vec<kura_identity::Membership>, kura_identity::IdentityError> {
             self.store.lock().list_memberships(filter).map_err(identity_store_err)
         }
         fn list_token_tenant_grants(
             &self,
             token_id: &str,
-        ) -> Result<Vec<dope_identity::TokenTenantGrant>, dope_identity::IdentityError> {
+        ) -> Result<Vec<kura_identity::TokenTenantGrant>, kura_identity::IdentityError> {
             self.store.lock().list_token_tenant_grants(token_id).map_err(identity_store_err)
         }
     }
 
-    impl dope_identity::AuditStore for TestIdentityStore {
+    impl kura_identity::AuditStore for TestIdentityStore {
         fn append_tenant_audit_event(
             &self,
-            event: dope_identity::TenantAuditEvent,
-        ) -> Result<dope_identity::TenantAuditEvent, dope_identity::IdentityError> {
+            event: kura_identity::TenantAuditEvent,
+        ) -> Result<kura_identity::TenantAuditEvent, kura_identity::IdentityError> {
             self.store
                 .lock()
                 .append_tenant_audit_event(&event)
@@ -1706,67 +1706,67 @@ mod tests {
         }
     }
 
-    impl dope_identity::Store for TestIdentityStore {
+    impl kura_identity::Store for TestIdentityStore {
         fn upsert_tenant(
             &self,
-            tenant: &dope_identity::Tenant,
-        ) -> Result<(), dope_identity::IdentityError> {
+            tenant: &kura_identity::Tenant,
+        ) -> Result<(), kura_identity::IdentityError> {
             self.store.lock().upsert_tenant(tenant).map_err(identity_store_err)
         }
         fn upsert_principal(
             &self,
-            principal: &dope_identity::Principal,
-        ) -> Result<(), dope_identity::IdentityError> {
+            principal: &kura_identity::Principal,
+        ) -> Result<(), kura_identity::IdentityError> {
             self.store.lock().upsert_principal(principal).map_err(identity_store_err)
         }
         fn upsert_membership(
             &self,
-            membership: &dope_identity::Membership,
-        ) -> Result<(), dope_identity::IdentityError> {
+            membership: &kura_identity::Membership,
+        ) -> Result<(), kura_identity::IdentityError> {
             self.store.lock().upsert_membership(membership).map_err(identity_store_err)
         }
         fn upsert_tenant_invitation(
             &self,
-            invitation: &dope_identity::TenantInvitation,
-        ) -> Result<(), dope_identity::IdentityError> {
+            invitation: &kura_identity::TenantInvitation,
+        ) -> Result<(), kura_identity::IdentityError> {
             self.store.lock().upsert_tenant_invitation(invitation).map_err(identity_store_err)
         }
         fn upsert_token_tenant_grant(
             &self,
-            grant: &dope_identity::TokenTenantGrant,
-        ) -> Result<(), dope_identity::IdentityError> {
+            grant: &kura_identity::TokenTenantGrant,
+        ) -> Result<(), kura_identity::IdentityError> {
             self.store.lock().upsert_token_tenant_grant(grant).map_err(identity_store_err)
         }
         fn list_tenants(
             &self,
-            filter: &dope_identity::TenantFilter,
-        ) -> Result<Vec<dope_identity::Tenant>, dope_identity::IdentityError> {
+            filter: &kura_identity::TenantFilter,
+        ) -> Result<Vec<kura_identity::Tenant>, kura_identity::IdentityError> {
             self.store.lock().list_tenants(filter).map_err(identity_store_err)
         }
         fn list_principals(
             &self,
-            filter: &dope_identity::PrincipalFilter,
-        ) -> Result<Vec<dope_identity::Principal>, dope_identity::IdentityError> {
+            filter: &kura_identity::PrincipalFilter,
+        ) -> Result<Vec<kura_identity::Principal>, kura_identity::IdentityError> {
             self.store.lock().list_principals(filter).map_err(identity_store_err)
         }
         fn list_tenant_invitations(
             &self,
-            filter: &dope_identity::InvitationFilter,
-        ) -> Result<Vec<dope_identity::TenantInvitation>, dope_identity::IdentityError> {
+            filter: &kura_identity::InvitationFilter,
+        ) -> Result<Vec<kura_identity::TenantInvitation>, kura_identity::IdentityError> {
             self.store.lock().list_tenant_invitations(filter).map_err(identity_store_err)
         }
         fn list_token_authorities(
             &self,
-        ) -> Result<Vec<dope_identity::TokenAuthority>, dope_identity::IdentityError> {
+        ) -> Result<Vec<kura_identity::TokenAuthority>, kura_identity::IdentityError> {
             self.store.lock().list_token_authorities().map_err(identity_store_err)
         }
     }
 
-    /// In-memory dope_secrets::Store mirroring the secrets crate's FakeStore
+    /// In-memory kura_secrets::Store mirroring the secrets crate's FakeStore
     /// semantics (transactional rotate: next version number + supersede).
     struct TestSecretStore {
-        secrets: Mutex<HashMap<(String, String), dope_secrets::TenantSecret>>,
-        versions: Mutex<HashMap<(String, String), dope_secrets::SecretVersion>>,
+        secrets: Mutex<HashMap<(String, String), kura_secrets::TenantSecret>>,
+        versions: Mutex<HashMap<(String, String), kura_secrets::SecretVersion>>,
     }
 
     impl TestSecretStore {
@@ -1778,12 +1778,12 @@ mod tests {
         }
     }
 
-    impl dope_secrets::Store for TestSecretStore {
+    impl kura_secrets::Store for TestSecretStore {
         fn create_secret<'a>(
             &'a self,
-            secret: dope_secrets::TenantSecret,
-            version: dope_secrets::SecretVersion,
-        ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+            secret: kura_secrets::TenantSecret,
+            version: kura_secrets::SecretVersion,
+        ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
             Box::pin(async move {
                 self.secrets
                     .lock()
@@ -1799,8 +1799,8 @@ mod tests {
         }
         fn update_secret_metadata<'a>(
             &'a self,
-            secret: dope_secrets::TenantSecret,
-        ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+            secret: kura_secrets::TenantSecret,
+        ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
             Box::pin(async move {
                 self.secrets
                     .lock()
@@ -1810,10 +1810,10 @@ mod tests {
         }
         fn rotate_secret<'a>(
             &'a self,
-            secret: dope_secrets::TenantSecret,
+            secret: kura_secrets::TenantSecret,
             previous_version_id: &'a str,
-            mut version: dope_secrets::SecretVersion,
-        ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+            mut version: kura_secrets::SecretVersion,
+        ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
             Box::pin(async move {
                 let mut versions = self.versions.lock();
                 let next = versions
@@ -1846,8 +1846,8 @@ mod tests {
         }
         fn disable_secret<'a>(
             &'a self,
-            secret: dope_secrets::TenantSecret,
-        ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+            secret: kura_secrets::TenantSecret,
+        ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
             Box::pin(async move {
                 self.secrets
                     .lock()
@@ -1859,7 +1859,7 @@ mod tests {
             &'a self,
             tenant_id: &'a str,
             secret_ref: &'a str,
-        ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Option<dope_secrets::TenantSecret>>> {
+        ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Option<kura_secrets::TenantSecret>>> {
             Box::pin(async move {
                 Ok(self
                     .secrets
@@ -1872,7 +1872,7 @@ mod tests {
             &'a self,
             tenant_id: &'a str,
             secret_version_id: &'a str,
-        ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Option<dope_secrets::SecretVersion>>> {
+        ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Option<kura_secrets::SecretVersion>>> {
             Box::pin(async move {
                 Ok(self
                     .versions
@@ -1884,7 +1884,7 @@ mod tests {
         fn list_secrets<'a>(
             &'a self,
             tenant_id: &'a str,
-        ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Vec<dope_secrets::TenantSecret>>> {
+        ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Vec<kura_secrets::TenantSecret>>> {
             Box::pin(async move {
                 Ok(self
                     .secrets
@@ -1903,28 +1903,28 @@ mod tests {
     // Harness (port of newTenantAuthHarness)
     // -----------------------------------------------------------------------
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-test".to_string(),
+            data_dir: "/tmp/kura-api-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig {
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                telegram: dope_config::TelegramConnectorConfig {
+                telegram: kura_config::TelegramConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                slack: dope_config::SlackConnectorConfig {
+                slack: kura_config::SlackConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                matrix: dope_config::MatrixConnectorConfig {
+                matrix: kura_config::MatrixConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
@@ -1935,26 +1935,26 @@ mod tests {
     struct Harness {
         state: AppState,
         store: Arc<Mutex<SQLiteStore>>,
-        auth_manager: Arc<dope_identity::auth::Manager>,
+        auth_manager: Arc<kura_identity::auth::Manager>,
         auth_header: String,
         token: AccessToken,
-        principal: dope_identity::Principal,
-        default_tenant: dope_identity::Tenant,
-        other_tenant: dope_identity::Tenant,
+        principal: kura_identity::Principal,
+        default_tenant: kura_identity::Tenant,
+        other_tenant: kura_identity::Tenant,
         now: DateTime<Utc>,
     }
 
     fn harness(with_identity: bool, seed_token: bool) -> Harness {
-        let dir = std::env::temp_dir().join(format!("dope-api-auth-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-auth-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
             SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
         let now = Utc::now();
 
-        let principal = dope_identity::Principal {
+        let principal = kura_identity::Principal {
             principal_id: "prn_api_local".to_string(),
-            principal_kind: dope_identity::PrincipalKind::LocalOperator,
+            principal_kind: kura_identity::PrincipalKind::LocalOperator,
             display_name: "API local operator".to_string(),
             status: LifecycleStatus::Active,
             default_tenant_id: "ten_api_default".to_string(),
@@ -1963,9 +1963,9 @@ mod tests {
             disabled_at: None,
             removed_at: None,
         };
-        let default_tenant = dope_identity::Tenant {
+        let default_tenant = kura_identity::Tenant {
             tenant_id: principal.default_tenant_id.clone(),
-            tenant_kind: dope_identity::TenantKind::Personal,
+            tenant_kind: kura_identity::TenantKind::Personal,
             display_name: "Default tenant".to_string(),
             status: LifecycleStatus::Active,
             created_at: now,
@@ -1978,9 +1978,9 @@ mod tests {
             default_for_current_token: false,
             default_for_current_principal: false,
         };
-        let other_tenant = dope_identity::Tenant {
+        let other_tenant = kura_identity::Tenant {
             tenant_id: "ten_api_other".to_string(),
-            tenant_kind: dope_identity::TenantKind::Organization,
+            tenant_kind: kura_identity::TenantKind::Organization,
             display_name: "Other tenant".to_string(),
             status: LifecycleStatus::Active,
             created_at: now,
@@ -2000,11 +2000,11 @@ mod tests {
             store.upsert_tenant(&default_tenant).expect("upsert default tenant");
             store.upsert_tenant(&other_tenant).expect("upsert other tenant");
             store
-                .upsert_membership(&dope_identity::Membership {
+                .upsert_membership(&kura_identity::Membership {
                     membership_id: "mem_api_owner".to_string(),
                     tenant_id: default_tenant.tenant_id.clone(),
                     principal_id: principal.principal_id.clone(),
-                    role: dope_identity::Role::Owner,
+                    role: kura_identity::Role::Owner,
                     status: LifecycleStatus::Active,
                     invitation_id: String::new(),
                     created_at: now,
@@ -2015,13 +2015,13 @@ mod tests {
                 .expect("upsert membership");
         }
 
-        let auth_manager = Arc::new(dope_identity::auth::Manager::new());
+        let auth_manager = Arc::new(kura_identity::auth::Manager::new());
         // The pairing-flow test starts from an empty token store (Go
         // TestAuthPairingAndProtectedRoutes), so token seeding is optional.
         let (token, auth_header) = if seed_token {
             let (pairing, code) = auth_manager
-                .start_pairing(dope_identity::auth::StartPairingInput {
-                    mode: Some(dope_identity::auth::PairingMode::Local),
+                .start_pairing(kura_identity::auth::StartPairingInput {
+                    mode: Some(kura_identity::auth::PairingMode::Local),
                     label: "tenant-api".to_string(),
                     ttl_seconds: 0,
                 })
@@ -2029,18 +2029,18 @@ mod tests {
             let (_, mut token, token_secret) = auth_manager
                 .complete_pairing(
                     &pairing.pairing_id,
-                    dope_identity::auth::CompletePairingInput { code },
+                    kura_identity::auth::CompletePairingInput { code },
                 )
                 .expect("complete pairing");
             token.principal_id = principal.principal_id.clone();
             token.default_tenant_id = default_tenant.tenant_id.clone();
-            token.status = dope_identity::auth::TokenStatus::Active;
+            token.status = kura_identity::auth::TokenStatus::Active;
             auth_manager.restore(Vec::new(), vec![token.clone()]);
             {
                 let store = store.lock();
                 store.upsert_access_token(&token).expect("upsert token");
                 store
-                    .upsert_token_tenant_grant(&dope_identity::TokenTenantGrant {
+                    .upsert_token_tenant_grant(&kura_identity::TokenTenantGrant {
                         grant_id: "grant_api_default".to_string(),
                         token_id: token.token_id.clone(),
                         tenant_id: default_tenant.tenant_id.clone(),
@@ -2060,10 +2060,10 @@ mod tests {
                     token_id: String::new(),
                     principal_id: principal.principal_id.clone(),
                     label: String::new(),
-                    mode: dope_identity::auth::PairingMode::Local,
+                    mode: kura_identity::auth::PairingMode::Local,
                     token_hash: String::new(),
                     token_preview: String::new(),
-                    status: dope_identity::auth::TokenStatus::Active,
+                    status: kura_identity::auth::TokenStatus::Active,
                     default_tenant_id: default_tenant.tenant_id.clone(),
                     created_at: now,
                     updated_at: now,
@@ -2084,11 +2084,11 @@ mod tests {
             // stores S in several fields, so Arc<Manager<Concrete>> cannot
             // unsize to Arc<Manager<dyn Store>>; the manager is constructed
             // directly over the erased store (same as app wiring).
-            let erased: Arc<dyn dope_identity::Store + Send + Sync> =
+            let erased: Arc<dyn kura_identity::Store + Send + Sync> =
                 Arc::new(TestIdentityStore { store: store.clone() });
-            let manager = dope_identity::Manager::new(erased);
+            let manager = kura_identity::Manager::new(erased);
             let identity: Arc<
-                dope_identity::Manager<dyn dope_identity::Store + Send + Sync>,
+                kura_identity::Manager<dyn kura_identity::Store + Send + Sync>,
             > = Arc::new(manager);
             state.identity = Some(identity);
         }
@@ -2113,10 +2113,10 @@ mod tests {
             &self,
             principal_id: &str,
             display_name: &str,
-        ) -> (String, dope_identity::Principal) {
-            let principal = dope_identity::Principal {
+        ) -> (String, kura_identity::Principal) {
+            let principal = kura_identity::Principal {
                 principal_id: principal_id.to_string(),
-                principal_kind: dope_identity::PrincipalKind::User,
+                principal_kind: kura_identity::PrincipalKind::User,
                 display_name: display_name.to_string(),
                 status: LifecycleStatus::Active,
                 default_tenant_id: self.default_tenant.tenant_id.clone(),
@@ -2128,8 +2128,8 @@ mod tests {
             self.store.lock().upsert_principal(&principal).expect("upsert principal");
             let (pairing, code) = self
                 .auth_manager
-                .start_pairing(dope_identity::auth::StartPairingInput {
-                    mode: Some(dope_identity::auth::PairingMode::Local),
+                .start_pairing(kura_identity::auth::StartPairingInput {
+                    mode: Some(kura_identity::auth::PairingMode::Local),
                     label: display_name.to_string(),
                     ttl_seconds: 0,
                 })
@@ -2138,22 +2138,22 @@ mod tests {
                 .auth_manager
                 .complete_pairing(
                     &pairing.pairing_id,
-                    dope_identity::auth::CompletePairingInput { code },
+                    kura_identity::auth::CompletePairingInput { code },
                 )
                 .expect("complete pairing");
             token.principal_id = principal_id.to_string();
             token.default_tenant_id = self.default_tenant.tenant_id.clone();
-            token.status = dope_identity::auth::TokenStatus::Active;
+            token.status = kura_identity::auth::TokenStatus::Active;
             self.auth_manager.update_token(token.clone());
             {
                 let store = self.store.lock();
                 store.upsert_access_token(&token).expect("upsert token");
                 store
-                    .upsert_membership(&dope_identity::Membership {
+                    .upsert_membership(&kura_identity::Membership {
                         membership_id: format!("mem_{principal_id}"),
                         tenant_id: self.default_tenant.tenant_id.clone(),
                         principal_id: principal_id.to_string(),
-                        role: dope_identity::Role::Viewer,
+                        role: kura_identity::Role::Viewer,
                         status: LifecycleStatus::Active,
                         invitation_id: String::new(),
                         created_at: self.now,
@@ -2163,7 +2163,7 @@ mod tests {
                     })
                     .expect("upsert membership");
                 store
-                    .upsert_token_tenant_grant(&dope_identity::TokenTenantGrant {
+                    .upsert_token_tenant_grant(&kura_identity::TokenTenantGrant {
                         grant_id: format!("grant_{principal_id}"),
                         token_id: token.token_id.clone(),
                         tenant_id: self.default_tenant.tenant_id.clone(),
@@ -2183,10 +2183,10 @@ mod tests {
         fn set_default_membership_role(
             &self,
             principal_id: &str,
-            role: dope_identity::Role,
+            role: kura_identity::Role,
             status: LifecycleStatus,
         ) {
-            let membership = dope_identity::Membership {
+            let membership = kura_identity::Membership {
                 membership_id: format!("mem_{principal_id}"),
                 tenant_id: self.default_tenant.tenant_id.clone(),
                 principal_id: principal_id.to_string(),
@@ -2202,7 +2202,7 @@ mod tests {
         }
 
         /// Go tenantAuthHarness.setTokenStatus.
-        fn set_token_status(&self, principal_id: &str, status: dope_identity::auth::TokenStatus) {
+        fn set_token_status(&self, principal_id: &str, status: kura_identity::auth::TokenStatus) {
             for token in self.auth_manager.list_tokens() {
                 if token.principal_id != principal_id {
                     continue;
@@ -2294,7 +2294,7 @@ mod tests {
             builder = builder.header("authorization", auth);
         }
         if let Some(tenant_id) = tenant_id {
-            builder = builder.header("x-dope-tenant-id", tenant_id);
+            builder = builder.header("x-kura-tenant-id", tenant_id);
         }
         builder
             .body(match body {
@@ -2306,7 +2306,7 @@ mod tests {
 
     fn with_tenant_extension(
         mut req: HttpRequest<axum::body::Body>,
-        tc: dope_identity::TenantContext,
+        tc: kura_identity::TenantContext,
     ) -> HttpRequest<axum::body::Body> {
         req.extensions_mut().insert(TenantContext(tc));
         req
@@ -2370,7 +2370,7 @@ mod tests {
 
         let pairings = h.store.lock().list_pairings().expect("list pairings");
         assert_eq!(pairings.len(), 1);
-        assert_eq!(pairings[0].status, dope_identity::auth::PairingStatus::Completed);
+        assert_eq!(pairings[0].status, kura_identity::auth::PairingStatus::Completed);
         let tokens = h.store.lock().list_access_tokens().expect("list tokens");
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].token_id, token_id);
@@ -2445,18 +2445,18 @@ mod tests {
         let mut req = request("GET", &uri, None);
         req = with_tenant_extension(
             req,
-            dope_identity::TenantContext {
+            kura_identity::TenantContext {
                 principal_id: h.principal.principal_id.clone(),
                 token_id: h.token.token_id.clone(),
                 tenant_id: h.default_tenant.tenant_id.clone(),
                 tenant_source: "default".to_string(),
-                role: Some(dope_identity::Role::Owner),
+                role: Some(kura_identity::Role::Owner),
                 permissions: permissions_for_role(
-                    dope_identity::Role::Owner,
+                    kura_identity::Role::Owner,
                     LifecycleStatus::Active,
                 ),
                 resolved_at: h.now,
-                ..dope_identity::TenantContext::default()
+                ..kura_identity::TenantContext::default()
             },
         );
         let (status, json) = send(&app, req).await;
@@ -2593,7 +2593,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "body: {json}");
         let items = json["items"].as_array().expect("items");
         assert!(!items.is_empty());
-        for permission in dope_identity::ALL_SENSITIVE_PERMISSIONS {
+        for permission in kura_identity::ALL_SENSITIVE_PERMISSIONS {
             let wire = serde_json::json!(permission);
             let allowed = items.iter().any(|item| {
                 item["permission"] == wire && item["allowed"] == serde_json::json!(true)
@@ -2708,7 +2708,7 @@ mod tests {
         {
             let store = h.store.lock();
             store
-                .append_tenant_audit_event(&dope_identity::TenantAuditEvent {
+                .append_tenant_audit_event(&kura_identity::TenantAuditEvent {
                     audit_event_id: "audit_billing_visible".to_string(),
                     event_kind: "billing.audit_recorded".to_string(),
                     tenant_id: h.default_tenant.tenant_id.clone(),
@@ -2717,11 +2717,11 @@ mod tests {
                     reason_code: "quota_denied:run_launches_exhausted".to_string(),
                     created_at: Utc::now(),
                     document: Some(serde_json::Map::new()),
-                    ..dope_identity::TenantAuditEvent::default()
+                    ..kura_identity::TenantAuditEvent::default()
                 })
                 .expect("append visible audit");
             store
-                .append_tenant_audit_event(&dope_identity::TenantAuditEvent {
+                .append_tenant_audit_event(&kura_identity::TenantAuditEvent {
                     audit_event_id: "audit_billing_other".to_string(),
                     event_kind: "billing.audit_recorded".to_string(),
                     tenant_id: "ten_other_billing_audit".to_string(),
@@ -2730,7 +2730,7 @@ mod tests {
                     reason_code: "quota_denied:run_launches_exhausted".to_string(),
                     created_at: Utc::now(),
                     document: Some(serde_json::Map::new()),
-                    ..dope_identity::TenantAuditEvent::default()
+                    ..kura_identity::TenantAuditEvent::default()
                 })
                 .expect("append other audit");
         }
@@ -2790,11 +2790,11 @@ mod tests {
 
         h.store
             .lock()
-            .upsert_membership(&dope_identity::Membership {
+            .upsert_membership(&kura_identity::Membership {
                 membership_id: "mem_role_member".to_string(),
                 tenant_id: org_id.clone(),
                 principal_id: member_principal.principal_id.clone(),
-                role: dope_identity::Role::Operator,
+                role: kura_identity::Role::Operator,
                 status: LifecycleStatus::Active,
                 invitation_id: String::new(),
                 created_at: h.now,
@@ -2821,11 +2821,11 @@ mod tests {
         let audits = h
             .store
             .lock()
-            .list_tenant_audit_events(&dope_identity::AuditEventFilter {
+            .list_tenant_audit_events(&kura_identity::AuditEventFilter {
                 tenant_id: org_id.clone(),
                 event_kind: "tenant.membership_role_updated".to_string(),
                 limit: 10,
-                ..dope_identity::AuditEventFilter::default()
+                ..kura_identity::AuditEventFilter::default()
             })
             .expect("list audits");
         assert_eq!(audits.len(), 1, "audits: {audits:?}");
@@ -2885,12 +2885,12 @@ mod tests {
         let memberships = h
             .store
             .lock()
-            .list_memberships(&dope_identity::MembershipFilter {
+            .list_memberships(&kura_identity::MembershipFilter {
                 tenant_id: org_id,
                 status: Some(LifecycleStatus::Active),
-                role: Some(dope_identity::Role::Owner),
+                role: Some(kura_identity::Role::Owner),
                 limit: 10,
-                ..dope_identity::MembershipFilter::default()
+                ..kura_identity::MembershipFilter::default()
             })
             .expect("list memberships");
         assert_eq!(memberships.len(), 1);
@@ -2909,13 +2909,13 @@ mod tests {
         let (removed_header, _removed) = h.issue_principal_token("prn_removed_api", "Removed API");
         let (revoked_header, _revoked) = h.issue_principal_token("prn_revoked_api", "Revoked API");
 
-        h.set_default_membership_role("prn_operator_api", dope_identity::Role::Operator, LifecycleStatus::Active);
-        h.set_default_membership_role("prn_admin_api", dope_identity::Role::Admin, LifecycleStatus::Active);
-        h.set_default_membership_role("prn_removed_api", dope_identity::Role::Owner, LifecycleStatus::Removed);
+        h.set_default_membership_role("prn_operator_api", kura_identity::Role::Operator, LifecycleStatus::Active);
+        h.set_default_membership_role("prn_admin_api", kura_identity::Role::Admin, LifecycleStatus::Active);
+        h.set_default_membership_role("prn_removed_api", kura_identity::Role::Owner, LifecycleStatus::Removed);
         let mut disabled = disabled;
         disabled.status = LifecycleStatus::Disabled;
         h.store.lock().upsert_principal(&disabled).expect("upsert disabled principal");
-        h.set_token_status("prn_revoked_api", dope_identity::auth::TokenStatus::Revoked);
+        h.set_token_status("prn_revoked_api", kura_identity::auth::TokenStatus::Revoked);
 
         for (name, header, want) in [
             ("owner", h.auth_header.clone(), StatusCode::CREATED),
@@ -2938,11 +2938,11 @@ mod tests {
         let audits = h
             .store
             .lock()
-            .list_tenant_audit_events(&dope_identity::AuditEventFilter {
+            .list_tenant_audit_events(&kura_identity::AuditEventFilter {
                 tenant_id: h.default_tenant.tenant_id.clone(),
                 principal_id: viewer.principal_id.clone(),
                 outcome: "denied".to_string(),
-                ..dope_identity::AuditEventFilter::default()
+                ..kura_identity::AuditEventFilter::default()
             })
             .expect("list audits");
         assert!(!audits.is_empty(), "expected viewer permission denial audit");
@@ -2962,9 +2962,9 @@ mod tests {
             let tenant_id = format!("ten_bulk_{idx}");
             let store = h.store.lock();
             store
-                .upsert_tenant(&dope_identity::Tenant {
+                .upsert_tenant(&kura_identity::Tenant {
                     tenant_id: tenant_id.clone(),
-                    tenant_kind: dope_identity::TenantKind::Organization,
+                    tenant_kind: kura_identity::TenantKind::Organization,
                     display_name: format!("Bulk {idx}"),
                     status: LifecycleStatus::Active,
                     created_at: h.now,
@@ -2979,11 +2979,11 @@ mod tests {
                 })
                 .expect("upsert tenant");
             store
-                .upsert_membership(&dope_identity::Membership {
+                .upsert_membership(&kura_identity::Membership {
                     membership_id: format!("mem_{tenant_id}"),
                     tenant_id: tenant_id.clone(),
                     principal_id: h.principal.principal_id.clone(),
-                    role: dope_identity::Role::Viewer,
+                    role: kura_identity::Role::Viewer,
                     status: LifecycleStatus::Active,
                     invitation_id: String::new(),
                     created_at: h.now,
@@ -2993,7 +2993,7 @@ mod tests {
                 })
                 .expect("upsert membership");
             store
-                .upsert_token_tenant_grant(&dope_identity::TokenTenantGrant {
+                .upsert_token_tenant_grant(&kura_identity::TokenTenantGrant {
                     grant_id: format!("grant_{tenant_id}"),
                     token_id: h.token.token_id.clone(),
                     tenant_id: tenant_id.clone(),
@@ -3022,10 +3022,10 @@ mod tests {
 
     fn r37_context(
         tenant_id: &str,
-        role: dope_identity::Role,
-        permissions: Vec<dope_identity::Permission>,
-    ) -> dope_identity::TenantContext {
-        dope_identity::TenantContext {
+        role: kura_identity::Role,
+        permissions: Vec<kura_identity::Permission>,
+    ) -> kura_identity::TenantContext {
+        kura_identity::TenantContext {
             principal_id: format!("principal_{tenant_id}"),
             token_id: format!("token_{tenant_id}"),
             tenant_id: tenant_id.to_string(),
@@ -3033,35 +3033,35 @@ mod tests {
             role: Some(role),
             permissions,
             resolved_at: Utc::now(),
-            ..dope_identity::TenantContext::default()
+            ..kura_identity::TenantContext::default()
         }
     }
 
-    fn r37_admin_context(tenant_id: &str) -> dope_identity::TenantContext {
+    fn r37_admin_context(tenant_id: &str) -> kura_identity::TenantContext {
         r37_context(
             tenant_id,
-            dope_identity::Role::Admin,
-            permissions_for_role(dope_identity::Role::Admin, LifecycleStatus::Active),
+            kura_identity::Role::Admin,
+            permissions_for_role(kura_identity::Role::Admin, LifecycleStatus::Active),
         )
     }
 
-    fn r37_viewer_context(tenant_id: &str) -> dope_identity::TenantContext {
+    fn r37_viewer_context(tenant_id: &str) -> kura_identity::TenantContext {
         r37_context(
             tenant_id,
-            dope_identity::Role::Viewer,
+            kura_identity::Role::Viewer,
             vec![Permission::ReadOnlyInspect],
         )
     }
 
-    fn secrets_harness() -> (AppState, Arc<dope_secrets::Manager>) {
-        let dir = std::env::temp_dir().join(format!("dope-api-secrets-{}", Uuid::now_v7()));
+    fn secrets_harness() -> (AppState, Arc<kura_secrets::Manager>) {
+        let dir = std::env::temp_dir().join(format!("kura-api-secrets-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
             SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
         let backend = Arc::new(LocalBackend::new(dir.join("backend")).expect("backend"));
-        let manager = Arc::new(dope_secrets::Manager::new(
-            Arc::new(TestSecretStore::new()) as Arc<dyn dope_secrets::Store>,
+        let manager = Arc::new(kura_secrets::Manager::new(
+            Arc::new(TestSecretStore::new()) as Arc<dyn kura_secrets::Store>,
             backend,
         ));
         let mut state = AppState::new(test_config(), Arc::new(Bus::new()), store);
@@ -3122,7 +3122,7 @@ mod tests {
         let (state, manager) = secrets_harness();
         let app = plain_app(state.clone());
         manager
-            .create(dope_secrets::CreateInput {
+            .create(kura_secrets::CreateInput {
                 tenant_id: "ten_r37_a".to_string(),
                 secret_ref: "inspect-key".to_string(),
                 display_name: String::new(),
@@ -3134,7 +3134,7 @@ mod tests {
 
         let operator = r37_context(
             "ten_r37_a",
-            dope_identity::Role::Operator,
+            kura_identity::Role::Operator,
             vec![Permission::CredentialsInspect],
         );
         let mut req = request("GET", "/v1/tenant-secrets/inspect-key", None);
@@ -3157,7 +3157,7 @@ mod tests {
         let (state, manager) = secrets_harness();
         let app = plain_app(state.clone());
         manager
-            .create(dope_secrets::CreateInput {
+            .create(kura_secrets::CreateInput {
                 tenant_id: "ten_r37_a".to_string(),
                 secret_ref: "rotating-key".to_string(),
                 display_name: String::new(),
@@ -3178,7 +3178,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "body: {json}");
 
         let resolved = manager
-            .resolve(dope_secrets::ResolveInput {
+            .resolve(kura_secrets::ResolveInput {
                 tenant_id: "ten_r37_a".to_string(),
                 secret_ref: "rotating-key".to_string(),
             })
@@ -3190,7 +3190,7 @@ mod tests {
     #[tokio::test]
     async fn unconfigured_managers_return_500() {
         // Pairing start without an auth manager (Go nil-auth-manager 500).
-        let dir = std::env::temp_dir().join(format!("dope-api-auth-empty-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-auth-empty-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
             SQLiteStore::new(dir.to_str().expect("path")).expect("store"),

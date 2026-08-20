@@ -5,7 +5,7 @@ attach to the same hook waterfall and seams as builtin plugins. Install
 one by dropping a directory under `<data_dir>/plugins/`:
 
 ```
-~/.dope-test/plugins/
+~/.kura-test/plugins/
   my-plugin/
     manifest.json
     run.py            # anything executable

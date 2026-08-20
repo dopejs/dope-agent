@@ -18,7 +18,7 @@ tests are mandatory because API/schema/event/persistence surfaces change.
 
 - **[P]**: Can run in parallel (different files, no incomplete dependencies)
 - **[Story]**: US1–US5 for story phases; Setup/Foundational/Polish carry no story label
-- All paths are repo-relative to `/Users/John/Code/dope-agent`
+- All paths are repo-relative to `/Users/John/Code/kura-agent`
 
 ## Path Conventions
 
@@ -248,7 +248,7 @@ selection is limited to policy-visible capabilities.
 - [X] T069 Run `make daemon-contract-test` and resolve any schema/fixture mismatches (incl. the flipped classification)
 - [X] T070 Run `cd daemon && go test ./...` and `go mod tidy`; fix failures
 - [X] T071 Run `pnpm build && pnpm test:clients`; fix SDK/Web/TUI failures
-- [X] T072 Execute `specs/043-workspace-capability-binding/quickstart.md` smoke walkthrough in the test env (`~/.dope-test`, `:19192`) and confirm SC-001…SC-015 acceptance gates
+- [X] T072 Execute `specs/043-workspace-capability-binding/quickstart.md` smoke walkthrough in the test env (`~/.kura-test`, `:19192`) and confirm SC-001…SC-015 acceptance gates
 - [X] T073 [P] Concurrency/atomicity test: a binding or capability-visibility change racing a work-start records exactly one resolved selection per work item with no mixed/partial state (FR-033, spec Edge Cases) in `daemon/internal/chat/binding_projection_test.go`
 
 ---

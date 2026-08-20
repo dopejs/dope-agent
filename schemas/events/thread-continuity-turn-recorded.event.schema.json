@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.dope.agent/events/thread-continuity-turn-recorded.event.schema.json",
+  "$id": "https://schemas.kura.agent/events/thread-continuity-turn-recorded.event.schema.json",
   "title": "ThreadContinuityTurnRecordedEvent",
   "type": "object",
   "additionalProperties": false,

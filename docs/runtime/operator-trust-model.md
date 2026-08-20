@@ -2,7 +2,7 @@
 
 ## Goal
 
-Define the local-first trust boundary for the Dope daemon.
+Define the local-first trust boundary for the Kura daemon.
 
 ## Current Trust Boundary
 
@@ -12,7 +12,7 @@ Define the local-first trust boundary for the Dope daemon.
 - the token is persisted and restored across daemon restart
 - protected requests resolve a principal and tenant context before tenant-owned control
   surfaces run
-- `X-Dope-Tenant-ID` can select a non-default tenant only when both principal membership
+- `X-Kura-Tenant-ID` can select a non-default tenant only when both principal membership
   and token tenant grant allow it
 - high-risk capability execution is gated by approval state
 

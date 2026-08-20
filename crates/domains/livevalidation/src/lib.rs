@@ -8,7 +8,7 @@
 //! outcome comparison.
 //!
 //! Go threads `context.Context` through every call; in Rust the resolved
-//! tenant context travels in the [`dope_identity::tenantctx`] task-local, so
+//! tenant context travels in the [`kura_identity::tenantctx`] task-local, so
 //! async manager methods read it back at gate time the same way.
 
 macro_rules! define_string_enum {

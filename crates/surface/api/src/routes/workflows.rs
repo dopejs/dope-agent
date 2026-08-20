@@ -6,10 +6,10 @@
 //! - POST /v1/runs/{runId}/workflows/{workflowId}/start (initialize + advance)
 //! - POST /v1/runs/{runId}/workflows/{workflowId}/cancel
 //!
-//! Handlers map to dope_orchestration (planning + the stateless transition
+//! Handlers map to kura_orchestration (planning + the stateless transition
 //! helpers: initialize_execution / advance_ready_steps / start_step_attempt /
 //! bind_tool_call / apply_tool_call_result / reconcile_status / computer-use
-//! projection), dope_runtime (run / step / tool-call truth) and the SQLite
+//! projection), kura_runtime (run / step / tool-call truth) and the SQLite
 //! store (workflow ledger + calendar/mail operation projections), preserving
 //! the Go status codes, DTOs, validation and environment scoping. Tenant
 //! scoping rides the shared protected() middleware; these handlers use the
@@ -26,7 +26,7 @@
 //!   SkillToolCall / prepareCapabilityToolCall pipeline in toolcalls.go);
 //!   those steps fail with consumer_unavailable so the workflow truth stays
 //!   coherent
-//! - thread runtime projections (dope-threads is not a dependency of dope-api)
+//! - thread runtime projections (kura-threads is not a dependency of kura-api)
 //! - per-domain calendar/mail operation events (events crate has no
 //!   calendar/mail builders)
 
@@ -37,15 +37,15 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 
-use dope_calendar as calendar;
-use dope_computeruse as computeruse;
-use dope_events as events;
-use dope_integrations as integrations;
-use dope_mail as mail;
-use dope_mcp as mcp;
-use dope_orchestration as orchestration;
-use dope_runtime as runtime;
-use dope_store::SQLiteStore;
+use kura_calendar as calendar;
+use kura_computeruse as computeruse;
+use kura_events as events;
+use kura_integrations as integrations;
+use kura_mail as mail;
+use kura_mcp as mcp;
+use kura_orchestration as orchestration;
+use kura_runtime as runtime;
+use kura_store::SQLiteStore;
 
 use crate::error::ApiError;
 use crate::middleware::environment_scope_from_config;
@@ -301,11 +301,11 @@ async fn cancel_workflow(
 // ---------------------------------------------------------------------------
 
 struct SkillPlanningAdapter<'a> {
-    registry: &'a dope_skills::Registry,
+    registry: &'a kura_skills::Registry,
 }
 
 impl<'a> SkillPlanningAdapter<'a> {
-    fn new(registry: &'a dope_skills::Registry) -> Self {
+    fn new(registry: &'a kura_skills::Registry) -> Self {
         Self { registry }
     }
 }
@@ -319,7 +319,7 @@ impl orchestration::SkillPlanningSource for SkillPlanningAdapter<'_> {
                 skill_id: skill.skill_id.clone(),
                 executable: skill.execution_manifest.is_some(),
                 available: skill.availability_status
-                    == dope_skills::SkillAvailabilityStatus::Available,
+                    == kura_skills::SkillAvailabilityStatus::Available,
                 approval_mode_expected: skill
                     .execution_manifest
                     .as_ref()
@@ -331,11 +331,11 @@ impl orchestration::SkillPlanningSource for SkillPlanningAdapter<'_> {
 }
 
 struct McpPlanningAdapter<'a> {
-    manager: &'a dope_mcp::Manager,
+    manager: &'a kura_mcp::Manager,
 }
 
 impl<'a> McpPlanningAdapter<'a> {
-    fn new(manager: &'a dope_mcp::Manager) -> Self {
+    fn new(manager: &'a kura_mcp::Manager) -> Self {
         Self { manager }
     }
 }
@@ -580,7 +580,7 @@ fn workflow_event_step_id(
 
 /// Go publishWorkflowEvent: builds the workflow category payload, appends
 /// the event to the store and publishes it on the bus. The thread runtime
-/// projection side effect is skipped (dope-threads is not an api dependency).
+/// projection side effect is skipped (kura-threads is not an api dependency).
 fn publish_workflow_event(
     state: &AppState,
     name: &str,
@@ -785,9 +785,9 @@ fn project_workflow_calendar_summaries(
     if workflow.environment_scope.trim().is_empty() || workflow.workflow_id.trim().is_empty() {
         return Ok(workflow);
     }
-    let filter = dope_store::calendar::CalendarOperationFilter {
+    let filter = kura_store::calendar::CalendarOperationFilter {
         workflow_id: workflow.workflow_id.clone(),
-        ..dope_store::calendar::CalendarOperationFilter::default()
+        ..kura_store::calendar::CalendarOperationFilter::default()
     };
     let operations = store.list_calendar_operations(&workflow.environment_scope, &filter)?;
     for step in &mut workflow.steps {
@@ -857,9 +857,9 @@ fn project_workflow_mail_summaries(
     if workflow.environment_scope.trim().is_empty() || workflow.workflow_id.trim().is_empty() {
         return Ok(workflow);
     }
-    let filter = dope_store::mail::MailOperationFilter {
+    let filter = kura_store::mail::MailOperationFilter {
         workflow_id: workflow.workflow_id.clone(),
-        ..dope_store::mail::MailOperationFilter::default()
+        ..kura_store::mail::MailOperationFilter::default()
     };
     let operations = store.list_mail_operations(&workflow.environment_scope, &filter)?;
     for step in &mut workflow.steps {
@@ -982,17 +982,17 @@ fn capture_terminal_workflow_memory(state: &AppState, workflow: &orchestration::
     let captured = super::memory::capture_l0(
         state,
         "",
-        dope_memory::Actor {
-            kind: dope_memory::ActorKind::System,
+        kura_memory::Actor {
+            kind: kura_memory::ActorKind::System,
             id: "workflow".to_string(),
         },
         "workflow_result",
         &text,
         vec![
-            dope_memory::SourceLink {
-                kind: dope_memory::SourceKind::Run,
+            kura_memory::SourceLink {
+                kind: kura_memory::SourceKind::Run,
                 id: workflow.run_id.clone(),
-                ..dope_memory::SourceLink::default()
+                ..kura_memory::SourceLink::default()
             },
         ],
     );
@@ -2099,7 +2099,7 @@ fn execute_workflow_mcp_tool(
 
 /// Serializes a ConsumerContractView to the tool call sandbox map (Go
 /// consumerViewMap).
-fn consumer_view_map(view: &dope_sandbox::ConsumerContractView) -> serde_json::Map<String, serde_json::Value> {
+fn consumer_view_map(view: &kura_sandbox::ConsumerContractView) -> serde_json::Map<String, serde_json::Value> {
     serde_json::to_value(view)
         .ok()
         .and_then(|value| value.as_object().cloned())
@@ -2580,9 +2580,9 @@ fn maybe_emit_workflow_delivery(
     }
 
     let result_class = match workflow.status {
-        orchestration::WorkflowStatus::Completed => dope_delivery::ResultClass::RoutineSuccess,
-        orchestration::WorkflowStatus::Cancelled => dope_delivery::ResultClass::Urgent,
-        _ => dope_delivery::ResultClass::Failure,
+        orchestration::WorkflowStatus::Completed => kura_delivery::ResultClass::RoutineSuccess,
+        orchestration::WorkflowStatus::Cancelled => kura_delivery::ResultClass::Urgent,
+        _ => kura_delivery::ResultClass::Failure,
     };
     let preview = {
         let trimmed = workflow.goal.trim().to_string();
@@ -2595,7 +2595,7 @@ fn maybe_emit_workflow_delivery(
     let integration_id = resolve_workflow_integration_id(workflow);
 
     let outcome = delivery_manager
-        .emit_outcome(dope_delivery::OutcomeInput {
+        .emit_outcome(kura_delivery::OutcomeInput {
             source_kind: "workflow".to_string(),
             source_id: workflow.workflow_id.clone(),
             run_id: workflow.run_id.clone(),
@@ -2634,9 +2634,9 @@ fn link_workflow_calendar_operations_to_delivery(
         return Ok(());
     }
     let store = state.store.lock();
-    let filter = dope_store::calendar::CalendarOperationFilter {
+    let filter = kura_store::calendar::CalendarOperationFilter {
         workflow_id: workflow.workflow_id.clone(),
-        ..dope_store::calendar::CalendarOperationFilter::default()
+        ..kura_store::calendar::CalendarOperationFilter::default()
     };
     let operations = store
         .list_calendar_operations(&workflow.environment_scope, &filter)
@@ -2665,9 +2665,9 @@ fn link_workflow_mail_operations_to_delivery(
         return Ok(());
     }
     let store = state.store.lock();
-    let filter = dope_store::mail::MailOperationFilter {
+    let filter = kura_store::mail::MailOperationFilter {
         workflow_id: workflow.workflow_id.clone(),
-        ..dope_store::mail::MailOperationFilter::default()
+        ..kura_store::mail::MailOperationFilter::default()
     };
     let operations = store
         .list_mail_operations(&workflow.environment_scope, &filter)
@@ -2698,32 +2698,32 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-workflows-test".to_string(),
+            data_dir: "/tmp/kura-api-workflows-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
-                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
-                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
-                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
+                telegram: kura_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
+                slack: kura_config::SlackConnectorConfig { enabled: false, ..Default::default() },
+                matrix: kura_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
             },
         }
     }
 
     fn temp_store() -> Arc<Mutex<SQLiteStore>> {
-        let dir = std::env::temp_dir().join(format!("dope-api-workflows-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-workflows-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         Arc::new(Mutex::new(SQLiteStore::new(dir.to_str().expect("path")).expect("store")))
     }
 
-    fn test_state_with_runtime() -> (AppState, Arc<dope_runtime::Manager>) {
-        let runtime = Arc::new(dope_runtime::Manager::new());
-        let state = AppState::new(test_config(), Arc::new(dope_events::Bus::new()), temp_store());
+    fn test_state_with_runtime() -> (AppState, Arc<kura_runtime::Manager>) {
+        let runtime = Arc::new(kura_runtime::Manager::new());
+        let state = AppState::new(test_config(), Arc::new(kura_events::Bus::new()), temp_store());
         let mut state = state;
         state.runtime = Some(runtime.clone());
         (state, runtime)
@@ -2731,8 +2731,8 @@ mod tests {
 
     /// Mirrors the Go newAllowSkillRegistryForWorkflowTest fixture: a data
     /// root with one executable allow-mode skill so planning picks a skill step.
-    fn skill_registry(data_root: &str) -> dope_skills::Registry {
-        let home_root = std::env::temp_dir().join(format!("dope-home-{}", Uuid::now_v7()));
+    fn skill_registry(data_root: &str) -> kura_skills::Registry {
+        let home_root = std::env::temp_dir().join(format!("kura-home-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&home_root).expect("mkdir home");
         std::fs::create_dir_all(format!("{data_root}/skills/exec-skill")).expect("mkdir skill");
         std::fs::write(
@@ -2746,19 +2746,19 @@ mod tests {
             "#!/bin/sh\nprintf 'workflow-ok %s' \"$1\"\n",
         )
         .expect("write entrypoint");
-        dope_skills::Registry::with_roots(
+        kura_skills::Registry::with_roots(
             home_root.to_str().expect("path"),
             data_root,
         )
         .expect("registry")
     }
 
-    fn run_with_entrypoint(state: &AppState, runtime: &Arc<dope_runtime::Manager>) -> dope_runtime::Run {
+    fn run_with_entrypoint(state: &AppState, runtime: &Arc<kura_runtime::Manager>) -> kura_runtime::Run {
         let run = runtime
-            .create_run(dope_runtime::CreateRunInput {
+            .create_run(kura_runtime::CreateRunInput {
                 entrypoint: "operator".to_string(),
                 goal: "Use a skill to complete a deterministic workflow.".to_string(),
-                ..dope_runtime::CreateRunInput::default()
+                ..kura_runtime::CreateRunInput::default()
             })
             .expect("create run");
         let _ = state.store.lock().upsert_run(&run);
@@ -2793,7 +2793,7 @@ mod tests {
     async fn planning_routes_expose_inspectable_plan_and_environment_isolation() {
         let (mut state, runtime) = test_state_with_runtime();
         let data_root = std::env::temp_dir()
-            .join(format!("dope-workflow-data-{}", Uuid::now_v7()))
+            .join(format!("kura-workflow-data-{}", Uuid::now_v7()))
             .to_str()
             .expect("path")
             .to_string();
@@ -3024,7 +3024,7 @@ mod tests {
     async fn start_workflow_initializes_execution_and_advances_steps() {
         let (mut state, runtime) = test_state_with_runtime();
         let data_root = std::env::temp_dir()
-            .join(format!("dope-workflow-data-{}", Uuid::now_v7()))
+            .join(format!("kura-workflow-data-{}", Uuid::now_v7()))
             .to_str()
             .expect("path")
             .to_string();

@@ -1,26 +1,26 @@
 //! Runtime integration tests (port of runtime_test.go): the FakeTransport
 //! harness drives the Runtime through start/inbound-route/persistence paths
-//! against a real SQLite store, the dope-im message loop, and the event bus.
+//! against a real SQLite store, the kura-im message loop, and the event bus.
 
 use std::sync::Arc;
 
 use chrono::{TimeZone, Utc};
-use dope_chat::Service as ChatService;
-use dope_checkpoints::Manager as CheckpointManager;
-use dope_connectors::{DiagnosticReasonCode, Status, Supervisor};
-use dope_discord::{
+use kura_chat::Service as ChatService;
+use kura_checkpoints::Manager as CheckpointManager;
+use kura_connectors::{DiagnosticReasonCode, Status, Supervisor};
+use kura_discord::{
     Config, DestinationType, DestinationValidation, DestinationValidationState, DiscordError,
     DestinationValidator, Runtime, Transport,
 };
-use dope_events::{Bus, Filter};
-use dope_im::{MessageLoop, ReplyProgressor, ReplySender};
-use dope_imtypes::{InboundMessage, OutboundReply, ReplyCapabilities, ReplyEdit, SentReply, ThinkingSignal};
-use dope_llm::{
+use kura_events::{Bus, Filter};
+use kura_im::{MessageLoop, ReplyProgressor, ReplySender};
+use kura_imtypes::{InboundMessage, OutboundReply, ReplyCapabilities, ReplyEdit, SentReply, ThinkingSignal};
+use kura_llm::{
     Dispatcher, Provider, ProviderError, ProviderRequest, ProviderResponse, StreamChunk,
     StreamEmitter, Usage,
 };
-use dope_router::{SessionKind, SessionRouter};
-use dope_store::SQLiteStore;
+use kura_router::{SessionKind, SessionRouter};
+use kura_store::SQLiteStore;
 
 // ---------------------------------------------------------------------------
 // Echo provider producing "reply:" + first message content (Go testProvider).
@@ -240,7 +240,7 @@ fn harness() -> Harness {
     dispatcher.set_default_provider("echo").expect("default provider");
     dispatcher.set_default_model("echo-v1");
     let chat = ChatService::new_service(dispatcher, None, None, Some(bus.clone()), None);
-    let runtime = Arc::new(dope_runtime::Manager::new());
+    let runtime = Arc::new(kura_runtime::Manager::new());
     let checkpoints = CheckpointManager::new(
         Arc::new(parking_lot::Mutex::new(
             SQLiteStore::new(dir.path().to_str().expect("path")).expect("store"),
@@ -263,7 +263,7 @@ fn start_runtime(
     cfg: Config,
     transport: FakeTransport,
 ) -> (Runtime, FakeTransport) {
-    let runtime = dope_discord::new_runtime(
+    let runtime = kura_discord::new_runtime(
         cfg,
         None,
         Arc::new(Supervisor::new()),
@@ -370,7 +370,7 @@ fn runtime_ignores_guild_message_without_mention_when_required() {
 #[test]
 fn new_runtime_rejects_missing_bot_token() {
     let harness = harness();
-    let result = dope_discord::new_runtime(
+    let result = kura_discord::new_runtime(
         Config {
             enabled: true,
             connector_id: "discord-main".to_string(),
@@ -392,7 +392,7 @@ fn new_runtime_rejects_missing_bot_token() {
 fn runtime_publishes_classified_failure_when_transport_start_fails() {
     let harness = harness();
     let transport = FakeTransport::with_start_err(DiscordError::Other("401 Unauthorized".to_string()));
-    let runtime = dope_discord::new_runtime(
+    let runtime = kura_discord::new_runtime(
         base_cfg(),
         None,
         Arc::new(Supervisor::new()),
@@ -452,7 +452,7 @@ fn runtime_marks_hosted_ready_with_validated_destination_evidence() {
             validation_state: DestinationValidationState::Valid,
             reason_code: "healthy".to_string(),
             validated_at: now,
-            redaction_status: dope_connectors::RedactionStatus::Redacted,
+            redaction_status: kura_connectors::RedactionStatus::Redacted,
             safe_evidence: [("source".to_string(), "gateway_state".to_string())].into(),
             ..DestinationValidation::default()
         },
@@ -464,7 +464,7 @@ fn runtime_marks_hosted_ready_with_validated_destination_evidence() {
             validation_state: DestinationValidationState::Valid,
             reason_code: "healthy".to_string(),
             validated_at: now,
-            redaction_status: dope_connectors::RedactionStatus::Redacted,
+            redaction_status: kura_connectors::RedactionStatus::Redacted,
             safe_evidence: [("source".to_string(), "gateway_state".to_string())].into(),
             ..DestinationValidation::default()
         },
@@ -484,8 +484,8 @@ fn runtime_marks_hosted_ready_with_validated_destination_evidence() {
         .store
         .list_connector_conformance_results("ten_discord", "discord-main", Utc::now())
         .expect("list conformance results");
-    let passed_core = results.iter().filter(|result| result.result == dope_connectors::ConformanceResultStatus::Pass).count();
-    assert!(passed_core >= dope_connectors::core_invariant_areas().len());
+    let passed_core = results.iter().filter(|result| result.result == kura_connectors::ConformanceResultStatus::Pass).count();
+    assert!(passed_core >= kura_connectors::core_invariant_areas().len());
 }
 
 // Go TestRuntimeBlocksInboundMissingDurableIdentity

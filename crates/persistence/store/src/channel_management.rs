@@ -11,10 +11,10 @@
 //! ListChannelRepairActions, SaveChannelManagementAuditRecord,
 //! ListChannelManagementAuditRecords).
 //!
-//! The record types and their pure predicates live in `dope-connectors`
+//! The record types and their pure predicates live in `kura-connectors`
 //! (management.rs), matching the Go layout where the connectors package owns
 //! them and the store only persists them. This module re-exports them so
-//! existing `dope_store::channel_management::*` imports keep resolving.
+//! existing `kura_store::channel_management::*` imports keep resolving.
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::{params, Row};
@@ -23,9 +23,9 @@ use crate::crud::now_rfc3339;
 use crate::SQLiteStore;
 
 /// The channel-management record types, enums, and pure predicates, defined in
-/// `dope-connectors` (Go keeps them in the connectors package) and re-exported
-/// here for the store DAOs below and for callers importing them from dope-store.
-pub use dope_connectors::{
+/// `kura-connectors` (Go keeps them in the connectors package) and re-exported
+/// here for the store DAOs below and for callers importing them from kura-store.
+pub use kura_connectors::{
     BackgroundDeliveryOutcome, ConnectorAuditRecord, EnablementState, ForegroundReplyOutcome,
     ManagementState, RepairAction, RouteDecisionOutcome, RoutePolicy, RoutingDecision,
     SupportEvidenceBundle, contains_route_policy_value, default_route_policy,
@@ -73,17 +73,17 @@ fn scan_channel_support_evidence(row: &Row) -> Result<SupportEvidenceBundle, Str
     serde_json::from_str(&raw).map_err(|e| format!("decode channel support evidence: {e}"))
 }
 
-fn scan_channel_enablement_state(row: &Row) -> Result<dope_connectors::EnablementState, String> {
+fn scan_channel_enablement_state(row: &Row) -> Result<kura_connectors::EnablementState, String> {
     let raw: String = row.get(0).map_err(|e| e.to_string())?;
     serde_json::from_str(&raw).map_err(|e| format!("decode channel enablement state: {e}"))
 }
 
-fn scan_channel_repair_action(row: &Row) -> Result<dope_connectors::RepairAction, String> {
+fn scan_channel_repair_action(row: &Row) -> Result<kura_connectors::RepairAction, String> {
     let raw: String = row.get(0).map_err(|e| e.to_string())?;
     serde_json::from_str(&raw).map_err(|e| format!("decode channel repair action: {e}"))
 }
 
-fn scan_channel_audit_record(row: &Row) -> Result<dope_connectors::ConnectorAuditRecord, String> {
+fn scan_channel_audit_record(row: &Row) -> Result<kura_connectors::ConnectorAuditRecord, String> {
     let raw: String = row.get(0).map_err(|e| e.to_string())?;
     serde_json::from_str(&raw).map_err(|e| format!("decode channel management audit: {e}"))
 }
@@ -499,7 +499,7 @@ impl SQLiteStore {
     /// enablement state (PK tenant_id + connector_id).
     pub fn save_channel_connector_enablement_state(
         &self,
-        state: &dope_connectors::EnablementState,
+        state: &kura_connectors::EnablementState,
     ) -> Result<(), String> {
         let mut state = state.clone();
         if is_unset_time(&state.changed_at) {
@@ -543,7 +543,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         connector_id: &str,
-    ) -> Result<Option<dope_connectors::EnablementState>, String> {
+    ) -> Result<Option<kura_connectors::EnablementState>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -560,7 +560,7 @@ impl SQLiteStore {
     /// Go `SaveChannelRepairAction` — generates a repair_action_id when unset.
     pub fn save_channel_repair_action(
         &self,
-        action: &dope_connectors::RepairAction,
+        action: &kura_connectors::RepairAction,
     ) -> Result<(), String> {
         let mut action = action.clone();
         if action.repair_action_id.trim().is_empty() {
@@ -615,7 +615,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         connector_id: &str,
-    ) -> Result<Vec<dope_connectors::RepairAction>, String> {
+    ) -> Result<Vec<kura_connectors::RepairAction>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -638,7 +638,7 @@ impl SQLiteStore {
     /// unset.
     pub fn save_channel_management_audit_record(
         &self,
-        record: &dope_connectors::ConnectorAuditRecord,
+        record: &kura_connectors::ConnectorAuditRecord,
     ) -> Result<(), String> {
         let mut record = record.clone();
         if record.audit_event_id.trim().is_empty() {
@@ -692,7 +692,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         connector_id: &str,
-    ) -> Result<Vec<dope_connectors::ConnectorAuditRecord>, String> {
+    ) -> Result<Vec<kura_connectors::ConnectorAuditRecord>, String> {
         let mut stmt = self
             .conn
             .prepare(

@@ -12,7 +12,7 @@ organizing all public non-knowledge surfaces (setup, channels, sessions, profile
 providers/capabilities, quota, diagnostics, evaluation, support), preserving tenant selection,
 showing permission/approval/quota/side-effect expectations on critical actions, and rendering
 stable empty/error/denied/unsupported states. The shell remains a pure client of daemon APIs
-(consumed through the @dope/client SDK) and owns no runtime truth.
+(consumed through the @kura/client SDK) and owns no runtime truth.
 
 ## User Scenarios & Testing *(mandatory)*
 ### US1 - Operate the product from one shell (P1)

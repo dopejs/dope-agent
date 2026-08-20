@@ -5,19 +5,19 @@ use std::collections::HashMap;
 use chrono::DateTime;
 use chrono::TimeZone;
 use chrono::Utc;
-use dope_billing::UsageSummary;
-use dope_identity::LifecycleStatus;
-use dope_identity::Membership;
-use dope_identity::MembershipFilter;
-use dope_identity::Principal;
-use dope_identity::PrincipalFilter;
-use dope_identity::PrincipalKind;
-use dope_identity::Tenant;
-use dope_identity::TenantAuditEvent;
-use dope_identity::TenantContext;
-use dope_identity::TenantFilter;
-use dope_identity::TokenAuthority;
-use dope_identity::TokenTenantGrant;
+use kura_billing::UsageSummary;
+use kura_identity::LifecycleStatus;
+use kura_identity::Membership;
+use kura_identity::MembershipFilter;
+use kura_identity::Principal;
+use kura_identity::PrincipalFilter;
+use kura_identity::PrincipalKind;
+use kura_identity::Tenant;
+use kura_identity::TenantAuditEvent;
+use kura_identity::TenantContext;
+use kura_identity::TenantFilter;
+use kura_identity::TokenAuthority;
+use kura_identity::TokenTenantGrant;
 use parking_lot::Mutex;
 
 use crate::service::BoxFuture;
@@ -258,7 +258,7 @@ impl AuditSink for FailingAuditSink {
 #[derive(Default)]
 pub(crate) struct StaticBillingProjector {
     pub summary: Option<UsageSummary>,
-    pub err: Option<dope_billing::BillingError>,
+    pub err: Option<kura_billing::BillingError>,
 }
 
 impl BillingProjector for StaticBillingProjector {
@@ -266,7 +266,7 @@ impl BillingProjector for StaticBillingProjector {
         &self,
         _tenant_id: &str,
         _hosted: bool,
-    ) -> BoxFuture<'_, Result<UsageSummary, dope_billing::BillingError>> {
+    ) -> BoxFuture<'_, Result<UsageSummary, kura_billing::BillingError>> {
         let summary = self.summary.clone();
         let err = self.err.clone();
         Box::pin(async move {

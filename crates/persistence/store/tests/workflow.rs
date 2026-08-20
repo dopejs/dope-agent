@@ -4,19 +4,19 @@
 //! upserts it (and replaces its child rows), then lists/gets it back. The `workflow`
 //! row decodes its document from `document_json` while children load from their own
 //! tables, mirroring the Go read path. Wiring required before these compile: declare
-//! `pub mod workflow;` in `lib.rs` and add `dope-orchestration.workspace = true` to
-//! `Cargo.toml` (the record structs live at `dope_store::workflow::*`).
+//! `pub mod workflow;` in `lib.rs` and add `kura-orchestration.workspace = true` to
+//! `Cargo.toml` (the record structs live at `kura_store::workflow::*`).
 
 use chrono::{DateTime, Utc};
-use dope_orchestration::{
+use kura_orchestration::{
     Dependency, DependencyType, Handoff, HandoffStatus, StepStatus, Workflow, WorkflowStatus,
     WorkflowStep,
 };
-use dope_runtime::{Run, RunStatus};
-use dope_store::SQLiteStore;
+use kura_runtime::{Run, RunStatus};
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

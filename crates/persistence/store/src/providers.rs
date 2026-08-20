@@ -20,7 +20,7 @@ fn decode_json_or_default<T: serde::de::DeserializeOwned + Default>(raw: &str) -
     serde_json::from_str(trimmed).map_err(|e| e.to_string())
 }
 
-fn scan_provider_check(row: &Row) -> Result<dope_providers::Check, String> {
+fn scan_provider_check(row: &Row) -> Result<kura_providers::Check, String> {
     let check_id: String = row.get(0).map_err(|e| e.to_string())?;
     let provider_id: String = row.get(1).map_err(|e| e.to_string())?;
     let family: String = row.get(2).map_err(|e| e.to_string())?;
@@ -35,7 +35,7 @@ fn scan_provider_check(row: &Row) -> Result<dope_providers::Check, String> {
     let created_at: String = row.get(11).map_err(|e| e.to_string())?;
     let completed_at: String = row.get(12).map_err(|e| e.to_string())?;
 
-    Ok(dope_providers::Check {
+    Ok(kura_providers::Check {
         check_id,
         provider_id,
         family: parse_enum(&family)?,
@@ -52,7 +52,7 @@ fn scan_provider_check(row: &Row) -> Result<dope_providers::Check, String> {
     })
 }
 
-fn scan_provider_auth_state(row: &Row) -> Result<dope_providers::AuthState, String> {
+fn scan_provider_auth_state(row: &Row) -> Result<kura_providers::AuthState, String> {
     let provider_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: Option<String> = row.get(1).map_err(|e| e.to_string())?;
     let family: String = row.get(2).map_err(|e| e.to_string())?;
@@ -72,7 +72,7 @@ fn scan_provider_auth_state(row: &Row) -> Result<dope_providers::AuthState, Stri
     let metadata_raw: String = row.get(16).map_err(|e| e.to_string())?;
     let sandbox_raw: Option<String> = row.get(17).map_err(|e| e.to_string())?;
 
-    Ok(dope_providers::AuthState {
+    Ok(kura_providers::AuthState {
         provider_id,
         tenant_id: tenant_id.unwrap_or_default(),
         family: parse_enum(&family)?,
@@ -97,7 +97,7 @@ fn scan_provider_auth_state(row: &Row) -> Result<dope_providers::AuthState, Stri
     })
 }
 
-fn scan_provider_model(row: &Row) -> Result<dope_providers::Model, String> {
+fn scan_provider_model(row: &Row) -> Result<kura_providers::Model, String> {
     let provider_id: String = row.get(0).map_err(|e| e.to_string())?;
     let model_id: String = row.get(1).map_err(|e| e.to_string())?;
     let display_name: String = row.get(2).map_err(|e| e.to_string())?;
@@ -111,7 +111,7 @@ fn scan_provider_model(row: &Row) -> Result<dope_providers::Model, String> {
     let tool_use: bool = row.get(10).map_err(|e| e.to_string())?;
     let reasoning_levels_raw: String = row.get(11).map_err(|e| e.to_string())?;
 
-    Ok(dope_providers::Model {
+    Ok(kura_providers::Model {
         provider_id,
         model_id,
         display_name,
@@ -128,11 +128,11 @@ fn scan_provider_model(row: &Row) -> Result<dope_providers::Model, String> {
     })
 }
 
-fn scan_provider_preference(row: &Row) -> Result<dope_providers::Preference, String> {
+fn scan_provider_preference(row: &Row) -> Result<kura_providers::Preference, String> {
     let provider_id: String = row.get(0).map_err(|e| e.to_string())?;
     let default_model: String = row.get(1).map_err(|e| e.to_string())?;
     let updated_at: String = row.get(2).map_err(|e| e.to_string())?;
-    Ok(dope_providers::Preference {
+    Ok(kura_providers::Preference {
         provider_id,
         default_model,
         updated_at: parse_rfc3339(&updated_at)?,
@@ -140,7 +140,7 @@ fn scan_provider_preference(row: &Row) -> Result<dope_providers::Preference, Str
 }
 
 impl SQLiteStore {
-    pub fn upsert_provider_check(&self, check: &dope_providers::Check) -> Result<(), String> {
+    pub fn upsert_provider_check(&self, check: &kura_providers::Check) -> Result<(), String> {
         let usage_json =
             serde_json::to_string(&check.usage).map_err(|e| format!("marshal provider check usage: {e}"))?;
         self.conn
@@ -182,7 +182,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_provider_checks(&self, provider_id: &str) -> Result<Vec<dope_providers::Check>, String> {
+    pub fn list_provider_checks(&self, provider_id: &str) -> Result<Vec<kura_providers::Check>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -201,7 +201,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn get_provider_check(&self, provider_id: &str, check_id: &str) -> Result<Option<dope_providers::Check>, String> {
+    pub fn get_provider_check(&self, provider_id: &str, check_id: &str) -> Result<Option<kura_providers::Check>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -218,7 +218,7 @@ impl SQLiteStore {
         scan_provider_check(row).map(Some)
     }
 
-    pub fn upsert_provider_auth_state(&self, state: &dope_providers::AuthState) -> Result<(), String> {
+    pub fn upsert_provider_auth_state(&self, state: &kura_providers::AuthState) -> Result<(), String> {
         let login_command_json =
             serde_json::to_string(&state.login_command).map_err(|e| format!("marshal provider auth login command: {e}"))?;
         let logout_command_json =
@@ -278,7 +278,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_provider_auth_states(&self) -> Result<Vec<dope_providers::AuthState>, String> {
+    pub fn list_provider_auth_states(&self) -> Result<Vec<kura_providers::AuthState>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -298,7 +298,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn replace_provider_models(&self, provider_id: &str, models: &[dope_providers::Model]) -> Result<(), String> {
+    pub fn replace_provider_models(&self, provider_id: &str, models: &[kura_providers::Model]) -> Result<(), String> {
         let tx = self
             .conn
             .unchecked_transaction()
@@ -340,15 +340,15 @@ impl SQLiteStore {
             .map_err(|e| format!("commit provider model replace transaction: {e}"))
     }
 
-    pub fn list_provider_models(&self) -> Result<Vec<dope_providers::Model>, String> {
+    pub fn list_provider_models(&self) -> Result<Vec<kura_providers::Model>, String> {
         self.query_provider_models(None)
     }
 
-    pub fn list_provider_models_by_provider(&self, provider_id: &str) -> Result<Vec<dope_providers::Model>, String> {
+    pub fn list_provider_models_by_provider(&self, provider_id: &str) -> Result<Vec<kura_providers::Model>, String> {
         self.query_provider_models(Some(provider_id))
     }
 
-    pub fn upsert_provider_preference(&self, preference: &dope_providers::Preference) -> Result<(), String> {
+    pub fn upsert_provider_preference(&self, preference: &kura_providers::Preference) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO provider_preferences (provider_id, default_model, updated_at, tenant_id)
@@ -368,7 +368,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_provider_preferences(&self) -> Result<Vec<dope_providers::Preference>, String> {
+    pub fn list_provider_preferences(&self) -> Result<Vec<kura_providers::Preference>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -383,7 +383,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    fn query_provider_models(&self, provider_id: Option<&str>) -> Result<Vec<dope_providers::Model>, String> {
+    fn query_provider_models(&self, provider_id: Option<&str>) -> Result<Vec<kura_providers::Model>, String> {
         let sql = if provider_id.is_some() {
             r#"SELECT provider_id, model_id, display_name, description, default_flag,
                 available_flag, source, chat, stream, coding, tool_use, reasoning_levels_json

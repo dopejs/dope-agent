@@ -1,4 +1,4 @@
-//! Behavioral tests for the dope-connectors management layer (port of
+//! Behavioral tests for the kura-connectors management layer (port of
 //! daemon/internal/connectors/management_routes_test.go,
 //! management_repair_test.go, and management_enablement_test.go): projection
 //! building, management-state classification, capability profiles, sort
@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, Utc};
-use dope_connectors::{
+use kura_connectors::{
     CapabilitySupport, ChannelConnectorProjection, Connector, ConnectorDiagnosticState,
     DiagnosticFreshness, DiagnosticReasonCode, DiagnosticInput, LifecycleState,
     ManagementActionKind, ManagementState, ManagementTerminalState, ProjectionInput,

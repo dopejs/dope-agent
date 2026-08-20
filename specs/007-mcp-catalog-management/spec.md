@@ -183,12 +183,12 @@ prerequisite-loss or blocked state without requiring a start attempt.
   parallel rollback path.
 - **Verification Strategy**: Run targeted daemon tests for uninstall, reinstall, refresh,
   drift classification, and prerequisite revalidation; run contract coverage for new
-  catalog-management resources and events; record one manual `DOPE_ENV=test`
+  catalog-management resources and events; record one manual `KURA_ENV=test`
   install-to-remove or install-to-refresh workflow.
 - **Observability Impact**: Operator-visible API resources, events, and history must
   explain catalog source identity, revision or version truth, local modification, drift,
   uninstall and refresh outcomes, and prerequisite revalidation results.
-- **Environment & Secrets**: Validation remains in `DOPE_ENV=test` by default. Catalog
+- **Environment & Secrets**: Validation remains in `KURA_ENV=test` by default. Catalog
   lifecycle actions must stay environment-scoped and continue to respect existing secret
   redaction rules on operator-visible surfaces.
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/billing-quota-override.request.schema.json",
+  "$id": "https://kura.local/schemas/api/billing-quota-override.request.schema.json",
   "title": "BillingQuotaOverrideRequest",
   "type": "object",
   "required": ["category", "reason"],

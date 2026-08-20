@@ -1,10 +1,10 @@
 //! Ported Go event-builder behavioral tests plus serde round-trip coverage for
-//! the dope-events constructor modules (daemon/internal/events/*.go).
+//! the kura-events constructor modules (daemon/internal/events/*.go).
 
 use std::collections::HashMap;
 
 use chrono::{DateTime, TimeZone, Utc};
-use dope_events::*;
+use kura_events::*;
 
 fn now() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 5, 11, 10, 0, 0).unwrap()
@@ -22,11 +22,11 @@ fn payload_bool(event: &Event, key: &str) -> bool {
     event.payload.get(key).and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
-/// Builders for the dope-threads records (the crate deliberately has no
+/// Builders for the kura-threads records (the crate deliberately has no
 /// Default impls on these evidence records).
 mod builders {
     use super::*;
-    use dope_threads::*;
+    use kura_threads::*;
 
     pub fn continuity_turn(
         id: &str,
@@ -305,20 +305,20 @@ fn agent_profile_events_use_safe_metadata() {
     assert_eq!(payload_str(&lifecycle, "safeSummary"), "safe");
     assert_eq!(payload_str(&lifecycle, "redactionStatus"), "redacted");
 
-    let projection = agent_profile_runtime_projected_event(dope_profiles::RuntimeProjection {
+    let projection = agent_profile_runtime_projected_event(kura_profiles::RuntimeProjection {
         runtime_profile_projection_id: "rpp_1".into(),
         tenant_id: "ten_1".into(),
         profile_id: "prof_1".into(),
         profile_version_id: "profv_1".into(),
         selection_id: "sel_1".into(),
-        resource_kind: dope_profiles::RuntimeResourceKind::RUN,
+        resource_kind: kura_profiles::RuntimeResourceKind::RUN,
         resource_id: "run_1".into(),
         selection_scope: "tenant_default".into(),
-        selection_reason: dope_profiles::SelectionReason::DEFAULT_SEEDED,
+        selection_reason: kura_profiles::SelectionReason::DEFAULT_SEEDED,
         safe_display_name: "Agent".into(),
         safe_summary: "safe".into(),
         occurred_at: now(),
-        redaction_status: dope_profiles::RedactionStatus::REDACTED,
+        redaction_status: kura_profiles::RedactionStatus::REDACTED,
         ..Default::default()
     });
     assert_eq!(projection.name, "agent_profile.runtime_projected");
@@ -367,10 +367,10 @@ fn billing_event_projection() {
     let created_at = Utc.with_ymd_and_hms(2026, 4, 28, 10, 0, 0).unwrap();
     let event = billing_usage_event(
         BILLING_USAGE_RESERVED_NAME,
-        dope_billing::UsageEvent {
+        kura_billing::UsageEvent {
             usage_event_id: "usage_event_1".into(),
             tenant_id: "ten_r38_a".into(),
-            category: dope_billing::Category::from(dope_billing::Category::RUN_LAUNCHES),
+            category: kura_billing::Category::from(kura_billing::Category::RUN_LAUNCHES),
             quota_period_id: "period_1".into(),
             operation_key: "tenant:ten_r38_a:run:client_1".into(),
             amount: 1,
@@ -390,19 +390,19 @@ fn billing_event_projection() {
 #[test]
 fn billing_recovery_decision_event_projection() {
     let updated_at = Utc.with_ymd_and_hms(2026, 4, 28, 10, 10, 0).unwrap();
-    let decision = dope_billing::RecoveryDecision {
-        reservation: dope_billing::UsageReservation {
+    let decision = kura_billing::RecoveryDecision {
+        reservation: kura_billing::UsageReservation {
             reservation_id: "reservation_1".into(),
             tenant_id: "ten_r38_a".into(),
-            category: dope_billing::Category::from(dope_billing::Category::RUN_LAUNCHES),
+            category: kura_billing::Category::from(kura_billing::Category::RUN_LAUNCHES),
             quota_period_id: "period_1".into(),
             operation_key: "tenant:ten_r38_a:run:client_1".into(),
-            status: dope_billing::ReservationStatus::from(dope_billing::ReservationStatus::OPERATOR_ACTION_NEEDED),
+            status: kura_billing::ReservationStatus::from(kura_billing::ReservationStatus::OPERATOR_ACTION_NEEDED),
             updated_at,
             recovery_reason: "restart outcome could not be proven".into(),
             ..Default::default()
         },
-        outcome: dope_billing::ReservationStatus::from(dope_billing::ReservationStatus::OPERATOR_ACTION_NEEDED),
+        outcome: kura_billing::ReservationStatus::from(kura_billing::ReservationStatus::OPERATOR_ACTION_NEEDED),
         reason: "restart outcome could not be proven".into(),
     };
     let event = billing_recovery_decision_event(decision);
@@ -611,15 +611,15 @@ fn connector_telegram_setup_validated_builds_redacted_event() {
 #[test]
 fn integration_diagnostic_events() {
     let now = Utc.with_ymd_and_hms(2026, 4, 30, 10, 0, 0).unwrap();
-    let run = dope_integrations::DiagnosticRun {
+    let run = kura_integrations::DiagnosticRun {
         diagnostic_run_id: "diag_run_1".into(),
         tenant_id: "ten_r42".into(),
         integration_id: "integration_feishu".into(),
         requested_by: "prn_operator".into(),
-        status: dope_integrations::DiagnosticRunStatus::Completed,
+        status: kura_integrations::DiagnosticRunStatus::Completed,
         started_at: now,
         completed_at: Some(now),
-        redaction_status: dope_integrations::RedactionStatus::Redacted,
+        redaction_status: kura_integrations::RedactionStatus::Redacted,
         ..Default::default()
     };
     let run_event = integration_diagnostic_run_event(INTEGRATION_DIAGNOSTIC_RUN_COMPLETED_NAME, run);
@@ -627,13 +627,13 @@ fn integration_diagnostic_events() {
     assert_eq!(payload_str(&run_event, "diagnosticRunId"), "diag_run_1");
     assert_eq!(payload_str(&run_event, "redactionStatus"), "redacted");
 
-    let result = dope_integrations::DiagnosticResult {
+    let result = kura_integrations::DiagnosticResult {
         diagnostic_result_id: "diag_result_1".into(),
         tenant_id: "ten_r42".into(),
         integration_id: "integration_feishu".into(),
-        status: dope_integrations::DiagnosticStatus::Unknown,
-        reason_code: dope_integrations::DiagnosticReasonCode::RedactionFailedClosed,
-        redaction_status: dope_integrations::RedactionStatus::FailedClosed,
+        status: kura_integrations::DiagnosticStatus::Unknown,
+        reason_code: kura_integrations::DiagnosticReasonCode::RedactionFailedClosed,
+        redaction_status: kura_integrations::RedactionStatus::FailedClosed,
         checked_at: now,
         ..Default::default()
     };
@@ -644,17 +644,17 @@ fn integration_diagnostic_events() {
 
     let state_event = integration_diagnostic_state_changed_event(
         result,
-        dope_integrations::DiagnosticStatus::Healthy,
+        kura_integrations::DiagnosticStatus::Healthy,
     );
     assert_eq!(state_event.name, INTEGRATION_DIAGNOSTIC_STATE_CHANGED_NAME);
     assert_eq!(payload_str(&state_event, "previousStatus"), "healthy");
     assert_eq!(payload_str(&state_event, "status"), "unknown");
     assert_eq!(payload_str(&state_event, "reasonCode"), "redaction_failed_closed");
 
-    let smoke = dope_opsreadiness::SmokeMatrixReport {
+    let smoke = kura_opsreadiness::SmokeMatrixReport {
         smoke_report_id: "smoke_1".into(),
         tenant_id: "ten_r42".into(),
-        status: dope_opsreadiness::SmokeReportStatus::Completed,
+        status: kura_opsreadiness::SmokeReportStatus::Completed,
         domain_summary: HashMap::from([("feishu".to_string(), "passed".to_string())]),
         artifact_refs: vec!["artifact_1".to_string()],
         completed_at: Some(now),
@@ -671,8 +671,8 @@ fn integration_diagnostic_events() {
     assert_eq!(smoke_event.payload["artifactRefs"], serde_json::json!(["artifact_1"]));
 
     let applied_at = now + chrono::Duration::minutes(1);
-    let mut record = dope_integrations::new_diagnostic_retention_record("ten_r42", "diagnostic_run", "diag_run_1", now);
-    record.retention_state = dope_integrations::DiagnosticRetentionState::Expired;
+    let mut record = kura_integrations::new_diagnostic_retention_record("ten_r42", "diagnostic_run", "diag_run_1", now);
+    record.retention_state = kura_integrations::DiagnosticRetentionState::Expired;
     record.applied_at = Some(applied_at);
     let retention_event = integration_diagnostic_retention_applied_event(record);
     assert_eq!(retention_event.name, INTEGRATION_DIAGNOSTIC_RETENTION_APPLIED_NAME);
@@ -684,7 +684,7 @@ fn integration_diagnostic_events() {
 
 #[test]
 fn thread_continuity_events_are_metadata_only() {
-    use dope_threads::{ContinuityStatus, RedactionStatus};
+    use kura_threads::{ContinuityStatus, RedactionStatus};
     let now = now();
     let turn_event = thread_continuity_turn_recorded_event(
         builders::continuity_turn("turn_1", "ten_1", "thr_1", "seg_1", 7, RedactionStatus::Redacted, now),
@@ -711,7 +711,7 @@ fn thread_continuity_events_are_metadata_only() {
 
 #[test]
 fn group_room_reset_handoff_events_use_safe_metadata() {
-    use dope_threads::{
+    use kura_threads::{
         ConversationShape, HandoffSourceReferenceStatus, HandoffStatus, ParticipationDecisionValue,
         RedactionStatus, ResetEventStatus, GROUP_ROOM_REASON_MISSING_QUALIFYING_MENTION,
         GROUP_ROOM_REASON_SCOPED_RESET_SUCCEEDED,
@@ -754,7 +754,7 @@ fn group_room_reset_handoff_events_use_safe_metadata() {
 
 #[test]
 fn thread_lifecycle_events() {
-    use dope_threads::{LifecycleActionKind, RedactionStatus};
+    use kura_threads::{LifecycleActionKind, RedactionStatus};
     let now = now();
     let event = thread_lifecycle_event(builders::lifecycle_action(
         "action_1", "ten_1", "thr_1", LifecycleActionKind::Reset, "succeeded", "audit_1",
@@ -781,7 +781,7 @@ fn thread_lifecycle_events() {
 
 #[test]
 fn thread_source_runtime_retention_and_failure_events() {
-    use dope_threads::{RedactionStatus, RoutingOutcome, RuntimeResourceKind};
+    use kura_threads::{RedactionStatus, RoutingOutcome, RuntimeResourceKind};
     let now = now();
 
     let source = thread_source_linked_event(builders::source_linkage(
@@ -825,10 +825,10 @@ fn thread_source_runtime_retention_and_failure_events() {
 
 #[test]
 fn live_validation_events_project_attempt_and_ledger_evidence() {
-    use dope_livevalidation::{AttemptStatus, ComparisonStatus, ReconciliationResolutionValue};
+    use kura_livevalidation::{AttemptStatus, ComparisonStatus, ReconciliationResolutionValue};
     let now = now();
 
-    let attempt = dope_livevalidation::Attempt {
+    let attempt = kura_livevalidation::Attempt {
         validation_id: "lv_1".into(),
         tenant_id: "ten_1".into(),
         candidate_id: "cand_1".into(),
@@ -837,7 +837,7 @@ fn live_validation_events_project_attempt_and_ledger_evidence() {
         updated_at: now,
         ..Default::default()
     };
-    let denial = dope_livevalidation::Denial {
+    let denial = kura_livevalidation::Denial {
         gate: "permission".into(),
         reason_code: "permission_denied".into(),
         message: "blocked by permission gate".into(),
@@ -855,9 +855,9 @@ fn live_validation_events_project_attempt_and_ledger_evidence() {
         serde_json::json!([{ "gate": "permission", "reasonCode": "permission_denied", "message": "blocked by permission gate" }])
     );
 
-    // LedgerOutcome is not re-exported by dope-livevalidation, so build the
+    // LedgerOutcome is not re-exported by kura-livevalidation, so build the
     // entry from JSON (the outcome type is a transparent string newtype).
-    let entry: dope_livevalidation::SideEffectLedgerEntry = serde_json::from_value(serde_json::json!({
+    let entry: kura_livevalidation::SideEffectLedgerEntry = serde_json::from_value(serde_json::json!({
         "ledgerEntryId": "ledger_1",
         "validationId": "lv_1",
         "tenantId": "ten_1",
@@ -878,7 +878,7 @@ fn live_validation_events_project_attempt_and_ledger_evidence() {
     assert_eq!(payload_str(&ledger, "outcome"), "completed");
     assert!(!payload_bool(&ledger, "ambiguousCommit"));
 
-    let comparison = dope_livevalidation::Comparison {
+    let comparison = kura_livevalidation::Comparison {
         comparison_id: "comp_1".into(),
         validation_id: "lv_1".into(),
         terminal_status: ComparisonStatus::from(ComparisonStatus::MATCHED),
@@ -889,7 +889,7 @@ fn live_validation_events_project_attempt_and_ledger_evidence() {
     assert_eq!(comp_event.name, LIVE_VALIDATION_COMPARISON_COMPLETED_NAME);
     assert_eq!(payload_str(&comp_event, "terminalStatus"), "matched");
 
-    let resolution = dope_livevalidation::ReconciliationResolution {
+    let resolution = kura_livevalidation::ReconciliationResolution {
         reconciliation_id: "recon_1".into(),
         ambiguous_commit_id: "amb_1".into(),
         tenant_id: "ten_1".into(),
@@ -941,10 +941,10 @@ fn binding_lifecycle_and_visibility_events_are_redacted() {
     let visibility = capability_visibility_changed_event(CapabilityVisibilityChangedInput {
         tenant_id: "ten_1".into(),
         actor_principal_id: "prn_1".into(),
-        scope_kind: dope_bindings::VisibilityScopeKind::from(dope_bindings::VisibilityScopeKind::PROFILE),
+        scope_kind: kura_bindings::VisibilityScopeKind::from(kura_bindings::VisibilityScopeKind::PROFILE),
         scope_ref: "profile_1".into(),
         capability_id: "cap_1".into(),
-        visibility: dope_bindings::Visibility::from(dope_bindings::Visibility::VISIBLE),
+        visibility: kura_bindings::Visibility::from(kura_bindings::Visibility::VISIBLE),
         audit_event_id: "audit_2".into(),
     });
     assert_eq!(visibility.name, "capability_visibility.changed");
@@ -953,7 +953,7 @@ fn binding_lifecycle_and_visibility_events_are_redacted() {
     assert_eq!(payload_str(&visibility, "visibility"), "visible");
     assert_eq!(payload_str(&visibility, "redactionStatus"), "redacted");
 
-    let projected = binding_runtime_projected_event(dope_bindings::RuntimeBindingEvidence {
+    let projected = binding_runtime_projected_event(kura_bindings::RuntimeBindingEvidence {
         projection_id: "proj_1".into(),
         tenant_id: "ten_1".into(),
         resource_kind: "run".into(),
@@ -961,13 +961,13 @@ fn binding_lifecycle_and_visibility_events_are_redacted() {
         selected_profile_id: "prof_1".into(),
         selected_profile_version_id: "profv_1".into(),
         selected_workspace_id: "ws_1".into(),
-        binding_scope: dope_bindings::BindingRuntimeScope::from(dope_bindings::BindingRuntimeScope::TENANT_DEFAULT),
+        binding_scope: kura_bindings::BindingRuntimeScope::from(kura_bindings::BindingRuntimeScope::TENANT_DEFAULT),
         binding_id: "bind_1".into(),
-        classification: dope_bindings::Classification::from(dope_bindings::Classification::DEFAULT),
+        classification: kura_bindings::Classification::from(kura_bindings::Classification::DEFAULT),
         selection_reason: "tenant_default".into(),
         capability_visibility: vec![],
         occurred_at: now(),
-        redaction_status: dope_bindings::RedactionStatus::REDACTED,
+        redaction_status: kura_bindings::RedactionStatus::REDACTED,
     });
     assert_eq!(projected.name, "binding.runtime_projected");
     assert_eq!(payload_str(&projected, "bindingScope"), "tenant_default");
@@ -990,7 +990,7 @@ fn input_structs_serialize_camel_case() {
         permission_gate: "profiles.manage".into(),
         safe_summary: "safe".into(),
         audit_event_id: "audit_1".into(),
-        redaction_status: dope_profiles::RedactionStatus::REDACTED,
+        redaction_status: kura_profiles::RedactionStatus::REDACTED,
     };
     let json = serde_json::to_value(&input).unwrap();
     assert_eq!(json["tenantId"], "ten_1");
@@ -1081,7 +1081,7 @@ fn connector_route_outcome_resource_id_falls_back_to_connector_id() {
 #[test]
 fn thread_wire_strings_surface_in_event_payloads() {
     // The wire helpers are pub(crate); verify their output through the events.
-    let retention = thread_retention_applied_event("ten_1", "thr_1", now(), dope_threads::RedactionStatus::RedactionFailed);
+    let retention = thread_retention_applied_event("ten_1", "thr_1", now(), kura_threads::RedactionStatus::RedactionFailed);
     assert_eq!(payload_str(&retention, "redactionStatus"), "redaction_failed");
     let redaction = thread_redaction_failed_event("ten_1", "thr_1", "unsafe");
     assert_eq!(payload_str(&redaction, "redactionStatus"), "redaction_failed");

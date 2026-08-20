@@ -15,7 +15,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use dope_routine as routine;
+use kura_routine as routine;
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -155,48 +155,48 @@ mod tests {
     /// with a paused/resumed/cancelled schedule echo.
     struct FakeScheduler;
 
-    impl dope_routine::Scheduler for FakeScheduler {
+    impl kura_routine::Scheduler for FakeScheduler {
         fn create(
             &self,
-            input: &dope_routine::CreateInput,
-        ) -> Result<dope_routine::Schedule, String> {
-            Ok(dope_routine::Schedule {
+            input: &kura_routine::CreateInput,
+        ) -> Result<kura_routine::Schedule, String> {
+            Ok(kura_routine::Schedule {
                 schedule_id: "sched_fake_1".to_string(),
                 trigger: input.trigger.clone(),
                 target: input.target.clone(),
                 retry_policy: input.retry_policy.clone(),
-                ..dope_routine::Schedule::default()
+                ..kura_routine::Schedule::default()
             })
         }
 
-        fn pause(&self, schedule_id: &str) -> Result<(dope_routine::Schedule, bool), String> {
+        fn pause(&self, schedule_id: &str) -> Result<(kura_routine::Schedule, bool), String> {
             Ok((echo(schedule_id), true))
         }
 
-        fn resume(&self, schedule_id: &str) -> Result<(dope_routine::Schedule, bool), String> {
+        fn resume(&self, schedule_id: &str) -> Result<(kura_routine::Schedule, bool), String> {
             Ok((echo(schedule_id), true))
         }
 
-        fn cancel(&self, schedule_id: &str) -> Result<(dope_routine::Schedule, bool), String> {
+        fn cancel(&self, schedule_id: &str) -> Result<(kura_routine::Schedule, bool), String> {
             Ok((echo(schedule_id), true))
         }
 
-        fn get(&self, schedule_id: &str) -> Result<(dope_routine::Schedule, bool), String> {
+        fn get(&self, schedule_id: &str) -> Result<(kura_routine::Schedule, bool), String> {
             Ok((echo(schedule_id), true))
         }
     }
 
-    fn echo(schedule_id: &str) -> dope_routine::Schedule {
-        dope_routine::Schedule {
+    fn echo(schedule_id: &str) -> kura_routine::Schedule {
+        kura_routine::Schedule {
             schedule_id: schedule_id.to_string(),
-            ..dope_routine::Schedule::default()
+            ..kura_routine::Schedule::default()
         }
     }
 
     fn state_with_manager() -> crate::state::AppState {
         let mut state = test_state();
         state.routines =
-            Some(Arc::new(dope_routine::Manager::new("test", Box::new(FakeScheduler))));
+            Some(Arc::new(kura_routine::Manager::new("test", Box::new(FakeScheduler))));
         state
     }
 

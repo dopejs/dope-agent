@@ -1,16 +1,16 @@
 //! SQLite-backed artifact recorder tests (wave 8 parity): records persist
-//! through the `dope-store` computeruse DAOs and content round-trips through
+//! through the `kura-store` computeruse DAOs and content round-trips through
 //! the artifacts directory.
 
 use std::sync::Arc;
 
-use dope_computeruse::{
+use kura_computeruse::{
     Action, ActionKind, ActionStatus, ArtifactCaptureRequest, ArtifactKind, ArtifactRecorder,
     ArtifactStatus, CreateActionInput, CreateSessionInput, Dependencies, Manager, RiskLevel,
     Session, SessionStatus, SqliteArtifactRecorder, Store,
 };
-use dope_runtime::{CreateRunInput, RunStatus};
-use dope_store::{ComputerUseStoreHandle, SQLiteStore};
+use kura_runtime::{CreateRunInput, RunStatus};
+use kura_store::{ComputerUseStoreHandle, SQLiteStore};
 
 fn seed_run(handle: &ComputerUseStoreHandle, run_id: &str) {
     let conn = rusqlite::Connection::open(handle.0.lock().db_path()).expect("open connection");
@@ -60,7 +60,7 @@ fn seed_session_and_action(handle: &ComputerUseStoreHandle, run_id: &str, sessio
 }
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_computeruse_artifacts_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_computeruse_artifacts_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -84,7 +84,7 @@ fn recorder_persists_record_and_content() {
     let store = Arc::new(ComputerUseStoreHandle::new(SQLiteStore::new(&dir).expect("open store")));
     seed_run(&store, "r1");
     seed_session_and_action(&store, "r1", "s1", "a1");
-    let recorder = SqliteArtifactRecorder::new(store.clone() as Arc<dyn dope_computeruse::Store>, &dir, "test");
+    let recorder = SqliteArtifactRecorder::new(store.clone() as Arc<dyn kura_computeruse::Store>, &dir, "test");
 
     let artifact = recorder
         .save_computer_use_artifact(capture("s1", "a1", ArtifactKind::Screenshot, b"screenshot bytes"))
@@ -120,7 +120,7 @@ fn recorder_artifact_ids_are_deterministic() {
     seed_run(&store, "r1");
     seed_session_and_action(&store, "r1", "s1", "a1");
     seed_session_and_action(&store, "r1", "s2", "a2");
-    let recorder = SqliteArtifactRecorder::new(store.clone() as Arc<dyn dope_computeruse::Store>, &dir, "test");
+    let recorder = SqliteArtifactRecorder::new(store.clone() as Arc<dyn kura_computeruse::Store>, &dir, "test");
 
     let a = recorder
         .save_computer_use_artifact(capture("s1", "a1", ArtifactKind::PageSnapshot, b"same"))
@@ -169,7 +169,7 @@ fn recorder_without_data_dir_returns_empty_content() {
 
 #[test]
 fn manager_records_artifacts_through_the_seam() {
-    let runtime = Arc::new(dope_runtime::Manager::new());
+    let runtime = Arc::new(kura_runtime::Manager::new());
     let run = runtime
         .create_run(CreateRunInput { entrypoint: "browse".to_string(), ..CreateRunInput::default() })
         .unwrap();
@@ -209,20 +209,20 @@ fn manager_records_artifacts_through_the_seam() {
 /// In-memory store mirroring tests/manager.rs.
 #[derive(Default)]
 struct MemStore {
-    sessions: std::sync::Mutex<std::collections::HashMap<String, dope_computeruse::Session>>,
+    sessions: std::sync::Mutex<std::collections::HashMap<String, kura_computeruse::Session>>,
     actions: std::sync::Mutex<std::collections::HashMap<String, Action>>,
-    artifacts: std::sync::Mutex<std::collections::HashMap<String, dope_computeruse::Artifact>>,
+    artifacts: std::sync::Mutex<std::collections::HashMap<String, kura_computeruse::Artifact>>,
 }
 
-impl dope_computeruse::Store for MemStore {
-    fn upsert_computer_use_session(&self, session: &dope_computeruse::Session) -> Result<(), String> {
+impl kura_computeruse::Store for MemStore {
+    fn upsert_computer_use_session(&self, session: &kura_computeruse::Session) -> Result<(), String> {
         self.sessions.lock().unwrap().insert(session.computer_use_session_id.clone(), session.clone());
         Ok(())
     }
-    fn list_computer_use_sessions(&self, _env: &str, run_id: &str) -> Result<Vec<dope_computeruse::Session>, String> {
+    fn list_computer_use_sessions(&self, _env: &str, run_id: &str) -> Result<Vec<kura_computeruse::Session>, String> {
         Ok(self.sessions.lock().unwrap().values().filter(|s| s.run_id == run_id).cloned().collect())
     }
-    fn get_computer_use_session(&self, _env: &str, _run_id: &str, session_id: &str) -> Result<Option<dope_computeruse::Session>, String> {
+    fn get_computer_use_session(&self, _env: &str, _run_id: &str, session_id: &str) -> Result<Option<kura_computeruse::Session>, String> {
         Ok(self.sessions.lock().unwrap().get(session_id).cloned())
     }
     fn upsert_computer_use_action(&self, action: &Action) -> Result<(), String> {
@@ -238,17 +238,17 @@ impl dope_computeruse::Store for MemStore {
     fn find_pending_computer_use_action_by_approval(&self, _env: &str, _approval_id: &str) -> Result<Option<Action>, String> {
         Ok(None)
     }
-    fn upsert_computer_use_artifact(&self, artifact: &dope_computeruse::Artifact) -> Result<(), String> {
+    fn upsert_computer_use_artifact(&self, artifact: &kura_computeruse::Artifact) -> Result<(), String> {
         self.artifacts.lock().unwrap().insert(artifact.artifact_id.clone(), artifact.clone());
         Ok(())
     }
-    fn list_computer_use_artifacts_for_action(&self, _env: &str, _run_id: &str, action_id: &str) -> Result<Vec<dope_computeruse::Artifact>, String> {
+    fn list_computer_use_artifacts_for_action(&self, _env: &str, _run_id: &str, action_id: &str) -> Result<Vec<kura_computeruse::Artifact>, String> {
         Ok(self.artifacts.lock().unwrap().values().filter(|a| a.computer_use_action_id == action_id).cloned().collect())
     }
-    fn get_computer_use_artifact(&self, _env: &str, artifact_id: &str) -> Result<Option<dope_computeruse::Artifact>, String> {
+    fn get_computer_use_artifact(&self, _env: &str, artifact_id: &str) -> Result<Option<kura_computeruse::Artifact>, String> {
         Ok(self.artifacts.lock().unwrap().get(artifact_id).cloned())
     }
-    fn mark_in_flight_computer_use_interrupted(&self, _env: &str, _now: chrono::DateTime<chrono::Utc>) -> Result<(Vec<dope_computeruse::Session>, Vec<Action>), String> {
+    fn mark_in_flight_computer_use_interrupted(&self, _env: &str, _now: chrono::DateTime<chrono::Utc>) -> Result<(Vec<kura_computeruse::Session>, Vec<Action>), String> {
         Ok((Vec::new(), Vec::new()))
     }
 }

@@ -3,7 +3,7 @@
 
 use crate::util::payload;
 use crate::{Event, Resource};
-use dope_livevalidation::{
+use kura_livevalidation::{
     Attempt, Comparison, Denial, ReconciliationResolution, SideEffectLedgerEntry,
 };
 

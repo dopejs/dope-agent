@@ -1,6 +1,6 @@
 //! Port of daemon/internal/reminders/manager.go: the reminders manager.
 //!
-//! Sync port (like dope-delivery / dope-scheduler): context.Context is dropped, and the
+//! Sync port (like kura-delivery / kura-scheduler): context.Context is dropped, and the
 //! catch-up + tick loop runs in a detached std thread when `start` is called. The store
 //! is held behind Arc<parking_lot::Mutex<SQLiteStore>> so the manager (and any axum
 //! AppState field) is Send + Sync; the workflow launcher seam carries Send + Sync
@@ -12,16 +12,16 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use dope_delivery::{Manager as DeliveryManager, OutcomeInput, ResultClass};
-use dope_events::{Bus, Event, Resource, Scope};
-use dope_identity::tenantctx;
-use dope_identity::TenantContext;
-use dope_livevalidation::{fake_outcome_result_for, FakeOutcome, FakeOutcomeResult, SafetyClass};
-use dope_scheduler::{next_due_after, Trigger, TriggerKind};
-use dope_store::reminders::{
+use kura_delivery::{Manager as DeliveryManager, OutcomeInput, ResultClass};
+use kura_events::{Bus, Event, Resource, Scope};
+use kura_identity::tenantctx;
+use kura_identity::TenantContext;
+use kura_livevalidation::{fake_outcome_result_for, FakeOutcome, FakeOutcomeResult, SafetyClass};
+use kura_scheduler::{next_due_after, Trigger, TriggerKind};
+use kura_store::reminders::{
     ReminderActionRecord, ReminderOccurrenceFilter, ReminderOccurrenceRecord, ReminderRecord,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 use parking_lot::Mutex;
 use serde_json::{json, Map};
 use uuid::Uuid;

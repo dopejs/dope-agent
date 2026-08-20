@@ -21,40 +21,40 @@ marketplace distribution, billing enforcement, or broad cross-tenant administrat
 
 **Language/Version**: Go 1.24 daemon/control-plane code; JSON Schema contracts under
 `schemas/`; TypeScript SDK resources must be updated because R37 exposes tenant secret
-administration API shapes.  
+administration API shapes.
 **Primary Dependencies**: `daemon/internal/identity`, `daemon/internal/tenantctx`,
 `daemon/internal/store`, `daemon/internal/store/tenancy`, `daemon/internal/integrations`,
 `daemon/internal/providers`, `daemon/internal/managedproviders`, `daemon/internal/mcp`,
 `daemon/internal/connectors`, `daemon/internal/sandbox`, `daemon/internal/skills`,
 `daemon/internal/audit`, `daemon/internal/events`, `daemon/internal/contracts`,
 `schemas/api`, and `schemas/events`. New credential logic belongs in
-`daemon/internal/secrets` rather than being embedded in individual domains.  
+`daemon/internal/secrets` rather than being embedded in individual domains.
 **Storage**: SQLite remains the durable metadata store. Add tenant-owned secret metadata
 and version metadata to the daemon store, and use a daemon-owned local secret value backend
 under the active data directory for test/local values with file permissions restricted to
 the operator. Existing `mcp-secrets.json`, `skill-secrets.json`, integration bindings,
 provider auth state, connector, and MCP rows bridge into the default personal tenant
-without printing values.  
+without printing values.
 **Testing**: `go test ./...` in `daemon/`, targeted package tests for secrets/providers/
 integrations/MCP/connectors/sandbox/skills/store/API, `make daemon-contract-test` for
 schema and event contracts, `make daemon-run-test` plus the manual fake integration
-smoke, and `go mod tidy` from `daemon/` after implementation.  
+smoke, and `go mod tidy` from `daemon/` after implementation.
 **Target Platform**: Local-first daemon and hosted daemon behavior using the default test
-environment for local verification (`~/.dope-test`, `127.0.0.1:19192`).  
+environment for local verification (`~/.kura-test`, `127.0.0.1:19192`).
 **Project Type**: Multi-domain daemon platform change: persistence migration, daemon API,
 runtime credential resolution, provider/integration lifecycle, MCP/connector
-administration, sandbox secret policy, audit/event contracts, and operator documentation.  
+administration, sandbox secret policy, audit/event contracts, and operator documentation.
 **Performance Goals**: Credential resolution adds at most one bounded tenant-scoped lookup
 per secret reference per credential-bearing run, connector invocation, MCP invocation, or
 sandbox preparation. Repeated internal resolutions within the same work item reuse the
-resolved secret version snapshot and emit one audit event per work item.  
+resolved secret version snapshot and emit one audit event per work item.
 **Constraints**: Secret values are never returned by read APIs, events, logs, replay
 fixtures, evaluation artifacts, diagnostics, or contract fixtures. Secret rotation is
 versioned; new work uses the active version and already-started work keeps the version
 resolved at start. Disconnect disables dependent connector/MCP uses until reconnect.
 Operators inspect only tenants where they have `credentials.inspect`; viewers do not get
 credential-bearing inspection through `read_only.inspect`. All local work defaults to test
-state and fake credentials.  
+state and fake credentials.
 **Scale/Scope**: One daemon may host multiple tenants with small-to-moderate numbers of
 credential-bearing integrations, connectors, MCP installs, provider auth states, and
 sandbox policies per tenant. The plan optimizes for correctness, auditability, and
@@ -80,7 +80,7 @@ bounded lookup work rather than high-volume secret-manager throughput.
   coverage, cross-tenant isolation across secrets/integrations/provider auth/connectors/
   MCP/sandbox, permission denial for viewer/operator/admin roles, audit granularity tests,
   bridge-disabled-state tests, and the test-environment smoke.
-- **Environment and secrets** — PASS. Verification uses `~/.dope-test` and fake
+- **Environment and secrets** — PASS. Verification uses `~/.kura-test` and fake
   credentials. No live connector, production secret, or external secret-manager access is
   required. Any live validation path must be explicit and outside this plan.
 
@@ -191,7 +191,7 @@ contract. This table is the planning gate for `/speckit.tasks`.
 - **Verification and observability** — PASS. `quickstart.md` names package tests,
   contract checks, full daemon tests, test daemon smoke, redaction scans, and required
   audit evidence.
-- **Environment and secrets** — PASS. The design defaults to `~/.dope-test`, fake
+- **Environment and secrets** — PASS. The design defaults to `~/.kura-test`, fake
   credentials, local file permissions, and explicit live-connector exclusion.
 
 No post-design violations require justification.

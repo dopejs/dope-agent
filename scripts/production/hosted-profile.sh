@@ -25,38 +25,38 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DOPE_ENV="${DOPE_ENV:-test}"
-DOPE_DATA_DIR="${DOPE_DATA_DIR:-$HOME/.dope-test}"
-DOPE_DAEMON_ADDR="${DOPE_DAEMON_ADDR:-127.0.0.1:19192}"
-DOPE_HOSTED_PROFILE_ID="${DOPE_HOSTED_PROFILE_ID:-profile_hosted_test}"
-DOPE_HOSTED_RUN_ID="${DOPE_HOSTED_RUN_ID:-hosted_$(date -u +%Y%m%dT%H%M%SZ)}"
-DOPE_HOSTED_COMMIT="${DOPE_HOSTED_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || printf unknown)}"
-DOPE_HOSTED_BRANCH="${DOPE_HOSTED_BRANCH:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf unknown)}"
-DOPE_HOSTED_HOST="${DOPE_HOSTED_HOST:-$(hostname 2>/dev/null || printf unknown-host)}"
-DOPE_HOSTED_OPERATOR="${DOPE_HOSTED_OPERATOR:-${USER:-unknown}}"
-DOPE_HOSTED_ARTIFACT_DIR="${DOPE_HOSTED_ARTIFACT_DIR:-$DOPE_DATA_DIR/artifacts/hosted}"
-DOPE_HOSTED_REPORT_DIR="${DOPE_HOSTED_REPORT_DIR:-$DOPE_DATA_DIR/reports}"
-DOPE_HOSTED_BACKUP_DIR="${DOPE_HOSTED_BACKUP_DIR:-$DOPE_DATA_DIR/backups}"
-DOPE_HOSTED_LOG_DIR="${DOPE_HOSTED_LOG_DIR:-$DOPE_DATA_DIR/logs}"
-DOPE_HOSTED_TMP_DIR="${DOPE_HOSTED_TMP_DIR:-$DOPE_DATA_DIR/tmp}"
-DOPE_HOSTED_LIVE_CONNECTORS="${DOPE_HOSTED_LIVE_CONNECTORS:-disabled}"
-DOPE_HOSTED_SUPERVISOR_MODE="${DOPE_HOSTED_SUPERVISOR_MODE:-repo_foreground}"
-DOPE_HOSTED_REVIEW_ELAPSED_SECONDS="${DOPE_HOSTED_REVIEW_ELAPSED_SECONDS:-60}"
-DOPE_HOSTED_SKIP_GO_VALIDATOR="${DOPE_HOSTED_SKIP_GO_VALIDATOR:-0}"
-RUN_ARTIFACT_DIR="$DOPE_HOSTED_ARTIFACT_DIR/$DOPE_HOSTED_RUN_ID"
-RUN_REPORT_DIR="$DOPE_HOSTED_REPORT_DIR/$DOPE_HOSTED_RUN_ID"
+KURA_ENV="${KURA_ENV:-test}"
+KURA_DATA_DIR="${KURA_DATA_DIR:-$HOME/.kura-test}"
+KURA_DAEMON_ADDR="${KURA_DAEMON_ADDR:-127.0.0.1:19192}"
+KURA_HOSTED_PROFILE_ID="${KURA_HOSTED_PROFILE_ID:-profile_hosted_test}"
+KURA_HOSTED_RUN_ID="${KURA_HOSTED_RUN_ID:-hosted_$(date -u +%Y%m%dT%H%M%SZ)}"
+KURA_HOSTED_COMMIT="${KURA_HOSTED_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || printf unknown)}"
+KURA_HOSTED_BRANCH="${KURA_HOSTED_BRANCH:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf unknown)}"
+KURA_HOSTED_HOST="${KURA_HOSTED_HOST:-$(hostname 2>/dev/null || printf unknown-host)}"
+KURA_HOSTED_OPERATOR="${KURA_HOSTED_OPERATOR:-${USER:-unknown}}"
+KURA_HOSTED_ARTIFACT_DIR="${KURA_HOSTED_ARTIFACT_DIR:-$KURA_DATA_DIR/artifacts/hosted}"
+KURA_HOSTED_REPORT_DIR="${KURA_HOSTED_REPORT_DIR:-$KURA_DATA_DIR/reports}"
+KURA_HOSTED_BACKUP_DIR="${KURA_HOSTED_BACKUP_DIR:-$KURA_DATA_DIR/backups}"
+KURA_HOSTED_LOG_DIR="${KURA_HOSTED_LOG_DIR:-$KURA_DATA_DIR/logs}"
+KURA_HOSTED_TMP_DIR="${KURA_HOSTED_TMP_DIR:-$KURA_DATA_DIR/tmp}"
+KURA_HOSTED_LIVE_CONNECTORS="${KURA_HOSTED_LIVE_CONNECTORS:-disabled}"
+KURA_HOSTED_SUPERVISOR_MODE="${KURA_HOSTED_SUPERVISOR_MODE:-repo_foreground}"
+KURA_HOSTED_REVIEW_ELAPSED_SECONDS="${KURA_HOSTED_REVIEW_ELAPSED_SECONDS:-60}"
+KURA_HOSTED_SKIP_GO_VALIDATOR="${KURA_HOSTED_SKIP_GO_VALIDATOR:-0}"
+RUN_ARTIFACT_DIR="$KURA_HOSTED_ARTIFACT_DIR/$KURA_HOSTED_RUN_ID"
+RUN_REPORT_DIR="$KURA_HOSTED_REPORT_DIR/$KURA_HOSTED_RUN_ID"
 PID_FILE="$RUN_ARTIFACT_DIR/supervisor.pid"
 SUPERVISOR_LOG="$RUN_ARTIFACT_DIR/supervisor.log"
-DOPE_HOSTED_DAEMON_COMMAND_WAS_SET="${DOPE_HOSTED_DAEMON_COMMAND+x}"
-DOPE_HOSTED_DAEMON_COMMAND="${DOPE_HOSTED_DAEMON_COMMAND:-./scripts/run-daemon.sh test}"
-DOPE_HOSTED_HEALTH_TIMEOUT_SECONDS="${DOPE_HOSTED_HEALTH_TIMEOUT_SECONDS:-300}"
+KURA_HOSTED_DAEMON_COMMAND_WAS_SET="${KURA_HOSTED_DAEMON_COMMAND+x}"
+KURA_HOSTED_DAEMON_COMMAND="${KURA_HOSTED_DAEMON_COMMAND:-./scripts/run-daemon.sh test}"
+KURA_HOSTED_HEALTH_TIMEOUT_SECONDS="${KURA_HOSTED_HEALTH_TIMEOUT_SECONDS:-300}"
 
-if [[ "$DOPE_DATA_DIR" == "$HOME/.dope" && "${DOPE_LIVE_OPT_IN:-}" != "yes" ]]; then
-  printf 'refusing hosted profile production data without DOPE_LIVE_OPT_IN=yes\n' >&2
+if [[ "$KURA_DATA_DIR" == "$HOME/.kura" && "${KURA_LIVE_OPT_IN:-}" != "yes" ]]; then
+  printf 'refusing hosted profile production data without KURA_LIVE_OPT_IN=yes\n' >&2
   exit 2
 fi
-if [[ "$DOPE_HOSTED_LIVE_CONNECTORS" != "disabled" && "${DOPE_LIVE_OPT_IN:-}" != "yes" ]]; then
-  printf 'refusing hosted profile live connectors without DOPE_LIVE_OPT_IN=yes\n' >&2
+if [[ "$KURA_HOSTED_LIVE_CONNECTORS" != "disabled" && "${KURA_LIVE_OPT_IN:-}" != "yes" ]]; then
+  printf 'refusing hosted profile live connectors without KURA_LIVE_OPT_IN=yes\n' >&2
   exit 2
 fi
 
@@ -81,18 +81,18 @@ retention_expires_at() {
 }
 
 ensure_dirs() {
-  mkdir -p "$DOPE_DATA_DIR" "$DOPE_HOSTED_LOG_DIR" "$DOPE_HOSTED_ARTIFACT_DIR" "$RUN_ARTIFACT_DIR" "$DOPE_HOSTED_BACKUP_DIR" "$DOPE_HOSTED_REPORT_DIR" "$RUN_REPORT_DIR" "$DOPE_HOSTED_TMP_DIR"
+  mkdir -p "$KURA_DATA_DIR" "$KURA_HOSTED_LOG_DIR" "$KURA_HOSTED_ARTIFACT_DIR" "$RUN_ARTIFACT_DIR" "$KURA_HOSTED_BACKUP_DIR" "$KURA_HOSTED_REPORT_DIR" "$RUN_REPORT_DIR" "$KURA_HOSTED_TMP_DIR"
 }
 
 print_target() {
-  printf 'environment=%s\n' "$DOPE_ENV"
-  printf 'data_dir=%s\n' "$DOPE_DATA_DIR"
-  printf 'daemon_addr=%s\n' "$DOPE_DAEMON_ADDR"
-  printf 'profile_id=%s\n' "$DOPE_HOSTED_PROFILE_ID"
-  printf 'run_id=%s\n' "$DOPE_HOSTED_RUN_ID"
+  printf 'environment=%s\n' "$KURA_ENV"
+  printf 'data_dir=%s\n' "$KURA_DATA_DIR"
+  printf 'daemon_addr=%s\n' "$KURA_DAEMON_ADDR"
+  printf 'profile_id=%s\n' "$KURA_HOSTED_PROFILE_ID"
+  printf 'run_id=%s\n' "$KURA_HOSTED_RUN_ID"
   printf 'artifact_root=%s\n' "$RUN_ARTIFACT_DIR"
   printf 'report_root=%s\n' "$RUN_REPORT_DIR"
-  printf 'live_connectors=%s\n' "$DOPE_HOSTED_LIVE_CONNECTORS"
+  printf 'live_connectors=%s\n' "$KURA_HOSTED_LIVE_CONNECTORS"
 }
 
 write_manifest() {
@@ -102,20 +102,20 @@ write_manifest() {
   retention="$(retention_expires_at)"
   cat >"$RUN_ARTIFACT_DIR/deployment-manifest.json" <<JSON
 {
-  "manifestId": "manifest_${DOPE_HOSTED_RUN_ID}",
-  "runId": "$(json_escape "$DOPE_HOSTED_RUN_ID")",
-  "profileId": "$(json_escape "$DOPE_HOSTED_PROFILE_ID")",
-  "commitOrVersion": "$(json_escape "$DOPE_HOSTED_COMMIT")",
-  "branch": "$(json_escape "$DOPE_HOSTED_BRANCH")",
-  "host": "$(json_escape "$DOPE_HOSTED_HOST")",
-  "operator": "$(json_escape "$DOPE_HOSTED_OPERATOR")",
+  "manifestId": "manifest_${KURA_HOSTED_RUN_ID}",
+  "runId": "$(json_escape "$KURA_HOSTED_RUN_ID")",
+  "profileId": "$(json_escape "$KURA_HOSTED_PROFILE_ID")",
+  "commitOrVersion": "$(json_escape "$KURA_HOSTED_COMMIT")",
+  "branch": "$(json_escape "$KURA_HOSTED_BRANCH")",
+  "host": "$(json_escape "$KURA_HOSTED_HOST")",
+  "operator": "$(json_escape "$KURA_HOSTED_OPERATOR")",
   "startedAt": "$now",
-  "configurationProfile": "$(json_escape "$DOPE_ENV")",
-  "dataDirectory": "$(json_escape "$DOPE_DATA_DIR")",
+  "configurationProfile": "$(json_escape "$KURA_ENV")",
+  "dataDirectory": "$(json_escape "$KURA_DATA_DIR")",
   "artifactDirectory": "$(json_escape "$RUN_ARTIFACT_DIR")",
-  "supervisorMode": "$DOPE_HOSTED_SUPERVISOR_MODE",
-  "daemonAddress": "$(json_escape "$DOPE_DAEMON_ADDR")",
-  "liveConnectorMode": "$(json_escape "$DOPE_HOSTED_LIVE_CONNECTORS")",
+  "supervisorMode": "$KURA_HOSTED_SUPERVISOR_MODE",
+  "daemonAddress": "$(json_escape "$KURA_DAEMON_ADDR")",
+  "liveConnectorMode": "$(json_escape "$KURA_HOSTED_LIVE_CONNECTORS")",
   "redactionStatus": "passed",
   "retentionExpiresAt": "$retention"
 }
@@ -130,18 +130,18 @@ write_configuration_profile() {
   retention="$(retention_expires_at)"
   cat >"$RUN_ARTIFACT_DIR/configuration-profile.json" <<JSON
 {
-  "runId": "$(json_escape "$DOPE_HOSTED_RUN_ID")",
-  "profileId": "$(json_escape "$DOPE_HOSTED_PROFILE_ID")",
-  "commitOrVersion": "$(json_escape "$DOPE_HOSTED_COMMIT")",
-  "environment": "$(json_escape "$DOPE_ENV")",
-  "dataDirectory": "$(json_escape "$DOPE_DATA_DIR")",
+  "runId": "$(json_escape "$KURA_HOSTED_RUN_ID")",
+  "profileId": "$(json_escape "$KURA_HOSTED_PROFILE_ID")",
+  "commitOrVersion": "$(json_escape "$KURA_HOSTED_COMMIT")",
+  "environment": "$(json_escape "$KURA_ENV")",
+  "dataDirectory": "$(json_escape "$KURA_DATA_DIR")",
   "artifactDirectory": "$(json_escape "$RUN_ARTIFACT_DIR")",
   "reportDirectory": "$(json_escape "$RUN_REPORT_DIR")",
-  "backupDirectory": "$(json_escape "$DOPE_HOSTED_BACKUP_DIR")",
-  "logDirectory": "$(json_escape "$DOPE_HOSTED_LOG_DIR")",
-  "temporaryDirectory": "$(json_escape "$DOPE_HOSTED_TMP_DIR")",
-  "liveConnectorMode": "$(json_escape "$DOPE_HOSTED_LIVE_CONNECTORS")",
-  "supervisorMode": "$(json_escape "$DOPE_HOSTED_SUPERVISOR_MODE")",
+  "backupDirectory": "$(json_escape "$KURA_HOSTED_BACKUP_DIR")",
+  "logDirectory": "$(json_escape "$KURA_HOSTED_LOG_DIR")",
+  "temporaryDirectory": "$(json_escape "$KURA_HOSTED_TMP_DIR")",
+  "liveConnectorMode": "$(json_escape "$KURA_HOSTED_LIVE_CONNECTORS")",
+  "supervisorMode": "$(json_escape "$KURA_HOSTED_SUPERVISOR_MODE")",
   "redactionStatus": "passed",
   "generatedAt": "$now",
   "retentionExpiresAt": "$retention"
@@ -160,25 +160,25 @@ write_supervisor_event() {
   now="$(timestamp)"
   path="$RUN_ARTIFACT_DIR/supervisor-events.jsonl"
   cat >>"$path" <<JSON
-{"eventId":"${event_type}_${DOPE_HOSTED_RUN_ID}_$now","runId":"$(json_escape "$DOPE_HOSTED_RUN_ID")","eventType":"$event_type","requestedBy":"$(json_escape "$DOPE_HOSTED_OPERATOR")","startedAt":"$now","completedAt":"$now","daemonHealth":"$health","recoverySeconds":$recovery_seconds,"result":"$result","failureOwner":"$owner","evidencePath":"$(json_escape "$path")"}
+{"eventId":"${event_type}_${KURA_HOSTED_RUN_ID}_$now","runId":"$(json_escape "$KURA_HOSTED_RUN_ID")","eventType":"$event_type","requestedBy":"$(json_escape "$KURA_HOSTED_OPERATOR")","startedAt":"$now","completedAt":"$now","daemonHealth":"$health","recoverySeconds":$recovery_seconds,"result":"$result","failureOwner":"$owner","evidencePath":"$(json_escape "$path")"}
 JSON
   printf 'supervisor_event=%s\n' "$path"
 }
 
 health_status() {
-  if [[ -n "${DOPE_HOSTED_HEALTH_COMMAND:-}" ]]; then
-    if sh -c "$DOPE_HOSTED_HEALTH_COMMAND" >/dev/null 2>&1; then
+  if [[ -n "${KURA_HOSTED_HEALTH_COMMAND:-}" ]]; then
+    if sh -c "$KURA_HOSTED_HEALTH_COMMAND" >/dev/null 2>&1; then
       printf 'pass'
     else
       printf 'fail'
     fi
     return
   fi
-  if [[ "${DOPE_HOSTED_DRY_RUN:-}" == "1" ]]; then
+  if [[ "${KURA_HOSTED_DRY_RUN:-}" == "1" ]]; then
     printf 'pass'
     return
   fi
-  if curl --noproxy '*' -fsS "http://$DOPE_DAEMON_ADDR/healthz" >/dev/null 2>&1; then
+  if curl --noproxy '*' -fsS "http://$KURA_DAEMON_ADDR/healthz" >/dev/null 2>&1; then
     printf 'pass'
   else
     printf 'fail'
@@ -192,10 +192,10 @@ write_health_report() {
   health="$(health_status)"
   cat >"$RUN_ARTIFACT_DIR/health.json" <<JSON
 {
-  "runId": "$(json_escape "$DOPE_HOSTED_RUN_ID")",
-  "profileId": "$(json_escape "$DOPE_HOSTED_PROFILE_ID")",
-  "commitOrVersion": "$(json_escape "$DOPE_HOSTED_COMMIT")",
-  "daemonAddress": "$(json_escape "$DOPE_DAEMON_ADDR")",
+  "runId": "$(json_escape "$KURA_HOSTED_RUN_ID")",
+  "profileId": "$(json_escape "$KURA_HOSTED_PROFILE_ID")",
+  "commitOrVersion": "$(json_escape "$KURA_HOSTED_COMMIT")",
+  "daemonAddress": "$(json_escape "$KURA_DAEMON_ADDR")",
   "daemonHealth": "$health",
   "generatedAt": "$now",
   "redactionStatus": "passed"
@@ -226,11 +226,11 @@ start_supervisor() {
     printf 'process_status=running\n'
     return
   fi
-  if [[ "${DOPE_HOSTED_DRY_RUN:-}" == "1" && -z "$DOPE_HOSTED_DAEMON_COMMAND_WAS_SET" ]]; then
+  if [[ "${KURA_HOSTED_DRY_RUN:-}" == "1" && -z "$KURA_HOSTED_DAEMON_COMMAND_WAS_SET" ]]; then
     printf 'process_status=dry_run\n'
     return
   fi
-  sh -c "exec $DOPE_HOSTED_DAEMON_COMMAND" >"$SUPERVISOR_LOG" 2>&1 &
+  sh -c "exec $KURA_HOSTED_DAEMON_COMMAND" >"$SUPERVISOR_LOG" 2>&1 &
   local pid="$!"
   printf '%s\n' "$pid" >"$PID_FILE"
   printf 'supervisor_pid=%s\n' "$pid"
@@ -270,7 +270,7 @@ wait_for_health() {
     fi
     now="$(date -u +%s)"
     elapsed="$((now - started))"
-    if [[ "$elapsed" -ge "$DOPE_HOSTED_HEALTH_TIMEOUT_SECONDS" ]]; then
+    if [[ "$elapsed" -ge "$KURA_HOSTED_HEALTH_TIMEOUT_SECONDS" ]]; then
       printf '%s' "$elapsed"
       return 1
     fi
@@ -331,10 +331,10 @@ write_evidence_link() {
   evidence_status "$evidence_type" "$path"
   if [[ "$EVIDENCE_STATUS" == "pass" ]]; then
     printf '    {"evidenceType":"%s","path":"%s","runId":"%s","profileId":"%s","commitOrVersion":"%s","status":"pass","generatedAt":"%s","retentionExpiresAt":"%s","redactionStatus":"passed","blockingFindings":[]}' \
-      "$evidence_type" "$(json_escape "$path")" "$(json_escape "$DOPE_HOSTED_RUN_ID")" "$(json_escape "$DOPE_HOSTED_PROFILE_ID")" "$(json_escape "$DOPE_HOSTED_COMMIT")" "$now" "$retention"
+      "$evidence_type" "$(json_escape "$path")" "$(json_escape "$KURA_HOSTED_RUN_ID")" "$(json_escape "$KURA_HOSTED_PROFILE_ID")" "$(json_escape "$KURA_HOSTED_COMMIT")" "$now" "$retention"
   else
     printf '    {"evidenceType":"%s","path":"%s","runId":"%s","profileId":"%s","commitOrVersion":"%s","status":"fail","generatedAt":"%s","retentionExpiresAt":"%s","redactionStatus":"passed","blockingFindings":["%s"]}' \
-      "$evidence_type" "$(json_escape "$path")" "$(json_escape "$DOPE_HOSTED_RUN_ID")" "$(json_escape "$DOPE_HOSTED_PROFILE_ID")" "$(json_escape "$DOPE_HOSTED_COMMIT")" "$now" "$retention" "$(json_escape "$EVIDENCE_FINDING")"
+      "$evidence_type" "$(json_escape "$path")" "$(json_escape "$KURA_HOSTED_RUN_ID")" "$(json_escape "$KURA_HOSTED_PROFILE_ID")" "$(json_escape "$KURA_HOSTED_COMMIT")" "$now" "$retention" "$(json_escape "$EVIDENCE_FINDING")"
   fi
 }
 
@@ -348,9 +348,9 @@ write_redaction_check() {
   fi
   cat >"$RUN_ARTIFACT_DIR/redaction-check.json" <<JSON
 {
-  "runId": "$(json_escape "$DOPE_HOSTED_RUN_ID")",
-  "profileId": "$(json_escape "$DOPE_HOSTED_PROFILE_ID")",
-  "commitOrVersion": "$(json_escape "$DOPE_HOSTED_COMMIT")",
+  "runId": "$(json_escape "$KURA_HOSTED_RUN_ID")",
+  "profileId": "$(json_escape "$KURA_HOSTED_PROFILE_ID")",
+  "commitOrVersion": "$(json_escape "$KURA_HOSTED_COMMIT")",
   "redactionStatus": "$status",
   "blockingFindings": $findings,
   "generatedAt": "$(timestamp)"
@@ -371,7 +371,7 @@ write_release_index() {
     "deployment_manifest:$RUN_ARTIFACT_DIR/deployment-manifest.json"
     "configuration_profile:$RUN_ARTIFACT_DIR/configuration-profile.json"
     "health_checks:$RUN_ARTIFACT_DIR/health.json"
-    "logs:$DOPE_HOSTED_LOG_DIR"
+    "logs:$KURA_HOSTED_LOG_DIR"
     "soak_report:$RUN_ARTIFACT_DIR/soak-report.json"
     "backup_evidence:$RUN_ARTIFACT_DIR/backup-evidence.json"
     "restore_evidence:$RUN_ARTIFACT_DIR/restore-evidence.json"
@@ -405,24 +405,24 @@ write_release_index() {
   fi
   cat >"$RUN_REPORT_DIR/release-evidence-index.json" <<JSON
 {
-  "releaseIndexId": "release_${DOPE_HOSTED_RUN_ID}",
-  "runId": "$(json_escape "$DOPE_HOSTED_RUN_ID")",
-  "profileId": "$(json_escape "$DOPE_HOSTED_PROFILE_ID")",
-  "commitOrVersion": "$(json_escape "$DOPE_HOSTED_COMMIT")",
+  "releaseIndexId": "release_${KURA_HOSTED_RUN_ID}",
+  "runId": "$(json_escape "$KURA_HOSTED_RUN_ID")",
+  "profileId": "$(json_escape "$KURA_HOSTED_PROFILE_ID")",
+  "commitOrVersion": "$(json_escape "$KURA_HOSTED_COMMIT")",
   "generatedAt": "$now",
   "reviewTarget": "Roadmap 43 hosted operational profile",
   "retentionExpiresAt": "$retention",
   "decision": "$decision",
-  "reviewElapsedSeconds": $DOPE_HOSTED_REVIEW_ELAPSED_SECONDS,
+  "reviewElapsedSeconds": $KURA_HOSTED_REVIEW_ELAPSED_SECONDS,
   "evidenceLinks": [
 $(cat "$links_file")
   ]
 }
 JSON
   rm -f "$links_file"
-  if [[ "$DOPE_HOSTED_SKIP_GO_VALIDATOR" != "1" ]]; then
+  if [[ "$KURA_HOSTED_SKIP_GO_VALIDATOR" != "1" ]]; then
     if ! command -v go >/dev/null 2>&1; then
-      printf 'hosted evidence validator requires go; set DOPE_HOSTED_SKIP_GO_VALIDATOR=1 only for bootstrap diagnostics\n' >&2
+      printf 'hosted evidence validator requires go; set KURA_HOSTED_SKIP_GO_VALIDATOR=1 only for bootstrap diagnostics\n' >&2
       exit 2
     fi
     (

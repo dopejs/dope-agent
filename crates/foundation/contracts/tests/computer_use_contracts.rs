@@ -7,7 +7,7 @@
 mod common;
 
 use common::{schema_root_dir, validate_fixtures};
-use dope_contracts::Validator;
+use kura_contracts::Validator;
 
 #[test]
 fn test_computer_use_schemas_accept_canonical_fixtures() {

@@ -35,7 +35,7 @@ where useful, `make daemon-contract-test` when schemas/contracts are touched, `g
 ./...` in `daemon/` for API membership/last-owner regressions, `go mod tidy` in
 `daemon/` after implementation.
 **Target Platform**: Local-first daemon and browser operator shell against the default
-test daemon (`~/.dope-test`, `127.0.0.1:19192`); hosted deployment uses the same API and
+test daemon (`~/.kura-test`, `127.0.0.1:19192`); hosted deployment uses the same API and
 SDK contracts.
 **Project Type**: Multi-surface product change: Go HTTP daemon API + TypeScript SDK
 library + React operator shell + shared JSON Schema contracts.
@@ -105,7 +105,7 @@ specs/021-tenant-aware-shell-sdk/
 ```text
 sdk/ts/
 ├── src/
-│   ├── index.ts            # DopeClientOptions default tenant, per-request override,
+│   ├── index.ts            # KuraClientOptions default tenant, per-request override,
 │   │                       # tenant/membership/principal/permission/token types,
 │   │                       # tenant API wrappers, stable denial mapping
 │   └── index.test.ts       # default tenant, override, stream, denial mapping tests

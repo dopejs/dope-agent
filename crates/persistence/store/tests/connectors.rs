@@ -1,23 +1,23 @@
 //! Round-trip integration tests for the connector-domain CRUD methods ported from
 //! `daemon/internal/store/store.go` into `connectors.rs`. Each test constructs a domain
 //! value, upserts it, lists/gets it back, and asserts key fields. Wiring required before
-//! these compile: add dope-connectors and dope-imtypes to the store crate's Cargo.toml and
+//! these compile: add kura-connectors and kura-imtypes to the store crate's Cargo.toml and
 //! declare `pub mod connectors;` in lib.rs so `ConnectorDeliveryBoundaryRecord` is
 //! reachable from this integration test.
 
 use std::collections::HashMap;
 
 use chrono::{Duration, Utc};
-use dope_connectors::{
+use kura_connectors::{
     Connector, ConnectorDiagnosticState, ConformanceResult, ConformanceResultStatus,
     DiagnosticReasonCode, FreshnessState, LifecycleState, RedactionStatus, RemediationOwner,
     RetrySafety, Status,
 };
-use dope_imtypes::{DeliveryDirection, DeliveryStatus, MessageRecord};
-use dope_store::{connectors::ConnectorDeliveryBoundaryRecord, SQLiteStore};
+use kura_imtypes::{DeliveryDirection, DeliveryStatus, MessageRecord};
+use kura_store::{connectors::ConnectorDeliveryBoundaryRecord, SQLiteStore};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

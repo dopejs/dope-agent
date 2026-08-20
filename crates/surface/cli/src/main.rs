@@ -118,8 +118,8 @@ fn daemon_run() -> Result<(), AnyError> {
         .enable_all()
         .build()?;
     runtime.block_on(async {
-        let config = dope_config::load()?;
-        let app = Arc::new(dope_app::App::new(config)?);
+        let config = kura_config::load()?;
+        let app = Arc::new(kura_app::App::new(config)?);
         app.serve().await?;
         Ok::<(), AnyError>(())
     })
@@ -129,7 +129,7 @@ fn pid_file(data_dir: &str) -> PathBuf {
     Path::new(data_dir).join("kura.pid")
 }
 
-fn running_pid(config: &dope_config::Config) -> Option<i32> {
+fn running_pid(config: &kura_config::Config) -> Option<i32> {
     let raw = std::fs::read_to_string(pid_file(&config.data_dir)).ok()?;
     let pid: i32 = raw.trim().parse().ok()?;
     // Signal 0 probes liveness without touching the process.
@@ -143,7 +143,7 @@ fn running_pid(config: &dope_config::Config) -> Option<i32> {
 }
 
 fn daemon_start() -> Result<(), AnyError> {
-    let config = dope_config::load()?;
+    let config = kura_config::load()?;
     if let Some(pid) = running_pid(&config) {
         println!(
             "daemon already running (pid {pid}, http://{})",
@@ -192,7 +192,7 @@ fn daemon_start() -> Result<(), AnyError> {
 }
 
 fn daemon_stop() -> Result<(), AnyError> {
-    let config = dope_config::load()?;
+    let config = kura_config::load()?;
     let Some(pid) = running_pid(&config) else {
         println!("daemon is not running");
         let _ = std::fs::remove_file(pid_file(&config.data_dir));
@@ -213,7 +213,7 @@ fn daemon_stop() -> Result<(), AnyError> {
 }
 
 fn daemon_status() -> Result<(), AnyError> {
-    let config = dope_config::load()?;
+    let config = kura_config::load()?;
     let pid = running_pid(&config);
     let health = ureq::get(&format!("http://{}/healthz", config.bind_addr))
         .timeout(Duration::from_secs(2))
@@ -317,7 +317,7 @@ fn mime_for(path: &Path) -> &'static str {
 
 fn serve_web(port: u16, dir: Option<PathBuf>, no_open: bool) -> Result<(), AnyError> {
     let dist = find_web_dist(dir)?;
-    let config = dope_config::load()?;
+    let config = kura_config::load()?;
     let url = format!("http://127.0.0.1:{port}/");
     println!("serving web shell from {} at {url}", dist.display());
     println!(
@@ -375,14 +375,14 @@ fn open_browser(url: &str) {
 // ---------------------------------------------------------------------------
 
 fn config_show() -> Result<(), AnyError> {
-    let config = dope_config::load()?;
+    let config = kura_config::load()?;
     println!("{}", serde_json::to_string_pretty(&config)?);
     Ok(())
 }
 
 fn effective_config_path() -> Result<PathBuf, AnyError> {
-    let config = dope_config::load()?;
-    Ok(PathBuf::from(dope_config::config_file_path(
+    let config = kura_config::load()?;
+    Ok(PathBuf::from(kura_config::config_file_path(
         &config.data_dir,
     )))
 }

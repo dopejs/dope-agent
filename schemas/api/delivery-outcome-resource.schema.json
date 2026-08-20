@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/delivery-outcome-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/delivery-outcome-resource.schema.json",
   "title": "DeliveryOutcomeResource",
   "type": "object",
   "required": ["deliveryId", "environmentScope", "sourceKind", "sourceId", "resultClass", "mode", "status", "createdAt", "updatedAt"],

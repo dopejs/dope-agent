@@ -2,7 +2,7 @@
 //!
 //! Every handler mirrors the Go flow: require the mail + integrations
 //! managers (500 when unconfigured), begin the integration-operation quota
-//! reservation when a tenant context is present, drive the dope_mail Manager,
+//! reservation when a tenant context is present, drive the kura_mail Manager,
 //! record the resulting account/operation/artifacts into the SQLite store and
 //! publish the mail.* events, then commit (or release) the billing
 //! reservation. Status codes, DTO shapes, validation and the
@@ -25,8 +25,8 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json as AxumJson, Router};
 
-use dope_billing::UsageReservation;
-use dope_mail::{AccountProjection, Artifact, Operation, OperationFilter};
+use kura_billing::UsageReservation;
+use kura_mail::{AccountProjection, Artifact, Operation, OperationFilter};
 
 use crate::error::ApiError;
 use crate::middleware::{TenantContext, guard_resource_for_tenant};
@@ -209,7 +209,7 @@ async fn get_account(
     let items = manager
         .list_accounts(
             &integrations.list(),
-            &dope_mail::Selection {
+            &kura_mail::Selection {
                 integration_id: integration_id.clone(),
                 ..Default::default()
             },
@@ -236,7 +236,7 @@ async fn list_threads(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<Json<MailThreadListResponse>, MailApiError> {
     let (manager, integrations) = require_mail_deps(&state)?;
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -245,7 +245,7 @@ async fn list_threads(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::ListThreadsInput {
+    let input = kura_mail::ListThreadsInput {
         selection: selection(query.integration_id.as_deref()),
         limit: query
             .limit
@@ -303,7 +303,7 @@ async fn get_thread(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<Json<MailThreadResponse>, MailApiError> {
     let (manager, integrations) = require_mail_deps(&state)?;
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -312,7 +312,7 @@ async fn get_thread(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::GetThreadInput {
+    let input = kura_mail::GetThreadInput {
         selection: selection(query.integration_id.as_deref()),
         thread_id: thread_id.trim().to_string(),
         source: source_linkage_with_operation(&None, &operation_id),
@@ -364,7 +364,7 @@ async fn get_message(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<Json<MailMessageResponse>, MailApiError> {
     let (manager, integrations) = require_mail_deps(&state)?;
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -373,7 +373,7 @@ async fn get_message(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::GetMessageInput {
+    let input = kura_mail::GetMessageInput {
         selection: selection(query.integration_id.as_deref()),
         message_id: message_id.trim().to_string(),
         source: source_linkage_with_operation(&None, &operation_id),
@@ -420,7 +420,7 @@ async fn send_message(
     AxumJson(request): AxumJson<SendMailMessageRequest>,
 ) -> Result<(StatusCode, Json<MailMessageResponse>), MailApiError> {
     let (manager, integrations) = require_mail_deps(&state)?;
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -429,7 +429,7 @@ async fn send_message(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::SendMessageInput {
+    let input = kura_mail::SendMessageInput {
         selection: selection(Some(&request.integration_id)),
         to: request.to.clone(),
         cc: request.cc.clone(),
@@ -485,7 +485,7 @@ async fn reply_message(
     AxumJson(request): AxumJson<ReplyMailMessageRequest>,
 ) -> Result<ReplyForwardOutcome, MailApiError> {
     let (manager, integrations) = require_mail_deps(&state)?;
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -494,7 +494,7 @@ async fn reply_message(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::ReplyMessageInput {
+    let input = kura_mail::ReplyMessageInput {
         selection: selection(Some(&request.integration_id)),
         message_id: message_id.trim().to_string(),
         result_mode: request.result_mode,
@@ -558,7 +558,7 @@ async fn forward_message(
     AxumJson(request): AxumJson<ForwardMailMessageRequest>,
 ) -> Result<ReplyForwardOutcome, MailApiError> {
     let (manager, integrations) = require_mail_deps(&state)?;
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -567,7 +567,7 @@ async fn forward_message(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::ForwardMessageInput {
+    let input = kura_mail::ForwardMessageInput {
         selection: selection(Some(&request.integration_id)),
         message_id: message_id.trim().to_string(),
         result_mode: request.result_mode,
@@ -636,7 +636,7 @@ async fn list_drafts(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<Json<MailDraftListResponse>, MailApiError> {
     let (manager, integrations) = require_mail_deps(&state)?;
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -645,7 +645,7 @@ async fn list_drafts(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::ListDraftsInput {
+    let input = kura_mail::ListDraftsInput {
         selection: selection(query.integration_id.as_deref()),
         source: source_linkage_with_operation(&None, &operation_id),
     };
@@ -691,7 +691,7 @@ async fn create_draft(
     AxumJson(request): AxumJson<CreateMailDraftRequest>,
 ) -> Result<(StatusCode, Json<MailDraftResponse>), MailApiError> {
     let (manager, integrations) = require_mail_deps(&state)?;
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -700,7 +700,7 @@ async fn create_draft(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::CreateDraftInput {
+    let input = kura_mail::CreateDraftInput {
         selection: selection(Some(&request.integration_id)),
         compose_mode: request.compose_mode,
         thread_id: request.thread_id.trim().to_string(),
@@ -759,7 +759,7 @@ async fn get_draft(
     tenant: Option<Extension<TenantContext>>,
 ) -> Result<Json<MailDraftResponse>, MailApiError> {
     let (manager, integrations) = require_mail_deps(&state)?;
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -768,7 +768,7 @@ async fn get_draft(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::GetDraftInput {
+    let input = kura_mail::GetDraftInput {
         selection: selection(query.integration_id.as_deref()),
         draft_id: draft_id.trim().to_string(),
         source: source_linkage_with_operation(&None, &operation_id),
@@ -816,7 +816,7 @@ async fn update_draft(
     AxumJson(request): AxumJson<UpdateMailDraftRequest>,
 ) -> Result<Json<MailDraftResponse>, MailApiError> {
     let (manager, integrations) = require_mail_deps(&state)?;
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -825,7 +825,7 @@ async fn update_draft(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::UpdateDraftInput {
+    let input = kura_mail::UpdateDraftInput {
         selection: selection(Some(&request.integration_id)),
         draft_id: draft_id.trim().to_string(),
         to: request.to.clone(),
@@ -886,7 +886,7 @@ async fn send_draft(
             integration_id: String::new(),
             source: None,
         });
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -895,7 +895,7 @@ async fn send_draft(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::SendDraftInput {
+    let input = kura_mail::SendDraftInput {
         selection: selection(Some(&request.integration_id)),
         draft_id: draft_id.trim().to_string(),
         source: source_linkage_with_operation(&request.source, &operation_id),
@@ -958,7 +958,7 @@ async fn download_attachment(
             size_bytes: 0,
             source: None,
         });
-    let operation_id = dope_mail::new_operation_id();
+    let operation_id = kura_mail::new_operation_id();
     let reservation = begin_integration_operation_quota(
         &state,
         tenant.as_ref().map(|t| &t.0),
@@ -967,7 +967,7 @@ async fn download_attachment(
         idempotency_key(&headers),
     )
     .await?;
-    let input = dope_mail::DownloadAttachmentInput {
+    let input = kura_mail::DownloadAttachmentInput {
         selection: selection(Some(&request.integration_id)),
         message_id: request.message_id.trim().to_string(),
         attachment_ref_id: attachment_ref_id.trim().to_string(),
@@ -1029,17 +1029,17 @@ async fn list_operations(
     filter.schedule_id = trim_q(query.schedule_id.as_deref());
     filter.delivery_id = trim_q(query.delivery_id.as_deref());
     if let Some(class) =
-        parse_mail_enum::<dope_mail::OperationClass>(&trim_q(query.operation_class.as_deref()))
+        parse_mail_enum::<kura_mail::OperationClass>(&trim_q(query.operation_class.as_deref()))
     {
         filter.operation_class = class;
     }
     if let Some(status) =
-        parse_mail_enum::<dope_mail::OperationStatus>(&trim_q(query.status.as_deref()))
+        parse_mail_enum::<kura_mail::OperationStatus>(&trim_q(query.status.as_deref()))
     {
         filter.status = status;
     }
     if let Some(result_mode) =
-        parse_mail_enum::<dope_mail::ResultMode>(&trim_q(query.result_mode.as_deref()))
+        parse_mail_enum::<kura_mail::ResultMode>(&trim_q(query.result_mode.as_deref()))
     {
         filter.result_mode = result_mode;
     }
@@ -1095,7 +1095,7 @@ async fn get_operation(
 /// Go `requireMailDeps`: both managers must be configured (500 otherwise).
 fn require_mail_deps(
     state: &AppState,
-) -> Result<(&dope_mail::Manager, &dope_integrations::Manager), MailApiError> {
+) -> Result<(&kura_mail::Manager, &kura_integrations::Manager), MailApiError> {
     let Some(manager) = &state.mail else {
         return Err(ApiError::Internal("mail dependencies are not configured".to_string()).into());
     };
@@ -1110,9 +1110,9 @@ fn require_mail_deps(
 fn source_linkage_with_operation(
     source: &Option<MailSourceLinkageRequest>,
     operation_id: &str,
-) -> dope_mail::SourceLinkage {
+) -> kura_mail::SourceLinkage {
     let mut linkage = match source {
-        Some(s) => dope_mail::SourceLinkage {
+        Some(s) => kura_mail::SourceLinkage {
             run_id: s.run_id.trim().to_string(),
             step_id: s.step_id.trim().to_string(),
             tool_call_id: s.tool_call_id.trim().to_string(),
@@ -1124,7 +1124,7 @@ fn source_linkage_with_operation(
             allow_send_side_effects: s.allow_send_side_effects,
             ..Default::default()
         },
-        None => dope_mail::SourceLinkage::default(),
+        None => kura_mail::SourceLinkage::default(),
     };
     linkage.operation_id = operation_id.trim().to_string();
     linkage
@@ -1133,13 +1133,13 @@ fn source_linkage_with_operation(
 /// Go `mailAttachmentInputs`.
 fn mail_attachment_inputs(
     items: &[MailAttachmentRefRequest],
-) -> Vec<dope_mail::AttachmentRefInput> {
+) -> Vec<kura_mail::AttachmentRefInput> {
     if items.is_empty() {
         return Vec::new();
     }
     items
         .iter()
-        .map(|item| dope_mail::AttachmentRefInput {
+        .map(|item| kura_mail::AttachmentRefInput {
             attachment_ref_id: item.attachment_ref_id.trim().to_string(),
             display_name: item.display_name.trim().to_string(),
             media_type: item.media_type.trim().to_string(),
@@ -1150,8 +1150,8 @@ fn mail_attachment_inputs(
 }
 
 /// Go `mail.Selection{IntegrationID: strings.TrimSpace(...)}`.
-fn selection(integration_id: Option<&str>) -> dope_mail::Selection {
-    dope_mail::Selection {
+fn selection(integration_id: Option<&str>) -> kura_mail::Selection {
+    kura_mail::Selection {
         integration_id: integration_id.unwrap_or_default().trim().to_string(),
     }
 }
@@ -1186,19 +1186,19 @@ where
 
 /// Go `writeMailError`: the four not-found sentinels map to 404; every other
 /// error (including the Go default branch) maps to 400.
-fn write_mail_error(err: &dope_mail::MailError) -> MailApiError {
+fn write_mail_error(err: &kura_mail::MailError) -> MailApiError {
     match err {
-        dope_mail::MailError::MailIntegrationNotFound
-        | dope_mail::MailError::MailThreadNotFound
-        | dope_mail::MailError::MailMessageNotFound
-        | dope_mail::MailError::MailDraftNotFound => {
+        kura_mail::MailError::MailIntegrationNotFound
+        | kura_mail::MailError::MailThreadNotFound
+        | kura_mail::MailError::MailMessageNotFound
+        | kura_mail::MailError::MailDraftNotFound => {
             MailApiError::Api(ApiError::NotFound(err.to_string()))
         }
-        dope_mail::MailError::MailRecipientRequired
-        | dope_mail::MailError::MailAttachmentUnresolved
-        | dope_mail::MailError::MailBackgroundSendBlocked
-        | dope_mail::MailError::MailSelectionInvalid
-        | dope_mail::MailError::MailUnavailable => {
+        kura_mail::MailError::MailRecipientRequired
+        | kura_mail::MailError::MailAttachmentUnresolved
+        | kura_mail::MailError::MailBackgroundSendBlocked
+        | kura_mail::MailError::MailSelectionInvalid
+        | kura_mail::MailError::MailUnavailable => {
             MailApiError::Api(ApiError::BadRequest(err.to_string()))
         }
         other => MailApiError::Api(ApiError::BadRequest(other.to_string())),
@@ -1229,15 +1229,15 @@ async fn begin_integration_operation_quota(
     }
     let tenant_id = tc.0.tenant_id.clone();
     let operation_key =
-        dope_billing::integration_operation_key(&tenant_id, "mail", operation_id, idempotency_key);
-    let hosted = matches!(state.config.environment, dope_config::Environment::Prod);
+        kura_billing::integration_operation_key(&tenant_id, "mail", operation_id, idempotency_key);
+    let hosted = matches!(state.config.environment, kura_config::Environment::Prod);
     let result = match &state.billing {
         Some(manager) => {
             manager
-                .reserve(dope_billing::ReserveInput {
+                .reserve(kura_billing::ReserveInput {
                     tenant_id,
-                    category: dope_billing::Category::from(
-                        dope_billing::Category::INTEGRATION_OPERATIONS,
+                    category: kura_billing::Category::from(
+                        kura_billing::Category::INTEGRATION_OPERATIONS,
                     ),
                     amount: 1,
                     operation_key: operation_key.clone(),
@@ -1252,17 +1252,17 @@ async fn begin_integration_operation_quota(
         }
         None => {
             if hosted {
-                Ok(dope_billing::ReserveResult {
+                Ok(kura_billing::ReserveResult {
                     allowed: false,
-                    denial: Some(dope_billing::new_quota_state_unavailable_denial(
+                    denial: Some(kura_billing::new_quota_state_unavailable_denial(
                         &tenant_id,
                         &operation_key,
                     )),
-                    failure: Some(dope_billing::BillingError::QuotaStateUnavailable),
+                    failure: Some(kura_billing::BillingError::QuotaStateUnavailable),
                     ..Default::default()
                 })
             } else {
-                Ok(dope_billing::ReserveResult {
+                Ok(kura_billing::ReserveResult {
                     allowed: true,
                     ..Default::default()
                 })
@@ -1273,7 +1273,7 @@ async fn begin_integration_operation_quota(
     if !result.allowed {
         let status = if matches!(
             result.failure,
-            Some(dope_billing::BillingError::QuotaDenied)
+            Some(kura_billing::BillingError::QuotaDenied)
         ) {
             StatusCode::TOO_MANY_REQUESTS
         } else {
@@ -1313,7 +1313,7 @@ async fn commit_billing_reservation(
         return Ok(());
     };
     manager
-        .commit(dope_billing::ResolveInput {
+        .commit(kura_billing::ResolveInput {
             tenant_id: reservation.tenant_id.clone(),
             category: reservation.category.clone(),
             operation_key: reservation.operation_key.clone(),
@@ -1343,7 +1343,7 @@ async fn release_billing_reservation(
         return;
     };
     let _ = manager
-        .release(dope_billing::ResolveInput {
+        .release(kura_billing::ResolveInput {
             tenant_id: reservation.tenant_id.clone(),
             category: reservation.category.clone(),
             operation_key: reservation.operation_key.clone(),
@@ -1416,12 +1416,12 @@ fn record_mail_activity(
         publish_mail_artifact_recorded(state, tenant, artifact, operation)?;
     }
     match operation.status {
-        dope_mail::OperationStatus::Completed => {
+        kura_mail::OperationStatus::Completed => {
             publish_mail_operation_completed(state, tenant, operation)?;
         }
-        dope_mail::OperationStatus::Failed
-        | dope_mail::OperationStatus::Blocked
-        | dope_mail::OperationStatus::Cancelled => {
+        kura_mail::OperationStatus::Failed
+        | kura_mail::OperationStatus::Blocked
+        | kura_mail::OperationStatus::Cancelled => {
             publish_mail_operation_failed(state, tenant, operation)?;
         }
         _ => {}
@@ -1435,7 +1435,7 @@ fn record_mail_activity(
 /// attempt), release the billing reservation like Go.
 async fn record_failed_mail_operation(
     state: &AppState,
-    manager: &dope_mail::Manager,
+    manager: &kura_mail::Manager,
     tenant: Option<&TenantContext>,
     operation_id: &str,
     reservation: Option<&UsageReservation>,
@@ -1602,15 +1602,15 @@ fn publish_mail_event(
     resource_kind: &str,
     resource_id: &str,
     payload: serde_json::Value,
-) -> Result<dope_events::Event, MailApiError> {
-    let mut event = dope_events::Event {
+) -> Result<kura_events::Event, MailApiError> {
+    let mut event = kura_events::Event {
         event_id: new_event_id(),
         environment_scope: crate::middleware::environment_scope_from_config(&state.config),
         category: "mail".to_string(),
         name: name.to_string(),
         occurred_at: chrono::Utc::now(),
-        scope: dope_events::Scope::default(),
-        resource: dope_events::Resource {
+        scope: kura_events::Scope::default(),
+        resource: kura_events::Resource {
             kind: resource_kind.to_string(),
             id: resource_id.to_string(),
         },
@@ -1618,7 +1618,7 @@ fn publish_mail_event(
         ..Default::default()
     };
     if let Some(tc) = tenant {
-        if !tc.0.tenant_id.is_empty() && !dope_events::is_global_category(&event.category) {
+        if !tc.0.tenant_id.is_empty() && !kura_events::is_global_category(&event.category) {
             event.tenant_id = tc.0.tenant_id.clone();
         }
     }
@@ -1650,28 +1650,28 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-mail-test".to_string(),
+            data_dir: "/tmp/kura-api-mail-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig {
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                telegram: dope_config::TelegramConnectorConfig {
+                telegram: kura_config::TelegramConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                slack: dope_config::SlackConnectorConfig {
+                slack: kura_config::SlackConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                matrix: dope_config::MatrixConnectorConfig {
+                matrix: kura_config::MatrixConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
@@ -1683,24 +1683,24 @@ mod tests {
     /// integration (the in-memory manager holds it; no store row needed since
     /// these tests carry no tenant context).
     fn seed_healthy_mail_integration(
-        manager: &dope_integrations::Manager,
+        manager: &kura_integrations::Manager,
         integration_id: &str,
         canonical_default: bool,
     ) {
         let created = manager
-            .create(dope_integrations::CreateInput {
+            .create(kura_integrations::CreateInput {
                 integration_id: integration_id.to_string(),
                 domain_kind: "mail".to_string(),
                 display_name: integration_id.to_string(),
                 environment_scope: "test".to_string(),
                 canonical_default,
-                account_binding: dope_integrations::AccountBinding {
+                account_binding: kura_integrations::AccountBinding {
                     account_key: "alice@example.com".to_string(),
                     account_label: "Alice Mailbox".to_string(),
                     ..Default::default()
                 },
-                backend_binding: dope_integrations::BackendBinding {
-                    backend_kind: dope_integrations::BackendKind::FakeLocal,
+                backend_binding: kura_integrations::BackendBinding {
+                    backend_kind: kura_integrations::BackendKind::FakeLocal,
                     supports_probe_read: true,
                     supports_probe_mutation: true,
                     ..Default::default()
@@ -1711,12 +1711,12 @@ mod tests {
         manager
             .update_readiness(
                 &created.integration_id,
-                dope_integrations::UpdateReadinessInput {
-                    readiness_status: dope_integrations::ReadinessStatus::Healthy,
-                    auth_state: dope_integrations::AuthState::Authorized
+                kura_integrations::UpdateReadinessInput {
+                    readiness_status: kura_integrations::ReadinessStatus::Healthy,
+                    auth_state: kura_integrations::AuthState::Authorized
                         .as_str()
                         .to_string(),
-                    health_state: dope_integrations::HealthState::Healthy.as_str().to_string(),
+                    health_state: kura_integrations::HealthState::Healthy.as_str().to_string(),
                     secret_resolution: "resolved".to_string(),
                     ..Default::default()
                 },
@@ -1727,14 +1727,14 @@ mod tests {
     /// Builds a state with only the mail-relevant managers populated (shared
     /// behind Arcs so cloned states observe the same in-memory ledger).
     fn test_state() -> AppState {
-        let dir = std::env::temp_dir().join(format!("dope-api-mail-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-mail-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        let integrations = Arc::new(dope_integrations::Manager::new("test"));
-        let mail = Arc::new(dope_mail::Manager::new("test"));
-        let mut state = AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store);
+        let integrations = Arc::new(kura_integrations::Manager::new("test"));
+        let mail = Arc::new(kura_mail::Manager::new("test"));
+        let mut state = AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store);
         state.integrations = Some(integrations);
         state.mail = Some(mail);
         state
@@ -1827,7 +1827,7 @@ mod tests {
             .lock()
             .list_mail_operations(
                 "test",
-                &dope_store::mail::MailOperationFilter {
+                &kura_store::mail::MailOperationFilter {
                     integration_id: "mail-b".to_string(),
                     ..Default::default()
                 },
@@ -1965,7 +1965,7 @@ mod tests {
             .lock()
             .list_mail_operations(
                 "test",
-                &dope_store::mail::MailOperationFilter {
+                &kura_store::mail::MailOperationFilter {
                     status: "blocked".to_string(),
                     ..Default::default()
                 },
@@ -2025,7 +2025,7 @@ mod tests {
         // Missing managers -> 500.
         let bare = AppState::new(
             test_config(),
-            Arc::new(dope_events::Bus::new()),
+            Arc::new(kura_events::Bus::new()),
             state.store.clone(),
         );
         let (status, json, body) = get(bare, "/v1/mail/accounts").await;

@@ -23,7 +23,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
 
-use dope_sandbox as sandbox;
+use kura_sandbox as sandbox;
 
 use crate::error::ApiError;
 use crate::middleware::AuthenticatedToken;
@@ -192,11 +192,11 @@ mod tests {
 
     fn state_with_manager() -> crate::state::AppState {
         let mut state = test_state();
-        let manager = dope_sandbox::Manager::new(
+        let manager = kura_sandbox::Manager::new(
             state.config.clone(),
             None,
-            dope_events::Bus::new(),
-            dope_policy::Engine::new(),
+            kura_events::Bus::new(),
+            kura_policy::Engine::new(),
         );
         state.sandboxes = Some(Arc::new(manager));
         state

@@ -1,7 +1,7 @@
 //! Slack transport boundary (port of transport.go): the Transport trait, the
 //! FakeTransport test double, and the mention-text helper.
 
-use dope_imtypes::{OutboundReply, ReplyCapabilities, SentReply};
+use kura_imtypes::{OutboundReply, ReplyCapabilities, SentReply};
 use parking_lot::Mutex;
 
 use crate::error::SlackError;

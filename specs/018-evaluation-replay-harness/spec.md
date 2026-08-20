@@ -246,7 +246,7 @@ against those fixtures in normal regression flows.
 - **Verification Strategy**: Required validation includes targeted automated regression
   coverage for replay readiness, replay execution, comparison classification, fixture
   curation, environment scoping, and restart persistence, plus one manual before-and-after
-  verification flow in `DOPE_ENV=test` using either a real or local-fixture scenario.
+  verification flow in `KURA_ENV=test` using either a real or local-fixture scenario.
 - **Observability Impact**: Operators need durable replay and comparison status, drift
   classification, readiness limitations, source-to-replay linkage, and restart-safe audit
   history surfaced through the web operator shell. Operator docs and evidence inspection

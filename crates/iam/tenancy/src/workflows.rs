@@ -12,12 +12,12 @@ use crate::{emit_denial, require, TenancyError};
 /// Tenant-aware accessor for the workflows family.
 pub struct Workflows {
     store: crate::SQLiteStore,
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl Workflows {
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         Workflows { store, emitter }
     }
 
@@ -29,7 +29,7 @@ impl Workflows {
         &self,
         environment_scope: &str,
         run_id: &str,
-    ) -> Result<Vec<dope_orchestration::Workflow>, TenancyError> {
+    ) -> Result<Vec<kura_orchestration::Workflow>, TenancyError> {
         let tenant_id = require()?;
         self.store
             .list_workflows_for_tenant_raw(&tenant_id, environment_scope, run_id)
@@ -41,7 +41,7 @@ impl Workflows {
         environment_scope: &str,
         run_id: &str,
         workflow_id: &str,
-    ) -> Result<Option<dope_orchestration::Workflow>, TenancyError> {
+    ) -> Result<Option<kura_orchestration::Workflow>, TenancyError> {
         let tenant_id = require()?;
         let owner = self
             .store
@@ -57,7 +57,7 @@ impl Workflows {
         }
     }
 
-    pub fn upsert_workflow_for_tenant(&self, workflow: &dope_orchestration::Workflow) -> Result<(), TenancyError> {
+    pub fn upsert_workflow_for_tenant(&self, workflow: &kura_orchestration::Workflow) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_workflow(workflow).map_err(TenancyError::from)?;
         match self.store.bind_row_tenant("workflows", "workflow_id", &workflow.workflow_id, &tenant_id) {

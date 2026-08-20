@@ -2,7 +2,7 @@
 
 ## Goal
 
-Verify in `DOPE_ENV=test` that the daemon can:
+Verify in `KURA_ENV=test` that the daemon can:
 
 - create an inspectable workflow plan from an operator-provided goal
 - execute that plan through the existing runtime step and tool-call plane
@@ -13,7 +13,7 @@ Verify in `DOPE_ENV=test` that the daemon can:
 
 ## Prerequisites
 
-- local test daemon only; do not use `~/.dope`
+- local test daemon only; do not use `~/.kura`
 - authenticated local pairing or an existing bearer token
 - one MCP server available through existing daemon-owned MCP surfaces
 - at least one local-tool capability or executable skill available in the local daemon
@@ -42,7 +42,7 @@ Examples after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "entrypoint":"operator",
@@ -60,7 +60,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}' \
   http://127.0.0.1:19192/v1/runs/$RUN_ID/workflows
@@ -76,7 +76,7 @@ Expected outcome after implementation:
 5. Inspect the planned workflow before execution.
 
 ```bash
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/runs/$RUN_ID/workflows/$WORKFLOW_ID
 ```
 
@@ -91,7 +91,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/runs/$RUN_ID/workflows/$WORKFLOW_ID/start
 ```
 
@@ -104,10 +104,10 @@ Expected outcome after implementation:
 7. Inspect runtime and workflow history during and after execution.
 
 ```bash
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/runs/$RUN_ID/steps
 
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/runs/$RUN_ID/workflows/$WORKFLOW_ID
 ```
 
@@ -148,7 +148,7 @@ Expected automated coverage after implementation:
 
 ## Recorded Results
 
-Recorded in `DOPE_ENV=test` on `2026-04-21`.
+Recorded in `KURA_ENV=test` on `2026-04-21`.
 
 Manual acceptance:
 
@@ -182,7 +182,7 @@ Automated verification:
 
 ## Notes
 
-- Keep all verification in `DOPE_ENV=test`.
+- Keep all verification in `KURA_ENV=test`.
 - A mixed-workflow verification fixture should be deterministic and repo-owned where
   possible so roadmap closure does not depend on a third-party service.
 - Manual verification should prove inspect-before-start behavior, not just successful

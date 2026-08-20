@@ -265,7 +265,7 @@ Fields:
 Validation rules:
 
 - Accepted protected requests must have tenant context.
-- `X-Dope-Tenant-ID` may override default tenant only when principal and token grant allow
+- `X-Kura-Tenant-ID` may override default tenant only when principal and token grant allow
   the tenant.
 - Denied tenant resolution must use the stable authorization denial without existence
   leakage.

@@ -1,4 +1,4 @@
-//! Trait-surface tests for `dope_livevalidation::Store` implemented by
+//! Trait-surface tests for `kura_livevalidation::Store` implemented by
 //! `LiveValidationStoreHandle` (the Send + Sync newtype over the SQLite
 //! store). Exercises the exact async trait methods the live-validation
 //! manager calls, including the ledger outcome update path and the dynamic
@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_livevalidation::{
+use kura_livevalidation::{
     AmbiguousCommit, AmbiguousCommitCause, Attempt, AttemptFilter, AttemptStatus,
     ApprovalStatus, ApprovalTarget, Comparison, ComparisonFilter, ComparisonStatus,
     FreshApproval, KillSwitch, KillSwitchFilter, KillSwitchScope, LedgerFilter,
@@ -15,10 +15,10 @@ use dope_livevalidation::{
     RetentionAppliesTo, RetentionMode, RetentionPolicy, SafetyClass, SideEffectLedgerEntry,
     SideEffectScope, Store, ToolClass,
 };
-use dope_store::{LiveValidationStoreHandle, SQLiteStore};
+use kura_store::{LiveValidationStoreHandle, SQLiteStore};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_lv_trait_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_lv_trait_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -55,7 +55,7 @@ fn make_scope() -> SideEffectScope {
         excluded_tool_classes: Vec::new(),
         included_actions: vec!["read".to_string()],
         excluded_actions: Vec::new(),
-        approval_mode: dope_livevalidation::ApprovalMode::from("scope_level"),
+        approval_mode: kura_livevalidation::ApprovalMode::from("scope_level"),
         declared_by: "trait_user".to_string(),
         declared_at: Utc::now(),
     }
@@ -124,12 +124,12 @@ fn make_matrix_row() -> MatrixRow {
         tool_class: ToolClass::from("mcp.tool_call"),
         safety_class: SafetyClass::from("idempotent_mutation"),
         permission: "live_validation.mcp.tool_call".to_string(),
-        approval: dope_livevalidation::MatrixApproval::from("scope_level"),
+        approval: kura_livevalidation::MatrixApproval::from("scope_level"),
         approval_action: String::new(),
         idempotency: "idempotent".to_string(),
-        retry_policy: dope_livevalidation::RetryPolicy::from("manual_retry"),
+        retry_policy: kura_livevalidation::RetryPolicy::from("manual_retry"),
         ambiguous_commit_behavior: "reconcile".to_string(),
-        compensation: dope_livevalidation::CompensationKind::from("not_applicable"),
+        compensation: kura_livevalidation::CompensationKind::from("not_applicable"),
         ledger_events: vec![LedgerOutcome::from("completed")],
         test_case: "test_case_1".to_string(),
         version: "v1".to_string(),

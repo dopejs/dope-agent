@@ -2,7 +2,7 @@
 //! writes fail closed: a sink error aborts the transition with the stable
 //! retryable `activation_failed:audit_write` reason.
 
-use dope_identity::TenantAuditEvent;
+use kura_identity::TenantAuditEvent;
 use serde_json::Map;
 use serde_json::Value;
 
@@ -138,7 +138,7 @@ fn random_activation_audit_id() -> String {
 mod tests {
     use std::sync::Arc;
 
-    use dope_identity::TenantContext;
+    use kura_identity::TenantContext;
     use serde_json::json;
 
     use crate::error::reason_code_from_error;

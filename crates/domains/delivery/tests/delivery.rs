@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use dope_delivery::{DeliveryOutcome, DeliveryPreference, DeliveryTarget, ResultClass, TargetKind, TargetStatus};
+use kura_delivery::{DeliveryOutcome, DeliveryPreference, DeliveryTarget, ResultClass, TargetKind, TargetStatus};
 
 #[test]
 fn delivery_target_roundtrips() {

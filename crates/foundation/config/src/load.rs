@@ -13,20 +13,20 @@ pub const DEFAULT_CONFIG_FILE_NAME: &str = "config.json";
 /// Load the effective daemon configuration.
 ///
 /// Order of operations (Go `Load`):
-/// 1. Resolve the bootstrap data dir from `DOPE_DATA_DIR` or the
+/// 1. Resolve the bootstrap data dir from `KURA_DATA_DIR` or the
 ///    environment-aware default, creating it.
 /// 2. Start from environment-aware defaults.
 /// 3. Merge `config.json` from the bootstrap data dir (missing file is fine,
 ///    invalid JSON is an error).
-/// 4. Apply `DOPE_*` environment variable overrides.
+/// 4. Apply `KURA_*` environment variable overrides.
 /// 5. Resolve `*Env` secret references.
 /// 6. Re-resolve the effective data dir (file/env may have changed it) and
 ///    create it.
 pub fn load() -> Result<Config, ConfigError> {
-    let version = getenv("DOPE_VERSION", "dev");
-    let env_name = resolve_environment(&getenv("DOPE_ENV", ""), &version);
+    let version = getenv("KURA_VERSION", "dev");
+    let env_name = resolve_environment(&getenv("KURA_ENV", ""), &version);
 
-    let bootstrap_dir = resolve_dir(&getenv("DOPE_DATA_DIR", default_data_dir(env_name)))
+    let bootstrap_dir = resolve_dir(&getenv("KURA_DATA_DIR", default_data_dir(env_name)))
         .map_err(|err| ConfigError::ResolveBootstrapDataDir(Box::new(err)))?;
     ensure_dir(&bootstrap_dir).map_err(ConfigError::InitBootstrapDataDir)?;
 

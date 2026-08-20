@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ChatError;
 use crate::store::ChatStore;
-use dope_events::Scope;
-use dope_llm::{Dispatch, Usage};
-use dope_threads::{
+use kura_events::Scope;
+use kura_llm::{Dispatch, Usage};
+use kura_threads::{
     ContinuityMode, ContinuityPreviewItem, ContinuityStatus, ContinuityTurn, SourceKind,
 };
 
@@ -162,22 +162,22 @@ pub(crate) struct ContinuityAssembly {
 
 /// The chat query/stream service (Go `chat.Service`).
 ///
-/// Dependencies mirror the Go constructor: a shared `dope-llm` dispatcher, an
+/// Dependencies mirror the Go constructor: a shared `kura-llm` dispatcher, an
 /// optional provider manager, an optional skill registry, an optional event
 /// bus, and an optional store. The store is any [`ChatStore`] (the real
-/// `dope_store::SQLiteStore` adapter or an in-memory fake in tests). Arc
+/// `kura_store::SQLiteStore` adapter or an in-memory fake in tests). Arc
 /// handles make the service cloneable so streaming can run on a dedicated
 /// `std::thread` (see [`Service::stream_channel`]).
 #[derive(Clone)]
 pub struct Service {
-    pub(crate) dispatcher: Arc<dope_llm::Dispatcher>,
-    pub(crate) providers: Option<Arc<dope_providers::Manager>>,
-    pub(crate) skills: Option<Arc<dope_skills::Registry>>,
-    pub(crate) event_bus: Option<dope_events::Bus>,
+    pub(crate) dispatcher: Arc<kura_llm::Dispatcher>,
+    pub(crate) providers: Option<Arc<kura_providers::Manager>>,
+    pub(crate) skills: Option<Arc<kura_skills::Registry>>,
+    pub(crate) event_bus: Option<kura_events::Bus>,
     pub(crate) store: Option<Arc<dyn ChatStore>>,
     /// The plugin hook bus (pluginization phase 2). Absent = no hook points
     /// run and the pipeline behaves exactly as before.
-    pub(crate) hooks: Option<Arc<dope_plugin::HookBus>>,
+    pub(crate) hooks: Option<Arc<kura_plugin::HookBus>>,
 }
 
 impl Service {
@@ -186,10 +186,10 @@ impl Service {
     /// service guards per call).
     #[must_use]
     pub fn new_service(
-        dispatcher: Arc<dope_llm::Dispatcher>,
-        providers: Option<Arc<dope_providers::Manager>>,
-        skills: Option<Arc<dope_skills::Registry>>,
-        event_bus: Option<dope_events::Bus>,
+        dispatcher: Arc<kura_llm::Dispatcher>,
+        providers: Option<Arc<kura_providers::Manager>>,
+        skills: Option<Arc<kura_skills::Registry>>,
+        event_bus: Option<kura_events::Bus>,
         store: Option<Arc<dyn ChatStore>>,
     ) -> Self {
         Service {
@@ -205,7 +205,7 @@ impl Service {
     /// Attaches the plugin hook bus; the `chat/turn-start`,
     /// `chat/pre-dispatch`, and `chat/turn-end` points run on every
     /// query/stream once set.
-    pub fn set_hooks(&mut self, hooks: Arc<dope_plugin::HookBus>) {
+    pub fn set_hooks(&mut self, hooks: Arc<kura_plugin::HookBus>) {
         self.hooks = Some(hooks);
     }
 }

@@ -1,6 +1,6 @@
 //! workspace_bindings route family — port of
 //! daemon/internal/api/workspace_bindings.go (workspace CRUD, binding rules,
-//! and capability visibility), backed by the dope-store workspace/binding DAOs
+//! and capability visibility), backed by the kura-store workspace/binding DAOs
 //! (`crates/persistence/store`).
 //!
 //! Routes under /v1:
@@ -24,11 +24,11 @@ use axum::Json as AxumJson;
 use serde::Serialize;
 use std::collections::HashMap;
 
-use dope_bindings::{
+use kura_bindings::{
     BindingError, SetVisibilityRequest, VisibilityScopeKind, WorkspaceResource,
     to_binding_resource, to_capability_visibility_resource, to_workspace_resource,
 };
-use dope_identity::{has_permission, Permission};
+use kura_identity::{has_permission, Permission};
 
 use crate::error::ApiError;
 use crate::middleware::TenantContext;
@@ -75,14 +75,14 @@ struct WorkspaceListResponse {
 #[serde(rename_all = "camelCase")]
 struct BindingListResponse {
     tenant_id: String,
-    bindings: Vec<dope_bindings::BindingResource>,
+    bindings: Vec<kura_bindings::BindingResource>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CapabilityVisibilityListResponse {
     tenant_id: String,
-    policies: Vec<dope_bindings::CapabilityVisibilityResource>,
+    policies: Vec<kura_bindings::CapabilityVisibilityResource>,
 }
 
 // ---------------------------------------------------------------------------
@@ -130,7 +130,7 @@ async fn create_workspace(
     body: Bytes,
 ) -> Result<(StatusCode, AxumJson<WorkspaceResource>), ApiError> {
     let tc = require_binding_permission(tenant.as_ref().map(|e| &e.0), Permission::BindingsManage)?;
-    let req: dope_bindings::CreateWorkspaceRequest = decode_json_body(&body)?;
+    let req: kura_bindings::CreateWorkspaceRequest = decode_json_body(&body)?;
     let (ws, audit_id) = state
         .store
         .lock()
@@ -138,7 +138,7 @@ async fn create_workspace(
         .map_err(map_binding_error)?;
     publish_binding_event(
         &state,
-        dope_events::binding_lifecycle_event(dope_events::BindingLifecycleInput {
+        kura_events::binding_lifecycle_event(kura_events::BindingLifecycleInput {
             tenant_id: tc.tenant_id.clone(),
             workspace_id: ws.workspace_id.clone(),
             actor_principal_id: tc.principal_id.clone(),
@@ -163,7 +163,7 @@ async fn update_workspace(
     body: Bytes,
 ) -> Result<Json<WorkspaceResource>, ApiError> {
     let tc = require_binding_permission(tenant.as_ref().map(|e| &e.0), Permission::BindingsManage)?;
-    let req: dope_bindings::UpdateWorkspaceRequest = decode_json_body(&body)?;
+    let req: kura_bindings::UpdateWorkspaceRequest = decode_json_body(&body)?;
     let (ws, audit_id) = state
         .store
         .lock()
@@ -171,7 +171,7 @@ async fn update_workspace(
         .map_err(map_binding_error)?;
     publish_binding_event(
         &state,
-        dope_events::binding_lifecycle_event(dope_events::BindingLifecycleInput {
+        kura_events::binding_lifecycle_event(kura_events::BindingLifecycleInput {
             tenant_id: tc.tenant_id.clone(),
             workspace_id: ws.workspace_id.clone(),
             actor_principal_id: tc.principal_id.clone(),
@@ -214,7 +214,7 @@ async fn get_binding(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(binding_id): Path<String>,
-) -> Result<Json<dope_bindings::BindingResource>, ApiError> {
+) -> Result<Json<kura_bindings::BindingResource>, ApiError> {
     let tc = require_binding_permission(tenant.as_ref().map(|e| &e.0), Permission::BindingsInspect)?;
     let rule = state
         .store
@@ -231,9 +231,9 @@ async fn create_binding(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     body: Bytes,
-) -> Result<(StatusCode, AxumJson<dope_bindings::BindingResource>), ApiError> {
+) -> Result<(StatusCode, AxumJson<kura_bindings::BindingResource>), ApiError> {
     let tc = require_binding_permission(tenant.as_ref().map(|e| &e.0), Permission::BindingsManage)?;
-    let req: dope_bindings::CreateBindingRequest = decode_json_body(&body)?;
+    let req: kura_bindings::CreateBindingRequest = decode_json_body(&body)?;
     // The store guard must be dropped before the denied event publishes
     // (parking_lot is not reentrant).
     let created = {
@@ -246,7 +246,7 @@ async fn create_binding(
             // Go: a failed create publishes a denied lifecycle event first.
             publish_binding_event(
                 &state,
-                dope_events::binding_lifecycle_event(dope_events::BindingLifecycleInput {
+                kura_events::binding_lifecycle_event(kura_events::BindingLifecycleInput {
                     tenant_id: tc.tenant_id.clone(),
                     actor_principal_id: tc.principal_id.clone(),
                     event_name: "binding.validation_failed".to_string(),
@@ -262,7 +262,7 @@ async fn create_binding(
     };
     publish_binding_event(
         &state,
-        dope_events::binding_lifecycle_event(dope_events::BindingLifecycleInput {
+        kura_events::binding_lifecycle_event(kura_events::BindingLifecycleInput {
             tenant_id: tc.tenant_id.clone(),
             binding_id: rule.binding_id.clone(),
             actor_principal_id: tc.principal_id.clone(),
@@ -286,22 +286,22 @@ async fn update_binding(
     tenant: Option<Extension<TenantContext>>,
     Path(binding_id): Path<String>,
     body: Bytes,
-) -> Result<Json<dope_bindings::BindingResource>, ApiError> {
+) -> Result<Json<kura_bindings::BindingResource>, ApiError> {
     let tc = require_binding_permission(tenant.as_ref().map(|e| &e.0), Permission::BindingsManage)?;
-    let req: dope_bindings::UpdateBindingRequest = decode_json_body(&body)?;
+    let req: kura_bindings::UpdateBindingRequest = decode_json_body(&body)?;
     let (rule, audit_id) = state
         .store
         .lock()
         .update_binding_rule(tc, &binding_id, &req)
         .map_err(map_binding_error)?;
-    let event_name = if rule.status == dope_bindings::BindingStatus::DISABLED {
+    let event_name = if rule.status == kura_bindings::BindingStatus::DISABLED {
         "binding.disabled"
     } else {
         "binding.updated"
     };
     publish_binding_event(
         &state,
-        dope_events::binding_lifecycle_event(dope_events::BindingLifecycleInput {
+        kura_events::binding_lifecycle_event(kura_events::BindingLifecycleInput {
             tenant_id: tc.tenant_id.clone(),
             binding_id: rule.binding_id.clone(),
             actor_principal_id: tc.principal_id.clone(),
@@ -334,7 +334,7 @@ async fn delete_binding(
         .map_err(map_binding_error)?;
     publish_binding_event(
         &state,
-        dope_events::binding_lifecycle_event(dope_events::BindingLifecycleInput {
+        kura_events::binding_lifecycle_event(kura_events::BindingLifecycleInput {
             tenant_id: tc.tenant_id.clone(),
             binding_id: binding_id.clone(),
             actor_principal_id: tc.principal_id.clone(),
@@ -356,7 +356,7 @@ async fn repair_binding(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(binding_id): Path<String>,
-) -> Result<Json<dope_bindings::BindingResource>, ApiError> {
+) -> Result<Json<kura_bindings::BindingResource>, ApiError> {
     let tc = require_binding_permission(tenant.as_ref().map(|e| &e.0), Permission::BindingsManage)?;
     let (rule, audit_id) = state
         .store
@@ -365,7 +365,7 @@ async fn repair_binding(
         .map_err(map_binding_error)?;
     publish_binding_event(
         &state,
-        dope_events::binding_lifecycle_event(dope_events::BindingLifecycleInput {
+        kura_events::binding_lifecycle_event(kura_events::BindingLifecycleInput {
             tenant_id: tc.tenant_id.clone(),
             binding_id: rule.binding_id.clone(),
             actor_principal_id: tc.principal_id.clone(),
@@ -413,7 +413,7 @@ async fn set_capability_visibility(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     body: Bytes,
-) -> Result<Json<dope_bindings::CapabilityVisibilityResource>, ApiError> {
+) -> Result<Json<kura_bindings::CapabilityVisibilityResource>, ApiError> {
     let tc = require_binding_permission(tenant.as_ref().map(|e| &e.0), Permission::BindingsManage)?;
     let req: SetVisibilityRequest = decode_json_body(&body)?;
     let (policy, audit_id) = state
@@ -423,8 +423,8 @@ async fn set_capability_visibility(
         .map_err(map_binding_error)?;
     publish_binding_event(
         &state,
-        dope_events::capability_visibility_changed_event(
-            dope_events::CapabilityVisibilityChangedInput {
+        kura_events::capability_visibility_changed_event(
+            kura_events::CapabilityVisibilityChangedInput {
                 tenant_id: tc.tenant_id.clone(),
                 actor_principal_id: tc.principal_id.clone(),
                 scope_kind: policy.scope_kind.clone(),
@@ -447,7 +447,7 @@ async fn set_capability_visibility(
 fn require_binding_permission(
     tenant: Option<&TenantContext>,
     permission: Permission,
-) -> Result<&dope_identity::TenantContext, ApiError> {
+) -> Result<&kura_identity::TenantContext, ApiError> {
     let Some(tc) = tenant else {
         return Err(credential_denial());
     };
@@ -530,7 +530,7 @@ fn binding_reason_code(message: &str) -> String {
 /// Go publishBindingEvent (bus path): append to the store event table, then
 /// publish to the in-process bus. The environment scope is filled from the
 /// daemon config when the builder left it empty.
-fn publish_binding_event(state: &AppState, event: dope_events::Event) -> Result<(), ApiError> {
+fn publish_binding_event(state: &AppState, event: kura_events::Event) -> Result<(), ApiError> {
     let mut event = event;
     if event.environment_scope.is_empty() {
         event.environment_scope = crate::middleware::environment_scope_from_config(&state.config);
@@ -553,35 +553,35 @@ mod tests {
     use axum::body::{to_bytes, Body};
     use axum::http::Request;
     use axum::http::header::CONTENT_TYPE;
-    use dope_identity::TenantContext as IdentityTenantContext;
+    use kura_identity::TenantContext as IdentityTenantContext;
     use parking_lot::Mutex;
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-workspace-bindings".to_string(),
+            data_dir: "/tmp/kura-api-workspace-bindings".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
-                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
-                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
-                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
+                telegram: kura_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
+                slack: kura_config::SlackConnectorConfig { enabled: false, ..Default::default() },
+                matrix: kura_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
             },
         }
     }
 
     fn test_state() -> AppState {
-        let dir = std::env::temp_dir().join(format!("dope-api-workspace-bindings-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-workspace-bindings-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store)
+        AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store)
     }
 
     fn request(method: &str, uri: &str, body: Option<&str>) -> Request<Body> {
@@ -743,7 +743,7 @@ mod tests {
         // Binding lifecycle events were recorded.
         let events = state
             .event_bus
-            .list(&dope_events::Filter { category: "binding".to_string(), ..Default::default() });
+            .list(&kura_events::Filter { category: "binding".to_string(), ..Default::default() });
         assert!(!events.is_empty(), "expected binding lifecycle events");
     }
 

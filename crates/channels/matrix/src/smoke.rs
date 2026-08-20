@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, Utc};
-use dope_connectors::RedactionStatus;
-use dope_imtypes::{OutboundReply, SentReply};
+use kura_connectors::RedactionStatus;
+use kura_imtypes::{OutboundReply, SentReply};
 use serde::{Deserialize, Serialize};
 
 use crate::is_unset_time;

@@ -8,7 +8,7 @@ use rusqlite::{params, params_from_iter, types::Value, Row};
 use crate::crud::{decode_map, now_rfc3339, null_string, parse_rfc3339};
 use crate::SQLiteStore;
 
-fn scan_event(row: &Row) -> Result<dope_events::Event, String> {
+fn scan_event(row: &Row) -> Result<kura_events::Event, String> {
     let sequence: i64 = row.get(0).map_err(|e| e.to_string())?;
     let event_id: String = row.get(1).map_err(|e| e.to_string())?;
     let environment_scope: String = row.get(2).map_err(|e| e.to_string())?;
@@ -28,14 +28,14 @@ fn scan_event(row: &Row) -> Result<dope_events::Event, String> {
     let resource_id: String = row.get(16).map_err(|e| e.to_string())?;
     let payload_json: Option<String> = row.get(17).map_err(|e| e.to_string())?;
 
-    Ok(dope_events::Event {
+    Ok(kura_events::Event {
         event_id,
         sequence,
         environment_scope,
         category,
         name,
         occurred_at: parse_rfc3339(&occurred_at)?,
-        scope: dope_events::Scope {
+        scope: kura_events::Scope {
             session_id: session_id.unwrap_or_default(),
             run_id: run_id.unwrap_or_default(),
             workflow_id: workflow_id.unwrap_or_default(),
@@ -45,16 +45,16 @@ fn scan_event(row: &Row) -> Result<dope_events::Event, String> {
             step_id: step_id.unwrap_or_default(),
             connector_id: connector_id.unwrap_or_default(),
             capability_id: capability_id.unwrap_or_default(),
-            ..dope_events::Scope::default()
+            ..kura_events::Scope::default()
         },
-        resource: dope_events::Resource { kind: resource_kind, id: resource_id },
+        resource: kura_events::Resource { kind: resource_kind, id: resource_id },
         payload: decode_map(&payload_json)?,
-        ..dope_events::Event::default()
+        ..kura_events::Event::default()
     })
 }
 
 impl SQLiteStore {
-    pub fn append_event(&self, event: &dope_events::Event) -> Result<dope_events::Event, String> {
+    pub fn append_event(&self, event: &kura_events::Event) -> Result<kura_events::Event, String> {
         let payload_json = serde_json::to_string(&event.payload)
             .map_err(|e| format!("marshal event payload: {e}"))?;
 
@@ -76,7 +76,7 @@ impl SQLiteStore {
             event.occurred_at = chrono::Utc::now();
         }
         if event.tenant_id.trim().is_empty()
-            && !dope_events::is_global_category(&event.category)
+            && !kura_events::is_global_category(&event.category)
         {
             if let Some(tenant_id) = self.resolve_default_tenant_binding() {
                 event.tenant_id = tenant_id;
@@ -129,7 +129,7 @@ impl SQLiteStore {
         Ok(out)
     }
 
-    pub fn list_events(&self, filter: &dope_events::Filter) -> Result<Vec<dope_events::Event>, String> {
+    pub fn list_events(&self, filter: &kura_events::Filter) -> Result<Vec<kura_events::Event>, String> {
         let mut sql = String::from(
             r#"SELECT rowid, event_id, environment_scope, category, name, occurred_at, session_id,
                 run_id, workflow_id, workflow_step_id, schedule_id, schedule_attempt_id, step_id,

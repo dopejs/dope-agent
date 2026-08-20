@@ -11,9 +11,9 @@
 //! overlap.
 //!
 //! Port status:
-//! - The thread list/detail/lifecycle surface is fully ported on the dope-store
-//!   thread DAOs (`crates/persistence/store`), the dope-threads domain
-//!   types and the dope-events thread event builders. Status codes, DTOs,
+//! - The thread list/detail/lifecycle surface is fully ported on the kura-store
+//!   thread DAOs (`crates/persistence/store`), the kura-threads domain
+//!   types and the kura-events thread event builders. Status codes, DTOs,
 //!   validation (empty body -> 400, unknown action -> 404, missing row -> 404,
 //!   transition conflicts -> 409) and the tenant-scoped permission gates
 //!   (credentials.inspect for reads, connectors.manage for mutations) mirror the
@@ -21,16 +21,16 @@
 //! - Thread detail additionally attaches the latest runtime binding evidence as
 //!   an additive `bindingProjection` field for callers holding bindings.inspect
 //!   (FR-013, SC-012; Go writeThreadDetailWithBindingProjection) on the new
-//!   dope-store binding evidence DAO.
+//!   kura-store binding evidence DAO.
 //! - POST /v1/threads/{id}/handoffs and
 //!   GET /v1/threads/{id}/continuity-previews/{preview_id} are fully ported on
-//!   the dope-store thread_handoff + thread_continuity DAOs, the dope-threads
+//!   the kura-store thread_handoff + thread_continuity DAOs, the kura-threads
 //!   handoff/continuity domain (validate_handoff /
 //!   build_handoff_source_references / resolve_conversation_shape) and the
-//!   active-profile projection DAOs (dope-store profiles.rs).
-//! - The agent profile family is fully ported on the dope-store profile DAOs
+//!   active-profile projection DAOs (kura-store profiles.rs).
+//! - The agent profile family is fully ported on the kura-store profile DAOs
 //!   (list/create/get/update/activate/versions/rollback/retire) with the
-//!   dope-events profile lifecycle + version-created events.
+//!   kura-events profile lifecycle + version-created events.
 
 use axum::body::Bytes;
 use axum::extract::{Extension, Path, Query, State};
@@ -41,11 +41,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use dope_connectors as connectors;
-use dope_events as events;
-use dope_identity::{has_permission, Permission};
-use dope_profiles as profiles;
-use dope_threads as threads;
+use kura_connectors as connectors;
+use kura_events as events;
+use kura_identity::{has_permission, Permission};
+use kura_profiles as profiles;
+use kura_threads as threads;
 
 use crate::error::ApiError;
 use crate::middleware::TenantContext;
@@ -124,15 +124,15 @@ struct ThreadLifecycleActionRequest {
 #[serde(rename_all = "camelCase")]
 struct ThreadLifecycleActionResponse {
     thread_id: String,
-    lifecycle_state: dope_threads::LifecycleState,
+    lifecycle_state: kura_threads::LifecycleState,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     previous_session_segment_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     current_session_segment_id: String,
     audit_event_id: String,
     changed_at: DateTime<Utc>,
-    action: dope_threads::LifecycleActionKind,
-    available_actions: Vec<dope_threads::LifecycleActionKind>,
+    action: kura_threads::LifecycleActionKind,
+    available_actions: Vec<kura_threads::LifecycleActionKind>,
 }
 
 /// Go threadHandoffDestinationRequest.
@@ -169,7 +169,7 @@ async fn list_threads(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Query(query): Query<ThreadListQuery>,
-) -> Result<Json<dope_threads::ThreadListResponse>, ApiError> {
+) -> Result<Json<kura_threads::ThreadListResponse>, ApiError> {
     let tc = require_thread_permission(tenant.as_ref().map(|e| &e.0), Permission::CredentialsInspect)?;
     // Go parseThreadLifecycleLimit: unparseable/zero limits default to 20 (the
     // store applies that default).
@@ -178,7 +178,7 @@ async fn list_threads(
         .as_deref()
         .and_then(|raw| raw.parse::<i64>().ok())
         .unwrap_or(0);
-    let store_query = dope_store::ThreadListQuery {
+    let store_query = kura_store::ThreadListQuery {
         tenant_id: tc.tenant_id.clone(),
         limit,
         cursor: query.cursor.unwrap_or_default(),
@@ -227,7 +227,7 @@ async fn thread_reset(
     Path(thread_id): Path<String>,
     body: Bytes,
 ) -> Result<Json<ThreadLifecycleActionResponse>, ApiError> {
-    thread_lifecycle_action(state, tenant, thread_id, dope_threads::LifecycleActionKind::Reset, body).await
+    thread_lifecycle_action(state, tenant, thread_id, kura_threads::LifecycleActionKind::Reset, body).await
 }
 
 /// POST /v1/threads/{thread_id}/archive — archive lifecycle mutation.
@@ -237,7 +237,7 @@ async fn thread_archive(
     Path(thread_id): Path<String>,
     body: Bytes,
 ) -> Result<Json<ThreadLifecycleActionResponse>, ApiError> {
-    thread_lifecycle_action(state, tenant, thread_id, dope_threads::LifecycleActionKind::Archive, body).await
+    thread_lifecycle_action(state, tenant, thread_id, kura_threads::LifecycleActionKind::Archive, body).await
 }
 
 /// POST /v1/threads/{thread_id}/reopen — reopen lifecycle mutation.
@@ -247,7 +247,7 @@ async fn thread_reopen(
     Path(thread_id): Path<String>,
     body: Bytes,
 ) -> Result<Json<ThreadLifecycleActionResponse>, ApiError> {
-    thread_lifecycle_action(state, tenant, thread_id, dope_threads::LifecycleActionKind::Reopen, body).await
+    thread_lifecycle_action(state, tenant, thread_id, kura_threads::LifecycleActionKind::Reopen, body).await
 }
 
 /// Shared body of the three lifecycle mutations (Go
@@ -258,7 +258,7 @@ async fn thread_lifecycle_action(
     state: AppState,
     tenant: Option<Extension<TenantContext>>,
     thread_id: String,
-    kind: dope_threads::LifecycleActionKind,
+    kind: kura_threads::LifecycleActionKind,
     body: Bytes,
 ) -> Result<Json<ThreadLifecycleActionResponse>, ApiError> {
     let tc = require_thread_permission(tenant.as_ref().map(|e| &e.0), Permission::ConnectorsManage)?;
@@ -270,7 +270,7 @@ async fn thread_lifecycle_action(
         lifecycle_action_kind_str(kind),
         now.timestamp_nanos_opt().unwrap_or_default()
     );
-    let mutation_input = dope_threads::LifecycleMutationInput {
+    let mutation_input = kura_threads::LifecycleMutationInput {
         actor_principal_id: tc.principal_id.clone(),
         reason_code: coalesce_reason(&input.reason_code, lifecycle_action_kind_str(kind)),
         audit_event_id: audit_event_id.clone(),
@@ -297,7 +297,7 @@ async fn thread_lifecycle_action(
         return Err(ApiError::NotFound("not found".to_string()));
     };
     publish_thread_event(&state, &tc.tenant_id, events::thread_lifecycle_event(result.action.clone()))?;
-    if kind == dope_threads::LifecycleActionKind::Reset {
+    if kind == kura_threads::LifecycleActionKind::Reset {
         // Go: ListResetEventsForThread(limit 1) -> ThreadScopedResetEvidenceEvent.
         let reset = state
             .store
@@ -318,7 +318,7 @@ async fn thread_lifecycle_action(
         audit_event_id: result.action.audit_event_id.clone(),
         changed_at: result.action.completed_at,
         action: kind,
-        available_actions: dope_threads::available_actions(result.thread.lifecycle_state),
+        available_actions: kura_threads::available_actions(result.thread.lifecycle_state),
     }))
 }
 
@@ -395,7 +395,7 @@ async fn thread_continuity_preview_detail(
 /// continuity source references.
 fn create_thread_handoff(
     state: &AppState,
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     source_thread_id: &str,
     input: &ThreadHandoffRequest,
     now: DateTime<Utc>,
@@ -468,7 +468,7 @@ fn create_thread_handoff(
     let turns = state
         .store
         .lock()
-        .list_continuity_turns(&dope_store::thread_continuity::ContinuityLookupQuery {
+        .list_continuity_turns(&kura_store::thread_continuity::ContinuityLookupQuery {
             tenant_id: tc.tenant_id.clone(),
             thread_id: source_thread.thread_id.clone(),
             session_segment_id: source_thread.current_session_segment_id.clone(),
@@ -498,7 +498,7 @@ fn create_thread_handoff(
 /// source continuation key and record a proven shape.
 fn ensure_handoff_destination_thread(
     state: &AppState,
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     destination: &ThreadHandoffDestinationRequest,
     now: DateTime<Utc>,
 ) -> Result<(threads::Thread, threads::ConversationShapeEvidence, bool), ApiError> {
@@ -678,7 +678,7 @@ fn ensure_handoff_destination_thread(
 /// Go validateHandoffSource.
 fn validate_handoff_source(
     state: &AppState,
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     source_thread: &threads::Thread,
     source_shape: &threads::ConversationShapeEvidence,
 ) -> Result<(bool, bool), ApiError> {
@@ -702,7 +702,7 @@ fn validate_handoff_source(
 /// policy.
 fn validate_channel_handoff_endpoint(
     state: &AppState,
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     connector_id: &str,
     source_conversation_id: &str,
     capability_key: &str,
@@ -736,7 +736,7 @@ fn validate_channel_handoff_endpoint(
 /// Go connectorHandoffCapabilityUnsupported: an explicit capability value that
 /// is neither supported nor limited means the endpoint cannot hand off.
 fn connector_handoff_capability_unsupported(
-    connector: &dope_connectors::Connector,
+    connector: &kura_connectors::Connector,
     capability_key: &str,
 ) -> bool {
     if connector.capability_profile.is_empty() || capability_key.trim().is_empty() {
@@ -758,7 +758,7 @@ fn find_connector_for_tenant(
     state: &AppState,
     tenant_id: &str,
     connector_id: &str,
-) -> Result<Option<dope_connectors::Connector>, ApiError> {
+) -> Result<Option<kura_connectors::Connector>, ApiError> {
     let items = state.store.lock().list_connectors().map_err(ApiError::from_store)?;
     for item in items {
         if item.connector_id.trim() != connector_id.trim() {
@@ -785,7 +785,7 @@ fn handoff_error(err: threads::ThreadsError) -> ApiError {
     }
 }
 
-/// Go shortHandoffHash: 24 hex chars. dope-api has no sha2 dependency, so the
+/// Go shortHandoffHash: 24 hex chars. kura-api has no sha2 dependency, so the
 /// uuid v4 hex (32 chars) is truncated to the same id shape; uniqueness comes
 /// from the uuid, matching Go's intent.
 fn short_handoff_hash(value: &str) -> String {
@@ -1148,7 +1148,7 @@ async fn retire_profile(
 fn require_thread_permission(
     tenant: Option<&TenantContext>,
     permission: Permission,
-) -> Result<&dope_identity::TenantContext, ApiError> {
+) -> Result<&kura_identity::TenantContext, ApiError> {
     let Some(tc) = tenant else {
         return Err(credential_denial());
     };
@@ -1184,11 +1184,11 @@ fn coalesce_reason(value: &str, fallback: &str) -> String {
 }
 
 /// Wire string for a lifecycle action kind (Go's `string(kind)`).
-fn lifecycle_action_kind_str(kind: dope_threads::LifecycleActionKind) -> &'static str {
+fn lifecycle_action_kind_str(kind: kura_threads::LifecycleActionKind) -> &'static str {
     match kind {
-        dope_threads::LifecycleActionKind::Reset => "reset",
-        dope_threads::LifecycleActionKind::Archive => "archive",
-        dope_threads::LifecycleActionKind::Reopen => "reopen",
+        kura_threads::LifecycleActionKind::Reset => "reset",
+        kura_threads::LifecycleActionKind::Archive => "archive",
+        kura_threads::LifecycleActionKind::Reopen => "reopen",
     }
 }
 
@@ -1196,11 +1196,11 @@ fn lifecycle_action_kind_str(kind: dope_threads::LifecycleActionKind) -> &'stati
 /// 500 with the stable message; transition/conflict/reopen-eligibility
 /// failures surface as 409 with the error text; everything else is 500.
 fn map_thread_lifecycle_error(message: String) -> ApiError {
-    if message == dope_threads::ThreadsError::AuditEvidenceRequired.to_string() {
+    if message == kura_threads::ThreadsError::AuditEvidenceRequired.to_string() {
         ApiError::Internal("thread lifecycle audit evidence is required".to_string())
-    } else if message == dope_threads::ThreadsError::LifecycleTransitionNotAllowed.to_string()
-        || message == dope_threads::ThreadsError::LifecycleMutationConflict.to_string()
-        || message == dope_threads::ThreadsError::LifecycleReopenNotEligible.to_string()
+    } else if message == kura_threads::ThreadsError::LifecycleTransitionNotAllowed.to_string()
+        || message == kura_threads::ThreadsError::LifecycleMutationConflict.to_string()
+        || message == kura_threads::ThreadsError::LifecycleReopenNotEligible.to_string()
     {
         ApiError::Conflict(message)
     } else {
@@ -1211,8 +1211,8 @@ fn map_thread_lifecycle_error(message: String) -> ApiError {
 /// Go: ThreadAuditFailedClosedEvent is published for audit-evidence and
 /// concurrent-mutation failures.
 fn is_audit_failed_closed(message: &str) -> bool {
-    message == dope_threads::ThreadsError::AuditEvidenceRequired.to_string()
-        || message == dope_threads::ThreadsError::LifecycleMutationConflict.to_string()
+    message == kura_threads::ThreadsError::AuditEvidenceRequired.to_string()
+        || message == kura_threads::ThreadsError::LifecycleMutationConflict.to_string()
 }
 
 /// Go publishEvent (legacy store-append path then bus publish). The thread
@@ -1272,7 +1272,7 @@ fn require_profile_permission<'a>(
     permission: Permission,
     event_name: &str,
     profile_id: &str,
-) -> Result<&'a dope_identity::TenantContext, ApiError> {
+) -> Result<&'a kura_identity::TenantContext, ApiError> {
     let Some(tc) = tenant else {
         return Err(credential_denial());
     };
@@ -1302,7 +1302,7 @@ fn require_profile_permission<'a>(
 /// Go publishProfileLifecycle for mutation failures: a denied lifecycle event.
 fn publish_profile_denied_event(
     state: &AppState,
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     profile_id: &str,
     event_name: &str,
     message: &str,
@@ -1328,7 +1328,7 @@ fn publish_profile_denied_event(
 /// successful profile mutation.
 fn publish_profile_mutation_events(
     state: &AppState,
-    actor: &dope_identity::TenantContext,
+    actor: &kura_identity::TenantContext,
     result: &profiles::MutationResult,
     event_name: &str,
     outcome: &str,
@@ -1419,7 +1419,7 @@ fn profile_reason_code(message: &str) -> String {
 /// has no active selection or the resource id is empty.
 fn record_active_profile_projection_for_target(
     state: &AppState,
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     resource_kind: profiles::RuntimeResourceKind,
     resource_id: &str,
     thread_id: &str,
@@ -1467,7 +1467,7 @@ fn record_active_profile_projection_for_target(
 /// additive `bindingProjection` field (FR-013, SC-012).
 fn write_thread_detail_with_binding_projection(
     state: &AppState,
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     thread_id: &str,
     response: threads::ThreadDetailResponse,
 ) -> Result<Json<serde_json::Value>, ApiError> {
@@ -1485,7 +1485,7 @@ fn write_thread_detail_with_binding_projection(
         if let Some(evidence) = evidence {
             merged.insert(
                 "bindingProjection".to_string(),
-                serde_json::to_value(dope_bindings::to_runtime_evidence_resource(&evidence))
+                serde_json::to_value(kura_bindings::to_runtime_evidence_resource(&evidence))
                     .map_err(ApiError::from)?,
             );
         }
@@ -1502,36 +1502,36 @@ mod tests {
     use axum::http::Request;
     use axum::http::header::CONTENT_TYPE;
     use chrono::{Duration, TimeZone};
-    use dope_identity::Permission;
-    use dope_threads as threads;
+    use kura_identity::Permission;
+    use kura_threads as threads;
     use parking_lot::Mutex;
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-resources".to_string(),
+            data_dir: "/tmp/kura-api-resources".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
-                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
-                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
-                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
+                telegram: kura_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
+                slack: kura_config::SlackConnectorConfig { enabled: false, ..Default::default() },
+                matrix: kura_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
             },
         }
     }
 
     fn test_state() -> AppState {
-        let dir = std::env::temp_dir().join(format!("dope-api-resources-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-resources-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store)
+        AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store)
     }
 
     fn request(method: &str, uri: &str, body: Option<&str>) -> Request<Body> {
@@ -1557,7 +1557,7 @@ mod tests {
         permissions: Vec<Permission>,
     ) -> Request<Body> {
         let mut req = request(method, uri, body);
-        req.extensions_mut().insert(TenantContext(dope_identity::TenantContext {
+        req.extensions_mut().insert(TenantContext(kura_identity::TenantContext {
             tenant_id: tenant_id.to_string(),
             principal_id: format!("prn_{tenant_id}"),
             permissions,
@@ -1858,14 +1858,14 @@ mod tests {
         assert_eq!(detail.reset_events[0].conversation_shape, threads::ConversationShape::Room);
         assert_eq!(detail.reset_events[0].permission_gate, "connectors.manage");
 
-        let thread_events = state.event_bus.list(&dope_events::Filter {
+        let thread_events = state.event_bus.list(&kura_events::Filter {
             category: "thread".to_string(),
             ..Default::default()
         });
         assert!(
             thread_events
                 .iter()
-                .any(|event| event.name == dope_events::THREAD_RESET_SCOPED_NAME
+                .any(|event| event.name == kura_events::THREAD_RESET_SCOPED_NAME
                     && event.payload.get("conversationShape").and_then(|v| v.as_str()) == Some("room")),
             "expected thread.reset_scoped event with room shape, got {thread_events:?}"
         );
@@ -2010,16 +2010,16 @@ mod tests {
                 .expect("save continuity turn");
             // Connector + route policy make the channel endpoint eligible.
             store
-                .upsert_connector(&dope_connectors::Connector {
+                .upsert_connector(&kura_connectors::Connector {
                     tenant_id: "ten_threads".to_string(),
                     connector_id: "slack-main".to_string(),
                     kind: "slack".to_string(),
                     display_name: "Slack Main".to_string(),
-                    status: dope_connectors::Status::Healthy,
+                    status: kura_connectors::Status::Healthy,
                     capability_profile: {
                         let mut profile = serde_json::Map::new();
                         profile.insert(
-                            dope_connectors::HANDOFF_SURFACE_DESTINATION_SUPPORT.to_string(),
+                            kura_connectors::HANDOFF_SURFACE_DESTINATION_SUPPORT.to_string(),
                             serde_json::Value::String("supported".to_string()),
                         );
                         profile
@@ -2030,7 +2030,7 @@ mod tests {
                 })
                 .expect("upsert connector");
             store
-                .save_channel_route_policy(&dope_connectors::RoutePolicy {
+                .save_channel_route_policy(&kura_connectors::RoutePolicy {
                     route_policy_id: "route_policy_slack-main".to_string(),
                     tenant_id: "ten_threads".to_string(),
                     connector_id: "slack-main".to_string(),
@@ -2039,13 +2039,13 @@ mod tests {
                     eligible_conversations: vec!["channel_redacted".to_string()],
                     validation_state: "valid".to_string(),
                     validated_at: now,
-                    redaction_status: dope_connectors::RedactionStatus::Redacted,
+                    redaction_status: kura_connectors::RedactionStatus::Redacted,
                     ..Default::default()
                 })
                 .expect("save route policy");
             let result = store
                 .create_agent_profile(
-                    &dope_identity::TenantContext {
+                    &kura_identity::TenantContext {
                         tenant_id: "ten_threads".to_string(),
                         principal_id: "prn_profile_admin".to_string(),
                         ..Default::default()
@@ -2100,9 +2100,9 @@ mod tests {
         // thread.handoff_linked was published.
         let events = state
             .event_bus
-            .list(&dope_events::Filter { category: "thread".to_string(), ..Default::default() });
+            .list(&kura_events::Filter { category: "thread".to_string(), ..Default::default() });
         assert!(
-            events.iter().any(|event| event.name == dope_events::THREAD_HANDOFF_LINKED_NAME
+            events.iter().any(|event| event.name == kura_events::THREAD_HANDOFF_LINKED_NAME
                 && event.payload.get("sourceThreadId").and_then(|v| v.as_str()) == Some("thr_handoff_source")),
             "expected handoff linked event: {events:?}"
         );
@@ -2293,7 +2293,7 @@ mod tests {
         // Durable profile events: denied update + validation failure.
         let events = state
             .event_bus
-            .list(&dope_events::Filter { category: "agent_profile".to_string(), ..Default::default() });
+            .list(&kura_events::Filter { category: "agent_profile".to_string(), ..Default::default() });
         assert!(
             events.iter().any(|event| event.name == "agent_profile.update_denied"
                 && event.payload.get("reasonCode").and_then(|v| v.as_str()) == Some("permission_denied")),
@@ -2385,15 +2385,15 @@ mod tests {
         {
             let store = state.store.lock();
             store
-                .record_runtime_binding_evidence(dope_bindings::RuntimeBindingEvidence {
+                .record_runtime_binding_evidence(kura_bindings::RuntimeBindingEvidence {
                     tenant_id: "ten_threads".to_string(),
                     resource_kind: "thread".to_string(),
                     resource_id: "thr_binding".to_string(),
-                    binding_scope: dope_bindings::BindingRuntimeScope::CHANNEL,
-                    classification: dope_bindings::Classification::APPLIED,
+                    binding_scope: kura_bindings::BindingRuntimeScope::CHANNEL,
+                    classification: kura_bindings::Classification::APPLIED,
                     selection_reason: "explicit_binding_selection".to_string(),
                     occurred_at: now,
-                    redaction_status: dope_bindings::RedactionStatus::REDACTED,
+                    redaction_status: kura_bindings::RedactionStatus::REDACTED,
                     ..Default::default()
                 })
                 .expect("record binding evidence");

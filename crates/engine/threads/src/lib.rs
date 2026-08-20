@@ -5,7 +5,7 @@
 //! windows, group/room participation, handoff links, and redaction-safe
 //! evidence summaries.
 //!
-//! ID fields are plain `String` (not `dope_protocol::ThreadId`/`TenantId`):
+//! ID fields are plain `String` (not `kura_protocol::ThreadId`/`TenantId`):
 //! the Go daemon stores connector-derived thread IDs (Slack message IDs,
 //! Matrix conversation IDs, `thread_*` strings) that are not UUIDs, so the
 //! UUIDv7 newtypes would reject real persisted data.

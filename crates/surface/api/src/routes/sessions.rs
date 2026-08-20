@@ -25,8 +25,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
 
-use dope_events as events;
-use dope_router as router_domain;
+use kura_events as events;
+use kura_router as router_domain;
 
 use crate::error::ApiError;
 use crate::middleware::{environment_scope_from_config, TenantContext};
@@ -167,13 +167,13 @@ mod tests {
     use std::sync::Arc;
 
     fn state_with_router() -> (crate::state::AppState, String) {
-        let router = dope_router::SessionRouter::new();
+        let router = kura_router::SessionRouter::new();
         let (session, _) = router
-            .route(dope_router::RouteInput {
-                kind: dope_router::SessionKind::Direct,
+            .route(kura_router::RouteInput {
+                kind: kura_router::SessionKind::Direct,
                 channel: "api".to_string(),
                 peer_id: "peer_a".to_string(),
-                ..dope_router::RouteInput::default()
+                ..kura_router::RouteInput::default()
             })
             .expect("route session");
         let mut state = test_state();

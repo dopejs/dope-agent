@@ -1,4 +1,4 @@
-use dope_opsreadiness::{
+use kura_opsreadiness::{
     calendar_real_account_smoke, contains_raw_credential_material, validate_backup_artifact,
     validate_launch_gate, validate_restart_recovery, BackupArtifact, CalendarSmokeInput,
     LaunchGateEvidence, RealAccountSmokeStatus, RestartEvent, WorkloadEvidence,

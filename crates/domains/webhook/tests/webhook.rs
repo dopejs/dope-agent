@@ -1,12 +1,12 @@
-//! Manager-behavior + round-trip tests for `dope-webhook`, mirroring the Go
+//! Manager-behavior + round-trip tests for `kura-webhook`, mirroring the Go
 //! `manager_test.go` / `persistence_test.go` coverage.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use dope_store::SQLiteStore;
-use dope_webhook::{
+use kura_store::SQLiteStore;
+use kura_webhook::{
     sign, CreateSecret, Endpoint, Firer, Manager, QuotaGate, Status, TargetKind, TriggerInput,
     TriggerRecord, TriggerStatus, WebhookError, MAX_PAYLOAD_BYTES,
 };
@@ -34,7 +34,7 @@ impl QuotaGate for DenyQuota {
 
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "dope_webhook_{tag}_{}_{}",
+        "kura_webhook_{tag}_{}_{}",
         std::process::id(),
         Uuid::new_v4().simple()
     ));
@@ -360,6 +360,6 @@ fn persistence_round_trip() {
 #[test]
 fn manager_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<dope_webhook::Manager>();
+    assert_send_sync::<kura_webhook::Manager>();
 }
 

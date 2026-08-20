@@ -3,7 +3,7 @@
 
 use crate::util::{is_go_zero_time, now_utc, payload};
 use crate::{Event, Resource};
-use dope_billing::{QuotaDenial, RecoveryDecision, UsageEvent};
+use kura_billing::{QuotaDenial, RecoveryDecision, UsageEvent};
 
 pub const BILLING_USAGE_RESERVED_NAME: &str = "billing.usage_reserved";
 pub const BILLING_USAGE_COMMITTED_NAME: &str = "billing.usage_committed";

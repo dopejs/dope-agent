@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/integration-diagnostic-retention-applied.event.schema.json",
+  "$id": "https://kura.local/schemas/events/integration-diagnostic-retention-applied.event.schema.json",
   "title": "IntegrationDiagnosticRetentionAppliedEvent",
   "allOf": [
     { "$ref": "./runtime-event.schema.json" },

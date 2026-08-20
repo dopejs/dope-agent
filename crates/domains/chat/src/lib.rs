@@ -2,14 +2,14 @@
 //!
 //! The service compiles prompts from agent overlays and selected skills,
 //! resolves active-profile / binding / continuity context, prepares and
-//! executes LLM dispatches through `dope-llm`, persists the dispatch and
+//! executes LLM dispatches through `kura-llm`, persists the dispatch and
 //! continuity lifecycle through the store, and publishes `llm`, `thread`,
 //! `agent_profile`, and `binding` events on the bus.
 //!
-//! Conventions follow the reference crates (`dope-runtime`,
-//! `dope-orchestration`): camelCase serde wire types, `dope-threads` enums
+//! Conventions follow the reference crates (`kura-runtime`,
+//! `kura-orchestration`): camelCase serde wire types, `kura-threads` enums
 //! for domain vocabularies, and typed errors. Go's `context.Context` maps to
-//! the synchronous [`CancellationToken`] API; the async `dope-llm` dispatcher
+//! the synchronous [`CancellationToken`] API; the async `kura-llm` dispatcher
 //! is bridged through a per-call current-thread Tokio runtime. Streaming
 //! supports both the Go callback-emitter shape ([`Service::stream`]) and a
 //! `std::thread` + `std::sync::mpsc` variant ([`Service::stream_channel`]).

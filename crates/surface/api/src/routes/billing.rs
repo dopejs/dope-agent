@@ -36,13 +36,13 @@ use axum::{Json as AxumJson, Router};
 use chrono::Utc;
 use serde::Deserialize;
 
-use dope_billing::{
+use kura_billing::{
     BillingError, Category, EffectiveQuota, EnforcementMode, ManualAdjustment, PlanStatus,
     QuotaDenial, QuotaOverride, ReservationStatus, ResolveReservationInput, TenantPlan,
     UsageSummary,
 };
 
-use dope_identity::{has_permission, Permission};
+use kura_identity::{has_permission, Permission};
 
 use crate::error::ApiError;
 use crate::middleware::TenantContext;
@@ -226,7 +226,7 @@ async fn billing_quotas(
 async fn billing_quota_dashboard(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
-) -> Result<Json<dope_billing::TenantQuotaDashboard>, BillingApiError> {
+) -> Result<Json<kura_billing::TenantQuotaDashboard>, BillingApiError> {
     let manager = billing_manager(&state)?;
     let tc = require_billing_permission(tenant.as_ref().map(|e| &e.0), Permission::BillingView)?;
     let dashboard = manager
@@ -258,7 +258,7 @@ async fn billing_denial_detail(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(denial_id): Path<String>,
-) -> Result<Json<dope_billing::QuotaDenialDetail>, BillingApiError> {
+) -> Result<Json<kura_billing::QuotaDenialDetail>, BillingApiError> {
     let manager = billing_manager(&state)?;
     let tc = require_billing_permission(tenant.as_ref().map(|e| &e.0), Permission::BillingView)?;
     let detail = manager
@@ -276,7 +276,7 @@ async fn billing_evidence_export(
     State(state): State<AppState>,
     tenant: Option<Extension<TenantContext>>,
     Path(denial_id): Path<String>,
-) -> Result<Json<dope_billing::BillingEvidenceExport>, BillingApiError> {
+) -> Result<Json<kura_billing::BillingEvidenceExport>, BillingApiError> {
     let manager = billing_manager(&state)?;
     let tc = require_billing_permission(
         tenant.as_ref().map(|e| &e.0),
@@ -363,7 +363,7 @@ async fn admin_billing_quota_override(
         created_by_principal_id: tc.principal_id.clone(),
         ..Default::default()
     };
-    if dope_billing::definition_for(&request.category).is_none() {
+    if kura_billing::definition_for(&request.category).is_none() {
         return Err(BillingApiError::BadRequest(
             "unknown billing quota category".to_string(),
         ));
@@ -422,7 +422,7 @@ async fn admin_billing_reservation_resolve(
     tenant: Option<Extension<TenantContext>>,
     Path((tenant_id, reservation_id)): Path<(String, String)>,
     body: Bytes,
-) -> Result<Json<dope_billing::UsageReservation>, BillingApiError> {
+) -> Result<Json<kura_billing::UsageReservation>, BillingApiError> {
     let manager = billing_manager(&state)?;
     let tc = require_admin_target(tenant.as_ref().map(|e| &e.0), &tenant_id)?;
     let request: BillingReservationResolutionRequest = decode_json_body(&body)?;
@@ -447,12 +447,12 @@ async fn admin_billing_reservation_resolve(
 /// Go `hosted` flag: production environment enables fail-closed quota
 /// accounting (`cfg.Environment == EnvironmentProd`).
 fn hosted(state: &AppState) -> bool {
-    matches!(state.config.environment, dope_config::Environment::Prod)
+    matches!(state.config.environment, kura_config::Environment::Prod)
 }
 
 /// Go `handleHostedBilling`'s nil-manager guard: 500 "billing manager is not
 /// configured".
-fn billing_manager(state: &AppState) -> Result<&dope_billing::Manager, BillingApiError> {
+fn billing_manager(state: &AppState) -> Result<&kura_billing::Manager, BillingApiError> {
     state.billing.as_deref().ok_or_else(|| {
         BillingApiError::Api(ApiError::internal("billing manager is not configured"))
     })
@@ -463,7 +463,7 @@ fn billing_manager(state: &AppState) -> Result<&dope_billing::Manager, BillingAp
 fn require_billing_permission(
     tenant: Option<&TenantContext>,
     permission: Permission,
-) -> Result<&dope_identity::TenantContext, BillingApiError> {
+) -> Result<&kura_identity::TenantContext, BillingApiError> {
     let denied = || ApiError::Forbidden("tenant access denied".to_string());
     let Some(tc) = tenant else {
         return Err(denied().into());
@@ -479,7 +479,7 @@ fn require_billing_permission(
 fn require_admin_target<'a>(
     tenant: Option<&'a TenantContext>,
     target_tenant_id: &str,
-) -> Result<&'a dope_identity::TenantContext, BillingApiError> {
+) -> Result<&'a kura_identity::TenantContext, BillingApiError> {
     let tc = require_billing_permission(tenant, Permission::BillingManage)?;
     if target_tenant_id != tc.tenant_id {
         return Err(ApiError::Forbidden("tenant access denied".to_string()).into());
@@ -519,7 +519,7 @@ mod tests {
     use axum::http::Request;
     use axum::http::header::CONTENT_TYPE;
     use chrono::{DateTime, Utc};
-    use dope_billing::{
+    use kura_billing::{
         BoxFuture, QuotaDefinition, QuotaPeriod, Repository, UsageCounter, UsageEvent,
         UsageReservation,
     };
@@ -528,7 +528,7 @@ mod tests {
     use uuid::Uuid;
 
     /// Result alias for the in-memory repository (the billing crate Result alias is crate-private).
-    type Result<T> = std::result::Result<T, dope_billing::BillingError>;
+    type Result<T> = std::result::Result<T, kura_billing::BillingError>;
 
     // -- fixture state ------------------------------------------------------
 
@@ -543,7 +543,7 @@ mod tests {
         adjustments: Vec<ManualAdjustment>,
     }
 
-    /// Minimal in-memory billing repository for the route tests (the dope-store
+    /// Minimal in-memory billing repository for the route tests (the kura-store
     /// billing DAOs are not ported; this mirrors the billing crate's own
     /// `FixtureRepo` shape).
     #[derive(Default)]
@@ -656,7 +656,7 @@ mod tests {
             definition: &QuotaDefinition,
             at: DateTime<Utc>,
         ) -> BoxFuture<'_, Result<QuotaPeriod>> {
-            let (start, end) = dope_billing::period_for(&definition.period_kind, at);
+            let (start, end) = kura_billing::period_for(&definition.period_kind, at);
             let period = QuotaPeriod {
                 quota_period_id: format!("period_{tenant_id}_{}", definition.category),
                 tenant_id: tenant_id.to_string(),
@@ -845,35 +845,35 @@ mod tests {
 
     // -- harness -------------------------------------------------------------
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-billing".to_string(),
+            data_dir: "/tmp/kura-api-billing".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
-                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
-                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
-                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
+                telegram: kura_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
+                slack: kura_config::SlackConnectorConfig { enabled: false, ..Default::default() },
+                matrix: kura_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
             },
         }
     }
 
     fn test_state() -> AppState {
-        let dir = std::env::temp_dir().join(format!("dope-api-billing-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-billing-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store)
+        AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store)
     }
 
     fn billing_state(repo: Arc<TestBillingRepo>) -> AppState {
         let mut state = test_state();
-        state.billing = Some(Arc::new(dope_billing::Manager::new(repo)));
+        state.billing = Some(Arc::new(kura_billing::Manager::new(repo)));
         state
     }
 
@@ -900,7 +900,7 @@ mod tests {
         permissions: Vec<Permission>,
     ) -> Request<Body> {
         let mut req = request(method, uri, body);
-        req.extensions_mut().insert(TenantContext(dope_identity::TenantContext {
+        req.extensions_mut().insert(TenantContext(kura_identity::TenantContext {
             tenant_id: tenant_id.to_string(),
             principal_id: format!("prn_{tenant_id}"),
             permissions,
@@ -979,7 +979,7 @@ mod tests {
             assert_eq!(json["planKey"], want_plan_key);
             assert_eq!(json["enforcementMode"], want_enforcement);
             let quotas = json["quotas"].as_array().expect("quotas array");
-            assert_eq!(quotas.len(), dope_billing::required_categories().len());
+            assert_eq!(quotas.len(), kura_billing::required_categories().len());
         }
     }
 
@@ -1163,9 +1163,9 @@ mod tests {
         assert_eq!(json["limit"], 1);
 
         // The manager (backed by the same repo) must now deny new work.
-        let manager = dope_billing::Manager::new(repo);
+        let manager = kura_billing::Manager::new(repo);
         let result = manager
-            .reserve(dope_billing::ReserveInput {
+            .reserve(kura_billing::ReserveInput {
                 tenant_id: "ten_r38_lowered_override".to_string(),
                 category: category.clone(),
                 amount: 1,
@@ -1187,7 +1187,7 @@ mod tests {
         repo.seed_plan("ten_r38_admin_denied", "finite", EnforcementMode::ENFORCED);
         let category = Category::from(Category::RUN_LAUNCHES);
         let period_id = format!("period_ten_r38_admin_denied_{category}");
-        repo.seed_reservation(dope_billing::UsageReservation {
+        repo.seed_reservation(kura_billing::UsageReservation {
             reservation_id: "reservation_denied_admin_route".to_string(),
             tenant_id: "ten_r38_admin_denied".to_string(),
             category: category.clone(),
@@ -1223,7 +1223,7 @@ mod tests {
         let category = Category::from(Category::RUN_LAUNCHES);
         let period_id = format!("period_ten_r38_resolve_{category}");
         repo.seed_counter("ten_r38_resolve", &category, &period_id, 0, 1);
-        repo.seed_reservation(dope_billing::UsageReservation {
+        repo.seed_reservation(kura_billing::UsageReservation {
             reservation_id: "reservation_resolve".to_string(),
             tenant_id: "ten_r38_resolve".to_string(),
             category: category.clone(),
@@ -1267,8 +1267,8 @@ mod tests {
     #[tokio::test]
     async fn billing_hosted_tenant_without_plan_fails_closed_503() {
         let mut state = test_state();
-        state.config.environment = dope_config::Environment::Prod;
-        state.billing = Some(Arc::new(dope_billing::Manager::new(Arc::new(
+        state.config.environment = kura_config::Environment::Prod;
+        state.billing = Some(Arc::new(kura_billing::Manager::new(Arc::new(
             TestBillingRepo::default(),
         ))));
         let app = app(state);

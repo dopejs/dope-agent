@@ -10,9 +10,9 @@ use axum::routing::{get, patch, post};
 use axum::Router;
 use serde::{Deserialize, Serialize};
 
-use dope_identity::{has_permission, Permission};
-use dope_mcp as mcp;
-use dope_webhook as webhook;
+use kura_identity::{has_permission, Permission};
+use kura_mcp as mcp;
+use kura_webhook as webhook;
 
 use crate::error::ApiError;
 use crate::middleware::TenantContext;
@@ -606,7 +606,7 @@ fn mcp_manager(state: &AppState) -> Result<&mcp::Manager, ApiError> {
 }
 
 /// Go nil-registry guard: 500 "skills registry is not configured".
-fn skills_registry(state: &AppState) -> Result<&dope_skills::Registry, ApiError> {
+fn skills_registry(state: &AppState) -> Result<&kura_skills::Registry, ApiError> {
     state
         .skills
         .as_deref()
@@ -624,7 +624,7 @@ fn webhook_manager(state: &AppState) -> Result<&webhook::Manager, ApiError> {
 /// Go requireMCPPermissionIfTenant: local (no tenant context) requests skip
 /// the check; tenant contexts need mcp.manage or answer the stable credential
 /// denial (403).
-fn require_mcp_manage(tenant: Option<&dope_identity::TenantContext>) -> Result<(), ApiError> {
+fn require_mcp_manage(tenant: Option<&kura_identity::TenantContext>) -> Result<(), ApiError> {
     if let Some(tc) = tenant {
         if !tc.tenant_id.trim().is_empty()
             && !has_permission(&tc.permissions, Permission::McpManage)
@@ -639,7 +639,7 @@ fn require_mcp_manage(tenant: Option<&dope_identity::TenantContext>) -> Result<(
 /// the tenant-scoped projection (cross-tenant reads hide as None).
 fn mcp_server_resource_for_request(
     manager: &mcp::Manager,
-    tenant: Option<&dope_identity::TenantContext>,
+    tenant: Option<&kura_identity::TenantContext>,
     server_id: &str,
 ) -> Option<mcp::ServerResource> {
     match tenant {
@@ -655,7 +655,7 @@ fn mcp_server_resource_for_request(
 /// true (403).
 fn ensure_mcp_server_route_access(
     manager: &mcp::Manager,
-    tenant: Option<&dope_identity::TenantContext>,
+    tenant: Option<&kura_identity::TenantContext>,
     server_id: &str,
     manage: bool,
 ) -> Result<(), ApiError> {
@@ -669,7 +669,7 @@ fn ensure_mcp_server_route_access(
 }
 
 /// Go currentActor: the acting principal id from the tenant context.
-fn current_actor(tenant: Option<&dope_identity::TenantContext>) -> String {
+fn current_actor(tenant: Option<&kura_identity::TenantContext>) -> String {
     tenant.map(|tc| tc.principal_id.clone()).unwrap_or_default()
 }
 
@@ -768,7 +768,7 @@ fn decode_optional_json_body<T: serde::de::DeserializeOwned + Default>(
 }
 
 /// Go buildSkillSummaryResponse.
-fn build_skill_summary_response(skill: &dope_skills::Skill) -> SkillSummaryResponse {
+fn build_skill_summary_response(skill: &kura_skills::Skill) -> SkillSummaryResponse {
     SkillSummaryResponse {
         skill_id: skill.skill_id.clone(),
         name: skill.name.clone(),
@@ -794,7 +794,7 @@ fn build_skill_summary_response(skill: &dope_skills::Skill) -> SkillSummaryRespo
 }
 
 /// Go buildSkillDetailResponse.
-fn build_skill_detail_response(skill: &dope_skills::Skill) -> SkillDetailResponse {
+fn build_skill_detail_response(skill: &kura_skills::Skill) -> SkillDetailResponse {
     SkillDetailResponse {
         summary: build_skill_summary_response(skill),
         frontmatter_raw: skill.frontmatter_raw.clone(),
@@ -803,7 +803,7 @@ fn build_skill_detail_response(skill: &dope_skills::Skill) -> SkillDetailRespons
 }
 
 /// Go buildSkillRegistryResponse.
-fn build_skill_registry_response(snapshot: &dope_skills::Snapshot) -> SkillRegistryResponse {
+fn build_skill_registry_response(snapshot: &kura_skills::Snapshot) -> SkillRegistryResponse {
     SkillRegistryResponse {
         loaded_at: snapshot.loaded_at,
         items: snapshot.skills.iter().map(build_skill_summary_response).collect(),
@@ -834,30 +834,30 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-mcp".to_string(),
+            data_dir: "/tmp/kura-api-mcp".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
-                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
-                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
-                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
+                telegram: kura_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
+                slack: kura_config::SlackConnectorConfig { enabled: false, ..Default::default() },
+                matrix: kura_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
             },
         }
     }
 
     fn test_state() -> AppState {
-        let dir = std::env::temp_dir().join(format!("dope-api-mcp-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-mcp-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store)
+        AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store)
     }
 
     fn request(method: &str, uri: &str, body: Option<&str>) -> Request<Body> {
@@ -881,7 +881,7 @@ mod tests {
         permissions: Vec<Permission>,
     ) -> Request<Body> {
         let mut req = request(method, uri, body);
-        req.extensions_mut().insert(TenantContext(dope_identity::TenantContext {
+        req.extensions_mut().insert(TenantContext(kura_identity::TenantContext {
             tenant_id: tenant_id.to_string(),
             principal_id: format!("prn_{tenant_id}"),
             permissions,
@@ -1057,7 +1057,7 @@ mod tests {
     /// Builds a registry over a temp data root containing one SKILL.md bundle.
     fn skills_state() -> AppState {
         let mut state = test_state();
-        let root = std::env::temp_dir().join(format!("dope-api-skills-{}", Uuid::now_v7()));
+        let root = std::env::temp_dir().join(format!("kura-api-skills-{}", Uuid::now_v7()));
         let skill_dir = root.join("skills").join("demo-skill");
         std::fs::create_dir_all(&skill_dir).expect("mkdir skill");
         std::fs::write(
@@ -1067,7 +1067,7 @@ mod tests {
         .expect("write skill");
         let home = root.join("home");
         let registry =
-            dope_skills::Registry::with_roots(&home.to_string_lossy(), root.to_str().expect("path"))
+            kura_skills::Registry::with_roots(&home.to_string_lossy(), root.to_str().expect("path"))
                 .expect("registry");
         state.skills = Some(Arc::new(registry));
         state

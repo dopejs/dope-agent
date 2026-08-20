@@ -2,11 +2,11 @@
 //! readiness_test.go).
 
 use chrono::{Duration, TimeZone, Utc};
-use dope_connectors::{DiagnosticReasonCode, LifecycleState};
-use dope_slack::destinations::{
+use kura_connectors::{DiagnosticReasonCode, LifecycleState};
+use kura_slack::destinations::{
     ConversationRoute, ConversationType, RoutePolicy, RouteValidationState, SelectedChannelState,
 };
-use dope_slack::readiness::{
+use kura_slack::readiness::{
     HostedSetupInput, OAuthState, RoutePolicyState, TerminalState, WorkspaceBinding,
     evaluate_hosted_setup,
 };

@@ -156,7 +156,7 @@ remediation inspectable through stable product surfaces and repeatable smoke evi
   not include raw credential material.
 - API, schema, SDK, and web tests for diagnostic resource shapes and permission denials.
 - Real-account smoke report fixture covering passed, failed, blocked, and skipped domains.
-- Manual `DOPE_ENV=test` smoke for at least one Feishu/Lark diagnostic path when safe
+- Manual `KURA_ENV=test` smoke for at least one Feishu/Lark diagnostic path when safe
   credentials and tenant approval are available.
 - Release-truth checklist review classifies missing safe credentials, tenant approval, or
   operator-deferred smoke as explicit residual release work.

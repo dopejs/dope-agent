@@ -16,12 +16,12 @@ use crate::Section;
 /// current version), and the routines API link. Unknown routines and
 /// non-routine scopes collect nothing (Go returns nil, nil).
 pub struct RoutineCollector {
-    routines: Option<Arc<dope_routine::Manager>>,
+    routines: Option<Arc<kura_routine::Manager>>,
 }
 
 impl RoutineCollector {
     #[must_use]
-    pub fn new(routines: Option<Arc<dope_routine::Manager>>) -> Self {
+    pub fn new(routines: Option<Arc<kura_routine::Manager>>) -> Self {
         Self { routines }
     }
 }

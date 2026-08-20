@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDopeClient } from "./index.js";
+import { createKuraClient } from "./index.js";
 
 function jsonResponse(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -15,7 +15,7 @@ describe("channel management client", () => {
       .mockResolvedValueOnce(jsonResponse({ tenantId: "ten_channels", page: { limit: 2, order: "attention_disabled_ready_name_id" }, items: [] }))
       .mockResolvedValueOnce(jsonResponse({ connectorId: "slack-main", connectorKind: "slack", displayName: "Slack Main", enablementState: "ready" }))
       .mockResolvedValueOnce(jsonResponse({ items: [{ diagnosticStateId: "diag_1", connectorId: "slack-main" }] }));
-    const client = createDopeClient({ baseURL: "http://127.0.0.1:19192", accessToken: "token", defaultTenantId: "ten_channels", fetchImpl });
+    const client = createKuraClient({ baseURL: "http://127.0.0.1:19192", accessToken: "token", defaultTenantId: "ten_channels", fetchImpl });
 
     await client.listChannelConnectors({ limit: 2, state: "ready" });
     await client.getChannelConnector(" slack-main ");
@@ -24,12 +24,12 @@ describe("channel management client", () => {
     expect(fetchImpl.mock.calls[0]?.[0]).toBe("http://127.0.0.1:19192/v1/channel-management/connectors?limit=2&state=ready");
     expect(fetchImpl.mock.calls[1]?.[0]).toBe("http://127.0.0.1:19192/v1/channel-management/connectors/slack-main");
     expect(fetchImpl.mock.calls[2]?.[0]).toBe("http://127.0.0.1:19192/v1/channel-management/connectors/slack-main/diagnostics");
-    expect(fetchImpl.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: "Bearer token", "X-Dope-Tenant-ID": "ten_channels" });
+    expect(fetchImpl.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: "Bearer token", "X-Kura-Tenant-ID": "ten_channels" });
   });
 
   it("routes enablement, repair, route, outcome, and support evidence methods", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(jsonResponse({ items: [] })));
-    const client = createDopeClient({ baseURL: "http://127.0.0.1:19192", fetchImpl });
+    const client = createKuraClient({ baseURL: "http://127.0.0.1:19192", fetchImpl });
 
     await client.disableChannelConnector("slack-main", { reasonCode: "maintenance" }, { tenantId: "ten_channels" });
     await client.reEnableChannelConnector("slack-main", {}, { tenantId: "ten_channels" });

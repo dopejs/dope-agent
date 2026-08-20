@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://dopejs.dev/schemas/events/integrations/adapter-health.json",
+  "$id": "https://kurajs.dev/schemas/events/integrations/adapter-health.json",
   "title": "IntegrationAdapterHealthEvent",
   "description": "Additive event emitted on adapter readiness/health/restart/circuit-break transitions, consistent with the connector/capability health surface. Carries no credentials or raw provider content.",
   "type": "object",

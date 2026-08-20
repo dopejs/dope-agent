@@ -24,8 +24,8 @@
 //! - /v1/runs/{runId}/events and the cancel/resume/steps/tool-calls subroutes (out of
 //!   scope for this wave; the runs family here ports list/get/create only).
 //! - operator activation + setup-wizard diagnostic findings (store ListActivationStates /
-//!   ResolveActiveTenantBinding / ListSetupSessions are not ported to dope-store).
-//! - scheduler-manager event persistence: dope-scheduler publishes its domain events to
+//!   ResolveActiveTenantBinding / ListSetupSessions are not ported to kura-store).
+//! - scheduler-manager event persistence: kura-scheduler publishes its domain events to
 //!   the Bus only (its own documented divergence from Go), so schedule events are not
 //!   appended to the store by the create handler either.
 
@@ -43,20 +43,20 @@ use chrono::{DateTime, Utc};
 use futures::stream::{self, Stream};
 use futures::StreamExt;
 
-use dope_calendar as calendar;
-use dope_computeruse as computeruse;
-use dope_connectors as connectors;
-use dope_delivery as delivery;
-use dope_events as events;
-use dope_integrations as integrations;
-use dope_mail as mail;
-use dope_orchestration as orchestration;
-use dope_policy as policy;
-use dope_providers as providers;
-use dope_router as router;
-use dope_runtime as runtime;
-use dope_scheduler as scheduler;
-use dope_store::SQLiteStore;
+use kura_calendar as calendar;
+use kura_computeruse as computeruse;
+use kura_connectors as connectors;
+use kura_delivery as delivery;
+use kura_events as events;
+use kura_integrations as integrations;
+use kura_mail as mail;
+use kura_orchestration as orchestration;
+use kura_policy as policy;
+use kura_providers as providers;
+use kura_router as router;
+use kura_runtime as runtime;
+use kura_scheduler as scheduler;
+use kura_store::SQLiteStore;
 
 use crate::error::ApiError;
 use crate::middleware::{environment_scope_from_config, guard_resource_for_tenant, AuthenticatedToken, TenantContext};
@@ -287,7 +287,7 @@ fn resolve_run_session(
 
 /// Go filterRunsByTenant: keep runs whose store tenant_id is NULL (legacy
 /// pre-backfill) or matches the caller; drop cross-tenant rows. Divergence:
-/// dope-store's lookup_row_tenant conflates an absent row with a NULL-tenant
+/// kura-store's lookup_row_tenant conflates an absent row with a NULL-tenant
 /// row (both return None), so non-persisted in-memory runs are kept here where
 /// Go would drop them.
 fn filter_runs_by_tenant(
@@ -762,9 +762,9 @@ fn project_schedule_calendar_summaries(
     if schedule.environment_scope.trim().is_empty() || schedule.schedule_id.trim().is_empty() {
         return Ok(schedule);
     }
-    let filter = dope_store::calendar::CalendarOperationFilter {
+    let filter = kura_store::calendar::CalendarOperationFilter {
         schedule_id: schedule.schedule_id.clone(),
-        ..dope_store::calendar::CalendarOperationFilter::default()
+        ..kura_store::calendar::CalendarOperationFilter::default()
     };
     let operations = state
         .store
@@ -802,9 +802,9 @@ fn project_schedule_mail_summaries(
     if schedule.environment_scope.trim().is_empty() || schedule.schedule_id.trim().is_empty() {
         return Ok(schedule);
     }
-    let filter = dope_store::mail::MailOperationFilter {
+    let filter = kura_store::mail::MailOperationFilter {
         schedule_id: schedule.schedule_id.clone(),
-        ..dope_store::mail::MailOperationFilter::default()
+        ..kura_store::mail::MailOperationFilter::default()
     };
     let operations = state
         .store
@@ -1239,7 +1239,7 @@ fn project_delivery_outcome_calendar_linkage(
     if outcome.environment_scope.trim().is_empty() {
         return Ok(outcome);
     }
-    let mut filter = dope_store::calendar::CalendarOperationFilter::default();
+    let mut filter = kura_store::calendar::CalendarOperationFilter::default();
     if !outcome.delivery_id.trim().is_empty() {
         filter.delivery_id = outcome.delivery_id.clone();
     } else if !outcome.workflow_id.trim().is_empty() {
@@ -1283,7 +1283,7 @@ fn project_delivery_outcome_mail_linkage(
     if outcome.environment_scope.trim().is_empty() {
         return Ok(outcome);
     }
-    let mut filter = dope_store::mail::MailOperationFilter::default();
+    let mut filter = kura_store::mail::MailOperationFilter::default();
     if !outcome.delivery_id.trim().is_empty() {
         filter.delivery_id = outcome.delivery_id.clone();
     } else if !outcome.workflow_id.trim().is_empty() {
@@ -2159,7 +2159,7 @@ fn build_diagnostics(state: &AppState) -> Result<OperatorDiagnosticListResponse,
         }
     }
 
-    // Go activationFindings + setupWizardFindings are NOT ported: dope-store has
+    // Go activationFindings + setupWizardFindings are NOT ported: kura-store has
     // no ListActivationStates / ResolveActiveTenantBinding / ListSetupSessions
     // CRUD yet (reported, not duplicated).
 
@@ -2248,14 +2248,14 @@ fn map_connector_status(status: connectors::Status) -> String {
     }
 }
 
-fn map_capability_status(status: dope_capabilities::Status) -> String {
+fn map_capability_status(status: kura_capabilities::Status) -> String {
     match status {
-        dope_capabilities::Status::Healthy => "optional".to_string(),
-        dope_capabilities::Status::Degraded | dope_capabilities::Status::BackingOff => {
+        kura_capabilities::Status::Healthy => "optional".to_string(),
+        kura_capabilities::Status::Degraded | kura_capabilities::Status::BackingOff => {
             "degraded".to_string()
         }
-        dope_capabilities::Status::Failed => "blocked".to_string(),
-        dope_capabilities::Status::Registered => "optional".to_string(),
+        kura_capabilities::Status::Failed => "blocked".to_string(),
+        kura_capabilities::Status::Registered => "optional".to_string(),
     }
 }
 
@@ -2274,18 +2274,18 @@ fn connector_operator_action(item: &connectors::Connector) -> String {
     }
 }
 
-fn capability_operator_action(item: &dope_capabilities::Capability) -> String {
+fn capability_operator_action(item: &kura_capabilities::Capability) -> String {
     match item.status {
-        dope_capabilities::Status::BackingOff => {
+        kura_capabilities::Status::BackingOff => {
             "Wait for the capability restart window or inspect its worker.".to_string()
         }
-        dope_capabilities::Status::Failed => {
+        kura_capabilities::Status::Failed => {
             "Restart or repair the capability implementation.".to_string()
         }
-        dope_capabilities::Status::Degraded => {
+        kura_capabilities::Status::Degraded => {
             "Inspect capability health and recover the degraded dependency.".to_string()
         }
-        dope_capabilities::Status::Healthy | dope_capabilities::Status::Registered => {
+        kura_capabilities::Status::Healthy | kura_capabilities::Status::Registered => {
             String::new()
         }
     }
@@ -2804,45 +2804,45 @@ mod tests {
     use axum::body::Body;
     use axum::body::to_bytes;
     use axum::http::Request as HttpRequest;
-    use dope_delivery::{
+    use kura_delivery::{
         DeliveryAdapter, DeliveryOutcome, DeliveryTarget, Manager as DeliveryManager, SendResult,
         TargetKind, TestSinkAdapter,
     };
-    use dope_events::Bus;
-    use dope_identity::TenantContext as IdentityTenantContext;
-    use dope_runtime::Manager as RuntimeManager;
-    use dope_router::SessionRouter;
-    use dope_scheduler::{
+    use kura_events::Bus;
+    use kura_identity::TenantContext as IdentityTenantContext;
+    use kura_runtime::Manager as RuntimeManager;
+    use kura_router::SessionRouter;
+    use kura_scheduler::{
         Dependencies as SchedulerDependencies, Scheduler,
     };
-    use dope_store::SQLiteStore;
+    use kura_store::SQLiteStore;
     use futures::StreamExt;
     use parking_lot::Mutex;
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-test".to_string(),
+            data_dir: "/tmp/kura-api-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig {
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                telegram: dope_config::TelegramConnectorConfig {
+                telegram: kura_config::TelegramConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                slack: dope_config::SlackConnectorConfig {
+                slack: kura_config::SlackConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                matrix: dope_config::MatrixConnectorConfig {
+                matrix: kura_config::MatrixConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
@@ -2851,7 +2851,7 @@ mod tests {
     }
 
     fn new_store() -> Arc<Mutex<SQLiteStore>> {
-        let dir = std::env::temp_dir().join(format!("dope-api-runs-{}", Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-api-runs-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         Arc::new(Mutex::new(
             SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
@@ -2873,14 +2873,14 @@ mod tests {
     /// middleware would install once an auth manager is wired).
     fn authenticated_request(uri: &str) -> HttpRequest<Body> {
         let now = Utc::now();
-        let token = dope_identity::auth::AccessToken {
+        let token = kura_identity::auth::AccessToken {
             token_id: "tok_operator_test".to_string(),
             principal_id: String::new(),
             label: String::new(),
-            mode: dope_identity::auth::PairingMode::Local,
+            mode: kura_identity::auth::PairingMode::Local,
             token_hash: String::new(),
             token_preview: String::new(),
-            status: dope_identity::auth::TokenStatus::Active,
+            status: kura_identity::auth::TokenStatus::Active,
             default_tenant_id: String::new(),
             created_at: now,
             updated_at: now,
@@ -3107,7 +3107,7 @@ mod tests {
         let bus = Arc::new(Bus::new());
         let runtime = Arc::new(RuntimeManager::new());
         let scheduler = Arc::new(Scheduler::new(SchedulerDependencies {
-            environment: dope_config::Environment::Test,
+            environment: kura_config::Environment::Test,
             runtime: Arc::clone(&runtime),
             event_bus: Some((*bus).clone()),
             store: Arc::clone(&store),
@@ -3197,7 +3197,7 @@ mod tests {
         state
             .store
             .lock()
-            .upsert_schedule(&dope_store::schedule::ScheduleRecord {
+            .upsert_schedule(&kura_store::schedule::ScheduleRecord {
                 schedule_id: "sched_prod_hidden".to_string(),
                 environment_scope: "prod".to_string(),
                 kind: "one_time".to_string(),
@@ -3504,7 +3504,7 @@ mod tests {
     struct OperatorHarness {
         state: AppState,
         runtime: Arc<RuntimeManager>,
-        policy: Arc<dope_policy::Engine>,
+        policy: Arc<kura_policy::Engine>,
         scheduler: Arc<Scheduler>,
         delivery: Arc<DeliveryManager>,
         store: Arc<Mutex<SQLiteStore>>,
@@ -3514,7 +3514,7 @@ mod tests {
         let store = new_store();
         let bus = Arc::new(Bus::new());
         let runtime = Arc::new(RuntimeManager::new());
-        let policy = Arc::new(dope_policy::Engine::new());
+        let policy = Arc::new(kura_policy::Engine::new());
         let delivery = Arc::new(DeliveryManager::new(
             "test",
             (*bus).clone(),
@@ -3522,7 +3522,7 @@ mod tests {
             adapters,
         ));
         let scheduler = Arc::new(Scheduler::new(SchedulerDependencies {
-            environment: dope_config::Environment::Test,
+            environment: kura_config::Environment::Test,
             runtime: Arc::clone(&runtime),
             event_bus: Some((*bus).clone()),
             store: Arc::clone(&store),
@@ -3537,9 +3537,9 @@ mod tests {
         state.delivery = Some(Arc::clone(&delivery));
         state.integrations = Some(Arc::new(integrations::Manager::new("test")));
         state.connectors = Some(Arc::new(connectors::Supervisor::new()));
-        state.capabilities = Some(Arc::new(dope_capabilities::Supervisor::new()));
+        state.capabilities = Some(Arc::new(kura_capabilities::Supervisor::new()));
         state.providers = Some(Arc::new(providers::new_manager(
-            dope_config::LlmConfig {
+            kura_config::LlmConfig {
                 default_provider: "echo".to_string(),
                 ..Default::default()
             },
@@ -3779,7 +3779,7 @@ mod tests {
             .capabilities
             .as_ref()
             .expect("capabilities")
-            .register(dope_capabilities::RegisterInput {
+            .register(kura_capabilities::RegisterInput {
                 capability_id: "browser".to_string(),
                 kind: "browser".to_string(),
                 display_name: "Browser".to_string(),
@@ -3791,8 +3791,8 @@ mod tests {
             .expect("capabilities")
             .report_health(
                 "browser",
-                dope_capabilities::ReportHealthInput {
-                    status: dope_capabilities::Status::Degraded,
+                kura_capabilities::ReportHealthInput {
+                    status: kura_capabilities::Status::Degraded,
                 },
             )
             .expect("report capability health");

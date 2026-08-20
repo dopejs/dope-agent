@@ -83,7 +83,7 @@ truth. It must not introduce hidden background execution.
 - API/store tests for routine lifecycle and versioning.
 - Compilation tests proving routine definitions create valid schedule/workflow targets.
 - Web tests for builder, pause/resume, and execution inspection.
-- Manual `DOPE_ENV=test` routine walkthrough.
+- Manual `KURA_ENV=test` routine walkthrough.
 
 ## Definition Of Done
 

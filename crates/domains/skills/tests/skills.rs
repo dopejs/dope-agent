@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use dope_skills::{
+use kura_skills::{
     Registry, Skill, SkillsError, SkillAvailabilityStatus, Source,
     resolve_executable_skill_secrets, resolve_executable_skill_secrets_for_tenant,
 };
@@ -292,7 +292,7 @@ fn parses_executable_manifest_and_defaults_approval_to_ask() {
     let registry = registry_for(data_root.path());
     let skill = registry.get("exec-skill").expect("exec-skill");
     let manifest = skill.execution_manifest.as_ref().expect("executable manifest");
-    assert_eq!(manifest.approval_mode, dope_sandbox::ApprovalMode::Ask, "default ask");
+    assert_eq!(manifest.approval_mode, kura_sandbox::ApprovalMode::Ask, "default ask");
     assert_eq!(skill.availability_status, SkillAvailabilityStatus::Available);
     assert_eq!(manifest.timeout_ms, 500);
     assert_eq!(manifest.args, vec!["alpha".to_string(), "beta".to_string()]);
@@ -321,12 +321,12 @@ fn marks_executable_skill_unavailable_when_secret_ref_missing_for_environment() 
         },
     );
 
-    let previous_env = std::env::var_os("DOPE_ENV");
-    unsafe { std::env::set_var("DOPE_ENV", "test") };
+    let previous_env = std::env::var_os("KURA_ENV");
+    unsafe { std::env::set_var("KURA_ENV", "test") };
     let registry = registry_for(data_root.path());
     match previous_env {
-        Some(previous) => unsafe { std::env::set_var("DOPE_ENV", previous) },
-        None => unsafe { std::env::remove_var("DOPE_ENV") },
+        Some(previous) => unsafe { std::env::set_var("KURA_ENV", previous) },
+        None => unsafe { std::env::remove_var("KURA_ENV") },
     }
 
     let skill = registry.get("secret-skill").expect("secret-skill");
@@ -387,7 +387,7 @@ fn keeps_explicit_approval_on_executable_skill() {
     let registry = registry_for(data_root.path());
     let skill = registry.get("approval-skill").expect("approval-skill");
     let manifest = skill.execution_manifest.as_ref().expect("manifest");
-    assert_eq!(manifest.approval_mode, dope_sandbox::ApprovalMode::Ask);
+    assert_eq!(manifest.approval_mode, kura_sandbox::ApprovalMode::Ask);
 }
 
 #[test]
@@ -429,7 +429,7 @@ fn projects_explicit_docker_requirement_for_executable_skill() {
     assert_eq!(skill.availability_status, SkillAvailabilityStatus::Available);
     let manifest = skill.execution_manifest.as_ref().expect("manifest");
     assert_eq!(manifest.profile_id, "docker_default");
-    assert_eq!(manifest.backend_kind, dope_sandbox::BackendKind::Docker);
+    assert_eq!(manifest.backend_kind, kura_sandbox::BackendKind::Docker);
     assert_eq!(manifest.required_enforcement_strength, "containerized");
 }
 
@@ -446,9 +446,9 @@ fn keeps_unmodified_executable_skills_on_baseline_backend() {
     let skill = registry.get("baseline-skill").expect("baseline-skill");
     let manifest = skill.execution_manifest.as_ref().expect("manifest");
     assert_eq!(manifest.profile_id, "subprocess_default");
-    assert_eq!(manifest.backend_kind, dope_sandbox::BackendKind::Subprocess);
+    assert_eq!(manifest.backend_kind, kura_sandbox::BackendKind::Subprocess);
     assert_eq!(manifest.required_enforcement_strength, "declared_only");
-    assert_eq!(manifest.network_mode, dope_sandbox::NetworkMode::Deny);
+    assert_eq!(manifest.network_mode, kura_sandbox::NetworkMode::Deny);
 }
 
 #[test]
@@ -471,12 +471,12 @@ fn reload_refreshes_snapshot_and_index() {
 // Tenant-scoped secret resolution
 // ---------------------------------------------------------------------------
 
-/// Minimal in-memory metadata store implementing `dope_secrets::Store`
+/// Minimal in-memory metadata store implementing `kura_secrets::Store`
 /// (the Go test uses `SQLiteStore`; a fake is sufficient here).
 #[derive(Default)]
 struct FakeSecretStore {
-    secrets: std::sync::Mutex<HashMap<String, dope_secrets::TenantSecret>>,
-    versions: std::sync::Mutex<HashMap<String, dope_secrets::SecretVersion>>,
+    secrets: std::sync::Mutex<HashMap<String, kura_secrets::TenantSecret>>,
+    versions: std::sync::Mutex<HashMap<String, kura_secrets::SecretVersion>>,
 }
 
 impl FakeSecretStore {
@@ -485,12 +485,12 @@ impl FakeSecretStore {
     }
 }
 
-impl dope_secrets::Store for FakeSecretStore {
+impl kura_secrets::Store for FakeSecretStore {
     fn create_secret<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
-        version: dope_secrets::SecretVersion,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        secret: kura_secrets::TenantSecret,
+        version: kura_secrets::SecretVersion,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             self.secrets.lock().unwrap().insert(
                 Self::key(&secret.tenant_id, &secret.secret_ref),
@@ -506,8 +506,8 @@ impl dope_secrets::Store for FakeSecretStore {
 
     fn update_secret_metadata<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        secret: kura_secrets::TenantSecret,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             self.secrets
                 .lock()
@@ -519,13 +519,13 @@ impl dope_secrets::Store for FakeSecretStore {
 
     fn rotate_secret<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
+        secret: kura_secrets::TenantSecret,
         previous_version_id: &'a str,
-        version: dope_secrets::SecretVersion,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        version: kura_secrets::SecretVersion,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             if let Some(previous) = self.versions.lock().unwrap().get_mut(previous_version_id) {
-                previous.status = dope_secrets::SecretVersionStatus::Superseded;
+                previous.status = kura_secrets::SecretVersionStatus::Superseded;
                 previous.superseded_at = Some(chrono::Utc::now());
             }
             self.secrets
@@ -542,8 +542,8 @@ impl dope_secrets::Store for FakeSecretStore {
 
     fn disable_secret<'a>(
         &'a self,
-        secret: dope_secrets::TenantSecret,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<()>> {
+        secret: kura_secrets::TenantSecret,
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<()>> {
         Box::pin(async move {
             self.secrets
                 .lock()
@@ -557,7 +557,7 @@ impl dope_secrets::Store for FakeSecretStore {
         &'a self,
         tenant_id: &'a str,
         secret_ref: &'a str,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Option<dope_secrets::TenantSecret>>> {
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Option<kura_secrets::TenantSecret>>> {
         Box::pin(async move {
             Ok(self
                 .secrets
@@ -572,7 +572,7 @@ impl dope_secrets::Store for FakeSecretStore {
         &'a self,
         _tenant_id: &'a str,
         secret_version_id: &'a str,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Option<dope_secrets::SecretVersion>>> {
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Option<kura_secrets::SecretVersion>>> {
         Box::pin(async move {
             Ok(self.versions.lock().unwrap().get(secret_version_id).cloned())
         })
@@ -581,7 +581,7 @@ impl dope_secrets::Store for FakeSecretStore {
     fn list_secrets<'a>(
         &'a self,
         tenant_id: &'a str,
-    ) -> dope_secrets::BoxFuture<'a, dope_secrets::Result<Vec<dope_secrets::TenantSecret>>> {
+    ) -> kura_secrets::BoxFuture<'a, kura_secrets::Result<Vec<kura_secrets::TenantSecret>>> {
         Box::pin(async move {
             Ok(self
                 .secrets
@@ -600,37 +600,37 @@ async fn resolves_executable_skill_secrets_for_tenant_uses_active_tenant() {
     let backend_dir = tempfile::tempdir().unwrap();
     let store = Arc::new(FakeSecretStore::default());
     let backend = Arc::new(
-        dope_secrets::LocalBackend::new(backend_dir.path()).expect("local backend"),
+        kura_secrets::LocalBackend::new(backend_dir.path()).expect("local backend"),
     );
-    let manager = dope_secrets::Manager::new(store.clone(), backend);
+    let manager = kura_secrets::Manager::new(store.clone(), backend);
 
     manager
-        .create(dope_secrets::CreateInput {
+        .create(kura_secrets::CreateInput {
             tenant_id: "ten_a".to_string(),
             secret_ref: "EXEC_SKILL_TOKEN".to_string(),
             value: "tenant-a".to_string(),
-            ..dope_secrets::CreateInput::default()
+            ..kura_secrets::CreateInput::default()
         })
         .await
         .expect("create tenant A secret");
     manager
-        .create(dope_secrets::CreateInput {
+        .create(kura_secrets::CreateInput {
             tenant_id: "ten_b".to_string(),
             secret_ref: "EXEC_SKILL_TOKEN".to_string(),
             value: "tenant-b".to_string(),
-            ..dope_secrets::CreateInput::default()
+            ..kura_secrets::CreateInput::default()
         })
         .await
         .expect("create tenant B secret");
 
-    let context = dope_identity::TenantContext {
+    let context = kura_identity::TenantContext {
         principal_id: "prn_b".to_string(),
         tenant_id: "ten_b".to_string(),
         token_id: String::new(),
-        ..dope_identity::TenantContext::default()
+        ..kura_identity::TenantContext::default()
     };
     let refs = ["EXEC_SKILL_TOKEN".to_string()];
-    let values = dope_identity::tenantctx::scope(context, async {
+    let values = kura_identity::tenantctx::scope(context, async {
         resolve_executable_skill_secrets_for_tenant(Some(&manager), &refs)
             .await
             .expect("resolve tenant secrets")

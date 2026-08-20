@@ -8,7 +8,7 @@ daemon-run-test:
 	./scripts/run-daemon.sh test
 
 daemon-run-test-live:
-	DOPE_CONNECTORS_DISCORD_ENABLED=true ./scripts/run-daemon.sh test
+	KURA_CONNECTORS_DISCORD_ENABLED=true ./scripts/run-daemon.sh test
 
 daemon-run-prod:
 	./scripts/run-daemon.sh prod
@@ -20,13 +20,13 @@ daemon-prod-status:
 	./scripts/check-daemon-health.sh http://127.0.0.1:19191/healthz
 
 daemon-build:
-	cd $(RS_DIR) && cargo build --release -p dope-cli
+	cd $(RS_DIR) && cargo build --release -p kura-cli
 
 daemon-test:
 	cd $(RS_DIR) && cargo test --workspace
 
 daemon-contract-test:
-	cd $(RS_DIR) && cargo test -p dope-contracts
+	cd $(RS_DIR) && cargo test -p kura-contracts
 
 .PHONY: rs-build rs-test rs-clippy
 

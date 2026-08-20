@@ -17,25 +17,25 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use dope_chat::{CancellationToken, ChatError, QueryInput, Service as ChatService, StreamChunk};
-use dope_checkpoints::Manager as CheckpointManager;
-use dope_connectors::{Connector, RedactionStatus as ConnectorRedactionStatus, Status};
-use dope_events::{Bus, Event, Resource, Scope};
-use dope_imtypes::{
+use kura_chat::{CancellationToken, ChatError, QueryInput, Service as ChatService, StreamChunk};
+use kura_checkpoints::Manager as CheckpointManager;
+use kura_connectors::{Connector, RedactionStatus as ConnectorRedactionStatus, Status};
+use kura_events::{Bus, Event, Resource, Scope};
+use kura_imtypes::{
     DeliveryDirection, DeliveryStatus, InboundMessage, MessageRecord, OutboundReply,
     ReplyCapabilities, ReplyEdit, SentReply, ThinkingSignal,
 };
-use dope_router::{RouteInput, Session, SessionKind, SessionRouter, SessionStatus};
-use dope_runtime::{
+use kura_router::{RouteInput, Session, SessionKind, SessionRouter, SessionStatus};
+use kura_runtime::{
     CreateRunInput, CreateStepInput, Manager as RuntimeManager, Run, Step, StepStatus,
     UpdateStepStatusInput,
 };
-use dope_store::channel_management::{
+use kura_store::channel_management::{
     ForegroundReplyOutcome, route_policy_allows_conversation, route_policy_allows_sender,
     route_policy_is_valid,
 };
-use dope_store::SQLiteStore;
-use dope_threads::{
+use kura_store::SQLiteStore;
+use kura_threads::{
     ConversationShape, ConversationShapeResolutionInput, LifecycleState, ParticipationDecision,
     ParticipationDecisionValue, ParticipationEvaluationInput, RedactionStatus, RoutingOutcome,
     RuntimeProjection, RuntimeProjectionInput, RuntimeResourceKind, SessionSegment,
@@ -44,7 +44,7 @@ use dope_threads::{
 };
 use serde_json::{Map, Value};
 
-pub use dope_chat::QueryResult;
+pub use kura_chat::QueryResult;
 
 // ---------------------------------------------------------------------------
 // Reply sender interfaces (Go ReplySender / ReplyProgressor)
@@ -303,10 +303,10 @@ pub fn connector_enforces_group_room_participation_policy(connector: &Connector)
     }
     connector_surface_supported(
         &connector.capability_profile,
-        dope_connectors::GROUP_ROOM_SURFACE_MENTION_EVIDENCE,
+        kura_connectors::GROUP_ROOM_SURFACE_MENTION_EVIDENCE,
     ) && connector_surface_supported(
         &connector.capability_profile,
-        dope_connectors::GROUP_ROOM_SURFACE_ALLOWLIST_EVIDENCE,
+        kura_connectors::GROUP_ROOM_SURFACE_ALLOWLIST_EVIDENCE,
     )
 }
 
@@ -403,7 +403,7 @@ pub fn binding_channel_scope_ref(record: &MessageRecord) -> String {
 pub fn source_continuation_key(
     connector: &Connector,
     inbound: &InboundMessage,
-) -> Result<SourceContinuationKey, dope_threads::ThreadsError> {
+) -> Result<SourceContinuationKey, kura_threads::ThreadsError> {
     normalize_source_continuation_key(&SourceContinuationKey {
         tenant_id: coalesce_trimmed(&[&inbound.tenant_id, &connector.tenant_id]),
         connector_id: coalesce_trimmed(&[&connector.connector_id, &inbound.connector_id]),
@@ -1534,8 +1534,8 @@ fn zero_participation_decision() -> ParticipationDecision {
         source_message_id: String::new(),
         conversation_shape: ConversationShape::Unknown,
         policy_id: String::new(),
-        mention_status: dope_threads::MentionStatus::Missing,
-        allowlist_status: dope_threads::AllowlistStatus::NotAllowlisted,
+        mention_status: kura_threads::MentionStatus::Missing,
+        allowlist_status: kura_threads::AllowlistStatus::NotAllowlisted,
         decision: ParticipationDecisionValue::Accepted,
         reason_code: String::new(),
         created_assistant_work: false,
@@ -1901,7 +1901,7 @@ impl MessageLoop {
     }
 
     /// Go routeSession.
-    fn route_session(&self, inbound: &InboundMessage) -> Result<(Session, bool), dope_router::RouterError> {
+    fn route_session(&self, inbound: &InboundMessage) -> Result<(Session, bool), kura_router::RouterError> {
         self.router.route(RouteInput {
             kind: inbound.kind,
             channel: inbound.connector_kind.clone(),

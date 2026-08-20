@@ -2,23 +2,23 @@
 //! daemon/internal/store/migrationfixture/r37_credentials.go): writes local
 //! mcp-secrets.json / skill-secrets.json files and seeds provider auth state,
 //! integration, connector, and MCP server/tool/exposure-rule rows through the
-//! dope-store domain CRUD.
+//! kura-store domain CRUD.
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
 use std::path::Path;
 
 use chrono::Utc;
-use dope_connectors::{Connector, Status as ConnectorStatus};
-use dope_integrations::{
+use kura_connectors::{Connector, Status as ConnectorStatus};
+use kura_integrations::{
     AccountBinding, AuthState as IntegrationAuthState, BackendBinding, BackendKind,
     HealthState, ReadinessStatus, Resource,
 };
-use dope_providers::{AuthMode, AuthState, AuthStatus, Family};
-use dope_store::mcp::{
+use kura_providers::{AuthMode, AuthState, AuthStatus, Family};
+use kura_store::mcp::{
     MCPServerRecord, MCPServerStateRecord, MCPToolExposureRuleRecord, MCPToolRecord,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 /// Fake secret material that must never appear in stored rows (used by the
 /// migration regression suite to assert the boundary is not leaked).

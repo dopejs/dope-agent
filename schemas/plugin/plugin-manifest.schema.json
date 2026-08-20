@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/plugin/plugin-manifest.schema.json",
+  "$id": "https://kura.local/schemas/plugin/plugin-manifest.schema.json",
   "title": "PluginManifest",
   "description": "manifest.json of one external (tier-2) plugin under <data_dir>/plugins/<dir>/. The plugin runs as a supervised stdio child speaking line-JSON: request {point, payload}, response {outcome, reason?, payload?}.",
   "type": "object",

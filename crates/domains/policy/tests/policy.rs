@@ -1,4 +1,4 @@
-use dope_policy::{ApprovalStatus, DecisionOutcome, Engine, RequestApprovalInput, ResolveApprovalInput};
+use kura_policy::{ApprovalStatus, DecisionOutcome, Engine, RequestApprovalInput, ResolveApprovalInput};
 
 fn request(action: &str) -> RequestApprovalInput {
     RequestApprovalInput {

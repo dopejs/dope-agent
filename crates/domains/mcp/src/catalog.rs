@@ -20,7 +20,7 @@ pub const MCP_SECRETS_FILE_NAME: &str = "mcp-secrets.json";
 
 /// Go `bundledCatalogEntries`: the five bundled catalog entries (filesystem, context7,
 /// github, postgres, slack) with per-entry availability, sorted by id.
-pub fn bundled_catalog_entries(cfg: &dope_config::Config) -> Vec<CatalogEntry> {
+pub fn bundled_catalog_entries(cfg: &kura_config::Config) -> Vec<CatalogEntry> {
     let environment = crate::environment_scope(cfg.environment);
     let data_dir = cfg.data_dir.clone();
 
@@ -31,15 +31,15 @@ pub fn bundled_catalog_entries(cfg: &dope_config::Config) -> Vec<CatalogEntry> {
         catalog_entry_id: "filesystem".to_string(),
         environment_scope: environment.clone(),
         install_method: InstallMethod::Api,
-        sandbox_profile_id: dope_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
+        sandbox_profile_id: kura_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
         declaration_id: "mcp_server:filesystem:lifecycle.start".to_string(),
         declaration: Some(Declaration {
-            execution_mode: dope_sandbox::ExecutionMode::Subprocess,
-            allowed_backend_kinds: vec![dope_sandbox::BackendKind::Subprocess],
+            execution_mode: kura_sandbox::ExecutionMode::Subprocess,
+            allowed_backend_kinds: vec![kura_sandbox::BackendKind::Subprocess],
             read_roots: vec![data_dir.clone()],
             write_roots: vec![data_dir.clone()],
-            network_mode: dope_sandbox::NetworkMode::Deny,
-            approval_mode: dope_sandbox::ApprovalMode::Allow,
+            network_mode: kura_sandbox::NetworkMode::Deny,
+            approval_mode: kura_sandbox::ApprovalMode::Allow,
             required_enforcement_strength: "declared_only".to_string(),
             active: true,
             ..Declaration::default()
@@ -63,7 +63,7 @@ pub fn bundled_catalog_entries(cfg: &dope_config::Config) -> Vec<CatalogEntry> {
         catalog_entry_id: "github".to_string(),
         environment_scope: environment.clone(),
         install_method: InstallMethod::Api,
-        sandbox_profile_id: dope_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
+        sandbox_profile_id: kura_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
         declaration_id: "mcp_server:github:lifecycle.start".to_string(),
         declaration: filesystem_spec.declaration.clone(),
         transport_kind: TransportKind::Stdio,
@@ -82,17 +82,17 @@ pub fn bundled_catalog_entries(cfg: &dope_config::Config) -> Vec<CatalogEntry> {
         catalog_entry_id: "postgres".to_string(),
         environment_scope: environment.clone(),
         install_method: InstallMethod::Api,
-        sandbox_profile_id: dope_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
+        sandbox_profile_id: kura_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
         declaration_id: "mcp_server:postgres:lifecycle.start".to_string(),
         declaration: Some(Declaration {
-            execution_mode: dope_sandbox::ExecutionMode::Subprocess,
-            allowed_backend_kinds: vec![dope_sandbox::BackendKind::Subprocess],
+            execution_mode: kura_sandbox::ExecutionMode::Subprocess,
+            allowed_backend_kinds: vec![kura_sandbox::BackendKind::Subprocess],
             read_roots: vec![data_dir.clone()],
             write_roots: vec![data_dir.clone()],
-            network_mode: dope_sandbox::NetworkMode::AllowList,
+            network_mode: kura_sandbox::NetworkMode::AllowList,
             allow_loopback: true,
             allowed_hosts: vec!["localhost".to_string(), "127.0.0.1".to_string()],
-            approval_mode: dope_sandbox::ApprovalMode::Allow,
+            approval_mode: kura_sandbox::ApprovalMode::Allow,
             required_enforcement_strength: "declared_only".to_string(),
             active: true,
             ..Declaration::default()
@@ -113,17 +113,17 @@ pub fn bundled_catalog_entries(cfg: &dope_config::Config) -> Vec<CatalogEntry> {
         catalog_entry_id: "slack".to_string(),
         environment_scope: environment.clone(),
         install_method: InstallMethod::Api,
-        sandbox_profile_id: dope_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
+        sandbox_profile_id: kura_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
         declaration_id: "mcp_server:slack:lifecycle.start".to_string(),
         declaration: Some(Declaration {
-            execution_mode: dope_sandbox::ExecutionMode::Subprocess,
-            allowed_backend_kinds: vec![dope_sandbox::BackendKind::Subprocess],
+            execution_mode: kura_sandbox::ExecutionMode::Subprocess,
+            allowed_backend_kinds: vec![kura_sandbox::BackendKind::Subprocess],
             read_roots: vec![data_dir.clone()],
             write_roots: vec![data_dir.clone()],
-            network_mode: dope_sandbox::NetworkMode::AllowList,
+            network_mode: kura_sandbox::NetworkMode::AllowList,
             allowed_hosts: vec!["slack.com".to_string(), "api.slack.com".to_string()],
             allowed_ports: vec![443],
-            approval_mode: dope_sandbox::ApprovalMode::Allow,
+            approval_mode: kura_sandbox::ApprovalMode::Allow,
             required_enforcement_strength: "declared_only".to_string(),
             active: true,
             ..Declaration::default()
@@ -144,15 +144,15 @@ pub fn bundled_catalog_entries(cfg: &dope_config::Config) -> Vec<CatalogEntry> {
         catalog_entry_id: "context7".to_string(),
         environment_scope: environment.clone(),
         install_method: InstallMethod::Api,
-        sandbox_profile_id: dope_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
+        sandbox_profile_id: kura_sandbox::PROFILE_ID_SUBPROCESS_DEFAULT.to_string(),
         declaration_id: "mcp_server:context7:lifecycle.start".to_string(),
         declaration: Some(Declaration {
-            execution_mode: dope_sandbox::ExecutionMode::DeclarationOnly,
-            allowed_backend_kinds: vec![dope_sandbox::BackendKind::Subprocess],
-            network_mode: dope_sandbox::NetworkMode::AllowList,
+            execution_mode: kura_sandbox::ExecutionMode::DeclarationOnly,
+            allowed_backend_kinds: vec![kura_sandbox::BackendKind::Subprocess],
+            network_mode: kura_sandbox::NetworkMode::AllowList,
             allowed_hosts: vec!["mcp.context7.com".to_string()],
             allowed_ports: vec![443],
-            approval_mode: dope_sandbox::ApprovalMode::Allow,
+            approval_mode: kura_sandbox::ApprovalMode::Allow,
             required_enforcement_strength: "declared_only".to_string(),
             active: true,
             ..Declaration::default()
@@ -304,7 +304,7 @@ pub fn bundled_catalog_entries(cfg: &dope_config::Config) -> Vec<CatalogEntry> {
 /// availability evaluation.
 #[must_use]
 pub fn evaluate_catalog_availability(
-    cfg: &dope_config::Config,
+    cfg: &kura_config::Config,
     entry: &CatalogEntry,
 ) -> (AvailabilityStatus, String) {
     for requirement in &entry.prerequisites {
@@ -376,7 +376,7 @@ pub fn resolve_mcp_secrets(
 /// Go `evaluateCatalogInstallSpecAvailability`.
 #[must_use]
 pub fn evaluate_catalog_install_spec_availability(
-    cfg: &dope_config::Config,
+    cfg: &kura_config::Config,
     spec: &CreateServerInput,
     requirements: &[CatalogSecretRequirement],
 ) -> (AvailabilityStatus, String) {
@@ -442,7 +442,7 @@ pub fn requires_offline_verified_local_command(spec: &CreateServerInput) -> bool
     let Some(declaration) = &spec.declaration else {
         return false;
     };
-    if declaration.network_mode != dope_sandbox::NetworkMode::Deny {
+    if declaration.network_mode != kura_sandbox::NetworkMode::Deny {
         return false;
     }
     let command = spec.command.trim();

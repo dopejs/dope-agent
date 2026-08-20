@@ -289,5 +289,5 @@ edits in `daemon/internal/opsreadiness/hosted_types.go`,
 - `[P]` tasks touch different files and can run in parallel after their phase prerequisites.
 - Story labels map directly to `spec.md` user stories.
 - Contract, redaction, retention, restart, stable-host, and evidence validation are required production checks.
-- Default validation must use `~/.dope-test`; live connectors and production user data require explicit opt-in.
+- Default validation must use `~/.kura-test`; live connectors and production user data require explicit opt-in.
 - Roadmap 43 is incomplete until release evidence links hosted profile identity, recovery evidence, upgrade evidence, observability, diagnostics, retention, and redaction checks for the reviewed commit/profile/run identity.

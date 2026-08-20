@@ -6,12 +6,12 @@ use crate::{emit_denial, require, TenancyError};
 /// Tenant-aware accessor for the computer-use family.
 pub struct ComputerUse {
     store: crate::SQLiteStore,
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl ComputerUse {
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         ComputerUse { store, emitter }
     }
 
@@ -19,7 +19,7 @@ impl ComputerUse {
         emit_denial(&self.emitter, surface, resource_kind);
     }
 
-    pub fn upsert_session_for_tenant(&self, session: &dope_computeruse::Session) -> Result<(), TenancyError> {
+    pub fn upsert_session_for_tenant(&self, session: &kura_computeruse::Session) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_computer_use_session(session).map_err(TenancyError::from)?;
         match self.store.bind_row_tenant("computer_use_sessions", "computer_use_session_id", &session.computer_use_session_id, &tenant_id) {
@@ -31,7 +31,7 @@ impl ComputerUse {
         }
     }
 
-    pub fn upsert_action_for_tenant(&self, action: &dope_computeruse::Action) -> Result<(), TenancyError> {
+    pub fn upsert_action_for_tenant(&self, action: &kura_computeruse::Action) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_computer_use_action(action).map_err(TenancyError::from)?;
         match self.store.bind_row_tenant("computer_use_actions", "computer_use_action_id", &action.computer_use_action_id, &tenant_id) {
@@ -43,7 +43,7 @@ impl ComputerUse {
         }
     }
 
-    pub fn upsert_artifact_for_tenant(&self, artifact: &dope_computeruse::Artifact) -> Result<(), TenancyError> {
+    pub fn upsert_artifact_for_tenant(&self, artifact: &kura_computeruse::Artifact) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.store.upsert_computer_use_artifact(artifact).map_err(TenancyError::from)?;
         match self.store.bind_row_tenant("computer_use_artifacts", "artifact_id", &artifact.artifact_id, &tenant_id) {

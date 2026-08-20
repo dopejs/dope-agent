@@ -64,7 +64,7 @@ Add a first-class delivery plane for notifications, summaries, and routed result
 
 - targeted routing and retry tests
 - contract coverage for delivery resources or events
-- one manual `DOPE_ENV=test` notification or summary flow
+- one manual `KURA_ENV=test` notification or summary flow
 
 ## Definition Of Done
 

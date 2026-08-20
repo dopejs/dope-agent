@@ -1,4 +1,4 @@
-//! SQLite CRUD for the billing/quota plane plus the `dope_billing::Repository`
+//! SQLite CRUD for the billing/quota plane plus the `kura_billing::Repository`
 //! trait implementation. Ported from `daemon/internal/store/billing.go`
 //! (ActivePlan, SavePlan, QuotaOverride, SaveQuotaOverride, OpenPeriod,
 //! UsageCounter, PreviousQuotaPeriod, SaveUsageCounter, ReservationByOperation,
@@ -7,7 +7,7 @@
 //! ListQuotaDenials, QuotaDenialByID, SaveAbuseRestriction,
 //! ListAbuseRestrictions, ListManualAdjustments).
 //!
-//! The transactional hooks on `dope_billing::Repository` (`reserve_usage`,
+//! The transactional hooks on `kura_billing::Repository` (`reserve_usage`,
 //! `resolve_usage`, `reserve_all_usage`) are left at their defaulted
 //! `Ok(None)` implementations, so the billing manager runs its step-by-step
 //! logic against the atomic DAOs below — the same behavior the Go daemon gets
@@ -23,9 +23,9 @@ use rusqlite::{params, Row};
 use crate::crud::{now_rfc3339, null_string, opt_time_string, parse_opt_rfc3339, parse_rfc3339};
 use crate::SQLiteStore;
 
-/// Result alias for the billing repository trait surface (dope_billing does not
+/// Result alias for the billing repository trait surface (kura_billing does not
 /// re-export its error Result alias).
-type BillingResult<T> = std::result::Result<T, dope_billing::BillingError>;
+type BillingResult<T> = std::result::Result<T, kura_billing::BillingError>;
 
 /// Go-style random id: `<prefix>_<16 hex chars>` (8 random bytes).
 fn new_billing_id(prefix: &str) -> String {
@@ -34,7 +34,7 @@ fn new_billing_id(prefix: &str) -> String {
 }
 
 fn is_go_zero_time(dt: &DateTime<Utc>) -> bool {
-    dt == &dope_billing::go_zero_time()
+    dt == &kura_billing::go_zero_time()
 }
 
 fn billing_document_json(
@@ -60,7 +60,7 @@ fn decode_billing_document(
     }
 }
 
-fn scan_tenant_plan(row: &Row) -> Result<dope_billing::TenantPlan, String> {
+fn scan_tenant_plan(row: &Row) -> Result<kura_billing::TenantPlan, String> {
     let plan_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let plan_key: String = row.get(2).map_err(|e| e.to_string())?;
@@ -71,12 +71,12 @@ fn scan_tenant_plan(row: &Row) -> Result<dope_billing::TenantPlan, String> {
     let assigned_by: Option<String> = row.get(7).map_err(|e| e.to_string())?;
     let reason: Option<String> = row.get(8).map_err(|e| e.to_string())?;
     let document_json: Option<String> = row.get(9).map_err(|e| e.to_string())?;
-    Ok(dope_billing::TenantPlan {
+    Ok(kura_billing::TenantPlan {
         plan_id,
         tenant_id,
         plan_key,
-        status: dope_billing::PlanStatus::from(status),
-        enforcement_mode: dope_billing::EnforcementMode::from(enforcement_mode),
+        status: kura_billing::PlanStatus::from(status),
+        enforcement_mode: kura_billing::EnforcementMode::from(enforcement_mode),
         effective_at: parse_rfc3339(&effective_at)?,
         superseded_at: parse_opt_rfc3339(superseded_at)?,
         assigned_by_principal_id: assigned_by.unwrap_or_default(),
@@ -85,7 +85,7 @@ fn scan_tenant_plan(row: &Row) -> Result<dope_billing::TenantPlan, String> {
     })
 }
 
-fn scan_quota_override(row: &Row) -> Result<dope_billing::QuotaOverride, String> {
+fn scan_quota_override(row: &Row) -> Result<kura_billing::QuotaOverride, String> {
     let quota_override_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let category: String = row.get(2).map_err(|e| e.to_string())?;
@@ -96,10 +96,10 @@ fn scan_quota_override(row: &Row) -> Result<dope_billing::QuotaOverride, String>
     let expires_at: Option<String> = row.get(7).map_err(|e| e.to_string())?;
     let reason: String = row.get(8).map_err(|e| e.to_string())?;
     let created_by: Option<String> = row.get(9).map_err(|e| e.to_string())?;
-    Ok(dope_billing::QuotaOverride {
+    Ok(kura_billing::QuotaOverride {
         quota_override_id,
         tenant_id,
-        category: dope_billing::Category::from(category),
+        category: kura_billing::Category::from(category),
         limit: limit_amount,
         carryover_enabled: carryover_enabled.map(|v| v != 0),
         carryover_max,
@@ -110,7 +110,7 @@ fn scan_quota_override(row: &Row) -> Result<dope_billing::QuotaOverride, String>
     })
 }
 
-fn scan_quota_period(row: &Row) -> Result<dope_billing::QuotaPeriod, String> {
+fn scan_quota_period(row: &Row) -> Result<kura_billing::QuotaPeriod, String> {
     let quota_period_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let category: String = row.get(2).map_err(|e| e.to_string())?;
@@ -119,11 +119,11 @@ fn scan_quota_period(row: &Row) -> Result<dope_billing::QuotaPeriod, String> {
     let period_end: String = row.get(5).map_err(|e| e.to_string())?;
     let carryover_from: Option<String> = row.get(6).map_err(|e| e.to_string())?;
     let status: String = row.get(7).map_err(|e| e.to_string())?;
-    Ok(dope_billing::QuotaPeriod {
+    Ok(kura_billing::QuotaPeriod {
         quota_period_id,
         tenant_id,
-        category: dope_billing::Category::from(category),
-        period_kind: dope_billing::PeriodKind::from(period_kind),
+        category: kura_billing::Category::from(category),
+        period_kind: kura_billing::PeriodKind::from(period_kind),
         period_start: parse_rfc3339(&period_start)?,
         period_end: parse_rfc3339(&period_end)?,
         carryover_from_period_id: carryover_from.unwrap_or_default(),
@@ -131,7 +131,7 @@ fn scan_quota_period(row: &Row) -> Result<dope_billing::QuotaPeriod, String> {
     })
 }
 
-fn scan_usage_counter(row: &Row) -> Result<dope_billing::UsageCounter, String> {
+fn scan_usage_counter(row: &Row) -> Result<kura_billing::UsageCounter, String> {
     let usage_counter_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let category: String = row.get(2).map_err(|e| e.to_string())?;
@@ -141,10 +141,10 @@ fn scan_usage_counter(row: &Row) -> Result<dope_billing::UsageCounter, String> {
     let adjusted_amount: i64 = row.get(6).map_err(|e| e.to_string())?;
     let carryover_amount: i64 = row.get(7).map_err(|e| e.to_string())?;
     let updated_at: String = row.get(8).map_err(|e| e.to_string())?;
-    Ok(dope_billing::UsageCounter {
+    Ok(kura_billing::UsageCounter {
         usage_counter_id,
         tenant_id,
-        category: dope_billing::Category::from(category),
+        category: kura_billing::Category::from(category),
         quota_period_id,
         committed_amount,
         reserved_amount,
@@ -154,7 +154,7 @@ fn scan_usage_counter(row: &Row) -> Result<dope_billing::UsageCounter, String> {
     })
 }
 
-fn scan_usage_reservation(row: &Row) -> Result<dope_billing::UsageReservation, String> {
+fn scan_usage_reservation(row: &Row) -> Result<kura_billing::UsageReservation, String> {
     let reservation_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let category: String = row.get(2).map_err(|e| e.to_string())?;
@@ -171,16 +171,16 @@ fn scan_usage_reservation(row: &Row) -> Result<dope_billing::UsageReservation, S
     let updated_at: String = row.get(13).map_err(|e| e.to_string())?;
     let expires_at: Option<String> = row.get(14).map_err(|e| e.to_string())?;
     let recovery_reason: Option<String> = row.get(15).map_err(|e| e.to_string())?;
-    Ok(dope_billing::UsageReservation {
+    Ok(kura_billing::UsageReservation {
         reservation_id,
         tenant_id,
-        category: dope_billing::Category::from(category),
+        category: kura_billing::Category::from(category),
         quota_period_id,
         operation_key,
         amount_reserved,
         amount_committed,
         amount_refunded,
-        status: dope_billing::ReservationStatus::from(status),
+        status: kura_billing::ReservationStatus::from(status),
         reservation_point: reservation_point.unwrap_or_default(),
         commit_point: commit_point.unwrap_or_default(),
         refund_point: refund_point.unwrap_or_default(),
@@ -191,7 +191,7 @@ fn scan_usage_reservation(row: &Row) -> Result<dope_billing::UsageReservation, S
     })
 }
 
-fn scan_quota_denial(row: &Row) -> Result<dope_billing::QuotaDenial, String> {
+fn scan_quota_denial(row: &Row) -> Result<kura_billing::QuotaDenial, String> {
     let denial_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let category: Option<String> = row.get(2).map_err(|e| e.to_string())?;
@@ -202,10 +202,10 @@ fn scan_quota_denial(row: &Row) -> Result<dope_billing::QuotaDenial, String> {
     let remaining_amount: i64 = row.get(7).map_err(|e| e.to_string())?;
     let guarded_entry_point: String = row.get(8).map_err(|e| e.to_string())?;
     let created_at: String = row.get(9).map_err(|e| e.to_string())?;
-    Ok(dope_billing::QuotaDenial {
+    Ok(kura_billing::QuotaDenial {
         denial_id,
         tenant_id,
-        category: dope_billing::Category::from(category.unwrap_or_default()),
+        category: kura_billing::Category::from(category.unwrap_or_default()),
         quota_period_id: quota_period_id.unwrap_or_default(),
         operation_key,
         reason_code,
@@ -216,7 +216,7 @@ fn scan_quota_denial(row: &Row) -> Result<dope_billing::QuotaDenial, String> {
     })
 }
 
-fn scan_manual_adjustment(row: &Row) -> Result<dope_billing::ManualAdjustment, String> {
+fn scan_manual_adjustment(row: &Row) -> Result<kura_billing::ManualAdjustment, String> {
     let adjustment_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let category: String = row.get(2).map_err(|e| e.to_string())?;
@@ -225,10 +225,10 @@ fn scan_manual_adjustment(row: &Row) -> Result<dope_billing::ManualAdjustment, S
     let reason: String = row.get(5).map_err(|e| e.to_string())?;
     let created_by: Option<String> = row.get(6).map_err(|e| e.to_string())?;
     let created_at: String = row.get(7).map_err(|e| e.to_string())?;
-    Ok(dope_billing::ManualAdjustment {
+    Ok(kura_billing::ManualAdjustment {
         adjustment_id,
         tenant_id,
-        category: dope_billing::Category::from(category),
+        category: kura_billing::Category::from(category),
         quota_period_id,
         amount_delta,
         reason,
@@ -237,7 +237,7 @@ fn scan_manual_adjustment(row: &Row) -> Result<dope_billing::ManualAdjustment, S
     })
 }
 
-fn scan_abuse_restriction(row: &Row) -> Result<dope_billing::AbuseRestrictionRecord, String> {
+fn scan_abuse_restriction(row: &Row) -> Result<kura_billing::AbuseRestrictionRecord, String> {
     let restriction_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let status: String = row.get(2).map_err(|e| e.to_string())?;
@@ -249,12 +249,12 @@ fn scan_abuse_restriction(row: &Row) -> Result<dope_billing::AbuseRestrictionRec
     let started_at: String = row.get(8).map_err(|e| e.to_string())?;
     let expires_at: Option<String> = row.get(9).map_err(|e| e.to_string())?;
     let document_json: Option<String> = row.get(10).map_err(|e| e.to_string())?;
-    Ok(dope_billing::AbuseRestrictionRecord {
+    Ok(kura_billing::AbuseRestrictionRecord {
         restriction_id,
         tenant_id,
-        status: dope_billing::AbuseRestrictionStatus::from(status),
-        affected_category: dope_billing::Category::from(affected_category),
-        recovery_action: dope_billing::RecoveryAction::from(recovery_action),
+        status: kura_billing::AbuseRestrictionStatus::from(status),
+        affected_category: kura_billing::Category::from(affected_category),
+        recovery_action: kura_billing::RecoveryAction::from(recovery_action),
         visible_reason_code,
         source_audit_ref: source_audit_ref.unwrap_or_default(),
         support_contact_allowed: support_contact_allowed != 0,
@@ -274,7 +274,7 @@ const MANUAL_ADJUSTMENT_COLUMNS: &str = "adjustment_id, tenant_id, category, quo
 const ABUSE_RESTRICTION_COLUMNS: &str = "restriction_id, tenant_id, status, affected_category, recovery_action, visible_reason_code, source_audit_ref, support_contact_allowed, started_at, expires_at, document_json";
 
 impl SQLiteStore {
-    pub fn billing_active_plan(&self, tenant_id: &str) -> Result<Option<dope_billing::TenantPlan>, String> {
+    pub fn billing_active_plan(&self, tenant_id: &str) -> Result<Option<kura_billing::TenantPlan>, String> {
         let at = Utc::now();
         let mut stmt = self
             .conn
@@ -289,7 +289,7 @@ impl SQLiteStore {
         let mut rows = stmt
             .query(params![
                 tenant_id.trim(),
-                dope_billing::PlanStatus::ACTIVE,
+                kura_billing::PlanStatus::ACTIVE,
                 now_rfc3339(&at),
             ])
             .map_err(|e| e.to_string())?;
@@ -299,15 +299,15 @@ impl SQLiteStore {
         scan_tenant_plan(row).map(Some)
     }
 
-    pub fn billing_save_plan(&self, mut plan: dope_billing::TenantPlan) -> Result<(), String> {
+    pub fn billing_save_plan(&self, mut plan: kura_billing::TenantPlan) -> Result<(), String> {
         if plan.plan_id.is_empty() {
             plan.plan_id = new_billing_id("plan");
         }
         if plan.status.is_empty() {
-            plan.status = dope_billing::PlanStatus::from(dope_billing::PlanStatus::ACTIVE);
+            plan.status = kura_billing::PlanStatus::from(kura_billing::PlanStatus::ACTIVE);
         }
         if plan.enforcement_mode.is_empty() {
-            plan.enforcement_mode = dope_billing::EnforcementMode::from(dope_billing::EnforcementMode::ENFORCED);
+            plan.enforcement_mode = kura_billing::EnforcementMode::from(kura_billing::EnforcementMode::ENFORCED);
         }
         if is_go_zero_time(&plan.effective_at) {
             plan.effective_at = Utc::now();
@@ -317,16 +317,16 @@ impl SQLiteStore {
             .conn
             .unchecked_transaction()
             .map_err(|e| format!("begin billing plan save: {e}"))?;
-        if plan.status.as_str() == dope_billing::PlanStatus::ACTIVE {
+        if plan.status.as_str() == kura_billing::PlanStatus::ACTIVE {
             tx.execute(
                 "UPDATE billing_tenant_plans
                  SET status = ?1, superseded_at = ?2
                  WHERE tenant_id = ?3 AND status = ?4 AND plan_id <> ?5",
                 params![
-                    dope_billing::PlanStatus::SUPERSEDED,
+                    kura_billing::PlanStatus::SUPERSEDED,
                     now_rfc3339(&plan.effective_at),
                     plan.tenant_id,
-                    dope_billing::PlanStatus::ACTIVE,
+                    kura_billing::PlanStatus::ACTIVE,
                     plan.plan_id,
                 ],
             )
@@ -367,9 +367,9 @@ impl SQLiteStore {
     pub fn billing_quota_override(
         &self,
         tenant_id: &str,
-        category: &dope_billing::Category,
+        category: &kura_billing::Category,
         at: &DateTime<Utc>,
-    ) -> Result<Option<dope_billing::QuotaOverride>, String> {
+    ) -> Result<Option<kura_billing::QuotaOverride>, String> {
         let at = if is_go_zero_time(at) { Utc::now() } else { *at };
         let mut stmt = self
             .conn
@@ -395,7 +395,7 @@ impl SQLiteStore {
         scan_quota_override(row).map(Some)
     }
 
-    pub fn billing_save_quota_override(&self, mut override_: dope_billing::QuotaOverride) -> Result<(), String> {
+    pub fn billing_save_quota_override(&self, mut override_: kura_billing::QuotaOverride) -> Result<(), String> {
         if override_.quota_override_id.is_empty() {
             override_.quota_override_id = new_billing_id("quota_override");
         }
@@ -438,10 +438,10 @@ impl SQLiteStore {
     pub fn billing_open_period(
         &self,
         tenant_id: &str,
-        definition: &dope_billing::QuotaDefinition,
+        definition: &kura_billing::QuotaDefinition,
         at: &DateTime<Utc>,
-    ) -> Result<dope_billing::QuotaPeriod, String> {
-        let (start, end) = dope_billing::period_for(&definition.period_kind, *at);
+    ) -> Result<kura_billing::QuotaPeriod, String> {
+        let (start, end) = kura_billing::period_for(&definition.period_kind, *at);
         let period_id = format!(
             "quota_period_{}_{}_{}",
             tenant_id.trim(),
@@ -490,9 +490,9 @@ impl SQLiteStore {
     pub fn billing_usage_counter(
         &self,
         tenant_id: &str,
-        category: &dope_billing::Category,
+        category: &kura_billing::Category,
         quota_period_id: &str,
-    ) -> Result<Option<dope_billing::UsageCounter>, String> {
+    ) -> Result<Option<kura_billing::UsageCounter>, String> {
         let mut stmt = self
             .conn
             .prepare(&format!(
@@ -513,9 +513,9 @@ impl SQLiteStore {
     pub fn billing_previous_quota_period(
         &self,
         tenant_id: &str,
-        category: &dope_billing::Category,
+        category: &kura_billing::Category,
         before: &DateTime<Utc>,
-    ) -> Result<Option<(dope_billing::QuotaPeriod, dope_billing::UsageCounter)>, String> {
+    ) -> Result<Option<(kura_billing::QuotaPeriod, kura_billing::UsageCounter)>, String> {
         let mut stmt = self
             .conn
             .prepare(&format!(
@@ -540,7 +540,7 @@ impl SQLiteStore {
         let period = scan_quota_period(row)?;
         let counter = match self.billing_usage_counter(tenant_id, category, &period.quota_period_id)? {
             Some(counter) => counter,
-            None => dope_billing::UsageCounter {
+            None => kura_billing::UsageCounter {
                 tenant_id: tenant_id.trim().to_string(),
                 category: category.clone(),
                 quota_period_id: period.quota_period_id.clone(),
@@ -551,7 +551,7 @@ impl SQLiteStore {
         Ok(Some((period, counter)))
     }
 
-    pub fn billing_save_usage_counter(&self, mut counter: dope_billing::UsageCounter) -> Result<(), String> {
+    pub fn billing_save_usage_counter(&self, mut counter: kura_billing::UsageCounter) -> Result<(), String> {
         if counter.usage_counter_id.is_empty() {
             counter.usage_counter_id = new_billing_id("usage_counter");
         }
@@ -589,9 +589,9 @@ impl SQLiteStore {
     pub fn billing_reservation_by_operation(
         &self,
         tenant_id: &str,
-        category: &dope_billing::Category,
+        category: &kura_billing::Category,
         operation_key: &str,
-    ) -> Result<Option<dope_billing::UsageReservation>, String> {
+    ) -> Result<Option<kura_billing::UsageReservation>, String> {
         let mut stmt = self
             .conn
             .prepare(&format!(
@@ -613,7 +613,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         reservation_id: &str,
-    ) -> Result<Option<dope_billing::UsageReservation>, String> {
+    ) -> Result<Option<kura_billing::UsageReservation>, String> {
         let mut stmt = self
             .conn
             .prepare(&format!(
@@ -631,7 +631,7 @@ impl SQLiteStore {
         scan_usage_reservation(row).map(Some)
     }
 
-    pub fn billing_save_reservation(&self, mut reservation: dope_billing::UsageReservation) -> Result<(), String> {
+    pub fn billing_save_reservation(&self, mut reservation: kura_billing::UsageReservation) -> Result<(), String> {
         if reservation.reservation_id.is_empty() {
             reservation.reservation_id = new_billing_id("reservation");
         }
@@ -684,7 +684,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn billing_append_usage_event(&self, mut event: dope_billing::UsageEvent) -> Result<(), String> {
+    pub fn billing_append_usage_event(&self, mut event: kura_billing::UsageEvent) -> Result<(), String> {
         if event.usage_event_id.is_empty() {
             event.usage_event_id = new_billing_id("usage_event");
         }
@@ -746,7 +746,7 @@ impl SQLiteStore {
         Ok(refs)
     }
 
-    pub fn billing_append_quota_denial(&self, mut denial: dope_billing::QuotaDenial) -> Result<(), String> {
+    pub fn billing_append_quota_denial(&self, mut denial: kura_billing::QuotaDenial) -> Result<(), String> {
         if denial.denial_id.is_empty() {
             denial.denial_id = new_billing_id("denial");
         }
@@ -776,7 +776,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn billing_save_manual_adjustment(&self, mut adjustment: dope_billing::ManualAdjustment) -> Result<(), String> {
+    pub fn billing_save_manual_adjustment(&self, mut adjustment: kura_billing::ManualAdjustment) -> Result<(), String> {
         if adjustment.adjustment_id.is_empty() {
             adjustment.adjustment_id = new_billing_id("manual_adjustment");
         }
@@ -812,7 +812,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn billing_list_pending_reservations(&self) -> Result<Vec<dope_billing::UsageReservation>, String> {
+    pub fn billing_list_pending_reservations(&self) -> Result<Vec<kura_billing::UsageReservation>, String> {
         let mut stmt = self
             .conn
             .prepare(&format!(
@@ -823,7 +823,7 @@ impl SQLiteStore {
             ))
             .map_err(|e| format!("list pending billing reservations: {e}"))?;
         let mut rows = stmt
-            .query(params![dope_billing::ReservationStatus::RESERVED])
+            .query(params![kura_billing::ReservationStatus::RESERVED])
             .map_err(|e| e.to_string())?;
         let mut items = Vec::new();
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
@@ -836,7 +836,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         limit: usize,
-    ) -> Result<Vec<dope_billing::QuotaDenial>, String> {
+    ) -> Result<Vec<kura_billing::QuotaDenial>, String> {
         let limit = if limit == 0 { 100 } else { limit as i64 };
         let mut stmt = self
             .conn
@@ -862,7 +862,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         denial_id: &str,
-    ) -> Result<Option<dope_billing::QuotaDenial>, String> {
+    ) -> Result<Option<kura_billing::QuotaDenial>, String> {
         let mut stmt = self
             .conn
             .prepare(&format!(
@@ -881,15 +881,15 @@ impl SQLiteStore {
         scan_quota_denial(row).map(Some)
     }
 
-    pub fn billing_save_abuse_restriction(&self, mut record: dope_billing::AbuseRestrictionRecord) -> Result<(), String> {
+    pub fn billing_save_abuse_restriction(&self, mut record: kura_billing::AbuseRestrictionRecord) -> Result<(), String> {
         if record.restriction_id.is_empty() {
             record.restriction_id = new_billing_id("abuse_restriction");
         }
         if record.status.is_empty() {
-            record.status = dope_billing::AbuseRestrictionStatus::from(dope_billing::AbuseRestrictionStatus::ACTIVE);
+            record.status = kura_billing::AbuseRestrictionStatus::from(kura_billing::AbuseRestrictionStatus::ACTIVE);
         }
         if record.recovery_action.is_empty() {
-            record.recovery_action = dope_billing::RecoveryAction::from(dope_billing::RecoveryAction::CONTACT_SUPPORT);
+            record.recovery_action = kura_billing::RecoveryAction::from(kura_billing::RecoveryAction::CONTACT_SUPPORT);
         }
         if is_go_zero_time(&record.started_at) {
             record.started_at = Utc::now();
@@ -939,7 +939,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         at: &DateTime<Utc>,
-    ) -> Result<Vec<dope_billing::AbuseRestrictionRecord>, String> {
+    ) -> Result<Vec<kura_billing::AbuseRestrictionRecord>, String> {
         let at = if is_go_zero_time(at) { Utc::now() } else { *at };
         let mut stmt = self
             .conn
@@ -953,7 +953,7 @@ impl SQLiteStore {
         let mut rows = stmt
             .query(params![
                 tenant_id.trim(),
-                dope_billing::AbuseRestrictionStatus::ACTIVE,
+                kura_billing::AbuseRestrictionStatus::ACTIVE,
                 now_rfc3339(&at),
                 now_rfc3339(&at),
             ])
@@ -969,7 +969,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         limit: usize,
-    ) -> Result<Vec<dope_billing::ManualAdjustment>, String> {
+    ) -> Result<Vec<kura_billing::ManualAdjustment>, String> {
         let limit = if limit == 0 { 100 } else { limit as i64 };
         let mut stmt = self
             .conn
@@ -992,16 +992,16 @@ impl SQLiteStore {
     }
 }
 
-// --- dope_billing::Repository trait impl (Send + Sync handle over the DAOs) ---
+// --- kura_billing::Repository trait impl (Send + Sync handle over the DAOs) ---
 //
 // rusqlite's Connection is Send but not Sync, so SQLiteStore cannot be the
-// trait's `Send + Sync` self type directly. Following the dope_secrets::Store
+// trait's `Send + Sync` self type directly. Following the kura_secrets::Store
 // precedent (see secrets.rs), the mutex is wrapped in the local
 // `BillingRepositoryHandle` newtype. Each method locks, runs the sync DAO, and
 // maps failures to `BillingError::Repository`.
 
 /// Send + Sync handle over the SQLite store implementing
-/// `dope_billing::Repository`. Construct from a fresh store and share as
+/// `kura_billing::Repository`. Construct from a fresh store and share as
 /// `Arc<BillingRepositoryHandle>` with the billing manager.
 pub struct BillingRepositoryHandle(pub parking_lot::Mutex<SQLiteStore>);
 
@@ -1011,58 +1011,58 @@ impl BillingRepositoryHandle {
     }
 }
 
-impl dope_billing::Repository for BillingRepositoryHandle {
+impl kura_billing::Repository for BillingRepositoryHandle {
     fn active_plan<'a>(
         &'a self,
         tenant_id: &str,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Option<dope_billing::TenantPlan>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Option<kura_billing::TenantPlan>>> {
         let tenant_id = tenant_id.to_string();
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_active_plan(&tenant_id)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn quota_override<'a>(
         &'a self,
         tenant_id: &str,
-        category: &dope_billing::Category,
+        category: &kura_billing::Category,
         at: DateTime<Utc>,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Option<dope_billing::QuotaOverride>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Option<kura_billing::QuotaOverride>>> {
         let tenant_id = tenant_id.to_string();
         let category = category.clone();
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_quota_override(&tenant_id, &category, &at)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn open_period<'a>(
         &'a self,
         tenant_id: &str,
-        definition: &dope_billing::QuotaDefinition,
+        definition: &kura_billing::QuotaDefinition,
         at: DateTime<Utc>,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<dope_billing::QuotaPeriod>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<kura_billing::QuotaPeriod>> {
         let tenant_id = tenant_id.to_string();
         let definition = definition.clone();
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_open_period(&tenant_id, &definition, &at)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn usage_counter<'a>(
         &'a self,
         tenant_id: &str,
-        category: &dope_billing::Category,
+        category: &kura_billing::Category,
         quota_period_id: &str,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Option<dope_billing::UsageCounter>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Option<kura_billing::UsageCounter>>> {
         let tenant_id = tenant_id.to_string();
         let category = category.clone();
         let quota_period_id = quota_period_id.to_string();
@@ -1070,28 +1070,28 @@ impl dope_billing::Repository for BillingRepositoryHandle {
             self.0
                 .lock()
                 .billing_usage_counter(&tenant_id, &category, &quota_period_id)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn save_usage_counter<'a>(
         &'a self,
-        counter: dope_billing::UsageCounter,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<()>> {
+        counter: kura_billing::UsageCounter,
+    ) -> kura_billing::BoxFuture<'a, BillingResult<()>> {
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_save_usage_counter(counter)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn reservation_by_operation<'a>(
         &'a self,
         tenant_id: &str,
-        category: &dope_billing::Category,
+        category: &kura_billing::Category,
         operation_key: &str,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Option<dope_billing::UsageReservation>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Option<kura_billing::UsageReservation>>> {
         let tenant_id = tenant_id.to_string();
         let category = category.clone();
         let operation_key = operation_key.to_string();
@@ -1099,87 +1099,87 @@ impl dope_billing::Repository for BillingRepositoryHandle {
             self.0
                 .lock()
                 .billing_reservation_by_operation(&tenant_id, &category, &operation_key)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn save_reservation<'a>(
         &'a self,
-        reservation: dope_billing::UsageReservation,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<()>> {
+        reservation: kura_billing::UsageReservation,
+    ) -> kura_billing::BoxFuture<'a, BillingResult<()>> {
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_save_reservation(reservation)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn append_usage_event<'a>(
         &'a self,
-        event: dope_billing::UsageEvent,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<()>> {
+        event: kura_billing::UsageEvent,
+    ) -> kura_billing::BoxFuture<'a, BillingResult<()>> {
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_append_usage_event(event)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn append_quota_denial<'a>(
         &'a self,
-        denial: dope_billing::QuotaDenial,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<()>> {
+        denial: kura_billing::QuotaDenial,
+    ) -> kura_billing::BoxFuture<'a, BillingResult<()>> {
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_append_quota_denial(denial)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn list_pending_reservations<'a>(
         &'a self,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Vec<dope_billing::UsageReservation>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Vec<kura_billing::UsageReservation>>> {
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_list_pending_reservations()
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
-    fn save_plan<'a>(&'a self, plan: dope_billing::TenantPlan) -> dope_billing::BoxFuture<'a, BillingResult<()>> {
+    fn save_plan<'a>(&'a self, plan: kura_billing::TenantPlan) -> kura_billing::BoxFuture<'a, BillingResult<()>> {
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_save_plan(plan)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn save_quota_override<'a>(
         &'a self,
-        override_: dope_billing::QuotaOverride,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<()>> {
+        override_: kura_billing::QuotaOverride,
+    ) -> kura_billing::BoxFuture<'a, BillingResult<()>> {
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_save_quota_override(override_)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn save_manual_adjustment<'a>(
         &'a self,
-        adjustment: dope_billing::ManualAdjustment,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<()>> {
+        adjustment: kura_billing::ManualAdjustment,
+    ) -> kura_billing::BoxFuture<'a, BillingResult<()>> {
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_save_manual_adjustment(adjustment)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
@@ -1187,14 +1187,14 @@ impl dope_billing::Repository for BillingRepositoryHandle {
         &'a self,
         tenant_id: &str,
         reservation_id: &str,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Option<dope_billing::UsageReservation>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Option<kura_billing::UsageReservation>>> {
         let tenant_id = tenant_id.to_string();
         let reservation_id = reservation_id.to_string();
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_reservation_by_id(&tenant_id, &reservation_id)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
@@ -1202,13 +1202,13 @@ impl dope_billing::Repository for BillingRepositoryHandle {
         &'a self,
         tenant_id: &str,
         limit: usize,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Vec<dope_billing::QuotaDenial>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Vec<kura_billing::QuotaDenial>>> {
         let tenant_id = tenant_id.to_string();
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_list_quota_denials(&tenant_id, limit)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
@@ -1216,29 +1216,29 @@ impl dope_billing::Repository for BillingRepositoryHandle {
         &'a self,
         tenant_id: &str,
         limit: usize,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Vec<dope_billing::ManualAdjustment>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Vec<kura_billing::ManualAdjustment>>> {
         let tenant_id = tenant_id.to_string();
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_list_manual_adjustments(&tenant_id, limit)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
     fn previous_quota_period<'a>(
         &'a self,
         tenant_id: &str,
-        category: &dope_billing::Category,
+        category: &kura_billing::Category,
         before: DateTime<Utc>,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Option<(dope_billing::QuotaPeriod, dope_billing::UsageCounter)>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Option<(kura_billing::QuotaPeriod, kura_billing::UsageCounter)>>> {
         let tenant_id = tenant_id.to_string();
         let category = category.clone();
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_previous_quota_period(&tenant_id, &category, &before)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
@@ -1246,13 +1246,13 @@ impl dope_billing::Repository for BillingRepositoryHandle {
         &'a self,
         tenant_id: &str,
         at: DateTime<Utc>,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Vec<dope_billing::AbuseRestrictionRecord>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Vec<kura_billing::AbuseRestrictionRecord>>> {
         let tenant_id = tenant_id.to_string();
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_list_abuse_restrictions(&tenant_id, &at)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
@@ -1260,14 +1260,14 @@ impl dope_billing::Repository for BillingRepositoryHandle {
         &'a self,
         tenant_id: &str,
         denial_id: &str,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Option<dope_billing::QuotaDenial>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Option<kura_billing::QuotaDenial>>> {
         let tenant_id = tenant_id.to_string();
         let denial_id = denial_id.to_string();
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_quota_denial_by_id(&tenant_id, &denial_id)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 
@@ -1276,14 +1276,14 @@ impl dope_billing::Repository for BillingRepositoryHandle {
         tenant_id: &str,
         operation_key: &str,
         limit: usize,
-    ) -> dope_billing::BoxFuture<'a, BillingResult<Vec<String>>> {
+    ) -> kura_billing::BoxFuture<'a, BillingResult<Vec<String>>> {
         let tenant_id = tenant_id.to_string();
         let operation_key = operation_key.to_string();
         Box::pin(async move {
             self.0
                 .lock()
                 .billing_list_usage_evidence_refs(&tenant_id, &operation_key, limit)
-                .map_err(dope_billing::BillingError::Repository)
+                .map_err(kura_billing::BillingError::Repository)
         })
     }
 }

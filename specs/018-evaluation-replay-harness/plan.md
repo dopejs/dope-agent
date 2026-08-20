@@ -15,40 +15,40 @@ candidate inspection, non-live replay launch, attempt inspection, and plane-leve
 comparison; extends the TypeScript SDK and web operator shell so operators can launch and
 inspect replay/comparison outcomes without raw route use; and keeps replay defaulted to
 non-live evidence-preserving behavior unless the operator explicitly chooses live
-validation. Verification defaults to `DOPE_ENV=test` and includes contract, persistence,
+validation. Verification defaults to `KURA_ENV=test` and includes contract, persistence,
 restart, fixture, SDK, web-shell, and manual before/after coverage.
 
 ## Technical Context
 
 **Language/Version**: Go 1.26.0; TypeScript 5.7; React 19; Vite 7; Markdown docs; JSON
-Schema contracts  
+Schema contracts
 **Primary Dependencies**: `daemon/internal/api`, `daemon/internal/store`,
 `daemon/internal/runtime`, `daemon/internal/orchestration`, `daemon/internal/scheduler`,
 `daemon/internal/integrations`, `daemon/internal/computeruse`, `daemon/internal/delivery`,
 `daemon/internal/policy`, `daemon/internal/events`, new `daemon/internal/evaluation`,
 `sdk/ts/src`, `web/src/app`, `schemas/api`, `schemas/events`, `docs/harness`, and
-`docs/runtime`  
+`docs/runtime`
 **Storage**: existing SQLite daemon state with additive evaluation tables for candidates,
 attempts, comparisons, drift findings, and fixture metadata; repo-managed fixture
-definitions and captured fixture evidence where appropriate  
-**Testing**: `cd daemon && go test ./internal/evaluation ./internal/api ./internal/store ./internal/contracts ./internal/app`; `make daemon-contract-test`; `pnpm test:sdk`; `pnpm test:web`; `pnpm build:web`; optional `pnpm test:clients` once implementation reaches client parity; one manual `DOPE_ENV=test` before/after replay walkthrough in the web operator shell  
-**Target Platform**: local daemon plus browser-based web operator shell in `DOPE_ENV=test`
+definitions and captured fixture evidence where appropriate
+**Testing**: `cd daemon && go test ./internal/evaluation ./internal/api ./internal/store ./internal/contracts ./internal/app`; `make daemon-contract-test`; `pnpm test:sdk`; `pnpm test:web`; `pnpm build:web`; optional `pnpm test:clients` once implementation reaches client parity; one manual `KURA_ENV=test` before/after replay walkthrough in the web operator shell
+**Target Platform**: local daemon plus browser-based web operator shell in `KURA_ENV=test`
 by default, with explicit environment scoping for replay evidence and no accidental
-test/live mixing  
+test/live mixing
 **Project Type**: Go daemon control-plane service plus TypeScript SDK and React web
-operator shell  
+operator shell
 **Performance Goals**: candidate and attempt list routes return in `<=1 s` on local test
 hardware for low-hundreds evaluation records; replay launch returns an operator-visible
 accepted or blocked status in `<=2 s` excluding downstream execution latency; comparison
 summary generation completes in `<=5 s` for supported deterministic fixtures; web shell
 surfaces terminal replay/comparison status within `<=10 min` for the manual acceptance
-flow  
+flow
 **Constraints**: phase 33 is curated-only for candidate eligibility; default replay is
 non-live and must not execute real side effects; live validation requires explicit
 operator scope; fixture authoring is engineer-owned and repo-managed; web operator shell
 support is required; comparison detail is plane-level, not full artifact equality;
 knowledge-plane self-improvement, model training, and autonomous optimization remain out
-of scope  
+of scope
 **Scale/Scope**: one operator, one active environment view at a time, low hundreds of
 replay candidates and attempts in local test state, at least one reusable fixture for
 schedules, integrations, and computer-use paths, and one primary web shell sufficient to
@@ -72,10 +72,10 @@ close roadmap 33
   schemas, event additions, SDK surfaces, fixture manifests, docs, and restart persistence
   required to keep replay and comparison auditable.
 - Verification and observability: PASS. The plan names targeted daemon, contract, store,
-  SDK, web, restart, and manual `DOPE_ENV=test` verification, plus operator-visible
+  SDK, web, restart, and manual `KURA_ENV=test` verification, plus operator-visible
   replay status, readiness limitations, comparison drift findings, and evidence links.
 - Environment and secrets: PASS. Local planning and later verification default to
-  `DOPE_ENV=test`; replay records are environment-scoped; secret-bearing evidence remains
+  `KURA_ENV=test`; replay records are environment-scoped; secret-bearing evidence remains
   redacted; real side effects require explicit live validation scope.
 
 If any gate fails, stop and resolve the gap before Phase 0 research proceeds.
@@ -299,17 +299,17 @@ Implemented:
 
 Verification results:
 
-- `cd daemon && GOCACHE=/tmp/dope-go-cache go test ./internal/evaluation ./internal/app ./internal/api ./internal/store`: pass. `api` and `app` need non-sandbox local listener permission because existing tests use `httptest` listeners.
-- `cd daemon && GOCACHE=/tmp/dope-go-cache go test ./internal/evaluation ./internal/api ./internal/store ./internal/contracts ./internal/app`: pass. `api` and `app` need non-sandbox local listener permission because existing tests use `httptest` listeners.
-- `cd daemon && GOCACHE=/tmp/dope-go-cache go test ./...`: pass. `api` and `app` need non-sandbox local listener permission because existing tests use `httptest` listeners.
-- `GOCACHE=/tmp/dope-go-cache make daemon-contract-test`: pass.
+- `cd daemon && GOCACHE=/tmp/kura-go-cache go test ./internal/evaluation ./internal/app ./internal/api ./internal/store`: pass. `api` and `app` need non-sandbox local listener permission because existing tests use `httptest` listeners.
+- `cd daemon && GOCACHE=/tmp/kura-go-cache go test ./internal/evaluation ./internal/api ./internal/store ./internal/contracts ./internal/app`: pass. `api` and `app` need non-sandbox local listener permission because existing tests use `httptest` listeners.
+- `cd daemon && GOCACHE=/tmp/kura-go-cache go test ./...`: pass. `api` and `app` need non-sandbox local listener permission because existing tests use `httptest` listeners.
+- `GOCACHE=/tmp/kura-go-cache make daemon-contract-test`: pass.
 - `pnpm build:sdk`: pass.
 - `pnpm test:sdk`: pass, 7 tests.
 - `pnpm test:web -- --runInBand`: pass, 4 tests.
 - `pnpm build:web`: pass.
 - `pnpm build:clients`: pass.
 - `pnpm test:clients`: pass.
-- `cd daemon && GOCACHE=/tmp/dope-go-cache go mod tidy`: pass; `go.mod` and `go.sum` unchanged.
+- `cd daemon && GOCACHE=/tmp/kura-go-cache go mod tidy`: pass; `go.mod` and `go.sum` unchanged.
 
 Recorded acceptance evidence:
 
@@ -322,7 +322,7 @@ Recorded acceptance evidence:
   under the 10-minute target.
 - Drift determination target: comparison returned `matched` immediately after replay,
   well under the 5-minute target.
-- Restart check: after restarting the `DOPE_ENV=test` daemon, evaluation history still
+- Restart check: after restarting the `KURA_ENV=test` daemon, evaluation history still
   exposed 1 manual attempt, 1 comparison, and 3 fixtures; the manual attempt remained
   `completed` and the comparison remained `matched`.
 

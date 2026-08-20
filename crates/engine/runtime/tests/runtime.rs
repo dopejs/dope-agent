@@ -1,11 +1,11 @@
-use dope_runtime::{
+use kura_runtime::{
     live_validation_matrix_rows, CompleteToolCallInput, CreateRunInput, CreateStepInput,
     CreateToolCallInput, Manager, RunStatus, RuntimeError, StepStatus, ToolCallStatus,
     UpdateStepStatusInput,
 };
 use serde_json::json;
 
-fn new_run(manager: &Manager) -> dope_runtime::Run {
+fn new_run(manager: &Manager) -> kura_runtime::Run {
     manager
         .create_run(CreateRunInput { entrypoint: "do thing".to_string(), goal: "g".to_string(), ..CreateRunInput::default() })
         .unwrap()

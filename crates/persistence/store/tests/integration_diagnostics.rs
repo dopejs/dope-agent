@@ -7,15 +7,15 @@
 //! TestDiagnosticRetentionRecordsTrackExpiredEvidence.
 
 use chrono::{Duration, TimeZone, Utc};
-use dope_integrations::{
+use kura_integrations::{
     DiagnosticReasonCode, DiagnosticResult, DiagnosticResultFilter, DiagnosticRetentionState,
     DiagnosticRun, DiagnosticRunFilter, DiagnosticRunStatus, DiagnosticStatus, FreshnessState,
     RedactionStatus, RemediationOwner, RetrySafety, new_diagnostic_retention_record,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

@@ -25,7 +25,7 @@ resolution, and permission checks that every later hosted roadmap can depend on.
 
 - Support both personal tenants and organization tenants.
 - Every principal has one default tenant and an explicit allowed-tenant set.
-- `X-Dope-Tenant-ID` may override the default tenant only when the principal is allowed to
+- `X-Kura-Tenant-ID` may override the default tenant only when the principal is allowed to
   access that tenant.
 - Requests resolve both `principalId` and `tenantId`.
 - Tenant roles are `owner`, `admin`, `operator`, and `viewer`.

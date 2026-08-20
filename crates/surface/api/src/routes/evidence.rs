@@ -16,7 +16,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use dope_evidence as evidence;
+use kura_evidence as evidence;
 
 use crate::error::ApiError;
 use crate::middleware::TenantContext;
@@ -154,7 +154,7 @@ mod tests {
 
     fn state_with_manager() -> crate::state::AppState {
         let mut state = test_state();
-        state.evidence = Some(Arc::new(dope_evidence::Manager::new("test", None, None)));
+        state.evidence = Some(Arc::new(kura_evidence::Manager::new("test", None, None)));
         state
     }
 

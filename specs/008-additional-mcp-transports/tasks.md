@@ -161,7 +161,7 @@ evidence
 - [x] T034 [P] Run `make daemon-contract-test` and record results in `specs/008-additional-mcp-transports/quickstart.md`
 - [x] T035 [P] Run targeted daemon verification in `daemon/internal/mcp`, `daemon/internal/api`, `daemon/internal/app`, `daemon/internal/runtime`, `daemon/internal/store`, and `daemon/internal/contracts`, then record results in `specs/008-additional-mcp-transports/quickstart.md`
 - [x] T036 [P] Run full daemon regression verification with `go test ./...` in `daemon/` and record results in `specs/008-additional-mcp-transports/quickstart.md`
-- [x] T037 [P] Execute the manual `DOPE_ENV=test` operator acceptance workflow for `GET /v1/mcp/transports`, `GET /v1/config`, `GET /v1/mcp/servers/{id}`, plus websocket auth-blocked and end-to-end invocation paths, and record whether the inspection completes within `<=5 min` in `specs/008-additional-mcp-transports/quickstart.md`
+- [x] T037 [P] Execute the manual `KURA_ENV=test` operator acceptance workflow for `GET /v1/mcp/transports`, `GET /v1/config`, `GET /v1/mcp/servers/{id}`, plus websocket auth-blocked and end-to-end invocation paths, and record whether the inspection completes within `<=5 min` in `specs/008-additional-mcp-transports/quickstart.md`
 
 ---
 

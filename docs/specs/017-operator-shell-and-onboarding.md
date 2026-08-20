@@ -53,7 +53,7 @@ Add the minimum onboarding and operator-control surface required to configure, i
 
 - client tests for critical shell flows
 - API-to-UI contract coverage where practical
-- one manual onboarding acceptance path in `DOPE_ENV=test`
+- one manual onboarding acceptance path in `KURA_ENV=test`
 
 ## Definition Of Done
 

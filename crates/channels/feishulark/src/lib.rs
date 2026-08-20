@@ -57,8 +57,8 @@ impl ProviderFault {
     }
 
     #[must_use]
-    pub fn to_adapter_fault(&self) -> dope_adapterprovider::Fault {
-        dope_adapterprovider::Fault {
+    pub fn to_adapter_fault(&self) -> kura_adapterprovider::Fault {
+        kura_adapterprovider::Fault {
             kind: adapter_failure_kind(self.kind),
             code: self.code.clone(),
             message: self.message.clone(),
@@ -80,13 +80,13 @@ impl std::error::Error for ProviderFault {}
 
 /// Maps a local fault kind onto the adapter contract's failure kind.
 #[must_use]
-pub fn adapter_failure_kind(kind: FaultKind) -> dope_adapterrpc::FailureKind {
+pub fn adapter_failure_kind(kind: FaultKind) -> kura_adapterrpc::FailureKind {
     match kind {
-        FaultKind::Auth => dope_adapterrpc::FailureKind::Auth,
-        FaultKind::Scope => dope_adapterrpc::FailureKind::Scope,
-        FaultKind::RateLimited => dope_adapterrpc::FailureKind::RateLimited,
-        FaultKind::Unavailable => dope_adapterrpc::FailureKind::Unavailable,
-        FaultKind::Internal => dope_adapterrpc::FailureKind::Internal,
+        FaultKind::Auth => kura_adapterrpc::FailureKind::Auth,
+        FaultKind::Scope => kura_adapterrpc::FailureKind::Scope,
+        FaultKind::RateLimited => kura_adapterrpc::FailureKind::RateLimited,
+        FaultKind::Unavailable => kura_adapterrpc::FailureKind::Unavailable,
+        FaultKind::Internal => kura_adapterrpc::FailureKind::Internal,
     }
 }
 

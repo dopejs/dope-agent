@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use dope_config::{
+use kura_config::{
     Config, DiscordConnectorConfig, Environment, load, managed_provider_home_dir,
 };
 use parking_lot::Mutex;
@@ -13,76 +13,76 @@ use parking_lot::Mutex;
 /// vars and `HOME`.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-const DOPE_ENV_KEYS: &[&str] = &[
-    "DOPE_ENV",
-    "DOPE_DATA_DIR",
-    "DOPE_BIND_ADDR",
-    "DOPE_LOG_LEVEL",
-    "DOPE_VERSION",
-    "DOPE_LLM_DEFAULT_PROVIDER",
-    "DOPE_LLM_DEFAULT_MODEL",
-    "DOPE_LLM_DEFAULT_TIMEOUT_MS",
-    "DOPE_LLM_DEFAULT_MAX_RETRIES",
-    "DOPE_LLM_OPENAI_COMPATIBLE_BASE_URL",
-    "DOPE_LLM_OPENAI_COMPATIBLE_API_KEY",
-    "DOPE_LLM_OPENAI_COMPATIBLE_API_KEY_ENV",
-    "DOPE_LLM_OPENAI_COMPATIBLE_MODEL",
-    "DOPE_LLM_OPENAI_COMPATIBLE_TIMEOUT_MS",
-    "DOPE_LLM_OPENAI_COMPATIBLE_STREAM_FIRST_CHUNK_TIMEOUT_MS",
-    "DOPE_LLM_OPENAI_COMPATIBLE_STREAM_IDLE_TIMEOUT_MS",
-    "DOPE_LLM_OPENAI_COMPATIBLE_STREAM_MAX_DURATION_MS",
-    "DOPE_LLM_CLAUDE_CLI_PATH",
-    "DOPE_LLM_CLAUDE_MODEL",
-    "DOPE_LLM_CLAUDE_WORKDIR",
-    "DOPE_LLM_CODEX_CLI_PATH",
-    "DOPE_LLM_CODEX_MODEL",
-    "DOPE_LLM_CODEX_WORKDIR",
-    "DOPE_CONNECTORS_DISCORD_ENABLED",
-    "DOPE_CONNECTORS_DISCORD_CONNECTOR_ID",
-    "DOPE_CONNECTORS_DISCORD_DISPLAY_NAME",
-    "DOPE_CONNECTORS_DISCORD_DELIVERY_MODE",
-    "DOPE_CONNECTORS_DISCORD_BOT_TOKEN",
-    "DOPE_CONNECTORS_DISCORD_BOT_TOKEN_ENV",
-    "DOPE_CONNECTORS_DISCORD_REQUIRE_MENTION",
-    "DOPE_CONNECTORS_DISCORD_RESPOND_IN_DM",
-    "DOPE_CONNECTORS_DISCORD_ALLOWED_GUILD_IDS",
-    "DOPE_CONNECTORS_DISCORD_ALLOWED_CHANNEL_IDS",
-    "DOPE_CONNECTORS_TELEGRAM_ENABLED",
-    "DOPE_CONNECTORS_TELEGRAM_CONNECTOR_ID",
-    "DOPE_CONNECTORS_TELEGRAM_DISPLAY_NAME",
-    "DOPE_CONNECTORS_TELEGRAM_BOT_TOKEN",
-    "DOPE_CONNECTORS_TELEGRAM_BOT_TOKEN_ENV",
-    "DOPE_CONNECTORS_TELEGRAM_BOT_API_BASE_URL",
-    "DOPE_CONNECTORS_TELEGRAM_BOT_USERNAME",
-    "DOPE_CONNECTORS_TELEGRAM_ALLOWED_USER_IDS",
-    "DOPE_CONNECTORS_TELEGRAM_ALLOWED_DIRECT_CHAT_IDS",
-    "DOPE_CONNECTORS_TELEGRAM_ALLOWED_GROUP_IDS",
-    "DOPE_CONNECTORS_SLACK_ENABLED",
-    "DOPE_CONNECTORS_SLACK_CONNECTOR_ID",
-    "DOPE_CONNECTORS_SLACK_DISPLAY_NAME",
-    "DOPE_CONNECTORS_SLACK_API_BASE_URL",
-    "DOPE_CONNECTORS_SLACK_BOT_TOKEN_SECRET_REF",
-    "DOPE_CONNECTORS_SLACK_OAUTH_CLIENT_ID",
-    "DOPE_CONNECTORS_SLACK_OAUTH_CLIENT_SECRET",
-    "DOPE_CONNECTORS_SLACK_OAUTH_CLIENT_SECRET_ENV",
-    "DOPE_CONNECTORS_SLACK_OAUTH_API_BASE_URL",
-    "DOPE_CONNECTORS_SLACK_WORKSPACE_BINDING_ID",
-    "DOPE_CONNECTORS_SLACK_WORKSPACE_ID",
-    "DOPE_CONNECTORS_SLACK_BOT_USER_ID",
-    "DOPE_CONNECTORS_SLACK_ALLOWED_CHANNEL_IDS",
-    "DOPE_CONNECTORS_SLACK_ALLOWED_DM_USER_IDS",
-    "DOPE_CONNECTORS_SLACK_ALLOWED_DM_USER_GROUPS",
-    "DOPE_CONNECTORS_MATRIX_ENABLED",
-    "DOPE_CONNECTORS_MATRIX_CONNECTOR_ID",
-    "DOPE_CONNECTORS_MATRIX_DISPLAY_NAME",
-    "DOPE_CONNECTORS_MATRIX_HOMESERVER_URL",
-    "DOPE_CONNECTORS_MATRIX_HOMESERVER_ID",
-    "DOPE_CONNECTORS_MATRIX_BOT_USER_ID",
-    "DOPE_CONNECTORS_MATRIX_BOT_ACCESS_TOKEN",
-    "DOPE_CONNECTORS_MATRIX_BOT_ACCESS_TOKEN_ENV",
-    "DOPE_CONNECTORS_MATRIX_SELECTED_ROOM_IDS",
-    "DOPE_CONNECTORS_MATRIX_ALLOWED_DIRECT_USER_IDS",
-    "DOPE_CONNECTORS_MATRIX_CONFIGURED_COMMANDS",
+const KURA_ENV_KEYS: &[&str] = &[
+    "KURA_ENV",
+    "KURA_DATA_DIR",
+    "KURA_BIND_ADDR",
+    "KURA_LOG_LEVEL",
+    "KURA_VERSION",
+    "KURA_LLM_DEFAULT_PROVIDER",
+    "KURA_LLM_DEFAULT_MODEL",
+    "KURA_LLM_DEFAULT_TIMEOUT_MS",
+    "KURA_LLM_DEFAULT_MAX_RETRIES",
+    "KURA_LLM_OPENAI_COMPATIBLE_BASE_URL",
+    "KURA_LLM_OPENAI_COMPATIBLE_API_KEY",
+    "KURA_LLM_OPENAI_COMPATIBLE_API_KEY_ENV",
+    "KURA_LLM_OPENAI_COMPATIBLE_MODEL",
+    "KURA_LLM_OPENAI_COMPATIBLE_TIMEOUT_MS",
+    "KURA_LLM_OPENAI_COMPATIBLE_STREAM_FIRST_CHUNK_TIMEOUT_MS",
+    "KURA_LLM_OPENAI_COMPATIBLE_STREAM_IDLE_TIMEOUT_MS",
+    "KURA_LLM_OPENAI_COMPATIBLE_STREAM_MAX_DURATION_MS",
+    "KURA_LLM_CLAUDE_CLI_PATH",
+    "KURA_LLM_CLAUDE_MODEL",
+    "KURA_LLM_CLAUDE_WORKDIR",
+    "KURA_LLM_CODEX_CLI_PATH",
+    "KURA_LLM_CODEX_MODEL",
+    "KURA_LLM_CODEX_WORKDIR",
+    "KURA_CONNECTORS_DISCORD_ENABLED",
+    "KURA_CONNECTORS_DISCORD_CONNECTOR_ID",
+    "KURA_CONNECTORS_DISCORD_DISPLAY_NAME",
+    "KURA_CONNECTORS_DISCORD_DELIVERY_MODE",
+    "KURA_CONNECTORS_DISCORD_BOT_TOKEN",
+    "KURA_CONNECTORS_DISCORD_BOT_TOKEN_ENV",
+    "KURA_CONNECTORS_DISCORD_REQUIRE_MENTION",
+    "KURA_CONNECTORS_DISCORD_RESPOND_IN_DM",
+    "KURA_CONNECTORS_DISCORD_ALLOWED_GUILD_IDS",
+    "KURA_CONNECTORS_DISCORD_ALLOWED_CHANNEL_IDS",
+    "KURA_CONNECTORS_TELEGRAM_ENABLED",
+    "KURA_CONNECTORS_TELEGRAM_CONNECTOR_ID",
+    "KURA_CONNECTORS_TELEGRAM_DISPLAY_NAME",
+    "KURA_CONNECTORS_TELEGRAM_BOT_TOKEN",
+    "KURA_CONNECTORS_TELEGRAM_BOT_TOKEN_ENV",
+    "KURA_CONNECTORS_TELEGRAM_BOT_API_BASE_URL",
+    "KURA_CONNECTORS_TELEGRAM_BOT_USERNAME",
+    "KURA_CONNECTORS_TELEGRAM_ALLOWED_USER_IDS",
+    "KURA_CONNECTORS_TELEGRAM_ALLOWED_DIRECT_CHAT_IDS",
+    "KURA_CONNECTORS_TELEGRAM_ALLOWED_GROUP_IDS",
+    "KURA_CONNECTORS_SLACK_ENABLED",
+    "KURA_CONNECTORS_SLACK_CONNECTOR_ID",
+    "KURA_CONNECTORS_SLACK_DISPLAY_NAME",
+    "KURA_CONNECTORS_SLACK_API_BASE_URL",
+    "KURA_CONNECTORS_SLACK_BOT_TOKEN_SECRET_REF",
+    "KURA_CONNECTORS_SLACK_OAUTH_CLIENT_ID",
+    "KURA_CONNECTORS_SLACK_OAUTH_CLIENT_SECRET",
+    "KURA_CONNECTORS_SLACK_OAUTH_CLIENT_SECRET_ENV",
+    "KURA_CONNECTORS_SLACK_OAUTH_API_BASE_URL",
+    "KURA_CONNECTORS_SLACK_WORKSPACE_BINDING_ID",
+    "KURA_CONNECTORS_SLACK_WORKSPACE_ID",
+    "KURA_CONNECTORS_SLACK_BOT_USER_ID",
+    "KURA_CONNECTORS_SLACK_ALLOWED_CHANNEL_IDS",
+    "KURA_CONNECTORS_SLACK_ALLOWED_DM_USER_IDS",
+    "KURA_CONNECTORS_SLACK_ALLOWED_DM_USER_GROUPS",
+    "KURA_CONNECTORS_MATRIX_ENABLED",
+    "KURA_CONNECTORS_MATRIX_CONNECTOR_ID",
+    "KURA_CONNECTORS_MATRIX_DISPLAY_NAME",
+    "KURA_CONNECTORS_MATRIX_HOMESERVER_URL",
+    "KURA_CONNECTORS_MATRIX_HOMESERVER_ID",
+    "KURA_CONNECTORS_MATRIX_BOT_USER_ID",
+    "KURA_CONNECTORS_MATRIX_BOT_ACCESS_TOKEN",
+    "KURA_CONNECTORS_MATRIX_BOT_ACCESS_TOKEN_ENV",
+    "KURA_CONNECTORS_MATRIX_SELECTED_ROOM_IDS",
+    "KURA_CONNECTORS_MATRIX_ALLOWED_DIRECT_USER_IDS",
+    "KURA_CONNECTORS_MATRIX_CONFIGURED_COMMANDS",
     "OPENAI_TEST_KEY",
     "DISCORD_TEST_TOKEN",
     "TELEGRAM_TEST_TOKEN",
@@ -97,11 +97,11 @@ fn set_env(key: &str, value: &str) {
 }
 
 /// Equivalent of Go `setBaseEnv`: point HOME at the temp dir and clear every
-/// DOPE_* knob (Go sets them to the empty string, which the loader treats as
+/// KURA_* knob (Go sets them to the empty string, which the loader treats as
 /// unset).
 fn set_base_env(home_dir: &Path) {
     set_env("HOME", &home_dir.to_string_lossy());
-    for key in DOPE_ENV_KEYS {
+    for key in KURA_ENV_KEYS {
         set_env(key, "");
     }
 }
@@ -113,7 +113,7 @@ impl TempHome {
     fn new() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
-            "dope-config-test-{}-{}",
+            "kura-config-test-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
@@ -138,14 +138,14 @@ fn write_config(data_dir: &Path, contents: &str) {
 }
 
 #[test]
-fn load_initializes_default_dope_dir() {
+fn load_initializes_default_kura_dir() {
     let _guard = ENV_LOCK.lock();
     let home = TempHome::new();
     set_base_env(home.path());
 
     let cfg = load().expect("load");
 
-    let expected_data_dir = home.path().join(".dope-test");
+    let expected_data_dir = home.path().join(".kura-test");
     assert_eq!(cfg.data_dir, expected_data_dir.to_string_lossy());
     assert_eq!(cfg.environment, Environment::Test);
     assert!(expected_data_dir.is_dir(), "expected data dir to exist");
@@ -153,10 +153,10 @@ fn load_initializes_default_dope_dir() {
 }
 
 #[test]
-fn load_reads_config_file_from_dope_dir() {
+fn load_reads_config_file_from_kura_dir() {
     let _guard = ENV_LOCK.lock();
     let home = TempHome::new();
-    let data_dir = home.path().join(".dope-test");
+    let data_dir = home.path().join(".kura-test");
     write_config(
         &data_dir,
         r#"{
@@ -193,14 +193,14 @@ fn load_reads_config_file_from_dope_dir() {
 fn managed_provider_home_dir_uses_isolated_test_root() {
     let cfg = Config {
         environment: Environment::Test,
-        data_dir: "/tmp/dope-test".to_string(),
+        data_dir: "/tmp/kura-test".to_string(),
         bind_addr: String::new(),
         log_level: String::new(),
         version: String::new(),
         llm: Default::default(),
         connectors: Default::default(),
     };
-    let expected = Path::new("/tmp/dope-test").join("managed-provider-home");
+    let expected = Path::new("/tmp/kura-test").join("managed-provider-home");
     assert_eq!(managed_provider_home_dir(&cfg), expected.to_string_lossy());
 }
 
@@ -208,7 +208,7 @@ fn managed_provider_home_dir_uses_isolated_test_root() {
 fn load_environment_overrides_config_file() {
     let _guard = ENV_LOCK.lock();
     let home = TempHome::new();
-    let data_dir = home.path().join(".dope-test");
+    let data_dir = home.path().join(".kura-test");
     write_config(
         &data_dir,
         r#"{
@@ -226,16 +226,16 @@ fn load_environment_overrides_config_file() {
     }"#,
     );
 
-    let override_dir = home.path().join("custom-dope");
+    let override_dir = home.path().join("custom-kura");
     set_base_env(home.path());
-    set_env("DOPE_DATA_DIR", &override_dir.to_string_lossy());
-    set_env("DOPE_BIND_ADDR", "127.0.0.1:19999");
-    set_env("DOPE_LOG_LEVEL", "warn");
-    set_env("DOPE_VERSION", "test");
-    set_env("DOPE_LLM_DEFAULT_MODEL", "gpt-env");
-    set_env("DOPE_LLM_OPENAI_COMPATIBLE_BASE_URL", "https://api.env.example/v1");
-    set_env("DOPE_LLM_OPENAI_COMPATIBLE_API_KEY", "env-secret");
-    set_env("DOPE_LLM_OPENAI_COMPATIBLE_MODEL", "gpt-env-provider");
+    set_env("KURA_DATA_DIR", &override_dir.to_string_lossy());
+    set_env("KURA_BIND_ADDR", "127.0.0.1:19999");
+    set_env("KURA_LOG_LEVEL", "warn");
+    set_env("KURA_VERSION", "test");
+    set_env("KURA_LLM_DEFAULT_MODEL", "gpt-env");
+    set_env("KURA_LLM_OPENAI_COMPATIBLE_BASE_URL", "https://api.env.example/v1");
+    set_env("KURA_LLM_OPENAI_COMPATIBLE_API_KEY", "env-secret");
+    set_env("KURA_LLM_OPENAI_COMPATIBLE_MODEL", "gpt-env-provider");
 
     let cfg = load().expect("load");
 
@@ -253,7 +253,7 @@ fn load_environment_overrides_config_file() {
 fn load_managed_cli_provider_config() {
     let _guard = ENV_LOCK.lock();
     let home = TempHome::new();
-    let data_dir = home.path().join(".dope-test");
+    let data_dir = home.path().join(".kura-test");
     write_config(
         &data_dir,
         r#"{
@@ -273,8 +273,8 @@ fn load_managed_cli_provider_config() {
     );
 
     set_base_env(home.path());
-    set_env("DOPE_LLM_CLAUDE_MODEL", "claude-sonnet-4-6");
-    set_env("DOPE_LLM_CODEX_WORKDIR", "~/projects/codex");
+    set_env("KURA_LLM_CLAUDE_MODEL", "claude-sonnet-4-6");
+    set_env("KURA_LLM_CODEX_WORKDIR", "~/projects/codex");
 
     let cfg = load().expect("load");
 
@@ -288,7 +288,7 @@ fn load_managed_cli_provider_config() {
 fn load_discord_connector_config() {
     let _guard = ENV_LOCK.lock();
     let home = TempHome::new();
-    let data_dir = home.path().join(".dope-test");
+    let data_dir = home.path().join(".kura-test");
     write_config(
         &data_dir,
         r#"{
@@ -310,7 +310,7 @@ fn load_discord_connector_config() {
 
     set_base_env(home.path());
     set_env("DISCORD_TEST_TOKEN", "discord-secret");
-    set_env("DOPE_CONNECTORS_DISCORD_ALLOWED_CHANNEL_IDS", "channel_3,channel_4");
+    set_env("KURA_CONNECTORS_DISCORD_ALLOWED_CHANNEL_IDS", "channel_3,channel_4");
 
     let cfg = load().expect("load");
 
@@ -330,7 +330,7 @@ fn load_discord_connector_config() {
 fn load_telegram_connector_config() {
     let _guard = ENV_LOCK.lock();
     let home = TempHome::new();
-    let data_dir = home.path().join(".dope-test");
+    let data_dir = home.path().join(".kura-test");
     write_config(
         &data_dir,
         r#"{
@@ -340,7 +340,7 @@ fn load_telegram_connector_config() {
                 "connectorId": "telegram-bot",
                 "displayName": "Telegram Bot",
                 "botTokenEnv": "TELEGRAM_TEST_TOKEN",
-                "botUsername": "dope_test_bot",
+                "botUsername": "kura_test_bot",
                 "allowedUserIds": ["user_1"],
                 "allowedDirectChatIds": ["chat_1"],
                 "allowedGroupIds": ["group_1"]
@@ -351,14 +351,14 @@ fn load_telegram_connector_config() {
 
     set_base_env(home.path());
     set_env("TELEGRAM_TEST_TOKEN", "telegram-secret");
-    set_env("DOPE_CONNECTORS_TELEGRAM_ALLOWED_GROUP_IDS", "group_2,group_3");
+    set_env("KURA_CONNECTORS_TELEGRAM_ALLOWED_GROUP_IDS", "group_2,group_3");
 
     let cfg = load().expect("load");
 
     assert!(cfg.connectors.telegram.enabled);
     assert_eq!(cfg.connectors.telegram.connector_id, "telegram-bot");
     assert_eq!(cfg.connectors.telegram.bot_token, "telegram-secret");
-    assert_eq!(cfg.connectors.telegram.bot_username, "dope_test_bot");
+    assert_eq!(cfg.connectors.telegram.bot_username, "kura_test_bot");
     assert_eq!(cfg.connectors.telegram.allowed_direct_chat_ids, ["chat_1"]);
     assert_eq!(
         cfg.connectors.telegram.allowed_group_ids,
@@ -370,7 +370,7 @@ fn load_telegram_connector_config() {
 fn load_slack_connector_config() {
     let _guard = ENV_LOCK.lock();
     let home = TempHome::new();
-    let data_dir = home.path().join(".dope-test");
+    let data_dir = home.path().join(".kura-test");
     write_config(
         &data_dir,
         r#"{
@@ -397,10 +397,10 @@ fn load_slack_connector_config() {
 
     set_base_env(home.path());
     set_env(
-        "DOPE_CONNECTORS_SLACK_ALLOWED_CHANNEL_IDS",
+        "KURA_CONNECTORS_SLACK_ALLOWED_CHANNEL_IDS",
         "channel_env_1,channel_env_2",
     );
-    set_env("DOPE_CONNECTORS_SLACK_BOT_USER_ID", "bot_env");
+    set_env("KURA_CONNECTORS_SLACK_BOT_USER_ID", "bot_env");
     set_env("SLACK_CLIENT_SECRET", "secret-from-env");
 
     let cfg = load().expect("load");
@@ -426,7 +426,7 @@ fn load_slack_connector_config() {
 fn load_matrix_connector_config() {
     let _guard = ENV_LOCK.lock();
     let home = TempHome::new();
-    let data_dir = home.path().join(".dope-test");
+    let data_dir = home.path().join(".kura-test");
     write_config(
         &data_dir,
         r#"{
@@ -441,7 +441,7 @@ fn load_matrix_connector_config() {
                 "botAccessTokenEnv": "MATRIX_BOT_TOKEN",
                 "selectedRoomIds": ["!room_file:example.org"],
                 "allowedDirectUserIds": ["@alice:example.org"],
-                "configuredCommands": ["!dope"]
+                "configuredCommands": ["!kura"]
             }
         }
     }"#,
@@ -450,7 +450,7 @@ fn load_matrix_connector_config() {
     set_base_env(home.path());
     set_env("MATRIX_BOT_TOKEN", "matrix-secret");
     set_env(
-        "DOPE_CONNECTORS_MATRIX_SELECTED_ROOM_IDS",
+        "KURA_CONNECTORS_MATRIX_SELECTED_ROOM_IDS",
         "!room_env_1:example.org,!room_env_2:example.org",
     );
 
@@ -477,7 +477,7 @@ fn load_matrix_connector_config() {
 fn load_rejects_invalid_config_file() {
     let _guard = ENV_LOCK.lock();
     let home = TempHome::new();
-    let data_dir = home.path().join(".dope-test");
+    let data_dir = home.path().join(".kura-test");
     write_config(&data_dir, r#"{"bindAddr":"#);
 
     set_base_env(home.path());
@@ -494,11 +494,11 @@ fn load_uses_prod_defaults_when_environment_is_prod() {
     let _guard = ENV_LOCK.lock();
     let home = TempHome::new();
     set_base_env(home.path());
-    set_env("DOPE_ENV", "prod");
+    set_env("KURA_ENV", "prod");
 
     let cfg = load().expect("load");
 
-    let expected_data_dir = home.path().join(".dope");
+    let expected_data_dir = home.path().join(".kura");
     assert_eq!(cfg.environment, Environment::Prod);
     assert_eq!(cfg.data_dir, expected_data_dir.to_string_lossy());
     assert_eq!(cfg.bind_addr, "127.0.0.1:19191");

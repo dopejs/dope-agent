@@ -7,7 +7,7 @@
 //! `llm.dispatch.completed|failed|cancelled|partial_failed` frame).
 //!
 //! The provider profile resolution (Go resolveProviderDispatchInput) runs
-//! through dope_providers when the manager is configured; prepare/validation
+//! through kura_providers when the manager is configured; prepare/validation
 //! failures keep the Go llmPrepareStatusCode mapping and settled-but-failed
 //! dispatches keep llmDispatchStatusCode (504 timeouts, 400
 //! provider_not_found, 408 cancelled, 502 otherwise).
@@ -31,9 +31,9 @@ use serde::Serialize;
 use std::convert::Infallible;
 use tokio_stream::wrappers::ReceiverStream;
 
-use dope_events as events;
-use dope_llm as llm;
-use dope_providers as providers;
+use kura_events as events;
+use kura_llm as llm;
+use kura_providers as providers;
 
 use crate::error::ApiError;
 use crate::middleware::{environment_scope_from_config, TenantContext};
@@ -387,7 +387,7 @@ mod tests {
 
     fn state_with_dispatcher() -> crate::state::AppState {
         // Dispatcher::new() registers the builtin echo provider.
-        let dispatcher = dope_llm::Dispatcher::new();
+        let dispatcher = kura_llm::Dispatcher::new();
         let _ = dispatcher.set_default_provider("echo");
         dispatcher.set_default_model("echo-1");
         let mut state = test_state();

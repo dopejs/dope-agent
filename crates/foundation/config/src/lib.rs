@@ -1,10 +1,10 @@
 //! Port of `daemon/internal/config`. See `rs/MIGRATION.md` for conventions.
 //!
 //! Loads the daemon configuration from (in increasing precedence) built-in
-//! environment-aware defaults, `<dataDir>/config.json`, and `DOPE_*`
+//! environment-aware defaults, `<dataDir>/config.json`, and `KURA_*`
 //! environment variables, then resolves `*Env` secret references. The test
-//! environment (`DOPE_ENV=test`, or a `dev` version) targets `~/.dope-test`
-//! and bind addr `127.0.0.1:19192`; production targets `~/.dope` and
+//! environment (`KURA_ENV=test`, or a `dev` version) targets `~/.kura-test`
+//! and bind addr `127.0.0.1:19192`; production targets `~/.kura` and
 //! `127.0.0.1:19191`.
 
 mod error;

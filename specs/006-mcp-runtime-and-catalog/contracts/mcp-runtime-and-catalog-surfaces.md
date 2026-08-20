@@ -110,7 +110,7 @@ model.
 
 - proposed script: `scripts/install-mcp-catalog-entry.sh`
 - required behavior:
-  - defaults to `DOPE_ENV=test`
+  - defaults to `KURA_ENV=test`
   - accepts a stable catalog entry id
   - calls daemon-owned install behavior or writes through the same server resource shape
   - prints the resulting `serverId`, `catalogEntryId`, and status

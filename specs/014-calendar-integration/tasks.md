@@ -118,7 +118,7 @@
 - [x] T039 [P] Update calendar schema fixtures and validator coverage in `daemon/internal/contracts/contracts_test.go`, `daemon/internal/contracts/validator.go`, and all calendar-facing schema files under `schemas/api/` and `schemas/events/`
 - [x] T040 [P] Document the calendar domain, truth-plane separation, and operator guidance in `docs/runtime/daemon-roadmaps.md`, `docs/runtime/daemon-api-and-event-model.md`, `docs/runtime/operator-trust-model.md`, and `docs/harness/harness-architecture.md`
 - [x] T041 [P] Update downstream roadmap specs to reference the concrete calendar contract in `docs/specs/014-calendar-integration.md`, `docs/specs/015-mail-integration.md`, and `docs/specs/016-tasks-and-reminders.md`
-- [x] T042 [P] Run the manual `DOPE_ENV=test` calendar walkthrough with one explicit-`integrationId` read, one canonical-default read, one mutation, and one delivery-linked background run, then record observed results and latency measurements against the plan targets in `specs/014-calendar-integration/quickstart.md`
+- [x] T042 [P] Run the manual `KURA_ENV=test` calendar walkthrough with one explicit-`integrationId` read, one canonical-default read, one mutation, and one delivery-linked background run, then record observed results and latency measurements against the plan targets in `specs/014-calendar-integration/quickstart.md`
 - [x] T043 Record automated verification commands, residual risks, rollback notes, and the phase-29 latency verification procedure in `specs/014-calendar-integration/plan.md` and `specs/014-calendar-integration/quickstart.md`
 
 ---
@@ -199,7 +199,7 @@ Task: "T034 [US3] Implement background calendar operation emission from workflow
 1. Complete Phase 1: Setup.
 2. Complete Phase 2: Foundational.
 3. Complete Phase 3: User Story 1.
-4. Validate calendar account projection, event inspection, and busy/free lookup independently in `DOPE_ENV=test`.
+4. Validate calendar account projection, event inspection, and busy/free lookup independently in `KURA_ENV=test`.
 5. Treat this as the first executable checkpoint only; roadmap 29 is not closed until US2, US3, and Phase 6 complete.
 
 ### Incremental Delivery

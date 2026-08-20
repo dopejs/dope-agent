@@ -14,19 +14,19 @@ and redacted provenance truth. The design closes roadmap 27 by introducing a ded
 `connectors` supervisor, by extending runtime, workflow, and approval truth with
 integration-binding summaries, and by providing one repo-owned fake integration backend,
 a run-scoped probe route, and workflow-hosted binding propagation checks in
-`DOPE_ENV=test` so operators can verify shared readiness, approval, and provenance
+`KURA_ENV=test` so operators can verify shared readiness, approval, and provenance
 behavior before calendar, mail, and reminder domains land.
 
 ## Technical Context
 
-**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts  
-**Primary Dependencies**: `daemon/internal/api`, new `daemon/internal/integrations`, `daemon/internal/app`, `daemon/internal/runtime`, `daemon/internal/orchestration`, `daemon/internal/policy`, `daemon/internal/events`, `daemon/internal/store`, `daemon/internal/contracts`, existing auth wiring, and existing redacted secret-scope / sandbox provenance helpers reused where applicable  
-**Storage**: SQLite daemon state with additive `integrations` persistence plus additive integration-binding snapshots on existing runtime, workflow, and policy-backed documents; no new blob storage required in phase 27  
-**Testing**: `go test ./internal/integrations ./internal/api ./internal/store ./internal/app ./internal/runtime ./internal/orchestration ./internal/policy ./internal/contracts`, `make daemon-contract-test`, targeted approval and fake-integration probe regressions including workflow-hosted execution checks, plus one manual `DOPE_ENV=test` verification path using the repo-owned fake integration backend  
-**Target Platform**: macOS/Linux local daemon in `DOPE_ENV=test` by default, using the existing localhost HTTP API, SQLite store, and operator-authenticated `/v1/*` control plane  
-**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts  
-**Performance Goals**: list or inspect an integration from persisted local state in `<=500 ms`; project readiness/default-state changes to operator-visible resource reads in `<=1 s`; create integration-bound runtime tool-call provenance in `<=1 s` after probe execution completes on local test hardware  
-**Constraints**: phase 27 stays domain-agnostic and MUST NOT claim calendar/mail/reminder object behavior; multiple records may exist for the same domain/account/environment but exactly one canonical default may be active at a time; `unavailable` blocks integration-backed work while `degraded` stays inspectable and requires operation-specific gating; readiness gating must not redefine delivery-status semantics; secret-backed material remains redacted and environment-scoped; marketplace discovery and multi-user tenancy remain out of scope; existing connector, MCP, capability, workflow, and delivery behavior stays additive and backward compatible  
+**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts
+**Primary Dependencies**: `daemon/internal/api`, new `daemon/internal/integrations`, `daemon/internal/app`, `daemon/internal/runtime`, `daemon/internal/orchestration`, `daemon/internal/policy`, `daemon/internal/events`, `daemon/internal/store`, `daemon/internal/contracts`, existing auth wiring, and existing redacted secret-scope / sandbox provenance helpers reused where applicable
+**Storage**: SQLite daemon state with additive `integrations` persistence plus additive integration-binding snapshots on existing runtime, workflow, and policy-backed documents; no new blob storage required in phase 27
+**Testing**: `go test ./internal/integrations ./internal/api ./internal/store ./internal/app ./internal/runtime ./internal/orchestration ./internal/policy ./internal/contracts`, `make daemon-contract-test`, targeted approval and fake-integration probe regressions including workflow-hosted execution checks, plus one manual `KURA_ENV=test` verification path using the repo-owned fake integration backend
+**Target Platform**: macOS/Linux local daemon in `KURA_ENV=test` by default, using the existing localhost HTTP API, SQLite store, and operator-authenticated `/v1/*` control plane
+**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts
+**Performance Goals**: list or inspect an integration from persisted local state in `<=500 ms`; project readiness/default-state changes to operator-visible resource reads in `<=1 s`; create integration-bound runtime tool-call provenance in `<=1 s` after probe execution completes on local test hardware
+**Constraints**: phase 27 stays domain-agnostic and MUST NOT claim calendar/mail/reminder object behavior; multiple records may exist for the same domain/account/environment but exactly one canonical default may be active at a time; `unavailable` blocks integration-backed work while `degraded` stays inspectable and requires operation-specific gating; readiness gating must not redefine delivery-status semantics; secret-backed material remains redacted and environment-scoped; marketplace discovery and multi-user tenancy remain out of scope; existing connector, MCP, capability, workflow, and delivery behavior stays additive and backward compatible
 **Scale/Scope**: one operator-managed daemon, low tens of integration records across a handful of personal domains, low-volume readiness transitions per day, and one repo-owned fake integration backend sufficient to verify shared runtime linkage before downstream domain roadmaps land
 
 ## Constitution Check
@@ -47,11 +47,11 @@ behavior before calendar, mail, and reminder domains land.
   canonical-default changes, secret-scope truth, and fake integration probe execution all
   remain operator-visible.
 - Verification and observability: PASS. The design requires targeted package, contract,
-  restart, and approval/probe regressions plus one manual `DOPE_ENV=test` fake-backend
+  restart, and approval/probe regressions plus one manual `KURA_ENV=test` fake-backend
   walkthrough. Operator-visible resources and events replace raw config or backend logs as
   the source of truth for integration readiness.
 - Environment and secrets: PASS. Local planning and later verification stay in
-  `DOPE_ENV=test`, the fake integration backend avoids live personal-system connectors,
+  `KURA_ENV=test`, the fake integration backend avoids live personal-system connectors,
   and secret-backed material remains operator-owned, redacted, and environment-scoped.
 
 Post-design re-check:
@@ -162,7 +162,7 @@ Recorded on 2026-04-22:
 - `cd daemon && go test ./internal/integrations ./internal/runtime ./internal/policy ./internal/store ./internal/api ./internal/app ./internal/contracts ./internal/orchestration -count=1` passed
 - `make daemon-contract-test` passed
 - a live current-branch daemon walkthrough passed on `127.0.0.1:19193` with
-  `DOPE_ENV=test`, isolated `DOPE_DATA_DIR=/tmp/dope-integrations-manual`, local
+  `KURA_ENV=test`, isolated `KURA_DATA_DIR=/tmp/kura-integrations-manual`, local
   pairing auth, canonical-default promotion, inspect and mutate fake probes,
   approval resolution, and explicit `unavailable` blocking
 

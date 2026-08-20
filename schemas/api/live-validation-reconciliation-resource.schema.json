@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/live-validation-reconciliation-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/live-validation-reconciliation-resource.schema.json",
   "title": "LiveValidationReconciliationResource",
   "type": "object",
   "required": ["reconciliationId", "ambiguousCommitId", "resolvedBy", "resolution", "reason", "resolvedAt"],

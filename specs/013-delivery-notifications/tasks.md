@@ -117,7 +117,7 @@
 - [X] T038 [P] Update delivery contract fixtures and validator coverage for target, preference, outcome, attempt, and summary event families in `daemon/internal/contracts/contracts_test.go`, `daemon/internal/contracts/validator.go`, and all delivery-facing schema files under `schemas/api/` and `schemas/events/`
 - [X] T039 [P] Document the delivery plane, connector boundary, and delivery-versus-execution truth in `docs/runtime/daemon-roadmaps.md`, `docs/runtime/daemon-api-and-event-model.md`, `docs/runtime/operator-trust-model.md`, and `docs/channels/channel-reply-progression.md`
 - [X] T040 [P] Update downstream roadmap specs to reference the shared delivery plane in `docs/specs/014-calendar-integration.md`, `docs/specs/015-mail-integration.md`, and `docs/specs/016-tasks-and-reminders.md`
-- [X] T041 [P] Run the manual `DOPE_ENV=test` delivery walkthrough and record observed results in `specs/013-delivery-notifications/quickstart.md`
+- [X] T041 [P] Run the manual `KURA_ENV=test` delivery walkthrough and record observed results in `specs/013-delivery-notifications/quickstart.md`
 - [X] T042 Record automated verification commands, residual risks, and rollback notes in `specs/013-delivery-notifications/plan.md` and `specs/013-delivery-notifications/quickstart.md`
 
 ---
@@ -198,7 +198,7 @@ Task: "T033 [US3] Implement summary-window membership, emission, restart restora
 1. Complete Phase 1: Setup.
 2. Complete Phase 2: Foundational.
 3. Complete Phase 3: User Story 1.
-4. Validate one scheduled or workflow-originated background result reaching one active delivery target in `DOPE_ENV=test`.
+4. Validate one scheduled or workflow-originated background result reaching one active delivery target in `KURA_ENV=test`.
 5. Treat this as the first executable checkpoint only; roadmap 28 is not complete until US2, US3, and Phase 6 close the full delivery-plane scope.
 
 ### Incremental Delivery

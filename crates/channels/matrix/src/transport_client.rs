@@ -8,8 +8,8 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use chrono::Utc;
-use dope_connectors::RedactionStatus;
-use dope_imtypes::{OutboundReply, ReplyCapabilities, SentReply};
+use kura_connectors::RedactionStatus;
+use kura_imtypes::{OutboundReply, ReplyCapabilities, SentReply};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use thiserror::Error;
@@ -394,7 +394,7 @@ impl crate::transport::Transport for ClientTransport {
     }
 
     /// Go `SendReply`: sends an `m.text` message to the room with a stable
-    /// `dope_<event-id>` transaction id and returns the assigned event id.
+    /// `kura_<event-id>` transaction id and returns the assigned event id.
     fn send_reply(&self, reply: OutboundReply) -> Result<SentReply, String> {
         let room_id = reply.channel_id.trim().to_string();
         if room_id.is_empty() {
@@ -402,11 +402,11 @@ impl crate::transport::Transport for ClientTransport {
         }
         let token = self.access_token()?;
         let mut transaction_id = format!(
-            "dope_{}",
+            "kura_{}",
             reply.reply_to_external_message_id.trim().replace('$', "")
         );
-        if transaction_id == "dope_" {
-            transaction_id = format!("dope_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        if transaction_id == "kura_" {
+            transaction_id = format!("kura_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
         }
         let payload = serde_json::json!({
             "msgtype": "m.text",

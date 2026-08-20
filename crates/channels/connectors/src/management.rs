@@ -9,8 +9,8 @@
 //! literals that are not plain snake_case).
 //!
 //! The record types previously lived store-local in
-//! dope-store/src/channel_management.rs; Go keeps them in the connectors
-//! package and dope-store now re-exports them from this crate.
+//! kura-store/src/channel_management.rs; Go keeps them in the connectors
+//! package and kura-store now re-exports them from this crate.
 
 use std::collections::HashMap;
 
@@ -72,7 +72,7 @@ crate::string_enum!(RouteDecisionOutcome {
     Disabled => "disabled",
 });
 
-// --- channel-management record types (moved from dope-store) ---------------
+// --- channel-management record types (moved from kura-store) ---------------
 
 /// Go `connectors.RoutePolicy`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

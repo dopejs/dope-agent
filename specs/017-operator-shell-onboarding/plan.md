@@ -15,40 +15,40 @@ authoritative, adds only a minimal set of operator projection routes in
 approval actions plus authoritative detail routes consumed behind shell-resident
 inspection panels, and embeds one bounded first useful action that reuses existing
 chat-query or run-creation execution paths. Verification remains defaulted to
-`DOPE_ENV=test` and focuses on truthful environment scoping, approval handling inside
+`KURA_ENV=test` and focuses on truthful environment scoping, approval handling inside
 the shell, and server-side projections that do not drift from daemon state.
 
 ## Technical Context
 
 **Language/Version**: Go 1.26.0; TypeScript 5.7; React 19; Vite 7; Markdown docs; JSON
-Schema contracts  
+Schema contracts
 **Primary Dependencies**: `daemon/internal/api`, `daemon/internal/app`,
 `daemon/internal/store`, `daemon/internal/events`, `daemon/internal/policy`,
 `daemon/internal/integrations`, `daemon/internal/connectors`,
 `daemon/internal/capabilities`, `daemon/internal/runtime`,
 `daemon/internal/orchestration`, `daemon/internal/delivery`,
 `daemon/internal/computeruse`, `web/src/app`, `sdk/ts/src`, and existing auth/config
-routes  
+routes
 **Storage**: existing SQLite daemon state and persisted events only; phase 32 adds
-derived operator projections and schemas, not new operator-shell-owned persistence tables  
+derived operator projections and schemas, not new operator-shell-owned persistence tables
 **Testing**: `cd daemon && go test ./internal/api ./internal/contracts ./internal/app`,
 `make daemon-contract-test`, `pnpm test:sdk`, `pnpm test:web`, `pnpm build:web`,
 optional `pnpm test:clients` once implementation reaches repo-wide client parity, plus
-one manual `DOPE_ENV=test` onboarding acceptance walkthrough in the browser  
-**Target Platform**: local daemon plus browser-based web client in `DOPE_ENV=test` by
-default, with the current environment made explicit but not switchable inside the shell  
+one manual `KURA_ENV=test` onboarding acceptance walkthrough in the browser
+**Target Platform**: local daemon plus browser-based web client in `KURA_ENV=test` by
+default, with the current environment made explicit but not switchable inside the shell
 **Project Type**: Go daemon control-plane service plus TypeScript/React web client and
-shared TypeScript SDK  
+shared TypeScript SDK
 **Performance Goals**: operator projection routes should return on local test hardware in
 `<=1 s` for normal low-hundreds record counts; first useful action status or result
 feedback should appear in the shell in `<=2 s` after route completion excluding external
 provider latency; approval resolution feedback should refresh the shell in `<=2 s` after
-the decision is accepted  
+the decision is accepted
 **Constraints**: phase 32 MUST stay web-first and must not require TUI parity; onboarding
 completes when the minimum readiness set for the selected bounded first useful action is
 satisfied; approvals must be actionable inside the shell; environment scoping must stay
 strict and explicit; operator projections must be daemon-owned summaries rather than
-client-derived truth; detailed inspection must keep existing domain routes authoritative  
+client-derived truth; detailed inspection must keep existing domain routes authoritative
 **Scale/Scope**: one operator, one active environment view at a time, low hundreds of
 integrations, approvals, schedules, workflows, and deliveries in local test state, and
 one primary web shell sufficient to close roadmap 32 without adding multi-user admin or
@@ -72,11 +72,11 @@ remote-access features
   reused approval and authoritative detail routes, SDK contract updates, and
   documentation updates needed to keep onboarding, activity, and diagnostics auditable.
 - Verification and observability: PASS. The plan names targeted Go API and contract
-  tests, web and SDK tests, manual `DOPE_ENV=test` onboarding acceptance, and operator
+  tests, web and SDK tests, manual `KURA_ENV=test` onboarding acceptance, and operator
   signals visible through the projection routes and shell-resident authoritative detail
   surfaces.
 - Environment and secrets: PASS. Local planning and later verification stay in
-  `DOPE_ENV=test`; the active environment is explicit in all operator projections; the
+  `KURA_ENV=test`; the active environment is explicit in all operator projections; the
   shell explains readiness and failures without exposing secret material.
 
 If any gate fails, stop and resolve the gap before Phase 0 research proceeds.
@@ -250,11 +250,11 @@ These commands are expected to cover:
   - `pnpm --dir web exec tsc --noEmit`
   - `pnpm --dir web test`
   - `pnpm --dir web build`
-  - local projection timing spot-checks against a seeded `DOPE_ENV=test` daemon:
+  - local projection timing spot-checks against a seeded `KURA_ENV=test` daemon:
     - `/v1/operator/onboarding`: `0.038592 s`
     - `/v1/operator/activity?attentionOnly=true&limit=20`: `0.569744 s`
     - `/v1/operator/diagnostics`: `0.513144 s`
-- Manual `DOPE_ENV=test` verification on 2026-04-24 confirmed:
+- Manual `KURA_ENV=test` verification on 2026-04-24 confirmed:
   - local pairing produced a durable bearer token that remained valid after daemon
     restart
   - browser-based operator-shell loading succeeded against `http://127.0.0.1:4173/`

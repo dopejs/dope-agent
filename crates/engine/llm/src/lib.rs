@@ -2,7 +2,7 @@
 //! registry/dispatch state machine, and the echo test provider.
 //!
 //! The Go package's `openai_compatible_provider.go` is intentionally not
-//! ported: `dope-model-provider`'s `OpenAiCompatibleClient` already
+//! ported: `kura-model-provider`'s `OpenAiCompatibleClient` already
 //! implements OpenAI-compatible streaming for the Rust workspace.
 
 mod dispatcher;

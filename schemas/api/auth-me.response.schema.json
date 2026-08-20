@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/auth-me.response.schema.json",
+  "$id": "https://kura.local/schemas/api/auth-me.response.schema.json",
   "title": "AuthMeResponse",
   "type": "object",
   "required": ["token", "principal", "defaultTenant", "currentTenant", "allowedTenants", "tokenGrants", "permissions", "tenantContext"],

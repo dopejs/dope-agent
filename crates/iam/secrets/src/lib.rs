@@ -8,7 +8,7 @@
 //!
 //! Persistence inversion: Go's `internal/store` implements the `Store` /
 //! `BridgeProgressStore` / `LegacyCredentialResourceStore` interfaces. Here
-//! those are object-safe traits owned by this crate; `dope-store` (wave 5)
+//! those are object-safe traits owned by this crate; `kura-store` (wave 5)
 //! will implement them over SQLite. This crate stays persistence-free.
 //!
 //! IDs are prefixed random-hex strings (`sec_*`, `secver_*`), not UUIDs, so

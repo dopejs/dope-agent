@@ -6,15 +6,15 @@
 //! sync/action results are persisted with the store provider CRUD
 //! (`upsert_provider_auth_state`, `replace_provider_models`,
 //! `upsert_provider_preference`, `upsert_provider_check`), restored state is
-//! exposed for feeding `dope_providers::Manager`, and the
-//! `dope-setupwizard` dependent-use gate guards resolution.
+//! exposed for feeding `kura_providers::Manager`, and the
+//! `kura-setupwizard` dependent-use gate guards resolution.
 
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_llm::{Message, MessageRole, ProviderRequest};
-use dope_providers::{AuthMode, AuthState, Check, CheckErrorClass, CheckStatus, Family, Model, Preference};
-use dope_store::SQLiteStore;
+use kura_llm::{Message, MessageRole, ProviderRequest};
+use kura_providers::{AuthMode, AuthState, Check, CheckErrorClass, CheckStatus, Family, Model, Preference};
+use kura_store::SQLiteStore;
 use parking_lot::Mutex;
 
 use crate::bridge::{Bridge, Registry, SandboxManager};
@@ -30,7 +30,7 @@ pub struct SyncResult {
 /// A manager that drives the bridge registry and persists provider state,
 /// models, preferences, and checks through the store.
 pub struct Manager {
-    cfg: dope_config::Config,
+    cfg: kura_config::Config,
     registry: Registry,
     store: Option<Mutex<SQLiteStore>>,
 }
@@ -39,7 +39,7 @@ impl Manager {
     /// Builds a manager over the given registry. `store` is optional; when
     /// absent, persistence helpers are no-ops (matching Go's nil-store
     /// handling) and the in-memory registry remains fully usable.
-    pub fn new(cfg: dope_config::Config, registry: Registry, store: Option<SQLiteStore>) -> Self {
+    pub fn new(cfg: kura_config::Config, registry: Registry, store: Option<SQLiteStore>) -> Self {
         Manager {
             cfg,
             registry,
@@ -86,7 +86,7 @@ impl Manager {
     pub fn sync_managed_providers(&self) -> Result<Vec<SyncResult>, Error> {
         let mut results = Vec::new();
         for bridge in self.registry.list() {
-            let (state, models) = bridge.detect(&dope_llm::CancelToken::new())?;
+            let (state, models) = bridge.detect(&kura_llm::CancelToken::new())?;
             self.persist_managed_state(&state, &models)?;
             results.push(SyncResult { state, models });
         }
@@ -96,7 +96,7 @@ impl Manager {
     /// Starts managed auth for a provider and persists the result.
     pub fn start_managed_auth(&self, provider_id: &str) -> Result<(AuthState, Vec<Model>), Error> {
         let bridge = self.require_bridge(provider_id)?;
-        let (state, models) = bridge.start(&dope_llm::CancelToken::new())?;
+        let (state, models) = bridge.start(&kura_llm::CancelToken::new())?;
         self.persist_managed_state(&state, &models)?;
         Ok((state, models))
     }
@@ -104,7 +104,7 @@ impl Manager {
     /// Completes managed auth for a provider and persists the result.
     pub fn complete_managed_auth(&self, provider_id: &str) -> Result<(AuthState, Vec<Model>), Error> {
         let bridge = self.require_bridge(provider_id)?;
-        let (state, models) = bridge.complete(&dope_llm::CancelToken::new())?;
+        let (state, models) = bridge.complete(&kura_llm::CancelToken::new())?;
         self.persist_managed_state(&state, &models)?;
         Ok((state, models))
     }
@@ -112,7 +112,7 @@ impl Manager {
     /// Refreshes managed auth for a provider and persists the result.
     pub fn refresh_managed_auth(&self, provider_id: &str) -> Result<(AuthState, Vec<Model>), Error> {
         let bridge = self.require_bridge(provider_id)?;
-        let (state, models) = bridge.refresh(&dope_llm::CancelToken::new())?;
+        let (state, models) = bridge.refresh(&kura_llm::CancelToken::new())?;
         self.persist_managed_state(&state, &models)?;
         Ok((state, models))
     }
@@ -120,7 +120,7 @@ impl Manager {
     /// Revokes managed auth for a provider and persists the result.
     pub fn revoke_managed_auth(&self, provider_id: &str) -> Result<(AuthState, Vec<Model>), Error> {
         let bridge = self.require_bridge(provider_id)?;
-        let (state, models) = bridge.revoke(&dope_llm::CancelToken::new())?;
+        let (state, models) = bridge.revoke(&kura_llm::CancelToken::new())?;
         self.persist_managed_state(&state, &models)?;
         Ok((state, models))
     }
@@ -143,7 +143,7 @@ impl Manager {
 
     // -- restore (store -> caller) -------------------------------------------
 
-    /// Lists persisted provider auth states (to seed `dope_providers::Manager`).
+    /// Lists persisted provider auth states (to seed `kura_providers::Manager`).
     pub fn restore_auth_states(&self) -> Result<Vec<AuthState>, Error> {
         let Some(store) = &self.store else { return Ok(Vec::new()) };
         store.lock().list_provider_auth_states().map_err(Error::Store)
@@ -211,7 +211,7 @@ impl Manager {
 
     // -- check management ----------------------------------------------------
 
-    /// Runs a provider check through the bridge's `dope_llm::Provider` and
+    /// Runs a provider check through the bridge's `kura_llm::Provider` and
     /// persists the resulting `Check` (Go API `checks` POST handler +
     /// `Manager.RunCheck`). Dispatch failures are folded into a failed
     /// `Check` (Go behavior: the check is persisted regardless, with the
@@ -306,15 +306,15 @@ impl Manager {
 
     // -- setup wizard gate ---------------------------------------------------
 
-    /// `dope-setupwizard` dependent-use decision for a session/capability
+    /// `kura-setupwizard` dependent-use decision for a session/capability
     /// (Go `Manager.setupDependentUseDecision`).
     #[must_use]
     pub fn setup_dependent_use_decision(
         &self,
-        session: &dope_setupwizard::SetupSession,
+        session: &kura_setupwizard::SetupSession,
         capability: &str,
-    ) -> dope_setupwizard::DependentUseDecision {
-        let service = dope_setupwizard::new_service(dope_setupwizard::ServiceDependencies::default());
+    ) -> kura_setupwizard::DependentUseDecision {
+        let service = kura_setupwizard::new_service(kura_setupwizard::ServiceDependencies::default());
         service.dependent_use_decision(session, capability)
     }
 
@@ -325,11 +325,11 @@ impl Manager {
         &self,
         provider_id: &str,
         model: &str,
-        session: &dope_setupwizard::SetupSession,
+        session: &kura_setupwizard::SetupSession,
         capability: &str,
-    ) -> Result<dope_setupwizard::DependentUseDecision, Error> {
+    ) -> Result<kura_setupwizard::DependentUseDecision, Error> {
         let decision = self.setup_dependent_use_decision(session, capability);
-        if decision.safe_use_mode == dope_setupwizard::SafeUseMode::Blocked {
+        if decision.safe_use_mode == kura_setupwizard::SafeUseMode::Blocked {
             return Err(Error::Other("tenant provider auth is unavailable".to_string()));
         }
         let effective_provider = if provider_id.trim().is_empty() {
@@ -384,7 +384,7 @@ impl Manager {
     }
 }
 
-/// The `dope-sandbox` manager attachment for the registry: a convenience
+/// The `kura-sandbox` manager attachment for the registry: a convenience
 /// passthrough so callers can construct `Registry::new(cfg, Some(manager))`
 /// with the concrete trait object.
 #[allow(dead_code)]

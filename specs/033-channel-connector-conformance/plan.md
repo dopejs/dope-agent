@@ -43,7 +43,7 @@ API/schema contract tests, and docs/contract fixture checks; `go test ./...` fro
 `daemon/`; `make daemon-contract-test`; `pnpm test:clients` and `pnpm build` only if SDK,
 web, or TUI surfaces change; `go mod tidy` from `daemon/` after implementation.
 **Target Platform**: Local-first daemon and hosted daemon behavior, verified by default
-in the isolated test environment (`~/.dope-test`, `127.0.0.1:19192`). Live connector
+in the isolated test environment (`~/.kura-test`, `127.0.0.1:19192`). Live connector
 credentials and production tenants are not required for acceptance.
 **Project Type**: Multi-surface daemon contract feature spanning connector runtime
 contracts, IM routing and dedupe, Discord regression, delivery-boundary evidence,
@@ -83,7 +83,7 @@ non-Discord connector implementations, stubs, or regressions are out of scope.
   connector matrix cases, Discord regression, tenant isolation, durable dedupe,
   foreground/background separation, diagnostics classification, freshness, retention,
   redaction, contract fixtures, and operator docs.
-- **Environment and secrets** - PASS. Local verification defaults to `~/.dope-test`.
+- **Environment and secrets** - PASS. Local verification defaults to `~/.kura-test`.
   Fake connectors and fake credentials are the default. Live connectors, production
   tenants, real channel credentials, rich media, voice, and mobile push are out of
   acceptance scope unless explicitly chosen outside this spec.

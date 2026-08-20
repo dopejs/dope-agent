@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/live-validation-kill-switch-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/live-validation-kill-switch-resource.schema.json",
   "title": "LiveValidationKillSwitchResource",
   "type": "object",
   "required": ["killSwitchId", "scope", "enabled", "reason", "changedBy", "changedAt"],

@@ -187,7 +187,7 @@ pub enum SetupError {
     #[error("setup style {0} does not match target {1}")]
     StyleMismatch(String, String),
     #[error(transparent)]
-    Secrets(#[from] dope_secrets::SecretsError),
+    Secrets(#[from] kura_secrets::SecretsError),
     #[error("setup store error: {0}")]
     Store(String),
 }

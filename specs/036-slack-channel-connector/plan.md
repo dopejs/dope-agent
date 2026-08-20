@@ -56,7 +56,7 @@ smoke structured skip; `go test ./...` from `daemon/`; `make daemon-contract-tes
 `pnpm test:clients` and `pnpm build` only if SDK/web/TUI surfaces change; `go mod tidy`
 from `daemon/` after implementation.
 **Target Platform**: Local-first daemon and hosted daemon behavior. Local verification
-defaults to the isolated test environment (`~/.dope-test`, `127.0.0.1:19192`). Live
+defaults to the isolated test environment (`~/.kura-test`, `127.0.0.1:19192`). Live
 Slack workspace authorization and production tenants are not required for automated
 acceptance. Safe live Slack authorization, when explicitly used, is non-production or
 test-workspace authorization scoped to a test tenant and selected test channels/users,
@@ -116,7 +116,7 @@ media, and additional provider domains remain out of scope.
   outcomes, duplicate suppression, required thread replies, foreground/background
   delivery separation, diagnostics, freshness, retention, redaction, rate-limit and
   event-delivery behavior, live smoke skip, schema contracts, and operator docs.
-- **Environment and secrets** - PASS. Local work defaults to `~/.dope-test` with fake
+- **Environment and secrets** - PASS. Local work defaults to `~/.kura-test` with fake
   OAuth installation evidence and fake transports. Real Slack authorization, live
   connectors, and production tenants are used only in an explicit live validation path
   that can structured-skip when safe workspace authorization is unavailable.

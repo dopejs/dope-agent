@@ -1,13 +1,13 @@
 use chrono::{DateTime, Utc};
-use dope_computeruse::{
+use kura_computeruse::{
     Action, ActionKind, ActionStatus, Artifact, ArtifactKind, ArtifactStatus, MatchResult,
     PageSummary, RiskLevel, Session, SessionStatus, TargetMatchContext, TrustedPageScope,
 };
-use dope_runtime::{Run, RunStatus};
-use dope_store::SQLiteStore;
+use kura_runtime::{Run, RunStatus};
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_cu_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_cu_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

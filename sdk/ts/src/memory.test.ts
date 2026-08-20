@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDopeClient } from "./index";
+import { createKuraClient } from "./index";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json" } });
@@ -39,7 +39,7 @@ describe("memory plane SDK methods (Roadmap 78, spec 058)", () => {
         completedAt: "t",
       }));
 
-    const client = createDopeClient({ baseURL: "https://daemon.test", fetchImpl });
+    const client = createKuraClient({ baseURL: "https://daemon.test", fetchImpl });
 
     const created = await client.createMemoryAsset({
       layer: "l1",

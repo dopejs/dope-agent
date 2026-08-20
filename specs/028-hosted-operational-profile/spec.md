@@ -184,6 +184,6 @@ As an engineer, I can review hosted operational observations across a soak or lo
 - The first hosted operational profile targets a stable always-on test host or VPS, not a developer laptop as the readiness baseline.
 - Existing production install, upgrade, backup, restore, release-readiness, and soak work should be reused where it already satisfies the hosted profile requirements.
 - The first implementation uses a repo-owned foreground supervisor around existing daemon run and status workflows; host-native service managers may be considered later but are out of scope for this phase.
-- Hosted test defaults use `DOPE_ENV=test` behavior and production-like operation without touching production user data by default.
+- Hosted test defaults use `KURA_ENV=test` behavior and production-like operation without touching production user data by default.
 - Hosted operational evidence uses a 90-day default retention period unless an authorized longer retention policy applies.
 - This phase does not add new personal-agent domains, Kubernetes support, cloud-specific managed services, multi-region deployment, external managed secret-manager integration, enterprise SSO, payment-provider production launch, mobile fleet management, or memory/context engineering.

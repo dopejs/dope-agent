@@ -1,20 +1,20 @@
 //! The bridge registry and execution runners (port of `bridges.go`).
 //!
 //! Go's `Bridge` interface is ported as the synchronous `Bridge` trait
-//! (`context.Context` becomes `&dope_llm::CancelToken`). The Go
+//! (`context.Context` becomes `&kura_llm::CancelToken`). The Go
 //! `sandbox.Manager` dependency is ported as the `SandboxManager` trait so
 //! the sandbox-backed runner and preflight evaluation stay testable while the
-//! concrete `dope-sandbox` manager is still being ported. The `Registry`
-//! additionally implements `dope_providers::ManagedRegistry` through
+//! concrete `kura-sandbox` manager is still being ported. The `Registry`
+//! additionally implements `kura_providers::ManagedRegistry` through
 //! `ManagedBridgeAdapter`, so it plugs straight into
-//! `dope_providers::Manager`.
+//! `kura_providers::Manager`.
 
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 
-use dope_llm::CancelToken;
-use dope_providers::{AuthMode, AuthState, Family, Model};
+use kura_llm::CancelToken;
+use kura_providers::{AuthMode, AuthState, Family, Model};
 use futures::future::BoxFuture;
 
 use crate::evaluate::{
@@ -66,7 +66,7 @@ pub trait Bridge: Send + Sync {
     fn complete(&self, cancel: &CancelToken) -> Result<(AuthState, Vec<Model>), crate::error::Error>;
     fn refresh(&self, cancel: &CancelToken) -> Result<(AuthState, Vec<Model>), crate::error::Error>;
     fn revoke(&self, cancel: &CancelToken) -> Result<(AuthState, Vec<Model>), crate::error::Error>;
-    fn provider(&self) -> Arc<dyn dope_llm::Provider>;
+    fn provider(&self) -> Arc<dyn kura_llm::Provider>;
 
     /// The bridge's effective default model (configured value, then local
     /// settings/cache), or "" when unknown. Used by the manager for checks and
@@ -100,29 +100,29 @@ pub trait Runner: Send + Sync {
 }
 
 /// The subset of the Go `sandbox.Manager` the managed-provider runners and
-/// preflight evaluation need. Implemented by the concrete `dope-sandbox`
+/// preflight evaluation need. Implemented by the concrete `kura-sandbox`
 /// manager once it is ported; tests use an in-memory stub.
 pub trait SandboxManager: Send + Sync {
     fn start_execution(
         &self,
-        request: dope_sandbox::ExecutionRequest,
-    ) -> Result<dope_sandbox::Execution, String>;
-    fn wait_execution(&self, execution_id: &str) -> Result<dope_sandbox::Execution, String>;
+        request: kura_sandbox::ExecutionRequest,
+    ) -> Result<kura_sandbox::Execution, String>;
+    fn wait_execution(&self, execution_id: &str) -> Result<kura_sandbox::Execution, String>;
     fn finalize_execution(
         &self,
         execution_id: &str,
-        finalization: dope_sandbox::ExecutionFinalization,
+        finalization: kura_sandbox::ExecutionFinalization,
     ) -> Result<(), String>;
     fn evaluate_access(
         &self,
         profile_id: &str,
         execution_id: &str,
-        access: &dope_sandbox::AccessRequest,
-    ) -> Result<dope_sandbox::Decision, String>;
-    fn get_profile(&self, profile_id: &str) -> Option<dope_sandbox::Profile>;
+        access: &kura_sandbox::AccessRequest,
+    ) -> Result<kura_sandbox::Decision, String>;
+    fn get_profile(&self, profile_id: &str) -> Option<kura_sandbox::Profile>;
     fn persist_consumer_view(
         &self,
-        view: &dope_sandbox::ConsumerContractView,
+        view: &kura_sandbox::ConsumerContractView,
     ) -> Result<(), String>;
 }
 
@@ -223,23 +223,23 @@ impl Runner for SandboxRunner {
             return ExecRunner.run(cancel, cmd, args, workdir, operation);
         };
         let mut requested_by = format!("{REQUESTED_BY_PREFIX}{}", self.provider_id);
-        let mut access = dope_sandbox::AccessRequest {
+        let mut access = kura_sandbox::AccessRequest {
             read_roots: clone_roots(&self.roots),
             write_roots: clone_roots(&self.roots),
-            network_mode: Some(dope_sandbox::NetworkMode::Full),
+            network_mode: Some(kura_sandbox::NetworkMode::Full),
             allowed_hosts: Vec::new(),
             allowed_ports: Vec::new(),
             allow_loopback: true,
         };
         let mut metadata: HashMap<String, String> = HashMap::new();
-        let mut consumer: Option<dope_sandbox::ConsumerContractView> = None;
+        let mut consumer: Option<kura_sandbox::ConsumerContractView> = None;
         if let Some(operation) = operation {
             requested_by = first_non_empty(&[&operation.requested_by, &requested_by]);
             access = clone_access_request(&operation.access);
             metadata = operation_metadata_from_plan(operation);
             consumer = Some(build_managed_provider_consumer_view(operation, None));
         }
-        let request = dope_sandbox::ExecutionRequest {
+        let request = kura_sandbox::ExecutionRequest {
             profile_id: self.profile_id.clone(),
             command: cmd.to_string(),
             args: args.to_vec(),
@@ -252,7 +252,7 @@ impl Runner for SandboxRunner {
             metadata,
             access,
             consumer,
-            ..dope_sandbox::ExecutionRequest::default()
+            ..kura_sandbox::ExecutionRequest::default()
         };
         let execution = match manager.start_execution(request) {
             Ok(execution) => execution,
@@ -290,9 +290,9 @@ impl Runner for SandboxRunner {
             result.exit_code = exit_code as i32;
         }
         match execution.status {
-            dope_sandbox::ExecutionStatus::Completed => (result, None),
-            dope_sandbox::ExecutionStatus::Failed => {
-                if execution.result.error_class == dope_sandbox::ErrorClass::ProcessFailed.as_str() {
+            kura_sandbox::ExecutionStatus::Completed => (result, None),
+            kura_sandbox::ExecutionStatus::Failed => {
+                if execution.result.error_class == kura_sandbox::ErrorClass::ProcessFailed.as_str() {
                     (
                         result,
                         Some(RunError {
@@ -321,12 +321,12 @@ impl Runner for SandboxRunner {
                                 "sandbox execution failed",
                             ]),
                             retryable: execution.result.error_class
-                                == dope_sandbox::ErrorClass::Timeout.as_str(),
+                                == kura_sandbox::ErrorClass::Timeout.as_str(),
                         }),
                     )
                 }
             }
-            dope_sandbox::ExecutionStatus::Cancelled => (
+            kura_sandbox::ExecutionStatus::Cancelled => (
                 result,
                 Some(RunError {
                     code: first_non_empty(&[&execution.result.error_code, "sandbox_cancelled"]),
@@ -337,7 +337,7 @@ impl Runner for SandboxRunner {
                     retryable: false,
                 }),
             ),
-            dope_sandbox::ExecutionStatus::Denied => (
+            kura_sandbox::ExecutionStatus::Denied => (
                 result,
                 Some(RunError {
                     code: first_non_empty(&[&execution.result.error_code, "sandbox_policy_denied"]),
@@ -421,8 +421,8 @@ impl Registry {
     /// builds the per-provider runners (sandbox-backed when a manager is
     /// attached, otherwise direct exec), and registers the Claude and Codex
     /// bridges in that order.
-    pub fn new(cfg: &dope_config::Config, sandboxes: Option<Arc<dyn SandboxManager>>) -> Self {
-        let mut home_dir = dope_config::managed_provider_home_dir(cfg);
+    pub fn new(cfg: &kura_config::Config, sandboxes: Option<Arc<dyn SandboxManager>>) -> Self {
+        let mut home_dir = kura_config::managed_provider_home_dir(cfg);
         if home_dir.trim().is_empty() {
             home_dir = crate::helpers::user_home_dir().unwrap_or_default();
         }
@@ -448,7 +448,7 @@ impl Registry {
             (
                 Arc::new(SandboxRunner {
                     manager: Some(Arc::clone(manager)),
-                    profile_id: dope_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE.to_string(),
+                    profile_id: kura_sandbox::PROFILE_ID_MANAGED_PROVIDER_CLAUDE.to_string(),
                     provider_id: crate::claude::CLAUDE_PROVIDER_ID.to_string(),
                     roots: vec![
                         claude_work_dir.clone(),
@@ -458,7 +458,7 @@ impl Registry {
                 }) as Arc<dyn Runner>,
                 Arc::new(SandboxRunner {
                     manager: Some(Arc::clone(manager)),
-                    profile_id: dope_sandbox::PROFILE_ID_MANAGED_PROVIDER_CODEX.to_string(),
+                    profile_id: kura_sandbox::PROFILE_ID_MANAGED_PROVIDER_CODEX.to_string(),
                     provider_id: crate::codex::CODEX_PROVIDER_ID.to_string(),
                     roots: vec![
                         codex_work_dir.clone(),
@@ -517,8 +517,8 @@ impl Registry {
     }
 }
 
-/// Adapts the crate's synchronous `Bridge` into `dope_providers::ManagedBridge`
-/// (async) so the registry plugs into `dope_providers::Manager`.
+/// Adapts the crate's synchronous `Bridge` into `kura_providers::ManagedBridge`
+/// (async) so the registry plugs into `kura_providers::Manager`.
 pub struct ManagedBridgeAdapter {
     bridge: Arc<dyn Bridge>,
 }
@@ -530,7 +530,7 @@ impl ManagedBridgeAdapter {
     }
 }
 
-impl dope_providers::ManagedBridge for ManagedBridgeAdapter {
+impl kura_providers::ManagedBridge for ManagedBridgeAdapter {
     fn provider_id(&self) -> String {
         self.bridge.provider_id()
     }
@@ -547,7 +547,7 @@ impl dope_providers::ManagedBridge for ManagedBridgeAdapter {
         self.bridge.auth_mode()
     }
 
-    fn detect(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), dope_providers::ProvidersError>> {
+    fn detect(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), kura_providers::ProvidersError>> {
         let bridge = Arc::clone(&self.bridge);
         Box::pin(async move {
             let cancel = CancelToken::new();
@@ -555,7 +555,7 @@ impl dope_providers::ManagedBridge for ManagedBridgeAdapter {
         })
     }
 
-    fn start(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), dope_providers::ProvidersError>> {
+    fn start(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), kura_providers::ProvidersError>> {
         let bridge = Arc::clone(&self.bridge);
         Box::pin(async move {
             let cancel = CancelToken::new();
@@ -563,7 +563,7 @@ impl dope_providers::ManagedBridge for ManagedBridgeAdapter {
         })
     }
 
-    fn complete(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), dope_providers::ProvidersError>> {
+    fn complete(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), kura_providers::ProvidersError>> {
         let bridge = Arc::clone(&self.bridge);
         Box::pin(async move {
             let cancel = CancelToken::new();
@@ -571,7 +571,7 @@ impl dope_providers::ManagedBridge for ManagedBridgeAdapter {
         })
     }
 
-    fn refresh(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), dope_providers::ProvidersError>> {
+    fn refresh(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), kura_providers::ProvidersError>> {
         let bridge = Arc::clone(&self.bridge);
         Box::pin(async move {
             let cancel = CancelToken::new();
@@ -579,7 +579,7 @@ impl dope_providers::ManagedBridge for ManagedBridgeAdapter {
         })
     }
 
-    fn revoke(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), dope_providers::ProvidersError>> {
+    fn revoke(&self) -> BoxFuture<'_, Result<(AuthState, Vec<Model>), kura_providers::ProvidersError>> {
         let bridge = Arc::clone(&self.bridge);
         Box::pin(async move {
             let cancel = CancelToken::new();
@@ -587,21 +587,21 @@ impl dope_providers::ManagedBridge for ManagedBridgeAdapter {
         })
     }
 
-    fn provider(&self) -> Arc<dyn dope_llm::Provider> {
+    fn provider(&self) -> Arc<dyn kura_llm::Provider> {
         self.bridge.provider()
     }
 }
 
-impl dope_providers::ManagedRegistry for Registry {
-    fn list(&self) -> Vec<Arc<dyn dope_providers::ManagedBridge>> {
+impl kura_providers::ManagedRegistry for Registry {
+    fn list(&self) -> Vec<Arc<dyn kura_providers::ManagedBridge>> {
         Registry::list(self)
             .into_iter()
-            .map(|bridge| Arc::new(ManagedBridgeAdapter::new(bridge)) as Arc<dyn dope_providers::ManagedBridge>)
+            .map(|bridge| Arc::new(ManagedBridgeAdapter::new(bridge)) as Arc<dyn kura_providers::ManagedBridge>)
             .collect()
     }
 
-    fn get(&self, provider_id: &str) -> Option<Arc<dyn dope_providers::ManagedBridge>> {
+    fn get(&self, provider_id: &str) -> Option<Arc<dyn kura_providers::ManagedBridge>> {
         Registry::get(self, provider_id)
-            .map(|bridge| Arc::new(ManagedBridgeAdapter::new(bridge)) as Arc<dyn dope_providers::ManagedBridge>)
+            .map(|bridge| Arc::new(ManagedBridgeAdapter::new(bridge)) as Arc<dyn kura_providers::ManagedBridge>)
     }
 }

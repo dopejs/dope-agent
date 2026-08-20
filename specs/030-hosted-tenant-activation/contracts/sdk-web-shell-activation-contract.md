@@ -32,7 +32,7 @@ getActivationDiagnostics(tenantOptions?: TenantRequestOptions): Promise<Activati
 
 ### SDK Error Behavior
 
-- Stable activation reason codes must be exposed through `DopeClientError.code` or an
+- Stable activation reason codes must be exposed through `KuraClientError.code` or an
   activation-specific payload field.
 - Tenant denials continue to use existing tenant denial mapping.
 - Quota baseline unavailable must be distinguishable from generic network/server failure.

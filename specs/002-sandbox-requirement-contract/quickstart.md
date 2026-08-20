@@ -8,7 +8,7 @@ production state.
 ## Prerequisites
 
 - Work from the repository root on branch `002-sandbox-requirement-contract`
-- Use the default test environment (`DOPE_ENV=test`)
+- Use the default test environment (`KURA_ENV=test`)
 - Have Go available locally
 - Keep live connectors and production provider state out of scope for verification
 
@@ -17,7 +17,7 @@ production state.
 Run the daemon packages most likely to change in this slice:
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./internal/sandbox ./internal/managedproviders ./internal/api ./internal/store ./internal/runtime ./internal/skills ./internal/providers
 ```
 
@@ -34,7 +34,7 @@ preflight in `daemon/internal/api/server_test.go`.
 If API, schema, or event surfaces change, run the repository contract check:
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-contract-test
 ```
 
@@ -43,7 +43,7 @@ make daemon-contract-test
 Run the full Go test suite before claiming the slice is ready:
 
 ```bash
-cd /Users/John/Code/dope-agent/daemon
+cd /Users/John/Code/kura-agent/daemon
 go test ./...
 ```
 
@@ -54,7 +54,7 @@ If you need to inspect the daemon behavior directly after implementation:
 1. Start the test daemon:
 
 ```bash
-cd /Users/John/Code/dope-agent
+cd /Users/John/Code/kura-agent
 make daemon-run-test
 ```
 
@@ -96,9 +96,9 @@ Record final results in the implementation change set once the slice is executed
 
 Recorded on `2026-04-19`:
 
-- `cd /Users/John/Code/dope-agent/daemon && go test ./internal/sandbox ./internal/managedproviders ./internal/api ./internal/store ./internal/runtime ./internal/skills ./internal/providers` passed
-- `cd /Users/John/Code/dope-agent && make daemon-contract-test` passed
-- `cd /Users/John/Code/dope-agent/daemon && go test ./...` passed
+- `cd /Users/John/Code/kura-agent/daemon && go test ./internal/sandbox ./internal/managedproviders ./internal/api ./internal/store ./internal/runtime ./internal/skills ./internal/providers` passed
+- `cd /Users/John/Code/kura-agent && make daemon-contract-test` passed
+- `cd /Users/John/Code/kura-agent/daemon && go test ./...` passed
 - Dedicated timing coverage now verifies `<=100 ms` daemon-side preflight for managed-provider evaluation and the current high-risk local-tool approval gate
 
 ## Rollback And Readiness Notes

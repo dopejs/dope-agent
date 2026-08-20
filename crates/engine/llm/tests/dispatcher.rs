@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use dope_llm::{
+use kura_llm::{
     CancelToken, CreateDispatchInput, Dispatch, DispatchStatus, Dispatcher, FailedDispatch,
     Message, MessageRole, PrepareError, Provider, ProviderError, ProviderRequest, ProviderResponse,
     StreamChunk, StreamEmitter, Usage,

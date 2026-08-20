@@ -54,7 +54,7 @@ SDK/Web/TUI via `pnpm test:clients`; client build via `pnpm build`; full daemon 
 `go test ./...` from `daemon/`; `go mod tidy` from `daemon/` after implementation.
 **Target Platform**: Local-first and hosted daemon, with API, TS SDK, Web, TUI/operator
 shell, runtime projection, and test-environment verification. Default local verification uses
-`~/.dope-test` and `127.0.0.1:19192`.
+`~/.kura-test` and `127.0.0.1:19192`.
 **Project Type**: Multi-surface daemon product feature spanning identity permissions, a new
 `bindings` domain package, persistence + tenancy guards, contracts/schemas, work-start
 resolution, runtime evidence, capability visibility policy enforcement, events/audit,
@@ -111,7 +111,7 @@ non-memory/non-filesystem guarantees.
   non-memory/non-filesystem checks. Operators gain binding lifecycle events, capability
   visibility decisions, denied-capability evidence, active binding projections, and repair
   status as product evidence (FR-013, FR-014, FR-022).
-- **Environment and secrets** — PASS. Local work defaults to `~/.dope-test` with fake/seeded
+- **Environment and secrets** — PASS. Local work defaults to `~/.kura-test` with fake/seeded
   tenant/channel/account/capability evidence. Live connectors and production tenants are not
   required (Environment & Secrets in spec; FR-028). Binding inspection, runtime evidence,
   tests, fixtures, logs, and audit redact/summarize secrets, tokens, raw provider payloads,

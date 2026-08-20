@@ -52,7 +52,7 @@ fn is_unique_constraint_error(err: &rusqlite::Error) -> bool {
 
 /// Go `connectorMessageEquivalentRuleID`: default the standard provider-message rule id
 /// whenever a provider message id is present.
-fn connector_message_equivalent_rule_id(message: &dope_imtypes::MessageRecord) -> String {
+fn connector_message_equivalent_rule_id(message: &kura_imtypes::MessageRecord) -> String {
     if message.provider_message_id.trim().is_empty() {
         String::new()
     } else if message.equivalent_rule_id.trim().is_empty() {
@@ -62,7 +62,7 @@ fn connector_message_equivalent_rule_id(message: &dope_imtypes::MessageRecord) -
     }
 }
 
-fn scan_connector(row: &Row) -> Result<dope_connectors::Connector, String> {
+fn scan_connector(row: &Row) -> Result<kura_connectors::Connector, String> {
     let connector_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: Option<String> = row.get(1).map_err(|e| e.to_string())?;
     let kind: String = row.get(2).map_err(|e| e.to_string())?;
@@ -87,7 +87,7 @@ fn scan_connector(row: &Row) -> Result<dope_connectors::Connector, String> {
         _ => Vec::new(),
     };
 
-    Ok(dope_connectors::Connector {
+    Ok(kura_connectors::Connector {
         connector_id,
         tenant_id: tenant_id.unwrap_or_default(),
         kind,
@@ -104,11 +104,11 @@ fn scan_connector(row: &Row) -> Result<dope_connectors::Connector, String> {
         last_failure_reason: last_failure_reason.unwrap_or_default(),
         created_at: parse_rfc3339(&created_at)?,
         updated_at: parse_rfc3339(&updated_at)?,
-        ..dope_connectors::Connector::default()
+        ..kura_connectors::Connector::default()
     })
 }
 
-fn scan_connector_message(row: &Row) -> Result<dope_imtypes::MessageRecord, String> {
+fn scan_connector_message(row: &Row) -> Result<kura_imtypes::MessageRecord, String> {
     let delivery_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: Option<String> = row.get(1).map_err(|e| e.to_string())?;
     let connector_id: String = row.get(2).map_err(|e| e.to_string())?;
@@ -136,7 +136,7 @@ fn scan_connector_message(row: &Row) -> Result<dope_imtypes::MessageRecord, Stri
     let created_at: String = row.get(24).map_err(|e| e.to_string())?;
     let updated_at: String = row.get(25).map_err(|e| e.to_string())?;
 
-    Ok(dope_imtypes::MessageRecord {
+    Ok(kura_imtypes::MessageRecord {
         delivery_id,
         tenant_id: tenant_id.unwrap_or_default(),
         connector_id,
@@ -166,7 +166,7 @@ fn scan_connector_message(row: &Row) -> Result<dope_imtypes::MessageRecord, Stri
     })
 }
 
-fn scan_connector_conformance_result(row: &Row) -> Result<dope_connectors::ConformanceResult, String> {
+fn scan_connector_conformance_result(row: &Row) -> Result<kura_connectors::ConformanceResult, String> {
     let conformance_result_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let connector_kind: String = row.get(2).map_err(|e| e.to_string())?;
@@ -179,7 +179,7 @@ fn scan_connector_conformance_result(row: &Row) -> Result<dope_connectors::Confo
     let evidence_timestamp: String = row.get(9).map_err(|e| e.to_string())?;
     let retention_expires_at: String = row.get(10).map_err(|e| e.to_string())?;
 
-    Ok(dope_connectors::ConformanceResult {
+    Ok(kura_connectors::ConformanceResult {
         conformance_result_id,
         tenant_id,
         connector_kind,
@@ -197,7 +197,7 @@ fn scan_connector_conformance_result(row: &Row) -> Result<dope_connectors::Confo
 fn scan_connector_diagnostic_state(
     row: &Row,
     now: DateTime<Utc>,
-) -> Result<dope_connectors::ConnectorDiagnosticState, String> {
+) -> Result<kura_connectors::ConnectorDiagnosticState, String> {
     let diagnostic_state_id: String = row.get(0).map_err(|e| e.to_string())?;
     let tenant_id: String = row.get(1).map_err(|e| e.to_string())?;
     let connector_id: String = row.get(2).map_err(|e| e.to_string())?;
@@ -215,12 +215,12 @@ fn scan_connector_diagnostic_state(
     let evidence = parse_rfc3339(&evidence_timestamp)?;
     // Go recomputes freshness from the evidence vs. now on read (FreshnessAt).
     let freshness_state = if now.signed_duration_since(evidence) > chrono::Duration::minutes(15) {
-        dope_connectors::FreshnessState::Stale
+        kura_connectors::FreshnessState::Stale
     } else {
-        dope_connectors::FreshnessState::Fresh
+        kura_connectors::FreshnessState::Fresh
     };
 
-    Ok(dope_connectors::ConnectorDiagnosticState {
+    Ok(kura_connectors::ConnectorDiagnosticState {
         diagnostic_state_id,
         tenant_id,
         connector_id,
@@ -235,12 +235,12 @@ fn scan_connector_diagnostic_state(
         redaction_status: parse_enum(&redaction_status)?,
         retention_expires_at: parse_rfc3339(&retention_expires_at)?,
         redaction_failure_id: redaction_failure_id.unwrap_or_default(),
-        ..dope_connectors::ConnectorDiagnosticState::default()
+        ..kura_connectors::ConnectorDiagnosticState::default()
     })
 }
 
 impl SQLiteStore {
-    pub fn upsert_connector(&self, connector: &dope_connectors::Connector) -> Result<(), String> {
+    pub fn upsert_connector(&self, connector: &kura_connectors::Connector) -> Result<(), String> {
         let secret_refs_json = serde_json::to_string(&connector.secret_refs)
             .map_err(|e| format!("marshal connector secret refs {}: {e}", connector.connector_id))?;
 
@@ -291,7 +291,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_connectors(&self) -> Result<Vec<dope_connectors::Connector>, String> {
+    pub fn list_connectors(&self) -> Result<Vec<kura_connectors::Connector>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -316,8 +316,8 @@ impl SQLiteStore {
     /// created it (the bool is the created flag, mirroring the Go signature).
     pub fn create_connector_message_if_absent(
         &self,
-        message: &dope_imtypes::MessageRecord,
-    ) -> Result<(dope_imtypes::MessageRecord, bool), String> {
+        message: &kura_imtypes::MessageRecord,
+    ) -> Result<(kura_imtypes::MessageRecord, bool), String> {
         let equivalent_rule_id = connector_message_equivalent_rule_id(message);
 
         let insert = self.conn.execute(
@@ -411,7 +411,7 @@ impl SQLiteStore {
         Err(format!("load connector message {} after insert", message.delivery_id))
     }
 
-    pub fn upsert_connector_message(&self, message: &dope_imtypes::MessageRecord) -> Result<(), String> {
+    pub fn upsert_connector_message(&self, message: &kura_imtypes::MessageRecord) -> Result<(), String> {
         let equivalent_rule_id = connector_message_equivalent_rule_id(message);
 
         self.conn
@@ -551,9 +551,9 @@ impl SQLiteStore {
     pub fn get_connector_message_by_external_id(
         &self,
         connector_id: &str,
-        direction: dope_imtypes::DeliveryDirection,
+        direction: kura_imtypes::DeliveryDirection,
         external_message_id: &str,
-    ) -> Result<Option<dope_imtypes::MessageRecord>, String> {
+    ) -> Result<Option<kura_imtypes::MessageRecord>, String> {
         self.get_connector_message_by_external_id_for_tenant(
             "",
             connector_id,
@@ -566,9 +566,9 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         connector_id: &str,
-        direction: dope_imtypes::DeliveryDirection,
+        direction: kura_imtypes::DeliveryDirection,
         external_message_id: &str,
-    ) -> Result<Option<dope_imtypes::MessageRecord>, String> {
+    ) -> Result<Option<kura_imtypes::MessageRecord>, String> {
         if external_message_id.trim().is_empty() {
             return Ok(None);
         }
@@ -600,9 +600,9 @@ impl SQLiteStore {
         connector_account_id: &str,
         channel_or_conversation_id: &str,
         provider_message_id: &str,
-        direction: dope_imtypes::DeliveryDirection,
+        direction: kura_imtypes::DeliveryDirection,
         equivalent_rule_id: &str,
-    ) -> Result<Option<dope_imtypes::MessageRecord>, String> {
+    ) -> Result<Option<kura_imtypes::MessageRecord>, String> {
         let equivalent_rule_id = if equivalent_rule_id.trim().is_empty() {
             "standard_provider_message_id"
         } else {
@@ -640,7 +640,7 @@ impl SQLiteStore {
 
     pub fn save_connector_conformance_result(
         &self,
-        result: &dope_connectors::ConformanceResult,
+        result: &kura_connectors::ConformanceResult,
     ) -> Result<(), String> {
         let mut result = result.clone();
         if result.conformance_result_id.trim().is_empty() {
@@ -700,7 +700,7 @@ impl SQLiteStore {
         tenant_id: &str,
         connector_id: &str,
         now: DateTime<Utc>,
-    ) -> Result<Vec<dope_connectors::ConformanceResult>, String> {
+    ) -> Result<Vec<kura_connectors::ConformanceResult>, String> {
         let now = if is_unset_time(&now) { Utc::now() } else { now };
         let mut stmt = self
             .conn
@@ -725,7 +725,7 @@ impl SQLiteStore {
 
     pub fn save_connector_diagnostic_state(
         &self,
-        state: &dope_connectors::ConnectorDiagnosticState,
+        state: &kura_connectors::ConnectorDiagnosticState,
     ) -> Result<(), String> {
         let mut state = state.clone();
         if state.diagnostic_state_id.trim().is_empty() {
@@ -739,8 +739,8 @@ impl SQLiteStore {
         }
         // Go defaults an empty RedactionStatus to Redacted; the Rust enum is non-empty by
         // construction (Default is Redacted), so no defaulting is needed here.
-        let redaction_failure_id = if (state.redaction_status == dope_connectors::RedactionStatus::Suppressed
-            || state.redaction_status == dope_connectors::RedactionStatus::Failed)
+        let redaction_failure_id = if (state.redaction_status == kura_connectors::RedactionStatus::Suppressed
+            || state.redaction_status == kura_connectors::RedactionStatus::Failed)
             && state.redaction_failure_id.trim().is_empty()
         {
             new_store_id("connector_diagnostic_redaction_failure")
@@ -832,7 +832,7 @@ impl SQLiteStore {
         tenant_id: &str,
         connector_id: &str,
         now: DateTime<Utc>,
-    ) -> Result<Vec<dope_connectors::ConnectorDiagnosticState>, String> {
+    ) -> Result<Vec<kura_connectors::ConnectorDiagnosticState>, String> {
         let now = if is_unset_time(&now) { Utc::now() } else { now };
         let mut stmt = self
             .conn

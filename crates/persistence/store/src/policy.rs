@@ -9,7 +9,7 @@ use crate::crud::{
 };
 use crate::SQLiteStore;
 
-fn scan_approval(row: &Row) -> Result<dope_policy::Approval, String> {
+fn scan_approval(row: &Row) -> Result<kura_policy::Approval, String> {
     let approval_id: String = row.get(0).map_err(|e| e.to_string())?;
     let action: String = row.get(1).map_err(|e| e.to_string())?;
     let resource_kind: Option<String> = row.get(2).map_err(|e| e.to_string())?;
@@ -24,7 +24,7 @@ fn scan_approval(row: &Row) -> Result<dope_policy::Approval, String> {
     let comment: Option<String> = row.get(11).map_err(|e| e.to_string())?;
     let integration_bindings_json: Option<String> = row.get(12).map_err(|e| e.to_string())?;
 
-    Ok(dope_policy::Approval {
+    Ok(kura_policy::Approval {
         approval_id,
         action,
         resource_kind: resource_kind.unwrap_or_default(),
@@ -42,7 +42,7 @@ fn scan_approval(row: &Row) -> Result<dope_policy::Approval, String> {
     })
 }
 
-fn scan_decision(row: &Row) -> Result<dope_policy::Decision, String> {
+fn scan_decision(row: &Row) -> Result<kura_policy::Decision, String> {
     let decision_id: String = row.get(0).map_err(|e| e.to_string())?;
     let action: String = row.get(1).map_err(|e| e.to_string())?;
     let resource_kind: Option<String> = row.get(2).map_err(|e| e.to_string())?;
@@ -52,7 +52,7 @@ fn scan_decision(row: &Row) -> Result<dope_policy::Decision, String> {
     let approval_id: Option<String> = row.get(6).map_err(|e| e.to_string())?;
     let created_at: String = row.get(7).map_err(|e| e.to_string())?;
 
-    Ok(dope_policy::Decision {
+    Ok(kura_policy::Decision {
         decision_id,
         action,
         resource_kind: resource_kind.unwrap_or_default(),
@@ -66,7 +66,7 @@ fn scan_decision(row: &Row) -> Result<dope_policy::Decision, String> {
 }
 
 impl SQLiteStore {
-    pub fn upsert_approval(&self, approval: &dope_policy::Approval) -> Result<(), String> {
+    pub fn upsert_approval(&self, approval: &kura_policy::Approval) -> Result<(), String> {
         let integration_bindings_json = marshal_vec(&approval.integration_bindings)?;
         self.conn
             .execute(
@@ -110,7 +110,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_approvals(&self) -> Result<Vec<dope_policy::Approval>, String> {
+    pub fn list_approvals(&self) -> Result<Vec<kura_policy::Approval>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -128,7 +128,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn upsert_decision(&self, decision: &dope_policy::Decision) -> Result<(), String> {
+    pub fn upsert_decision(&self, decision: &kura_policy::Decision) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO decisions (
@@ -160,7 +160,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_decisions(&self) -> Result<Vec<dope_policy::Decision>, String> {
+    pub fn list_decisions(&self) -> Result<Vec<kura_policy::Decision>, String> {
         let mut stmt = self
             .conn
             .prepare(

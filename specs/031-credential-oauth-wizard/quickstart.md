@@ -12,10 +12,10 @@ make daemon-test-status
 Expected health response:
 
 ```json
-{"ok":true,"service":"dope"}
+{"ok":true,"service":"kura"}
 ```
 
-Do not use `~/.dope`, production secrets, live provider credentials, or enterprise
+Do not use `~/.kura`, production secrets, live provider credentials, or enterprise
 identity credentials for default verification.
 
 ## Required Automated Verification
@@ -139,7 +139,7 @@ Record final implementation evidence here during `/speckit-implement`:
 - Automated daemon tests: `go test ./...` from `daemon/` passed on 2026-05-06.
 - Contract tests: `make daemon-contract-test` passed.
 - SDK/web tests: `pnpm test:clients` and `pnpm build` passed.
-- Test daemon health: `make daemon-run-test` started `127.0.0.1:19192`; `make daemon-test-status` returned `{"ok":true,"service":"dope"}` before and after restart.
+- Test daemon health: `make daemon-run-test` started `127.0.0.1:19192`; `make daemon-test-status` returned `{"ok":true,"service":"kura"}` before and after restart.
 - OpenAI-compatible fake secret redaction proof: live test-daemon drill submitted `R46_FAKE_OPENAI_COMPATIBLE_KEY_DO_NOT_LEAK`; setup response, diagnostics, and operator diagnostics did not contain the fake value.
 - Feishu/Lark OAuth fixture proof: live test-daemon drill completed `integration.feishu_lark` OAuth fixture to `ready`.
 - Retry/replace/cancel/disable proof: live test-daemon drill exercised OpenAI-compatible `retry`, `replace`, `cancel`, and `disable`; final state was `disabled`.

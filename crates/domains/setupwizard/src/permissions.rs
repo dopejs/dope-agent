@@ -1,6 +1,6 @@
 //! Setup permission checks (port of `permissions.go`).
 
-use dope_identity::{Permission, TenantContext, has_permission};
+use kura_identity::{Permission, TenantContext, has_permission};
 
 use crate::types::SetupError;
 

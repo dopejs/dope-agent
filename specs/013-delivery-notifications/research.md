@@ -78,7 +78,7 @@
 ### Decision: Reuse existing connector outbound persistence as transport evidence and add a repo-owned `test_sink` adapter for deterministic local verification
 
 - Rationale: A connector-backed adapter keeps the delivery plane grounded in a real
-  outward transport path, while a repo-owned `test_sink` target lets `DOPE_ENV=test`
+  outward transport path, while a repo-owned `test_sink` target lets `KURA_ENV=test`
   verify routing, payload preview, retry, suppression, and digest behavior without live
   connector credentials. Both adapters converge on the same target, attempt, and outcome
   resources.

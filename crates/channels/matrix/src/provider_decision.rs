@@ -55,7 +55,7 @@ pub fn phase52_provider_decision(owner: &str, when: DateTime<Utc>) -> ProviderDe
         provider_risk_evidence: "WhatsApp remains rejected for hosted-safe operation in phase 52.".to_string(),
         unsupported_boundaries: vec![
             "whatsapp".to_string(),
-            "dopeagent_hosted_homeserver".to_string(),
+            "kuraagent_hosted_homeserver".to_string(),
             "matrix_account_provisioning".to_string(),
             "encrypted_rooms".to_string(),
             "e2ee_key_session_management".to_string(),

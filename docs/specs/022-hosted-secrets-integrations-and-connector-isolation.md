@@ -114,7 +114,7 @@ The implementation plan MUST include a handoff table for every shared resource w
   auth, sandbox policy, and secret-bearing resource has an owner in either Roadmap 35 or
   Roadmap 37.
 - Permission-denial tests for viewer and operator roles.
-- Manual `DOPE_ENV=test` smoke for tenant-scoped fake integration configuration.
+- Manual `KURA_ENV=test` smoke for tenant-scoped fake integration configuration.
 
 ## Definition Of Done
 

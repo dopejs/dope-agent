@@ -2,7 +2,7 @@
 
 ## Goal
 
-Verify in `DOPE_ENV=test` that the daemon can:
+Verify in `KURA_ENV=test` that the daemon can:
 
 - register and inspect daemon-owned integration resources
 - project explicit `not_configured`, `auth_pending`, `healthy`, `degraded`, and
@@ -13,7 +13,7 @@ Verify in `DOPE_ENV=test` that the daemon can:
 
 ## Prerequisites
 
-- local test daemon only; do not use `~/.dope`
+- local test daemon only; do not use `~/.kura`
 - authenticated local pairing or an existing bearer token
 - no production connectors or live personal-system credentials are required
 - the repo-owned fake integration backend is enabled in the test environment
@@ -30,7 +30,7 @@ make daemon-run-test
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "integrationId": "calendar-fake-a",
@@ -57,7 +57,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "readinessStatus": "auth_pending",
@@ -69,7 +69,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "readinessStatus": "healthy",
@@ -89,7 +89,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "integrationId": "calendar-fake-b",
@@ -108,7 +108,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}' \
   http://127.0.0.1:19192/v1/integrations/calendar-fake-b/default
@@ -123,7 +123,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "readinessStatus": "degraded",
@@ -143,7 +143,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "entrypoint": "operator",
@@ -154,7 +154,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "probeKind": "inspect"
@@ -172,7 +172,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "probeKind": "mutate"
@@ -190,7 +190,7 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "readinessStatus": "unavailable",
@@ -235,7 +235,7 @@ Observed on 2026-04-22 in this branch:
   `integration.readiness_changed`, and `integration.default_changed` events, and exposes
   additive `integrationBindings` on tool calls, workflow steps, and approvals
 - a live current-branch daemon walkthrough passed on `127.0.0.1:19193` with
-  `DOPE_ENV=test` and isolated `DOPE_DATA_DIR=/tmp/dope-integrations-manual`
+  `KURA_ENV=test` and isolated `KURA_DATA_DIR=/tmp/kura-integrations-manual`
 - the isolated daemon started from an empty `/v1/integrations` list, accepted
   local pairing auth, and created `calendar-fake-a` as explicit `not_configured`
   test-scoped integration truth
@@ -262,7 +262,7 @@ Manual daemon walkthrough status for this session:
 
 ## Notes
 
-- Keep all verification in `DOPE_ENV=test`.
+- Keep all verification in `KURA_ENV=test`.
 - Prefer the repo-owned fake integration backend over any live personal-system connector.
 - Calendar is only the example grouping used in this walkthrough; roadmap 27 remains
   domain-agnostic.

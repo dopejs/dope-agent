@@ -13,7 +13,7 @@ introducing a dedicated `daemon/internal/calendar` package that can inspect cale
 account projections, list or inspect events, evaluate busy/free windows, and create,
 update, or cancel single timed events on the bound account's primary calendar while
 preserving integration binding truth, event identity, operator-visible artifacts, and
-background-result delivery. Verification stays in `DOPE_ENV=test` by extending the
+background-result delivery. Verification stays in `KURA_ENV=test` by extending the
 repo-owned fake integration backend into a deterministic fake calendar path rather than
 requiring live third-party calendar accounts.
 
@@ -32,9 +32,9 @@ and tool-call projection support for calendar-operation summaries; no binary blo
 required in phase 29  
 **Testing**: `go test ./internal/calendar ./internal/api ./internal/store ./internal/app ./internal/runtime ./internal/orchestration ./internal/scheduler ./internal/integrations ./internal/delivery ./internal/policy ./internal/contracts`,
 `make daemon-contract-test`, targeted calendar-route and workflow regressions, and one
-manual `DOPE_ENV=test` walkthrough using the fake calendar backend plus `test_sink`
+manual `KURA_ENV=test` walkthrough using the fake calendar backend plus `test_sink`
 delivery  
-**Target Platform**: macOS/Linux local daemon in `DOPE_ENV=test` by default, using the
+**Target Platform**: macOS/Linux local daemon in `KURA_ENV=test` by default, using the
 existing localhost HTTP API, SQLite store, and operator-authenticated `/v1/*` control
 plane  
 **Project Type**: Go daemon and harness control-plane service with schema-backed HTTP
@@ -80,11 +80,11 @@ roadmap 29 without live external dependencies
   schema, event, and doc updates required to keep account selection, event identity,
   timezone truth, and delivery linkage inspectable.
 - Verification and observability: PASS. The design requires targeted package, contract,
-  schedule/workflow, and fake-backend regressions plus one manual `DOPE_ENV=test`
+  schedule/workflow, and fake-backend regressions plus one manual `KURA_ENV=test`
   walkthrough. Operator-visible account, operation, artifact, and delivery resources
   replace backend guesswork or raw provider logs as the source of truth.
 - Environment and secrets: PASS. Local planning and later verification stay in
-  `DOPE_ENV=test`; the repo-owned fake calendar backend avoids live calendar credentials;
+  `KURA_ENV=test`; the repo-owned fake calendar backend avoids live calendar credentials;
   any real connector or token use remains optional, operator-owned, redacted, and
   environment-scoped.
 
@@ -191,7 +191,7 @@ mutation.
 - `make daemon-contract-test`
 - `cd daemon && go test ./internal/api -run 'TestCalendarAccountRoutesProjectPrimaryTimezoneAndCalendar|TestCalendarRoutesSeparateBusyFreeFromMutation|TestCalendarRoutesCreateUpdateCancelTimedPrimaryCalendarEvents|TestScheduledCalendarWorkflowRoutesThroughDeliveryAndPreservesOperationTruth' -count=1`
 - `cd daemon && go test ./internal/calendar -run 'TestFakeCalendarBackendReturnsPrimaryCalendarProjection|TestCalendarManagerRejectsRecurringAndAllDayMutation|TestCalendarManagerPreservesEventIdentityAcrossUpdateAndCancel|TestCalendarManagerRecordsConflictAndStaleStateTruth' -count=1`
-- manual latency capture in `DOPE_ENV=test` for one explicit-`integrationId` read, one
+- manual latency capture in `KURA_ENV=test` for one explicit-`integrationId` read, one
   canonical-default read, one mutation, and one delivery-linked background run against
   the fake calendar backend to confirm the local latency targets recorded above
 
@@ -231,7 +231,7 @@ Automated commands completed successfully:
 - `cd daemon && go test ./internal/api ./internal/store ./internal/contracts`
 - `make daemon-contract-test`
 
-Manual `DOPE_ENV=test` walkthrough completed against the repo-owned fake backend with a
+Manual `KURA_ENV=test` walkthrough completed against the repo-owned fake backend with a
 workspace-local data dir and deterministic executable skill:
 
 - explicit account projection, explicit event read, canonical-default event read, and

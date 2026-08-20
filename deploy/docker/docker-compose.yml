@@ -5,33 +5,33 @@
 #   docker compose ps          # STATUS shows (healthy) once /healthz passes
 #   docker compose logs -f
 #
-# Data persists in the named volume `dope-data`. The daemon binds 0.0.0.0
+# Data persists in the named volume `kura-data`. The daemon binds 0.0.0.0
 # INSIDE the container; the host port below is bound to loopback only, so it
 # is not reachable from the network. To expose it, change "127.0.0.1:19191"
 # to "0.0.0.0:19191" AND put auth/a reverse proxy in front of it.
 
 services:
-  dope-agent:
+  kura-agent:
     build:
       context: ../..                     # repo root — Dockerfile needs crates/
       dockerfile: deploy/docker/Dockerfile
       args:
-        DOPE_VERSION: docker
-    image: dope-agent:latest
-    container_name: dope-agent
+        KURA_VERSION: docker
+    image: kura-agent:latest
+    container_name: kura-agent
     restart: unless-stopped
     ports:
       - "127.0.0.1:19191:19191"
     volumes:
-      - dope-data:/data
+      - kura-data:/data
     environment:
-      DOPE_ENV: prod
-      DOPE_BIND_ADDR: 0.0.0.0:19191
-      DOPE_LOG_LEVEL: info
+      KURA_ENV: prod
+      KURA_BIND_ADDR: 0.0.0.0:19191
+      KURA_LOG_LEVEL: info
     # Provider/connector secrets: drop them in deploy/docker/.env (gitignored)
-    # as DOPE_* vars, then uncomment:
+    # as KURA_* vars, then uncomment:
     # env_file:
     #   - .env
 
 volumes:
-  dope-data:
+  kura-data:

@@ -264,12 +264,12 @@ operations and routes its result through the shared delivery behavior.
   event identity and account identity, workflow and schedule-driven calendar execution,
   separation of readiness, execution, and delivery truth, contract coverage for any new
   calendar projections, and at least one repo-owned local or fixture-based verification
-  path in `DOPE_ENV=test`.
+  path in `KURA_ENV=test`.
 - **Observability Impact**: Operators must be able to inspect the selected calendar
   account projection, calendar readiness, operation class, affected event identity,
   truthful mutation or lookup outcome, and any downstream delivery outcome without
   reading raw connector logs.
-- **Environment & Secrets**: Work defaults to `DOPE_ENV=test`. Live calendar connectors
+- **Environment & Secrets**: Work defaults to `KURA_ENV=test`. Live calendar connectors
   are optional for initial validation. Any credentials or tokens used for calendar access
   remain operator-owned, environment-scoped, and redacted from operator-visible history.
 

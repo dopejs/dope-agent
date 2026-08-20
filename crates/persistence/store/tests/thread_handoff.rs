@@ -4,15 +4,15 @@
 //! consume path that flips Referenced decisions to Consumed.
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use dope_store::SQLiteStore;
-use dope_threads::{
+use kura_store::SQLiteStore;
+use kura_threads::{
     ConversationShape, HandoffLink, HandoffSourceReference, HandoffSourceReferenceDecision,
     HandoffSourceReferenceEligibility, HandoffSourceReferenceStatus, HandoffStatus, RedactionStatus,
     SourceKind, Thread,
 };
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -21,7 +21,7 @@ fn thread(thread_id: &str, tenant_id: &str, now: DateTime<Utc>) -> Thread {
     Thread {
         thread_id: thread_id.to_string(),
         tenant_id: tenant_id.to_string(),
-        lifecycle_state: dope_threads::LifecycleState::Active,
+        lifecycle_state: kura_threads::LifecycleState::Active,
         current_session_segment_id: format!("seg_{thread_id}"),
         source_kind: SourceKind::Channel,
         source_summary: "handoff test thread".to_string(),

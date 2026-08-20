@@ -4,7 +4,7 @@
 //! GatewayTransport (REST via ureq + a tokio-tungstenite gateway receive
 //! loop), the hosted-setup readiness evaluation, capability conformance
 //! declarations, diagnostics classification, smoke evidence, and the
-//! Runtime that wires a transport into the shared dope-im message loop,
+//! Runtime that wires a transport into the shared kura-im message loop,
 //! the connector supervisor, the SQLite store, and the event bus.
 //!
 //! Pure logic — message normalization, route gating, destination validation,
@@ -12,7 +12,7 @@
 //! runtime integration behavior is covered in tests/runtime.rs with a fake
 //! transport. See rs/MIGRATION.md for the porting conventions.
 
-pub use dope_connectors::RedactionStatus;
+pub use kura_connectors::RedactionStatus;
 
 /// The Redacted default for connector evidence records (Go's zero value).
 pub(crate) fn redaction_status_redacted() -> RedactionStatus {

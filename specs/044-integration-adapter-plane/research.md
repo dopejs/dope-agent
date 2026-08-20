@@ -21,7 +21,7 @@ contract-version match) and are treated here as fixed inputs.
 
 ## R2. Reference adapter language/runtime
 
-- **Decision**: An in-repo Go binary `daemon/cmd/dope-integration-adapter` implementing the
+- **Decision**: An in-repo Go binary `daemon/cmd/kura-integration-adapter` implementing the
   RPC contract over stdio, with no real provider (returns deterministic synthetic responses
   and supports seeded failure modes for conformance).
 - **Rationale**: Reuses the existing Go toolchain and build (`make daemon-build`); lets the
@@ -103,7 +103,7 @@ contract-version match) and are treated here as fixed inputs.
 | Unknown | Resolution |
 |---------|-----------|
 | RPC transport | Subprocess over stdio, newline-delimited JSON envelopes (stdlib only) |
-| Reference adapter | In-repo Go binary `daemon/cmd/dope-integration-adapter` |
+| Reference adapter | In-repo Go binary `daemon/cmd/kura-integration-adapter` |
 | Lifecycle/circuit-break | Reuse `capabilities.Supervisor` (backoff + `FailureCount>=5 → Failed`) |
 | Backend selection | New `BackendKind` `adapter_rpc`; select via `BackendBinding`; rollback = rebind |
 | Credentials | Per-call scoped injection in envelope; no adapter persistence; reuse redaction |

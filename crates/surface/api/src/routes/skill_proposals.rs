@@ -21,7 +21,7 @@ use axum::Router;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use dope_memory as memory;
+use kura_memory as memory;
 
 use crate::error::ApiError;
 use crate::middleware::TenantContext;
@@ -179,13 +179,13 @@ pub async fn publish(
 
     let version = format!("{}.0.0", asset.version.max(1));
     let item = catalog
-        .register_item(dope_catalog::CatalogItem {
+        .register_item(kura_catalog::CatalogItem {
             item_id: String::new(),
-            kind: dope_catalog::ItemKind::Skill,
+            kind: kura_catalog::ItemKind::Skill,
             name: asset.title.clone(),
-            trust_tier: dope_catalog::TrustTier::Community,
+            trust_tier: kura_catalog::TrustTier::Community,
             permissions: Vec::new(),
-            versions: vec![dope_catalog::Version {
+            versions: vec![kura_catalog::Version {
                 version: version.clone(),
                 source: format!("memory:{}", asset.asset_id),
                 checksum: String::new(),
@@ -206,15 +206,15 @@ pub async fn publish(
     payload.insert("skillId".to_string(), serde_json::json!(skill_id));
     payload.insert("catalogItemId".to_string(), serde_json::json!(item.item_id));
     payload.insert("version".to_string(), serde_json::json!(version));
-    let event = dope_events::Event {
+    let event = kura_events::Event {
         category: "skill".to_string(),
         name: "skill.proposal_published".to_string(),
-        resource: dope_events::Resource {
+        resource: kura_events::Resource {
             kind: "skill".to_string(),
             id: skill_id.clone(),
         },
         payload,
-        ..dope_events::Event::default()
+        ..kura_events::Event::default()
     };
     let event = state.store.lock().append_event(&event).unwrap_or(event);
     state.event_bus.publish(event);
@@ -243,18 +243,18 @@ mod tests {
     fn skill_state() -> crate::state::AppState {
         let mut state = test_state();
         let dir = std::env::temp_dir()
-            .join(format!("dope-skillprop-{}", uuid::Uuid::now_v7()));
+            .join(format!("kura-skillprop-{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         state.config.data_dir = dir.to_string_lossy().into_owned();
-        state.memory = Some(Arc::new(dope_memory::Manager::new("test", None, None, None)));
+        state.memory = Some(Arc::new(kura_memory::Manager::new("test", None, None, None)));
         state.skills = Some(Arc::new(
-            dope_skills::Registry::with_roots(
+            kura_skills::Registry::with_roots(
                 &dir.join("home").to_string_lossy(),
                 &state.config.data_dir,
             )
             .expect("registry"),
         ));
-        state.catalog = Some(Arc::new(dope_catalog::Manager::new("test", None, None)));
+        state.catalog = Some(Arc::new(kura_catalog::Manager::new("test", None, None)));
         state
     }
 

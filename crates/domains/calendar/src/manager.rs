@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_integrations::{BackendKind, ReadinessStatus, Resource};
+use kura_integrations::{BackendKind, ReadinessStatus, Resource};
 use uuid::Uuid;
 
 use crate::{
@@ -379,7 +379,7 @@ impl Manager {
         operation.status = OperationStatus::Failed;
         operation.failure_class = class.to_string();
         operation.failure_reason = reason.to_string();
-        let diagnostic = dope_integrations::diagnostic_failure_for_operation_failure(
+        let diagnostic = kura_integrations::diagnostic_failure_for_operation_failure(
             "calendar",
             provider_kind,
             &operation.integration_id,

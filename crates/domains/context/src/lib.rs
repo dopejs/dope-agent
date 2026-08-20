@@ -1,4 +1,4 @@
-//! dope-context — the default context-management policy engine.
+//! kura-context — the default context-management policy engine.
 //!
 //! This crate backs the `context` builtin plugin, which attaches at
 //! `chat/pre-dispatch` and injects the tenant's memory bootstrap (Ready L3

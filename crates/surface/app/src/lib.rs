@@ -1,37 +1,37 @@
-//! dope-app — the daemon application assembly. The trust-boundary kernel
+//! kura-app — the daemon application assembly. The trust-boundary kernel
 //! (store, event bus, identity, auth, policy, secrets, audit) is built
 //! directly; every other subsystem assembles as a builtin plugin
 //! (`plugins::BUILTINS`) whose enablement is resolved from the per-data-dir
-//! profile `<data_dir>/plugins.json`. The resolved [`dope_plugin::AssemblyReport`]
+//! profile `<data_dir>/plugins.json`. The resolved [`kura_plugin::AssemblyReport`]
 //! lands on `AppState.plugins` for `/v1/plugins` introspection.
 
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use dope_api::AppState;
-use dope_audit::Emitter as AuditEmitter;
-use dope_checkpoints::Manager as CheckpointsManager;
-use dope_config::{Config, Environment};
-use dope_discord::{GatewayTransport as DiscordGatewayTransport, new_runtime as new_discord_runtime};
-use dope_events::Bus;
-use dope_identity::auth::Manager as AuthManager;
-use dope_identity::{Manager as IdentityManager, Store as IdentityStore};
-use dope_im::MessageLoop;
-use dope_matrix::{
+use kura_api::AppState;
+use kura_audit::Emitter as AuditEmitter;
+use kura_checkpoints::Manager as CheckpointsManager;
+use kura_config::{Config, Environment};
+use kura_discord::{GatewayTransport as DiscordGatewayTransport, new_runtime as new_discord_runtime};
+use kura_events::Bus;
+use kura_identity::auth::Manager as AuthManager;
+use kura_identity::{Manager as IdentityManager, Store as IdentityStore};
+use kura_im::MessageLoop;
+use kura_matrix::{
     ClientTransportConfig as MatrixClientTransportConfig, new_client_transport as new_matrix_transport,
     new_runtime as new_matrix_runtime,
 };
-use dope_policy::Engine as PolicyEngine;
-use dope_router::SessionRouter;
-use dope_runtime::Manager as RuntimeManager;
-use dope_secrets::Manager as SecretsManager;
-use dope_slack::{
+use kura_policy::Engine as PolicyEngine;
+use kura_router::SessionRouter;
+use kura_runtime::Manager as RuntimeManager;
+use kura_secrets::Manager as SecretsManager;
+use kura_slack::{
     WebApiTransport as SlackWebApiTransport, WebApiTransportConfig as SlackWebApiTransportConfig,
     new_runtime as new_slack_runtime,
 };
-use dope_store::{SQLiteStore, SecretStoreHandle};
-use dope_telegram::{
+use kura_store::{SQLiteStore, SecretStoreHandle};
+use kura_telegram::{
     BotApiTransport as TelegramBotApiTransport, BotApiTransportConfig as TelegramBotApiTransportConfig,
     Runtime as TelegramRuntime,
 };
@@ -53,7 +53,7 @@ pub fn environment_scope(environment: Environment) -> &'static str {
 }
 
 /// The daemon application. The manager instances live inside
-/// [`dope_api::AppState`]; lifecycle-bearing managers (scheduler, reminders,
+/// [`kura_api::AppState`]; lifecycle-bearing managers (scheduler, reminders,
 /// sandboxes) are read back from the state in `serve`/`close`.
 pub struct App {
     pub config: Config,
@@ -89,13 +89,13 @@ pub struct App {
 #[cfg(test)]
 #[derive(Default)]
 pub struct AppWiring {
-    pub activation_store: Option<Arc<dope_activation::SqliteActivationStore>>,
-    pub activation_billing: Option<Arc<dope_activation::BillingProjectorAdapter>>,
-    pub activation_chat: Option<Arc<dope_activation::ChatRunnerAdapter>>,
-    pub computeruse_recorder: Option<Arc<dope_computeruse::SqliteArtifactRecorder>>,
-    pub execprofile_health: Option<Arc<dope_execprofile::SandboxHealthChecker>>,
-    pub evidence_collector: Option<Arc<dope_evidence::RoutineCollector>>,
-    pub delivery_connector: Option<Arc<dope_delivery::ConnectorAdapter>>,
+    pub activation_store: Option<Arc<kura_activation::SqliteActivationStore>>,
+    pub activation_billing: Option<Arc<kura_activation::BillingProjectorAdapter>>,
+    pub activation_chat: Option<Arc<kura_activation::ChatRunnerAdapter>>,
+    pub computeruse_recorder: Option<Arc<kura_computeruse::SqliteArtifactRecorder>>,
+    pub execprofile_health: Option<Arc<kura_execprofile::SandboxHealthChecker>>,
+    pub evidence_collector: Option<Arc<kura_evidence::RoutineCollector>>,
+    pub delivery_connector: Option<Arc<kura_delivery::ConnectorAdapter>>,
     pub mcp_starter: Option<Arc<adapters::McpExecutionStarter>>,
     pub mcp_secret_resolver: Option<Arc<adapters::McpSecretResolver>>,
 }
@@ -108,10 +108,10 @@ pub struct AppWiring {
 /// they are stored as Arc to share with the thread; discord/slack start
 /// non-blocking and stay inline.
 struct ConnectorRuntimes {
-    discord: Option<dope_discord::Runtime>,
+    discord: Option<kura_discord::Runtime>,
     telegram: Option<Arc<TelegramRuntime>>,
-    slack: Option<dope_slack::Runtime>,
-    matrix: Option<Arc<dope_matrix::Runtime>>,
+    slack: Option<kura_slack::Runtime>,
+    matrix: Option<Arc<kura_matrix::Runtime>>,
     telegram_thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -121,7 +121,7 @@ impl App {
     /// malformed profile fails the boot loudly).
     pub fn new(cfg: Config) -> Result<Self, AppError> {
         plugins::ensure_data_dir(&cfg.data_dir);
-        let profile = dope_plugin::PluginProfile::load(&cfg.data_dir)
+        let profile = kura_plugin::PluginProfile::load(&cfg.data_dir)
             .map_err(|err| AppError::PluginProfile(err.to_string()))?;
         Self::with_profile(cfg, profile)
     }
@@ -131,7 +131,7 @@ impl App {
     /// persisted-state restore.
     pub fn with_profile(
         cfg: Config,
-        profile: dope_plugin::PluginProfile,
+        profile: kura_plugin::PluginProfile,
     ) -> Result<Self, AppError> {
         let data_dir = cfg.data_dir.clone();
         let env_scope = environment_scope(cfg.environment);
@@ -171,7 +171,7 @@ impl App {
         // Trust-boundary decision: identity, auth, policy, secrets and audit
         // stay in the kernel and are not disableable plugins.
         let secret_backend = Arc::new(
-            dope_secrets::LocalBackend::new(Path::new(&data_dir).join("tenant-secret-values"))
+            kura_secrets::LocalBackend::new(Path::new(&data_dir).join("tenant-secret-values"))
                 .map_err(|err| AppError::Secrets(err.to_string()))?,
         );
         let secret_store = Arc::new(SecretStoreHandle::new(
@@ -198,11 +198,11 @@ impl App {
         state.tenant_migration_status = Some(Arc::new(adapters::NoMigrationInProgress));
         // The hook bus is kernel infrastructure: plugins register handlers on
         // it during assembly, consumers (chat) run the hook points.
-        let hook_bus = Arc::new(dope_plugin::HookBus::new());
+        let hook_bus = Arc::new(kura_plugin::HookBus::new());
         state.hooks = Some(hook_bus);
 
         // --- kernel seams consumed by plugins ---
-        let mut seams = dope_plugin::SeamMap::new();
+        let mut seams = kura_plugin::SeamMap::new();
         seams.put(plugins::SecretStoreSeam(secret_store));
         seams.put(plugins::SecretBackendSeam(secret_backend));
         seams.put(plugins::WorkflowLauncherSeam(Arc::new(
@@ -213,20 +213,20 @@ impl App {
         // (tier 2). Third-party manifest problems are warnings, not boot
         // failures.
         let (external_plugins_found, external_warnings) =
-            dope_plugin::discover_external(&data_dir);
-        let mut specs: Vec<dope_plugin::PluginSpec> = plugins::descriptors()
+            kura_plugin::discover_external(&data_dir);
+        let mut specs: Vec<kura_plugin::PluginSpec> = plugins::descriptors()
             .iter()
-            .map(dope_plugin::PluginSpec::from_descriptor)
+            .map(kura_plugin::PluginSpec::from_descriptor)
             .collect();
         specs.extend(
             external_plugins_found
                 .iter()
-                .map(|plugin| dope_plugin::PluginSpec::from_manifest(&plugin.manifest)),
+                .map(|plugin| kura_plugin::PluginSpec::from_manifest(&plugin.manifest)),
         );
-        let mut report = dope_plugin::resolve_specs(&specs, &profile);
+        let mut report = kura_plugin::resolve_specs(&specs, &profile);
         report.warnings.extend(external_warnings);
         for warning in &report.warnings {
-            eprintln!("[dope] plugin profile: {warning}");
+            eprintln!("[kura] plugin profile: {warning}");
         }
         let late_state: Arc<std::sync::OnceLock<AppState>> =
             Arc::new(std::sync::OnceLock::new());
@@ -283,7 +283,7 @@ impl App {
                         Some(Arc::new(external::ExternalEmbedder::new(host.clone())));
                 } else {
                     eprintln!(
-                        "[dope] plugin {}: context.embedder already served; ignoring",
+                        "[kura] plugin {}: context.embedder already served; ignoring",
                         host.id
                     );
                 }
@@ -319,7 +319,7 @@ impl App {
 
     /// Loads the effective config (env + config.json) and builds the app.
     pub fn from_env() -> Result<Self, AppError> {
-        Self::new(dope_config::load()?)
+        Self::new(kura_config::load()?)
     }
 
     /// True when `id` resolved enabled in the plugin assembly (states built
@@ -336,7 +336,7 @@ impl App {
     #[allow(clippy::needless_pass_by_value)]
     #[must_use]
     pub fn router(&self) -> axum::Router {
-        dope_api::routes::router(self.state.clone())
+        kura_api::routes::router(self.state.clone())
     }
 
     /// Starts background loops (scheduler tick, reminders tick) best-effort,
@@ -356,7 +356,7 @@ impl App {
         // Publish system.started (best effort; the store/bus carry it).
         let _ = self.publish_system_event(
             "system.started",
-            serde_json::json!({ "service": "dope", "version": self.config.version }),
+            serde_json::json!({ "service": "kura", "version": self.config.version }),
         );
 
         let app = self.router();
@@ -366,7 +366,7 @@ impl App {
                 addr: bind_addr.clone(),
                 source,
             })?;
-        eprintln!("[dope] listening on http://{bind_addr}");
+        eprintln!("[kura] listening on http://{bind_addr}");
 
         axum::serve(listener, app)
             .with_graceful_shutdown(shutdown_signal())
@@ -375,7 +375,7 @@ impl App {
 
         let _ = self.publish_system_event(
             "system.stopped",
-            serde_json::json!({ "service": "dope", "reason": "shutdown" }),
+            serde_json::json!({ "service": "kura", "reason": "shutdown" }),
         );
         self.close();
         Ok(())
@@ -432,7 +432,7 @@ impl App {
             }
         }
         if let Some(err) = first_err {
-            eprintln!("[dope] connector close error: {err}");
+            eprintln!("[kura] connector close error: {err}");
         }
         // Plugin-registered closes in registration order (sandbox, scheduler,
         // reminders under the default assembly); each is idempotent.
@@ -450,7 +450,7 @@ impl App {
     // ---------------------------------------------------------------------
 
     /// Builds one connector message loop over the shared managers (port of Go
-    /// im.NewMessageLoop). dope-im::MessageLoop and dope_router::SessionRouter
+    /// im.NewMessageLoop). kura-im::MessageLoop and kura_router::SessionRouter
     /// are not Clone, so each connector runtime receives its own loop + router
     /// over the same runtime/checkpoints/bus/store/chat deps — matching Go's
     /// per-runtime im.NewMessageLoop(sessionRouter, ...) construction.
@@ -480,7 +480,7 @@ impl App {
             .ok()?;
         let manager = self.state.secrets.clone()?;
         let resolved = manager
-            .resolve(dope_secrets::ResolveInput {
+            .resolve(kura_secrets::ResolveInput {
                 tenant_id,
                 secret_ref: secret_ref.trim().to_string(),
             })
@@ -506,7 +506,7 @@ impl App {
         // --- discord ---
         let discord_enabled =
             connector_cfg.discord.enabled && self.plugin_enabled("channel-discord");
-        let discord_cfg = dope_discord::Config {
+        let discord_cfg = kura_discord::Config {
             enabled: discord_enabled,
             connector_id: connector_cfg.discord.connector_id.clone(),
             display_name: connector_cfg.discord.display_name.clone(),
@@ -518,7 +518,7 @@ impl App {
             allowed_channel_ids: connector_cfg.discord.allowed_channel_ids.clone(),
             tenant_id: String::new(),
         };
-        let discord_transport: Option<Box<dyn dope_discord::Transport>> = if discord_enabled {
+        let discord_transport: Option<Box<dyn kura_discord::Transport>> = if discord_enabled {
             Some(Box::new(
                 DiscordGatewayTransport::new(discord_cfg.clone()).map_err(|err| {
                     AppError::ConnectorRuntime(format!("discord transport: {err}"))
@@ -529,7 +529,7 @@ impl App {
         };
         let discord = new_discord_runtime(
             discord_cfg,
-            Some(dope_telemetry::Logger::new(&self.config.log_level)),
+            Some(kura_telemetry::Logger::new(&self.config.log_level)),
             supervisor.clone(),
             // The discord runtime takes Arc<MessageLoop>; the loop is !Send
             // (single-threaded store), matching the runtime's design.
@@ -544,7 +544,7 @@ impl App {
         // --- telegram ---
         let telegram_enabled =
             connector_cfg.telegram.enabled && self.plugin_enabled("channel-telegram");
-        let telegram_cfg = dope_telegram::Config {
+        let telegram_cfg = kura_telegram::Config {
             enabled: telegram_enabled,
             connector_id: connector_cfg.telegram.connector_id.clone(),
             display_name: connector_cfg.telegram.display_name.clone(),
@@ -553,7 +553,7 @@ impl App {
             tenant_id: String::new(),
             allowments: restore::telegram_allowments_from_config(&connector_cfg.telegram),
         };
-        let telegram_transport: Option<Arc<dyn dope_telegram::Transport>> = if telegram_enabled {
+        let telegram_transport: Option<Arc<dyn kura_telegram::Transport>> = if telegram_enabled {
             Some(Arc::new(
                 TelegramBotApiTransport::new(TelegramBotApiTransportConfig {
                     connector_id: connector_cfg.telegram.connector_id.clone(),
@@ -582,7 +582,7 @@ impl App {
 
         // --- slack ---
         let slack_enabled = connector_cfg.slack.enabled && self.plugin_enabled("channel-slack");
-        let slack_cfg = dope_slack::Config {
+        let slack_cfg = kura_slack::Config {
             enabled: slack_enabled,
             connector_id: connector_cfg.slack.connector_id.clone(),
             display_name: connector_cfg.slack.display_name.clone(),
@@ -601,7 +601,7 @@ impl App {
                 .await
                 .unwrap_or_default()
         };
-        let slack_transport: Option<Arc<dyn dope_slack::Transport>> = if slack_enabled {
+        let slack_transport: Option<Arc<dyn kura_slack::Transport>> = if slack_enabled {
             Some(Arc::new(SlackWebApiTransport::new(
                 SlackWebApiTransportConfig {
                     connector_id: connector_cfg.slack.connector_id.clone(),
@@ -625,7 +625,7 @@ impl App {
 
         // --- matrix ---
         let matrix_enabled = connector_cfg.matrix.enabled && self.plugin_enabled("channel-matrix");
-        let matrix_cfg = dope_matrix::types::Config {
+        let matrix_cfg = kura_matrix::types::Config {
             enabled: matrix_enabled,
             connector_id: connector_cfg.matrix.connector_id.clone(),
             display_name: connector_cfg.matrix.display_name.clone(),
@@ -636,7 +636,7 @@ impl App {
             allowed_direct_user_ids: connector_cfg.matrix.allowed_direct_user_ids.clone(),
             configured_commands: connector_cfg.matrix.configured_commands.clone(),
         };
-        let matrix_transport: Option<Box<dyn dope_matrix::Transport>> = if matrix_enabled {
+        let matrix_transport: Option<Box<dyn kura_matrix::Transport>> = if matrix_enabled {
             Some(Box::new(
                 new_matrix_transport(MatrixClientTransportConfig {
                     connector_id: connector_cfg.matrix.connector_id.clone(),
@@ -687,7 +687,7 @@ impl App {
                 .map_err(|err| AppError::ConnectorStart(format!("discord: {err}")))?;
         }
         if let Some(telegram) = &runtimes.telegram {
-            // SAFETY: dope_telegram::Runtime is !Send (its inner store
+            // SAFETY: kura_telegram::Runtime is !Send (its inner store
             // connection is single-threaded), so the thread receives a raw
             // pointer instead of moving the runtime. The runtime is kept alive
             // by the App's Arc for the whole process, and every runtime method
@@ -731,7 +731,7 @@ impl App {
                 .spawn(move || {
                     // SAFETY: raw is the address of the App-owned runtime;
                     // close() leaks a clone so it stays valid for the process.
-                    let rt = unsafe { &*(raw as *const dope_matrix::Runtime) };
+                    let rt = unsafe { &*(raw as *const kura_matrix::Runtime) };
                     let _ = rt.start(&tenant_id);
                 })
                 .map_err(|err| AppError::ConnectorStart(format!("matrix thread: {err}")))?;
@@ -742,13 +742,13 @@ impl App {
     /// Persists a system event on the store and publishes it on the bus
     /// (port of Go `publishSystemEvent`).
     fn publish_system_event(&self, name: &str, payload: serde_json::Value) -> Result<(), AppError> {
-        let mut event = dope_events::Event::default();
+        let mut event = kura_events::Event::default();
         event.environment_scope = environment_scope(self.config.environment).to_string();
         event.category = "system".to_string();
         event.name = name.to_string();
-        event.resource = dope_events::Resource {
+        event.resource = kura_events::Resource {
             kind: "system".to_string(),
-            id: "dope".to_string(),
+            id: "kura".to_string(),
         };
         if let Some(object) = payload.as_object() {
             event.payload = object.clone();
@@ -792,7 +792,7 @@ mod tests {
 
     /// A test config pointing at a fresh temp data dir.
     fn test_config() -> Config {
-        let dir = std::env::temp_dir().join(format!("dope-app-smoke-{}", uuid::Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("kura-app-smoke-{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("create temp data dir");
         Config {
             environment: Environment::Test,
@@ -819,7 +819,7 @@ mod tests {
             .lock()
             .schema_version()
             .expect("schema version");
-        assert_eq!(schema_version, dope_store::CURRENT_SCHEMA_VERSION);
+        assert_eq!(schema_version, kura_store::CURRENT_SCHEMA_VERSION);
         assert!(app.state.policy.is_some());
         assert!(app.state.identity.is_some());
         assert!(app.state.chat.is_some());
@@ -848,7 +848,7 @@ mod tests {
             .await
             .expect("body");
         let json: serde_json::Value = serde_json::from_slice(&bytes).expect("json body");
-        assert_eq!(json, serde_json::json!({ "ok": true, "service": "dope" }));
+        assert_eq!(json, serde_json::json!({ "ok": true, "service": "kura" }));
 
         // /version and /v1/system/info also route through the populated state.
         let version_response = router
@@ -899,7 +899,7 @@ mod tests {
                 .lock()
                 .schema_version()
                 .expect("schema version"),
-            dope_store::CURRENT_SCHEMA_VERSION
+            kura_store::CURRENT_SCHEMA_VERSION
         );
         app2.close();
     }
@@ -910,7 +910,7 @@ mod tests {
     #[tokio::test]
     async fn disabled_leaf_plugin_leaves_manager_unwired() {
         let config = test_config();
-        let profile = dope_plugin::PluginProfile {
+        let profile = kura_plugin::PluginProfile {
             disabled: vec!["triage".to_string()],
             ..Default::default()
         };
@@ -930,7 +930,7 @@ mod tests {
     #[tokio::test]
     async fn disabling_billing_transitively_disables_dependents() {
         let config = test_config();
-        let profile = dope_plugin::PluginProfile {
+        let profile = kura_plugin::PluginProfile {
             disabled: vec!["billing".to_string()],
             ..Default::default()
         };
@@ -954,7 +954,7 @@ mod tests {
     async fn profile_file_in_data_dir_is_loaded() {
         let config = test_config();
         std::fs::write(
-            std::path::Path::new(&config.data_dir).join(dope_plugin::PROFILE_FILE_NAME),
+            std::path::Path::new(&config.data_dir).join(kura_plugin::PROFILE_FILE_NAME),
             serde_json::json!({ "disabled": ["memory"] }).to_string(),
         )
         .expect("write profile");
@@ -1028,7 +1028,7 @@ mod tests {
         config.connectors.discord.bot_token = "test-token".to_string();
         config.connectors.discord.connector_id = "discord-test".to_string();
         config.connectors.discord.display_name = "Discord Test".to_string();
-        let profile = dope_plugin::PluginProfile {
+        let profile = kura_plugin::PluginProfile {
             disabled: vec!["channel-discord".to_string()],
             ..Default::default()
         };
@@ -1054,18 +1054,18 @@ mod tests {
         let app = App::new(config).expect("build app");
         let hooks = app.state.hooks.clone().expect("hook bus wired");
         struct Inject;
-        impl dope_plugin::Hook for Inject {
-            fn handle(&self, payload: &mut serde_json::Value) -> dope_plugin::HookOutcome {
+        impl kura_plugin::Hook for Inject {
+            fn handle(&self, payload: &mut serde_json::Value) -> kura_plugin::HookOutcome {
                 let messages = payload["messages"].as_array_mut().expect("messages");
                 messages.insert(
                     0,
                     serde_json::json!({ "role": "system", "content": "hook window" }),
                 );
-                dope_plugin::HookOutcome::Continue
+                kura_plugin::HookOutcome::Continue
             }
         }
         hooks.register(
-            dope_plugin::points::CHAT_PRE_DISPATCH,
+            kura_plugin::points::CHAT_PRE_DISPATCH,
             "test-plugin",
             Arc::new(Inject),
         );
@@ -1073,12 +1073,12 @@ mod tests {
         let chat = app.state.chat.clone().expect("chat wired");
         let execution = chat
             .query(
-                dope_chat::QueryInput {
+                kura_chat::QueryInput {
                     query: "hello".to_string(),
                     provider: "echo".to_string(),
                     ..Default::default()
                 },
-                &dope_chat::CancellationToken::new(),
+                &kura_chat::CancellationToken::new(),
             )
             .expect("query through the assembled app");
         assert!(
@@ -1119,7 +1119,7 @@ mod tests {
         let chat = app.state.chat.clone().expect("chat wired");
         let execution = chat
             .query(
-                dope_chat::QueryInput {
+                kura_chat::QueryInput {
                     query: "remember this fact".to_string(),
                     provider: "echo".to_string(),
                     // Tenant-scoped chat exercises the full ChatStore
@@ -1127,7 +1127,7 @@ mod tests {
                     tenant_id: "ten_hook".to_string(),
                     ..Default::default()
                 },
-                &dope_chat::CancellationToken::new(),
+                &kura_chat::CancellationToken::new(),
             )
             .expect("query");
         assert!(execution.exec_error.is_none());
@@ -1156,7 +1156,7 @@ mod tests {
             "sourceKind": "channel",
             "sourceMessageId": "msg_chan_1",
         });
-        let outcome = hooks.run(dope_plugin::points::CHAT_TURN_END, &mut channel_payload);
+        let outcome = hooks.run(kura_plugin::points::CHAT_TURN_END, &mut channel_payload);
         assert!(outcome.allowed());
         let assets = app
             .state
@@ -1195,7 +1195,7 @@ mod tests {
     async fn context_plugin_injects_memory_bootstrap_and_composes() {
         let config = test_config();
         std::fs::write(
-            std::path::Path::new(&config.data_dir).join(dope_plugin::PROFILE_FILE_NAME),
+            std::path::Path::new(&config.data_dir).join(kura_plugin::PROFILE_FILE_NAME),
             serde_json::json!({
                 "entries": {
                     "session-strategy": { "config": { "personalBudgetChars": 40, "keepRecent": 1 } }
@@ -1219,49 +1219,49 @@ mod tests {
         // real governed chain: L1 atom (with source links) -> L2 scenario
         // (members) -> L3 persona (members).
         let memory = app.state.memory.as_deref().expect("memory wired");
-        let operator = dope_memory::Actor {
-            kind: dope_memory::ActorKind::Operator,
+        let operator = kura_memory::Actor {
+            kind: kura_memory::ActorKind::Operator,
             id: "op".to_string(),
         };
         let (l1, _) = memory
-            .create(dope_memory::CreateAssetInput {
-                kind: dope_memory::AssetKind::ChatMemory,
-                layer: dope_memory::MemoryLayer::L1,
+            .create(kura_memory::CreateAssetInput {
+                kind: kura_memory::AssetKind::ChatMemory,
+                layer: kura_memory::MemoryLayer::L1,
                 owner: operator.clone(),
-                visibility: dope_memory::Visibility::Private,
-                atom_type: Some(dope_memory::AtomType::Preference),
+                visibility: kura_memory::Visibility::Private,
+                atom_type: Some(kura_memory::AtomType::Preference),
                 title: "language".to_string(),
                 content: "replies in Chinese".to_string(),
-                source_links: vec![dope_memory::SourceLink {
-                    kind: dope_memory::SourceKind::Thread,
+                source_links: vec![kura_memory::SourceLink {
+                    kind: kura_memory::SourceKind::Thread,
                     id: "thr_seed".to_string(),
-                    ..dope_memory::SourceLink::default()
+                    ..kura_memory::SourceLink::default()
                 }],
-                ..dope_memory::CreateAssetInput::default()
+                ..kura_memory::CreateAssetInput::default()
             })
             .expect("seed L1 atom");
         let (l2, _) = memory
-            .create(dope_memory::CreateAssetInput {
-                kind: dope_memory::AssetKind::ChatMemory,
-                layer: dope_memory::MemoryLayer::L2,
+            .create(kura_memory::CreateAssetInput {
+                kind: kura_memory::AssetKind::ChatMemory,
+                layer: kura_memory::MemoryLayer::L2,
                 owner: operator.clone(),
-                visibility: dope_memory::Visibility::Private,
+                visibility: kura_memory::Visibility::Private,
                 title: "workflow".to_string(),
                 content: "communication preferences".to_string(),
                 member_asset_ids: vec![l1.asset_id.clone()],
-                ..dope_memory::CreateAssetInput::default()
+                ..kura_memory::CreateAssetInput::default()
             })
             .expect("seed L2 scenario");
         let (asset, _) = memory
-            .create(dope_memory::CreateAssetInput {
-                kind: dope_memory::AssetKind::ChatMemory,
-                layer: dope_memory::MemoryLayer::L3,
+            .create(kura_memory::CreateAssetInput {
+                kind: kura_memory::AssetKind::ChatMemory,
+                layer: kura_memory::MemoryLayer::L3,
                 owner: operator,
-                visibility: dope_memory::Visibility::Private,
+                visibility: kura_memory::Visibility::Private,
                 title: "persona".to_string(),
                 content: "Chinese-speaking operator".to_string(),
                 member_asset_ids: vec![l2.asset_id.clone()],
-                ..dope_memory::CreateAssetInput::default()
+                ..kura_memory::CreateAssetInput::default()
             })
             .expect("seed L3 persona");
 
@@ -1276,7 +1276,7 @@ mod tests {
                 { "role": "user", "content": "what language should replies use" }
             ]
         });
-        let outcome = hooks.run(dope_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
+        let outcome = hooks.run(kura_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
         assert!(outcome.allowed());
         let messages = payload["messages"].as_array().expect("messages");
         let bootstrap = messages
@@ -1318,7 +1318,7 @@ mod tests {
             .state
             .store
             .lock()
-            .list_events(&dope_events::Filter::default())
+            .list_events(&kura_events::Filter::default())
             .expect("list events");
         let assembled = events
             .iter()
@@ -1358,7 +1358,7 @@ mod tests {
                 { "role": "user", "content": "current query" }
             ]
         });
-        let outcome = hooks.run(dope_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
+        let outcome = hooks.run(kura_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
         assert!(outcome.allowed());
         let messages = payload["messages"].as_array().expect("messages");
         let externalized = messages
@@ -1396,7 +1396,7 @@ mod tests {
     async fn session_strategy_shapes_window_with_profile_config() {
         let config = test_config();
         std::fs::write(
-            std::path::Path::new(&config.data_dir).join(dope_plugin::PROFILE_FILE_NAME),
+            std::path::Path::new(&config.data_dir).join(kura_plugin::PROFILE_FILE_NAME),
             serde_json::json!({
                 "entries": {
                     "session-strategy": {
@@ -1427,7 +1427,7 @@ mod tests {
                 { "role": "user", "content": "current query" }
             ]
         });
-        let outcome = hooks.run(dope_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
+        let outcome = hooks.run(kura_plugin::points::CHAT_PRE_DISPATCH, &mut payload);
         assert!(outcome.allowed());
         let messages = payload["messages"].as_array().expect("messages");
         assert!(
@@ -1481,7 +1481,7 @@ mod tests {
         let mut entries = std::collections::BTreeMap::new();
         entries.insert(
             "session-strategy".to_string(),
-            dope_plugin::PluginEntry {
+            kura_plugin::PluginEntry {
                 enabled: None,
                 config: serde_json::json!({ "personalBudgetChars": "lots" })
                     .as_object()
@@ -1489,7 +1489,7 @@ mod tests {
                     .clone(),
             },
         );
-        let profile = dope_plugin::PluginProfile { disabled: vec![], entries };
+        let profile = kura_plugin::PluginProfile { disabled: vec![], entries };
         match App::with_profile(config, profile) {
             Err(AppError::PluginProfile(message)) => {
                 assert!(message.contains("session-strategy"), "{message}");
@@ -1599,12 +1599,12 @@ mod tests {
         let chat = app.state.chat.clone().expect("chat wired");
         let execution = chat
             .query(
-                dope_chat::QueryInput {
+                kura_chat::QueryInput {
                     query: "original".to_string(),
                     provider: "echo".to_string(),
                     ..Default::default()
                 },
-                &dope_chat::CancellationToken::new(),
+                &kura_chat::CancellationToken::new(),
             )
             .expect("query through external plugin");
         assert_eq!(

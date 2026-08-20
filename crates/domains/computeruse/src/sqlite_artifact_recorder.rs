@@ -17,7 +17,7 @@ use crate::ArtifactStatus;
 use crate::Store;
 
 /// SQLite-backed [`ArtifactRecorder`]: artifact records are persisted through
-/// the `dope-store` computeruse DAOs ([`Store::upsert_computer_use_artifact`]),
+/// the `kura-store` computeruse DAOs ([`Store::upsert_computer_use_artifact`]),
 /// and content bytes are written/read from the artifacts directory.
 pub struct SqliteArtifactRecorder {
     store: Arc<dyn Store>,
@@ -27,7 +27,7 @@ pub struct SqliteArtifactRecorder {
 
 impl SqliteArtifactRecorder {
     /// `store` is the same computer-use store handle the manager uses (in the
-    /// app wiring, an `Arc<dope_store::ComputerUseStoreHandle>`), so artifact
+    /// app wiring, an `Arc<kura_store::ComputerUseStoreHandle>`), so artifact
     /// records land in the same SQLite database. `environment_scope` stamps the
     /// record so the DAO's environment-scoped reads find it.
     #[must_use]

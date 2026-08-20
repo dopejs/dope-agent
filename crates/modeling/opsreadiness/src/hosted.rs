@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use dope_integrations::DiagnosticReasonCode;
+use kura_integrations::DiagnosticReasonCode;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -256,7 +256,7 @@ pub fn validate_hosted_profile(profile: &HostedOperationalProfile) -> Result<(),
             crate::HOSTED_LIVE_CONNECTORS_LIVE,
         ]),
     ];
-    if profile.data_directory.trim() == "~/.dope" {
+    if profile.data_directory.trim() == "~/.kura" {
         results.push(Err("hosted profile refuses production data directory without an explicit production recovery opt-in".to_string()));
     }
     if profile.live_connector_mode == crate::HOSTED_LIVE_CONNECTORS_LIVE {
@@ -653,7 +653,7 @@ pub fn build_integration_diagnostic_smoke_report(
         started_at,
         completed_at: Some(completed_at),
         artifact_refs: Vec::new(),
-        retention_expires_at: dope_integrations::diagnostic_retention_expiry(started_at),
+        retention_expires_at: kura_integrations::diagnostic_retention_expiry(started_at),
         probe_outcomes: Vec::new(),
         ..SmokeMatrixReport::default()
     };
@@ -714,7 +714,7 @@ pub fn build_smoke_probe_outcome(report_id: &str, index: usize, probe: &SmokePro
     } else if reason_code != DiagnosticReasonCode::Healthy {
         result = SmokeProbeResult::Failed;
     }
-    let (_, _owner, retry_safety) = dope_integrations::diagnostic_defaults(reason_code);
+    let (_, _owner, retry_safety) = kura_integrations::diagnostic_defaults(reason_code);
     SmokeProbeOutcome {
         probe_outcome_id: diagnostic_smoke_outcome_id(report_id, index),
         tenant_id: probe.tenant_id.clone(),
@@ -726,13 +726,13 @@ pub fn build_smoke_probe_outcome(report_id: &str, index: usize, probe: &SmokePro
         probe_action: probe.probe_action.clone(),
         result,
         reason_code: reason_code.as_str().to_string(),
-        remediation_hint: dope_integrations::diagnostic_remediation_hint(reason_code),
+        remediation_hint: kura_integrations::diagnostic_remediation_hint(reason_code),
         retry_safety: retry_safety.as_str().to_string(),
         blocked_or_skipped_reason: blocked_reason,
         artifact_refs: probe.artifact_refs.clone(),
         checked_at,
-        redaction_status: dope_integrations::RedactionStatus::Redacted.as_str().to_string(),
-        retention_expires_at: dope_integrations::diagnostic_retention_expiry(checked_at),
+        redaction_status: kura_integrations::RedactionStatus::Redacted.as_str().to_string(),
+        retention_expires_at: kura_integrations::diagnostic_retention_expiry(checked_at),
         ..SmokeProbeOutcome::default()
     }
 }

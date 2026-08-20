@@ -6,30 +6,30 @@ Roadmap 39 production operations baseline and defaults to the test environment.
 
 ## Defaults
 
-- Environment: `DOPE_ENV=test`
-- Data directory: `~/.dope-test`
+- Environment: `KURA_ENV=test`
+- Data directory: `~/.kura-test`
 - Daemon address: `127.0.0.1:19192`
 - Supervisor mode: repo-owned foreground supervisor
 - Live connectors: disabled unless an operator explicitly opts in
 - Evidence retention: 90 days unless an authorized policy requires longer
 
-The hosted profile must not use `~/.dope` or production user data unless the
+The hosted profile must not use `~/.kura` or production user data unless the
 current runbook step explicitly permits production recovery and the operator
-sets `DOPE_LIVE_OPT_IN=yes`.
+sets `KURA_LIVE_OPT_IN=yes`.
 
 ## Directory Layout
 
 `scripts/production/hosted-profile.sh provision` creates or verifies:
 
-- data: `DOPE_DATA_DIR` or `~/.dope-test`
-- logs: `DOPE_HOSTED_LOG_DIR` or `$DOPE_DATA_DIR/logs`
-- artifacts: `DOPE_HOSTED_ARTIFACT_DIR/$DOPE_HOSTED_RUN_ID`
-- backups: `DOPE_HOSTED_BACKUP_DIR` or `$DOPE_DATA_DIR/backups`
-- reports: `DOPE_HOSTED_REPORT_DIR/$DOPE_HOSTED_RUN_ID`
-- temporary work: `DOPE_HOSTED_TMP_DIR` or `$DOPE_DATA_DIR/tmp`
+- data: `KURA_DATA_DIR` or `~/.kura-test`
+- logs: `KURA_HOSTED_LOG_DIR` or `$KURA_DATA_DIR/logs`
+- artifacts: `KURA_HOSTED_ARTIFACT_DIR/$KURA_HOSTED_RUN_ID`
+- backups: `KURA_HOSTED_BACKUP_DIR` or `$KURA_DATA_DIR/backups`
+- reports: `KURA_HOSTED_REPORT_DIR/$KURA_HOSTED_RUN_ID`
+- temporary work: `KURA_HOSTED_TMP_DIR` or `$KURA_DATA_DIR/tmp`
 
 Run identities prevent evidence from prior runs being overwritten. Use
-`DOPE_HOSTED_RUN_ID` to pin a reviewed run and `DOPE_HOSTED_COMMIT` to pin the
+`KURA_HOSTED_RUN_ID` to pin a reviewed run and `KURA_HOSTED_COMMIT` to pin the
 reviewed commit or version.
 
 ## Commands
@@ -60,7 +60,7 @@ evidence records a failed recovery.
 `scripts/production/hosted-profile.sh evidence-index` writes:
 
 ```text
-$DOPE_HOSTED_REPORT_DIR/$DOPE_HOSTED_RUN_ID/release-evidence-index.json
+$KURA_HOSTED_REPORT_DIR/$KURA_HOSTED_RUN_ID/release-evidence-index.json
 ```
 
 The index links deployment manifest, configuration profile, health checks,

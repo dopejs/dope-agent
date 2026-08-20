@@ -174,12 +174,12 @@ through existing event, history, and inspection surfaces.
   introduced that would require a parallel rollback path.
 - **Verification Strategy**: Run targeted daemon tests for transport capability truth,
   lifecycle, discovery, invocation, recovery, and restore behavior; run contract coverage
-  for transport capability and recovery surfaces; record one manual `DOPE_ENV=test`
+  for transport capability and recovery surfaces; record one manual `KURA_ENV=test`
   end-to-end workflow on the new transport family.
 - **Observability Impact**: Operator-visible API resources, events, and history must
   explain transport identity, host readiness, unsupported or blocked truth, degraded or
   failed session state, and reconnect or retry outcomes.
-- **Environment & Secrets**: Validation remains in `DOPE_ENV=test` by default. Transport
+- **Environment & Secrets**: Validation remains in `KURA_ENV=test` by default. Transport
   capability and lifecycle work must stay environment-scoped and continue to respect
   existing secret-redaction rules on operator-visible surfaces.
 
@@ -191,7 +191,7 @@ through existing event, history, and inspection surfaces.
   unsupported, degraded, or unavailable in under 5 minutes using committed docs and
   daemon-visible inspection only.
 - **SC-002**: At least one real MCP server using `websocket` can be started, inspected,
-  and invoked end-to-end in `DOPE_ENV=test` without using any transport-specific control
+  and invoked end-to-end in `KURA_ENV=test` without using any transport-specific control
   path outside the daemon.
 - **SC-003**: 100% of validated transport mismatch and prerequisite-loss scenarios surface
   explicit operator-visible classification instead of a generic runtime failure.

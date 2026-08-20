@@ -1,19 +1,19 @@
 [package]
-name = "dope-reminders"
+name = "kura-reminders"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-store.workspace = true
-dope-delivery.workspace = true
-dope-scheduler.workspace = true
-dope-livevalidation.workspace = true
-dope-events.workspace = true
-dope-identity.workspace = true
-dope-integrations.workspace = true
-dope-calendar.workspace = true
-dope-mail.workspace = true
+kura-store.workspace = true
+kura-delivery.workspace = true
+kura-scheduler.workspace = true
+kura-livevalidation.workspace = true
+kura-events.workspace = true
+kura-identity.workspace = true
+kura-integrations.workspace = true
+kura-calendar.workspace = true
+kura-mail.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
@@ -27,10 +27,10 @@ parking_lot.workspace = true
 chrono.workspace = true
 serde_json.workspace = true
 uuid = { workspace = true, features = ["v4"] }
-dope-store.workspace = true
-dope-delivery.workspace = true
-dope-events.workspace = true
-dope-identity.workspace = true
-dope-runtime.workspace = true
-dope-router.workspace = true
-dope-migrationfixture.workspace = true
+kura-store.workspace = true
+kura-delivery.workspace = true
+kura-events.workspace = true
+kura-identity.workspace = true
+kura-runtime.workspace = true
+kura-router.workspace = true
+kura-migrationfixture.workspace = true

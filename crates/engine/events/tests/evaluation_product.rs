@@ -2,7 +2,7 @@
 //! (daemon/internal/events/evaluation_product_test.go) plus serde coverage.
 
 use chrono::{TimeZone, Utc};
-use dope_events::*;
+use kura_events::*;
 
 fn now() -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 4, 29, 10, 0, 0).unwrap()
@@ -23,7 +23,7 @@ fn evaluation_product_audit_event_construction() {
             tenant_id: "ten_eval".into(),
             actor_id: "prn_eval".into(),
             action: "retention.apply".into(),
-            target_kind: dope_evaluation::ProductResourceKind::DiscoveredCandidate,
+            target_kind: kura_evaluation::ProductResourceKind::DiscoveredCandidate,
             target_id: "candidate_1".into(),
             outcome: "retention_applied".into(),
             reason_code: "evaluation.retention_applied".into(),
@@ -52,9 +52,9 @@ fn evaluation_discovery_event_construction() {
             policy_id: "policy_1".into(),
             discovery_run_id: "discovery_run_1".into(),
             discovered_candidate_id: "candidate_1".into(),
-            status: dope_evaluation::ProductLifecycleStatus::Partial,
+            status: kura_evaluation::ProductLifecycleStatus::Partial,
             reason_code: "max_inspected_records".into(),
-            redaction_status: Some(dope_evaluation::RedactionStatus::Redacted),
+            redaction_status: Some(kura_evaluation::RedactionStatus::Redacted),
             occurred_at: now,
             ..Default::default()
         },
@@ -82,8 +82,8 @@ fn evaluation_fixture_event_construction() {
             revision_id: "revision_1".into(),
             source_candidate_id: "candidate_1".into(),
             source_evidence_refs: vec!["evidence_1".into()],
-            review_state: Some(dope_evaluation::ProductLifecycleStatus::Draft),
-            redaction_status: Some(dope_evaluation::RedactionStatus::Redacted),
+            review_state: Some(kura_evaluation::ProductLifecycleStatus::Draft),
+            redaction_status: Some(kura_evaluation::RedactionStatus::Redacted),
             outcome: "created".into(),
             occurred_at: now,
             ..Default::default()
@@ -111,9 +111,9 @@ fn evaluation_campaign_dashboard_and_inspection_event_construction() {
             campaign_id: "campaign_1".into(),
             campaign_item_id: "campaign_item_1".into(),
             attempt_group_id: "attempt_group_1".into(),
-            status: dope_evaluation::ProductLifecycleStatus::Published,
+            status: kura_evaluation::ProductLifecycleStatus::Published,
             outcome: "published".into(),
-            redaction_status: Some(dope_evaluation::RedactionStatus::Redacted),
+            redaction_status: Some(kura_evaluation::RedactionStatus::Redacted),
             occurred_at: now,
             ..Default::default()
         },
@@ -153,8 +153,8 @@ fn evaluation_campaign_dashboard_and_inspection_event_construction() {
             inspection_id: "inspection_1".into(),
             campaign_id: "campaign_1".into(),
             campaign_item_id: "campaign_item_1".into(),
-            classification: dope_evaluation::INSPECTION_MATCHED.to_string(),
-            redaction_status: Some(dope_evaluation::RedactionStatus::Clean),
+            classification: kura_evaluation::INSPECTION_MATCHED.to_string(),
+            redaction_status: Some(kura_evaluation::RedactionStatus::Clean),
             outcome: "generated".into(),
             occurred_at: now,
             ..Default::default()
@@ -162,7 +162,7 @@ fn evaluation_campaign_dashboard_and_inspection_event_construction() {
     );
     assert_eq!(inspection.name, EVALUATION_TOOL_CALL_INSPECTION_GENERATED_NAME);
     assert_eq!(inspection.resource.kind, "tool_call_inspection");
-    assert_eq!(payload_str(&inspection, "classification"), dope_evaluation::INSPECTION_MATCHED);
+    assert_eq!(payload_str(&inspection, "classification"), kura_evaluation::INSPECTION_MATCHED);
     assert_eq!(payload_str(&inspection, "redactionStatus"), "clean");
     assert_eq!(payload_str(&inspection, "campaignItemId"), "campaign_item_1");
 }
@@ -179,7 +179,7 @@ fn evaluation_discovery_resource_resolves_by_most_specific_evidence() {
         EvaluationDiscoveryPayload {
             tenant_id: "ten_eval".into(),
             policy_id: "policy_1".into(),
-            status: dope_evaluation::ProductLifecycleStatus::Running,
+            status: kura_evaluation::ProductLifecycleStatus::Running,
             occurred_at: now,
             ..Default::default()
         },
@@ -194,7 +194,7 @@ fn evaluation_discovery_resource_resolves_by_most_specific_evidence() {
             tenant_id: "ten_eval".into(),
             policy_id: "policy_1".into(),
             suppression_id: "suppression_1".into(),
-            status: dope_evaluation::ProductLifecycleStatus::Suppressed,
+            status: kura_evaluation::ProductLifecycleStatus::Suppressed,
             occurred_at: now,
             ..Default::default()
         },
@@ -210,7 +210,7 @@ fn evaluation_discovery_resource_resolves_by_most_specific_evidence() {
             tenant_id: "ten_eval".into(),
             policy_id: "policy_1".into(),
             discovery_run_id: "discovery_run_1".into(),
-            status: dope_evaluation::ProductLifecycleStatus::Completed,
+            status: kura_evaluation::ProductLifecycleStatus::Completed,
             occurred_at: now,
             ..Default::default()
         },
@@ -230,7 +230,7 @@ fn evaluation_events_omit_empty_optional_payload_fields() {
             tenant_id: "ten_eval".into(),
             actor_id: "prn_eval".into(),
             action: "audit".into(),
-            target_kind: dope_evaluation::ProductResourceKind::ProductFixture,
+            target_kind: kura_evaluation::ProductResourceKind::ProductFixture,
             outcome: "recorded".into(),
             occurred_at: now,
             ..Default::default()
@@ -278,7 +278,7 @@ fn evaluation_input_structs_serialize_camel_case() {
         tenant_id: "ten_eval".into(),
         actor_id: "prn_eval".into(),
         action: "retention.apply".into(),
-        target_kind: dope_evaluation::ProductResourceKind::DiscoveredCandidate,
+        target_kind: kura_evaluation::ProductResourceKind::DiscoveredCandidate,
         target_id: "candidate_1".into(),
         outcome: "retention_applied".into(),
         reason_code: "evaluation.retention_applied".into(),
@@ -296,8 +296,8 @@ fn evaluation_input_structs_serialize_camel_case() {
 
     let discovery = EvaluationDiscoveryPayload {
         tenant_id: "ten_eval".into(),
-        status: dope_evaluation::ProductLifecycleStatus::Partial,
-        redaction_status: Some(dope_evaluation::RedactionStatus::Redacted),
+        status: kura_evaluation::ProductLifecycleStatus::Partial,
+        redaction_status: Some(kura_evaluation::RedactionStatus::Redacted),
         occurred_at: now(),
         ..Default::default()
     };
@@ -314,7 +314,7 @@ fn evaluation_event_round_trips_with_camel_case_payload() {
         EvaluationCampaignPayload {
             tenant_id: "ten_eval".into(),
             campaign_id: "campaign_1".into(),
-            status: dope_evaluation::ProductLifecycleStatus::Completed,
+            status: kura_evaluation::ProductLifecycleStatus::Completed,
             occurred_at: now(),
             ..Default::default()
         },

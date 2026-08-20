@@ -1,11 +1,11 @@
-//! Minimal stdio MCP server used by the dope-mcp transport tests: reads
+//! Minimal stdio MCP server used by the kura-mcp transport tests: reads
 //! LSP-style `Content-Length` framed JSON-RPC requests from stdin and answers
 //! `initialize`, `tools/list`, and `tools/call` (a single "echo" tool) on stdout.
 //! Notifications (no id) are ignored. Exits when stdin closes.
 
 use std::io::{BufReader, Write};
 
-use dope_mcp::transport::{RpcRequest, RpcResponse, read_framed_message};
+use kura_mcp::transport::{RpcRequest, RpcResponse, read_framed_message};
 use serde_json::json;
 
 fn main() {
@@ -97,7 +97,7 @@ fn respond(request: &RpcRequest) -> RpcResponse {
             jsonrpc: "2.0".to_string(),
             id,
             result: None,
-            error: Some(dope_mcp::transport::RpcError {
+            error: Some(kura_mcp::transport::RpcError {
                 code: -32601,
                 message: format!("method not found: {}", request.method),
             }),

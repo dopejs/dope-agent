@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/chat-query-stream-delta.event.schema.json",
+  "$id": "https://kura.local/schemas/api/chat-query-stream-delta.event.schema.json",
   "title": "ChatQueryStreamDelta",
   "type": "object",
   "required": ["dispatchId", "delta", "reply"],

@@ -4,7 +4,7 @@
 mod common;
 
 use common::head_store;
-use dope_migrationfixture::{
+use kura_migrationfixture::{
     seed_r37_local_credential_state, R37_FAKE_SECRET_TENANT_A,
 };
 
@@ -43,9 +43,9 @@ fn r37_store_rows_load_back_through_the_domain_crud() {
     let states = store.list_provider_auth_states().unwrap();
     assert_eq!(states.len(), 1);
     assert_eq!(states[0].provider_id, fixture.provider_id);
-    assert_eq!(states[0].status, dope_providers::AuthStatus::Authenticated);
-    assert_eq!(states[0].family, dope_providers::Family::OpenAICompatible);
-    assert_eq!(states[0].auth_mode, dope_providers::AuthMode::ApiKey);
+    assert_eq!(states[0].status, kura_providers::AuthStatus::Authenticated);
+    assert_eq!(states[0].family, kura_providers::Family::OpenAICompatible);
+    assert_eq!(states[0].auth_mode, kura_providers::AuthMode::ApiKey);
     assert_eq!(states[0].metadata.get("source").map(String::as_str), Some("r37_migration_fixture"));
 
     // Integration resource (seeded via CRUD; pre-tenant fixture already added
@@ -58,7 +58,7 @@ fn r37_store_rows_load_back_through_the_domain_crud() {
     assert_eq!(r37_integration.domain_kind, "calendar");
     assert_eq!(
         r37_integration.readiness_status,
-        dope_integrations::ReadinessStatus::Healthy
+        kura_integrations::ReadinessStatus::Healthy
     );
     assert_eq!(
         r37_integration
@@ -69,7 +69,7 @@ fn r37_store_rows_load_back_through_the_domain_crud() {
     );
     assert_eq!(
         r37_integration.backend_binding.backend_kind,
-        dope_integrations::BackendKind::ManagedProvider
+        kura_integrations::BackendKind::ManagedProvider
     );
     assert_eq!(
         r37_integration.backend_binding.backend_ref_id,
@@ -81,7 +81,7 @@ fn r37_store_rows_load_back_through_the_domain_crud() {
     assert_eq!(connectors.len(), 1);
     assert_eq!(connectors[0].connector_id, fixture.connector_id);
     assert_eq!(connectors[0].kind, "discord");
-    assert_eq!(connectors[0].status, dope_connectors::Status::Healthy);
+    assert_eq!(connectors[0].status, kura_connectors::Status::Healthy);
     assert_eq!(connectors[0].secret_refs, vec![fixture.conflict_ref.clone()]);
     assert!(!connectors[0].secret_refs.iter().any(|r| r.contains("DO_NOT_LEAK")));
 

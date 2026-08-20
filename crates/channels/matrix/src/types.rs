@@ -4,13 +4,13 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, Utc};
-use dope_connectors::{LifecycleState, RedactionStatus};
+use kura_connectors::{LifecycleState, RedactionStatus};
 use serde::{Deserialize, Serialize};
 
 use crate::string_enum;
 
 /// Go `ConnectorKind` = baseconnectors.ConnectorKindMatrix.
-pub const CONNECTOR_KIND: &str = dope_connectors::CONNECTOR_KIND_MATRIX;
+pub const CONNECTOR_KIND: &str = kura_connectors::CONNECTOR_KIND_MATRIX;
 
 /// Go `Config`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -174,9 +174,9 @@
 - [x] T095 [P] Update TUI operator projections if public Telegram setup or repair surfaces changed in tui/src/index.ts
 - [x] T096 Run focused daemon package tests from quickstart in daemon/
 - [x] T097 Run full daemon tests with go test ./... in daemon/
-- [x] T098 Run daemon contract verification with make daemon-contract-test in /Users/John/Code/dope-agent
-- [x] T099 Run client verification with pnpm test:clients in /Users/John/Code/dope-agent if SDK/web/TUI surfaces changed
-- [x] T100 Run client build with pnpm build in /Users/John/Code/dope-agent if SDK/web/TUI surfaces changed
+- [x] T098 Run daemon contract verification with make daemon-contract-test in /Users/John/Code/kura-agent
+- [x] T099 Run client verification with pnpm test:clients in /Users/John/Code/kura-agent if SDK/web/TUI surfaces changed
+- [x] T100 Run client build with pnpm build in /Users/John/Code/kura-agent if SDK/web/TUI surfaces changed
 - [x] T101 Run go mod tidy in daemon/
 - [x] T102 Record final rollback and residual live-smoke risk notes in specs/035-telegram-channel-connector/quickstart.md
 

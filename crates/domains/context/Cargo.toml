@@ -1,5 +1,5 @@
 [package]
-name = "dope-context"
+name = "kura-context"
 description = "Context assembly policies: deterministic memory-bootstrap injection for the chat/pre-dispatch hook"
 edition.workspace = true
 version.workspace = true

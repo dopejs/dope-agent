@@ -4,7 +4,7 @@ mod common;
 
 use std::sync::Arc;
 
-use dope_evaluation::{
+use kura_evaluation::{
     CandidateKind, ComparisonTerminalStatus, CreateComparisonInput, CreateReplayAttemptInput,
     Dependencies, DriftPlane, Manager, PlaneSummaries, ReadinessStatus, ReplayMode, SourceKind,
     SourceRef,
@@ -21,7 +21,7 @@ async fn create_comparison_reports_drift_and_limitations() {
         clock: Some(Arc::new(fixed_now)),
         ..Default::default()
     });
-    let candidate = dope_evaluation::ReplayCandidate {
+    let candidate = kura_evaluation::ReplayCandidate {
         candidate_id: "candidate_drift".to_string(),
         candidate_kind: CandidateKind::CuratedWork,
         display_name: "Runtime drift".to_string(),

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use dope_identity::{AuditStore, TenantAuditEvent, AUDIT_OUTCOME_DENIED, AUDIT_OUTCOME_FAILED_CLOSED, AUDIT_OUTCOME_SUCCEEDED};
+use kura_identity::{AuditStore, TenantAuditEvent, AUDIT_OUTCOME_DENIED, AUDIT_OUTCOME_FAILED_CLOSED, AUDIT_OUTCOME_SUCCEEDED};
 
 use crate::helpers::{audit_event_suffix, audit_outcome, first_non_empty};
 use crate::service::{AuditRecorder, BoxFuture};

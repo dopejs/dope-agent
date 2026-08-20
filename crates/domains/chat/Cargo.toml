@@ -1,20 +1,20 @@
 [package]
-name = "dope-chat"
+name = "kura-chat"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-llm.workspace = true
-dope-plugin.workspace = true
-dope-store.workspace = true
-dope-events.workspace = true
-dope-threads.workspace = true
-dope-profiles.workspace = true
-dope-bindings.workspace = true
-dope-skills.workspace = true
-dope-providers.workspace = true
-dope-setupwizard.workspace = true
+kura-llm.workspace = true
+kura-plugin.workspace = true
+kura-store.workspace = true
+kura-events.workspace = true
+kura-threads.workspace = true
+kura-profiles.workspace = true
+kura-bindings.workspace = true
+kura-skills.workspace = true
+kura-providers.workspace = true
+kura-setupwizard.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
@@ -24,7 +24,7 @@ uuid = { workspace = true, features = ["v4"] }
 tokio = { workspace = true, features = ["rt", "time"] }
 
 [dev-dependencies]
-dope-config.workspace = true
+kura-config.workspace = true
 futures.workspace = true
 tempfile = "3"
 serde_json.workspace = true

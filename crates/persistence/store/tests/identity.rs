@@ -3,16 +3,16 @@
 //! back, and asserts the persisted key fields.
 
 use chrono::Utc;
-use dope_identity::auth::{AccessToken, Pairing, PairingMode, PairingStatus, TokenStatus};
-use dope_identity::{
+use kura_identity::auth::{AccessToken, Pairing, PairingMode, PairingStatus, TokenStatus};
+use kura_identity::{
     AuditEventFilter, InvitationFilter, LifecycleStatus, Membership, MembershipFilter,
     Principal, PrincipalFilter, PrincipalKind, Role, Tenant, TenantAuditEvent, TenantFilter,
     TenantInvitation, TenantKind, TokenTenantGrant,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -41,7 +41,7 @@ fn make_token() -> AccessToken {
         label: "automation".to_string(),
         mode: PairingMode::Token,
         token_hash: "tokhash".to_string(),
-        token_preview: "dope_preview".to_string(),
+        token_preview: "kura_preview".to_string(),
         status: TokenStatus::Active,
         default_tenant_id: "ten_1".to_string(),
         created_at: now,
@@ -135,7 +135,7 @@ fn access_token_and_authority_round_trip() {
     assert_eq!(got.label, "automation");
     assert_eq!(got.mode, PairingMode::Token);
     assert_eq!(got.token_hash, "tokhash");
-    assert_eq!(got.token_preview, "dope_preview");
+    assert_eq!(got.token_preview, "kura_preview");
     assert_eq!(got.status, TokenStatus::Active);
     assert_eq!(got.default_tenant_id, "ten_1");
     assert!(got.expires_at.is_some());

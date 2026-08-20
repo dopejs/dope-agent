@@ -1,66 +1,66 @@
 [package]
-name = "dope-app"
+name = "kura-app"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-plugin = { workspace = true }
-dope-session = { workspace = true }
-dope-improvement = { workspace = true }
-dope-context = { workspace = true }
+kura-plugin = { workspace = true }
+kura-session = { workspace = true }
+kura-improvement = { workspace = true }
+kura-context = { workspace = true }
 uuid = { workspace = true }
 # API surface: AppState + axum router assembly.
-dope-api = { workspace = true }
-dope-config = { workspace = true }
-dope-events = { workspace = true }
+kura-api = { workspace = true }
+kura-config = { workspace = true }
+kura-events = { workspace = true }
 
 # Store + persistence handles.
-dope-store = { workspace = true }
+kura-store = { workspace = true }
 
 # Core managers.
-dope-router = { workspace = true }
-dope-runtime = { workspace = true }
-dope-checkpoints = { workspace = true }
-dope-policy = { workspace = true }
-dope-identity = { workspace = true }
-dope-llm = { workspace = true }
-dope-providers = { workspace = true }
-dope-managedproviders = { workspace = true }
-dope-skills = { workspace = true }
-dope-sandbox = { workspace = true }
-dope-secrets = { workspace = true }
-dope-mcp = { workspace = true }
-dope-chat = { workspace = true }
-dope-integrations = { workspace = true }
-dope-calendar = { workspace = true }
-dope-mail = { workspace = true }
-dope-reminders = { workspace = true }
-dope-triage = { workspace = true }
-dope-memory.workspace = true
-dope-routine = { workspace = true }
-dope-webhook = { workspace = true }
-dope-catalog = { workspace = true }
-dope-execprofile = { workspace = true }
-dope-evidence = { workspace = true }
-dope-connectors = { workspace = true }
-dope-capabilities = { workspace = true }
-dope-im = { workspace = true }
-dope-imtypes = { workspace = true }
-dope-discord = { workspace = true }
-dope-telegram = { workspace = true }
-dope-slack = { workspace = true }
-dope-matrix = { workspace = true }
-dope-telemetry = { workspace = true }
-dope-computeruse = { workspace = true }
-dope-scheduler = { workspace = true }
-dope-delivery = { workspace = true }
-dope-billing = { workspace = true }
-dope-activation = { workspace = true }
-dope-setupwizard = { workspace = true }
-dope-evaluation = { workspace = true }
-dope-livevalidation = { workspace = true }
-dope-audit = { workspace = true }
+kura-router = { workspace = true }
+kura-runtime = { workspace = true }
+kura-checkpoints = { workspace = true }
+kura-policy = { workspace = true }
+kura-identity = { workspace = true }
+kura-llm = { workspace = true }
+kura-providers = { workspace = true }
+kura-managedproviders = { workspace = true }
+kura-skills = { workspace = true }
+kura-sandbox = { workspace = true }
+kura-secrets = { workspace = true }
+kura-mcp = { workspace = true }
+kura-chat = { workspace = true }
+kura-integrations = { workspace = true }
+kura-calendar = { workspace = true }
+kura-mail = { workspace = true }
+kura-reminders = { workspace = true }
+kura-triage = { workspace = true }
+kura-memory.workspace = true
+kura-routine = { workspace = true }
+kura-webhook = { workspace = true }
+kura-catalog = { workspace = true }
+kura-execprofile = { workspace = true }
+kura-evidence = { workspace = true }
+kura-connectors = { workspace = true }
+kura-capabilities = { workspace = true }
+kura-im = { workspace = true }
+kura-imtypes = { workspace = true }
+kura-discord = { workspace = true }
+kura-telegram = { workspace = true }
+kura-slack = { workspace = true }
+kura-matrix = { workspace = true }
+kura-telemetry = { workspace = true }
+kura-computeruse = { workspace = true }
+kura-scheduler = { workspace = true }
+kura-delivery = { workspace = true }
+kura-billing = { workspace = true }
+kura-activation = { workspace = true }
+kura-setupwizard = { workspace = true }
+kura-evaluation = { workspace = true }
+kura-livevalidation = { workspace = true }
+kura-audit = { workspace = true }
 
 # Async bridging for sync seams (MCP SecretResolver).
 futures = { workspace = true }

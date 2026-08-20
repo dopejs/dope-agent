@@ -39,9 +39,9 @@ summaries, denial detail, and structured redacted JSON support evidence export.
   contract tests are required for every response shape added or extended.
 - Verification and observability: PASS. Verification includes daemon unit/API tests,
   schema contract tests, SDK tests, web tests, fail-closed regression tests, and a manual
-  `DOPE_ENV=test` walkthrough for exhausted quota, abuse restriction, tenant switch, and
+  `KURA_ENV=test` walkthrough for exhausted quota, abuse restriction, tenant switch, and
   evidence export.
-- Environment and secrets: PASS. All local verification uses `~/.dope-test` and test
+- Environment and secrets: PASS. All local verification uses `~/.kura-test` and test
   tenants. Live connectors, production tenants, secrets, payment checkout, invoices, and
   taxes are out of scope.
 

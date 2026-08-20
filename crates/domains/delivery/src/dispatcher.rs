@@ -324,8 +324,8 @@ fn delivery_diagnostic_failure(
     failure_reason: &str,
     side_effecting: bool,
     checked_at: DateTime<Utc>,
-) -> dope_integrations::DiagnosticFailureProjection {
-    dope_integrations::diagnostic_failure_for_operation_failure(
+) -> kura_integrations::DiagnosticFailureProjection {
+    kura_integrations::diagnostic_failure_for_operation_failure(
         "delivery",
         "",
         &outcome.integration_id,

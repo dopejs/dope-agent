@@ -351,20 +351,20 @@ pub struct SecretSummary {
 }
 
 /// The sandbox declaration for an MCP server (Go Declaration). Enums come from
-/// dope-sandbox; serde defaults fill the Go normalizeDeclaration defaults when a wire
+/// kura-sandbox; serde defaults fill the Go normalizeDeclaration defaults when a wire
 /// document omits fields.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Declaration {
-    pub execution_mode: dope_sandbox::ExecutionMode,
+    pub execution_mode: kura_sandbox::ExecutionMode,
     #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
-    pub allowed_backend_kinds: Vec<dope_sandbox::BackendKind>,
+    pub allowed_backend_kinds: Vec<kura_sandbox::BackendKind>,
     #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub read_roots: Vec<String>,
     #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub write_roots: Vec<String>,
     #[serde(default)]
-    pub network_mode: dope_sandbox::NetworkMode,
+    pub network_mode: kura_sandbox::NetworkMode,
     #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub allowed_hosts: Vec<String>,
     #[serde(default, deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
@@ -372,7 +372,7 @@ pub struct Declaration {
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub allow_loopback: bool,
     #[serde(default)]
-    pub approval_mode: dope_sandbox::ApprovalMode,
+    pub approval_mode: kura_sandbox::ApprovalMode,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub required_enforcement_strength: String,
     #[serde(default)]
@@ -658,11 +658,11 @@ pub struct ToolAuthorizationResponse {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub message: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub approval: Option<dope_policy::Approval>,
+    pub approval: Option<kura_policy::Approval>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub decision: Option<dope_policy::Decision>,
+    pub decision: Option<kura_policy::Decision>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sandbox: Option<dope_sandbox::ConsumerContractView>,
+    pub sandbox: Option<kura_sandbox::ConsumerContractView>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -775,7 +775,7 @@ pub struct ToolInvocationResult {
 #[must_use]
 pub fn normalize_declaration(mut declaration: Declaration) -> Declaration {
     if declaration.allowed_backend_kinds.is_empty() {
-        declaration.allowed_backend_kinds = vec![dope_sandbox::BackendKind::Subprocess];
+        declaration.allowed_backend_kinds = vec![kura_sandbox::BackendKind::Subprocess];
     }
     if declaration.required_enforcement_strength.trim().is_empty() {
         declaration.required_enforcement_strength = "declared_only".to_string();
@@ -787,10 +787,10 @@ pub fn normalize_declaration(mut declaration: Declaration) -> Declaration {
 #[must_use]
 pub fn default_declaration() -> Declaration {
     Declaration {
-        execution_mode: dope_sandbox::ExecutionMode::Subprocess,
-        allowed_backend_kinds: vec![dope_sandbox::BackendKind::Subprocess],
-        network_mode: dope_sandbox::NetworkMode::Deny,
-        approval_mode: dope_sandbox::ApprovalMode::Allow,
+        execution_mode: kura_sandbox::ExecutionMode::Subprocess,
+        allowed_backend_kinds: vec![kura_sandbox::BackendKind::Subprocess],
+        network_mode: kura_sandbox::NetworkMode::Deny,
+        approval_mode: kura_sandbox::ApprovalMode::Allow,
         required_enforcement_strength: "declared_only".to_string(),
         active: true,
         ..Declaration::default()

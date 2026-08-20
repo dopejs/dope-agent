@@ -1,4 +1,4 @@
-//! dope-improvement — audited self-improvement proposals.
+//! kura-improvement — audited self-improvement proposals.
 //!
 //! The closed loop the operator can audit and veto: the agent proposes a
 //! **bounded** change (slice 1 target: one plugin-profile config value),
@@ -297,7 +297,7 @@ mod tests {
     fn tempdir() -> String {
         static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "dope-improvement-{}-{}",
+            "kura-improvement-{}-{}",
             std::process::id(),
             COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
         ));

@@ -32,7 +32,7 @@ invitation, token grant, token lifecycle, and tenant audit tables; current schem
 is 20 at planning time, so implementation should add the next migration version unless
 another migration lands first  
 **Testing**: `cd daemon && go test ./internal/identity ./internal/auth ./internal/api ./internal/store ./internal/contracts ./internal/app`; `make daemon-contract-test`; `cd daemon && go test ./...`; `cd daemon && go mod tidy`; optional `pnpm test:clients` if SDK or client code changes are needed during implementation  
-**Target Platform**: local daemon and operator APIs in `DOPE_ENV=test` by default, with
+**Target Platform**: local daemon and operator APIs in `KURA_ENV=test` by default, with
 compatibility for existing local-first installations and no live connector requirement  
 **Project Type**: Go daemon control-plane service with committed JSON Schema API/event
 contracts and local SQLite persistence  
@@ -70,8 +70,8 @@ local test state; foundation only for later tenant-scoped data and client roadma
 - Verification and observability: PASS. The plan names unit, API, store migration,
   contract, restart, and daemon-wide tests, plus operator-visible audit records for
   tenant switching, denial, membership, invite, and token lifecycle changes.
-- Environment and secrets: PASS. Development and verification default to `DOPE_ENV=test`
-  and `~/.dope-test`; no live connectors, managed-provider auth, or new operator secrets
+- Environment and secrets: PASS. Development and verification default to `KURA_ENV=test`
+  and `~/.kura-test`; no live connectors, managed-provider auth, or new operator secrets
   are required.
 
 If any gate fails, stop and resolve the gap before Phase 0 research proceeds.
@@ -159,7 +159,7 @@ existing domain tables in this roadmap.
     lifecycle, token grant coordination, and audit orchestration.
   - `permissions.go` for the clarified role-derived permission baseline and no
     per-member override support.
-  - `resolver.go` for default tenant and `X-Dope-Tenant-ID` selection rules.
+  - `resolver.go` for default tenant and `X-Kura-Tenant-ID` selection rules.
   - `audit.go` for fail-closed security audit writes and stable denial reasons.
 - Extend `daemon/internal/auth`:
   - add token lifecycle fields for expiry, revocation, rotation lineage, and principal
@@ -178,7 +178,7 @@ existing domain tables in this roadmap.
 - Add protected-route tenant resolution in `daemon/internal/api`:
   - after bearer authentication and token persistence, resolve principal and tenant
     context before protected handler execution.
-  - use `X-Dope-Tenant-ID` only when both principal and token grant allow the tenant.
+  - use `X-Kura-Tenant-ID` only when both principal and token grant allow the tenant.
   - return one stable authorization denial for unknown and inaccessible tenants.
   - attach resolved context to `context.Context` for later roadmap consumers.
 - Add route families:
@@ -270,11 +270,11 @@ These commands are expected to cover:
 - Pair or reuse a local bearer token in the test environment.
 - Confirm `GET /v1/auth/me` returns the principal, default tenant, allowed tenants, and
   current tenant context.
-- Call a protected route without `X-Dope-Tenant-ID` and confirm it resolves to the default
+- Call a protected route without `X-Kura-Tenant-ID` and confirm it resolves to the default
   personal tenant.
 - Create an organization tenant, invite a second principal, accept the invitation, and
   verify membership and audit records.
-- Retry a protected request with an allowed `X-Dope-Tenant-ID` and then with a disallowed
+- Retry a protected request with an allowed `X-Kura-Tenant-ID` and then with a disallowed
   tenant id; confirm the disallowed response is stable and does not reveal existence.
 - Revoke or expire a token and confirm the next protected request is denied.
 - Restart the daemon and confirm tenant grants, memberships, token lifecycle state, and

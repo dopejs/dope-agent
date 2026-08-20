@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/activation-test-chat.response.schema.json",
+  "$id": "https://kura.local/schemas/api/activation-test-chat.response.schema.json",
   "title": "ActivationTestChatResponse",
   "type": "object",
   "required": ["activation", "testChat"],

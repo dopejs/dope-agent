@@ -30,7 +30,7 @@ The repository layout should follow these rules:
 ## Recommended Top-Level Layout
 
 ```text
-dope-agent/
+kura-agent/
   archive/
   docs/
   schemas/
@@ -116,7 +116,7 @@ Suggested internal structure:
 ```text
 daemon/
   cmd/
-    dope/
+    kura/
   internal/
     app/
     api/
@@ -137,7 +137,7 @@ daemon/
   pkg/
 ```
 
-### `daemon/cmd/dope/`
+### `daemon/cmd/kura/`
 
 Purpose:
 

@@ -10,11 +10,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_billing::{
+use kura_billing::{
     BillingError, Category, ReserveAllResult, ReserveInput, ReserveResult, ResolveInput,
     UsageReservation, run_operation_key, workflow_operation_key,
 };
-use dope_identity::tenantctx;
+use kura_identity::tenantctx;
 
 use crate::campaign::is_zero_time;
 use crate::error::{BillingReservationError, EvaluationError};
@@ -58,53 +58,53 @@ pub struct ReplayRecordResult {
 
 /// Go `ReplayRuntime` interface (sync; the in-memory runtime manager is sync).
 pub trait ReplayRuntime: Send + Sync {
-    fn create_run(&self, input: dope_runtime::CreateRunInput) -> Result<dope_runtime::Run, String>;
+    fn create_run(&self, input: kura_runtime::CreateRunInput) -> Result<kura_runtime::Run, String>;
     fn create_step(
         &self,
         run_id: &str,
-        input: dope_runtime::CreateStepInput,
-    ) -> Result<dope_runtime::Step, String>;
+        input: kura_runtime::CreateStepInput,
+    ) -> Result<kura_runtime::Step, String>;
     fn update_step_status_and_reconcile_run(
         &self,
         run_id: &str,
         step_id: &str,
-        input: dope_runtime::UpdateStepStatusInput,
-    ) -> Result<(dope_runtime::Step, Option<dope_runtime::Run>), String>;
+        input: kura_runtime::UpdateStepStatusInput,
+    ) -> Result<(kura_runtime::Step, Option<kura_runtime::Run>), String>;
 }
 
-impl ReplayRuntime for dope_runtime::Manager {
-    fn create_run(&self, input: dope_runtime::CreateRunInput) -> Result<dope_runtime::Run, String> {
-        dope_runtime::Manager::create_run(self, input).map_err(|e| e.to_string())
+impl ReplayRuntime for kura_runtime::Manager {
+    fn create_run(&self, input: kura_runtime::CreateRunInput) -> Result<kura_runtime::Run, String> {
+        kura_runtime::Manager::create_run(self, input).map_err(|e| e.to_string())
     }
 
     fn create_step(
         &self,
         run_id: &str,
-        input: dope_runtime::CreateStepInput,
-    ) -> Result<dope_runtime::Step, String> {
-        dope_runtime::Manager::create_step(self, run_id, input).map_err(|e| e.to_string())
+        input: kura_runtime::CreateStepInput,
+    ) -> Result<kura_runtime::Step, String> {
+        kura_runtime::Manager::create_step(self, run_id, input).map_err(|e| e.to_string())
     }
 
     fn update_step_status_and_reconcile_run(
         &self,
         run_id: &str,
         step_id: &str,
-        input: dope_runtime::UpdateStepStatusInput,
-    ) -> Result<(dope_runtime::Step, Option<dope_runtime::Run>), String> {
-        dope_runtime::Manager::update_step_status_and_reconcile_run(self, run_id, step_id, input)
+        input: kura_runtime::UpdateStepStatusInput,
+    ) -> Result<(kura_runtime::Step, Option<kura_runtime::Run>), String> {
+        kura_runtime::Manager::update_step_status_and_reconcile_run(self, run_id, step_id, input)
             .map_err(|e| e.to_string())
     }
 }
 
 /// Go `ReplayRuntimeStore` interface.
 pub trait ReplayRuntimeStore: Send + Sync {
-    fn upsert_run(&self, run: dope_runtime::Run) -> Result<(), String>;
-    fn upsert_step(&self, step: dope_runtime::Step) -> Result<(), String>;
-    fn upsert_workflow(&self, workflow: dope_orchestration::Workflow) -> Result<(), String>;
+    fn upsert_run(&self, run: kura_runtime::Run) -> Result<(), String>;
+    fn upsert_step(&self, step: kura_runtime::Step) -> Result<(), String>;
+    fn upsert_workflow(&self, workflow: kura_orchestration::Workflow) -> Result<(), String>;
     fn replace_workflow_steps(
         &self,
         workflow_id: &str,
-        steps: Vec<dope_orchestration::WorkflowStep>,
+        steps: Vec<kura_orchestration::WorkflowStep>,
     ) -> Result<(), String>;
 }
 
@@ -112,7 +112,7 @@ pub trait ReplayRuntimeStore: Send + Sync {
 pub struct RuntimeReplayRecorder {
     runtime: Option<Arc<dyn ReplayRuntime>>,
     store: Option<Arc<dyn ReplayRuntimeStore>>,
-    billing_manager: Option<Arc<dope_billing::Manager>>,
+    billing_manager: Option<Arc<kura_billing::Manager>>,
     hosted_billing: bool,
 }
 
@@ -129,7 +129,7 @@ impl RuntimeReplayRecorder {
     }
 
     /// Go `ConfigureBilling`.
-    pub fn configure_billing(&mut self, manager: Option<Arc<dope_billing::Manager>>, hosted: bool) {
+    pub fn configure_billing(&mut self, manager: Option<Arc<kura_billing::Manager>>, hosted: bool) {
         self.billing_manager = manager;
         self.hosted_billing = hosted;
     }
@@ -154,7 +154,7 @@ impl RuntimeReplayRecorder {
         let tenant_id = tenantctx::from_context()
             .map(|tc| tc.tenant_id.trim().to_string())
             .unwrap_or_default();
-        let run_id = dope_runtime::new_run_id();
+        let run_id = kura_runtime::new_run_id();
         let workflow_id = new_id("workflow");
         let workflow_step_id = new_id("workflow_step");
         let mut run_reservation = UsageReservation::default();
@@ -190,11 +190,11 @@ impl RuntimeReplayRecorder {
                 }
             }
         }
-        let run = match runtime.create_run(dope_runtime::CreateRunInput {
+        let run = match runtime.create_run(kura_runtime::CreateRunInput {
             run_id: run_id.clone(),
             entrypoint: REPLAY_RUNTIME_ENTRYPOINT.to_string(),
             goal: replay_run_goal(&input.candidate, &input.attempt),
-            ..dope_runtime::CreateRunInput::default()
+            ..kura_runtime::CreateRunInput::default()
         }) {
             Ok(run) => run,
             Err(err) => {
@@ -247,7 +247,7 @@ impl RuntimeReplayRecorder {
 
         let step = match runtime.create_step(
             &run.run_id,
-            dope_runtime::CreateStepInput {
+            kura_runtime::CreateStepInput {
                 title: "Replay captured evidence".to_string(),
                 kind: "evaluation_replay".to_string(),
                 workflow_id: workflow_id.clone(),
@@ -260,7 +260,7 @@ impl RuntimeReplayRecorder {
                     "sourceRefs": input.candidate.source_refs,
                     "evidenceRefs": input.attempt.evidence_refs,
                 })),
-                ..dope_runtime::CreateStepInput::default()
+                ..kura_runtime::CreateStepInput::default()
             },
         ) {
             Ok(step) => step,
@@ -289,7 +289,7 @@ impl RuntimeReplayRecorder {
                 &runtime,
                 &run,
                 &step,
-                dope_runtime::StepStatus::Planning,
+                kura_runtime::StepStatus::Planning,
                 None,
                 &workflow_reservation,
                 "evaluation replay runtime step planning failed",
@@ -303,7 +303,7 @@ impl RuntimeReplayRecorder {
                 &runtime,
                 &run,
                 &step,
-                dope_runtime::StepStatus::ExecutingTool,
+                kura_runtime::StepStatus::ExecutingTool,
                 None,
                 &workflow_reservation,
                 "evaluation replay runtime step execution failed",
@@ -317,7 +317,7 @@ impl RuntimeReplayRecorder {
                 &runtime,
                 &run,
                 &step,
-                dope_runtime::StepStatus::Completed,
+                kura_runtime::StepStatus::Completed,
                 Some(serde_json::json!({
                     "runtimeSummary": input.attempt.runtime_summary,
                     "policySummary": input.attempt.policy_summary,
@@ -385,17 +385,17 @@ impl RuntimeReplayRecorder {
     async fn update_step_status(
         &self,
         runtime: &Arc<dyn ReplayRuntime>,
-        run: &dope_runtime::Run,
-        step: &dope_runtime::Step,
-        status: dope_runtime::StepStatus,
+        run: &kura_runtime::Run,
+        step: &kura_runtime::Step,
+        status: kura_runtime::StepStatus,
         output: Option<serde_json::Value>,
         workflow_reservation: &UsageReservation,
         failure_reason: &str,
-    ) -> Result<(dope_runtime::Step, Option<dope_runtime::Run>), EvaluationError> {
+    ) -> Result<(kura_runtime::Step, Option<kura_runtime::Run>), EvaluationError> {
         let (step, run_update) = match runtime.update_step_status_and_reconcile_run(
             &run.run_id,
             &step.step_id,
-            dope_runtime::UpdateStepStatusInput { status, output },
+            kura_runtime::UpdateStepStatusInput { status, output },
         ) {
             Ok(updated) => updated,
             Err(err) => {
@@ -425,17 +425,17 @@ impl RuntimeReplayRecorder {
         Ok((step, run_update))
     }
 
-    fn upsert_run(&self, run: dope_runtime::Run) -> Result<(), String> {
+    fn upsert_run(&self, run: kura_runtime::Run) -> Result<(), String> {
         let Some(store) = &self.store else { return Ok(()); };
         store.upsert_run(run).map_err(|e| format!("upsert run: {e}"))
     }
 
-    fn upsert_step(&self, step: dope_runtime::Step) -> Result<(), String> {
+    fn upsert_step(&self, step: kura_runtime::Step) -> Result<(), String> {
         let Some(store) = &self.store else { return Ok(()); };
         store.upsert_step(step).map_err(|e| format!("upsert step: {e}"))
     }
 
-    fn upsert_workflow(&self, workflow: dope_orchestration::Workflow) -> Result<(), String> {
+    fn upsert_workflow(&self, workflow: kura_orchestration::Workflow) -> Result<(), String> {
         let Some(store) = &self.store else { return Ok(()); };
         store.upsert_workflow(workflow).map_err(|e| format!("upsert workflow: {e}"))
     }
@@ -443,7 +443,7 @@ impl RuntimeReplayRecorder {
     fn replace_workflow_steps(
         &self,
         workflow_id: &str,
-        steps: Vec<dope_orchestration::WorkflowStep>,
+        steps: Vec<kura_orchestration::WorkflowStep>,
     ) -> Result<(), String> {
         let Some(store) = &self.store else { return Ok(()); };
         store
@@ -453,7 +453,7 @@ impl RuntimeReplayRecorder {
 }
 
 async fn reserve_replay_runtime_quotas(
-    manager: &Option<Arc<dope_billing::Manager>>,
+    manager: &Option<Arc<kura_billing::Manager>>,
     tenant_id: &str,
     run_operation_key: &str,
     workflow_operation_key: &str,
@@ -461,7 +461,7 @@ async fn reserve_replay_runtime_quotas(
 ) -> Result<ReserveAllResult, EvaluationError> {
     let Some(manager) = manager else {
         if hosted {
-            let denial = dope_billing::new_quota_state_unavailable_denial(tenant_id, run_operation_key);
+            let denial = kura_billing::new_quota_state_unavailable_denial(tenant_id, run_operation_key);
             return Err(EvaluationError::BillingReservation(BillingReservationError {
                 result: ReserveResult {
                     allowed: false,
@@ -515,7 +515,7 @@ async fn reserve_replay_runtime_quotas(
 }
 
 async fn release_replay_runtime_reservation(
-    manager: &Option<Arc<dope_billing::Manager>>,
+    manager: &Option<Arc<kura_billing::Manager>>,
     reservation: &UsageReservation,
     reason: &str,
 ) {
@@ -537,7 +537,7 @@ async fn release_replay_runtime_reservation(
 }
 
 async fn commit_replay_runtime_reservation(
-    manager: &Option<Arc<dope_billing::Manager>>,
+    manager: &Option<Arc<kura_billing::Manager>>,
     reservation: &UsageReservation,
     reason: &str,
 ) -> Result<(), BillingError> {
@@ -619,11 +619,11 @@ pub fn replay_workflow(
     workflow_step_id: &str,
     runtime_step_id: &str,
     now: DateTime<Utc>,
-) -> dope_orchestration::Workflow {
+) -> kura_orchestration::Workflow {
     let goal = replay_run_goal(&input.candidate, &input.attempt);
     let mut evidence_refs = input.attempt.evidence_refs.clone();
     evidence_refs.extend(input.candidate.captured_evidence_refs.clone());
-    let step = dope_orchestration::WorkflowStep {
+    let step = kura_orchestration::WorkflowStep {
         workflow_step_id: workflow_step_id.to_string(),
         workflow_id: workflow_id.to_string(),
         title: "Replay captured evidence".to_string(),
@@ -637,27 +637,27 @@ pub fn replay_workflow(
             "sourceRefs": input.candidate.source_refs,
             "evidenceRefs": evidence_refs,
         })),
-        status: dope_orchestration::StepStatus::Completed,
+        status: kura_orchestration::StepStatus::Completed,
         runtime_step_id: runtime_step_id.to_string(),
         attempt_count: 1,
         max_attempts: 1,
         output_summary: input.attempt.evidence_summary.clone(),
         created_at: now,
         updated_at: now,
-        ..dope_orchestration::WorkflowStep::default()
+        ..kura_orchestration::WorkflowStep::default()
     };
-    dope_orchestration::Workflow {
+    kura_orchestration::Workflow {
         workflow_id: workflow_id.to_string(),
         run_id: run_id.to_string(),
         environment_scope: input.candidate.environment_scope.clone(),
         goal,
-        status: dope_orchestration::WorkflowStatus::Completed,
+        status: kura_orchestration::WorkflowStatus::Completed,
         plan_summary: "Replay captured evidence through the evaluation runtime envelope.".to_string(),
         created_at: now,
         updated_at: now,
         started_at: Some(now),
         completed_at: Some(now),
         steps: vec![step],
-        ..dope_orchestration::Workflow::default()
+        ..kura_orchestration::Workflow::default()
     }
 }

@@ -2,7 +2,7 @@
   "reportId": "soak_r39_20260430T011714Z",
   "branchOrVersion": "026-evaluation-product-expansion",
   "environment": "test",
-  "dataDirectory": "/Users/John/.dope-test",
+  "dataDirectory": "/Users/John/.kura-test",
   "daemonHealth": "pass",
   "baselineTopology": "tenant_scoped_single_node",
   "startedAt": "2026-04-30T01:17:14Z",

@@ -34,7 +34,7 @@ generate tasks that reopen implementation scope.
 ## Decision: Preserve The Roadmap 43 Dry-Run Versus Full-Soak Distinction
 
 **Rationale**: Roadmap 43 branch-local quickstart records local and stable-host dry-run
-evidence, while explicitly calling out that a full Dope daemon 24-hour hosted release
+evidence, while explicitly calling out that a full Kura daemon 24-hour hosted release
 soak remains pending. Reconciliation must keep that residual release gap visible and must
 not classify dry-run evidence as public readiness.
 

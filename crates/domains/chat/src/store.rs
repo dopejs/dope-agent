@@ -3,20 +3,20 @@
 //! Go's `Service` holds a `*store.SQLiteStore` and calls a fixed set of CRUD
 //! methods (dispatch persistence, event append, setup-session lookup, profile
 //! selection, binding resolution, continuity turns/previews, handoff links).
-//! The `dope-store` crate has ported only the first two so far, so this
+//! The `kura-store` crate has ported only the first two so far, so this
 //! module declares the full surface as a `ChatStore` trait (with the Go
-//! query/parameter structs) and implements it for `dope_store::SQLiteStore`:
+//! query/parameter structs) and implements it for `kura_store::SQLiteStore`:
 //! the ported methods delegate to SQLite, and the not-yet-ported methods fail
 //! with [`ChatError::StoreMethodDeferred`] instead of silently degrading.
 //! Tests exercise the whole pipeline against an in-memory fake store.
 
 use chrono::{DateTime, Utc};
-use dope_bindings::{CapabilityDecision, EffectiveBindingSelection, RuntimeBindingEvidence};
-use dope_events::Event;
-use dope_llm::Dispatch;
-use dope_profiles::{ActiveSelection, AgentProfile, RuntimeProjection};
-use dope_setupwizard::SetupSession;
-use dope_threads::{
+use kura_bindings::{CapabilityDecision, EffectiveBindingSelection, RuntimeBindingEvidence};
+use kura_events::Event;
+use kura_llm::Dispatch;
+use kura_profiles::{ActiveSelection, AgentProfile, RuntimeProjection};
+use kura_setupwizard::SetupSession;
+use kura_threads::{
     ContinuityPreview, ContinuityPreviewItem, ContinuityTurn, HandoffLink, HandoffSourceReference,
     Thread,
 };
@@ -46,11 +46,11 @@ pub struct BindingResolutionParams {
 /// The store methods `daemon/internal/chat/service.go` calls on
 /// `store.SQLiteStore`, in Go signature order.
 pub trait ChatStore: Send + Sync {
-    // -- llm dispatch CRUD (ported in dope-store) -------------------------
+    // -- llm dispatch CRUD (ported in kura-store) -------------------------
     fn upsert_llm_dispatch(&self, dispatch: &Dispatch) -> Result<(), String>;
-    // -- event ledger (ported in dope-store) ------------------------------
+    // -- event ledger (ported in kura-store) ------------------------------
     fn append_event(&self, event: &Event) -> Result<Event, String>;
-    // -- setup wizard (not yet ported to dope-store) ----------------------
+    // -- setup wizard (not yet ported to kura-store) ----------------------
     fn list_setup_sessions(&self, tenant_id: &str) -> Result<Vec<SetupSession>, String>;
     // -- profile projection (not yet ported) ------------------------------
     fn active_agent_profile_selection(
@@ -117,12 +117,12 @@ pub trait ChatStore: Send + Sync {
     ) -> Result<ContinuityPreview, String>;
 }
 
-/// Adapter for the `dope-store` SQLite store: every ChatStore method
-/// delegates to the native dope-store implementation. `resolve_binding_selection`
+/// Adapter for the `kura-store` SQLite store: every ChatStore method
+/// delegates to the native kura-store implementation. `resolve_binding_selection`
 /// composes the store's channel/account rule lookups and selectability
-/// checks through `dope_bindings::resolve_selection` (the Go precedence
+/// checks through `kura_bindings::resolve_selection` (the Go precedence
 /// port), preserving the fail-closed semantics.
-impl ChatStore for std::sync::Mutex<dope_store::SQLiteStore> {
+impl ChatStore for std::sync::Mutex<kura_store::SQLiteStore> {
     fn upsert_llm_dispatch(&self, dispatch: &Dispatch) -> Result<(), String> {
         self.lock().map_err(|_| "lock sqlite store".to_string())?.upsert_llm_dispatch(dispatch)
     }
@@ -189,7 +189,7 @@ impl ChatStore for std::sync::Mutex<dope_store::SQLiteStore> {
         }
         drop(guard);
 
-        let input = dope_bindings::ResolutionInput {
+        let input = kura_bindings::ResolutionInput {
             channel_binding,
             account_binding,
             tenant_default_profile_id: params.tenant_default_profile_id.clone(),
@@ -202,7 +202,7 @@ impl ChatStore for std::sync::Mutex<dope_store::SQLiteStore> {
                 selectable_workspaces.contains(id.trim())
             })),
         };
-        Ok(dope_bindings::resolve_selection(&input))
+        Ok(kura_bindings::resolve_selection(&input))
     }
     fn effective_capability_visibility(
         &self,
@@ -302,8 +302,8 @@ impl ChatStore for std::sync::Mutex<dope_store::SQLiteStore> {
 /// Maps the chat-crate lookup query onto the store's own query struct.
 fn store_continuity_query(
     query: &ContinuityLookupQuery,
-) -> dope_store::thread_continuity::ContinuityLookupQuery {
-    dope_store::thread_continuity::ContinuityLookupQuery {
+) -> kura_store::thread_continuity::ContinuityLookupQuery {
+    kura_store::thread_continuity::ContinuityLookupQuery {
         tenant_id: query.tenant_id.clone(),
         thread_id: query.thread_id.clone(),
         session_segment_id: query.session_segment_id.clone(),

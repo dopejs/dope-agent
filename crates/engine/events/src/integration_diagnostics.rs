@@ -3,8 +3,8 @@
 
 use crate::util::{is_go_zero_time, now_utc, payload};
 use crate::{Event, Resource};
-use dope_integrations::{DiagnosticRetentionRecord, DiagnosticResult, DiagnosticRun, DiagnosticStatus};
-use dope_opsreadiness::SmokeMatrixReport;
+use kura_integrations::{DiagnosticRetentionRecord, DiagnosticResult, DiagnosticRun, DiagnosticStatus};
+use kura_opsreadiness::SmokeMatrixReport;
 
 pub const INTEGRATION_DIAGNOSTIC_RUN_STARTED_NAME: &str = "integration_diagnostic.run_started";
 pub const INTEGRATION_DIAGNOSTIC_RUN_COMPLETED_NAME: &str = "integration_diagnostic.run_completed";

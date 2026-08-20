@@ -50,7 +50,7 @@ pub enum LiveValidationError {
     #[error(transparent)]
     Matrix(#[from] MatrixError),
     #[error(transparent)]
-    Billing(#[from] dope_billing::BillingError),
+    Billing(#[from] kura_billing::BillingError),
     #[error("live validation store error: {0}")]
     Store(String),
 }

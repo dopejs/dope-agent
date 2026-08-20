@@ -1,11 +1,11 @@
 [package]
-name = "dope-webhook"
+name = "kura-webhook"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-store.workspace = true
+kura-store.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true

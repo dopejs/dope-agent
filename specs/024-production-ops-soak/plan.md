@@ -36,11 +36,11 @@ verification, restore validation, credential redaction, billing recovery, integr
 fault classification, scheduler/runtime/evaluation restart behavior, and contract
 completeness; `go test ./...` in `daemon/`; `make daemon-contract-test`; `make
 daemon-run-test` plus `make daemon-test-status`; the documented 24-hour
-`DOPE_ENV=test` soak; opt-in real-account smoke where safe credentials are available;
+`KURA_ENV=test` soak; opt-in real-account smoke where safe credentials are available;
 `pnpm test:clients` and `pnpm build` only if SDK/web/TUI-visible contracts change; `go
 mod tidy` from `daemon/` after implementation.  
 **Target Platform**: Tenant-scoped single-node production baseline, verified locally in
-the default isolated test environment (`~/.dope-test`, `127.0.0.1:19192`) before any
+the default isolated test environment (`~/.kura-test`, `127.0.0.1:19192`) before any
 explicit live smoke. Multi-node managed service rollout, clustering, and distributed
 failover are out of scope.  
 **Project Type**: Operational readiness and daemon harness change spanning Go daemon
@@ -50,9 +50,9 @@ checklists.
 upgrade verification completes in <=90 minutes; release-readiness evidence review
 completes in <=30 minutes; soak report records restart recovery in <=5 minutes and queue
 backlog recovery within <=30 minutes.  
-**Constraints**: Default validation must not touch `~/.dope`, production user data, live
+**Constraints**: Default validation must not touch `~/.kura`, production user data, live
 connectors, or raw credential material. The first readiness baseline is a 24-hour
-`DOPE_ENV=test` soak unless a temporary shorter threshold is explicitly documented with a
+`KURA_ENV=test` soak unless a temporary shorter threshold is explicitly documented with a
 follow-up full-duration rerun. The soak hard-fails on any cross-tenant leakage,
 unclassified failure, restart recovery over 5 minutes, retry exhaustion without
 operator-action-needed state, queue backlog persisting over 30 minutes, or monotonic
@@ -84,7 +84,7 @@ faults.
   regression where practical, migration preflight/postflight checks, 24-hour soak evidence,
   fault classification, restart recovery timing, queue backlog/resource growth metrics,
   redaction checks, contract tests, and release gate review.
-- **Environment and secrets** — PASS. Local work defaults to `~/.dope-test` and fake
+- **Environment and secrets** — PASS. Local work defaults to `~/.kura-test` and fake
   backends. Real-account smoke is opt-in, safe credentials are never logged, raw credential
   material is not backed up/restored, and missing safe credentials produce explicit skip
   evidence rather than blocking readiness when fake-backend coverage passes.
@@ -129,7 +129,7 @@ daemon/
 │   ├── secrets/                        # redaction and reconnect/revalidate checks
 │   ├── audit/ and events/              # operator-visible diagnostics and evidence
 │   └── contracts/                      # report/checklist/schema completeness tests
-├── cmd/dope/
+├── cmd/kura/
 └── go.mod
 
 scripts/
@@ -192,7 +192,7 @@ tenant isolation, and explicit real-account smoke skip reasons.
   package tests, full daemon tests, contract tests, test daemon health, a recorded
   24-hour soak, resource-growth observations, restart/fault classifications, and
   operator-visible diagnostics for action-needed states.
-- **Environment and secrets** — PASS. The design defaults to `~/.dope-test` and fake
+- **Environment and secrets** — PASS. The design defaults to `~/.kura-test` and fake
   backends, records opt-in real-account smoke separately, treats missing safe credentials
   as explicit skip evidence, and prohibits raw credential material in backups, logs,
   reports, fixtures, events, and diagnostics.
@@ -218,13 +218,13 @@ No post-design violations require justification.
   `daemon/internal/integrations/fake_backend.go`.
 - Operator scripts and runbooks were added under `scripts/production`, `docs/runtime`,
   `docs/harness`, and `docs/providers`; the soak runner now writes structured report
-  artifacts, enforces real elapsed time for `DOPE_SOAK_DURATION=24h`, and restore
+  artifacts, enforces real elapsed time for `KURA_SOAK_DURATION=24h`, and restore
   validation checks Roadmap 39 fixture tables when present.
 - Evidence fixtures were added under `specs/024-production-ops-soak/fixtures`.
 - Verification passed for targeted Go tests, full daemon Go tests, `go mod tidy`,
   `make daemon-contract-test`, and test-daemon smoke.
 
-Residual risk: the full 24-hour `DOPE_ENV=test` soak was not run to completion in this
+Residual risk: the full 24-hour `KURA_ENV=test` soak was not run to completion in this
 implementation session. A temporary shorter validation was recorded in `quickstart.md`;
 the full-duration soak remains mandatory before final release readiness and before
 Roadmaps 40/41 can ship.

@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { IntegrationDiagnosticResultResource } from "@dope/client";
+import type { IntegrationDiagnosticResultResource } from "@kura/client";
 import { IntegrationDiagnosticsView } from "./integration-diagnostics";
 
 function diagnostic(overrides: Partial<IntegrationDiagnosticResultResource>): IntegrationDiagnosticResultResource {

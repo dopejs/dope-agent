@@ -7,7 +7,7 @@ Matrix setup, route, diagnostic, delivery, or conformance contracts.
 ## Surfaces
 
 - API: `/v1/channel-management/connectors`
-- TypeScript SDK: channel management connector methods on `DopeClient`
+- TypeScript SDK: channel management connector methods on `KuraClient`
 - Web: channel management feature panel
 
 ## Permissions

@@ -22,21 +22,21 @@ pub struct CalendarOperationFilter {
     pub external_event_id: String,
 }
 
-fn scan_calendar_account(row: &Row) -> Result<dope_calendar::AccountProjection, String> {
+fn scan_calendar_account(row: &Row) -> Result<kura_calendar::AccountProjection, String> {
     let updated_at: String = row.get(6).map_err(|e| e.to_string())?;
     parse_rfc3339(&updated_at)?;
     let document_json: String = row.get(7).map_err(|e| e.to_string())?;
     crate::crud::decode_json_field(&document_json).map_err(|e| format!("decode calendar account: {e}"))
 }
 
-fn scan_calendar_operation(row: &Row) -> Result<dope_calendar::Operation, String> {
+fn scan_calendar_operation(row: &Row) -> Result<kura_calendar::Operation, String> {
     let updated_at: String = row.get(11).map_err(|e| e.to_string())?;
     parse_rfc3339(&updated_at)?;
     let document_json: String = row.get(12).map_err(|e| e.to_string())?;
     crate::crud::decode_json_field(&document_json).map_err(|e| format!("decode calendar operation: {e}"))
 }
 
-fn scan_calendar_artifact(row: &Row) -> Result<dope_calendar::Artifact, String> {
+fn scan_calendar_artifact(row: &Row) -> Result<kura_calendar::Artifact, String> {
     let created_at: String = row.get(6).map_err(|e| e.to_string())?;
     parse_rfc3339(&created_at)?;
     let document_json: String = row.get(7).map_err(|e| e.to_string())?;
@@ -44,7 +44,7 @@ fn scan_calendar_artifact(row: &Row) -> Result<dope_calendar::Artifact, String> 
 }
 
 impl SQLiteStore {
-    pub fn upsert_calendar_account(&self, item: &dope_calendar::AccountProjection) -> Result<(), String> {
+    pub fn upsert_calendar_account(&self, item: &kura_calendar::AccountProjection) -> Result<(), String> {
         let document_json = serde_json::to_string(item)
             .map_err(|e| format!("marshal calendar account {}: {e}", item.calendar_account_id))?;
 
@@ -86,7 +86,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_calendar_accounts(&self, environment_scope: &str) -> Result<Vec<dope_calendar::AccountProjection>, String> {
+    pub fn list_calendar_accounts(&self, environment_scope: &str) -> Result<Vec<kura_calendar::AccountProjection>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -104,7 +104,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn upsert_calendar_operation(&self, item: &dope_calendar::Operation) -> Result<(), String> {
+    pub fn upsert_calendar_operation(&self, item: &kura_calendar::Operation) -> Result<(), String> {
         let document_json = serde_json::to_string(item)
             .map_err(|e| format!("marshal calendar operation {}: {e}", item.operation_id))?;
 
@@ -165,7 +165,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         filter: &CalendarOperationFilter,
-    ) -> Result<Vec<dope_calendar::Operation>, String> {
+    ) -> Result<Vec<kura_calendar::Operation>, String> {
         let mut sql = String::from(
             r#"SELECT operation_id, integration_id, calendar_account_id, environment_scope, operation_class, status, external_event_id, run_id, workflow_id, schedule_id, delivery_id, updated_at, document_json
             FROM calendar_operations
@@ -229,13 +229,13 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         operation_id: &str,
-    ) -> Result<Option<dope_calendar::Operation>, String> {
+    ) -> Result<Option<kura_calendar::Operation>, String> {
         let wanted = operation_id.trim();
         let items = self.list_calendar_operations(environment_scope, &CalendarOperationFilter::default())?;
         Ok(items.into_iter().find(|item| item.operation_id == wanted))
     }
 
-    pub fn upsert_calendar_artifact(&self, item: &dope_calendar::Artifact) -> Result<(), String> {
+    pub fn upsert_calendar_artifact(&self, item: &kura_calendar::Artifact) -> Result<(), String> {
         let document_json = serde_json::to_string(item)
             .map_err(|e| format!("marshal calendar artifact {}: {e}", item.artifact_id))?;
 
@@ -281,7 +281,7 @@ impl SQLiteStore {
         &self,
         environment_scope: &str,
         operation_id: &str,
-    ) -> Result<Vec<dope_calendar::Artifact>, String> {
+    ) -> Result<Vec<kura_calendar::Artifact>, String> {
         let mut sql = String::from(
             r#"SELECT artifact_id, operation_id, integration_id, environment_scope, kind, external_event_id, created_at, document_json
             FROM calendar_artifacts

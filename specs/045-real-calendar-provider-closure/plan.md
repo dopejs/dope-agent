@@ -19,8 +19,8 @@ mandatory and green. Net deliverables:
    the capability RPC stdio loop against a real provider handler, replacing the empty-payload
    reference adapter for real providers while preserving the contract (version handshake,
    deadline, failure-kind mapping, redacted diagnostics).
-3. The `dope-integration-adapter` binary gains a real provider mode selected by
-   `DOPE_ADAPTER_PROVIDER=feishu_lark` (default stays the reference skeleton).
+3. The `kura-integration-adapter` binary gains a real provider mode selected by
+   `KURA_ADAPTER_PROVIDER=feishu_lark` (default stays the reference skeleton).
 4. App wiring: a `feishu_lark` secret-backed `IntegrationCredentialFetcher` so per-call
    scoped tokens reach the adapter; selection of the real provider when configured.
 5. Stable diagnostics: the calendar adapter shim maps `adapterrpc.FailureKind`
@@ -62,8 +62,8 @@ mandatory and green. Net deliverables:
   validated by contract tests.
 - **Verification**: unit + adapter + manager + live-validation + smoke coverage; the existing
   fake-backend regression suite is unchanged.
-- **Environment**: `DOPE_ENV=test` defaults to the fake backend with no live credentials; the
-  real provider runs only when `DOPE_INTEGRATION_ADAPTER` + `DOPE_ADAPTER_PROVIDER=feishu_lark`
+- **Environment**: `KURA_ENV=test` defaults to the fake backend with no live credentials; the
+  real provider runs only when `KURA_INTEGRATION_ADAPTER` + `KURA_ADAPTER_PROVIDER=feishu_lark`
   are explicitly set with operator-provided safe credentials.
 
 ## Project Structure
@@ -86,7 +86,7 @@ daemon/
   internal/opsreadiness/real_account_smoke.go    # (reused) calendar smoke status
   internal/opsreadiness/calendar_smoke.go        # NEW: calendar smoke matrix + structured skip
   internal/app/app.go                            # EDIT: feishu_lark credential fetcher + provider select
-  cmd/dope-integration-adapter/main.go           # EDIT: DOPE_ADAPTER_PROVIDER real mode
+  cmd/kura-integration-adapter/main.go           # EDIT: KURA_ADAPTER_PROVIDER real mode
 
 schemas/capability/integration-adapter/          # additive provider-kind enum if needed
 docs/providers/                                   # provider-architecture + real-account-smoke notes

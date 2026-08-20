@@ -1,5 +1,5 @@
 use chrono::Utc;
-use dope_sandbox::{
+use kura_sandbox::{
     AccessRequest, BackendKind, Decision, DecisionResolution, ErrorClass, Execution,
     ExecutionStatus, FilesystemMode, NetworkMode, Profile, Result as SandboxResult, is_terminal,
 };
@@ -25,7 +25,7 @@ fn profile_roundtrips_camel_case() {
         profile_id: "p1".to_string(),
         title: "Subprocess".to_string(),
         backend_kind: BackendKind::Subprocess,
-        filesystem_policy: dope_sandbox::FilesystemPolicy {
+        filesystem_policy: kura_sandbox::FilesystemPolicy {
             mode: FilesystemMode::Scoped,
             ..Default::default()
         },

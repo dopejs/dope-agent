@@ -91,7 +91,7 @@
 ## Decision 7: Resolve executable-skill secrets from the active daemon data dir
 
 - **Decision**: Executable-skill secret refs resolve from the active environment data dir
-  (`~/.dope-test` or `~/.dope`) via `skill-secrets.json` instead of reading ambient daemon
+  (`~/.kura-test` or `~/.kura`) via `skill-secrets.json` instead of reading ambient daemon
   process environment variables directly.
 - **Rationale**: This keeps `test` and `prod` execution separated by daemon instance and
   avoids accidental cross-environment secret injection when both environments share a shell

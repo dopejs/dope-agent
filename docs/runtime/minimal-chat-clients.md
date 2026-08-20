@@ -22,7 +22,7 @@ No client-specific provider bypass is allowed.
 
 The repository now contains:
 
-- a shared TypeScript client package: `@dope/client`
+- a shared TypeScript client package: `@kura/client`
 - a minimal Web chat surface
 - a minimal TUI chat surface
 - cross-client smoke verification
@@ -80,10 +80,10 @@ Current capabilities:
 
 Environment variables:
 
-- `DOPE_DAEMON_URL`
-- `DOPE_ACCESS_TOKEN`
-- `DOPE_CHAT_PROVIDER`
-- `DOPE_CHAT_MODEL`
+- `KURA_DAEMON_URL`
+- `KURA_ACCESS_TOKEN`
+- `KURA_CHAT_PROVIDER`
+- `KURA_CHAT_MODEL`
 
 CLI flags:
 
@@ -102,7 +102,7 @@ CLI flags:
 
 ## Roadmap 56 Thread Inspection And Handoff
 
-Web and TUI use `@dope/client` for thread lifecycle, reset, and handoff calls. They render
+Web and TUI use `@kura/client` for thread lifecycle, reset, and handoff calls. They render
 conversation shape, participation decisions, reset events, handoff links, and continuity
 preview evidence as metadata-only operator evidence.
 
@@ -132,7 +132,7 @@ this traceable continuation, not memory.
 
 Roadmap 7 is only closed because all of these are true:
 
-- Web and TUI both use `@dope/client`
+- Web and TUI both use `@kura/client`
 - neither client bypasses the daemon chat routes
 - Web renders success, stream, and error states
 - TUI renders success, stream, and error states

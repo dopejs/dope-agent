@@ -8,7 +8,7 @@ read `spec.md`, `plan.md`, `research.md`, `data-model.md`, and `contracts/`.
 - Worktree on branch `020-claude` (created via `git worktree add .worktrees/020-claude
   -b 020-claude main`).
 - `pnpm install` and `cd daemon && go mod download` already done.
-- Test environment is the default. Do not touch `~/.dope` or live connectors.
+- Test environment is the default. Do not touch `~/.kura` or live connectors.
 
 ## Local development loop
 
@@ -32,8 +32,8 @@ To smoke test the migration end-to-end against a daemon process:
 # in as a SQLite blob. The end-to-end migration tests
 # (daemon/internal/app/tenant_migration_e2e_test.go) drive the full pipeline against
 # a freshly-built fixture; for an interactive smoke test, point a fixture builder at
-# ~/.dope-test/daemon.sqlite via a small Go program or use the e2e tests directly.
-rm -rf ~/.dope-test
+# ~/.kura-test/daemon.sqlite via a small Go program or use the e2e tests directly.
+rm -rf ~/.kura-test
 
 make daemon-run-test
 make daemon-test-status          # in another shell

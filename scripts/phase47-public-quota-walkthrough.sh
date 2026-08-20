@@ -3,7 +3,7 @@
 set -euo pipefail
 
 DAEMON_URL="${DAEMON_URL:-http://127.0.0.1:19192}"
-DB_PATH="${DOPE_TEST_DB_PATH:-${HOME}/.dope-test/daemon.sqlite}"
+DB_PATH="${KURA_TEST_DB_PATH:-${HOME}/.kura-test/daemon.sqlite}"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -16,14 +16,14 @@ api_get() {
   local path="$1"
   curl --noproxy '*' -fsS "${DAEMON_URL}${path}" \
     -H "Authorization: Bearer ${TOKEN}" \
-    -H "X-Dope-Tenant-ID: ${TENANT_ID}"
+    -H "X-Kura-Tenant-ID: ${TENANT_ID}"
 }
 
 api_post() {
   local path="$1"
   curl --noproxy '*' -fsS -X POST "${DAEMON_URL}${path}" \
     -H "Authorization: Bearer ${TOKEN}" \
-    -H "X-Dope-Tenant-ID: ${TENANT_ID}"
+    -H "X-Kura-Tenant-ID: ${TENANT_ID}"
 }
 
 require_jq() {
@@ -140,7 +140,7 @@ require_jq "${ABUSE_EXPORT}" \
 
 CROSS_TENANT_CODE="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' "${DAEMON_URL}/v1/billing/denials/denial_phase47_other" \
   -H "Authorization: Bearer ${TOKEN}" \
-  -H "X-Dope-Tenant-ID: ${TENANT_ID}")"
+  -H "X-Kura-Tenant-ID: ${TENANT_ID}")"
 if [[ "${CROSS_TENANT_CODE}" != "404" ]]; then
   echo "phase47 walkthrough assertion failed: cross-tenant denial hidden, got HTTP ${CROSS_TENANT_CODE}" >&2
   exit 1

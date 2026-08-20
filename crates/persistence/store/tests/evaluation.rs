@@ -5,18 +5,18 @@
 //! lists/gets it back. Attempts and comparisons reference their parent rows via foreign
 //! keys (enforced by `PRAGMA foreign_keys = ON`), so those tests seed the parent records
 //! first. Wiring required before these compile: declare `pub mod evaluation;` in
-//! `lib.rs` and add `dope-evaluation.workspace = true` to `Cargo.toml`.
+//! `lib.rs` and add `kura-evaluation.workspace = true` to `Cargo.toml`.
 
 use chrono::Utc;
-use dope_evaluation::{
+use kura_evaluation::{
     AttemptFilter, CandidateFilter, CandidateKind, ComparisonFilter, ComparisonResult,
     ComparisonTerminalStatus, FixtureDomainClass, FixtureFilter, ReadinessStatus,
     RegressionFixture, ReplayAttempt, ReplayAttemptStatus, ReplayCandidate, ReplayMode, SourceKind,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -57,9 +57,9 @@ fn upsert_attempt(store: &SQLiteStore, attempt_id: &str, candidate_id: &str, env
         environment_scope: environment_scope.to_string(),
         mode: ReplayMode::NonLive,
         status: ReplayAttemptStatus::Completed,
-        safety_scope: dope_evaluation::SafetyScope::default(),
-        approval_handling: dope_evaluation::ApprovalHandling::Blocked,
-        side_effect_handling: dope_evaluation::SideEffectHandling::Blocked,
+        safety_scope: kura_evaluation::SafetyScope::default(),
+        approval_handling: kura_evaluation::ApprovalHandling::Blocked,
+        side_effect_handling: kura_evaluation::SideEffectHandling::Blocked,
         launched_by: String::new(),
         change_window_label: String::new(),
         baseline_attempt_id: String::new(),
@@ -184,9 +184,9 @@ fn replay_attempt_round_trips_through_sqlite() {
         environment_scope: "test".to_string(),
         mode: ReplayMode::LiveValidation,
         status: ReplayAttemptStatus::Running,
-        safety_scope: dope_evaluation::SafetyScope::default(),
-        approval_handling: dope_evaluation::ApprovalHandling::EvidenceOnly,
-        side_effect_handling: dope_evaluation::SideEffectHandling::EvidenceOnly,
+        safety_scope: kura_evaluation::SafetyScope::default(),
+        approval_handling: kura_evaluation::ApprovalHandling::EvidenceOnly,
+        side_effect_handling: kura_evaluation::SideEffectHandling::EvidenceOnly,
         launched_by: "user_1".to_string(),
         change_window_label: "release-1".to_string(),
         baseline_attempt_id: String::new(),
@@ -362,7 +362,7 @@ fn regression_fixture_round_trips_through_sqlite() {
         assumptions: vec!["calendar is empty".to_string()],
         limitations: Vec::new(),
         expected_replay_mode: ReplayMode::NonLive,
-        expected_comparison_summary: dope_evaluation::PlaneSummaries::default(),
+        expected_comparison_summary: kura_evaluation::PlaneSummaries::default(),
         candidate_id: String::new(),
         environment_scope: "test".to_string(),
         created_at: now,

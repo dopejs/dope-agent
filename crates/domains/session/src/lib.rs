@@ -1,4 +1,4 @@
-//! dope-session — session-strategy policies for the plugin plane.
+//! kura-session — session-strategy policies for the plugin plane.
 //!
 //! The user-facing thesis: for a personal agent, context management is
 //! session management, and it belongs to plugins. This crate is the policy
@@ -29,7 +29,7 @@
 use serde::{Deserialize, Serialize};
 
 /// The role/content shape of one message in the hook payload (a structural
-/// subset of `dope_llm::Message`; this crate stays decoupled from the LLM
+/// subset of `kura_llm::Message`; this crate stays decoupled from the LLM
 /// crate on purpose).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

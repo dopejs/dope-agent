@@ -40,7 +40,7 @@ fixtures. SDK/web tests through `pnpm test:clients`; `pnpm build` if client bund
 change. Run `go test ./...` in `daemon/`, `make daemon-run-test`, `make
 daemon-test-status`, and `go mod tidy` from `daemon/` after implementation.
 **Target Platform**: Hosted/test daemon and browser shell using the default test
-environment (`DOPE_ENV=test`, `~/.dope-test`, `127.0.0.1:19192`) for local validation.
+environment (`KURA_ENV=test`, `~/.kura-test`, `127.0.0.1:19192`) for local validation.
 Hosted production behavior uses the same protected daemon contracts, but live connectors,
 payment checkout, enterprise SSO, production secrets, and organization administration are
 out of scope.
@@ -56,7 +56,7 @@ unless adding optional fields or new endpoints. Activation completion is blocked
 quota baseline is unavailable. Any authenticated hosted user is eligible unless disabled
 or denied. Organization onboarding is additive and cannot block personal activation. The
 v1 safe first action is test chat. Activation diagnostics and audit must not retain test
-chat transcripts or message content. Default validation must not touch `~/.dope`, live
+chat transcripts or message content. Default validation must not touch `~/.kura`, live
 connectors, production secrets, payment credentials, enterprise identity credentials, or
 privileged organization setup.
 **Scale/Scope**: One personal tenant activation per authenticated hosted user, plus
@@ -72,7 +72,7 @@ and a bounded reason-code set for activation failures.
 - **Roadmap closure** - PASS. The plan closes Roadmap 45 end-to-end: hosted signup or
   invite acceptance projection, personal tenant creation/resolution, activation state,
   quota baseline readiness, test chat completion, SDK/web support, stable failures,
-  tenant-scoped audit, restart durability, and manual `DOPE_ENV=test` walkthrough.
+  tenant-scoped audit, restart durability, and manual `KURA_ENV=test` walkthrough.
 - **Production-grade, minimal, reversible change** - PASS. The design is additive:
   introduce activation state/contracts and reuse existing identity, billing, onboarding,
   SDK tenant options, and chat behavior. Rollback disables activation routes and shell
@@ -85,7 +85,7 @@ and a bounded reason-code set for activation failures.
   restart, tenant isolation, concurrency, redaction, and manual test-environment
   walkthrough verification.
 - **Environment and secrets** - PASS. Development and automated verification default to
-  `DOPE_ENV=test` and must not require live connectors or production secrets. Diagnostics,
+  `KURA_ENV=test` and must not require live connectors or production secrets. Diagnostics,
   audit, logs, fixtures, and activation records must suppress raw secrets and test chat
   message content.
 
@@ -211,7 +211,7 @@ or audit history.
 - **Verification and observability** - PASS. Quickstart requires Go tests, contract tests,
   SDK/web tests, restart durability, tenant isolation, concurrency/idempotency, redaction,
   and manual test-environment walkthrough evidence.
-- **Environment and secrets** - PASS. Design defaults to `DOPE_ENV=test`, avoids live
+- **Environment and secrets** - PASS. Design defaults to `KURA_ENV=test`, avoids live
   connectors and production secrets, and forbids raw secrets and test chat message content
   in activation diagnostics and audit records.
 

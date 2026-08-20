@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/billing-denial-detail.response.schema.json",
+  "$id": "https://kura.local/schemas/api/billing-denial-detail.response.schema.json",
   "title": "BillingDenialDetailResponse",
   "type": "object",
   "required": ["denialId", "operationRef", "operationKey", "guardedEntryPoint", "reasonCode", "classification", "requestedAmount", "remainingAmount", "recoveryActions", "createdAt"],

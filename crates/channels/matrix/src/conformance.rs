@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use dope_connectors::{
+use kura_connectors::{
     CapabilityProfile, ConformanceResultStatus, GroupRoomCapabilities, HandoffCapabilities,
     SurfaceSupport, MATRIX_DURABLE_IDENTITY_RULE, MATRIX_DURABLE_IDENTITY_RULE_ID,
     MATRIX_SURFACE_ACCOUNT_PROVISIONING, MATRIX_SURFACE_ALLOWED_ROOM_COMMAND,

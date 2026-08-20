@@ -1,8 +1,8 @@
-//! Integration tests for the dope-scheduler port: wire-format round trips, the schedule
+//! Integration tests for the kura-scheduler port: wire-format round trips, the schedule
 //! lifecycle (create/list/get/pause/resume/cancel), one-time dispatch exactly-once, recurring
 //! overlap + pause/resume truth, retry/exhausted failure semantics, workflow-target dispatch
 //! through the launcher, cron due computation, catch-up missed-interval recording, and
-//! persistence across scheduler instances. Persistence tests use `dope_store::SQLiteStore`
+//! persistence across scheduler instances. Persistence tests use `kura_store::SQLiteStore`
 //! in a temp dir, mirroring the Go scheduler harness.
 
 use std::sync::Arc;
@@ -10,14 +10,14 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use dope_events::Filter;
-use dope_scheduler::{
+use kura_events::Filter;
+use kura_scheduler::{
     next_due_after, Clock, CreateInput, Dependencies, DispatchAttempt, DispatchStatus,
     DownstreamStatus, RetryBackoffKind, RetryPolicy, RunTarget, Schedule, ScheduleKind,
     ScheduleStatus, Scheduler, Target, TargetKind, Trigger, TriggerKind, WorkflowLaunchResult,
     WorkflowLauncher, WorkflowTarget,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 fn parse(s: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
@@ -48,7 +48,7 @@ fn temp_dir() -> String {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("dope_scheduler_test_{}_{}", std::process::id(), n));
+    let dir = std::env::temp_dir().join(format!("kura_scheduler_test_{}_{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -56,18 +56,18 @@ fn temp_dir() -> String {
 struct Harness {
     clock: FakeClock,
     store: Arc<parking_lot::Mutex<SQLiteStore>>,
-    runtime: Arc<dope_runtime::Manager>,
+    runtime: Arc<kura_runtime::Manager>,
     scheduler: Scheduler,
-    bus: dope_events::Bus,
+    bus: kura_events::Bus,
 }
 
 fn harness_with_launcher(now: DateTime<Utc>, launcher: Option<Arc<dyn WorkflowLauncher>>) -> Harness {
     let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&temp_dir()).unwrap()));
-    let runtime = Arc::new(dope_runtime::Manager::new());
-    let bus = dope_events::Bus::new();
+    let runtime = Arc::new(kura_runtime::Manager::new());
+    let bus = kura_events::Bus::new();
     let clock = FakeClock::new(now);
     let scheduler = Scheduler::new(Dependencies {
-        environment: dope_config::Environment::Test,
+        environment: kura_config::Environment::Test,
         runtime: Arc::clone(&runtime),
         event_bus: Some(bus.clone()),
         store: Arc::clone(&store),
@@ -103,11 +103,11 @@ fn one_time_run_input(fire_at: DateTime<Utc>, goal: &str, max_retries: i64) -> C
     }
 }
 
-fn complete_run(runtime: &dope_runtime::Manager, run_id: &str) {
+fn complete_run(runtime: &kura_runtime::Manager, run_id: &str) {
     let step = runtime
         .create_step(
             run_id,
-            dope_runtime::CreateStepInput {
+            kura_runtime::CreateStepInput {
                 title: "complete scheduled run".to_string(),
                 kind: "task".to_string(),
                 ..Default::default()
@@ -115,10 +115,10 @@ fn complete_run(runtime: &dope_runtime::Manager, run_id: &str) {
         )
         .unwrap();
     for (status, output) in [
-        (dope_runtime::StepStatus::Planning, None),
-        (dope_runtime::StepStatus::ExecutingTool, None),
+        (kura_runtime::StepStatus::Planning, None),
+        (kura_runtime::StepStatus::ExecutingTool, None),
         (
-            dope_runtime::StepStatus::Completed,
+            kura_runtime::StepStatus::Completed,
             Some(serde_json::json!({ "ok": true })),
         ),
     ] {
@@ -126,7 +126,7 @@ fn complete_run(runtime: &dope_runtime::Manager, run_id: &str) {
             .update_step_status_and_reconcile_run(
                 run_id,
                 &step.step_id,
-                dope_runtime::UpdateStepStatusInput {
+                kura_runtime::UpdateStepStatusInput {
                     status,
                     output,
                     ..Default::default()
@@ -180,7 +180,7 @@ fn wire_format_round_trips() {
             attempt_id: "sched_attempt_wire".to_string(),
             schedule_id: "sched_wire".to_string(),
             due_at: now,
-            trigger_source: dope_scheduler::TriggerSource::Normal,
+            trigger_source: kura_scheduler::TriggerSource::Normal,
             dispatch_status: DispatchStatus::Dispatched,
             retry_count: 0,
             retry_budget: 2,
@@ -272,7 +272,7 @@ fn one_time_schedule_dispatches_exactly_once() {
     assert_eq!(got.attempts.len(), 1);
     assert_eq!(got.attempts[0].dispatch_status, DispatchStatus::Dispatched);
     assert_eq!(got.attempts[0].run_id, runs[0].run_id);
-    assert_eq!(got.attempts[0].trigger_source, dope_scheduler::TriggerSource::Normal);
+    assert_eq!(got.attempts[0].trigger_source, kura_scheduler::TriggerSource::Normal);
 }
 
 // ---------------------------------------------------------------------------
@@ -652,10 +652,10 @@ fn schedule_persists_across_scheduler_instances() {
     let now = parse("2026-04-22T14:00:00Z");
     let dir = temp_dir();
     let store = Arc::new(parking_lot::Mutex::new(SQLiteStore::new(&dir).unwrap()));
-    let runtime = Arc::new(dope_runtime::Manager::new());
+    let runtime = Arc::new(kura_runtime::Manager::new());
     let clock = FakeClock::new(now);
     let sched_a = Scheduler::new(Dependencies {
-        environment: dope_config::Environment::Test,
+        environment: kura_config::Environment::Test,
         runtime: Arc::clone(&runtime),
         event_bus: None,
         store: Arc::clone(&store),
@@ -670,7 +670,7 @@ fn schedule_persists_across_scheduler_instances() {
     let clock_b = FakeClock::new(now + chrono::Duration::seconds(60));
     let clock_b_handle = clock_b.clone();
     let sched_b = Scheduler::new(Dependencies {
-        environment: dope_config::Environment::Test,
+        environment: kura_config::Environment::Test,
         runtime: Arc::clone(&runtime),
         event_bus: None,
         store: Arc::clone(&store),
@@ -738,7 +738,7 @@ fn catch_up_records_missed_intervals() {
     assert!(got.attempts.len() >= 2);
     // attempts[0] is the catch-up dispatch for the current due; attempts[1] the missed record.
     assert_eq!(got.attempts[0].dispatch_status, DispatchStatus::Dispatched);
-    assert_eq!(got.attempts[0].trigger_source, dope_scheduler::TriggerSource::CatchUp);
+    assert_eq!(got.attempts[0].trigger_source, kura_scheduler::TriggerSource::CatchUp);
     assert_eq!(got.attempts[1].dispatch_status, DispatchStatus::Missed);
     assert_eq!(got.attempts[1].missed_count, 3);
     assert_eq!(got.attempts[1].due_at, parse("2026-04-22T12:00:00Z"));
@@ -832,7 +832,7 @@ fn pause_resume_cancel_edges() {
     assert_eq!(items[0].schedule_id, schedule.schedule_id);
 
     // Store accessor + lifecycle flags.
-    assert!(h.scheduler.store().lock().data_dir().contains("dope_scheduler_test"));
+    assert!(h.scheduler.store().lock().data_dir().contains("kura_scheduler_test"));
     h.scheduler.start().unwrap();
     h.scheduler.close().unwrap();
     assert_eq!(h.scheduler.tick_interval(), Duration::from_millis(10));
@@ -877,6 +877,6 @@ fn store_records_written_by_create() {
 #[test]
 fn manager_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<dope_scheduler::Scheduler>();
+    assert_send_sync::<kura_scheduler::Scheduler>();
 }
 

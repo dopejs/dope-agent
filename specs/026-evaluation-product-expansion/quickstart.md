@@ -16,7 +16,7 @@ make daemon-test-status
 
 Expected daemon target:
 
-- data directory: `~/.dope-test`
+- data directory: `~/.kura-test`
 - address: `127.0.0.1:19192`
 
 ## Implementation Checkpoints
@@ -65,7 +65,7 @@ pnpm build
 
 ## Product Smoke Flow
 
-After implementation, verify this flow in `~/.dope-test`:
+After implementation, verify this flow in `~/.kura-test`:
 
 1. Seed or run tenant-owned historical runs, workflows, tool calls, replay attempts,
    comparisons, and Roadmap 40 live-validation evidence.
@@ -131,33 +131,33 @@ Recorded on branch `026-evaluation-product-expansion` on 2026-04-30
 Asia/Shanghai against the default test environment.
 
 - Prerequisites/checklists: `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` passed; `checklists/requirements.md` had 16/16 complete items.
-- Targeted Go verification: `GOCACHE=/tmp/dope-go-build go test ./internal/evaluation ./internal/store ./internal/store/tenancy ./internal/api ./internal/audit ./internal/events ./internal/identity ./internal/contracts` passed.
-- Full daemon verification: `GOCACHE=/tmp/dope-go-build go test ./...` passed after fixing schema inventory coverage for the Roadmap 41 tables.
+- Targeted Go verification: `GOCACHE=/tmp/kura-go-build go test ./internal/evaluation ./internal/store ./internal/store/tenancy ./internal/api ./internal/audit ./internal/events ./internal/identity ./internal/contracts` passed.
+- Full daemon verification: `GOCACHE=/tmp/kura-go-build go test ./...` passed after fixing schema inventory coverage for the Roadmap 41 tables.
 - Module hygiene: `go mod tidy` from `daemon/` completed with no `go.mod`/`go.sum` diff.
 - Contract verification: `make daemon-contract-test` passed.
 - Client tests: `pnpm test:clients` passed after aligning the SDK `suppressProductFixture` input type with its default empty input.
 - Client build: `pnpm build` passed.
-- Test daemon smoke: `make daemon-run-test` started `127.0.0.1:19192`; `make daemon-test-status` returned `{"ok":true,"service":"dope"}`; the foreground daemon session was stopped and `nc -vz 127.0.0.1 19192` returned connection refused afterward.
-- Roadmap 41 product smoke: `/usr/bin/time -p env GOCACHE=/tmp/dope-go-build go test ./internal/api -run 'TestEvaluationProduct(DiscoveryAPIRoutes|FixturePermissionDenialsAndLifecycleRoutes|CampaignAPIRoutes|DashboardAPIRequiresReadPermissionAndListsTenantProjections|InspectionAPIRoutes)' -count=1` passed in 1.98 seconds real time. This covers discovery, suppression/fixture lifecycle, campaign start/transitions, dashboard projection reads, and tool-call inspection reads. The automated smoke is below the SC-001 two-minute candidate review and SC-005 five-minute fixture create/edit thresholds.
-- Roadmap 39 targeted rerun evidence: `/usr/bin/time -p env DOPE_SOAK_DURATION=targeted-validation DOPE_SOAK_REPORT=specs/026-evaluation-product-expansion/fixtures/roadmap39-rerun-targeted.json scripts/production/run-soak.sh` passed in 0.04 seconds real time with `daemonHealth: "pass"`, `crossTenantLeakage: false`, `monotonicResourceGrowth: false`, and `finalResult: "pass"`.
+- Test daemon smoke: `make daemon-run-test` started `127.0.0.1:19192`; `make daemon-test-status` returned `{"ok":true,"service":"kura"}`; the foreground daemon session was stopped and `nc -vz 127.0.0.1 19192` returned connection refused afterward.
+- Roadmap 41 product smoke: `/usr/bin/time -p env GOCACHE=/tmp/kura-go-build go test ./internal/api -run 'TestEvaluationProduct(DiscoveryAPIRoutes|FixturePermissionDenialsAndLifecycleRoutes|CampaignAPIRoutes|DashboardAPIRequiresReadPermissionAndListsTenantProjections|InspectionAPIRoutes)' -count=1` passed in 1.98 seconds real time. This covers discovery, suppression/fixture lifecycle, campaign start/transitions, dashboard projection reads, and tool-call inspection reads. The automated smoke is below the SC-001 two-minute candidate review and SC-005 five-minute fixture create/edit thresholds.
+- Roadmap 39 targeted rerun evidence: `/usr/bin/time -p env KURA_SOAK_DURATION=targeted-validation KURA_SOAK_REPORT=specs/026-evaluation-product-expansion/fixtures/roadmap39-rerun-targeted.json scripts/production/run-soak.sh` passed in 0.04 seconds real time with `daemonHealth: "pass"`, `crossTenantLeakage: false`, `monotonicResourceGrowth: false`, and `finalResult: "pass"`.
 
 Full Roadmap 39 soak rerun evidence: completed and accepted on 2026-05-01
 Asia/Shanghai using `docs/harness/roadmap41-soak-acceptance-runbook.md`.
 
 - Stable host: `zentalk-1`
-- Deployment directory: `/root/dope-agent-r41-5ad95ba`
+- Deployment directory: `/root/kura-agent-r41-5ad95ba`
 - Commit under test: `5ad95ba`
-- Daemon data directory: `/root/.dope-r41-soak`
-- Full report: `/root/dope-agent-r41-artifacts/roadmap39-full-5ad95ba.json`
-- Soak log: `/root/dope-agent-r41-artifacts/roadmap39-full-5ad95ba.log`
-- Daemon log: `/root/dope-agent-r41-artifacts/daemon-5ad95ba.log`
+- Daemon data directory: `/root/.kura-r41-soak`
+- Full report: `/root/kura-agent-r41-artifacts/roadmap39-full-5ad95ba.json`
+- Soak log: `/root/kura-agent-r41-artifacts/roadmap39-full-5ad95ba.log`
+- Daemon log: `/root/kura-agent-r41-artifacts/daemon-5ad95ba.log`
 - Acceptance query time: `2026-05-01T10:58:07+0800`
 
 The final report passed all runbook criteria:
 
 - `branchOrVersion: "5ad95ba"`
 - `environment: "test"`
-- `dataDirectory: "/root/.dope-r41-soak"`
+- `dataDirectory: "/root/.kura-r41-soak"`
 - `durationHours: 24`
 - `elapsedSeconds: 86400`
 - `temporaryShorterDuration: false`

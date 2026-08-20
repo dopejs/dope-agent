@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use dope_checkpoints::Manager;
-use dope_runtime::{CreateRunInput, CreateStepInput, CreateToolCallInput, Manager as RuntimeManager};
-use dope_store::SQLiteStore;
+use kura_checkpoints::Manager;
+use kura_runtime::{CreateRunInput, CreateStepInput, CreateToolCallInput, Manager as RuntimeManager};
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_checkpoints_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_checkpoints_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -74,6 +74,6 @@ fn saves_and_restores_latest_checkpoint() {
 #[test]
 fn manager_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<dope_checkpoints::Manager>();
+    assert_send_sync::<kura_checkpoints::Manager>();
 }
 

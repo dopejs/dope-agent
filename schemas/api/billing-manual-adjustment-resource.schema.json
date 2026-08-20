@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/billing-manual-adjustment-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/billing-manual-adjustment-resource.schema.json",
   "title": "BillingManualAdjustmentResource",
   "type": "object",
   "required": ["adjustmentId", "category", "quotaPeriodId", "amountDelta", "reason", "createdAt"],

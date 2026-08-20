@@ -117,7 +117,7 @@ fn new_checkpoint_id() -> String {
     format!("ckpt_{}", &hex[..16])
 }
 
-fn scan_step(row: &Row) -> Result<dope_runtime::Step, String> {
+fn scan_step(row: &Row) -> Result<kura_runtime::Step, String> {
     let step_id: String = row.get(0).map_err(|e| e.to_string())?;
     let run_id: String = row.get(1).map_err(|e| e.to_string())?;
     let workflow_id: Option<String> = row.get(2).map_err(|e| e.to_string())?;
@@ -131,7 +131,7 @@ fn scan_step(row: &Row) -> Result<dope_runtime::Step, String> {
     let created_at: String = row.get(10).map_err(|e| e.to_string())?;
     let updated_at: String = row.get(11).map_err(|e| e.to_string())?;
 
-    Ok(dope_runtime::Step {
+    Ok(kura_runtime::Step {
         step_id,
         run_id,
         workflow_id: workflow_id.unwrap_or_default(),
@@ -147,7 +147,7 @@ fn scan_step(row: &Row) -> Result<dope_runtime::Step, String> {
     })
 }
 
-fn scan_tool_call(row: &Row) -> Result<dope_runtime::ToolCall, String> {
+fn scan_tool_call(row: &Row) -> Result<kura_runtime::ToolCall, String> {
     let tool_call_id: String = row.get(0).map_err(|e| e.to_string())?;
     let run_id: String = row.get(1).map_err(|e| e.to_string())?;
     let step_id: String = row.get(2).map_err(|e| e.to_string())?;
@@ -177,7 +177,7 @@ fn scan_tool_call(row: &Row) -> Result<dope_runtime::ToolCall, String> {
     let created_at: String = row.get(26).map_err(|e| e.to_string())?;
     let updated_at: String = row.get(27).map_err(|e| e.to_string())?;
 
-    Ok(dope_runtime::ToolCall {
+    Ok(kura_runtime::ToolCall {
         tool_call_id,
         run_id,
         step_id,
@@ -206,12 +206,12 @@ fn scan_tool_call(row: &Row) -> Result<dope_runtime::ToolCall, String> {
         sandbox: decode_map(&sandbox_json)?,
         integration_bindings: decode_vec(&integration_bindings_json)?,
         error: error_text.unwrap_or_default(),
-        ..dope_runtime::ToolCall::default()
+        ..kura_runtime::ToolCall::default()
     })
 }
 
 impl SQLiteStore {
-    pub fn upsert_run(&self, run: &dope_runtime::Run) -> Result<(), String> {
+    pub fn upsert_run(&self, run: &kura_runtime::Run) -> Result<(), String> {
         self.conn
             .execute(
                 r#"INSERT INTO runs (
@@ -269,7 +269,7 @@ impl SQLiteStore {
         Ok(tenant_id.filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string()))
     }
 
-    pub fn upsert_step(&self, step: &dope_runtime::Step) -> Result<(), String> {
+    pub fn upsert_step(&self, step: &kura_runtime::Step) -> Result<(), String> {
         let input_json = marshal_json(&step.input)?;
         let output_json = marshal_json(&step.output)?;
 
@@ -320,7 +320,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn upsert_tool_call(&self, tool_call: &dope_runtime::ToolCall) -> Result<(), String> {
+    pub fn upsert_tool_call(&self, tool_call: &kura_runtime::ToolCall) -> Result<(), String> {
         let input_json = marshal_json(&tool_call.input)?;
         let output_json = marshal_json(&tool_call.output)?;
         let sandbox_json = marshal_map(&tool_call.sandbox)?;
@@ -421,7 +421,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_tool_calls(&self, run_id: &str, step_id: &str) -> Result<Vec<dope_runtime::ToolCall>, String> {
+    pub fn list_tool_calls(&self, run_id: &str, step_id: &str) -> Result<Vec<kura_runtime::ToolCall>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -439,7 +439,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn list_steps(&self, run_id: &str) -> Result<Vec<dope_runtime::Step>, String> {
+    pub fn list_steps(&self, run_id: &str) -> Result<Vec<kura_runtime::Step>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -457,7 +457,7 @@ impl SQLiteStore {
         Ok(items)
     }
 
-    pub fn save_checkpoint(&self, checkpoint: &dope_runtime::RunCheckpoint) -> Result<(), String> {
+    pub fn save_checkpoint(&self, checkpoint: &kura_runtime::RunCheckpoint) -> Result<(), String> {
         let snapshot_json = serde_json::to_string(checkpoint).map_err(|e| format!("marshal checkpoint: {e}"))?;
 
         let parent_tenant: Option<String> = self
@@ -490,7 +490,7 @@ impl SQLiteStore {
         Ok(())
     }
 
-    pub fn list_latest_checkpoints(&self) -> Result<Vec<dope_runtime::RunCheckpoint>, String> {
+    pub fn list_latest_checkpoints(&self) -> Result<Vec<kura_runtime::RunCheckpoint>, String> {
         let mut stmt = self
             .conn
             .prepare(
@@ -512,7 +512,7 @@ impl SQLiteStore {
             let captured_at: String = row.get(2).map_err(|e| e.to_string())?;
             let snapshot_json: String = row.get(3).map_err(|e| e.to_string())?;
 
-            let mut checkpoint: dope_runtime::RunCheckpoint =
+            let mut checkpoint: kura_runtime::RunCheckpoint =
                 serde_json::from_str(&snapshot_json).map_err(|e| format!("decode checkpoint snapshot: {e}"))?;
             if checkpoint.run.run_id != run_id {
                 return Err(format!("checkpoint run mismatch: row={run_id} snapshot={}", checkpoint.run.run_id));

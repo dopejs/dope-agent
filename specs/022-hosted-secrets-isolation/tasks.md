@@ -234,12 +234,12 @@ work across all stories.
 - [X] T086 [P] Update MCP and sandbox documentation for tenant secret resolution and redacted unavailable states in `docs/harness/sandbox-execution-plane.md`.
 - [X] T087 [P] Update `specs/022-hosted-secrets-isolation/quickstart.md` with final commands and any smoke-test changes discovered during implementation.
 - [X] T088 [P] Update TypeScript SDK tenant secret resources and redacted response types for hosted credential APIs in `sdk/ts/src/`.
-- [X] T089 [P] Run `make daemon-contract-test` from `/Users/John/Code/dope-agent` and fix schema or event contract drift in `schemas/api/`, `schemas/events/`, or `daemon/internal/contracts/`.
-- [X] T090 [P] Run targeted R37 package tests from `/Users/John/Code/dope-agent/daemon`: `go test ./internal/secrets ./internal/store ./internal/store/tenancy ./internal/api ./internal/integrations ./internal/providers ./internal/mcp ./internal/connectors ./internal/sandbox ./internal/audit ./internal/contracts`.
-- [X] T091 Run `go test ./...` from `/Users/John/Code/dope-agent/daemon` and fix failures in `daemon/internal/`.
-- [X] T092 Run `go mod tidy` from `/Users/John/Code/dope-agent/daemon` after daemon-side changes and commit any legitimate `daemon/go.mod` or `daemon/go.sum` updates.
-- [X] T093 Run `pnpm test:clients` from `/Users/John/Code/dope-agent` and fix hosted credential SDK or client regressions in `sdk/ts/`, `web/`, or `tui/`.
-- [X] T094 Run `pnpm build` from `/Users/John/Code/dope-agent` and fix generated client or build failures in `sdk/ts/dist/`, `web/dist/`, or `tui/dist/`.
+- [X] T089 [P] Run `make daemon-contract-test` from `/Users/John/Code/kura-agent` and fix schema or event contract drift in `schemas/api/`, `schemas/events/`, or `daemon/internal/contracts/`.
+- [X] T090 [P] Run targeted R37 package tests from `/Users/John/Code/kura-agent/daemon`: `go test ./internal/secrets ./internal/store ./internal/store/tenancy ./internal/api ./internal/integrations ./internal/providers ./internal/mcp ./internal/connectors ./internal/sandbox ./internal/audit ./internal/contracts`.
+- [X] T091 Run `go test ./...` from `/Users/John/Code/kura-agent/daemon` and fix failures in `daemon/internal/`.
+- [X] T092 Run `go mod tidy` from `/Users/John/Code/kura-agent/daemon` after daemon-side changes and commit any legitimate `daemon/go.mod` or `daemon/go.sum` updates.
+- [X] T093 Run `pnpm test:clients` from `/Users/John/Code/kura-agent` and fix hosted credential SDK or client regressions in `sdk/ts/`, `web/`, or `tui/`.
+- [X] T094 Run `pnpm build` from `/Users/John/Code/kura-agent` and fix generated client or build failures in `sdk/ts/dist/`, `web/dist/`, or `tui/dist/`.
 - [X] T095 Manually validate the fake two-tenant smoke flow in `specs/022-hosted-secrets-isolation/quickstart.md` against the test daemon, confirm the end-to-end smoke completes in under 15 minutes, and record elapsed time plus any unverified paths in the final implementation notes.
 
 ---
@@ -348,5 +348,5 @@ With multiple engineers:
 - `[P]` tasks touch different files and can run without waiting on incomplete tasks in the same phase.
 - `[US#]` labels map to user stories in `spec.md`.
 - Any task that changes API, event, schema, persistence, or execution boundaries must update matching schemas, fixtures, docs, and contract tests before completion.
-- Use `~/.dope-test` and fake credentials for local validation. Do not touch production secrets or live connectors.
+- Use `~/.kura-test` and fake credentials for local validation. Do not touch production secrets or live connectors.
 - Stop if any test, contract check, redaction scan, or smoke step exposes raw credential material.

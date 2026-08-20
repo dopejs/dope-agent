@@ -1,7 +1,7 @@
 {
-  "name": "@dope/web",
+  "name": "@kura/web",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@dope/client": "workspace:*",
+    "@kura/client": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

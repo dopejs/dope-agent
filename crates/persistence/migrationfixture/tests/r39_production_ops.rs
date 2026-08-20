@@ -4,7 +4,7 @@
 mod common;
 
 use common::{count, open_conn, temp_dir};
-use dope_migrationfixture::{
+use kura_migrationfixture::{
     build_r39_production_ops_fixture, build_r39_production_ops_sqlite_fixture,
     copy_r39_production_ops_sqlite_fixture, validate_r39_production_ops_sqlite_restore,
 };

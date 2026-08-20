@@ -3,12 +3,12 @@
 //! provisioning, create/update-status round-trips, default-first ordering,
 //! tenant isolation, and selection gates.
 
-use dope_bindings::{WorkspaceStatus, RepairStatus};
-use dope_identity::TenantContext;
-use dope_store::SQLiteStore;
+use kura_bindings::{WorkspaceStatus, RepairStatus};
+use kura_identity::TenantContext;
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

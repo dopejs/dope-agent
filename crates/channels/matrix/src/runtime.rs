@@ -12,16 +12,16 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
-use dope_connectors::{
+use kura_connectors::{
     Connector, DiagnosticReasonCode, RegisterInput, RedactionStatus, Status, Supervisor,
     MATRIX_DURABLE_IDENTITY_RULE_ID,
 };
-use dope_events::{Bus, Event, Resource, Scope};
-use dope_im::MessageLoop;
-use dope_imtypes::InboundMessage;
-use dope_router::SessionKind;
-use dope_store::matrix_setup::MatrixEventEvidenceRecord;
-use dope_store::SQLiteStore;
+use kura_events::{Bus, Event, Resource, Scope};
+use kura_im::MessageLoop;
+use kura_imtypes::InboundMessage;
+use kura_router::SessionKind;
+use kura_store::matrix_setup::MatrixEventEvidenceRecord;
+use kura_store::SQLiteStore;
 use parking_lot::Mutex;
 
 use crate::is_unset_time;
@@ -250,7 +250,7 @@ impl Runtime {
             updated_at: Utc::now(),
             ..Connector::default()
         };
-        let cancel = dope_chat::CancellationToken::new();
+        let cancel = kura_chat::CancellationToken::new();
         let sender = TransportReplySender(self.transport.as_ref());
         let _ = self.message_loop.process_single_turn(&connector, &inbound, &sender, &cancel);
     }

@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use dope_runtime::{Manager as RuntimeManager, RunCheckpoint};
-use dope_store::SQLiteStore;
+use kura_runtime::{Manager as RuntimeManager, RunCheckpoint};
+use kura_store::SQLiteStore;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RecoveryStats {

@@ -398,7 +398,7 @@ After Phase 2:
 
 - `[P]` tasks touch different files and can run in parallel when prerequisites are met.
 - `[US1]` through `[US5]` labels map directly to the user stories in `spec.md`.
-- Keep all local verification in `~/.dope-test`; do not touch production tenants, live connectors, payment-provider credentials, invoice systems, tax systems, or revenue-recognition systems.
+- Keep all local verification in `~/.kura-test`; do not touch production tenants, live connectors, payment-provider credentials, invoice systems, tax systems, or revenue-recognition systems.
 - Preserve backward compatibility by keeping local development/unlimited plans explicit and non-denying by default.
 - Contract changes must update `schemas/`, `daemon/internal/contracts/`, SDK types, and docs together.
 - Stop at any checkpoint to validate the story independently before continuing.

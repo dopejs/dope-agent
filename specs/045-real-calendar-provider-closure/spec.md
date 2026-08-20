@@ -236,7 +236,7 @@ with a reason, and that no credential or token material is logged or surfaced.
   outcomes. No new event families are required. Operator docs (provider architecture /
   real-account smoke) should note the Feishu/Lark calendar provider closure.
 - **Environment & Secrets**: Default development and CI run against the fake backend in
-  `DOPE_ENV=test` with no live credentials required. Real-provider paths require
+  `KURA_ENV=test` with no live credentials required. Real-provider paths require
   operator-provided safe Feishu/Lark credentials/scopes and run only when explicitly
   enabled (live mode), never against prod config or live connectors without explicit intent.
   Secret material is resolved through the existing hosted-secrets/credential model and MUST

@@ -8,7 +8,7 @@ dep). Stories map to spec.md user stories US1 (read), US2 (write), US3 (diagnost
 ## Phase 1: Setup
 
 - [X] T001 [Setup] Confirm baseline: calendar + integrations + capabilities packages green;
-  adapter plane (Roadmap 59) wired in `app.go` via `DOPE_INTEGRATION_ADAPTER`.
+  adapter plane (Roadmap 59) wired in `app.go` via `KURA_INTEGRATION_ADAPTER`.
 - [X] T002 [Setup] Fix stale scaffolding header in spec.md (Phase 59 -> 60) and stale upstream
   pointer (044 -> 045).
 
@@ -53,7 +53,7 @@ dep). Stories map to spec.md user stories US1 (read), US2 (write), US3 (diagnost
 
 - [X] T015 [US3] App wiring: `feishu_lark` secret-backed `IntegrationCredentialFetcher` via the
   Roadmap 37 secret path; install on the adapter client; select real provider when configured.
-- [X] T016 [US3] `cmd/dope-integration-adapter`: `DOPE_ADAPTER_PROVIDER=feishu_lark` runs the
+- [X] T016 [US3] `cmd/kura-integration-adapter`: `KURA_ADAPTER_PROVIDER=feishu_lark` runs the
   real calendar provider serve loop; default stays the reference skeleton.
 - [X] T017 [US3] Diagnostics mapping test: representative OAuth/scope/token/rate-limit/unavailable
   failures map to stable existing reason codes with correct retry-safety + redaction; no raw

@@ -122,13 +122,13 @@ pub struct RpcError {
 }
 
 /// Go `stdioSession.initialize` params: protocol version, empty capabilities, and the
-/// dope-daemon client info.
+/// kura-daemon client info.
 #[must_use]
 pub fn initialize_params() -> Value {
     serde_json::json!({
         "protocolVersion": MCP_PROTOCOL_VERSION,
         "capabilities": {},
-        "clientInfo": { "name": "dope-daemon", "version": "dev" },
+        "clientInfo": { "name": "kura-daemon", "version": "dev" },
     })
 }
 

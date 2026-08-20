@@ -1,12 +1,12 @@
 [package]
-name = "dope-setupwizard"
+name = "kura-setupwizard"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-identity.workspace = true
-dope-secrets.workspace = true
+kura-identity.workspace = true
+kura-secrets.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true

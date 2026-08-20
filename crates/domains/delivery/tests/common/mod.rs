@@ -6,18 +6,18 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use dope_delivery::{
+use kura_delivery::{
     DeliveryAdapter, DeliveryOutcome, DeliveryPreference, DeliveryTarget, Manager, OutcomeStatus,
     ResultClass, SendResult, SummaryWindowStatus, TargetKind,
 };
-use dope_events::Bus;
-use dope_store::SQLiteStore;
+use kura_events::Bus;
+use kura_store::SQLiteStore;
 use parking_lot::Mutex;
 
 /// A fresh temp data dir per test name (mirrors the store crate tests).
 #[must_use]
 pub fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_delivery_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_delivery_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -97,7 +97,7 @@ pub fn seed_delivery_preference_state(
         .upsert_preference(DeliveryPreference {
             preference_id: "pref-default".to_string(),
             environment_scope: "test".to_string(),
-            scope_kind: dope_delivery::PreferenceScopeKind::UserDefault,
+            scope_kind: kura_delivery::PreferenceScopeKind::UserDefault,
             preferred_targets_by_class: by_class,
             ..DeliveryPreference::default()
         })

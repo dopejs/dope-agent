@@ -13,7 +13,7 @@ pub enum ConfigError {
     #[error("resolve user home: {0}")]
     HomeResolution(String),
 
-    /// The bootstrap data dir (from `DOPE_DATA_DIR` or the environment
+    /// The bootstrap data dir (from `KURA_DATA_DIR` or the environment
     /// default) failed `~` resolution.
     #[error("resolve bootstrap data dir: {0}")]
     ResolveBootstrapDataDir(#[source] Box<ConfigError>),

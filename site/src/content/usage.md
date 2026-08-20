@@ -32,9 +32,9 @@ exactly what is persisted on the dispatch record
 ## TypeScript SDK
 
 ```ts
-import { createDopeClient } from "@dope/client";
+import { createKuraClient } from "@kura/client";
 
-const client = createDopeClient({ baseURL: "http://127.0.0.1:19192" });
+const client = createKuraClient({ baseURL: "http://127.0.0.1:19192" });
 
 const result = await client.queryChat({ query: "hello", provider: "echo" });
 

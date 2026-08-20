@@ -4,7 +4,7 @@
 
 Use this quickstart to validate the Roadmap 42 implementation after tasks are generated
 and code changes are made. All local validation defaults to the test environment
-(`~/.dope-test`, `127.0.0.1:19192`).
+(`~/.kura-test`, `127.0.0.1:19192`).
 
 ## 1. Review Planning Contracts
 

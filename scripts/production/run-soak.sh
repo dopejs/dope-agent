@@ -1,32 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DURATION="${DOPE_SOAK_DURATION:-24h}"
-DOPE_DATA_DIR="${DOPE_DATA_DIR:-$HOME/.dope-test}"
-REPORT="${DOPE_SOAK_REPORT:-specs/024-production-ops-soak/fixtures/soak-report.latest.json}"
-DAEMON_HEALTH_URL="${DOPE_DAEMON_HEALTH_URL:-http://127.0.0.1:19192/healthz}"
-SAMPLE_SECONDS="${DOPE_SOAK_SAMPLE_SECONDS:-60}"
-BRANCH_OR_VERSION="${DOPE_SOAK_BRANCH_OR_VERSION:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf unknown)}"
-DOPE_HOSTED_RUN_ID="${DOPE_HOSTED_RUN_ID:-}"
-DOPE_HOSTED_PROFILE_ID="${DOPE_HOSTED_PROFILE_ID:-profile_hosted_test}"
-if [[ -n "$DOPE_HOSTED_RUN_ID" ]]; then
-  CONNECTOR_HEALTH="${DOPE_HOSTED_CONNECTOR_HEALTH:-unsupported}"
-  MCP_HEALTH="${DOPE_HOSTED_MCP_HEALTH:-unsupported}"
-  INTEGRATION_DIAGNOSTIC_STATE="${DOPE_HOSTED_INTEGRATION_DIAGNOSTIC_STATE:-unsupported}"
+DURATION="${KURA_SOAK_DURATION:-24h}"
+KURA_DATA_DIR="${KURA_DATA_DIR:-$HOME/.kura-test}"
+REPORT="${KURA_SOAK_REPORT:-specs/024-production-ops-soak/fixtures/soak-report.latest.json}"
+DAEMON_HEALTH_URL="${KURA_DAEMON_HEALTH_URL:-http://127.0.0.1:19192/healthz}"
+SAMPLE_SECONDS="${KURA_SOAK_SAMPLE_SECONDS:-60}"
+BRANCH_OR_VERSION="${KURA_SOAK_BRANCH_OR_VERSION:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf unknown)}"
+KURA_HOSTED_RUN_ID="${KURA_HOSTED_RUN_ID:-}"
+KURA_HOSTED_PROFILE_ID="${KURA_HOSTED_PROFILE_ID:-profile_hosted_test}"
+if [[ -n "$KURA_HOSTED_RUN_ID" ]]; then
+  CONNECTOR_HEALTH="${KURA_HOSTED_CONNECTOR_HEALTH:-unsupported}"
+  MCP_HEALTH="${KURA_HOSTED_MCP_HEALTH:-unsupported}"
+  INTEGRATION_DIAGNOSTIC_STATE="${KURA_HOSTED_INTEGRATION_DIAGNOSTIC_STATE:-unsupported}"
 else
-  CONNECTOR_HEALTH="${DOPE_HOSTED_CONNECTOR_HEALTH:-pass}"
-  MCP_HEALTH="${DOPE_HOSTED_MCP_HEALTH:-pass}"
-  INTEGRATION_DIAGNOSTIC_STATE="${DOPE_HOSTED_INTEGRATION_DIAGNOSTIC_STATE:-pass}"
+  CONNECTOR_HEALTH="${KURA_HOSTED_CONNECTOR_HEALTH:-pass}"
+  MCP_HEALTH="${KURA_HOSTED_MCP_HEALTH:-pass}"
+  INTEGRATION_DIAGNOSTIC_STATE="${KURA_HOSTED_INTEGRATION_DIAGNOSTIC_STATE:-pass}"
 fi
 
-if [[ "$DOPE_DATA_DIR" == "$HOME/.dope" && "${DOPE_LIVE_OPT_IN:-}" != "yes" ]]; then
-  printf 'refusing to soak production data without DOPE_LIVE_OPT_IN=yes\n' >&2
+if [[ "$KURA_DATA_DIR" == "$HOME/.kura" && "${KURA_LIVE_OPT_IN:-}" != "yes" ]]; then
+  printf 'refusing to soak production data without KURA_LIVE_OPT_IN=yes\n' >&2
   exit 2
 fi
 
 printf 'starting Roadmap 39 soak\n'
 printf 'duration=%s\n' "$DURATION"
-printf 'data_dir=%s\n' "$DOPE_DATA_DIR"
+printf 'data_dir=%s\n' "$KURA_DATA_DIR"
 printf 'report=%s\n' "$REPORT"
 
 TEMPORARY_SHORTER=false
@@ -55,7 +55,7 @@ case "$DURATION" in
     FOLLOW_UP=true
     ;;
   *)
-    printf 'unsupported DOPE_SOAK_DURATION=%s; use 24h, targeted-validation, Ns, or Nm\n' "$DURATION" >&2
+    printf 'unsupported KURA_SOAK_DURATION=%s; use 24h, targeted-validation, Ns, or Nm\n' "$DURATION" >&2
     exit 64
     ;;
 esac
@@ -123,12 +123,12 @@ while :; do
     HEALTH_FAILURES=$(( HEALTH_FAILURES + 1 ))
   fi
 
-  if [[ -d "$DOPE_DATA_DIR" ]]; then
-    LOG_BYTES="$(find "$DOPE_DATA_DIR" -type f -name '*.log' -print0 2>/dev/null | sum_file_sizes)"
+  if [[ -d "$KURA_DATA_DIR" ]]; then
+    LOG_BYTES="$(find "$KURA_DATA_DIR" -type f -name '*.log' -print0 2>/dev/null | sum_file_sizes)"
   else
     LOG_BYTES=0
   fi
-  DB_PATH="$DOPE_DATA_DIR/daemon.sqlite"
+  DB_PATH="$KURA_DATA_DIR/daemon.sqlite"
   if [[ -f "$DB_PATH" ]]; then
     DB_BYTES="$(file_size_bytes "$DB_PATH")"
   else
@@ -171,7 +171,7 @@ if [[ "$HEALTH_FAILURES" -gt 0 && "$TARGET_SECONDS" -ge 86400 ]]; then
   FAILURE_OWNER="daemon"
   UNCLASSIFIED_FAILURES_JSON="[\"daemon health failed during full-duration soak\"]"
 fi
-if [[ -n "$DOPE_HOSTED_RUN_ID" && "$HEALTH_FAILURES" -gt 0 ]]; then
+if [[ -n "$KURA_HOSTED_RUN_ID" && "$HEALTH_FAILURES" -gt 0 ]]; then
   FINAL_RESULT="fail"
   FAILURE_OWNER="daemon"
   UNCLASSIFIED_FAILURES_JSON="[\"daemon health failed during hosted soak\"]"
@@ -194,9 +194,9 @@ cat >"$REPORT" <<JSON
   "reportId": "soak_r39_$(date -u +%Y%m%dT%H%M%SZ)",
   "branchOrVersion": "$BRANCH_OR_VERSION",
   "environment": "test",
-  "dataDirectory": "$DOPE_DATA_DIR",
-  "hostedProfileId": "$DOPE_HOSTED_PROFILE_ID",
-  "hostedRunId": "$DOPE_HOSTED_RUN_ID",
+  "dataDirectory": "$KURA_DATA_DIR",
+  "hostedProfileId": "$KURA_HOSTED_PROFILE_ID",
+  "hostedRunId": "$KURA_HOSTED_RUN_ID",
   "daemonHealth": "$DAEMON_HEALTH",
   "baselineTopology": "tenant_scoped_single_node",
   "startedAt": "$STARTED_AT",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/computer-use-session-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/computer-use-session-resource.schema.json",
   "title": "ComputerUseSessionResource",
   "type": "object",
   "required": ["computerUseSessionId", "runId", "status", "driverKind", "startedAt", "updatedAt"],

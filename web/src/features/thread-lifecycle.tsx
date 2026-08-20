@@ -1,4 +1,4 @@
-import type { ThreadContinuityPreviewDetail, ThreadDetailResponse, ThreadListResponse } from "@dope/client";
+import type { ThreadContinuityPreviewDetail, ThreadDetailResponse, ThreadListResponse } from "@kura/client";
 
 type ThreadLifecycleViewProps = {
   threads?: ThreadListResponse | null;

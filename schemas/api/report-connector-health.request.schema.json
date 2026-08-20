@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/report-connector-health.request.schema.json",
+  "$id": "https://kura.local/schemas/api/report-connector-health.request.schema.json",
   "title": "ReportConnectorHealthRequest",
   "type": "object",
   "required": ["status"],

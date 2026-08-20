@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/audit-cross-tenant-access-denied.event.schema.json",
+  "$id": "https://kura.local/schemas/events/audit-cross-tenant-access-denied.event.schema.json",
   "title": "AuditCrossTenantAccessDeniedEvent",
   "description": "Emitted when a request or store call is rejected because it would access or mutate a record owned by a different tenant. Distinct from R34's `tenant.access_denied` (which covers identity-boundary denials at tenant context resolution). Payload MUST NOT include the target tenant id, the target resource id, or any target row data.",
   "allOf": [{ "$ref": "./runtime-event.schema.json" }],

@@ -4,11 +4,11 @@
 //! `daemon/internal/chat/service.go` ID generators.
 
 use chrono::{DateTime, Utc};
-use dope_bindings::RuntimeBindingEvidence;
-use dope_events::{Event, Resource, Scope};
-use dope_llm::DispatchStatus;
-use dope_profiles::RuntimeProjection;
-use dope_threads::{ContinuityPreview, ContinuityStatus, ContinuityTurn, RedactionStatus};
+use kura_bindings::RuntimeBindingEvidence;
+use kura_events::{Event, Resource, Scope};
+use kura_llm::DispatchStatus;
+use kura_profiles::RuntimeProjection;
+use kura_threads::{ContinuityPreview, ContinuityStatus, ContinuityTurn, RedactionStatus};
 use serde_json::{Value, json};
 
 /// Go `events.ThreadContinuityTurnRecordedName`.
@@ -206,7 +206,7 @@ pub fn binding_runtime_projected_event(evidence: &RuntimeBindingEvidence) -> Eve
             "bindingScope": evidence.binding_scope.as_str(),
             "bindingId": evidence.binding_id,
             "classification": evidence.classification.as_str(),
-            "selectionReason": dope_bindings::safe_reason(&evidence.selection_reason),
+            "selectionReason": kura_bindings::safe_reason(&evidence.selection_reason),
             "redactionStatus": evidence.redaction_status.as_str(),
         })),
         ..Event::default()

@@ -3,7 +3,7 @@
 //! These mirror the Go record structs in daemon/internal/store/{discord,telegram,slack}_setup.go
 //! byte-for-byte (field order, camelCase renames, omitempty behavior) so the
 //! document_json written by the fixture matches what the Go Save* accessors
-//! would have stored. The dope-store crate does not yet port those accessors,
+//! would have stored. The kura-store crate does not yet port those accessors,
 //! so the fixture writes the rows directly and reuses these shapes.
 
 use std::collections::BTreeMap;

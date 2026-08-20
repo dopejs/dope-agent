@@ -92,7 +92,7 @@ pub struct ThreadDetailResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub handoff_links: Vec<HandoffLink>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub active_profile_projection: Option<dope_profiles::RuntimeProjection>,
+    pub active_profile_projection: Option<kura_profiles::RuntimeProjection>,
 }
 
 /// Go: `ThreadPage`.

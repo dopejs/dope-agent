@@ -21,7 +21,7 @@ use crate::types::{
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Persistence abstraction for secret metadata (Go `Store` interface,
-/// implemented by `internal/store.SQLiteStore`). `dope-store` will provide
+/// implemented by `internal/store.SQLiteStore`). `kura-store` will provide
 /// the SQLite implementation; this crate stays persistence-free.
 ///
 /// Contract notes carried over from the Go SQLite implementation:

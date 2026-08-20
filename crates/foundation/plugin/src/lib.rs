@@ -1,4 +1,4 @@
-//! dope-plugin — the plugin kernel.
+//! kura-plugin — the plugin kernel.
 //!
 //! Everything outside the trust-boundary kernel (store, event bus, identity,
 //! auth, policy, secrets, audit) assembles as a plugin: a named unit that

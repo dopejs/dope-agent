@@ -13,18 +13,18 @@ evidence, and run computer-use steps inside the existing runtime and workflow su
 Roadmap 26 is closed by additive session, action, and artifact resources; risk-based
 approval tied to concrete actions; explicit target-mismatch and interruption semantics;
 single-page session boundaries; durable environment-scoped persistence; contract coverage;
-and one manual browser-based `DOPE_ENV=test` verification path.
+and one manual browser-based `KURA_ENV=test` verification path.
 
 ## Technical Context
 
-**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts  
-**Primary Dependencies**: `daemon/internal/api`, `daemon/internal/app`, new `daemon/internal/computeruse`, `daemon/internal/artifacts`, `daemon/internal/runtime`, `daemon/internal/orchestration`, `daemon/internal/policy`, `daemon/internal/events`, `daemon/internal/store`, `daemon/internal/contracts`, existing auth wiring, and a replaceable browser driver boundary that can later target `capabilities/browser`  
-**Storage**: SQLite daemon state with additive `computer_use_sessions`, `computer_use_actions`, and `computer_use_artifacts` persistence plus additive computer-use linkage on runtime tool-call truth; file-backed artifact content managed under the daemon-owned artifacts service  
-**Testing**: `go test ./internal/computeruse ./internal/api ./internal/store ./internal/app ./internal/contracts`, `make daemon-contract-test`, `go test ./...`, plus one manual browser-based `DOPE_ENV=test` verification path covering session creation, approval gating, evidence capture, and target mismatch  
-**Target Platform**: macOS/Linux local daemon in `DOPE_ENV=test` by default, using the existing localhost HTTP API and daemon-owned SQLite store  
-**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts  
-**Performance Goals**: create or inspect a computer-use session from persisted local state in `<=500 ms`; record action status and linked evidence metadata in `<=1 s` after a single-page browser action completes on local test hardware; return artifact metadata lookups in `<=500 ms` for recent artifacts in a single-user test environment  
-**Constraints**: browser-first only; one active page per session; sessions may be reused only within one run or workflow and never across runs or schedule dispatches; high-risk actions require action-scoped approval; target mismatch fails immediately and requires renewed inspection; restart must mark in-flight work interrupted rather than silently resuming; screenshots, snapshots, and downloads remain environment-scoped durable evidence; phase 26 excludes generalized desktop automation, multi-tab browsing, and hidden local-tool fallbacks  
+**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts
+**Primary Dependencies**: `daemon/internal/api`, `daemon/internal/app`, new `daemon/internal/computeruse`, `daemon/internal/artifacts`, `daemon/internal/runtime`, `daemon/internal/orchestration`, `daemon/internal/policy`, `daemon/internal/events`, `daemon/internal/store`, `daemon/internal/contracts`, existing auth wiring, and a replaceable browser driver boundary that can later target `capabilities/browser`
+**Storage**: SQLite daemon state with additive `computer_use_sessions`, `computer_use_actions`, and `computer_use_artifacts` persistence plus additive computer-use linkage on runtime tool-call truth; file-backed artifact content managed under the daemon-owned artifacts service
+**Testing**: `go test ./internal/computeruse ./internal/api ./internal/store ./internal/app ./internal/contracts`, `make daemon-contract-test`, `go test ./...`, plus one manual browser-based `KURA_ENV=test` verification path covering session creation, approval gating, evidence capture, and target mismatch
+**Target Platform**: macOS/Linux local daemon in `KURA_ENV=test` by default, using the existing localhost HTTP API and daemon-owned SQLite store
+**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts
+**Performance Goals**: create or inspect a computer-use session from persisted local state in `<=500 ms`; record action status and linked evidence metadata in `<=1 s` after a single-page browser action completes on local test hardware; return artifact metadata lookups in `<=500 ms` for recent artifacts in a single-user test environment
+**Constraints**: browser-first only; one active page per session; sessions may be reused only within one run or workflow and never across runs or schedule dispatches; high-risk actions require action-scoped approval; target mismatch fails immediately and requires renewed inspection; restart must mark in-flight work interrupted rather than silently resuming; screenshots, snapshots, and downloads remain environment-scoped durable evidence; phase 26 excludes generalized desktop automation, multi-tab browsing, and hidden local-tool fallbacks
 **Scale/Scope**: one operator-managed daemon handling low tens of active computer-use sessions, one active page per session, low hundreds of actions and artifacts per day, and mixed workflows that combine browser steps with other runtime capabilities
 
 ## Constitution Check
@@ -46,11 +46,11 @@ and one manual browser-based `DOPE_ENV=test` verification path.
   docs that must change together so operators can inspect approvals, actions, target
   mismatch, evidence, and interruptions without raw logs.
 - Verification and observability: PASS. The design requires targeted computer-use, API,
-  store, app restart, and contract coverage plus one manual `DOPE_ENV=test` browser path.
+  store, app restart, and contract coverage plus one manual `KURA_ENV=test` browser path.
   Operator-visible resources and events replace implicit browser-driver logs as the source
   of truth for approval, target mismatch, navigation failure, unavailable consumer, and
   interruption outcomes.
-- Environment and secrets: PASS. Local work stays in `DOPE_ENV=test`, no production
+- Environment and secrets: PASS. Local work stays in `KURA_ENV=test`, no production
   connectors are required, browser evidence remains environment-scoped, and any captured
   content follows existing secret-handling and redaction rules.
 

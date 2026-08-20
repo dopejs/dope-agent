@@ -1,6 +1,6 @@
 //! In-memory test doubles for the persistence traits. `FakeStore` mirrors
 //! the Go `SQLiteStore` semantics the package tests exercise (notably
-//! transactional rotate: version numbering and supersede). `dope-store`
+//! transactional rotate: version numbering and supersede). `kura-store`
 //! (wave 5) owns the real SQLite implementation.
 
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ impl TestDir {
     pub(crate) fn new(label: &str) -> Self {
         let unique = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "dope-secrets-test-{}-{unique}-{label}",
+            "kura-secrets-test-{}-{unique}-{label}",
             std::process::id()
         ));
         std::fs::create_dir_all(&path).expect("create test dir");

@@ -127,7 +127,7 @@ pub struct Run {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub latest_delivery_target_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub active_profile_projection: Option<dope_profiles::RuntimeProjection>,
+    pub active_profile_projection: Option<kura_profiles::RuntimeProjection>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -238,11 +238,11 @@ pub struct ToolCall {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub failure_class: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub integration_bindings: Vec<dope_integrations::BindingSummary>,
+    pub integration_bindings: Vec<kura_integrations::BindingSummary>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub calendar_operation_summaries: Vec<dope_calendar::OperationSummary>,
+    pub calendar_operation_summaries: Vec<kura_calendar::OperationSummary>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mail_operation_summaries: Vec<dope_mail::OperationSummary>,
+    pub mail_operation_summaries: Vec<kura_mail::OperationSummary>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -301,7 +301,7 @@ pub struct CreateToolCallInput {
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub sandbox: serde_json::Map<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub integration_bindings: Vec<dope_integrations::BindingSummary>,
+    pub integration_bindings: Vec<kura_integrations::BindingSummary>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -314,7 +314,7 @@ pub struct CompleteToolCallInput {
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub sandbox: serde_json::Map<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub integration_bindings: Vec<dope_integrations::BindingSummary>,
+    pub integration_bindings: Vec<kura_integrations::BindingSummary>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -329,7 +329,7 @@ pub struct FailToolCallInput {
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub sandbox: serde_json::Map<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub integration_bindings: Vec<dope_integrations::BindingSummary>,
+    pub integration_bindings: Vec<kura_integrations::BindingSummary>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -344,7 +344,7 @@ pub struct DenyToolCallInput {
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub sandbox: serde_json::Map<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub integration_bindings: Vec<dope_integrations::BindingSummary>,
+    pub integration_bindings: Vec<kura_integrations::BindingSummary>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -359,7 +359,7 @@ pub struct CancelToolCallInput {
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub sandbox: serde_json::Map<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub integration_bindings: Vec<dope_integrations::BindingSummary>,
+    pub integration_bindings: Vec<kura_integrations::BindingSummary>,
 }
 
 #[must_use]
@@ -1018,9 +1018,9 @@ fn new_step_id() -> String {
 }
 
 #[must_use]
-pub fn live_validation_matrix_rows() -> Vec<dope_livevalidation::MatrixRow> {
-    let tool_class = dope_livevalidation::ToolClass::from(dope_livevalidation::ToolClass::RUNTIME_LOCAL_TOOL_CALL);
-    match dope_livevalidation::default_matrix_row(&tool_class) {
+pub fn live_validation_matrix_rows() -> Vec<kura_livevalidation::MatrixRow> {
+    let tool_class = kura_livevalidation::ToolClass::from(kura_livevalidation::ToolClass::RUNTIME_LOCAL_TOOL_CALL);
+    match kura_livevalidation::default_matrix_row(&tool_class) {
         Some(row) => vec![row],
         None => Vec::new(),
     }

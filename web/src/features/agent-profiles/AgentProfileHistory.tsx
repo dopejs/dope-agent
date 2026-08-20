@@ -1,4 +1,4 @@
-import type { AgentProfileVersionResource } from "@dope/client";
+import type { AgentProfileVersionResource } from "@kura/client";
 
 type AgentProfileHistoryProps = {
   versions?: AgentProfileVersionResource[];

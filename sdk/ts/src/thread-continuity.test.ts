@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDopeClient } from "./index.js";
+import { createKuraClient } from "./index.js";
 
 function mockJSONResponse(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -14,7 +14,7 @@ function mockJSONResponse(status: number, payload: unknown): Response {
 describe("thread continuity SDK coverage", () => {
   it("sends thread-aware chat input and exposes continuity metadata", async () => {
     let body: Record<string, unknown> = {};
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       accessToken: "token",
       fetchImpl: vi.fn<typeof fetch>(async (_input, init) => {
@@ -60,7 +60,7 @@ describe("thread continuity SDK coverage", () => {
 
   it("keeps single-turn chat requests compatible by omitting empty continuity fields", async () => {
     let body: Record<string, unknown> = {};
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       fetchImpl: vi.fn<typeof fetch>(async (_input, init) => {
         body = JSON.parse(String(init?.body));
@@ -87,7 +87,7 @@ describe("thread continuity SDK coverage", () => {
   });
 
   it("exposes reset-boundary continuity metadata on chat responses", async () => {
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       fetchImpl: vi.fn<typeof fetch>(async () => mockJSONResponse(200, {
         dispatchId: "dispatch_reset",
@@ -141,7 +141,7 @@ describe("thread continuity SDK coverage", () => {
         error: "permission_missing",
         denial: { missingPermissions: ["credentials.inspect"] }
       }));
-    const client = createDopeClient({
+    const client = createKuraClient({
       baseURL: "http://127.0.0.1:19192/",
       fetchImpl
     });

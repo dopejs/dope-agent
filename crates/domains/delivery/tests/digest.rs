@@ -7,17 +7,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_delivery::{
+use kura_delivery::{
     DeliveryMode, DeliveryPreference, DeliveryTarget, OutcomeInput, OutcomeStatus,
     PreferenceScopeKind, ResultClass, SummaryPolicy, TargetKind,
 };
-use dope_events::Bus;
-use dope_store::delivery::DeliverySummaryWindowRecord;
+use kura_events::Bus;
+use kura_store::delivery::DeliverySummaryWindowRecord;
 
 use common::{store, wait_for_window_status, ScriptedAdapter};
 
 fn seed_digest_preference_state(
-    manager: &dope_delivery::Manager,
+    manager: &kura_delivery::Manager,
 ) -> (DeliveryTarget, DeliveryPreference) {
     let target = manager
         .create_target(DeliveryTarget {
@@ -51,12 +51,12 @@ fn seed_digest_preference_state(
 #[test]
 fn digest_windows_batch_routine_success_and_urgent_bypasses() {
     let store = store("digest");
-    let sink = Arc::new(dope_delivery::TestSinkAdapter::new());
-    let manager = dope_delivery::Manager::new(
+    let sink = Arc::new(kura_delivery::TestSinkAdapter::new());
+    let manager = kura_delivery::Manager::new(
         "test",
         Bus::new(),
         Arc::clone(&store),
-        vec![Arc::clone(&sink) as Arc<dyn dope_delivery::DeliveryAdapter>],
+        vec![Arc::clone(&sink) as Arc<dyn kura_delivery::DeliveryAdapter>],
     );
     let (target, _) = seed_digest_preference_state(&manager);
 
@@ -120,7 +120,7 @@ fn digest_windows_batch_routine_success_and_urgent_bypasses() {
     manager.clear_window_schedule(&window.summary_window_id);
     manager.emit_window(&window.summary_window_id).unwrap();
 
-    wait_for_window_status(&manager, &window.summary_window_id, dope_delivery::SummaryWindowStatus::Delivered);
+    wait_for_window_status(&manager, &window.summary_window_id, kura_delivery::SummaryWindowStatus::Delivered);
     let (delivered_window, _) = manager.get_summary_window(&window.summary_window_id).unwrap();
     assert!(!delivered_window.emitted_delivery_id.is_empty());
     let (digest_outcome, ok) = manager.get_outcome(&delivered_window.emitted_delivery_id).unwrap();
@@ -141,18 +141,18 @@ fn digest_empty_window_is_cancelled() {
     let (manager, store) = common::manager_with(Vec::new());
     // A window with no routed results (result_count 0) created directly through the store.
     let now = Utc::now();
-    let window = dope_delivery::SummaryWindow {
+    let window = kura_delivery::SummaryWindow {
         summary_window_id: "window_empty".to_string(),
         environment_scope: "test".to_string(),
         target_id: "t".to_string(),
         preference_id: "p".to_string(),
-        status: dope_delivery::SummaryWindowStatus::Open,
+        status: kura_delivery::SummaryWindowStatus::Open,
         window_started_at: now,
         window_ends_at: now - chrono::Duration::seconds(1),
         result_count: 0,
         created_at: now,
         updated_at: now,
-        ..dope_delivery::SummaryWindow::default()
+        ..kura_delivery::SummaryWindow::default()
     };
     store.lock().upsert_delivery_summary_window(&DeliverySummaryWindowRecord {
         summary_window_id: window.summary_window_id.clone(),
@@ -166,7 +166,7 @@ fn digest_empty_window_is_cancelled() {
     }).unwrap();
     manager.emit_window("window_empty").unwrap();
     let (window, _) = manager.get_summary_window("window_empty").unwrap();
-    assert_eq!(window.status, dope_delivery::SummaryWindowStatus::Cancelled);
+    assert_eq!(window.status, kura_delivery::SummaryWindowStatus::Cancelled);
 }
 
 #[test]
@@ -184,7 +184,7 @@ fn digest_restore_rearms_open_and_ready_windows() {
     assert_eq!(outcome.mode, DeliveryMode::Digest);
     let windows = manager.list_summary_windows().unwrap();
     assert_eq!(windows.len(), 1);
-    assert_eq!(windows[0].status, dope_delivery::SummaryWindowStatus::Open);
+    assert_eq!(windows[0].status, kura_delivery::SummaryWindowStatus::Open);
 
     // Restore must re-arm the open window (a parked thread already sleeps for the window,
     // so restore() itself must not error and the window list is unchanged).

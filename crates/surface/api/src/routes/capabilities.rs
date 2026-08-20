@@ -14,8 +14,8 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
 
-use dope_capabilities as capabilities;
-use dope_events as events;
+use kura_capabilities as capabilities;
+use kura_events as events;
 
 use crate::error::ApiError;
 use crate::middleware::environment_scope_from_config;
@@ -202,7 +202,7 @@ mod tests {
 
     fn state_with_supervisor() -> crate::state::AppState {
         let mut state = test_state();
-        state.capabilities = Some(Arc::new(dope_capabilities::Supervisor::new()));
+        state.capabilities = Some(Arc::new(kura_capabilities::Supervisor::new()));
         state
     }
 

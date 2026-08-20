@@ -20,7 +20,7 @@ Every valid soak scenario must cover:
 
 ## Duration And Restart Requirements
 
-- First baseline duration: at least 24 hours in `DOPE_ENV=test`.
+- First baseline duration: at least 24 hours in `KURA_ENV=test`.
 - Minimum restarts: 3 daemon restarts during the run.
 - Restart evidence must record restart timestamp, in-flight work, recovered state, and
   recovery time.

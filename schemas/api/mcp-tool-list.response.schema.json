@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/mcp-tool-list.response.schema.json",
+  "$id": "https://kura.local/schemas/api/mcp-tool-list.response.schema.json",
   "title": "MCPToolListResponse",
   "type": "object",
   "required": ["items"],

@@ -8,7 +8,7 @@ use axum::body::Bytes;
 use axum::routing::post;
 use axum::{Json, Router};
 
-use dope_opsreadiness as opsreadiness;
+use kura_opsreadiness as opsreadiness;
 
 use crate::error::ApiError;
 use crate::state::AppState;

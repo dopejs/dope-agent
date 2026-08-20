@@ -3,7 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use dope_model_provider::ToolSpec;
+use kura_model_provider::ToolSpec;
 
 #[derive(Debug)]
 pub struct ToolInvocation {

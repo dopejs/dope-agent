@@ -1,13 +1,13 @@
 [package]
-name = "dope-skills"
+name = "kura-skills"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-sandbox.workspace = true
-dope-secrets.workspace = true
-dope-identity.workspace = true
+kura-sandbox.workspace = true
+kura-secrets.workspace = true
+kura-identity.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true

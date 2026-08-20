@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/setup-oauth-callback.request.schema.json",
+  "$id": "https://kura.local/schemas/api/setup-oauth-callback.request.schema.json",
   "title": "SetupOAuthCallbackRequest",
   "type": "object",
   "required": ["state", "result"],

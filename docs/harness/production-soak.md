@@ -1,6 +1,6 @@
 # Production Soak Harness
 
-Roadmap 39 requires a 24-hour `DOPE_ENV=test` soak in the isolated test
+Roadmap 39 requires a 24-hour `KURA_ENV=test` soak in the isolated test
 environment unless a temporary shorter threshold is explicitly recorded with a
 mandatory follow-up full-duration rerun.
 
@@ -51,7 +51,7 @@ diagnostic state, unsupported observation markers, and failure-owner
 classification. Unsupported observations must be explicitly listed; missing
 observations without an unsupported marker block release readiness.
 
-Set `DOPE_SOAK_REPORT` to choose the JSON output path. `DOPE_SOAK_DURATION=24h`
+Set `KURA_SOAK_REPORT` to choose the JSON output path. `KURA_SOAK_DURATION=24h`
 performs a real 86400-second run and records elapsed time. Shorter values such
 as `targeted-validation`, `30s`, or `5m` are treated as temporary validation and
 the generated report marks `followUpFullRerun` as required.

@@ -1,4 +1,4 @@
-//! Wire-string mapping for the `dope-threads` enums used in event payloads.
+//! Wire-string mapping for the `kura-threads` enums used in event payloads.
 //!
 //! The threads crate models Go's `type X string` vocabularies as closed Rust
 //! enums (serde `snake_case`) without `as_str`/`Display` impls. These helpers
@@ -6,7 +6,7 @@
 //! payloads stay byte-identical to the Go builders. A test in
 //! `tests/constructors.rs` locks each mapping against `serde_json` output.
 
-use dope_threads::{
+use kura_threads::{
     ContinuityStatus, ConversationShape, HandoffSourceReferenceStatus, HandoffStatus,
     LifecycleActionKind, ParticipationDecisionValue, RedactionStatus, ResetEventStatus,
     RoutingOutcome, RuntimeResourceKind, ShapeEvidenceStatus,
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn wire_strings_match_serde_snake_case() {
-        use dope_threads::{ContinuityRole, SourceKind};
+        use kura_threads::{ContinuityRole, SourceKind};
 
         assert_wire(redaction_status(&RedactionStatus::Redacted), &RedactionStatus::Redacted);
         assert_wire(redaction_status(&RedactionStatus::Suppressed), &RedactionStatus::Suppressed);

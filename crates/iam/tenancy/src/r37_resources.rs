@@ -4,7 +4,7 @@
 //! Port of daemon/internal/store/tenancy/r37_resources.go.
 
 use crate::{emit_denial, require, TenancyError};
-use dope_store::mcp::{MCPServerRecord, MCPServerStateRecord, MCPToolRecord};
+use kura_store::mcp::{MCPServerRecord, MCPServerStateRecord, MCPToolRecord};
 
 /// Storage key used to namespace provider auth states per tenant
 /// (Go r37StorageKey: trimmed tenantID + "::" + trimmed id).
@@ -15,12 +15,12 @@ fn r37_storage_key(tenant_id: &str, id: &str) -> String {
 /// Tenant-aware accessor for Roadmap 37 credential-bearing resources.
 pub struct R37Resources {
     store: crate::SQLiteStore,
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl R37Resources {
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         R37Resources { store, emitter }
     }
 
@@ -61,7 +61,7 @@ impl R37Resources {
     /// binding tenant_id on the row.
     pub fn upsert_provider_auth_state_for_tenant(
         &self,
-        state: &mut dope_providers::AuthState,
+        state: &mut kura_providers::AuthState,
     ) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         state.tenant_id = tenant_id.clone();
@@ -76,7 +76,7 @@ impl R37Resources {
         }
     }
 
-    pub fn upsert_connector_for_tenant(&self, connector: &dope_connectors::Connector) -> Result<(), TenancyError> {
+    pub fn upsert_connector_for_tenant(&self, connector: &kura_connectors::Connector) -> Result<(), TenancyError> {
         let tenant_id = require()?;
         self.guard_scalar_tenant("connectors", "connector_id", &connector.connector_id, &tenant_id, "store:UpsertConnectorForTenant", "connector")?;
         self.store.upsert_connector(connector).map_err(TenancyError::from)?;

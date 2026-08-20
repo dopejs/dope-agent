@@ -3,7 +3,7 @@
 **Input**: Design documents from `/specs/018-evaluation-replay-harness/`  
 **Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md), [data-model.md](./data-model.md), [contracts/evaluation-replay-surfaces.md](./contracts/evaluation-replay-surfaces.md), [quickstart.md](./quickstart.md)
 
-**Tests**: Constitution rules apply. This roadmap changes daemon persistence, schema-backed HTTP APIs, event contracts, SDK methods, web operator-shell behavior, and restart-visible evaluation history, so targeted Go unit/API/store/contract tests, SDK tests, web tests, contract validation, and manual `DOPE_ENV=test` verification are required.
+**Tests**: Constitution rules apply. This roadmap changes daemon persistence, schema-backed HTTP APIs, event contracts, SDK methods, web operator-shell behavior, and restart-visible evaluation history, so targeted Go unit/API/store/contract tests, SDK tests, web tests, contract validation, and manual `KURA_ENV=test` verification are required.
 
 **Organization**: Tasks are grouped by user story so each story can be implemented and verified as an independently testable increment.
 
@@ -42,7 +42,7 @@
 
 **Goal**: Operators can select a curated candidate or fixture in the web operator shell, inspect readiness, and launch a default non-live replay without raw route use or unintended side effects.
 
-**Independent Test**: Select a curated representative prior run, workflow, or engineer-managed fixture in `DOPE_ENV=test`, launch a non-live replay from the web shell, and inspect the attempt status, source linkage, readiness limitations, blocked reasons, and evidence refs after daemon restart.
+**Independent Test**: Select a curated representative prior run, workflow, or engineer-managed fixture in `KURA_ENV=test`, launch a non-live replay from the web shell, and inspect the attempt status, source linkage, readiness limitations, blocked reasons, and evidence refs after daemon restart.
 
 ### Tests for User Story 1
 
@@ -131,7 +131,7 @@
 - [X] T052 [P] Update schema index and contract documentation for evaluation resources and events in `schemas/README.md` and `schemas/api/README.md`, and create or update `schemas/events/README.md`
 - [X] T053 Run `cd daemon && go mod tidy` and record module fallout in `specs/018-evaluation-replay-harness/plan.md`
 - [X] T054 Run automated verification for daemon evaluation, API, store, contract, SDK, and web paths; record route timing targets, supported-fixture classification rate, and results in `specs/018-evaluation-replay-harness/quickstart.md` and `specs/018-evaluation-replay-harness/plan.md`
-- [X] T055 Run the manual `DOPE_ENV=test` before/after replay walkthrough, restart daemon to confirm durable evaluation history, record the 10-minute replay completion target and 5-minute drift-determination target, and record observed candidate, attempt, comparison, fixture, and web-shell behavior in `specs/018-evaluation-replay-harness/quickstart.md` and `specs/018-evaluation-replay-harness/plan.md`
+- [X] T055 Run the manual `KURA_ENV=test` before/after replay walkthrough, restart daemon to confirm durable evaluation history, record the 10-minute replay completion target and 5-minute drift-determination target, and record observed candidate, attempt, comparison, fixture, and web-shell behavior in `specs/018-evaluation-replay-harness/quickstart.md` and `specs/018-evaluation-replay-harness/plan.md`
 
 ---
 
@@ -220,7 +220,7 @@ Task: "T040 [US3] Add SDK and web tests for fixture listing and no-editing UX in
 1. Complete Phase 1: Setup.
 2. Complete Phase 2: Foundational.
 3. Complete Phase 3: User Story 1.
-4. Validate curated candidate listing, non-live replay launch, blocked/evidence-only side-effect behavior, and restart persistence in `DOPE_ENV=test`.
+4. Validate curated candidate listing, non-live replay launch, blocked/evidence-only side-effect behavior, and restart persistence in `KURA_ENV=test`.
 5. Treat this as the MVP checkpoint only; roadmap 33 is not closed until comparison, fixtures, docs, and verification are complete.
 
 ### Incremental Delivery

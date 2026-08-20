@@ -4,19 +4,19 @@
 //! upserts, audit emission on cross-tenant lookup.
 
 use crate::{emit_denial, require, TenancyError};
-use dope_store::schedule::{
+use kura_store::schedule::{
     ScheduleDispatchAttemptRecord, ScheduleRecord, ScheduleTargetRecord,
 };
 
 /// Tenant-aware accessor for the schedules family.
 pub struct Schedules {
     store: crate::SQLiteStore,
-    emitter: Option<dope_audit::Emitter>,
+    emitter: Option<kura_audit::Emitter>,
 }
 
 impl Schedules {
     #[must_use]
-    pub fn new(store: crate::SQLiteStore, emitter: Option<dope_audit::Emitter>) -> Self {
+    pub fn new(store: crate::SQLiteStore, emitter: Option<kura_audit::Emitter>) -> Self {
         Schedules { store, emitter }
     }
 

@@ -3,7 +3,7 @@ import type {
   BindingResource,
   WorkspaceListResponse,
   CreateBindingInput
-} from "@dope/client";
+} from "@kura/client";
 
 type WorkspaceBindingEditorProps = {
   workspaces?: WorkspaceListResponse | null;

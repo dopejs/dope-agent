@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::io::{BufReader, Read, Write};
 use std::time::Duration;
 
-use dope_adapterrpc::{
+use kura_adapterrpc::{
     read_request, write_message, Client, CodecError, FailureKind, Request, Response, Status,
     CONTRACT_VERSION,
 };

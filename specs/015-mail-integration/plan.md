@@ -13,44 +13,44 @@ dedicated `daemon/internal/mail` package that can project mailbox identity from 
 shared integration substrate, inspect mailbox threads and message detail, create and
 update drafts, send either direct messages or existing drafts, and execute reply and
 forward flows with truthful separation between draft-only and sent-message outcomes.
-Verification stays in `DOPE_ENV=test` by reusing the shared `fake_local` backend kind
+Verification stays in `KURA_ENV=test` by reusing the shared `fake_local` backend kind
 while keeping deterministic mailbox state in a dedicated daemon-owned fake mail backend,
 rather than requiring live third-party mail accounts.
 
 ## Technical Context
 
-**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts  
+**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts
 **Primary Dependencies**: `daemon/internal/api`, new `daemon/internal/mail`,
 `daemon/internal/app`, `daemon/internal/runtime`, `daemon/internal/orchestration`,
 `daemon/internal/scheduler`, `daemon/internal/integrations`,
 `daemon/internal/delivery`, `daemon/internal/policy`, `daemon/internal/events`,
 `daemon/internal/store`, `daemon/internal/contracts`, existing auth wiring, and the
 shared repo-owned `fake_local` backend contract plus a dedicated mail fake backend for
-mail-domain verification  
+mail-domain verification
 **Storage**: SQLite daemon state with additive `mail_accounts`, `mail_operations`, and
 `mail_artifacts` persistence plus additive workflow-step, tool-call, schedule-attempt,
 and delivery linkage for mail-operation summaries; full binary attachment storage is out
-of scope in phase 30  
+of scope in phase 30
 **Testing**: `go test ./internal/mail ./internal/api ./internal/store ./internal/app ./internal/runtime ./internal/orchestration ./internal/scheduler ./internal/integrations ./internal/delivery ./internal/policy ./internal/contracts`,
 `make daemon-contract-test`, targeted mail-route and workflow regressions, and one manual
-`DOPE_ENV=test` walkthrough using the fake mail backend plus `test_sink` delivery  
-**Target Platform**: macOS/Linux local daemon in `DOPE_ENV=test` by default, using the
+`KURA_ENV=test` walkthrough using the fake mail backend plus `test_sink` delivery
+**Target Platform**: macOS/Linux local daemon in `KURA_ENV=test` by default, using the
 existing localhost HTTP API, SQLite store, and operator-authenticated `/v1/*` control
-plane  
+plane
 **Project Type**: Go daemon and harness control-plane service with schema-backed HTTP
-and event contracts  
+and event contracts
 **Performance Goals**: inspect mailbox projection, thread detail, message detail, or
 draft detail from persisted local state in `<=500 ms`; persist and project one
 draft/send/reply/forward result in `<=1 s` after backend completion on local test
 hardware; deliver a background mail result through the shared delivery plane in `<=2 s`
-after the operation reaches a terminal state excluding connector latency  
+after the operation reaches a terminal state excluding connector latency
 **Constraints**: roadmap 30 MUST reuse phase 27 integration readiness and canonical
 default semantics plus phase 28 delivery targets and outcome history; read, draft,
 direct send, send-existing-draft, reply, and forward remain distinct operation classes;
 new outbound mail requires recipients explicitly provided in the current request; full
 attachment upload/download stays out of scope; unresolved attachment references block
 final send; background workflows may finalize send only when they explicitly declare
-send-side-effect permission; existing non-mail behavior remains backward compatible  
+send-side-effect permission; existing non-mail behavior remains backward compatible
 **Scale/Scope**: one operator-managed daemon, low tens of mail integrations and mailbox
 projections, low hundreds of mailbox inspections or outbound actions per day, one
 repo-owned fake mail backend plus one shared delivery sink sufficient to close roadmap
@@ -75,11 +75,11 @@ repo-owned fake mail backend plus one shared delivery sink sufficient to close r
   the schema, event, and doc updates required to keep mailbox selection, send path,
   attachment failure truth, and delivery linkage inspectable.
 - Verification and observability: PASS. The design requires targeted package, contract,
-  workflow, schedule, and fake-backend regressions plus one manual `DOPE_ENV=test`
+  workflow, schedule, and fake-backend regressions plus one manual `KURA_ENV=test`
   walkthrough. Operator-visible account, operation, artifact, and delivery resources
   replace backend guesswork or raw provider logs as the source of truth.
 - Environment and secrets: PASS. Local planning and later verification stay in
-  `DOPE_ENV=test`; the repo-owned fake mail backend avoids live mail credentials; any
+  `KURA_ENV=test`; the repo-owned fake mail backend avoids live mail credentials; any
   real connector or token use remains optional, operator-owned, redacted, and
   environment-scoped.
 

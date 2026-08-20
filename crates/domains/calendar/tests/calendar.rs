@@ -1,12 +1,12 @@
 use chrono::{TimeZone, Utc};
-use dope_calendar::{
+use kura_calendar::{
     attendee_emails, build_attendee_outcome, live_validation_matrix_rows, normalize_timezone,
     resolve_attendee_requests, Attendee, AttendeeRequest, BusyFreeInput, CancelEventInput,
     CalendarError, CreateEventInput, EventLifecycleState, GetEventInput, InvitationStatus,
     ListEventsInput, Manager, NotificationBehavior, OperationFilter, OperationStatus,
     RecurrenceScope, Selection, UpdateAttendeesInput, UpdateEventInput,
 };
-use dope_integrations::{BackendBinding, BackendKind, ReadinessStatus, Resource};
+use kura_integrations::{BackendBinding, BackendKind, ReadinessStatus, Resource};
 
 fn test_resource(integration_id: &str, env: &str, canonical_default: bool) -> Resource {
     Resource {
@@ -107,7 +107,7 @@ fn create_event_records_completed_operation_and_artifact() {
 
     let ops = manager.list_operations(&OperationFilter::default());
     assert_eq!(ops.len(), 1);
-    assert_eq!(ops[0].operation_class, dope_calendar::OperationClass::CreateEvent);
+    assert_eq!(ops[0].operation_class, kura_calendar::OperationClass::CreateEvent);
 
     let list_input = ListEventsInput { selection: Selection { integration_id: "cal_1".to_string() }, ..ListEventsInput::default() };
     let (_, events, _, _) = manager.list_events(&resources, &list_input).unwrap();

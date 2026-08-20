@@ -47,10 +47,10 @@ store/tenancy, API, integration fake backends, calendar/mail/delivery connectors
 events, and contracts; restart tests for after-submit and pending reconciliation states;
 matrix completeness tests; fake-backend side-effect replay tests; `go test ./...` in
 `daemon/`; `make daemon-contract-test`; `make daemon-run-test` plus manual live
-validation smoke in `DOPE_ENV=test`; `pnpm test:clients`; `pnpm build`; `go mod tidy`
+validation smoke in `KURA_ENV=test`; `pnpm test:clients`; `pnpm build`; `go mod tidy`
 from `daemon/` after implementation.  
 **Target Platform**: Local-first daemon and hosted daemon behavior, verified in the
-default isolated test environment (`~/.dope-test`, `127.0.0.1:19192`). Optional
+default isolated test environment (`~/.kura-test`, `127.0.0.1:19192`). Optional
 real-account smoke uses explicit operator opt-in and live connector configuration; it is
 not required for normal automated acceptance.  
 **Project Type**: Multi-domain daemon platform change spanning evaluation replay,
@@ -100,7 +100,7 @@ priority over high-throughput replay execution.
   completed/failed/skipped/denied/aborted ledger outcomes, timeout-after-submit,
   restart-after-submit, duplicate retry, ambiguous commit, reconciliation authority,
   retention, contract shapes, and operator-visible comparison evidence.
-- **Environment and secrets** — PASS. Default verification uses `~/.dope-test` and fake
+- **Environment and secrets** — PASS. Default verification uses `~/.kura-test` and fake
   backends. Real-account smoke is optional, explicitly opted in, and must record scope
   without logging secrets or raw credential material.
 
@@ -206,7 +206,7 @@ without a contract row and proving test.
 - **Verification and observability** — PASS. Quickstart names targeted package tests,
   full daemon tests, contract tests, client tests, test-daemon smoke, fake-backend
   side-effect paths, restart recovery, and operator-visible evidence checks.
-- **Environment and secrets** — PASS. Design defaults to `~/.dope-test` and fake
+- **Environment and secrets** — PASS. Design defaults to `~/.kura-test` and fake
   backends, treats real-account smoke as explicit opt-in, and requires redacted evidence
   with no secret logging.
 

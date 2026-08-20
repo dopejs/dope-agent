@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use dope_store::{
+use kura_store::{
     ConnectorAccountBindingSummary, DiscordDestinationValidationRecord, DiscordHostedSetupRecord,
     DiscordSmokeEvidenceRecord, MatrixConversationRouteRecord, MatrixEventEvidenceRecord,
     MatrixHostedSetupRecord, MatrixRoutePolicyRecord, MatrixSmokeEvidenceRecord,
@@ -18,7 +18,7 @@ use dope_store::{
 };
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -189,8 +189,8 @@ fn telegram_setup_allowments_smoke_and_updates_round_trip_tenant_safe() {
                 tenant_id: "ten_telegram".to_string(),
                 connector_id: "telegram-main".to_string(),
                 connector_account_id: "telegram_bot_42".to_string(),
-                display_name: "dope_test_bot".to_string(),
-                provider_account_hint: "dope_test_bot".to_string(),
+                display_name: "kura_test_bot".to_string(),
+                provider_account_hint: "kura_test_bot".to_string(),
                 redaction_status: "redacted".to_string(),
                 updated_at: now,
             }),
@@ -256,7 +256,7 @@ fn telegram_setup_allowments_smoke_and_updates_round_trip_tenant_safe() {
     assert_eq!(got.allowments[0].safe_evidence.get("scope"), Some(&"direct_chat".to_string()));
     let binding = got.account_binding.expect("account binding round-trips");
     assert_eq!(binding.connector_account_id, "telegram_bot_42");
-    assert_eq!(binding.provider_account_hint, "dope_test_bot");
+    assert_eq!(binding.provider_account_hint, "kura_test_bot");
 
     // Cross-tenant lookups are empty.
     assert!(store.get_telegram_hosted_setup("ten_other", "telegram-main").unwrap().is_none());

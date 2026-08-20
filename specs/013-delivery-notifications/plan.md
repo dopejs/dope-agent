@@ -13,38 +13,38 @@ without an active foreground session. The roadmap is closed by environment-scope
 delivery targets and preferences, single-target routing with user defaults plus optional
 integration overrides, per-attempt delivery history, explicit suppression and retry
 truth, routine-success digest scaffolding, additive linkage from source execution truth to
-delivery outcomes, and one local `DOPE_ENV=test` verification path that does not require
+delivery outcomes, and one local `KURA_ENV=test` verification path that does not require
 live connectors.
 
 ## Technical Context
 
-**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts  
+**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts
 **Primary Dependencies**: `daemon/internal/api`, new `daemon/internal/delivery`,
 `daemon/internal/app`, `daemon/internal/store`, `daemon/internal/events`,
 `daemon/internal/runtime`, `daemon/internal/orchestration`,
 `daemon/internal/scheduler`, `daemon/internal/integrations`,
 `daemon/internal/policy`, `daemon/internal/connectors`, existing auth wiring, and
 existing connector-message persistence reused as transport-specific evidence for
-connector-backed targets  
+connector-backed targets
 **Storage**: SQLite daemon state with additive persistence for delivery targets,
 preferences, outcomes, attempts, and summary windows; additive linkage or lookup support
 from existing `runs`, `workflows`, and schedule-attempt truth; existing
 `connector_messages` remain transport-specific outbound evidence rather than the primary
-delivery ledger  
+delivery ledger
 **Testing**: `go test ./internal/delivery ./internal/api ./internal/store ./internal/app ./internal/runtime ./internal/orchestration ./internal/scheduler ./internal/integrations ./internal/policy ./internal/contracts`,
 `make daemon-contract-test`, targeted delivery-routing and retry regressions, and one
-manual `DOPE_ENV=test` notification or digest flow  
-**Target Platform**: macOS/Linux local daemon in `DOPE_ENV=test` by default, using the
+manual `KURA_ENV=test` notification or digest flow
+**Target Platform**: macOS/Linux local daemon in `KURA_ENV=test` by default, using the
 existing localhost HTTP API, SQLite store, and operator-authenticated `/v1/*`
-control-plane routes  
+control-plane routes
 **Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and
-event contracts  
+event contracts
 **Performance Goals**: create or inspect a delivery target or outcome from persisted
 local state in `<=500 ms`; enqueue a delivery outcome within `<=1 s` of terminal
 run/workflow completion on local test hardware; complete a single delivery attempt and
 persist its outcome in `<=5 s` excluding external connector latency; close a routine
 summary window and persist the emitted digest outcome in `<=2 s` once the window becomes
-eligible  
+eligible
 **Constraints**: phase 28 MUST keep delivery truth separate from execution truth and
 integration readiness truth; each routed result binds to exactly one preferred target in
 its environment; exhausted retries end in terminal failure on the chosen target with no
@@ -52,7 +52,7 @@ automatic failover; failures and urgent results bypass digest windows and delive
 immediately; routine-success results may be summarized; existing foreground chat reply
 flows stay valid and backward compatible; live connectors are optional for initial
 verification; mobile push, social-feed behavior, and marketing messaging remain out of
-scope  
+scope
 **Scale/Scope**: one operator-managed daemon, low tens of delivery targets and
 preferences, low hundreds of delivery outcomes per day, small retry budgets per outcome,
 and one repo-owned local verification sink plus one connector-backed transport adapter
@@ -79,7 +79,7 @@ sufficient to close roadmap 28
 - Verification and observability: PASS. The design requires targeted package, contract,
   restart, and manual verification plus operator-visible resources and events for each
   delivery attempt and final outcome. Residual risks are called out explicitly below.
-- Environment and secrets: PASS. Local verification stays in `DOPE_ENV=test`, the plan
+- Environment and secrets: PASS. Local verification stays in `KURA_ENV=test`, the plan
   provides a repo-owned local sink for deterministic checks, live connectors are optional,
   and any target credentials remain operator-owned, environment-scoped, and redacted in
   operator-visible history.
@@ -174,7 +174,7 @@ connectors for local verification.
 - Keep summary behavior narrow: routine successes may accumulate inside a summary window,
   while failures and urgent results bypass the digest path and deliver immediately.
 - Support one connector-backed transport adapter for operator-realistic delivery and one
-  repo-owned `test_sink` adapter for deterministic `DOPE_ENV=test` verification. Both
+  repo-owned `test_sink` adapter for deterministic `KURA_ENV=test` verification. Both
   adapters converge on the same delivery target, attempt, and outcome model.
 - Preserve additive source linkage from runs, workflows, and schedule attempts to latest
   delivery outcome summaries so operators can inspect execution success beside delivery
@@ -203,7 +203,7 @@ These commands are expected to cover:
 Observed on 2026-04-22:
 
 - all commands above passed on branch `013-delivery-notifications`
-- manual `DOPE_ENV=test` walkthrough produced queued source delivery
+- manual `KURA_ENV=test` walkthrough produced queued source delivery
   `delivery_9e3c576d1c3c1de3`, summary window `summary_window_584fc46ff405b9ec`, and
   emitted digest delivery `delivery_daae990f9020dcbc`
 

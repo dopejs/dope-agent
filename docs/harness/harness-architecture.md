@@ -36,7 +36,7 @@ The harness should be designed as:
 - a **control plane**
 - over a **multi-backend execution substrate**
 
-This is the right level of abstraction because Dope needs to reason about:
+This is the right level of abstraction because Kura needs to reason about:
 
 - what is allowed
 - what is loaded
@@ -173,7 +173,7 @@ After MCP catalog management and transport expansion:
 - retries, cancellation, and partial-failure semantics
 - audit of orchestration decisions
 
-This is where Dope moves from “can call a tool” to “can run a controlled tool workflow.”
+This is where Kura moves from “can call a tool” to “can run a controlled tool workflow.”
 
 Current daemon status:
 
@@ -522,13 +522,13 @@ Then continue in this order:
 
 This keeps the harness grounded in execution control before it grows into adaptive knowledge systems.
 
-Roadmap 29 is now closed with a repo-owned fake calendar backend in `DOPE_ENV=test`,
+Roadmap 29 is now closed with a repo-owned fake calendar backend in `KURA_ENV=test`,
 additive calendar-domain persistence, and additive workflow/schedule/delivery
 projections rather than a second calendar-only execution plane.
 
 Roadmap 31 is now closed with daemon-owned reminder resources, occurrence and action
 history, additive reminder linkage on runs and workflows, shared-delivery reuse, and a
-recorded `DOPE_ENV=test` walkthrough that covers notification-only reminders, recurring
+recorded `KURA_ENV=test` walkthrough that covers notification-only reminders, recurring
 rollover, workflow success, isolated workflow-start failure, and follow-up references.
 
 Roadmap 32 is now closed with a web-first operator shell backed by daemon-owned

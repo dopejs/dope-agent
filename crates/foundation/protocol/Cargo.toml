@@ -1,5 +1,5 @@
 [package]
-name = "dope-protocol"
+name = "kura-protocol"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true

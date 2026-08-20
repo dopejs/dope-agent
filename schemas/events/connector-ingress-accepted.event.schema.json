@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/connector-ingress-accepted.event.schema.json",
+  "$id": "https://kura.local/schemas/events/connector-ingress-accepted.event.schema.json",
   "title": "ConnectorIngressAcceptedEvent",
   "type": "object",
   "allOf": [

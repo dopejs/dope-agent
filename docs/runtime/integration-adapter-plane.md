@@ -27,14 +27,14 @@ environment. Both backends write to the same single operation ledger.
 
 ## Enabling adapters
 
-Off by default. Set `DOPE_INTEGRATION_ADAPTER=<path-to-adapter-binary>` before daemon start
+Off by default. Set `KURA_INTEGRATION_ADAPTER=<path-to-adapter-binary>` before daemon start
 to spawn supervised calendar and mail adapters and register the `adapter_rpc` backends. With
 the variable unset, daemon behavior is unchanged (fake backend only). The reference binary:
 
 ```bash
 # The reference adapter binary is not yet ported to Rust; the adapter
 # envelopes live in crates/modeling/adapterrpc.
-DOPE_INTEGRATION_ADAPTER=/path/to/adapter-binary make daemon-run-test
+KURA_INTEGRATION_ADAPTER=/path/to/adapter-binary make daemon-run-test
 ```
 
 ## Readiness, health, and circuit-break
@@ -70,7 +70,7 @@ adapter needs none.
 ## Rollback
 
 Re-bind the integration's `BackendBinding.BackendKind` to `fake_local` (or unset
-`DOPE_INTEGRATION_ADAPTER` and restart). No data migration is involved; the operation ledger
+`KURA_INTEGRATION_ADAPTER` and restart). No data migration is involved; the operation ledger
 is unchanged.
 
 ## Real providers
@@ -80,10 +80,10 @@ replace it via the `adapterprovider` serve harness, which runs the same stdio RP
 a real provider `Handler`. The first real provider is **Feishu/Lark calendar** (Roadmap 60,
 `internal/integrations/providers/feishulark`):
 
-- Selected at runtime by `DOPE_ADAPTER_PROVIDER=feishu_lark` (default stays the reference
-  skeleton); the served domain is `DOPE_ADAPTER_DOMAIN` (default `calendar`).
+- Selected at runtime by `KURA_ADAPTER_PROVIDER=feishu_lark` (default stays the reference
+  skeleton); the served domain is `KURA_ADAPTER_DOMAIN` (default `calendar`).
 - Maps the Feishu Open Platform Calendar API onto the existing calendar resources; the HTTP
-  base URL and client are injectable (`DOPE_FEISHU_BASE_URL`) so it is exercisable against
+  base URL and client are injectable (`KURA_FEISHU_BASE_URL`) so it is exercisable against
   synthetic/recorded responses in CI.
 - Provider OAuth/scope/token/rate-limit/unavailable failures are returned as a redacted,
   stable failure-class token + typed failure kind; the daemon classifies them onto the
@@ -96,7 +96,7 @@ a real provider `Handler`. The first real provider is **Feishu/Lark calendar** (
   provider call. (Attendee/RSVP shipped in Roadmap 61; recurrence/all-day in Roadmap 62.)
 
 The second real provider is **Feishu/Lark mail** (Roadmap 63, `feishulark.NewMailProvider`),
-served by the same harness when `DOPE_ADAPTER_DOMAIN=mail`. It maps account/thread/message/
+served by the same harness when `KURA_ADAPTER_DOMAIN=mail`. It maps account/thread/message/
 draft projection, draft create/update, and send/send-draft/reply/forward onto the existing mail
 resources; sends carry the same ambiguous-commit + redacted-diagnostic guarantees.
 
@@ -111,6 +111,6 @@ attachment content beyond the redacted artifact is exposed.
 
 ```bash
 make daemon-contract-test
-cd crates && cargo test -p dope-adapterrpc -p dope-adapterref -p dope-adapterprovider \
-  -p dope-feishulark -p dope-calendar -p dope-mail -p dope-capabilities -p dope-opsreadiness
+cd crates && cargo test -p kura-adapterrpc -p kura-adapterref -p kura-adapterprovider \
+  -p kura-feishulark -p kura-calendar -p kura-mail -p kura-capabilities -p kura-opsreadiness
 ```

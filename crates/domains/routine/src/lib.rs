@@ -7,8 +7,8 @@
 //! Wire compatibility with the Go package: string enums serialize as their exact snake_case values
 //! and structs use camelCase JSON keys with the same `omitempty` behavior (`skip_serializing_if`).
 //!
-//! The Go `managerdoc.Store` persistence maps onto `dope_store::{put_document, list_documents}`
-//! against `dope_store::SQLiteStore`; a nil store is `Option<&SQLiteStore>` and persistence is
+//! The Go `managerdoc.Store` persistence maps onto `kura_store::{put_document, list_documents}`
+//! against `kura_store::SQLiteStore`; a nil store is `Option<&SQLiteStore>` and persistence is
 //! skipped while `None`. The Go `Scheduler` interface becomes the `Scheduler` trait, and the
 //! scheduler-facing types (`Schedule`, `CreateInput`, `Trigger`, `Target`,
 //! `WorkflowTarget`, `RetryPolicy`) mirror the subset of `daemon/internal/scheduler` that the
@@ -308,7 +308,7 @@ pub struct Manager {
     inner: parking_lot::RwLock<ManagerInner>,
     env: String,
     sched: Box<dyn Scheduler>,
-    docs: Option<Arc<parking_lot::Mutex<dope_store::SQLiteStore>>>,
+    docs: Option<Arc<parking_lot::Mutex<kura_store::SQLiteStore>>>,
 }
 
 impl Manager {
@@ -324,7 +324,7 @@ impl Manager {
     }
 
     /// Go `WithStore`: installs durable persistence for routines and returns the manager.
-    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<dope_store::SQLiteStore>>) -> &mut Self {
+    pub fn with_store(&mut self, store: Arc<parking_lot::Mutex<kura_store::SQLiteStore>>) -> &mut Self {
         self.docs = Some(store);
         self
     }
@@ -344,7 +344,7 @@ impl Manager {
     /// A no-op when no store is installed.
     pub fn load_from_store(&self) -> Result<(), String> {
         let Some(docs) = &self.docs else { return Ok(()); };
-        let routines = dope_store::list_documents::<Routine>(&docs.lock(), DOC_KIND_ROUTINE)?;
+        let routines = kura_store::list_documents::<Routine>(&docs.lock(), DOC_KIND_ROUTINE)?;
         self.restore(routines);
         Ok(())
     }
@@ -398,7 +398,7 @@ impl Manager {
         self.inner.read().by_id.get(routine_id.trim()).cloned()
     }
 
-    /// Go `List` (insertion order, mirroring the `dope-runtime` manager convention).
+    /// Go `List` (insertion order, mirroring the `kura-runtime` manager convention).
     pub fn list(&self) -> Vec<Routine> {
         let inner = self.inner.read();
         inner.ids.iter().filter_map(|id| inner.by_id.get(id).cloned()).collect()
@@ -524,7 +524,7 @@ impl Manager {
             inner.by_id.insert(routine.routine_id.clone(), routine.clone());
         }
         if let Some(docs) = &self.docs {
-            let _ = dope_store::put_document(&docs.lock(), DOC_KIND_ROUTINE, &routine.routine_id, &self.env, "", &routine);
+            let _ = kura_store::put_document(&docs.lock(), DOC_KIND_ROUTINE, &routine.routine_id, &self.env, "", &routine);
         }
     }
 }
@@ -605,7 +605,7 @@ fn trigger_summary(trigger: &Trigger) -> String {
     format!("cron {}", trigger.cron_expr.trim())
 }
 
-/// Go `newID`: `prefix` + 16 hex chars of random bytes (reference `dope-runtime` convention).
+/// Go `newID`: `prefix` + 16 hex chars of random bytes (reference `kura-runtime` convention).
 #[must_use]
 fn new_id(prefix: &str) -> String {
     let hex = Uuid::new_v4().simple().to_string();

@@ -11,7 +11,7 @@ thin consumers of its HTTP API.
 One line (macOS and Linux, arm64 + x86_64):
 
 ```bash
-curl -fsSL https://agent.dopejs.com/install.sh | sh
+curl -fsSL https://agent.kurajs.com/install.sh | sh
 ```
 
 The installer detects your platform, downloads the latest
@@ -23,15 +23,15 @@ daemon) and `kura-tui` (the terminal client) into `~/.local/bin` or
 Pin a version or destination with:
 
 ```bash
-KURA_VERSION=v0.2.3 KURA_INSTALL_DIR=~/bin sh -c "$(curl -fsSL https://agent.dopejs.com/install.sh)"
+KURA_VERSION=v0.2.4 KURA_INSTALL_DIR=~/bin sh -c "$(curl -fsSL https://agent.kurajs.com/install.sh)"
 ```
 
 Prefer manual? Grab a tarball from the releases page:
 
 ```bash
-curl -LO https://github.com/dopejs/kura/releases/latest/download/kura-0.2.3-aarch64-apple-darwin.tar.gz
-tar xzf kura-0.2.3-aarch64-apple-darwin.tar.gz
-sudo install -m 755 kura-0.2.3-aarch64-apple-darwin/{kura,kura-tui} /usr/local/bin/
+curl -LO https://github.com/dopejs/kura/releases/latest/download/kura-0.2.4-aarch64-apple-darwin.tar.gz
+tar xzf kura-0.2.4-aarch64-apple-darwin.tar.gz
+sudo install -m 755 kura-0.2.4-aarch64-apple-darwin/{kura,kura-tui} /usr/local/bin/
 ```
 
 ## Build from source
@@ -44,7 +44,7 @@ cd kura
 
 # Daemon + TUI
 make daemon-build                 # emits crates/target/release/kura
-cd crates && cargo build --release -p dope-tui  # emits target/release/kura-tui
+cd crates && cargo build --release -p kura-tui  # emits target/release/kura-tui
 
 # Web client + SDK
 pnpm install
@@ -68,12 +68,12 @@ kura config set llm.defaultProvider claude_code_cli
 kura config edit                  # $EDITOR on config.json (validated)
 ```
 
-Kura has two environments, selected by `DOPE_ENV`:
+Kura has two environments, selected by `KURA_ENV`:
 
 | Mode | Data dir | Bind address | Command |
 |------|----------|--------------|---------|
-| prod (release default) | `~/.dope` | `127.0.0.1:19191` | `kura daemon start` |
-| test | `~/.dope-test` | `127.0.0.1:19192` | `DOPE_ENV=test kura daemon start` |
+| prod (release default) | `~/.kura` | `127.0.0.1:19191` | `kura daemon start` |
+| test | `~/.kura-test` | `127.0.0.1:19192` | `KURA_ENV=test kura daemon start` |
 
 From a source checkout, the Make targets wrap the same thing and default
 to the **test** environment (the safe development default):

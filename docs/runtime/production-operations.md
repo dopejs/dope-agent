@@ -1,7 +1,7 @@
 # Production Operations Baseline
 
 Roadmap 39 validates a tenant-scoped single-node production baseline. The
-default validation environment is `~/.dope-test` on `127.0.0.1:19192`; live
+default validation environment is `~/.kura-test` on `127.0.0.1:19192`; live
 connectors and production user data require explicit operator opt-in.
 
 Operator artifacts:

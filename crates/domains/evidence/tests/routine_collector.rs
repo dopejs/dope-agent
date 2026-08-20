@@ -1,11 +1,11 @@
 //! Routine collector tests (wave 8 parity): section shape, unknown/missing
 //! routine fallbacks, non-routine scopes, and the full generate() flow with
-//! the real `dope-routine` manager.
+//! the real `kura-routine` manager.
 
 use std::sync::Arc;
 
-use dope_evidence::{Bundle, Collector, Manager, RedactionStatus, RoutineCollector, Scope, ScopeKind};
-use dope_routine::{CreateInput, Definition, Schedule, Scheduler, Trigger, TriggerKind, Workflow};
+use kura_evidence::{Bundle, Collector, Manager, RedactionStatus, RoutineCollector, Scope, ScopeKind};
+use kura_routine::{CreateInput, Definition, Schedule, Scheduler, Trigger, TriggerKind, Workflow};
 
 fn run_scope(ref_value: &str) -> Scope {
     Scope {
@@ -52,8 +52,8 @@ impl Scheduler for FakeScheduler {
     }
 }
 
-fn routine_manager() -> Arc<dope_routine::Manager> {
-    let manager = Arc::new(dope_routine::Manager::new("test", Box::<FakeScheduler>::default()));
+fn routine_manager() -> Arc<kura_routine::Manager> {
+    let manager = Arc::new(kura_routine::Manager::new("test", Box::<FakeScheduler>::default()));
     let def = Definition {
         name: "Weekly digest".to_string(),
         trigger: Trigger {
@@ -131,7 +131,7 @@ fn generate_includes_routine_section() {
     let manager = Manager::new("test", Some(Box::new(collector)), None);
 
     let bundle: Bundle = manager
-        .generate("tenant-a", "support@dope", run_scope(&routine.routine_id))
+        .generate("tenant-a", "support@kura", run_scope(&routine.routine_id))
         .expect("generate");
     assert_eq!(bundle.redaction_status, RedactionStatus::Redacted);
     assert_eq!(bundle.sections.len(), 1);
@@ -146,7 +146,7 @@ fn generate_with_unknown_routine_produces_bundle_without_sections() {
     let collector = RoutineCollector::new(Some(routines));
     let manager = Manager::new("test", Some(Box::new(collector)), None);
     let bundle = manager
-        .generate("tenant-a", "support@dope", run_scope("routine_nope"))
+        .generate("tenant-a", "support@kura", run_scope("routine_nope"))
         .expect("generate");
     assert!(bundle.sections.is_empty());
 }

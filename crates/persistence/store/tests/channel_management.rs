@@ -8,15 +8,15 @@
 use std::collections::HashMap;
 
 use chrono::{Duration, TimeZone, Utc};
-use dope_connectors::{ManagementActionKind, ManagementTerminalState, RedactionStatus, RetrySafety};
-use dope_store::{
+use kura_connectors::{ManagementActionKind, ManagementTerminalState, RedactionStatus, RetrySafety};
+use kura_store::{
     BackgroundDeliveryOutcome, ConnectorAuditRecord, EnablementState, ForegroundReplyOutcome,
     ManagementState, RepairAction, RouteDecisionOutcome, RoutePolicy, RoutingDecision,
     SQLiteStore, SupportEvidenceBundle,
 };
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

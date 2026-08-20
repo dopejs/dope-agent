@@ -4,7 +4,7 @@
 //! `fixtures.go`, `product_fixture.go`, `product_validation.go`,
 //! `suppression.go`, `tool_call_inspection.go`).
 
-use dope_billing::{BillingError, ReserveResult};
+use kura_billing::{BillingError, ReserveResult};
 
 /// Reservation failure surfaced by `create_replay_attempt` / the runtime
 /// recorder when quota cannot be reserved (Go `BillingReservationError`).

@@ -49,7 +49,7 @@ isolation, schema/contract fixtures, and live smoke structured skip; `go test ./
 from `daemon/`; `make daemon-contract-test`; `pnpm test:clients` and `pnpm build` only
 if SDK/web/TUI surfaces change; `go mod tidy` from `daemon/` after implementation.
 **Target Platform**: Local-first daemon and hosted daemon behavior. Local verification
-defaults to the isolated test environment (`~/.dope-test`, `127.0.0.1:19192`). Live
+defaults to the isolated test environment (`~/.kura-test`, `127.0.0.1:19192`). Live
 Telegram credentials and production tenants are not required for automated acceptance.
 Safe live Telegram credentials, when explicitly used, are non-production bot credentials
 scoped to a test tenant and test chats/groups, approved by an operator for validation,
@@ -101,7 +101,7 @@ additional provider domains remain out of scope.
   duplicate suppression, reply failures, foreground/background delivery separation,
   diagnostics, freshness, retention, redaction, reconnect/rate-limit behavior, live
   smoke skip, schema contracts, and operator docs.
-- **Environment and secrets** - PASS. Local work defaults to `~/.dope-test` with fake
+- **Environment and secrets** - PASS. Local work defaults to `~/.kura-test` with fake
   credentials and fake transports. Real Telegram credentials, live connectors, and
   production tenants are used only in an explicit live validation path that can
   structured-skip when safe credentials are unavailable.

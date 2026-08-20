@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 
-use dope_connectors::{
+use kura_connectors::{
     CapabilityProfile, ConformanceArea, ConformanceResultStatus, GroupRoomCapabilities,
     HandoffCapabilities, SurfaceSupport, core_invariant_areas,
 };
@@ -125,7 +125,7 @@ mod tests {
     use super::*;
     use crate::destinations::{DestinationType, DestinationValidation, DestinationValidationState};
     use crate::readiness::{CredentialState, HostedSetupInput, evaluate_hosted_setup};
-    use dope_connectors::{ConformanceResultStatus, SurfaceSupport, validate_capability_profile};
+    use kura_connectors::{ConformanceResultStatus, SurfaceSupport, validate_capability_profile};
 
     fn ts() -> DateTime<Utc> {
         DateTime::parse_from_rfc3339("2026-05-07T10:00:00Z")
@@ -288,7 +288,7 @@ mod tests {
         });
         let profile = conformance_profile_for_setup(&cfg, &setup, now);
         assert_eq!(
-            profile.core_invariant_results.get(&dope_connectors::ConformanceArea::Redaction),
+            profile.core_invariant_results.get(&kura_connectors::ConformanceArea::Redaction),
             Some(&ConformanceResultStatus::Pass)
         );
         assert_eq!(

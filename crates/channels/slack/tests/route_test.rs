@@ -1,11 +1,11 @@
 //! Behavioral tests for the Slack route decision logic (port of
 //! destinations_test.go TestDecideRouteValidatesSlackPolicyAndSurfaces).
 
-use dope_connectors::DiagnosticReasonCode;
-use dope_slack::destinations::{
+use kura_connectors::DiagnosticReasonCode;
+use kura_slack::destinations::{
     ConversationRoute, ConversationType, RoutePolicy, RouteValidationState, SelectedChannelState,
 };
-use dope_slack::route::{InboundEvent, RouteOutcome, decide_route};
+use kura_slack::route::{InboundEvent, RouteOutcome, decide_route};
 
 fn policy() -> RoutePolicy {
     RoutePolicy {
@@ -153,22 +153,22 @@ fn decide_route_validates_slack_policy_and_surfaces() {
 #[test]
 fn normalize_mention_text_strips_bot_mention() {
     assert_eq!(
-        dope_slack::transport::normalize_mention_text("<@bot_redacted> hello", "bot_redacted"),
+        kura_slack::transport::normalize_mention_text("<@bot_redacted> hello", "bot_redacted"),
         "hello"
     );
     assert_eq!(
-        dope_slack::transport::normalize_mention_text("hello", "bot_redacted"),
+        kura_slack::transport::normalize_mention_text("hello", "bot_redacted"),
         "hello"
     );
     assert_eq!(
-        dope_slack::transport::normalize_mention_text("<@bot_redacted>", " bot_redacted "),
+        kura_slack::transport::normalize_mention_text("<@bot_redacted>", " bot_redacted "),
         ""
     );
 }
 
 #[test]
 fn slack_identity_key_joins_trimmed_components() {
-    let key = dope_slack::runtime::slack_message_identity_key(&[
+    let key = kura_slack::runtime::slack_message_identity_key(&[
         "ten_slack",
         " slack-main ",
         "workspace_redacted",
@@ -183,6 +183,6 @@ fn slack_identity_key_joins_trimmed_components() {
 
 #[test]
 fn unsupported_surface_error_keeps_go_message() {
-    let err = dope_slack::transport::unsupported_surface_error(" huddle ");
+    let err = kura_slack::transport::unsupported_surface_error(" huddle ");
     assert_eq!(err.to_string(), "unsupported slack surface: huddle");
 }

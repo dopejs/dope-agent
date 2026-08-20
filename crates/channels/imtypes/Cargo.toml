@@ -1,11 +1,11 @@
 [package]
-name = "dope-imtypes"
+name = "kura-imtypes"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-router.workspace = true
+kura-router.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true

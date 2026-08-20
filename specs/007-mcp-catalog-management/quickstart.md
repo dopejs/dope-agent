@@ -3,11 +3,11 @@
 ## Goal
 
 Verify that a catalog-managed MCP server can be inspected, revalidated, and safely
-maintained through daemon-owned workflows in `DOPE_ENV=test`.
+maintained through daemon-owned workflows in `KURA_ENV=test`.
 
 ## Prerequisites
 
-- local test daemon only; do not use `~/.dope`
+- local test daemon only; do not use `~/.kura`
 - authenticated local pairing or an existing bearer token
 - one installed catalog-managed MCP server
 - recommended starter for manual verification: `context7`, because it is already the most
@@ -26,7 +26,7 @@ make daemon-run-test
 
 ```bash
 curl -sS -X POST \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"serverId":"context7-phase22-manual"}' \
   http://127.0.0.1:19192/v1/mcp/catalog/context7/install
@@ -35,7 +35,7 @@ curl -sS -X POST \
 3. Inspect the installed server and verify additive provenance is present:
 
 ```bash
-curl -sS -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/mcp/servers/context7-phase22-manual
 ```
 
@@ -51,7 +51,7 @@ Expected inspection points after implementation:
 4. Trigger explicit revalidation:
 
 ```bash
-curl -sS -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/mcp/servers/context7-phase22-manual/revalidate
 ```
 
@@ -65,12 +65,12 @@ Expected outcome after implementation:
 
 ```bash
 curl -sS -X PATCH \
-  -H "Authorization: Bearer $DOPE_TOKEN" \
+  -H "Authorization: Bearer $KURA_TOKEN" \
   -H "Content-Type: application/json" \
   http://127.0.0.1:19192/v1/mcp/servers/context7-phase22-manual \
   -d '{"displayName":"Context7 Manual Modified"}'
 
-curl -sS -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/mcp/servers/context7-phase22-manual/refresh
 ```
 
@@ -85,7 +85,7 @@ Expected outcome after implementation:
    install -> remove:
 
 ```bash
-curl -sS -X POST -H "Authorization: Bearer $DOPE_TOKEN" \
+curl -sS -X POST -H "Authorization: Bearer $KURA_TOKEN" \
   http://127.0.0.1:19192/v1/mcp/servers/context7-phase22-manual/uninstall
 ```
 
@@ -119,7 +119,7 @@ Recorded on 2026-04-20:
 
 ## Recorded Manual Verification
 
-Recorded on 2026-04-20 against `DOPE_ENV=test` with a test daemon on
+Recorded on 2026-04-20 against `KURA_ENV=test` with a test daemon on
 `http://127.0.0.1:19192`.
 
 ### Fresh install, inspect, and revalidate
@@ -185,7 +185,7 @@ Recorded on 2026-04-20 against `DOPE_ENV=test` with a test daemon on
 
 ## Notes
 
-- This quickstart intentionally keeps verification in `DOPE_ENV=test`.
+- This quickstart intentionally keeps verification in `KURA_ENV=test`.
 - `context7` remained the highest-signal bundled starter for this slice because it is
   both catalog-managed and immediately usable over `streamable-http`.
 - The phase 21 helper script can still bootstrap a catalog install, but daemon API routes

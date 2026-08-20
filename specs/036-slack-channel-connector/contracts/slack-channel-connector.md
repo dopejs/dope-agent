@@ -211,7 +211,7 @@ Recommended Phase 51 surface names:
   `GET /v1/connectors/{connectorId}/slack-smoke`,
   `GET /v1/live-validations/slack-smoke`, and
   `GET /v1/live-validations/slack-conformance`.
-- Config: `connectors.slack` in `config.json`, `DOPE_CONNECTORS_SLACK_*` environment
+- Config: `connectors.slack` in `config.json`, `KURA_CONNECTORS_SLACK_*` environment
   overrides, and `/v1/config.connectors.slack`.
 - Schemas: `slack-hosted-setup-resource`, `slack-route-policy-resource`,
   `slack-smoke-evidence-resource`, and `connector-slack-setup-validated.event`.

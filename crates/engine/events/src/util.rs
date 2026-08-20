@@ -4,7 +4,7 @@
 use chrono::{DateTime, NaiveDate, Utc};
 
 /// Go's zero `time.Time` (Jan 1, year 1) — the sentinel the ported domain
-/// crates use to represent "no time set". Mirrors `dope_billing::go_zero_time`.
+/// crates use to represent "no time set". Mirrors `kura_billing::go_zero_time`.
 #[must_use]
 pub(crate) fn go_zero_time() -> DateTime<Utc> {
     DateTime::from_naive_utc_and_offset(

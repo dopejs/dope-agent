@@ -44,7 +44,7 @@ SDK/web client coverage via `pnpm test:clients`; client build via `pnpm build`; 
 daemon coverage via `go test ./...` from `daemon/`; `go mod tidy` from `daemon/` after
 implementation.  
 **Target Platform**: Local-first daemon and hosted daemon behavior, with web and
-TypeScript SDK product surfaces. Default local verification uses `~/.dope-test` and
+TypeScript SDK product surfaces. Default local verification uses `~/.kura-test` and
 `127.0.0.1:19192`.  
 **Project Type**: Multi-surface daemon product feature spanning API, persistence,
 contracts, SDK, web UI, delivery/connector projections, diagnostics, audit, and docs.  
@@ -87,7 +87,7 @@ diagnostics, route policy, reply status, delivery status, and support evidence.
   updates, foreground/background separation, diagnostics, stale refresh, redaction,
   retention, audit fail-closed, restart recovery, and conformance regression for at
   least two connector kinds.
-- **Environment and secrets** - PASS. Local work defaults to `~/.dope-test` with fake
+- **Environment and secrets** - PASS. Local work defaults to `~/.kura-test` with fake
   connector evidence. Live connector credentials and production tenants are not required
   for automated acceptance. Support evidence is metadata-only and must not display raw
   provider payloads or channel message bodies.

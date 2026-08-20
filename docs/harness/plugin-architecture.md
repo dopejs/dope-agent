@@ -50,7 +50,7 @@ plugin. Security posture outranks composability; this is a fixed decision.
 
 - **Tier 1 — builtin plugins** (shipped, phase 1): compiled-in plugins
   (`crates/surface/app/src/plugins.rs`) registered with the kernel crate
-  `dope-plugin` (`crates/foundation/plugin`). No dynamic loading (dylib ABI
+  `kura-plugin` (`crates/foundation/plugin`). No dynamic loading (dylib ABI
   hazards are not worth taking for the first release).
 - **Tier 2 — out-of-process providers** (phase 3): any seam served remotely
   over the proven planes — adapter RPC, supervised capability processes,
@@ -60,7 +60,7 @@ plugin. Security posture outranks composability; this is a fixed decision.
 
 ## Mechanisms (phase 1, shipped 2026-08-17)
 
-- **`dope-plugin` kernel crate**: `PluginDescriptor` (id, summary,
+- **`kura-plugin` kernel crate**: `PluginDescriptor` (id, summary,
   provides, requires), `resolve()` (explicit + transitive disable, warnings
   for unknown ids — nothing silently dropped), `PluginProfile`
   (`<data_dir>/plugins.json`; missing file = default profile, malformed file
@@ -275,9 +275,9 @@ behavior-identical to the pre-plugin daemon.
 
 ## Verification (phase 1)
 
-- `dope-plugin` unit tests: resolution (explicit/transitive/unknown-id),
+- `kura-plugin` unit tests: resolution (explicit/transitive/unknown-id),
   profile load, seam map, hook waterfall (mutate + halt ordering).
-- `dope-app` tests: default profile ⇒ all builtins enabled and every seam
+- `kura-app` tests: default profile ⇒ all builtins enabled and every seam
   adapter wired (existing wiring tests unchanged); leaf disable ⇒ manager
   `None` + reason recorded; `billing` disable ⇒ dependents transitively
   disabled; `plugins.json` picked up by `App::new`; channel plugin disable

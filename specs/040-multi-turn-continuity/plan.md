@@ -23,12 +23,12 @@ continuity evidence for authorized inspection until retention expiry.
 
 **Language/Version**: Go 1.24 daemon/control-plane code; TypeScript 5.7 SDK and client
 tests; React 19/Vite 7 web surface; JSON Schema contracts under `schemas/`; markdown
-runtime/channel/operator docs.  
+runtime/channel/operator docs.
 **Primary Dependencies**: Existing `daemon/internal/chat`, `daemon/internal/threads`,
 `daemon/internal/store`, `daemon/internal/store/tenancy`, `daemon/internal/api`,
 `daemon/internal/events`, `daemon/internal/connectors`, `daemon/internal/im`,
 `daemon/internal/llm`, `schemas/api`, `schemas/events`, `sdk/ts/src`, `web/src`,
-`tui/src`, and Roadmap 54 thread lifecycle surfaces.  
+`tui/src`, and Roadmap 54 thread lifecycle surfaces.
 **Storage**: Existing SQLite daemon store remains authoritative. Additive persistence is
 required for continuity turns, preview/decision evidence, preview items, daemon
 acceptance sequence, safe artifact excerpt metadata, redaction status, retention expiry,
@@ -38,31 +38,31 @@ in `thread_continuity_preview_items`; v51 does not introduce a separate artifact
 table. Existing `threads`, `thread_session_segments`, `thread_source_links`,
 `thread_runtime_projections`, `sessions`, `llm_dispatches`, connector messages, runs,
 workflows, approvals, and delivery records remain compatible and are not destructively
-rewritten.  
+rewritten.
 **Testing**: Targeted Go tests under `daemon/internal/threads`, `daemon/internal/chat`,
 `daemon/internal/api`, `daemon/internal/store`, `daemon/internal/store/tenancy`,
 `daemon/internal/events`, `daemon/internal/connectors`, `daemon/internal/im`, and
 `daemon/internal/contracts`; schema/fixture validation via `make daemon-contract-test`;
 SDK/Web/TUI coverage via `pnpm test:clients`; client build via `pnpm build`; full daemon
 coverage via `go test ./...` from `daemon/`; `go mod tidy` from `daemon/` after
-implementation.  
+implementation.
 **Target Platform**: Local-first daemon and hosted daemon behavior, with API, TypeScript
 SDK, Web, TUI/operator shell, and connector ingress support. Default local verification
-uses `~/.dope-test` and `127.0.0.1:19192`.  
+uses `~/.kura-test` and `127.0.0.1:19192`.
 **Project Type**: Multi-surface daemon product feature spanning API, persistence,
 contracts, chat dispatch input assembly, connector ingress, SDK, Web, TUI/operator shell,
-events/audit, retention, redaction, restart recovery, and docs.  
+events/audit, retention, redaction, restart recovery, and docs.
 **Performance Goals**: Continuity assembly for the default window completes under
 500 ms p95 in the verification environment. Authorized operators can explain why a
 representative response did or did not use continuity within 5 minutes using product
-evidence.  
+evidence.
 **Constraints**: Include no more than 12 eligible prior turns, exclude turns older than
 30 active-continuity days unless authorized tenant policy changes the active window, use
 daemon acceptance sequence for ordering, require `credentials.inspect` for preview
 inspection, require `connectors.manage` for thread-level reset, preserve Roadmap 54
 90-day default inspection retention, suppress unsafe evidence, and never use memory,
 semantic retrieval, summaries, knowledge graph behavior, autonomous context packing,
-provider-retained context, client-local history, or cross-thread personalization.  
+provider-retained context, client-local history, or cross-thread personalization.
 **Scale/Scope**: One whole roadmap slice, Phase 55. Required surfaces are store, domain
 model, chat API, streaming API, SDK, Web, TUI/operator shell, connector ingress, runtime
 artifact references, restart recovery, retention/redaction, docs, schema/event contracts,
@@ -88,7 +88,7 @@ and tests proving bounded behavior.
   reset exclusion, artifact excerpt limits, source identity, duplicate/replay handling,
   daemon acceptance ordering, restart recovery, permission denial, redaction, retention,
   p95 latency, and non-memory guarantees.
-- **Environment and secrets** - PASS. Local work defaults to `~/.dope-test` with fake or
+- **Environment and secrets** - PASS. Local work defaults to `~/.kura-test` with fake or
   seeded connector/runtime evidence. Live connectors and production tenants are not
   required. Preview evidence must not expose secrets, raw provider payloads, disallowed
   message bodies, or cross-tenant identifiers.

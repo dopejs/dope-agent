@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.dope.agent/api/thread-detail.response.schema.json",
+  "$id": "https://schemas.kura.agent/api/thread-detail.response.schema.json",
   "title": "ThreadDetailResponse",
   "type": "object",
   "additionalProperties": false,

@@ -27,7 +27,7 @@ Channels are **off by default** everywhere. Enable in
     "telegram": {
       "enabled": true,
       "botTokenEnv": "TELEGRAM_BOT_TOKEN",
-      "botUsername": "my_dope_bot",
+      "botUsername": "my_kura_bot",
       "allowedUserIds": []
     },
     "slack": {
@@ -40,7 +40,7 @@ Channels are **off by default** everywhere. Enable in
     "matrix": {
       "enabled": true,
       "homeserverUrl": "https://matrix.example.org",
-      "botUserId": "@dope:example.org",
+      "botUserId": "@kura:example.org",
       "botAccessTokenEnv": "MATRIX_TOKEN",
       "selectedRoomIds": []
     }

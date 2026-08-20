@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/mail-operation-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/mail-operation-resource.schema.json",
   "title": "MailOperationResource",
   "type": "object",
   "required": ["operationId", "operationClass", "status", "resultMode", "integrationId", "mailAccountId", "environmentScope", "createdAt", "updatedAt"],

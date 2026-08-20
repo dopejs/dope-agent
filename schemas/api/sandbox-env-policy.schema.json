@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/sandbox-env-policy.schema.json",
+  "$id": "https://kura.local/schemas/api/sandbox-env-policy.schema.json",
   "title": "SandboxEnvironmentPolicy",
   "type": "object",
   "required": ["mode", "allowedVars", "injectedVars", "redactedVars"],

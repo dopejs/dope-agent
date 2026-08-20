@@ -7,10 +7,10 @@ web UI, a full-screen Rust TUI, and chat-channel connectors.
 
 | Path | Role |
 |------|------|
-| `crates/` | Rust workspace — the daemon control plane (runtime, LLM providers, channels/connectors, store, events, HTTP API, harness). User binary: `kura` (Cargo package: `dope-cli`); HTTP API: `dope-api`. |
+| `crates/` | Rust workspace — the daemon control plane (runtime, LLM providers, channels/connectors, store, events, HTTP API, harness). User binary: `kura` (Cargo package: `kura-cli`); HTTP API: `kura-api`. |
 | `web/` | React 19 + Vite web UI. |
-| `crates/surface/tui/` | Rust full-screen terminal client (`kura-tui`; Cargo package: `dope-tui`). |
-| `sdk/ts/` | TypeScript client SDK (`@dope/client`). |
+| `crates/surface/tui/` | Rust full-screen terminal client (`kura-tui`; Cargo package: `kura-tui`). |
+| `sdk/ts/` | TypeScript client SDK (`@kura/client`). |
 | `schemas/` | JSON Schema contracts (API, events, config) — source of truth for cross-language contracts. |
 | `docs/` | Planning and design docs, organized by module. |
 
@@ -24,13 +24,13 @@ Daemon (Rust, from `crates/`):
 ```bash
 make daemon-build              # emits crates/target/release/kura
 make daemon-test               # cargo test --workspace
-make daemon-contract-test      # cargo test -p dope-contracts
+make daemon-contract-test      # cargo test -p kura-contracts
 ```
 
 TUI (Rust):
 
 ```bash
-cd crates && cargo build -p dope-tui  # emits target/debug/kura-tui
+cd crates && cargo build -p kura-tui  # emits target/debug/kura-tui
 ```
 
 Clients (TypeScript):
@@ -43,30 +43,30 @@ pnpm test:clients              # build + test SDK + web
 ## Run
 
 ```bash
-make daemon-run-test           # test env: ~/.dope-test, 127.0.0.1:19192
+make daemon-run-test           # test env: ~/.kura-test, 127.0.0.1:19192
 make daemon-run-test-live      # test env with Discord enabled
-make daemon-run-prod           # prod env: ~/.dope, 127.0.0.1:19191
+make daemon-run-prod           # prod env: ~/.kura, 127.0.0.1:19191
 make daemon-test-status        # health check
 ```
 
-For local debugging, use the project skill at `.agents/skills/dope-test-env/SKILL.md`.
+For local debugging, use the project skill at `.agents/skills/kura-test-env/SKILL.md`.
 `make daemon-run-test` is the safe default and keeps Discord disabled unless you
-opt in with `make daemon-run-test-live` or `DOPE_CONNECTORS_DISCORD_ENABLED=true`.
+opt in with `make daemon-run-test-live` or `KURA_CONNECTORS_DISCORD_ENABLED=true`.
 
 ## Local Environment Modes
 
 Development defaults to the **test** environment:
 
-- `DOPE_ENV=test`
-- data dir: `~/.dope-test`
-- config file: `~/.dope-test/config.json`
+- `KURA_ENV=test`
+- data dir: `~/.kura-test`
+- config file: `~/.kura-test/config.json`
 - bind addr: `127.0.0.1:19192`
 
 Production is explicit:
 
-- `DOPE_ENV=prod`
-- data dir: `~/.dope`
-- config file: `~/.dope/config.json`
+- `KURA_ENV=prod`
+- data dir: `~/.kura`
+- config file: `~/.kura/config.json`
 - bind addr: `127.0.0.1:19191`
 
 Never touch prod config or live connectors without explicit intent; live

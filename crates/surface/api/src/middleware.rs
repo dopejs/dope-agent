@@ -19,9 +19,9 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use tower::Service;
 
-use dope_identity::auth::{AccessToken, AuthError, TokenStatus};
-use dope_identity::tenantctx;
-use dope_identity::{LifecycleStatus, TenantContext as ResolvedTenantContext, TokenAuthority};
+use kura_identity::auth::{AccessToken, AuthError, TokenStatus};
+use kura_identity::tenantctx;
+use kura_identity::{LifecycleStatus, TenantContext as ResolvedTenantContext, TokenAuthority};
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -48,10 +48,10 @@ pub fn environment_scope(req: &Request) -> Option<&str> {
 
 /// Canonical environment string from the config (Go `effectiveEnvironment`).
 #[must_use]
-pub fn environment_scope_from_config(config: &dope_config::Config) -> String {
+pub fn environment_scope_from_config(config: &kura_config::Config) -> String {
     match config.environment {
-        dope_config::Environment::Prod => "prod".to_string(),
-        dope_config::Environment::Test => "test".to_string(),
+        kura_config::Environment::Prod => "prod".to_string(),
+        kura_config::Environment::Test => "test".to_string(),
     }
 }
 
@@ -73,7 +73,7 @@ pub async fn with_environment(State(state): State<AppState>, mut req: Request, n
 /// 3. When an auth manager is configured: authenticates the `Authorization:
 ///    Bearer <secret>` token, persists it (store), resolves the tenant context
 ///    via the identity manager (when configured) using the
-///    `X-Dope-Tenant-ID` header, and attaches [`AuthenticatedToken`] +
+///    `X-Kura-Tenant-ID` header, and attaches [`AuthenticatedToken`] +
 ///    [`TenantContext`] extensions.
 ///
 /// When no auth manager is configured the request passes through
@@ -97,7 +97,7 @@ pub async fn protected(
 
     let tenant_header = req
         .headers()
-        .get("x-dope-tenant-id")
+        .get("x-kura-tenant-id")
         .and_then(|v| v.to_str().ok())
         .map(str::trim)
         .unwrap_or_default()
@@ -123,7 +123,7 @@ pub async fn protected(
         let resolved = identity
             .resolve(&auth_token_authority(&token), &tenant_header)
             .map_err(|err| match err {
-                dope_identity::IdentityError::TenantAccessDenied => {
+                kura_identity::IdentityError::TenantAccessDenied => {
                     // Go: recordTenantAccessDenied + writeTenantDenial (403).
                     // The tenant_resolution_denied audit write and the full
                     // stable Denial body (error/errorCode/requestId) remain
@@ -143,7 +143,7 @@ pub async fn protected(
 /// this when a manager is configured); an empty header maps to
 /// `ErrAuthRequired` like the Go `if deps.Auth != nil && !ok` branch.
 fn authenticate_request(
-    auth: &dope_identity::auth::Manager,
+    auth: &kura_identity::auth::Manager,
     req: &Request,
 ) -> Result<AccessToken, ApiError> {
     let header = req

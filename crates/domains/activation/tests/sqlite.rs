@@ -1,5 +1,5 @@
 //! SQLite-backed activation seam tests (wave 8 parity): the store adapter
-//! (StateStore/IdentityRepository/AuditSink over `dope-store`), the billing
+//! (StateStore/IdentityRepository/AuditSink over `kura-store`), the billing
 //! projector, the chat runner, and the full service wiring via
 //! `Service::with_sqlite`. Ports the Go behavior from
 //! `daemon/internal/store/activation_test.go` and the app wiring tests.
@@ -9,53 +9,53 @@ use std::sync::Arc;
 use chrono::DateTime;
 use chrono::TimeZone;
 use chrono::Utc;
-use dope_activation::default_test_chat_first_action;
-use dope_activation::reason_code_from_error;
-use dope_activation::ActivateInput;
-use dope_activation::AuditSink;
-use dope_activation::IdentityRepository;
-use dope_activation::StateStore;
-use dope_activation::BillingProjector;
-use dope_activation::BillingProjectorAdapter;
-use dope_activation::ChatRunner;
-use dope_activation::ChatRunnerAdapter;
-use dope_activation::GetInput;
-use dope_activation::QuotaBaseline;
-use dope_activation::QuotaBaselineStatus;
-use dope_activation::ReadinessItem;
-use dope_activation::ReadinessKind;
-use dope_activation::ReadinessStatus;
-use dope_activation::ReasonCode;
-use dope_activation::RemediationOwner;
-use dope_activation::RunTestChatInput;
-use dope_activation::Service;
-use dope_activation::SqliteActivationStore;
-use dope_activation::State;
-use dope_activation::Status;
-use dope_activation::TestChatInput;
-use dope_activation::TestChatStatus;
-use dope_activation::STEP_QUOTA_BASELINE_READY;
-use dope_activation::STEP_TENANT_RESOLVED;
-use dope_activation::STEP_TEST_CHAT;
-use dope_billing::BillingError;
-use dope_identity::AuditEventFilter;
-use dope_identity::LifecycleStatus;
-use dope_identity::Membership;
-use dope_identity::MembershipFilter;
-use dope_identity::Principal;
-use dope_identity::PrincipalFilter;
-use dope_identity::PrincipalKind;
-use dope_identity::Role;
-use dope_identity::Tenant;
-use dope_identity::TenantContext;
-use dope_identity::TenantFilter;
-use dope_identity::TenantKind;
-use dope_identity::TokenAuthority;
-use dope_identity::TokenTenantGrant;
-use dope_store::SQLiteStore;
+use kura_activation::default_test_chat_first_action;
+use kura_activation::reason_code_from_error;
+use kura_activation::ActivateInput;
+use kura_activation::AuditSink;
+use kura_activation::IdentityRepository;
+use kura_activation::StateStore;
+use kura_activation::BillingProjector;
+use kura_activation::BillingProjectorAdapter;
+use kura_activation::ChatRunner;
+use kura_activation::ChatRunnerAdapter;
+use kura_activation::GetInput;
+use kura_activation::QuotaBaseline;
+use kura_activation::QuotaBaselineStatus;
+use kura_activation::ReadinessItem;
+use kura_activation::ReadinessKind;
+use kura_activation::ReadinessStatus;
+use kura_activation::ReasonCode;
+use kura_activation::RemediationOwner;
+use kura_activation::RunTestChatInput;
+use kura_activation::Service;
+use kura_activation::SqliteActivationStore;
+use kura_activation::State;
+use kura_activation::Status;
+use kura_activation::TestChatInput;
+use kura_activation::TestChatStatus;
+use kura_activation::STEP_QUOTA_BASELINE_READY;
+use kura_activation::STEP_TENANT_RESOLVED;
+use kura_activation::STEP_TEST_CHAT;
+use kura_billing::BillingError;
+use kura_identity::AuditEventFilter;
+use kura_identity::LifecycleStatus;
+use kura_identity::Membership;
+use kura_identity::MembershipFilter;
+use kura_identity::Principal;
+use kura_identity::PrincipalFilter;
+use kura_identity::PrincipalKind;
+use kura_identity::Role;
+use kura_identity::Tenant;
+use kura_identity::TenantContext;
+use kura_identity::TenantFilter;
+use kura_identity::TenantKind;
+use kura_identity::TokenAuthority;
+use kura_identity::TokenTenantGrant;
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_activation_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_activation_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -362,7 +362,7 @@ async fn identity_repository_round_trips_over_sqlite() {
 async fn audit_sink_appends_tenant_audit_event() {
     let now = test_now();
     let store = open_store("audit_sink");
-    let event = dope_identity::TenantAuditEvent {
+    let event = kura_identity::TenantAuditEvent {
         audit_event_id: String::new(),
         event_kind: "tenant.activation_started".to_string(),
         tenant_id: "ten_personal".to_string(),
@@ -405,7 +405,7 @@ async fn audit_sink_appends_tenant_audit_event() {
 
 #[tokio::test]
 async fn billing_projector_adapter_projects_usage() {
-    let billing = Arc::new(dope_billing::Manager::without_repo());
+    let billing = Arc::new(kura_billing::Manager::without_repo());
     let adapter = BillingProjectorAdapter::new(billing.clone());
 
     // Non-hosted tenants fall back to the development plan.
@@ -440,8 +440,8 @@ async fn chat_runner_adapter_requires_configured_service() {
 
 #[test]
 fn chat_runner_adapter_runs_echo_test_chat() {
-    let dispatcher = Arc::new(dope_llm::Dispatcher::new());
-    let chat = Arc::new(dope_chat::Service::new_service(dispatcher, None, None, None, None));
+    let dispatcher = Arc::new(kura_llm::Dispatcher::new());
+    let chat = Arc::new(kura_chat::Service::new_service(dispatcher, None, None, None, None));
     let adapter = ChatRunnerAdapter::new(Some(chat));
 
     let result = futures::executor::block_on(adapter.run_activation_test_chat(TestChatInput {
@@ -536,7 +536,7 @@ async fn service_with_sqlite_persists_activation_and_audit() {
 #[tokio::test]
 async fn service_with_sqlite_blocks_when_billing_unavailable() {
     let store = Arc::new(open_store("service_blocked"));
-    let billing = Arc::new(dope_billing::Manager::without_repo());
+    let billing = Arc::new(kura_billing::Manager::without_repo());
     let svc = Service::with_sqlite(
         store,
         Some(Arc::new(BillingProjectorAdapter::new(billing))),
@@ -560,11 +560,11 @@ async fn service_with_sqlite_blocks_when_billing_unavailable() {
 
 #[test]
 fn service_with_sqlite_runs_activation_test_chat() {
-    // The dope-chat service bridges into its own current-thread Tokio runtime,
+    // The kura-chat service bridges into its own current-thread Tokio runtime,
     // so this flow must not run inside a Tokio runtime (matches chat/tests).
     futures::executor::block_on(async {
-        let dispatcher = Arc::new(dope_llm::Dispatcher::new());
-        let chat = Arc::new(dope_chat::Service::new_service(dispatcher, None, None, None, None));
+        let dispatcher = Arc::new(kura_llm::Dispatcher::new());
+        let chat = Arc::new(kura_chat::Service::new_service(dispatcher, None, None, None, None));
         let store = Arc::new(open_store("service_chat"));
         let svc = Service::with_sqlite(
             store.clone(),

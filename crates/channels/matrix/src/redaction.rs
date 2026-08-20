@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use dope_connectors::RedactionStatus;
+use kura_connectors::RedactionStatus;
 
 use crate::types::RedactionResult;
 

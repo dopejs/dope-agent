@@ -238,7 +238,7 @@
 - [X] T143 Run `pnpm test:clients` and record results in `specs/025-live-validation-replay/quickstart.md`
 - [X] T144 Run `pnpm build` and record results in `specs/025-live-validation-replay/quickstart.md`
 - [X] T145 Run the test daemon smoke with `make daemon-run-test` and `make daemon-test-status`, then record health and shutdown evidence in `specs/025-live-validation-replay/quickstart.md`
-- [X] T146 Run the `DOPE_ENV=test` manual live validation smoke for success, denial, unsupported class, ambiguous commit, reconciliation, kill-switch abort, restart inspection, and non-live replay compatibility; record results in `specs/025-live-validation-replay/quickstart.md`
+- [X] T146 Run the `KURA_ENV=test` manual live validation smoke for success, denial, unsupported class, ambiguous commit, reconciliation, kill-switch abort, restart inspection, and non-live replay compatibility; record results in `specs/025-live-validation-replay/quickstart.md`
 - [X] T147 Run optional `make daemon-run-test-live` real-account smoke only when safe credentials are explicitly provided, or record skip rationale and fake-backend coverage in `specs/025-live-validation-replay/quickstart.md`
 
 ---

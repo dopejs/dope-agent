@@ -2,7 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning  
 **Created**: 2026-04-19  
-**Feature**: [spec.md](/Users/John/Code/dope-agent/specs/005-sandbox-stronger-backends/spec.md)
+**Feature**: [spec.md](/Users/John/Code/kura-agent/specs/005-sandbox-stronger-backends/spec.md)
 
 ## Content Quality
 

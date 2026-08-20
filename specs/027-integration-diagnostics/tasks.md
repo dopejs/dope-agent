@@ -307,5 +307,5 @@ Task: "T058 [P] [US4] Add release-readiness tests in daemon/internal/opsreadines
 - [P] tasks = different files, no dependency on incomplete non-foundational tasks.
 - [US] labels map tasks to specific user stories for traceability.
 - Every user story includes verification tasks because this is production control-plane work with API, schema, event, persistence, tenant, and secret-handling surfaces.
-- Default validation uses `~/.dope-test`; live connectors and real-account smoke require explicit safe credentials and approvals.
+- Default validation uses `~/.kura-test`; live connectors and real-account smoke require explicit safe credentials and approvals.
 - Roadmap 42 is incomplete until all five user stories and final verification tasks are complete.

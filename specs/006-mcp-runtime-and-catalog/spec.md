@@ -63,7 +63,7 @@ definitions and documented starters. Without an installable catalog, our MCP sub
 technically present but operationally incomplete.
 
 **Independent Test**: Inspect the catalog, install representative starter definitions into
-`DOPE_ENV=test`, and verify each installed server appears as a first-class MCP resource
+`KURA_ENV=test`, and verify each installed server appears as a first-class MCP resource
 with truthful prerequisite, credential, and availability state.
 
 **Acceptance Scenarios**:
@@ -82,7 +82,7 @@ with truthful prerequisite, credential, and availability state.
    implying it is ready.
 4. **Given** the bundled catalog includes immediate-use entries and credential-backed
    templates, **When** the operator inspects the catalog, **Then** each entry clearly
-   distinguishes whether it is immediately usable in `DOPE_ENV=test` or requires optional
+   distinguishes whether it is immediately usable in `KURA_ENV=test` or requires optional
    credentials or external infrastructure.
 5. **Given** an operator prefers either daemon-managed install or repo-local automation,
    **When** they install a catalog entry, **Then** both the daemon API path and the
@@ -143,7 +143,7 @@ entries, prerequisites, install results, and invocation behavior.
 
 ### Edge Cases
 
-- What happens when a catalog item is installable in `DOPE_ENV=test` but its required
+- What happens when a catalog item is installable in `KURA_ENV=test` but its required
   package manager or binary is absent on the host?
 - How does the daemon represent a remote MCP server whose endpoint is configured but
   currently unreachable?
@@ -242,11 +242,11 @@ entries, prerequisites, install results, and invocation behavior.
 - **Verification Strategy**: Validate local package-level tests for `daemon/internal/mcp`,
   `daemon/internal/api`, and any runtime integration paths; run `make daemon-contract-test`;
   verify at least one bundled MCP entry installs and invokes successfully in
-  `DOPE_ENV=test`; verify unavailable-path classification for unmet prerequisites.
+  `KURA_ENV=test`; verify unavailable-path classification for unmet prerequisites.
 - **Observability Impact**: MCP catalog inspection, install events, invocation audit
   records, and docs must expose transport, prerequisite, availability, and authorization
   truth.
-- **Environment & Secrets**: Default validation stays in `DOPE_ENV=test`; bundled entries
+- **Environment & Secrets**: Default validation stays in `KURA_ENV=test`; bundled entries
   with optional external credentials must remain installable without leaking secrets and
   must clearly surface blocked state when credentials are absent.
 

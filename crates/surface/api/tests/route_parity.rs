@@ -20,22 +20,22 @@ use parking_lot::Mutex;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-fn test_state() -> dope_api::AppState {
-    let dir = std::env::temp_dir().join(format!("dope-route-parity-{}", Uuid::now_v7()));
+fn test_state() -> kura_api::AppState {
+    let dir = std::env::temp_dir().join(format!("kura-route-parity-{}", Uuid::now_v7()));
     std::fs::create_dir_all(&dir).expect("mkdir");
     let store = Arc::new(Mutex::new(
-        dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+        kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
     ));
-    let config = dope_config::Config {
-        environment: dope_config::Environment::Test,
+    let config = kura_config::Config {
+        environment: kura_config::Environment::Test,
         bind_addr: "127.0.0.1:19192".to_string(),
         data_dir: dir.to_string_lossy().to_string(),
         log_level: "info".to_string(),
         version: "0.1.0".to_string(),
-        llm: dope_config::LlmConfig::default(),
-        connectors: dope_config::ConnectorConfig::default(),
+        llm: kura_config::LlmConfig::default(),
+        connectors: kura_config::ConnectorConfig::default(),
     };
-    dope_api::AppState::new(config, Arc::new(dope_events::Bus::new()), store)
+    kura_api::AppState::new(config, Arc::new(kura_events::Bus::new()), store)
 }
 
 /// One probe per Go route-table pattern: (method, representative URI).
@@ -173,7 +173,7 @@ const GO_ROUTE_PROBES: &[(&str, &str)] = &[
 
 #[tokio::test]
 async fn every_go_route_is_mounted() {
-    let app = dope_api::router(test_state());
+    let app = kura_api::router(test_state());
     let mut missing = Vec::new();
 
     for (method, uri) in GO_ROUTE_PROBES {

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/token-tenant-grant-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/token-tenant-grant-resource.schema.json",
   "title": "TokenTenantGrantResource",
   "type": "object",
   "required": ["grantId", "tokenId", "tenantId", "isDefault", "status", "createdAt", "updatedAt"],

@@ -191,9 +191,9 @@
 - [X] T112 [P] Add TUI tests for Slack setup or diagnostic command output in tui/src/cli.test.ts
 - [X] T113 Run focused daemon package tests from quickstart in daemon/
 - [X] T114 Run full daemon tests with go test ./... in daemon/
-- [X] T115 Run daemon contract verification with make daemon-contract-test in /Users/John/Code/dope-agent/
-- [X] T116 Run client verification with pnpm test:clients in /Users/John/Code/dope-agent/
-- [X] T117 Run client build with pnpm build in /Users/John/Code/dope-agent/
+- [X] T115 Run daemon contract verification with make daemon-contract-test in /Users/John/Code/kura-agent/
+- [X] T116 Run client verification with pnpm test:clients in /Users/John/Code/kura-agent/
+- [X] T117 Run client build with pnpm build in /Users/John/Code/kura-agent/
 - [X] T118 Run go mod tidy in daemon/
 - [X] T119 Record final rollback and residual live-smoke risk notes in specs/036-slack-channel-connector/quickstart.md
 

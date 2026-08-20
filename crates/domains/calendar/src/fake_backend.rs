@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use chrono::{NaiveDate, TimeZone, Utc};
-use dope_integrations::Resource;
+use kura_integrations::Resource;
 use parking_lot::Mutex;
 
 use crate::{

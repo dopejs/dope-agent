@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/create-replay-comparison.request.schema.json",
+  "$id": "https://kura.local/schemas/api/create-replay-comparison.request.schema.json",
   "title": "CreateReplayComparisonRequest",
   "type": "object",
   "properties": {

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/sandbox-result.schema.json",
+  "$id": "https://kura.local/schemas/api/sandbox-result.schema.json",
   "title": "SandboxExecutionResult",
   "type": "object",
   "required": ["status", "outputTruncated", "partial"],

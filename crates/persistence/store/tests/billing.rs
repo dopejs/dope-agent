@@ -1,20 +1,20 @@
 //! Behavioral tests for the billing DAOs (rs/store/src/billing.rs) and the
-//! `dope_billing::Repository` trait surface through `BillingRepositoryHandle`.
-//! The reserve/commit/denial flows run through `dope_billing::Manager` so the
+//! `kura_billing::Repository` trait surface through `BillingRepositoryHandle`.
+//! The reserve/commit/denial flows run through `kura_billing::Manager` so the
 //! route-facing accounting path is exercised against a real SQLite store.
 
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
-use dope_billing::{
+use kura_billing::{
     AbuseRestrictionRecord, AbuseRestrictionStatus, BillingError, Category, EnforcementMode,
     Manager, ManualAdjustment, PlanStatus, QuotaOverride, RecoveryAction, Repository,
     ReserveInput, ResolveInput, TenantPlan, definition_for, run_operation_key,
 };
-use dope_store::{BillingRepositoryHandle, SQLiteStore};
+use kura_store::{BillingRepositoryHandle, SQLiteStore};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_billing_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_billing_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

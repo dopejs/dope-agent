@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/mcp-tool-exposure-updated.event.schema.json",
+  "$id": "https://kura.local/schemas/events/mcp-tool-exposure-updated.event.schema.json",
   "title": "MCPToolExposureUpdatedEvent",
   "allOf": [
     { "$ref": "./runtime-event.schema.json" },

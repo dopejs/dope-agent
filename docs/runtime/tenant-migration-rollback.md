@@ -32,19 +32,19 @@ Before running an upgrade across schema v22+ (any release tagged `>= roadmap-35-
 
 ```bash
 # Stop the running daemon.
-pkill -TERM dope || true
+pkill -TERM kura || true
 
 # Snapshot the database file. Use a date-tagged path so multiple upgrade
 # attempts do not overwrite each other.
 TS=$(date -u +%Y%m%dT%H%M%S)
-cp ~/.dope/daemon.sqlite       ~/.dope/daemon.sqlite.pre-r35.${TS}.bak
-cp ~/.dope-test/daemon.sqlite  ~/.dope-test/daemon.sqlite.pre-r35.${TS}.bak 2>/dev/null || true
+cp ~/.kura/daemon.sqlite       ~/.kura/daemon.sqlite.pre-r35.${TS}.bak
+cp ~/.kura-test/daemon.sqlite  ~/.kura-test/daemon.sqlite.pre-r35.${TS}.bak 2>/dev/null || true
 
 # Verify the backup hash is stable (no concurrent writes during copy).
-shasum -a 256 ~/.dope/daemon.sqlite ~/.dope/daemon.sqlite.pre-r35.${TS}.bak
+shasum -a 256 ~/.kura/daemon.sqlite ~/.kura/daemon.sqlite.pre-r35.${TS}.bak
 ```
 
-The two SHA-256 lines MUST be identical. If they differ, the daemon was still writing — repeat after confirming `pgrep dope` returns nothing.
+The two SHA-256 lines MUST be identical. If they differ, the daemon was still writing — repeat after confirming `pgrep kura` returns nothing.
 
 The migration's correctness is proven by `TestMigration_E2E_FixtureBackupRestore` (T081b): SHA-256 of the file before migration MUST match SHA-256 after copying the backup back.
 
@@ -68,17 +68,17 @@ If the daemon will not start AND you cannot resolve the underlying cause without
 
 ```bash
 # Stop any half-started daemon.
-pkill -TERM dope || true
+pkill -TERM kura || true
 
 # Replace the migrated DB with the pre-r35 backup.
-cp ~/.dope/daemon.sqlite.pre-r35.${TS}.bak ~/.dope/daemon.sqlite
+cp ~/.kura/daemon.sqlite.pre-r35.${TS}.bak ~/.kura/daemon.sqlite
 
 # Verify SHA matches the backup taken BEFORE the upgrade.
-shasum -a 256 ~/.dope/daemon.sqlite ~/.dope/daemon.sqlite.pre-r35.${TS}.bak
+shasum -a 256 ~/.kura/daemon.sqlite ~/.kura/daemon.sqlite.pre-r35.${TS}.bak
 
 # Downgrade the daemon binary to the pre-r35 release (the upgraded binary
 # refuses to start against an older schema version).
-brew install ./dope-pre-r35.bottle.tar.gz   # or your equivalent install path
+brew install ./kura-pre-r35.bottle.tar.gz   # or your equivalent install path
 
 # Start the pre-r35 daemon.
 make daemon-run-prod
@@ -98,7 +98,7 @@ A step is `failed` when its underlying SQL aborted (e.g., a schema swap detected
 
 A row exists in a tenant-owned table whose tenant binding cannot be derived (e.g., a `connector_messages` row with both `session_id` and `run_id` NULL, or a `delivery_*` row with no resolvable parent). The driver fails fast with the table + key in the event payload.
 
-1. Inspect the offending row(s) via `sqlite3 ~/.dope/daemon.sqlite`.
+1. Inspect the offending row(s) via `sqlite3 ~/.kura/daemon.sqlite`.
 2. If the row is **garbage** (left over from a prior crash, never referenced), delete it manually then restart the daemon — the backfill will resume from `last_processed_key` and skip the now-deleted row.
 3. If the row is **legitimate but un-bindable** (this should not happen post-Roadmap-35, since the events backfill carries a default-fallback for events with any populated linkage column), file a bug and restore from backup.
 

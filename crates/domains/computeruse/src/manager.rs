@@ -37,8 +37,8 @@ pub trait ArtifactRecorder: Send + Sync {
 
 pub struct Manager {
     environment: String,
-    runtime: Option<Arc<dope_runtime::Manager>>,
-    policy: Option<Arc<dope_policy::Engine>>,
+    runtime: Option<Arc<kura_runtime::Manager>>,
+    policy: Option<Arc<kura_policy::Engine>>,
     store: Arc<dyn Store>,
     driver: Arc<dyn Driver>,
     artifacts: Option<Arc<dyn ArtifactRecorder>>,
@@ -46,8 +46,8 @@ pub struct Manager {
 
 pub struct Dependencies {
     pub environment_scope: String,
-    pub runtime: Option<Arc<dope_runtime::Manager>>,
-    pub policy: Option<Arc<dope_policy::Engine>>,
+    pub runtime: Option<Arc<kura_runtime::Manager>>,
+    pub policy: Option<Arc<kura_policy::Engine>>,
     pub store: Arc<dyn Store>,
     pub driver: Option<Arc<dyn Driver>>,
     pub artifacts: Option<Arc<dyn ArtifactRecorder>>,
@@ -89,7 +89,7 @@ impl Manager {
     pub fn create_session(&self, run_id: &str, input: &CreateSessionInput) -> Result<Session, String> {
         let runtime = self.runtime.as_ref().ok_or("runtime manager is not configured")?;
         if runtime.get_run(run_id).is_none() {
-            return Err(dope_runtime::RuntimeError::RunNotFound.to_string());
+            return Err(kura_runtime::RuntimeError::RunNotFound.to_string());
         }
         let driver_kind = first_non_empty(&[&input.driver_kind, "browser"]);
         if driver_kind != "browser" {
@@ -140,7 +140,7 @@ impl Manager {
         session_id: &str,
         requested_by: &str,
         input: CreateActionInput,
-    ) -> Result<(ActionRequestResult, Option<dope_policy::Approval>, Option<dope_policy::Decision>), String> {
+    ) -> Result<(ActionRequestResult, Option<kura_policy::Approval>, Option<kura_policy::Decision>), String> {
         let session = self.store.get_computer_use_session(&self.environment, run_id, session_id)?;
         let Some(session) = session else { return Err(ERR_SESSION_NOT_FOUND.to_string()) };
         validate_create_action_input(&input)?;
@@ -179,7 +179,7 @@ impl Manager {
         if action.risk_level == RiskLevel::High {
             if let Some(policy) = self.policy.as_ref() {
                 let (approval, decision) = policy
-                    .request_approval(dope_policy::RequestApprovalInput {
+                    .request_approval(kura_policy::RequestApprovalInput {
                         action: "computer_use.action.execute".to_string(),
                         resource_kind: "computer_use_action".to_string(),
                         resource_id: action.computer_use_action_id.clone(),
@@ -195,7 +195,7 @@ impl Manager {
                     .update_step_status_and_reconcile_run(
                         &step.run_id,
                         &step.step_id,
-                        dope_runtime::UpdateStepStatusInput { status: dope_runtime::StepStatus::Blocked, output: None },
+                        kura_runtime::UpdateStepStatusInput { status: kura_runtime::StepStatus::Blocked, output: None },
                     )
                     .map_err(|e| e.to_string())?;
                 self.store.upsert_computer_use_action(&action)?;
@@ -225,7 +225,7 @@ impl Manager {
         let session = self.store.get_computer_use_session(&self.environment, &action.run_id, &action.computer_use_session_id)?;
         let Some(session) = session else { return Ok((Action::default(), false)) };
         match approval.status {
-            dope_policy::ApprovalStatus::Rejected => {
+            kura_policy::ApprovalStatus::Rejected => {
                 let now = Utc::now();
                 let mut action = action;
                 action.status = ActionStatus::Denied;
@@ -235,7 +235,7 @@ impl Manager {
                 action.completed_at = Some(now);
                 let runtime = self.runtime.as_ref().ok_or("runtime manager is not configured")?;
                 runtime
-                    .deny_tool_call(&action.run_id, &action.step_id, &action.tool_call_id, dope_runtime::DenyToolCallInput {
+                    .deny_tool_call(&action.run_id, &action.step_id, &action.tool_call_id, kura_runtime::DenyToolCallInput {
                         output: Some(serde_json::json!({"approvalId": approval_id})),
                         error: "approval was rejected".to_string(),
                         failure_class: FailureClass::PolicyDenied.as_str().to_string(),
@@ -243,8 +243,8 @@ impl Manager {
                     })
                     .map_err(|e| e.to_string())?;
                 runtime
-                    .update_step_status_and_reconcile_run(&action.run_id, &action.step_id, dope_runtime::UpdateStepStatusInput {
-                        status: dope_runtime::StepStatus::Blocked,
+                    .update_step_status_and_reconcile_run(&action.run_id, &action.step_id, kura_runtime::UpdateStepStatusInput {
+                        status: kura_runtime::StepStatus::Blocked,
                         output: Some(serde_json::json!({"approvalId": approval_id})),
                     })
                     .map_err(|e| e.to_string())?;
@@ -256,7 +256,7 @@ impl Manager {
                 let enriched = self.enrich_action(&action)?;
                 Ok((enriched, true))
             }
-            dope_policy::ApprovalStatus::Approved => {
+            kura_policy::ApprovalStatus::Approved => {
                 let enriched = self.execute_action(&session, action)?;
                 Ok((enriched, true))
             }
@@ -284,12 +284,12 @@ impl Manager {
         if let Some(runtime) = self.runtime.as_ref() {
             if let Some(step) = runtime.get_step(&action.run_id, &action.step_id) {
                 match step.status {
-                    dope_runtime::StepStatus::Blocked => {
-                        runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, dope_runtime::UpdateStepStatusInput { status: dope_runtime::StepStatus::Planning, output: None }).map_err(|e| e.to_string())?;
-                        runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, dope_runtime::UpdateStepStatusInput { status: dope_runtime::StepStatus::ExecutingTool, output: None }).map_err(|e| e.to_string())?;
+                    kura_runtime::StepStatus::Blocked => {
+                        runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, kura_runtime::UpdateStepStatusInput { status: kura_runtime::StepStatus::Planning, output: None }).map_err(|e| e.to_string())?;
+                        runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, kura_runtime::UpdateStepStatusInput { status: kura_runtime::StepStatus::ExecutingTool, output: None }).map_err(|e| e.to_string())?;
                     }
-                    dope_runtime::StepStatus::Planning => {
-                        runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, dope_runtime::UpdateStepStatusInput { status: dope_runtime::StepStatus::ExecutingTool, output: None }).map_err(|e| e.to_string())?;
+                    kura_runtime::StepStatus::Planning => {
+                        runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, kura_runtime::UpdateStepStatusInput { status: kura_runtime::StepStatus::ExecutingTool, output: None }).map_err(|e| e.to_string())?;
                     }
                     _ => {}
                 }
@@ -325,14 +325,14 @@ impl Manager {
             self.store.upsert_computer_use_action(&action)?;
             self.store.upsert_computer_use_session(&session)?;
             if let Some(runtime) = self.runtime.as_ref() {
-                runtime.fail_tool_call(&action.run_id, &action.step_id, &action.tool_call_id, dope_runtime::FailToolCallInput {
+                runtime.fail_tool_call(&action.run_id, &action.step_id, &action.tool_call_id, kura_runtime::FailToolCallInput {
                     output: Some(serde_json::json!({"computerUseSessionId": action.computer_use_session_id, "computerUseActionId": action.computer_use_action_id})),
                     error: action.failure_reason.clone(),
                     failure_class: action.failure_class.clone(),
                     ..Default::default()
                 }).map_err(|e| e.to_string())?;
-                runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, dope_runtime::UpdateStepStatusInput {
-                    status: dope_runtime::StepStatus::Failed,
+                runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, kura_runtime::UpdateStepStatusInput {
+                    status: kura_runtime::StepStatus::Failed,
                     output: Some(serde_json::json!({"computerUseActionId": action.computer_use_action_id, "failureClass": action.failure_class})),
                 }).map_err(|e| e.to_string())?;
             }
@@ -363,26 +363,26 @@ impl Manager {
         match action.status {
             ActionStatus::Completed => {
                 if let Some(runtime) = self.runtime.as_ref() {
-                    runtime.complete_tool_call(&action.run_id, &action.step_id, &action.tool_call_id, dope_runtime::CompleteToolCallInput {
+                    runtime.complete_tool_call(&action.run_id, &action.step_id, &action.tool_call_id, kura_runtime::CompleteToolCallInput {
                         output: Some(serde_json::json!({"computerUseSessionId": action.computer_use_session_id, "computerUseActionId": action.computer_use_action_id})),
                         ..Default::default()
                     }).map_err(|e| e.to_string())?;
-                    runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, dope_runtime::UpdateStepStatusInput {
-                        status: dope_runtime::StepStatus::Completed,
+                    runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, kura_runtime::UpdateStepStatusInput {
+                        status: kura_runtime::StepStatus::Completed,
                         output: Some(serde_json::json!({"computerUseActionId": action.computer_use_action_id})),
                     }).map_err(|e| e.to_string())?;
                 }
             }
             _ => {
                 if let Some(runtime) = self.runtime.as_ref() {
-                    runtime.fail_tool_call(&action.run_id, &action.step_id, &action.tool_call_id, dope_runtime::FailToolCallInput {
+                    runtime.fail_tool_call(&action.run_id, &action.step_id, &action.tool_call_id, kura_runtime::FailToolCallInput {
                         output: Some(serde_json::json!({"computerUseSessionId": action.computer_use_session_id, "computerUseActionId": action.computer_use_action_id})),
                         error: action.failure_reason.clone(),
                         failure_class: action.failure_class.clone(),
                         ..Default::default()
                     }).map_err(|e| e.to_string())?;
-                    runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, dope_runtime::UpdateStepStatusInput {
-                        status: dope_runtime::StepStatus::Failed,
+                    runtime.update_step_status_and_reconcile_run(&action.run_id, &action.step_id, kura_runtime::UpdateStepStatusInput {
+                        status: kura_runtime::StepStatus::Failed,
                         output: Some(serde_json::json!({"computerUseActionId": action.computer_use_action_id, "failureClass": action.failure_class})),
                     }).map_err(|e| e.to_string())?;
                 }
@@ -391,10 +391,10 @@ impl Manager {
         self.enrich_action(&action)
     }
 
-    fn create_runtime_tracking(&self, session: &Session, input: &CreateActionInput) -> Result<(dope_runtime::Step, dope_runtime::ToolCall), String> {
+    fn create_runtime_tracking(&self, session: &Session, input: &CreateActionInput) -> Result<(kura_runtime::Step, kura_runtime::ToolCall), String> {
         let runtime = self.runtime.as_ref().ok_or("runtime manager is not configured")?;
         let step = runtime
-            .create_step(&session.run_id, dope_runtime::CreateStepInput {
+            .create_step(&session.run_id, kura_runtime::CreateStepInput {
                 title: format!("Computer-use {}", input.action_kind.as_str()),
                 kind: "computer_use".to_string(),
                 workflow_id: session.workflow_id.clone(),
@@ -403,13 +403,13 @@ impl Manager {
                 ..Default::default()
             })
             .map_err(|e| e.to_string())?;
-        runtime.update_step_status_and_reconcile_run(&session.run_id, &step.step_id, dope_runtime::UpdateStepStatusInput { status: dope_runtime::StepStatus::Planning, output: None }).map_err(|e| e.to_string())?;
-        runtime.update_step_status_and_reconcile_run(&session.run_id, &step.step_id, dope_runtime::UpdateStepStatusInput { status: dope_runtime::StepStatus::ExecutingTool, output: None }).map_err(|e| e.to_string())?;
+        runtime.update_step_status_and_reconcile_run(&session.run_id, &step.step_id, kura_runtime::UpdateStepStatusInput { status: kura_runtime::StepStatus::Planning, output: None }).map_err(|e| e.to_string())?;
+        runtime.update_step_status_and_reconcile_run(&session.run_id, &step.step_id, kura_runtime::UpdateStepStatusInput { status: kura_runtime::StepStatus::ExecutingTool, output: None }).map_err(|e| e.to_string())?;
         let tool_call = runtime
-            .create_tool_call(&session.run_id, &step.step_id, dope_runtime::CreateToolCallInput {
+            .create_tool_call(&session.run_id, &step.step_id, kura_runtime::CreateToolCallInput {
                 workflow_id: session.workflow_id.clone(),
                 workflow_step_id: session.workflow_step_id.clone(),
-                invocation_kind: dope_runtime::ToolCallInvocationKind::LocalTool.as_str().to_string(),
+                invocation_kind: kura_runtime::ToolCallInvocationKind::LocalTool.as_str().to_string(),
                 capability_id: "browser".to_string(),
                 tool_name: input.action_kind.as_str().to_string(),
                 input: Some(serde_json::json!({"actionKind": input.action_kind.as_str(), "url": input.url.trim()})),

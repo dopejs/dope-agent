@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://dopejs.dev/schemas/capability/integration-adapter/response.json",
+  "$id": "https://kurajs.dev/schemas/capability/integration-adapter/response.json",
   "title": "IntegrationAdapterResponse",
   "description": "Adapter -> daemon response envelope. MUST NOT carry ledger, idempotency, or side-effect-evidence state (those are daemon-owned, FR-003).",
   "type": "object",

@@ -1,10 +1,10 @@
-//! Serde round-trip tests for the dope-evaluation wire types: camelCase field
+//! Serde round-trip tests for the kura-evaluation wire types: camelCase field
 //! names, the `expectedComparisonSummary` rename on ReplayCandidate, and
 //! snake_case enum wire values, mirroring the Go JSON tags in
 //! daemon/internal/evaluation/types.go.
 
 use chrono::{DateTime, Utc};
-use dope_evaluation::{
+use kura_evaluation::{
     ApprovalHandling, CandidateKind, ComparisonResult, ComparisonTerminalStatus, DriftFinding,
     DriftPlane, FixtureDomainClass, PlaneSummaries, ReadinessStatus, RegressionFixture,
     ReplayAttempt, ReplayAttemptStatus, ReplayCandidate, ReplayMode, SafetyScope,

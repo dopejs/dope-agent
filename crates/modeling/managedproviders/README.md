@@ -1,4 +1,4 @@
-# dope-managedproviders
+# kura-managedproviders
 
 Rust port of `daemon/internal/managedproviders` (Go): the managed provider
 bridge layer for CLI-backed LLM providers (Claude Code, Codex), the bridge
@@ -21,9 +21,9 @@ state/check management.
   `persist_consumer_view`).
 - **`Registry`** (Go `Registry`): `new(cfg, sandboxes)`, `list`, `get`;
   insertion-ordered Claude then Codex. Also implements
-  `dope_providers::ManagedRegistry` (through `ManagedBridgeAdapter`), so it
-  plugs into `dope_providers::Manager` unchanged.
-- **`ClaudeBridge` / `CodexBridge`** plus the `dope_llm::Provider` shims
+  `kura_providers::ManagedRegistry` (through `ManagedBridgeAdapter`), so it
+  plugs into `kura_providers::Manager` unchanged.
+- **`ClaudeBridge` / `CodexBridge`** plus the `kura_llm::Provider` shims
   (`claudeCLIProvider` / `codexCLIProvider`), including the JWT claim
   decoding, auth-file parsing, model catalog reading (built-in Claude
   models; Codex `models_cache.json` + `config.toml`), and `classify_cli_error`.
@@ -36,18 +36,18 @@ state/check management.
   the store provider CRUD (`upsert_provider_auth_state`,
   `replace_provider_models`, `upsert_provider_preference`,
   `upsert_provider_check`), restore helpers, default-model validation,
-  check run/list/get, and the `dope-setupwizard` dependent-use gate.
+  check run/list/get, and the `kura-setupwizard` dependent-use gate.
 
 ## Porting notes / deferrals
 
-- `context.Context` -> `dope_llm::CancelToken`; every bridge method is
+- `context.Context` -> `kura_llm::CancelToken`; every bridge method is
   synchronous (the Go code is synchronous; nothing streams).
 - The operation plan Go threads through `context.Context` is passed
   explicitly to `Runner::run`.
 - `ExecRunner` honors cancellation before spawning and reports a cancelled
   token; killing an in-flight child process on cancellation is deferred (a
   sync port has no per-call worker to kill).
-- **Live sandboxed CLI auth-bridge execution is deferred**: `dope-sandbox`
+- **Live sandboxed CLI auth-bridge execution is deferred**: `kura-sandbox`
   currently ports types only (no `Manager`). The runner and preflight
   evaluation are ported against the `SandboxManager` trait; when the
   concrete sandbox manager lands it implements the trait and

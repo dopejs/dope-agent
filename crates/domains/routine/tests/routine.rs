@@ -1,4 +1,4 @@
-//! Manager-behavior + round-trip tests for `dope-routine`, mirroring the Go
+//! Manager-behavior + round-trip tests for `kura-routine`, mirroring the Go
 //! `manager_test.go` / `persistence_test.go` coverage with a fake `Scheduler`.
 
 use std::collections::HashSet;
@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use chrono::{Duration, Utc};
-use dope_store::SQLiteStore;
-use dope_routine::{
+use kura_store::SQLiteStore;
+use kura_routine::{
     CreateInput, Definition, Manager, Routine, RoutineError, Schedule, Scheduler,
     SchedulerRetryBackoffKind, SchedulerTargetKind, SchedulerTriggerKind, State, Trigger,
     TriggerKind, Workflow,
@@ -75,7 +75,7 @@ fn fake() -> Box<FakeScheduler> {
 
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "dope_routine_{tag}_{}_{}",
+        "kura_routine_{tag}_{}_{}",
         std::process::id(),
         Uuid::new_v4().simple()
     ));
@@ -303,6 +303,6 @@ fn persistence_round_trip() {
 #[test]
 fn manager_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<dope_routine::Manager>();
+    assert_send_sync::<kura_routine::Manager>();
 }
 

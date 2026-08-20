@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/replay-fixture-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/replay-fixture-resource.schema.json",
   "title": "ReplayFixtureResource",
   "type": "object",
   "required": ["fixtureId", "displayName", "domainClass", "manifestPath", "sourceRefs", "capturedEvidenceRefs", "assumptions", "limitations", "expectedReplayMode", "expectedComparisonSummary", "environmentScope", "createdAt", "updatedAt"],

@@ -6,16 +6,16 @@
 //! refuse to clobber a row owned by a different tenant.
 
 use chrono::Utc;
-use dope_events::{Event, Filter, Resource, Scope};
-use dope_identity::{LifecycleStatus, Tenant, TenantKind};
-use dope_llm::{Dispatch, DispatchStatus, Message, MessageRole, Usage};
-use dope_policy::{Approval, ApprovalStatus, Decision, DecisionOutcome};
-use dope_router::{Session, SessionKind, SessionStatus};
-use dope_runtime::{Run, RunCheckpoint, RunStatus, Step, StepStatus, ToolCall, ToolCallStatus};
-use dope_store::SQLiteStore;
+use kura_events::{Event, Filter, Resource, Scope};
+use kura_identity::{LifecycleStatus, Tenant, TenantKind};
+use kura_llm::{Dispatch, DispatchStatus, Message, MessageRole, Usage};
+use kura_policy::{Approval, ApprovalStatus, Decision, DecisionOutcome};
+use kura_router::{Session, SessionKind, SessionStatus};
+use kura_runtime::{Run, RunCheckpoint, RunStatus, Step, StepStatus, ToolCall, ToolCallStatus};
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_tenancy_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_tenancy_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }

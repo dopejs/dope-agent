@@ -2,8 +2,8 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread;
 
-use dope_adapterprovider::{Handler, Operation};
-use dope_feishulark::{
+use kura_adapterprovider::{Handler, Operation};
+use kura_feishulark::{
     adapter_failure_kind, ambiguous_fault, feishu_code_fault, http_status_fault, new_calendar_provider,
     new_mail_provider, parse_token, Client, FaultKind, ScopedToken, AMBIGUOUS_CODE,
 };
@@ -150,7 +150,7 @@ fn client_call_maps_feishu_code() {
 fn calendar_project_account_roundtrip() {
     let base = mock_http("HTTP/1.1 200 OK", r#"{"code":0,"msg":"ok","data":{"calendars":[{"calendar":{"calendar_id":"cal_1","summary":"Primary"},"user_id":"u_1"}]}}"#);
     let provider = new_calendar_provider(Client::new(&base));
-    let resource = dope_integrations::Resource {
+    let resource = kura_integrations::Resource {
         integration_id: "cal_1".to_string(),
         domain_kind: "calendar".to_string(),
         ..Default::default()
@@ -163,7 +163,7 @@ fn calendar_project_account_roundtrip() {
         payload: None,
     };
     let result = provider.handle(op, None).unwrap().unwrap();
-    let account: dope_calendar::AccountProjection = serde_json::from_str(result.get()).unwrap();
+    let account: kura_calendar::AccountProjection = serde_json::from_str(result.get()).unwrap();
     assert_eq!(account.primary_calendar_ref, "cal_1");
     assert_eq!(account.integration_id, "cal_1");
 }
@@ -172,7 +172,7 @@ fn calendar_project_account_roundtrip() {
 fn mail_project_account_roundtrip() {
     let base = mock_http("HTTP/1.1 200 OK", r#"{"code":0,"msg":"ok","data":{"mailbox_address":"a@x.com","name":"Alice"}}"#);
     let provider = new_mail_provider(Client::new(&base));
-    let resource = dope_integrations::Resource {
+    let resource = kura_integrations::Resource {
         integration_id: "m_1".to_string(),
         domain_kind: "mail".to_string(),
         ..Default::default()
@@ -185,7 +185,7 @@ fn mail_project_account_roundtrip() {
         payload: None,
     };
     let result = provider.handle(op, None).unwrap().unwrap();
-    let account: dope_mail::AccountProjection = serde_json::from_str(result.get()).unwrap();
+    let account: kura_mail::AccountProjection = serde_json::from_str(result.get()).unwrap();
     assert_eq!(account.mailbox_address, "a@x.com");
     assert_eq!(account.integration_id, "m_1");
 }

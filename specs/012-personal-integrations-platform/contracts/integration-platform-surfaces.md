@@ -60,7 +60,7 @@ Schema surfaces:
 Requirements:
 
 - this route exists only to verify the shared runtime, approval, and provenance model in
-  `DOPE_ENV=test` using the repo-owned fake integration backend
+  `KURA_ENV=test` using the repo-owned fake integration backend
 - probe requests accept:
   - `probeKind`: `inspect` or `mutate`
   - optional `approvalId`

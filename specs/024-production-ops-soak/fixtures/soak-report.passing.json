@@ -2,7 +2,7 @@
   "reportId": "soak_r39_passing",
   "branchOrVersion": "024-production-ops-soak",
   "environment": "test",
-  "dataDirectory": "~/.dope-test",
+  "dataDirectory": "~/.kura-test",
   "baselineTopology": "tenant_scoped_single_node",
   "durationHours": 24,
   "tenantSetSummary": ["ten_ops_alpha", "ten_ops_beta", "ten_ops_gamma"],

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
-use dope_connectors::{DiagnosticReasonCode, LifecycleState, RedactionStatus};
+use kura_connectors::{DiagnosticReasonCode, LifecycleState, RedactionStatus};
 
 use crate::destinations::{RoutePolicy, has_ready_route_policy, normalize_route_policy};
 use crate::util::{first_non_empty, is_unset_time};

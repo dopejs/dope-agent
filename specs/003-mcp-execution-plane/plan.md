@@ -15,14 +15,14 @@ per-tool, per-runtime-surface policy instead of implicit server-wide defaults.
 
 ## Technical Context
 
-**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts  
-**Primary Dependencies**: `daemon/internal/api`, `daemon/internal/app`, `daemon/internal/sandbox`, `daemon/internal/store`, `daemon/internal/policy`, `daemon/internal/events`, `daemon/internal/contracts`, new `daemon/internal/mcp` registry and stdio transport layer, `modernc.org/sqlite`  
-**Storage**: SQLite daemon state; sandbox declaration, secret-scope, and policy-record persistence; environment-scoped config and secret refs under `~/.dope-test` or `~/.dope`  
-**Testing**: `go test ./internal/mcp ./internal/sandbox ./internal/api ./internal/app ./internal/store ./internal/policy ./internal/contracts`, `make daemon-contract-test`, `go test ./...`  
-**Target Platform**: macOS/Linux local daemon in the default test environment  
-**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts  
-**Performance Goals**: MCP registration and inspection stay effectively immediate for operator use; lifecycle preflight, secret resolution, and exposure evaluation add no more than `<=100 ms` daemon-side overhead per start, restart, or cancellation attempt, excluding subprocess startup time and MCP server readiness latency, and this target must be verified by dedicated regression coverage plus quickstart recording  
-**Constraints**: Sandbox backend remains `subprocess` only; enabled servers auto-restart after daemon restart when current policy and config remain valid; MCP tool exposure is explicit allowlist by tool and runtime surface; approval applies at tool exposure, not routine lifecycle; credential scope is per MCP server instance; start, stop, restart, and cancel actions all require schema-backed and auditable route closure; stronger-than-backend guarantees MUST fail as denied or unsupported; all new APIs, schemas, events, and persistence remain additive; local verification defaults to `DOPE_ENV=test`  
+**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts
+**Primary Dependencies**: `daemon/internal/api`, `daemon/internal/app`, `daemon/internal/sandbox`, `daemon/internal/store`, `daemon/internal/policy`, `daemon/internal/events`, `daemon/internal/contracts`, new `daemon/internal/mcp` registry and stdio transport layer, `modernc.org/sqlite`
+**Storage**: SQLite daemon state; sandbox declaration, secret-scope, and policy-record persistence; environment-scoped config and secret refs under `~/.kura-test` or `~/.kura`
+**Testing**: `go test ./internal/mcp ./internal/sandbox ./internal/api ./internal/app ./internal/store ./internal/policy ./internal/contracts`, `make daemon-contract-test`, `go test ./...`
+**Target Platform**: macOS/Linux local daemon in the default test environment
+**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts
+**Performance Goals**: MCP registration and inspection stay effectively immediate for operator use; lifecycle preflight, secret resolution, and exposure evaluation add no more than `<=100 ms` daemon-side overhead per start, restart, or cancellation attempt, excluding subprocess startup time and MCP server readiness latency, and this target must be verified by dedicated regression coverage plus quickstart recording
+**Constraints**: Sandbox backend remains `subprocess` only; enabled servers auto-restart after daemon restart when current policy and config remain valid; MCP tool exposure is explicit allowlist by tool and runtime surface; approval applies at tool exposure, not routine lifecycle; credential scope is per MCP server instance; start, stop, restart, and cancel actions all require schema-backed and auditable route closure; stronger-than-backend guarantees MUST fail as denied or unsupported; all new APIs, schemas, events, and persistence remain additive; local verification defaults to `KURA_ENV=test`
 **Scale/Scope**: One daemon-managed MCP inventory for current runtime surfaces, expected to cover a small operator-managed fleet (single digits to low dozens of servers and hundreds of exposed tools), plus restart-safe lifecycle, audit, and exposure policy for that fleet
 
 ## Constitution Check
@@ -43,8 +43,8 @@ per-tool, per-runtime-surface policy instead of implicit server-wide defaults.
 - Verification and observability: PASS. The plan requires targeted package tests,
   contract validation, restart-aware recovery coverage, and operator-visible lifecycle,
   credential, and tool-exposure evidence.
-- Environment and secrets: PASS. The plan keeps local work in `DOPE_ENV=test`, preserves
-  `~/.dope-test` / `~/.dope` separation, and extends the existing declaration-backed
+- Environment and secrets: PASS. The plan keeps local work in `KURA_ENV=test`, preserves
+  `~/.kura-test` / `~/.kura` separation, and extends the existing declaration-backed
   secret-scope model to MCP server instances.
 
 Post-design re-check:

@@ -40,16 +40,16 @@ fn bool_to_int(value: bool) -> i64 {
 }
 
 /// Go `candidateEvidenceRedactionStatus`.
-fn candidate_evidence_redaction_status(evidence: &dope_evaluation::CandidateEvidence) -> dope_evaluation::RedactionStatus {
+fn candidate_evidence_redaction_status(evidence: &kura_evaluation::CandidateEvidence) -> kura_evaluation::RedactionStatus {
     if !evidence.redaction_rules_applied.is_empty() || !evidence.sensitive_fields_excluded.is_empty() {
-        dope_evaluation::RedactionStatus::Redacted
+        kura_evaluation::RedactionStatus::Redacted
     } else {
-        dope_evaluation::RedactionStatus::Clean
+        kura_evaluation::RedactionStatus::Clean
     }
 }
 
 /// Go `productSourceKindsContain`.
-fn product_source_kinds_contain(values: &[dope_evaluation::SourceKind], target: &dope_evaluation::SourceKind) -> bool {
+fn product_source_kinds_contain(values: &[kura_evaluation::SourceKind], target: &kura_evaluation::SourceKind) -> bool {
     values.iter().any(|v| v == target)
 }
 
@@ -62,15 +62,15 @@ impl SQLiteStore {
         } else {
             self.resolve_default_tenant_binding().unwrap_or_default()
         };
-        dope_evaluation::validate_tenant_scoped_product_request(&tenant_id)
+        kura_evaluation::validate_tenant_scoped_product_request(&tenant_id)
             .map_err(|e| e.to_string())?;
         Ok(tenant_id)
     }
 
-    pub fn upsert_discovery_policy(&self, mut item: dope_evaluation::DiscoveryPolicy) -> Result<(), String> {
+    pub fn upsert_discovery_policy(&self, mut item: kura_evaluation::DiscoveryPolicy) -> Result<(), String> {
         let tenant_id = self.evaluation_product_tenant_id(&item.tenant_id)?;
         item.tenant_id = tenant_id.clone();
-        dope_evaluation::validate_discovery_policy(&item).map_err(|e| e.to_string())?;
+        kura_evaluation::validate_discovery_policy(&item).map_err(|e| e.to_string())?;
         let document_json = serde_json::to_string(&item).map_err(|e| format!("marshal evaluation discovery policy: {e}"))?;
         self.conn
             .execute(
@@ -110,8 +110,8 @@ impl SQLiteStore {
 
     pub fn list_discovery_policies(
         &self,
-        filter: &dope_evaluation::DiscoveryPolicyFilter,
-    ) -> Result<Vec<dope_evaluation::DiscoveryPolicy>, String> {
+        filter: &kura_evaluation::DiscoveryPolicyFilter,
+    ) -> Result<Vec<kura_evaluation::DiscoveryPolicy>, String> {
         let tenant_id = self.evaluation_product_tenant_id(&filter.base.tenant_id)?;
         let mut query = String::from("SELECT document_json FROM evaluation_discovery_policies WHERE tenant_id = ?");
         let mut args: Vec<Value> = vec![tenant_id.clone().into()];
@@ -124,21 +124,21 @@ impl SQLiteStore {
             args.push(filter.base.cursor.clone().into());
         }
         query.push_str(" ORDER BY updated_at DESC, policy_id DESC LIMIT ?");
-        args.push(dope_evaluation::normalize_product_limit(filter.base.limit).into());
-        self.scan_evaluation_product_documents::<dope_evaluation::DiscoveryPolicy>(&query, &args, "discovery policies")
+        args.push(kura_evaluation::normalize_product_limit(filter.base.limit).into());
+        self.scan_evaluation_product_documents::<kura_evaluation::DiscoveryPolicy>(&query, &args, "discovery policies")
     }
 
     pub fn get_discovery_policy(
         &self,
         tenant_id: &str,
         policy_id: &str,
-    ) -> Result<Option<dope_evaluation::DiscoveryPolicy>, String> {
-        self.get_evaluation_product_document::<dope_evaluation::DiscoveryPolicy>(
+    ) -> Result<Option<kura_evaluation::DiscoveryPolicy>, String> {
+        self.get_evaluation_product_document::<kura_evaluation::DiscoveryPolicy>(
             "evaluation_discovery_policies", "policy_id", tenant_id, policy_id, "discovery policy",
         )
     }
 
-    pub fn save_discovery_run(&self, mut item: dope_evaluation::DiscoveryRun) -> Result<(), String> {
+    pub fn save_discovery_run(&self, mut item: kura_evaluation::DiscoveryRun) -> Result<(), String> {
         let tenant_id = self.evaluation_product_tenant_id(&item.tenant_id)?;
         item.tenant_id = tenant_id.clone();
         let document_json = serde_json::to_string(&item).map_err(|e| format!("marshal evaluation discovery run: {e}"))?;
@@ -187,8 +187,8 @@ impl SQLiteStore {
 
     pub fn list_discovery_runs(
         &self,
-        filter: &dope_evaluation::DiscoveryRunFilter,
-    ) -> Result<Vec<dope_evaluation::DiscoveryRun>, String> {
+        filter: &kura_evaluation::DiscoveryRunFilter,
+    ) -> Result<Vec<kura_evaluation::DiscoveryRun>, String> {
         let tenant_id = self.evaluation_product_tenant_id(&filter.base.tenant_id)?;
         let mut query = String::from("SELECT document_json FROM evaluation_discovery_runs WHERE tenant_id = ?");
         let mut args: Vec<Value> = vec![tenant_id.clone().into()];
@@ -201,8 +201,8 @@ impl SQLiteStore {
             args.push(filter.base.cursor.clone().into());
         }
         query.push_str(" ORDER BY updated_at DESC, discovery_run_id DESC LIMIT ?");
-        args.push(dope_evaluation::normalize_product_limit(filter.base.limit).into());
-        let items = self.scan_evaluation_product_documents::<dope_evaluation::DiscoveryRun>(&query, &args, "discovery runs")?;
+        args.push(kura_evaluation::normalize_product_limit(filter.base.limit).into());
+        let items = self.scan_evaluation_product_documents::<kura_evaluation::DiscoveryRun>(&query, &args, "discovery runs")?;
         if filter.source_kind.as_str().is_empty() {
             return Ok(items);
         }
@@ -216,8 +216,8 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         discovery_run_id: &str,
-    ) -> Result<Option<dope_evaluation::DiscoveryRun>, String> {
-        self.get_evaluation_product_document::<dope_evaluation::DiscoveryRun>(
+    ) -> Result<Option<kura_evaluation::DiscoveryRun>, String> {
+        self.get_evaluation_product_document::<kura_evaluation::DiscoveryRun>(
             "evaluation_discovery_runs", "discovery_run_id", tenant_id, discovery_run_id, "discovery run",
         )
     }
@@ -225,8 +225,8 @@ impl SQLiteStore {
     /// Go `SaveDiscoveredCandidate`: candidate + optional evidence, transactional.
     pub fn save_discovered_candidate(
         &self,
-        mut item: dope_evaluation::DiscoveredCandidate,
-        mut evidence: dope_evaluation::CandidateEvidence,
+        mut item: kura_evaluation::DiscoveredCandidate,
+        mut evidence: kura_evaluation::CandidateEvidence,
     ) -> Result<(), String> {
         let tenant_id = self.evaluation_product_tenant_id(&item.tenant_id)?;
         item.tenant_id = tenant_id.clone();
@@ -319,8 +319,8 @@ impl SQLiteStore {
 
     pub fn list_discovered_candidates(
         &self,
-        filter: &dope_evaluation::DiscoveredCandidateFilter,
-    ) -> Result<Vec<dope_evaluation::DiscoveredCandidate>, String> {
+        filter: &kura_evaluation::DiscoveredCandidateFilter,
+    ) -> Result<Vec<kura_evaluation::DiscoveredCandidate>, String> {
         let tenant_id = self.evaluation_product_tenant_id(&filter.base.tenant_id)?;
         let mut query = String::from("SELECT document_json FROM evaluation_discovered_candidates WHERE tenant_id = ?");
         let mut args: Vec<Value> = vec![tenant_id.clone().into()];
@@ -349,16 +349,16 @@ impl SQLiteStore {
             args.push(filter.base.cursor.clone().into());
         }
         query.push_str(" ORDER BY updated_at DESC, discovered_candidate_id DESC LIMIT ?");
-        args.push(dope_evaluation::normalize_product_limit(filter.base.limit).into());
-        self.scan_evaluation_product_documents::<dope_evaluation::DiscoveredCandidate>(&query, &args, "discovered candidates")
+        args.push(kura_evaluation::normalize_product_limit(filter.base.limit).into());
+        self.scan_evaluation_product_documents::<kura_evaluation::DiscoveredCandidate>(&query, &args, "discovered candidates")
     }
 
     pub fn get_discovered_candidate(
         &self,
         tenant_id: &str,
         discovered_candidate_id: &str,
-    ) -> Result<Option<dope_evaluation::DiscoveredCandidate>, String> {
-        self.get_evaluation_product_document::<dope_evaluation::DiscoveredCandidate>(
+    ) -> Result<Option<kura_evaluation::DiscoveredCandidate>, String> {
+        self.get_evaluation_product_document::<kura_evaluation::DiscoveredCandidate>(
             "evaluation_discovered_candidates", "discovered_candidate_id", tenant_id, discovered_candidate_id, "discovered candidate",
         )
     }
@@ -367,7 +367,7 @@ impl SQLiteStore {
         &self,
         tenant_id: &str,
         discovered_candidate_id: &str,
-    ) -> Result<Option<dope_evaluation::CandidateEvidence>, String> {
+    ) -> Result<Option<kura_evaluation::CandidateEvidence>, String> {
         let tenant_id = self.evaluation_product_tenant_id(tenant_id)?;
         let mut stmt = self
             .conn
@@ -382,13 +382,13 @@ impl SQLiteStore {
             return Ok(None);
         };
         let raw: String = row.get(0).map_err(|e| e.to_string())?;
-        let item: dope_evaluation::CandidateEvidence = serde_json::from_str(&raw)
+        let item: kura_evaluation::CandidateEvidence = serde_json::from_str(&raw)
             .map_err(|e| format!("decode latest evaluation candidate evidence: {e}"))?;
         Ok(Some(item))
     }
 
     /// Go `CreateSuppression`.
-    pub fn create_suppression(&self, mut item: dope_evaluation::SuppressionRecord) -> Result<(), String> {
+    pub fn create_suppression(&self, mut item: kura_evaluation::SuppressionRecord) -> Result<(), String> {
         let tenant_id = self.evaluation_product_tenant_id(&item.tenant_id)?;
         item.tenant_id = tenant_id.clone();
         let document_json = serde_json::to_string(&item).map_err(|e| format!("marshal evaluation suppression: {e}"))?;
@@ -428,16 +428,16 @@ impl SQLiteStore {
 
     /// Go `ApplyRetention`: expires matching product rows (dry-run records only
     /// when dry_run is set). Returns the recorded application ids.
-    pub fn apply_retention(&self, filter: &dope_evaluation::RetentionApplicationFilter) -> Result<Vec<String>, String> {
+    pub fn apply_retention(&self, filter: &kura_evaluation::RetentionApplicationFilter) -> Result<Vec<String>, String> {
         let tenant_id = self.evaluation_product_tenant_id(&filter.base.tenant_id)?;
-        let kinds: Vec<dope_evaluation::ProductResourceKind> = if filter.resource_kinds.is_empty() {
+        let kinds: Vec<kura_evaluation::ProductResourceKind> = if filter.resource_kinds.is_empty() {
             vec![
-                dope_evaluation::ProductResourceKind::DiscoveredCandidate,
-                dope_evaluation::ProductResourceKind::CandidateEvidence,
-                dope_evaluation::ProductResourceKind::ProductFixture,
-                dope_evaluation::ProductResourceKind::Campaign,
-                dope_evaluation::ProductResourceKind::DashboardProjection,
-                dope_evaluation::ProductResourceKind::ToolCallInspection,
+                kura_evaluation::ProductResourceKind::DiscoveredCandidate,
+                kura_evaluation::ProductResourceKind::CandidateEvidence,
+                kura_evaluation::ProductResourceKind::ProductFixture,
+                kura_evaluation::ProductResourceKind::Campaign,
+                kura_evaluation::ProductResourceKind::DashboardProjection,
+                kura_evaluation::ProductResourceKind::ToolCallInspection,
             ]
         } else {
             filter.resource_kinds.clone()
@@ -485,7 +485,7 @@ impl SQLiteStore {
         Ok(application_ids)
     }
 
-    pub fn upsert_product_fixture(&self, mut item: dope_evaluation::ProductManagedFixture) -> Result<(), String> {
+    pub fn upsert_product_fixture(&self, mut item: kura_evaluation::ProductManagedFixture) -> Result<(), String> {
         let tenant_id = self.evaluation_product_tenant_id(&item.tenant_id)?;
         item.tenant_id = tenant_id.clone();
         let document_json = serde_json::to_string(&item).map_err(|e| format!("marshal evaluation product fixture: {e}"))?;
@@ -531,8 +531,8 @@ impl SQLiteStore {
 
     pub fn list_product_fixtures(
         &self,
-        filter: &dope_evaluation::ProductListFilter,
-    ) -> Result<Vec<dope_evaluation::ProductManagedFixture>, String> {
+        filter: &kura_evaluation::ProductListFilter,
+    ) -> Result<Vec<kura_evaluation::ProductManagedFixture>, String> {
         let tenant_id = self.evaluation_product_tenant_id(&filter.tenant_id)?;
         let mut query = String::from("SELECT document_json FROM evaluation_product_fixtures WHERE tenant_id = ?");
         let mut args: Vec<Value> = vec![tenant_id.clone().into()];
@@ -541,21 +541,21 @@ impl SQLiteStore {
             args.push(filter.cursor.clone().into());
         }
         query.push_str(" ORDER BY updated_at DESC, fixture_id DESC LIMIT ?");
-        args.push(dope_evaluation::normalize_product_limit(filter.limit).into());
-        self.scan_evaluation_product_documents::<dope_evaluation::ProductManagedFixture>(&query, &args, "product fixtures")
+        args.push(kura_evaluation::normalize_product_limit(filter.limit).into());
+        self.scan_evaluation_product_documents::<kura_evaluation::ProductManagedFixture>(&query, &args, "product fixtures")
     }
 
     pub fn get_product_fixture(
         &self,
         tenant_id: &str,
         fixture_id: &str,
-    ) -> Result<Option<dope_evaluation::ProductManagedFixture>, String> {
-        self.get_evaluation_product_document::<dope_evaluation::ProductManagedFixture>(
+    ) -> Result<Option<kura_evaluation::ProductManagedFixture>, String> {
+        self.get_evaluation_product_document::<kura_evaluation::ProductManagedFixture>(
             "evaluation_product_fixtures", "fixture_id", tenant_id, fixture_id, "product fixture",
         )
     }
 
-    pub fn save_fixture_revision(&self, mut item: dope_evaluation::FixtureRevision) -> Result<(), String> {
+    pub fn save_fixture_revision(&self, mut item: kura_evaluation::FixtureRevision) -> Result<(), String> {
         let tenant_id = self.evaluation_product_tenant_id(&item.tenant_id)?;
         item.tenant_id = tenant_id.clone();
         let document_json = serde_json::to_string(&item).map_err(|e| format!("marshal evaluation fixture revision: {e}"))?;
@@ -586,7 +586,7 @@ impl SQLiteStore {
         tenant_id: &str,
         fixture_id: &str,
         limit: i64,
-    ) -> Result<Vec<dope_evaluation::FixtureRevision>, String> {
+    ) -> Result<Vec<kura_evaluation::FixtureRevision>, String> {
         let tenant_id = self.evaluation_product_tenant_id(tenant_id)?;
         let query = String::from(
             "SELECT document_json FROM evaluation_fixture_revisions
@@ -596,12 +596,12 @@ impl SQLiteStore {
         let args: Vec<Value> = vec![
             tenant_id.into(),
             fixture_id.to_string().into(),
-            dope_evaluation::normalize_product_limit(limit).into(),
+            kura_evaluation::normalize_product_limit(limit).into(),
         ];
-        self.scan_evaluation_product_documents::<dope_evaluation::FixtureRevision>(&query, &args, "fixture revisions")
+        self.scan_evaluation_product_documents::<kura_evaluation::FixtureRevision>(&query, &args, "fixture revisions")
     }
 
-    pub fn save_replay_campaign(&self, mut item: dope_evaluation::ReplayCampaign) -> Result<(), String> {
+    pub fn save_replay_campaign(&self, mut item: kura_evaluation::ReplayCampaign) -> Result<(), String> {
         let tenant_id = self.evaluation_product_tenant_id(&item.tenant_id)?;
         item.tenant_id = tenant_id.clone();
         let document_json = serde_json::to_string(&item).map_err(|e| format!("marshal evaluation replay campaign: {e}"))?;
@@ -640,8 +640,8 @@ impl SQLiteStore {
 
     pub fn list_replay_campaigns(
         &self,
-        filter: &dope_evaluation::ProductListFilter,
-    ) -> Result<Vec<dope_evaluation::ReplayCampaign>, String> {
+        filter: &kura_evaluation::ProductListFilter,
+    ) -> Result<Vec<kura_evaluation::ReplayCampaign>, String> {
         let tenant_id = self.evaluation_product_tenant_id(&filter.tenant_id)?;
         let mut query = String::from("SELECT document_json FROM evaluation_campaigns WHERE tenant_id = ?");
         let mut args: Vec<Value> = vec![tenant_id.clone().into()];
@@ -650,21 +650,21 @@ impl SQLiteStore {
             args.push(filter.cursor.clone().into());
         }
         query.push_str(" ORDER BY created_at DESC, campaign_id DESC LIMIT ?");
-        args.push(dope_evaluation::normalize_product_limit(filter.limit).into());
-        self.scan_evaluation_product_documents::<dope_evaluation::ReplayCampaign>(&query, &args, "replay campaigns")
+        args.push(kura_evaluation::normalize_product_limit(filter.limit).into());
+        self.scan_evaluation_product_documents::<kura_evaluation::ReplayCampaign>(&query, &args, "replay campaigns")
     }
 
     pub fn get_replay_campaign(
         &self,
         tenant_id: &str,
         campaign_id: &str,
-    ) -> Result<Option<dope_evaluation::ReplayCampaign>, String> {
-        self.get_evaluation_product_document::<dope_evaluation::ReplayCampaign>(
+    ) -> Result<Option<kura_evaluation::ReplayCampaign>, String> {
+        self.get_evaluation_product_document::<kura_evaluation::ReplayCampaign>(
             "evaluation_campaigns", "campaign_id", tenant_id, campaign_id, "replay campaign",
         )
     }
 
-    pub fn save_campaign_item(&self, mut item: dope_evaluation::CampaignItem) -> Result<(), String> {
+    pub fn save_campaign_item(&self, mut item: kura_evaluation::CampaignItem) -> Result<(), String> {
         let tenant_id = self.evaluation_product_tenant_id(&item.tenant_id)?;
         item.tenant_id = tenant_id.clone();
         let document_json = serde_json::to_string(&item).map_err(|e| format!("marshal evaluation campaign item: {e}"))?;
@@ -692,9 +692,9 @@ impl SQLiteStore {
 
     pub fn list_campaign_items(
         &self,
-        filter: &dope_evaluation::ProductListFilter,
+        filter: &kura_evaluation::ProductListFilter,
         campaign_id: &str,
-    ) -> Result<Vec<dope_evaluation::CampaignItem>, String> {
+    ) -> Result<Vec<kura_evaluation::CampaignItem>, String> {
         let tenant_id = self.evaluation_product_tenant_id(&filter.tenant_id)?;
         let mut query = String::from("SELECT document_json FROM evaluation_campaign_items WHERE tenant_id = ?");
         let mut args: Vec<Value> = vec![tenant_id.clone().into()];
@@ -707,11 +707,11 @@ impl SQLiteStore {
             args.push(filter.cursor.clone().into());
         }
         query.push_str(" ORDER BY created_at DESC, campaign_item_id DESC LIMIT ?");
-        args.push(dope_evaluation::normalize_product_limit(filter.limit).into());
-        self.scan_evaluation_product_documents::<dope_evaluation::CampaignItem>(&query, &args, "campaign items")
+        args.push(kura_evaluation::normalize_product_limit(filter.limit).into());
+        self.scan_evaluation_product_documents::<kura_evaluation::CampaignItem>(&query, &args, "campaign items")
     }
 
-    pub fn save_campaign_attempt_group(&self, mut item: dope_evaluation::CampaignAttemptGroup) -> Result<(), String> {
+    pub fn save_campaign_attempt_group(&self, mut item: kura_evaluation::CampaignAttemptGroup) -> Result<(), String> {
         let tenant_id = self.evaluation_product_tenant_id(&item.tenant_id)?;
         item.tenant_id = tenant_id.clone();
         let document_json = serde_json::to_string(&item).map_err(|e| format!("marshal evaluation campaign attempt group: {e}"))?;
@@ -751,9 +751,9 @@ impl SQLiteStore {
 
     pub fn list_campaign_attempt_groups(
         &self,
-        filter: &dope_evaluation::ProductListFilter,
+        filter: &kura_evaluation::ProductListFilter,
         campaign_id: &str,
-    ) -> Result<Vec<dope_evaluation::CampaignAttemptGroup>, String> {
+    ) -> Result<Vec<kura_evaluation::CampaignAttemptGroup>, String> {
         let tenant_id = self.evaluation_product_tenant_id(&filter.tenant_id)?;
         let mut query = String::from("SELECT document_json FROM evaluation_campaign_attempt_groups WHERE tenant_id = ?");
         let mut args: Vec<Value> = vec![tenant_id.clone().into()];
@@ -766,15 +766,15 @@ impl SQLiteStore {
             args.push(filter.cursor.clone().into());
         }
         query.push_str(" ORDER BY updated_at DESC, attempt_group_id DESC LIMIT ?");
-        args.push(dope_evaluation::normalize_product_limit(filter.limit).into());
-        self.scan_evaluation_product_documents::<dope_evaluation::CampaignAttemptGroup>(&query, &args, "campaign attempt groups")
+        args.push(kura_evaluation::normalize_product_limit(filter.limit).into());
+        self.scan_evaluation_product_documents::<kura_evaluation::CampaignAttemptGroup>(&query, &args, "campaign attempt groups")
     }
 
-    pub fn save_dashboard_projection(&self, mut item: dope_evaluation::DashboardProjection) -> Result<(), String> {
+    pub fn save_dashboard_projection(&self, mut item: kura_evaluation::DashboardProjection) -> Result<(), String> {
         let tenant_id = self.evaluation_product_tenant_id(&item.tenant_id)?;
         item.tenant_id = tenant_id.clone();
         if item.retention_state.as_str().is_empty() {
-            item.retention_state = dope_evaluation::RetentionState::Active;
+            item.retention_state = kura_evaluation::RetentionState::Active;
         }
         let document_json = serde_json::to_string(&item).map_err(|e| format!("marshal evaluation dashboard projection: {e}"))?;
         self.conn
@@ -807,40 +807,40 @@ impl SQLiteStore {
 
     pub fn list_dashboard_projections(
         &self,
-        filter: &dope_evaluation::ProductListFilter,
-    ) -> Result<Vec<dope_evaluation::DashboardProjection>, String> {
+        filter: &kura_evaluation::ProductListFilter,
+    ) -> Result<Vec<kura_evaluation::DashboardProjection>, String> {
         let tenant_id = self.evaluation_product_tenant_id(&filter.tenant_id)?;
         let mut query = String::from(
             "SELECT document_json FROM evaluation_dashboard_projections WHERE tenant_id = ? AND retention_state = ?",
         );
         let mut args: Vec<Value> = vec![
             tenant_id.clone().into(),
-            dope_evaluation::RetentionState::Active.as_str().to_string().into(),
+            kura_evaluation::RetentionState::Active.as_str().to_string().into(),
         ];
         if !filter.cursor.is_empty() {
             query.push_str(" AND projection_id < ?");
             args.push(filter.cursor.clone().into());
         }
         query.push_str(" ORDER BY generated_at DESC, projection_id DESC LIMIT ?");
-        args.push(dope_evaluation::normalize_product_limit(filter.limit).into());
-        self.scan_evaluation_product_documents::<dope_evaluation::DashboardProjection>(&query, &args, "dashboard projections")
+        args.push(kura_evaluation::normalize_product_limit(filter.limit).into());
+        self.scan_evaluation_product_documents::<kura_evaluation::DashboardProjection>(&query, &args, "dashboard projections")
     }
 
     pub fn get_dashboard_projection(
         &self,
         tenant_id: &str,
         projection_id: &str,
-    ) -> Result<Option<dope_evaluation::DashboardProjection>, String> {
-        self.get_evaluation_product_document::<dope_evaluation::DashboardProjection>(
+    ) -> Result<Option<kura_evaluation::DashboardProjection>, String> {
+        self.get_evaluation_product_document::<kura_evaluation::DashboardProjection>(
             "evaluation_dashboard_projections", "projection_id", tenant_id, projection_id, "dashboard projection",
         )
     }
 
-    pub fn save_tool_call_inspection(&self, mut item: dope_evaluation::ToolCallInspection) -> Result<(), String> {
+    pub fn save_tool_call_inspection(&self, mut item: kura_evaluation::ToolCallInspection) -> Result<(), String> {
         let tenant_id = self.evaluation_product_tenant_id(&item.tenant_id)?;
         item.tenant_id = tenant_id.clone();
         if item.retention_state.as_str().is_empty() {
-            item.retention_state = dope_evaluation::RetentionState::Active;
+            item.retention_state = kura_evaluation::RetentionState::Active;
         }
         let document_json = serde_json::to_string(&item).map_err(|e| format!("marshal evaluation tool-call inspection: {e}"))?;
         self.conn
@@ -875,16 +875,16 @@ impl SQLiteStore {
 
     pub fn list_tool_call_inspections(
         &self,
-        filter: &dope_evaluation::ProductListFilter,
+        filter: &kura_evaluation::ProductListFilter,
         campaign_id: &str,
-    ) -> Result<Vec<dope_evaluation::ToolCallInspection>, String> {
+    ) -> Result<Vec<kura_evaluation::ToolCallInspection>, String> {
         let tenant_id = self.evaluation_product_tenant_id(&filter.tenant_id)?;
         let mut query = String::from(
             "SELECT document_json FROM evaluation_tool_call_inspections WHERE tenant_id = ? AND retention_state = ?",
         );
         let mut args: Vec<Value> = vec![
             tenant_id.clone().into(),
-            dope_evaluation::RetentionState::Active.as_str().to_string().into(),
+            kura_evaluation::RetentionState::Active.as_str().to_string().into(),
         ];
         if !campaign_id.is_empty() {
             query.push_str(" AND campaign_id = ?");
@@ -895,16 +895,16 @@ impl SQLiteStore {
             args.push(filter.cursor.clone().into());
         }
         query.push_str(" ORDER BY updated_at DESC, inspection_id DESC LIMIT ?");
-        args.push(dope_evaluation::normalize_product_limit(filter.limit).into());
-        self.scan_evaluation_product_documents::<dope_evaluation::ToolCallInspection>(&query, &args, "tool-call inspections")
+        args.push(kura_evaluation::normalize_product_limit(filter.limit).into());
+        self.scan_evaluation_product_documents::<kura_evaluation::ToolCallInspection>(&query, &args, "tool-call inspections")
     }
 
     pub fn get_tool_call_inspection(
         &self,
         tenant_id: &str,
         inspection_id: &str,
-    ) -> Result<Option<dope_evaluation::ToolCallInspection>, String> {
-        self.get_evaluation_product_document::<dope_evaluation::ToolCallInspection>(
+    ) -> Result<Option<kura_evaluation::ToolCallInspection>, String> {
+        self.get_evaluation_product_document::<kura_evaluation::ToolCallInspection>(
             "evaluation_tool_call_inspections", "inspection_id", tenant_id, inspection_id, "tool-call inspection",
         )
     }
@@ -914,60 +914,60 @@ impl SQLiteStore {
     fn apply_product_retention_kind(
         &self,
         tenant_id: &str,
-        kind: &dope_evaluation::ProductResourceKind,
+        kind: &kura_evaluation::ProductResourceKind,
         now: DateTime<Utc>,
     ) -> Result<(), String> {
         match kind {
-            dope_evaluation::ProductResourceKind::DiscoveredCandidate => self
-                .update_evaluation_product_retention::<dope_evaluation::DiscoveredCandidate>(
+            kura_evaluation::ProductResourceKind::DiscoveredCandidate => self
+                .update_evaluation_product_retention::<kura_evaluation::DiscoveredCandidate>(
                     "evaluation_discovered_candidates", "discovered_candidate_id", tenant_id, now,
                     RetentionColumns { expires_at: true, updated_at: true },
                     |item| {
-                        item.retention_state = dope_evaluation::RetentionState::Expired;
+                        item.retention_state = kura_evaluation::RetentionState::Expired;
                         item.updated_at = now;
                         item.expires_at = Some(now);
                     },
                 ),
-            dope_evaluation::ProductResourceKind::CandidateEvidence => self
-                .update_evaluation_product_retention::<dope_evaluation::CandidateEvidence>(
+            kura_evaluation::ProductResourceKind::CandidateEvidence => self
+                .update_evaluation_product_retention::<kura_evaluation::CandidateEvidence>(
                     "evaluation_candidate_evidence", "evidence_id", tenant_id, now,
                     RetentionColumns { expires_at: true, updated_at: false },
                     |item| {
-                        item.retention_state = dope_evaluation::RetentionState::Expired;
+                        item.retention_state = kura_evaluation::RetentionState::Expired;
                         item.expires_at = Some(now);
                     },
                 ),
-            dope_evaluation::ProductResourceKind::ProductFixture => self
-                .update_evaluation_product_retention::<dope_evaluation::ProductManagedFixture>(
+            kura_evaluation::ProductResourceKind::ProductFixture => self
+                .update_evaluation_product_retention::<kura_evaluation::ProductManagedFixture>(
                     "evaluation_product_fixtures", "fixture_id", tenant_id, now,
                     RetentionColumns { expires_at: false, updated_at: true },
                     |item| {
-                        item.retention_state = dope_evaluation::RetentionState::Expired;
+                        item.retention_state = kura_evaluation::RetentionState::Expired;
                         item.updated_at = now;
                     },
                 ),
-            dope_evaluation::ProductResourceKind::Campaign => self
-                .update_evaluation_product_retention::<dope_evaluation::ReplayCampaign>(
+            kura_evaluation::ProductResourceKind::Campaign => self
+                .update_evaluation_product_retention::<kura_evaluation::ReplayCampaign>(
                     "evaluation_campaigns", "campaign_id", tenant_id, now,
                     RetentionColumns { expires_at: false, updated_at: false },
                     |item| {
-                        item.retention_state = dope_evaluation::RetentionState::Expired;
+                        item.retention_state = kura_evaluation::RetentionState::Expired;
                     },
                 ),
-            dope_evaluation::ProductResourceKind::DashboardProjection => self
-                .update_evaluation_product_retention::<dope_evaluation::DashboardProjection>(
+            kura_evaluation::ProductResourceKind::DashboardProjection => self
+                .update_evaluation_product_retention::<kura_evaluation::DashboardProjection>(
                     "evaluation_dashboard_projections", "projection_id", tenant_id, now,
                     RetentionColumns { expires_at: false, updated_at: false },
                     |item| {
-                        item.retention_state = dope_evaluation::RetentionState::Expired;
+                        item.retention_state = kura_evaluation::RetentionState::Expired;
                     },
                 ),
-            dope_evaluation::ProductResourceKind::ToolCallInspection => self
-                .update_evaluation_product_retention::<dope_evaluation::ToolCallInspection>(
+            kura_evaluation::ProductResourceKind::ToolCallInspection => self
+                .update_evaluation_product_retention::<kura_evaluation::ToolCallInspection>(
                     "evaluation_tool_call_inspections", "inspection_id", tenant_id, now,
                     RetentionColumns { expires_at: false, updated_at: true },
                     |item| {
-                        item.retention_state = dope_evaluation::RetentionState::Expired;
+                        item.retention_state = kura_evaluation::RetentionState::Expired;
                         item.updated_at = now;
                     },
                 ),
@@ -1006,7 +1006,7 @@ impl SQLiteStore {
             mutate(&mut item);
             let encoded = serde_json::to_string(&item).map_err(|e| format!("marshal retention row {table}/{id}: {e}"))?;
             let mut assignments = vec!["retention_state = ?".to_string()];
-            let mut args: Vec<Value> = vec![dope_evaluation::RetentionState::Expired.as_str().to_string().into()];
+            let mut args: Vec<Value> = vec![kura_evaluation::RetentionState::Expired.as_str().to_string().into()];
             if columns.expires_at {
                 assignments.push("expires_at = COALESCE(expires_at, ?)".to_string());
                 args.push(format_product_time(now).into());

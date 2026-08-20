@@ -1,4 +1,4 @@
-//! Integration tests for the dope-tenancy accessor layer.
+//! Integration tests for the kura-tenancy accessor layer.
 //!
 //! Covers: tenant-context requirement (fail-closed), Runtime accessor round-trips and
 //! tenant scoping, cross-tenant reads returning not-found WITHOUT leaking existence,
@@ -7,21 +7,21 @@
 
 use std::sync::Arc;
 
-use dope_audit::Emitter;
-use dope_events::{Bus, Filter};
-use dope_identity::tenantctx;
-use dope_identity::{Permission, TenantContext};
-use dope_runtime::{Run, RunStatus};
-use dope_store::delivery::DeliveryTargetRecord;
-use dope_store::schedule::ScheduleRecord;
-use dope_store::SQLiteStore;
-use dope_tenancy::{
+use kura_audit::Emitter;
+use kura_events::{Bus, Filter};
+use kura_identity::tenantctx;
+use kura_identity::{Permission, TenantContext};
+use kura_runtime::{Run, RunStatus};
+use kura_store::delivery::DeliveryTargetRecord;
+use kura_store::schedule::ScheduleRecord;
+use kura_store::SQLiteStore;
+use kura_tenancy::{
     BindingAccessScope, ProfileAccessScope, TenancyError,
 };
-use dope_tenancy::runtime::{runtime_tenant_id, runtime_tenant_predicate};
+use kura_tenancy::runtime::{runtime_tenant_id, runtime_tenant_predicate};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_tenancy_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_tenancy_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -50,17 +50,17 @@ fn make_run(id: &str) -> Run {
 
 #[test]
 fn require_without_context_fails_closed() {
-    assert_eq!(dope_tenancy::require(), Err(TenancyError::TenantContextRequired));
+    assert_eq!(kura_tenancy::require(), Err(TenancyError::TenantContextRequired));
     assert!(tenantctx::from_context().is_none());
     // Must panics when the context is missing.
-    let result = std::panic::catch_unwind(dope_tenancy::must);
+    let result = std::panic::catch_unwind(kura_tenancy::must);
     assert!(result.is_err());
 }
 
 #[test]
 fn runtime_accessor_round_trip_and_tenant_scoping() {
     let store = SQLiteStore::new(&temp_dir("rt_scope")).unwrap();
-    let rt = dope_tenancy::runtime::Runtime::new(store, None);
+    let rt = kura_tenancy::runtime::Runtime::new(store, None);
 
     tenantctx::with_context(ctx("ten_a"), || {
         rt.upsert_run_for_tenant(&make_run("run_a")).unwrap();
@@ -81,7 +81,7 @@ fn runtime_accessor_round_trip_and_tenant_scoping() {
 fn cross_tenant_read_emits_audit_denial_without_leaking_existence() {
     let store = SQLiteStore::new(&temp_dir("rt_audit")).unwrap();
     let bus = Arc::new(Bus::new());
-    let rt = dope_tenancy::runtime::Runtime::new(store, Some(Emitter::new(bus.clone())));
+    let rt = kura_tenancy::runtime::Runtime::new(store, Some(Emitter::new(bus.clone())));
 
     tenantctx::with_context(ctx("ten_a"), || {
         rt.upsert_run_for_tenant(&make_run("run_a")).unwrap();
@@ -106,7 +106,7 @@ fn cross_tenant_read_emits_audit_denial_without_leaking_existence() {
 fn cross_tenant_write_refused_and_audited() {
     let store = SQLiteStore::new(&temp_dir("rt_write")).unwrap();
     let bus = Arc::new(Bus::new());
-    let rt = dope_tenancy::runtime::Runtime::new(store, Some(Emitter::new(bus.clone())));
+    let rt = kura_tenancy::runtime::Runtime::new(store, Some(Emitter::new(bus.clone())));
 
     tenantctx::with_context(ctx("ten_a"), || {
         rt.upsert_run_for_tenant(&make_run("run_a")).unwrap();
@@ -128,11 +128,11 @@ fn cross_tenant_write_refused_and_audited() {
 #[test]
 fn checkpoints_round_trip_via_runtime() {
     let store = SQLiteStore::new(&temp_dir("rt_ck")).unwrap();
-    let rt = dope_tenancy::runtime::Runtime::new(store, None);
+    let rt = kura_tenancy::runtime::Runtime::new(store, None);
     tenantctx::with_context(ctx("ten_a"), || {
         let run = make_run("run_ck");
         rt.upsert_run_for_tenant(&run).unwrap();
-        let checkpoint = dope_runtime::RunCheckpoint {
+        let checkpoint = kura_runtime::RunCheckpoint {
             run: run.clone(),
             steps: Vec::new(),
             tool_calls: Vec::new(),
@@ -148,16 +148,16 @@ fn checkpoints_round_trip_via_runtime() {
 #[test]
 fn approvals_accessor_cross_tenant_write_refused() {
     let store = SQLiteStore::new(&temp_dir("approvals")).unwrap();
-    let accessor = dope_tenancy::approvals::Approvals::new(store, None);
+    let accessor = kura_tenancy::approvals::Approvals::new(store, None);
     let now = chrono::Utc::now();
-    let approval = dope_policy::Approval {
+    let approval = kura_policy::Approval {
         approval_id: "apr_1".to_string(),
         action: "run_tool".to_string(),
         reason: "allow".to_string(),
-        status: dope_policy::ApprovalStatus::Pending,
+        status: kura_policy::ApprovalStatus::Pending,
         created_at: now,
         updated_at: now,
-        ..dope_policy::Approval::default()
+        ..kura_policy::Approval::default()
     };
     tenantctx::with_context(ctx("ten_a"), || {
         accessor.upsert_approval_for_tenant(&approval).unwrap();
@@ -173,7 +173,7 @@ fn approvals_accessor_cross_tenant_write_refused() {
 #[test]
 fn schedules_accessor_cross_tenant_not_found() {
     let store = SQLiteStore::new(&temp_dir("schedules")).unwrap();
-    let accessor = dope_tenancy::schedules::Schedules::new(store, None);
+    let accessor = kura_tenancy::schedules::Schedules::new(store, None);
     let mut record = ScheduleRecord::default();
     record.schedule_id = "sch_1".to_string();
     record.environment_scope = "test".to_string();
@@ -197,7 +197,7 @@ fn schedules_accessor_cross_tenant_not_found() {
 #[test]
 fn delivery_accessor_binds_tenant() {
     let store = SQLiteStore::new(&temp_dir("delivery")).unwrap();
-    let accessor = dope_tenancy::delivery::Delivery::new(store, None);
+    let accessor = kura_tenancy::delivery::Delivery::new(store, None);
     let mut record = DeliveryTargetRecord::default();
     record.target_id = "tgt_1".to_string();
     record.environment_scope = "test".to_string();
@@ -216,14 +216,14 @@ fn delivery_accessor_binds_tenant() {
 
 fn events_accessor_requires_tenant_and_rejects_global() {
     let store = SQLiteStore::new(&temp_dir("events")).unwrap();
-    let accessor = dope_tenancy::events::Events::new(store, None);
+    let accessor = kura_tenancy::events::Events::new(store, None);
 
     // No tenant context: fail-closed.
-    assert_eq!(accessor.append_event_for_tenant(&dope_events::Event::default()), Err(TenancyError::TenantContextRequired));
+    assert_eq!(accessor.append_event_for_tenant(&kura_events::Event::default()), Err(TenancyError::TenantContextRequired));
     assert_eq!(accessor.list_events_for_tenant(&Filter::default()), Err(TenancyError::TenantContextRequired));
 
     // Global category refused even with a tenant context.
-    let mut global = dope_events::Event::default();
+    let mut global = kura_events::Event::default();
     global.event_id = "evt_global".to_string();
     global.category = "system".to_string();
     tenantctx::with_context(ctx("ten_a"), || {
@@ -232,7 +232,7 @@ fn events_accessor_requires_tenant_and_rejects_global() {
     });
 
     // Tenant-owned category appends and lists under the tenant.
-    let mut owned = dope_events::Event::default();
+    let mut owned = kura_events::Event::default();
     owned.event_id = "evt_a".to_string();
     owned.category = "run".to_string();
     owned.name = "run.created".to_string();
@@ -253,8 +253,8 @@ fn binding_and_profile_scope_checks() {
         tenant_id: "ten_a".to_string(),
         permissions: vec![Permission::BindingsInspect, Permission::BindingsManage],
     };
-    let ws_a = dope_bindings::Workspace { tenant_id: "ten_a".to_string(), ..dope_bindings::Workspace::default() };
-    let ws_b = dope_bindings::Workspace { tenant_id: "ten_b".to_string(), ..dope_bindings::Workspace::default() };
+    let ws_a = kura_bindings::Workspace { tenant_id: "ten_a".to_string(), ..kura_bindings::Workspace::default() };
+    let ws_b = kura_bindings::Workspace { tenant_id: "ten_b".to_string(), ..kura_bindings::Workspace::default() };
     assert!(scope.can_inspect_workspace(&ws_a));
     assert!(scope.can_manage_workspace(&ws_a));
     assert!(!scope.can_inspect_workspace(&ws_b));
@@ -266,8 +266,8 @@ fn binding_and_profile_scope_checks() {
         tenant_id: "ten_a".to_string(),
         permissions: vec![Permission::ProfilesInspect],
     };
-    let prof_a = dope_profiles::AgentProfile { tenant_id: "ten_a".to_string(), ..dope_profiles::AgentProfile::default() };
-    let prof_b = dope_profiles::AgentProfile { tenant_id: "ten_b".to_string(), ..dope_profiles::AgentProfile::default() };
+    let prof_a = kura_profiles::AgentProfile { tenant_id: "ten_a".to_string(), ..kura_profiles::AgentProfile::default() };
+    let prof_b = kura_profiles::AgentProfile { tenant_id: "ten_b".to_string(), ..kura_profiles::AgentProfile::default() };
     assert!(profiles.can_inspect(&prof_a));
     assert!(!profiles.can_manage(&prof_a)); // inspect-only scope
     assert!(!profiles.can_inspect(&prof_b));

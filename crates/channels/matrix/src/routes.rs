@@ -2,7 +2,7 @@
 //! normalization/readiness and per-event route decisions.
 
 use chrono::{DateTime, Utc};
-use dope_connectors::{DiagnosticReasonCode, RedactionStatus};
+use kura_connectors::{DiagnosticReasonCode, RedactionStatus};
 
 use crate::is_unset_time;
 use crate::types::{

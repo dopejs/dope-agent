@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::util::{now_utc, payload};
 use crate::{Event, Resource};
-use dope_profiles::{ChangeKind, RedactionStatus, RuntimeProjection};
+use kura_profiles::{ChangeKind, RedactionStatus, RuntimeProjection};
 
 /// Go: `AgentProfileLifecycleInput`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

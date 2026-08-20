@@ -1,8 +1,8 @@
 //! Port of daemon/internal/connectors/matrix/reply.go: final-only reply
 //! sending with a separated assistant-vs-matrix delivery outcome.
 
-use dope_connectors::{DiagnosticReasonCode, RedactionStatus};
-use dope_imtypes::OutboundReply;
+use kura_connectors::{DiagnosticReasonCode, RedactionStatus};
+use kura_imtypes::OutboundReply;
 
 use crate::dedupe::dedupe_key;
 use crate::transport::Transport;

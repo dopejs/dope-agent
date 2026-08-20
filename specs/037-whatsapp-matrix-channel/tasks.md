@@ -281,4 +281,4 @@ Task: "Add Matrix connector-backed delivery adapter tests in daemon/internal/del
 - [P] tasks use different files or can be completed without depending on another incomplete task in the same phase.
 - Story labels map to user stories in spec.md.
 - Do not implement WhatsApp, Kura-hosted Matrix homeserver provisioning, encrypted rooms, E2EE key/session management, voice/calls, media-rich workflows, bridge automation, or memory-based personalization in this phase.
-- Default verification uses fake Matrix transport and `~/.dope-test`; live Matrix credentials require explicit operator approval or a structured skip.
+- Default verification uses fake Matrix transport and `~/.kura-test`; live Matrix credentials require explicit operator approval or a structured skip.

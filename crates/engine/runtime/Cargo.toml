@@ -1,15 +1,15 @@
 [package]
-name = "dope-runtime"
+name = "kura-runtime"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-dope-integrations.workspace = true
-dope-calendar.workspace = true
-dope-mail.workspace = true
-dope-profiles.workspace = true
-dope-livevalidation.workspace = true
+kura-integrations.workspace = true
+kura-calendar.workspace = true
+kura-mail.workspace = true
+kura-profiles.workspace = true
+kura-livevalidation.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true

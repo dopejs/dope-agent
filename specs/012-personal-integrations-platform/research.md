@@ -74,7 +74,7 @@
 
 ### Decision: Provide one repo-owned fake integration backend and run-scoped probe route for verification
 
-- Rationale: The spec requires a local or fake verification path in `DOPE_ENV=test`. A
+- Rationale: The spec requires a local or fake verification path in `KURA_ENV=test`. A
   deterministic fake backend with one read-only probe and one approval-gated mutation
   probe lets the repository validate readiness transitions, canonical-default behavior,
   approval reuse, runtime linkage, and redacted provenance without touching live personal

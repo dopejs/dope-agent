@@ -6,16 +6,16 @@
 //! inspections, suppression, and retention application.
 
 use chrono::{Duration, Utc};
-use dope_evaluation::{
+use kura_evaluation::{
     CampaignItem, DashboardProjection, DiscoveredCandidate, DiscoveryPolicy, DiscoveryRun,
     ProductLifecycleStatus, ProductListFilter, ProductManagedFixture, ProductResourceKind,
     ReadinessStatus, ReplayCampaign, RetentionState, ScoreBand, SourceKind, SuppressionRecord,
     SuppressionState, ToolCallInspection,
 };
-use dope_store::SQLiteStore;
+use kura_store::SQLiteStore;
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("dope_store_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kura_store_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.to_string_lossy().to_string()
 }
@@ -74,7 +74,7 @@ fn candidate_fixture(candidate_id: &str, tenant_id: &str, run_id: &str) -> Disco
         source_id: "run_42".to_string(),
         score: 0.87,
         score_band: ScoreBand::High,
-        redaction_status: dope_evaluation::RedactionStatus::Redacted,
+        redaction_status: kura_evaluation::RedactionStatus::Redacted,
         readiness_status: ReadinessStatus::FullyReplayable,
         suppression_state: SuppressionState::None,
         retention_state: RetentionState::Active,
@@ -122,7 +122,7 @@ fn discovery_policy_upsert_list_and_tenant_scope() {
     assert!(!got.enabled);
     assert_eq!(got.max_inspected_records, 200);
 
-    let filter = dope_evaluation::DiscoveryPolicyFilter {
+    let filter = kura_evaluation::DiscoveryPolicyFilter {
         base: ProductListFilter { tenant_id: "ten_1".to_string(), cursor: String::new(), limit: 50 },
         enabled: None,
     };
@@ -130,14 +130,14 @@ fn discovery_policy_upsert_list_and_tenant_scope() {
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].policy_id, "policy_1");
 
-    let disabled_only = dope_evaluation::DiscoveryPolicyFilter { enabled: Some(false), ..filter.clone() };
+    let disabled_only = kura_evaluation::DiscoveryPolicyFilter { enabled: Some(false), ..filter.clone() };
     assert_eq!(store.list_discovery_policies(&disabled_only).unwrap().len(), 1);
-    let enabled_only = dope_evaluation::DiscoveryPolicyFilter { enabled: Some(true), ..filter.clone() };
+    let enabled_only = kura_evaluation::DiscoveryPolicyFilter { enabled: Some(true), ..filter.clone() };
     assert!(store.list_discovery_policies(&enabled_only).unwrap().is_empty());
 
     // Cross-tenant isolation.
     assert!(store.get_discovery_policy("ten_2", "policy_1").unwrap().is_none());
-    let other = dope_evaluation::DiscoveryPolicyFilter { base: ProductListFilter { tenant_id: "ten_2".to_string(), ..Default::default() }, enabled: None };
+    let other = kura_evaluation::DiscoveryPolicyFilter { base: ProductListFilter { tenant_id: "ten_2".to_string(), ..Default::default() }, enabled: None };
     assert!(store.list_discovery_policies(&other).unwrap().is_empty());
 }
 
@@ -158,7 +158,7 @@ fn discovery_run_candidate_and_evidence_round_trip() {
     assert_eq!(got_run.inspected_records, 50);
     assert!(got_run.completed_at.is_some());
 
-    let run_filter = dope_evaluation::DiscoveryRunFilter {
+    let run_filter = kura_evaluation::DiscoveryRunFilter {
         base: ProductListFilter { tenant_id: "ten_1".to_string(), cursor: String::new(), limit: 50 },
         status: ProductLifecycleStatus::Completed,
         source_kind: SourceKind::default(),
@@ -168,14 +168,14 @@ fn discovery_run_candidate_and_evidence_round_trip() {
     assert_eq!(runs[0].discovery_run_id, "run_1");
 
     // Source-kind post filter narrows the list.
-    let workflow_filter = dope_evaluation::DiscoveryRunFilter { source_kind: SourceKind::Schedule, ..run_filter.clone() };
+    let workflow_filter = kura_evaluation::DiscoveryRunFilter { source_kind: SourceKind::Schedule, ..run_filter.clone() };
     assert!(store.list_discovery_runs(&workflow_filter).unwrap().is_empty());
-    let run_only = dope_evaluation::DiscoveryRunFilter { source_kind: SourceKind::Run, ..run_filter.clone() };
+    let run_only = kura_evaluation::DiscoveryRunFilter { source_kind: SourceKind::Run, ..run_filter.clone() };
     assert_eq!(store.list_discovery_runs(&run_only).unwrap().len(), 1);
 
     // Candidate + evidence save (transactional).
     let mut candidate = candidate_fixture("cand_1", "ten_1", "run_1");
-    let evidence = dope_evaluation::CandidateEvidence {
+    let evidence = kura_evaluation::CandidateEvidence {
         evidence_id: "ev_1".to_string(),
         tenant_id: "ten_1".to_string(),
         discovered_candidate_id: "cand_1".to_string(),
@@ -184,7 +184,7 @@ fn discovery_run_candidate_and_evidence_round_trip() {
         retention_state: RetentionState::Active,
         created_at: Utc::now(),
         expires_at: None,
-        ..dope_evaluation::CandidateEvidence::default()
+        ..kura_evaluation::CandidateEvidence::default()
     };
     store.save_discovered_candidate(candidate.clone(), evidence.clone()).unwrap();
     candidate.evidence_ref = "ev_1".to_string();
@@ -196,7 +196,7 @@ fn discovery_run_candidate_and_evidence_round_trip() {
     assert_eq!(got_candidate.score, 0.99);
     assert_eq!(got_candidate.evidence_ref, "ev_1");
 
-    let candidate_filter = dope_evaluation::DiscoveredCandidateFilter {
+    let candidate_filter = kura_evaluation::DiscoveredCandidateFilter {
         base: ProductListFilter { tenant_id: "ten_1".to_string(), cursor: String::new(), limit: 50 },
         discovery_run_id: "run_1".to_string(),
         source_kind: SourceKind::default(),
@@ -227,7 +227,7 @@ fn product_fixture_revision_and_campaign_round_trip() {
         fixture_id: "fx_1".to_string(),
         tenant_id: "ten_1".to_string(),
         display_name: "Terminal fixture".to_string(),
-        domain_class: dope_evaluation::FixtureDomainClass::Integration,
+        domain_class: kura_evaluation::FixtureDomainClass::Integration,
         source_kind: "run".to_string(),
         source_candidate_id: "cand_1".to_string(),
         review_state: ProductLifecycleStatus::InReview,
@@ -256,15 +256,15 @@ fn product_fixture_revision_and_campaign_round_trip() {
 
     // Fixture revisions.
     store
-        .save_fixture_revision(dope_evaluation::FixtureRevision {
+        .save_fixture_revision(kura_evaluation::FixtureRevision {
             revision_id: "rev_1".to_string(),
             fixture_id: "fx_1".to_string(),
             tenant_id: "ten_1".to_string(),
             revision_number: 1,
-            redaction_status: dope_evaluation::RedactionStatus::Redacted,
+            redaction_status: kura_evaluation::RedactionStatus::Redacted,
             created_by: "prn_1".to_string(),
             created_at: Utc::now(),
-            ..dope_evaluation::FixtureRevision::default()
+            ..kura_evaluation::FixtureRevision::default()
         })
         .unwrap();
     let revisions = store.list_fixture_revisions("ten_1", "fx_1", 10).unwrap();
@@ -339,8 +339,8 @@ fn dashboard_projection_and_tool_call_inspection() {
         campaign_id: "camp_1".to_string(),
         campaign_item_id: "ci_1".to_string(),
         tool_call_ref: "tool_call_7".to_string(),
-        classification: dope_evaluation::INSPECTION_MATCHED.to_string(),
-        redaction_status: dope_evaluation::RedactionStatus::Redacted,
+        classification: kura_evaluation::INSPECTION_MATCHED.to_string(),
+        redaction_status: kura_evaluation::RedactionStatus::Redacted,
         retention_state: RetentionState::Active,
         created_at: Utc::now(),
         updated_at: Utc::now(),
@@ -349,7 +349,7 @@ fn dashboard_projection_and_tool_call_inspection() {
     store.save_tool_call_inspection(inspection.clone()).unwrap();
     let inspections = store.list_tool_call_inspections(&filter, "camp_1").unwrap();
     assert_eq!(inspections.len(), 1);
-    assert_eq!(inspections[0].classification, dope_evaluation::INSPECTION_MATCHED);
+    assert_eq!(inspections[0].classification, kura_evaluation::INSPECTION_MATCHED);
     let got_ins = store.get_tool_call_inspection("ten_1", "ins_1").unwrap().expect("present");
     assert_eq!(got_ins.campaign_item_id, "ci_1");
     // Retention filter: listing only returns active rows.
@@ -392,12 +392,12 @@ fn suppression_and_retention_application() {
     store.save_discovery_run(run_fixture("run_1", "ten_1")).unwrap();
     store.save_discovered_candidate(
         candidate_fixture("cand_1", "ten_1", "run_1"),
-        dope_evaluation::CandidateEvidence::default(),
+        kura_evaluation::CandidateEvidence::default(),
     ).unwrap();
 
     // Dry run records applications without expiring.
     let dry_ids = store
-        .apply_retention(&dope_evaluation::RetentionApplicationFilter {
+        .apply_retention(&kura_evaluation::RetentionApplicationFilter {
             base: ProductListFilter { tenant_id: "ten_1".to_string(), cursor: String::new(), limit: 50 },
             resource_kinds: vec![ProductResourceKind::DiscoveredCandidate],
             dry_run: true,
@@ -409,7 +409,7 @@ fn suppression_and_retention_application() {
 
     // Real retention expires the candidate and records the application.
     let ids = store
-        .apply_retention(&dope_evaluation::RetentionApplicationFilter {
+        .apply_retention(&kura_evaluation::RetentionApplicationFilter {
             base: ProductListFilter { tenant_id: "ten_1".to_string(), cursor: String::new(), limit: 50 },
             resource_kinds: vec![ProductResourceKind::DiscoveredCandidate],
             dry_run: false,
@@ -422,7 +422,7 @@ fn suppression_and_retention_application() {
 
     // Default kind set expires all product families.
     let all_ids = store
-        .apply_retention(&dope_evaluation::RetentionApplicationFilter {
+        .apply_retention(&kura_evaluation::RetentionApplicationFilter {
             base: ProductListFilter { tenant_id: "ten_1".to_string(), cursor: String::new(), limit: 50 },
             resource_kinds: Vec::new(),
             dry_run: true,

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/delivery-target-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/delivery-target-resource.schema.json",
   "title": "DeliveryTargetResource",
   "type": "object",
   "required": ["targetId", "displayName", "environmentScope", "targetKind", "status", "supportsImmediate", "supportsDigest", "createdAt", "updatedAt"],

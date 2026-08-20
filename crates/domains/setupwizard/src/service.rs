@@ -7,7 +7,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use dope_identity::TenantContext;
+use kura_identity::TenantContext;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
@@ -43,29 +43,29 @@ pub trait Store: Send + Sync {
 }
 
 pub trait SecretManager: Send + Sync {
-    fn create(&self, input: dope_secrets::CreateInput)
-    -> BoxFuture<'_, Result<dope_secrets::TenantSecret, SetupError>>;
-    fn rotate(&self, input: dope_secrets::RotateInput)
-    -> BoxFuture<'_, Result<dope_secrets::TenantSecret, SetupError>>;
+    fn create(&self, input: kura_secrets::CreateInput)
+    -> BoxFuture<'_, Result<kura_secrets::TenantSecret, SetupError>>;
+    fn rotate(&self, input: kura_secrets::RotateInput)
+    -> BoxFuture<'_, Result<kura_secrets::TenantSecret, SetupError>>;
     fn get(&self, tenant_id: &str, secret_ref: &str)
-    -> BoxFuture<'_, Result<dope_secrets::TenantSecret, SetupError>>;
-    fn disable(&self, input: dope_secrets::DisableInput)
-    -> BoxFuture<'_, Result<dope_secrets::TenantSecret, SetupError>>;
+    -> BoxFuture<'_, Result<kura_secrets::TenantSecret, SetupError>>;
+    fn disable(&self, input: kura_secrets::DisableInput)
+    -> BoxFuture<'_, Result<kura_secrets::TenantSecret, SetupError>>;
 }
 
-impl SecretManager for dope_secrets::Manager {
-    fn create(&self, input: dope_secrets::CreateInput) -> BoxFuture<'_, Result<dope_secrets::TenantSecret, SetupError>> {
+impl SecretManager for kura_secrets::Manager {
+    fn create(&self, input: kura_secrets::CreateInput) -> BoxFuture<'_, Result<kura_secrets::TenantSecret, SetupError>> {
         Box::pin(async move { Ok(self.create(input).await?) })
     }
-    fn rotate(&self, input: dope_secrets::RotateInput) -> BoxFuture<'_, Result<dope_secrets::TenantSecret, SetupError>> {
+    fn rotate(&self, input: kura_secrets::RotateInput) -> BoxFuture<'_, Result<kura_secrets::TenantSecret, SetupError>> {
         Box::pin(async move { Ok(self.rotate(input).await?) })
     }
-    fn get(&self, tenant_id: &str, secret_ref: &str) -> BoxFuture<'_, Result<dope_secrets::TenantSecret, SetupError>> {
+    fn get(&self, tenant_id: &str, secret_ref: &str) -> BoxFuture<'_, Result<kura_secrets::TenantSecret, SetupError>> {
         let tenant_id = tenant_id.to_string();
         let secret_ref = secret_ref.to_string();
         Box::pin(async move { Ok(self.get(&tenant_id, &secret_ref).await?) })
     }
-    fn disable(&self, input: dope_secrets::DisableInput) -> BoxFuture<'_, Result<dope_secrets::TenantSecret, SetupError>> {
+    fn disable(&self, input: kura_secrets::DisableInput) -> BoxFuture<'_, Result<kura_secrets::TenantSecret, SetupError>> {
         Box::pin(async move { Ok(self.disable(input).await?) })
     }
 }
@@ -431,16 +431,16 @@ impl Service {
             let secret = match secrets.get(&session.tenant_id, secret_ref).await {
                 Ok(_) => {
                     secrets
-                        .rotate(dope_secrets::RotateInput {
+                        .rotate(kura_secrets::RotateInput {
                             tenant_id: session.tenant_id.clone(),
                             secret_ref: secret_ref.to_string(),
                             value: input.value.clone(),
                         })
                         .await?
                 }
-                Err(SetupError::Secrets(dope_secrets::SecretsError::SecretNotFound)) => {
+                Err(SetupError::Secrets(kura_secrets::SecretsError::SecretNotFound)) => {
                     secrets
-                        .create(dope_secrets::CreateInput {
+                        .create(kura_secrets::CreateInput {
                             tenant_id: session.tenant_id.clone(),
                             secret_ref: secret_ref.to_string(),
                             display_name: input.display_name.clone(),
@@ -582,7 +582,7 @@ impl Service {
                 for reference in &session.resource_refs {
                     if reference.kind == "tenant_secret" && !reference.id.is_empty() {
                         let _ = secrets
-                            .disable(dope_secrets::DisableInput {
+                            .disable(kura_secrets::DisableInput {
                                 tenant_id: session.tenant_id.clone(),
                                 secret_ref: reference.id.clone(),
                                 disabled_reason: input.disabled_reason.clone(),

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/live-validation-ledger-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/live-validation-ledger-resource.schema.json",
   "title": "LiveValidationLedgerResource",
   "type": "object",
   "required": ["ledgerEntryId", "validationId", "candidateId", "sourceRef", "toolClass", "safetyClass", "actionRef", "outcome", "updatedAt", "retryCount", "ambiguousCommit"],

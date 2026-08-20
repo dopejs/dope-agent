@@ -19,7 +19,7 @@
 //! `writeError`-style 500s via ApiError, and the Go mutation-error mapping
 //! (connector not found -> 404, connector disabled -> 409, otherwise 500).
 //!
-//! Persistence is on the dope-store channel_management DAOs:
+//! Persistence is on the kura-store channel_management DAOs:
 //! - channel_connector_enablement_states (disable/re-enable)
 //! - channel_repair_actions + list (repair, detail, support-evidence refs)
 //! - channel_management_audit_records + list (permission denials, disable/
@@ -35,7 +35,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json as AxumJson, Router};
 use chrono::{DateTime, Utc};
-use dope_connectors::{
+use kura_connectors::{
     CapabilitySupport, ChannelConnectorDetail, Connector, ConnectorDiagnosticState,
     ConnectorsError, EnablementMutationResult, EnablementState, FreshnessState,
     ManagementActionKind, ManagementState, ProjectionInput, RedactionStatus, RemediationOwner,
@@ -44,11 +44,11 @@ use dope_connectors::{
     freshness_at, latest_diagnostic, management_state_for_connector, normalize_route_policy,
     retry_safety_for_repair_action, terminal_state_for_repair_action,
 };
-use dope_events::{
+use kura_events::{
     ConnectorManagementEventInput, connector_management_redaction_failed,
     connector_management_retention_applied, connector_management_support_evidence_generated,
 };
-use dope_identity::{Permission, has_permission};
+use kura_identity::{Permission, has_permission};
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
@@ -567,7 +567,7 @@ async fn route_policy_put(
     let background_delivery = input.background_delivery_eligible.unwrap_or(true);
     let mut save_result: Option<Result<(), String>> = None;
     let mut persistence_error: Option<String> = None;
-    let mut saved_policy: Option<dope_connectors::RoutePolicy> = None;
+    let mut saved_policy: Option<kura_connectors::RoutePolicy> = None;
     let mutation = supervisor.with_connector_mutation(&connector_id, || {
         // Go records the audit row inside the mutation before saving the policy.
         let audit = match record_channel_management_audit(
@@ -586,7 +586,7 @@ async fn route_policy_put(
             }
         };
         let policy = normalize_route_policy(
-            dope_connectors::RoutePolicy {
+            kura_connectors::RoutePolicy {
                 tenant_id: tc.tenant_id.clone(),
                 connector_id: connector_id.clone(),
                 eligible_senders: input.eligible_senders,
@@ -757,7 +757,7 @@ async fn support_evidence(
 /// policy + recent decisions/outcomes + repair actions.
 fn build_channel_connector_detail(
     state: &AppState,
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     connector: Connector,
 ) -> Result<ChannelConnectorDetail, String> {
     let now = Utc::now();
@@ -805,7 +805,7 @@ fn get_or_default_channel_route_policy(
     state: &AppState,
     tenant_id: &str,
     connector_id: &str,
-) -> Result<(dope_connectors::RoutePolicy, bool), String> {
+) -> Result<(kura_connectors::RoutePolicy, bool), String> {
     if let Some(policy) = state
         .store
         .lock()
@@ -826,7 +826,7 @@ fn enrich_channel_support_evidence_bundle(
     tenant_id: &str,
     connector_id: &str,
     now: DateTime<Utc>,
-    bundle: &mut dope_connectors::SupportEvidenceBundle,
+    bundle: &mut kura_connectors::SupportEvidenceBundle,
 ) -> Result<(), String> {
     let store = state.store.lock();
     let diagnostics = store.list_connector_diagnostic_states(tenant_id, connector_id, now)?;
@@ -896,11 +896,11 @@ fn enrich_channel_support_evidence_bundle(
 /// is best-effort (Go ignores the error).
 fn require_channel_management_permission(
     state: &AppState,
-    tenant: Option<&dope_identity::TenantContext>,
+    tenant: Option<&kura_identity::TenantContext>,
     connector_id: &str,
     permission: Permission,
     action: &str,
-) -> Option<dope_identity::TenantContext> {
+) -> Option<kura_identity::TenantContext> {
     let tc = tenant?.clone();
     if tc.tenant_id.is_empty() {
         return None;
@@ -908,7 +908,7 @@ fn require_channel_management_permission(
     if has_permission(&tc.permissions, permission) {
         return Some(tc);
     }
-    let record = dope_connectors::ConnectorAuditRecord {
+    let record = kura_connectors::ConnectorAuditRecord {
         audit_event_id: new_audit_event_id(),
         tenant_id: tc.tenant_id.clone(),
         connector_id: connector_id.to_string(),
@@ -927,12 +927,12 @@ fn require_channel_management_permission(
 /// Go requireChannelManagementPermissions: every listed permission must pass.
 fn require_channel_management_permissions(
     state: &AppState,
-    tenant: Option<&dope_identity::TenantContext>,
+    tenant: Option<&kura_identity::TenantContext>,
     connector_id: &str,
     action: &str,
     permissions: &[Permission],
-) -> Option<dope_identity::TenantContext> {
-    let mut tc: Option<dope_identity::TenantContext> = None;
+) -> Option<kura_identity::TenantContext> {
+    let mut tc: Option<kura_identity::TenantContext> = None;
     for permission in permissions {
         tc = Some(require_channel_management_permission(
             state,
@@ -960,14 +960,14 @@ fn channel_management_denial() -> (StatusCode, AxumJson<serde_json::Value>) {
 /// pre-generated in the store's `new_store_id` style) and returns it.
 fn record_channel_management_audit(
     state: &AppState,
-    tc: &dope_identity::TenantContext,
+    tc: &kura_identity::TenantContext,
     connector_id: &str,
     action: &str,
     permission_gate: &str,
     outcome: &str,
     reason_code: &str,
-) -> Result<dope_connectors::ConnectorAuditRecord, String> {
-    let record = dope_connectors::ConnectorAuditRecord {
+) -> Result<kura_connectors::ConnectorAuditRecord, String> {
+    let record = kura_connectors::ConnectorAuditRecord {
         audit_event_id: new_audit_event_id(),
         tenant_id: tc.tenant_id.clone(),
         connector_id: connector_id.to_string(),
@@ -1040,7 +1040,7 @@ fn permission_string(permission: &Permission) -> String {
 
 /// Go `connectors.Supervisor` accessor: absent manager -> 500 (matching the Go
 /// nil-supervisor writeError).
-fn connectors_supervisor(state: &AppState) -> Result<&dope_connectors::Supervisor, ApiError> {
+fn connectors_supervisor(state: &AppState) -> Result<&kura_connectors::Supervisor, ApiError> {
     state
         .connectors
         .as_deref()
@@ -1071,43 +1071,43 @@ mod tests {
     use axum::body::{to_bytes, Body};
     use axum::http::Request;
     use chrono::{Duration, Utc};
-    use dope_connectors::{
+    use kura_connectors::{
         BackgroundDeliveryOutcome, ConnectorAuditRecord, DiagnosticInput, DiagnosticReasonCode,
         ForegroundReplyOutcome, LifecycleState, ManagementTerminalState, RegisterInput,
         RouteDecisionOutcome, RoutingDecision, SupportEvidenceBundle, classify_diagnostic,
     };
-    use dope_store::SQLiteStore;
+    use kura_store::SQLiteStore;
     use parking_lot::Mutex;
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-channel-management-test".to_string(),
+            data_dir: "/tmp/kura-api-channel-management-test".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
-                telegram: dope_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
-                slack: dope_config::SlackConnectorConfig { enabled: false, ..Default::default() },
-                matrix: dope_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig { enabled: false, ..Default::default() },
+                telegram: kura_config::TelegramConnectorConfig { enabled: false, ..Default::default() },
+                slack: kura_config::SlackConnectorConfig { enabled: false, ..Default::default() },
+                matrix: kura_config::MatrixConnectorConfig { enabled: false, ..Default::default() },
             },
         }
     }
 
     fn test_state() -> AppState {
         let dir = std::env::temp_dir().join(format!(
-            "dope-api-channel-management-{}",
+            "kura-api-channel-management-{}",
             Uuid::now_v7()
         ));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
             SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store)
+        AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store)
     }
 
     /// Request carrying a resolved tenant context extension (the protected()
@@ -1127,7 +1127,7 @@ mod tests {
             None => builder.body(Body::empty()).expect("request"),
         };
         let mut req = req;
-        req.extensions_mut().insert(TenantContext(dope_identity::TenantContext {
+        req.extensions_mut().insert(TenantContext(kura_identity::TenantContext {
             tenant_id: "ten_channels".to_string(),
             principal_id: "prn_channels".to_string(),
             permissions,
@@ -1149,7 +1149,7 @@ mod tests {
     }
 
     fn register_connector(
-        supervisor: &dope_connectors::Supervisor,
+        supervisor: &kura_connectors::Supervisor,
         tenant_id: &str,
         connector_id: &str,
         kind: &str,
@@ -1170,7 +1170,7 @@ mod tests {
     #[tokio::test]
     async fn route_policy_and_outcome_handlers() {
         let mut state = test_state();
-        let supervisor = Arc::new(dope_connectors::Supervisor::new());
+        let supervisor = Arc::new(kura_connectors::Supervisor::new());
         state.connectors = Some(supervisor.clone());
         register_connector(&supervisor, "ten_channels", "matrix-main", "matrix", "Matrix Main");
         let app = router().with_state(state.clone());
@@ -1259,7 +1259,7 @@ mod tests {
     #[tokio::test]
     async fn route_policy_rejects_unsupported_connector_kind() {
         let mut state = test_state();
-        let supervisor = Arc::new(dope_connectors::Supervisor::new());
+        let supervisor = Arc::new(kura_connectors::Supervisor::new());
         state.connectors = Some(supervisor.clone());
         register_connector(&supervisor, "ten_channels", "legacy-main", "legacy", "Legacy Main");
         let app = router().with_state(state.clone());
@@ -1282,7 +1282,7 @@ mod tests {
     #[tokio::test]
     async fn list_detail_diagnostics_are_tenant_scoped_ordered_and_permissioned() {
         let mut state = test_state();
-        let supervisor = Arc::new(dope_connectors::Supervisor::new());
+        let supervisor = Arc::new(kura_connectors::Supervisor::new());
         state.connectors = Some(supervisor.clone());
         register_connector(&supervisor, "ten_channels", "ready-main", "discord", "Ready Main");
         register_connector(&supervisor, "ten_channels", "broken-main", "slack", "Broken Main");
@@ -1361,7 +1361,7 @@ mod tests {
     #[tokio::test]
     async fn disable_re_enable_rejects_stale_diagnostics() {
         let mut state = test_state();
-        let supervisor = Arc::new(dope_connectors::Supervisor::new());
+        let supervisor = Arc::new(kura_connectors::Supervisor::new());
         state.connectors = Some(supervisor.clone());
         register_connector(&supervisor, "ten_channels", "discord-main", "discord", "Discord Main");
         let app = router().with_state(state.clone());
@@ -1434,7 +1434,7 @@ mod tests {
     #[tokio::test]
     async fn repair_requires_secrets_for_reconnect_and_keeps_disabled_terminal() {
         let mut state = test_state();
-        let supervisor = Arc::new(dope_connectors::Supervisor::new());
+        let supervisor = Arc::new(kura_connectors::Supervisor::new());
         state.connectors = Some(supervisor.clone());
         register_connector(&supervisor, "ten_channels", "slack-main", "slack", "Slack Main");
         supervisor.disable("slack-main", "maintenance").expect("disable");
@@ -1491,9 +1491,9 @@ mod tests {
     // Port of TestChannelManagementSupportEvidenceIsPermissionedAndMetadataOnly.
     #[tokio::test]
     async fn support_evidence_is_permissioned_and_metadata_only() {
-        let bus = Arc::new(dope_events::Bus::new());
+        let bus = Arc::new(kura_events::Bus::new());
         let dir = std::env::temp_dir().join(format!(
-            "dope-api-channel-support-{}",
+            "kura-api-channel-support-{}",
             Uuid::now_v7()
         ));
         std::fs::create_dir_all(&dir).expect("mkdir");
@@ -1501,7 +1501,7 @@ mod tests {
             SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
         let mut state = AppState::new(test_config(), bus.clone(), store);
-        let supervisor = Arc::new(dope_connectors::Supervisor::new());
+        let supervisor = Arc::new(kura_connectors::Supervisor::new());
         state.connectors = Some(supervisor.clone());
         register_connector(&supervisor, "ten_channels", "telegram-main", "telegram", "Telegram Main");
         let app = router().with_state(state.clone());
@@ -1532,14 +1532,14 @@ mod tests {
             assert!(!lower.contains(forbidden), "support evidence leaked {forbidden:?}: {json}");
         }
 
-        let published = bus.list(&dope_events::Filter {
+        let published = bus.list(&kura_events::Filter {
             category: "connector".to_string(),
             ..Default::default()
         });
         assert_eq!(published.len(), 1, "published: {published:?}");
         assert_eq!(
             published[0].name,
-            dope_events::CONNECTOR_EVENT_SUPPORT_EVIDENCE_GENERATED
+            kura_events::CONNECTOR_EVENT_SUPPORT_EVIDENCE_GENERATED
         );
     }
 
@@ -1548,7 +1548,7 @@ mod tests {
     #[tokio::test]
     async fn support_evidence_aggregates_incident_references() {
         let mut state = test_state();
-        let supervisor = Arc::new(dope_connectors::Supervisor::new());
+        let supervisor = Arc::new(kura_connectors::Supervisor::new());
         state.connectors = Some(supervisor.clone());
         register_connector(&supervisor, "ten_channels", "matrix-main", "matrix", "Matrix Main");
         let now = Utc::now();
@@ -1631,9 +1631,9 @@ mod tests {
     // Port of TestChannelManagementSupportEvidenceEmitsRedactionAndRetentionEvents.
     #[tokio::test]
     async fn support_evidence_emits_redaction_and_retention_events() {
-        let bus = Arc::new(dope_events::Bus::new());
+        let bus = Arc::new(kura_events::Bus::new());
         let dir = std::env::temp_dir().join(format!(
-            "dope-api-channel-support-events-{}",
+            "kura-api-channel-support-events-{}",
             Uuid::now_v7()
         ));
         std::fs::create_dir_all(&dir).expect("mkdir");
@@ -1641,7 +1641,7 @@ mod tests {
             SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
         let mut state = AppState::new(test_config(), bus.clone(), store);
-        let supervisor = Arc::new(dope_connectors::Supervisor::new());
+        let supervisor = Arc::new(kura_connectors::Supervisor::new());
         state.connectors = Some(supervisor.clone());
         register_connector(&supervisor, "ten_channels", "slack-main", "slack", "Slack Main");
         let now = Utc::now();
@@ -1654,10 +1654,10 @@ mod tests {
                     connector_id: "slack-main".to_string(),
                     status: LifecycleState::Failed,
                     reason_code: DiagnosticReasonCode::ReplyFailed,
-                    remediation_owner: dope_connectors::RemediationOwner::Admin,
-                    retry_safety: dope_connectors::RetrySafety::Retryable,
+                    remediation_owner: kura_connectors::RemediationOwner::Admin,
+                    retry_safety: kura_connectors::RetrySafety::Retryable,
                     evidence_timestamp: now,
-                    freshness_state: dope_connectors::FreshnessState::Fresh,
+                    freshness_state: kura_connectors::FreshnessState::Fresh,
                     redaction_status: RedactionStatus::Failed,
                     retention_expires_at: now + Duration::hours(24),
                     ..Default::default()
@@ -1693,18 +1693,18 @@ mod tests {
             "expected diagnostic_evidence redaction: {json}"
         );
 
-        let published = bus.list(&dope_events::Filter {
+        let published = bus.list(&kura_events::Filter {
             category: "connector".to_string(),
             ..Default::default()
         });
         let names: std::collections::HashSet<&str> =
             published.iter().map(|e| e.name.as_str()).collect();
         assert!(
-            names.contains(dope_events::CONNECTOR_EVENT_MANAGEMENT_REDACTION_FAILED),
+            names.contains(kura_events::CONNECTOR_EVENT_MANAGEMENT_REDACTION_FAILED),
             "published: {published:?}"
         );
         assert!(
-            names.contains(dope_events::CONNECTOR_EVENT_MANAGEMENT_RETENTION_APPLIED),
+            names.contains(kura_events::CONNECTOR_EVENT_MANAGEMENT_RETENTION_APPLIED),
             "published: {published:?}"
         );
     }

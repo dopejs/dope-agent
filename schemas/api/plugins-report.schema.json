@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/plugins-report.schema.json",
+  "$id": "https://kura.local/schemas/api/plugins-report.schema.json",
   "title": "PluginsReport",
   "description": "GET /v1/plugins response: the boot-time plugin assembly report in build order.",
   "type": "object",

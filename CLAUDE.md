@@ -6,21 +6,21 @@ Historical feature scope lives in plain markdown under `specs/<NNN>-<name>/` and
 
 ## Project Overview
 
-Kura is a personal agent OS with a Rust daemon backend, React web UI, Rust TUI (`kura-tui`, Cargo package `dope-tui`), and a shared TypeScript client SDK. The daemon is the system spine owning runtime state, provider dispatch, policy gates, and event fan-out. Clients are thin consumers.
+Kura is a personal agent OS with a Rust daemon backend, React web UI, Rust TUI (`kura-tui`, Cargo package `kura-tui`), and a shared TypeScript client SDK. The daemon is the system spine owning runtime state, provider dispatch, policy gates, and event fan-out. Clients are thin consumers.
 
 ## Build & Development Commands
 
 ### Daemon (Rust, in `crates/`)
 
 ```bash
-make daemon-build              # cargo build --release -p dope-cli
-make daemon-run-test           # Start daemon in test env (~/.dope-test, :19192)
+make daemon-build              # cargo build --release -p kura-cli
+make daemon-run-test           # Start daemon in test env (~/.kura-test, :19192)
 make daemon-run-test-live      # Test env with live connectors (Discord enabled)
-make daemon-run-prod           # Start daemon in prod env (~/.dope, :19191)
+make daemon-run-prod           # Start daemon in prod env (~/.kura, :19191)
 make daemon-test-status        # Health check test daemon
 make daemon-prod-status        # Health check prod daemon
 make daemon-test               # cargo test --workspace
-make daemon-contract-test      # cargo test -p dope-contracts
+make daemon-contract-test      # cargo test -p kura-contracts
 ```
 
 Run a single test:
@@ -31,7 +31,7 @@ cd crates && cargo test -p <crate> -- <filter>
 ### Clients (TypeScript, pnpm)
 
 ```bash
-pnpm build:sdk                 # Build @dope/client SDK
+pnpm build:sdk                 # Build @kura/client SDK
 pnpm build:web                 # Build web UI
 pnpm build:clients             # Build all clients (sdk -> web)
 pnpm test:clients              # Build + test all clients
@@ -45,13 +45,13 @@ pnpm typecheck:web             # TypeScript type check for web
 
 ### System Boundaries
 
-- **`crates/`** -- Rust workspace, the daemon control plane. Entry point: `dope-cli` (`crates/surface/cli`), wired by `dope-app` (`crates/surface/app`), HTTP API in `dope-api` (`crates/surface/api`). Key groups: `foundation/` (config, contracts, ids, telemetry), `engine/` (llm, runtime, events, checkpoints), `iam/` (identity, tenancy, secrets), `channels/` (connectors, im), `modeling/` (providers, adapters), `domains/` (chat, sandbox, mcp, skills, scheduler, delivery, calendar, mail, reminders, workflows, evaluation, policy, ...), `persistence/` (SQLite store), `surface/` (api, cli, tui).
+- **`crates/`** -- Rust workspace, the daemon control plane. Entry point: `kura-cli` (`crates/surface/cli`), wired by `kura-app` (`crates/surface/app`), HTTP API in `kura-api` (`crates/surface/api`). Key groups: `foundation/` (config, contracts, ids, telemetry), `engine/` (llm, runtime, events, checkpoints), `iam/` (identity, tenancy, secrets), `channels/` (connectors, im), `modeling/` (providers, adapters), `domains/` (chat, sandbox, mcp, skills, scheduler, delivery, calendar, mail, reminders, workflows, evaluation, policy, ...), `persistence/` (SQLite store), `surface/` (api, cli, tui).
 
-- **`sdk/ts/`** -- TypeScript client SDK (`@dope/client`). Exports `DopeClient` with `queryChat()` and `streamChatQuery()`. Used by the web client.
+- **`sdk/ts/`** -- TypeScript client SDK (`@kura/client`). Exports `KuraClient` with `queryChat()` and `streamChatQuery()`. Used by the web client.
 
-- **`web/`** -- React 19 + Vite web UI. Uses `@dope/client` SDK. Generated types from schemas live in `web/src/generated/`.
+- **`web/`** -- React 19 + Vite web UI. Uses `@kura/client` SDK. Generated types from schemas live in `web/src/generated/`.
 
-- **`crates/surface/tui/`** -- Rust terminal client (`kura-tui` binary, `dope-tui` Cargo package), the full-screen Claude-Code-style TUI.
+- **`crates/surface/tui/`** -- Rust terminal client (`kura-tui` binary, `kura-tui` Cargo package), the full-screen Claude-Code-style TUI.
 
 - **`schemas/`** -- JSON Schema contracts: `api/` (82 files), `events/` (49 files), `config/`, `capability/`, `plugin/`. Source of truth for cross-language contracts. Generated client code derives from these.
 
@@ -65,8 +65,8 @@ Schemas define the API surface. When changing API shape, event payloads, or conf
 
 | Mode | Data dir | Bind address | Start command |
 |------|----------|-------------|---------------|
-| test (default) | `~/.dope-test` | `127.0.0.1:19192` | `make daemon-run-test` |
-| prod | `~/.dope` | `127.0.0.1:19191` | `make daemon-run-prod` |
+| test (default) | `~/.kura-test` | `127.0.0.1:19192` | `make daemon-run-test` |
+| prod | `~/.kura` | `127.0.0.1:19191` | `make daemon-run-prod` |
 
 Always use the test environment for development. Never touch prod config or live connectors without explicit intent.
 

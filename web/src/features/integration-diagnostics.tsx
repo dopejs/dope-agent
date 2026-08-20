@@ -1,4 +1,4 @@
-import type { IntegrationDiagnosticResultResource, SmokeMatrixReportResource } from "@dope/client";
+import type { IntegrationDiagnosticResultResource, SmokeMatrixReportResource } from "@kura/client";
 
 type IntegrationDiagnosticsViewProps = {
   results: IntegrationDiagnosticResultResource[];

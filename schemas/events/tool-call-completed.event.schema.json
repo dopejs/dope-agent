@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/events/tool-call-completed.event.schema.json",
+  "$id": "https://kura.local/schemas/events/tool-call-completed.event.schema.json",
   "title": "ToolCallCompletedEvent",
   "allOf": [
     {

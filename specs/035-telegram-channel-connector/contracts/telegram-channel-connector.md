@@ -186,7 +186,7 @@ Implemented Phase 50 surface names:
   `GET /v1/connectors/{connectorId}/telegram-smoke`,
   `GET /v1/live-validations/telegram-smoke`, and
   `GET /v1/live-validations/telegram-conformance`.
-- Config: `connectors.telegram` in `config.json`, `DOPE_CONNECTORS_TELEGRAM_*`
+- Config: `connectors.telegram` in `config.json`, `KURA_CONNECTORS_TELEGRAM_*`
   environment overrides, and `/v1/config.connectors.telegram`.
 - Schemas: `telegram-hosted-setup-resource`, `telegram-allowment-resource`,
   `telegram-smoke-evidence-resource`, and

@@ -6,7 +6,7 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
 
-use dope_connectors::DiagnosticReasonCode;
+use kura_connectors::DiagnosticReasonCode;
 
 use crate::destinations::{
     ConversationType, RoutePolicy, RouteValidationState, SelectedChannelState,

@@ -286,12 +286,12 @@ operator-visible outcomes.
   complete, dismiss, cancel, reschedule, and distinct overdue and missed state
   transitions; restart recovery validation for durable reminder history; contract
   coverage for reminder-domain resources or events; workflow-linked reminder coverage;
-  and one manual recurring reminder verification path in `DOPE_ENV=test`.
+  and one manual recurring reminder verification path in `KURA_ENV=test`.
 - **Observability Impact**: Operators must be able to inspect reminder creation, due or
   overdue transitions, acknowledgement, snooze, completion, dismissal, cancellation,
   reschedule, occurrence history, follow-up source linkage, linked workflow outcomes,
   and delivery suppression or failure as separate operator-visible truths.
-- **Environment & Secrets**: Reminder-only validation defaults to `DOPE_ENV=test` and
+- **Environment & Secrets**: Reminder-only validation defaults to `KURA_ENV=test` and
   does not require production connectors or production secrets. When a reminder links to
   calendar or other integration-backed work, it reuses the existing environment-scoped
   bindings and approval boundaries for that source domain and does not introduce new
@@ -304,7 +304,7 @@ operator-visible outcomes.
 - **SC-001**: In manual validation, a user can create and inspect a one-time or
   recurring reminder in under 2 minutes without using raw database access or log
   inspection.
-- **SC-002**: In manual `DOPE_ENV=test` verification, a created reminder becomes due and
+- **SC-002**: In manual `KURA_ENV=test` verification, a created reminder becomes due and
   produces either a routed reminder notification or a clearly linked reminder-triggered
   workflow outcome without requiring an active foreground chat session.
 - **SC-003**: In automated verification, 100% of exercised reminder outcomes are

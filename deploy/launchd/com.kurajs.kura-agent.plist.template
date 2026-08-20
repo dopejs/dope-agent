@@ -8,29 +8,29 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.dopejs.dope-agent</string>
+    <string>com.kurajs.kura-agent</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>@DOPE_BIN@</string>
+        <string>@KURA_BIN@</string>
     </array>
 
     <key>EnvironmentVariables</key>
     <dict>
-        <key>DOPE_ENV</key>
-        <string>@DOPE_ENV@</string>
-        <key>DOPE_DATA_DIR</key>
-        <string>@DOPE_DATA_DIR@</string>
-        <key>DOPE_BIND_ADDR</key>
-        <string>@DOPE_BIND_ADDR@</string>
-        <key>DOPE_VERSION</key>
-        <string>@DOPE_VERSION@</string>
-        <key>DOPE_LOG_LEVEL</key>
-        <string>@DOPE_LOG_LEVEL@</string>
+        <key>KURA_ENV</key>
+        <string>@KURA_ENV@</string>
+        <key>KURA_DATA_DIR</key>
+        <string>@KURA_DATA_DIR@</string>
+        <key>KURA_BIND_ADDR</key>
+        <string>@KURA_BIND_ADDR@</string>
+        <key>KURA_VERSION</key>
+        <string>@KURA_VERSION@</string>
+        <key>KURA_LOG_LEVEL</key>
+        <string>@KURA_LOG_LEVEL@</string>
         <!-- Live connectors default off so the daemon boots without external
              credentials; opt in at install time (see install.sh). -->
-        <key>DOPE_CONNECTORS_DISCORD_ENABLED</key>
-        <string>@DOPE_DISCORD_ENABLED@</string>
+        <key>KURA_CONNECTORS_DISCORD_ENABLED</key>
+        <string>@KURA_DISCORD_ENABLED@</string>
     </dict>
 
     <key>RunAtLoad</key>
@@ -47,11 +47,11 @@
     <integer>10</integer>
 
     <key>StandardOutPath</key>
-    <string>@DOPE_LOG_DIR@/daemon.out.log</string>
+    <string>@KURA_LOG_DIR@/daemon.out.log</string>
     <key>StandardErrorPath</key>
-    <string>@DOPE_LOG_DIR@/daemon.err.log</string>
+    <string>@KURA_LOG_DIR@/daemon.err.log</string>
 
     <key>WorkingDirectory</key>
-    <string>@DOPE_DATA_DIR@</string>
+    <string>@KURA_DATA_DIR@</string>
 </dict>
 </plist>

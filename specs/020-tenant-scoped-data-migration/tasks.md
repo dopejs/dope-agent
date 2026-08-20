@@ -23,7 +23,7 @@ correctness-gate suite that prevents regressions on future roadmaps.
 - **[P]**: parallelizable (different files, no dependencies on incomplete tasks)
 - **[Story]**: required on US1/US2/US3 phase tasks only
 - File paths are absolute under the worktree root
-  `/Users/John/Code/dope-agent/.worktrees/020-claude/`.
+  `/Users/John/Code/kura-agent/.worktrees/020-claude/`.
 
 ---
 

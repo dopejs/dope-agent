@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/sandbox-access-request.schema.json",
+  "$id": "https://kura.local/schemas/api/sandbox-access-request.schema.json",
   "title": "SandboxAccessRequest",
   "type": "object",
   "required": ["readRoots", "writeRoots", "allowedHosts", "allowedPorts"],

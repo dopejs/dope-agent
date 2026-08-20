@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines the first contract shape for the Dope daemon.
+This document defines the first contract shape for the Kura daemon.
 
 It focuses on:
 
@@ -256,8 +256,8 @@ Examples:
 
 Tenant access behavior:
 
-- absent `X-Dope-Tenant-ID` resolves the token default tenant
-- present `X-Dope-Tenant-ID` resolves only when the principal has active membership and
+- absent `X-Kura-Tenant-ID` resolves the token default tenant
+- present `X-Kura-Tenant-ID` resolves only when the principal has active membership and
   the token has an active tenant grant
 - denied tenant resolution returns the stable tenant authorization error shape
 - `tenant.manage` gates tenant creation, membership changes, principal lifecycle changes,
@@ -676,7 +676,7 @@ It should also constrain:
 
 1. define the first API schemas for system and run routes
 2. define the first event schemas for system, run, and step events
-3. update the Rust daemon server scaffold (`dope-api`) to reflect `/v1/...` route groups
+3. update the Rust daemon server scaffold (`kura-api`) to reflect `/v1/...` route groups
 4. define the run resource and step resource response shapes
 
 ## Short Version

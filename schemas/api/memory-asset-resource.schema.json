@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/memory-asset-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/memory-asset-resource.schema.json",
   "title": "MemoryAssetResource",
   "type": "object",
   "required": ["assetId", "kind", "layer", "owner", "visibility", "status", "version", "createdAt", "updatedAt"],

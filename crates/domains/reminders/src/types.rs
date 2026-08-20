@@ -6,10 +6,10 @@
 //! empty/absent), so reminder documents round-trip byte-identically with Go rows.
 
 use chrono::{DateTime, Utc};
-use dope_calendar::Action as CalendarAction;
-use dope_integrations::DiagnosticFailureProjection;
-use dope_mail::Action as MailAction;
-use dope_scheduler::Trigger;
+use kura_calendar::Action as CalendarAction;
+use kura_integrations::DiagnosticFailureProjection;
+use kura_mail::Action as MailAction;
+use kura_scheduler::Trigger;
 use serde::{Deserialize, Serialize};
 
 macro_rules! string_enum {
@@ -328,7 +328,7 @@ pub struct WorkflowLaunchResult {
 /// Go WorkflowLauncher interface: launches the reminder's workflow for one occurrence.
 ///
 /// Note on asynchrony: the Go seam is a plain interface method invoked synchronously by
-/// the tick loop, and this port keeps that shape (like the dope-scheduler / dope-delivery
+/// the tick loop, and this port keeps that shape (like the kura-scheduler / kura-delivery
 /// sync ports). An async variant can be layered on top later without changing the ledger
 /// types.
 pub trait WorkflowLauncher: Send + Sync {

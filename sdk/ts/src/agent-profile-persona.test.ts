@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDopeClient } from "./index";
+import { createKuraClient } from "./index";
 
 function jsonResponse(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -40,7 +40,7 @@ describe("agent profile SDK", () => {
       .mockResolvedValueOnce(jsonResponse({ profile: profile(), version: { profileVersionId: "profv_4", profileId: "prof_1", tenantId: "ten_profile", versionNumber: 3, changeKind: "rolled_back", changeSummary: "Rollback", snapshot: profile(), rollbackEligibility: "eligible", createdAt: "2026-05-12T00:00:00Z", redactionStatus: "redacted" }, auditEventId: "audit_3" }))
       .mockResolvedValueOnce(jsonResponse({ profile: { ...profile(), status: "archived" }, version: { profileVersionId: "profv_5", profileId: "prof_1", tenantId: "ten_profile", versionNumber: 4, changeKind: "archived", changeSummary: "Archived", snapshot: profile(), rollbackEligibility: "profile_archived", createdAt: "2026-05-12T00:00:00Z", redactionStatus: "redacted" }, auditEventId: "audit_4" }))
       .mockResolvedValueOnce(jsonResponse({ profile: { ...profile(), status: "disabled" }, version: { profileVersionId: "profv_6", profileId: "prof_1", tenantId: "ten_profile", versionNumber: 5, changeKind: "disabled", changeSummary: "Disabled", snapshot: profile(), rollbackEligibility: "profile_disabled", createdAt: "2026-05-12T00:00:00Z", redactionStatus: "redacted" }, auditEventId: "audit_5" }));
-    const client = createDopeClient({ baseURL: "http://127.0.0.1:19192", accessToken: "token", defaultTenantId: "ten_profile", fetchImpl });
+    const client = createKuraClient({ baseURL: "http://127.0.0.1:19192", accessToken: "token", defaultTenantId: "ten_profile", fetchImpl });
 
     await client.listAgentProfiles({ limit: 10 });
     const detail = await client.getAgentProfile(" prof_1 ");
@@ -63,7 +63,7 @@ describe("agent profile SDK", () => {
       "http://127.0.0.1:19192/v1/profiles/prof_1/archive",
       "http://127.0.0.1:19192/v1/profiles/prof_1/disable"
     ]);
-    expect(fetchImpl.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: "Bearer token", "X-Dope-Tenant-ID": "ten_profile" });
+    expect(fetchImpl.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: "Bearer token", "X-Kura-Tenant-ID": "ten_profile" });
     expect(fetchImpl.mock.calls[3]?.[1]?.method).toBe("PATCH");
     expect(detail.overlayReferences[0]?.validationState).toBe("partial");
     expect(detail.overlayReferences[0]?.failureReasonCode).toBe("legacy_prompt_config_partial");
@@ -74,7 +74,7 @@ describe("agent profile SDK", () => {
       status: 403,
       headers: { "Content-Type": "application/json" }
     }));
-    const client = createDopeClient({ baseURL: "http://127.0.0.1:19192", fetchImpl });
+    const client = createKuraClient({ baseURL: "http://127.0.0.1:19192", fetchImpl });
     await expect(client.archiveAgentProfile("prof_1")).rejects.toThrow("profiles.manage is required");
   });
 });

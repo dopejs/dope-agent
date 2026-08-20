@@ -83,7 +83,7 @@ The implementation plan MUST define and test the concrete SDK tenant API:
 - behavior when no tenant is configured and the server resolves the default tenant
 - stable typing for tenant, membership, principal, permission, denial, and token grant
   resources reused from daemon schemas
-- propagation of `X-Dope-Tenant-ID` without callers manually constructing headers
+- propagation of `X-Kura-Tenant-ID` without callers manually constructing headers
 - error mapping for stable tenant authorization denials
 
 ## Required UX Acceptance Cases

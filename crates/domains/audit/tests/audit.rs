@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use dope_audit::{AuditError, EVENT_CATEGORY, EVENT_NAME, Emitter};
-use dope_events::{Bus, Filter};
-use dope_identity::tenantctx;
-use dope_identity::TenantContext;
+use kura_audit::{AuditError, EVENT_CATEGORY, EVENT_NAME, Emitter};
+use kura_events::{Bus, Filter};
+use kura_identity::tenantctx;
+use kura_identity::TenantContext;
 
 #[test]
 fn emit_requires_tenant_context() {
@@ -36,19 +36,19 @@ fn emit_publishes_denial_event() {
     assert_eq!(events[0].payload["surface"], "api:GET /v1/runs/{id}");
     assert_eq!(events[0].payload["resourceKind"], "run");
 }
-use dope_audit::{
+use kura_audit::{
     build_billing_audit_event, build_credential_audit_event, build_integration_diagnostic_audit_event,
     BILLING_AUDIT_EVENT_KIND, CREDENTIAL_EVENT_KIND, INTEGRATION_DIAGNOSTIC_AUDIT_EVENT_KIND,
     BillingAuditInput, CredentialAuditInput, IntegrationDiagnosticAuditInput,
 };
-use dope_identity::AUDIT_OUTCOME_SUCCEEDED;
+use kura_identity::AUDIT_OUTCOME_SUCCEEDED;
 
 #[test]
 fn builders_produce_tenant_audit_events() {
     let billing = build_billing_audit_event(&BillingAuditInput {
         tenant_id: "t1".to_string(),
         principal_id: "p1".to_string(),
-        category: dope_billing::Category::new("run_launches"),
+        category: kura_billing::Category::new("run_launches"),
         operation_key: "op".to_string(),
         amount: 5,
         ..BillingAuditInput::default()
@@ -61,8 +61,8 @@ fn builders_produce_tenant_audit_events() {
     let credential = build_credential_audit_event(&CredentialAuditInput {
         tenant_id: "t1".to_string(),
         principal_id: "p1".to_string(),
-        resource_kind: dope_secrets::ResourceKind::TenantSecret,
-        action: dope_secrets::AuditAction::SecretUse,
+        resource_kind: kura_secrets::ResourceKind::TenantSecret,
+        action: kura_secrets::AuditAction::SecretUse,
         secret_refs: vec!["secret/abc".to_string()],
         ..CredentialAuditInput {
             outcome: String::new(),
@@ -72,8 +72,8 @@ fn builders_produce_tenant_audit_events() {
             created_at: chrono::Utc::now(),
             tenant_id: "t1".to_string(),
             principal_id: "p1".to_string(),
-            resource_kind: dope_secrets::ResourceKind::TenantSecret,
-            action: dope_secrets::AuditAction::SecretUse,
+            resource_kind: kura_secrets::ResourceKind::TenantSecret,
+            action: kura_secrets::AuditAction::SecretUse,
             resource_id: String::new(),
             secret_refs: vec!["secret/abc".to_string()],
         }
@@ -86,8 +86,8 @@ fn builders_produce_tenant_audit_events() {
         tenant_id: "t1".to_string(),
         principal_id: "p1".to_string(),
         action: "diagnose".to_string(),
-        reason_code: dope_integrations::DiagnosticReasonCode::Healthy,
-        redaction_status: dope_integrations::RedactionStatus::Redacted,
+        reason_code: kura_integrations::DiagnosticReasonCode::Healthy,
+        redaction_status: kura_integrations::RedactionStatus::Redacted,
         ..IntegrationDiagnosticAuditInput::default()
     });
     assert_eq!(diag.event_kind, INTEGRATION_DIAGNOSTIC_AUDIT_EVENT_KIND);

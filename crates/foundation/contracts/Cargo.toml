@@ -1,5 +1,5 @@
 [package]
-name = "dope-contracts"
+name = "kura-contracts"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true
@@ -11,4 +11,4 @@ chrono.workspace = true
 parking_lot.workspace = true
 
 [dev-dependencies]
-dope-plugin.workspace = true
+kura-plugin.workspace = true

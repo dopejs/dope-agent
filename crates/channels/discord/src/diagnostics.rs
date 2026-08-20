@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, Utc};
 
-use dope_connectors::{
+use kura_connectors::{
     ConnectorDiagnosticState, DiagnosticReasonCode, FreshnessState, LifecycleState,
     RedactionStatus, RemediationOwner, RetrySafety,
 };
@@ -97,7 +97,7 @@ fn contains_any(message: &str, needles: &[&str]) -> bool {
 ///
 /// Note: the underlying classification (`classify_diagnostic`) mirrors
 /// `ClassifyDiagnostic` from daemon/internal/connectors/diagnostics.go,
-/// which is not yet ported into `dope-connectors` (reported as a missing
+/// which is not yet ported into `kura-connectors` (reported as a missing
 /// dependency; this local mirror should move there once it lands).
 pub fn build_diagnostic_state(
     tenant_id: &str,

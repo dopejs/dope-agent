@@ -1,7 +1,7 @@
 # Quickstart: Workspace And Capability Binding (Roadmap 58)
 
 Test-environment workflow for implementing and verifying Phase 58. Local work defaults to
-`~/.dope-test` and `127.0.0.1:19192`; live connectors and prod tenants are not required.
+`~/.kura-test` and `127.0.0.1:19192`; live connectors and prod tenants are not required.
 
 ## Prerequisites
 

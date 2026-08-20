@@ -14,14 +14,14 @@ second execution plane, silent fallback, or loss of operator-visible provenance.
 
 ## Technical Context
 
-**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts  
-**Primary Dependencies**: `daemon/internal/sandbox`, `daemon/internal/api`, `daemon/internal/skills`, `daemon/internal/runtime`, `daemon/internal/store`, `daemon/internal/contracts`, `daemon/internal/events`, `daemon/internal/app`, `modernc.org/sqlite`  
-**Storage**: SQLite daemon state for sandbox executions, runtime tool calls, approvals, and event history; skill files under `~/.agents/skills` and `<dataDir>/skills`; sandbox profiles and host capability state projected from daemon-owned config/runtime inspection  
-**Testing**: `go test ./internal/sandbox ./internal/api ./internal/skills ./internal/runtime ./internal/store ./internal/app ./internal/contracts`, `make daemon-contract-test`, `go test ./...`  
-**Target Platform**: macOS/Linux local daemon in the default test environment, with Roadmap 20 verification requiring hosts where `docker` is either explicitly available or explicitly absent for negative-path coverage  
-**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts  
-**Performance Goals**: Backend selection, capability evaluation, and explain/preflight work should remain low-latency operator interactions, adding no more than `<=100 ms` daemon-side decision overhead per request, excluding container image pull/startup time and runtime execution duration  
-**Constraints**: `docker` is the first stronger backend; only explicitly declared `docker` executable skills migrate in this slice; `docker`-required requests fail as `unsupported` when the host cannot satisfy prerequisites; no silent fallback to `subprocess`; APIs, schemas, events, and persistence changes remain additive; local verification defaults to `DOPE_ENV=test`; broader migration of high-risk local tools, MCP, and managed providers remains out of scope  
+**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts
+**Primary Dependencies**: `daemon/internal/sandbox`, `daemon/internal/api`, `daemon/internal/skills`, `daemon/internal/runtime`, `daemon/internal/store`, `daemon/internal/contracts`, `daemon/internal/events`, `daemon/internal/app`, `modernc.org/sqlite`
+**Storage**: SQLite daemon state for sandbox executions, runtime tool calls, approvals, and event history; skill files under `~/.agents/skills` and `<dataDir>/skills`; sandbox profiles and host capability state projected from daemon-owned config/runtime inspection
+**Testing**: `go test ./internal/sandbox ./internal/api ./internal/skills ./internal/runtime ./internal/store ./internal/app ./internal/contracts`, `make daemon-contract-test`, `go test ./...`
+**Target Platform**: macOS/Linux local daemon in the default test environment, with Roadmap 20 verification requiring hosts where `docker` is either explicitly available or explicitly absent for negative-path coverage
+**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts
+**Performance Goals**: Backend selection, capability evaluation, and explain/preflight work should remain low-latency operator interactions, adding no more than `<=100 ms` daemon-side decision overhead per request, excluding container image pull/startup time and runtime execution duration
+**Constraints**: `docker` is the first stronger backend; only explicitly declared `docker` executable skills migrate in this slice; `docker`-required requests fail as `unsupported` when the host cannot satisfy prerequisites; no silent fallback to `subprocess`; APIs, schemas, events, and persistence changes remain additive; local verification defaults to `KURA_ENV=test`; broader migration of high-risk local tools, MCP, and managed providers remains out of scope
 **Scale/Scope**: Single-daemon-host execution with tens to low hundreds of skills, one initial stronger-backend migration target family (executable skills), operator-visible capability comparison between `subprocess` and `docker`, and one host-level capability matrix suitable for future migration work
 
 ## Constitution Check
@@ -42,8 +42,8 @@ second execution plane, silent fallback, or loss of operator-visible provenance.
 - Verification and observability: PASS. The plan requires targeted sandbox/runtime/API
   tests, contract verification, restart coverage, and end-to-end stronger-backend
   validation for one real consumer plus negative-path unsupported coverage.
-- Environment and secrets: PASS. Local work stays in `DOPE_ENV=test`, keeps
-  `~/.dope-test` / `~/.dope` separation intact, and does not weaken existing secret-scope
+- Environment and secrets: PASS. Local work stays in `KURA_ENV=test`, keeps
+  `~/.kura-test` / `~/.kura` separation intact, and does not weaken existing secret-scope
   or redaction guarantees when `docker` is used.
 
 Post-design re-check:

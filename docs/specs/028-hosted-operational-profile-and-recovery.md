@@ -69,7 +69,7 @@ collection.
 ## In Scope
 
 - hosted/test-host directory layout for code, data, logs, artifacts, backups, and reports
-- environment variable and config profile for hosted `DOPE_ENV=test` and production-like
+- environment variable and config profile for hosted `KURA_ENV=test` and production-like
   operation
 - process supervision contract for daemon start, stop, restart, health check, and failure
   recovery

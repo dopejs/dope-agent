@@ -7,40 +7,40 @@ mod common;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use dope_evaluation::{
+use kura_evaluation::{
     CandidateKind, CreateReplayAttemptInput, Dependencies, Manager, PlaneSummaries,
     ReplayAttempt, ReplayCandidate, ReplayRecordInput, ReplayRuntime, ReplayRuntimeStore,
     RuntimeReplayRecorder, RuntimeRecorder, SourceKind, SourceRef, ReadinessStatus, ReplayMode,
     redact_replay_credential_string, redact_replay_credential_strings,
 };
-use dope_runtime::Manager as RuntimeManager;
+use kura_runtime::Manager as RuntimeManager;
 
 use common::fixed_now;
 
 #[derive(Debug, Default)]
 struct MemoryRuntimeStore {
-    runs: parking_lot::Mutex<HashMap<String, dope_runtime::Run>>,
-    steps: parking_lot::Mutex<HashMap<String, dope_runtime::Step>>,
-    workflows: parking_lot::Mutex<HashMap<String, dope_orchestration::Workflow>>,
+    runs: parking_lot::Mutex<HashMap<String, kura_runtime::Run>>,
+    steps: parking_lot::Mutex<HashMap<String, kura_runtime::Step>>,
+    workflows: parking_lot::Mutex<HashMap<String, kura_orchestration::Workflow>>,
 }
 
 impl ReplayRuntimeStore for MemoryRuntimeStore {
-    fn upsert_run(&self, run: dope_runtime::Run) -> Result<(), String> {
+    fn upsert_run(&self, run: kura_runtime::Run) -> Result<(), String> {
         self.runs.lock().insert(run.run_id.clone(), run);
         Ok(())
     }
-    fn upsert_step(&self, step: dope_runtime::Step) -> Result<(), String> {
+    fn upsert_step(&self, step: kura_runtime::Step) -> Result<(), String> {
         self.steps.lock().insert(step.step_id.clone(), step);
         Ok(())
     }
-    fn upsert_workflow(&self, workflow: dope_orchestration::Workflow) -> Result<(), String> {
+    fn upsert_workflow(&self, workflow: kura_orchestration::Workflow) -> Result<(), String> {
         self.workflows.lock().insert(workflow.workflow_id.clone(), workflow);
         Ok(())
     }
     fn replace_workflow_steps(
         &self,
         workflow_id: &str,
-        steps: Vec<dope_orchestration::WorkflowStep>,
+        steps: Vec<kura_orchestration::WorkflowStep>,
     ) -> Result<(), String> {
         let mut workflows = self.workflows.lock();
         let mut workflow = workflows
@@ -100,7 +100,7 @@ async fn runtime_replay_recorder_preserves_redacted_credential_evidence() {
                 }],
                 ..Default::default()
             },
-            evidence: dope_evaluation::CapturedEvidence {
+            evidence: kura_evaluation::CapturedEvidence {
                 runtime_summary: "credential-backed runtime completed with token=R37_FAKE_SECRET_TENANT_A_DO_NOT_LEAK"
                     .to_string(),
                 policy_summary: "policy blocked secret-token".to_string(),
@@ -191,7 +191,7 @@ async fn manager_records_completed_replay_in_runtime_plane() {
     assert_eq!(workflow.run_id, attempt.result_run_id);
     assert_eq!(
         workflow.status,
-        dope_orchestration::WorkflowStatus::Completed,
+        kura_orchestration::WorkflowStatus::Completed,
         "expected completed replay workflow linked to run"
     );
     drop(workflows);

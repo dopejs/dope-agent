@@ -45,7 +45,7 @@ pub const BACKEND_META_PROCESS_KIND_CONTAINER: &str = "container";
 /// Execution metadata key marking a completed subprocess that still awaits
 /// managed-provider finalization (Go managedProviderPendingFinalizationKey).
 pub const MANAGED_PROVIDER_PENDING_FINALIZATION_KEY: &str = "managedProviderFinalizationPending";
-/// Default docker image used when DOPE_SANDBOX_DOCKER_IMAGE is unset (Go
+/// Default docker image used when KURA_SANDBOX_DOCKER_IMAGE is unset (Go
 /// defaultDockerImage).
 pub const DEFAULT_DOCKER_IMAGE: &str = "alpine:3.20";
 
@@ -673,7 +673,7 @@ pub fn started_backend_metadata(
 /// Go `dockerImageForExecution`.
 #[must_use]
 pub fn docker_image_for_execution() -> String {
-    if let Ok(value) = std::env::var("DOPE_SANDBOX_DOCKER_IMAGE") {
+    if let Ok(value) = std::env::var("KURA_SANDBOX_DOCKER_IMAGE") {
         let value = value.trim();
         if !value.is_empty() {
             return value.to_string();

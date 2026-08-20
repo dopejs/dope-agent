@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/matrix-route-policy-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/matrix-route-policy-resource.schema.json",
   "title": "MatrixRoutePolicyResource",
   "type": "object",
   "required": ["connectorId", "homeserverBindingId", "roomInvocationGate", "encryptedRoomPolicy", "validationState", "validatedAt", "redactionStatus"],

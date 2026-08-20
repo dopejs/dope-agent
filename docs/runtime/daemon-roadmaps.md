@@ -44,8 +44,8 @@ Each implementation round should finish **one whole roadmap**.
 - **The Go daemon was then fully ported to the Rust workspace** (`crates/`,
   8 waves, see [`crates/MIGRATION.md`](../../crates/MIGRATION.md)). The Go
   `daemon/` tree and the TypeScript TUI are removed; the control plane is the
-  Rust `dope-cli` package (user binary `kura`), and the terminal client package
-  is `dope-tui` (user binary `kura-tui`).
+  Rust `kura-cli` package (user binary `kura`), and the terminal client package
+  is `kura-tui` (user binary `kura-tui`).
 - Verification commands: `cargo test --workspace` (or `make daemon-test`) and
   `make daemon-contract-test`. Go-era `go test ./...` references in archived
   documents map to these.
@@ -104,7 +104,7 @@ engineer joining after the migration cannot be misled by Go-era text.
   `daemon/internal/...` package paths; that tree no longer exists. The
   `Makefile` targets already run cargo.
 - `crates/surface/api/src/` carries stale wave-8 TODO comments, e.g.
-  `state.rs` claims "the dope-reminders crate does not exist" while the crate
+  `state.rs` claims "the kura-reminders crate does not exist" while the crate
   exists, compiles, and is wired in `crates/surface/app/src/lib.rs:338`.
   Stale markers also remain in `types.rs`, `middleware.rs`, `routes/auth.rs`,
   and `routes/setupwizard.rs`.
@@ -119,7 +119,7 @@ engineer joining after the migration cannot be misled by Go-era text.
       planning docs to git history (this change)
 - [x] Rewrite the daemon section of `CLAUDE.md` for the Rust workspace
       (crate layout under `crates/`, cargo/make commands, entry point
-      `dope-cli`, app assembly in `crates/surface/app/src/lib.rs`)
+      `kura-cli`, app assembly in `crates/surface/app/src/lib.rs`)
 - [x] Audit every `TODO: PLACEHOLDER` / `TODO: MISSING` marker in
       `crates/surface/api/src/`; delete markers that describe closed gaps,
       keep only ones matching a real open seam, and reference this roadmap
@@ -234,12 +234,12 @@ Route-level `protected()` middleware remains the authoritative authorization
 boundary; the in-manager hooks below are defense-in-depth and currently
 permissive in the production assembly (`crates/surface/app/src/lib.rs`):
 
-- `dope_webhook::Manager` is constructed with `quota: None`, falling back to
+- `kura_webhook::Manager` is constructed with `quota: None`, falling back to
   `AllowAllQuota` (`crates/domains/webhook/src/lib.rs:195`). The webhook
   ingress `/v1/triggers/webhook/` is signature-authed rather than
   `protected()`, which makes an unbounded quota gate a real exposure, not
   just defense-in-depth.
-- `dope_catalog::Manager` is constructed with `checker: None` (falls back to
+- `kura_catalog::Manager` is constructed with `checker: None` (falls back to
   `AllMet`) and `permissions: None` — the sandbox/secret/policy wiring that
   spec 053 explicitly deferred as follow-on.
 - Spec 052's deferred non-webhook inbound trigger sources remain unbuilt
@@ -364,7 +364,7 @@ is Go-era and therefore void for the Rust binary.
 - [x] Verify the soak harness, fault drills, and ops tooling run unmodified
       against the Rust daemon (2026-08-16: `scripts/production/run-soak.sh`
       targeted-validation run passed against the Rust binary on the real
-      `~/.dope-test` data dir). The first real-data boot surfaced a Go
+      `~/.kura-test` data dir). The first real-data boot surfaced a Go
       wire-compat defect class, fixed at root before any soak counts:
       Go-marshaled `null` for nil slices/maps in persisted JSON (store
       decoders + serde `null_default` annotations), 29 serde enum wire

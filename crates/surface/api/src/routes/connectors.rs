@@ -30,11 +30,11 @@ use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use dope_connectors as connectors;
-use dope_events as events;
-use dope_imtypes as imtypes;
-use dope_router as router_domain;
-use dope_runtime as runtime;
+use kura_connectors as connectors;
+use kura_events as events;
+use kura_imtypes as imtypes;
+use kura_router as router_domain;
+use kura_runtime as runtime;
 
 use crate::error::ApiError;
 use crate::middleware::{environment_scope_from_config, TenantContext};
@@ -391,7 +391,7 @@ fn hosted_read_tenant(
     if tc.tenant_id.trim().is_empty() {
         return Err(credential_denial("tenant_context_missing"));
     }
-    if !dope_identity::can_inspect_credentials(tc, &[dope_identity::Permission::ConnectorsManage]) {
+    if !kura_identity::can_inspect_credentials(tc, &[kura_identity::Permission::ConnectorsManage]) {
         return Err(credential_denial("missing_permission"));
     }
     match supervisor(state) {
@@ -1020,22 +1020,22 @@ async fn ingress_messages(
     let captured = super::memory::capture_l0(
         &state,
         &tenant_id,
-        dope_memory::Actor {
-            kind: dope_memory::ActorKind::System,
+        kura_memory::Actor {
+            kind: kura_memory::ActorKind::System,
             id: format!("connector:{}", connector.connector_id),
         },
         "inbound_message",
         &request.message.text,
         vec![
-            dope_memory::SourceLink {
-                kind: dope_memory::SourceKind::Message,
+            kura_memory::SourceLink {
+                kind: kura_memory::SourceKind::Message,
                 id: message_record.delivery_id.clone(),
-                ..dope_memory::SourceLink::default()
+                ..kura_memory::SourceLink::default()
             },
-            dope_memory::SourceLink {
-                kind: dope_memory::SourceKind::Thread,
+            kura_memory::SourceLink {
+                kind: kura_memory::SourceKind::Thread,
                 id: session.session_id.clone(),
-                ..dope_memory::SourceLink::default()
+                ..kura_memory::SourceLink::default()
             },
         ],
     );
@@ -1077,8 +1077,8 @@ mod tests {
 
     fn state_with_supervisor() -> crate::state::AppState {
         let mut state = test_state();
-        state.connectors = Some(Arc::new(dope_connectors::Supervisor::new()));
-        state.router = Some(Arc::new(dope_router::SessionRouter::new()));
+        state.connectors = Some(Arc::new(kura_connectors::Supervisor::new()));
+        state.router = Some(Arc::new(kura_router::SessionRouter::new()));
         state
     }
 

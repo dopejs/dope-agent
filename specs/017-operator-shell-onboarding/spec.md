@@ -263,12 +263,12 @@ operator-facing surface.
   onboarding and durable operator history; representative failure-path coverage for
   readiness, approval-blocked execution, schedule failure, workflow failure, and delivery
   failure; timing checks against the stated local operator-shell response and refresh
-  targets; and one manual onboarding acceptance path in `DOPE_ENV=test`.
+  targets; and one manual onboarding acceptance path in `KURA_ENV=test`.
 - **Observability Impact**: Operators must be able to inspect onboarding progress, missing
   prerequisites, readiness state, approval status, background execution outcomes, delivery
   outcomes, and diagnostic findings as explicit operator-visible truth with enough context
   to identify the failing plane and next action.
-- **Environment & Secrets**: Validation defaults to `DOPE_ENV=test`. Live connectors and
+- **Environment & Secrets**: Validation defaults to `KURA_ENV=test`. Live connectors and
   privileged actions remain explicit operator choices, and the shell must avoid exposing
   secret material while still making readiness and failure causes understandable.
 
@@ -276,13 +276,13 @@ operator-facing surface.
 
 ### Measurable Outcomes
 
-- **SC-001**: In manual `DOPE_ENV=test` validation, a first-time operator can complete the
+- **SC-001**: In manual `KURA_ENV=test` validation, a first-time operator can complete the
   minimum onboarding path and reach one successful first-use outcome in under 10 minutes
   without using raw daemon routes or source-code inspection.
-- **SC-001b**: In manual `DOPE_ENV=test` validation, onboarding can complete after the
+- **SC-001b**: In manual `KURA_ENV=test` validation, onboarding can complete after the
   minimum readiness set for the selected first useful action is satisfied, while unrelated
   setup items remain visible as optional follow-up work.
-- **SC-001a**: In manual `DOPE_ENV=test` validation, the first useful action completes as
+- **SC-001a**: In manual `KURA_ENV=test` validation, the first useful action completes as
   a bounded test query or test run and returns visible result and status feedback in the
   same shell session without requiring the operator to inspect logs.
 - **SC-002**: In representative operator-shell validation, 100% of exercised pending

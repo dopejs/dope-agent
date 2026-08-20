@@ -84,7 +84,7 @@ pub struct Approval {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub integration_bindings: Vec<dope_integrations::BindingSummary>,
+    pub integration_bindings: Vec<kura_integrations::BindingSummary>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -114,7 +114,7 @@ pub struct RequestApprovalInput {
     pub reason: String,
     pub requested_by: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub integration_bindings: Vec<dope_integrations::BindingSummary>,
+    pub integration_bindings: Vec<kura_integrations::BindingSummary>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

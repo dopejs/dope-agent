@@ -112,7 +112,7 @@ Gate opened by operator decision 2026-08-17; design root is
 TencentDB-Agent-Memory (layered L0-L3 + governed asset envelope), specs
 058-062 revised accordingly.
 
-- [x] `dope-memory` crate: uniform asset envelope (kind/layer/owner/
+- [x] `kura-memory` crate: uniform asset envelope (kind/layer/owner/
       tenant/visibility/status/version/bindings), L1 atoms with mandatory
       source links, L2/L3 with member drill-down, policy-gated write
       lifecycle (accept/require-approval/reject, fail closed), supersede
@@ -145,7 +145,7 @@ Spec numbering retired 2026-08-17 (operator); plan of record is
 Pluginization precedes all further capability work.
 
 - [x] Phase 1 — plugin kernel + builtin assembly (complete 2026-08-17):
-      `dope-plugin` crate (descriptors, profile-driven resolution with
+      `kura-plugin` crate (descriptors, profile-driven resolution with
       transitive disable + warnings, `<data_dir>/plugins.json`, SeamMap,
       waterfall HookBus); trust-boundary kernel carved out (store/bus/
       identity/auth/policy/secrets/audit, not disableable); every other
@@ -183,7 +183,7 @@ Pluginization precedes all further capability work.
       (consolidator, channel runtimes) and catalog-driven install/update
       into `<data_dir>/plugins/`
 - [x] Session-strategy plugin, first slice (complete 2026-08-17):
-      `dope-session` policy crate + `session-strategy` builtin at
+      `kura-session` policy crate + `session-strategy` builtin at
       `chat/pre-dispatch`; deterministic frame-preserving window shaping
       (system frame never elided, keepRecent floor, elision marker);
       personal (48k) vs thread (`sourceKind=channel`, 16k) budgets;
@@ -196,7 +196,7 @@ Pluginization precedes all further capability work.
       skipped — ingress capture covers them); connector runtimes stay
       kernel-hosted (recorded decision: !Send transport threads) until
       the seam-RPC slice
-- [x] Context plugin, first slice (complete 2026-08-17): `dope-context`
+- [x] Context plugin, first slice (complete 2026-08-17): `kura-context`
       crate + `context` builtin at `chat/pre-dispatch` (before
       session-strategy); deterministic memory bootstrap injection (Ready
       L3 → L2 newest-first, private/team visibility, inline citations,
@@ -212,7 +212,7 @@ Pluginization precedes all further capability work.
       real memory-plane defect (truncated-v7 ids colliding within one
       millisecond) — fixed at root with restore-time healing
 - [x] Vector ranker (complete 2026-08-17): `Embedder` seam in
-      dope-context with the deterministic hashed char-trigram embedder
+      kura-context with the deterministic hashed char-trigram embedder
       (256-dim FNV feature hashing, L2-normalized, cosine) as default
       provider joining the RRF fusion as the third ranker; candidacy =
       BM25>0 OR cosine≥0.25; closes the CJK gap (character overlap
@@ -254,10 +254,10 @@ Pluginization precedes all further capability work.
       the request path); workflow captures remain tenantless by design
       (Workflow carries no tenant field — environment scope only)
 - [x] ChatStore adapter closure (complete 2026-08-17): all 14 deferred
-      ChatStore methods now delegate to the native dope-store
+      ChatStore methods now delegate to the native kura-store
       implementations (`resolve_binding_selection` composes the store's
       rule lookups + selectability checks through the
-      `dope_bindings::resolve_selection` precedence port with fail-closed
+      `kura_bindings::resolve_selection` precedence port with fail-closed
       candidate precomputation; `list_handoff_links_for_thread` maps to
       `list_handoff_links`) — tenant+thread chat on the real daemon
       previously failed with "not ported" errors and now runs the full
@@ -286,7 +286,7 @@ Pluginization precedes all further capability work.
       diffs, revision proposals (supersede chains), sandbox requirement
       declarations
 - [x] Audited self-improvement, first slice (complete 2026-08-17):
-      `dope-improvement` crate + `self-improve` builtin plugin —
+      `kura-improvement` crate + `self-improve` builtin plugin —
       proposals target one plugin-profile config value, carry motivating
       evidence (required) and the current→proposed diff, and are
       rate-bounded per target per 24h window (operator config via the

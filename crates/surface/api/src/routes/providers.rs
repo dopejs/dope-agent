@@ -26,8 +26,8 @@ use axum::{Json, Router};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use dope_events as events;
-use dope_providers as providers;
+use kura_events as events;
+use kura_providers as providers;
 
 use crate::error::ApiError;
 use crate::middleware::{environment_scope_from_config, TenantContext};
@@ -118,9 +118,9 @@ fn hosted_credential_tenant(
     if tc.tenant_id.trim().is_empty() {
         return Ok(String::new());
     }
-    if !dope_identity::can_inspect_credentials(
+    if !kura_identity::can_inspect_credentials(
         tc,
-        &[dope_identity::Permission::IntegrationsManage],
+        &[kura_identity::Permission::IntegrationsManage],
     ) {
         return Err(credential_denial("missing_permission"));
     }
@@ -517,7 +517,7 @@ mod tests {
 
     fn state_with_manager() -> crate::state::AppState {
         let mut state = test_state();
-        let manager = dope_providers::new_manager(state.config.llm.clone(), None, Vec::new());
+        let manager = kura_providers::new_manager(state.config.llm.clone(), None, Vec::new());
         state.providers = Some(Arc::new(manager));
         state
     }

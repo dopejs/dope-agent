@@ -30,7 +30,7 @@ package from Roadmap 34, existing in-process event bus (`daemon/internal/events`
 existing schema-migration framework (`daemon/internal/store/store.go`
 `schemaMigrations` array, current head `CurrentSchemaVersion = 21`).
 **Storage**: SQLite (single-file, shared schema with strong tenant scoping). Test env
-`~/.dope-test`, prod env `~/.dope`. No new database technology introduced.
+`~/.kura-test`, prod env `~/.kura`. No new database technology introduced.
 **Testing**: `go test ./...` for daemon; `make daemon-contract-test` for schema/contract
 validation; new cross-tenant isolation regressions live alongside existing
 `daemon/internal/store/*_test.go` files; pre-tenant fixture suite uses a checked-in
@@ -78,7 +78,7 @@ release. Larger scale is a future concern; tenant-aware indexes are sized for th
   full daemon test suite after migration. Observability: typed audit event +
   greppable log on every denied cross-tenant access (Q3), structured migration progress
   log + event for operator visibility, no leakage of target tenant id or row data.
-- **Environment and secrets** — PASS. Default execution is `~/.dope-test` on
+- **Environment and secrets** — PASS. Default execution is `~/.kura-test` on
   `127.0.0.1:19192`. No new secrets introduced. No live connector behavior changes. All
   credential, OAuth, secret-reference, and redaction semantics remain owned by Roadmap 37
   per FR-015; tables touched in common are made tenant-safe without redefining
@@ -113,7 +113,7 @@ no source changes from this roadmap beyond regeneration.
 
 ```text
 daemon/
-├── cmd/dope/                                  # entry point — unchanged
+├── cmd/kura/                                  # entry point — unchanged
 ├── internal/
 │   ├── tenantctx/                             # NEW: shared tenant-context carrier
 │   │   ├── tenantctx.go                       # WithContext, FromContext, ErrTenantContextRequired

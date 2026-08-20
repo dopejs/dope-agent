@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dope.local/schemas/api/mail-draft-resource.schema.json",
+  "$id": "https://kura.local/schemas/api/mail-draft-resource.schema.json",
   "title": "MailDraftResource",
   "type": "object",
   "required": ["draftId", "operationId", "integrationId", "mailAccountId", "composeMode", "draftStatus", "createdAt", "updatedAt"],

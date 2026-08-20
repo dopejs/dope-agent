@@ -262,7 +262,7 @@
 - [X] T151 Run the test daemon smoke with `make daemon-run-test` and `make daemon-test-status`, then record health and shutdown evidence in `specs/026-evaluation-product-expansion/quickstart.md`
 - [X] T152 Run the Roadmap 41 product smoke flow for discovery, suppression, product fixture editing, campaign start, dashboard projection, tool-call inspection, SC-001 two-minute candidate review, and SC-005 five-minute fixture create/edit; record timed results in `specs/026-evaluation-product-expansion/quickstart.md`
 - [X] T153 Run the Roadmap 39 soak rerun with Roadmap 40 live validation and Roadmap 41 evaluation product workflows included; record pass/fail evidence in `specs/026-evaluation-product-expansion/quickstart.md` and leave Roadmap 41 incomplete if the rerun is blocked
-  - Completed 2026-05-01 Asia/Shanghai: stable host `zentalk-1` produced `/root/dope-agent-r41-artifacts/roadmap39-full-5ad95ba.json` for commit `5ad95ba`; the report passed every criterion in `docs/harness/roadmap41-soak-acceptance-runbook.md`.
+  - Completed 2026-05-01 Asia/Shanghai: stable host `zentalk-1` produced `/root/kura-agent-r41-artifacts/roadmap39-full-5ad95ba.json` for commit `5ad95ba`; the report passed every criterion in `docs/harness/roadmap41-soak-acceptance-runbook.md`.
 
 ---
 

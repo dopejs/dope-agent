@@ -59,7 +59,7 @@ authorized support inspection.
 
 Use the test daemon only. Required checks:
 
-- `cargo test -p dope-setupwizard -p dope-api -p dope-store -p dope-providers -p dope-integrations`
+- `cargo test -p kura-setupwizard -p kura-api -p kura-store -p kura-providers -p kura-integrations`
 - `make daemon-contract-test`
 - `pnpm test:clients`
 - `pnpm build`

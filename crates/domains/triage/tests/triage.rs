@@ -1,12 +1,12 @@
-//! Round-trip (wire format) and manager-behavior tests for `dope-triage`, mirroring the Go
+//! Round-trip (wire format) and manager-behavior tests for `kura-triage`, mirroring the Go
 //! `manager_test.go` / `persistence_test.go` coverage.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::Utc;
-use dope_store::SQLiteStore;
-use dope_triage::{
+use kura_store::SQLiteStore;
+use kura_triage::{
     Classification, Condition, ConditionField, ConditionOperator, Decision, Manager, Message,
     Outcome, Policy, Rule, Run, TriageError,
 };
@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "dope_triage_{tag}_{}_{}",
+        "kura_triage_{tag}_{}_{}",
         std::process::id(),
         Uuid::new_v4().simple()
     ));
@@ -108,7 +108,7 @@ fn decision_wire_round_trip() {
         message_id: "m1".to_string(),
         classification: Classification::Urgent,
         matched_rule_id: "triage_rule_x".to_string(),
-        matched_evidence: vec![dope_triage::MatchedEvidence {
+        matched_evidence: vec![kura_triage::MatchedEvidence {
             field: ConditionField::Subject,
             operator: ConditionOperator::Contains,
             value: "urgent".to_string(),
@@ -353,6 +353,6 @@ fn run_wire_round_trip() {
 #[test]
 fn manager_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<dope_triage::Manager>();
+    assert_send_sync::<kura_triage::Manager>();
 }
 

@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use dope_adapterrpc::{
+use kura_adapterrpc::{
     is_ambiguous, run_conformance, scoped_resolver, write_message, AdapterError, Client, Error,
     FailureKind, Request, Response, Status, CONTRACT_VERSION,
 };
@@ -40,7 +40,7 @@ where
         let mut br = BufReader::new(adapter_reader);
         let mut w = adapter_writer;
         loop {
-            match dope_adapterrpc::read_request(&mut br) {
+            match kura_adapterrpc::read_request(&mut br) {
                 Ok(req) => {
                     if write_message(&mut w, &respond(req)).is_err() {
                         return;
@@ -89,7 +89,7 @@ fn serve_reference(reader: UnixStream, writer: UnixStream, opts: RefOptions) {
     let mut br = BufReader::new(reader);
     let mut w = writer;
     loop {
-        let req = match dope_adapterrpc::read_request(&mut br) {
+        let req = match kura_adapterrpc::read_request(&mut br) {
             Ok(req) => req,
             Err(_) => return, // EOF: daemon closed the stream
         };
@@ -531,7 +531,7 @@ fn capture_adapter(creds: mpsc::Sender<String>) -> Client {
 fn credentials_injected_per_call_scoped_to_integration() {
     let (tx, rx) = mpsc::channel();
     let c = capture_adapter(tx).with_credentials(scoped_resolver(Some(Box::new(
-        |integration_id: &str| -> Result<Option<Box<RawValue>>, dope_adapterrpc::ResolverError> {
+        |integration_id: &str| -> Result<Option<Box<RawValue>>, kura_adapterrpc::ResolverError> {
             Ok(Some(raw(&format!("\"secret-for-{integration_id}\""))))
         },
     ))));

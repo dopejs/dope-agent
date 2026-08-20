@@ -163,7 +163,7 @@ attempt fails
 - [x] T035 [P] Run `make daemon-contract-test` and record results in `specs/007-mcp-catalog-management/quickstart.md`
 - [x] T036 [P] Run targeted daemon verification in `daemon/internal/mcp`, `daemon/internal/api`, `daemon/internal/app`, `daemon/internal/store`, and `daemon/internal/contracts`, then record results in `specs/007-mcp-catalog-management/quickstart.md`
 - [x] T037 [P] Run full daemon regression verification with `go test ./...` in `daemon/` and record results in `specs/007-mcp-catalog-management/quickstart.md`
-- [x] T038 [P] Execute the manual `DOPE_ENV=test` install-to-remove or install-to-refresh workflow and record operator-facing evidence in `specs/007-mcp-catalog-management/quickstart.md`
+- [x] T038 [P] Execute the manual `KURA_ENV=test` install-to-remove or install-to-refresh workflow and record operator-facing evidence in `specs/007-mcp-catalog-management/quickstart.md`
 
 ---
 

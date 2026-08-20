@@ -16,7 +16,7 @@ diagnostics vocabulary, live-validation, and delivery truth unchanged. Net deliv
    sends via the contract's ambiguity channel; no message/credential leakage.
 2. Mail adapter shim: carry provider kind + stable failure class (mirror calendar) so failures
    land on the `feishu_lark` diagnostics reasons.
-3. Adapter binary: `DOPE_ADAPTER_DOMAIN=mail` serves the real mail provider.
+3. Adapter binary: `KURA_ADAPTER_DOMAIN=mail` serves the real mail provider.
 4. App wiring: register the mail adapter backend with provider kind feishu_lark when configured
    (credential fetcher already shared from Roadmap 60).
 5. `opsreadiness` mail real-account smoke with structured skip (mirror calendar_smoke).
@@ -50,7 +50,7 @@ daemon/internal/integrations/providers/feishulark/mail_e2e_test.go # NEW tests
 daemon/internal/mail/adapter_backend.go    # EDIT: provider kind + stable failure class
 daemon/internal/mail/manager.go            # EDIT (if needed): providerKind into failOperation
 daemon/internal/app/app.go                 # EDIT: mail adapter WithProviderKind when configured
-daemon/cmd/dope-integration-adapter/main.go# EDIT: DOPE_ADAPTER_DOMAIN=mail real provider
+daemon/cmd/kura-integration-adapter/main.go# EDIT: KURA_ADAPTER_DOMAIN=mail real provider
 daemon/internal/opsreadiness/mail_smoke.go # NEW smoke helper
 ```
 

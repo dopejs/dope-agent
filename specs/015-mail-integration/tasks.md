@@ -119,7 +119,7 @@
 - [x] T040 [P] Update mail schema fixtures and validator coverage in `daemon/internal/contracts/contracts_test.go`, `daemon/internal/contracts/validator.go`, and all mail-facing schema files under `schemas/api/` and `schemas/events/`
 - [x] T041 [P] Document the mail domain, send-path truth, background send gating, and truth-plane separation in `docs/runtime/daemon-roadmaps.md`, `docs/runtime/daemon-api-and-event-model.md`, `docs/runtime/operator-trust-model.md`, and `docs/harness/harness-architecture.md`
 - [x] T042 [P] Update the upstream mail roadmap spec plus the feature-local contract and quickstart references to the concrete mail contract in `docs/specs/015-mail-integration.md`, `specs/015-mail-integration/contracts/mail-domain-surfaces.md`, and `specs/015-mail-integration/quickstart.md`
-- [x] T043 [P] Run the manual `DOPE_ENV=test` mail walkthrough with one explicit-`integrationId` read, one canonical-default read, one draft flow, one direct-send flow, one send-draft flow, one blocked-send attachment case, and one delivery-linked background run, then record observed results in `specs/015-mail-integration/quickstart.md`
+- [x] T043 [P] Run the manual `KURA_ENV=test` mail walkthrough with one explicit-`integrationId` read, one canonical-default read, one draft flow, one direct-send flow, one send-draft flow, one blocked-send attachment case, and one delivery-linked background run, then record observed results in `specs/015-mail-integration/quickstart.md`
 - [x] T044 Record automated verification commands, residual risks, rollback notes, and the phase-30 verification procedure in `specs/015-mail-integration/plan.md` and `specs/015-mail-integration/quickstart.md`
 
 ---
@@ -200,7 +200,7 @@ Task: "T035 [US3] Attach immutable mailOperationSummaries to tool calls, workflo
 1. Complete Phase 1: Setup.
 2. Complete Phase 2: Foundational.
 3. Complete Phase 3: User Story 1.
-4. Validate mailbox account projection, thread inspection, message inspection, and draft inspection independently in `DOPE_ENV=test`.
+4. Validate mailbox account projection, thread inspection, message inspection, and draft inspection independently in `KURA_ENV=test`.
 5. Treat this as the first executable checkpoint only; roadmap 30 is not closed until US2, US3, and Phase 6 complete.
 
 ### Incremental Delivery

@@ -15,14 +15,14 @@ second local execution path.
 
 ## Technical Context
 
-**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts  
-**Primary Dependencies**: `daemon/internal/api`, `daemon/internal/runtime`, `daemon/internal/skills`, `daemon/internal/sandbox`, `daemon/internal/store`, `daemon/internal/policy`, `daemon/internal/events`, `daemon/internal/contracts`, `modernc.org/sqlite`  
-**Storage**: SQLite daemon state for runtime tool calls, approvals, sandbox executions, and consumer policy records; skill files under `~/.agents/skills` and `<dataDir>/skills`; environment-scoped config and secret refs under `~/.dope-test` or `~/.dope`  
-**Testing**: `go test ./internal/skills ./internal/api ./internal/runtime ./internal/sandbox ./internal/store ./internal/policy ./internal/app ./internal/contracts`, `make daemon-contract-test`, `go test ./...`  
-**Target Platform**: macOS/Linux local daemon in the default test environment  
-**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts  
-**Performance Goals**: Executable-skill manifest validation and in-scope local execution preflight should add no more than `<=100 ms` daemon-side overhead per request, excluding subprocess runtime, stdout/stderr volume, and operator approval wait time  
-**Constraints**: Sandbox backend remains `subprocess` only; scope is limited to executable skills plus the current high-risk local tool path (`exec`, `shell`, `browser`); undeclared executable-skill approval posture defaults to `ask`; invalid executable skills stay visible as `unavailable`; in-flight executions interrupted by daemon restart recover as `cancelled`; stronger-than-backend guarantees fail as `unsupported` or `denied`; all APIs, schemas, events, and persistence changes remain additive; local verification defaults to `DOPE_ENV=test`  
+**Language/Version**: Go 1.24.0; Markdown docs; JSON Schema contracts
+**Primary Dependencies**: `daemon/internal/api`, `daemon/internal/runtime`, `daemon/internal/skills`, `daemon/internal/sandbox`, `daemon/internal/store`, `daemon/internal/policy`, `daemon/internal/events`, `daemon/internal/contracts`, `modernc.org/sqlite`
+**Storage**: SQLite daemon state for runtime tool calls, approvals, sandbox executions, and consumer policy records; skill files under `~/.agents/skills` and `<dataDir>/skills`; environment-scoped config and secret refs under `~/.kura-test` or `~/.kura`
+**Testing**: `go test ./internal/skills ./internal/api ./internal/runtime ./internal/sandbox ./internal/store ./internal/policy ./internal/app ./internal/contracts`, `make daemon-contract-test`, `go test ./...`
+**Target Platform**: macOS/Linux local daemon in the default test environment
+**Project Type**: Go daemon and harness control-plane service with schema-backed HTTP and event contracts
+**Performance Goals**: Executable-skill manifest validation and in-scope local execution preflight should add no more than `<=100 ms` daemon-side overhead per request, excluding subprocess runtime, stdout/stderr volume, and operator approval wait time
+**Constraints**: Sandbox backend remains `subprocess` only; scope is limited to executable skills plus the current high-risk local tool path (`exec`, `shell`, `browser`); undeclared executable-skill approval posture defaults to `ask`; invalid executable skills stay visible as `unavailable`; in-flight executions interrupted by daemon restart recover as `cancelled`; stronger-than-backend guarantees fail as `unsupported` or `denied`; all APIs, schemas, events, and persistence changes remain additive; local verification defaults to `KURA_ENV=test`
 **Scale/Scope**: One operator-managed skill inventory (tens to low hundreds of skills) and the current interactive local tool-call flow on a single daemon host, with low-concurrency, human-driven executions and operator-visible audit requirements for every in-scope run
 
 ## Constitution Check
@@ -43,8 +43,8 @@ second local execution path.
 - Verification and observability: PASS. The plan requires targeted package tests, contract
   verification, restart-aware recovery coverage, and operator-visible linkage across tool
   history, approvals, and sandbox execution records.
-- Environment and secrets: PASS. Local work stays in `DOPE_ENV=test`, preserves
-  `~/.dope-test` / `~/.dope` separation, and keeps secret scope explicit and redacted
+- Environment and secrets: PASS. Local work stays in `KURA_ENV=test`, preserves
+  `~/.kura-test` / `~/.kura` separation, and keeps secret scope explicit and redacted
   across skill and tool execution surfaces.
 
 Post-design re-check:

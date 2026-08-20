@@ -30,11 +30,11 @@
 //! - artifact routes -> computer_use_artifacts.artifact_id.
 //!
 //! Divergences (documented, not silent):
-//! - recordThreadApprovalProjection is skipped: dope-store has no thread
+//! - recordThreadApprovalProjection is skipped: kura-store has no thread
 //!   runtime-projection DAO yet (same gap as resources.rs).
 //! - The environment filter inside the computer-use manager is exercised via
 //!   the manager's store seam; SQLiteStore does not implement
-//!   dope_computeruse::Store yet, so route tests wire a test-local
+//!   kura_computeruse::Store yet, so route tests wire a test-local
 //!   MemStore.
 
 use axum::body::Bytes;
@@ -44,9 +44,9 @@ use axum::routing::{get, post};
 use axum::{Json as AxumJson, Router};
 use chrono::{DateTime, Utc};
 
-use dope_computeruse as computeruse;
-use dope_events as events;
-use dope_runtime as runtime;
+use kura_computeruse as computeruse;
+use kura_events as events;
+use kura_runtime as runtime;
 
 use crate::error::ApiError;
 use crate::middleware::{
@@ -365,7 +365,7 @@ async fn create_run_computer_use_action(
             .lock()
             .upsert_approval(approval)
             .map_err(ApiError::from_store)?;
-        // Go recordThreadApprovalProjection: skipped — dope-store has no
+        // Go recordThreadApprovalProjection: skipped — kura-store has no
         // thread runtime-projection DAO yet (documented divergence).
     }
     if let Some(decision) = decision.as_ref() {
@@ -736,7 +736,7 @@ fn decode_json_body<T: serde::de::DeserializeOwned>(body: &Bytes) -> Result<T, A
     serde_json::from_slice(body).map_err(|err| ApiError::BadRequest(err.to_string()))
 }
 
-/// RFC 4648 base64 (std-lib only; no base64 dependency in dope-api).
+/// RFC 4648 base64 (std-lib only; no base64 dependency in kura-api).
 fn base64_encode(input: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
@@ -771,11 +771,11 @@ mod tests {
     use axum::body::{to_bytes, Body};
     use axum::http::header::CONTENT_TYPE;
     use axum::http::Request;
-    use dope_computeruse::{
+    use kura_computeruse::{
         Action, Artifact, ArtifactCaptureRequest, ArtifactRecorder, ArtifactStatus, Dependencies,
         Store,
     };
-    use dope_policy::Engine as PolicyEngine;
+    use kura_policy::Engine as PolicyEngine;
     use parking_lot::Mutex;
     use tower::ServiceExt;
     use uuid::Uuid;
@@ -783,7 +783,7 @@ mod tests {
     // ------------------------------------------------------------------
     // Test seams: in-memory Store + ArtifactRecorder (mirrors
     // the computeruse manager tests; SQLiteStore does not implement
-    // dope_computeruse::Store yet).
+    // kura_computeruse::Store yet).
     // ------------------------------------------------------------------
 
     #[derive(Default)]
@@ -948,28 +948,28 @@ mod tests {
         }
     }
 
-    fn test_config() -> dope_config::Config {
-        dope_config::Config {
-            environment: dope_config::Environment::Test,
+    fn test_config() -> kura_config::Config {
+        kura_config::Config {
+            environment: kura_config::Environment::Test,
             bind_addr: "127.0.0.1:19192".to_string(),
-            data_dir: "/tmp/dope-api-computer-use".to_string(),
+            data_dir: "/tmp/kura-api-computer-use".to_string(),
             log_level: "info".to_string(),
             version: "0.1.0".to_string(),
-            llm: dope_config::LlmConfig::default(),
-            connectors: dope_config::ConnectorConfig {
-                discord: dope_config::DiscordConnectorConfig {
+            llm: kura_config::LlmConfig::default(),
+            connectors: kura_config::ConnectorConfig {
+                discord: kura_config::DiscordConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                telegram: dope_config::TelegramConnectorConfig {
+                telegram: kura_config::TelegramConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                slack: dope_config::SlackConnectorConfig {
+                slack: kura_config::SlackConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
-                matrix: dope_config::MatrixConnectorConfig {
+                matrix: kura_config::MatrixConnectorConfig {
                     enabled: false,
                     ..Default::default()
                 },
@@ -979,18 +979,18 @@ mod tests {
 
     /// Builds a state with a runtime manager (with one run), a policy engine
     /// and a computer-use manager wired to in-memory store/recorder seams.
-    fn test_state() -> (AppState, Arc<dope_runtime::Manager>, String) {
-        let dir = std::env::temp_dir().join(format!("dope-api-computer-use-{}", Uuid::now_v7()));
+    fn test_state() -> (AppState, Arc<kura_runtime::Manager>, String) {
+        let dir = std::env::temp_dir().join(format!("kura-api-computer-use-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        let runtime = Arc::new(dope_runtime::Manager::new());
+        let runtime = Arc::new(kura_runtime::Manager::new());
         let run = runtime
-            .create_run(dope_runtime::CreateRunInput {
+            .create_run(kura_runtime::CreateRunInput {
                 entrypoint: "browse".to_string(),
                 goal: "computer-use api test".to_string(),
-                ..dope_runtime::CreateRunInput::default()
+                ..kura_runtime::CreateRunInput::default()
             })
             .expect("create run");
         let policy = Arc::new(PolicyEngine::new());
@@ -1002,7 +1002,7 @@ mod tests {
             driver: None,
             artifacts: Some(Arc::new(MemArtifactRecorder::default())),
         }));
-        let mut state = AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store);
+        let mut state = AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store);
         state.runtime = Some(runtime.clone());
         state.policy = Some(policy);
         state.computer_use = Some(computer_use);
@@ -1111,10 +1111,10 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(json["status"], "closed");
 
-        let capability_events = state.event_bus.list(&dope_events::Filter {
+        let capability_events = state.event_bus.list(&kura_events::Filter {
             run_id: run_id.clone(),
             category: "capability".to_string(),
-            ..dope_events::Filter::default()
+            ..kura_events::Filter::default()
         });
         let names: Vec<&str> = capability_events.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"computer_use.session_created"));
@@ -1255,7 +1255,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         let content = json["content"].as_str().expect("content");
-        // Round-trip the base64 manually (no base64 dependency in dope-api).
+        // Round-trip the base64 manually (no base64 dependency in kura-api).
         let decoded = base64_decode_for_test(content);
         assert!(!decoded.is_empty());
 
@@ -1281,12 +1281,12 @@ mod tests {
     #[tokio::test]
     async fn missing_manager_returns_500() {
         let dir =
-            std::env::temp_dir().join(format!("dope-api-computer-use-none-{}", Uuid::now_v7()));
+            std::env::temp_dir().join(format!("kura-api-computer-use-none-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let store = Arc::new(Mutex::new(
-            dope_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
+            kura_store::SQLiteStore::new(dir.to_str().expect("path")).expect("store"),
         ));
-        let state = AppState::new(test_config(), Arc::new(dope_events::Bus::new()), store);
+        let state = AppState::new(test_config(), Arc::new(kura_events::Bus::new()), store);
         let app = router().with_state(state);
         let (status, json) = send(
             &app,

@@ -3,10 +3,10 @@
 ## Preconditions
 
 - Work from branch `024-production-ops-soak`.
-- Use the default test daemon environment: `~/.dope-test` and `127.0.0.1:19192`.
+- Use the default test daemon environment: `~/.kura-test` and `127.0.0.1:19192`.
 - Use fake tenants, fake integrations, fake credentials, and fake external-service faults
   by default.
-- Do not touch `~/.dope`, production user data, live connectors, or real-account
+- Do not touch `~/.kura`, production user data, live connectors, or real-account
   credentials unless running an explicitly opted-in real-account smoke.
 - Review the planning contracts before implementation:
   - `specs/024-production-ops-soak/contracts/backup-restore-evidence.md`
@@ -42,7 +42,7 @@ material, access tokens, refresh tokens, OAuth codes, or local CLI auth material
    integrations require reconnect or revalidation.
 5. Add migration preflight and postflight verification evidence, reusing existing
    migration progress and rollback docs where possible.
-6. Add the soak harness or script surface for a 24-hour `DOPE_ENV=test` run covering
+6. Add the soak harness or script surface for a 24-hour `KURA_ENV=test` run covering
    runtime, scheduler, integrations, delivery, approvals, quota enforcement, tenant
    switching, and evaluation behavior.
 7. Add fake-backend fault drills for transient 5xx, rate limit, auth expiry, provider
@@ -164,7 +164,7 @@ pre-upgrade backup.
 - Fake-backend fault drill controls live in `daemon/internal/integrations/fake_backend.go`.
 - `scripts/production/run-soak.sh` writes a structured report artifact with workload,
   restart, fault, resource, leakage, elapsed-time, temporary-duration, and pass/fail
-  fields. `DOPE_SOAK_DURATION=24h` uses a real 86400-second run; shorter runs are marked
+  fields. `KURA_SOAK_DURATION=24h` uses a real 86400-second run; shorter runs are marked
   as temporary validation with `followUpFullRerun=true`.
 - Production helper scripts live in `scripts/production` and were verified executable:
   `upgrade-preflight.sh`, `upgrade-postflight.sh`, `backup-test-state.sh`,
@@ -186,17 +186,17 @@ pre-upgrade backup.
   public API, event schema, or client-visible contract surfaces.
 - Test daemon smoke passed: `make daemon-run-test` started the daemon on
   `127.0.0.1:19192`, `make daemon-test-status` returned
-  `{"ok":true,"service":"dope"}`, and the daemon was stopped after verification.
+  `{"ok":true,"service":"kura"}`, and the daemon was stopped after verification.
 
 ## Soak Evidence Status
 
-The full 24-hour `DOPE_ENV=test` soak was not run to completion in this implementation
-session. The runner now enforces a real 86400-second run for `DOPE_SOAK_DURATION=24h`;
+The full 24-hour `KURA_ENV=test` soak was not run to completion in this implementation
+session. The runner now enforces a real 86400-second run for `KURA_SOAK_DURATION=24h`;
 temporary shorter validation was used only to verify the generated report artifact,
 report fixtures, validators, restart/fault/resource hard-fail logic, backup/restore
 SQLite regression, and test-daemon smoke path.
 
 Mandatory follow-up before final release readiness: run the full 24-hour
-`DOPE_ENV=test` soak with `scripts/production/run-soak.sh`, record the generated report,
+`KURA_ENV=test` soak with `scripts/production/run-soak.sh`, record the generated report,
 and replace this temporary note with the full-duration pass/fail evidence. Roadmaps 40
 and 41 must rerun this gate after their changes land.

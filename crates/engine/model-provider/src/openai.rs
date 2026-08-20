@@ -1,6 +1,6 @@
 use async_stream::try_stream;
-use dope_protocol::ResponseItem;
-use dope_protocol::Role;
+use kura_protocol::ResponseItem;
+use kura_protocol::Role;
 use futures::StreamExt;
 use futures::stream::BoxStream;
 use serde_json::Value;
