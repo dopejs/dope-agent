@@ -32,7 +32,6 @@ pub mod execprofile;
 pub mod improvement;
 pub mod integrations;
 pub mod llm;
-pub mod loopforge;
 pub mod mail;
 pub mod mcp;
 pub mod memory;
@@ -129,7 +128,6 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/version", get(version))
         .route("/v1/system/info", get(system_info))
-        .merge(loopforge::router())
         .merge(mcp::ingress_router())
         .merge(
             auth::open_router().route_layer(axum::middleware::from_fn_with_state(

@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::routes::loopforge::LoopforgeProjectContext;
 use dope_activation::Service as ActivationService;
 use dope_billing::Manager as BillingManager;
 use dope_calendar::Manager as CalendarManager;
@@ -172,8 +171,6 @@ pub struct AppState {
     pub embedder: Option<Arc<dyn dope_context::Embedder>>,
     /// Audited self-improvement proposals (the `self-improve` plugin).
     pub improvement: Option<Arc<dope_improvement::Manager>>,
-    /// Last accepted redacted Loopforge project context.
-    pub loopforge_context: Arc<Mutex<Option<LoopforgeProjectContext>>>,
 }
 
 impl AppState {
@@ -225,7 +222,6 @@ impl AppState {
             hooks: None,
             embedder: None,
             improvement: None,
-            loopforge_context: Arc::new(Mutex::new(None)),
         }
     }
 }

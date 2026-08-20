@@ -1,17 +1,5 @@
 export type EnvironmentScope = "test" | "prod";
 
-export type LoopforgeProjectContext = {
-  schema_version: "game-project-context-v1";
-  project_id: string;
-  project_root: string;
-  observed_revision: number;
-  stage: string;
-  engine?: string | null;
-  capabilities: string[];
-  next_actions?: string[];
-  redactions?: string[];
-};
-
 export type ChatQueryInput = {
   provider?: string;
   model?: string;
@@ -3383,17 +3371,6 @@ export class DopeClient {
 
   async getConfig(tenantOptions?: TenantRequestOptions): Promise<ConfigResponse> {
     return this.requestJSON<ConfigResponse>("/v1/config", { tenant: tenantOptions });
-  }
-
-  async getLoopforgeProject(): Promise<LoopforgeProjectContext> {
-    return this.requestJSON<LoopforgeProjectContext>("/v1/loopforge/project");
-  }
-
-  async putLoopforgeProject(context: LoopforgeProjectContext): Promise<LoopforgeProjectContext> {
-    return this.requestJSON<LoopforgeProjectContext>("/v1/loopforge/project", {
-      method: "PUT",
-      body: context
-    });
   }
 
   async listChannelConnectors(query: { limit?: number; cursor?: string; state?: string; kind?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<ChannelConnectorListResponse> {
