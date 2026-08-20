@@ -21,6 +21,13 @@ const DOCS = [
   ["Architecture", "/docs/architecture/"],
 ] as const;
 
+function KuraMark({ className }: { readonly className: string }): ReactNode {
+  return <span className={`kura-mark ${className}`} aria-hidden="true">
+    <img className="kura-mark__light" src="/kura-mark.svg" alt="" />
+    <img className="kura-mark__dark" src="/kura-mark-inverse.svg" alt="" />
+  </span>;
+}
+
 function Header({ page, locale, onLocaleChange }: { readonly page: SitePage; readonly locale: SiteLocale; onLocaleChange(path: string): void }): ReactNode {
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -40,7 +47,7 @@ function Header({ page, locale, onLocaleChange }: { readonly page: SitePage; rea
   };
   return <>
     <header className="site-header">
-      <a className="brand" href="/" aria-label="Kura home"><img src="/kura-mark.svg" alt="" /><span>Kura</span><small>{locale.ui.preRelease}</small></a>
+      <a className="brand" href="/" aria-label="Kura home"><KuraMark className="brand__mark" /><span>Kura</span><small>{locale.ui.preRelease}</small></a>
       <nav className={menuOpen ? "top-nav top-nav--open" : "top-nav"} aria-label="Primary">
         <a href="/" aria-current={page.route === "/" ? "page" : undefined}>{locale.ui.overview}</a>
         <a href="/docs/getting-started/" aria-current={page.route.startsWith("/docs/") ? "page" : undefined}>{locale.ui.docs}</a>
@@ -69,7 +76,7 @@ function Home({ locale }: { readonly locale: SiteLocale }): ReactNode {
         <p className="hero__lead">A Rust daemon that owns runtime, memory, context, and policy — with a plugin architecture where session management, retrieval, and even the embedding model are swappable parts.</p>
         <div className="hero__actions"><a className="button button--brand" href="/docs/getting-started/">{locale.ui.getStarted}</a><a className="button" href={`${REPO}/releases`}>{locale.ui.download}</a></div>
       </div>
-      <div className="hero__visual" aria-hidden="true"><img src="/kura-mark.svg" alt="" /><span className="orbit orbit--one" /><span className="orbit orbit--two" /></div>
+      <div className="hero__visual" aria-hidden="true"><KuraMark className="hero__mark" /><span className="orbit orbit--one" /><span className="orbit orbit--two" /></div>
     </section>
     <section className="terminal" aria-label="Install Kura"><pre><code>{`$ curl -fsSL https://kura.dopejs.com/install.sh | sh
 [kura] checksum verified
