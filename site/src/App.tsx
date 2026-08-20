@@ -119,13 +119,13 @@ function Landing() {
             Get started
           </Link>
           <a className="button" href={`${REPO}/releases`}>
-            Download v0.2.1
+            Download v0.2.2
           </a>
         </div>
         <pre className="hero__terminal">
           <code>
             {`$ curl -fsSL https://agent.dopejs.com/install.sh | sh
-[dope] installing Kura v0.2.1 for aarch64-apple-darwin
+[dope] installing Kura v0.2.2 for aarch64-apple-darwin
 [dope] checksum verified
 [dope] installed to ~/.local/bin: dope, dope-tui
 

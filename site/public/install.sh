@@ -6,7 +6,7 @@
 # Detects OS/arch, downloads the latest GitHub release tarball, verifies
 # its SHA-256 against the release's SHA256SUMS, and installs `dope` and
 # `dope-tui` into an existing PATH directory (~/.local/bin or
-# /usr/local/bin). Override the version with DOPE_VERSION=v0.2.1 and the
+# /usr/local/bin). Override the version with DOPE_VERSION=v0.2.2 and the
 # destination with DOPE_INSTALL_DIR=/some/bin.
 
 set -eu
