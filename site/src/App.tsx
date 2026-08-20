@@ -49,7 +49,7 @@ function Header() {
   return (
     <header className="header">
       <Link to="/" className="brand">
-        <img className="brand__mark" src="/kura-mark.svg" alt="" />
+        <img className="brand__mark" src="/kura-mark-inverse.svg" alt="" />
         <span>Kura</span>
       </Link>
       <nav className="header__nav">
