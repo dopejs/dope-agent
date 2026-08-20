@@ -18,9 +18,9 @@ pub struct PersistedState {
 }
 
 pub fn state_path() -> PathBuf {
-    let dir = std::env::var("DOPE_TUI_STATE_DIR").unwrap_or_else(|_| {
+    let dir = std::env::var("KURA_TUI_STATE_DIR").unwrap_or_else(|_| {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        format!("{home}/.dope-tui")
+        format!("{home}/.kura-tui")
     });
     PathBuf::from(dir).join("state.json")
 }

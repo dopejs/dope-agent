@@ -643,7 +643,7 @@ fn open_external_editor(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     input: &mut String,
 ) -> io::Result<()> {
-    let path = std::env::temp_dir().join("dope-tui-input.txt");
+    let path = std::env::temp_dir().join("kura-tui-input.txt");
     std::fs::write(&path, input.as_bytes())?;
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;

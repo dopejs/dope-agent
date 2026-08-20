@@ -99,9 +99,8 @@ trap 'rm -f "${TMP_BIN}"' EXIT
 cp -f "${RS_DIR}/target/release/kura" "${TMP_BIN}"
 chmod 0755 "${TMP_BIN}"
 mv -f "${TMP_BIN}" "${DOPE_BIN}"   # atomic swap; a running service picks it up on restart
-ln -sfn kura "${DOPE_BIN_DIR}/dope"
 trap - EXIT
-info "installed binary -> ${DOPE_BIN} (legacy alias: ${DOPE_BIN_DIR}/dope)"
+info "installed binary -> ${DOPE_BIN}"
 
 # ---- data dir (daemon self-initializes config.json on first start) ---------
 mkdir -p "${DOPE_DATA_DIR}" "${DOPE_LOG_DIR}"

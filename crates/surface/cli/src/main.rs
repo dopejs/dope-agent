@@ -48,7 +48,7 @@ enum Command {
         #[arg(long, default_value_t = 4173)]
         port: u16,
         /// Directory holding the built web assets (defaults: $KURA_WEB_DIST,
-        /// $DOPE_WEB_DIST, <exe dir>/web, <exe dir>/../share/kura/web)
+        /// <exe dir>/web, <exe dir>/../share/kura/web)
         #[arg(long)]
         dir: Option<PathBuf>,
         /// Do not open the browser automatically
@@ -126,7 +126,7 @@ fn daemon_run() -> Result<(), AnyError> {
 }
 
 fn pid_file(data_dir: &str) -> PathBuf {
-    Path::new(data_dir).join("dope.pid")
+    Path::new(data_dir).join("kura.pid")
 }
 
 fn running_pid(config: &dope_config::Config) -> Option<i32> {
@@ -247,17 +247,10 @@ fn daemon_status() -> Result<(), AnyError> {
 // ---------------------------------------------------------------------------
 
 fn launch_tui(args: &[String]) -> Result<(), AnyError> {
-    // Prefer the canonical sibling binary shipped beside this one. The legacy
-    // sibling name remains a compatibility fallback for pre-Kura installs.
+    // Prefer the canonical sibling binary shipped beside this one.
     let sibling = std::env::current_exe()
         .ok()
-        .and_then(|exe| {
-            exe.parent().and_then(|dir| {
-                [dir.join("kura-tui"), dir.join("dope-tui")]
-                    .into_iter()
-                    .find(|path| path.exists())
-            })
-        })
+        .and_then(|exe| exe.parent().map(|dir| dir.join("kura-tui")))
         .filter(|path| path.exists());
     let program = sibling.unwrap_or_else(|| PathBuf::from("kura-tui"));
     let status = std::process::Command::new(&program)
@@ -288,19 +281,14 @@ fn find_web_dist(explicit: Option<PathBuf>) -> Result<PathBuf, AnyError> {
     if let Ok(env_dir) = std::env::var("KURA_WEB_DIST") {
         candidates.push(PathBuf::from(env_dir));
     }
-    if let Ok(env_dir) = std::env::var("DOPE_WEB_DIST") {
-        candidates.push(PathBuf::from(env_dir));
-    }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             candidates.push(dir.join("web"));
             candidates.push(dir.join("../share/kura/web"));
-            candidates.push(dir.join("../share/dope/web"));
         }
     }
     if let Ok(home) = std::env::var("HOME") {
         candidates.push(Path::new(&home).join(".local/share/kura/web"));
-        candidates.push(Path::new(&home).join(".local/share/dope/web"));
     }
     candidates.push(PathBuf::from("web/dist"));
     for candidate in candidates {

@@ -18,21 +18,20 @@ The installer detects your platform, downloads the latest
 [GitHub Release](https://github.com/dopejs/kura/releases), verifies
 its SHA-256 against the release's `SHA256SUMS`, and installs `kura` (the
 daemon) and `kura-tui` (the terminal client) into `~/.local/bin` or
-`/usr/local/bin`. For compatibility with pre-Kura scripts, it also creates
-`dope` and `dope-tui` symlinks that point to the canonical binaries.
+`/usr/local/bin`.
 
 Pin a version or destination with:
 
 ```bash
-KURA_VERSION=v0.2.2 KURA_INSTALL_DIR=~/bin sh -c "$(curl -fsSL https://agent.dopejs.com/install.sh)"
+KURA_VERSION=v0.2.3 KURA_INSTALL_DIR=~/bin sh -c "$(curl -fsSL https://agent.dopejs.com/install.sh)"
 ```
 
 Prefer manual? Grab a tarball from the releases page:
 
 ```bash
-curl -LO https://github.com/dopejs/kura/releases/latest/download/kura-0.2.2-aarch64-apple-darwin.tar.gz
-tar xzf kura-0.2.2-aarch64-apple-darwin.tar.gz
-sudo install -m 755 kura-0.2.2-aarch64-apple-darwin/{kura,kura-tui} /usr/local/bin/
+curl -LO https://github.com/dopejs/kura/releases/latest/download/kura-0.2.3-aarch64-apple-darwin.tar.gz
+tar xzf kura-0.2.3-aarch64-apple-darwin.tar.gz
+sudo install -m 755 kura-0.2.3-aarch64-apple-darwin/{kura,kura-tui} /usr/local/bin/
 ```
 
 ## Build from source

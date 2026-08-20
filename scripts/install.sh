@@ -22,8 +22,7 @@ cargo build --release -p dope-cli --manifest-path "${RS_DIR}/Cargo.toml"
 
 mkdir -p "$BIN_DIR"
 install -m 0755 "${RS_DIR}/target/release/kura" "${BIN_DIR}/kura"
-ln -sfn kura "${BIN_DIR}/dope"
-echo "installed ${BIN_DIR}/kura (legacy alias: ${BIN_DIR}/dope)"
+echo "installed ${BIN_DIR}/kura"
 
 mkdir -p "$DATA_DIR"
 echo "data directory: $DATA_DIR (created if absent; existing state untouched)"

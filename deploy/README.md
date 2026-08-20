@@ -32,8 +32,7 @@ cd kura
 ./deploy/install.sh
 ```
 
-This builds `kura`, installs it to `~/.local/bin/kura` (with a legacy `dope`
-symlink), creates the data dir
+This builds `kura`, installs it to `~/.local/bin/kura`, and creates the data dir
 `~/.dope`, registers the service, starts it, and waits for `/healthz`.
 
 Defaults (override with flags or env):

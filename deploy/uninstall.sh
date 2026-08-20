@@ -46,8 +46,8 @@ else
   info "removed systemd user unit"
 fi
 
-# ---- remove binaries and compatibility aliases ----
-for binary in kura kura-tui dope dope-tui; do
+# ---- remove binaries ----
+for binary in kura kura-tui; do
   [[ -e "${DOPE_BIN_DIR}/${binary}" || -L "${DOPE_BIN_DIR}/${binary}" ]] \
     && { rm -f "${DOPE_BIN_DIR}/${binary}"; info "removed ${DOPE_BIN_DIR}/${binary}"; }
 done
