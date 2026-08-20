@@ -2,27 +2,28 @@
 
 Kura is the public brand for the personal agent OS in this repository.
 
-The mark is a folded `K` built from three independent parts. The upright is the
-stable local control plane; the two open arms represent tools and channels that
-can be attached or replaced. The narrow center remains visibly open so the mark
-does not imply a closed or opaque system.
+The mark is a dozo 蔵 — the Japanese fireproof storehouse the project is named
+after — drawn as one solid silhouette. The crow-stepped left gable (udatsu)
+and the smooth right slope make it unmistakably a storehouse, not a generic
+house. The persimmon door bleeds through the base edge like a real entrance:
+a store that is open, not sealed.
 
 ## Assets
 
-- `kura-mark.svg`: primary two-color mark
-- `kura-mark-mono.svg`: dark, single-color mark for light backgrounds
-- `kura-mark-inverse.svg`: white mark for dark or photographic backgrounds
+- `kura-mark.svg`: primary two-color mark for light backgrounds
+- `kura-mark-mono.svg`: single-color ink mark for single-color contexts
+- `kura-mark-inverse.svg`: paper mark with persimmon door for dark or photographic backgrounds
 - `kura-wordmark.svg`: primary horizontal lockup for light backgrounds
 - `kura-wordmark-inverse.svg`: horizontal lockup for dark backgrounds
+- `kura-mark-512.png`: 512×512 raster of the primary mark
 
 ## Palette
 
-- Ink: `#111318`
-- Paper: `#F3F6FC`
-- Memory mint: `#58D6AE`
-- Runtime blue: `#7896FF`
+- Ink: `#17181C`
+- Paper: `#F2F4F8`
+- Persimmon: `#E4572E`
 
-Keep clear space around the mark equal to the width of its vertical stem. Use
+Keep clear space around the mark equal to the height of its door. Use
 the standalone mark at 16px or larger and the horizontal lockup at 96px or
 larger. Do not rotate it, add effects, recolor individual pieces, or place the
 two-color mark on a low-contrast background.

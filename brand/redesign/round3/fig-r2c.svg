@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="kura-r2c-title">
+  <title id="kura-r2c-title">Kura</title>
+  <!-- stepped udatsu gable: crow-stepped left slope, smooth right slope, crisp 1.5px corners, no window -->
+  <path d="M26.5 7 L55 22.5 L55 27.5 L44 27.5 L48.5 55 L15.5 55 L21 27.5 L10 27.5 L10 22.5 L15.5 22.5 L15.5 17.5 L21 17.5 L21 12.5 L26.5 12.5 Z"
+        fill="#17181C" stroke="#17181C" stroke-width="3" stroke-linejoin="round"/>
+  <path fill="#E4572E" d="M27.5 56.5 V42 A2 2 0 0 1 29.5 40 H34.5 A2 2 0 0 1 36.5 42 V56.5 Z"/>
+</svg>

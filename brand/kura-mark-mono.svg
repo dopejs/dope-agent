@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="kura-mark-title">
   <title id="kura-mark-title">Kura</title>
-  <path fill="#111318" d="M8 7h9a4 4 0 0 1 4 4v42a4 4 0 0 1-4 4H8V7Z"/>
-  <path fill="#111318" d="M20 28 40 7h16L33 31l-13-3Z"/>
-  <path fill="#111318" d="m20 36 13-3 23 24H40L20 36Z"/>
+  <path d="M26.5 7 L55 22.5 L55 27.5 L44 27.5 L48.5 55 L15.5 55 L21 27.5 L10 27.5 L10 22.5 L15.5 22.5 L15.5 17.5 L21 17.5 L21 12.5 L26.5 12.5 Z"
+        fill="#17181C" stroke="#17181C" stroke-width="3" stroke-linejoin="round"/>
+  <path fill="#17181C" d="M26 56.5 V45 A2.5 2.5 0 0 1 28.5 42.5 H35.5 A2.5 2.5 0 0 1 38 45 V56.5 Z"/>
 </svg>

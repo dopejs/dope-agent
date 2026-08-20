@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>geo round3 final verification</title>
+<style>
+  body { margin: 0; padding: 32px; background: #F2F4F8; font: 12px/1.4 -apple-system, sans-serif; color: #17181C; }
+  .row { display: flex; align-items: flex-end; gap: 40px; margin-bottom: 48px; }
+  .cell { text-align: center; }
+  .cell img { display: block; margin: 0 auto 6px; }
+  .dark { background: #17181C; padding: 24px; }
+  .dark .cell { color: #F2F4F8; }
+  h2 { font-size: 13px; margin: 0 0 12px; }
+  .zoom { image-rendering: pixelated; }
+</style>
+</head>
+<body>
+
+<h2>geo-primary.svg — light</h2>
+<div class="row" id="r1"></div>
+
+<h2>geo-inverse.svg — dark</h2>
+<div class="dark"><div class="row" id="r2" style="margin-bottom:0"></div></div>
+
+<h2>16px zoomed ×8 (legibility check)</h2>
+<div class="row" id="r3"></div>
+
+<script>
+const sizes = [104, 64, 32, 24, 16];
+document.getElementById("r1").innerHTML = sizes.map(s =>
+  `<div class="cell"><img src="geo-primary.svg" width="${s}" height="${s}">${s}</div>`).join("");
+document.getElementById("r2").innerHTML = sizes.map(s =>
+  `<div class="cell"><img src="geo-inverse.svg" width="${s}" height="${s}">${s}</div>`).join("");
+document.getElementById("r3").innerHTML =
+  `<div class="cell"><img class="zoom" src="geo-primary.svg" width="128" height="128" style="width:128px;height:128px">primary 16→128</div>` +
+  `<div class="cell" style="background:#17181C;padding:0"><img class="zoom" src="geo-inverse.svg" width="128" height="128">inverse 16→128</div>`;
+// make zoom imgs actually render at 16 then upscale
+document.querySelectorAll(".zoom").forEach(img => {
+  const c = document.createElement("canvas");
+  c.width = 16; c.height = 16;
+  const big = new Image();
+  big.onload = () => {
+    c.getContext("2d").drawImage(big, 0, 0, 16, 16);
+    img.src = c.toDataURL();
+  };
+  big.src = img.getAttribute("src");
+});
+</script>
+</body>
+</html>

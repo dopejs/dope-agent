@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="kura-jp-title">
+  <title id="kura-jp-title">Kura</title>
+  <rect x="8" y="8" width="48" height="48" rx="4.5" fill="#E4572E"/>
+  <path d="M26.5 18 22.5 27.5H38c4.5 0 5 3 2 6.5-3.5 4.5-9.5 8.5-17.5 11" fill="none" stroke="#F6F1E8" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

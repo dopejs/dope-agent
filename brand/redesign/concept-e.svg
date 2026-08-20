@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="kura-e-title">
+  <title id="kura-e-title">Kura</title>
+  <mask id="kura-e-k">
+    <rect x="6" y="6" width="52" height="52" rx="14" fill="#fff"/>
+    <path d="M23 18v28M61 21 27 33l16 14" fill="none" stroke="#000" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </mask>
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="#3B4BA0" mask="url(#kura-e-k)"/>
+</svg>

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>geo r2 verification</title>
+<style>
+  body { margin: 0; padding: 32px; background: #F2F4F8; font: 12px/1.4 -apple-system, sans-serif; color: #17181C; }
+  .row { display: flex; align-items: flex-end; gap: 40px; margin-bottom: 40px; }
+  .cell { text-align: center; }
+  .cell img { display: block; margin: 0 auto 6px; }
+  .dark { background: #17181C; padding: 24px; margin-bottom: 40px; }
+  .dark .cell { color: #F2F4F8; }
+  h2 { font-size: 13px; margin: 0 0 12px; }
+  .zoomrow img { image-rendering: pixelated; width: 128px; height: 128px; }
+</style>
+</head>
+<body>
+
+<h2>r2a — joined K (nose flush into bar)</h2>
+<div class="row" data-v="geo-r2a"></div>
+<div class="dark"><div class="row" data-v="geo-r2a-inverse" style="margin-bottom:0"></div></div>
+
+<h2>r2b — 4px kerf gap, uniform stroke 8</h2>
+<div class="row" data-v="geo-r2b"></div>
+<div class="dark"><div class="row" data-v="geo-r2b-inverse" style="margin-bottom:0"></div></div>
+
+<h2>r2c — weight rebalance (bar 8 / chevron 6)</h2>
+<div class="row" data-v="geo-r2c"></div>
+<div class="dark"><div class="row" data-v="geo-r2c-inverse" style="margin-bottom:0"></div></div>
+
+<h2>16px zoomed ×8</h2>
+<div class="row zoomrow" id="zoom"></div>
+
+<script>
+const sizes = [104, 48, 28, 16];
+document.querySelectorAll(".row[data-v]").forEach(row => {
+  const v = row.dataset.v;
+  row.innerHTML = sizes.map(s =>
+    `<div class="cell"><img src="${v}.svg" width="${s}" height="${s}">${s}</div>`).join("");
+});
+const zoomDiv = document.getElementById("zoom");
+["geo-r2a", "geo-r2b", "geo-r2c"].forEach(v => {
+  const cell = document.createElement("div");
+  cell.className = "cell";
+  const img = document.createElement("img");
+  const c = document.createElement("canvas");
+  c.width = 16; c.height = 16;
+  const loader = new Image();
+  loader.onload = () => {
+    c.getContext("2d").drawImage(loader, 0, 0, 16, 16);
+    img.src = c.toDataURL();
+  };
+  loader.src = v + ".svg";
+  cell.appendChild(img);
+  cell.appendChild(document.createTextNode(v + " 16→128"));
+  zoomDiv.appendChild(cell);
+});
+</script>
+</body>
+</html>

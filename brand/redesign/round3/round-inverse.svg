@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="kura-round-inv-title">
+  <title id="kura-round-inv-title">Kura</title>
+  <rect x="10" y="10" width="44" height="44" rx="15" fill="#F2F4F8"/>
+  <path d="M25 20.5V42" fill="none" stroke="#17181C" stroke-width="6" stroke-linecap="round"/>
+  <path d="M39.5 20.5 25 30 39.5 42" fill="none" stroke="#17181C" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M29.6 33.8 39.5 42" fill="none" stroke="#E4572E" stroke-width="6" stroke-linecap="round"/>
+</svg>
