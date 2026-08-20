@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "kura-context"
 description = "Context assembly policies: deterministic memory-bootstrap injection for the chat/pre-dispatch hook"
 edition.workspace = true

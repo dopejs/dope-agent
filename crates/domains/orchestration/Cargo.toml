@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "kura-orchestration"
 edition.workspace = true
 version.workspace = true

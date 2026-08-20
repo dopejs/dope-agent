@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "kura-opsreadiness"
 edition.workspace = true
 version.workspace = true

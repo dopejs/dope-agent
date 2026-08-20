@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "kura-session"
 description = "Session strategy policies: deterministic context-window shaping for the chat/pre-dispatch hook"
 edition.workspace = true

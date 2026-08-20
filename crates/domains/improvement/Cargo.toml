@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "kura-improvement"
 description = "Audited self-improvement proposals: bounded config changes with evidence, approval, and rollback"
 edition.workspace = true

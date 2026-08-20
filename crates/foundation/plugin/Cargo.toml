@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "kura-plugin"
 description = "Plugin kernel: descriptors, profile-driven assembly resolution, seam registry, hook bus"
 edition.workspace = true

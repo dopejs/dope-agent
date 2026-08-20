@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "kura-discord"
 edition.workspace = true
 version.workspace = true

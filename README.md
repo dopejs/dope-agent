@@ -90,3 +90,7 @@ High-signal entry points:
 - OpenClaw is treated as a feature and product benchmark, not a required runtime base.
 - Context engineering, memory, planning, handoff, and policy will be redesigned rather than lightly patched.
 - Long-lived agent state must be observable, replayable, and safe to evolve.
+
+## License
+
+Kura is licensed under the [Apache License 2.0](LICENSE).
