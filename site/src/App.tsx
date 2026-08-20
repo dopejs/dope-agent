@@ -23,8 +23,8 @@ const DOCS = [
 
 function KuraMark({ className }: { readonly className: string }): ReactNode {
   return <span className={`kura-mark ${className}`} aria-hidden="true">
-    <img className="kura-mark__light" src="/kura-mark.svg" alt="" />
-    <img className="kura-mark__dark" src="/kura-mark-inverse.svg" alt="" />
+    <img className="kura-mark__light" src="/kura-mark.svg?v=20260820" alt="" />
+    <img className="kura-mark__dark" src="/kura-mark-inverse.svg?v=20260820" alt="" />
   </span>;
 }
 
