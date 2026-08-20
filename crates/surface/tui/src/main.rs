@@ -27,7 +27,7 @@ use client::{ChatQueryInput, ChatQueryResponse, Client};
 
 /// Kura full-screen terminal client.
 #[derive(Parser, Debug)]
-#[command(name = "dope-tui", version)]
+#[command(name = "kura-tui", version)]
 struct Cli {
     /// Daemon base URL.
     #[arg(

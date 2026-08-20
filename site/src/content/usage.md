@@ -51,12 +51,12 @@ const assets  = await client.listMemoryAssets({ layer: "l1", status: "ready" });
 
 ## Terminal UI
 
-`dope tui` launches the full-screen terminal client: conversations,
+`kura tui` launches the full-screen terminal client: conversations,
 thread continuity, and a live daemon event stream (`/events`).
 
 ## Web operator shell
 
-`dope web` serves the installed web shell locally and opens your
+`kura web` serves the installed web shell locally and opens your
 browser. It is the operator console: memory
 assets + review queue, **Plugins** (assembly report, enable/disable,
 hooks), channels, routines, providers, quota, diagnostics, evaluation,

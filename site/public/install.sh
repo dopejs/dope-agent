@@ -4,17 +4,18 @@
 #   curl -fsSL https://agent.dopejs.com/install.sh | sh
 #
 # Detects OS/arch, downloads the latest GitHub release tarball, verifies
-# its SHA-256 against the release's SHA256SUMS, and installs `dope` and
-# `dope-tui` into an existing PATH directory (~/.local/bin or
-# /usr/local/bin). Override the version with DOPE_VERSION=v0.2.2 and the
-# destination with DOPE_INSTALL_DIR=/some/bin.
+# its SHA-256 against the release's SHA256SUMS, and installs `kura` and
+# `kura-tui` into an existing PATH directory (~/.local/bin or
+# /usr/local/bin). Override the version with KURA_VERSION=v0.2.2 and the
+# destination with KURA_INSTALL_DIR=/some/bin. DOPE_VERSION and
+# DOPE_INSTALL_DIR remain supported as legacy aliases.
 
 set -eu
 
 REPO="dopejs/kura"
 
-say()  { printf '\033[1m[dope]\033[0m %s\n' "$1"; }
-fail() { printf '\033[1;31m[dope]\033[0m %s\n' "$1" >&2; exit 1; }
+say()  { printf '\033[1m[kura]\033[0m %s\n' "$1"; }
+fail() { printf '\033[1;31m[kura]\033[0m %s\n' "$1" >&2; exit 1; }
 
 # --- detect platform ------------------------------------------------------
 OS=$(uname -s)
@@ -32,14 +33,16 @@ esac
 TARGET="${CPU}-${SYS}"
 
 # --- resolve version ------------------------------------------------------
-if [ -n "${DOPE_VERSION:-}" ]; then
+if [ -n "${KURA_VERSION:-}" ]; then
+  TAG="$KURA_VERSION"
+elif [ -n "${DOPE_VERSION:-}" ]; then
   TAG="$DOPE_VERSION"
 else
   TAG=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" | sed 's#.*/tag/##')
   [ -n "$TAG" ] || fail "could not resolve the latest release tag"
 fi
 VERSION="${TAG#v}"
-PKG="dope-${VERSION}-${TARGET}"
+PKG="kura-${VERSION}-${TARGET}"
 BASE="https://github.com/$REPO/releases/download/$TAG"
 
 say "installing Kura $TAG for $TARGET"
@@ -64,7 +67,9 @@ fi
 tar -xzf "$TMP/$PKG.tar.gz" -C "$TMP"
 
 # --- install --------------------------------------------------------------
-if [ -n "${DOPE_INSTALL_DIR:-}" ]; then
+if [ -n "${KURA_INSTALL_DIR:-}" ]; then
+  DEST="$KURA_INSTALL_DIR"
+elif [ -n "${DOPE_INSTALL_DIR:-}" ]; then
   DEST="$DOPE_INSTALL_DIR"
 elif [ -d "$HOME/.local/bin" ] && case ":$PATH:" in *":$HOME/.local/bin:"*) true ;; *) false ;; esac; then
   DEST="$HOME/.local/bin"
@@ -81,18 +86,33 @@ install_bin() {
     sudo install -m 755 "$1" "$DEST/"
   fi
 }
-install_bin "$TMP/$PKG/dope"
-[ -f "$TMP/$PKG/dope-tui" ] && install_bin "$TMP/$PKG/dope-tui"
+install_bin "$TMP/$PKG/kura"
+[ -f "$TMP/$PKG/kura-tui" ] && install_bin "$TMP/$PKG/kura-tui"
+
+# Preserve the pre-Kura command names as symlinks for existing scripts while
+# keeping the shipped executables and documentation canonical.
+link_compat() {
+  target="$1"
+  legacy="$2"
+  if [ -w "$DEST" ]; then
+    ln -sfn "$target" "$DEST/$legacy"
+  else
+    sudo ln -sfn "$target" "$DEST/$legacy"
+  fi
+}
+link_compat kura dope
+[ -f "$TMP/$PKG/kura-tui" ] && link_compat kura-tui dope-tui
 if [ -d "$TMP/$PKG/web" ]; then
-  WEB_DIR="$HOME/.local/share/dope/web"
+  WEB_DIR="$HOME/.local/share/kura/web"
   mkdir -p "$WEB_DIR"
   rm -rf "$WEB_DIR"
   cp -R "$TMP/$PKG/web" "$WEB_DIR"
   say "web shell assets: $WEB_DIR"
 fi
 
-say "installed to $DEST: dope$([ -f "$TMP/$PKG/dope-tui" ] && printf ', dope-tui')"
-say "start the daemon:   dope daemon start   (data: ~/.dope, http://127.0.0.1:19191)"
-say "terminal client:    dope tui"
-say "web shell:          dope web"
+say "installed to $DEST: kura$([ -f "$TMP/$PKG/kura-tui" ] && printf ', kura-tui')"
+say "legacy aliases:     dope$([ -f "$TMP/$PKG/kura-tui" ] && printf ', dope-tui')"
+say "start the daemon:   kura daemon start   (data: ~/.dope, http://127.0.0.1:19191)"
+say "terminal client:    kura tui"
+say "web shell:          kura web"
 say "docs:               https://agent.dopejs.com"

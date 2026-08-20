@@ -7,9 +7,9 @@ web UI, a full-screen Rust TUI, and chat-channel connectors.
 
 | Path | Role |
 |------|------|
-| `crates/` | Rust workspace — the daemon control plane (runtime, LLM providers, channels/connectors, store, events, HTTP API, harness). Daemon binary: `dope-cli`; HTTP API: `dope-api`. |
+| `crates/` | Rust workspace — the daemon control plane (runtime, LLM providers, channels/connectors, store, events, HTTP API, harness). User binary: `kura` (Cargo package: `dope-cli`); HTTP API: `dope-api`. |
 | `web/` | React 19 + Vite web UI. |
-| `crates/surface/tui/` | Rust full-screen terminal client (`dope-tui`). |
+| `crates/surface/tui/` | Rust full-screen terminal client (`kura-tui`; Cargo package: `dope-tui`). |
 | `sdk/ts/` | TypeScript client SDK (`@dope/client`). |
 | `schemas/` | JSON Schema contracts (API, events, config) — source of truth for cross-language contracts. |
 | `docs/` | Planning and design docs, organized by module. |
@@ -22,7 +22,7 @@ removed; see `crates/MIGRATION.md` for the migration record.
 Daemon (Rust, from `crates/`):
 
 ```bash
-make daemon-build              # cargo build --release -p dope-cli
+make daemon-build              # emits crates/target/release/kura
 make daemon-test               # cargo test --workspace
 make daemon-contract-test      # cargo test -p dope-contracts
 ```
@@ -30,7 +30,7 @@ make daemon-contract-test      # cargo test -p dope-contracts
 TUI (Rust):
 
 ```bash
-cd crates && cargo build -p dope-tui
+cd crates && cargo build -p dope-tui  # emits target/debug/kura-tui
 ```
 
 Clients (TypeScript):

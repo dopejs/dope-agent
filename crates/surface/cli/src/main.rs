@@ -1,13 +1,13 @@
-//! dope — the Kura command line.
+//! kura — the Kura command line.
 //!
 //! ```text
-//! dope daemon run|start|stop|status   manage the daemon process
-//! dope tui [...]                      launch the terminal client
-//! dope web [--port] [--no-open]       serve + open the web operator shell
-//! dope config show|path|set|edit     inspect and edit configuration
+//! kura daemon run|start|stop|status   manage the daemon process
+//! kura tui [...]                      launch the terminal client
+//! kura web [--port] [--no-open]       serve + open the web operator shell
+//! kura config show|path|set|edit      inspect and edit configuration
 //! ```
 //!
-//! `daemon run` is the foreground daemon (what `dope` alone used to be);
+//! `daemon run` is the foreground daemon;
 //! `daemon start` detaches it with a pidfile + logfile under the data dir
 //! and waits for `/healthz`.
 
@@ -20,7 +20,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-    name = "dope",
+    name = "kura",
     version,
     about = "Kura — a personal agent OS",
     propagate_version = true
@@ -35,10 +35,10 @@ enum Command {
     /// Manage the daemon process
     #[command(subcommand)]
     Daemon(DaemonCommand),
-    /// Launch the terminal client (dope-tui)
+    /// Launch the terminal client (kura-tui)
     #[command(trailing_var_arg = true)]
     Tui {
-        /// Arguments passed through to dope-tui
+        /// Arguments passed through to kura-tui
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -47,8 +47,8 @@ enum Command {
         /// Port for the local web server
         #[arg(long, default_value_t = 4173)]
         port: u16,
-        /// Directory holding the built web assets (defaults: $DOPE_WEB_DIST,
-        /// <exe dir>/web, <exe dir>/../share/dope/web)
+        /// Directory holding the built web assets (defaults: $KURA_WEB_DIST,
+        /// $DOPE_WEB_DIST, <exe dir>/web, <exe dir>/../share/kura/web)
         #[arg(long)]
         dir: Option<PathBuf>,
         /// Do not open the browser automatically
@@ -103,14 +103,14 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("dope: {err}");
+            eprintln!("kura: {err}");
             ExitCode::FAILURE
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// dope daemon …
+// kura daemon …
 // ---------------------------------------------------------------------------
 
 fn daemon_run() -> Result<(), AnyError> {
@@ -145,7 +145,10 @@ fn running_pid(config: &dope_config::Config) -> Option<i32> {
 fn daemon_start() -> Result<(), AnyError> {
     let config = dope_config::load()?;
     if let Some(pid) = running_pid(&config) {
-        println!("daemon already running (pid {pid}, http://{})", config.bind_addr);
+        println!(
+            "daemon already running (pid {pid}, http://{})",
+            config.bind_addr
+        );
         return Ok(());
     }
     std::fs::create_dir_all(&config.data_dir)?;
@@ -167,7 +170,11 @@ fn daemon_start() -> Result<(), AnyError> {
     let url = format!("http://{}/healthz", config.bind_addr);
     for _ in 0..50 {
         std::thread::sleep(Duration::from_millis(200));
-        if ureq::get(&url).timeout(Duration::from_secs(1)).call().is_ok() {
+        if ureq::get(&url)
+            .timeout(Duration::from_secs(1))
+            .call()
+            .is_ok()
+        {
             println!(
                 "daemon started (pid {}, http://{}, logs: {})",
                 child.id(),
@@ -222,7 +229,7 @@ fn daemon_status() -> Result<(), AnyError> {
     println!("data dir:    {}", config.data_dir);
     println!("bind addr:   http://{}", config.bind_addr);
     match pid {
-        Some(pid) => println!("pid:         {pid} (managed via `dope daemon start`)"),
+        Some(pid) => println!("pid:         {pid} (managed via `kura daemon start`)"),
         None => println!("pid:         - (no pidfile; may be running foreground)"),
     }
     println!("healthy:     {}", if health { "yes" } else { "no" });
@@ -236,29 +243,41 @@ fn daemon_status() -> Result<(), AnyError> {
 }
 
 // ---------------------------------------------------------------------------
-// dope tui
+// kura tui
 // ---------------------------------------------------------------------------
 
 fn launch_tui(args: &[String]) -> Result<(), AnyError> {
-    // Prefer the dope-tui binary shipped beside this one; fall back to PATH.
+    // Prefer the canonical sibling binary shipped beside this one. The legacy
+    // sibling name remains a compatibility fallback for pre-Kura installs.
     let sibling = std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join("dope-tui")))
+        .and_then(|exe| {
+            exe.parent().and_then(|dir| {
+                [dir.join("kura-tui"), dir.join("dope-tui")]
+                    .into_iter()
+                    .find(|path| path.exists())
+            })
+        })
         .filter(|path| path.exists());
-    let program = sibling.unwrap_or_else(|| PathBuf::from("dope-tui"));
+    let program = sibling.unwrap_or_else(|| PathBuf::from("kura-tui"));
     let status = std::process::Command::new(&program)
         .args(args)
         .status()
-        .map_err(|err| format!("launch {}: {err} (is dope-tui installed?)", program.display()))?;
+        .map_err(|err| {
+            format!(
+                "launch {}: {err} (is kura-tui installed?)",
+                program.display()
+            )
+        })?;
     if status.success() {
         Ok(())
     } else {
-        Err(format!("dope-tui exited with {status}").into())
+        Err(format!("kura-tui exited with {status}").into())
     }
 }
 
 // ---------------------------------------------------------------------------
-// dope web
+// kura web
 // ---------------------------------------------------------------------------
 
 fn find_web_dist(explicit: Option<PathBuf>) -> Result<PathBuf, AnyError> {
@@ -266,16 +285,21 @@ fn find_web_dist(explicit: Option<PathBuf>) -> Result<PathBuf, AnyError> {
     if let Some(dir) = explicit {
         candidates.push(dir);
     }
+    if let Ok(env_dir) = std::env::var("KURA_WEB_DIST") {
+        candidates.push(PathBuf::from(env_dir));
+    }
     if let Ok(env_dir) = std::env::var("DOPE_WEB_DIST") {
         candidates.push(PathBuf::from(env_dir));
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             candidates.push(dir.join("web"));
+            candidates.push(dir.join("../share/kura/web"));
             candidates.push(dir.join("../share/dope/web"));
         }
     }
     if let Ok(home) = std::env::var("HOME") {
+        candidates.push(Path::new(&home).join(".local/share/kura/web"));
         candidates.push(Path::new(&home).join(".local/share/dope/web"));
     }
     candidates.push(PathBuf::from("web/dist"));
@@ -285,7 +309,7 @@ fn find_web_dist(explicit: Option<PathBuf>) -> Result<PathBuf, AnyError> {
         }
     }
     Err("web assets not found; pass --dir <path to built web/dist> \
-         or set DOPE_WEB_DIST (build with `pnpm build:web`)"
+         or set KURA_WEB_DIST (build with `pnpm build:web`)"
         .into())
 }
 
@@ -308,7 +332,10 @@ fn serve_web(port: u16, dir: Option<PathBuf>, no_open: bool) -> Result<(), AnyEr
     let config = dope_config::load()?;
     let url = format!("http://127.0.0.1:{port}/");
     println!("serving web shell from {} at {url}", dist.display());
-    println!("daemon API: http://{} (set inside the shell)", config.bind_addr);
+    println!(
+        "daemon API: http://{} (set inside the shell)",
+        config.bind_addr
+    );
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -356,7 +383,7 @@ fn open_browser(url: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// dope config …
+// kura config …
 // ---------------------------------------------------------------------------
 
 fn config_show() -> Result<(), AnyError> {
@@ -367,7 +394,9 @@ fn config_show() -> Result<(), AnyError> {
 
 fn effective_config_path() -> Result<PathBuf, AnyError> {
     let config = dope_config::load()?;
-    Ok(PathBuf::from(dope_config::config_file_path(&config.data_dir)))
+    Ok(PathBuf::from(dope_config::config_file_path(
+        &config.data_dir,
+    )))
 }
 
 fn config_path() -> Result<(), AnyError> {

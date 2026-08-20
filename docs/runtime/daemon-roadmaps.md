@@ -44,7 +44,8 @@ Each implementation round should finish **one whole roadmap**.
 - **The Go daemon was then fully ported to the Rust workspace** (`crates/`,
   8 waves, see [`crates/MIGRATION.md`](../../crates/MIGRATION.md)). The Go
   `daemon/` tree and the TypeScript TUI are removed; the control plane is the
-  Rust `dope-cli` binary, the terminal client is `dope-tui`.
+  Rust `dope-cli` package (user binary `kura`), and the terminal client package
+  is `dope-tui` (user binary `kura-tui`).
 - Verification commands: `cargo test --workspace` (or `make daemon-test`) and
   `make daemon-contract-test`. Go-era `go test ./...` references in archived
   documents map to these.
@@ -349,14 +350,14 @@ is Go-era and therefore void for the Rust binary.
       pre-tenant v21 staging retired (no pre-baseline lineage ships);
       future migrations append as v2+
 - [~] Install and auto-upgrade productization: `scripts/install.sh`
-      (build + install `dope` onto PATH + data-dir init) and
+      (build + install `kura` onto PATH + data-dir init) and
       `scripts/upgrade.sh` (preflight → backup → build+install → restart →
       postflight, with the restore script as the rollback path) are in.
       CI and packaging exist as GitHub Actions (2026-08-17):
       `.github/workflows/ci.yml` runs the Rust workspace suite, contract
       tests, the route-parity gate, and the TypeScript client builds on
       every push/PR to main (ubuntu + macos); `.github/workflows/release.yml`
-      builds `dope` for macOS (arm64/x64) and Linux (x64/arm64) on `v*`
+      builds `kura` for macOS (arm64/x64) and Linux (x64/arm64) on `v*`
       tags and publishes tarballs + SHA256SUMS as a GitHub Release — which
       also becomes the release feed for the daemon-surfaced update check
       (remaining task, post-first-tag)

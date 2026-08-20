@@ -5,7 +5,7 @@ version.workspace = true
 rust-version.workspace = true
 
 [[bin]]
-name = "dope-tui"
+name = "kura-tui"
 path = "src/main.rs"
 
 [dependencies]

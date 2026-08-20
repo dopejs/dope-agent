@@ -1,10 +1,10 @@
 # Repository Guidelines
 
-> **MIGRATION COMPLETE (2026-08):** the Go `daemon/` control plane has been fully replaced by the Rust workspace (`crates/`) and deleted. The daemon binary is now `dope-cli` (`crates/cli`), wired by `dope-app` (`crates/app`), with the HTTP API in `dope-api`. `make daemon-build` / `daemon-test` / `daemon-contract-test` now map to `cargo` equivalents. Any remaining `daemon/`-related text below is historical.
+> **MIGRATION COMPLETE (2026-08):** the Go `daemon/` control plane has been fully replaced by the Rust workspace (`crates/`) and deleted. The daemon's user-facing binary is `kura` (Cargo package `dope-cli`, under `crates/surface/cli`), wired by `dope-app` (`crates/surface/app`), with the HTTP API in `dope-api`. `make daemon-build` / `daemon-test` / `daemon-contract-test` now map to `cargo` equivalents. Any remaining `daemon/`-related text below is historical.
 
 ## Project Structure & Module Organization
 
-The Rust workspace `crates/` is the daemon control plane (runtime, providers, channels, store, API, and harness). `web/` is the web client and `crates/surface/tui/` is the Rust terminal client (`dope-tui`). `sdk/ts/` holds the TypeScript client SDK used by both. `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providecrates/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
+The Rust workspace `crates/` is the daemon control plane (runtime, providers, channels, store, API, and harness). `web/` is the web client and `crates/surface/tui/` is the Rust terminal client (`kura-tui`, Cargo package `dope-tui`). `sdk/ts/` holds the TypeScript client SDK used by both. `schemas/` stores JSON schema contracts. `scripts/` contains local operator utilities. `docs/` is organized by module (`runtime/`, `providecrates/`, `channels/`, `harness/`, etc.) and should stay aligned with implementation changes.
 
 ## Build, Test, and Development Commands
 

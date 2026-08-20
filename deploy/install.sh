@@ -2,7 +2,7 @@
 #
 # Kura installer.
 #
-# Builds the daemon from source, installs the `dope` binary, initializes the
+# Builds the daemon from source, installs the `kura` binary, initializes the
 # data directory, and (unless --no-service) registers a background service:
 #   - macOS -> launchd user agent  (~/Library/LaunchAgents)
 #   - Linux -> systemd service     (user by default, or --system with sudo)
@@ -68,7 +68,7 @@ DOPE_LOG_LEVEL="${DOPE_LOG_LEVEL:-info}"
 # DOPE_CONNECTORS_DISCORD_ENABLED=true (and a valid token in config.json).
 DOPE_DISCORD_ENABLED="${DOPE_CONNECTORS_DISCORD_ENABLED:-false}"
 DOPE_LOG_DIR="${DOPE_DATA_DIR}/logs"
-DOPE_BIN="${DOPE_BIN_DIR}/dope"
+DOPE_BIN="${DOPE_BIN_DIR}/kura"
 
 OS="$(uname -s)"
 [[ "${OS}" == "Darwin" || "${OS}" == "Linux" ]] || die "unsupported OS: ${OS} (use Docker — see deploy/docker)"
@@ -92,15 +92,16 @@ command -v cargo >/dev/null 2>&1 || die "Rust toolchain not found. Install Rust 
 DOPE_VERSION="$(git -C "${REPO_ROOT}" describe --tags --always --dirty 2>/dev/null || echo dev)"
 info "building daemon (version ${DOPE_VERSION}) ..."
 mkdir -p "${DOPE_BIN_DIR}"
-TMP_BIN="$(mktemp "${DOPE_BIN_DIR}/.dope.XXXXXX")"
+TMP_BIN="$(mktemp "${DOPE_BIN_DIR}/.kura.XXXXXX")"
 trap 'rm -f "${TMP_BIN}"' EXIT
 ( cd "${RS_DIR}" && cargo build --release -p dope-cli ) \
   || die "build failed — fix the error above and re-run."
-cp -f "${RS_DIR}/target/release/dope-cli" "${TMP_BIN}"
+cp -f "${RS_DIR}/target/release/kura" "${TMP_BIN}"
 chmod 0755 "${TMP_BIN}"
 mv -f "${TMP_BIN}" "${DOPE_BIN}"   # atomic swap; a running service picks it up on restart
+ln -sfn kura "${DOPE_BIN_DIR}/dope"
 trap - EXIT
-info "installed binary -> ${DOPE_BIN}"
+info "installed binary -> ${DOPE_BIN} (legacy alias: ${DOPE_BIN_DIR}/dope)"
 
 # ---- data dir (daemon self-initializes config.json on first start) ---------
 mkdir -p "${DOPE_DATA_DIR}" "${DOPE_LOG_DIR}"
@@ -183,7 +184,7 @@ cat <<EOF
 
 Connect a client (clients default to the test port 19192 — point them at this daemon):
 
-  TUI:   DOPE_DAEMON_URL=http://${HEALTH_HOST}:${HEALTH_PORT} dope-tui
+  TUI:   DOPE_DAEMON_URL=http://${HEALTH_HOST}:${HEALTH_PORT} kura-tui
          (build once: cd ${REPO_ROOT}/crates && cargo build --release -p dope-tui)
   Web:   pnpm --dir ${REPO_ROOT}/web dev   # then set the daemon URL in the UI
 

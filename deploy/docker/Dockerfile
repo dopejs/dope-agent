@@ -14,7 +14,7 @@ FROM alpine:3.20
 RUN apk add --no-cache ca-certificates wget \
  && adduser -D -u 10001 dope \
  && mkdir -p /data && chown dope:dope /data
-COPY --from=build /src/crates/target/release/dope-cli /usr/local/bin/dope
+COPY --from=build /src/crates/target/release/kura /usr/local/bin/kura
 
 ENV DOPE_ENV=prod \
     DOPE_DATA_DIR=/data \
@@ -27,4 +27,4 @@ USER dope
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
   CMD wget -qO- "http://127.0.0.1:19191/healthz" >/dev/null 2>&1 || exit 1
 
-ENTRYPOINT ["/usr/local/bin/dope"]
+ENTRYPOINT ["/usr/local/bin/kura"]

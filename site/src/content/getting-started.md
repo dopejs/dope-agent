@@ -1,7 +1,7 @@
 # Getting Started
 
 Kura is a **personal agent OS**: a local Rust daemon (the control
-plane) plus thin clients — a full-screen terminal UI (`dope-tui`), a React
+plane) plus thin clients — a full-screen terminal UI (`kura-tui`), a React
 web shell, and chat-channel connectors. The daemon owns runtime state,
 provider dispatch, policy gates, memory, and event fan-out; clients are
 thin consumers of its HTTP API.
@@ -16,20 +16,23 @@ curl -fsSL https://agent.dopejs.com/install.sh | sh
 
 The installer detects your platform, downloads the latest
 [GitHub Release](https://github.com/dopejs/kura/releases), verifies
-its SHA-256 against the release's `SHA256SUMS`, and installs `dope` (the
-daemon) and `dope-tui` (the terminal client) into `~/.local/bin` or
-`/usr/local/bin`. Pin a version or destination with:
+its SHA-256 against the release's `SHA256SUMS`, and installs `kura` (the
+daemon) and `kura-tui` (the terminal client) into `~/.local/bin` or
+`/usr/local/bin`. For compatibility with pre-Kura scripts, it also creates
+`dope` and `dope-tui` symlinks that point to the canonical binaries.
+
+Pin a version or destination with:
 
 ```bash
-DOPE_VERSION=v0.2.2 DOPE_INSTALL_DIR=~/bin sh -c "$(curl -fsSL https://agent.dopejs.com/install.sh)"
+KURA_VERSION=v0.2.2 KURA_INSTALL_DIR=~/bin sh -c "$(curl -fsSL https://agent.dopejs.com/install.sh)"
 ```
 
 Prefer manual? Grab a tarball from the releases page:
 
 ```bash
-curl -LO https://github.com/dopejs/kura/releases/latest/download/dope-0.2.2-aarch64-apple-darwin.tar.gz
-tar xzf dope-0.2.2-aarch64-apple-darwin.tar.gz
-sudo install -m 755 dope-0.2.2-aarch64-apple-darwin/{dope,dope-tui} /usr/local/bin/
+curl -LO https://github.com/dopejs/kura/releases/latest/download/kura-0.2.2-aarch64-apple-darwin.tar.gz
+tar xzf kura-0.2.2-aarch64-apple-darwin.tar.gz
+sudo install -m 755 kura-0.2.2-aarch64-apple-darwin/{kura,kura-tui} /usr/local/bin/
 ```
 
 ## Build from source
@@ -41,8 +44,8 @@ git clone https://github.com/dopejs/kura
 cd kura
 
 # Daemon + TUI
-make daemon-build                 # cargo build --release -p dope-cli
-cd crates && cargo build --release -p dope-tui
+make daemon-build                 # emits crates/target/release/kura
+cd crates && cargo build --release -p dope-tui  # emits target/release/kura-tui
 
 # Web client + SDK
 pnpm install
@@ -51,27 +54,27 @@ pnpm build:clients
 
 ## Run the daemon
 
-The `dope` CLI manages everything:
+The `kura` CLI manages everything:
 
 ```bash
-dope daemon start                 # background daemon: pidfile + logfile
-dope daemon status                # pid, health, version
-dope daemon stop                  # graceful stop
-dope daemon run                   # foreground (for services/systemd)
+kura daemon start                 # background daemon: pidfile + logfile
+kura daemon status                # pid, health, version
+kura daemon stop                  # graceful stop
+kura daemon run                   # foreground (for services/systemd)
 
-dope tui                          # terminal client
-dope web                          # serve + open the web operator shell
-dope config show                  # effective configuration
-dope config set llm.defaultProvider claude_code_cli
-dope config edit                  # $EDITOR on config.json (validated)
+kura tui                          # terminal client
+kura web                          # serve + open the web operator shell
+kura config show                  # effective configuration
+kura config set llm.defaultProvider claude_code_cli
+kura config edit                  # $EDITOR on config.json (validated)
 ```
 
 Kura has two environments, selected by `DOPE_ENV`:
 
 | Mode | Data dir | Bind address | Command |
 |------|----------|--------------|---------|
-| prod (release default) | `~/.dope` | `127.0.0.1:19191` | `dope daemon start` |
-| test | `~/.dope-test` | `127.0.0.1:19192` | `DOPE_ENV=test dope daemon start` |
+| prod (release default) | `~/.dope` | `127.0.0.1:19191` | `kura daemon start` |
+| test | `~/.dope-test` | `127.0.0.1:19192` | `DOPE_ENV=test kura daemon start` |
 
 From a source checkout, the Make targets wrap the same thing and default
 to the **test** environment (the safe development default):
@@ -102,7 +105,7 @@ OpenAI-compatible endpoint) — see **Configuration**.
 ## Terminal UI
 
 ```bash
-dope tui                          # full-screen Claude-Code-style client
+kura tui                          # full-screen Claude-Code-style client
 ```
 
 The TUI includes a live daemon event stream viewer (`/events`).

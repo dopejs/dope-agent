@@ -32,7 +32,8 @@ cd kura
 ./deploy/install.sh
 ```
 
-This builds `dope`, installs it to `~/.local/bin/dope`, creates the data dir
+This builds `kura`, installs it to `~/.local/bin/kura` (with a legacy `dope`
+symlink), creates the data dir
 `~/.dope`, registers the service, starts it, and waits for `/healthz`.
 
 Defaults (override with flags or env):
@@ -129,7 +130,7 @@ pnpm build:clients
 
 # TUI (Rust; build once from crates/):
 cd crates && cargo build --release -p dope-tui
-DOPE_DAEMON_URL=http://127.0.0.1:19191 dope-tui
+DOPE_DAEMON_URL=http://127.0.0.1:19191 ./target/release/kura-tui
 # Web (dev server; set the daemon URL inside the UI):
 pnpm dev:web
 ```

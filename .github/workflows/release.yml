@@ -59,17 +59,17 @@ jobs:
       - name: Package
         run: |
           VERSION="${RELEASE_TAG#v}"
-          PKG="dope-${VERSION}-${{ matrix.target }}"
+          PKG="kura-${VERSION}-${{ matrix.target }}"
           mkdir -p "dist/${PKG}"
-          cp "target/${{ matrix.target }}/release/dope-cli" "dist/${PKG}/dope"
-          cp "target/${{ matrix.target }}/release/dope-tui" "dist/${PKG}/dope-tui"
+          cp "target/${{ matrix.target }}/release/kura" "dist/${PKG}/kura"
+          cp "target/${{ matrix.target }}/release/kura-tui" "dist/${PKG}/kura-tui"
           cp -r ../web/dist "dist/${PKG}/web"
           cp ../README.md "dist/${PKG}/" 2>/dev/null || true
           tar -czf "dist/${PKG}.tar.gz" -C dist "${PKG}"
           (cd dist && shasum -a 256 "${PKG}.tar.gz" > "${PKG}.tar.gz.sha256")
       - uses: actions/upload-artifact@v4
         with:
-          name: dope-${{ matrix.target }}
+          name: kura-${{ matrix.target }}
           path: |
             crates/dist/*.tar.gz
             crates/dist/*.sha256

@@ -125,14 +125,14 @@ function Landing() {
         <pre className="hero__terminal">
           <code>
             {`$ curl -fsSL https://agent.dopejs.com/install.sh | sh
-[dope] installing Kura v0.2.2 for aarch64-apple-darwin
-[dope] checksum verified
-[dope] installed to ~/.local/bin: dope, dope-tui
+[kura] installing Kura v0.2.2 for aarch64-apple-darwin
+[kura] checksum verified
+[kura] installed to ~/.local/bin: kura, kura-tui
 
-$ dope daemon start
+$ kura daemon start
 daemon started (pid 51234, http://127.0.0.1:19191)
 
-$ dope tui`}
+$ kura tui`}
           </code>
         </pre>
       </section>

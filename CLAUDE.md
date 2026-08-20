@@ -6,7 +6,7 @@ Historical feature scope lives in plain markdown under `specs/<NNN>-<name>/` and
 
 ## Project Overview
 
-Kura is a personal agent OS with a Rust daemon backend, React web UI, Rust TUI (`dope-tui`), and a shared TypeScript client SDK. The daemon is the system spine owning runtime state, provider dispatch, policy gates, and event fan-out. Clients are thin consumers.
+Kura is a personal agent OS with a Rust daemon backend, React web UI, Rust TUI (`kura-tui`, Cargo package `dope-tui`), and a shared TypeScript client SDK. The daemon is the system spine owning runtime state, provider dispatch, policy gates, and event fan-out. Clients are thin consumers.
 
 ## Build & Development Commands
 
@@ -51,7 +51,7 @@ pnpm typecheck:web             # TypeScript type check for web
 
 - **`web/`** -- React 19 + Vite web UI. Uses `@dope/client` SDK. Generated types from schemas live in `web/src/generated/`.
 
-- **`crates/surface/tui/`** -- Rust terminal client (`dope-tui` binary), the full-screen Claude-Code-style TUI.
+- **`crates/surface/tui/`** -- Rust terminal client (`kura-tui` binary, `dope-tui` Cargo package), the full-screen Claude-Code-style TUI.
 
 - **`schemas/`** -- JSON Schema contracts: `api/` (82 files), `events/` (49 files), `config/`, `capability/`, `plugin/`. Source of truth for cross-language contracts. Generated client code derives from these.
 

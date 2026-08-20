@@ -13,14 +13,14 @@ migration record.
 - `modeling/` — providers, opsreadiness, and other modeling crates
 - `domains/` — chat, sandbox, mcp, skills, scheduler, delivery, calendar, mail, reminders, workflows, evaluation, and the rest of the domain managers
 - `persistence/` — SQLite store (`dope-store`) + DAOs
-- `surface/` — HTTP API (`dope-api`), daemon binary (`dope-cli`), terminal TUI (`dope-tui`)
+- `surface/` — HTTP API (`dope-api`), CLI package (`dope-cli`, binary `kura`), terminal package (`dope-tui`, binary `kura-tui`)
 
 ## Key binaries
 
-| Binary | Crate | Purpose |
-|--------|-------|---------|
-| `dope-cli` | `surface/cli` | daemon entry point (loads config, builds `dope-app`, serves the API) |
-| `dope-tui` | `surface/tui` | full-screen terminal client |
+| Cargo package | Path | Purpose |
+|---------------|------|---------|
+| `dope-cli` | `surface/cli` | daemon entry point; emits the user-facing `kura` binary |
+| `dope-tui` | `surface/tui` | emits the user-facing `kura-tui` terminal client |
 
 ## Commands
 

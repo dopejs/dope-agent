@@ -25,9 +25,9 @@ echo "== build + install =="
 "${ROOT_DIR}/scripts/install.sh"
 
 echo "== restart daemon =="
-pkill -f 'dope-cli|/dope$' 2>/dev/null && sleep 2 || echo "no running daemon found"
+pkill -f '(^|/)(kura|dope|dope-cli)([[:space:]]|$)' 2>/dev/null && sleep 2 || echo "no running daemon found"
 BIN_DIR="${DOPE_BIN_DIR:-$HOME/.local/bin}"
-nohup env DOPE_ENV="$ENV_NAME" "${BIN_DIR}/dope" >"${DOPE_DATA_DIR}/daemon.log" 2>&1 &
+nohup env DOPE_ENV="$ENV_NAME" "${BIN_DIR}/kura" >"${DOPE_DATA_DIR}/daemon.log" 2>&1 &
 sleep 3
 
 echo "== postflight (health + schema verification) =="

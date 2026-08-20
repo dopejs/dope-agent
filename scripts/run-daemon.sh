@@ -21,4 +21,4 @@ case "${ENV_NAME}" in
 esac
 
 cargo build --release -p dope-cli --manifest-path "${RS_DIR}/Cargo.toml"
-exec "${RS_DIR}/target/release/dope-cli" daemon run
+exec "${RS_DIR}/target/release/kura" daemon run
