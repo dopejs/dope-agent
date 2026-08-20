@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 
+import { LanguageMenu } from "./LanguageMenu";
 import { writeLanguagePreference } from "./language-preference";
-import { localeForPath, SITE_LOCALES, type SiteLocale } from "./locales";
+import { localeForPath, type SiteLocale } from "./locales";
 import { SearchDialog } from "./SearchDialog";
 import type { PageLink, SitePage, SitePayload } from "./types";
 
@@ -55,9 +56,7 @@ function Header({ page, locale, onLocaleChange }: { readonly page: SitePage; rea
       </nav>
       <div className="header-tools">
         <button className="search-trigger" type="button" onClick={() => setSearchOpen(true)}><span aria-hidden="true">⌕</span><span>{locale.ui.search}</span><kbd>⌘ K</kbd></button>
-        <select className="locale-select" aria-label={locale.ui.language} value={locale.path} onChange={(event) => onLocaleChange(event.currentTarget.value)}>
-          {SITE_LOCALES.map((candidate) => <option key={candidate.path || "zh-Hans"} value={candidate.path}>{candidate.label}</option>)}
-        </select>
+        <LanguageMenu locale={locale} onChange={onLocaleChange} />
         <button className="icon-button" type="button" aria-label={locale.ui.appearance} title={locale.ui.appearance} onClick={toggleTheme}>◐</button>
         <a className="icon-button" href={REPO} aria-label="GitHub">GH</a>
         <button className="mobile-menu" type="button" aria-label={locale.ui.menu} aria-expanded={menuOpen} onClick={() => setMenuOpen((value) => !value)}>{menuOpen ? "×" : "☰"}</button>
