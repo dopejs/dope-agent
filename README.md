@@ -83,9 +83,29 @@ Resolution order per role: a stored assignment (`PUT`), then daemon config
 unavailable*: callers must not fall back to the default provider, or a text
 model ends up being asked for a picture.
 
-Assigning a role only records which provider serves it. Executing image and
-video generation needs a provider interface beyond the current streaming
-`ModelProvider` trait and is not implemented yet.
+Assigning a role records which provider serves it. Execution goes through
+`GenerationProvider`, a separate trait from the streaming `ModelProvider`
+because image and video calls are request/poll shaped rather than token
+streams:
+
+- `generate()` returns `Ready` for synchronous providers (typical for images)
+  or `Pending { job_id }` for queued ones (typical for video).
+- `poll()` has a default that reports an unknown job, so a synchronous provider
+  cannot accidentally imply a generation finished.
+- A finished asset is either inline `Bytes` or a `Url`. The difference is kept
+  rather than normalized: inline data costs memory, a URL can expire before the
+  caller fetches it, and the caller has to know which it holds.
+
+`OpenAiCompatibleImageClient` implements it over `/images/generations`. Video
+has the trait but no concrete client yet.
+
+## Provider Listing
+
+`GET /v1/providers?include=models` embeds each provider's models keyed by
+provider id, so a client rendering a provider list does not need one request
+per provider. Without the parameter the response is unchanged. Unknown
+`include` values are ignored rather than rejected, so a newer client does not
+break against an older daemon.
 
 ## Provider Request Tuning
 

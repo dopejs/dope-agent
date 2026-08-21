@@ -6,6 +6,14 @@
   "required": ["items"],
   "additionalProperties": false,
   "properties": {
+    "models": {
+      "type": "object",
+      "description": "Present only when ?include=models. Keyed by provider id; a provider with no models maps to an empty array.",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "$ref": "provider-model.schema.json" }
+      }
+    },
     "items": {
       "type": "array",
       "items": { "$ref": "./provider-resource.schema.json" }

@@ -1,4 +1,5 @@
 use kura_protocol::ResponseItem;
+use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use serde::Deserialize;
 use serde::Serialize;
@@ -48,4 +49,82 @@ pub trait ModelProvider: Send + Sync {
         &'a self,
         prompt: &'a Prompt,
     ) -> BoxStream<'a, Result<ResponseEvent, ProviderError>>;
+}
+
+// ---------------------------------------------------------------------------
+// Visual generation
+// ---------------------------------------------------------------------------
+
+/// A generated modality. Text is served by [`ModelProvider`]; these are the
+/// modalities whose call shape does not fit a token stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GenerationModality {
+    Image,
+    Video,
+}
+
+/// One generation request.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GenerationRequest {
+    pub model: String,
+    pub prompt: String,
+    /// Provider-specific knobs (size, duration, seed, ...). Deliberately
+    /// opaque: modelling every provider's parameter set here would make the
+    /// trait churn on each new backend, and the runtime has no reason to
+    /// interpret them.
+    #[serde(default)]
+    pub options: serde_json::Value,
+}
+
+/// Where a finished asset lives. Providers differ, and the difference is not
+/// hideable: inline bytes cost memory, a URL may expire before the caller
+/// fetches it, so the caller must see which one it got.
+#[derive(Debug, Clone, PartialEq)]
+pub enum GeneratedAsset {
+    Bytes {
+        media_type: String,
+        data: bytes::Bytes,
+    },
+    Url {
+        media_type: String,
+        url: String,
+    },
+}
+
+/// Progress of a generation.
+///
+/// Image providers usually answer immediately; video providers usually queue.
+/// Both shapes are represented so a caller can treat them uniformly: a
+/// synchronous provider simply never returns `Pending`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum GenerationStatus {
+    Pending { job_id: String },
+    Ready(Vec<GeneratedAsset>),
+    Failed(String),
+}
+
+/// Object-safe interface for image and video generation. Futures are boxed per
+/// the workspace conventions, matching [`ModelProvider`].
+pub trait GenerationProvider: Send + Sync {
+    fn modality(&self) -> GenerationModality;
+
+    /// Start a generation. A synchronous provider returns
+    /// [`GenerationStatus::Ready`] directly.
+    fn generate<'a>(
+        &'a self,
+        request: &'a GenerationRequest,
+    ) -> BoxFuture<'a, Result<GenerationStatus, ProviderError>>;
+
+    /// Poll a queued generation. Providers that never return `Pending` inherit
+    /// the default, which reports the job as unknown rather than pretending it
+    /// succeeded.
+    fn poll<'a>(&'a self, job_id: &'a str) -> BoxFuture<'a, Result<GenerationStatus, ProviderError>> {
+        let job_id = job_id.to_string();
+        Box::pin(async move {
+            Err(ProviderError::Malformed(format!(
+                "provider does not queue generations; unknown job {job_id}"
+            )))
+        })
+    }
 }

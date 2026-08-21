@@ -6,5 +6,8 @@
 mod openai;
 mod provider;
 
-pub use openai::OpenAiCompatibleClient;
-pub use provider::{ModelProvider, Prompt, ProviderError, ResponseEvent, ToolSpec};
+pub use openai::{OpenAiCompatibleClient, OpenAiCompatibleImageClient, Sampling};
+pub use provider::{
+    GeneratedAsset, GenerationModality, GenerationProvider, GenerationRequest, GenerationStatus,
+    ModelProvider, Prompt, ProviderError, ResponseEvent, ToolSpec,
+};

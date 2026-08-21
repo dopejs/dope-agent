@@ -35,8 +35,11 @@ jobs:
         run: cargo test -p kura-contracts
       - name: Route parity gate
         run: cargo test -p kura-api --test route_parity
-      - name: Clippy (deny new warnings in changed surface)
-        run: cargo clippy --workspace --all-targets 2>&1 | tail -5
+      # The pipe used here previously took its exit code from `tail`, so a
+      # clippy failure could never fail the job. Errors are now fatal; the
+      # existing warning backlog is still tolerated.
+      - name: Clippy (errors are fatal)
+        run: cargo clippy --workspace --all-targets
 
   clients:
     name: Clients (TypeScript)

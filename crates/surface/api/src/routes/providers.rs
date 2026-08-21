@@ -18,7 +18,7 @@
 //! handler synthesizes the failed record before persisting it.
 
 use axum::body::Bytes;
-use axum::extract::{Extension, Path, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
@@ -54,6 +54,29 @@ pub fn router() -> Router<AppState> {
 #[derive(Debug, Serialize)]
 struct ProviderListResponse {
     items: Vec<providers::Profile>,
+    /// Present only when `?include=models`, keyed by provider id. Kept beside
+    /// `items` rather than inlined so the `Profile` wire shape is unchanged
+    /// for clients that do not ask for models.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    models: Option<std::collections::BTreeMap<String, Vec<providers::Model>>>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ProviderListQuery {
+    /// Comma-separated expansions. Only `models` is recognized; unknown values
+    /// are ignored so a newer client cannot break against an older daemon.
+    #[serde(default)]
+    include: Option<String>,
+}
+
+impl ProviderListQuery {
+    fn includes_models(&self) -> bool {
+        self.include
+            .as_deref()
+            .unwrap_or_default()
+            .split(',')
+            .any(|part| part.trim().eq_ignore_ascii_case("models"))
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -408,9 +431,20 @@ fn check_event_payload(check: &providers::Check) -> serde_json::Map<String, serd
 /// GET /v1/providers (Go handleProviders).
 async fn list_providers(
     State(state): State<AppState>,
+    Query(query): Query<ProviderListQuery>,
 ) -> Result<Json<ProviderListResponse>, ApiError> {
     let manager = manager(&state)?;
-    Ok(Json(ProviderListResponse { items: manager.list_profiles() }))
+    let items = manager.list_profiles();
+    let models = query.includes_models().then(|| {
+        items
+            .iter()
+            .map(|profile| {
+                let models = manager.list_models(&profile.provider_id).unwrap_or_default();
+                (profile.provider_id.clone(), models)
+            })
+            .collect()
+    });
+    Ok(Json(ProviderListResponse { items, models }))
 }
 
 /// GET /v1/providers/{provider_id} (Go handleProviderRoutes profile branch).

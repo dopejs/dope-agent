@@ -4,10 +4,16 @@ use async_stream::try_stream;
 use kura_protocol::ResponseItem;
 use kura_protocol::Role;
 use futures::StreamExt;
+use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use serde_json::Value;
 use serde_json::json;
 
+use crate::provider::GeneratedAsset;
+use crate::provider::GenerationModality;
+use crate::provider::GenerationProvider;
+use crate::provider::GenerationRequest;
+use crate::provider::GenerationStatus;
 use crate::provider::ModelProvider;
 use crate::provider::Prompt;
 use crate::provider::ProviderError;
@@ -279,6 +285,124 @@ fn build_request(model: &str, prompt: &Prompt, sampling: Sampling) -> Value {
     body
 }
 
+// ---------------------------------------------------------------------------
+// Image generation
+// ---------------------------------------------------------------------------
+
+/// Image generation over the OpenAI-compatible `/images/generations` endpoint.
+///
+/// Separate from [`OpenAiCompatibleClient`] because the two speak different
+/// endpoints and response shapes; sharing one type would mean a client whose
+/// `modality()` depends on which method you call.
+pub struct OpenAiCompatibleImageClient {
+    base_url: String,
+    api_key: Option<String>,
+    headers: BTreeMap<String, String>,
+    http: reqwest::Client,
+}
+
+impl OpenAiCompatibleImageClient {
+    pub fn new(base_url: impl Into<String>, api_key: Option<String>) -> Self {
+        Self {
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+            api_key,
+            headers: BTreeMap::new(),
+            http: reqwest::Client::new(),
+        }
+    }
+
+    /// See [`OpenAiCompatibleClient::with_headers`]; reserved headers are dropped.
+    #[must_use]
+    pub fn with_headers(mut self, headers: BTreeMap<String, String>) -> Self {
+        self.headers = headers
+            .into_iter()
+            .filter(|(name, _)| !RESERVED_HEADERS.contains(&name.trim().to_lowercase().as_str()))
+            .collect();
+        self
+    }
+}
+
+/// Build the `/images/generations` body. Caller options are merged first so a
+/// provider-specific knob (size, quality, seed) can be passed through, but
+/// `model` and `prompt` always win: they are the request's identity.
+fn build_image_request(request: &GenerationRequest) -> Value {
+    let mut body = match &request.options {
+        Value::Object(map) => Value::Object(map.clone()),
+        _ => json!({}),
+    };
+    body["model"] = json!(request.model);
+    body["prompt"] = json!(request.prompt);
+    body
+}
+
+/// Map one `data` entry to an asset. Providers return either inline base64 or
+/// a URL, and which one arrived matters to the caller, so it is preserved
+/// rather than normalized.
+fn parse_image_entry(entry: &Value) -> Option<GeneratedAsset> {
+    if let Some(b64) = entry.get("b64_json").and_then(Value::as_str) {
+        return Some(GeneratedAsset::Bytes {
+            media_type: "image/png".to_string(),
+            data: bytes::Bytes::from(b64.to_string()),
+        });
+    }
+    entry
+        .get("url")
+        .and_then(Value::as_str)
+        .map(|url| GeneratedAsset::Url {
+            media_type: "image/png".to_string(),
+            url: url.to_string(),
+        })
+}
+
+impl GenerationProvider for OpenAiCompatibleImageClient {
+    fn modality(&self) -> GenerationModality {
+        GenerationModality::Image
+    }
+
+    fn generate<'a>(
+        &'a self,
+        request: &'a GenerationRequest,
+    ) -> BoxFuture<'a, Result<GenerationStatus, ProviderError>> {
+        Box::pin(async move {
+            let body = build_image_request(request);
+            let mut http = self
+                .http
+                .post(format!("{}/images/generations", self.base_url))
+                .json(&body);
+            for (name, value) in &self.headers {
+                http = http.header(name, value);
+            }
+            if let Some(key) = &self.api_key {
+                http = http.bearer_auth(key);
+            }
+            let response = http.send().await?;
+            let status = response.status();
+            let payload = response.text().await.unwrap_or_default();
+            if !status.is_success() {
+                return Err(ProviderError::Status {
+                    status: status.as_u16(),
+                    body: payload,
+                });
+            }
+            let parsed: Value = serde_json::from_str(&payload)
+                .map_err(|err| ProviderError::Malformed(format!("invalid image json: {err}")))?;
+            let entries = parsed
+                .get("data")
+                .and_then(Value::as_array)
+                .ok_or_else(|| ProviderError::Malformed("image response has no data array".into()))?;
+            let assets: Vec<GeneratedAsset> = entries.iter().filter_map(parse_image_entry).collect();
+            if assets.is_empty() {
+                // A success status with nothing usable is a provider bug; do
+                // not report it as a completed generation.
+                return Err(ProviderError::Malformed(
+                    "image response contained no usable asset".into(),
+                ));
+            }
+            Ok(GenerationStatus::Ready(assets))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -304,6 +428,59 @@ mod tests {
         );
         assert_eq!(tuned["temperature"], json!(0.0));
         assert_eq!(tuned["top_p"], json!(0.95));
+    }
+
+    #[test]
+    fn image_request_merges_options_but_identity_wins() {
+        let request = GenerationRequest {
+            model: "sd3-medium".into(),
+            prompt: "a forge guardian".into(),
+            // A caller passing `model` in options must not be able to redirect
+            // the request to a different model.
+            options: json!({"size": "1024x1024", "model": "smuggled"}),
+        };
+        let body = build_image_request(&request);
+        assert_eq!(body["model"], json!("sd3-medium"));
+        assert_eq!(body["prompt"], json!("a forge guardian"));
+        assert_eq!(body["size"], json!("1024x1024"));
+    }
+
+    #[test]
+    fn image_request_tolerates_non_object_options() {
+        let request = GenerationRequest {
+            model: "m".into(),
+            prompt: "p".into(),
+            options: json!("not-an-object"),
+        };
+        let body = build_image_request(&request);
+        assert_eq!(body["model"], json!("m"));
+    }
+
+    #[test]
+    fn image_entries_preserve_how_the_asset_arrived() {
+        // Inline bytes and an expiring URL have different handling costs, so
+        // the distinction is kept rather than normalized away.
+        let inline = parse_image_entry(&json!({"b64_json": "AAAA"})).expect("inline asset");
+        assert!(matches!(inline, GeneratedAsset::Bytes { .. }));
+
+        let remote = parse_image_entry(&json!({"url": "https://cdn/img.png"})).expect("url asset");
+        assert!(matches!(remote, GeneratedAsset::Url { .. }));
+
+        assert!(parse_image_entry(&json!({"unexpected": 1})).is_none());
+    }
+
+    #[test]
+    fn image_client_reports_its_modality() {
+        let client = OpenAiCompatibleImageClient::new("http://h/v1", None);
+        assert_eq!(client.modality(), GenerationModality::Image);
+    }
+
+    #[test]
+    fn a_synchronous_provider_reports_unknown_jobs_rather_than_success() {
+        // The default `poll` must not imply a generation finished.
+        let client = OpenAiCompatibleImageClient::new("http://h/v1", None);
+        let result = futures::executor::block_on(client.poll("job_1"));
+        assert!(matches!(result, Err(ProviderError::Malformed(_))));
     }
 
     #[test]
