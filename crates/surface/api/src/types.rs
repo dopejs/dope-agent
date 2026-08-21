@@ -73,13 +73,16 @@ pub fn build_system_info_response(cfg: &config::Config) -> SystemInfoResponse {
     }
 }
 
-/// Go `effectiveEnvironment`: prod/test map to their literal strings; anything
-/// else falls back to the test environment.
+/// The deployment shape this daemon reports for itself. Unlike
+/// `environment_scope`, which is a data-isolation label constrained to
+/// `test|prod`, this names how the daemon is deployed — including `embedded`,
+/// where a host application owns the process and supplies its data directory.
 #[must_use]
 pub fn effective_environment(cfg: &config::Config) -> String {
     match cfg.environment {
         config::Environment::Prod => "prod".to_string(),
         config::Environment::Test => "test".to_string(),
+        config::Environment::Embedded => "embedded".to_string(),
     }
 }
 

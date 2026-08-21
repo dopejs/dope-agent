@@ -205,6 +205,58 @@ fn managed_provider_home_dir_uses_isolated_test_root() {
 }
 
 #[test]
+fn managed_provider_home_dir_isolates_embedded_like_test() {
+    // A host runs one embedded daemon per workspace, so managed CLI
+    // credentials must stay inside the data dir rather than the user's home.
+    let cfg = Config {
+        environment: Environment::Embedded,
+        data_dir: "/tmp/dope-embedded".to_string(),
+        bind_addr: String::new(),
+        log_level: String::new(),
+        version: String::new(),
+        llm: Default::default(),
+        connectors: Default::default(),
+    };
+    let expected = Path::new("/tmp/dope-embedded").join("managed-provider-home");
+    assert_eq!(managed_provider_home_dir(&cfg), expected.to_string_lossy());
+}
+
+#[test]
+fn embedded_environment_is_selected_by_dope_env() {
+    let _guard = ENV_LOCK.lock();
+    let home = TempHome::new();
+    set_base_env(home.path());
+    let data_dir = home.path().join("workspace-data");
+    set_env("KURA_ENV", "embedded");
+    set_env("KURA_DATA_DIR", &data_dir.to_string_lossy());
+
+    let cfg = load().expect("embedded config loads");
+
+    assert_eq!(cfg.environment, Environment::Embedded);
+    // The host supplies the data dir; embedded must not fall back to a shared
+    // prod or test root.
+    assert_eq!(cfg.data_dir, data_dir.to_string_lossy());
+}
+
+#[test]
+fn embedded_defaults_avoid_the_prod_and_test_daemons() {
+    // Defaults only matter for a misconfigured host, but an embedded daemon
+    // must never land on the shared daemons' data dir or port.
+    let _guard = ENV_LOCK.lock();
+    let home = TempHome::new();
+    set_base_env(home.path());
+    set_env("KURA_ENV", "embedded");
+
+    let cfg = load().expect("embedded config loads");
+
+    assert_eq!(cfg.environment, Environment::Embedded);
+    assert_ne!(cfg.bind_addr, "127.0.0.1:19191");
+    assert_ne!(cfg.bind_addr, "127.0.0.1:19192");
+    assert!(!cfg.data_dir.ends_with(".dope"));
+    assert!(!cfg.data_dir.ends_with(".dope-test"));
+}
+
+#[test]
 fn load_environment_overrides_config_file() {
     let _guard = ENV_LOCK.lock();
     let home = TempHome::new();

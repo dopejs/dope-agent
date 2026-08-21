@@ -51,7 +51,10 @@ pub fn environment_scope(req: &Request) -> Option<&str> {
 pub fn environment_scope_from_config(config: &kura_config::Config) -> String {
     match config.environment {
         kura_config::Environment::Prod => "prod".to_string(),
-        kura_config::Environment::Test => "test".to_string(),
+        // Embedded shares the test isolation scope; see `environment_scope`.
+        kura_config::Environment::Test | kura_config::Environment::Embedded => {
+            "test".to_string()
+        }
     }
 }
 

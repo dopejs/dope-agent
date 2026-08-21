@@ -12,7 +12,7 @@
     },
     "environment": {
       "type": "string",
-      "enum": ["prod", "test"]
+      "enum": ["prod", "test", "embedded"]
     },
     "version": {
       "type": "string"

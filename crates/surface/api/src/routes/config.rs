@@ -256,9 +256,12 @@ fn build_config_response(state: &AppState) -> ConfigResponse {
     let matrix = &cfg.connectors.matrix;
 
     ConfigResponse {
+        // Deployment shape, not an isolation scope: an embedded daemon
+        // reports itself honestly rather than claiming to be a test daemon.
         environment: match cfg.environment {
             config::Environment::Prod => "prod".to_string(),
             config::Environment::Test => "test".to_string(),
+            config::Environment::Embedded => "embedded".to_string(),
         },
         bind_addr: cfg.bind_addr.clone(),
         data_dir: cfg.data_dir.clone(),

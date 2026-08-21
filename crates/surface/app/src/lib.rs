@@ -49,6 +49,10 @@ pub fn environment_scope(environment: Environment) -> &'static str {
     match environment {
         Environment::Test => "test",
         Environment::Prod => "prod",
+        // Embedded shares the non-production isolation scope with test, so
+        // every persisted `environmentScope` stays within the test|prod enum
+        // the API schemas declare.
+        Environment::Embedded => "test",
     }
 }
 
@@ -135,6 +139,8 @@ impl App {
     ) -> Result<Self, AppError> {
         let data_dir = cfg.data_dir.clone();
         let env_scope = environment_scope(cfg.environment);
+        // Hosted billing quotas are a multi-tenant production concern; an
+        // embedded daemon is a single local host process, like test.
         let hosted = cfg.environment == Environment::Prod;
 
         // --- kernel: SQLite store (migrations run inside SQLiteStore::new).

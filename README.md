@@ -72,6 +72,35 @@ Production is explicit:
 Never touch prod config or live connectors without explicit intent; live
 connectors are disabled by default in the test environment.
 
+## Embedded Mode
+
+`KURA_ENV=embedded` is for host applications that supervise their own daemon —
+one instance per workspace, with the host owning the process lifecycle:
+
+- `KURA_ENV=embedded`
+- data dir: supplied by the host via `KURA_DATA_DIR`
+- bind addr: supplied by the host via `KURA_BIND_ADDR`
+
+Isolation matches the test environment: managed CLI provider homes live under
+`<data dir>/managed-provider-home` rather than the user's real home, and hosted
+billing quotas are not enforced. The defaults (`~/.kura-embedded`,
+`127.0.0.1:19193`) exist only so a misconfigured host cannot collide with the
+prod or test daemon — a host is expected to set both variables explicitly.
+
+Two things are deliberately *not* different from `test`:
+
+- **`environmentScope`** stays `test`. It is a data-isolation label, not a
+  deployment name, and every API schema constrains it to `test|prod`. Embedded
+  is a non-production scope, so it shares the test scope and the persisted
+  format is unchanged.
+- **Secret scopes** resolve against `SecretEnvironmentScope::Test` for the same
+  reason.
+
+What *is* different is self-reporting: `/v1/config` and the system-info
+response return `environment: "embedded"`, so a host daemon no longer has to
+claim to be a developer test daemon. Prefer this over `KURA_ENV=test` when
+embedding: the test environment carries no stability promise for hosts.
+
 ## Planning Docs
 
 High-signal entry points:

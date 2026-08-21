@@ -20,7 +20,7 @@
   "properties": {
     "environment": {
       "type": "string",
-      "enum": ["prod", "test"]
+      "enum": ["prod", "test", "embedded"]
     },
     "bindAddr": {
       "type": "string"

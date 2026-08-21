@@ -374,6 +374,31 @@ describe("KuraClient", () => {
     expect(detail.runId).toBe("run_1");
   });
 
+  it("accepts an embedded deployment environment from getConfig", async () => {
+    // Deployment shape is distinct from the data-isolation scope: a
+    // host-supervised daemon reports `embedded` while still writing
+    // `test`-scoped data, so ConfigResponse must not be narrowed to
+    // EnvironmentScope.
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        environment: "embedded",
+        bindAddr: "127.0.0.1:54321",
+        dataDir: "/tmp/workspace/.loopforge/agent/data",
+        configFilePath: "/tmp/workspace/.loopforge/agent/data/config.json",
+        logLevel: "info",
+        version: "dev",
+        llm: {},
+        connectors: {},
+      }));
+    const client = createDopeClient({ baseURL: "http://127.0.0.1:19192", fetchImpl });
+
+    const config = await client.getConfig();
+
+    expect(config.environment).toBe("embedded");
+    expect(config.dataDir).toBe("/tmp/workspace/.loopforge/agent/data");
+  });
+
   it("calls Discord hosted setup and config routes", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

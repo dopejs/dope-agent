@@ -1,5 +1,14 @@
 export type EnvironmentScope = "test" | "prod";
 
+/**
+ * How the daemon is deployed, as reported by `/v1/config` and system info.
+ *
+ * Distinct from {@link EnvironmentScope}, which is a data-isolation label: an
+ * embedded daemon (supervised by a host application, one instance per
+ * workspace) reports `embedded` here while still writing `test`-scoped data.
+ */
+export type DeploymentEnvironment = EnvironmentScope | "embedded";
+
 export type ChatQueryInput = {
   provider?: string;
   model?: string;
@@ -1606,7 +1615,7 @@ export type ConfigMatrixConnectorResponse = {
 };
 
 export type ConfigResponse = {
-  environment: EnvironmentScope;
+  environment: DeploymentEnvironment;
   bindAddr: string;
   dataDir: string;
   configFilePath: string;

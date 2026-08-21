@@ -10,6 +10,15 @@ pub enum Environment {
     Prod,
     /// Test environment: `~/.kura-test`, bind `127.0.0.1:19192`.
     Test,
+    /// Embedded environment: the daemon is supervised by a host application
+    /// that owns the process lifecycle and supplies `KURA_DATA_DIR` and
+    /// `KURA_BIND_ADDR` explicitly, typically one instance per host workspace.
+    ///
+    /// Isolation matches [`Environment::Test`] — managed provider homes stay
+    /// inside the data directory and hosted billing quotas are not enforced —
+    /// but it is a supported deployment shape with its own scope rather than a
+    /// developer convenience, so hosts no longer have to claim to be `test`.
+    Embedded,
 }
 
 /// Root daemon configuration.
@@ -282,6 +291,9 @@ pub(crate) fn default_data_dir(env: Environment) -> &'static str {
     match env {
         Environment::Test => "~/.kura-test",
         Environment::Prod => "~/.kura",
+        // A host is expected to set KURA_DATA_DIR; this default only keeps an
+        // unconfigured embedded daemon away from the prod and test roots.
+        Environment::Embedded => "~/.kura-embedded",
     }
 }
 
@@ -290,6 +302,9 @@ pub(crate) fn default_bind_addr(env: Environment) -> &'static str {
     match env {
         Environment::Test => "127.0.0.1:19192",
         Environment::Prod => "127.0.0.1:19191",
+        // Hosts allocate a free port and pass KURA_BIND_ADDR; this default only
+        // avoids colliding with a prod or test daemon on the same machine.
+        Environment::Embedded => "127.0.0.1:19193",
     }
 }
 
@@ -301,6 +316,7 @@ pub(crate) fn normalize_environment(raw: &str) -> Option<Environment> {
     match raw.trim().to_lowercase().as_str() {
         "prod" | "production" => Some(Environment::Prod),
         "test" | "testing" | "dev" | "development" => Some(Environment::Test),
+        "embedded" | "embed" | "host" | "hosted" => Some(Environment::Embedded),
         _ => None,
     }
 }

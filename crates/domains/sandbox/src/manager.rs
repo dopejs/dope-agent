@@ -2629,6 +2629,8 @@ fn environment_str(environment: kura_config::Environment) -> &'static str {
     match environment {
         kura_config::Environment::Prod => "prod",
         kura_config::Environment::Test => "test",
+        // Embedded shares the non-production isolation scope with test.
+        kura_config::Environment::Embedded => "test",
     }
 }
 

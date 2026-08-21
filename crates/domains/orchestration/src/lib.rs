@@ -853,6 +853,8 @@ fn environment_scope(env: kura_config::Environment) -> String {
     match env {
         kura_config::Environment::Prod => "prod".to_string(),
         kura_config::Environment::Test => "test".to_string(),
+        // Embedded shares the non-production isolation scope with test.
+        kura_config::Environment::Embedded => "test".to_string(),
     }
 }
 

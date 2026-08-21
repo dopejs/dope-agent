@@ -62,11 +62,15 @@ pub fn resolve_dir(path: &str) -> Result<String, ConfigError> {
 }
 
 /// Home directory exposed to managed CLI providers (Go
-/// `ManagedProviderHomeDir`): an isolated root under the test data dir, or
-/// the real user home otherwise. Returns an empty string when the home
-/// directory cannot be determined.
+/// `ManagedProviderHomeDir`): an isolated root under the data dir for the
+/// isolated environments, or the real user home in production. Returns an
+/// empty string when the home directory cannot be determined.
+///
+/// Embedded shares the test isolation: a host runs one daemon per workspace,
+/// so managed CLI credentials must not leak into the user's real home.
 pub fn managed_provider_home_dir(cfg: &Config) -> String {
-    if cfg.environment == Environment::Test && !cfg.data_dir.trim().is_empty() {
+    let isolated = matches!(cfg.environment, Environment::Test | Environment::Embedded);
+    if isolated && !cfg.data_dir.trim().is_empty() {
         return Path::new(cfg.data_dir.trim())
             .join("managed-provider-home")
             .to_string_lossy()

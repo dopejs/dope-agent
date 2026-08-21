@@ -2779,7 +2779,12 @@ impl Manager {
         server: &Server,
     ) -> Result<Vec<kura_sandbox::SecretScopeOutcome>, McpError> {
         let env_scope = match self.inner.cfg.environment {
-            kura_config::Environment::Test => kura_sandbox::SecretEnvironmentScope::Test,
+            // Embedded deliberately shares the test secret scope: it is a
+            // non-production deployment, and splitting the secret labels would
+            // change the persisted scope format for every existing secret.
+            kura_config::Environment::Test | kura_config::Environment::Embedded => {
+                kura_sandbox::SecretEnvironmentScope::Test
+            }
             kura_config::Environment::Prod => kura_sandbox::SecretEnvironmentScope::Prod,
         };
         let mut items = Vec::with_capacity(server.secret_refs.len());
@@ -2822,7 +2827,8 @@ impl Manager {
         env_scope: kura_sandbox::SecretEnvironmentScope,
     ) -> kura_sandbox::SecretResolution {
         match self.inner.cfg.environment {
-            kura_config::Environment::Test => {
+            // See `list_secret_bindings`: embedded resolves against the test scope.
+            kura_config::Environment::Test | kura_config::Environment::Embedded => {
                 if env_scope != kura_sandbox::SecretEnvironmentScope::Test
                     && env_scope != kura_sandbox::SecretEnvironmentScope::Both
                 {
