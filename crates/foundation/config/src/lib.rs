@@ -24,6 +24,7 @@ pub use projection::{
 };
 pub use types::{
     Config, ConnectorConfig, DiscordConnectorConfig, Environment, LlmConfig,
-    ManagedCliProviderConfig, MatrixConnectorConfig, OpenAiCompatibleProviderConfig,
-    SlackConnectorConfig, TelegramConnectorConfig,
+    ManagedCliProviderConfig, MatrixConnectorConfig, ModelRole, ModelRoleBinding,
+    ModelRoutingConfig, OpenAiCompatibleProviderConfig, SamplingConfig, SlackConnectorConfig,
+    TelegramConnectorConfig,
 };

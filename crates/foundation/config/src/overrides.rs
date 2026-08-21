@@ -1,6 +1,6 @@
 //! Environment variable overrides and secret-reference resolution.
 
-use crate::types::{Config, resolve_environment};
+use crate::types::{Config, ModelRole, ModelRoleBinding, resolve_environment};
 
 /// Apply `KURA_*` environment variable overrides onto `cfg`
 /// (Go `applyEnvOverrides`). Env vars win over file config and defaults.
@@ -52,6 +52,31 @@ pub(crate) fn apply_env_overrides(cfg: &mut Config) {
         "KURA_LLM_OPENAI_COMPATIBLE_STREAM_MAX_DURATION_MS",
         cfg.llm.openai_compatible.stream_max_duration_ms,
     );
+    cfg.llm.openai_compatible.sampling.temperature = getenv_opt_f64(
+        "KURA_LLM_OPENAI_COMPATIBLE_TEMPERATURE",
+        cfg.llm.openai_compatible.sampling.temperature,
+    );
+    cfg.llm.openai_compatible.sampling.top_p = getenv_opt_f64(
+        "KURA_LLM_OPENAI_COMPATIBLE_TOP_P",
+        cfg.llm.openai_compatible.sampling.top_p,
+    );
+
+    // Roles are overridden as `provider[:model]`, e.g. `KURA_LLM_ROLE_IMAGE=studio:sd3-medium`.
+    for role in ModelRole::ALL {
+        let key = format!("KURA_LLM_ROLE_{}", role.as_str().to_uppercase());
+        let raw = getenv(&key, "");
+        if raw.trim().is_empty() {
+            continue;
+        }
+        cfg.llm.roles.set(role, parse_role_binding(&raw));
+    }
+
+    cfg.llm.claude.cli_path = getenv("KURA_LLM_CLAUDE_CLI_PATH", &cfg.llm.claude.cli_path);
+    cfg.llm.claude.default_model = getenv("KURA_LLM_CLAUDE_MODEL", &cfg.llm.claude.default_model);
+    cfg.llm.claude.work_dir = getenv("KURA_LLM_CLAUDE_WORKDIR", &cfg.llm.claude.work_dir);
+    cfg.llm.codex.cli_path = getenv("KURA_LLM_CODEX_CLI_PATH", &cfg.llm.codex.cli_path);
+    cfg.llm.codex.default_model = getenv("KURA_LLM_CODEX_MODEL", &cfg.llm.codex.default_model);
+    cfg.llm.codex.work_dir = getenv("KURA_LLM_CODEX_WORKDIR", &cfg.llm.codex.work_dir);
     cfg.llm.claude.cli_path = getenv("KURA_LLM_CLAUDE_CLI_PATH", &cfg.llm.claude.cli_path);
     cfg.llm.claude.default_model = getenv("KURA_LLM_CLAUDE_MODEL", &cfg.llm.claude.default_model);
     cfg.llm.claude.work_dir = getenv("KURA_LLM_CLAUDE_WORKDIR", &cfg.llm.claude.work_dir);
@@ -318,4 +343,29 @@ fn getenv_csv(key: &str, fallback: &[String]) -> Vec<String> {
         .filter(|item| !item.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+/// Parse a `provider[:model]` role override. A bare provider leaves the model
+/// empty so the provider's own default applies.
+fn parse_role_binding(raw: &str) -> ModelRoleBinding {
+    match raw.split_once(':') {
+        Some((provider, model)) => ModelRoleBinding {
+            provider: provider.trim().to_string(),
+            model: model.trim().to_string(),
+        },
+        None => ModelRoleBinding {
+            provider: raw.trim().to_string(),
+            model: String::new(),
+        },
+    }
+}
+
+/// Read an optional float override. An unset or blank value keeps `current`;
+/// an unparsable value is ignored rather than silently becoming a default,
+/// matching how `getenv_int` treats malformed input.
+fn getenv_opt_f64(key: &str, current: Option<f64>) -> Option<f64> {
+    match std::env::var(key) {
+        Ok(raw) if !raw.trim().is_empty() => raw.trim().parse::<f64>().ok().or(current),
+        _ => current,
+    }
 }

@@ -374,6 +374,38 @@ describe("KuraClient", () => {
     expect(detail.runId).toBe("run_1");
   });
 
+  it("lists, routes, and clears model roles", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        items: [
+          { role: "primary", providerId: "anthropic", model: "claude-sonnet", routed: true, source: "config" },
+          { role: "image", providerId: "", model: "", routed: false, source: "unrouted" },
+        ],
+      }))
+      .mockResolvedValueOnce(mockJSONResponse(200, {
+        role: "image", providerId: "studio", model: "sd3-medium", routed: true, source: "store",
+      }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = createKuraClient({ baseURL: "http://127.0.0.1:19192", fetchImpl });
+
+    const listed = await client.listModelRoles();
+    // An unrouted role must be reported, not omitted: callers need to see that
+    // the capability is unavailable.
+    expect(listed.items.map((item) => item.role)).toEqual(["primary", "image"]);
+    expect(listed.items[1].routed).toBe(false);
+
+    const routed = await client.setModelRole("image", { providerId: "studio", model: "sd3-medium" });
+    expect(routed.routed).toBe(true);
+    expect(routed.source).toBe("store");
+
+    await client.clearModelRole("image");
+
+    expect(fetchImpl.mock.calls[0][0]).toContain("/v1/model-roles");
+    expect(fetchImpl.mock.calls[1][1]?.method).toBe("PUT");
+    expect(fetchImpl.mock.calls[2][1]?.method).toBe("DELETE");
+  });
+
   it("accepts an embedded deployment environment from getConfig", async () => {
     // Deployment shape is distinct from the data-isolation scope: a
     // host-supervised daemon reports `embedded` while still writing
@@ -391,7 +423,7 @@ describe("KuraClient", () => {
         llm: {},
         connectors: {},
       }));
-    const client = createDopeClient({ baseURL: "http://127.0.0.1:19192", fetchImpl });
+    const client = createKuraClient({ baseURL: "http://127.0.0.1:19192", fetchImpl });
 
     const config = await client.getConfig();
 

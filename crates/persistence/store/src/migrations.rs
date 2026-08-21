@@ -3060,5 +3060,22 @@ pub fn schema_migrations() -> Vec<SchemaMigration> {
                 ON memory_assets(supersedes_asset_id);"#
                 .to_string(),
         ],
+    },
+    SchemaMigration {
+        version: 3,
+        name: "model_role_bindings".to_string(),
+        statements: vec![
+            // One row per role. `provider_id` empty is not stored: unrouting a
+            // role deletes the row so the config default can apply again.
+            r#"CREATE TABLE IF NOT EXISTS model_role_bindings (
+                role TEXT NOT NULL,
+                tenant_id TEXT,
+                provider_id TEXT NOT NULL,
+                model TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (role, tenant_id)
+            );"#
+                .to_string(),
+        ],
     }]
 }

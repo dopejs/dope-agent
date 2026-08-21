@@ -99,6 +99,137 @@ impl Config {
     }
 }
 
+/// Sampling parameters sent with each completion request.
+///
+/// Both fields are optional: `None` omits the key from the request body so a
+/// provider applies its own default. This matters for compatibility — some
+/// OpenAI-compatible gateways reject an explicit `temperature` on reasoning
+/// models — so "unset" and "set to zero" must stay distinguishable.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SamplingConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    #[serde(rename = "topP", skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f64>,
+}
+
+/// A modality a model can be routed to.
+///
+/// Roles are modalities rather than performance tiers: any agent runtime needs
+/// to answer "which model handles text, which handles vision, which generates
+/// images", and that answer belongs to the runtime rather than to each tool
+/// that wants a picture. A tool asks the runtime for the `Image` role instead
+/// of carrying its own provider, key and retry policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelRole {
+    /// Text reasoning and tool use; the default for chat dispatch.
+    Primary,
+    /// Image understanding (screenshots, frames, photographs).
+    Vision,
+    /// Image generation.
+    Image,
+    /// Video generation.
+    Video,
+    /// Vector embeddings for indexing and retrieval.
+    Embed,
+}
+
+impl ModelRole {
+    /// Every role, in declaration order.
+    pub const ALL: [ModelRole; 5] = [
+        ModelRole::Primary,
+        ModelRole::Vision,
+        ModelRole::Image,
+        ModelRole::Video,
+        ModelRole::Embed,
+    ];
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ModelRole::Primary => "primary",
+            ModelRole::Vision => "vision",
+            ModelRole::Image => "image",
+            ModelRole::Video => "video",
+            ModelRole::Embed => "embed",
+        }
+    }
+
+    /// Parse a role name, returning `None` when unrecognized.
+    #[must_use]
+    pub fn parse(raw: &str) -> Option<ModelRole> {
+        match raw.trim().to_lowercase().as_str() {
+            "primary" => Some(ModelRole::Primary),
+            "vision" => Some(ModelRole::Vision),
+            "image" => Some(ModelRole::Image),
+            "video" => Some(ModelRole::Video),
+            "embed" | "embedding" | "embeddings" => Some(ModelRole::Embed),
+            _ => None,
+        }
+    }
+}
+
+/// Which provider and model serve one role. An empty `provider` means the role
+/// is unrouted; callers must treat that as "capability unavailable" rather than
+/// falling back to the default provider, so a missing image model surfaces as
+/// a clear error instead of a text model being asked for a picture.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelRoleBinding {
+    /// Provider id serving this role, or empty when unrouted.
+    pub provider: String,
+    /// Model id requested from that provider, or empty to use its default.
+    pub model: String,
+}
+
+impl ModelRoleBinding {
+    /// A binding is only usable once a provider has been chosen.
+    #[must_use]
+    pub fn is_routed(&self) -> bool {
+        !self.provider.trim().is_empty()
+    }
+}
+
+/// Model routing by modality.
+///
+/// `primary` falls back to [`LlmConfig::default_provider`] and
+/// `default_model` when unset, preserving the behaviour of deployments that
+/// never configure roles. The other roles have no fallback by design.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelRoutingConfig {
+    pub primary: ModelRoleBinding,
+    pub vision: ModelRoleBinding,
+    pub image: ModelRoleBinding,
+    pub video: ModelRoleBinding,
+    pub embed: ModelRoleBinding,
+}
+
+impl ModelRoutingConfig {
+    #[must_use]
+    pub fn get(&self, role: ModelRole) -> &ModelRoleBinding {
+        match role {
+            ModelRole::Primary => &self.primary,
+            ModelRole::Vision => &self.vision,
+            ModelRole::Image => &self.image,
+            ModelRole::Video => &self.video,
+            ModelRole::Embed => &self.embed,
+        }
+    }
+
+    pub fn set(&mut self, role: ModelRole, binding: ModelRoleBinding) {
+        match role {
+            ModelRole::Primary => self.primary = binding,
+            ModelRole::Vision => self.vision = binding,
+            ModelRole::Image => self.image = binding,
+            ModelRole::Video => self.video = binding,
+            ModelRole::Embed => self.embed = binding,
+        }
+    }
+}
+
 /// LLM provider selection and per-provider settings.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -117,6 +248,9 @@ pub struct LlmConfig {
     pub claude: ManagedCliProviderConfig,
     /// Managed Codex CLI provider settings.
     pub codex: ManagedCliProviderConfig,
+    /// Model routing by modality. Defaults to unrouted for every role.
+    #[serde(default)]
+    pub roles: ModelRoutingConfig,
 }
 
 /// Settings for an OpenAI-compatible HTTP provider.
@@ -140,6 +274,16 @@ pub struct OpenAiCompatibleProviderConfig {
     pub stream_idle_timeout_ms: i64,
     /// Maximum total stream duration in milliseconds.
     pub stream_max_duration_ms: i64,
+    /// Extra HTTP headers sent with every request to this provider.
+    ///
+    /// Required by corporate gateways that route on a header. `Authorization`
+    /// is reserved for the API key and is ignored here, so a header map cannot
+    /// silently replace the configured credential.
+    #[serde(default)]
+    pub headers: std::collections::BTreeMap<String, String>,
+    /// Sampling parameters for this provider.
+    #[serde(default)]
+    pub sampling: SamplingConfig,
 }
 
 /// Settings for a managed CLI-backed provider (Claude, Codex).

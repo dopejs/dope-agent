@@ -143,6 +143,26 @@ pub struct Preference {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Re-exported so consumers of this domain (notably the store) can name roles
+/// without taking a direct dependency on the config crate.
+pub use kura_config::ModelRole;
+
+/// A persisted model-role assignment.
+///
+/// Roles are modalities (see [`kura_config::ModelRole`]). Storing the
+/// assignment here rather than inside each tool keeps credentials, retries and
+/// usage accounting in one place: a tool asks the runtime for a role instead
+/// of carrying its own provider configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleBinding {
+    pub role: kura_config::ModelRole,
+    pub provider_id: String,
+    /// Empty means "use the provider's default model".
+    pub model: String,
+    pub updated_at: DateTime<Utc>,
+}
+
 /// Capability flags aggregated across a provider's models.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use async_stream::try_stream;
 use kura_protocol::ResponseItem;
 use kura_protocol::Role;
@@ -18,8 +20,25 @@ pub struct OpenAiCompatibleClient {
     base_url: String,
     model: String,
     api_key: Option<String>,
+    /// Extra headers sent with every request; see [`Self::with_headers`].
+    headers: BTreeMap<String, String>,
+    /// Sampling parameters; `None` fields are omitted from the body.
+    sampling: Sampling,
     http: reqwest::Client,
 }
+
+/// Sampling parameters forwarded to the provider. Kept as a local type so this
+/// crate does not depend on the config crate.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Sampling {
+    pub temperature: Option<f64>,
+    pub top_p: Option<f64>,
+}
+
+/// Headers a caller may not override: the API key is supplied separately, so
+/// letting a header map replace it would silently bypass the configured
+/// credential and any redaction applied to it.
+const RESERVED_HEADERS: [&str; 1] = ["authorization"];
 
 impl OpenAiCompatibleClient {
     pub fn new(
@@ -31,8 +50,27 @@ impl OpenAiCompatibleClient {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             model: model.into(),
             api_key,
+            headers: BTreeMap::new(),
+            sampling: Sampling::default(),
             http: reqwest::Client::new(),
         }
+    }
+
+    /// Attach gateway headers. Reserved headers are dropped rather than
+    /// applied, so a misconfigured map cannot replace the credential.
+    #[must_use]
+    pub fn with_headers(mut self, headers: BTreeMap<String, String>) -> Self {
+        self.headers = headers
+            .into_iter()
+            .filter(|(name, _)| !RESERVED_HEADERS.contains(&name.trim().to_lowercase().as_str()))
+            .collect();
+        self
+    }
+
+    #[must_use]
+    pub fn with_sampling(mut self, sampling: Sampling) -> Self {
+        self.sampling = sampling;
+        self
     }
 }
 
@@ -50,11 +88,14 @@ impl ModelProvider for OpenAiCompatibleClient {
         &'a self,
         prompt: &'a Prompt,
     ) -> BoxStream<'a, Result<ResponseEvent, ProviderError>> {
-        let body = build_request(&self.model, prompt);
-        let request = self
+        let body = build_request(&self.model, prompt, self.sampling);
+        let mut request = self
             .http
             .post(format!("{}/chat/completions", self.base_url))
             .json(&body);
+        for (name, value) in &self.headers {
+            request = request.header(name, value);
+        }
         let request = match &self.api_key {
             Some(key) => request.bearer_auth(key),
             None => request,
@@ -165,7 +206,7 @@ fn accumulate_chunk(
 
 /// Build the `/chat/completions` request body, mapping conversation history
 /// into OpenAI message shapes.
-fn build_request(model: &str, prompt: &Prompt) -> Value {
+fn build_request(model: &str, prompt: &Prompt, sampling: Sampling) -> Value {
     let mut messages = Vec::new();
     if let Some(instructions) = &prompt.instructions {
         messages.push(json!({"role": "system", "content": instructions}));
@@ -227,11 +268,57 @@ fn build_request(model: &str, prompt: &Prompt) -> Value {
             .collect();
         body["tools"] = Value::Array(tools);
     }
+    // Omitted when unset: some gateways reject an explicit temperature on
+    // reasoning models, so "unset" must not become an explicit default.
+    if let Some(temperature) = sampling.temperature {
+        body["temperature"] = json!(temperature);
+    }
+    if let Some(top_p) = sampling.top_p {
+        body["top_p"] = json!(top_p);
+    }
     body
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sampling_is_omitted_when_unset_and_sent_when_set() {
+        let prompt = Prompt {
+            instructions: None,
+            input: vec![],
+            tools: vec![],
+        };
+
+        let bare = build_request("m", &prompt, Sampling::default());
+        assert!(bare.get("temperature").is_none());
+        assert!(bare.get("top_p").is_none());
+
+        // Zero must survive: it is a meaningful value, not "unset".
+        let tuned = build_request(
+            "m",
+            &prompt,
+            Sampling {
+                temperature: Some(0.0),
+                top_p: Some(0.95),
+            },
+        );
+        assert_eq!(tuned["temperature"], json!(0.0));
+        assert_eq!(tuned["top_p"], json!(0.95));
+    }
+
+    #[test]
+    fn reserved_headers_cannot_replace_the_credential() {
+        let client = OpenAiCompatibleClient::new("http://h/v1", "m", Some("key".into()))
+            .with_headers(BTreeMap::from([
+                ("X-Studio-Team".to_string(), "engine".to_string()),
+                ("Authorization".to_string(), "Bearer attacker".to_string()),
+                ("authorization".to_string(), "Bearer attacker".to_string()),
+            ]));
+
+        assert_eq!(client.headers.get("X-Studio-Team").map(String::as_str), Some("engine"));
+        assert!(!client.headers.keys().any(|k| k.eq_ignore_ascii_case("authorization")));
+    }
+
     use super::*;
     use crate::provider::ToolSpec;
 
@@ -260,7 +347,7 @@ mod tests {
                 parameters: json!({"type": "object"}),
             }],
         };
-        let body = build_request("test-model", &prompt);
+        let body = build_request("test-model", &prompt, Sampling::default());
         assert_eq!(body["model"], "test-model");
         assert_eq!(body["stream"], true);
         let messages = body["messages"].as_array().unwrap();

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dope.local/schemas/api/model-role-resource.schema.json",
+  "title": "ModelRoleResource",
+  "description": "Which provider and model serve one modality. Roles are modalities rather than performance tiers, so a tool that needs an image asks the runtime for the image role instead of carrying its own provider configuration.",
+  "type": "object",
+  "required": ["role", "providerId", "model", "routed", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": ["primary", "vision", "image", "video", "embed"]
+    },
+    "providerId": { "type": "string" },
+    "model": {
+      "type": "string",
+      "description": "Empty means the provider's own default model applies."
+    },
+    "routed": {
+      "type": "boolean",
+      "description": "False when no provider serves the role. Callers must treat this as capability unavailable rather than falling back to the default provider."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["store", "config", "unrouted"],
+      "description": "Where the binding came from: a stored assignment, daemon config, or nothing."
+    }
+  }
+}

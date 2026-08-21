@@ -29,7 +29,14 @@ fn migrations_are_ordered_and_start_at_baseline() {
     for pair in migrations.windows(2) {
         assert!(pair[0].version < pair[1].version);
     }
-    assert!(CURRENT_SCHEMA_VERSION >= 1);
+    // The head constant must track the migration list. If it lags, a database
+    // this build writes is rejected on reopen as "newer than supported"; if it
+    // leads, an unmigrated database is accepted silently.
+    assert_eq!(
+        CURRENT_SCHEMA_VERSION,
+        migrations.last().unwrap().version,
+        "CURRENT_SCHEMA_VERSION must equal the highest migration version"
+    );
 }
 
 fn store_conn_query(db_path: &str, query: &str) -> i64 {

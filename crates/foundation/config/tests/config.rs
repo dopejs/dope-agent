@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use kura_config::{
-    Config, DiscordConnectorConfig, Environment, load, managed_provider_home_dir,
+    Config, DiscordConnectorConfig, Environment, ModelRole, load, managed_provider_home_dir,
 };
 use parking_lot::Mutex;
 
@@ -83,6 +83,13 @@ const KURA_ENV_KEYS: &[&str] = &[
     "KURA_CONNECTORS_MATRIX_SELECTED_ROOM_IDS",
     "KURA_CONNECTORS_MATRIX_ALLOWED_DIRECT_USER_IDS",
     "KURA_CONNECTORS_MATRIX_CONFIGURED_COMMANDS",
+    "KURA_LLM_OPENAI_COMPATIBLE_TEMPERATURE",
+    "KURA_LLM_OPENAI_COMPATIBLE_TOP_P",
+    "KURA_LLM_ROLE_PRIMARY",
+    "KURA_LLM_ROLE_VISION",
+    "KURA_LLM_ROLE_IMAGE",
+    "KURA_LLM_ROLE_VIDEO",
+    "KURA_LLM_ROLE_EMBED",
     "OPENAI_TEST_KEY",
     "DISCORD_TEST_TOKEN",
     "TELEGRAM_TEST_TOKEN",
@@ -254,6 +261,79 @@ fn embedded_defaults_avoid_the_prod_and_test_daemons() {
     assert_ne!(cfg.bind_addr, "127.0.0.1:19192");
     assert!(!cfg.data_dir.ends_with(".dope"));
     assert!(!cfg.data_dir.ends_with(".dope-test"));
+}
+
+#[test]
+fn model_roles_default_to_unrouted() {
+    let _guard = ENV_LOCK.lock();
+    let home = TempHome::new();
+    set_base_env(home.path());
+
+    let cfg = load().expect("config loads");
+
+    // Only primary has a fallback (default_provider); the rest must stay
+    // unrouted so a missing image model is visible instead of silently
+    // resolving to a text model.
+    for role in [
+        ModelRole::Vision,
+        ModelRole::Image,
+        ModelRole::Video,
+        ModelRole::Embed,
+    ] {
+        assert!(!cfg.llm.roles.get(role).is_routed(), "{role:?} should be unrouted");
+    }
+}
+
+#[test]
+fn model_roles_are_overridden_by_env() {
+    let _guard = ENV_LOCK.lock();
+    let home = TempHome::new();
+    set_base_env(home.path());
+    set_env("KURA_LLM_ROLE_IMAGE", "studio:sd3-medium");
+    // A bare provider leaves the model empty so the provider default applies.
+    set_env("KURA_LLM_ROLE_EMBED", "ollama");
+
+    let cfg = load().expect("config loads");
+
+    let image = cfg.llm.roles.get(ModelRole::Image);
+    assert_eq!(image.provider, "studio");
+    assert_eq!(image.model, "sd3-medium");
+    assert!(image.is_routed());
+
+    let embed = cfg.llm.roles.get(ModelRole::Embed);
+    assert_eq!(embed.provider, "ollama");
+    assert_eq!(embed.model, "");
+    assert!(embed.is_routed());
+
+    set_env("KURA_LLM_ROLE_IMAGE", "");
+    set_env("KURA_LLM_ROLE_EMBED", "");
+}
+
+#[test]
+fn model_role_parsing_rejects_unknown_names() {
+    assert_eq!(ModelRole::parse("image"), Some(ModelRole::Image));
+    assert_eq!(ModelRole::parse("  VIDEO "), Some(ModelRole::Video));
+    assert_eq!(ModelRole::parse("embeddings"), Some(ModelRole::Embed));
+    assert_eq!(ModelRole::parse("fast"), None);
+    assert_eq!(ModelRole::parse(""), None);
+}
+
+#[test]
+fn sampling_is_unset_by_default_and_readable_from_env() {
+    let _guard = ENV_LOCK.lock();
+    let home = TempHome::new();
+    set_base_env(home.path());
+
+    let bare = load().expect("config loads");
+    // Unset must stay distinguishable from zero: some gateways reject an
+    // explicit temperature on reasoning models.
+    assert_eq!(bare.llm.openai_compatible.sampling.temperature, None);
+    assert_eq!(bare.llm.openai_compatible.sampling.top_p, None);
+
+    set_env("KURA_LLM_OPENAI_COMPATIBLE_TEMPERATURE", "0");
+    let tuned = load().expect("config loads");
+    assert_eq!(tuned.llm.openai_compatible.sampling.temperature, Some(0.0));
+    set_env("KURA_LLM_OPENAI_COMPATIBLE_TEMPERATURE", "");
 }
 
 #[test]

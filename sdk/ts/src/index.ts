@@ -9,6 +9,33 @@ export type EnvironmentScope = "test" | "prod";
  */
 export type DeploymentEnvironment = EnvironmentScope | "embedded";
 
+/**
+ * A modality a model can be routed to.
+ *
+ * Roles are modalities rather than performance tiers: a tool that needs an
+ * image asks the runtime for the `image` role instead of carrying its own
+ * provider, key and retry policy.
+ */
+export type ModelRole = "primary" | "vision" | "image" | "video" | "embed";
+
+export type ModelRoleResource = {
+  role: ModelRole;
+  providerId: string;
+  /** Empty means the provider's own default model applies. */
+  model: string;
+  /**
+   * False when no provider serves the role. Treat this as "capability
+   * unavailable" rather than falling back to the default provider.
+   */
+  routed: boolean;
+  /** Where the binding came from. */
+  source: "store" | "config" | "unrouted";
+};
+
+export type ModelRoleListResponse = {
+  items: ModelRoleResource[];
+};
+
 export type ChatQueryInput = {
   provider?: string;
   model?: string;
@@ -3380,6 +3407,21 @@ export class KuraClient {
 
   async getConfig(tenantOptions?: TenantRequestOptions): Promise<ConfigResponse> {
     return this.requestJSON<ConfigResponse>("/v1/config", { tenant: tenantOptions });
+  }
+
+  /** Every model role, including unrouted ones. */
+  async listModelRoles(tenantOptions?: TenantRequestOptions): Promise<ModelRoleListResponse> {
+    return this.requestJSON<ModelRoleListResponse>("/v1/model-roles", { tenant: tenantOptions });
+  }
+
+  /** Route a role to a provider. Omit `model` to use the provider's default. */
+  async setModelRole(role: ModelRole, input: { providerId: string; model?: string }, tenantOptions?: TenantRequestOptions): Promise<ModelRoleResource> {
+    return this.requestJSON<ModelRoleResource>(`/v1/model-roles/${encodePathComponent(role)}`, { method: "PUT", body: input, tenant: tenantOptions });
+  }
+
+  /** Unroute a role so the configured default applies again. */
+  async clearModelRole(role: ModelRole, tenantOptions?: TenantRequestOptions): Promise<void> {
+    await this.requestJSON<void>(`/v1/model-roles/${encodePathComponent(role)}`, { method: "DELETE", tenant: tenantOptions });
   }
 
   async listChannelConnectors(query: { limit?: number; cursor?: string; state?: string; kind?: string } = {}, tenantOptions?: TenantRequestOptions): Promise<ChannelConnectorListResponse> {

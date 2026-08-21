@@ -21,7 +21,7 @@ use axum::body::Bytes;
 use axum::extract::{Extension, Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -47,6 +47,8 @@ pub fn router() -> Router<AppState> {
         .route("/v1/providers/{provider_id}/default-model", post(set_default_model))
         .route("/v1/providers/{provider_id}/checks", get(list_checks).post(run_check))
         .route("/v1/providers/{provider_id}/checks/{check_id}", get(get_check))
+        .route("/v1/model-roles", get(list_model_roles))
+        .route("/v1/model-roles/{role}", put(set_model_role).delete(clear_model_role))
 }
 
 #[derive(Debug, Serialize)]
@@ -81,6 +83,160 @@ struct ProviderCheckListResponse {
 #[serde(rename_all = "camelCase", default)]
 struct ProviderDefaultModelRequest {
     model: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelRoleResource {
+    role: String,
+    provider_id: String,
+    model: String,
+    /// False when no provider serves the role. Callers must treat an unrouted
+    /// role as "capability unavailable" rather than falling back to the
+    /// default provider, so a missing image model is visible instead of a text
+    /// model being asked for a picture.
+    routed: bool,
+    /// Where the binding came from: a stored assignment or daemon config.
+    source: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct ModelRoleListResponse {
+    items: Vec<ModelRoleResource>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelRoleRequest {
+    provider_id: String,
+    #[serde(default)]
+    model: String,
+}
+
+fn parse_role(raw: &str) -> Result<kura_config::ModelRole, ApiError> {
+    kura_config::ModelRole::parse(raw)
+        .ok_or_else(|| ApiError::BadRequest(format!("unknown model role: {raw}")))
+}
+
+/// Resolve every role: a stored binding wins, otherwise daemon config, and
+/// `primary` finally falls back to the default provider so deployments that
+/// never configured roles keep working.
+fn resolve_roles(state: &AppState) -> Result<Vec<ModelRoleResource>, ApiError> {
+    let stored = state
+        .store
+        .lock()
+        .list_model_role_bindings()
+        .map_err(ApiError::from_store)?;
+    let llm = &state.config.llm;
+    let mut items = Vec::with_capacity(kura_config::ModelRole::ALL.len());
+    for role in kura_config::ModelRole::ALL {
+        if let Some(binding) = stored.iter().find(|candidate| candidate.role == role) {
+            items.push(ModelRoleResource {
+                role: role.as_str().to_string(),
+                provider_id: binding.provider_id.clone(),
+                model: binding.model.clone(),
+                routed: !binding.provider_id.trim().is_empty(),
+                source: "store",
+            });
+            continue;
+        }
+        let configured = llm.roles.get(role);
+        let (provider_id, model) = if configured.is_routed() {
+            (configured.provider.clone(), configured.model.clone())
+        } else if role == kura_config::ModelRole::Primary {
+            (llm.default_provider.clone(), llm.default_model.clone())
+        } else {
+            (String::new(), String::new())
+        };
+        let routed = !provider_id.trim().is_empty();
+        items.push(ModelRoleResource {
+            role: role.as_str().to_string(),
+            provider_id,
+            model,
+            routed,
+            source: if routed { "config" } else { "unrouted" },
+        });
+    }
+    Ok(items)
+}
+
+async fn list_model_roles(
+    State(state): State<AppState>,
+) -> Result<Json<ModelRoleListResponse>, ApiError> {
+    Ok(Json(ModelRoleListResponse { items: resolve_roles(&state)? }))
+}
+
+async fn set_model_role(
+    State(state): State<AppState>,
+    Path(role): Path<String>,
+    body: Bytes,
+) -> Result<Json<ModelRoleResource>, ApiError> {
+    let role = parse_role(&role)?;
+    let request: ModelRoleRequest = decode_json_required(&body)?;
+    let provider_id = request.provider_id.trim().to_string();
+    if provider_id.is_empty() {
+        return Err(ApiError::BadRequest(
+            "providerId is required; use DELETE to unroute a role".to_string(),
+        ));
+    }
+    // Routing to a provider that does not exist would fail only at dispatch
+    // time, far from the change that caused it.
+    let manager = manager(&state)?;
+    if manager.get_profile(&provider_id).is_none() {
+        return Err(ApiError::NotFound(format!("unknown provider: {provider_id}")));
+    }
+    let binding = providers::RoleBinding {
+        role,
+        provider_id,
+        model: request.model.trim().to_string(),
+        updated_at: Utc::now(),
+    };
+    state
+        .store
+        .lock()
+        .upsert_model_role_binding(&binding)
+        .map_err(ApiError::from_store)?;
+
+    let mut payload = serde_json::Map::new();
+    payload.insert("role".to_string(), serde_json::json!(role.as_str()));
+    payload.insert("providerId".to_string(), serde_json::json!(binding.provider_id));
+    payload.insert("model".to_string(), serde_json::json!(binding.model));
+    publish_provider_event(
+        &state,
+        "provider.model_role_changed",
+        "model_role",
+        role.as_str(),
+        payload,
+    )?;
+    Ok(Json(ModelRoleResource {
+        role: role.as_str().to_string(),
+        provider_id: binding.provider_id,
+        model: binding.model,
+        routed: true,
+        source: "store",
+    }))
+}
+
+async fn clear_model_role(
+    State(state): State<AppState>,
+    Path(role): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let role = parse_role(&role)?;
+    state
+        .store
+        .lock()
+        .delete_model_role_binding(role)
+        .map_err(ApiError::from_store)?;
+    let mut payload = serde_json::Map::new();
+    payload.insert("role".to_string(), serde_json::json!(role.as_str()));
+    publish_provider_event(
+        &state,
+        "provider.model_role_cleared",
+        "model_role",
+        role.as_str(),
+        payload,
+    )?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn manager(state: &AppState) -> Result<&providers::Manager, ApiError> {

@@ -53,6 +53,51 @@ For local debugging, use the project skill at `.agents/skills/kura-test-env/SKIL
 `make daemon-run-test` is the safe default and keeps Discord disabled unless you
 opt in with `make daemon-run-test-live` or `KURA_CONNECTORS_DISCORD_ENABLED=true`.
 
+## Model Roles
+
+Models are routed by **modality**, not by performance tier:
+
+| Role | Modality |
+|------|----------|
+| `primary` | Text reasoning and tool use |
+| `vision` | Image understanding |
+| `image` | Image generation |
+| `video` | Video generation |
+| `embed` | Vector embeddings |
+
+```
+GET    /v1/model-roles          # every role, including unrouted ones
+PUT    /v1/model-roles/{role}   # {"providerId": "...", "model": "..."}
+DELETE /v1/model-roles/{role}   # unroute, so the configured default applies
+```
+
+Routing lives in the runtime rather than inside each tool. A tool that needs a
+picture asks for the `image` role instead of carrying its own provider, API key
+and retry policy, so credentials, usage accounting and provider swaps stay in
+one place.
+
+Resolution order per role: a stored assignment (`PUT`), then daemon config
+(`llm.roles` or `KURA_LLM_ROLE_<ROLE>=provider[:model]`), and finally — for
+`primary` only — `llm.defaultProvider`/`defaultModel`. Every other role stays
+**unrouted** when unconfigured, and `routed: false` means *capability
+unavailable*: callers must not fall back to the default provider, or a text
+model ends up being asked for a picture.
+
+Assigning a role only records which provider serves it. Executing image and
+video generation needs a provider interface beyond the current streaming
+`ModelProvider` trait and is not implemented yet.
+
+## Provider Request Tuning
+
+`llm.openaiCompatible` accepts two additions:
+
+- `headers` — extra HTTP headers for every request to that provider, for
+  gateways that route on one. `Authorization` is reserved for the API key and
+  is dropped from this map, so a header cannot silently replace the credential.
+- `sampling.temperature` / `sampling.topP` — omitted from the request body when
+  unset, because some OpenAI-compatible gateways reject an explicit
+  `temperature` on reasoning models. "Unset" and "set to zero" stay distinct.
+
 ## Local Environment Modes
 
 Development defaults to the **test** environment:

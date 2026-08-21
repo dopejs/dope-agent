@@ -383,6 +383,72 @@ impl SQLiteStore {
         Ok(items)
     }
 
+    /// Persist a role assignment. Roles are keyed by name, so this replaces
+    /// any existing binding for that role.
+    pub fn upsert_model_role_binding(
+        &self,
+        binding: &kura_providers::RoleBinding,
+    ) -> Result<(), String> {
+        self.conn
+            .execute(
+                r#"INSERT INTO model_role_bindings (role, tenant_id, provider_id, model, updated_at)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                ON CONFLICT(role, tenant_id) DO UPDATE SET
+                    provider_id = excluded.provider_id,
+                    model = excluded.model,
+                    updated_at = excluded.updated_at"#,
+                params![
+                    binding.role.as_str(),
+                    None::<String>,
+                    binding.provider_id,
+                    binding.model,
+                    now_rfc3339(&binding.updated_at),
+                ],
+            )
+            .map_err(|e| format!("upsert model role binding {}: {e}", binding.role.as_str()))?;
+        Ok(())
+    }
+
+    /// Clear a role assignment so the configured default applies again.
+    /// Deleting an absent row is not an error.
+    pub fn delete_model_role_binding(&self, role: kura_providers::ModelRole) -> Result<(), String> {
+        self.conn
+            .execute(
+                "DELETE FROM model_role_bindings WHERE role = ?1 AND tenant_id IS NULL",
+                params![role.as_str()],
+            )
+            .map_err(|e| format!("delete model role binding {}: {e}", role.as_str()))?;
+        Ok(())
+    }
+
+    pub fn list_model_role_bindings(&self) -> Result<Vec<kura_providers::RoleBinding>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT role, provider_id, model, updated_at FROM model_role_bindings \
+                 WHERE tenant_id IS NULL ORDER BY role ASC",
+            )
+            .map_err(|e| format!("list model role bindings: {e}"))?;
+        let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let raw: String = row.get(0).map_err(|e| e.to_string())?;
+            // A row whose role name is no longer recognized is skipped rather
+            // than failing the read: an older daemon must not be bricked by a
+            // role a newer one wrote.
+            let Some(role) = kura_providers::ModelRole::parse(&raw) else {
+                continue;
+            };
+            items.push(kura_providers::RoleBinding {
+                role,
+                provider_id: row.get(1).map_err(|e| e.to_string())?,
+                model: row.get(2).map_err(|e| e.to_string())?,
+                updated_at: parse_rfc3339(&row.get::<_, String>(3).map_err(|e| e.to_string())?)?,
+            });
+        }
+        Ok(items)
+    }
+
     fn query_provider_models(&self, provider_id: Option<&str>) -> Result<Vec<kura_providers::Model>, String> {
         let sql = if provider_id.is_some() {
             r#"SELECT provider_id, model_id, display_name, description, default_flag,
