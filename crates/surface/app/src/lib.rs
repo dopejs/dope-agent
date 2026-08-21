@@ -195,7 +195,17 @@ impl App {
         let mut state = AppState::new(cfg.clone(), event_bus.clone(), store.clone());
         state.policy = Some(policy_engine);
         state.auth = Some(auth_manager);
-        state.identity = Some(identity_manager);
+        // Tenant resolution is a multi-tenant concern. An embedded daemon is a
+        // single local workspace supervised by one host, and it has no way to
+        // provision principals or tenants: the pairing flow issues a token with
+        // an empty principal, which the resolver correctly refuses. Leaving
+        // identity unset there keeps bearer-token authentication (a caller
+        // still has to pair) while skipping a resolution step that has no
+        // meaning for the deployment. Every handler already takes
+        // `Option<Extension<TenantContext>>`.
+        if cfg.environment != Environment::Embedded {
+            state.identity = Some(identity_manager);
+        }
         state.router = Some(session_router);
         state.runtime = Some(runtime.clone());
         state.secrets = Some(secret_manager);
@@ -809,6 +819,29 @@ mod tests {
             llm: Default::default(),
             connectors: Default::default(),
         }
+    }
+
+    #[tokio::test]
+    async fn embedded_keeps_authentication_but_skips_tenant_resolution() {
+        // The distinction matters: dropping identity is what lets a paired
+        // token work at all (pairing issues an empty principal, which the
+        // resolver refuses), but auth must stay on so reaching the loopback
+        // port is not by itself enough to call /v1.
+        let mut config = test_config();
+        config.environment = Environment::Embedded;
+        let app = App::new(config).expect("build embedded app");
+
+        assert!(app.state.auth.is_some(), "embedded still requires a bearer token");
+        assert!(
+            app.state.identity.is_none(),
+            "embedded is a single local workspace with no tenants to resolve"
+        );
+    }
+
+    #[tokio::test]
+    async fn non_embedded_environments_resolve_tenants() {
+        let app = App::new(test_config()).expect("build app");
+        assert!(app.state.identity.is_some());
     }
 
     /// End-to-end wiring proof: build the full App against a temp-dir store,

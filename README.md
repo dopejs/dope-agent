@@ -152,6 +152,14 @@ billing quotas are not enforced. The defaults (`~/.kura-embedded`,
 `127.0.0.1:19193`) exist only so a misconfigured host cannot collide with the
 prod or test daemon — a host is expected to set both variables explicitly.
 
+Authentication still applies: `/v1` routes require a bearer token, obtained
+through the unauthenticated local pairing exchange
+(`POST /v1/auth/pairings/start` then `.../complete` with the returned code).
+What embedded *does* skip is tenant resolution — it is a single local workspace
+with no tenants, and the pairing flow issues a token with an empty principal,
+which the identity resolver correctly refuses. Every handler already takes an
+optional tenant context, so the request proceeds without one.
+
 Two things are deliberately *not* different from `test`:
 
 - **`environmentScope`** stays `test`. It is a data-isolation label, not a
