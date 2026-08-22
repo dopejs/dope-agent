@@ -152,13 +152,21 @@ billing quotas are not enforced. The defaults (`~/.kura-embedded`,
 `127.0.0.1:19193`) exist only so a misconfigured host cannot collide with the
 prod or test daemon — a host is expected to set both variables explicitly.
 
-Authentication still applies: `/v1` routes require a bearer token, obtained
-through the unauthenticated local pairing exchange
-(`POST /v1/auth/pairings/start` then `.../complete` with the returned code).
-What embedded *does* skip is tenant resolution — it is a single local workspace
-with no tenants, and the pairing flow issues a token with an empty principal,
-which the identity resolver correctly refuses. Every handler already takes an
-optional tenant context, so the request proceeds without one.
+Authentication applies as everywhere else: `/v1` routes require a bearer token,
+obtained through the unauthenticated local pairing exchange
+(`POST /v1/auth/pairings/start` then `.../complete` with the returned code). In
+`local` mode the code is returned by the start response, so a supervisor that
+already owns the daemon process completes it without a human step.
+
+What embedded adds is a bootstrapped identity. Pairing has no way to ask who is
+pairing, so by default it issues a token with no principal, which the resolver
+correctly refuses — leaving a daemon that authenticates and then denies every
+request. On boot, embedded provisions a personal tenant (`ten_local`), a local
+operator principal (`prn_local_operator`) and an owner membership, and pairing
+stamps that identity onto issued tokens along with a tenant grant. All four
+links are required: without the membership the operator resolves with no
+permissions, and without the grant it fails resolution outright. Bootstrapping
+is idempotent, so a restart reuses the workspace rather than resetting it.
 
 Two things are deliberately *not* different from `test`:
 

@@ -176,14 +176,33 @@ struct State {
     token_ids: Vec<String>,
 }
 
+/// Identity stamped onto tokens issued by the pairing exchange.
+///
+/// Pairing has no way to ask who is pairing, so by default it issues a token
+/// with no principal — which the identity resolver correctly refuses. A
+/// deployment that bootstraps a known local identity (see the embedded
+/// environment) supplies it here so paired tokens resolve.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PairingIdentity {
+    pub principal_id: String,
+    pub default_tenant_id: String,
+}
+
 #[derive(Debug, Default)]
 pub struct Manager {
     state: RwLock<State>,
+    pairing_identity: PairingIdentity,
 }
 
 impl Manager {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A manager whose paired tokens carry `identity`.
+    #[must_use]
+    pub fn with_pairing_identity(identity: PairingIdentity) -> Self {
+        Self { state: RwLock::default(), pairing_identity: identity }
     }
 
     /// Starts a pairing session. Returns the pairing record and the one-time
@@ -242,13 +261,13 @@ impl Manager {
         let token_secret = format!("kura_{}", random_id(24));
         let token = AccessToken {
             token_id: format!("tok_{}", random_id(8)),
-            principal_id: String::new(),
+            principal_id: self.pairing_identity.principal_id.clone(),
             label: pairing.label.clone(),
             mode: pairing.mode,
             token_hash: hash_secret(&token_secret),
             token_preview: token_secret[..12].to_string(),
             status: TokenStatus::Active,
-            default_tenant_id: String::new(),
+            default_tenant_id: self.pairing_identity.default_tenant_id.clone(),
             created_at: now,
             updated_at: now,
             last_used_at: None,

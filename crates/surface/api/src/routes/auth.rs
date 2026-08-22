@@ -771,6 +771,29 @@ async fn auth_pairing_complete(
         .lock()
         .upsert_access_token(&token)
         .map_err(ApiError::from_store)?;
+    // A token only resolves against a tenant it has been granted. Pairing
+    // normally issues no tenant, but a deployment that bootstraps a local
+    // identity stamps one onto the token (see the embedded environment), and
+    // without a matching grant that token would authenticate and then be
+    // denied at tenant resolution -- the confusing 401-then-403 sequence.
+    if !token.default_tenant_id.trim().is_empty() {
+        let now = token.created_at;
+        state
+            .store
+            .lock()
+            .upsert_token_tenant_grant(&kura_identity::TokenTenantGrant {
+                grant_id: format!("grant_{}", token.token_id),
+                token_id: token.token_id.clone(),
+                tenant_id: token.default_tenant_id.clone(),
+                is_default: true,
+                status: kura_identity::LifecycleStatus::Active,
+                created_at: now,
+                updated_at: now,
+                revoked_at: None,
+                granted_by_principal_id: token.principal_id.clone(),
+            })
+            .map_err(ApiError::from_store)?;
+    }
     publish_pairing_event(
         &state,
         "auth.pairing_completed",

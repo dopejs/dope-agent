@@ -56,6 +56,101 @@ pub fn environment_scope(environment: Environment) -> &'static str {
     }
 }
 
+/// Identifiers for the embedded deployment's single local identity. They are
+/// stable so a restart reuses the same tenant and its data stays visible.
+const LOCAL_TENANT_ID: &str = "ten_local";
+const LOCAL_PRINCIPAL_ID: &str = "prn_local_operator";
+
+/// Ensure the embedded workspace has an active tenant and operator, returning
+/// the identity that pairing should stamp onto issued tokens.
+///
+/// Idempotent: an existing row is left in place rather than reset, so a
+/// restart does not disturb state already associated with the tenant.
+fn bootstrap_local_identity(
+    store: &Arc<parking_lot::Mutex<SQLiteStore>>,
+) -> Result<kura_identity::auth::PairingIdentity, AppError> {
+    use kura_identity::{LifecycleStatus, Principal, PrincipalKind, Tenant, TenantKind};
+
+    let now = chrono::Utc::now();
+    let guard = store.lock();
+    if guard
+        .get_tenant(LOCAL_TENANT_ID)
+        .map_err(AppError::Store)?
+        .is_none()
+    {
+        guard
+            .upsert_tenant(&Tenant {
+                tenant_id: LOCAL_TENANT_ID.to_string(),
+                tenant_kind: TenantKind::Personal,
+                display_name: "Local workspace".to_string(),
+                status: LifecycleStatus::Active,
+                created_at: now,
+                updated_at: now,
+                created_by_principal_id: LOCAL_PRINCIPAL_ID.to_string(),
+                default_owner_principal_id: LOCAL_PRINCIPAL_ID.to_string(),
+                caller_membership_role: None,
+                caller_membership_status: None,
+                caller_permissions: Vec::new(),
+                default_for_current_token: false,
+                default_for_current_principal: false,
+            })
+            .map_err(AppError::Store)?;
+    }
+    if guard
+        .get_principal(LOCAL_PRINCIPAL_ID)
+        .map_err(AppError::Store)?
+        .is_none()
+    {
+        guard
+            .upsert_principal(&Principal {
+                principal_id: LOCAL_PRINCIPAL_ID.to_string(),
+                principal_kind: PrincipalKind::LocalOperator,
+                display_name: "Local operator".to_string(),
+                status: LifecycleStatus::Active,
+                default_tenant_id: LOCAL_TENANT_ID.to_string(),
+                created_at: now,
+                updated_at: now,
+                disabled_at: None,
+                removed_at: None,
+            })
+            .map_err(AppError::Store)?;
+    }
+    // Permissions come from the membership's role, not from the principal, so
+    // without this the operator resolves to a tenant with an empty permission
+    // set and every managed surface denies it. Owner is correct here: the sole
+    // local operator of a personal workspace is its owner.
+    let memberships = guard
+        .list_memberships(&kura_identity::MembershipFilter {
+            tenant_id: LOCAL_TENANT_ID.to_string(),
+            ..Default::default()
+        })
+        .map_err(AppError::Store)?;
+    if !memberships
+        .iter()
+        .any(|m| m.principal_id == LOCAL_PRINCIPAL_ID && m.status == LifecycleStatus::Active)
+    {
+        guard
+            .upsert_membership(&kura_identity::Membership {
+                membership_id: "mem_local_operator".to_string(),
+                tenant_id: LOCAL_TENANT_ID.to_string(),
+                principal_id: LOCAL_PRINCIPAL_ID.to_string(),
+                role: kura_identity::Role::Owner,
+                status: LifecycleStatus::Active,
+                invitation_id: String::new(),
+                created_at: now,
+                updated_at: now,
+                accepted_at: Some(now),
+                removed_at: None,
+            })
+            .map_err(AppError::Store)?;
+    }
+
+    Ok(kura_identity::auth::PairingIdentity {
+        principal_id: LOCAL_PRINCIPAL_ID.to_string(),
+        default_tenant_id: LOCAL_TENANT_ID.to_string(),
+    })
+}
+
 /// The daemon application. The manager instances live inside
 /// [`kura_api::AppState`]; lifecycle-bearing managers (scheduler, reminders,
 /// sandboxes) are read back from the state in `serve`/`close`.
@@ -166,7 +261,19 @@ impl App {
         let runtime = Arc::new(RuntimeManager::new());
         let checkpoints = Arc::new(CheckpointsManager::new(store.clone(), runtime.clone()));
         let policy_engine = Arc::new(PolicyEngine::new());
-        let auth_manager = Arc::new(AuthManager::new());
+        // An embedded daemon is one local workspace with no way to provision
+        // identities interactively, yet several surfaces (the setup wizard
+        // among them) legitimately require a tenant. Bootstrapping a local
+        // operator lets pairing issue a resolvable token instead of an
+        // unusable one, without weakening authentication: a caller still has
+        // to complete the pairing exchange.
+        let auth_manager = if cfg.environment == Environment::Embedded {
+            Arc::new(AuthManager::with_pairing_identity(bootstrap_local_identity(
+                &store,
+            )?))
+        } else {
+            Arc::new(AuthManager::new())
+        };
         let identity_manager: Arc<IdentityManager<dyn IdentityStore + Send + Sync>> = {
             let erased: Arc<dyn IdentityStore + Send + Sync> =
                 Arc::new(adapters::IdentityStoreHandle(store.clone()));
@@ -195,17 +302,7 @@ impl App {
         let mut state = AppState::new(cfg.clone(), event_bus.clone(), store.clone());
         state.policy = Some(policy_engine);
         state.auth = Some(auth_manager);
-        // Tenant resolution is a multi-tenant concern. An embedded daemon is a
-        // single local workspace supervised by one host, and it has no way to
-        // provision principals or tenants: the pairing flow issues a token with
-        // an empty principal, which the resolver correctly refuses. Leaving
-        // identity unset there keeps bearer-token authentication (a caller
-        // still has to pair) while skipping a resolution step that has no
-        // meaning for the deployment. Every handler already takes
-        // `Option<Extension<TenantContext>>`.
-        if cfg.environment != Environment::Embedded {
-            state.identity = Some(identity_manager);
-        }
+        state.identity = Some(identity_manager);
         state.router = Some(session_router);
         state.runtime = Some(runtime.clone());
         state.secrets = Some(secret_manager);
@@ -822,26 +919,152 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn embedded_keeps_authentication_but_skips_tenant_resolution() {
-        // The distinction matters: dropping identity is what lets a paired
-        // token work at all (pairing issues an empty principal, which the
-        // resolver refuses), but auth must stay on so reaching the loopback
-        // port is not by itself enough to call /v1.
+    async fn embedded_bootstraps_a_resolvable_local_identity() {
+        // Without this, pairing issues a token with an empty principal that the
+        // resolver refuses, so every /v1 route answers 403 after a successful
+        // pairing -- and surfaces that legitimately require a tenant (the setup
+        // wizard) can never be reached.
         let mut config = test_config();
         config.environment = Environment::Embedded;
         let app = App::new(config).expect("build embedded app");
 
         assert!(app.state.auth.is_some(), "embedded still requires a bearer token");
-        assert!(
-            app.state.identity.is_none(),
-            "embedded is a single local workspace with no tenants to resolve"
-        );
+        assert!(app.state.identity.is_some(), "tenant resolution stays enabled");
+
+        let store = app.state.store.lock();
+        let tenant = store.get_tenant(LOCAL_TENANT_ID).expect("tenant lookup");
+        assert!(tenant.is_some(), "a local tenant exists to resolve against");
+        let principal = store
+            .get_principal(LOCAL_PRINCIPAL_ID)
+            .expect("principal lookup")
+            .expect("a local operator exists");
+        assert_eq!(principal.default_tenant_id, LOCAL_TENANT_ID);
+        assert_eq!(principal.status, kura_identity::LifecycleStatus::Active);
     }
 
     #[tokio::test]
-    async fn non_embedded_environments_resolve_tenants() {
+    async fn bootstrapping_the_local_identity_is_idempotent() {
+        // A restart must reuse the tenant rather than reset it, or state
+        // associated with the workspace would be orphaned.
+        let mut config = test_config();
+        config.environment = Environment::Embedded;
+        let first = App::new(config.clone()).expect("first boot");
+        let created_at = {
+            let store = first.state.store.lock();
+            store
+                .get_tenant(LOCAL_TENANT_ID)
+                .expect("tenant")
+                .expect("tenant exists")
+                .created_at
+        };
+        drop(first);
+
+        let second = App::new(config).expect("second boot");
+        let store = second.state.store.lock();
+        let reused = store
+            .get_tenant(LOCAL_TENANT_ID)
+            .expect("tenant")
+            .expect("tenant");
+        assert_eq!(reused.created_at, created_at, "tenant reused, not recreated");
+    }
+
+    #[tokio::test]
+    async fn non_embedded_environments_do_not_bootstrap_a_local_identity() {
         let app = App::new(test_config()).expect("build app");
         assert!(app.state.identity.is_some());
+        let store = app.state.store.lock();
+        assert!(
+            store.get_principal(LOCAL_PRINCIPAL_ID).expect("lookup").is_none(),
+            "only embedded provisions a local operator"
+        );
+    }
+
+    /// The full embedded authorization chain, which failed in four distinct
+    /// ways while being built: pairing must issue a token carrying the local
+    /// principal, that token must be granted its tenant, the principal must
+    /// hold an owner membership, and only then does a protected route resolve.
+    /// Each link was individually plausible and individually wrong.
+    #[tokio::test]
+    async fn embedded_pairing_yields_a_token_that_resolves_and_authorizes() {
+        let mut config = test_config();
+        config.environment = Environment::Embedded;
+        let app = App::new(config).expect("build embedded app");
+        let router = app.router();
+
+        // Unauthenticated access stays closed.
+        let denied = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/auth/me")
+                    .body(axum::body::Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+
+        let started = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/pairings/start")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        r#"{"mode":"local","label":"test","ttlSeconds":300}"#,
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(started.status(), StatusCode::CREATED);
+        let started: serde_json::Value = serde_json::from_slice(
+            &to_bytes(started.into_body(), usize::MAX).await.expect("body"),
+        )
+        .expect("json");
+        let pairing_id = started["pairing"]["pairingId"].as_str().expect("pairing id");
+        let code = started["pairingCode"].as_str().expect("code");
+
+        let completed = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/auth/pairings/{pairing_id}/complete"))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(format!(r#"{{"code":"{code}"}}"#)))
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(completed.status(), StatusCode::OK);
+        let completed: serde_json::Value = serde_json::from_slice(
+            &to_bytes(completed.into_body(), usize::MAX).await.expect("body"),
+        )
+        .expect("json");
+        let secret = completed["accessToken"].as_str().expect("access token");
+
+        let me = router
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/auth/me")
+                    .header("authorization", format!("Bearer {secret}"))
+                    .body(axum::body::Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        // Not merely 200: a token that authenticates but cannot resolve a
+        // tenant returns 403 here, which is the failure this chain guards.
+        assert_eq!(me.status(), StatusCode::OK);
+        let me: serde_json::Value =
+            serde_json::from_slice(&to_bytes(me.into_body(), usize::MAX).await.expect("body"))
+                .expect("json");
+        assert_eq!(me["principal"]["principalId"], LOCAL_PRINCIPAL_ID);
+        assert_eq!(me["defaultTenant"]["tenantId"], LOCAL_TENANT_ID);
+
+        app.close();
     }
 
     /// End-to-end wiring proof: build the full App against a temp-dir store,
