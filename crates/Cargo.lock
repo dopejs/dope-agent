@@ -1366,6 +1366,7 @@ dependencies = [
  "kura-matrix",
  "kura-mcp",
  "kura-memory",
+ "kura-model-provider",
  "kura-plugin",
  "kura-policy",
  "kura-providers",
@@ -1965,11 +1966,13 @@ dependencies = [
  "async-stream",
  "bytes",
  "futures",
+ "kura-llm",
  "kura-protocol",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "tokio",
 ]
 
 [[package]]

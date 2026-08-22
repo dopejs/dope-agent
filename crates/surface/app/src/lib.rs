@@ -979,6 +979,32 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn an_unconfigured_openai_endpoint_is_not_registered() {
+        // Registering it without a base URL would put a provider in the
+        // dispatcher that fails every dispatch, which reads as a broken daemon
+        // rather than an unconfigured one.
+        let app = App::new(test_config()).expect("build app");
+        let dispatcher = app.state.llm.as_ref().expect("dispatcher");
+        assert!(!dispatcher.has_provider("openai_compatible"));
+        // The built-in fallback is always present.
+        assert!(dispatcher.has_provider("echo"));
+    }
+
+    #[tokio::test]
+    async fn a_configured_openai_endpoint_becomes_dispatchable() {
+        let mut config = test_config();
+        config.llm.openai_compatible.base_url = "https://api.example.test/v1".to_string();
+        config.llm.openai_compatible.model = "test-model".to_string();
+        let app = App::new(config).expect("build app");
+
+        let dispatcher = app.state.llm.as_ref().expect("dispatcher");
+        assert!(
+            dispatcher.has_provider("openai_compatible"),
+            "a configured endpoint is registered so it can actually answer"
+        );
+    }
+
     /// The full embedded authorization chain, which failed in four distinct
     /// ways while being built: pairing must issue a token carrying the local
     /// principal, that token must be granted its tenant, the principal must

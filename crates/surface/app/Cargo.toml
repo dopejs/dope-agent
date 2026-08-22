@@ -28,6 +28,7 @@ kura-identity = { workspace = true }
 kura-llm = { workspace = true }
 kura-providers = { workspace = true }
 kura-managedproviders = { workspace = true }
+kura-model-provider = { workspace = true }
 kura-skills = { workspace = true }
 kura-sandbox = { workspace = true }
 kura-secrets = { workspace = true }

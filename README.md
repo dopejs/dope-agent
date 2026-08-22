@@ -107,6 +107,24 @@ per provider. Without the parameter the response is unchanged. Unknown
 `include` values are ignored rather than rejected, so a newer client does not
 break against an older daemon.
 
+## OpenAI-compatible Provider
+
+`llm.openaiCompatible` is registered with the dispatcher when `baseURL` is set,
+and only then: registering it unconfigured would place a provider in the
+dispatcher that fails every dispatch, which reads as a broken daemon rather
+than an unconfigured one.
+
+Before this the endpoint appeared in the provider inventory and accepted
+configuration but was never registered, so it could not answer a query. The
+gap was a trait boundary — `ModelProvider` streams protocol events while the
+dispatcher speaks `kura_llm::Provider` — bridged in
+`kura-model-provider::OpenAiCompatibleProvider`. Completion reuses the
+streaming path with chunks accumulated, so the two cannot drift.
+
+Transport failures are classified where the mapping is known: `429` and `5xx`
+are retryable, `4xx` is not, and the response body is preserved because that is
+where a provider explains a refusal.
+
 ## Provider Request Tuning
 
 `llm.openaiCompatible` accepts two additions:

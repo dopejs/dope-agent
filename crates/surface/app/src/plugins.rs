@@ -500,6 +500,28 @@ fn build_llm(asm: &mut Assembly) -> Result<(), AppError> {
     for bridge in managed_registry.list() {
         llm.register_provider(bridge.provider());
     }
+    // The OpenAI-compatible endpoint is registered only when it has somewhere
+    // to send requests. Registering it unconfigured would put a provider in the
+    // dispatcher that fails every dispatch, which reads as a broken daemon
+    // rather than an unconfigured one.
+    let openai = &asm.cfg.llm.openai_compatible;
+    if !openai.base_url.trim().is_empty() {
+        let api_key = openai.api_key.trim();
+        let client = kura_model_provider::OpenAiCompatibleClient::new(
+            openai.base_url.trim(),
+            openai.model.trim(),
+            (!api_key.is_empty()).then(|| api_key.to_string()),
+        )
+        .with_headers(openai.headers.clone())
+        .with_sampling(kura_model_provider::Sampling {
+            temperature: openai.sampling.temperature,
+            top_p: openai.sampling.top_p,
+        });
+        llm.register_provider(Arc::new(
+            kura_model_provider::OpenAiCompatibleProvider::new("openai_compatible", client),
+        ));
+    }
+
     // Deterministic in-process fallback so the daemon always has a default
     // provider (Go registers echo in dispatcher.go).
     llm.register_provider(Arc::new(kura_llm::EchoProvider::new()));
