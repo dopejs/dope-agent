@@ -22,7 +22,11 @@ chrono.workspace = true
 thiserror.workspace = true
 parking_lot.workspace = true
 uuid = { workspace = true, features = ["v4"] }
-tokio = { workspace = true, features = ["rt", "time"] }
+# `net` is what supplies the IO driver the bridge runtime enables. It
+# currently arrives anyway through feature unification, but relying on
+# another crate to enable it is how the runtime ended up without IO in the
+# first place.
+tokio = { workspace = true, features = ["rt", "time", "net"] }
 
 [dev-dependencies]
 kura-config.workspace = true

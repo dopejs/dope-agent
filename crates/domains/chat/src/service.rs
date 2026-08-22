@@ -1637,11 +1637,38 @@ pub fn handoff_reference_continuity_reason(reference: &HandoffSourceReference) -
 }
 
 /// Builds the per-call current-thread Tokio runtime that bridges the sync
-/// service into the async `kura-llm` dispatcher. Time is enabled for the
-/// dispatcher's per-attempt timeout.
+/// service into the async `kura-llm` dispatcher.
+///
+/// Time is enabled for the dispatcher's per-attempt timeout, and IO because a
+/// provider may reach the network. Only time was enabled until an HTTP
+/// provider was first dispatched here: the built-in `echo` and the managed CLI
+/// providers do no socket work, so every test passed while any real endpoint
+/// would panic on its first connection.
 fn bridge_runtime() -> Result<tokio::runtime::Runtime, ChatError> {
     tokio::runtime::Builder::new_current_thread()
+        .enable_io()
         .enable_time()
         .build()
         .map_err(|err| ChatError::Runtime(format!("build dispatch runtime: {err}")))
+}
+
+#[cfg(test)]
+mod bridge_runtime_tests {
+    use super::bridge_runtime;
+
+    /// The dispatcher runs HTTP providers on this runtime.
+    ///
+    /// Without the IO driver the first socket panics with "IO is disabled",
+    /// which no test caught because the built-in `echo` provider and the
+    /// managed CLI providers never open one. This binds a listener because
+    /// that is the cheapest operation that needs the driver at all.
+    #[test]
+    fn the_bridge_runtime_can_reach_the_network() {
+        let runtime = bridge_runtime().expect("build the bridge runtime");
+        runtime.block_on(async {
+            tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("the bridge runtime must have an IO driver");
+        });
+    }
 }
